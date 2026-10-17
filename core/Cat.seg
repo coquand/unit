@@ -1,0 +1,200 @@
+-- Cat.seg: MODEL/Poset/Cat.agda.  The category of finite non empty posets
+-- and monotone maps, as a V-small category (SmallCat[a]).
+--
+-- An object is given by
+--   car   : Tree -> Bool          the carrier, a decidable set of trees
+--   le    : Tree -> Tree -> Bool  the order
+--   enum  : Tree                  a list covering the carrier (finite)
+--   pt    : Tree                  a point of the carrier (non empty)
+-- with reflexivity on the carrier, and transitivity and antisymmetry.
+-- Isomorphic posets may be different objects; the category is not
+-- skeletal, which does not matter for presheaves.
+--
+-- Agda's level 0 is the level a.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+open Axioms[a+].FunExtLemmas[fe @(a+)] ;
+module W = V[a] ;
+
+open Trees[a] ;
+
+------------------------------------------------------------------------
+-- Trees as an iterative set
+
+encT : Tree -> W.V = split {
+  leaf n -> W.pairV (W.num zero) (W.num n) ;
+  node s t -> W.pairV (W.num (suc zero)) (W.pairV (encT s) (encT t)) } ;
+
+FZ : Nat -> U a = split { zero -> Top ; suc n -> Empty } ;
+
+zero-suc (n : Nat) (P : Id Nat zero (suc n)) : Empty = subst Nat (\ m -> FZ m) zero (suc n) P tt ;
+
+-- the case  node , node  of encT-inj
+encT-inj-nn (s t s' t' : Tree)
+  (P : Id W.M (encT (node s t)).1 (encT (node s' t')).1) : Id Tree (node s t) (node s' t') =
+  node-eq s t s' t' (encT-inj s s' (W.pair-inj (encT s) (encT t) (encT s') (encT t') Q).1)
+                    (encT-inj t t' (W.pair-inj (encT s) (encT t) (encT s') (encT t') Q).2)
+ where { Q : Id W.M (W.pairV (encT s) (encT t)).1 (W.pairV (encT s') (encT t')).1 =
+           (W.pair-inj (W.num (suc zero)) (W.pairV (encT s) (encT t))
+                       (W.num (suc zero)) (W.pairV (encT s') (encT t')) P).2 ; } ;
+
+encT-inj : W.Inj Tree encT = split {
+  leaf m -> split {
+    leaf n -> \ P -> ap Nat Tree (\ k -> leaf k) m n
+                        (W.num-inj m n (W.pair-inj (W.num zero) (W.num m) (W.num zero) (W.num n) P).2) ;
+    node c d -> \ P -> absurd (Id Tree (leaf m) (node c d))
+                        (zero-suc zero (W.num-inj zero (suc zero)
+                           (W.pair-inj (W.num zero) (W.num m) (W.num (suc zero)) (W.pairV (encT c) (encT d)) P).1)) } ;
+  node s t -> split {
+    leaf n -> \ P -> absurd (Id Tree (node s t) (leaf n))
+                        (zero-suc zero (W.num-inj zero (suc zero)
+                           (sym W.M (W.num (suc zero)).1 (W.num zero).1
+                              (W.pair-inj (W.num (suc zero)) (W.pairV (encT s) (encT t)) (W.num zero) (W.num n) P).1))) ;
+    node c d -> encT-inj-nn s t c d } } ;
+
+treeV : W.V = W.mkV Tree encT encT-inj ;
+
+isProp-IsT (b : Bool) : isProp (IsT b) = W.isSetIx W.boolV b true ;
+
+------------------------------------------------------------------------
+-- Objects
+
+obV : W.V =
+  W.SigV (W.PiV treeV (\ x -> W.boolV)) (\ car ->
+  W.SigV (W.PiV treeV (\ x -> W.PiV treeV (\ y -> W.boolV))) (\ le ->
+  W.SigV treeV (\ en ->
+  W.SigV (W.PiV treeV (\ x -> W.PiV (W.IsTV (car x)) (\ h -> W.IsTV (mem x en)))) (\ cov ->
+  W.SigV treeV (\ p0 ->
+  W.SigV (W.IsTV (car p0)) (\ pc ->
+  W.SigV (W.PiV treeV (\ x -> W.PiV (W.IsTV (car x)) (\ h -> W.IsTV (le x x)))) (\ rf ->
+  W.SigV (W.PiV treeV (\ x -> W.PiV treeV (\ y -> W.PiV treeV (\ z ->
+            W.PiV (W.IsTV (le x y)) (\ h -> W.PiV (W.IsTV (le y z)) (\ h' -> W.IsTV (le x z))))))) (\ tr ->
+          W.PiV treeV (\ x -> W.PiV treeV (\ y ->
+            W.PiV (W.IsTV (le x y)) (\ h -> W.PiV (W.IsTV (le y x)) (\ h' -> W.IdV treeV x y)))))))))))) ;
+
+-- the objects: the carrier declared once in SmallCat (shared with the presheaves)
+open SmallCat[a].Objs[obV] ;
+
+car (X : Ob) : Tree -> Bool = X.1 ;
+le (X : Ob) : Tree -> Tree -> Bool = X.2.1 ;
+enum (X : Ob) : Tree = X.2.2.1 ;
+cover (X : Ob) : (x : Tree) -> IsT (car X x) -> IsT (mem x (enum X)) = X.2.2.2.1 ;
+pt (X : Ob) : Tree = X.2.2.2.2.1 ;
+pt-car (X : Ob) : IsT (car X (pt X)) = X.2.2.2.2.2.1 ;
+le-refl (X : Ob) : (x : Tree) -> IsT (car X x) -> IsT (le X x x) = X.2.2.2.2.2.2.1 ;
+le-trans (X : Ob) : (x y z : Tree) -> IsT (le X x y) -> IsT (le X y z) -> IsT (le X x z) = X.2.2.2.2.2.2.2.1 ;
+le-anti (X : Ob) : (x y : Tree) -> IsT (le X x y) -> IsT (le X y x) -> Id Tree x y = X.2.2.2.2.2.2.2.2 ;
+
+mkOb (c : Tree -> Bool) (lo : Tree -> Tree -> Bool) (en : Tree)
+  (cov : (x : Tree) -> IsT (c x) -> IsT (mem x en))
+  (p0 : Tree) (pc : IsT (c p0))
+  (rf : (x : Tree) -> IsT (c x) -> IsT (lo x x))
+  (tr : (x y z : Tree) -> IsT (lo x y) -> IsT (lo y z) -> IsT (lo x z))
+  (an : (x y : Tree) -> IsT (lo x y) -> IsT (lo y x) -> Id Tree x y) : Ob =
+  (c, (lo, (en, (cov, (p0, (pc, (rf, (tr, an)))))))) ;
+
+------------------------------------------------------------------------
+-- Elements and monotone maps
+
+El (X : Ob) : U a = (x : Tree) * IsT (car X x) ;
+
+elV (X : Ob) : W.V = W.SigV treeV (\ x -> W.IsTV (car X x)) ;
+
+el-eq (X : Ob) (s t : El X) (P : Id Tree s.1 t.1) : Id (El X) s t =
+  Sigma-eq Tree (\ x -> IsT (car X x)) s.1 t.1 s.2 t.2 P (isProp-IsT (car X t.1)) ;
+
+Mono (X Y : Ob) (f : El X -> El Y) : U a =
+  (s t : El X) -> IsT (le X s.1 t.1) -> IsT (le Y (f s).1 (f t).1) ;
+
+-- the raw code of monotone maps
+homRaw (X Y : Ob) : W.V =
+  W.SigV (W.PiV (elV X) (\ s -> elV Y)) (\ f ->
+    W.PiV (elV X) (\ s -> W.PiV (elV X) (\ t ->
+      W.PiV (W.IsTV (le X s.1 t.1)) (\ h -> W.IsTV (le Y (f s).1 (f t).1))))) ;
+
+-- the code used: the same index type, with an opaque embedding, so that
+-- two hom-codes are compared through their arguments only (never by
+-- unfolding the nested SigV/PiV codes)
+homEmb (X Y : Ob) (r : W.Ix (homRaw X Y)) : W.V = W.ev (homRaw X Y) r ;
+
+homInj (X Y : Ob) : W.Inj (W.Ix (homRaw X Y)) (homEmb X Y) = \ r r' P ->
+  W.emb-inj (W.Ix (homRaw X Y)) (W.elt (homRaw X Y).1) (W.embV (homRaw X Y)) r r' P ;
+
+opaque homEmb ; opaque homInj ;
+
+homV (X Y : Ob) : W.V = W.mkV (W.Ix (homRaw X Y)) (homEmb X Y) (homInj X Y) ;
+
+open SmallCat[a].Homs[obV, homV] ;
+
+-- application (the objects are never inferable through Ix: explicit)
+app (X Y : Ob) (f : Hom X Y) (s : El X) : El Y = f.1 s ;
+
+mono (X Y : Ob) (f : Hom X Y) : Mono X Y f.1 = f.2 ;
+
+mkHom (X Y : Ob) (f : El X -> El Y) (m : Mono X Y f) : Hom X Y = (f, m) ;
+
+isProp-Mono (X Y : Ob) (f : El X -> El Y) : isProp (Mono X Y f) =
+  isProp-Pi (El X) (\ s -> (t : El X) -> IsT (le X s.1 t.1) -> IsT (le Y (f s).1 (f t).1)) (\ s ->
+    isProp-Pi (El X) (\ t -> IsT (le X s.1 t.1) -> IsT (le Y (f s).1 (f t).1)) (\ t ->
+      isProp-Pi (IsT (le X s.1 t.1)) (\ h -> IsT (le Y (f s).1 (f t).1)) (\ h ->
+        isProp-IsT (le Y (f s).1 (f t).1)))) ;
+
+-- maps are determined by their action on the underlying trees
+hom-eq (X Y : Ob) (f g : Hom X Y) (h : (s : El X) -> Id Tree (app X Y f s).1 (app X Y g s).1)
+  : Id (Hom X Y) f g =
+  Sigma-eq (El X -> El Y) (\ f1 -> Mono X Y f1) f.1 g.1 f.2 g.2
+    (funext (El X) (\ s -> El Y) f.1 g.1 (\ s -> el-eq Y (f.1 s) (g.1 s) (h s)))
+    (isProp-Mono X Y g.1) ;
+
+idH (X : Ob) : Hom X X = mkHom X X (\ s -> s) (\ s t h -> h) ;
+
+compH (X Y Z : Ob) (g : Hom Y Z) (f : Hom X Y) : Hom X Z =
+  mkHom X Z (\ s -> app Y Z g (app X Y f s))
+            (\ s t h -> mono Y Z g (app X Y f s) (app X Y f t) (mono X Y f s t h)) ;
+
+-- the characterising equations: identity and composition act pointwise
+app-idH (X : Ob) (s : El X) : Id (El X) (app X X (idH X) s) s = refl s ;
+
+app-compH (X Y Z : Ob) (g : Hom Y Z) (f : Hom X Y) (s : El X)
+  : Id (El Z) (app X Z (compH X Y Z g f) s) (app Y Z g (app X Y f s)) = refl (app Y Z g (app X Y f s)) ;
+
+-- the same on underlying trees (the form hom-eq asks for)
+app-idH1 (X : Ob) (s : El X) : Id Tree (app X X (idH X) s).1 s.1 = refl s.1 ;
+
+app-compH1 (X Y Z : Ob) (g : Hom Y Z) (f : Hom X Y) (s : El X)
+  : Id Tree (app X Z (compH X Y Z g f) s).1 (app Y Z g (app X Y f s)).1 = refl (app Y Z g (app X Y f s)).1 ;
+
+opaque idH ; opaque compH ;
+
+-- objects and maps are now used only through their interface (car, le, ..,
+-- mkOb; app, mono, mkHom, hom-eq): their codes are locked
+opaque obV ; opaque homV ;
+
+------------------------------------------------------------------------
+-- The category
+
+-- the category laws, from the characterising equations
+comp-idl (J I : Ob) (f : Hom J I) : Id (Hom J I) (compH J I I (idH I) f) f =
+  hom-eq J I (compH J I I (idH I) f) f (\ s ->
+    apH (\ u -> u.1) (transH (app-compH J I I (idH I) f s) (app-idH I (app J I f s)))) ;
+
+comp-idr (J I : Ob) (f : Hom J I) : Id (Hom J I) (compH J J I f (idH J)) f =
+  hom-eq J I (compH J J I f (idH J)) f (\ s ->
+    apH (\ u -> u.1) (transH (app-compH J J I f (idH J) s) (apH (app J I f) (app-idH J s)))) ;
+
+comp-assoc (L K J I : Ob) (f : Hom J I) (g : Hom K J) (h : Hom L K)
+  : Id (Hom L I) (compH L K I (compH K J I f g) h) (compH L J I f (compH L K J g h)) =
+  hom-eq L I (compH L K I (compH K J I f g) h) (compH L J I f (compH L K J g h)) (\ s ->
+    apH (\ u -> u.1)
+      (transH (app-compH L K I (compH K J I f g) h s)
+       (transH (app-compH K J I f g (app L K h s))
+        (symH (transH (app-compH L J I f (compH L K J g h) s) (apH (app J I f) (app-compH L K J g h s))))))) ;
+
+
+-- the laws are propositions (Hom is a set): never unfolded
+opaque comp-idl ; opaque comp-idr ; opaque comp-assoc ;
+
+-- posets as a small category: Constr's PosB.BC (the base instance)

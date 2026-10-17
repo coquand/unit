@@ -1,0 +1,94 @@
+-- Encode.seg: MODEL/Lv/Enc.agda (renamed: a file module Enc would shadow
+-- the type Enc).  Injective encodings into the iterative sets of level l.
+-- A type A with an encoding (Enc A) is the index type of an iterative set:
+-- codeOf A en = mkV A f inj, with Ix (codeOf A en) = A on the nose.
+--
+--   encV0      iterative sets of the lower level k (liftV)
+--   encIx0     members of a level-k iterative set
+--   encProp    a proposition (constant)
+--   encSig     dependent pairs
+--   encPi0     dependent functions on a domain in U l (graphs)
+--   encInj     along an injective map
+--
+-- Agda's level-0 is k here (k <= l); with cumulativity Lift/lower disappear
+-- and every encoded type lives in U l+.
+
+level k l ;
+constraint k <= l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module V0 = V[k] ;
+module W = V[l] ;
+module VL = VLift[k, l] ;
+
+InjM (A : U l+) (f : A -> W.V) : U l+ = (a a' : A) -> Id W.M (f a).1 (f a').1 -> Id A a a' ;
+
+Enc (A : U l+) : U l+ = (f : A -> W.V) * InjM A f ;
+
+codeOf (A : U l) (en : Enc A) : W.V = W.mkV A en.1 en.2 ;
+
+------------------------------------------------------------------------
+-- Base cases
+
+encV0 : Enc V0.V = (VL.liftV, \ x y P -> Sigma-eq V0.M (\ m -> V0.isIt m) x.1 y.1 x.2 y.2 (VL.liftV-inj x y P) (V0.isProp-isIt y.1)) ;
+
+encIx0 (x : V0.V) : Enc (V0.Ix x) = (VL.encIx x, VL.encIx-inj x) ;
+
+encProp (P : U l+) (pP : isProp P) : Enc P = (\ z -> W.emptyV, \ a a' z -> pP a a') ;
+
+encInj (A B : U l+) (g : A -> B) (gi : (a a' : A) -> Id B (g a) (g a') -> Id A a a') (en : Enc B) : Enc A =
+  (\ a -> en.1 (g a), \ a a' P -> gi a a' (en.2 (g a) (g a') P)) ;
+
+------------------------------------------------------------------------
+-- Dependent pairs
+
+module SigE (A : U l+) (B : A -> U l+) (eA : Enc A) (eB : (a : A) -> Enc (B a)) {
+
+  aux (a a' : A) (P : Id A a a') (b : B a) (b' : B a') (Q : Id W.M ((eB a).1 b).1 ((eB a').1 b').1)
+    : Id ((x : A) * B x) (a, b) (a', b') =
+    idJ A a (\ a2 P2 -> (b2 : B a2) -> Id W.M ((eB a).1 b).1 ((eB a2).1 b2).1 -> Id ((x : A) * B x) (a, b) (a2, b2))
+      (\ b2 Q2 -> apH {B a} {(x : A) * B x} (\ v -> (a, v)) ((eB a).2 b b2 Q2))
+      a' P b' Q ;
+
+  encSig : Enc ((a : A) * B a) =
+    (\ w -> W.pairV (eA.1 w.1) ((eB w.1).1 w.2),
+     \ w w' P -> aux w.1 w'.1
+                   (eA.2 w.1 w'.1 (W.pair-inj (eA.1 w.1) ((eB w.1).1 w.2) (eA.1 w'.1) ((eB w'.1).1 w'.2) P).1)
+                   w.2 w'.2
+                   (W.pair-inj (eA.1 w.1) ((eB w.1).1 w.2) (eA.1 w'.1) ((eB w'.1).1 w'.2) P).2) ;
+} ;
+
+encSig (A : U l+) (B : A -> U l+) (eA : Enc A) (eB : (a : A) -> Enc (B a)) : Enc ((a : A) * B a) = SigE[A, B, eA, eB].encSig ;
+
+------------------------------------------------------------------------
+-- Dependent functions on a domain in U l
+
+module PiE0 (A : U l) (B : A -> U l+) (eA : Enc A) (eB : (a : A) -> Enc (B a)) {
+
+  graphE (phi : (a : A) -> B a) : W.V =
+    W.mkV A (\ a -> W.pairV (eA.1 a) ((eB a).1 (phi a)))
+      (\ a a' P -> eA.2 a a' (W.pair-inj (eA.1 a) ((eB a).1 (phi a)) (eA.1 a') ((eB a').1 (phi a')) P).1) ;
+
+  aux (phi psi : (a : A) -> B a) (a' a : A) (p : Id A a' a)
+    (Q : Id W.M ((eB a').1 (psi a')).1 ((eB a).1 (phi a)).1) : Id (B a) (phi a) (psi a) =
+    idJ A a' (\ a1 p1 -> Id W.M ((eB a').1 (psi a')).1 ((eB a1).1 (phi a1)).1 -> Id (B a1) (phi a1) (psi a1))
+      (\ Q1 -> symH ((eB a').2 (psi a') (phi a') Q1))
+      a p Q ;
+
+  module PT (phi psi : (a : A) -> B a) (P : Id W.M (graphE phi).1 (graphE psi).1) (a : A) {
+    m : W.Mem (W.elt (graphE phi).1 a) (graphE psi).1 = W.memT (graphE phi).1 (graphE psi).1 P a ;
+
+    res : Id (B a) (phi a) (psi a) =
+      aux phi psi m.1 a
+        (eA.2 m.1 a (W.pair-inj (eA.1 m.1) ((eB m.1).1 (psi m.1)) (eA.1 a) ((eB a).1 (phi a)) m.2).1)
+        (W.pair-inj (eA.1 m.1) ((eB m.1).1 (psi m.1)) (eA.1 a) ((eB a).1 (phi a)) m.2).2 ;
+  } ;
+
+  encPi0 : Enc ((a : A) -> B a) =
+    (graphE, \ phi psi P -> funext A B phi psi (\ a -> PT[phi, psi, P, a].res)) ;
+} ;
+
+encPi0 (A : U l) (B : A -> U l+) (eA : Enc A) (eB : (a : A) -> Enc (B a)) : Enc ((a : A) -> B a) = PiE0[A, B, eA, eB].encPi0 ;
+

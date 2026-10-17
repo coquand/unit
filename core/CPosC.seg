@@ -1,0 +1,339 @@
+-- CPosC.seg (L8, posets): seg/model Constr.seg lines 1-339 unchanged (MODEL/Poset/Constr.agda).  Constructions in the category of
+-- finite non empty posets:
+--   lin n           the linear poset [n] = {0 < 1 < ... < n}
+--   prodP X Y       binary products (Agda's X *P Y), projections, pairing
+--   Iv = lin 1      the interval, its end points, X * Iv, f * Iv
+--   sub X Q ...     the sub-poset of a non empty decidable subset
+--   pre Y X f Q     inverse image of a subset
+--   decSub          a decidable subset is empty or has a point
+--   strict, linear  for the subcategory Delta+ of strictly monotone maps
+--
+-- Agda matches on pairs  (node a b , h) ; split cannot, so such a function
+-- is a helper (p1', m1', pe', ll, ...) that splits on the tree and takes
+-- the proof as a further argument.  Agda's anonymous  module _ (X Y)  is
+-- two leading arguments X Y.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+open Axioms[a+].FunExtLemmas[fe @(a+)] ;
+
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+
+------------------------------------------------------------------------
+-- The linear posets [n]
+
+module Lin (n : Nat) {
+
+  carL : Tree -> Bool = split { leaf i -> leb i n ; node s t -> false } ;
+
+  leL : Tree -> Tree -> Bool = split {
+    leaf i -> split { leaf j -> leb i j ; node c d -> false } ;
+    node s t -> \ y -> false } ;
+
+  coverL : (x : Tree) -> IsT (carL x) -> IsT (mem x (upto n)) = split {
+    leaf i -> \ h -> mem-upto i n h ;
+    node s t -> \ h -> absurd (IsT (mem (node s t) (upto n))) (false-true h) } ;
+
+  reflL : (x : Tree) -> IsT (carL x) -> IsT (leL x x) = split {
+    leaf i -> \ h -> leb-refl i ;
+    node s t -> \ h -> absurd (IsT false) (false-true h) } ;
+
+  transL : (x y z : Tree) -> IsT (leL x y) -> IsT (leL y z) -> IsT (leL x z) = split {
+    leaf i -> split {
+      leaf j -> split {
+        leaf k -> \ h1 h2 -> leb-trans i j k h1 h2 ;
+        node e f -> \ h1 h2 -> absurd (IsT false) (false-true h2) } ;
+      node c d -> \ z h1 h2 -> absurd (IsT (leL (leaf i) z)) (false-true h1) } ;
+    node s t -> \ y z h1 h2 -> absurd (IsT false) (false-true h1) } ;
+
+  antiL : (x y : Tree) -> IsT (leL x y) -> IsT (leL y x) -> Id Tree x y = split {
+    leaf i -> split {
+      leaf j -> \ h1 h2 -> ap Nat Tree (\ k -> leaf k) i j (leb-anti i j h1 h2) ;
+      node c d -> \ h1 h2 -> absurd (Id Tree (leaf i) (node c d)) (false-true h1) } ;
+    node s t -> \ y h1 h2 -> absurd (Id Tree (node s t) y) (false-true h1) } ;
+} ;
+
+lin (n : Nat) : Ob =
+  mkOb Lin[n].carL Lin[n].leL (upto n) Lin[n].coverL (leaf zero) (refl true)
+       Lin[n].reflL Lin[n].transL Lin[n].antiL ;
+
+-- the interval and its end points
+Iv : Ob = lin (suc zero) ;
+
+e0 : El Iv = (leaf zero, refl true) ;
+e1 : El Iv = (leaf (suc zero), refl true) ;
+
+------------------------------------------------------------------------
+-- Binary products
+
+module Prod (X Y : Ob) {
+
+  carP : Tree -> Bool = split { leaf n -> false ; node s t -> and (car X s) (car Y t) } ;
+
+  leP : Tree -> Tree -> Bool = split {
+    leaf n -> \ y -> false ;
+    node s t -> split { leaf n -> false ; node c d -> and (le X s c) (le Y t d) } } ;
+
+  coverP : (x : Tree) -> IsT (carP x) -> IsT (mem x (prodL (enum X) (enum Y))) = split {
+    leaf n -> \ h -> absurd (IsT (mem (leaf n) (prodL (enum X) (enum Y)))) (false-true h) ;
+    node s t -> \ h ->
+      mem-prodL s t (enum X) (enum Y) (cover X s (and-l (car X s) (car Y t) h))
+                                      (cover Y t (and-r (car X s) (car Y t) h)) } ;
+
+  reflP : (x : Tree) -> IsT (carP x) -> IsT (leP x x) = split {
+    leaf n -> \ h -> absurd (IsT false) (false-true h) ;
+    node s t -> \ h ->
+      and-i (le X s s) (le Y t t) (le-refl X s (and-l (car X s) (car Y t) h))
+                                  (le-refl Y t (and-r (car X s) (car Y t) h)) } ;
+
+  transP : (x y z : Tree) -> IsT (leP x y) -> IsT (leP y z) -> IsT (leP x z) = split {
+    leaf n -> \ y z h1 h2 -> absurd (IsT false) (false-true h1) ;
+    node s t -> split {
+      leaf n -> \ z h1 h2 -> absurd (IsT (leP (node s t) z)) (false-true h1) ;
+      node c d -> split {
+        leaf n -> \ h1 h2 -> absurd (IsT false) (false-true h2) ;
+        node e f -> \ h1 h2 ->
+          and-i (le X s e) (le Y t f)
+            (le-trans X s c e (and-l (le X s c) (le Y t d) h1) (and-l (le X c e) (le Y d f) h2))
+            (le-trans Y t d f (and-r (le X s c) (le Y t d) h1) (and-r (le X c e) (le Y d f) h2)) } } } ;
+
+  antiP : (x y : Tree) -> IsT (leP x y) -> IsT (leP y x) -> Id Tree x y = split {
+    leaf n -> \ y h1 h2 -> absurd (Id Tree (leaf n) y) (false-true h1) ;
+    node s t -> split {
+      leaf n -> \ h1 h2 -> absurd (Id Tree (node s t) (leaf n)) (false-true h1) ;
+      node c d -> \ h1 h2 ->
+        node-eq s t c d (le-anti X s c (and-l (le X s c) (le Y t d) h1) (and-l (le X c s) (le Y d t) h2))
+                        (le-anti Y t d (and-r (le X s c) (le Y t d) h1) (and-r (le X c s) (le Y d t) h2)) } } ;
+} ;
+
+-- Agda's  X *P Y
+prodP (X Y : Ob) : Ob =
+  mkOb Prod[X, Y].carP Prod[X, Y].leP (prodL (enum X) (enum Y)) Prod[X, Y].coverP (node (pt X) (pt Y))
+       (and-i (car X (pt X)) (car Y (pt Y)) (pt-car X) (pt-car Y))
+       Prod[X, Y].reflP Prod[X, Y].transP Prod[X, Y].antiP ;
+
+p1' (X Y : Ob) : (x : Tree) -> IsT (car (prodP X Y) x) -> El X = split {
+  leaf n -> \ h -> absurd (El X) (false-true h) ;
+  node s t -> \ h -> (s, and-l (car X s) (car Y t) h) } ;
+
+p2' (X Y : Ob) : (x : Tree) -> IsT (car (prodP X Y) x) -> El Y = split {
+  leaf n -> \ h -> absurd (El Y) (false-true h) ;
+  node s t -> \ h -> (t, and-r (car X s) (car Y t) h) } ;
+
+p1 (X Y : Ob) (w : El (prodP X Y)) : El X = p1' X Y w.1 w.2 ;
+p2 (X Y : Ob) (w : El (prodP X Y)) : El Y = p2' X Y w.1 w.2 ;
+
+m1' (X Y : Ob) : (x : Tree) (hx : IsT (car (prodP X Y) x)) (y : Tree) (hy : IsT (car (prodP X Y) y))
+  -> IsT (le (prodP X Y) x y) -> IsT (le X (p1' X Y x hx).1 (p1' X Y y hy).1) = split {
+  leaf n -> \ hx y hy h -> absurd (IsT (le X (p1' X Y (leaf n) hx).1 (p1' X Y y hy).1)) (false-true hx) ;
+  node s t -> \ hx -> split {
+    leaf n -> \ hy h -> absurd (IsT (le X s (p1' X Y (leaf n) hy).1)) (false-true hy) ;
+    node c d -> \ hy h -> and-l (le X s c) (le Y t d) h } } ;
+
+m2' (X Y : Ob) : (x : Tree) (hx : IsT (car (prodP X Y) x)) (y : Tree) (hy : IsT (car (prodP X Y) y))
+  -> IsT (le (prodP X Y) x y) -> IsT (le Y (p2' X Y x hx).1 (p2' X Y y hy).1) = split {
+  leaf n -> \ hx y hy h -> absurd (IsT (le Y (p2' X Y (leaf n) hx).1 (p2' X Y y hy).1)) (false-true hx) ;
+  node s t -> \ hx -> split {
+    leaf n -> \ hy h -> absurd (IsT (le Y t (p2' X Y (leaf n) hy).1)) (false-true hy) ;
+    node c d -> \ hy h -> and-r (le X s c) (le Y t d) h } } ;
+
+pr1 (X Y : Ob) : Hom (prodP X Y) X = mkHom (prodP X Y) X (p1 X Y) (\ v w h -> m1' X Y v.1 v.2 w.1 w.2 h) ;
+pr2 (X Y : Ob) : Hom (prodP X Y) Y = mkHom (prodP X Y) Y (p2 X Y) (\ v w h -> m2' X Y v.1 v.2 w.1 w.2 h) ;
+
+pe' (X Y : Ob) : (x : Tree) (h : IsT (car (prodP X Y) x))
+  -> Id Tree (node (p1' X Y x h).1 (p2' X Y x h).1) x = split {
+  leaf n -> \ h -> absurd (Id Tree (node (p1' X Y (leaf n) h).1 (p2' X Y (leaf n) h).1) (leaf n)) (false-true h) ;
+  node s t -> \ h -> refl (node s t) } ;
+
+-- an element of a product is the pair of its projections
+prod-eta (X Y : Ob) (w : El (prodP X Y))
+  : Id Tree (node (app (prodP X Y) X (pr1 X Y) w).1 (app (prodP X Y) Y (pr2 X Y) w).1) w.1 =
+  pe' X Y w.1 w.2 ;
+
+pairH (X Y Z : Ob) (f : Hom Z X) (g : Hom Z Y) : Hom Z (prodP X Y) =
+  mkHom Z (prodP X Y)
+    (\ z -> (node (app Z X f z).1 (app Z Y g z).1,
+             and-i (car X (app Z X f z).1) (car Y (app Z Y g z).1) (app Z X f z).2 (app Z Y g z).2))
+    (\ s t h -> and-i (le X (app Z X f s).1 (app Z X f t).1) (le Y (app Z Y g s).1 (app Z Y g t).1)
+                      (mono Z X f s t h) (mono Z Y g s t h)) ;
+
+pr1-pair (X Y Z : Ob) (f : Hom Z X) (g : Hom Z Y)
+  : Id (Hom Z X) (compH Z (prodP X Y) X (pr1 X Y) (pairH X Y Z f g)) f =
+  hom-eq Z X (compH Z (prodP X Y) X (pr1 X Y) (pairH X Y Z f g)) f (\ z -> app-compH1 Z (prodP X Y) X (pr1 X Y) (pairH X Y Z f g) z) ;
+
+pr2-pair (X Y Z : Ob) (f : Hom Z X) (g : Hom Z Y)
+  : Id (Hom Z Y) (compH Z (prodP X Y) Y (pr2 X Y) (pairH X Y Z f g)) g =
+  hom-eq Z Y (compH Z (prodP X Y) Y (pr2 X Y) (pairH X Y Z f g)) g (\ z -> app-compH1 Z (prodP X Y) Y (pr2 X Y) (pairH X Y Z f g) z) ;
+
+pair-eta (X Y Z : Ob) (h : Hom Z (prodP X Y))
+  : Id (Hom Z (prodP X Y)) (pairH X Y Z (compH Z (prodP X Y) X (pr1 X Y) h) (compH Z (prodP X Y) Y (pr2 X Y) h)) h =
+  hom-eq Z (prodP X Y) (pairH X Y Z (compH Z (prodP X Y) X (pr1 X Y) h) (compH Z (prodP X Y) Y (pr2 X Y) h)) h
+    (\ z -> transH (node-eq _ _ _ _ (app-compH1 Z (prodP X Y) X (pr1 X Y) h z) (app-compH1 Z (prodP X Y) Y (pr2 X Y) h z))
+                   (prod-eta X Y (app Z (prodP X Y) h z))) ;
+
+-- the projections of an element whose tree is known
+p1-node (X Y : Ob) (w : El (prodP X Y)) (a b : Tree) (e : Id Tree w.1 (node a b)) : Id Tree (p1 X Y w).1 a =
+  node-inj-l (p1 X Y w).1 (p2 X Y w).1 a b (transH (prod-eta X Y w) e) ;
+
+p2-node (X Y : Ob) (w : El (prodP X Y)) (a b : Tree) (e : Id Tree w.1 (node a b)) : Id Tree (p2 X Y w).1 b =
+  node-inj-r (p1 X Y w).1 (p2 X Y w).1 a b (transH (prod-eta X Y w) e) ;
+
+-- the product of two maps
+crossH (X X' Y Y' : Ob) (f : Hom X X') (g : Hom Y Y') : Hom (prodP X Y) (prodP X' Y') =
+  pairH X' Y' (prodP X Y) (compH (prodP X Y) X X' f (pr1 X Y)) (compH (prodP X Y) Y Y' g (pr2 X Y)) ;
+
+------------------------------------------------------------------------
+-- Constant maps, the cylinder X * Iv, and its two lids
+
+constH (X Y : Ob) (y : El Y) : Hom X Y = mkHom X Y (\ s -> y) (\ s t h -> le-refl Y y.1 y.2) ;
+
+-- the constant map at a point of the interval is natural
+constH-nat (Y X : Ob) (f : Hom Y X) (e : El Iv)
+  : Id (Hom Y Iv) (compH Y X Iv (constH X Iv e) f) (constH Y Iv e) =
+  hom-eq Y Iv (compH Y X Iv (constH X Iv e) f) (constH Y Iv e) (\ y -> app-compH1 Y X Iv (constH X Iv e) f y) ;
+
+------------------------------------------------------------------------
+-- Decidable subsets and inverse images
+
+-- a decidable subset of X: a Boolean predicate on its points
+Subset (X : Ob) : U a = El X -> Bool ;
+
+-- a point of a subset
+SubPt (X : Ob) (Q : Subset X) : U a = (s : El X) * IsT (Q s) ;
+
+-- a subset read on trees: false off the carrier
+module QT (X : Ob) (Q : Subset X) {
+  qB (t : Tree) : (b : Bool) -> Id Bool (car X t) b -> Bool = split {
+    true -> \ e -> Q (t, e) ;
+    false -> \ e -> false } ;
+
+  qT (t : Tree) : Bool = qB t (car X t) (refl (car X t)) ;
+
+  qT-aux (s : El X) : (b : Bool) (e : Id Bool (car X s.1) b) -> Id Bool (qB s.1 b e) (Q s) = split {
+    true -> \ e -> apH Q (el-eq X (s.1, e) s (refl s.1)) ;
+    false -> \ e -> absurd (Id Bool false (Q s)) (false-true (transH (symH e) s.2)) } ;
+
+  qT-el (s : El X) : Id Bool (qT s.1) (Q s) = qT-aux s (car X s.1) (refl (car X s.1)) ;
+} ;
+
+-- inverse image of a subset of X along f : Y -> X
+module Pre (Y X : Ob) (f : Hom Y X) (Q : Subset X) {
+  preQ (y : El Y) : Bool = Q (app Y X f y) ;
+
+  pre-el (s : El Y) : Id Bool (preQ s) (Q (app Y X f s)) = refl (Q (app Y X f s)) ;
+} ;
+
+-- the point (x , n) of X * [1], n <= 1
+ivPt (X : Ob) (x : El X) (n : Nat) (h : IsT (leb n (suc zero))) : El (prodP X Iv) =
+  (node x.1 (leaf n), and-i (car X x.1) (leb n (suc zero)) x.2 h) ;
+
+------------------------------------------------------------------------
+-- Deciding "every point of X is in Q"
+
+allL (P : Tree -> Bool) : Tree -> Bool = split {
+  leaf n -> true ;
+  node t l -> and (P t) (allL P l) } ;
+
+allL-sound (P : Tree -> Bool) : (l x : Tree) -> IsT (allL P l) -> IsT (mem x l) -> IsT (P x) = split {
+  leaf n -> \ x h m -> absurd _ (false-true m) ;
+  node t l -> \ x h m ->
+    or-elim (IsT (P x)) (eqT x t) (mem x l) m
+      (\ e -> substH (\ y -> IsT (P y)) (symH (eqT-sound x t e)) (and-l (P t) (allL P l) h))
+      (\ m' -> allL-sound P l x (and-r (P t) (allL P l) h) m') } ;
+
+allL-complete (P : Tree -> Bool) : (l : Tree) -> ((x : Tree) -> IsT (mem x l) -> IsT (P x)) -> IsT (allL P l) = split {
+  leaf n -> \ k -> refl true ;
+  node t l -> \ k ->
+    and-i (P t) (allL P l) (k t (or-l (eqT t t) (mem t l) (eqT-refl t)))
+          (allL-complete P l (\ x m -> k x (or-r (eqT x t) (mem x l) m))) } ;
+
+impl (c q : Bool) : Bool = or (not c) q ;
+
+impl-e : (c q : Bool) -> IsT (impl c q) -> IsT c -> IsT q = split {
+  true -> \ q h c -> h ;
+  false -> \ q h c -> absurd _ (false-true c) } ;
+
+impl-i : (c q : Bool) -> (IsT c -> IsT q) -> IsT (impl c q) = split {
+  true -> \ q k -> k (refl true) ;
+  false -> \ q k -> refl true } ;
+
+allIn (X : Ob) (Q : Subset X) : Bool = allL (\ x -> impl (car X x) (QT[X, Q].qT x)) (enum X) ;
+
+allIn-sound (X : Ob) (Q : Subset X) (h : IsT (allIn X Q)) (s : El X) : IsT (Q s) =
+  transH (symH (QT[X, Q].qT-el s))
+    (impl-e (car X s.1) (QT[X, Q].qT s.1)
+      (allL-sound (\ x -> impl (car X x) (QT[X, Q].qT x)) (enum X) s.1 h (cover X s.1 s.2)) s.2) ;
+
+allIn-complete (X : Ob) (Q : Subset X) (k : (s : El X) -> IsT (Q s)) : IsT (allIn X Q) =
+  allL-complete (\ x -> impl (car X x) (QT[X, Q].qT x)) (enum X)
+    (\ x m -> impl-i (car X x) (QT[X, Q].qT x) (\ c -> transH (QT[X, Q].qT-el (x, c)) (k (x, c)))) ;
+
+-- (two Booleans with the same truth are equal: Arith.bool-ext)
+
+-- the one-point poset
+unitP : Ob = lin zero ;
+
+unitP-el : El unitP = (leaf zero, refl true) ;
+
+-- the poset sieves: decidable subsets, inverse image, and the maps landing
+-- in a subset; posets with them are an instance of CylCat's Sieves, PSv
+module PosetSub {
+  pre (Y X : Ob) (f : Hom Y X) (Q : Subset X) : Subset Y = Pre[Y, X, f, Q].preQ ;
+
+  Lands (W X : Ob) (Q : Subset X) (f : Hom W X) : U a = (s : El W) -> IsT (Q (app W X f s)) ;
+
+  isProp-Lands (W X : Ob) (Q : Subset X) (f : Hom W X) : isProp (Lands W X Q f) =
+    isProp-Pi (El W) (\ s -> IsT (Q (app W X f s))) (\ s -> isProp-IsT' (Q (app W X f s))) ;
+
+  -- (f chi) s = f (chi s) lies in Q
+  lands-comp (W' W X : Ob) (Q : Subset X) (f : Hom W X) (chi : Hom W' W) (i : Lands W X Q f) : Lands W' X Q (compH W' W X f chi) =
+    \ s -> transH (apH Q (app-compH W' W X f chi s)) (i (app W' W chi s)) ;
+
+  -- (h g) s = h (g s), and g s lies in the inverse image of Q
+  lands-pre (W Y X : Ob) (h : Hom Y X) (Q : Subset X) (g : Hom W Y) (i : Lands W Y (pre Y X h Q) g) : Lands W X Q (compH W Y X h g) =
+    \ s -> transH (apH Q (app-compH W Y X h g s)) (i s) ;
+
+  pre-lands (W Y X : Ob) (h : Hom Y X) (Q : Subset X) (g : Hom W Y) (i : Lands W X Q (compH W Y X h g)) : Lands W Y (pre Y X h Q) g =
+    \ s -> transH (apH Q (symH (app-compH W Y X h g s))) (i s) ;
+
+  -- a subset is determined by its points: test with the maps from the point
+  phi-ext (X : Ob) (Q Q' : Subset X) (p : (W : Ob) (f : Hom W X) -> Lands W X Q f -> Lands W X Q' f)
+    (q : (W : Ob) (f : Hom W X) -> Lands W X Q' f -> Lands W X Q f) : Id (Subset X) Q Q' =
+    funext (El X) (\ x -> Bool) Q Q' (\ x ->
+      bool-ext (Q x) (Q' x) (\ h -> p unitP (constH unitP X x) (\ s -> h) unitP-el)
+                            (\ h -> q unitP (constH unitP X x) (\ s -> h) unitP-el)) ;
+
+  -- the empty subset; no map lands in it, since objects have a point
+  emptyS (X : Ob) : Subset X = \ s -> false ;
+
+  empty-lands (W X : Ob) (f : Hom W X) (i : Lands W X (emptyS X) f) : Empty = false-true (i (pt W, pt-car W)) ;
+
+  -- the end points: s is in ptS e iff s is e
+  ptS (e : El Iv) : Subset Iv = \ s -> eqT s.1 e.1 ;
+
+  lands-pt (W : Ob) (e : El Iv) (g : Hom W Iv) (i : Lands W Iv (ptS e) g) : Id (Hom W Iv) g (constH W Iv e) =
+    hom-eq W Iv g (constH W Iv e) (\ s -> eqT-sound (app W Iv g s).1 e.1 (i s)) ;
+
+  pt-lands (W : Ob) (e : El Iv) : Lands W Iv (ptS e) (constH W Iv e) = \ s -> eqT-refl e.1 ;
+
+  tnum : Tree -> Nat = split { leaf n -> n ; node s t -> zero } ;
+
+  -- at the point of W, g would be both 0 and 1
+  pt-disj (W : Ob) (g : Hom W Iv) (i : Lands W Iv (ptS e0) g) (i' : Lands W Iv (ptS e1) g) : Empty =
+    zero-suc zero (apH tnum (transH (symH (eqT-sound (app W Iv g (pt W, pt-car W)).1 e0.1 (i (pt W, pt-car W))))
+                                    (eqT-sound (app W Iv g (pt W, pt-car W)).1 e1.1 (i' (pt W, pt-car W))))) ;
+
+  -- totality is decided by searching enum X
+  allS-sound (X : Ob) (Q : Subset X) (h : IsT (allIn X Q)) : Lands X X Q (idH X) =
+    \ s -> transH (apH Q (app-idH X s)) (allIn-sound X Q h s) ;
+
+  allS-complete (X : Ob) (Q : Subset X) (i : Lands X X Q (idH X)) : IsT (allIn X Q) =
+    allIn-complete X Q (\ s -> transH (apH Q (symH (app-idH X s))) (i s)) ;
+} ;
+
+------------------------------------------------------------------------

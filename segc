@@ -1,0 +1,41 @@
+#!/bin/sh
+# segc DIR COMMAND..  -- talk to the checking server of DIR/All.seg
+#
+#   segc core changed        check what changed since the last good check
+#                            (the edited files and every file depending on them)
+#   segc core check M ..     check these file-modules
+#   segc core all            the full check, in one process
+#   segc core deps M ..      the files depending on M .. (no check)
+#   segc core status | reload | stop
+#
+# The first call starts the server (seg DIR/All.seg --serve DIR/.segserver),
+# which loads the tree once and then reloads only when a .seg file changed;
+# the checker's state is kept between calls.  Exit status 0 iff OK.
+D=${1:?usage: segc DIR COMMAND..}; shift
+[ $# -gt 0 ] || set -- changed
+ROOT=$(cd "$(dirname "$0")" && pwd)
+D=$(cd "$D" && pwd) || exit 2
+S="$D/.segserver"
+mkdir -p "$S"
+alive() { [ -s "$S/pid" ] && kill -0 "$(cat "$S/pid")" 2>/dev/null; }
+if [ "$1" = stop ]; then
+  alive && kill "$(cat "$S/pid")"; rm -f "$S/pid"; echo stopped; exit 0
+fi
+if ! alive; then
+  SEG=$(cd "$ROOT" && cabal list-bin exe:seg 2>/dev/null)
+  rm -f "$S"/req.* "$S"/resp.*
+  (cd "$D" && exec nohup "$SEG" All.seg --serve "$S" > "$S/log" 2>&1) &
+  echo $! > "$S/pid"
+fi
+id=$(date +%s)$$
+printf '%s\n' "$*" > "$S/req.$id.tmp" && mv "$S/req.$id.tmp" "$S/req.$id"
+# wait for the answer (the server may still be loading); give up after 30 min
+n=0
+while [ ! -f "$S/resp.$id" ]; do
+  if ! alive; then echo "segc: the server died; see $S/log"; tail -5 "$S/log"; exit 2; fi
+  sleep 0.1; n=$((n+1)); [ $n -lt 18000 ] || { echo "segc: no answer"; exit 2; }
+done
+out=$(cat "$S/resp.$id"); rm -f "$S/resp.$id"
+printf '%s\n' "$out"
+printf '%s\n' "$out" | grep -q '^FAIL\|ERROR' && exit 1
+exit 0

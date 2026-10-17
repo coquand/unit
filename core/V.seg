@@ -1,0 +1,344 @@
+-- V.seg: MODEL/Lv/V.agda (and MODEL/V.agda, its level-0 instance).
+-- Gylterud's iterative sets: multisets M = W (A : U l) A, and V the
+-- hereditarily embedded multisets.  Univalence is used once, in ext.
+--
+-- This file is a segment nested in Model, so fe and univ are in scope
+-- without being passed: there is one copy of each lemma, for every file.
+-- Its own parameter is the level l (M and V are in U l+).
+--
+-- What disappears compared with Agda: the record Base, Lift, base0 and
+-- baseLift, and the maps lb/bl/ln/nl with their round-trip lemmas
+-- (blInj, the lb-bl rewrites).  Their only purpose was to move the
+-- level-0 types Top, Bool, Nat, Empty to level l; with cumulative
+-- universes they are already in U l.
+
+level l ;
+open Base ;
+open Prelude[l+] ;
+module P0 = Prelude[l] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
+
+------------------------------------------------------------------------
+-- Multisets
+
+data M : U l+ = sup (A : U l) (f : A -> M) ;
+
+Idx : M -> U l = split { sup A f -> A } ;
+elt : (x : M) -> Idx x -> M = split { sup A f -> f } ;
+
+Fib (A B : U l+) (f : A -> B) (b : B) : U l+ = (a : A) * Id B (f a) b ;
+
+isEmb (A : U l) (f : A -> M) : U l+ = (z : M) -> isProp (Fib A M f z) ;
+
+emb-inj (A : U l) (f : A -> M) (e : isEmb A f) (a a' : A) (P : Id M (f a) (f a'))
+  : Id A a a' =
+  ap (Fib A M f (f a')) A (\ w -> w.1) (a, P) (a', refl (f a'))
+     (e (f a') (a, P) (a', refl (f a'))) ;
+
+-- membership: z is a member of x
+Mem (z x : M) : U l+ = Fib (Idx x) M (elt x) z ;
+
+-- members of u are members of anything equal to u
+memT (u v : M) (P : Id M u v) (a : Idx u) : Mem (elt u a) v =
+  subst M (\ w -> Mem (elt u a) w) u v P (a, refl (elt u a)) ;
+
+------------------------------------------------------------------------
+-- Iterative sets
+
+isIt : M -> U l+ = split { sup A f -> isEmb A f * ((a : A) -> isIt (f a)) } ;
+
+embOf : (x : M) -> isIt x -> isEmb (Idx x) (elt x) = split { sup A f -> \ i -> i.1 } ;
+
+itOf : (x : M) (i : isIt x) (a : Idx x) -> isIt (elt x a) = split { sup A f -> \ i -> i.2 } ;
+
+isProp-isIt : (x : M) -> isProp (isIt x) = split {
+  sup A f -> isProp-Sigma (isEmb A f) (\ e -> (a : A) -> isIt (f a))
+               (isProp-Pi M (\ z -> isProp (Fib A M f z)) (\ z -> isProp-isProp (Fib A M f z)))
+               (\ e -> isProp-Pi A (\ a -> isIt (f a)) (\ a -> isProp-isIt (f a)))
+} ;
+
+------------------------------------------------------------------------
+-- Extensionality
+
+Ext (x y : M) : U l+ = (z : M) -> (Mem z x -> Mem z y) * (Mem z y -> Mem z x) ;
+
+isProp-Ext (x y : M) (ix : isIt x) (iy : isIt y) : isProp (Ext x y) =
+  isProp-Pi M (\ z -> (Mem z x -> Mem z y) * (Mem z y -> Mem z x)) (\ z ->
+    isProp-Sigma (Mem z x -> Mem z y) (\ k -> Mem z y -> Mem z x)
+      (isProp-Pi (Mem z x) (\ k -> Mem z y) (\ k -> embOf y iy z))
+      (\ k -> isProp-Pi (Mem z y) (\ k' -> Mem z x) (\ k' -> embOf x ix z))) ;
+
+ext-refl (x : M) : Ext x x = \ z -> (\ u -> u, \ u -> u) ;
+
+sup-eq (A B : U l) (p : Id (U l) A B) (f : A -> M) (g : B -> M)
+  (h : (a : A) -> Id M (f a) (g (P0.coe A B p a))) : Id M (sup A f) (sup B g) =
+  idJ (U l) A (\ X q -> (g : X -> M) -> ((a : A) -> Id M (f a) (g (P0.coe A X q a)))
+                        -> Id M (sup A f) (sup X g))
+      (\ g0 h0 -> ap (A -> M) M (\ k -> sup A k) f g0 (funext A (\ a -> M) f g0 h0))
+      B p g h ;
+
+-- the only use of univalence
+ext0 (A B : U l) (f : A -> M) (g : B -> M) (ef : isEmb A f) (eg : isEmb B g)
+  (E : Ext (sup A f) (sup B g)) : Id M (sup A f) (sup B g) =
+  sup-eq A B (UA.ua A B e) f g h
+ where {
+  phi (a : A) : B = ((E (f a)).1 (a, refl (f a))).1 ;
+  phi-eq (a : A) : Id M (g (phi a)) (f a) = ((E (f a)).1 (a, refl (f a))).2 ;
+  psi (b : B) : A = ((E (g b)).2 (b, refl (g b))).1 ;
+  psi-eq (b : B) : Id M (f (psi b)) (g b) = ((E (g b)).2 (b, refl (g b))).2 ;
+  phi-psi (b : B) : Id B (phi (psi b)) b =
+    ap (Fib B M g (g b)) B (\ w -> w.1)
+       (phi (psi b), trans M (g (phi (psi b))) (f (psi b)) (g b) (phi-eq (psi b)) (psi-eq b))
+       (b, refl (g b))
+       (eg (g b) (phi (psi b), trans M (g (phi (psi b))) (f (psi b)) (g b) (phi-eq (psi b)) (psi-eq b))
+                 (b, refl (g b))) ;
+  psi-phi (a : A) : Id A (psi (phi a)) a =
+    ap (Fib A M f (f a)) A (\ w -> w.1)
+       (psi (phi a), trans M (f (psi (phi a))) (g (phi a)) (f a) (psi-eq (phi a)) (phi-eq a))
+       (a, refl (f a))
+       (ef (f a) (psi (phi a), trans M (f (psi (phi a))) (g (phi a)) (f a) (psi-eq (phi a)) (phi-eq a))
+                 (a, refl (f a))) ;
+  e : P0.Equiv A B = (phi, P0.qinv A B phi psi phi-psi psi-phi) ;
+  h (a : A) : Id M (f a) (g (P0.coe A B (UA.ua A B e) a)) =
+    trans M (f a) (g (phi a)) (g (P0.coe A B (UA.ua A B e) a))
+      (sym M (g (phi a)) (f a) (phi-eq a))
+      (ap B M g (phi a) (P0.coe A B (UA.ua A B e) a)
+          (sym B (P0.coe A B (UA.ua A B e) a) (phi a) (UA.ua-beta A B e a))) ;
+} ;
+
+ext : (x y : M) -> isIt x -> isIt y -> Ext x y -> Id M x y = split {
+  sup A f -> split { sup B g -> \ ix iy E -> ext0 A B f g ix.1 iy.1 E }
+} ;
+
+-- paths in M out of an iterative set form a proposition
+paths-prop (x : M) (ix : isIt x) : (y : M) -> isProp (Id M x y) =
+  Hedberg[M, x, R, Rprop, (ix, ext-refl x), \ y r -> ext x y ix r.1 r.2].hedberg
+ where {
+  R (y : M) : U l+ = isIt y * Ext x y ;
+  Rprop (y : M) : isProp (R y) =
+    isProp-Sigma (isIt y) (\ iy -> Ext x y) (isProp-isIt y) (\ iy -> isProp-Ext x y ix iy) ;
+} ;
+
+------------------------------------------------------------------------
+-- The type V of iterative sets
+
+V : U l+ = (x : M) * isIt x ;
+
+Ix (x : V) : U l = Idx x.1 ;
+ev (x : V) (a : Ix x) : V = (elt x.1 a, itOf x.1 x.2 a) ;
+embV (x : V) : isEmb (Ix x) (elt x.1) = embOf x.1 x.2 ;
+
+isSetV : isSet V = \ x ->
+  Hedberg[V, x, \ y -> Ext x.1 y.1, \ y -> isProp-Ext x.1 y.1 x.2 y.2, ext-refl x.1,
+          \ y E -> Sigma-eq M isIt x.1 y.1 x.2 y.2 (ext x.1 y.1 x.2 y.2 E) (isProp-isIt y.1)].hedberg ;
+
+isSetIx (x : V) (a a' : Ix x) : isProp (Id (Ix x) a a') =
+  retract-prop (Id (Ix x) a a') (Id M (f a) (f a'))
+    (ap (Ix x) M f a a') (L a') (LR a') (paths-prop (f a) (itOf x.1 x.2 a) (f a'))
+ where {
+  f (b : Ix x) : M = elt x.1 b ;
+  e : isEmb (Ix x) f = embV x ;
+  L (b : Ix x) (s : Id M (f a) (f b)) : Id (Ix x) a b =
+    ap (Fib (Ix x) M f (f b)) (Ix x) (\ w -> w.1) (a, s) (b, refl (f b))
+       (trans (Fib (Ix x) M f (f b)) (a, s) (b, refl (f b)) (b, refl (f b))
+          (sym (Fib (Ix x) M f (f b)) (b, refl (f b)) (a, s) (e (f b) (b, refl (f b)) (a, s)))
+          (e (f b) (b, refl (f b)) (b, refl (f b)))) ;
+  LR (b : Ix x) (p : Id (Ix x) a b) : Id (Id (Ix x) a b) (L b (ap (Ix x) M f a b p)) p =
+    idJ (Ix x) a (\ b1 p1 -> Id (Id (Ix x) a b1) (L b1 (ap (Ix x) M f a b1 p1)) p1)
+      (ap (Id (Fib (Ix x) M f (f a)) (a, refl (f a)) (a, refl (f a))) (Id (Ix x) a a)
+          (\ q -> ap (Fib (Ix x) M f (f a)) (Ix x) (\ w -> w.1) (a, refl (f a)) (a, refl (f a)) q)
+          (trans (Fib (Ix x) M f (f a)) (a, refl (f a)) (a, refl (f a)) (a, refl (f a))
+             (sym (Fib (Ix x) M f (f a)) (a, refl (f a)) (a, refl (f a)) (e (f a) (a, refl (f a)) (a, refl (f a))))
+             (e (f a) (a, refl (f a)) (a, refl (f a))))
+          (refl (a, refl (f a)))
+          (trans-sym-l (Fib (Ix x) M f (f a)) (a, refl (f a)) (a, refl (f a)) (e (f a) (a, refl (f a)) (a, refl (f a)))))
+      b p ;
+} ;
+
+------------------------------------------------------------------------
+-- Building iterative sets from injective families
+
+Inj (A : U l) (f : A -> V) : U l+ = (a a' : A) -> Id M (f a).1 (f a').1 -> Id A a a' ;
+
+mkEmb (A : U l) (f : A -> V) (inj : Inj A f) : isEmb A (\ a -> (f a).1) = \ z u v ->
+  Sigma-eq A (\ a -> Id M (f a).1 z) u.1 v.1 u.2 v.2
+    (inj u.1 v.1 (trans M (f u.1).1 z (f v.1).1 u.2 (sym M (f v.1).1 z v.2)))
+    (paths-prop (f v.1).1 (f v.1).2 z) ;
+
+-- Agda's abstract: the proof is never unfolded during conversion
+opaque mkEmb ;
+
+mkV (A : U l) (f : A -> V) (inj : Inj A f) : V =
+  (sup A (\ a -> (f a).1), (mkEmb A f inj, \ a -> (f a).2)) ;
+
+------------------------------------------------------------------------
+-- Empty set, singletons, and the discrimination lemmas
+
+emptyV : V = mkV Empty (\ e -> absurd V e)
+                 (\ e -> absurd ((a' : Empty) -> Id M (absurd V e).1 (absurd V a').1 -> Id Empty e a') e) ;
+
+sing (x : V) : V = mkV Top (\ t -> x) (\ a a' q -> isTop a a') ;
+
+empty-sing (y : V) (P : Id M emptyV.1 (sing y).1) : Empty =
+  P0.coe Top Empty (sym (U l) Empty Top (ap M (U l) Idx emptyV.1 (sing y).1 P)) tt ;
+
+sing-inj (x x' : V) (P : Id M (sing x).1 (sing x').1) : Id M x.1 x'.1 =
+  sym M x'.1 x.1 (memT (sing x).1 (sing x').1 P tt).2 ;
+
+T : Bool -> U l = split { true -> Top ; false -> Empty } ;
+
+-- T is eta-expanded: cumulativity is at the top only (BCDE4), so
+-- Bool -> U l is not itself a Bool -> U l+, but each T b is in U l+
+true-false (P : Id Bool true false) : Empty = subst Bool (\ b -> T b) true false P tt ;
+
+top-bool (P : Id (U l) Top Bool) : Empty =
+  true-false (trans Bool true (P0.coe Top Bool P (c true)) false
+                (sym Bool (P0.coe Top Bool P (c true)) true (P0.coe-sym Top Bool P true))
+                (trans Bool (P0.coe Top Bool P (c true)) (P0.coe Top Bool P (c false)) false
+                   (ap Top Bool (P0.coe Top Bool P) (c true) (c false) (isTop (c true) (c false)))
+                   (P0.coe-sym Top Bool P false)))
+ where { c (b : Bool) : Top = P0.coe Bool Top (P0.symU Top Bool P) b ; } ;
+
+-- {emptyV , {y}}
+twoF (y : V) : Bool -> V = split { true -> emptyV ; false -> sing y } ;
+
+twoInj (y : V) : Inj Bool (twoF y) = split {
+  true -> split {
+    true  -> \ P -> refl true ;
+    false -> \ P -> absurd (Id Bool true false) (empty-sing y P) } ;
+  false -> split {
+    true  -> \ P -> absurd (Id Bool false true) (empty-sing y (sym M (sing y).1 emptyV.1 P)) ;
+    false -> \ P -> refl false }
+} ;
+
+two (y : V) : V = mkV Bool (twoF y) (twoInj y) ;
+
+sing-two (x y : V) (P : Id M (sing x).1 (two y).1) : Empty =
+  top-bool (ap M (U l) Idx (sing x).1 (two y).1 P) ;
+
+two-aux0 (y y' : V) : (b : Bool) -> Id M (twoF y' b).1 (sing y).1 -> Id M y.1 y'.1 = split {
+  true  -> \ Q -> absurd (Id M y.1 y'.1) (empty-sing y Q) ;
+  false -> \ Q -> sym M y'.1 y.1 (sing-inj y' y Q)
+} ;
+
+two-inj (y y' : V) (P : Id M (two y).1 (two y').1) : Id M y.1 y'.1 =
+  two-aux0 y y' (memT (two y).1 (two y').1 P false).1 (memT (two y).1 (two y').1 P false).2 ;
+
+------------------------------------------------------------------------
+-- Ordered pairs  <x , y> = { {x} , {emptyV , {y}} }
+
+pairF (x y : V) : Bool -> V = split { true -> sing x ; false -> two y } ;
+
+pairInj (x y : V) : Inj Bool (pairF x y) = split {
+  true -> split {
+    true  -> \ P -> refl true ;
+    false -> \ P -> absurd (Id Bool true false) (sing-two x y P) } ;
+  false -> split {
+    true  -> \ P -> absurd (Id Bool false true) (sing-two x y (sym M (two y).1 (sing x).1 P)) ;
+    false -> \ P -> refl false }
+} ;
+
+pairV (x y : V) : V = mkV Bool (pairF x y) (pairInj x y) ;
+
+pi10 (x x' y' : V) : (b : Bool) -> Id M (pairF x' y' b).1 (sing x).1 -> Id M x.1 x'.1 = split {
+  true  -> \ Q -> sym M x'.1 x.1 (sing-inj x' x Q) ;
+  false -> \ Q -> absurd (Id M x.1 x'.1) (sing-two x y' (sym M (two y').1 (sing x).1 Q))
+} ;
+
+pi20 (y x' y' : V) : (b : Bool) -> Id M (pairF x' y' b).1 (two y).1 -> Id M y.1 y'.1 = split {
+  true  -> \ Q -> absurd (Id M y.1 y'.1) (sing-two x' y Q) ;
+  false -> \ Q -> sym M y'.1 y.1 (two-inj y' y Q)
+} ;
+
+pair-inj (x y x' y' : V) (P : Id M (pairV x y).1 (pairV x' y').1)
+  : Id M x.1 x'.1 * Id M y.1 y'.1 =
+  (pi10 x x' y' m1.1 m1.2, pi20 y x' y' m2.1 m2.2)
+ where {
+  m1 : Mem (sing x).1 (pairV x' y').1 = memT (pairV x y).1 (pairV x' y').1 P true ;
+  m2 : Mem (two y).1 (pairV x' y').1 = memT (pairV x y).1 (pairV x' y').1 P false ;
+} ;
+
+------------------------------------------------------------------------
+-- The type formers
+
+unitV : V = sing emptyV ;
+boolV : V = two emptyV ;
+
+SigV (A : V) (B : Ix A -> V) : V = mkV ((a : Ix A) * Ix (B a)) F inj
+ where {
+  F (w : (a : Ix A) * Ix (B a)) : V = pairV (ev A w.1) (ev (B w.1) w.2) ;
+  aux (a a' : Ix A) (p : Id (Ix A) a a') : (b : Ix (B a)) (b' : Ix (B a'))
+      -> Id M (elt (B a).1 b) (elt (B a').1 b') -> Id ((a : Ix A) * Ix (B a)) (a, b) (a', b') =
+    idJ (Ix A) a (\ a1 p1 -> (b : Ix (B a)) (b' : Ix (B a1))
+                    -> Id M (elt (B a).1 b) (elt (B a1).1 b') -> Id ((a : Ix A) * Ix (B a)) (a, b) (a1, b'))
+        (\ b b' Q -> ap (Ix (B a)) ((a : Ix A) * Ix (B a)) (\ u -> (a, u)) b b'
+                        (emb-inj (Ix (B a)) (elt (B a).1) (embV (B a)) b b' Q))
+        a' p ;
+  inj : Inj ((a : Ix A) * Ix (B a)) F = \ u v P ->
+    aux u.1 v.1 (emb-inj (Ix A) (elt A.1) (embV A) u.1 v.1
+                   (pair-inj (ev A u.1) (ev (B u.1) u.2) (ev A v.1) (ev (B v.1) v.2) P).1)
+        u.2 v.2 (pair-inj (ev A u.1) (ev (B u.1) u.2) (ev A v.1) (ev (B v.1) v.2) P).2 ;
+} ;
+
+graph (A : V) (B : Ix A -> V) (phi : (a : Ix A) -> Ix (B a)) : V =
+  mkV (Ix A) (\ a -> pairV (ev A a) (ev (B a) (phi a)))
+      (\ a a' P -> emb-inj (Ix A) (elt A.1) (embV A) a a'
+                     (pair-inj (ev A a) (ev (B a) (phi a)) (ev A a') (ev (B a') (phi a')) P).1) ;
+
+PiV (A : V) (B : Ix A -> V) : V = mkV ((a : Ix A) -> Ix (B a)) (graph A B) inj
+ where {
+  aux (phi psi : (a : Ix A) -> Ix (B a)) (a' a : Ix A) (p : Id (Ix A) a' a)
+      : Id M (elt (B a').1 (psi a')) (elt (B a).1 (phi a)) -> Id (Ix (B a)) (phi a) (psi a) =
+    idJ (Ix A) a' (\ a1 p1 -> Id M (elt (B a').1 (psi a')) (elt (B a1).1 (phi a1))
+                              -> Id (Ix (B a1)) (phi a1) (psi a1))
+        (\ Q -> sym (Ix (B a')) (psi a') (phi a')
+                    (emb-inj (Ix (B a')) (elt (B a').1) (embV (B a')) (psi a') (phi a') Q))
+        a p ;
+  pt (phi psi : (a : Ix A) -> Ix (B a)) (P : Id M (graph A B phi).1 (graph A B psi).1) (a : Ix A)
+      : Id (Ix (B a)) (phi a) (psi a) =
+    aux phi psi m.1 a
+        (emb-inj (Ix A) (elt A.1) (embV A) m.1 a
+           (pair-inj (ev A m.1) (ev (B m.1) (psi m.1)) (ev A a) (ev (B a) (phi a)) m.2).1)
+        (pair-inj (ev A m.1) (ev (B m.1) (psi m.1)) (ev A a) (ev (B a) (phi a)) m.2).2
+   where { m : Mem (elt (graph A B phi).1 a) (graph A B psi).1 =
+             memT (graph A B phi).1 (graph A B psi).1 P a ; } ;
+  inj : Inj ((a : Ix A) -> Ix (B a)) (graph A B) = \ phi psi P ->
+    funext (Ix A) (\ a -> Ix (B a)) phi psi (pt phi psi P) ;
+} ;
+
+IdV (A : V) (a b : Ix A) : V =
+  mkV (Id (Ix A) a b) (\ p -> emptyV) (\ p q r -> isSetIx A a b p q) ;
+
+-- mkV with ev is the code
+
+mkVevA : (m : M) (it : isIt m) (inj : Inj (Ix (m, it)) (ev (m, it)))
+  -> Id V (mkV (Ix (m, it)) (ev (m, it)) inj) (m, it) = split {
+  sup A f -> \ it inj -> Sigma-eq M (\ m -> isIt m) (sup A f) (sup A f)
+                           (mkV (Ix (sup A f, it)) (ev (sup A f, it)) inj).2 it (refl (sup A f)) (isProp-isIt (sup A f)) } ;
+
+mkV-ev (c : V) (inj : Inj (Ix c) (ev c)) : Id V (mkV (Ix c) (ev c) inj) c = mkVevA c.1 c.2 inj ;
+
+mkV-f (c : V) (f : Ix c -> V) (inj : Inj (Ix c) f) (P : (z : Ix c) -> Id V (f z) (ev c z))
+  : Id V (mkV (Ix c) f inj) c =
+  idJ (Ix c -> V) (ev c)
+    (\ f2 E2 -> (inj2 : Inj (Ix c) f2) -> Id V (mkV (Ix c) f2 inj2) c)
+    (\ inj2 -> mkV-ev c inj2)
+    f (sym (Ix c -> V) f (ev c) (funext (Ix c) (\ z -> V) f (ev c) P)) inj ;
+
+-- b holds, as an iterative set
+IsTV (b : Bool) : V = IdV boolV b true ;
+
+-- Zermelo numerals:  0 = emptyV,  n+1 = {n}
+num : Nat -> V = split { zero -> emptyV ; suc n -> sing (num n) } ;
+
+num-inj : (m n : Nat) -> Id M (num m).1 (num n).1 -> Id Nat m n = split {
+  zero -> split {
+    zero  -> \ P -> refl zero ;
+    suc n -> \ P -> absurd (Id Nat zero (suc n)) (empty-sing (num n) P) } ;
+  suc m -> split {
+    zero  -> \ P -> absurd (Id Nat (suc m) zero) (empty-sing (num m) (sym M (sing (num m)).1 emptyV.1 P)) ;
+    suc n -> \ P -> ap Nat Nat (\ k -> suc k) m n (num-inj m n (sing-inj (num m) (num n) P)) }
+} ;
+
+natV : V = mkV Nat num num-inj ;

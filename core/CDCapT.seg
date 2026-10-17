@@ -1,0 +1,215 @@
+-- CDCapT.seg (L8, Delta): seg/model DCapT.seg ported (module names only).  Was: the horns of the shuffle chain from e0 (FillCell's descending
+-- recursion P_N, ..., P_0, in line form).  At step d the shuffle
+-- P_k, k = N - d, is glued to ST N d (the boundary, the lower lid and
+-- P_N .. P_{k+1}) along the horn at its vertex k:
+--
+--   capT1   P_k g in ST N d  =>  g misses a face y /= k
+--   capT2   g misses a face y /= k  =>  P_k g in ST N d
+--   incT    ST N (d+1) is in ST N d u P_k
+--
+-- Constructive.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+module W0 = V[a] ;
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+open CDeltaNat[a] ;
+open CDeltaFact[a] ;
+module DBm = CDeltaBase[a] ;
+module DS = DBm.DS ;
+module DHm = CDeltaCl[a] ;
+module DPS = CDPrS[a] ;
+module DPm = CDPrism[a] ;
+open CDPrismPt[a] ;
+open CDCapBase[a] ;
+
+le-antisym : (m n : Nat) -> IsT (leb m n) -> IsT (leb n m) -> Id Nat m n = split {
+  zero -> split { zero -> \ h h' -> refl zero ; suc n -> \ h h' -> absurd _ (false-true h') } ;
+  suc m -> split { zero -> \ h h' -> absurd _ (false-true h) ; suc n -> \ h h' -> apH (\ x -> suc x) (le-antisym m n h h') } } ;
+
+-- x /= y and x = y
+neq-self (z : Nat) (h : IsT (not (eqN z z))) : Empty = false-true (transH (symH (apH not (eqN-refl z))) h) ;
+
+contra (x y : Nat) (h : IsT (not (eqN x y))) (e : Id Nat x y) : Empty = neq-self y (substH (\ z -> IsT (not (eqN z y))) e h) ;
+
+-- a face y /= k missed by g lands g in the horn
+module CT (N d : Nat) (hd : IsT (leb d N)) {
+  k : Nat = subN N d ;
+  hk : IsT (leb k N) = sub-le N d ;
+  kd : Id Nat (plus k d) N = sub-plus N d hd ;
+
+  gk (W : Nat) (g : Hom (lin W) (lin (suc N))) : Hom (lin W) (lin N) = compH (lin W) (lin (suc N)) (lin N) (gkD N k) g ;
+  jk (W : Nat) (g : Hom (lin W) (lin (suc N))) : Hom (lin W) Iv = compH (lin W) (lin (suc N)) Iv (jkD N k) g ;
+
+  toHorn (W : Nat) (g : Hom (lin W) (lin (suc N))) (y : Nat) (hy : IsT (leb y (suc N))) (ky : IsT (not (eqN y k)))
+    (mb : IsT (missB W (suc N) g y)) : DS.Lands W (suc N) (DHm.hornS N k) g =
+    DHm.lands-horn W N k y hy ky g (miss-of W N y g mb) ;
+
+  -- k' with N < k' + d is above k
+  above (k' : Nat) (c : IsT (condT N d k')) : IsT (ltb k k') =
+    ltb-dec (IsT (ltb k k')) k k' (\ l -> l)
+      (\ l -> absurd _ (ltb-irr N (leb-trans (suc N) (plus k' d) N c
+                (substH (\ x -> IsT (leb (plus k' d) x)) kd (Sum[a].plus-mono-l k' k d l))))) ;
+
+  ----------------------------------------------------------------------
+  -- the three reasons why g misses a face
+
+  -- z < k missed by P_k g is missed by g
+  missLo (W : Nat) (g : Hom (lin W) (lin (suc N))) (z : Nat) (lt : IsT (ltb z k)) (mz : IsT (missB W N (gk W g) z))
+    : IsT (missB W (suc N) g z) =
+    miss-i W (suc N) z g (\ v hv e -> contra (valT W N (gk W g) v) z (miss-e W N z (gk W g) mz v hv)
+      (transH (valT-pg N k W g v hv) (transH (apH (pc N k) e) (ptE N k z hk lt)))) ;
+
+  -- k <= z missed by P_k g: z + 1 is missed by g
+  missHi (W : Nat) (g : Hom (lin W) (lin (suc N))) (z : Nat) (ge : IsT (leb k z)) (zN : IsT (leb z N)) (mz : IsT (missB W N (gk W g) z))
+    : IsT (missB W (suc N) g (suc z)) =
+    miss-i W (suc N) (suc z) g (\ v hv e -> contra (valT W N (gk W g) v) z (miss-e W N z (gk W g) mz v hv)
+      (transH (valT-pg N k W g v hv) (transH (apH (pc N k) e) (ptF N k z ge zN)))) ;
+
+  -- P_k g in the lower lid: g misses N + 1
+  missLid (W : Nat) (g : Hom (lin W) (lin (suc N))) (l : IsT (lidB zero W (jk W g))) : IsT (missB W (suc N) g (suc N)) =
+    miss-i W (suc N) (suc N) g (\ v hv e -> false-true
+      (substH (\ x -> IsT (eqN x zero)) (transH (valT-pj N k W g v hv) (transH (apH (pl N k) e) (ptG N k hk)))
+         (fa-e W (\ v' -> eqN (valT W (suc zero) (jk W g) v') zero) l v hv))) ;
+
+  -- P_k g in P_k' with k < k': g misses k + 1
+  missSh (W : Nat) (g : Hom (lin W) (lin (suc N))) (k' : Nat) (lt : IsT (ltb k k')) (u : IsT (DPm.memP N k' W (gk W g) (jk W g)))
+    : IsT (missB W (suc N) g (suc k)) =
+    miss-i W (suc N) (suc k) g (\ v hv e -> false-true (transH (symH (ptH N k k' hk lt hk))
+      (substH (\ x -> IsT (DPm.memK k' (pc N k (suc k)) x)) (transH (valT-pj N k W g v hv) (apH (pl N k) e))
+        (substH (\ x -> IsT (DPm.memK k' x (valT W (suc zero) (jk W g) v))) (transH (valT-pg N k W g v hv) (apH (pc N k) e))
+          (fa-e W (\ v' -> DPm.memK k' (valT W N (gk W g) v') (valT W (suc zero) (jk W g) v')) u v hv))))) ;
+
+  ----------------------------------------------------------------------
+  capT1 (W : Nat) (g : Hom (lin W) (lin (suc N))) (s : IsT ((ST N d).1 W (gk W g) (jk W g)))
+    : DS.Lands W (suc N) (DHm.hornS N k) g =
+    or-elim (DS.Lands W (suc N) (DHm.hornS N k) g) (or (bdB N W (gk W g)) (lidB zero W (jk W g)))
+      (Stg[N, zero, condT N d].shB W (gk W g) (jk W g)) s
+      (\ s0 -> or-elim (DS.Lands W (suc N) (DHm.hornS N k) g) (bdB N W (gk W g)) (lidB zero W (jk W g)) s0
+         (\ b -> bdCase W g (ex-e N (\ y -> missB W N (gk W g) y) b).1 (ex-e N (\ y -> missB W N (gk W g) y) b).2.1
+                    (ex-e N (\ y -> missB W N (gk W g) y) b).2.2)
+         (\ l -> toHorn W g (suc N) (leb-refl N) (neq-of-lt k (suc N) hk) (missLid W g l)))
+      (\ u -> shCase W g (ex-e N (\ k' -> and (condT N d k') (DPm.memP N k' W (gk W g) (jk W g))) u).1
+                 (ex-e N (\ k' -> and (condT N d k') (DPm.memP N k' W (gk W g) (jk W g))) u).2.2) ;
+
+  bdCase (W : Nat) (g : Hom (lin W) (lin (suc N))) (z : Nat) (zN : IsT (leb z N)) (mz : IsT (missB W N (gk W g) z))
+    : DS.Lands W (suc N) (DHm.hornS N k) g =
+    ltb-dec (DS.Lands W (suc N) (DHm.hornS N k) g) z k
+      (\ lt -> toHorn W g z (leb-step z N zN) (ltb-neq z k lt) (missLo W g z lt mz))
+      (\ ge -> toHorn W g (suc z) zN (neq-of-lt k (suc z) ge) (missHi W g z ge zN mz)) ;
+
+  shCase (W : Nat) (g : Hom (lin W) (lin (suc N))) (k' : Nat) (cu : IsT (and (condT N d k') (DPm.memP N k' W (gk W g) (jk W g))))
+    : DS.Lands W (suc N) (DHm.hornS N k) g =
+    toHorn W g (suc k) hk (neq-of-lt k (suc k) (leb-refl k))
+      (missSh W g k' (above k' (and-l (condT N d k') (DPm.memP N k' W (gk W g) (jk W g)) cu))
+         (and-r (condT N d k') (DPm.memP N k' W (gk W g) (jk W g)) cu)) ;
+
+  ----------------------------------------------------------------------
+  -- the horn lies in ST N d along P_k
+
+  inBd (W : Nat) (g : Hom (lin W) (lin (suc N))) (z : Nat) (zN : IsT (leb z N)) (mz : IsT (missB W N (gk W g) z))
+    : IsT ((ST N d).1 W (gk W g) (jk W g)) =
+    or-l (or (bdB N W (gk W g)) (lidB zero W (jk W g))) (Stg[N, zero, condT N d].shB W (gk W g) (jk W g))
+      (or-l (bdB N W (gk W g)) (lidB zero W (jk W g)) (ex-i N (\ y -> missB W N (gk W g) y) z zN mz)) ;
+
+  inLid (W : Nat) (g : Hom (lin W) (lin (suc N))) (l : IsT (lidB zero W (jk W g))) : IsT ((ST N d).1 W (gk W g) (jk W g)) =
+    or-l (or (bdB N W (gk W g)) (lidB zero W (jk W g))) (Stg[N, zero, condT N d].shB W (gk W g) (jk W g))
+      (or-r (bdB N W (gk W g)) (lidB zero W (jk W g)) l) ;
+
+  inSh (W : Nat) (g : Hom (lin W) (lin (suc N))) (k' : Nat) (k'N : IsT (leb k' N)) (c : IsT (condT N d k'))
+    (u : IsT (DPm.memP N k' W (gk W g) (jk W g))) : IsT ((ST N d).1 W (gk W g) (jk W g)) =
+    or-r (or (bdB N W (gk W g)) (lidB zero W (jk W g))) (Stg[N, zero, condT N d].shB W (gk W g) (jk W g))
+      (ex-i N (\ k2 -> and (condT N d k2) (DPm.memP N k2 W (gk W g) (jk W g))) k' k'N
+         (and-i (condT N d k') (DPm.memP N k' W (gk W g) (jk W g)) c u)) ;
+
+  -- y < k missed by g: P_k g misses y
+  bdLo (W : Nat) (g : Hom (lin W) (lin (suc N))) (y : Nat) (lt : IsT (ltb y k)) (mb : IsT (missB W (suc N) g y))
+    : IsT (missB W N (gk W g) y) =
+    fa-i W (\ v -> not (eqN (valT W N (gk W g) v) y))
+      (\ v hv -> neqT (valT W N (gk W g) v) (pc N k (valT W (suc N) g v)) y (valT-pg N k W g v hv)
+                   (ptA N k (valT W (suc N) g v) y hk (valT-range W (suc N) g v) lt (miss-e W (suc N) y g mb v hv))) ;
+
+  -- y' + 1 missed by g, k < y': P_k g misses y'
+  bdHi (W : Nat) (g : Hom (lin W) (lin (suc N))) (y' : Nat) (lt : IsT (ltb k y')) (mb : IsT (missB W (suc N) g (suc y')))
+    : IsT (missB W N (gk W g) y') =
+    fa-i W (\ v -> not (eqN (valT W N (gk W g) v) y'))
+      (\ v hv -> neqT (valT W N (gk W g) v) (pc N k (valT W (suc N) g v)) y' (valT-pg N k W g v hv)
+                   (ptD N k (valT W (suc N) g v) y' hk (valT-range W (suc N) g v) lt (miss-e W (suc N) (suc y') g mb v hv))) ;
+
+  -- k = N and N + 1 missed by g: P_k g is in the lower lid
+  lidC (W : Nat) (g : Hom (lin W) (lin (suc N))) (e : Id Nat k N) (mb : IsT (missB W (suc N) g (suc k)))
+    : IsT (lidB zero W (jk W g)) =
+    fa-i W (\ v -> eqN (valT W (suc zero) (jk W g) v) zero)
+      (\ v hv -> substH (\ x -> IsT (eqN x zero))
+                   (symH (transH (valT-pj N k W g v hv)
+                     (transH (apH (\ x -> pl N x (valT W (suc N) g v)) e)
+                             (ptC N (valT W (suc N) g v) (valT-range W (suc N) g v)
+                                (substH (\ x -> IsT (not (eqN (valT W (suc N) g v) (suc x)))) e (miss-e W (suc N) (suc k) g mb v hv))))))
+                   (refl true)) ;
+
+  -- k < N and k + 1 missed by g: P_k g is in P_{k+1}
+  shK1 (W : Nat) (g : Hom (lin W) (lin (suc N))) (hk1 : IsT (leb (suc k) N)) (mb : IsT (missB W (suc N) g (suc k)))
+    : IsT (DPm.memP N (suc k) W (gk W g) (jk W g)) =
+    fa-i W (\ v -> DPm.memK (suc k) (valT W N (gk W g) v) (valT W (suc zero) (jk W g) v))
+      (\ v hv -> substH (\ x -> IsT (DPm.memK (suc k) x (valT W (suc zero) (jk W g) v))) (symH (valT-pg N k W g v hv))
+                   (substH (\ x -> IsT (DPm.memK (suc k) (pc N k (valT W (suc N) g v)) x)) (symH (valT-pj N k W g v hv))
+                      (ptB N k (valT W (suc N) g v) hk1 (valT-range W (suc N) g v) (miss-e W (suc N) (suc k) g mb v hv)))) ;
+
+  condK1 : IsT (condT N d (suc k)) = substH (\ x -> IsT (leb N x)) (symH kd) (leb-refl N) ;
+
+  capUp (W : Nat) (g : Hom (lin W) (lin (suc N))) : (y : Nat) -> IsT (ltb k y) -> IsT (leb y (suc N)) -> IsT (missB W (suc N) g y)
+    -> IsT ((ST N d).1 W (gk W g) (jk W g)) = split {
+    zero -> \ lt hy mb -> absurd _ (false-true lt) ;
+    suc y' -> \ lt hy mb ->
+      eqN-dec (IsT ((ST N d).1 W (gk W g) (jk W g))) y' k
+        (\ e -> eqN-dec (IsT ((ST N d).1 W (gk W g) (jk W g))) k N
+                  (\ eN -> inLid W g (lidC W g eN (substH (\ x -> IsT (missB W (suc N) g (suc x))) e mb)))
+                  (\ nN -> inSh W g (suc k) (leb-neq k N hk nN) condK1
+                              (shK1 W g (leb-neq k N hk nN) (substH (\ x -> IsT (missB W (suc N) g (suc x))) e mb))))
+        (\ ne -> inBd W g y' hy (bdHi W g y' (leb-neq k y' lt (neq-sym y' k ne)) mb)) } ;
+
+  capT2 (W : Nat) (g : Hom (lin W) (lin (suc N))) (i : DS.Lands W (suc N) (DHm.hornS N k) g)
+    : IsT ((ST N d).1 W (gk W g) (jk W g)) =
+    ltb-dec (IsT ((ST N d).1 W (gk W g) (jk W g))) (DHm.horn-lands W N k g i).1 k
+      (\ lt -> inBd W g (DHm.horn-lands W N k g i).1 (leb-trans (DHm.horn-lands W N k g i).1 k N (ltb-leb (DHm.horn-lands W N k g i).1 k lt) hk)
+                  (bdLo W g (DHm.horn-lands W N k g i).1 lt (of-miss W N (DHm.horn-lands W N k g i).1 g (DHm.horn-lands W N k g i).2.2.2)))
+      (\ ge -> capUp W g (DHm.horn-lands W N k g i).1
+                  (leb-neq k (DHm.horn-lands W N k g i).1 ge (neq-sym (DHm.horn-lands W N k g i).1 k (DHm.horn-lands W N k g i).2.2.1))
+                  (DHm.horn-lands W N k g i).2.1
+                  (of-miss W N (DHm.horn-lands W N k g i).1 g (DHm.horn-lands W N k g i).2.2.2)) ;
+
+  ----------------------------------------------------------------------
+  -- ST N (d+1) is in ST N d u P_k
+
+  incT (W : Nat) (f : Hom (lin W) (lin N)) (j : Hom (lin W) Iv) (s : IsT ((ST N (suc d)).1 W f j))
+    : IsT (or ((ST N d).1 W f j) (DPm.memP N k W f j)) =
+    or-elim (IsT (or ((ST N d).1 W f j) (DPm.memP N k W f j))) (or (bdB N W f) (lidB zero W j))
+      (Stg[N, zero, condT N (suc d)].shB W f j) s
+      (\ s0 -> or-l ((ST N d).1 W f j) (DPm.memP N k W f j)
+                  (or-l (or (bdB N W f) (lidB zero W j)) (Stg[N, zero, condT N d].shB W f j) s0))
+      (\ u -> incSh W f j (ex-e N (\ k' -> and (condT N (suc d) k') (DPm.memP N k' W f j)) u).1
+                 (ex-e N (\ k' -> and (condT N (suc d) k') (DPm.memP N k' W f j)) u).2.1
+                 (ex-e N (\ k' -> and (condT N (suc d) k') (DPm.memP N k' W f j)) u).2.2) ;
+
+  incSh (W : Nat) (f : Hom (lin W) (lin N)) (j : Hom (lin W) Iv) (k' : Nat) (k'N : IsT (leb k' N))
+    (cu : IsT (and (condT N (suc d) k') (DPm.memP N k' W f j))) : IsT (or ((ST N d).1 W f j) (DPm.memP N k W f j)) =
+    ltb-dec (IsT (or ((ST N d).1 W f j) (DPm.memP N k W f j))) N (plus k' d)
+      (\ lt -> or-l ((ST N d).1 W f j) (DPm.memP N k W f j)
+                  (or-r (or (bdB N W f) (lidB zero W j)) (Stg[N, zero, condT N d].shB W f j)
+                     (ex-i N (\ k2 -> and (condT N d k2) (DPm.memP N k2 W f j)) k' k'N
+                        (and-i (condT N d k') (DPm.memP N k' W f j) lt (and-r (condT N (suc d) k') (DPm.memP N k' W f j) cu)))))
+      (\ ge -> or-r ((ST N d).1 W f j) (DPm.memP N k W f j)
+                  (substH (\ x -> IsT (DPm.memP N x W f j))
+                     (plus-cancel-r d k' k (transH (le-antisym (plus k' d) N ge
+                                                     (substH (\ x -> IsT (leb (suc N) x)) (plus-suc k' d)
+                                                        (and-l (condT N (suc d) k') (DPm.memP N k' W f j) cu)))
+                                                   (symH kd)))
+                     (and-r (condT N (suc d) k') (DPm.memP N k' W f j) cu))) ;
+} ;

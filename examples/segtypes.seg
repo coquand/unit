@@ -1,0 +1,70 @@
+-- segtypes.seg: segments as types (Arend's records/classes, Half's theories).
+
+level a ;
+data N = zero | suc (n : N) ;
+plus : N -> N -> N = split { zero -> \ n -> n ; suc p -> \ n -> suc (plus p n) } ;
+
+-- a definition BETWEEN fields, used in the type of a later field:
+-- the shape of MODEL's record CwF (p-lift-T between the fields)
+module Mon (l : Level) {
+  A    : U l ;
+  op   : A -> A -> A ;
+  sq (x : A) : A = op x x ;                   -- a member, not a field
+  e    : A ;
+  sqe  : Id A (sq e) e ;                      -- a field whose type uses sq
+  four (x : A) : A = sq (sq x) ;
+} ;
+
+-- the segment as a type: all level parameters fixed, fields free
+MonU : U a+ = Mon[a] ;
+#fails { noLevel : U a+ = Mon ; } ;
+
+-- an element, positional or named
+NM : Mon[a] = new Mon[a, N, plus, zero, refl zero] ;
+NM' : Mon[a] = new Mon[l := a, A := N, op := plus, e := zero, sqe := refl zero] ;
+#conv NM = NM' ;
+
+-- members are evaluated in the element: no copy, one name
+#normal NM.four (suc zero) ;
+#conv NM.sq = NM'.sq ;
+
+-- a function over ANY monoid; open c gives the members short names
+twice (M : Mon[a]) (x : M.A) : M.A = M.op x x ;
+useSq (M : Mon[a]) : Id M.A (M.sq M.e) M.e = M.sqe ;
+useOpen (M : Mon[a]) : Id M.A (M.four M.e) M.e =
+  idJ M.A (M.sq M.e) (\ z q -> Id M.A (M.sq (M.sq M.e)) z) apSq M.e M.sqe
+ where { apSq : Id M.A (M.sq (M.sq M.e)) (M.sq M.e) =
+           idJ M.A (M.sq M.e) (\ z q -> Id M.A (M.sq (M.sq M.e)) (M.sq z))
+               (refl (M.sq (M.sq M.e))) M.e M.sqe ; } ;
+openTest (M : Mon[a]) : M.A -> M.A = let { r : M.A -> M.A = \ x -> M.four x ; } in r ;
+
+-- a partial instance is a TYPE (Arend's class extension); a fixed field
+-- computes on a variable of that type, by eta
+natMon (M : Mon[a, N]) (x : N) : N = M.op x x ;
+fixed (M : Mon[l := a, A := N, e := zero]) : Id N M.e zero = refl zero ;
+
+-- subtyping: more fields fixed is a subtype
+sub1 : Mon[a, N] = NM ;
+sub2 : Mon[a] = NM ;
+pass (M : Mon[a, N]) : Mon[a] = M ;
+#fails { notSub (M : Mon[a]) : Mon[a, N] = M ; } ;
+
+-- eta for elements
+etaE (M : Mon[a]) : Id (Mon[a]) M (new Mon[a, M.A, M.op, M.e, M.sqe]) = refl M ;
+
+-- a segment parametrised by an element of another segment
+module Ops (M : Mon[a]) {
+  open M ;
+  eight (x : A) : A = sq (four x) ;
+  eightE : Id A (sq (four e)) (sq (four e)) = refl (sq (four e)) ;
+} ;
+#normal Ops[NM].eight (suc zero) ;
+
+-- the universe of a segment type is the join of its fields' sorts
+#type Mon[a] ;
+#type Mon[a+] ;
+
+-- a member of a NEUTRAL element unfolds (by eta, in the filling pass)
+module MM { f : N ; g (n : N) : N = suc f ; } ;
+okVar (s : MM) : Id N (s.g zero) (suc s.f) = refl (suc s.f) ;
+okApp (S : N -> MM) (k : N) : Id N ((S k).g zero) (suc (S k).f) = refl (suc (S k).f) ;

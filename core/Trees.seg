@@ -1,0 +1,202 @@
+-- Trees.seg: MODEL/Poset/Tree.agda.  Finite combinatorics for the category
+-- of finite non empty posets.  The carrier of a poset is a decidable subset
+-- of the binary trees
+--
+--   Tree ::= leaf n | node Tree Tree
+--
+-- so that the carrier of a product is  { node a b }  and a sub-poset is the
+-- conjunction of two predicates, both on the nose.  Lists are trees too
+-- (nil = leaf 0, cons = node), used for enumerations.  Everything is
+-- Bool-valued and decidable; no axioms.
+--
+-- The level l is only that of the Prelude lemmas; the data and the Boolean
+-- functions do not depend on it.  Agda's matches on several arguments are
+-- nested splits (helpers such as lss0 where a later argument is matched
+-- first); the variable  l  of leb-trans is renamed i (l is the level).
+
+level l ;
+open Base ;
+open Prelude[l] ;
+
+------------------------------------------------------------------------
+-- Booleans
+
+and : Bool -> Bool -> Bool = split { true -> \ b -> b ; false -> \ b -> false } ;
+or : Bool -> Bool -> Bool = split { true -> \ b -> true ; false -> \ b -> b } ;
+not : Bool -> Bool = split { true -> false ; false -> true } ;
+
+-- b holds
+IsT (b : Bool) : U l = Id Bool b true ;
+
+FT : Bool -> U l = split { true -> Empty ; false -> Top } ;
+
+false-true (P : Id Bool false true) : Empty = subst Bool (\ b -> FT b) false true P tt ;
+
+and-l : (a b : Bool) -> IsT (and a b) -> IsT a = split {
+  true -> \ b h -> refl true ;
+  false -> \ b h -> absurd (IsT false) (false-true h) } ;
+
+and-r : (a b : Bool) -> IsT (and a b) -> IsT b = split {
+  true -> \ b h -> h ;
+  false -> \ b h -> absurd (IsT b) (false-true h) } ;
+
+and-i : (a b : Bool) -> IsT a -> IsT b -> IsT (and a b) = split {
+  true -> \ b ha hb -> hb ;
+  false -> \ b ha hb -> absurd (IsT false) (false-true ha) } ;
+
+or-l : (a b : Bool) -> IsT a -> IsT (or a b) = split {
+  true -> \ b h -> refl true ;
+  false -> \ b h -> absurd (IsT b) (false-true h) } ;
+
+or-r : (a b : Bool) -> IsT b -> IsT (or a b) = split {
+  true -> \ b h -> refl true ;
+  false -> \ b h -> h } ;
+
+or-elim (R : U l) : (a b : Bool) -> IsT (or a b) -> (IsT a -> R) -> (IsT b -> R) -> R = split {
+  true -> \ b h k1 k2 -> k1 (refl true) ;
+  false -> \ b h k1 k2 -> k2 h } ;
+
+------------------------------------------------------------------------
+-- Natural numbers
+
+leb : Nat -> Nat -> Bool = split {
+  zero -> \ n -> true ;
+  suc m -> split { zero -> false ; suc n -> leb m n } } ;
+
+eqN : Nat -> Nat -> Bool = split {
+  zero -> split { zero -> true ; suc n -> false } ;
+  suc m -> split { zero -> false ; suc n -> eqN m n } } ;
+
+leb-refl : (n : Nat) -> IsT (leb n n) = split { zero -> refl true ; suc n -> leb-refl n } ;
+
+leb-trans : (i m n : Nat) -> IsT (leb i m) -> IsT (leb m n) -> IsT (leb i n) = split {
+  zero -> \ m n h1 h2 -> refl true ;
+  suc i -> split {
+    zero -> \ n h1 h2 -> absurd (IsT (leb (suc i) n)) (false-true h1) ;
+    suc m -> split {
+      zero -> \ h1 h2 -> absurd (IsT false) (false-true h2) ;
+      suc n -> \ h1 h2 -> leb-trans i m n h1 h2 } } } ;
+
+leb-anti : (m n : Nat) -> IsT (leb m n) -> IsT (leb n m) -> Id Nat m n = split {
+  zero -> split {
+    zero -> \ h1 h2 -> refl zero ;
+    suc n -> \ h1 h2 -> absurd (Id Nat zero (suc n)) (false-true h2) } ;
+  suc m -> split {
+    zero -> \ h1 h2 -> absurd (Id Nat (suc m) zero) (false-true h1) ;
+    suc n -> \ h1 h2 -> ap Nat Nat (\ k -> suc k) m n (leb-anti m n h1 h2) } } ;
+
+leb-total : (m n : Nat) -> IsT (or (leb m n) (leb n m)) = split {
+  zero -> \ n -> refl true ;
+  suc m -> split { zero -> refl true ; suc n -> leb-total m n } } ;
+
+eqN-refl : (n : Nat) -> IsT (eqN n n) = split { zero -> refl true ; suc n -> eqN-refl n } ;
+
+eqN-sound : (m n : Nat) -> IsT (eqN m n) -> Id Nat m n = split {
+  zero -> split {
+    zero -> \ h -> refl zero ;
+    suc n -> \ h -> absurd (Id Nat zero (suc n)) (false-true h) } ;
+  suc m -> split {
+    zero -> \ h -> absurd (Id Nat (suc m) zero) (false-true h) ;
+    suc n -> \ h -> ap Nat Nat (\ k -> suc k) m n (eqN-sound m n h) } } ;
+
+-- the case  suc i , zero  of leb-suc-split
+lss0 : (i : Nat) -> IsT (leb (suc i) (suc zero)) -> IsT (or (eqN (suc i) (suc zero)) (leb (suc i) zero)) = split {
+  zero -> \ h -> refl true ;
+  suc i -> \ h -> absurd (IsT (or false false)) (false-true h) } ;
+
+-- i <= n+1  gives  i = n+1  or  i <= n
+leb-suc-split : (i n : Nat) -> IsT (leb i (suc n)) -> IsT (or (eqN i (suc n)) (leb i n)) = split {
+  zero -> \ n h -> refl true ;
+  suc i -> split {
+    zero -> lss0 i ;
+    suc n -> \ h -> leb-suc-split i n h } } ;
+
+------------------------------------------------------------------------
+-- Trees
+
+data Tree = leaf (n : Nat) | node (a b : Tree) ;
+
+eqT : Tree -> Tree -> Bool = split {
+  leaf m -> split { leaf n -> eqN m n ; node c d -> false } ;
+  node a b -> split { leaf n -> false ; node c d -> and (eqT a c) (eqT b d) } } ;
+
+eqT-refl : (t : Tree) -> IsT (eqT t t) = split {
+  leaf n -> eqN-refl n ;
+  node a b -> and-i (eqT a a) (eqT b b) (eqT-refl a) (eqT-refl b) } ;
+
+node-eq (a b c d : Tree) (p : Id Tree a c) (q : Id Tree b d) : Id Tree (node a b) (node c d) =
+  idJ Tree a (\ c1 p1 -> Id Tree (node a b) (node c1 d))
+      (idJ Tree b (\ d1 q1 -> Id Tree (node a b) (node a d1)) (refl (node a b)) d q) c p ;
+
+-- the two halves of a node, and injectivity of node
+lftT : Tree -> Tree = split { leaf n -> leaf n ; node a b -> a } ;
+rgtT : Tree -> Tree = split { leaf n -> leaf n ; node a b -> b } ;
+
+node-inj-l (a b c d : Tree) (p : Id Tree (node a b) (node c d)) : Id Tree a c = ap Tree Tree lftT (node a b) (node c d) p ;
+node-inj-r (a b c d : Tree) (p : Id Tree (node a b) (node c d)) : Id Tree b d = ap Tree Tree rgtT (node a b) (node c d) p ;
+
+eqT-sound : (s t : Tree) -> IsT (eqT s t) -> Id Tree s t = split {
+  leaf m -> split {
+    leaf n -> \ h -> ap Nat Tree (\ k -> leaf k) m n (eqN-sound m n h) ;
+    node c d -> \ h -> absurd (Id Tree (leaf m) (node c d)) (false-true h) } ;
+  node a b -> split {
+    leaf n -> \ h -> absurd (Id Tree (node a b) (leaf n)) (false-true h) ;
+    node c d -> \ h -> node-eq a b c d (eqT-sound a c (and-l (eqT a c) (eqT b d) h))
+                                       (eqT-sound b d (and-r (eqT a c) (eqT b d) h)) } } ;
+
+------------------------------------------------------------------------
+-- Lists, as trees:  nil = leaf 0 ,  cons = node
+
+nilT : Tree = leaf zero ;
+
+mem (x : Tree) : Tree -> Bool = split { leaf n -> false ; node a t -> or (eqT x a) (mem x t) } ;
+
+appL : Tree -> Tree -> Tree = split { leaf n -> \ t' -> t' ; node a t -> \ t' -> node a (appL t t') } ;
+
+mem-appL-l (x : Tree) : (t t' : Tree) -> IsT (mem x t) -> IsT (mem x (appL t t')) = split {
+  leaf n -> \ t' h -> absurd (IsT (mem x t')) (false-true h) ;
+  node a t -> \ t' h ->
+    or-elim (IsT (or (eqT x a) (mem x (appL t t')))) (eqT x a) (mem x t) h
+      (or-l (eqT x a) (mem x (appL t t')))
+      (\ h' -> or-r (eqT x a) (mem x (appL t t')) (mem-appL-l x t t' h')) } ;
+
+mem-appL-r (x : Tree) : (t t' : Tree) -> IsT (mem x t') -> IsT (mem x (appL t t')) = split {
+  leaf n -> \ t' h -> h ;
+  node a t -> \ t' h -> or-r (eqT x a) (mem x (appL t t')) (mem-appL-r x t t' h) } ;
+
+-- [ node a b | b <- t ]
+mapL (a : Tree) : Tree -> Tree = split { leaf n -> nilT ; node b t -> node (node a b) (mapL a t) } ;
+
+mem-mapL (a b : Tree) : (t : Tree) -> IsT (mem b t) -> IsT (mem (node a b) (mapL a t)) = split {
+  leaf n -> \ h -> absurd (IsT false) (false-true h) ;
+  node c t -> \ h ->
+    or-elim (IsT (or (and (eqT a a) (eqT b c)) (mem (node a b) (mapL a t)))) (eqT b c) (mem b t) h
+      (\ h' -> or-l (and (eqT a a) (eqT b c)) (mem (node a b) (mapL a t)) (and-i (eqT a a) (eqT b c) (eqT-refl a) h'))
+      (\ h' -> or-r (and (eqT a a) (eqT b c)) (mem (node a b) (mapL a t)) (mem-mapL a b t h')) } ;
+
+-- [ node a b | a <- t1 , b <- t2 ]
+prodL : Tree -> Tree -> Tree = split { leaf n -> \ t2 -> nilT ; node a t -> \ t2 -> appL (mapL a t2) (prodL t t2) } ;
+
+mem-prodL (a b : Tree) : (t1 t2 : Tree) -> IsT (mem a t1) -> IsT (mem b t2) -> IsT (mem (node a b) (prodL t1 t2)) = split {
+  leaf n -> \ t2 h1 h2 -> absurd (IsT false) (false-true h1) ;
+  node a' t -> \ t2 h1 h2 ->
+    or-elim (IsT (mem (node a b) (prodL (node a' t) t2))) (eqT a a') (mem a t) h1
+      (\ e -> mem-appL-l (node a b) (mapL a' t2) (prodL t t2)
+                (subst Tree (\ c -> IsT (mem (node c b) (mapL a' t2))) a' a (sym Tree a a' (eqT-sound a a' e))
+                       (mem-mapL a' b t2 h2)))
+      (\ h -> mem-appL-r (node a b) (mapL a' t2) (prodL t t2) (mem-prodL a b t t2 h h2)) } ;
+
+-- [ leaf 0 , ... , leaf n ]
+upto : Nat -> Tree = split { zero -> node (leaf zero) nilT ; suc n -> node (leaf (suc n)) (upto n) } ;
+
+-- the case  n = zero  of mem-upto
+mu0 : (i : Nat) -> IsT (leb i zero) -> IsT (mem (leaf i) (upto zero)) = split {
+  zero -> \ h -> refl true ;
+  suc i -> \ h -> absurd (IsT (mem (leaf (suc i)) (upto zero))) (false-true h) } ;
+
+mem-upto (i : Nat) : (n : Nat) -> IsT (leb i n) -> IsT (mem (leaf i) (upto n)) = split {
+  zero -> mu0 i ;
+  suc n -> \ h ->
+    or-elim (IsT (mem (leaf i) (upto (suc n)))) (eqN i (suc n)) (leb i n) (leb-suc-split i n h)
+      (\ e -> or-l (eqN i (suc n)) (mem (leaf i) (upto n)) e)
+      (\ h' -> or-r (eqN i (suc n)) (mem (leaf i) (upto n)) (mem-upto i n h')) } ;

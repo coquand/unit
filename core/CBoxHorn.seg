@@ -1,0 +1,314 @@
+-- CBoxHorn.seg (L8, Delta): seg/model BoxHorn.seg up to CH (the retractions), ported.  Was: box filling gives horn filling on posets, comp(G , A) ->
+-- horn(G , A), as an INSTANCE of the generic IvBase.GHornRetr (one home
+-- with Delta: DeltaRetr).
+--
+-- A horn F at the vertex k of [m+1] over tau is a partial element of A at
+-- tau with one side per face y /= k (on the maps missing y: HornFace.vF),
+-- and is filled along a retraction r : X * [1] -> X of the end e'
+-- (Gabriel-Zisman), X = [m+1]:
+--
+--   k = 0      e = e0, e' = e1:  r (j , 0) = 0 ,  r (j , 1) = j
+--   k = k'+1   e = e1, e' = e0:  r (j , 0) = j ,  r (j , 1) = max j k
+--
+-- so that r (- , e') = id (R1), r (- , e) misses the vertex y0 (= m+1,
+-- resp. 0, a face of the horn: R2), and r maps (X - {y}) * [1] into
+-- X - {y} for y /= k (R3: PT / PF).  r is read on generalised points
+-- (f , i) : W -> X * [1] by composing with the pair (DRet.rD), a natural
+-- family, which is what GHornRetr asks for.  The box composition goes to
+-- line composition at the family path object along CompLine and GTrans.
+--
+--   Retr, RT, RF   the two retractions as poset maps
+--   DRet           the retraction read on (f , i), with R1 and R3
+--   CH             comp-to-horn
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+module W0 = V[a] ;
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+
+-- (f , j) g = (f g , j g)  (seg/model Constr)
+pair-nat (V W X Y : Ob) (f : Hom W X) (j : Hom W Y) (g : Hom V W)
+  : Id (Hom V (prodP X Y)) (compH V W (prodP X Y) (pairH X Y W f j) g) (pairH X Y V (compH V W X f g) (compH V W Y j g)) =
+  hom-eq V (prodP X Y) (compH V W (prodP X Y) (pairH X Y W f j) g) (pairH X Y V (compH V W X f g) (compH V W Y j g)) (\ s ->
+    transH (app-compH1 V W (prodP X Y) (pairH X Y W f j) g s)
+      (node-eq (app W X f (app V W g s)).1 (app W Y j (app V W g s)).1 (app V X (compH V W X f g) s).1 (app V Y (compH V W Y j g) s).1
+         (symH (app-compH1 V W X f g s)) (symH (app-compH1 V W Y j g s)))) ;
+
+-- tree projections (seg/model BoxBase, Conn)
+pr1T : Tree -> Tree = split { leaf n -> leaf n ; node s t -> s } ;
+pr2T : Tree -> Tree = split { leaf n -> leaf n ; node s t -> t } ;
+
+pr1-T (X : Ob) (w : El (prodP X Iv)) : Id Tree (app (prodP X Iv) X (pr1 X Iv) w).1 (pr1T w.1) = aux w.1 w.2
+ where { aux : (t : Tree) (h : IsT (car (prodP X Iv) t)) -> Id Tree (app (prodP X Iv) X (pr1 X Iv) (t, h)).1 (pr1T t) = split {
+           leaf n -> \ h -> absurd _ (false-true h) ;
+           node s t -> \ h -> refl s } ; } ;
+open CPosBase[a] ;
+
+------------------------------------------------------------------------
+-- max
+
+maxN : Nat -> Nat -> Nat = split {
+  zero -> \ k -> k ;
+  suc j -> split { zero -> suc j ; suc k -> suc (maxN j k) } } ;
+
+max-l : (j k : Nat) -> IsT (leb j (maxN j k)) = split {
+  zero -> \ k -> refl true ;
+  suc j -> split { zero -> leb-refl j ; suc k -> max-l j k } } ;
+
+max-r : (j k : Nat) -> IsT (leb k (maxN j k)) = split {
+  zero -> \ k -> leb-refl k ;
+  suc j -> split { zero -> refl true ; suc k -> max-r j k } } ;
+
+max-le : (j k n : Nat) -> IsT (leb j n) -> IsT (leb k n) -> IsT (leb (maxN j k) n) = split {
+  zero -> \ k n hj hk -> hk ;
+  suc j -> split {
+    zero -> \ n hj hk -> hj ;
+    suc k -> split {
+      zero -> \ hj hk -> hj ;
+      suc n -> \ hj hk -> max-le j k n hj hk } } } ;
+
+max-mono : (j j' k : Nat) -> IsT (leb j j') -> IsT (leb (maxN j k) (maxN j' k)) = split {
+  zero -> \ j' k h -> max-r j' k ;
+  suc j -> split {
+    zero -> \ k h -> absurd _ (false-true h) ;
+    suc j' -> split {
+      zero -> \ h -> h ;
+      suc k -> \ h -> max-mono j j' k h } } } ;
+
+max-or (P : Nat -> U a) : (j k : Nat) -> P j -> P k -> P (maxN j k) = split {
+  zero -> \ k pj pk -> pk ;
+  suc j -> split {
+    zero -> \ pj pk -> pj ;
+    suc k -> \ pj pk -> max-or (\ v -> P (suc v)) j k pj pk } } ;
+
+max-pos : (j k : Nat) -> IsT (not (eqN (maxN j (suc k)) zero)) = split {
+  zero -> \ k -> refl true ;
+  suc j -> \ k -> refl true } ;
+
+------------------------------------------------------------------------
+-- The box of a horn, along a retraction
+
+-- the subset X - {y}, empty when y = k
+QH (m k y : Nat) : Subset (lin (suc m)) = \ t -> and (not (eqN y k)) (not (eqN (vnum t.1) y)) ;
+
+-- a map into the cylinder whose first component misses y
+MissC (W : Ob) (m y : Nat) (psi : Hom W (prodP (lin (suc m)) Iv)) : U a =
+  (s : El W) -> IsT (not (eqN (vnum (pr1T (app W (prodP (lin (suc m)) Iv) psi s).1)) y)) ;
+
+------------------------------------------------------------------------
+-- The two retractions
+
+-- k = 0, direction 0 -> 1:  r (j , 0) = 0 ,  r (j , 1) = j
+rTN (j : Nat) : Nat -> Nat = split { zero -> zero ; suc e -> j } ;
+
+-- k > 0, direction 1 -> 0:  r (j , 0) = j ,  r (j , 1) = max j k
+rFN (k j : Nat) : Nat -> Nat = split { zero -> j ; suc e -> maxN j k } ;
+
+module Retr (m : Nat) (rN : Nat -> Nat -> Nat)
+  (rng : (j e : Nat) -> IsT (leb j (suc m)) -> IsT (leb (rN j e) (suc m)))
+  (mon : (j e j' e' : Nat) -> IsT (leb e (suc zero)) -> IsT (leb e' (suc zero))
+         -> IsT (leb j j') -> IsT (leb e e') -> IsT (leb (rN j e) (rN j' e'))) {
+
+  X : Ob = lin (suc m) ;
+  Y : Ob = prodP X Iv ;
+
+  rE2 (j : Nat) : (c : Tree) (h : IsT (car Y (node (leaf j) c))) -> El X = split {
+    leaf e -> \ h -> (leaf (rN j e), rng j e (and-l (leb j (suc m)) (leb e (suc zero)) h)) ;
+    node s t -> \ h -> absurd _ (false-true (and-r (leb j (suc m)) false h)) } ;
+
+  rE1 : (s c : Tree) (h : IsT (car Y (node s c))) -> El X = split {
+    leaf j -> rE2 j ;
+    node s t -> \ c h -> absurd _ (false-true h) } ;
+
+  rE' : (t : Tree) (h : IsT (car Y t)) -> El X = split {
+    leaf n -> \ h -> absurd _ (false-true h) ;
+    node s c -> rE1 s c } ;
+
+  rE (w : El Y) : El X = rE' w.1 w.2 ;
+
+  -- monotonicity, once the first point is good
+  rM5 (j e : Nat) (h : IsT (car Y (node (leaf j) (leaf e)))) (j' : Nat) : (c' : Tree) (h' : IsT (car Y (node (leaf j') c')))
+    -> IsT (le Y (node (leaf j) (leaf e)) (node (leaf j') c')) -> IsT (le X (rE2 j (leaf e) h).1 (rE2 j' c' h').1) = split {
+    leaf e' -> \ h' l ->
+      mon j e j' e' (and-r (leb j (suc m)) (leb e (suc zero)) h) (and-r (leb j' (suc m)) (leb e' (suc zero)) h')
+          (and-l (leb j j') (leb e e') l) (and-r (leb j j') (leb e e') l) ;
+    node s t -> \ h' l -> absurd _ (false-true (and-r (leb j' (suc m)) false h')) } ;
+
+  rM4 (j e : Nat) (h : IsT (car Y (node (leaf j) (leaf e)))) : (s' c' : Tree) (h' : IsT (car Y (node s' c')))
+    -> IsT (le Y (node (leaf j) (leaf e)) (node s' c')) -> IsT (le X (rE2 j (leaf e) h).1 (rE1 s' c' h').1) = split {
+    leaf j' -> rM5 j e h j' ;
+    node s t -> \ c' h' l -> absurd _ (false-true h') } ;
+
+  rM3 (j e : Nat) (h : IsT (car Y (node (leaf j) (leaf e)))) : (t' : Tree) (h' : IsT (car Y t'))
+    -> IsT (le Y (node (leaf j) (leaf e)) t') -> IsT (le X (rE2 j (leaf e) h).1 (rE' t' h').1) = split {
+    leaf n -> \ h' l -> absurd _ (false-true h') ;
+    node s' c' -> rM4 j e h s' c' } ;
+
+  rM2 (j : Nat) : (c : Tree) (h : IsT (car Y (node (leaf j) c))) (t' : Tree) (h' : IsT (car Y t'))
+    -> IsT (le Y (node (leaf j) c) t') -> IsT (le X (rE2 j c h).1 (rE' t' h').1) = split {
+    leaf e -> rM3 j e ;
+    node s t -> \ h t' h' l -> absurd _ (false-true (and-r (leb j (suc m)) false h)) } ;
+
+  rM1 : (s c : Tree) (h : IsT (car Y (node s c))) (t' : Tree) (h' : IsT (car Y t'))
+    -> IsT (le Y (node s c) t') -> IsT (le X (rE1 s c h).1 (rE' t' h').1) = split {
+    leaf j -> rM2 j ;
+    node s t -> \ c h t' h' l -> absurd _ (false-true h) } ;
+
+  rM' : (t : Tree) (h : IsT (car Y t)) (t' : Tree) (h' : IsT (car Y t'))
+    -> IsT (le Y t t') -> IsT (le X (rE' t h).1 (rE' t' h').1) = split {
+    leaf n -> \ h t' h' l -> absurd _ (false-true h) ;
+    node s c -> rM1 s c } ;
+
+  rM : Mono Y X rE = \ s t l -> rM' s.1 s.2 t.1 t.2 l ;
+
+  r : Hom Y X = mkHom Y X rE rM ;
+
+  -- r on a point (j , e):  r (j , e) = rN j e
+  r-pt : (et : Tree) (he : IsT (car Iv et)) (st : Tree) (hs : IsT (car X st)) (h : IsT (car Y (node st et)))
+    -> Id Tree (app Y X r (node st et, h)).1 (leaf (rN (vnum st) (vnum et))) = split {
+    leaf ee -> \ he -> split {
+      leaf j -> \ hs h -> refl (leaf (rN j ee)) ;
+      node s t -> \ hs h -> absurd _ (false-true hs) } ;
+    node c d -> \ he st hs h -> absurd _ (false-true he) } ;
+
+  -- r on the lid at e:  r (lid e s) = r (s , e)
+  rl' (et : Tree) (he : IsT (car Iv et)) (st : Tree) (hs : IsT (car X st))
+    : Id Tree (app X X (compH X Y X r (lid X (et, he))) (st, hs)).1 (leaf (rN (vnum st) (vnum et))) =
+    calc Tree {
+        (app X X (compH X Y X r (lid X (et, he))) (st, hs)).1
+      =< app-compH1 X Y X r (lid X (et, he)) (st, hs) >
+        (app Y X r (app X Y (lid X (et, he)) (st, hs))).1
+      =< apH (\ w -> (app Y X r w).1) (el-eq Y (app X Y (lid X (et, he)) (st, hs)) (node st et, hst) (app-lid1 X (et, he) (st, hs))) >
+        (app Y X r (node st et, hst)).1
+      =< r-pt et he st hs hst >
+        leaf (rN (vnum st) (vnum et)) }
+   where { hst : IsT (car Y (node st et)) = and-i (car X st) (car Iv et) hs he ; } ;
+
+  r-lid (e : El Iv) (s : El X) : Id Tree (app X X (compH X Y X r (lid X e)) s).1 (leaf (rN (vnum s.1) (vnum e.1))) =
+    rl' e.1 e.2 s.1 s.2 ;
+
+  -- r misses y if both coordinates' images do
+  rmiss2 (y : Nat) (P : (j e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rN j e) y)))
+    (j : Nat) : (c : Tree) (h : IsT (car Y (node (leaf j) c))) -> IsT (not (eqN j y))
+    -> IsT (not (eqN (vnum (rE2 j c h).1) y)) = split {
+    leaf e -> \ h k -> P j e (and-r (leb j (suc m)) (leb e (suc zero)) h) k ;
+    node s t -> \ h k -> absurd _ (false-true (and-r (leb j (suc m)) false h)) } ;
+
+  rmiss1 (y : Nat) (P : (j e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rN j e) y)))
+    : (s c : Tree) (h : IsT (car Y (node s c))) -> IsT (not (eqN (vnum s) y))
+    -> IsT (not (eqN (vnum (rE1 s c h).1) y)) = split {
+    leaf j -> rmiss2 y P j ;
+    node s t -> \ c h k -> absurd _ (false-true h) } ;
+
+  rmiss0 (y : Nat) (P : (j e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rN j e) y)))
+    : (t : Tree) (h : IsT (car Y t)) -> IsT (not (eqN (vnum (pr1T t)) y)) -> IsT (not (eqN (vnum (rE' t h).1) y)) = split {
+    leaf n -> \ h k -> absurd _ (false-true h) ;
+    node s c -> rmiss1 y P s c } ;
+
+  r-miss (y : Nat) (P : (j e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rN j e) y)))
+    (W : Ob) (psi : Hom W Y) (ms : MissC W m y psi) : Miss W m y (compH W Y X r psi) = \ s ->
+    substH (\ t -> IsT (not (eqN (vnum t) y))) (symH (app-compH1 W Y X r psi s))
+      (rmiss0 y P (app W Y psi s).1 (app W Y psi s).2 (ms s)) ;
+} ;
+
+module RT (m : Nat) {
+  rng (j : Nat) : (e : Nat) -> IsT (leb j (suc m)) -> IsT (leb (rTN j e) (suc m)) = split {
+    zero -> \ h -> refl true ;
+    suc e -> \ h -> h } ;
+
+  mon (j : Nat) : (e j' e' : Nat) -> IsT (leb e (suc zero)) -> IsT (leb e' (suc zero))
+    -> IsT (leb j j') -> IsT (leb e e') -> IsT (leb (rTN j e) (rTN j' e')) = split {
+    zero -> \ j' e' he he' hj hee -> refl true ;
+    suc e -> \ j' -> split {
+      zero -> \ he he' hj hee -> absurd _ (false-true hee) ;
+      suc e' -> \ he he' hj hee -> hj } } ;
+
+  module R = Retr[m, \ j e -> rTN j e, rng, mon] ;
+} ;
+
+module RF (m k : Nat) (hk : IsT (leb k (suc m))) {
+  rng (j : Nat) : (e : Nat) -> IsT (leb j (suc m)) -> IsT (leb (rFN k j e) (suc m)) = split {
+    zero -> \ h -> h ;
+    suc e -> \ h -> max-le j k (suc m) h hk } ;
+
+  mon (j : Nat) : (e j' e' : Nat) -> IsT (leb e (suc zero)) -> IsT (leb e' (suc zero))
+    -> IsT (leb j j') -> IsT (leb e e') -> IsT (leb (rFN k j e) (rFN k j' e')) = split {
+    zero -> \ j' -> split {
+      zero -> \ he he' hj hee -> hj ;
+      suc e' -> \ he he' hj hee -> leb-trans j j' (maxN j' k) hj (max-l j' k) } ;
+    suc e -> \ j' -> split {
+      zero -> \ he he' hj hee -> absurd _ (false-true hee) ;
+      suc e' -> \ he he' hj hee -> max-mono j j' k hj } } ;
+
+  module R = Retr[m, \ j e -> rFN k j e, rng, mon] ;
+} ;
+
+------------------------------------------------------------------------
+-- the two retractions map the complement of a face y /= k into itself
+
+PT (y : Nat) (ky : IsT (not (eqN y zero))) (j : Nat)
+  : (e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rTN j e) y)) = split {
+  zero -> \ he kj -> neq-sym y zero ky ;
+  suc e -> \ he kj -> kj } ;
+
+PF (k y : Nat) (ky : IsT (not (eqN y (suc k)))) (j : Nat)
+  : (e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rFN (suc k) j e) y)) = split {
+  zero -> \ he kj -> kj ;
+  suc e -> \ he kj -> max-or (\ v -> IsT (not (eqN v y))) j (suc k) kj (neq-sym y (suc k) ky) } ;
+
+------------------------------------------------------------------------
+-- a retraction read on generalised points (f , i) : W -> [m+1] * [1]
+
+module DRet (m : Nat) (rN : Nat -> Nat -> Nat)
+  (rng : (j e : Nat) -> IsT (leb j (suc m)) -> IsT (leb (rN j e) (suc m)))
+  (mon : (j e j' e' : Nat) -> IsT (leb e (suc zero)) -> IsT (leb e' (suc zero))
+         -> IsT (leb j j') -> IsT (leb e e') -> IsT (leb (rN j e) (rN j' e'))) {
+  module R = Retr[m, rN, rng, mon] ;
+
+  X : Ob = lin (suc m) ;
+  XI : Ob = prodP X Iv ;
+
+  rD (W : Ob) (f : Hom W X) (i : Hom W Iv) : Hom W X = compH W XI X R.r (pairH X Iv W f i) ;
+
+  rDn (V W : Ob) (g : Hom V W) (f : Hom W X) (i : Hom W Iv)
+    : Id (Hom V X) (compH V W X (rD W f i) g) (rD V (compH V W X f g) (compH V W Iv i g)) =
+    transH (comp-assoc V W XI X R.r (pairH X Iv W f i) g)
+           (apH (\ k -> compH V XI X R.r k) (pair-nat V W X Iv f i g)) ;
+
+  -- the value of rD at s:  rN (f s) (i s)
+  rD-app (W : Ob) (f : Hom W X) (i : Hom W Iv) (s : El W)
+    : Id Tree (app W X (rD W f i) s).1 (leaf (rN (vnum (app W X f s).1) (vnum (app W Iv i s).1))) =
+    transH (app-compH1 W XI X R.r (pairH X Iv W f i) s)
+      (R.r-pt (app W Iv i s).1 (app W Iv i s).2 (app W X f s).1 (app W X f s).2 (app W XI (pairH X Iv W f i) s).2) ;
+
+  -- R1: at an end where rN is the identity, rD is the first component
+  rD-end (eN : El Iv) (fix : (j : Nat) -> Id Nat (rN j (vnum eN.1)) j) (W : Ob) (f : Hom W X)
+    : Id (Hom W X) (rD W f (constH W Iv eN)) f =
+    hom-eq W X (rD W f (constH W Iv eN)) f (\ s ->
+      transH (rD-app W f (constH W Iv eN) s)
+        (transH (lf (rN (vnum (app W X f s).1) (vnum eN.1)) (vnum (app W X f s).1) (fix (vnum (app W X f s).1)))
+                (symH (lin-leaf (suc m) (app W X f s).1 (app W X f s).2)))) ;
+
+  -- R3: missing y is preserved when rN preserves it
+  rD-miss (y : Nat) (P : (j e : Nat) -> IsT (leb e (suc zero)) -> IsT (not (eqN j y)) -> IsT (not (eqN (rN j e) y)))
+    (W : Ob) (f : Hom W X) (i : Hom W Iv) (ms : Miss W m y f) : Miss W m y (rD W f i) =
+    R.r-miss y P W (pairH X Iv W f i) ms ;
+} ;
+
+module DT (m : Nat) { module RD = DRet[m, \ j e -> rTN j e, RT[m].rng, RT[m].mon] ; } ;
+module DF (m k : Nat) (hk : IsT (leb (suc k) (suc m))) {
+  module RD = DRet[m, \ j e -> rFN (suc k) j e, RF[m, suc k, hk].rng, RF[m, suc k, hk].mon] ;
+} ;
+
+-- the face dl_y misses y (and y /= k)
+i1-dl (m k y : Nat) (ky : IsT (not (eqN y k))) : (t : Tree) (h : IsT (car (lin m) t))
+  -> IsT (QH m k y (app (lin m) (lin (suc m)) (dl m y) (t, h))) = split {
+  leaf j -> \ h -> and-i (not (eqN y k)) (not (eqN (skip y j) y)) ky (skip-miss y j) ;
+  node s t -> \ h -> absurd _ (false-true h) } ;

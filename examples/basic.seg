@@ -1,0 +1,81 @@
+-- basic.seg: the core, levels, constraints, modules.
+
+level a b ;
+constraint a < b ;
+
+data N = zero | suc (n : N) ;
+data Bool = true | false ;
+data Empty = ;
+
+plus : N -> N -> N = split {
+  zero  -> \ n -> n ;
+  suc p -> \ n -> suc (plus p n)
+} ;
+
+one : N = suc zero ;
+two : N = plus one one ;
+#normal two ;
+#conv two = suc (suc zero) ;
+
+-- small data types live in every universe
+nat_a : U a = N ;
+nat_b : U b = N ;
+
+-- cumulativity
+id (A : U a) (x : A) : A = x ;
+idN : N -> N = id N ;
+ua : U a+ = U a ;
+#fails { bad : U a = U a ; } ;
+
+-- level products
+idP : [c] (A : U c) -> A -> A = <c> \ A x -> x ;
+idPN : N -> N = idP @a N ;
+idPU : U a -> U a = idP @(a+) (U a) ;
+
+-- constraint products: U b : U c needs b < c
+lift : [b < a] U a = U b ;
+#fails { lift2 : U a = U b ; } ;
+
+-- the identity type
+sym (A : U a) (x y : A) (p : Id A x y) : Id A y x =
+  idJ A x (\ z q -> Id A z x) (refl x) y p ;
+symTest : Id N one one = sym N one one (refl one) ;
+#normal symTest ;
+
+-- records with eta
+Pt : U a = sig { x : N ; y : N } ;
+origin : Pt = struct { x = zero ; y = zero } ;
+#normal origin.y ;
+etaRec (p : Pt) : Id Pt p (struct { x = p.x ; y = p.y }) = refl p ;
+Sg (A : U a) (B : A -> U a) : U a = (x : A) * B x ;
+etaSig (A : U a) (B : A -> U a) (p : Sg A B) : Id (Sg A B) p (p.1, p.2) = refl p ;
+
+-- a module with parameters
+module Mon (A : U a) (e : A) (op : A -> A -> A) {
+  twice (x : A) : A = op x x ;
+  four (x : A) : A = twice (twice x) ;
+} ;
+
+module NM = Mon[N, zero, plus] ;
+#normal NM.four one ;
+-- sharing: two accesses to the same instance member are the same object
+share : Id (N -> N) (Mon[N, zero, plus].twice) (NM.twice) = refl NM.twice ;
+
+open Mon[N, zero, plus] ;
+#normal four two ;
+
+-- level parameters of modules and constraints between them
+module Lift (c d : Level) {
+  constraint c < d ;
+  up : U d = U c ;
+} ;
+upOk : U b+ = Lift[a, b].up ;
+#fails { upBad : U a+ = Lift[b, a].up ; } ;
+
+-- a module with level parameters only, and nested modules sharing params
+module Outer (A : U a) {
+  module Inner { k (x : A) : A = x ; } ;
+  kk (x : A) : A = Inner.k (Inner.k x) ;
+} ;
+#normal Outer[N].kk one ;
+#normal Outer[N].Inner.k two ;

@@ -1,0 +1,237 @@
+-- Prelude.seg: MODEL/Prelude.agda.  Identity types (the primitive Id and
+-- J), Sigma, h-levels, Hedberg, equivalences.  No axioms.
+--
+-- A segment with one level parameter.  Agda's lemmas take {l m : Level};
+-- with cumulative universes one level suffices: Prelude[l] applies to every
+-- type in U l, hence to every type of a lower level.
+--
+-- Agda proves these by matching on refl; here each is one J.  There are no
+-- implicit arguments, so endpoints are explicit.
+
+level l ;
+open Base ;
+
+absurd (A : U l) : Empty -> A = split { } ;
+
+------------------------------------------------------------------------
+-- paths
+
+sym (A : U l) (x y : A) (p : Id A x y) : Id A y x =
+  idJ A x (\ z q -> Id A z x) (refl x) y p ;
+
+-- by J on the second path, so that  trans p refl = p
+trans (A : U l) (x y z : A) (p : Id A x y) (q : Id A y z) : Id A x z =
+  idJ A y (\ w r -> Id A x w) p z q ;
+
+ap (A B : U l) (f : A -> B) (x y : A) (p : Id A x y) : Id B (f x) (f y) =
+  idJ A x (\ z q -> Id B (f x) (f z)) (refl (f x)) y p ;
+
+subst (A : U l) (P : A -> U l) (x y : A) (p : Id A x y) (u : P x) : P y =
+  idJ A x (\ z q -> P z) u y p ;
+
+coe (A B : U l) (p : Id (U l) A B) (a : A) : B =
+  idJ (U l) A (\ X q -> X) a B p ;
+
+happly (A : U l) (B : A -> U l) (f g : (x : A) -> B x)
+       (p : Id ((x : A) -> B x) f g) (x : A) : Id (B x) (f x) (g x) =
+  idJ ((x : A) -> B x) f (\ h q -> Id (B x) (f x) (h x)) (refl (f x)) g p ;
+
+trans-refl-l (A : U l) (x y : A) (p : Id A x y)
+  : Id (Id A x y) (trans A x x y (refl x) p) p =
+  idJ A x (\ z q -> Id (Id A x z) (trans A x x z (refl x) q) q) (refl (refl x)) y p ;
+
+trans-sym-l (A : U l) (x y : A) (p : Id A x y)
+  : Id (Id A y y) (trans A y x y (sym A x y p) p) (refl y) =
+  idJ A x (\ z q -> Id (Id A z z) (trans A z x z (sym A x z q) q) (refl z)) (refl (refl x)) y p ;
+
+-- trans (sym a) (trans a p) = p
+trans-cancel (A : U l) (x y z : A) (a : Id A x y) (p : Id A y z)
+  : Id (Id A y z) (trans A y x z (sym A x y a) (trans A x y z a p)) p =
+  idJ A y (\ w r -> Id (Id A y w) (trans A y x w (sym A x y a) (trans A x y w a r)) r)
+      (trans-sym-l A x y a) z p ;
+
+-- sym at U l itself: U l is in U l+, outside this instance of the segment
+symU (A B : U l) (p : Id (U l) A B) : Id (U l) B A =
+  idJ (U l) A (\ Z q -> Id (U l) Z A) (refl A) B p ;
+
+coe-sym (A B : U l) (p : Id (U l) A B) (b : B)
+  : Id B (coe A B p (coe B A (symU A B p) b)) b =
+  idJ (U l) A (\ X q -> (b : X) -> Id X (coe A X q (coe X A (symU A X q) b)) b)
+      (\ b -> refl b) B p b ;
+
+------------------------------------------------------------------------
+-- h-levels
+
+isProp (A : U l) : U l = (x y : A) -> Id A x y ;
+isSet (A : U l) : U l = (x y : A) -> isProp (Id A x y) ;
+
+-- a retract of a proposition is a proposition
+retract-prop (A B : U l) (s : A -> B) (r : B -> A)
+  (h : (a : A) -> Id A (r (s a)) a) (pB : isProp B) : isProp A =
+  \ a a' -> trans A a (r (s a)) a' (sym A (r (s a)) a (h a))
+              (trans A (r (s a)) (r (s a')) a'
+                 (ap B A r (s a) (s a') (pB (s a) (s a'))) (h a')) ;
+
+-- paths in a Sigma type whose second component is a proposition
+Sigma-eq (A : U l) (B : A -> U l) (a a' : A) (b : B a) (b' : B a')
+  (p : Id A a a') (pB : isProp (B a')) : Id ((x : A) * B x) (a, b) (a', b') =
+  idJ A a (\ z q -> isProp (B z) -> (b' : B z) -> Id ((x : A) * B x) (a, b) (z, b'))
+      (\ pB0 b0 -> ap (B a) ((x : A) * B x) (\ u -> (a, u)) b b0 (pB0 b b0))
+      a' p pB b' ;
+
+isProp-Sigma (A : U l) (B : A -> U l) (pA : isProp A) (pB : (a : A) -> isProp (B a))
+  : isProp ((x : A) * B x) =
+  \ u v -> Sigma-eq A B u.1 v.1 u.2 v.2 (pA u.1 v.1) (pB v.1) ;
+
+isProp-Empty : isProp Empty = \ e -> absurd ((y : Empty) -> Id Empty e y) e ;
+
+------------------------------------------------------------------------
+-- Local Hedberg (HoTT book 7.2.2): a reflexive propositional relation
+-- which implies equality makes the identity type propositional.  Agda's
+-- anonymous parametrised module is a segment.
+
+module Hedberg (A : U l) (x : A) (R : A -> U l)
+               (Rprop : (y : A) -> isProp (R y)) (r : R x)
+               (f : (y : A) -> R y -> Id A x y) {
+
+  fx : Id A x x = f x r ;
+
+  canon (y : A) (p : Id A x y)
+    : Id (Id A x y) (trans A x x y fx p) (f y (subst A R x y p r)) =
+    idJ A x (\ z q -> Id (Id A x z) (trans A x x z fx q) (f z (subst A R x z q r)))
+        (refl fx) y p ;
+
+  -- trans (sym fx) : Id A x y -> Id A x y
+  ts (y : A) (q : Id A x y) : Id A x y = trans A x x y (sym A x x fx) q ;
+
+  norm (y : A) (p : Id A x y)
+    : Id (Id A x y) p (ts y (f y (subst A R x y p r))) =
+    trans (Id A x y) p (ts y (trans A x x y fx p)) (ts y (f y (subst A R x y p r)))
+      (sym (Id A x y) (ts y (trans A x x y fx p)) p (trans-cancel A x x y fx p))
+      (ap (Id A x y) (Id A x y) (ts y) (trans A x x y fx p) (f y (subst A R x y p r)) (canon y p)) ;
+
+  hedberg (y : A) : isProp (Id A x y) = \ p p' ->
+    trans (Id A x y) p (ts y (f y (subst A R x y p r))) p'
+      (norm y p)
+      (trans (Id A x y) (ts y (f y (subst A R x y p r))) (ts y (f y (subst A R x y p' r))) p'
+        (ap (R y) (Id A x y) (\ u -> ts y (f y u)) (subst A R x y p r) (subst A R x y p' r)
+            (Rprop y (subst A R x y p r) (subst A R x y p' r)))
+        (sym (Id A x y) p' (ts y (f y (subst A R x y p' r))) (norm y p'))) ;
+} ;
+
+prop-to-set (A : U l) (pA : isProp A) : isSet A = \ x ->
+  Hedberg[A, x, \ y -> Top, \ y -> isTop, tt, \ y u -> pA x y].hedberg ;
+
+------------------------------------------------------------------------
+-- Equivalences (bi-invertible maps)
+
+isEquiv (A B : U l) (f : A -> B) : U l = sig {
+  sec    : B -> A ;
+  sec-eq : (b : B) -> Id B (f (sec b)) b ;
+  ret    : B -> A ;
+  ret-eq : (a : A) -> Id A (ret (f a)) a
+} ;
+
+-- the section is also a retraction
+sec-ret (A B : U l) (f : A -> B) (e : isEquiv A B f) (a : A) : Id A (e.sec (f a)) a =
+  trans A (e.sec (f a)) (e.ret (f (e.sec (f a)))) a
+    (sym A (e.ret (f (e.sec (f a)))) (e.sec (f a)) (e.ret-eq (e.sec (f a))))
+    (trans A (e.ret (f (e.sec (f a)))) (e.ret (f a)) a
+       (ap B A e.ret (f (e.sec (f a))) (f a) (e.sec-eq (f a))) (e.ret-eq a)) ;
+
+Equiv (A B : U l) : U l = (f : A -> B) * isEquiv A B f ;
+
+qinv (A B : U l) (f : A -> B) (g : B -> A)
+  (fg : (b : B) -> Id B (f (g b)) b) (gf : (a : A) -> Id A (g (f a)) a) : isEquiv A B f =
+  struct { sec = g ; sec-eq = fg ; ret = g ; ret-eq = gf } ;
+
+idEquiv (A : U l) : Equiv A A =
+  (\ a -> a, qinv A A (\ a -> a) (\ a -> a) (\ a -> refl a) (\ a -> refl a)) ;
+
+Iso (A B : U l) : U l = sig {
+  fun     : A -> B ;
+  inv     : B -> A ;
+  fun-inv : (b : B) -> Id B (fun (inv b)) b ;
+  inv-fun : (a : A) -> Id A (inv (fun a)) a
+} ;
+
+------------------------------------------------------------------------
+-- More on Sigma types and sets
+
+Sigma-path (A : U l) (B : A -> U l) (a a' : A) (b : B a) (b' : B a')
+  (p : Id A a a') (q : Id (B a') (subst A B a a' p b) b')
+  : Id ((x : A) * B x) (a, b) (a', b') =
+  idJ A a (\ z p1 -> (b' : B z) -> Id (B z) (subst A B a z p1 b) b'
+                    -> Id ((x : A) * B x) (a, b) (z, b'))
+      (\ b0 q0 -> idJ (B a) b (\ w q1 -> Id ((x : A) * B x) (a, b) (a, w)) (refl (a, b)) b0 q0)
+      a' p b' q ;
+
+-- the two components of a path between pairs
+sPath (A : U l) (B : A -> U l) (u v : (x : A) * B x) (P : Id ((x : A) * B x) u v)
+  : (p : Id A u.1 v.1) * Id (B v.1) (subst A B u.1 v.1 p u.2) v.2 =
+  idJ ((x : A) * B x) u (\ w Q -> (p : Id A u.1 w.1) * Id (B w.1) (subst A B u.1 w.1 p u.2) w.2)
+      (refl u.1, refl u.2) v P ;
+
+rsPath (A : U l) (B : A -> U l) (u v : (x : A) * B x) (P : Id ((x : A) * B x) u v)
+  : Id (Id ((x : A) * B x) u v)
+       (Sigma-path A B u.1 v.1 u.2 v.2 (sPath A B u v P).1 (sPath A B u v P).2) P =
+  idJ ((x : A) * B x) u
+      (\ w Q -> Id (Id ((x : A) * B x) u w)
+                   (Sigma-path A B u.1 w.1 u.2 w.2 (sPath A B u w Q).1 (sPath A B u w Q).2) Q)
+      (refl (refl u)) v P ;
+
+isSet-Sigma (A : U l) (B : A -> U l) (sA : isSet A) (sB : (a : A) -> isSet (B a))
+  : isSet ((x : A) * B x) = \ u v ->
+  retract-prop (Id ((x : A) * B x) u v)
+    ((p : Id A u.1 v.1) * Id (B v.1) (subst A B u.1 v.1 p u.2) v.2)
+    (sPath A B u v)
+    (\ w -> Sigma-path A B u.1 v.1 u.2 v.2 w.1 w.2)
+    (rsPath A B u v)
+    (isProp-Sigma (Id A u.1 v.1) (\ p -> Id (B v.1) (subst A B u.1 v.1 p u.2) v.2)
+       (sA u.1 v.1) (\ p -> sB v.1 (subst A B u.1 v.1 p u.2) v.2)) ;
+
+-- a retract of a set is a set
+isSet-retract (A B : U l) (s : A -> B) (r : B -> A)
+  (h : (a : A) -> Id A (r (s a)) a) (sB : isSet B) : isSet A = \ a a' ->
+  retract-prop (Id A a a') (Id B (s a) (s a'))
+    (ap A B s a a')
+    (\ q -> trans A a (r (s a)) a' (sym A (r (s a)) a (h a))
+              (trans A (r (s a)) (r (s a')) a' (ap B A r (s a) (s a') q) (h a')))
+    (\ p -> idJ A a (\ a1 p1 -> Id (Id A a a1)
+                 (trans A a (r (s a)) a1 (sym A (r (s a)) a (h a))
+                    (trans A (r (s a)) (r (s a1)) a1 (ap B A r (s a) (s a1) (ap A B s a a1 p1)) (h a1)))
+                 p1)
+              (trans (Id A a a)
+                 (trans A a (r (s a)) a (sym A (r (s a)) a (h a))
+                    (trans A (r (s a)) (r (s a)) a (refl (r (s a))) (h a)))
+                 (trans A a (r (s a)) a (sym A (r (s a)) a (h a)) (h a))
+                 (refl a)
+                 (ap (Id A (r (s a)) a) (Id A a a) (trans A a (r (s a)) a (sym A (r (s a)) a (h a)))
+                     (trans A (r (s a)) (r (s a)) a (refl (r (s a))) (h a)) (h a)
+                     (trans-refl-l A (r (s a)) a (h a)))
+                 (trans-sym-l A (r (s a)) a (h a)))
+              a' p)
+    (sB (s a) (s a')) ;
+
+-- a loop in a set is refl
+loop-refl (A : U l) (sA : isSet A) (x : A) (q : Id A x x) : Id (Id A x x) q (refl x) =
+  sA x x q (refl x) ;
+
+-- subst along a path read through a projection
+subst-proj (A X : U l) (g : A -> X) (F : A -> U l) (H : X -> U l)
+  (pi : (a : A) -> F a -> H (g a)) (a a' : A) (P : Id A a a') (u : F a)
+  : Id (H (g a')) (pi a' (subst A F a a' P u)) (subst X H (g a) (g a') (ap A X g a a' P) (pi a u)) =
+  idJ A a (\ z Q -> Id (H (g z)) (pi z (subst A F a z Q u)) (subst X H (g a) (g z) (ap A X g a z Q) (pi a u)))
+      (refl (pi a u)) a' P ;
+
+subst-ap (A X : U l) (g : A -> X) (H : X -> U l) (a a' : A) (P : Id A a a') (u : H (g a))
+  : Id (H (g a')) (subst A (\ a1 -> H (g a1)) a a' P u) (subst X H (g a) (g a') (ap A X g a a' P) u) =
+  idJ A a (\ z Q -> Id (H (g z)) (subst A (\ a1 -> H (g a1)) a z Q u) (subst X H (g a) (g z) (ap A X g a z Q) u))
+      (refl u) a' P ;
+
+Sigma-snd (A : U l) (B : A -> U l) (a a' : A) (b : B a) (b' : B a')
+  (Q : Id ((x : A) * B x) (a, b) (a', b'))
+  : Id (B a') (subst A B a a' (ap ((x : A) * B x) A (\ w -> w.1) (a, b) (a', b') Q) b) b' =
+  idJ ((x : A) * B x) (a, b)
+      (\ w Q1 -> Id (B w.1) (subst A B a w.1 (ap ((x : A) * B x) A (\ w1 -> w1.1) (a, b) w Q1) b) w.2)
+      (refl b) (a', b') Q ;

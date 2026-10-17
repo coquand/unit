@@ -1,0 +1,520 @@
+-- CLocEZ.seg (L9): the image factorisation in Delta (localisation.tex,
+-- Theorem DA, the Eilenberg-Zilber extension), on numbers.  For a monotone
+-- h : [0 , W] -> Nat:
+--
+--   sN v      the number of jumps of h below v (h i /= h (i+1), i < v):
+--             monotone, steps of 0 or 1, sN 0 = 0
+--   secN t    the first v <= W with sN v = t (a section)
+--   mN t      h (secN t): strictly increasing on [0 , sN W]
+--   fac       h v = mN (sN v)
+--   uniq      any s' with s' 0 = 0 and steps of 0 or 1, and m' strictly
+--             increasing with h v = m' (s' v), has s' = sN on [0 , W]
+--
+-- So h = m . sigma with m strict and sigma surjective, uniquely.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+open Trees[a] ;
+open Arith[a] ;
+open CDeltaNat[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+module SU = CDSurj[a] ;
+
+------------------------------------------------------------------------
+-- small facts on numbers
+
+-- i <= suc j and i /= suc j give i <= j
+leb-suc-ne : (j i : Nat) -> IsT (leb i (suc j)) -> IsT (not (eqN i (suc j))) -> IsT (leb i j) = split {
+  zero -> split {
+    zero -> \ h k -> refl true ;
+    suc i -> \ h k -> absurd _ (false-true (transH (symH (apH not (eqN-refl zero))) (substH (\ x -> IsT (not (eqN (suc x) (suc zero)))) (leb-zero i h) k))) } ;
+  suc j -> split {
+    zero -> \ h k -> refl true ;
+    suc i -> \ h k -> leb-suc-ne j i h k } } ;
+
+-- x <= y <= suc x gives y = x or y = suc x
+two-way (x y : Nat) (l : IsT (leb x y)) (u : IsT (leb y (suc x))) (R : U a) (k0 : Id Nat y x -> R) (k1 : Id Nat y (suc x) -> R) : R =
+  eqN-dec R y (suc x) k1 (\ ne -> k0 (leb-antisym y x (leb-suc-ne x y u ne) l))
+ where { leb-antisym : (p q : Nat) -> IsT (leb p q) -> IsT (leb q p) -> Id Nat p q = split {
+           zero -> split { zero -> \ h k -> refl zero ; suc q -> \ h k -> absurd _ (false-true k) } ;
+           suc p -> split { zero -> \ h k -> absurd _ (false-true h) ;
+                            suc q -> \ h k -> apH (\ z -> suc z) (leb-antisym p q h k) } } ; } ;
+
+-- not b = false gives b
+notF : (b : Bool) -> Id Bool (not b) false -> IsT b = split {
+  true -> \ e -> refl true ;
+  false -> \ e -> absurd _ (false-true (symH e)) } ;
+
+ltb-irr' (x : Nat) (l : IsT (ltb x x)) : Empty = false-true (transH (symH (ltb-self x)) l)
+ where { ltb-self : (y : Nat) -> Id Bool (ltb y y) false = split { zero -> refl false ; suc y -> ltb-self y } ; } ;
+
+------------------------------------------------------------------------
+-- the factorisation of a monotone h
+
+module EZ (W : Nat) (h : Nat -> Nat) (hm : (i j : Nat) -> IsT (leb i j) -> IsT (leb (h i) (h j))) {
+
+  jp (i : Nat) : Bool = not (eqN (h i) (h (suc i))) ;
+
+  sN : Nat -> Nat = split {
+    zero -> zero ;
+    suc v -> ifB (jp v) (suc (sN v)) (sN v) } ;
+
+  -- the steps
+  step (v : Nat) (R : U a) (k0 : Id Bool (jp v) false -> Id Nat (sN (suc v)) (sN v) -> R)
+    (k1 : IsT (jp v) -> Id Nat (sN (suc v)) (suc (sN v)) -> R) : R =
+    bcase R (jp v) (\ t -> k1 t (ifB-t (jp v) (suc (sN v)) (sN v) t)) (\ f -> k0 f (ifB-f (jp v) (suc (sN v)) (sN v) f)) ;
+
+  step-lo (v : Nat) : IsT (leb (sN v) (sN (suc v))) =
+    step v (IsT (leb (sN v) (sN (suc v))))
+      (\ f e -> substH (\ z -> IsT (leb (sN v) z)) (symH e) (leb-refl (sN v)))
+      (\ t e -> substH (\ z -> IsT (leb (sN v) z)) (symH e) (leb-suc (sN v))) ;
+
+  step-hi (v : Nat) : IsT (leb (sN (suc v)) (suc (sN v))) =
+    step v (IsT (leb (sN (suc v)) (suc (sN v))))
+      (\ f e -> substH (\ z -> IsT (leb z (suc (sN v)))) (symH e) (leb-suc (sN v)))
+      (\ t e -> substH (\ z -> IsT (leb z (suc (sN v)))) (symH e) (leb-refl (sN v))) ;
+
+  -- no jump where sN does not move
+  no-jump (v : Nat) (e : Id Nat (sN (suc v)) (sN v)) : Id Nat (h v) (h (suc v)) =
+    step v (Id Nat (h v) (h (suc v)))
+      (\ f e' -> eqN-sound (h v) (h (suc v)) (notF (eqN (h v) (h (suc v))) f))
+      (\ t e' -> absurd _ (ltb-irr' (sN v) (substH (\ z -> IsT (ltb (sN v) z)) (transH (symH e') e) (leb-refl (sN v))))) ;
+
+  -- a jump where sN moves
+  jump (v : Nat) (e : Id Nat (sN (suc v)) (suc (sN v))) : IsT (not (eqN (h v) (h (suc v)))) =
+    step v (IsT (not (eqN (h v) (h (suc v)))))
+      (\ f e' -> absurd _ (ltb-irr' (sN v) (substH (\ z -> IsT (ltb (sN v) z)) (transH (symH e) e') (leb-refl (sN v)))))
+      (\ t e' -> t) ;
+
+  -- monotone
+  smono : (j i : Nat) -> IsT (leb i j) -> IsT (leb (sN i) (sN j)) = split {
+    zero -> \ i l -> substH (\ z -> IsT (leb (sN z) zero)) (symH (leb-zero i l)) (refl true) ;
+    suc j -> \ i l -> eqN-dec (IsT (leb (sN i) (sN (suc j)))) i (suc j)
+      (\ e -> substH (\ z -> IsT (leb (sN z) (sN (suc j)))) (symH e) (leb-refl (sN (suc j))))
+      (\ ne -> leb-trans (sN i) (sN j) (sN (suc j)) (smono j i (leb-suc-ne j i l ne)) (step-lo j)) } ;
+
+  -- an intermediate value: every t <= sN v is a value below v
+  ivt : (v t : Nat) -> IsT (leb t (sN v)) -> (u : Nat) * (IsT (leb u v) * Id Nat (sN u) t) = split {
+    zero -> \ t l -> (zero, (refl true, symH (leb-zero t l))) ;
+    suc v -> \ t l -> ltb-dec ((u : Nat) * (IsT (leb u (suc v)) * Id Nat (sN u) t)) (sN v) t
+      (\ gt -> (suc v, (leb-refl v,
+          two-way (sN v) (sN (suc v)) (step-lo v) (step-hi v) (Id Nat (sN (suc v)) t)
+            (\ e -> absurd _ (ltb-irr' (sN v) (ltb-leb-trans (sN v) t (sN v) gt (substH (\ z -> IsT (leb t z)) e l))))
+            (\ e -> leb-anti (sN (suc v)) t (substH (\ z -> IsT (leb z t)) (symH e) gt) l))))
+      (\ le -> ((ivt v t le).1, (leb-trans (ivt v t le).1 v (suc v) (ivt v t le).2.1 (leb-suc v), (ivt v t le).2.2))) }
+   where {
+    leb-anti : (p q : Nat) -> IsT (leb p q) -> IsT (leb q p) -> Id Nat p q = split {
+      zero -> split { zero -> \ x y -> refl zero ; suc q -> \ x y -> absurd _ (false-true y) } ;
+      suc p -> split { zero -> \ x y -> absurd _ (false-true x) ; suc q -> \ x y -> apH (\ z -> suc z) (leb-anti p q x y) } } ; } ;
+
+  r : Nat = sN W ;
+
+  P (t : Nat) (u : Nat) : Bool = eqN (sN u) t ;
+
+  secN (t : Nat) : Nat = SU.first W (P t) ;
+
+  secN-le (t : Nat) : IsT (leb (secN t) W) = SU.first-le W (P t) ;
+
+  -- the section
+  secN-spec (t : Nat) (lt : IsT (leb t r)) : Id Nat (sN (secN t)) t =
+    eqN-sound (sN (secN t)) t
+      (SU.first-spec W (P t) (ivt W t lt).1 (ivt W t lt).2.1
+         (substH (\ z -> IsT (eqN z t)) (symH (ivt W t lt).2.2) (eqN-refl t))).1 ;
+
+  secN-min (t : Nat) (u : Nat) (hu : IsT (leb u W)) (e : Id Nat (sN u) t) : IsT (leb (secN t) u) =
+    (SU.first-spec W (P t) u hu (substH (\ z -> IsT (eqN z t)) (symH e) (eqN-refl t))).2 ;
+
+  -- h is constant where sN is
+  const-on : (v u : Nat) -> IsT (leb u v) -> Id Nat (sN u) (sN v) -> Id Nat (h u) (h v) = split {
+    zero -> \ u l e -> apH h (leb-zero u l) ;
+    suc v -> \ u l e -> eqN-dec (Id Nat (h u) (h (suc v))) u (suc v)
+      (\ q -> apH h q)
+      (\ ne -> transH (const-on v u (leb-suc-ne v u l ne)
+                         (leb-anti2 (sN u) (sN v) (smono v u (leb-suc-ne v u l ne)) (substH (\ z -> IsT (leb (sN v) z)) (symH e) (step-lo v))))
+                      (no-jump v (transH (symH e) (leb-anti2 (sN u) (sN v) (smono v u (leb-suc-ne v u l ne)) (substH (\ z -> IsT (leb (sN v) z)) (symH e) (step-lo v)))))) }
+   where { leb-anti2 : (p q : Nat) -> IsT (leb p q) -> IsT (leb q p) -> Id Nat p q = split {
+             zero -> split { zero -> \ x y -> refl zero ; suc q -> \ x y -> absurd _ (false-true y) } ;
+             suc p -> split { zero -> \ x y -> absurd _ (false-true x) ; suc q -> \ x y -> apH (\ z -> suc z) (leb-anti2 p q x y) } } ; } ;
+
+  mN (t : Nat) : Nat = h (secN t) ;
+
+  -- the factorisation
+  fac (v : Nat) (hv : IsT (leb v W)) : Id Nat (h v) (mN (sN v)) =
+    symH (const-on v (secN (sN v)) (secN-min (sN v) v hv (refl (sN v))) (secN-spec (sN v) (smono W v hv))) ;
+
+  ----------------------------------------------------------------------
+  -- m is strictly increasing on [0 , r]
+
+  consec (t : Nat) : (b : Nat) -> IsT (leb b W) -> Id Nat (sN b) (suc t)
+    -> ((u : Nat) -> IsT (leb u W) -> Id Nat (sN u) (suc t) -> IsT (leb b u)) -> IsT (ltb (mN t) (h b)) = split {
+    zero -> \ hb eb mb -> absurd _ (zero-suc t eb) ;
+    suc b -> \ hb eb mb ->
+      two-way (sN b) (sN (suc b)) (step-lo b) (step-hi b) (IsT (ltb (mN t) (h (suc b))))
+        (\ e -> absurd _ (ltb-irr' b (mb b (leb-trans b (suc b) W (leb-suc b) hb) (transH (symH e) eb))))
+        (\ e -> substH (\ z -> IsT (ltb z (h (suc b))))
+                   (transH (fac b (leb-trans b (suc b) W (leb-suc b) hb)) (apH mN (suc-inj (sN b) t (transH (symH e) eb))))
+                   (leb-neq' (h b) (h (suc b)) (hm b (suc b) (leb-suc b)) (jump b e))) }
+   where { leb-neq' (x y : Nat) (l : IsT (leb x y)) (k : IsT (not (eqN x y))) : IsT (ltb x y) = leb-neq x y l k ; } ;
+
+  mN-step (t : Nat) (lt : IsT (ltb t r)) : IsT (ltb (mN t) (mN (suc t))) =
+    consec t (secN (suc t)) (secN-le (suc t)) (secN-spec (suc t) lt)
+      (\ u hu e -> secN-min (suc t) u hu e) ;
+
+  ----------------------------------------------------------------------
+  -- monotone everywhere, by clamping to [0 , r]
+
+  secC (t : Nat) : Nat = secN (CDeltaFact[a].clampN r t) ;
+
+  module SM (t t' : Nat) (l : IsT (leb t t')) (l' : IsT (leb t' r)) {
+    w : (u : Nat) * (IsT (leb u (secN t')) * Id Nat (sN u) t) =
+      ivt (secN t') t (substH (\ z -> IsT (leb t z)) (symH (secN-spec t' l')) l) ;
+    res : IsT (leb (secN t) (secN t')) =
+      leb-trans (secN t) w.1 (secN t') (secN-min t w.1 (leb-trans w.1 (secN t') W w.2.1 (secN-le t')) w.2.2) w.2.1 ;
+  } ;
+
+  secN-mono (t t' : Nat) (l : IsT (leb t t')) (l' : IsT (leb t' r)) : IsT (leb (secN t) (secN t')) = SM[t, t', l, l'].res ;
+
+  secC-mono (t t' : Nat) (l : IsT (leb t t')) : IsT (leb (secC t) (secC t')) =
+    secN-mono (CDeltaFact[a].clampN r t) (CDeltaFact[a].clampN r t') (CDeltaFact[a].clamp-mono r t t' l) (CDeltaFact[a].clamp-ok r t') ;
+
+  secC-le (t : Nat) : IsT (leb (secC t) W) = secN-le (CDeltaFact[a].clampN r t) ;
+
+  mC (t : Nat) : Nat = h (secC t) ;
+
+  mC-mono (t t' : Nat) (l : IsT (leb t t')) : IsT (leb (mC t) (mC t')) = hm (secC t) (secC t') (secC-mono t t' l) ;
+
+  secC-eq (t : Nat) (lt : IsT (leb t r)) : Id Nat (secC t) (secN t) = apH secN (CDeltaFact[a].clamp-eq r t lt) ;
+
+  -- the factorisation and the section, clamped
+  facC (v : Nat) (hv : IsT (leb v W)) : Id Nat (h v) (mC (sN v)) =
+    transH (fac v hv) (apH h (symH (secC-eq (sN v) (smono W v hv)))) ;
+
+  secC-spec (t : Nat) (lt : IsT (leb t r)) : Id Nat (sN (secC t)) t = transH (apH sN (secC-eq t lt)) (secN-spec t lt) ;
+
+  mC-step (t : Nat) (lt : IsT (ltb t r)) : IsT (ltb (mC t) (mC (suc t))) =
+    substH (\ z -> IsT (ltb z (mC (suc t)))) (apH h (symH (secC-eq t (ltb-leb t r lt))))
+      (substH (\ z -> IsT (ltb (mN t) z)) (apH h (symH (secC-eq (suc t) lt))) (mN-step t lt)) ;
+
+  -- strictly increasing on [0 , r]
+  mC-strict : (j i : Nat) -> IsT (ltb i j) -> IsT (leb j r) -> IsT (ltb (mC i) (mC j)) = split {
+    zero -> \ i l lr -> absurd _ (false-true l) ;
+    suc j -> \ i l lr -> leb-ltb-trans (mC i) (mC j) (mC (suc j)) (mC-mono i j l) (mC-step j lr) } ;
+
+  ----------------------------------------------------------------------
+  -- sigma and h have the same fibres
+
+  sig-resp (x y : Nat) (hx : IsT (leb x W)) (hy : IsT (leb y W)) (e : Id Nat (sN x) (sN y)) : Id Nat (h x) (h y) =
+    transH (facC x hx) (transH (apH mC e) (symH (facC y hy))) ;
+
+  sig-lt (x y : Nat) (hx : IsT (leb x W)) (hy : IsT (leb y W)) (e : Id Nat (h x) (h y)) (l : IsT (ltb (sN x) (sN y))) : Empty =
+    ltb-irr' (h x) (substH {Nat} (\ z -> IsT (ltb (h x) z)) {mC (sN y)} {h x} (symH (transH e (facC y hy)))
+      (substH {Nat} (\ z -> IsT (ltb z (mC (sN y)))) {mC (sN x)} {h x} (symH (facC x hx))
+        (mC-strict (sN y) (sN x) l (smono W y hy)))) ;
+
+  sig-inj (x y : Nat) (hx : IsT (leb x W)) (hy : IsT (leb y W)) (e : Id Nat (h x) (h y)) : Id Nat (sN x) (sN y) =
+    eqN-dec (Id Nat (sN x) (sN y)) (sN x) (sN y) (\ q -> q)
+      (\ ne -> ltb-dec (Id Nat (sN x) (sN y)) (sN x) (sN y)
+         (\ l -> absurd _ (sig-lt x y hx hy e l))
+         (\ g -> absurd _ (sig-lt y x hy hx (symH e) (leb-neq (sN y) (sN x) g (neq-sym (sN x) (sN y) ne))))) ;
+
+  ----------------------------------------------------------------------
+  -- uniqueness: a factorisation h = m' s' with s' starting at 0, steps of
+  -- 0 or 1, and m' strictly increasing on the values of s', has s' = sN
+
+  module Uq (s' : Nat -> Nat) (R' : Nat) (s0 : Id Nat (s' zero) zero)
+    (slo : (v : Nat) -> IsT (leb (s' v) (s' (suc v)))) (shi : (v : Nat) -> IsT (leb (s' (suc v)) (suc (s' v))))
+    (sbd : (v : Nat) -> IsT (leb v W) -> IsT (leb (s' v) R'))
+    (m' : Nat -> Nat) (mst : (i : Nat) -> IsT (ltb i R') -> IsT (ltb (m' i) (m' (suc i))))
+    (hf : (v : Nat) -> IsT (leb v W) -> Id Nat (h v) (m' (s' v))) {
+
+    go : (v : Nat) -> IsT (leb v W) -> Id Nat (s' v) (sN v) = split {
+      zero -> \ hv -> s0 ;
+      suc v -> \ hv ->
+        step v (Id Nat (s' (suc v)) (sN (suc v)))
+          (\ f e -> two-way (s' v) (s' (suc v)) (slo v) (shi v) (Id Nat (s' (suc v)) (sN (suc v)))
+             (\ e2 -> transH e2 (transH (go v (leb-trans v (suc v) W (leb-suc v) hv)) (symH e)))
+             (\ e2 -> absurd _ (ltb-irr' (m' (s' v))
+                 (substH {Nat} (\ z -> IsT (ltb (m' (s' v)) z)) {m' (suc (s' v))} {m' (s' v)}
+                    (symH (transH (symH (hf v (leb-trans v (suc v) W (leb-suc v) hv)))
+                            (transH (no-jump v e) (transH (hf (suc v) hv) (apH m' e2)))))
+                    (mst (s' v) (substH {Nat} (\ z -> IsT (leb z R')) {s' (suc v)} {suc (s' v)} e2 (sbd (suc v) hv)))))))
+          (\ t e -> two-way (s' v) (s' (suc v)) (slo v) (shi v) (Id Nat (s' (suc v)) (sN (suc v)))
+             (\ e2 -> absurd _ (false-true (transH (symH (apH not (eqN-refl (h v))))
+                 (substH {Nat} (\ z -> IsT (not (eqN (h v) z))) {h (suc v)} {h v}
+                    (symH (transH (hf v (leb-trans v (suc v) W (leb-suc v) hv)) (transH (apH m' (symH e2)) (symH (hf (suc v) hv)))))
+                    t))))
+             (\ e2 -> transH e2 (transH (apH (\ z -> suc z) (go v (leb-trans v (suc v) W (leb-suc v) hv))) (symH e)))) } ;
+  } ;
+
+  -- the factorisation is characterised by the lemmas above (Uq): lock it
+  opaque jp ; opaque sN ; opaque secN ;
+} ;
+
+------------------------------------------------------------------------
+-- the factorisation of a map of Delta, h = m . sigma, with a section
+
+module EZH (W N : Nat) (hH : Hom (lin W) (lin N)) {
+  module VF = CDeltaFact[a] ;
+  hN (i : Nat) : Nat = VF.valT W N hH i ;
+  module E = EZ[W, hN, VF.valT-mono W N hH] ;
+  r : Nat = E.r ;
+
+  sigH : Hom (lin W) (lin r) = linH W r E.sN (\ i hi -> E.smono W i hi) (\ i j l -> E.smono j i l) ;
+  secH : Hom (lin r) (lin W) = linH r W E.secC (\ i hi -> E.secC-le i) E.secC-mono ;
+  mH : Hom (lin r) (lin N) = linH r N E.mC (\ i hi -> VF.valT-range W N hH (E.secC i)) E.mC-mono ;
+
+  fac : Id (Hom (lin W) (lin N)) (compH (lin W) (lin r) (lin N) mH sigH) hH =
+    hom-eq (lin W) (lin N) (compH (lin W) (lin r) (lin N) mH sigH) hH
+      (pwl W (lin N) (compH (lin W) (lin r) (lin N) mH sigH) hH (\ i hi ->
+        transH (app-compH1 (lin W) (lin r) (lin N) mH sigH (leaf i, hi))
+          (transH (lf (E.mC (E.sN i)) (hN i) (symH (E.facC i hi))) (symH (VF.valT-tree W N hH i hi))))) ;
+
+  sec : Id (Hom (lin r) (lin r)) (compH (lin r) (lin W) (lin r) sigH secH) (idH (lin r)) =
+    hom-eq (lin r) (lin r) (compH (lin r) (lin W) (lin r) sigH secH) (idH (lin r))
+      (pwl r (lin r) (compH (lin r) (lin W) (lin r) sigH secH) (idH (lin r)) (\ t ht ->
+        transH (app-compH1 (lin r) (lin W) (lin r) sigH secH (leaf t, ht))
+          (transH (lf (E.sN (E.secC t)) t (E.secC-spec t ht)) (symH (app-idH1 (lin r) (leaf t, ht)))))) ;
+
+  strictT : (x : Tree) (hx : IsT (car (lin r) x)) (z : Tree) (hz : IsT (car (lin r) z))
+    -> IsT (lt (lin r) x z) -> IsT (lt (lin N) (app (lin r) (lin N) mH (x, hx)).1 (app (lin r) (lin N) mH (z, hz)).1) = split {
+    leaf i -> \ hx -> split {
+      leaf j -> \ hz l -> lin-lt (E.mC i) (E.mC j) (E.mC-strict j i (lt-lin i j l) hz) ;
+      node c d -> \ hz l -> absurd _ (false-true hz) } ;
+    node s t -> \ hx z hz l -> absurd _ (false-true hx) } ;
+
+  strict : Strict (lin r) (lin N) mH = \ s t l -> strictT s.1 s.2 t.1 t.2 l ;
+
+  -- sigma is strict when h is injective
+  module SigS (inj : (i j : Nat) -> IsT (leb i W) -> IsT (leb j W) -> Id Nat (hN i) (hN j) -> Id Nat i j) {
+    sT : (x : Tree) (hx : IsT (car (lin W) x)) (z : Tree) (hz : IsT (car (lin W) z))
+      -> IsT (lt (lin W) x z) -> IsT (lt (lin r) (app (lin W) (lin r) sigH (x, hx)).1 (app (lin W) (lin r) sigH (z, hz)).1) = split {
+      leaf i -> \ hx -> split {
+        leaf j -> \ hz l -> lin-lt (E.sN i) (E.sN j)
+          (leb-neq (E.sN i) (E.sN j) (E.smono j i (ltb-leb i j (lt-lin i j l)))
+             (nq (E.sN i) (E.sN j) (\ e -> ltb-irr' i
+                (substH {Nat} (\ z -> IsT (ltb i z)) {j} {i} (symH (inj i j hx hz (E.sig-resp i j hx hz e))) (lt-lin i j l))))) ;
+        node c d -> \ hz l -> absurd _ (false-true hz) } ;
+      node s t -> \ hx z hz l -> absurd _ (false-true hx) }
+     where { nq (x y : Nat) (kk : Id Nat x y -> Empty) : IsT (not (eqN x y)) =
+               eqN-dec (IsT (not (eqN x y))) x y (\ q -> absurd _ (kk q)) (\ ne -> ne) ; } ;
+
+    sigStrict : Strict (lin W) (lin r) sigH = \ s t l -> sT s.1 s.2 t.1 t.2 l ;
+  } ;
+} ;
+
+------------------------------------------------------------------------
+-- the image factorisation of a point (G , J) : [W] -> [n] * [1] of the prism:
+-- through the shuffle factor h (CDeltaFact.Fact: v |-> G v + J v), whose
+-- image factorisation gives sigma and the section; the image chain is
+-- (G sec , J sec), and (G , J) = (G sec , J sec) sigma
+
+module EZP (n W : Nat) (G : Hom (lin W) (lin n)) (J : Hom (lin W) Iv) {
+  module F = CDeltaFact[a].Fact[n, W, G, J] ;
+  module Z = EZH[W, suc n, F.h] ;
+  r : Nat = Z.r ;
+  sgm : Hom (lin W) (lin r) = Z.sigH ;
+  sec : Hom (lin r) (lin W) = Z.secH ;
+
+  c1 : Hom (lin r) (lin n) = compH (lin r) (lin W) (lin n) G sec ;
+  c2 : Hom (lin r) Iv = compH (lin r) (lin W) Iv J sec ;
+
+  -- a map through h factors through sigma
+  thru (Y : Ob) (q : Hom (lin (suc n)) Y) (K : Hom (lin W) Y) (e : Id (Hom (lin W) Y) (compH (lin W) (lin (suc n)) Y q F.h) K)
+    : Id (Hom (lin W) Y) (compH (lin W) (lin r) Y (compH (lin r) (lin W) Y K sec) sgm) K =
+    calc (Hom (lin W) Y) {
+        compH (lin W) (lin r) Y (compH (lin r) (lin W) Y K sec) sgm
+      =< apH (\ k -> compH (lin W) (lin r) Y (compH (lin r) (lin W) Y k sec) sgm) (symH e) >
+        compH (lin W) (lin r) Y (compH (lin r) (lin W) Y (compH (lin W) (lin (suc n)) Y q F.h) sec) sgm
+      =< apH (\ k -> compH (lin W) (lin r) Y (compH (lin r) (lin W) Y (compH (lin W) (lin (suc n)) Y q k) sec) sgm) (symH Z.fac) >
+        compH (lin W) (lin r) Y (compH (lin r) (lin W) Y (compH (lin W) (lin (suc n)) Y q (compH (lin W) (lin r) (lin (suc n)) Z.mH sgm)) sec) sgm
+      =< apH (\ k -> compH (lin W) (lin r) Y k sgm)
+           (transH (comp-assoc (lin r) (lin W) (lin (suc n)) Y q (compH (lin W) (lin r) (lin (suc n)) Z.mH sgm) sec)
+             (transH (apH (compH (lin r) (lin (suc n)) Y q) (comp-assoc (lin r) (lin W) (lin r) (lin (suc n)) Z.mH sgm sec))
+               (transH (apH (\ k -> compH (lin r) (lin (suc n)) Y q (compH (lin r) (lin r) (lin (suc n)) Z.mH k)) Z.sec)
+                       (apH (compH (lin r) (lin (suc n)) Y q) (comp-idr (lin r) (lin (suc n)) Z.mH))))) >
+        compH (lin W) (lin r) Y (compH (lin r) (lin (suc n)) Y q Z.mH) sgm
+      =< comp-assoc (lin W) (lin r) (lin (suc n)) Y q Z.mH sgm >
+        compH (lin W) (lin (suc n)) Y q (compH (lin W) (lin r) (lin (suc n)) Z.mH sgm)
+      =< apH (compH (lin W) (lin (suc n)) Y q) Z.fac >
+        compH (lin W) (lin (suc n)) Y q F.h
+      =< e >
+        K } ;
+
+  facG : Id (Hom (lin W) (lin n)) (compH (lin W) (lin r) (lin n) c1 sgm) G = thru (lin n) (CDeltaFact[a].gkD n F.kk) G F.eqG ;
+  facJ : Id (Hom (lin W) Iv) (compH (lin W) (lin r) Iv c2 sgm) J = thru Iv (CDeltaFact[a].jkD n F.kk) J F.eqJ ;
+} ;
+
+------------------------------------------------------------------------
+-- maps of Delta by their values
+
+module VH {
+  module VF = CDeltaFact[a] ;
+
+  hom-eq-valT (p n : Nat) (f g : Hom (lin p) (lin n)) (q : (i : Nat) -> IsT (leb i p) -> Id Nat (VF.valT p n f i) (VF.valT p n g i))
+    : Id (Hom (lin p) (lin n)) f g =
+    hom-eq (lin p) (lin n) f g (pwl p (lin n) f g (\ i hi ->
+      transH (VF.valT-tree p n f i hi) (transH (lf (VF.valT p n f i) (VF.valT p n g i) (q i hi)) (symH (VF.valT-tree p n g i hi))))) ;
+
+  strictAux (p n : Nat) (f : Hom (lin p) (lin n))
+    (q : (i j : Nat) -> IsT (ltb i j) -> IsT (leb j p) -> IsT (ltb (VF.valT p n f i) (VF.valT p n f j)))
+    : (x : Tree) (hx : IsT (car (lin p) x)) (z : Tree) (hz : IsT (car (lin p) z))
+    -> IsT (lt (lin p) x z) -> IsT (lt (lin n) (app (lin p) (lin n) f (x, hx)).1 (app (lin p) (lin n) f (z, hz)).1) = split {
+    leaf i -> \ hx -> split {
+      leaf j -> \ hz l ->
+        substH {Tree} (\ t -> IsT (lt (lin n) t (app (lin p) (lin n) f (leaf j, hz)).1)) {leaf (VF.valT p n f i)} {(app (lin p) (lin n) f (leaf i, hx)).1}
+          (symH (VF.valT-tree p n f i hx))
+          (substH {Tree} (\ t -> IsT (lt (lin n) (leaf (VF.valT p n f i)) t)) {leaf (VF.valT p n f j)} {(app (lin p) (lin n) f (leaf j, hz)).1}
+             (symH (VF.valT-tree p n f j hz))
+             (lin-lt (VF.valT p n f i) (VF.valT p n f j) (q i j (lt-lin i j l) hz))) ;
+      node c d -> \ hz l -> absurd _ (false-true hz) } ;
+    node s t -> \ hx z hz l -> absurd _ (false-true hx) } ;
+
+  strict-of-valT (p n : Nat) (f : Hom (lin p) (lin n))
+    (q : (i j : Nat) -> IsT (ltb i j) -> IsT (leb j p) -> IsT (ltb (VF.valT p n f i) (VF.valT p n f j)))
+    : Strict (lin p) (lin n) f = \ s t l -> strictAux p n f q s.1 s.2 t.1 t.2 l ;
+
+  -- the values of a strict map are strictly increasing
+  valT-of-strict (p n : Nat) (f : Hom (lin p) (lin n)) (st : Strict (lin p) (lin n) f)
+    (i j : Nat) (l : IsT (ltb i j)) (hj : IsT (leb j p)) : IsT (ltb (VF.valT p n f i) (VF.valT p n f j)) =
+    lt-lin (VF.valT p n f i) (VF.valT p n f j)
+      (substH {Tree} (\ t -> IsT (lt (lin n) t (leaf (VF.valT p n f j)))) {(app (lin p) (lin n) f (leaf i, hi)).1} {leaf (VF.valT p n f i)}
+         (VF.valT-tree p n f i hi)
+         (substH {Tree} (\ t -> IsT (lt (lin n) (app (lin p) (lin n) f (leaf i, hi)).1 t)) {(app (lin p) (lin n) f (leaf j, hj)).1} {leaf (VF.valT p n f j)}
+            (VF.valT-tree p n f j hj)
+            (st (leaf i, hi) (leaf j, hj) (lin-lt i j l))))
+   where { hi : IsT (leb i p) = leb-trans i j p (ltb-leb i j l) hj ; } ;
+
+  -- so they are injective
+  valT-inj (p n : Nat) (f : Hom (lin p) (lin n)) (st : Strict (lin p) (lin n) f)
+    (i j : Nat) (hi : IsT (leb i p)) (hj : IsT (leb j p)) (e : Id Nat (VF.valT p n f i) (VF.valT p n f j)) : Id Nat i j =
+    eqN-dec (Id Nat i j) i j (\ q -> q) (\ ne ->
+      orC (leb i j) (leb j i) (leb-total i j) (Id Nat i j)
+        (\ l -> absurd _ (ltb-irr' (VF.valT p n f i)
+                  (substH {Nat} (\ z -> IsT (ltb (VF.valT p n f i) z)) {VF.valT p n f j} {VF.valT p n f i} (symH e)
+                     (valT-of-strict p n f st i j (leb-neq i j l ne) hj))))
+        (\ l -> absurd _ (ltb-irr' (VF.valT p n f j)
+                  (substH {Nat} (\ z -> IsT (ltb (VF.valT p n f j) z)) {VF.valT p n f i} {VF.valT p n f j} e
+                     (valT-of-strict p n f st j i (leb-neq j i l (neq-sym i j ne)) hi)))))
+   where { orC : (x y : Bool) -> IsT (or x y) -> (R : U a) -> (IsT x -> R) -> (IsT y -> R) -> R = split {
+             true -> \ y h R k1 k2 -> k1 (refl true) ;
+             false -> \ y h R k1 k2 -> k2 h } ; } ;
+} ;
+
+------------------------------------------------------------------------
+-- two factorisations, along k : [W'] -> [W]: if h2 and h k have the same
+-- equalities, then mu = sigma k sec2 is strict and sigma k = mu sigma2
+
+module EZK (W W' N N' : Nat) (h : Hom (lin W) (lin N)) (h2 : Hom (lin W') (lin N')) (k : Hom (lin W') (lin W))
+  (rel1 : (v v' : Nat) -> IsT (leb v W') -> IsT (leb v' W')
+          -> Id Nat (CDeltaFact[a].valT W' N' h2 v) (CDeltaFact[a].valT W' N' h2 v')
+          -> Id Nat (CDeltaFact[a].valT W N h (CDeltaFact[a].valT W' W k v)) (CDeltaFact[a].valT W N h (CDeltaFact[a].valT W' W k v')))
+  (rel2 : (v v' : Nat) -> IsT (leb v W') -> IsT (leb v' W')
+          -> Id Nat (CDeltaFact[a].valT W N h (CDeltaFact[a].valT W' W k v)) (CDeltaFact[a].valT W N h (CDeltaFact[a].valT W' W k v'))
+          -> Id Nat (CDeltaFact[a].valT W' N' h2 v) (CDeltaFact[a].valT W' N' h2 v')) {
+  module VF = CDeltaFact[a] ;
+  module Z = EZH[W, N, h] ;
+  module Z2 = EZH[W', N', h2] ;
+  module E = Z.E ;
+  module E2 = Z2.E ;
+
+  kN (v : Nat) : Nat = VF.valT W' W k v ;
+  muN (t : Nat) : Nat = E.sN (kN (E2.secC t)) ;
+
+  mu : Hom (lin Z2.r) (lin Z.r) = compH (lin Z2.r) (lin W') (lin Z.r) (compH (lin W') (lin W) (lin Z.r) Z.sigH k) Z2.secH ;
+
+  -- the values of mu
+  mu-val (t : Nat) (ht : IsT (leb t Z2.r)) : Id Nat (VF.valT Z2.r Z.r mu t) (muN t) =
+    transH (CDPrism[a].valT-comp Z2.r W' Z.r (compH (lin W') (lin W) (lin Z.r) Z.sigH k) Z2.secH t ht)
+      (transH (CDPrism[a].valT-comp W' W Z.r Z.sigH k (VF.valT Z2.r W' Z2.secH t) (VF.valT-range Z2.r W' Z2.secH t))
+        (apH {Nat} {Nat} E.sN (transH (CDeltaFact[a].clamp-eq W (kN (VF.valT Z2.r W' Z2.secH t)) (VF.valT-range W' W k (VF.valT Z2.r W' Z2.secH t)))
+                    (apH {Nat} {Nat} (\ z -> kN (E2.secC z)) (CDeltaFact[a].clamp-eq Z2.r t ht))))) ;
+
+  muStrictN (i j : Nat) (l : IsT (ltb i j)) (hj : IsT (leb j Z2.r)) : IsT (ltb (muN i) (muN j)) =
+    leb-neq (muN i) (muN j)
+      (E.smono (kN (E2.secC j)) (kN (E2.secC i)) (VF.valT-mono W' W k (E2.secC i) (E2.secC j) (E2.secC-mono i j (ltb-leb i j l))))
+      (neq-of' (muN i) (muN j) (\ e ->
+        ltb-irr' (E2.mC i) (substH {Nat} (\ z -> IsT (ltb (E2.mC i) z)) {E2.mC j} {E2.mC i}
+          (symH (rel2 (E2.secC i) (E2.secC j) (E2.secC-le i) (E2.secC-le j)
+                   (E.sig-resp (kN (E2.secC i)) (kN (E2.secC j)) (VF.valT-range W' W k (E2.secC i)) (VF.valT-range W' W k (E2.secC j)) e)))
+          (E2.mC-strict j i l hj))))
+   where { neq-of' (x y : Nat) (kk : Id Nat x y -> Empty) : IsT (not (eqN x y)) =
+             eqN-dec (IsT (not (eqN x y))) x y (\ e -> absurd _ (kk e)) (\ ne -> ne) ; } ;
+
+  muStrict : Strict (lin Z2.r) (lin Z.r) mu =
+    VH.strict-of-valT Z2.r Z.r mu (\ i j l hj ->
+      substH {Nat} (\ z -> IsT (ltb z (VF.valT Z2.r Z.r mu j))) {muN i} {VF.valT Z2.r Z.r mu i}
+        (symH (mu-val i (leb-trans i j Z2.r (ltb-leb i j l) hj)))
+        (substH {Nat} (\ z -> IsT (ltb (muN i) z)) {muN j} {VF.valT Z2.r Z.r mu j} (symH (mu-val j hj)) (muStrictN i j l hj))) ;
+
+  -- sigma k = mu sigma2
+  muEq : Id (Hom (lin W') (lin Z.r)) (compH (lin W') (lin W) (lin Z.r) Z.sigH k) (compH (lin W') (lin Z2.r) (lin Z.r) mu Z2.sigH) =
+    VH.hom-eq-valT W' Z.r (compH (lin W') (lin W) (lin Z.r) Z.sigH k) (compH (lin W') (lin Z2.r) (lin Z.r) mu Z2.sigH) (\ v hv ->
+      transH (CDPrism[a].valT-comp W' W Z.r Z.sigH k v hv)
+        (transH (apH E.sN (CDeltaFact[a].clamp-eq W (kN v) (VF.valT-range W' W k v)))
+          (transH (E.sig-inj (kN v) (kN (E2.secC (E2.sN v))) (VF.valT-range W' W k v) (VF.valT-range W' W k (E2.secC (E2.sN v)))
+                     (rel1 v (E2.secC (E2.sN v)) hv (E2.secC-le (E2.sN v)) (E2.facC v hv)))
+            (symH (transH (CDPrism[a].valT-comp W' Z2.r Z.r mu Z2.sigH v hv)
+                     (transH (mu-val (VF.valT W' Z2.r Z2.sigH v) (VF.valT-range W' Z2.r Z2.sigH v))
+                             (apH {Nat} {Nat} (\ z -> muN (E2.sN z)) (CDeltaFact[a].clamp-eq W' v hv)))))))) ;
+} ;
+
+------------------------------------------------------------------------
+-- the shuffle factor h v = G v + J v of a point (G , J) of the prism:
+-- h v = h v' iff (G v , J v) = (G v' , J v')   (G and J are monotone)
+
+module HPr (n W : Nat) (G : Hom (lin W) (lin n)) (J : Hom (lin W) Iv) {
+  module VF = CDeltaFact[a] ;
+  module F = VF.Fact[n, W, G, J] ;
+
+  hN (v : Nat) : Nat = VF.valT W (suc n) F.h v ;
+
+  hN-eq (v : Nat) (hv : IsT (leb v W)) : Id Nat (hN v) (F.hfN v) = apH {Nat} {Nat} F.hfN (VF.clamp-eq W v hv) ;
+
+  of-pair (v v' : Nat) (eg : Id Nat (F.gn v) (F.gn v')) (ej : Id Nat (F.jn v) (F.jn v')) : Id Nat (F.hfN v) (F.hfN v') =
+    transH (apH {Nat} {Nat} (\ z -> ifB (eqN z zero) (F.gn v) (suc (F.gn v))) ej)
+           (apH {Nat} {Nat} (\ z -> ifB (eqN (F.jn v') zero) z (suc z)) eg) ;
+
+  sucle (x : Nat) (l : IsT (leb (suc x) x)) : Empty = ltb-irr' x l ;
+
+  to-pair-le (v v' : Nat) (l : IsT (leb v v')) (e : Id Nat (F.hfN v) (F.hfN v'))
+    : Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v') =
+    bcase (Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v')) (eqN (F.jn v) zero)
+      (\ t -> bcase (Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v')) (eqN (F.jn v') zero)
+         (\ t' -> (transH (symH (ifB-t (eqN (F.jn v) zero) (F.gn v) (suc (F.gn v)) t))
+                     (transH e (ifB-t (eqN (F.jn v') zero) (F.gn v') (suc (F.gn v')) t')),
+                   transH (eqN-sound (F.jn v) zero t) (symH (eqN-sound (F.jn v') zero t'))))
+         (\ f' -> absurd _ (sucle (F.gn v')
+            (substH {Nat} (\ z -> IsT (leb z (F.gn v'))) {F.gn v} {suc (F.gn v')}
+               (transH (symH (ifB-t (eqN (F.jn v) zero) (F.gn v) (suc (F.gn v)) t))
+                       (transH e (ifB-f (eqN (F.jn v') zero) (F.gn v') (suc (F.gn v')) f')))
+               (VF.valT-mono W n G v v' l)))))
+      (\ f -> bcase (Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v')) (eqN (F.jn v') zero)
+         (\ t' -> absurd _ (false-true
+            (substH {Nat} (\ z -> IsT (leb z zero)) {F.jn v} {suc zero}
+               (VF.one-of (F.jn v) (VF.valT-range W (suc zero) J v) f)
+               (substH {Nat} (\ z -> IsT (leb (F.jn v) z)) {F.jn v'} {zero} (eqN-sound (F.jn v') zero t')
+                  (VF.valT-mono W (suc zero) J v v' l)))))
+         (\ f' -> (suc-inj (F.gn v) (F.gn v')
+                     (transH (symH (ifB-f (eqN (F.jn v) zero) (F.gn v) (suc (F.gn v)) f))
+                       (transH e (ifB-f (eqN (F.jn v') zero) (F.gn v') (suc (F.gn v')) f'))),
+                   transH (VF.one-of (F.jn v) (VF.valT-range W (suc zero) J v) f)
+                          (symH (VF.one-of (F.jn v') (VF.valT-range W (suc zero) J v') f'))))) ;
+
+  to-pair (v v' : Nat) (e : Id Nat (F.hfN v) (F.hfN v')) : Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v') =
+    orCase (leb v v') (leb v' v) (leb-total v v') (Id Nat (F.gn v) (F.gn v') * Id Nat (F.jn v) (F.jn v'))
+      (\ l -> to-pair-le v v' l e)
+      (\ l -> (symH (to-pair-le v' v l (symH e)).1, symH (to-pair-le v' v l (symH e)).2))
+   where { orCase : (x y : Bool) -> IsT (or x y) -> (R : U a) -> (IsT x -> R) -> (IsT y -> R) -> R = split {
+             true -> \ y h R k1 k2 -> k1 (refl true) ;
+             false -> \ y h R k1 k2 -> k2 h } ; } ;
+} ;
+
+-- the shuffle factor is a function of the pair of values
+hf-cong (g j g' j' : Nat) (eg : Id Nat g g') (ej : Id Nat j j')
+  : Id Nat (ifB (eqN j zero) g (suc g)) (ifB (eqN j' zero) g' (suc g')) =
+  transH (apH {Nat} {Nat} (\ z -> ifB (eqN z zero) g (suc g)) ej) (apH {Nat} {Nat} (\ z -> ifB (eqN j' zero) z (suc z)) eg) ;

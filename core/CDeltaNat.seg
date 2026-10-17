@@ -1,0 +1,195 @@
+-- CDeltaNat.seg (L8, Delta): seg/model DeltaNat.seg unchanged.  Was: the arithmetic of forall of a union on Delta (DeltaForall):
+-- bounded quantifiers on Bool with their soundness and completeness, the
+-- maximum of a family, and the values of the shuffles P_k (pc / pl) below
+-- and above k.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+open Trees[a] ;
+open Arith[a] ;
+
+------------------------------------------------------------------------
+-- Booleans
+
+ifB (c : Bool) (x y : Nat) : Nat = ifBS c x y
+ where { ifBS : Bool -> Nat -> Nat -> Nat = split { true -> \ u v -> u ; false -> \ u v -> v } ; } ;
+
+ifBB : Bool -> Bool -> Bool -> Bool = split { true -> \ u v -> u ; false -> \ u v -> v } ;
+
+ifB-t : (c : Bool) (x y : Nat) -> IsT c -> Id Nat (ifB c x y) x = split {
+  true -> \ x y h -> refl x ;
+  false -> \ x y h -> absurd (Id Nat y x) (false-true h) } ;
+
+ifB-f : (c : Bool) (x y : Nat) -> Id Bool c false -> Id Nat (ifB c x y) y = split {
+  true -> \ x y h -> absurd (Id Nat x y) (false-true (symH h)) ;
+  false -> \ x y h -> refl y } ;
+
+ifBB-t : (c : Bool) (x y : Bool) -> IsT c -> Id Bool (ifBB c x y) x = split {
+  true -> \ x y h -> refl x ;
+  false -> \ x y h -> absurd (Id Bool y x) (false-true h) } ;
+
+ifBB-f : (c : Bool) (x y : Bool) -> Id Bool c false -> Id Bool (ifBB c x y) y = split {
+  true -> \ x y h -> absurd (Id Bool x y) (false-true (symH h)) ;
+  false -> \ x y h -> refl y } ;
+
+-- case analysis on a boolean, with its value
+bcase (R : U a) : (b : Bool) -> (IsT b -> R) -> (Id Bool b false -> R) -> R = split {
+  true -> \ kt kf -> kt (refl true) ;
+  false -> \ kt kf -> kf (refl false) } ;
+
+tf-absurd (R : U a) (b : Bool) (t : IsT b) (f : Id Bool b false) : R = absurd R (false-true (transH (symH f) t)) ;
+
+implies (x y : Bool) : Bool = or (not x) y ;
+
+not-t-f : (b : Bool) -> IsT (not b) -> Id Bool b false = split {
+  true -> \ h -> absurd (Id Bool true false) (false-true h) ;
+  false -> \ h -> refl false } ;
+
+imp-e : (x y : Bool) -> IsT (implies x y) -> IsT x -> IsT y = split {
+  true -> \ y h t -> h ;
+  false -> \ y h t -> absurd (IsT y) (false-true t) } ;
+
+imp-i : (x y : Bool) -> (IsT x -> IsT y) -> IsT (implies x y) = split {
+  true -> \ y k -> k (refl true) ;
+  false -> \ y k -> refl true } ;
+
+not-ltb-leb (m n : Nat) (h : Id Bool (ltb m n) false) : IsT (leb n m) =
+  ltb-dec (IsT (leb n m)) m n (\ t -> tf-absurd (IsT (leb n m)) (ltb m n) t h) (\ l -> l) ;
+
+------------------------------------------------------------------------
+-- bounded quantifiers over 0 .. n
+
+forallUp : Nat -> (Nat -> Bool) -> Bool = split {
+  zero -> \ P -> P zero ;
+  suc n -> \ P -> and (forallUp n P) (P (suc n)) } ;
+
+fa-e : (n : Nat) (P : Nat -> Bool) -> IsT (forallUp n P) -> (x : Nat) -> IsT (leb x n) -> IsT (P x) = split {
+  zero -> \ P h x hx -> substH (\ y -> IsT (P y)) (symH (leb-zero x hx)) h ;
+  suc n -> \ P h x hx ->
+    or-elim (IsT (P x)) (eqN x (suc n)) (leb x n) (leb-suc-split x n hx)
+      (\ e -> substH (\ y -> IsT (P y)) (symH (eqN-sound x (suc n) e)) (and-r (forallUp n P) (P (suc n)) h))
+      (\ l -> fa-e n P (and-l (forallUp n P) (P (suc n)) h) x l) } ;
+
+fa-i : (n : Nat) (P : Nat -> Bool) -> ((x : Nat) -> IsT (leb x n) -> IsT (P x)) -> IsT (forallUp n P) = split {
+  zero -> \ P k -> k zero (refl true) ;
+  suc n -> \ P k -> and-i (forallUp n P) (P (suc n)) (fa-i n P (\ x l -> k x (leb-step x n l))) (k (suc n) (leb-refl n)) } ;
+
+existsUp : Nat -> (Nat -> Bool) -> Bool = split {
+  zero -> \ P -> P zero ;
+  suc n -> \ P -> or (existsUp n P) (P (suc n)) } ;
+
+ex-e : (n : Nat) (P : Nat -> Bool) -> IsT (existsUp n P) -> (x : Nat) * (IsT (leb x n) * IsT (P x)) = split {
+  zero -> \ P h -> (zero, (refl true, h)) ;
+  suc n -> \ P h ->
+    or-elim ((x : Nat) * (IsT (leb x (suc n)) * IsT (P x))) (existsUp n P) (P (suc n)) h
+      (\ h1 -> ((ex-e n P h1).1, (leb-step (ex-e n P h1).1 n (ex-e n P h1).2.1, (ex-e n P h1).2.2)))
+      (\ h2 -> (suc n, (leb-refl n, h2))) } ;
+
+ex-i : (n : Nat) (P : Nat -> Bool) (x : Nat) -> IsT (leb x n) -> IsT (P x) -> IsT (existsUp n P) = split {
+  zero -> \ P x hx p -> substH (\ y -> IsT (P y)) (leb-zero x hx) p ;
+  suc n -> \ P x hx p ->
+    or-elim (IsT (existsUp (suc n) P)) (eqN x (suc n)) (leb x n) (leb-suc-split x n hx)
+      (\ e -> or-r (existsUp n P) (P (suc n)) (substH (\ y -> IsT (P y)) (eqN-sound x (suc n) e) p))
+      (\ l -> or-l (existsUp n P) (P (suc n)) (ex-i n P x l p)) } ;
+
+-- over a finite index set Fin k
+existsF : (k : Nat) -> ((j : Nat) -> IsT (ltb j k) -> Bool) -> Bool = split {
+  zero -> \ P -> false ;
+  suc k -> \ P -> or (P k (leb-refl k)) (existsF k (\ j h -> P j (ltb-leb j k h))) } ;
+
+exF-e : (k : Nat) (P : (j : Nat) -> IsT (ltb j k) -> Bool) -> IsT (existsF k P)
+  -> (j : Nat) * ((h : IsT (ltb j k)) * IsT (P j h)) = split {
+  zero -> \ P h -> absurd ((j : Nat) * ((h : IsT (ltb j zero)) * IsT (P j h))) (false-true h) ;
+  suc k -> \ P h ->
+    or-elim ((j : Nat) * ((h' : IsT (ltb j (suc k))) * IsT (P j h'))) (P k (leb-refl k)) (existsF k (\ j h' -> P j (ltb-leb j k h'))) h
+      (\ h1 -> (k, (leb-refl k, h1)))
+      (\ h2 -> ((exF-e k (\ j h' -> P j (ltb-leb j k h')) h2).1,
+                (ltb-leb (exF-e k (\ j h' -> P j (ltb-leb j k h')) h2).1 k (exF-e k (\ j h' -> P j (ltb-leb j k h')) h2).2.1,
+                 (exF-e k (\ j h' -> P j (ltb-leb j k h')) h2).2.2))) } ;
+
+exF-i : (k : Nat) (P : (j : Nat) -> IsT (ltb j k) -> Bool) (j : Nat) (h : IsT (ltb j k)) -> IsT (P j h) -> IsT (existsF k P) = split {
+  zero -> \ P j h p -> absurd (IsT false) (false-true h) ;
+  suc k -> \ P j h p ->
+    eqN-dec (IsT (existsF (suc k) P)) j k
+      (\ e -> or-l (P k (leb-refl k)) (existsF k (\ j' h' -> P j' (ltb-leb j' k h')))
+                (idJ Nat k (\ j2 e2 -> (h2 : IsT (ltb j2 (suc k))) -> IsT (P j2 h2) -> IsT (P k (leb-refl k)))
+                   (\ h2 p2 -> substH (\ hh -> IsT (P k hh)) (isProp-IsT' (ltb k (suc k)) h2 (leb-refl k)) p2) j (symH e) h p))
+      (\ ne -> or-r (P k (leb-refl k)) (existsF k (\ j' h' -> P j' (ltb-leb j' k h')))
+                 (exF-i k (\ j' h' -> P j' (ltb-leb j' k h')) j (leb-neq j k h ne)
+                    (substH (\ hh -> IsT (P j hh)) (isProp-IsT' (ltb j (suc k)) h (ltb-leb j k (leb-neq j k h ne))) p))) } ;
+
+------------------------------------------------------------------------
+-- the maximum
+
+maxN (x y : Nat) : Nat = ifB (leb x y) y x ;
+
+maxl : (c : Bool) (x y : Nat) -> Id Bool (leb x y) c -> IsT (leb x (ifB c y x)) = split {
+  true -> \ x y e -> e ;
+  false -> \ x y e -> leb-refl x } ;
+
+maxr : (c : Bool) (x y : Nat) -> Id Bool (leb x y) c -> IsT (leb y (ifB c y x)) = split {
+  true -> \ x y e -> leb-refl y ;
+  false -> \ x y e -> or-elim (IsT (leb y x)) (leb x y) (leb y x) (leb-total x y)
+                        (\ t -> tf-absurd (IsT (leb y x)) (leb x y) t e) (\ l -> l) } ;
+
+maxle : (c : Bool) (x y z : Nat) -> IsT (leb x z) -> IsT (leb y z) -> IsT (leb (ifB c y x) z) = split {
+  true -> \ x y z hx hy -> hy ;
+  false -> \ x y z hx hy -> hx } ;
+
+le-maxl (x y : Nat) : IsT (leb x (maxN x y)) = maxl (leb x y) x y (refl (leb x y)) ;
+le-maxr (x y : Nat) : IsT (leb y (maxN x y)) = maxr (leb x y) x y (refl (leb x y)) ;
+max-le (x y z : Nat) (hx : IsT (leb x z)) (hy : IsT (leb y z)) : IsT (leb (maxN x y) z) = maxle (leb x y) x y z hx hy ;
+
+maxUp : Nat -> (Nat -> Nat) -> Nat = split {
+  zero -> \ z -> z zero ;
+  suc p -> \ z -> maxN (maxUp p z) (z (suc p)) } ;
+
+le-maxUp : (p : Nat) (z : Nat -> Nat) (i : Nat) -> IsT (leb i p) -> IsT (leb (z i) (maxUp p z)) = split {
+  zero -> \ z i hi -> substH (\ y -> IsT (leb (z y) (z zero))) (symH (leb-zero i hi)) (leb-refl (z zero)) ;
+  suc p -> \ z i hi ->
+    or-elim (IsT (leb (z i) (maxUp (suc p) z))) (eqN i (suc p)) (leb i p) (leb-suc-split i p hi)
+      (\ e -> substH (\ y -> IsT (leb (z y) (maxUp (suc p) z))) (symH (eqN-sound i (suc p) e)) (le-maxr (maxUp p z) (z (suc p))))
+      (\ l -> leb-trans (z i) (maxUp p z) (maxUp (suc p) z) (le-maxUp p z i l) (le-maxl (maxUp p z) (z (suc p)))) } ;
+
+maxUp-le : (p : Nat) (z : Nat -> Nat) (c : Nat) -> ((i : Nat) -> IsT (leb i p) -> IsT (leb (z i) c)) -> IsT (leb (maxUp p z) c) = split {
+  zero -> \ z c k -> k zero (refl true) ;
+  suc p -> \ z c k -> max-le (maxUp p z) (z (suc p)) c (maxUp-le p z c (\ i l -> k i (leb-step i p l))) (k (suc p) (leb-refl p)) } ;
+
+------------------------------------------------------------------------
+-- the shuffles P_k below and above k  (k <= n)
+
+pc-low : (k n x : Nat) -> IsT (leb x k) -> IsT (leb x n) -> Id Nat (pc n k x) x = split {
+  zero -> \ n x hk hn -> substH (\ y -> Id Nat (pc n zero y) y) (symH (leb-zero x hk)) (refl zero) ;
+  suc k -> split {
+    zero -> \ x hk hn -> substH (\ y -> Id Nat (pc zero (suc k) y) y) (symH (leb-zero x hn)) (refl zero) ;
+    suc n -> split {
+      zero -> \ hk hn -> refl zero ;
+      suc x -> \ hk hn -> apH (\ m -> suc m) (pc-low k n x hk hn) } } } ;
+
+pc-high : (k n x : Nat) -> IsT (leb k x) -> IsT (leb x n) -> Id Nat (pc n k (suc x)) x = split {
+  zero -> \ n x hk hn -> refl x ;
+  suc k -> split {
+    zero -> \ x hk hn -> absurd (Id Nat (pc zero (suc k) (suc x)) x)
+                          (false-true (substH (\ y -> IsT (leb (suc k) y)) (leb-zero x hn) hk)) ;
+    suc n -> split {
+      zero -> \ hk hn -> absurd (Id Nat (pc (suc n) (suc k) (suc zero)) zero) (false-true hk) ;
+      suc x -> \ hk hn -> apH (\ m -> suc m) (pc-high k n x hk hn) } } } ;
+
+pl-low : (k n x : Nat) -> IsT (leb x k) -> IsT (leb x n) -> Id Nat (pl n k x) zero = split {
+  zero -> \ n x hk hn -> substH (\ y -> Id Nat (pl n zero y) zero) (symH (leb-zero x hk)) (refl zero) ;
+  suc k -> split {
+    zero -> \ x hk hn -> substH (\ y -> Id Nat (pl zero (suc k) y) zero) (symH (leb-zero x hn)) (refl zero) ;
+    suc n -> split {
+      zero -> \ hk hn -> refl zero ;
+      suc x -> \ hk hn -> pl-low k n x hk hn } } } ;
+
+pl-high : (k n x : Nat) -> IsT (leb k x) -> IsT (leb x n) -> Id Nat (pl n k (suc x)) (suc zero) = split {
+  zero -> \ n x hk hn -> refl (suc zero) ;
+  suc k -> split {
+    zero -> \ x hk hn -> absurd (Id Nat (pl zero (suc k) (suc x)) (suc zero))
+                          (false-true (substH (\ y -> IsT (leb (suc k) y)) (leb-zero x hn) hk)) ;
+    suc n -> split {
+      zero -> \ hk hn -> absurd (Id Nat (pl (suc n) (suc k) (suc zero)) (suc zero)) (false-true hk) ;
+      suc x -> \ hk hn -> pl-high k n x hk hn } } } ;

@@ -1,0 +1,150 @@
+-- CDCapBase.seg (L8, Delta): seg/model DCapBase.seg ported (module names only).  Was: the prism sieves of the two shuffle chains, and reading
+-- maps through their values (DPrismCap: the horns).
+--
+--   bdB N W f      f : [W] -> [N] is not surjective (misses some y <= N):
+--                  the boundary d[N] * [1]
+--   lidB e W j     j is constant e: the lid [N] * {e}
+--   ST N d         chain from e0: the boundary, the lower lid, and the
+--                  shuffles P_k' with N < k' + d (P_N .. P_{N+1-d})
+--   SF N d         chain from e1: the boundary, the upper lid, and the
+--                  shuffles P_k' with k' < d (P_0 .. P_{d-1})
+--
+-- Constructive.
+
+level a ;
+open Base ;
+open Prelude[a+] ;
+open Paths[a+] ;
+module W0 = V[a] ;
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+open CDeltaNat[a] ;
+open CDeltaFact[a] ;
+module DPS = CDPrS[a] ;
+module DPm = CDPrism[a] ;
+
+------------------------------------------------------------------------
+-- N - d
+
+subN : Nat -> Nat -> Nat = split {
+  zero -> \ d -> zero ;
+  suc n -> split { zero -> suc n ; suc d -> subN n d } } ;
+
+sub-plus : (n d : Nat) -> IsT (leb d n) -> Id Nat (plus (subN n d) d) n = split {
+  zero -> \ d h -> substH (\ x -> Id Nat (plus (subN zero x) x) zero) (symH (leb-zero d h)) (refl zero) ;
+  suc n -> split {
+    zero -> \ h -> plus-zero (suc n) ;
+    suc d -> \ h -> transH (plus-suc (subN n d) d) (apH (\ x -> suc x) (sub-plus n d h)) } } ;
+
+sub-le : (n d : Nat) -> IsT (leb (subN n d) n) = split {
+  zero -> \ d -> refl true ;
+  suc n -> split { zero -> leb-refl n ; suc d -> leb-trans (subN n d) n (suc n) (sub-le n d) (leb-suc n) } } ;
+
+-- right cancellation
+plus-cancel-r : (d x y : Nat) -> Id Nat (plus x d) (plus y d) -> Id Nat x y = split {
+  zero -> \ x y e -> transH (symH (plus-zero x)) (transH e (plus-zero y)) ;
+  suc d -> \ x y e -> plus-cancel-r d x y (suc-inj (plus x d) (plus y d)
+                         (transH (symH (plus-suc x d)) (transH e (plus-suc y d)))) } ;
+
+------------------------------------------------------------------------
+-- reading maps through their values
+
+-- the values of g missing y
+missB (W N : Nat) (f : Hom (lin W) (lin N)) (y : Nat) : Bool = forallUp W (\ v -> not (eqN (valT W N f v) y)) ;
+
+miss-of (W M y : Nat) (g : Hom (lin W) (lin (suc M))) (h : IsT (missB W (suc M) g y)) : Miss (lin W) M y g =
+  leafElim W (\ s -> IsT (not (eqN (vnum (app (lin W) (lin (suc M)) g s).1) y)))
+    (\ i hi -> substH (\ t -> IsT (not (eqN (vnum t) y))) (symH (valT-tree W (suc M) g i hi))
+                 (fa-e W (\ v -> not (eqN (valT W (suc M) g v) y)) h i hi)) ;
+
+of-miss (W M y : Nat) (g : Hom (lin W) (lin (suc M))) (ms : Miss (lin W) M y g) : IsT (missB W (suc M) g y) =
+  fa-i W (\ v -> not (eqN (valT W (suc M) g v) y))
+    (\ i hi -> substH (\ t -> IsT (not (eqN (vnum t) y))) (valT-tree W (suc M) g i hi) (ms (leaf i, hi))) ;
+
+-- a map misses y if no value is y
+miss-i (W N y : Nat) (f : Hom (lin W) (lin N)) (k : (v : Nat) -> IsT (leb v W) -> Id Nat (valT W N f v) y -> Empty)
+  : IsT (missB W N f y) =
+  fa-i W (\ v -> not (eqN (valT W N f v) y))
+    (\ v hv -> eqN-dec (IsT (not (eqN (valT W N f v) y))) (valT W N f v) y (\ e -> absurd _ (k v hv e)) (\ n -> n)) ;
+
+miss-e (W N y : Nat) (f : Hom (lin W) (lin N)) (h : IsT (missB W N f y)) (v : Nat) (hv : IsT (leb v W))
+  : IsT (not (eqN (valT W N f v) y)) = fa-e W (\ v' -> not (eqN (valT W N f v') y)) h v hv ;
+
+-- the values of P_k g
+valT-pg (N k W : Nat) (g : Hom (lin W) (lin (suc N))) (v : Nat) (hv : IsT (leb v W))
+  : Id Nat (valT W N (compH (lin W) (lin (suc N)) (lin N) (gkD N k) g) v) (pc N k (valT W (suc N) g v)) =
+  transH (DPm.valT-comp W (suc N) N (gkD N k) g v hv) (DPm.valT-gk N k (valT W (suc N) g v) (valT-range W (suc N) g v)) ;
+
+valT-pj (N k W : Nat) (g : Hom (lin W) (lin (suc N))) (v : Nat) (hv : IsT (leb v W))
+  : Id Nat (valT W (suc zero) (compH (lin W) (lin (suc N)) Iv (jkD N k) g) v) (pl N k (valT W (suc N) g v)) =
+  transH (DPm.valT-comp W (suc N) (suc zero) (jkD N k) g v hv) (DPm.valT-jk N k (valT W (suc N) g v) (valT-range W (suc N) g v)) ;
+
+------------------------------------------------------------------------
+-- the boundary and the lids
+
+bdB (N W : Nat) (f : Hom (lin W) (lin N)) : Bool = existsUp N (\ y -> missB W N f y) ;
+
+lidB (e W : Nat) (j : Hom (lin W) Iv) : Bool = forallUp W (\ v -> eqN (valT W (suc zero) j v) e) ;
+
+-- missing y is stable under precomposition
+miss-clos (W' W N y : Nat) (g : Hom (lin W') (lin W)) (f : Hom (lin W) (lin N)) (h : IsT (missB W N f y))
+  : IsT (missB W' N (compH (lin W') (lin W) (lin N) f g) y) =
+  fa-i W' (\ v -> not (eqN (valT W' N (compH (lin W') (lin W) (lin N) f g) v) y))
+    (\ v hv -> substH (\ x -> IsT (not (eqN x y))) (symH (DPm.valT-comp W' W N f g v hv))
+                 (miss-e W N y f h (valT W' W g v) (valT-range W' W g v))) ;
+
+bd-clos (N W' W : Nat) (g : Hom (lin W') (lin W)) (f : Hom (lin W) (lin N)) (h : IsT (bdB N W f))
+  : IsT (bdB N W' (compH (lin W') (lin W) (lin N) f g)) =
+  ex-i N (\ y -> missB W' N (compH (lin W') (lin W) (lin N) f g) y) (ex-e N (\ y -> missB W N f y) h).1
+    (ex-e N (\ y -> missB W N f y) h).2.1
+    (miss-clos W' W N (ex-e N (\ y -> missB W N f y) h).1 g f (ex-e N (\ y -> missB W N f y) h).2.2) ;
+
+lid-clos (e W' W : Nat) (g : Hom (lin W') (lin W)) (j : Hom (lin W) Iv) (h : IsT (lidB e W j))
+  : IsT (lidB e W' (compH (lin W') (lin W) Iv j g)) =
+  fa-i W' (\ v -> eqN (valT W' (suc zero) (compH (lin W') (lin W) Iv j g) v) e)
+    (\ v hv -> substH (\ x -> IsT (eqN x e)) (symH (DPm.valT-comp W' W (suc zero) j g v hv))
+                 (fa-e W (\ v' -> eqN (valT W (suc zero) j v') e) h (valT W' W g v) (valT-range W' W g v))) ;
+
+-- the boundary and the lid at e
+S0 (N e : Nat) : DPS.PrS N =
+  (\ W f j -> or (bdB N W f) (lidB e W j),
+   \ W' W g f j s -> or-elim (IsT (or (bdB N W' (compH (lin W') (lin W) (lin N) f g)) (lidB e W' (compH (lin W') (lin W) Iv j g))))
+                       (bdB N W f) (lidB e W j) s
+       (\ b -> or-l (bdB N W' (compH (lin W') (lin W) (lin N) f g)) (lidB e W' (compH (lin W') (lin W) Iv j g)) (bd-clos N W' W g f b))
+       (\ l -> or-r (bdB N W' (compH (lin W') (lin W) (lin N) f g)) (lidB e W' (compH (lin W') (lin W) Iv j g)) (lid-clos e W' W g j l))) ;
+
+------------------------------------------------------------------------
+-- the stages of the chains: S0 and the shuffles P_k' with cond k'
+
+module Stg (N e : Nat) (cond : Nat -> Bool) {
+  shB (W : Nat) (f : Hom (lin W) (lin N)) (j : Hom (lin W) Iv) : Bool =
+    existsUp N (\ k' -> and (cond k') (DPm.memP N k' W f j)) ;
+
+  sh-clos : DPS.PrClos N shB = \ W' W g f j u ->
+    ex-i N (\ k' -> and (cond k') (DPm.memP N k' W' (compH (lin W') (lin W) (lin N) f g) (compH (lin W') (lin W) Iv j g)))
+      (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1
+      (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).2.1
+      (and-i (cond (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1)
+             (DPm.memP N (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1 W' (compH (lin W') (lin W) (lin N) f g) (compH (lin W') (lin W) Iv j g))
+         (and-l (cond (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1)
+                (DPm.memP N (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1 W f j)
+                (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).2.2)
+         (DPm.memP-clos N (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1 W' W g f j
+            (and-r (cond (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1)
+                   (DPm.memP N (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).1 W f j)
+                   (ex-e N (\ k' -> and (cond k') (DPm.memP N k' W f j)) u).2.2))) ;
+
+  S : DPS.PrS N = DPS.unionPr N (S0 N e) shB sh-clos ;
+} ;
+
+-- chain from e0: P_k' filled when N < k' + d
+condT (N d k' : Nat) : Bool = leb (suc N) (plus k' d) ;
+ST (N d : Nat) : DPS.PrS N = Stg[N, zero, condT N d].S ;
+
+-- chain from e1: P_k' filled when k' < d
+condF (d k' : Nat) : Bool = ltb k' d ;
+SF (N d : Nat) : DPS.PrS N = Stg[N, suc zero, condF d].S ;

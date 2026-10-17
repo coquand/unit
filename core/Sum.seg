@@ -1,0 +1,518 @@
+-- Sum.seg: MODEL/Poset/Sum.agda.  Ordinal sums, on numbers (for Lemma 3.1
+-- of [S]).
+--
+-- A monotone h : [n] -> [1] is a cut a of [n]: h i = 0 iff i < a, so
+-- [n] = A0 + A1 with A0 = [0 , a).  For g : [m] -> [n] monotone the cut
+-- b = #{ j | g j < a } of [m] gives [m] = B0 + B1, and
+--
+--    g = k1 . k2 ,   k2 : [m] -> B0 + A1 ,  k1 : B0 + A1 -> [n]
+--
+-- with k1 = g on B0, the inclusion on A1, and k2 = the identity on B0, g on
+-- B1.  B0 + A1 is [c] with c + 1 = b + (n + 1 - a).
+--
+-- Where Agda's case tree splits a later argument first, the function is a
+-- helper with that argument first (monusN, mmB, msB, ...).
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open Trees[l] ;
+open Arith[l] ;
+
+------------------------------------------------------------------------
+-- Truncated subtraction, conditionals, counting
+
+monusN : Nat -> Nat -> Nat = split {
+  zero -> \ m -> m ;
+  suc n -> split { zero -> zero ; suc m -> monusN n m } } ;
+
+monus (m n : Nat) : Nat = monusN n m ;
+
+plus-monus : (b j : Nat) -> IsT (leb b j) -> Id Nat (plus b (monus j b)) j = split {
+  zero -> \ j h -> refl j ;
+  suc b -> split {
+    zero -> \ h -> absurd _ (false-true h) ;
+    suc j -> \ h -> apH (\ k -> suc k) (plus-monus b j h) } } ;
+
+monus-plus : (b d : Nat) -> Id Nat (monus (plus b d) b) d = split {
+  zero -> \ d -> refl d ;
+  suc b -> \ d -> monus-plus b d } ;
+
+leb-plus-l : (b d : Nat) -> IsT (leb b (plus b d)) = split {
+  zero -> \ d -> refl true ;
+  suc b -> \ d -> leb-plus-l b d } ;
+
+plus-mono-r : (x d d' : Nat) -> IsT (leb d d') -> IsT (leb (plus x d) (plus x d')) = split {
+  zero -> \ d d' h -> h ;
+  suc x -> \ d d' h -> plus-mono-r x d d' h } ;
+
+plus-comm' (x : Nat) : (y : Nat) -> Id Nat (plus y x) (plus x y) = split {
+  zero -> symH (plus-zero x) ;
+  suc y -> transH (apH (\ k -> suc k) (plus-comm' x y)) (symH (plus-suc x y)) } ;
+
+plus-mono-l : (x x' d : Nat) -> IsT (leb x x') -> IsT (leb (plus x d) (plus x' d)) = split {
+  zero -> \ x' d h -> substH (\ v -> IsT (leb d v)) (plus-comm' x' d) (leb-plus-l d x') ;
+  suc x -> split {
+    zero -> \ d h -> absurd _ (false-true h) ;
+    suc x' -> \ d h -> plus-mono-l x x' d h } } ;
+
+plus-strict-r : (x d d' : Nat) -> IsT (ltb d d') -> IsT (ltb (plus x d) (plus x d')) = split {
+  zero -> \ d d' h -> h ;
+  suc x -> \ d d' h -> plus-strict-r x d d' h } ;
+
+mmB : (b j j' : Nat) -> IsT (leb j j') -> IsT (leb (monus j b) (monus j' b)) = split {
+  zero -> \ j j' h -> h ;
+  suc b -> split {
+    zero -> \ j' h -> refl true ;
+    suc j -> split {
+      zero -> \ h -> absurd _ (false-true h) ;
+      suc j' -> \ h -> mmB b j j' h } } } ;
+
+monus-mono (j j' b : Nat) : IsT (leb j j') -> IsT (leb (monus j b) (monus j' b)) = mmB b j j' ;
+
+-- j - b <= j' - b strictly, when b <= j
+msB : (b j j' : Nat) -> IsT (leb b j) -> IsT (ltb j j') -> IsT (ltb (monus j b) (monus j' b)) = split {
+  zero -> \ j j' hb h -> h ;
+  suc b -> split {
+    zero -> \ j' hb h -> absurd _ (false-true hb) ;
+    suc j -> split {
+      zero -> \ hb h -> absurd _ (false-true h) ;
+      suc j' -> \ hb h -> msB b j j' hb h } } } ;
+
+monus-strict (j j' b : Nat) : IsT (leb b j) -> IsT (ltb j j') -> IsT (ltb (monus j b) (monus j' b)) = msB b j j' ;
+
+-- j <= c' and b <= j give j - b <= c' - b
+leb-monus-bound (j c' b : Nat) (h : IsT (leb j c')) : IsT (leb (monus j b) (monus c' b)) = monus-mono j c' b h ;
+
+plus-assoc : (x y z : Nat) -> Id Nat (plus (plus x y) z) (plus x (plus y z)) = split {
+  zero -> \ y z -> refl (plus y z) ;
+  suc x -> \ y z -> apH (\ k -> suc k) (plus-assoc x y z) } ;
+
+ite : Bool -> Nat -> Nat -> Nat = split { true -> \ x y -> x ; false -> \ x y -> y } ;
+
+ite-t : (b : Bool) (x y : Nat) -> IsT b -> Id Nat (ite b x y) x = split {
+  true -> \ x y h -> refl x ;
+  false -> \ x y h -> absurd _ (false-true h) } ;
+
+ite-f : (b : Bool) (x y : Nat) -> Id Bool b false -> Id Nat (ite b x y) y = split {
+  true -> \ x y h -> absurd _ (false-true (symH h)) ;
+  false -> \ x y h -> refl y } ;
+
+b2n : Bool -> Nat = split { true -> suc zero ; false -> zero } ;
+
+-- p is true on an initial segment of [0 .. m]
+DownC (p : Nat -> Bool) (m : Nat) : U l = (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (p j) -> IsT (p i) ;
+
+lfY : (y x : Nat) -> IsT (leb y x) -> Id Bool (ltb x y) false = split {
+  zero -> split { zero -> \ h -> refl false ; suc x -> \ h -> refl false } ;
+  suc y -> split {
+    zero -> \ h -> absurd _ (false-true h) ;
+    suc x -> \ h -> lfY y x h } } ;
+
+lt-false (x y : Nat) : IsT (leb y x) -> Id Bool (ltb x y) false = lfY y x ;
+
+-- the number of j <= m with p j
+cnt (p : Nat -> Bool) : Nat -> Nat = split {
+  zero -> b2n (p zero) ;
+  suc m -> plus (cnt p m) (b2n (p (suc m))) } ;
+
+cl0 : (b : Bool) -> IsT (leb (b2n b) (suc zero)) = split { true -> refl true ; false -> refl true } ;
+
+cnt-le (p : Nat -> Bool) : (m : Nat) -> IsT (leb (cnt p m) (suc m)) = split {
+  zero -> cl0 (p zero) ;
+  suc m -> cl1 p m (p (suc m)) } ;
+
+cl1 (p : Nat -> Bool) (m : Nat) : (b : Bool) -> IsT (leb (plus (cnt p m) (b2n b)) (suc (suc m))) = split {
+  true -> substH {Nat} (\ v -> IsT (leb v (suc (suc m)))) {suc (cnt p m)} {plus (cnt p m) (suc zero)}
+            (symH (transH (plus-suc (cnt p m) zero) (apH (\ k -> suc k) (plus-zero (cnt p m))))) (cnt-le p m) ;
+  false -> substH {Nat} (\ v -> IsT (leb v (suc (suc m)))) (symH (plus-zero (cnt p m))) (leb-step (cnt p m) (suc m) (cnt-le p m)) } ;
+
+-- if p holds everywhere on [0 .. m] then cnt p m = m + 1
+cnt-all (p : Nat -> Bool) : (m : Nat) -> ((j : Nat) -> IsT (leb j m) -> IsT (p j)) -> Id Nat (cnt p m) (suc m) = split {
+  zero -> \ h -> apH {Bool} {Nat} b2n (h zero (refl true)) ;
+  suc m -> \ h ->
+    transH {Nat} {_} {plus (suc m) (b2n (p (suc m)))} (apH {Nat} (\ v -> plus v (b2n (p (suc m)))) (cnt-all p m (\ j hj -> h j (leb-step j m hj))))
+     (transH {Nat} {_} {suc (plus m (suc zero))} (apH {Bool} (\ v -> suc (plus m (b2n v))) (h (suc m) (leb-refl m)))
+             (apH {Nat} (\ k -> suc k) (transH (plus-suc m zero) (apH {Nat} (\ k -> suc k) (plus-zero m))))) } ;
+
+cc0b (p : Nat -> Bool) : (b : Bool) -> Id Bool (p zero) b -> Id Bool (ltb zero (b2n (p zero))) (p zero) = split {
+  true -> \ e -> transH (apH (\ v -> ltb zero (b2n v)) e) (symH e) ;
+  false -> \ e -> transH (apH (\ v -> ltb zero (b2n v)) e) (symH e) } ;
+
+-- the characterisation:  j < cnt p m  iff  p j   (j <= m)
+cnt-char (p : Nat -> Bool) : (m : Nat) -> DownC p m -> (j : Nat) -> IsT (leb j m) -> Id Bool (ltb j (cnt p m)) (p j) = split {
+  zero -> \ dc j hj ->
+    idJR Nat zero (\ j1 e1 -> Id Bool (ltb j1 (b2n (p zero))) (p j1)) (cc0b p (p zero) (refl (p zero))) j (leb-zero j hj) ;
+  suc m -> \ dc j hj -> cctop p m dc j hj (p (suc m)) (refl (p (suc m))) } ;
+
+cctop (p : Nat -> Bool) (m : Nat) (dc : DownC p (suc m)) (j : Nat) (hj : IsT (leb j (suc m)))
+  : (b : Bool) -> Id Bool (p (suc m)) b -> Id Bool (ltb j (plus (cnt p m) (b2n (p (suc m))))) (p j) = split {
+  true -> \ e ->
+    transH (apH {Nat} (\ v -> ltb j (plus v (b2n (p (suc m))))) (cnt-all p m (\ i hi -> dc i (suc m) (leb-step i m hi) (leb-refl m) e)))
+     (transH (apH {Bool} (\ v -> ltb j (suc (plus m (b2n v)))) e)
+      (transH (apH {Nat} (\ v -> ltb j (suc v)) {plus m (suc zero)} {suc m} (transH (plus-suc m zero) (apH (\ k -> suc k) (plus-zero m))))
+              (transH hj (symH (dc j (suc m) hj (leb-refl m) e))))) ;
+  false -> \ e ->
+    transH (apH {Bool} (\ v -> ltb j (plus (cnt p m) (b2n v))) e)
+     (transH (apH (ltb j) (plus-zero (cnt p m)))
+             (or-elim (Id Bool (ltb j (cnt p m)) (p j)) (eqN j (suc m)) (leb j m) (leb-suc-split j m hj)
+                (\ q -> transH (apH {Nat} (\ v -> ltb v (cnt p m)) (eqN-sound j (suc m) q))
+                         (transH (lt-false (suc m) (cnt p m) (cnt-le p m))
+                                 (symH (transH (apH p (eqN-sound j (suc m) q)) e))))
+                (\ q -> cnt-char p m (\ i j' hij hj' -> dc i j' hij (leb-step j' m hj')) j q))) } ;
+
+msA : (x n : Nat) -> IsT (leb x n) -> Id Nat (monus (suc n) x) (suc (monus n x)) = split {
+  zero -> \ n h -> refl (suc n) ;
+  suc x -> split {
+    zero -> \ h -> absurd _ (false-true h) ;
+    suc n -> \ h -> msA x n h } } ;
+
+monus-suc (n x : Nat) : IsT (leb x n) -> Id Nat (monus (suc n) x) (suc (monus n x)) = msA x n ;
+
+monus-self : (x : Nat) -> Id Nat (monus x x) zero = split { zero -> refl zero ; suc x -> monus-self x } ;
+
+gofY : (y x : Nat) -> Id Bool (ltb x y) false -> IsT (leb y x) = split {
+  zero -> \ x e -> refl true ;
+  suc y -> split {
+    zero -> \ e -> absurd _ (false-true (symH e)) ;
+    suc x -> \ e -> gofY y x e } } ;
+
+ge-of-false (x y : Nat) : Id Bool (ltb x y) false -> IsT (leb y x) = gofY y x ;
+
+-- a case split on  x < y
+caseLt (R : U l) (x y : Nat) (k1 : IsT (ltb x y) -> R) (k2 : Id Bool (ltb x y) false -> R) : R = aux (ltb x y) (refl (ltb x y))
+ where { aux : (b : Bool) -> Id Bool (ltb x y) b -> R = split { true -> \ e -> k1 e ; false -> \ e -> k2 e } ; } ;
+
+cnt-none (p : Nat -> Bool) : (n : Nat) -> ((j : Nat) -> IsT (leb j n) -> Id Bool (p j) false) -> Id Nat (cnt p n) zero = split {
+  zero -> \ h -> apH {Bool} {Nat} b2n (h zero (refl true)) ;
+  suc n -> \ h ->
+    transH (apH (\ v -> plus v (b2n (p (suc n)))) (cnt-none p n (\ j hj -> h j (leb-step j n hj))))
+           (apH {Bool} {Nat} b2n (h (suc n) (leb-refl n))) } ;
+
+cnt-ext (p q : Nat -> Bool) : (m : Nat) -> ((j : Nat) -> IsT (leb j m) -> Id Bool (p j) (q j)) -> Id Nat (cnt p m) (cnt q m) = split {
+  zero -> \ h -> apH {Bool} {Nat} b2n (h zero (refl true)) ;
+  suc m -> \ h ->
+    transH (apH (\ v -> plus v (b2n (p (suc m)))) (cnt-ext p q m (\ j hj -> h j (leb-step j m hj))))
+           (apH (\ v -> plus (cnt q m) (b2n v)) (h (suc m) (leb-refl m))) } ;
+
+opaque cnt ; opaque cnt-le ; opaque cnt-all ; opaque cnt-char ; opaque cnt-none ; opaque cnt-ext ;
+
+------------------------------------------------------------------------
+-- Rewriting inside inequalities
+
+leL {x x' : Nat} (y : Nat) (e : Id Nat x x') (h : IsT (leb x' y)) : IsT (leb x y) = substH (\ v -> IsT (leb v y)) (symH e) h ;
+leR (x : Nat) {y y' : Nat} (e : Id Nat y y') (h : IsT (leb x y')) : IsT (leb x y) = substH (\ v -> IsT (leb x v)) (symH e) h ;
+ltL {x x' : Nat} (y : Nat) (e : Id Nat x x') (h : IsT (ltb x' y)) : IsT (ltb x y) = substH (\ v -> IsT (ltb v y)) (symH e) h ;
+ltR (x : Nat) {y y' : Nat} (e : Id Nat y y') (h : IsT (ltb x y')) : IsT (ltb x y) = substH (\ v -> IsT (ltb x v)) (symH e) h ;
+
+------------------------------------------------------------------------
+-- The factorisation
+
+module OSum (n a m : Nat) (gv : Nat -> Nat) (ha : IsT (leb a (suc n)))
+  (grng : (j : Nat) -> IsT (leb j m) -> IsT (leb (gv j) n))
+  (gmono : (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (leb (gv i) (gv j))) {
+
+  p (j : Nat) : Bool = ltb (gv j) a ;
+
+  dc : DownC p m = \ i j hij hj pj -> leb-ltb-trans (gv i) (gv j) a (gmono i j hij hj) pj ;
+
+  b : Nat = cnt p m ;
+
+  bchar (j : Nat) (hj : IsT (leb j m)) : Id Bool (ltb j b) (ltb (gv j) a) = cnt-char p m dc j hj ;
+
+  b-le : IsT (leb b (suc m)) = cnt-le p m ;
+
+  c : Nat = pred (plus b (monus (suc n) a)) ;
+
+  k1 (j : Nat) : Nat = ite (ltb j b) (gv j) (plus a (monus j b)) ;
+  k2 (j : Nat) : Nat = ite (ltb j b) j (plus b (monus (gv j) a)) ;
+
+  k1t (j : Nat) (h : IsT (ltb j b)) : Id Nat (k1 j) (gv j) = ite-t (ltb j b) (gv j) (plus a (monus j b)) h ;
+  k1f (j : Nat) (h : Id Bool (ltb j b) false) : Id Nat (k1 j) (plus a (monus j b)) = ite-f (ltb j b) (gv j) (plus a (monus j b)) h ;
+  k2t (j : Nat) (h : IsT (ltb j b)) : Id Nat (k2 j) j = ite-t (ltb j b) j (plus b (monus (gv j) a)) h ;
+  k2f (j : Nat) (h : Id Bool (ltb j b) false) : Id Nat (k2 j) (plus b (monus (gv j) a)) = ite-f (ltb j b) j (plus b (monus (gv j) a)) h ;
+
+  -- the two shapes of c
+  c-lo (h : IsT (leb a n)) : Id Nat c (plus b (monus n a)) =
+    transH (apH (\ v -> pred (plus b v)) (monus-suc n a h)) (apH pred (plus-suc b (monus n a))) ;
+
+  -- if a = n+1, every j <= m is in B0, and c = m
+  top-b (e : Id Nat a (suc n)) : Id Nat b (suc m) =
+    cnt-all p m (\ j hj -> substH (\ v -> IsT (ltb (gv j) v)) (symH e) (grng j hj)) ;
+
+  c-top (e : Id Nat a (suc n)) : Id Nat c m =
+    transH (apH (\ v -> pred (plus b (monus (suc n) v))) e)
+           (transH (apH (\ v -> pred (plus b v)) (monus-self (suc n)))
+                   (transH (apH pred (plus-zero b)) (apH pred (top-b e)))) ;
+
+  -- a <= n or a = n+1
+  caseA (R : U l) (k-lo : IsT (leb a n) -> R) (k-top : Id Nat a (suc n) -> R) : R =
+    or-elim R (eqN a (suc n)) (leb a n) (leb-suc-split a n ha) (\ e -> k-top (eqN-sound a (suc n) e)) k-lo ;
+
+  -- B0 is inside [c], and an index of A1 forces a <= n
+  lt-b-c (j : Nat) (h : IsT (ltb j b)) : IsT (leb j c) = caseA (IsT (leb j c))
+    (\ lo -> leR j (c-lo lo) (leb-trans j b (plus b (monus n a)) (ltb-leb j b h) (leb-plus-l b (monus n a))))
+    (\ tp -> leR j (c-top tp) (ltR j (symH (top-b tp)) h)) ;
+
+  a1-lo (j : Nat) (e : Id Bool (ltb j b) false) (hj : IsT (leb j c)) : IsT (leb a n) = caseA (IsT (leb a n)) (\ lo -> lo)
+    (\ tp -> absurd _ (false-true (transH (symH e)
+               (leb-ltb-trans j c b hj (ltL b (c-top tp) (ltR m (top-b tp) (leb-refl m))))))) ;
+
+  ----------------------------------------------------------------------
+  -- k1 and k2 are monotone maps, and k1 k2 = g
+
+  k1-bound (j : Nat) (hj : IsT (leb j c)) (lo : IsT (leb a n)) : IsT (leb (plus a (monus j b)) n) =
+    leR (plus a (monus j b)) (symH (plus-monus a n lo))
+      (plus-mono-r a (monus j b) (monus n a)
+        (leR (monus j b) (symH (monus-plus b (monus n a)))
+          (monus-mono j (plus b (monus n a)) b (leR j (symH (c-lo lo)) hj)))) ;
+
+  k1-rng (j : Nat) (hj : IsT (leb j c)) : IsT (leb (k1 j) n) = caseLt (IsT (leb (k1 j) n)) j b
+    (\ lt -> leL n (k1t j lt) (grng j (leb-trans (suc j) b (suc m) lt b-le)))
+    (\ ge -> leL n (k1f j ge) (k1-bound j hj (a1-lo j ge hj))) ;
+
+  k1-mono (i j : Nat) (hij : IsT (leb i j)) (hj : IsT (leb j c)) : IsT (leb (k1 i) (k1 j)) = caseLt (IsT (leb (k1 i) (k1 j))) j b
+    (\ ltj -> leL (k1 j) (k1t i (leb-ltb-trans i j b hij ltj)) (leR (gv i) (k1t j ltj)
+                (gmono i j hij (leb-trans (suc j) b (suc m) ltj b-le))))
+    (\ gej -> caseLt (IsT (leb (k1 i) (k1 j))) i b
+       (\ lti -> leL (k1 j) (k1t i lti) (leR (gv i) (k1f j gej)
+                   (leb-trans (gv i) a (plus a (monus j b))
+                      (ltb-leb (gv i) a (substH (\ x -> IsT x) (bchar i (leb-trans (suc i) b (suc m) lti b-le)) lti))
+                      (leb-plus-l a (monus j b)))))
+       (\ gei -> leL (k1 j) (k1f i gei) (leR (plus a (monus i b)) (k1f j gej)
+                   (plus-mono-r a (monus i b) (monus j b) (monus-mono i j b hij))))) ;
+
+  k2-rng (j : Nat) (hj : IsT (leb j m)) : IsT (leb (k2 j) c) = caseLt (IsT (leb (k2 j) c)) j b
+    (\ lt -> leL c (k2t j lt) (lt-b-c j lt))
+    (\ ge -> leL c (k2f j ge)
+       (leR (plus b (monus (gv j) a))
+            (c-lo (leb-trans a (gv j) n (ge-of-false (gv j) a (transH (symH (bchar j hj)) ge)) (grng j hj)))
+            (plus-mono-r b (monus (gv j) a) (monus n a) (monus-mono (gv j) n a (grng j hj))))) ;
+
+  k2-mono (i j : Nat) (hij : IsT (leb i j)) (hj : IsT (leb j m)) : IsT (leb (k2 i) (k2 j)) = caseLt (IsT (leb (k2 i) (k2 j))) j b
+    (\ ltj -> leL (k2 j) (k2t i (leb-ltb-trans i j b hij ltj)) (leR i (k2t j ltj) hij))
+    (\ gej -> caseLt (IsT (leb (k2 i) (k2 j))) i b
+       (\ lti -> leL (k2 j) (k2t i lti) (leR i (k2f j gej)
+                   (leb-trans i b (plus b (monus (gv j) a)) (ltb-leb i b lti) (leb-plus-l b (monus (gv j) a)))))
+       (\ gei -> leL (k2 j) (k2f i gei) (leR (plus b (monus (gv i) a)) (k2f j gej)
+                   (plus-mono-r b (monus (gv i) a) (monus (gv j) a) (monus-mono (gv i) (gv j) a (gmono i j hij hj)))))) ;
+
+  k12 (j : Nat) (hj : IsT (leb j m)) : Id Nat (k1 (k2 j)) (gv j) = caseLt (Id Nat (k1 (k2 j)) (gv j)) j b
+    (\ lt -> transH (apH k1 (k2t j lt)) (k1t j lt))
+    (\ ge -> transH (apH k1 (k2f j ge))
+              (transH (k1f (plus b (monus (gv j) a)) (lt-false (plus b (monus (gv j) a)) b (leb-plus-l b (monus (gv j) a))))
+               (transH (apH (plus a) (monus-plus b (monus (gv j) a)))
+                       (plus-monus a (gv j) (ge-of-false (gv j) a (transH (symH (bchar j hj)) ge)))))) ;
+
+  -- the endpoints
+  k1-top (e : Id Nat a (suc n)) (j : Nat) (hj : IsT (leb j c)) : Id Nat (k1 j) (gv j) =
+    k1t j (ltR j (top-b e) (leR j (symH (c-top e)) hj)) ;
+
+  k2-top (e : Id Nat a (suc n)) (j : Nat) (hj : IsT (leb j m)) : Id Nat (k2 j) j = k2t j (ltR j (top-b e) hj) ;
+
+  bot-b (e : Id Nat a zero) : Id Nat b zero =
+    cnt-none p m (\ j hj -> transH (apH (ltb (gv j)) e) (lt-false (gv j) zero (refl true))) ;
+
+  c-bot (e : Id Nat a zero) : Id Nat c n =
+    transH (apH (\ v -> pred (plus v (monus (suc n) a))) (bot-b e)) (apH (\ v -> pred (monus (suc n) v)) e) ;
+
+  k1-bot (e : Id Nat a zero) (j : Nat) : Id Nat (k1 j) j =
+    transH (k1f j (transH (apH (ltb j) (bot-b e)) (lt-false j zero (refl true))))
+           (transH (apH (\ v -> plus v (monus j b)) e) (apH (monus j) (bot-b e))) ;
+
+  k2-bot (e : Id Nat a zero) (j : Nat) : Id Nat (k2 j) (gv j) =
+    transH (k2f j (transH (apH (ltb j) (bot-b e)) (lt-false j zero (refl true))))
+           (transH (apH (\ v -> plus v (monus (gv j) a)) (bot-b e)) (apH (monus (gv j)) e)) ;
+} ;
+
+------------------------------------------------------------------------
+-- Restricting along a strictly monotone map  h' : [m'] -> [m]
+
+module Inner (n a m m' : Nat) (gv hv : Nat -> Nat) (ha : IsT (leb a (suc n)))
+  (grng : (j : Nat) -> IsT (leb j m) -> IsT (leb (gv j) n))
+  (gmono : (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (leb (gv i) (gv j)))
+  (hrng : (j : Nat) -> IsT (leb j m') -> IsT (leb (hv j) m))
+  (hstr : (i j : Nat) -> IsT (leb j m') -> IsT (ltb i j) -> IsT (ltb (hv i) (hv j)))
+  (gw : Nat -> Nat) (agw : (j : Nat) -> IsT (leb j m') -> Id Nat (gw j) (gv (hv j))) {
+
+  module O = OSum[n, a, m, gv, ha, grng, gmono] ;
+
+  hmono (i j : Nat) (hij : IsT (leb i j)) (hj : IsT (leb j m')) : IsT (leb (hv i) (hv j)) =
+    eqN-dec (IsT (leb (hv i) (hv j))) i j (\ e -> substH (\ v -> IsT (leb (hv i) (hv v))) e (leb-refl (hv i)))
+            (\ k -> ltb-leb (hv i) (hv j) (hstr i j hj (leb-neq i j hij k))) ;
+
+  gv' (j : Nat) : Nat = gw j ;
+
+  module O' = OSum[n, a, m', gw, ha,
+                   \ j hj -> leL n (agw j hj) (grng (hv j) (hrng j hj)),
+                   \ i j hij hj -> leL (gw j) (agw i (leb-trans i j m' hij hj))
+                                       (leR (gv (hv i)) (agw j hj) (gmono (hv i) (hv j) (hmono i j hij hj) (hrng j hj)))] ;
+
+  s (j : Nat) : Nat = ite (ltb j O'.b) (hv j) (plus O.b (monus j O'.b)) ;
+
+  st (j : Nat) (h : IsT (ltb j O'.b)) : Id Nat (s j) (hv j) = ite-t (ltb j O'.b) (hv j) (plus O.b (monus j O'.b)) h ;
+  sf (j : Nat) (h : Id Bool (ltb j O'.b) false) : Id Nat (s j) (plus O.b (monus j O'.b)) = ite-f (ltb j O'.b) (hv j) (plus O.b (monus j O'.b)) h ;
+
+  rel (j : Nat) (hj : IsT (leb j m')) : Id Bool (ltb j O'.b) (ltb (hv j) O.b) =
+    transH (O'.bchar j hj) (transH (apH (\ v -> ltb v a) (agw j hj)) (symH (O.bchar (hv j) (hrng j hj)))) ;
+
+  inm (j : Nat) (h : IsT (ltb j O'.b)) : IsT (leb j m') = leb-trans (suc j) O'.b (suc m') h O'.b-le ;
+
+  s-rng (j : Nat) (hj : IsT (leb j O'.c)) : IsT (leb (s j) O.c) = caseLt (IsT (leb (s j) O.c)) j O'.b
+    (\ lt -> leL O.c (st j lt) (O.lt-b-c (hv j) (transH (symH (rel j (inm j lt))) lt)))
+    (\ ge -> leL O.c (sf j ge)
+       (leR (plus O.b (monus j O'.b)) (O.c-lo (O'.a1-lo j ge hj))
+         (plus-mono-r O.b (monus j O'.b) (monus n a)
+           (leR (monus j O'.b) (symH (monus-plus O'.b (monus n a)))
+             (monus-mono j (plus O'.b (monus n a)) O'.b (leR j (symH (O'.c-lo (O'.a1-lo j ge hj))) hj)))))) ;
+
+  s-str (i j : Nat) (hj : IsT (leb j O'.c)) (hij : IsT (ltb i j)) : IsT (ltb (s i) (s j)) = caseLt (IsT (ltb (s i) (s j))) j O'.b
+    (\ ltj -> ltL (s j) (st i (leb-trans (suc i) j O'.b hij (ltb-leb j O'.b ltj)))
+                (ltR (hv i) (st j ltj) (hstr i j (inm j ltj) hij)))
+    (\ gej -> caseLt (IsT (ltb (s i) (s j))) i O'.b
+       (\ lti -> ltL (s j) (st i lti)
+                   (ltR (hv i) (sf j gej)
+                      (ltb-leb-trans (hv i) O.b (plus O.b (monus j O'.b))
+                         (transH (symH (rel i (inm i lti))) lti) (leb-plus-l O.b (monus j O'.b)))))
+       (\ gei -> ltL (s j) (sf i gei)
+                   (ltR (plus O.b (monus i O'.b)) (sf j gej)
+                      (plus-strict-r O.b (monus i O'.b) (monus j O'.b)
+                         (monus-strict i j O'.b (ge-of-false i O'.b gei) hij))))) ;
+
+  s-k1 (j : Nat) (hj : IsT (leb j O'.c)) : Id Nat (O.k1 (s j)) (O'.k1 j) = caseLt (Id Nat (O.k1 (s j)) (O'.k1 j)) j O'.b
+    (\ lt -> transH (apH O.k1 (st j lt))
+              (transH (O.k1t (hv j) (transH (symH (rel j (inm j lt))) lt))
+                      (symH (transH (O'.k1t j lt) (agw j (inm j lt))))))
+    (\ ge -> transH (apH O.k1 (sf j ge))
+              (transH (O.k1f (plus O.b (monus j O'.b)) (lt-false (plus O.b (monus j O'.b)) O.b (leb-plus-l O.b (monus j O'.b))))
+               (transH (apH (plus a) (monus-plus O.b (monus j O'.b)))
+                       (symH (O'.k1f j ge))))) ;
+
+  s-k2 (j : Nat) (hj : IsT (leb j m')) : Id Nat (O.k2 (hv j)) (s (O'.k2 j)) = caseLt (Id Nat (O.k2 (hv j)) (s (O'.k2 j))) j O'.b
+    (\ lt -> transH (O.k2t (hv j) (transH (symH (rel j hj)) lt))
+              (symH (transH (apH s (O'.k2t j lt)) (st j lt))))
+    (\ ge -> transH (O.k2f (hv j) (transH (symH (rel j hj)) ge))
+              (symH (transH (apH s (O'.k2f j ge))
+                    (transH (sf (plus O'.b (monus (gv' j) a)) (lt-false (plus O'.b (monus (gv' j) a)) O'.b (leb-plus-l O'.b (monus (gv' j) a))))
+                     (transH (apH (plus O.b) (monus-plus O'.b (monus (gv' j) a)))
+                             (apH (\ v -> plus O.b (monus v a)) (agw j hj))))))) ;
+} ;
+
+------------------------------------------------------------------------
+-- Precomposing with a strictly monotone map  G : [n'] -> [n]
+
+module Outer (n n' a a2 m : Nat) (G kv : Nat -> Nat) (ha : IsT (leb a (suc n))) (ha2 : IsT (leb a2 (suc n')))
+  (Grng : (j : Nat) -> IsT (leb j n') -> IsT (leb (G j) n))
+  (Gstr : (i j : Nat) -> IsT (leb j n') -> IsT (ltb i j) -> IsT (ltb (G i) (G j)))
+  (achar : (i : Nat) -> IsT (leb i n') -> Id Bool (ltb i a2) (ltb (G i) a))
+  (krng : (j : Nat) -> IsT (leb j m) -> IsT (leb (kv j) n'))
+  (kmono : (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (leb (kv i) (kv j)))
+  (gw1 : Nat -> Nat) (agw1 : (j : Nat) -> IsT (leb j m) -> Id Nat (gw1 j) (G (kv j))) {
+
+  Gmono (i j : Nat) (hij : IsT (leb i j)) (hj : IsT (leb j n')) : IsT (leb (G i) (G j)) =
+    eqN-dec (IsT (leb (G i) (G j))) i j (\ e -> substH (\ v -> IsT (leb (G i) (G v))) e (leb-refl (G i)))
+            (\ k -> ltb-leb (G i) (G j) (Gstr i j hj (leb-neq i j hij k))) ;
+
+  module O1 = OSum[n, a, m, gw1, ha, \ j hj -> leL n (agw1 j hj) (Grng (kv j) (krng j hj)),
+                   \ i j hij hj -> leL (gw1 j) (agw1 i (leb-trans i j m hij hj))
+                                       (leR (G (kv i)) (agw1 j hj) (Gmono (kv i) (kv j) (kmono i j hij hj) (krng j hj)))] ;
+
+  module O2 = OSum[n', a2, m, kv, ha2, krng, kmono] ;
+
+  eB : Id Nat O1.b O2.b =
+    cnt-ext O1.p O2.p m (\ j hj -> transH (apH (\ v -> ltb v a) (agw1 j hj)) (symH (achar (kv j) (krng j hj)))) ;
+
+  B : Nat = O2.b ;
+
+  x (j : Nat) : Nat = plus a2 (monus j B) ;
+
+  t (j : Nat) : Nat = ite (ltb j B) j (plus O1.b (monus (G (x j)) a)) ;
+
+  tt' (j : Nat) (h : IsT (ltb j B)) : Id Nat (t j) j = ite-t (ltb j B) j (plus O1.b (monus (G (x j)) a)) h ;
+  tf (j : Nat) (h : Id Bool (ltb j B) false) : Id Nat (t j) (plus O1.b (monus (G (x j)) a)) = ite-f (ltb j B) j (plus O1.b (monus (G (x j)) a)) h ;
+
+  -- an index of A1'' lands in A1
+  x-A1 (j : Nat) (hx : IsT (leb (x j) n')) : IsT (leb a (G (x j))) =
+    ge-of-false (G (x j)) a (transH (symH (achar (x j) hx)) (lt-false (x j) a2 (leb-plus-l a2 (monus j B)))) ;
+
+  x-rng (j : Nat) (ge : Id Bool (ltb j B) false) (hj : IsT (leb j O2.c)) : IsT (leb (x j) n') =
+    leL n' (symH (O2.k1f j ge)) (O2.k1-rng j hj) ;
+
+  t-rng (j : Nat) (hj : IsT (leb j O2.c)) : IsT (leb (t j) O1.c) = caseLt (IsT (leb (t j) O1.c)) j B
+    (\ lt -> leL O1.c (tt' j lt) (O1.lt-b-c j (ltR j eB lt)))
+    (\ ge -> leL O1.c (tf j ge)
+       (leR (plus O1.b (monus (G (x j)) a))
+            (O1.c-lo (leb-trans a (G (x j)) n (x-A1 j (x-rng j ge hj)) (Grng (x j) (x-rng j ge hj))))
+            (plus-mono-r O1.b (monus (G (x j)) a) (monus n a) (monus-mono (G (x j)) n a (Grng (x j) (x-rng j ge hj)))))) ;
+
+  t-str (i j : Nat) (hj : IsT (leb j O2.c)) (hij : IsT (ltb i j)) : IsT (ltb (t i) (t j)) = caseLt (IsT (ltb (t i) (t j))) j B
+    (\ ltj -> ltL (t j) (tt' i (leb-trans (suc i) j B hij (ltb-leb j B ltj))) (ltR i (tt' j ltj) hij))
+    (\ gej -> caseLt (IsT (ltb (t i) (t j))) i B
+       (\ lti -> ltL (t j) (tt' i lti)
+                   (ltR i (tf j gej)
+                      (ltb-leb-trans i O1.b (plus O1.b (monus (G (x j)) a)) (ltR i eB lti) (leb-plus-l O1.b (monus (G (x j)) a)))))
+       (\ gei -> ltL (t j) (tf i gei)
+                   (ltR (plus O1.b (monus (G (x i)) a)) (tf j gej)
+                      (plus-strict-r O1.b (monus (G (x i)) a) (monus (G (x j)) a)
+                         (monus-strict (G (x i)) (G (x j)) a (x-A1 i (hxi i j hj hij gej))
+                            (Gstr (x i) (x j) (x-rng j gej hj)
+                               (plus-strict-r a2 (monus i B) (monus j B) (monus-strict i j B (ge-of-false i B gei) hij)))))))) ;
+
+  hxi (i j : Nat) (hj : IsT (leb j O2.c)) (hij : IsT (ltb i j)) (gej : Id Bool (ltb j B) false) : IsT (leb (x i) n') =
+    leb-trans (x i) (x j) n' (plus-mono-r a2 (monus i B) (monus j B) (monus-mono i j B (ltb-leb i j hij))) (x-rng j gej hj) ;
+
+  t-k1 (j : Nat) (hj : IsT (leb j O2.c)) : Id Nat (G (O2.k1 j)) (O1.k1 (t j)) = caseLt (Id Nat (G (O2.k1 j)) (O1.k1 (t j))) j B
+    (\ lt -> transH (apH G (O2.k1t j lt))
+              (symH (transH (apH O1.k1 (tt' j lt))
+                            (transH (O1.k1t j (ltR j eB lt)) (agw1 j (leb-trans (suc j) B (suc m) lt O2.b-le))))))
+    (\ ge -> transH (apH G (O2.k1f j ge))
+              (symH (transH (apH O1.k1 (tf j ge))
+                     (transH (O1.k1f (plus O1.b (monus (G (x j)) a)) (lt-false (plus O1.b (monus (G (x j)) a)) O1.b (leb-plus-l O1.b (monus (G (x j)) a))))
+                      (transH (apH (plus a) (monus-plus O1.b (monus (G (x j)) a)))
+                              (plus-monus a (G (x j)) (x-A1 j (x-rng j ge hj)))))))) ;
+
+  t-k2 (j : Nat) (hj : IsT (leb j m)) : Id Nat (t (O2.k2 j)) (O1.k2 j) = caseLt (Id Nat (t (O2.k2 j)) (O1.k2 j)) j B
+    (\ lt -> transH (apH t (O2.k2t j lt)) (transH (tt' j lt) (symH (O1.k2t j (ltR j eB lt)))))
+    (\ ge -> transH (apH t (O2.k2f j ge))
+              (transH (tf (plus B (monus (kv j) a2)) (lt-false (plus B (monus (kv j) a2)) B (leb-plus-l B (monus (kv j) a2))))
+               (transH (apH (\ v -> plus O1.b (monus (G (plus a2 v)) a)) (monus-plus B (monus (kv j) a2)))
+                (transH (apH (\ v -> plus O1.b (monus (G v) a))
+                             (plus-monus a2 (kv j) (ge-of-false (kv j) a2 (transH (symH (O2.bchar j hj)) ge))))
+                        (symH (transH (O1.k2f j (transH (apH (ltb j) eB) ge))
+                                      (apH (\ v -> plus O1.b (monus v a)) (agw1 j hj)))))))) ;
+} ;
+
+------------------------------------------------------------------------
+-- Two presentations of the same factorisation
+
+module Same (n a a' m : Nat) (gv gv' : Nat -> Nat) (ha : IsT (leb a (suc n))) (ha' : IsT (leb a' (suc n)))
+  (grng : (j : Nat) -> IsT (leb j m) -> IsT (leb (gv j) n))
+  (gmono : (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (leb (gv i) (gv j)))
+  (grng' : (j : Nat) -> IsT (leb j m) -> IsT (leb (gv' j) n))
+  (gmono' : (i j : Nat) -> IsT (leb i j) -> IsT (leb j m) -> IsT (leb (gv' i) (gv' j)))
+  (ea : Id Nat a a') (eg : (j : Nat) -> IsT (leb j m) -> Id Nat (gv j) (gv' j)) {
+
+  module O = OSum[n, a, m, gv, ha, grng, gmono] ;
+  module O' = OSum[n, a', m, gv', ha', grng', gmono'] ;
+
+  eb : Id Nat O.b O'.b =
+    cnt-ext O.p O'.p m (\ j hj -> transH (apH (\ v -> ltb v a) (eg j hj)) (apH (ltb (gv' j)) ea)) ;
+
+  ec : Id Nat O.c O'.c =
+    transH (apH (\ v -> pred (plus v (monus (suc n) a))) eb) (apH (\ v -> pred (plus O'.b (monus (suc n) v))) ea) ;
+
+  ek1 (j : Nat) (hj : IsT (leb j O.c)) : Id Nat (O.k1 j) (O'.k1 j) = caseLt (Id Nat (O.k1 j) (O'.k1 j)) j O.b
+    (\ lt -> transH (O.k1t j lt)
+              (transH (eg j (leb-trans (suc j) O.b (suc m) lt O.b-le)) (symH (O'.k1t j (ltR j (symH eb) lt)))))
+    (\ ge -> transH (O.k1f j ge)
+              (transH (transH (apH (\ v -> plus v (monus j O.b)) ea) (apH (\ v -> plus a' (monus j v)) eb))
+                      (symH (O'.k1f j (transH (apH (ltb j) (symH eb)) ge))))) ;
+
+  ek2 (j : Nat) (hj : IsT (leb j m)) : Id Nat (O.k2 j) (O'.k2 j) = caseLt (Id Nat (O.k2 j) (O'.k2 j)) j O.b
+    (\ lt -> transH (O.k2t j lt) (symH (O'.k2t j (ltR j (symH eb) lt))))
+    (\ ge -> transH (O.k2f j ge)
+              (transH (transH (apH (\ v -> plus v (monus (gv j) a)) eb)
+                       (transH (apH (\ v -> plus O'.b (monus v a)) (eg j hj)) (apH (\ v -> plus O'.b (monus (gv' j) v)) ea)))
+                      (symH (O'.k2f j (transH (apH (ltb j) (symH eb)) ge))))) ;
+} ;

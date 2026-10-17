@@ -1,0 +1,111 @@
+-- VLift.seg: MODEL/Lv/VLift.agda.  Iterative sets of level k inside
+-- those of level l >= k.
+--
+--   liftM (sup A f) = sup A (liftM o f)
+--
+-- With cumulative universes A : U k is already in U l, so Agda's
+-- Lift l A, lift and lower disappear.  liftM sends iterative sets to
+-- iterative sets and reflects equality (by induction: equal lifts have
+-- the same members, so the sets have the same members, and ext).  Hence
+--
+--   liftV : V[k].V -> V[l].V
+--   PiS A enc encInj B    a Pi-code over an index type A : U l given with an
+--                         injective encoding enc : A -> V (e.g. encIx x),
+--                         with Ix (PiS A enc encInj B) = (a : A) -> Ix (B a)
+--                         on the nose (Ix (liftV x) does not compute for a
+--                         variable x, hence PiS rather than PiV (liftV x)).
+
+level k l ;
+constraint k <= l ;
+open Base ;
+open Prelude[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module V0 = V[k] ;
+module W = V[l] ;
+
+------------------------------------------------------------------------
+-- The lift on multisets
+
+liftM : V0.M -> W.M = split { sup A f -> sup A (\ a -> liftM (f a)) } ;
+
+-- equality of lifts of iterative sets is equality
+lift-refl : (x : V0.M) -> V0.isIt x -> (y : V0.M) -> V0.isIt y
+  -> Id W.M (liftM x) (liftM y) -> Id V0.M x y = split {
+  sup A f -> \ ix -> split {
+    sup B g -> \ iy P ->
+      V0.ext (sup A f) (sup B g) ix iy
+        (\ z -> (\ m -> ((lr-fwd A f ix.2 B g iy.2 P m.1).1,
+                         trans V0.M (g (lr-fwd A f ix.2 B g iy.2 P m.1).1) (f m.1) z
+                           (lr-fwd A f ix.2 B g iy.2 P m.1).2 m.2),
+                 \ m -> ((lr-fwd B g iy.2 A f ix.2 (sym W.M (liftM (sup A f)) (liftM (sup B g)) P) m.1).1,
+                         trans V0.M (f (lr-fwd B g iy.2 A f ix.2 (sym W.M (liftM (sup A f)) (liftM (sup B g)) P) m.1).1)
+                           (g m.1) z
+                           (lr-fwd B g iy.2 A f ix.2 (sym W.M (liftM (sup A f)) (liftM (sup B g)) P) m.1).2 m.2))) }
+} ;
+
+-- a member of liftM x is a member of liftM y (Agda's fwd; bwd is fwd on sym P)
+lr-fwd (A : U k) (f : A -> V0.M) (if : (a : A) -> V0.isIt (f a))
+  (B : U k) (g : B -> V0.M) (ig : (b : B) -> V0.isIt (g b))
+  (P : Id W.M (liftM (sup A f)) (liftM (sup B g))) (a : A) : V0.Mem (f a) (sup B g) =
+  ((W.memT (liftM (sup A f)) (liftM (sup B g)) P a).1,
+   lift-refl (g (W.memT (liftM (sup A f)) (liftM (sup B g)) P a).1)
+             (ig (W.memT (liftM (sup A f)) (liftM (sup B g)) P a).1)
+             (f a) (if a) (W.memT (liftM (sup A f)) (liftM (sup B g)) P a).2) ;
+
+lift-isIt : (x : V0.M) -> V0.isIt x -> W.isIt (liftM x) = split {
+  sup A f -> \ i ->
+    (\ z u v -> Sigma-eq A (\ a -> Id W.M (liftM (f a)) z) u.1 v.1 u.2 v.2
+                  (V0.emb-inj A f i.1 u.1 v.1
+                     (lift-refl (f u.1) (i.2 u.1) (f v.1) (i.2 v.1)
+                        (trans W.M (liftM (f u.1)) z (liftM (f v.1)) u.2 (sym W.M (liftM (f v.1)) z v.2))))
+                  (W.paths-prop (liftM (f v.1)) (lift-isIt (f v.1) (i.2 v.1)) z),
+     \ a -> lift-isIt (f a) (i.2 a))
+} ;
+
+------------------------------------------------------------------------
+-- The lift on iterative sets
+
+liftV (x : V0.V) : W.V = (liftM x.1, lift-isIt x.1 x.2) ;
+
+liftV-inj (x y : V0.V) (P : Id W.M (liftV x).1 (liftV y).1) : Id V0.M x.1 y.1 =
+  lift-refl x.1 x.2 y.1 y.2 P ;
+
+-- the members of a level-k iterative set, encoded at level l
+encIx (x : V0.V) (a : V0.Ix x) : W.V = liftV (V0.ev x a) ;
+
+encIx-inj (x : V0.V) (a a' : V0.Ix x) (P : Id W.M (encIx x a).1 (encIx x a').1) : Id (V0.Ix x) a a' =
+  V0.emb-inj (V0.Ix x) (V0.elt x.1) (V0.embV x) a a' (liftV-inj (V0.ev x a) (V0.ev x a') P) ;
+
+------------------------------------------------------------------------
+-- Pi over an index type with an injective encoding
+
+module PiSeg (A : U l) (enc : A -> W.V)
+             (encInj : (a a' : A) -> Id W.M (enc a).1 (enc a').1 -> Id A a a')
+             (B : A -> W.V) {
+
+  graphS (phi : (a : A) -> W.Ix (B a)) : W.V =
+    W.mkV A (\ a -> W.pairV (enc a) (W.ev (B a) (phi a)))
+      (\ a a' P -> encInj a a' (W.pair-inj (enc a) (W.ev (B a) (phi a)) (enc a') (W.ev (B a') (phi a')) P).1) ;
+
+  aux (phi psi : (a : A) -> W.Ix (B a)) (a' a : A) (p : Id A a' a)
+    : Id W.M (W.elt (B a').1 (psi a')) (W.elt (B a).1 (phi a)) -> Id (W.Ix (B a)) (phi a) (psi a) =
+    idJ A a' (\ a1 p1 -> Id W.M (W.elt (B a').1 (psi a')) (W.elt (B a1).1 (phi a1))
+                         -> Id (W.Ix (B a1)) (phi a1) (psi a1))
+        (\ Q -> sym (W.Ix (B a')) (psi a') (phi a')
+                    (W.emb-inj (W.Ix (B a')) (W.elt (B a').1) (W.embV (B a')) (psi a') (phi a') Q))
+        a p ;
+
+  pt (phi psi : (a : A) -> W.Ix (B a)) (P : Id W.M (graphS phi).1 (graphS psi).1) (a : A)
+    : Id (W.Ix (B a)) (phi a) (psi a) =
+    aux phi psi m.1 a
+        (encInj m.1 a (W.pair-inj (enc m.1) (W.ev (B m.1) (psi m.1)) (enc a) (W.ev (B a) (phi a)) m.2).1)
+        (W.pair-inj (enc m.1) (W.ev (B m.1) (psi m.1)) (enc a) (W.ev (B a) (phi a)) m.2).2
+   where { m : W.Mem (W.elt (graphS phi).1 a) (graphS psi).1 =
+             W.memT (graphS phi).1 (graphS psi).1 P a ; } ;
+
+  PiS : W.V = W.mkV ((a : A) -> W.Ix (B a)) graphS
+                    (\ phi psi P -> funext A (\ a -> W.Ix (B a)) phi psi (pt phi psi P)) ;
+} ;
+
+PiS (A : U l) (enc : A -> W.V) (encInj : (a a' : A) -> Id W.M (enc a).1 (enc a').1 -> Id A a a')
+    (B : A -> W.V) : W.V = PiSeg[A, enc, encInj, B].PiS ;

@@ -1,0 +1,60 @@
+-- locks.seg: the lock, sharing of instances, soundness, loops, mutual recursion.
+
+level a ;
+
+data N = zero | suc (n : N) ;
+
+plus : N -> N -> N = split {
+  zero  -> \ n -> n ;
+  suc p -> \ n -> suc (plus p n)
+} ;
+one : N = suc zero ;
+
+module Mon (A : U a) (e : A) (op : A -> A -> A) {
+  twice (x : A) : A = op x x ;
+} ;
+module NM = Mon[N, zero, plus] ;
+
+twiceUnfold (x : N) : Id N (NM.twice x) (plus x x) = refl (plus x x) ;
+
+-- lock the member AFTER the module: it applies to every instance
+opaque Mon.twice ;
+
+-- still equal by name and arguments, through two different instance paths
+byName (x : N) : Id N (Mon[N, zero, plus].twice x) (NM.twice x) = refl (NM.twice x) ;
+-- e is not a dependency of twice, so a different e gives the same object
+byDeps (x : N) : Id N (Mon[N, one, plus].twice x) (NM.twice x) = refl (NM.twice x) ;
+-- a different op does NOT: locked, they are different constants
+#fails { diffOp (x : N) : Id N (Mon[N, zero, \ m n -> plus n m].twice x) (NM.twice x) = refl (NM.twice x) ; } ;
+-- locked: no computation
+#fails { comp : Id N (NM.twice one) (suc one) = refl (suc one) ; } ;
+-- but the unfolding lemma stated before the lock still applies
+viaLemma : Id N (NM.twice one) (plus one one) = twiceUnfold one ;
+
+transparent Mon.twice ;
+compAgain : Id N (NM.twice one) (suc one) = refl (suc one) ;
+
+-- mutual recursion in a group
+even : N -> N = split { zero -> one ; suc n -> odd n } ;
+odd  : N -> N = split { zero -> zero ; suc n -> even n } ;
+#normal even (suc (suc one)) ;
+
+-- where blocks
+four : N = d (d one) where { d (n : N) : N = plus n n ; } ;
+#normal four ;
+
+-- a context with a loop collapses (bcde.pdf App. C)
+module Loopy (b c : Level) {
+  constraint b < c, c < b ;
+  anything : Id N zero one = refl zero ;
+} ;
+
+-- constraint products are discharged where valid
+module Cons (b c : Level) {
+  big : [b < c] U c = U b ;
+} ;
+module CU (b c : Level) {
+  constraint b < c ;
+  ok1 : U c = Cons[b, c].big ;
+} ;
+#fails { module CB (b c : Level) { bad : U c = Cons[b, c].big ; } ; } ;

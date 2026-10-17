@@ -1,0 +1,302 @@
+-- PresheafFormers.seg: MODEL/Lv/PresheafFormers.agda (and
+-- MODEL/PresheafFormers.agda).  Unit, Sigma and the extensional identity
+-- type in the presheaf model.  All three are stable under substitution on
+-- the nose: their objects part at (I , x) only mentions x, so substitution
+-- acts by precomposition and the naturality equations reduce to tact-irr.
+--
+-- Each former is a segment over its data (Un[G], SigAB[G, A, B],
+-- IdAB[G, A, a, b]; SigAB is Agda's anonymous  module _ {G} A B ), whose
+-- members are the type, its action, its laws and the iso; the naturality
+-- in a substitution takes two of them.  Path reasoning uses the hidden
+-- lemmas of Paths (transH p q: the endpoints are found from p and q).
+
+level k l ;
+constraint k <= l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+
+module PFormers (C : SmallCat[k].SmallCat) {
+  open C ;
+  open SmallCat[k].Objs[C.obV] ;
+  open SmallCat[k].Homs[C.obV, C.homV] ;
+  module P = Presheaf[k, l].Psh[C] ;
+  open P ;
+  module F = CwF.Formers[l+, PCwF] ;
+
+  -- transport of an action along its target
+  tact-path (G : PCtx) (A : PTy[G]) (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I))
+    (y y' : W.Ix (G.ob J)) (e : Id (W.Ix (G.ob J)) (G.act J I f x) y) (Q : Id (W.Ix (G.ob J)) y y')
+    (a : W.Ix (A.tob I x))
+    : Id (W.Ix (A.tob J y')) (substH (\ y2 -> W.Ix (A.tob J y2)) Q (A.tact J I f x y e a))
+                             (A.tact J I f x y' (transH e Q) a) =
+    idJ (W.Ix (G.ob J)) y
+      (\ y2 Q2 -> Id (W.Ix (A.tob J y2)) (substH (\ y3 -> W.Ix (A.tob J y3)) Q2 (A.tact J I f x y e a))
+                                         (A.tact J I f x y2 (transH e Q2) a))
+      (refl (A.tact J I f x y e a)) y' Q ;
+
+  -- elements of a type over an element, read off pointwise
+  el-over (G : PCtx) (X : U l+) (F0 : X -> PTy[G]) (a a' : X) (Q : Id X a a')
+    (same : Id (TOb G) (F0 a).tob (F0 a').tob) (u : PEl[G, F0 a]) (t : PEl[G, F0 a'])
+    (h : (I : Ob) (x : W.Ix (G.ob I))
+         -> Id (W.Ix ((F0 a').tob I x)) (substH (\ o -> elObs G o) same u.eob I x) (t.eob I x))
+    : Id (PEl[G, F0 a']) (substH (\ a2 -> PEl[G, F0 a2]) Q u) t =
+    transH (subst-ap X (PTy[G]) F0 (\ Y -> PEl[G, Y]) a a' Q u)
+           (el-subst G (F0 a) (F0 a') (apH F0 Q) same u t h) ;
+
+  ----------------------------------------------------------------------
+  -- Unit
+
+  module Un (G : PCtx) {
+    T : PTy[G] = (mkTy G (\ I x -> W.unitV) (\ J I f x y e a -> a) (\ I x e a -> refl a) (\ K J I f g x y z e1 e2 e3 a -> refl a)) ;
+
+    el : PEl[G, T] = new PEl[G, T, \ I x -> tt, \ J I f x y e -> refl tt] ;
+
+    -- Agda's unit record has eta; Top here is a data type, so isTop
+    iso : Iso (PEl[G, T]) Top = struct {
+      fun = \ u -> tt ;
+      inv = \ t -> el ;
+      fun-inv = \ t -> isTop tt t ;
+      inv-fun = \ u -> el-ext G T el u (\ I x -> isTop tt (u.eob I x)) } ;
+  } ;
+
+  UnitP-nat (D G : PCtx) (s : PSub[D, G]) : Id (PTy[D]) (subTy D G Un[G].T s) Un[D].T =
+    ty-ext2 D (subTy D G Un[G].T s) Un[D].T (refl (\ I x -> W.unitV)) (\ J I f x y e a -> refl a) ;
+
+  opaque UnitP-nat ;
+
+  PUnit : F.UnitStr = new F.UnitStr[
+    Unit         := \ G -> Un[G].T,
+    Unit-nat     := UnitP-nat,
+    Unit-iso     := \ G -> Un[G].iso,
+    Unit-iso-nat := \ D G t s ->
+      el-subst D (subTy D G Un[G].T s) Un[D].T (UnitP-nat D G s) (refl (\ I x -> W.unitV))
+               (subEl D G Un[G].T Un[G].el s) Un[D].el (\ I x -> refl tt) ] ;
+
+  ----------------------------------------------------------------------
+  -- Sigma
+
+  module SigAB (G : PCtx) (A : PTy[G]) (B : PTy[extP G A]) {
+
+    -- the fibre at (I , x), the points of G & A
+    Fb (I : Ob) (x : W.Ix (G.ob I)) : U l = (v : W.Ix (A.tob I x)) * W.Ix (B.tob I (x, v)) ;
+    FB (I : Ob) (w : SigT G A I) : U l = W.Ix (B.tob I w) ;
+
+    o : TOb G = \ I x -> W.SigV (A.tob I x) (\ v -> B.tob I (x, v)) ;
+
+    h : TactTy G o = \ J I f x y e ab ->
+      (A.tact J I f x y e ab.1,
+       B.tact J I f (x, ab.1) (y, A.tact J I f x y e ab.1) (pair-act G A J I f x y e ab.1) ab.2) ;
+
+    -- (y , a1) = (y , a) from a1 = a ; transport along it, read on B
+    pa (I : Ob) (y : W.Ix (G.ob I)) (a1 a : W.Ix (A.tob I y)) (p : Id (W.Ix (A.tob I y)) a1 a)
+      : Id (SigT G A I) (y, a1) (y, a) = apH (\ v -> (y, v)) p ;
+
+    -- the B-part of a Sigma-path whose first part is p, from an action of B
+    bpart (J I : Ob) (f : Hom J I) (w : SigT G A I) (y : W.Ix (G.ob J)) (a1 a : W.Ix (A.tob J y))
+      (p : Id (W.Ix (A.tob J y)) a1 a) (E : Id (SigT G A J) ((extP G A).act J I f w) (y, a1))
+      (b : W.Ix (B.tob I w))
+      : Id (FB J (y, a)) (substH (\ v -> FB J (y, v)) p (B.tact J I f w (y, a1) E b))
+                         (B.tact J I f w (y, a) (transH E (pa J y a1 a p)) b) =
+      transH (subst-ap (W.Ix (A.tob J y)) (SigT G A J) (\ v -> (y, v)) (\ w2 -> FB J w2) a1 a p
+                       (B.tact J I f w (y, a1) E b))
+             (tact-path (extP G A) B J I f w (y, a1) (y, a) E (pa J y a1 a p) b) ;
+
+    hid (I : Ob) (x : W.Ix (G.ob I)) (e : Id (W.Ix (G.ob I)) (G.act I I (idC I) x) x) (ab : Fb I x)
+      : Id (Fb I x) (h I I (idC I) x x e ab) ab =
+      Sigma-path (W.Ix (A.tob I x)) (\ v -> W.Ix (B.tob I (x, v))) (A.tact I I (idC I) x x e ab.1) ab.1
+        (h I I (idC I) x x e ab).2 ab.2 (A.tact-id I x e ab.1)
+        (transH (bpart I I (idC I) (x, ab.1) x (A.tact I I (idC I) x x e ab.1) ab.1 (A.tact-id I x e ab.1)
+                       (pair-act G A I I (idC I) x x e ab.1) ab.2)
+                (B.tact-id I (x, ab.1) (transH (pair-act G A I I (idC I) x x e ab.1)
+                                               (pa I x (A.tact I I (idC I) x x e ab.1) ab.1 (A.tact-id I x e ab.1)))
+                           ab.2)) ;
+
+    ho (K J I : Ob) (f : Hom J I) (g : Hom K J)
+      (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J)) (z : W.Ix (G.ob K))
+      (e1 : Id (W.Ix (G.ob J)) (G.act J I f x) y) (e2 : Id (W.Ix (G.ob K)) (G.act K J g y) z)
+      (e3 : Id (W.Ix (G.ob K)) (G.act K I (oC K J I f g) x) z) (ab : Fb I x)
+      : Id (Fb K z) (h K I (oC K J I f g) x z e3 ab) (h K J g y z e2 (h J I f x y e1 ab)) =
+      Sigma-path (W.Ix (A.tob K z)) (\ v -> W.Ix (B.tob K (z, v))) a3 a2 (h K I (oC K J I f g) x z e3 ab).2
+        (h K J g y z e2 (h J I f x y e1 ab)).2 p
+        (transH (bpart K I (oC K J I f g) (x, ab.1) z a3 a2 p (pair-act G A K I (oC K J I f g) x z e3 ab.1) ab.2)
+                (B.tact-o K J I f g (x, ab.1) (y, a1) (z, a2)
+                   (pair-act G A J I f x y e1 ab.1) (pair-act G A K J g y z e2 a1)
+                   (transH (pair-act G A K I (oC K J I f g) x z e3 ab.1) (pa K z a3 a2 p)) ab.2))
+     where {
+      a1 : W.Ix (A.tob J y) = A.tact J I f x y e1 ab.1 ;
+      a2 : W.Ix (A.tob K z) = A.tact K J g y z e2 a1 ;
+      a3 : W.Ix (A.tob K z) = A.tact K I (oC K J I f g) x z e3 ab.1 ;
+      p : Id (W.Ix (A.tob K z)) a3 a2 = A.tact-o K J I f g x y z e1 e2 e3 ab.1 ;
+     } ;
+
+    SigP : PTy[G] = (mkTy G o h hid ho) ;
+
+    El' : U l = (a : PEl[G, A]) * PEl[G, subTy G (extP G A) B (secP G A a)] ;
+
+    fst' (u : PEl[G, SigP]) : PEl[G, A] =
+      new PEl[G, A, \ I x -> (u.eob I x).1,
+        \ J I f x y e -> apH (\ w -> w.1) (u.enat J I f x y e)] ;
+
+    snd' (u : PEl[G, SigP]) : PEl[G, subTy G (extP G A) B (secP G A (fst' u))] =
+      new PEl[G, subTy G (extP G A) B (secP G A (fst' u)), \ I x -> (u.eob I x).2,
+        \ J I f x y e ->
+          transH (tact-irr (extP G A) B J I f (x, (u.eob I x).1) (y, (u.eob J y).1)
+                    (ntEq G (extP G A) (secP G A (fst' u)) J I f x y e)
+                    (transH (pair-act G A J I f x y e (u.eob I x).1)
+                            (pa J y (A.tact J I f x y e (u.eob I x).1) (u.eob J y).1 (apH (\ w -> w.1) (u.enat J I f x y e))))
+                    (u.eob I x).2)
+          (transH (symH (bpart J I f (x, (u.eob I x).1) y (A.tact J I f x y e (u.eob I x).1) (u.eob J y).1
+                                (apH (\ w -> w.1) (u.enat J I f x y e)) (pair-act G A J I f x y e (u.eob I x).1)
+                                (u.eob I x).2))
+                  (Sigma-snd (W.Ix (A.tob J y)) (\ v -> W.Ix (B.tob J (y, v)))
+                     (A.tact J I f x y e (u.eob I x).1) (u.eob J y).1 (h J I f x y e (u.eob I x)).2 (u.eob J y).2
+                     (u.enat J I f x y e)))] ;
+
+    pair' (ab : El') : PEl[G, SigP] =
+      new PEl[G, SigP, \ I x -> (ab.1.eob I x, ab.2.eob I x),
+        \ J I f x y e ->
+          Sigma-path (W.Ix (A.tob J y)) (\ v -> W.Ix (B.tob J (y, v))) (A.tact J I f x y e (ab.1.eob I x))
+            (ab.1.eob J y) (h J I f x y e (ab.1.eob I x, ab.2.eob I x)).2 (ab.2.eob J y) (ab.1.enat J I f x y e)
+            (transH (bpart J I f (x, ab.1.eob I x) y (A.tact J I f x y e (ab.1.eob I x)) (ab.1.eob J y)
+                       (ab.1.enat J I f x y e) (pair-act G A J I f x y e (ab.1.eob I x)) (ab.2.eob I x))
+            (transH (tact-irr (extP G A) B J I f (x, ab.1.eob I x) (y, ab.1.eob J y)
+                       (transH (pair-act G A J I f x y e (ab.1.eob I x))
+                               (pa J y (A.tact J I f x y e (ab.1.eob I x)) (ab.1.eob J y) (ab.1.enat J I f x y e)))
+                       (ntEq G (extP G A) (secP G A ab.1) J I f x y e) (ab.2.eob I x))
+                    (ab.2.enat J I f x y e)))] ;
+
+    fst-pair (ab : El') : Id (PEl[G, A]) (fst' (pair' ab)) ab.1 =
+      el-ext G A (fst' (pair' ab)) ab.1 (\ I x -> refl (ab.1.eob I x)) ;
+
+    iso : Iso (PEl[G, SigP]) El' = struct {
+      fun = \ u -> (fst' u, snd' u) ;
+      inv = pair' ;
+      fun-inv = \ ab ->
+        Sigma-path (PEl[G, A]) (\ a -> PEl[G, subTy G (extP G A) B (secP G A a)])
+          (fst' (pair' ab)) ab.1 (snd' (pair' ab)) ab.2 (fst-pair ab)
+          (el-over G (PEl[G, A]) (\ a -> subTy G (extP G A) B (secP G A a))
+             (fst' (pair' ab)) ab.1 (fst-pair ab) (refl (\ I x -> B.tob I (x, ab.1.eob I x)))
+             (snd' (pair' ab)) ab.2 (\ I x -> refl (ab.2.eob I x))) ;
+      inv-fun = \ u -> el-ext G SigP (pair' (fst' u, snd' u)) u (\ I x -> refl (u.eob I x)) } ;
+  } ;
+
+  -- Sigma under a substitution
+  module SigNat (D G : PCtx) (A : PTy[G]) (B : PTy[extP G A]) (s : PSub[D, G]) {
+    A' : PTy[D] = subTy D G A s ;
+    B' : PTy[extP D A'] = subTy (extP D A') (extP G A) B (liftP D G A s) ;
+    module SG = SigAB[G, A, B] ;
+    module SD = SigAB[D, A', B'] ;
+
+    nat : Id (PTy[D]) (subTy D G SG.SigP s) SD.SigP =
+      ty-ext2 D (subTy D G SG.SigP s) SD.SigP
+        (refl (\ I x -> W.SigV (A.tob I (s.nt I x)) (\ a -> B.tob I (s.nt I x, a))))
+        (\ J I f x y e ab ->
+           apH (\ u -> (A'.tact J I f x y e ab.1, u))
+               (tact-irr (extP G A) B J I f (s.nt I x, ab.1) (s.nt J y, A'.tact J I f x y e ab.1)
+                  (pair-act G A J I f (s.nt I x) (s.nt J y) (ntEq D G s J I f x y e) ab.1)
+                  (ntEq (extP D A') (extP G A) (liftP D G A s) J I f (x, ab.1) (y, A'.tact J I f x y e ab.1)
+                     (pair-act D A' J I f x y e ab.1))
+                  ab.2)) ;
+
+    -- CwF's SigStr.coerce, spelled out for this model
+    coerce (a : PEl[G, A])
+      : Id (PTy[D]) (subTy D G (subTy G (extP G A) B (secP G A a)) s)
+                    (subTy D (extP D A') B' (secP D A' (subEl D G A a s))) =
+      transH (symH (subTy-o D G (extP G A) B (secP G A a) s))
+        (transH (apH (\ s' -> subTy D (extP G A) B s') (secP-o D G A a s))
+                (subTy-o D (extP D A') (extP G A) B (liftP D G A s) (secP D A' (subEl D G A a s)))) ;
+
+    Y0 (a : PEl[G, A]) : PTy[G] = subTy G (extP G A) B (secP G A a) ;
+    Z (a : PEl[G, A]) : PTy[D] = subTy D (extP D A') B' (secP D A' (subEl D G A a s)) ;
+    bs (a : PEl[G, A]) (b : PEl[G, Y0 a]) : PEl[D, Z a] =
+      substH (\ X -> PEl[D, X]) (coerce a) (subEl D G (Y0 a) b s) ;
+
+    iso-nat (a : PEl[G, A]) (b : PEl[G, subTy G (extP G A) B (secP G A a)])
+      : Id (PEl[D, SD.SigP])
+           (substH (\ X -> PEl[D, X]) nat (subEl D G SG.SigP (SG.pair' (a, b)) s))
+           (SD.pair' (subEl D G A a s, substH (\ X -> PEl[D, X]) (coerce a) (subEl D G (Y0 a) b s))) =
+      el-subst D (subTy D G SG.SigP s) SD.SigP nat
+        (refl (\ I x -> W.SigV (A.tob I (s.nt I x)) (\ v -> B.tob I (s.nt I x, v))))
+        (subEl D G SG.SigP (SG.pair' (a, b)) s)
+        (SD.pair' (subEl D G A a s, substH (\ X -> PEl[D, X]) (coerce a) (subEl D G (Y0 a) b s)))
+        (\ I x -> apH {W.Ix (B.tob I (s.nt I x, a.eob I (s.nt I x)))} (\ v -> (a.eob I (s.nt I x), v))
+                      (symH (happly (W.Ix (D.ob I)) (\ x1 -> W.Ix ((Z a).tob I x1)) ((bs a b).eob I) (\ x1 -> b.eob I (s.nt I x1))
+                               (happly Ob (\ I1 -> (x1 : W.Ix (D.ob I1)) -> W.Ix ((Z a).tob I1 x1)) (bs a b).eob
+                                       (\ I1 x1 -> b.eob I1 (s.nt I1 x1))
+                                  (tob-same D (\ X -> PEl[D, X]) (\ o -> elObs D o) (\ X v -> v.eob)
+                                            (subTy D G (Y0 a) s) (Z a) (coerce a) (refl (subTy D G (Y0 a) s).tob)
+                                            (subEl D G (Y0 a) b s)) I) x))) ;
+
+    opaque nat ; opaque iso-nat ;
+  } ;
+
+  PSig : F.SigStr = new F.SigStr[
+    Sig         := \ G A B -> SigAB[G, A, B].SigP,
+    Sig-nat     := \ D G A B s -> SigNat[D, G, A, B, s].nat,
+    Sig-iso     := \ G A B -> SigAB[G, A, B].iso,
+    Sig-iso-nat := \ D G A B a b s -> SigNat[D, G, A, B, s].iso-nat a b ] ;
+
+  ----------------------------------------------------------------------
+  -- Extensional identity type
+
+  module IdAB (G : PCtx) (A : PTy[G]) (a b : PEl[G, A]) {
+
+    o : TOb G = \ I x -> W.IdV (A.tob I x) (a.eob I x) (b.eob I x) ;
+
+    h : TactTy G o = \ J I f x y e p ->
+      transH (symH (a.enat J I f x y e)) (transH (apH (A.tact J I f x y e) p) (b.enat J I f x y e)) ;
+
+    IdP : PTy[G] =
+      (mkTy G o h (\ I x e p -> W.isSetIx (A.tob I x) (a.eob I x) (b.eob I x) (h I I (idC I) x x e p) p) (\ K J I f g x y z e1 e2 e3 p ->
+          W.isSetIx (A.tob K z) (a.eob K z) (b.eob K z) (h K I (oC K J I f g) x z e3 p) (h K J g y z e2 (h J I f x y e1 p)))) ;
+
+    -- pointwise paths from a path of elements
+    ip (p : Id (PEl[G, A]) a b) (I : Ob) (x : W.Ix (G.ob I)) : Id (W.Ix (A.tob I x)) (a.eob I x) (b.eob I x) =
+      happly (W.Ix (G.ob I)) (\ x1 -> W.Ix (A.tob I x1)) (a.eob I) (b.eob I)
+        (happly Ob (\ I1 -> (x1 : W.Ix (G.ob I1)) -> W.Ix (A.tob I1 x1)) a.eob b.eob
+           (ap (PEl[G, A]) (EOb G A.tob) (\ c -> c.eob) a b p) I) x ;
+
+    inv (p : Id (PEl[G, A]) a b) : PEl[G, IdP] =
+      new PEl[G, IdP, ip p,
+        \ J I f x y e -> W.isSetIx (A.tob J y) (a.eob J y) (b.eob J y) (h J I f x y e (ip p I x)) (ip p J y)] ;
+
+    iso : Iso (PEl[G, IdP]) (Id (PEl[G, A]) a b) = struct {
+      fun = \ u -> el-ext G A a b u.eob ;
+      inv = inv ;
+      fun-inv = \ p -> isSet-PEl G A a b (el-ext G A a b (inv p).eob) p ;
+      inv-fun = \ u -> el-ext G IdP (inv (el-ext G A a b u.eob)) u
+                         (\ I x -> W.isSetIx (A.tob I x) (a.eob I x) (b.eob I x)
+                                     ((inv (el-ext G A a b u.eob)).eob I x) (u.eob I x)) } ;
+  } ;
+
+  module IdNat (D G : PCtx) (A : PTy[G]) (a b : PEl[G, A]) (s : PSub[D, G]) {
+    module IG = IdAB[G, A, a, b] ;
+    module ID = IdAB[D, subTy D G A s, subEl D G A a s, subEl D G A b s] ;
+    o' : TOb D = \ I x -> W.IdV (A.tob I (s.nt I x)) (a.eob I (s.nt I x)) (b.eob I (s.nt I x)) ;
+
+    nat : Id (PTy[D]) (subTy D G IG.IdP s) ID.IdP =
+      ty-ext2 D (subTy D G IG.IdP s) ID.IdP (refl o')
+        (\ J I f x y e p ->
+           W.isSetIx (A.tob J (s.nt J y)) (a.eob J (s.nt J y)) (b.eob J (s.nt J y))
+             (IG.h J I f (s.nt I x) (s.nt J y) (ntEq D G s J I f x y e) p) (ID.h J I f x y e p)) ;
+
+    iso-nat (e : Id (PEl[G, A]) a b)
+      : Id (PEl[D, ID.IdP]) (substH (\ X -> PEl[D, X]) nat (subEl D G IG.IdP (IG.inv e) s))
+                            (ID.inv (apH (\ c -> subEl D G A c s) e)) =
+      el-subst D (subTy D G IG.IdP s) ID.IdP nat (refl o')
+        (subEl D G IG.IdP (IG.inv e) s) (ID.inv (apH (\ c -> subEl D G A c s) e))
+        (\ I x -> W.isSetIx (A.tob I (s.nt I x)) (a.eob I (s.nt I x)) (b.eob I (s.nt I x))
+                    ((IG.inv e).eob I (s.nt I x)) ((ID.inv (apH (\ c -> subEl D G A c s) e)).eob I x)) ;
+
+    opaque nat ;
+  } ;
+
+  PId : F.IdStr = new F.IdStr[
+    IdT     := \ G A a b -> IdAB[G, A, a, b].IdP,
+    IdT-nat := \ D G A a b s -> IdNat[D, G, A, a, b, s].nat,
+    IdT-iso := \ G A a b -> IdAB[G, A, a, b].iso,
+    IdT-iso-nat := \ D G A a b e s -> IdNat[D, G, A, a, b, s].iso-nat e ] ;
+} ;

@@ -1,0 +1,730 @@
+-- Arith.seg: MODEL/Poset/Arith.agda.  The arithmetic of the face maps of
+-- Delta+ and of the chains of the prism [n] * [1], on natural numbers.
+-- Everything is by structural recursion; the clamping in pc, pl and dg
+-- makes every function total with the right range, so that the
+-- corresponding monotone maps need no side conditions.
+--
+--   skip y i      the face map delta_y : [n] -> [n+1]  (y is missed)
+--   qlvl k i      the level of i in the chain Q_k  (0 iff i < k)
+--   pc n k i      column and level of the i-th vertex of the chain
+--   pl n k i        P_k of [n] * [1]  (k is clamped to n)
+--   qface y k     the chain Q_k restricted to the face delta_y
+--   dg n y j      a retraction of delta_y : [n] -> [n+1]  (y clamped)
+--
+-- Where Agda's case tree splits a later argument first (dg n zero zero),
+-- the function is a helper with that argument first (dgY y n j), so that
+-- it computes on the same neutral terms; the lemmas follow the same tree.
+-- isProp-IsT' is proved from a code for equality on Bool (Agda matches
+-- refl against refl).
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Trees[l] ;
+
+------------------------------------------------------------------------
+-- Generalities
+
+ltb (m n : Nat) : Bool = leb (suc m) n ;
+
+-- the position of the old side n once a side is inserted at k
+skipN : Nat -> Nat -> Nat = split {
+  zero -> \ n -> suc n ;
+  suc k -> split { zero -> zero ; suc n -> suc (skipN k n) } } ;
+
+-- finite index sets
+Fin (r : Nat) : U l = (j : Nat) * IsT (ltb j r) ;
+
+plus : Nat -> Nat -> Nat = split { zero -> \ n -> n ; suc m -> \ n -> suc (plus m n) } ;
+
+pred : Nat -> Nat = split { zero -> zero ; suc n -> n } ;
+
+suc-inj (m n : Nat) (P : Id Nat (suc m) (suc n)) : Id Nat m n = ap Nat Nat pred (suc m) (suc n) P ;
+
+FZ : Nat -> U l = split { zero -> Top ; suc n -> Empty } ;
+
+zero-suc (n : Nat) (P : Id Nat zero (suc n)) : Empty = subst Nat (\ m -> FZ m) zero (suc n) P tt ;
+
+plus-suc : (m n : Nat) -> Id Nat (plus m (suc n)) (suc (plus m n)) = split {
+  zero -> \ n -> refl (suc n) ;
+  suc m -> \ n -> ap Nat Nat (\ k -> suc k) (plus m (suc n)) (suc (plus m n)) (plus-suc m n) } ;
+
+plus-zero : (m : Nat) -> Id Nat (plus m zero) m = split {
+  zero -> refl zero ;
+  suc m -> ap Nat Nat (\ k -> suc k) (plus m zero) m (plus-zero m) } ;
+
+-- equality on Bool, as a family of propositions
+CodeB : Bool -> Bool -> U l = split {
+  true -> split { true -> Top ; false -> Empty } ;
+  false -> split { true -> Empty ; false -> Top } } ;
+
+codeB-prop : (b c : Bool) -> isProp (CodeB b c) = split {
+  true -> split { true -> isTop ; false -> isProp-Empty } ;
+  false -> split { true -> isProp-Empty ; false -> isTop } } ;
+
+codeB-refl : (b : Bool) -> CodeB b b = split { true -> tt ; false -> tt } ;
+
+codeB-eq : (b c : Bool) -> CodeB b c -> Id Bool b c = split {
+  true -> split { true -> \ u -> refl true ; false -> \ u -> absurd (Id Bool true false) u } ;
+  false -> split { true -> \ u -> absurd (Id Bool false true) u ; false -> \ u -> refl false } } ;
+
+isSet-Bool : isSet Bool = \ b ->
+  Hedberg[Bool, b, \ c -> CodeB b c, \ c -> codeB-prop b c, codeB-refl b, \ c u -> codeB-eq b c u].hedberg ;
+
+isProp-IsT' (b : Bool) : isProp (IsT b) = isSet-Bool b true ;
+
+isSet-Nat : isSet Nat = \ m ->
+  Hedberg[Nat, m, \ n -> IsT (eqN m n), \ n -> isProp-IsT' (eqN m n), eqN-refl m,
+          \ n h -> eqN-sound m n h].hedberg ;
+
+leb-suc : (n : Nat) -> IsT (leb n (suc n)) = split { zero -> refl true ; suc n -> leb-suc n } ;
+
+leb-step (m n : Nat) (h : IsT (leb m n)) : IsT (leb m (suc n)) = leb-trans m n (suc n) h (leb-suc n) ;
+
+leb-zero : (m : Nat) -> IsT (leb m zero) -> Id Nat m zero = split {
+  zero -> \ h -> refl zero ;
+  suc m -> \ h -> absurd (Id Nat (suc m) zero) (false-true h) } ;
+
+ltb-leb (m n : Nat) (h : IsT (ltb m n)) : IsT (leb m n) = leb-trans m (suc m) n (leb-suc m) h ;
+
+ltb-irr : (m : Nat) -> IsT (ltb m m) -> Empty = split {
+  zero -> \ h -> false-true h ;
+  suc m -> \ h -> ltb-irr m h } ;
+
+-- m < n  or  n <= m   (Agda splits n first)
+ltbDecN (R : U l) : (n m : Nat) -> (IsT (ltb m n) -> R) -> (IsT (leb n m) -> R) -> R = split {
+  zero -> \ m k1 k2 -> k2 (refl true) ;
+  suc n -> split {
+    zero -> \ k1 k2 -> k1 (refl true) ;
+    suc m -> \ k1 k2 -> ltbDecN R n m k1 k2 } } ;
+
+ltb-dec (R : U l) (m n : Nat) : (IsT (ltb m n) -> R) -> (IsT (leb n m) -> R) -> R = ltbDecN R n m ;
+
+-- m = n  or  m /= n
+eqN-dec (R : U l) (m n : Nat) (k1 : Id Nat m n -> R) (k2 : IsT (not (eqN m n)) -> R) : R =
+  aux (eqN m n) (refl (eqN m n))
+ where { aux : (b : Bool) -> Id Bool (eqN m n) b -> R = split {
+           true -> \ e -> k1 (eqN-sound m n e) ;
+           false -> \ e -> k2 (ap Bool Bool not (eqN m n) false e) } ; } ;
+
+-- m <= n and m /= n gives m < n
+leb-neq : (m n : Nat) -> IsT (leb m n) -> IsT (not (eqN m n)) -> IsT (ltb m n) = split {
+  zero -> split {
+    zero -> \ h k -> absurd (IsT false) (false-true k) ;
+    suc n -> \ h k -> refl true } ;
+  suc m -> split {
+    zero -> \ h k -> absurd (IsT false) (false-true h) ;
+    suc n -> \ h k -> leb-neq m n h k } } ;
+
+ltb-neq : (m n : Nat) -> IsT (ltb m n) -> IsT (not (eqN m n)) = split {
+  zero -> split {
+    zero -> \ h -> absurd (IsT false) (false-true h) ;
+    suc n -> \ h -> refl true } ;
+  suc m -> split {
+    zero -> \ h -> absurd (IsT true) (false-true h) ;
+    suc n -> \ h -> ltb-neq m n h } } ;
+
+neq-sym : (m n : Nat) -> IsT (not (eqN m n)) -> IsT (not (eqN n m)) = split {
+  zero -> split { zero -> \ h -> h ; suc n -> \ h -> refl true } ;
+  suc m -> split { zero -> \ h -> refl true ; suc n -> \ h -> neq-sym m n h } } ;
+
+leb-ltb-trans (i m n : Nat) (h1 : IsT (leb i m)) (h2 : IsT (ltb m n)) : IsT (ltb i n) =
+  leb-trans (suc i) (suc m) n h1 h2 ;
+
+ltb-leb-trans (i m n : Nat) (h1 : IsT (ltb i m)) (h2 : IsT (leb m n)) : IsT (ltb i n) =
+  leb-trans (suc i) m n h1 h2 ;
+
+-- x <= n+1 and x /= n+1 gives x <= n
+leb-suc-neq (x n : Nat) (h : IsT (leb x (suc n))) (k : IsT (not (eqN x (suc n)))) : IsT (leb x n) =
+  leb-neq x (suc n) h k ;
+
+------------------------------------------------------------------------
+-- Face maps
+
+skip : Nat -> Nat -> Nat = split {
+  zero -> \ i -> suc i ;
+  suc y -> split { zero -> zero ; suc i -> suc (skip y i) } } ;
+
+skip-range : (y i n : Nat) -> IsT (leb i n) -> IsT (leb (skip y i) (suc n)) = split {
+  zero -> \ i n h -> h ;
+  suc y -> split {
+    zero -> \ n h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (leb (skip (suc y) (suc i)) (suc zero))) (false-true h) ;
+      suc n -> \ h -> skip-range y i n h } } } ;
+
+skip-mono : (y i j : Nat) -> IsT (leb i j) -> IsT (leb (skip y i) (skip y j)) = split {
+  zero -> \ i j h -> h ;
+  suc y -> split {
+    zero -> \ j h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (leb (skip (suc y) (suc i)) zero)) (false-true h) ;
+      suc j -> \ h -> skip-mono y i j h } } } ;
+
+skip-strict : (y i j : Nat) -> IsT (ltb i j) -> IsT (ltb (skip y i) (skip y j)) = split {
+  zero -> \ i j h -> h ;
+  suc y -> split {
+    zero -> split {
+      zero -> \ h -> absurd (IsT false) (false-true h) ;
+      suc j -> \ h -> refl true } ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (ltb (skip (suc y) (suc i)) zero)) (false-true h) ;
+      suc j -> \ h -> skip-strict y i j h } } } ;
+
+-- delta_y misses y
+skip-miss : (y i : Nat) -> IsT (not (eqN (skip y i) y)) = split {
+  zero -> \ i -> refl true ;
+  suc y -> split { zero -> refl true ; suc i -> skip-miss y i } } ;
+
+-- the simplicial identity  delta_{z+1} delta_y = delta_y delta_z  for y <= z
+skip-skip : (y z i : Nat) -> IsT (leb y z) -> Id Nat (skip (suc z) (skip y i)) (skip y (skip z i)) = split {
+  zero -> \ z i h -> refl (skip (suc z) (suc i)) ;
+  suc y -> split {
+    zero -> \ i h -> absurd (Id Nat (skip (suc zero) (skip (suc y) i)) (skip (suc y) (skip zero i))) (false-true h) ;
+    suc z -> split {
+      zero -> \ h -> refl zero ;
+      suc i -> \ h -> ap Nat Nat (\ k -> suc k) (skip (suc z) (skip y i)) (skip y (skip z i)) (skip-skip y z i h) } } } ;
+
+-- i < y  or  y <= i  read on skip
+skip-lt : (y i : Nat) -> IsT (ltb i y) -> Id Nat (skip y i) i = split {
+  zero -> \ i h -> absurd (Id Nat (suc i) i) (false-true h) ;
+  suc y -> split {
+    zero -> \ h -> refl zero ;
+    suc i -> \ h -> ap Nat Nat (\ k -> suc k) (skip y i) i (skip-lt y i h) } } ;
+
+skip-ge : (y i : Nat) -> IsT (leb y i) -> Id Nat (skip y i) (suc i) = split {
+  zero -> \ i h -> refl (suc i) ;
+  suc y -> split {
+    zero -> \ h -> absurd (Id Nat zero (suc zero)) (false-true h) ;
+    suc i -> \ h -> ap Nat Nat (\ k -> suc k) (skip y i) (suc i) (skip-ge y i h) } } ;
+
+------------------------------------------------------------------------
+-- A retraction of the face map: dg n y : [n+1] -> [n]
+--   dg n y j = j if j <= y, j-1 if j > y   (for y <= n: the degeneracy
+--   merging y and y+1); for y > n it is clamped to dg n n.
+
+dgY : Nat -> Nat -> Nat -> Nat = split {
+  zero -> \ n -> split { zero -> zero ; suc j -> j } ;
+  suc y -> split {
+    zero -> \ j -> zero ;
+    suc n -> split { zero -> zero ; suc j -> suc (dgY y n j) } } } ;
+
+dg (n y j : Nat) : Nat = dgY y n j ;
+
+dgRangeY : (y n j : Nat) -> IsT (leb j (suc n)) -> IsT (leb (dg n y j) n) = split {
+  zero -> \ n -> split { zero -> \ h -> refl true ; suc j -> \ h -> h } ;
+  suc y -> split {
+    zero -> \ j h -> refl true ;
+    suc n -> split { zero -> \ h -> refl true ; suc j -> \ h -> dgRangeY y n j h } } } ;
+
+dg-range (n y j : Nat) : IsT (leb j (suc n)) -> IsT (leb (dg n y j) n) = dgRangeY y n j ;
+
+dgMonoY : (y n i j : Nat) -> IsT (leb i j) -> IsT (leb (dg n y i) (dg n y j)) = split {
+  zero -> \ n -> split {
+    zero -> \ j h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (leb i zero)) (false-true h) ;
+      suc j -> \ h -> h } } ;
+  suc y -> split {
+    zero -> \ i j h -> refl true ;
+    suc n -> split {
+      zero -> \ j h -> refl true ;
+      suc i -> split {
+        zero -> \ h -> absurd (IsT false) (false-true h) ;
+        suc j -> \ h -> dgMonoY y n i j h } } } } ;
+
+dg-mono (n y i j : Nat) : IsT (leb i j) -> IsT (leb (dg n y i) (dg n y j)) = dgMonoY y n i j ;
+
+-- dg is a retraction of skip
+dgSkipY : (y n i : Nat) -> IsT (leb y (suc n)) -> IsT (leb i n) -> Id Nat (dg n y (skip y i)) i = split {
+  zero -> \ n i hy hi -> refl i ;
+  suc y -> split {
+    zero -> split {
+      zero -> \ hy hi -> refl zero ;
+      suc i -> \ hy hi -> absurd (Id Nat zero (suc i)) (false-true hi) } ;
+    suc n -> split {
+      zero -> \ hy hi -> refl zero ;
+      suc i -> \ hy hi -> ap Nat Nat (\ k -> suc k) (dg n y (skip y i)) i (dgSkipY y n i hy hi) } } } ;
+
+dg-skip (n y i : Nat) : IsT (leb y (suc n)) -> IsT (leb i n) -> Id Nat (dg n y (skip y i)) i = dgSkipY y n i ;
+
+-- and skip a section of dg away from y
+skipDgY : (y n j : Nat) -> IsT (leb y (suc n)) -> IsT (leb j (suc n)) -> IsT (not (eqN j y))
+  -> Id Nat (skip y (dg n y j)) j = split {
+  zero -> \ n -> split {
+    zero -> \ hy hj k -> absurd (Id Nat (suc zero) zero) (false-true k) ;
+    suc j -> \ hy hj k -> refl (suc j) } ;
+  suc y -> split {
+    zero -> split {
+      zero -> \ hy hj k -> refl zero ;
+      suc j -> skipDg0 y j } ;
+    suc n -> split {
+      zero -> \ hy hj k -> refl zero ;
+      suc j -> \ hy hj k -> ap Nat Nat (\ m -> suc m) (skip y (dg n y j)) j (skipDgY y n j hy hj k) } } } ;
+
+-- the case  n = zero , y = suc y , j = suc j  (all absurd)
+skipDg0 : (y j : Nat) -> IsT (leb (suc y) (suc zero)) -> IsT (leb (suc j) (suc zero))
+  -> IsT (not (eqN (suc j) (suc y))) -> Id Nat (skip (suc y) (dg zero (suc y) (suc j))) (suc j) = split {
+  zero -> split {
+    zero -> \ hy hj k -> absurd (Id Nat zero (suc zero)) (false-true k) ;
+    suc j -> \ hy hj k -> absurd (Id Nat zero (suc (suc j))) (false-true hj) } ;
+  suc y -> \ j hy hj k -> absurd (Id Nat zero (suc j)) (false-true hy) } ;
+
+skip-dg (n y j : Nat) : IsT (leb y (suc n)) -> IsT (leb j (suc n)) -> IsT (not (eqN j y))
+  -> Id Nat (skip y (dg n y j)) j = skipDgY y n j ;
+
+-- if skip y a < skip y b then a < b
+dg-back : (y a b : Nat) -> IsT (ltb (skip y a) (skip y b)) -> IsT (ltb a b) = split {
+  zero -> \ a b h -> h ;
+  suc y -> split {
+    zero -> split {
+      zero -> \ h -> absurd (IsT false) (false-true h) ;
+      suc b -> \ h -> refl true } ;
+    suc a -> split {
+      zero -> \ h -> absurd (IsT (ltb (suc a) zero)) (false-true h) ;
+      suc b -> \ h -> dg-back y a b h } } } ;
+
+-- dg is strictly monotone away from y
+dg-strict (n y i j : Nat) (hy : IsT (leb y (suc n))) (hj : IsT (leb j (suc n)))
+  (ki : IsT (not (eqN i y))) (kj : IsT (not (eqN j y))) (h : IsT (ltb i j))
+  : IsT (ltb (dg n y i) (dg n y j)) =
+  dg-back y (dg n y i) (dg n y j)
+    (subst Nat (\ a -> IsT (ltb a (skip y (dg n y j)))) i (skip y (dg n y i)) (sym Nat (skip y (dg n y i)) i e1)
+       (subst Nat (\ b -> IsT (ltb i b)) j (skip y (dg n y j)) (sym Nat (skip y (dg n y j)) j e2) h))
+ where {
+  e1 : Id Nat (skip y (dg n y i)) i =
+    skip-dg n y i hy (leb-trans i (suc i) (suc n) (leb-suc i) (ltb-leb-trans i j (suc n) h hj)) ki ;
+  e2 : Id Nat (skip y (dg n y j)) j = skip-dg n y j hy hj kj ;
+ } ;
+
+------------------------------------------------------------------------
+-- The chains Q_k of [n] * [1]:  i |-> (i , qlvl k i)
+
+qlvl : Nat -> Nat -> Nat = split {
+  zero -> \ i -> suc zero ;
+  suc k -> split { zero -> zero ; suc i -> qlvl k i } } ;
+
+qlvl-range : (k i : Nat) -> IsT (leb (qlvl k i) (suc zero)) = split {
+  zero -> \ i -> refl true ;
+  suc k -> split { zero -> refl true ; suc i -> qlvl-range k i } } ;
+
+qlvl-mono : (k i j : Nat) -> IsT (leb i j) -> IsT (leb (qlvl k i) (qlvl k j)) = split {
+  zero -> \ i j h -> refl true ;
+  suc k -> split {
+    zero -> \ j h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (leb (qlvl k i) zero)) (false-true h) ;
+      suc j -> \ h -> qlvl-mono k i j h } } } ;
+
+-- Q_{n+1} is the lower lid   (Agda splits i first)
+qlvlTopI : (i n : Nat) -> IsT (leb i n) -> Id Nat (qlvl (suc n) i) zero = split {
+  zero -> \ n h -> refl zero ;
+  suc i -> split {
+    zero -> \ h -> absurd (Id Nat (qlvl zero i) zero) (false-true h) ;
+    suc n -> \ h -> qlvlTopI i n h } } ;
+
+qlvl-top (n i : Nat) : IsT (leb i n) -> Id Nat (qlvl (suc n) i) zero = qlvlTopI i n ;
+
+qface : Nat -> Nat -> Nat = split {
+  zero -> split { zero -> zero ; suc k -> k } ;
+  suc y -> split { zero -> zero ; suc k -> suc (qface y k) } } ;
+
+-- the faces of Q_k
+qlvl-skip : (y k i : Nat) -> Id Nat (qlvl k (skip y i)) (qlvl (qface y k) i) = split {
+  zero -> split {
+    zero -> \ i -> refl (suc zero) ;
+    suc k -> \ i -> refl (qlvl k i) } ;
+  suc y -> split {
+    zero -> \ i -> refl (suc zero) ;
+    suc k -> split {
+      zero -> refl zero ;
+      suc i -> qlvl-skip y k i } } } ;
+
+qface-zero : (y : Nat) -> Id Nat (qface y zero) zero = split { zero -> refl zero ; suc y -> refl zero } ;
+
+-- y < k+1 gives qface y (k+1) = k ; k <= y gives qface y k = k
+qface-lt : (y k : Nat) -> IsT (leb y k) -> Id Nat (qface y (suc k)) k = split {
+  zero -> \ k h -> refl k ;
+  suc y -> split {
+    zero -> \ h -> absurd (Id Nat (suc (qface y zero)) zero) (false-true h) ;
+    suc k -> \ h -> ap Nat Nat (\ m -> suc m) (qface y (suc k)) k (qface-lt y k h) } } ;
+
+qface-ge : (y k : Nat) -> IsT (leb k y) -> Id Nat (qface y k) k = split {
+  zero -> split {
+    zero -> \ h -> refl zero ;
+    suc k -> \ h -> absurd (Id Nat k (suc k)) (false-true h) } ;
+  suc y -> split {
+    zero -> \ h -> refl zero ;
+    suc k -> \ h -> ap Nat Nat (\ m -> suc m) (qface y k) k (qface-ge y k h) } } ;
+
+------------------------------------------------------------------------
+-- The chains P_k of [n] * [1]:  [n+1] -> [n] * [1]
+--   i |-> (i , 0) for i <= k ,  (i-1 , 1) for i > k     (k <= n)
+-- (Agda splits k first: pc n k i = pcK k n i)
+
+pcK : Nat -> Nat -> Nat -> Nat = split {
+  zero -> \ n -> split { zero -> zero ; suc i -> i } ;
+  suc k -> split {
+    zero -> split { zero -> zero ; suc i -> i } ;
+    suc n -> split { zero -> zero ; suc i -> suc (pcK k n i) } } } ;
+
+pc (n k i : Nat) : Nat = pcK k n i ;
+
+plK : Nat -> Nat -> Nat -> Nat = split {
+  zero -> \ n -> split { zero -> zero ; suc i -> suc zero } ;
+  suc k -> split {
+    zero -> split { zero -> zero ; suc i -> suc zero } ;
+    suc n -> split { zero -> zero ; suc i -> plK k n i } } } ;
+
+pl (n k i : Nat) : Nat = plK k n i ;
+
+pcRangeK : (k n i : Nat) -> IsT (leb i (suc n)) -> IsT (leb (pc n k i) n) = split {
+  zero -> \ n -> split { zero -> \ h -> refl true ; suc i -> \ h -> h } ;
+  suc k -> split {
+    zero -> split { zero -> \ h -> refl true ; suc i -> \ h -> h } ;
+    suc n -> split { zero -> \ h -> refl true ; suc i -> \ h -> pcRangeK k n i h } } } ;
+
+pc-range (n k i : Nat) : IsT (leb i (suc n)) -> IsT (leb (pc n k i) n) = pcRangeK k n i ;
+
+pcMonoK : (k n i j : Nat) -> IsT (leb i j) -> IsT (leb (pc n k i) (pc n k j)) = split {
+  zero -> \ n -> split {
+    zero -> \ j h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT (leb i zero)) (false-true h) ;
+      suc j -> \ h -> h } } ;
+  suc k -> split {
+    zero -> split {
+      zero -> \ j h -> refl true ;
+      suc i -> split {
+        zero -> \ h -> absurd (IsT (leb i zero)) (false-true h) ;
+        suc j -> \ h -> h } } ;
+    suc n -> split {
+      zero -> \ j h -> refl true ;
+      suc i -> split {
+        zero -> \ h -> absurd (IsT false) (false-true h) ;
+        suc j -> \ h -> pcMonoK k n i j h } } } } ;
+
+pc-mono (n k i j : Nat) : IsT (leb i j) -> IsT (leb (pc n k i) (pc n k j)) = pcMonoK k n i j ;
+
+plRangeK : (k n i : Nat) -> IsT (leb (pl n k i) (suc zero)) = split {
+  zero -> \ n -> split { zero -> refl true ; suc i -> refl true } ;
+  suc k -> split {
+    zero -> split { zero -> refl true ; suc i -> refl true } ;
+    suc n -> split { zero -> refl true ; suc i -> plRangeK k n i } } } ;
+
+pl-range (n k i : Nat) : IsT (leb (pl n k i) (suc zero)) = plRangeK k n i ;
+
+plMonoK : (k n i j : Nat) -> IsT (leb i j) -> IsT (leb (pl n k i) (pl n k j)) = split {
+  zero -> \ n -> split {
+    zero -> \ j h -> refl true ;
+    suc i -> split {
+      zero -> \ h -> absurd (IsT false) (false-true h) ;
+      suc j -> \ h -> refl true } } ;
+  suc k -> split {
+    zero -> split {
+      zero -> \ j h -> refl true ;
+      suc i -> split {
+        zero -> \ h -> absurd (IsT false) (false-true h) ;
+        suc j -> \ h -> refl true } } ;
+    suc n -> split {
+      zero -> \ j h -> refl true ;
+      suc i -> split {
+        zero -> \ h -> absurd (IsT (leb (pl n k i) zero)) (false-true h) ;
+        suc j -> \ h -> plMonoK k n i j h } } } } ;
+
+pl-mono (n k i j : Nat) : IsT (leb i j) -> IsT (leb (pl n k i) (pl n k j)) = plMonoK k n i j ;
+
+-- the four kinds of faces of P_k (Lemma 2.1 of smodel-proofs)
+
+-- y = k : the face is Q_k
+pcFaceK : (k n i : Nat) -> IsT (leb k n) -> Id Nat (pc n k (skip k i)) i = split {
+  zero -> \ n i h -> refl i ;
+  suc k -> split {
+    zero -> \ i h -> absurd (Id Nat (pc zero (suc k) (skip (suc k) i)) i) (false-true h) ;
+    suc n -> split {
+      zero -> \ h -> refl zero ;
+      suc i -> \ h -> ap Nat Nat (\ m -> suc m) (pc n k (skip k i)) i (pcFaceK k n i h) } } } ;
+
+pc-face-k (n k i : Nat) : IsT (leb k n) -> Id Nat (pc n k (skip k i)) i = pcFaceK k n i ;
+
+plFaceK : (k n i : Nat) -> IsT (leb k n) -> Id Nat (pl n k (skip k i)) (qlvl k i) = split {
+  zero -> \ n i h -> refl (suc zero) ;
+  suc k -> split {
+    zero -> \ i h -> absurd (Id Nat (pl zero (suc k) (skip (suc k) i)) (qlvl (suc k) i)) (false-true h) ;
+    suc n -> split {
+      zero -> \ h -> refl zero ;
+      suc i -> \ h -> plFaceK k n i h } } } ;
+
+pl-face-k (n k i : Nat) : IsT (leb k n) -> Id Nat (pl n k (skip k i)) (qlvl k i) = plFaceK k n i ;
+
+-- y = k+1 : the face is Q_{k+1}
+pcFaceK1 : (k n i : Nat) -> IsT (leb k n) -> Id Nat (pc n k (skip (suc k) i)) i = split {
+  zero -> \ n -> split { zero -> \ h -> refl zero ; suc i -> \ h -> refl (suc i) } ;
+  suc k -> split {
+    zero -> \ i h -> absurd (Id Nat (pc zero (suc k) (skip (suc (suc k)) i)) i) (false-true h) ;
+    suc n -> split {
+      zero -> \ h -> refl zero ;
+      suc i -> \ h -> ap Nat Nat (\ m -> suc m) (pc n k (skip (suc k) i)) i (pcFaceK1 k n i h) } } } ;
+
+pc-face-k1 (n k i : Nat) : IsT (leb k n) -> Id Nat (pc n k (skip (suc k) i)) i = pcFaceK1 k n i ;
+
+plFaceK1 : (k n i : Nat) -> IsT (leb k n) -> Id Nat (pl n k (skip (suc k) i)) (qlvl (suc k) i) = split {
+  zero -> \ n -> split { zero -> \ h -> refl zero ; suc i -> \ h -> refl (suc zero) } ;
+  suc k -> split {
+    zero -> \ i h -> absurd (Id Nat (pl zero (suc k) (skip (suc (suc k)) i)) (qlvl (suc (suc k)) i)) (false-true h) ;
+    suc n -> split {
+      zero -> \ h -> refl zero ;
+      suc i -> \ h -> plFaceK1 k n i h } } } ;
+
+pl-face-k1 (n k i : Nat) : IsT (leb k n) -> Id Nat (pl n k (skip (suc k) i)) (qlvl (suc k) i) = plFaceK1 k n i ;
+
+-- y < k = k'+1 : the face is P_{k'} of [n-1], read along delta_y   (Agda splits y first)
+pcFaceLoY : (y n k i : Nat) -> IsT (leb y k) -> IsT (leb k n)
+  -> Id Nat (pc (suc n) (suc k) (skip y i)) (skip y (pc n k i)) = split {
+  zero -> \ n k i hy hk -> refl (suc (pc n k i)) ;
+  suc y -> \ n -> split {
+    zero -> \ i hy hk -> absurd (Id Nat (pc (suc n) (suc zero) (skip (suc y) i)) (skip (suc y) (pc n zero i))) (false-true hy) ;
+    suc k -> pcFaceLoN y n k } } ;
+
+pcFaceLoN (y : Nat) : (n : Nat) (k i : Nat) -> IsT (leb (suc y) (suc k)) -> IsT (leb (suc k) n)
+  -> Id Nat (pc (suc n) (suc (suc k)) (skip (suc y) i)) (skip (suc y) (pc n (suc k) i)) = split {
+  zero -> \ k i hy hk -> absurd (Id Nat (pc (suc zero) (suc (suc k)) (skip (suc y) i)) (skip (suc y) (pc zero (suc k) i)))
+                                (false-true hk) ;
+  suc n -> \ k -> split {
+    zero -> \ hy hk -> refl zero ;
+    suc i -> \ hy hk -> ap Nat Nat (\ m -> suc m) (pc (suc n) (suc k) (skip y i)) (skip y (pc n k i))
+                           (pcFaceLoY y n k i hy hk) } } ;
+
+pc-face-lo (n k y i : Nat) : IsT (leb y k) -> IsT (leb k n)
+  -> Id Nat (pc (suc n) (suc k) (skip y i)) (skip y (pc n k i)) = pcFaceLoY y n k i ;
+
+plFaceLoY : (y n k i : Nat) -> IsT (leb y k) -> IsT (leb k n)
+  -> Id Nat (pl (suc n) (suc k) (skip y i)) (pl n k i) = split {
+  zero -> \ n k i hy hk -> refl (pl n k i) ;
+  suc y -> \ n -> split {
+    zero -> \ i hy hk -> absurd (Id Nat (pl (suc n) (suc zero) (skip (suc y) i)) (pl n zero i)) (false-true hy) ;
+    suc k -> plFaceLoN y n k } } ;
+
+plFaceLoN (y : Nat) : (n : Nat) (k i : Nat) -> IsT (leb (suc y) (suc k)) -> IsT (leb (suc k) n)
+  -> Id Nat (pl (suc n) (suc (suc k)) (skip (suc y) i)) (pl n (suc k) i) = split {
+  zero -> \ k i hy hk -> absurd (Id Nat (pl (suc zero) (suc (suc k)) (skip (suc y) i)) (pl zero (suc k) i))
+                                (false-true hk) ;
+  suc n -> \ k -> split {
+    zero -> \ hy hk -> refl zero ;
+    suc i -> \ hy hk -> plFaceLoY y n k i hy hk } } ;
+
+pl-face-lo (n k y i : Nat) : IsT (leb y k) -> IsT (leb k n)
+  -> Id Nat (pl (suc n) (suc k) (skip y i)) (pl n k i) = plFaceLoY y n k i ;
+
+-- y = y'+1 > k+1 : the face is P_k of [n-1], read along delta_{y'}   (Agda splits k first)
+pcFaceHiK : (k n y i : Nat) -> IsT (ltb k y) -> IsT (leb k n)
+  -> Id Nat (pc (suc n) k (skip (suc y) i)) (skip y (pc n k i)) = split {
+  zero -> \ n -> split {
+    zero -> \ i hy hk -> absurd (Id Nat (pc (suc n) zero (skip (suc zero) i)) (skip zero (pc n zero i))) (false-true hy) ;
+    suc y -> split {
+      zero -> \ hy hk -> refl zero ;
+      suc i -> \ hy hk -> refl (skip (suc y) i) } } ;
+  suc k -> split {
+    zero -> \ y i hy hk -> absurd (Id Nat (pc (suc zero) (suc k) (skip (suc y) i)) (skip y (pc zero (suc k) i))) (false-true hk) ;
+    suc n -> split {
+      zero -> \ i hy hk -> absurd (Id Nat (pc (suc (suc n)) (suc k) (skip (suc zero) i)) (skip zero (pc (suc n) (suc k) i)))
+                                  (false-true hy) ;
+      suc y -> split {
+        zero -> \ hy hk -> refl zero ;
+        suc i -> \ hy hk -> ap Nat Nat (\ m -> suc m) (pc (suc n) k (skip (suc y) i)) (skip y (pc n k i))
+                               (pcFaceHiK k n y i hy hk) } } } } ;
+
+pc-face-hi (n k y i : Nat) : IsT (ltb k y) -> IsT (leb k n)
+  -> Id Nat (pc (suc n) k (skip (suc y) i)) (skip y (pc n k i)) = pcFaceHiK k n y i ;
+
+plFaceHiK : (k n y i : Nat) -> IsT (ltb k y) -> IsT (leb k n)
+  -> Id Nat (pl (suc n) k (skip (suc y) i)) (pl n k i) = split {
+  zero -> \ n -> split {
+    zero -> \ i hy hk -> absurd (Id Nat (pl (suc n) zero (skip (suc zero) i)) (pl n zero i)) (false-true hy) ;
+    suc y -> split {
+      zero -> \ hy hk -> refl zero ;
+      suc i -> \ hy hk -> refl (suc zero) } } ;
+  suc k -> split {
+    zero -> \ y i hy hk -> absurd (Id Nat (pl (suc zero) (suc k) (skip (suc y) i)) (pl zero (suc k) i)) (false-true hk) ;
+    suc n -> split {
+      zero -> \ i hy hk -> absurd (Id Nat (pl (suc (suc n)) (suc k) (skip (suc zero) i)) (pl (suc n) (suc k) i))
+                                  (false-true hy) ;
+      suc y -> split {
+        zero -> \ hy hk -> refl zero ;
+        suc i -> \ hy hk -> plFaceHiK k n y i hy hk } } } } ;
+
+pl-face-hi (n k y i : Nat) : IsT (ltb k y) -> IsT (leb k n)
+  -> Id Nat (pl (suc n) k (skip (suc y) i)) (pl n k i) = plFaceHiK k n y i ;
+
+------------------------------------------------------------------------
+-- Deciding "some l < r" (one home; used by the extent of a cofibration,
+-- GCofib.CofL.full)
+
+fin-eq (r : Nat) (l l' : Fin r) (P : Id Nat l.1 l'.1) : Id (Fin r) l l' =
+  Sigma-eq Nat (\ n -> IsT (ltb n r)) l.1 l'.1 l.2 l'.2 P (isProp-IsT' (ltb l'.1 r)) ;
+
+finTop (r : Nat) : Fin (suc r) = (r, leb-refl r) ;
+
+finWk (r : Nat) (l : Fin r) : Fin (suc r) = (l.1, leb-trans (suc l.1) r (suc r) l.2 (leb-suc r)) ;
+
+anyF : (r : Nat) -> (Fin r -> Bool) -> Bool = split {
+  zero -> \ P -> false ;
+  suc r -> \ P -> or (P (finTop r)) (anyF r (\ l -> P (finWk r l))) } ;
+
+anyF-sound : (r : Nat) (P : Fin r -> Bool) -> IsT (anyF r P) -> (l : Fin r) * IsT (P l) = split {
+  zero -> \ P h -> absurd _ (false-true h) ;
+  suc r -> \ P h ->
+    or-elim ((l : Fin (suc r)) * IsT (P l)) (P (finTop r)) (anyF r (\ l -> P (finWk r l))) h
+      (\ h' -> (finTop r, h'))
+      (\ h' -> (finWk r (anyF-sound r (\ l -> P (finWk r l)) h').1, (anyF-sound r (\ l -> P (finWk r l)) h').2)) } ;
+
+anyF-complete : (r : Nat) (P : Fin r -> Bool) (l : Fin r) -> IsT (P l) -> IsT (anyF r P) = split {
+  zero -> \ P l p -> absurd _ (false-true l.2) ;
+  suc r -> \ P l p ->
+    ltb-dec (IsT (anyF (suc r) P)) l.1 r
+      (\ lt -> or-r (P (finTop r)) (anyF r (\ l2 -> P (finWk r l2)))
+                 (anyF-complete r (\ l2 -> P (finWk r l2)) (l.1, lt)
+                    (subst (Fin (suc r)) (\ l3 -> IsT (P l3)) l (finWk r (l.1, lt)) (fin-eq (suc r) l (finWk r (l.1, lt)) (refl l.1)) p)))
+      (\ ge -> or-l (P (finTop r)) (anyF r (\ l2 -> P (finWk r l2)))
+                 (subst (Fin (suc r)) (\ l3 -> IsT (P l3)) l (finTop r) (fin-eq (suc r) l (finTop r) (leb-anti l.1 r l.2 ge)) p)) } ;
+
+-- a Bool is determined by when it holds
+bool-ext : (a b : Bool) -> (IsT a -> IsT b) -> (IsT b -> IsT a) -> Id Bool a b = split {
+  true -> split { true -> \ p q -> refl true ; false -> \ p q -> absurd _ (false-true (p (refl true))) } ;
+  false -> split { true -> \ p q -> absurd _ (false-true (q (refl true))) ; false -> \ p q -> refl false } } ;
+
+------------------------------------------------------------------------
+-- Two lists of indices (one home: the sides of a partial element made of
+-- two families; moved from ExtKit) and the sum type (moved from Constr)
+
+data Plus (A B : U l) : U l = inl (x : A) | inr (y : B) ;
+
+plusSuc (r1 r2 : Nat) : Plus (Fin r1) (Fin r2) -> Plus (Fin (suc r1)) (Fin r2) = split {
+  inl l -> inl (suc l.1, l.2) ;
+  inr l -> inr l } ;
+
+splitF : (r1 r2 : Nat) -> Fin (plus r1 r2) -> Plus (Fin r1) (Fin r2) = split {
+  zero -> \ r2 l -> inr l ;
+  suc r1 -> \ r2 l -> sfS r1 r2 l.1 l.2 } ;
+
+sfS (r1 r2 : Nat) : (n : Nat) -> IsT (ltb n (suc (plus r1 r2))) -> Plus (Fin (suc r1)) (Fin r2) = split {
+  zero -> \ h -> inl (zero, refl true) ;
+  suc n -> \ h -> plusSuc r1 r2 (splitF r1 r2 (n, h)) } ;
+
+finL : (r1 r2 : Nat) -> Fin r1 -> Fin (plus r1 r2) = split {
+  zero -> \ r2 l -> absurd _ (false-true l.2) ;
+  suc r1 -> \ r2 l -> flS r1 r2 l.1 l.2 } ;
+
+flS (r1 r2 : Nat) : (n : Nat) -> IsT (ltb n (suc r1)) -> Fin (suc (plus r1 r2)) = split {
+  zero -> \ h -> (zero, refl true) ;
+  suc n -> \ h -> (suc (finL r1 r2 (n, h)).1, (finL r1 r2 (n, h)).2) } ;
+
+finR : (r1 r2 : Nat) -> Fin r2 -> Fin (plus r1 r2) = split {
+  zero -> \ r2 l -> l ;
+  suc r1 -> \ r2 l -> (suc (finR r1 r2 l).1, (finR r1 r2 l).2) } ;
+
+splitL : (r1 r2 : Nat) (l : Fin r1) -> Id (Plus (Fin r1) (Fin r2)) (splitF r1 r2 (finL r1 r2 l)) (inl l) = split {
+  zero -> \ r2 l -> absurd _ (false-true l.2) ;
+  suc r1 -> \ r2 l -> slS r1 r2 l.1 l.2 } ;
+
+slS (r1 r2 : Nat) : (n : Nat) (h : IsT (ltb n (suc r1)))
+  -> Id (Plus (Fin (suc r1)) (Fin r2)) (splitF (suc r1) r2 (finL (suc r1) r2 (n, h))) (inl (n, h)) = split {
+  zero -> \ h -> ap (IsT (ltb zero (suc r1))) (Plus (Fin (suc r1)) (Fin r2)) (\ z -> inl (zero, z)) (refl true) h (isProp-IsT' (ltb zero (suc r1)) (refl true) h) ;
+  suc n -> \ h -> ap (Plus (Fin r1) (Fin r2)) (Plus (Fin (suc r1)) (Fin r2)) (plusSuc r1 r2) (splitF r1 r2 (finL r1 r2 (n, h))) (inl (n, h)) (splitL r1 r2 (n, h)) } ;
+
+splitR : (r1 r2 : Nat) (l : Fin r2) -> Id (Plus (Fin r1) (Fin r2)) (splitF r1 r2 (finR r1 r2 l)) (inr l) = split {
+  zero -> \ r2 l -> refl (inr l) ;
+  suc r1 -> \ r2 l -> ap (Plus (Fin r1) (Fin r2)) (Plus (Fin (suc r1)) (Fin r2)) (plusSuc r1 r2) (splitF r1 r2 (finR r1 r2 l)) (inr l) (splitR r1 r2 l) } ;
+
+
+------------------------------------------------------------------------
+-- Inserting into the first of two lists (moved from EsiSplit): the index
+-- lemma.  splitF (suc r1) r2 (skipN k n) is splitF r1 r2 n with the first
+-- index skipped (split-skip), and splitF (suc r1) r2 k is the first index
+-- k (split-k)
+
+-- s' (in the list with the inserted side) corresponds to s
+SR (r1 r2 k : Nat) : Plus (Fin (suc r1)) (Fin r2) -> Plus (Fin r1) (Fin r2) -> U l = split {
+  inl l' -> split { inl l -> Id Nat l'.1 (skipN k l.1) ; inr j -> Empty } ;
+  inr j' -> split { inl l -> Empty ; inr j -> Id Nat j'.1 j.1 } } ;
+
+plusSuc-SR0 (r1 r2 : Nat) : (s : Plus (Fin r1) (Fin r2)) -> SR r1 r2 zero (plusSuc r1 r2 s) s = split {
+  inl l -> refl (suc l.1) ;
+  inr j -> refl j.1 } ;
+
+plusSuc-SR (r1 r2 k : Nat) : (s' : Plus (Fin (suc r1)) (Fin r2)) (s : Plus (Fin r1) (Fin r2))
+  -> SR r1 r2 k s' s -> SR (suc r1) r2 (suc k) (plusSuc (suc r1) r2 s') (plusSuc r1 r2 s) = split {
+  inl l' -> split { inl l -> \ P -> ap Nat Nat (\ z -> suc z) l'.1 (skipN k l.1) P ; inr j -> \ P -> absurd _ P } ;
+  inr j' -> split { inl l -> \ P -> absurd _ P ; inr j -> \ P -> P } } ;
+
+splitF-irr (r1 r2 n : Nat) (h h' : IsT (ltb n (plus r1 r2)))
+  : Id (Plus (Fin r1) (Fin r2)) (splitF r1 r2 (n, h)) (splitF r1 r2 (n, h')) =
+  ap (IsT (ltb n (plus r1 r2))) (Plus (Fin r1) (Fin r2)) (\ z -> splitF r1 r2 (n, z)) h h' (isProp-IsT' (ltb n (plus r1 r2)) h h') ;
+
+ssk (r2 : Nat) : (k r1 n : Nat) (hk : IsT (leb k r1)) (h : IsT (ltb n (plus r1 r2))) (h' : IsT (ltb (skipN k n) (plus (suc r1) r2)))
+  -> SR r1 r2 k (splitF (suc r1) r2 (skipN k n, h')) (splitF r1 r2 (n, h)) = split {
+  zero -> \ r1 n hk h h' ->
+    subst (Plus (Fin r1) (Fin r2)) (\ s -> SR r1 r2 zero (plusSuc r1 r2 (splitF r1 r2 (n, h'))) s)
+      (splitF r1 r2 (n, h')) (splitF r1 r2 (n, h)) (splitF-irr r1 r2 n h' h)
+      (plusSuc-SR0 r1 r2 (splitF r1 r2 (n, h'))) ;
+  suc k -> split {
+    zero -> \ n hk h h' -> absurd (SR zero r2 (suc k) (splitF (suc zero) r2 (skipN (suc k) n, h')) (splitF zero r2 (n, h))) (false-true hk) ;
+    suc r1 -> split {
+      zero -> \ hk h h' -> refl zero ;
+      suc n -> \ hk h h' ->
+        plusSuc-SR r1 r2 k (splitF (suc r1) r2 (skipN k n, h')) (splitF r1 r2 (n, h)) (ssk r2 k r1 n hk h h') } } } ;
+
+split-skip (r1 r2 k n : Nat) (hk : IsT (leb k r1)) (h : IsT (ltb n (plus r1 r2))) (h' : IsT (ltb (skipN k n) (plus (suc r1) r2)))
+  : SR r1 r2 k (splitF (suc r1) r2 (skipN k n, h')) (splitF r1 r2 (n, h)) = ssk r2 k r1 n hk h h' ;
+
+SKTy (r1 r2 k : Nat) (hk : IsT (ltb k (plus (suc r1) r2))) : U l =
+  (l' : Fin (suc r1)) * (Id Nat l'.1 k * Id (Plus (Fin (suc r1)) (Fin r2)) (splitF (suc r1) r2 (k, hk)) (inl l')) ;
+
+skSuc (r1 r2 k : Nat) (hk : IsT (ltb k (plus (suc r1) r2))) (w : SKTy r1 r2 k hk) : SKTy (suc r1) r2 (suc k) hk =
+  ((suc w.1.1, w.1.2), (ap Nat Nat (\ z -> suc z) w.1.1 k w.2.1,
+     ap (Plus (Fin (suc r1)) (Fin r2)) (Plus (Fin (suc (suc r1))) (Fin r2)) (plusSuc (suc r1) r2) (splitF (suc r1) r2 (k, hk)) (inl w.1) w.2.2)) ;
+
+skA (r2 : Nat) : (k r1 : Nat) (hk0 : IsT (leb k r1)) (hk : IsT (ltb k (plus (suc r1) r2))) -> SKTy r1 r2 k hk = split {
+  zero -> \ r1 hk0 hk -> ((zero, refl true), (refl zero, refl (inl (zero, refl true)))) ;
+  suc k -> split {
+    zero -> \ hk0 hk -> absurd (SKTy zero r2 (suc k) hk) (false-true hk0) ;
+    suc r1 -> \ hk0 hk -> skSuc r1 r2 k hk (skA r2 k r1 hk0 hk) } } ;
+
+split-k (r1 r2 k : Nat) (hk0 : IsT (leb k r1)) (hk : IsT (ltb k (plus (suc r1) r2))) : SKTy r1 r2 k hk = skA r2 k r1 hk0 hk ;
+
+
+leb-plus : (m n : Nat) -> IsT (leb m (plus m n)) = split {
+  zero -> \ n -> refl true ;
+  suc m -> \ n -> leb-plus m n } ;
+
+------------------------------------------------------------------------
+-- the old index of a side once a side is inserted at k (inverse of skipN
+-- away from k)
+
+unsk : Nat -> Nat -> Nat = split {
+  zero -> \ l -> pred l ;
+  suc k -> split { zero -> zero ; suc l -> suc (unsk k l) } } ;
+
+skipN-unsk : (k l : Nat) -> IsT (not (eqN l k)) -> Id Nat (skipN k (unsk k l)) l = split {
+  zero -> split { zero -> \ n -> absurd _ (false-true n) ; suc l -> \ n -> refl (suc l) } ;
+  suc k -> split { zero -> \ n -> refl zero ; suc l -> \ n -> ap Nat Nat (\ z -> suc z) (skipN k (unsk k l)) l (skipN-unsk k l n) } } ;
+
+unsk-lt : (k l r : Nat) -> IsT (leb k r) -> IsT (ltb l (suc r)) -> IsT (not (eqN l k)) -> IsT (ltb (unsk k l) r) = split {
+  zero -> \ l r hk hl n -> unz l r hl n ;
+  suc k -> split {
+    zero -> \ r hk hl n -> leb-trans (suc zero) (suc k) r (refl true) hk ;
+    suc l -> split {
+      zero -> \ hk hl n -> absurd _ (false-true hk) ;
+      suc r -> \ hk hl n -> unsk-lt k l r hk hl n } } }
+ where { unz : (l r : Nat) -> IsT (ltb l (suc r)) -> IsT (not (eqN l zero)) -> IsT (ltb (pred l) r) = split {
+           zero -> \ r hl n -> absurd _ (false-true n) ;
+           suc l -> \ r hl n -> hl } ; } ;
+
+skipN-lt : (k n r : Nat) -> IsT (leb k r) -> IsT (ltb n r) -> IsT (ltb (skipN k n) (suc r)) = split {
+  zero -> \ n r hk hn -> hn ;
+  suc k -> split {
+    zero -> \ r hk hn -> refl true ;
+    suc n -> split {
+      zero -> \ hk hn -> absurd _ (false-true hn) ;
+      suc r -> \ hk hn -> skipN-lt k n r hk hn } } } ;
+

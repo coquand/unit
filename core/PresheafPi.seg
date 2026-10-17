@@ -1,0 +1,861 @@
+-- PresheafPi.seg: MODEL/Lv/PresheafPi.agda (and MODEL/PresheafPi.agda).
+-- Dependent products in the presheaf model.  The fibre of  Pi A B  at
+-- (I , x)  quantifies over the slice of I: it is the set of families
+--
+--   phi J f : (a : A (J , act f x)) -> B (J , (act f x , a))
+--
+-- natural in  (J , f) .  Unlike Unit, Sigma and Id, Pi is not stable
+-- under substitution on the nose: after substituting along s, the points
+-- of the slice are  act f (s x)  instead of  s (act f x) , and the two
+-- agree only up to  nt-nat s .  So the code is defined for an arbitrary
+-- family of points  pt J f  (with the coherence paths as parameters,
+-- piCode), Pi-nat is a path along  ap piCode , and the transport along it
+-- is computed by J on the path of points (piTr).
+--
+-- Every equation between values of B is reduced to the normal form
+-- "transport of one value  phi f a  along a path of points", and two such
+-- normal forms agree as soon as their morphisms do (val-coh), because the
+-- fibres of  extP G A  are sets.
+--
+-- Agda's modules RawPi (I), PiCode {G} A B, PiNat {D G} A B s are
+-- segments; implicit arguments and underscores are spelled out.
+
+level k l ;
+constraint k <= l ;
+open Base ;
+open Prelude[l+] ;
+module P0 = Prelude[l] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+module VL = VLift[k, l] ;
+
+module PPi (C : SmallCat[k].SmallCat) {
+  open C ;
+  open SmallCat[k].Objs[C.obV] ;
+  open SmallCat[k].Homs[C.obV, C.homV] ;
+  module PS = Presheaf[k, l].Psh[C] ;
+  open PS ;
+  module F = CwF.Formers[l+, PCwF] ;
+
+  ----------------------------------------------------------------------
+  -- Generic lemmas
+
+  -- transport along a path of codes
+  coeIx (X Y : W.V) (R : Id W.V X Y) (u : W.Ix X) : W.Ix Y =
+    P0.coe (W.Ix X) (W.Ix Y) (ap W.V (U l) (\ Z -> W.Ix Z) X Y R) u ;
+
+  subst-trans (X : U l+) (F0 : X -> U l+) (x y z : X) (q : Id X x y) (r : Id X y z) (u : F0 x)
+    : Id (F0 z) (subst X F0 x z (trans X x y z q r) u) (subst X F0 y z r (subst X F0 x y q u)) =
+    idJ X y (\ z1 r1 -> Id (F0 z1) (subst X F0 x z1 (trans X x y z1 q r1) u)
+                                   (subst X F0 y z1 r1 (subst X F0 x y q u)))
+        (refl (subst X F0 x y q u)) z r ;
+
+  -- a value of A at y' read back at y, along q : y = y'
+  bk (G : PCtx) (A : PTy[G]) (K : Ob) (y y' : W.Ix (G.ob K)) (q : Id (W.Ix (G.ob K)) y y')
+    (a : W.Ix (A.tob K y')) : W.Ix (A.tob K y) =
+    subst (W.Ix (G.ob K)) (\ y1 -> W.Ix (A.tob K y1)) y' y (sym (W.Ix (G.ob K)) y y' q) a ;
+
+  -- (y , a transported back along q) = (y' , a)
+  pairpath (G : PCtx) (A : PTy[G]) (K : Ob) (y y' : W.Ix (G.ob K)) (q : Id (W.Ix (G.ob K)) y y')
+    (a : W.Ix (A.tob K y')) : Id (SigT G A K) (y, bk G A K y y' q a) (y', a) =
+    idJ (W.Ix (G.ob K)) y
+      (\ y1 q1 -> (a1 : W.Ix (A.tob K y1)) -> Id (SigT G A K) (y, bk G A K y y1 q1 a1) (y1, a1))
+      (\ a1 -> refl (y, a1)) y' q a ;
+
+  subst-ob (G : PCtx) (o o' : TOb G) (P : Id (TOb G) o o') (J : Ob) (y : W.Ix (G.ob J)) (v : W.Ix (o J y))
+    : Id (W.Ix (o' J y)) (subst (TOb G) (\ o2 -> W.Ix (o2 J y)) o o' P v)
+         (coeIx (o J y) (o' J y)
+            (happly (W.Ix (G.ob J)) (\ y1 -> W.V) (o J) (o' J)
+               (happly Ob (\ J1 -> W.Ix (G.ob J1) -> W.V) o o' P J) y) v) =
+    idJ (TOb G) o
+      (\ o1 P1 -> Id (W.Ix (o1 J y)) (subst (TOb G) (\ o2 -> W.Ix (o2 J y)) o o1 P1 v)
+                     (coeIx (o J y) (o1 J y)
+                        (happly (W.Ix (G.ob J)) (\ y1 -> W.V) (o J) (o1 J)
+                           (happly Ob (\ J1 -> W.Ix (G.ob J1) -> W.V) o o1 P1 J) y) v))
+      (refl v) o' P ;
+
+  subst-elObs (G : PCtx) (o o' : TOb G) (P : Id (TOb G) o o') (n : elObs G o) (I : Ob) (x : W.Ix (G.ob I))
+    : Id (W.Ix (o' I x)) (subst (TOb G) (\ o2 -> elObs G o2) o o' P n I x)
+         (coeIx (o I x) (o' I x)
+            (happly (W.Ix (G.ob I)) (\ y1 -> W.V) (o I) (o' I)
+               (happly Ob (\ J1 -> W.Ix (G.ob J1) -> W.V) o o' P I) x) (n I x)) =
+    idJ (TOb G) o
+      (\ o1 P1 -> Id (W.Ix (o1 I x)) (subst (TOb G) (\ o2 -> elObs G o2) o o1 P1 n I x)
+                     (coeIx (o I x) (o1 I x)
+                        (happly (W.Ix (G.ob I)) (\ y1 -> W.V) (o I) (o1 I)
+                           (happly Ob (\ J1 -> W.Ix (G.ob J1) -> W.V) o o1 P1 I) x) (n I x)))
+      (refl (n I x)) o' P ;
+
+  -- the action of a type along a path of sources
+  tact-src (X : PCtx) (B : PTy[X]) (L K : Ob) (g : Hom L K) (w0 w : W.Ix (X.ob K))
+    (Q : Id (W.Ix (X.ob K)) w0 w) (z : W.Ix (X.ob L))
+    (E : Id (W.Ix (X.ob L)) (X.act L K g w) z) (E1 : Id (W.Ix (X.ob L)) (X.act L K g w0) z)
+    (b : W.Ix (B.tob K w0))
+    : Id (W.Ix (B.tob L z)) (B.tact L K g w z E (subst (W.Ix (X.ob K)) (\ w1 -> W.Ix (B.tob K w1)) w0 w Q b))
+                            (B.tact L K g w0 z E1 b) =
+    idJ (W.Ix (X.ob K)) w0
+      (\ w1 Q1 -> (E2 : Id (W.Ix (X.ob L)) (X.act L K g w1) z)
+         -> Id (W.Ix (B.tob L z)) (B.tact L K g w1 z E2 (subst (W.Ix (X.ob K)) (\ w2 -> W.Ix (B.tob K w2)) w0 w1 Q1 b))
+                                  (B.tact L K g w0 z E1 b))
+      (\ E2 -> tact-irr X B L K g w0 z E2 E1 b) w Q E ;
+
+  -- ... and along a path of targets
+  tact-tgt (X : PCtx) (B : PTy[X]) (J I : Ob) (f : Hom J I) (x : W.Ix (X.ob I)) (y y' : W.Ix (X.ob J))
+    (e : Id (W.Ix (X.ob J)) (X.act J I f x) y) (P : Id (W.Ix (X.ob J)) y y')
+    (e' : Id (W.Ix (X.ob J)) (X.act J I f x) y') (b : W.Ix (B.tob I x))
+    : Id (W.Ix (B.tob J y')) (subst (W.Ix (X.ob J)) (\ y1 -> W.Ix (B.tob J y1)) y y' P (B.tact J I f x y e b))
+                             (B.tact J I f x y' e' b) =
+    idJ (W.Ix (X.ob J)) y
+      (\ y1 P1 -> (e1 : Id (W.Ix (X.ob J)) (X.act J I f x) y1)
+         -> Id (W.Ix (B.tob J y1)) (subst (W.Ix (X.ob J)) (\ y2 -> W.Ix (B.tob J y2)) y y1 P1 (B.tact J I f x y e b))
+                                   (B.tact J I f x y1 e1 b))
+      (\ e1 -> tact-irr X B J I f x y e e1 b) y' P e' ;
+
+  apd-el (X : PCtx) (B : PTy[X]) (v : PEl[X, B]) (K : Ob) (w w' : W.Ix (X.ob K)) (Q : Id (W.Ix (X.ob K)) w w')
+    : Id (W.Ix (B.tob K w')) (subst (W.Ix (X.ob K)) (\ w1 -> W.Ix (B.tob K w1)) w w' Q (v.eob K w)) (v.eob K w') =
+    idJ (W.Ix (X.ob K)) w
+      (\ w1 Q1 -> Id (W.Ix (B.tob K w1)) (subst (W.Ix (X.ob K)) (\ w2 -> W.Ix (B.tob K w2)) w w1 Q1 (v.eob K w))
+                                         (v.eob K w1))
+      (refl (v.eob K w)) w' Q ;
+
+  opaque tact-src ; opaque tact-tgt ; opaque apd-el ;
+
+  ----------------------------------------------------------------------
+  -- Raw codes for dependent families over the slice of I.  The code is
+  --   mkV (index set) (embedding) (injectivity)
+  -- with the embedding and its injectivity opaque: its index set
+  -- computes, while two codes are compared through their arguments only.
+
+  module RawPi (I : Ob) {
+
+    AfT : U l+ = (J : Ob) -> Hom J I -> W.V ;
+
+    BfT (Af : AfT) : U l+ = (J : Ob) (f : Hom J I) -> W.Ix (Af J f) -> W.V ;
+
+    AactT (Af : AfT) : U l =
+      (J K : Ob) (f : Hom J I) (g : Hom K J) -> W.Ix (Af J f) -> W.Ix (Af K (oC K J I f g)) ;
+
+    BactT (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) : U l =
+      (J K : Ob) (f : Hom J I) (g : Hom K J) (a : W.Ix (Af J f))
+      -> W.Ix (Bf J f a) -> W.Ix (Bf K (oC K J I f g) (Aact J K f g a)) ;
+
+    RFun (Af : AfT) (Bf : BfT Af) : U l = (J : Ob) (f : Hom J I) (a : W.Ix (Af J f)) -> W.Ix (Bf J f a) ;
+
+    RNat (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact) (phi : RFun Af Bf) : U l =
+      (J K : Ob) (f : Hom J I) (g : Hom K J) (a : W.Ix (Af J f))
+      -> Id (W.Ix (Bf K (oC K J I f g) (Aact J K f g a)))
+            (Bact J K f g a (phi J f a)) (phi K (oC K J I f g) (Aact J K f g a)) ;
+
+    RIx (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact) : U l =
+      (phi : RFun Af Bf) * RNat Af Bf Aact Bact phi ;
+
+    rawCode (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact) : W.V =
+      W.SigV (VL.PiS Ob (VL.encIx obV) (VL.encIx-inj obV) (\ J ->
+                VL.PiS (Hom J I) (VL.encIx (homV J I)) (VL.encIx-inj (homV J I)) (\ f ->
+                  W.PiV (Af J f) (\ a -> Bf J f a))))
+        (\ phi -> VL.PiS Ob (VL.encIx obV) (VL.encIx-inj obV) (\ J ->
+                    VL.PiS Ob (VL.encIx obV) (VL.encIx-inj obV) (\ K ->
+                      VL.PiS (Hom J I) (VL.encIx (homV J I)) (VL.encIx-inj (homV J I)) (\ f ->
+                        VL.PiS (Hom K J) (VL.encIx (homV K J)) (VL.encIx-inj (homV K J)) (\ g ->
+                          W.PiV (Af J f) (\ a ->
+                            W.IdV (Bf K (oC K J I f g) (Aact J K f g a)) (Bact J K f g a (phi J f a))
+                                  (phi K (oC K J I f g) (Aact J K f g a)))))))) ;
+
+    rawF (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact)
+      (r : RIx Af Bf Aact Bact) : W.V = W.ev (rawCode Af Bf Aact Bact) r ;
+
+    rawInj (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact)
+      : W.Inj (RIx Af Bf Aact Bact) (rawF Af Bf Aact Bact) = \ a a' P ->
+      W.emb-inj (RIx Af Bf Aact Bact) (W.elt (rawCode Af Bf Aact Bact).1) (W.embV (rawCode Af Bf Aact Bact)) a a' P ;
+
+    opaque rawF ; opaque rawInj ;
+
+    code (Af : AfT) (Bf : BfT Af) (Aact : AactT Af) (Bact : BactT Af Bf Aact) : W.V =
+      W.mkV (RIx Af Bf Aact Bact) (rawF Af Bf Aact Bact) (rawInj Af Bf Aact Bact) ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- The code of Pi, over an arbitrary family of points
+
+  module PiCode (G : PCtx) (A : PTy[G]) (B : PTy[extP G A]) {
+
+    -- points of the extended context, fibres of A and B
+    Pts (K : Ob) : U l = W.Ix ((extP G A).ob K) ;
+    FA (K : Ob) (y : W.Ix (G.ob K)) : U l = W.Ix (A.tob K y) ;
+    FB (K : Ob) (w : Pts K) : U l = W.Ix (B.tob K w) ;
+
+    -- a family of points of G over the slice of I
+    Pt (I : Ob) : U l = (J : Ob) -> Hom J I -> W.Ix (G.ob J) ;
+
+    PtC (I : Ob) (pt : Pt I) : U l =
+      (J K : Ob) (f : Hom J I) (g : Hom K J) -> Id (W.Ix (G.ob K)) (G.act K J g (pt J f)) (pt K (oC K J I f g)) ;
+
+    PtE (I : Ob) (pt : Pt I) (c : PtC I pt) : U l =
+      (J K : Ob) (f : Hom J I) (g : Hom K J) (a : FA J (pt J f))
+      -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                    (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a) ;
+
+    -- the raw data of the code
+    AfOf (I : Ob) (pt : Pt I) : RawPi[I].AfT = \ J f -> A.tob J (pt J f) ;
+
+    BfOf (I : Ob) (pt : Pt I) : RawPi[I].BfT (AfOf I pt) = \ J f a -> B.tob J (pt J f, a) ;
+
+    AactOf (I : Ob) (pt : Pt I) (c : PtC I pt) : RawPi[I].AactT (AfOf I pt) =
+      \ J K f g a -> A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a ;
+
+    BactOf (I : Ob) (pt : Pt I) (c : PtC I pt) (eB : PtE I pt c)
+      : RawPi[I].BactT (AfOf I pt) (BfOf I pt) (AactOf I pt c) =
+      \ J K f g a b -> B.tact K J g (pt J f, a) (pt K (oC K J I f g), AactOf I pt c J K f g a) (eB J K f g a) b ;
+
+    FunT (I : Ob) (pt : Pt I) : U l = RawPi[I].RFun (AfOf I pt) (BfOf I pt) ;
+
+    NatT (I : Ob) (pt : Pt I) (c : PtC I pt) (eB : PtE I pt c) (phi : FunT I pt) : U l =
+      RawPi[I].RNat (AfOf I pt) (BfOf I pt) (AactOf I pt c) (BactOf I pt c eB) phi ;
+
+    piCode (I : Ob) (pt : Pt I) (c : PtC I pt) (eB : PtE I pt c) : W.V =
+      RawPi[I].code (AfOf I pt) (BfOf I pt) (AactOf I pt c) (BactOf I pt c eB) ;
+
+    isProp-PtC (I : Ob) (pt : Pt I) : isProp (PtC I pt) =
+      isProp-Pi Ob (\ J -> (K : Ob) (f : Hom J I) (g : Hom K J)
+                           -> Id (W.Ix (G.ob K)) (G.act K J g (pt J f)) (pt K (oC K J I f g))) (\ J ->
+      isProp-Pi Ob (\ K -> (f : Hom J I) (g : Hom K J)
+                           -> Id (W.Ix (G.ob K)) (G.act K J g (pt J f)) (pt K (oC K J I f g))) (\ K ->
+      isProp-Pi (Hom J I) (\ f -> (g : Hom K J)
+                           -> Id (W.Ix (G.ob K)) (G.act K J g (pt J f)) (pt K (oC K J I f g))) (\ f ->
+      isProp-Pi (Hom K J) (\ g -> Id (W.Ix (G.ob K)) (G.act K J g (pt J f)) (pt K (oC K J I f g))) (\ g ->
+        W.isSetIx (G.ob K) (G.act K J g (pt J f)) (pt K (oC K J I f g)))))) ;
+
+    isProp-PtE (I : Ob) (pt : Pt I) (c : PtC I pt) : isProp (PtE I pt c) =
+      isProp-Pi Ob (\ J -> (K : Ob) (f : Hom J I) (g : Hom K J) (a : FA J (pt J f))
+        -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                      (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)) (\ J ->
+      isProp-Pi Ob (\ K -> (f : Hom J I) (g : Hom K J) (a : FA J (pt J f))
+        -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                      (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)) (\ K ->
+      isProp-Pi (Hom J I) (\ f -> (g : Hom K J) (a : FA J (pt J f))
+        -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                      (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)) (\ f ->
+      isProp-Pi (Hom K J) (\ g -> (a : FA J (pt J f))
+        -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                      (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)) (\ g ->
+      isProp-Pi (FA J (pt J f)) (\ a
+        -> Id (Pts K) ((extP G A).act K J g (pt J f, a))
+                      (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)) (\ a ->
+        W.isSetIx ((extP G A).ob K) ((extP G A).act K J g (pt J f, a))
+                  (pt K (oC K J I f g), A.tact K J g (pt J f) (pt K (oC K J I f g)) (c J K f g) a)))))) ;
+
+    isProp-NatT (I : Ob) (pt : Pt I) (c : PtC I pt) (eB : PtE I pt c) (phi : FunT I pt)
+      : isProp (NatT I pt c eB phi) =
+      isProp-Pi Ob (\ J -> (K : Ob) (f : Hom J I) (g : Hom K J) (a : FA J (pt J f))
+        -> Id (FB K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+              (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))) (\ J ->
+      isProp-Pi Ob (\ K -> (f : Hom J I) (g : Hom K J) (a : FA J (pt J f))
+        -> Id (FB K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+              (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))) (\ K ->
+      isProp-Pi (Hom J I) (\ f -> (g : Hom K J) (a : FA J (pt J f))
+        -> Id (FB K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+              (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))) (\ f ->
+      isProp-Pi (Hom K J) (\ g -> (a : FA J (pt J f))
+        -> Id (FB K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+              (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))) (\ g ->
+      isProp-Pi (FA J (pt J f)) (\ a
+        -> Id (FB K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+              (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))) (\ a ->
+        W.isSetIx (B.tob K (pt K (oC K J I f g), AactOf I pt c J K f g a))
+          (BactOf I pt c eB J K f g a (phi J f a)) (phi K (oC K J I f g) (AactOf I pt c J K f g a))))))) ;
+
+    -- elements of the code are determined by their functions
+    piCode-eq (I : Ob) (pt : Pt I) (c : PtC I pt) (eB : PtE I pt c) (u v : W.Ix (piCode I pt c eB))
+      (h : (J : Ob) (f : Hom J I) (a : FA J (pt J f)) -> Id (FB J (pt J f, a)) (u.1 J f a) (v.1 J f a))
+      : Id (W.Ix (piCode I pt c eB)) u v =
+      Sigma-eq (FunT I pt) (\ phi -> NatT I pt c eB phi) u.1 v.1 u.2 v.2
+        (funext Ob (\ J -> (f : Hom J I) (a : FA J (pt J f)) -> FB J (pt J f, a)) u.1 v.1 (\ J ->
+           funext (Hom J I) (\ f -> (a : FA J (pt J f)) -> FB J (pt J f, a)) (u.1 J) (v.1 J) (\ f ->
+             funext (FA J (pt J f)) (\ a -> FB J (pt J f, a)) (u.1 J f) (v.1 J f) (h J f))))
+        (isProp-NatT I pt c eB v.1) ;
+
+    -- the code depends only on the points
+    piCode-path (I : Ob) (pt pt' : Pt I) (h : (J : Ob) (f : Hom J I) -> Id (W.Ix (G.ob J)) (pt J f) (pt' J f))
+      (c : PtC I pt) (eB : PtE I pt c) (c' : PtC I pt') (eB' : PtE I pt' c')
+      : Id W.V (piCode I pt c eB) (piCode I pt' c' eB') =
+      idJ (Pt I) pt
+        (\ p1 Q1 -> (c1 : PtC I p1) (e1 : PtE I p1 c1) -> Id W.V (piCode I pt c eB) (piCode I p1 c1 e1))
+        (\ c1 e1 ->
+           idJ (PtC I pt) c
+             (\ c2 Q2 -> (e2 : PtE I pt c2) -> Id W.V (piCode I pt c eB) (piCode I pt c2 e2))
+             (\ e2 -> ap (PtE I pt c) W.V (\ e3 -> piCode I pt c e3) eB e2 (isProp-PtE I pt c eB e2))
+             c1 (isProp-PtC I pt c c1) e1)
+        pt'
+        (funext Ob (\ J -> Hom J I -> W.Ix (G.ob J)) pt pt' (\ J ->
+           funext (Hom J I) (\ f -> W.Ix (G.ob J)) (pt J) (pt' J) (h J)))
+        c' eB' ;
+
+    -- transport between codes with the same points leaves the function alone
+    piCode-fst (I : Ob) (pt : Pt I) (c c' : PtC I pt) (eB : PtE I pt c) (eB' : PtE I pt c')
+      (R : Id W.V (piCode I pt c eB) (piCode I pt c' eB')) (u : W.Ix (piCode I pt c eB))
+      : Id (FunT I pt) (coeIx (piCode I pt c eB) (piCode I pt c' eB') R u).1 u.1 =
+      idJ (PtC I pt) c
+        (\ c1 Q1 -> (e1 : PtE I pt c1) (R1 : Id W.V (piCode I pt c eB) (piCode I pt c1 e1))
+                    -> Id (FunT I pt) (coeIx (piCode I pt c eB) (piCode I pt c1 e1) R1 u).1 u.1)
+        (\ e1 R1 ->
+           idJ (PtE I pt c) eB
+             (\ e2 Q2 -> (R2 : Id W.V (piCode I pt c eB) (piCode I pt c e2))
+                         -> Id (FunT I pt) (coeIx (piCode I pt c eB) (piCode I pt c e2) R2 u).1 u.1)
+             (\ R2 -> ap (Id W.V (piCode I pt c eB) (piCode I pt c eB)) (FunT I pt)
+                         (\ r -> (coeIx (piCode I pt c eB) (piCode I pt c eB) r u).1)
+                         R2 (refl (piCode I pt c eB))
+                         (loop-refl W.V W.isSetV (piCode I pt c eB) R2))
+             e1 (isProp-PtE I pt c eB e1) R1)
+        c' (isProp-PtC I pt c c') eB' R ;
+
+    -- transport between codes along ANY path, computed from a path of points
+    piTr (I : Ob) (pt pt' : Pt I) (h : (J : Ob) (f : Hom J I) -> Id (W.Ix (G.ob J)) (pt J f) (pt' J f))
+      (c : PtC I pt) (eB : PtE I pt c) (c' : PtC I pt') (eB' : PtE I pt' c')
+      (R : Id W.V (piCode I pt c eB) (piCode I pt' c' eB')) (u : W.Ix (piCode I pt c eB))
+      (K : Ob) (f : Hom K I) (a : FA K (pt' K f))
+      : Id (FB K (pt' K f, a)) ((coeIx (piCode I pt c eB) (piCode I pt' c' eB') R u).1 K f a)
+           (subst (Pts K) (\ w -> FB K w) (pt K f, bk G A K (pt K f) (pt' K f) (h K f) a) (pt' K f, a)
+                  (pairpath G A K (pt K f) (pt' K f) (h K f) a)
+                  (u.1 K f (bk G A K (pt K f) (pt' K f) (h K f) a))) =
+      idJ (Pt I) pt
+        (\ p1 Q1 -> (h1 : (J : Ob) (f1 : Hom J I) -> Id (W.Ix (G.ob J)) (pt J f1) (p1 J f1))
+           (c1 : PtC I p1) (e1 : PtE I p1 c1) (R1 : Id W.V (piCode I pt c eB) (piCode I p1 c1 e1))
+           (a1 : FA K (p1 K f))
+           -> Id (FB K (p1 K f, a1)) ((coeIx (piCode I pt c eB) (piCode I p1 c1 e1) R1 u).1 K f a1)
+                 (subst (Pts K) (\ w -> FB K w) (pt K f, bk G A K (pt K f) (p1 K f) (h1 K f) a1) (p1 K f, a1)
+                        (pairpath G A K (pt K f) (p1 K f) (h1 K f) a1)
+                        (u.1 K f (bk G A K (pt K f) (p1 K f) (h1 K f) a1))))
+        (\ h1 c1 e1 R1 a1 ->
+           trans (FB K (pt K f, a1))
+             ((coeIx (piCode I pt c eB) (piCode I pt c1 e1) R1 u).1 K f a1)
+             (u.1 K f a1)
+             (subst (Pts K) (\ w -> FB K w) (pt K f, bk G A K (pt K f) (pt K f) (h1 K f) a1) (pt K f, a1)
+                    (pairpath G A K (pt K f) (pt K f) (h1 K f) a1)
+                    (u.1 K f (bk G A K (pt K f) (pt K f) (h1 K f) a1)))
+             (ap (FunT I pt) (FB K (pt K f, a1)) (\ v -> v K f a1)
+                 (coeIx (piCode I pt c eB) (piCode I pt c1 e1) R1 u).1 u.1
+                 (piCode-fst I pt c c1 eB e1 R1 u))
+             (sym (FB K (pt K f, a1))
+                  (subst (Pts K) (\ w -> FB K w) (pt K f, bk G A K (pt K f) (pt K f) (h1 K f) a1) (pt K f, a1)
+                         (pairpath G A K (pt K f) (pt K f) (h1 K f) a1)
+                         (u.1 K f (bk G A K (pt K f) (pt K f) (h1 K f) a1)))
+                  (u.1 K f a1)
+                  (ap (Id (W.Ix (G.ob K)) (pt K f) (pt K f)) (FB K (pt K f, a1))
+                      (\ q -> subst (Pts K) (\ w -> FB K w) (pt K f, bk G A K (pt K f) (pt K f) q a1) (pt K f, a1)
+                                    (pairpath G A K (pt K f) (pt K f) q a1)
+                                    (u.1 K f (bk G A K (pt K f) (pt K f) q a1)))
+                      (h1 K f) (refl (pt K f))
+                      (loop-refl (W.Ix (G.ob K)) (W.isSetIx (G.ob K)) (pt K f) (h1 K f)))))
+        pt'
+        (funext Ob (\ J -> Hom J I -> W.Ix (G.ob J)) pt pt' (\ J ->
+           funext (Hom J I) (\ f1 -> W.Ix (G.ob J)) (pt J) (pt' J) (h J)))
+        h c' eB' R a ;
+
+    -- two transported values of phi agree when their morphisms do
+    val-coh (K : Ob) (H : U l) (pt : H -> W.Ix (G.ob K))
+      (phi : (f : H) (a : FA K (pt f)) -> FB K (pt f, a))
+      (f f' : H) (m : Id H f f') (a : FA K (pt f)) (a' : FA K (pt f')) (w : Pts K)
+      (Q : Id (Pts K) (pt f, a) w) (Q' : Id (Pts K) (pt f', a') w)
+      : Id (FB K w) (subst (Pts K) (\ w1 -> FB K w1) (pt f, a) w Q (phi f a))
+                    (subst (Pts K) (\ w1 -> FB K w1) (pt f', a') w Q' (phi f' a')) =
+      idJ H f
+        (\ f1 m1 -> (a1 : FA K (pt f1)) (Q1 : Id (Pts K) (pt f1, a1) w)
+           -> Id (FB K w) (subst (Pts K) (\ w1 -> FB K w1) (pt f, a) w Q (phi f a))
+                          (subst (Pts K) (\ w1 -> FB K w1) (pt f1, a1) w Q1 (phi f1 a1)))
+        (\ a1 Q1 -> vc-aux K H pt phi f a a1 w Q Q1)
+        f' m a' Q' ;
+
+    vc-aux (K : Ob) (H : U l) (pt : H -> W.Ix (G.ob K))
+      (phi : (f : H) (a : FA K (pt f)) -> FB K (pt f, a))
+      (f : H) (a a1 : FA K (pt f)) (w : Pts K)
+      (Q : Id (Pts K) (pt f, a) w) (Q1 : Id (Pts K) (pt f, a1) w)
+      : Id (FB K w) (subst (Pts K) (\ w1 -> FB K w1) (pt f, a) w Q (phi f a))
+                    (subst (Pts K) (\ w1 -> FB K w1) (pt f, a1) w Q1 (phi f a1)) =
+      idJ (FA K (pt f)) a
+        (\ a2 e2 -> (Q2 : Id (Pts K) (pt f, a2) w)
+           -> Id (FB K w) (subst (Pts K) (\ w1 -> FB K w1) (pt f, a) w Q (phi f a))
+                          (subst (Pts K) (\ w1 -> FB K w1) (pt f, a2) w Q2 (phi f a2)))
+        (\ Q2 -> ap (Id (Pts K) (pt f, a) w) (FB K w)
+                    (\ q -> subst (Pts K) (\ w1 -> FB K w1) (pt f, a) w q (phi f a)) Q Q2
+                    (W.isSetIx ((extP G A).ob K) (pt f, a) w Q Q2))
+        a1 a-eq Q1
+     where {
+      R : Id (Pts K) (pt f, a) (pt f, a1) =
+        trans (Pts K) (pt f, a) w (pt f, a1) Q (sym (Pts K) (pt f, a1) w Q1) ;
+      Rf : Id (W.Ix (G.ob K)) (pt f) (pt f) = ap (Pts K) (W.Ix (G.ob K)) (\ v -> v.1) (pt f, a) (pt f, a1) R ;
+      a-eq : Id (FA K (pt f)) a a1 =
+        trans (FA K (pt f)) a (subst (W.Ix (G.ob K)) (\ y -> FA K y) (pt f) (pt f) Rf a) a1
+          (ap (Id (W.Ix (G.ob K)) (pt f) (pt f)) (FA K (pt f))
+              (\ q -> subst (W.Ix (G.ob K)) (\ y -> FA K y) (pt f) (pt f) q a) (refl (pt f)) Rf
+              (sym (Id (W.Ix (G.ob K)) (pt f) (pt f)) Rf (refl (pt f))
+                   (loop-refl (W.Ix (G.ob K)) (W.isSetIx (G.ob K)) (pt f) Rf)))
+          (Sigma-snd (W.Ix (G.ob K)) (\ y -> FA K y) (pt f) (pt f) a a1 R) ;
+     } ;
+
+    opaque piCode-eq ; opaque piCode-path ; opaque piCode-fst ; opaque piTr ; opaque val-coh ;
+
+    --------------------------------------------------------------------
+    -- The type Pi A B
+
+    ptOf (I : Ob) (x : W.Ix (G.ob I)) : Pt I = \ J f -> G.act J I f x ;
+
+    cOf (I : Ob) (x : W.Ix (G.ob I)) : PtC I (ptOf I x) = \ J K f g ->
+      sym (W.Ix (G.ob K)) (G.act K I (oC K J I f g) x) (G.act K J g (G.act J I f x)) (G.act-o K J I f g x) ;
+
+    eOf (I : Ob) (x : W.Ix (G.ob I)) : PtE I (ptOf I x) (cOf I x) = \ J K f g a ->
+      pair-act G A K J g (G.act J I f x) (G.act K I (oC K J I f g) x) (cOf I x J K f g) a ;
+
+    PiO (I : Ob) (x : W.Ix (G.ob I)) : W.V = piCode I (ptOf I x) (cOf I x) (eOf I x) ;
+
+    piPt (J I : Ob) (h : Hom J I) (x : W.Ix (G.ob I)) (x' : W.Ix (G.ob J)) (e : Id (W.Ix (G.ob J)) (G.act J I h x) x')
+      (K : Ob) (f : Hom K J) : Id (W.Ix (G.ob K)) (G.act K I (oC K J I h f) x) (G.act K J f x') =
+      trans (W.Ix (G.ob K)) (G.act K I (oC K J I h f) x) (G.act K J f (G.act J I h x)) (G.act K J f x')
+        (G.act-o K J I h f x) (ap (W.Ix (G.ob J)) (W.Ix (G.ob K)) (G.act K J f) (G.act J I h x) x' e) ;
+
+    -- the action: restrict along h, then transport the points
+    piFun (J I : Ob) (h : Hom J I) (x : W.Ix (G.ob I)) (x' : W.Ix (G.ob J)) (e : Id (W.Ix (G.ob J)) (G.act J I h x) x')
+      (phi : FunT I (ptOf I x)) : FunT J (ptOf J x') = \ K f a ->
+      subst (Pts K) (\ w -> FB K w)
+        (G.act K I (oC K J I h f) x, bk G A K (G.act K I (oC K J I h f) x) (G.act K J f x') (piPt J I h x x' e K f) a)
+        (G.act K J f x', a)
+        (pairpath G A K (G.act K I (oC K J I h f) x) (G.act K J f x') (piPt J I h x x' e K f) a)
+        (phi K (oC K J I h f) (bk G A K (G.act K I (oC K J I h f) x) (G.act K J f x') (piPt J I h x x' e K f) a)) ;
+
+    piNat (J I : Ob) (h : Hom J I) (x : W.Ix (G.ob I)) (x' : W.Ix (G.ob J)) (e : Id (W.Ix (G.ob J)) (G.act J I h x) x')
+      (u : W.Ix (PiO I x)) (K L : Ob) (f : Hom K J) (g : Hom L K) (a : FA K (G.act K J f x'))
+      : Id (FB L (G.act L J (oC L K J f g) x', AactOf J (ptOf J x') (cOf J x') K L f g a))
+           (BactOf J (ptOf J x') (cOf J x') (eOf J x') K L f g a (piFun J I h x x' e u.1 K f a))
+           (piFun J I h x x' e u.1 L (oC L K J f g) (AactOf J (ptOf J x') (cOf J x') K L f g a)) =
+      trans T0 S1 S2 S5
+        (tact-src (extP G A) B L K g (G.act K I hf x, a0) (G.act K J f x', a) Qd tgt
+                  (eOf J x' K L f g a) E1 (u.1 K hf a0))
+      (trans T0 S2 S3 S5
+        (sym T0 S3 S2 (tact-tgt (extP G A) B L K g (G.act K I hf x, a0) mid tgt (eOf I x K L hf g a0) P E1 (u.1 K hf a0)))
+      (trans T0 S3 S4 S5
+        (ap (FB L mid) T0 (\ v -> subst (Pts L) (\ w -> FB L w) mid tgt P v)
+            (BactOf I (ptOf I x) (cOf I x) (eOf I x) K L hf g a0 (u.1 K hf a0))
+            (u.1 L (oC L K I hf g) (AactOf I (ptOf I x) (cOf I x) K L hf g a0))
+            (u.2 K L hf g a0))
+        (val-coh L (Hom L I) (\ k1 -> G.act L I k1 x) (u.1 L) (oC L K I hf g) (oC L J I h (oC L K J f g))
+                 (oC-assoc L K J I h f g) (AactOf I (ptOf I x) (cOf I x) K L hf g a0) a'' tgt P
+                 (pairpath G A L (G.act L I (oC L J I h (oC L K J f g)) x) (G.act L J (oC L K J f g) x')
+                           (piPt J I h x x' e L (oC L K J f g)) a'))))
+     where {
+      hf : Hom K I = oC K J I h f ;
+      a0 : FA K (G.act K I hf x) = bk G A K (G.act K I hf x) (G.act K J f x') (piPt J I h x x' e K f) a ;
+      Qd : Id (Pts K) (G.act K I hf x, a0) (G.act K J f x', a) =
+        pairpath G A K (G.act K I hf x) (G.act K J f x') (piPt J I h x x' e K f) a ;
+      a' : FA L (G.act L J (oC L K J f g) x') = AactOf J (ptOf J x') (cOf J x') K L f g a ;
+      a'' : FA L (G.act L I (oC L J I h (oC L K J f g)) x) =
+        bk G A L (G.act L I (oC L J I h (oC L K J f g)) x) (G.act L J (oC L K J f g) x')
+           (piPt J I h x x' e L (oC L K J f g)) a' ;
+      tgt : Pts L = (G.act L J (oC L K J f g) x', a') ;
+      mid : Pts L = (G.act L I (oC L K I hf g) x, AactOf I (ptOf I x) (cOf I x) K L hf g a0) ;
+      E1 : Id (Pts L) ((extP G A).act L K g (G.act K I hf x, a0)) tgt =
+        trans (Pts L) ((extP G A).act L K g (G.act K I hf x, a0)) ((extP G A).act L K g (G.act K J f x', a)) tgt
+          (ap (Pts K) (Pts L) ((extP G A).act L K g) (G.act K I hf x, a0) (G.act K J f x', a) Qd)
+          (eOf J x' K L f g a) ;
+      P : Id (Pts L) mid tgt =
+        trans (Pts L) mid ((extP G A).act L K g (G.act K I hf x, a0)) tgt
+          (sym (Pts L) ((extP G A).act L K g (G.act K I hf x, a0)) mid (eOf I x K L hf g a0)) E1 ;
+      T0 : U l = FB L tgt ;
+      S1 : T0 = BactOf J (ptOf J x') (cOf J x') (eOf J x') K L f g a (piFun J I h x x' e u.1 K f a) ;
+      S2 : T0 = B.tact L K g (G.act K I hf x, a0) tgt E1 (u.1 K hf a0) ;
+      S3 : T0 = subst (Pts L) (\ w -> FB L w) mid tgt P
+                  (B.tact L K g (G.act K I hf x, a0) mid (eOf I x K L hf g a0) (u.1 K hf a0)) ;
+      S4 : T0 = subst (Pts L) (\ w -> FB L w) mid tgt P (u.1 L (oC L K I hf g) (AactOf I (ptOf I x) (cOf I x) K L hf g a0)) ;
+      S5 : T0 = piFun J I h x x' e u.1 L (oC L K J f g) a' ;
+     } ;
+
+    piAct : TactTy G PiO = \ J I h x x' e u -> (piFun J I h x x' e u.1, piNat J I h x x' e u) ;
+
+    piId (I : Ob) (x : W.Ix (G.ob I)) (e : Id (W.Ix (G.ob I)) (G.act I I (idC I) x) x) (u : W.Ix (PiO I x))
+      : Id (W.Ix (PiO I x)) (piAct I I (idC I) x x e u) u =
+      piCode-eq I (ptOf I x) (cOf I x) (eOf I x) (piAct I I (idC I) x x e u) u
+        (\ K f a -> val-coh K (Hom K I) (\ k1 -> G.act K I k1 x) (u.1 K) (oC K I I (idC I) f) f (oC-idl K I f)
+                      (bk G A K (G.act K I (oC K I I (idC I) f) x) (G.act K I f x) (piPt I I (idC I) x x e K f) a) a
+                      (G.act K I f x, a)
+                      (pairpath G A K (G.act K I (oC K I I (idC I) f) x) (G.act K I f x) (piPt I I (idC I) x x e K f) a)
+                      (refl (G.act K I f x, a))) ;
+
+    piOL (K J I : Ob) (f : Hom J I) (g : Hom K J)
+      (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J)) (z : W.Ix (G.ob K))
+      (e1 : Id (W.Ix (G.ob J)) (G.act J I f x) y) (e2 : Id (W.Ix (G.ob K)) (G.act K J g y) z)
+      (e3 : Id (W.Ix (G.ob K)) (G.act K I (oC K J I f g) x) z) (u : W.Ix (PiO I x))
+      : Id (W.Ix (PiO K z)) (piAct K I (oC K J I f g) x z e3 u) (piAct K J g y z e2 (piAct J I f x y e1 u)) =
+      piCode-eq K (ptOf K z) (cOf K z) (eOf K z)
+        (piAct K I (oC K J I f g) x z e3 u) (piAct K J g y z e2 (piAct J I f x y e1 u))
+        (\ L k a -> ol-pt K J I f g x y z e1 e2 e3 u L k a) ;
+
+    ol-pt (K J I : Ob) (f : Hom J I) (g : Hom K J)
+      (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J)) (z : W.Ix (G.ob K))
+      (e1 : Id (W.Ix (G.ob J)) (G.act J I f x) y) (e2 : Id (W.Ix (G.ob K)) (G.act K J g y) z)
+      (e3 : Id (W.Ix (G.ob K)) (G.act K I (oC K J I f g) x) z) (u : W.Ix (PiO I x))
+      (L : Ob) (k : Hom L K) (a : FA L (G.act L K k z))
+      : Id (FB L (G.act L K k z, a)) (piFun K I (oC K J I f g) x z e3 u.1 L k a)
+           (piFun K J g y z e2 (piFun J I f x y e1 u.1) L k a) =
+      trans (FB L w) (piFun K I (oC K J I f g) x z e3 u.1 L k a)
+        (subst (Pts L) (\ w1 -> FB L w1) (G.act L I (oC L J I f (oC L K J g k)) x, a1) w
+               (trans (Pts L) (G.act L I (oC L J I f (oC L K J g k)) x, a1) (G.act L J (oC L K J g k) y, a2) w Q1 Q2)
+               (u.1 L (oC L J I f (oC L K J g k)) a1))
+        (piFun K J g y z e2 (piFun J I f x y e1 u.1) L k a)
+        (val-coh L (Hom L I) (\ k1 -> G.act L I k1 x) (u.1 L) (oC L K I (oC K J I f g) k) (oC L J I f (oC L K J g k))
+                 (oC-assoc L K J I f g k) a3 a1 w Q3
+                 (trans (Pts L) (G.act L I (oC L J I f (oC L K J g k)) x, a1) (G.act L J (oC L K J g k) y, a2) w Q1 Q2))
+        (subst-trans (Pts L) (\ w1 -> FB L w1) (G.act L I (oC L J I f (oC L K J g k)) x, a1)
+                     (G.act L J (oC L K J g k) y, a2) w Q1 Q2 (u.1 L (oC L J I f (oC L K J g k)) a1))
+     where {
+      w : Pts L = (G.act L K k z, a) ;
+      a2 : FA L (G.act L J (oC L K J g k) y) =
+        bk G A L (G.act L J (oC L K J g k) y) (G.act L K k z) (piPt K J g y z e2 L k) a ;
+      Q2 : Id (Pts L) (G.act L J (oC L K J g k) y, a2) w =
+        pairpath G A L (G.act L J (oC L K J g k) y) (G.act L K k z) (piPt K J g y z e2 L k) a ;
+      a1 : FA L (G.act L I (oC L J I f (oC L K J g k)) x) =
+        bk G A L (G.act L I (oC L J I f (oC L K J g k)) x) (G.act L J (oC L K J g k) y)
+           (piPt J I f x y e1 L (oC L K J g k)) a2 ;
+      Q1 : Id (Pts L) (G.act L I (oC L J I f (oC L K J g k)) x, a1) (G.act L J (oC L K J g k) y, a2) =
+        pairpath G A L (G.act L I (oC L J I f (oC L K J g k)) x) (G.act L J (oC L K J g k) y)
+                 (piPt J I f x y e1 L (oC L K J g k)) a2 ;
+      a3 : FA L (G.act L I (oC L K I (oC K J I f g) k) x) =
+        bk G A L (G.act L I (oC L K I (oC K J I f g) k) x) (G.act L K k z) (piPt K I (oC K J I f g) x z e3 L k) a ;
+      Q3 : Id (Pts L) (G.act L I (oC L K I (oC K J I f g) k) x, a3) w =
+        pairpath G A L (G.act L I (oC L K I (oC K J I f g) k) x) (G.act L K k z) (piPt K I (oC K J I f g) x z e3 L k) a ;
+     } ;
+
+    opaque piNat ; opaque piId ; opaque ol-pt ;
+
+    PiP : PTy[G] = (mkTy G PiO piAct piId piOL) ;
+
+    --------------------------------------------------------------------
+    -- Elements: currying
+
+    lamFun (v : PEl[extP G A, B]) (I : Ob) (x : W.Ix (G.ob I)) : FunT I (ptOf I x) =
+      \ J f a -> v.eob J (G.act J I f x, a) ;
+
+    lamNat (v : PEl[extP G A, B]) (I : Ob) (x : W.Ix (G.ob I))
+      : NatT I (ptOf I x) (cOf I x) (eOf I x) (lamFun v I x) = \ J K f g a ->
+      v.enat K J g (G.act J I f x, a) (G.act K I (oC K J I f g) x, AactOf I (ptOf I x) (cOf I x) J K f g a)
+             (eOf I x J K f g a) ;
+
+    lamEnat (v : PEl[extP G A, B]) (J I : Ob) (h : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
+      (e : Id (W.Ix (G.ob J)) (G.act J I h x) y)
+      : Id (W.Ix (PiO J y)) (piAct J I h x y e (lamFun v I x, lamNat v I x)) (lamFun v J y, lamNat v J y) =
+      piCode-eq J (ptOf J y) (cOf J y) (eOf J y)
+        (piAct J I h x y e (lamFun v I x, lamNat v I x)) (lamFun v J y, lamNat v J y)
+        (\ K f a -> apd-el (extP G A) B v K
+                      (G.act K I (oC K J I h f) x, bk G A K (G.act K I (oC K J I h f) x) (G.act K J f y) (piPt J I h x y e K f) a)
+                      (G.act K J f y, a)
+                      (pairpath G A K (G.act K I (oC K J I h f) x) (G.act K J f y) (piPt J I h x y e K f) a)) ;
+
+    opaque lamEnat ;
+
+    lamEl (v : PEl[extP G A, B]) : PEl[G, PiP] =
+      new PEl[G, PiP, \ I x -> (lamFun v I x, lamNat v I x), lamEnat v] ;
+
+    appFun (u : PEl[G, PiP]) (I : Ob) (w : Pts I) : FB I w =
+      subst (Pts I) (\ w1 -> FB I w1)
+        (G.act I I (idC I) w.1, bk G A I (G.act I I (idC I) w.1) w.1 (G.act-id I w.1) w.2) w
+        (pairpath G A I (G.act I I (idC I) w.1) w.1 (G.act-id I w.1) w.2)
+        ((u.eob I w.1).1 I (idC I) (bk G A I (G.act I I (idC I) w.1) w.1 (G.act-id I w.1) w.2)) ;
+
+    appNat (u : PEl[G, PiP]) (J I : Ob) (f : Hom J I) (w : Pts I) (w' : Pts J)
+      (E : Id (Pts J) ((extP G A).act J I f w) w')
+      : Id (FB J w') (B.tact J I f w w' E (appFun u I w)) (appFun u J w') =
+      trans (FB J w') S1 S2 S7
+        (tact-src (extP G A) B J I f (G.act I I (idC I) x, a0) w Qa w' E E1 (phi I (idC I) a0))
+      (trans (FB J w') S2 S3 S7
+        (sym (FB J w') S3 S2 (tact-tgt (extP G A) B J I f (G.act I I (idC I) x, a0) mid w'
+                                       (eOf I x I J (idC I) f a0) P E1 (phi I (idC I) a0)))
+      (trans (FB J w') S3 S4 S7
+        (ap (FB J mid) (FB J w') (\ v -> subst (Pts J) (\ w1 -> FB J w1) mid w' P v)
+            (BactOf I (ptOf I x) (cOf I x) (eOf I x) I J (idC I) f a0 (phi I (idC I) a0))
+            (phi J (oC J I I (idC I) f) (AactOf I (ptOf I x) (cOf I x) I J (idC I) f a0))
+            ((u.eob I x).2 I J (idC I) f a0))
+      (trans (FB J w') S4 S5 S7
+        (val-coh J (Hom J I) (\ k1 -> G.act J I k1 x) (phi J) (oC J I I (idC I) f) (oC J J I f (idC J))
+                 (trans (Hom J I) (oC J I I (idC I) f) f (oC J J I f (idC J))
+                    (oC-idl J I f) (sym (Hom J I) (oC J J I f (idC J)) f (oC-idr J I f)))
+                 (AactOf I (ptOf I x) (cOf I x) I J (idC I) f a0) b1 w' P
+                 (trans (Pts J) (G.act J I (oC J J I f (idC J)) x, b1) (G.act J J (idC J) y, b0) w' Qd Qb))
+      (trans (FB J w') S5 S6 S7
+        (subst-trans (Pts J) (\ w1 -> FB J w1) (G.act J I (oC J J I f (idC J)) x, b1) (G.act J J (idC J) y, b0) w'
+                     Qd Qb (phi J (oC J J I f (idC J)) b1))
+        (ap (W.Ix (PiO J y)) (FB J w')
+            (\ r -> subst (Pts J) (\ w1 -> FB J w1) (G.act J J (idC J) y, b0) w' Qb (r.1 J (idC J) b0))
+            (piAct J I f x y e (u.eob I x)) (u.eob J y) (u.enat J I f x y e))))))
+     where {
+      x : W.Ix (G.ob I) = w.1 ;
+      y : W.Ix (G.ob J) = w'.1 ;
+      phi : FunT I (ptOf I x) = (u.eob I x).1 ;
+      e : Id (W.Ix (G.ob J)) (G.act J I f x) y = ap (Pts J) (W.Ix (G.ob J)) (\ v -> v.1) ((extP G A).act J I f w) w' E ;
+      a0 : FA I (G.act I I (idC I) x) = bk G A I (G.act I I (idC I) x) x (G.act-id I x) w.2 ;
+      Qa : Id (Pts I) (G.act I I (idC I) x, a0) w = pairpath G A I (G.act I I (idC I) x) x (G.act-id I x) w.2 ;
+      E1 : Id (Pts J) ((extP G A).act J I f (G.act I I (idC I) x, a0)) w' =
+        trans (Pts J) ((extP G A).act J I f (G.act I I (idC I) x, a0)) ((extP G A).act J I f w) w'
+          (ap (Pts I) (Pts J) ((extP G A).act J I f) (G.act I I (idC I) x, a0) w Qa) E ;
+      mid : Pts J = (G.act J I (oC J I I (idC I) f) x, AactOf I (ptOf I x) (cOf I x) I J (idC I) f a0) ;
+      P : Id (Pts J) mid w' =
+        trans (Pts J) mid ((extP G A).act J I f (G.act I I (idC I) x, a0)) w'
+          (sym (Pts J) ((extP G A).act J I f (G.act I I (idC I) x, a0)) mid (eOf I x I J (idC I) f a0)) E1 ;
+      b0 : FA J (G.act J J (idC J) y) = bk G A J (G.act J J (idC J) y) y (G.act-id J y) w'.2 ;
+      Qb : Id (Pts J) (G.act J J (idC J) y, b0) w' = pairpath G A J (G.act J J (idC J) y) y (G.act-id J y) w'.2 ;
+      b1 : FA J (G.act J I (oC J J I f (idC J)) x) =
+        bk G A J (G.act J I (oC J J I f (idC J)) x) (G.act J J (idC J) y) (piPt J I f x y e J (idC J)) b0 ;
+      Qd : Id (Pts J) (G.act J I (oC J J I f (idC J)) x, b1) (G.act J J (idC J) y, b0) =
+        pairpath G A J (G.act J I (oC J J I f (idC J)) x) (G.act J J (idC J) y) (piPt J I f x y e J (idC J)) b0 ;
+      S1 : FB J w' = B.tact J I f w w' E (appFun u I w) ;
+      S2 : FB J w' = B.tact J I f (G.act I I (idC I) x, a0) w' E1 (phi I (idC I) a0) ;
+      S3 : FB J w' = subst (Pts J) (\ w1 -> FB J w1) mid w' P
+                       (B.tact J I f (G.act I I (idC I) x, a0) mid (eOf I x I J (idC I) f a0) (phi I (idC I) a0)) ;
+      S4 : FB J w' = subst (Pts J) (\ w1 -> FB J w1) mid w' P
+                       (phi J (oC J I I (idC I) f) (AactOf I (ptOf I x) (cOf I x) I J (idC I) f a0)) ;
+      S5 : FB J w' = subst (Pts J) (\ w1 -> FB J w1) (G.act J I (oC J J I f (idC J)) x, b1) w'
+                       (trans (Pts J) (G.act J I (oC J J I f (idC J)) x, b1) (G.act J J (idC J) y, b0) w' Qd Qb)
+                       (phi J (oC J J I f (idC J)) b1) ;
+      S6 : FB J w' = subst (Pts J) (\ w1 -> FB J w1) (G.act J J (idC J) y, b0) w' Qb
+                       (subst (Pts J) (\ w1 -> FB J w1) (G.act J I (oC J J I f (idC J)) x, b1) (G.act J J (idC J) y, b0) Qd
+                          (phi J (oC J J I f (idC J)) b1)) ;
+      S7 : FB J w' = appFun u J w' ;
+     } ;
+
+    opaque appNat ;
+
+    appEl (u : PEl[G, PiP]) : PEl[extP G A, B] = new PEl[extP G A, B, appFun u, appNat u] ;
+
+    app-lam (v : PEl[extP G A, B]) : Id (PEl[extP G A, B]) (appEl (lamEl v)) v =
+      el-ext (extP G A) B (appEl (lamEl v)) v (\ I w ->
+        apd-el (extP G A) B v I
+          (G.act I I (idC I) w.1, bk G A I (G.act I I (idC I) w.1) w.1 (G.act-id I w.1) w.2) w
+          (pairpath G A I (G.act I I (idC I) w.1) w.1 (G.act-id I w.1) w.2)) ;
+
+    lam-app (u : PEl[G, PiP]) : Id (PEl[G, PiP]) (lamEl (appEl u)) u =
+      el-ext G PiP (lamEl (appEl u)) u (\ I x ->
+        piCode-eq I (ptOf I x) (cOf I x) (eOf I x) ((lamEl (appEl u)).eob I x) (u.eob I x)
+          (\ K f a -> la-pt u I x K f a)) ;
+
+    la-pt (u : PEl[G, PiP]) (I : Ob) (x : W.Ix (G.ob I)) (K : Ob) (f : Hom K I) (a : FA K (G.act K I f x))
+      : Id (FB K (G.act K I f x, a)) (appFun u K (G.act K I f x, a)) ((u.eob I x).1 K f a) =
+      trans (FB K (y, a)) (appFun u K (y, a))
+        (subst (Pts K) (\ w1 -> FB K w1) (G.act K K (idC K) y, a0) (y, a) Qa
+           (subst (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) Qd
+              ((u.eob I x).1 K (oC K K I f (idC K)) a1)))
+        ((u.eob I x).1 K f a)
+        (ap (W.Ix (PiO K y)) (FB K (y, a))
+            (\ r -> subst (Pts K) (\ w1 -> FB K w1) (G.act K K (idC K) y, a0) (y, a) Qa (r.1 K (idC K) a0))
+            (u.eob K y) (piAct K I f x y (refl y) (u.eob I x))
+            (sym (W.Ix (PiO K y)) (piAct K I f x y (refl y) (u.eob I x)) (u.eob K y) (u.enat K I f x y (refl y))))
+      (trans (FB K (y, a))
+        (subst (Pts K) (\ w1 -> FB K w1) (G.act K K (idC K) y, a0) (y, a) Qa
+           (subst (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) Qd
+              ((u.eob I x).1 K (oC K K I f (idC K)) a1)))
+        (subst (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (y, a)
+           (trans (Pts K) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) (y, a) Qd Qa)
+           ((u.eob I x).1 K (oC K K I f (idC K)) a1))
+        ((u.eob I x).1 K f a)
+        (sym (FB K (y, a))
+           (subst (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (y, a)
+              (trans (Pts K) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) (y, a) Qd Qa)
+              ((u.eob I x).1 K (oC K K I f (idC K)) a1))
+           (subst (Pts K) (\ w1 -> FB K w1) (G.act K K (idC K) y, a0) (y, a) Qa
+              (subst (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) Qd
+                 ((u.eob I x).1 K (oC K K I f (idC K)) a1)))
+           (subst-trans (Pts K) (\ w1 -> FB K w1) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) (y, a)
+                        Qd Qa ((u.eob I x).1 K (oC K K I f (idC K)) a1)))
+        (val-coh K (Hom K I) (\ k1 -> G.act K I k1 x) ((u.eob I x).1 K) (oC K K I f (idC K)) f (oC-idr K I f)
+                 a1 a (y, a)
+                 (trans (Pts K) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) (y, a) Qd Qa)
+                 (refl (y, a))))
+     where {
+      y : W.Ix (G.ob K) = G.act K I f x ;
+      a0 : FA K (G.act K K (idC K) y) = bk G A K (G.act K K (idC K) y) y (G.act-id K y) a ;
+      Qa : Id (Pts K) (G.act K K (idC K) y, a0) (y, a) = pairpath G A K (G.act K K (idC K) y) y (G.act-id K y) a ;
+      a1 : FA K (G.act K I (oC K K I f (idC K)) x) =
+        bk G A K (G.act K I (oC K K I f (idC K)) x) (G.act K K (idC K) y) (piPt K I f x y (refl y) K (idC K)) a0 ;
+      Qd : Id (Pts K) (G.act K I (oC K K I f (idC K)) x, a1) (G.act K K (idC K) y, a0) =
+        pairpath G A K (G.act K I (oC K K I f (idC K)) x) (G.act K K (idC K) y) (piPt K I f x y (refl y) K (idC K)) a0 ;
+     } ;
+
+    opaque app-lam ; opaque lam-app ; opaque la-pt ;
+
+    PiP-iso : Iso (PEl[G, PiP]) (PEl[extP G A, B]) = struct {
+      fun = appEl ; inv = lamEl ; fun-inv = app-lam ; inv-fun = lam-app } ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- Substitution: Pi A B [ s ] = Pi (A [ s ]) (B [ lift s ])
+
+  module PiNat (D G : PCtx) (A : PTy[G]) (B : PTy[extP G A]) (s : PSub[D, G]) {
+
+    A' : PTy[D] = subTy D G A s ;
+    B' : PTy[extP D A'] = subTy (extP D A') (extP G A) B (liftP D G A s) ;
+    Ls : PSub[extP D A', extP G A] = liftP D G A s ;
+
+    module PG = PiCode[G, A, B] ;
+    module PD = PiCode[D, A', B'] ;
+
+    -- the points of Pi A' B' at (I , x), read in G
+    ptS (I : Ob) (x : W.Ix (D.ob I)) : PG.Pt I = \ J f -> s.nt J (D.act J I f x) ;
+
+    hs (I : Ob) (x : W.Ix (D.ob I)) (J : Ob) (f : Hom J I)
+      : Id (W.Ix (G.ob J)) (G.act J I f (s.nt I x)) (s.nt J (D.act J I f x)) =
+      sym (W.Ix (G.ob J)) (s.nt J (D.act J I f x)) (G.act J I f (s.nt I x)) (s.nt-nat J I f x) ;
+
+    -- the coherences of Pi A' B', read in G (as subTy reads them)
+    cS (I : Ob) (x : W.Ix (D.ob I)) : PG.PtC I (ptS I x) = \ J K f g ->
+      ntEq D G s K J g (D.act J I f x) (D.act K I (oC K J I f g) x) (PD.cOf I x J K f g) ;
+
+    eS (I : Ob) (x : W.Ix (D.ob I)) : PG.PtE I (ptS I x) (cS I x) = \ J K f g a ->
+      ntEq (extP D A') (extP G A) Ls K J g (D.act J I f x, a)
+           (D.act K I (oC K J I f g) x, A'.tact K J g (D.act J I f x) (D.act K I (oC K J I f g) x) (PD.cOf I x J K f g) a)
+           (PD.eOf I x J K f g a) ;
+
+    PiP-obj : Id (TOb D) (subTy D G PG.PiP s).tob PD.PiP.tob =
+      funext Ob (\ I -> W.Ix (D.ob I) -> W.V) (subTy D G PG.PiP s).tob PD.PiP.tob (\ I ->
+        funext (W.Ix (D.ob I)) (\ x -> W.V) ((subTy D G PG.PiP s).tob I) (PD.PiP.tob I) (\ x ->
+          PG.piCode-path I (PG.ptOf I (s.nt I x)) (ptS I x) (hs I x)
+                         (PG.cOf I (s.nt I x)) (PG.eOf I (s.nt I x)) (cS I x) (eS I x))) ;
+
+    RJ (J : Ob) (y : W.Ix (D.ob J)) : Id W.V (PG.PiO J (s.nt J y)) (PD.PiO J y) =
+      happly (W.Ix (D.ob J)) (\ y1 -> W.V) ((subTy D G PG.PiP s).tob J) (PD.PiP.tob J)
+        (happly Ob (\ J1 -> W.Ix (D.ob J1) -> W.V) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj J) y ;
+
+    trS (J : Ob) (y : W.Ix (D.ob J)) (v : W.Ix (PG.PiO J (s.nt J y)))
+      (K : Ob) (k : Hom K J) (a : W.Ix (A'.tob K (D.act K J k y)))
+      : Id (PG.FB K (s.nt K (D.act K J k y), a)) ((coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) v).1 K k a)
+           (subst (PG.Pts K) (\ w -> PG.FB K w)
+                  (G.act K J k (s.nt J y), bk G A K (G.act K J k (s.nt J y)) (s.nt K (D.act K J k y)) (hs J y K k) a)
+                  (s.nt K (D.act K J k y), a)
+                  (pairpath G A K (G.act K J k (s.nt J y)) (s.nt K (D.act K J k y)) (hs J y K k) a)
+                  (v.1 K k (bk G A K (G.act K J k (s.nt J y)) (s.nt K (D.act K J k y)) (hs J y K k) a))) =
+      PG.piTr J (PG.ptOf J (s.nt J y)) (ptS J y) (hs J y)
+        (PG.cOf J (s.nt J y)) (PG.eOf J (s.nt J y)) (cS J y) (eS J y) (RJ J y) v K k a ;
+
+    pw (J I : Ob) (f : Hom J I) (x : W.Ix (D.ob I)) (y : W.Ix (D.ob J)) (e : Id (W.Ix (D.ob J)) (D.act J I f x) y)
+      (u : W.Ix (PG.PiO I (s.nt I x))) (K : Ob) (k : Hom K J) (a : W.Ix (A'.tob K (D.act K J k y)))
+      : Id (PG.FB K (s.nt K (D.act K J k y), a))
+           ((coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) ((subTy D G PG.PiP s).tact J I f x y e u)).1 K k a)
+           ((PD.PiP.tact J I f x y e (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u)).1 K k a) =
+      trans T0 S1 S2 S7 (trS J y ((subTy D G PG.PiP s).tact J I f x y e u) K k a)
+      (trans T0 S2 S3 S7
+        (sym T0 S3 S2 (subst-trans (PG.Pts K) (\ w -> PG.FB K w) p2 p1 tg Q2 Q1 (u.1 K (oC K J I f k) a2)))
+      (trans T0 S3 S4 S7
+        (PG.val-coh K (Hom K I) (\ k1 -> G.act K I k1 (s.nt I x)) (u.1 K) (oC K J I f k) (oC K J I f k)
+                    (refl (oC K J I f k)) a2 a4 tg
+                    (trans (PG.Pts K) p2 p1 tg Q2 Q1) (trans (PG.Pts K) p4 p3 tg Q4 Q3))
+      (trans T0 S4 S5 S7
+        (subst-trans (PG.Pts K) (\ w -> PG.FB K w) p4 p3 tg Q4 Q3 (u.1 K (oC K J I f k) a4))
+      (trans T0 S5 S6 S7
+        (sym T0 S6 S5 (subst-ap (PD.Pts K) (PG.Pts K) (Ls.nt K) (\ w -> PG.FB K w)
+                                (D.act K I (oC K J I f k) x, a3) (D.act K J k y, a) Q5
+                                (subst (PG.Pts K) (\ w -> PG.FB K w) p4 p3 Q4 (u.1 K (oC K J I f k) a4))))
+        (ap (PG.FB K p3) T0 (\ r -> subst (PD.Pts K) (\ w -> PD.FB K w) (D.act K I (oC K J I f k) x, a3)
+                                          (D.act K J k y, a) Q5 r)
+            (subst (PG.Pts K) (\ w -> PG.FB K w) p4 p3 Q4 (u.1 K (oC K J I f k) a4))
+            ((coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u).1 K (oC K J I f k) a3)
+            (sym (PG.FB K p3) ((coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u).1 K (oC K J I f k) a3)
+                 (subst (PG.Pts K) (\ w -> PG.FB K w) p4 p3 Q4 (u.1 K (oC K J I f k) a4))
+                 (trS I x u K (oC K J I f k) a3)))))))
+     where {
+      E : Id (W.Ix (G.ob J)) (G.act J I f (s.nt I x)) (s.nt J y) = ntEq D G s J I f x y e ;
+      tg : PG.Pts K = (s.nt K (D.act K J k y), a) ;
+      a1 : PG.FA K (G.act K J k (s.nt J y)) = bk G A K (G.act K J k (s.nt J y)) (s.nt K (D.act K J k y)) (hs J y K k) a ;
+      p1 : PG.Pts K = (G.act K J k (s.nt J y), a1) ;
+      Q1 : Id (PG.Pts K) p1 tg = pairpath G A K (G.act K J k (s.nt J y)) (s.nt K (D.act K J k y)) (hs J y K k) a ;
+      a2 : PG.FA K (G.act K I (oC K J I f k) (s.nt I x)) =
+        bk G A K (G.act K I (oC K J I f k) (s.nt I x)) (G.act K J k (s.nt J y))
+           (PG.piPt J I f (s.nt I x) (s.nt J y) E K k) a1 ;
+      p2 : PG.Pts K = (G.act K I (oC K J I f k) (s.nt I x), a2) ;
+      Q2 : Id (PG.Pts K) p2 p1 =
+        pairpath G A K (G.act K I (oC K J I f k) (s.nt I x)) (G.act K J k (s.nt J y))
+                 (PG.piPt J I f (s.nt I x) (s.nt J y) E K k) a1 ;
+      a3 : W.Ix (A'.tob K (D.act K I (oC K J I f k) x)) =
+        bk D A' K (D.act K I (oC K J I f k) x) (D.act K J k y) (PD.piPt J I f x y e K k) a ;
+      Q5 : Id (PD.Pts K) (D.act K I (oC K J I f k) x, a3) (D.act K J k y, a) =
+        pairpath D A' K (D.act K I (oC K J I f k) x) (D.act K J k y) (PD.piPt J I f x y e K k) a ;
+      p3 : PG.Pts K = (s.nt K (D.act K I (oC K J I f k) x), a3) ;
+      Q3 : Id (PG.Pts K) p3 tg =
+        ap (PD.Pts K) (PG.Pts K) (Ls.nt K) (D.act K I (oC K J I f k) x, a3) (D.act K J k y, a) Q5 ;
+      a4 : PG.FA K (G.act K I (oC K J I f k) (s.nt I x)) =
+        bk G A K (G.act K I (oC K J I f k) (s.nt I x)) (s.nt K (D.act K I (oC K J I f k) x)) (hs I x K (oC K J I f k)) a3 ;
+      p4 : PG.Pts K = (G.act K I (oC K J I f k) (s.nt I x), a4) ;
+      Q4 : Id (PG.Pts K) p4 p3 =
+        pairpath G A K (G.act K I (oC K J I f k) (s.nt I x)) (s.nt K (D.act K I (oC K J I f k) x)) (hs I x K (oC K J I f k)) a3 ;
+      T0 : U l = PG.FB K tg ;
+      S1 : T0 = (coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) ((subTy D G PG.PiP s).tact J I f x y e u)).1 K k a ;
+      S2 : T0 = subst (PG.Pts K) (\ w -> PG.FB K w) p1 tg Q1
+                  (subst (PG.Pts K) (\ w -> PG.FB K w) p2 p1 Q2 (u.1 K (oC K J I f k) a2)) ;
+      S3 : T0 = subst (PG.Pts K) (\ w -> PG.FB K w) p2 tg (trans (PG.Pts K) p2 p1 tg Q2 Q1) (u.1 K (oC K J I f k) a2) ;
+      S4 : T0 = subst (PG.Pts K) (\ w -> PG.FB K w) p4 tg (trans (PG.Pts K) p4 p3 tg Q4 Q3) (u.1 K (oC K J I f k) a4) ;
+      S5 : T0 = subst (PG.Pts K) (\ w -> PG.FB K w) p3 tg Q3
+                  (subst (PG.Pts K) (\ w -> PG.FB K w) p4 p3 Q4 (u.1 K (oC K J I f k) a4)) ;
+      S6 : T0 = subst (PD.Pts K) (\ w -> PD.FB K w) (D.act K I (oC K J I f k) x, a3) (D.act K J k y, a) Q5
+                  (subst (PG.Pts K) (\ w -> PG.FB K w) p4 p3 Q4 (u.1 K (oC K J I f k) a4)) ;
+      S7 : T0 = (PD.PiP.tact J I f x y e (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u)).1 K k a ;
+     } ;
+
+    PiP-nat : Id (PTy[D]) (subTy D G PG.PiP s) PD.PiP =
+      ty-ext2 D (subTy D G PG.PiP s) PD.PiP PiP-obj (\ J I f x y e u ->
+        trans (W.Ix (PD.PiO J y))
+          (subst (TOb D) (\ o -> W.Ix (o J y)) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj
+                 ((subTy D G PG.PiP s).tact J I f x y e u))
+          (coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) ((subTy D G PG.PiP s).tact J I f x y e u))
+          (PD.PiP.tact J I f x y e (subst (TOb D) (\ o -> W.Ix (o I x)) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj u))
+          (subst-ob D (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj J y ((subTy D G PG.PiP s).tact J I f x y e u))
+        (trans (W.Ix (PD.PiO J y))
+          (coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) ((subTy D G PG.PiP s).tact J I f x y e u))
+          (PD.PiP.tact J I f x y e (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u))
+          (PD.PiP.tact J I f x y e (subst (TOb D) (\ o -> W.Ix (o I x)) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj u))
+          (PD.piCode-eq J (PD.ptOf J y) (PD.cOf J y) (PD.eOf J y)
+             (coeIx (PG.PiO J (s.nt J y)) (PD.PiO J y) (RJ J y) ((subTy D G PG.PiP s).tact J I f x y e u))
+             (PD.PiP.tact J I f x y e (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u))
+             (pw J I f x y e u))
+          (ap (W.Ix (PD.PiO I x)) (W.Ix (PD.PiO J y)) (PD.PiP.tact J I f x y e)
+              (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u)
+              (subst (TOb D) (\ o -> W.Ix (o I x)) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj u)
+              (sym (W.Ix (PD.PiO I x))
+                   (subst (TOb D) (\ o -> W.Ix (o I x)) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj u)
+                   (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) u)
+                   (subst-ob D (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj I x u))))) ;
+
+    PiP-iso-nat (v : PEl[extP G A, B])
+      : Id (PEl[D, PD.PiP])
+           (subst (PTy[D]) (\ X -> PEl[D, X]) (subTy D G PG.PiP s) PD.PiP PiP-nat (subEl D G PG.PiP (PG.lamEl v) s))
+           (PD.lamEl (subEl (extP D A') (extP G A) B v Ls)) =
+      el-subst D (subTy D G PG.PiP s) PD.PiP PiP-nat PiP-obj (subEl D G PG.PiP (PG.lamEl v) s)
+        (PD.lamEl (subEl (extP D A') (extP G A) B v Ls))
+        (\ I x -> trans (W.Ix (PD.PiO I x))
+           (subst (TOb D) (\ o -> elObs D o) (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj
+                  (subEl D G PG.PiP (PG.lamEl v) s).eob I x)
+           (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) ((PG.lamEl v).eob I (s.nt I x)))
+           ((PD.lamEl (subEl (extP D A') (extP G A) B v Ls)).eob I x)
+           (subst-elObs D (subTy D G PG.PiP s).tob PD.PiP.tob PiP-obj (subEl D G PG.PiP (PG.lamEl v) s).eob I x)
+           (PD.piCode-eq I (PD.ptOf I x) (PD.cOf I x) (PD.eOf I x)
+              (coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) ((PG.lamEl v).eob I (s.nt I x)))
+              ((PD.lamEl (subEl (extP D A') (extP G A) B v Ls)).eob I x)
+              (\ K k a ->
+                 trans (PG.FB K (s.nt K (D.act K I k x), a))
+                   ((coeIx (PG.PiO I (s.nt I x)) (PD.PiO I x) (RJ I x) ((PG.lamEl v).eob I (s.nt I x))).1 K k a)
+                   (subst (PG.Pts K) (\ w -> PG.FB K w)
+                          (G.act K I k (s.nt I x), bk G A K (G.act K I k (s.nt I x)) (s.nt K (D.act K I k x)) (hs I x K k) a)
+                          (s.nt K (D.act K I k x), a)
+                          (pairpath G A K (G.act K I k (s.nt I x)) (s.nt K (D.act K I k x)) (hs I x K k) a)
+                          (v.eob K (G.act K I k (s.nt I x), bk G A K (G.act K I k (s.nt I x)) (s.nt K (D.act K I k x)) (hs I x K k) a)))
+                   (v.eob K (s.nt K (D.act K I k x), a))
+                   (trS I x ((PG.lamEl v).eob I (s.nt I x)) K k a)
+                   (apd-el (extP G A) B v K
+                      (G.act K I k (s.nt I x), bk G A K (G.act K I k (s.nt I x)) (s.nt K (D.act K I k x)) (hs I x K k) a)
+                      (s.nt K (D.act K I k x), a)
+                      (pairpath G A K (G.act K I k (s.nt I x)) (s.nt K (D.act K I k x)) (hs I x K k) a))))) ;
+
+    opaque PiP-obj ; opaque pw ; opaque PiP-nat ; opaque PiP-iso-nat ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- The structure
+
+  PPi : F.PiStr = new F.PiStr[
+    Pi         := \ G A B -> PiCode[G, A, B].PiP,
+    Pi-nat     := \ D G A B s -> PiNat[D, G, A, B, s].PiP-nat,
+    Pi-iso     := \ G A B -> PiCode[G, A, B].PiP-iso,
+    Pi-iso-nat := \ D G A B f s -> PiNat[D, G, A, B, s].PiP-iso-nat f ] ;
+} ;

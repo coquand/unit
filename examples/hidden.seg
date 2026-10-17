@@ -1,0 +1,112 @@
+-- hidden.seg: hidden arguments, the Agda-wiki design, no unification.
+-- {x : A} in a declaration header; uses of the name get a hole there,
+-- filled by matching the types of the explicit arguments (and the
+-- expected type); {e} gives a hidden argument explicitly.
+
+level a ;
+data N = zero | suc (n : N) ;
+
+sym {A : U a} {x y : A} (p : Id A x y) : Id A y x =
+  idJ A x (\ z q -> Id A z x) (refl x) y p ;
+
+trans {A : U a} {x y z : A} (p : Id A x y) (q : Id A y z) : Id A x z =
+  idJ A y (\ w r -> Id A x w) p z q ;
+
+ap {A B : U a} (f : A -> B) {x y : A} (p : Id A x y) : Id B (f x) (f y) =
+  idJ A x (\ z q -> Id B (f x) (f z)) (refl (f x)) y p ;
+
+-- uses: everything hidden is found from p and q
+twice {A : U a} {x y : A} (p : Id A x y) : Id A x x = trans p (sym p) ;
+apSym {A : U a} {x y : A} (f : A -> N) (p : Id A x y) : Id N (f y) (f x) = ap f (sym p) ;
+
+one : N = suc zero ;
+#normal sym (refl one) ;
+#normal twice (refl one) ;
+#conv trans (refl one) (refl one) = refl one ;
+
+-- explicit {e}, e.g. where the argument is not inferable
+s2 : Id N one one = sym {N} {one} {one} (refl one) ;
+#fails { bad : Id N one one = sym {N} (refl zero) ; } ;
+
+-- a hole that nothing determines is an error, not a guess
+idH {A : U a} (x : N) : N = x ;
+#fails { noInfo : N = idH zero ; } ;
+
+-- hidden arguments found from the EXPECTED type
+refl2 {A : U a} {x : A} : Id A x x = refl x ;
+r2 : Id N one one = refl2 ;
+
+-- CwF-style fields with hidden contexts, through an element of a segment
+module Cat {
+  Ob : U a ;
+  Hom (X Y : Ob) : U a ;
+  idm {X : Ob} : Hom X X ;
+  comp {X Y Z : Ob} (g : Hom Y Z) (f : Hom X Y) : Hom X Z ;
+  idl {X Y : Ob} (f : Hom X Y) : Id (Hom X Y) (comp idm f) f ;
+  twc {X : Ob} (f : Hom X X) : Hom X X = comp f f ;
+} ;
+
+module Lemmas (C : Cat) {
+  open C ;
+  -- the middle object of  comp idm (comp idm f)  is determined only by
+  -- unification (idm : Hom W W against the inner composite): give it
+  idl2 {X Y : Ob} (f : Hom X Y) : Id (Hom X Y) (comp {X} {Y} idm (comp idm f)) f =
+    trans (idl (comp idm f)) (idl f) ;
+  tw {X : Ob} (f : Hom X X) : Id (Hom X X) (twc f) (comp f f) = refl (comp f f) ;
+  viaDot {X Y : Ob} (f : Hom X Y) : Id (Hom X Y) (C.comp C.idm f) f = C.idl f ;
+} ;
+
+module Limit (C : Cat) {
+  open C ;
+  #fails { noUnif {X Y : Ob} (f : Hom X Y) : Hom X Y = comp idm (comp idm f) ; } ;
+} ;
+
+-- the wiki's  _ : an explicit argument left to be inferred
+idT (A : U a) (x : A) : A = x ;
+#normal idT _ one ;
+
+-- seg-60's cases: a lambda checked against a field type in new; an
+-- over-applied result whose type F y is known once p is matched
+substH {A : U a} (F : A -> U a) {x y : A} (p : Id A x y) (u : F x) : F y =
+  idJ A x (\ z q -> F z) u y p ;
+module R { f : (n : N) -> Id N n n ; } ;
+r3 : R = new R[\ n -> trans (refl n) (refl n)] ;
+over (x y : N) (p : Id N x y) (u : N -> N) : N = substH (\ z -> N -> N) p u zero ;
+-- a variable of a PARTIAL segment type quotes back as itself
+module Tw (A : U a) { B : A -> U a ; } ;
+pt (T : Tw[N]) (x y : T.B one) (p : Id (T.B one) x y) : Id (T.B one) x x = trans p (sym p) ;
+
+-- a member of a segment with parameters, written inline: the hidden
+-- argument is quoted back as  Vx[n].gam  from the member's dynamic part
+module Vx (n : N) { gam (k : N) : N = n ; } ;
+vx (n k : N) (p : Id N (Vx[n].gam k) (Vx[n].gam k)) : Id N (Vx[n].gam k) (Vx[n].gam k) =
+  trans p (sym p) ;
+
+-- a lambda argument whose body is inferable gives the hidden codomain
+apH {A B : U a} (f : A -> B) {x y : A} (p : Id A x y) : Id B (f x) (f y) =
+  idJ A x (\ z q -> Id B (f x) (f z)) (refl (f x)) y p ;
+succ (n : N) : N = suc n ;
+lamB (x y : N) (p : Id N x y) : Id N (succ x) (succ y) = trans (apH (\ n -> succ n) p) (refl (succ y)) ;
+module Bx (n : N) (m : N) { } ;
+lamS (x y : N) (p : Id N x y) : Id (Bx) (new Bx[zero, x]) (new Bx[zero, y]) =
+  trans (apH (\ c -> new Bx[zero, c]) p) (refl (new Bx[zero, y])) ;
+
+-- seg-60's rep6: an element whose first field is r.x is not r.  Elements
+-- are compared by NAME (Half, Gofer): one occurrence  mk3 , used everywhere
+isPropT (A : U a) : U a = (u v : A) -> Id A u v ;
+module R3 { x : N ; y : N ; z : N ; } ;
+mk3 (u v w : N) : R3 = new R3[u, v, w] ;
+t6 (pr : isPropT N) (r r' : R3) (P : Id N r.x r'.x) : Id R3 (mk3 r.x r.y r.z) (mk3 r'.x r'.y r'.z) =
+  idJ N r.x (\ k P2 -> (c d : N) -> Id R3 (mk3 r.x r.y r.z) (mk3 k c d))
+    (\ c d -> trans {R3} {_} {mk3 r.x c r.z}
+                (apH (\ w -> mk3 r.x w r.z) (pr r.y c))
+                (apH (\ w -> mk3 r.x c w) (pr r.z d)))
+    r'.x P r'.y r'.z ;
+-- two different occurrences are different, even with equal fields
+#fails { notEq (r : R3) : Id R3 (new R3[r.x, r.y, r.z]) (mk3 r.x r.y r.z) = refl (mk3 r.x r.y r.z) ; } ;
+
+-- a projection of a hole is not a solution for the hole: from p.1 = s.1
+-- nothing is concluded about p (seg-60's el-eq W' s _ (refl s.1))
+pr1 {P : N * N} (e : Id N P.1 one) : N = P.2 ;
+#fails { projHole (s : N * N) (h : Id N s.1 one) : N = pr1 h ; } ;
+projOk (s : N * N) (h : Id N s.1 one) : N = pr1 {s} h ;
