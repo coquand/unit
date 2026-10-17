@@ -43,7 +43,7 @@ executable is still called `seg`.
 
     cabal build
     ./run-tests.sh                 # the examples in examples/
-    ./segc core all                # check the whole formalisation (about 30 s)
+    ./segc core all                # check the whole formalisation (about 28 s)
     ./segc core changed            # after an edit: the changed files and their dependents
 
 `segc` starts a checking server that loads the development once and keeps
