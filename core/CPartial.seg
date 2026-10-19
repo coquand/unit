@@ -28,12 +28,23 @@ open GPR.PS ;
 ------------------------------------------------------------------------
 -- maps of types over a context
 
-module PMap (D : PCtx) (B A : PTy[D]) {
+record PMap (D : PCtx) (B A : PTy[D]) {
   mE (X : Ob) (w : W0.Ix ((extP D B).ob X)) : W0.Ix ((extP D A).ob X) ;
   mpt (X : Ob) (w : W0.Ix ((extP D B).ob X)) : Id (W0.Ix (D.ob X)) (mE X w).1 w.1 ;
   mnat (Y X : Ob) (h : Hom Y X) (w : W0.Ix ((extP D B).ob X))
     : Id (W0.Ix ((extP D A).ob Y)) (mE Y ((extP D B).act Y X h w)) ((extP D A).act Y X h (mE X w)) ;
 } ;
+
+-- one occurrence of new PMap (elements are compared by occurrence)
+mkPMap (D : PCtx) (B A : PTy[D]) (mE : (X : Ob) (w : W0.Ix ((extP D B).ob X)) -> W0.Ix ((extP D A).ob X))
+  (mpt : (X : Ob) (w : W0.Ix ((extP D B).ob X)) -> Id (W0.Ix (D.ob X)) (mE X w).1 w.1)
+  (mnat : (Y X : Ob) (h : Hom Y X) (w : W0.Ix ((extP D B).ob X))
+          -> Id (W0.Ix ((extP D A).ob Y)) (mE Y ((extP D B).act Y X h w)) ((extP D A).act Y X h (mE X w)))
+  : PMap[D, B, A] = new PMap[D, B, A, mE, mpt, mnat] ;
+
+-- eta for PMap, in Id (no eta by conversion for records)
+pmap-eta (D : PCtx) (B A : PTy[D]) : (al : PMap[D, B, A]) -> Id (PMap[D, B, A]) al (mkPMap D B A al.mE al.mpt al.mnat) =
+  split { PMap m p n -> refl (mkPMap D B A m p n) } ;
 
 pmap-id (D : PCtx) (B : PTy[D]) : PMap[D, B, B] =
   new PMap[D, B, B, \ X w -> w, \ X w -> refl w.1, \ Y X h w -> refl ((extP D B).act Y X h w)] ;
@@ -54,12 +65,20 @@ module Partials (D : PCtx) (C : PTy[D]) {
     -> Id (EI W') (E.act W' W chi (v W f i)) (v W' (compH W' W X f chi) i') ;
 
   -- a partial element: one sieve, a section of C over it, lying over x
-  module Side (X : Ob) (x : Pt X) {
+  record Side (X : Ob) (x : Pt X) {
     pQ : Phi X ;
     pv : PvTy X pQ ;
     ppt : PptTy X x pQ pv ;
     pnat : PnTy X pQ pv ;
   } ;
+
+  -- one occurrence of new Side (elements are compared by occurrence)
+  mkSide (X : Ob) (x : Pt X) (q : Phi X) (v : PvTy X q) (p : PptTy X x q v) (n : PnTy X q v) : Side[X, x] =
+    new Side[X, x, q, v, p, n] ;
+
+  -- eta for sides, in Id (by the eliminator)
+  side-eta (X : Ob) (x : Pt X) : (s : Side[X, x]) -> Id (Side[X, x]) s (mkSide X x s.pQ s.pv s.ppt s.pnat) =
+    split { Side q v p n -> refl (mkSide X x q v p n) } ;
 
   -- a side does not depend on the proof that the map lands, nor on the
   -- presentation of the map
@@ -125,24 +144,27 @@ module Partials (D : PCtx) (C : PTy[D]) {
 
   side-ext (X : Ob) (x : Pt X) (s s' : Side[X, x]) (eQ : Id (Phi X) s.pQ s'.pQ)
     (ev : PvEq X s.pQ s'.pQ s.pv s'.pv) : Id (Side[X, x]) s s' =
-    idJ (Phi X) s.pQ
+    trans (Side[X, x]) s (mkSide X x s.pQ s.pv s.ppt s.pnat) s' (side-eta X x s)
+     (trans (Side[X, x]) (mkSide X x s.pQ s.pv s.ppt s.pnat) (mkSide X x s'.pQ s'.pv s'.ppt s'.pnat) s'
+    (idJ (Phi X) s.pQ
       (\ q2 P2 -> (v2 : PvTy X q2) (pp2 : PptTy X x q2 v2) (pn2 : PnTy X q2 v2) -> PvEq X s.pQ q2 s.pv v2
-         -> Id (Side[X, x]) s (new Side[X, x, q2, v2, pp2, pn2]))
+         -> Id (Side[X, x]) (mkSide X x s.pQ s.pv s.ppt s.pnat) ((mkSide X x q2 v2 pp2 pn2)))
       (\ v2 pp2 pn2 ev2 ->
          idJ (PvTy X s.pQ) s.pv
-           (\ v3 P3 -> (pp3 : PptTy X x s.pQ v3) (pn3 : PnTy X s.pQ v3) -> Id (Side[X, x]) s (new Side[X, x, s.pQ, v3, pp3, pn3]))
+           (\ v3 P3 -> (pp3 : PptTy X x s.pQ v3) (pn3 : PnTy X s.pQ v3) -> Id (Side[X, x]) (mkSide X x s.pQ s.pv s.ppt s.pnat) ((mkSide X x s.pQ v3 pp3 pn3)))
            (\ pp3 pn3 ->
-              trans (Side[X, x]) s (new Side[X, x, s.pQ, s.pv, pp3, s.pnat]) (new Side[X, x, s.pQ, s.pv, pp3, pn3])
-                (ap (PptTy X x s.pQ s.pv) (Side[X, x]) (\ z -> new Side[X, x, s.pQ, s.pv, z, s.pnat]) s.ppt pp3
+              trans (Side[X, x]) (mkSide X x s.pQ s.pv s.ppt s.pnat) ((mkSide X x s.pQ s.pv pp3 s.pnat)) ((mkSide X x s.pQ s.pv pp3 pn3))
+                (ap (PptTy X x s.pQ s.pv) (Side[X, x]) (\ z -> (mkSide X x s.pQ s.pv z s.pnat)) s.ppt pp3
                     (isProp-Ppt X x s.pQ s.pv s.ppt pp3))
-                (ap (PnTy X s.pQ s.pv) (Side[X, x]) (\ z -> new Side[X, x, s.pQ, s.pv, pp3, z]) s.pnat pn3
+                (ap (PnTy X s.pQ s.pv) (Side[X, x]) (\ z -> (mkSide X x s.pQ s.pv pp3 z)) s.pnat pn3
                     (isProp-Pn X s.pQ s.pv s.pnat pn3)))
            v2
            (funext Ob (\ W -> (f : Hom W X) -> Lands W X s.pQ f -> EI W) s.pv v2 (\ W ->
               funext (Hom W X) (\ f -> Lands W X s.pQ f -> EI W) (s.pv W) (v2 W) (\ f ->
                 funext (Lands W X s.pQ f) (\ i -> EI W) (s.pv W f) (v2 W f) (\ i -> ev2 W f i i))))
            pp2 pn2)
-      s'.pQ eQ s'.pv s'.ppt s'.pnat ev ;
+      s'.pQ eQ s'.pv s'.ppt s'.pnat ev)
+      (sym (Side[X, x]) s' (mkSide X x s'.pQ s'.pv s'.ppt s'.pnat) (side-eta X x s'))) ;
 
   opaque isProp-Ppt ; opaque isProp-Pn ; opaque side-ext ;
 
@@ -189,7 +211,7 @@ module Rel (D : PCtx) (S T : PTy[D]) (m : PMap[D, S, T]) {
   module TT = GPR.TyL[D, T] ;
   module PS' = Partials[D, S] ;
 
-  module RC {
+  record RC {
     kop (X : Ob) (x : TS.Pt X) (s : PS'.Side[X, x]) : TT.T X x ;
     -- the extension agrees with m on the side's sieve
     kside (X : Ob) (x : TS.Pt X) (s : PS'.Side[X, x]) (W : Ob) (f : Hom W X) (i : Lands W X s.pQ f)
@@ -220,6 +242,11 @@ module Rel (D : PCtx) (S T : PTy[D]) (m : PMap[D, S, T]) {
   KunifTy (kp : KopTy) : U l =
     (Y X : Ob) (h : Hom Y X) (x : TS.Pt X) (s : PS'.Side[X, x])
     -> Id (TT.EI Y) (TT.E.act Y X h (x, kp X x s)) (D.act Y X h x, kp Y (D.act Y X h x) (PS'.rside Y X h x s)) ;
+
+  -- one occurrence of new RC
+  mkRC (kp : KopTy) (ks : KsideTy kp) (ku : KunifTy kp) : RC = new RC[kp, ks, ku] ;
+
+  rc-eta : (k : RC) -> Id RC k (mkRC k.kop k.kside k.kunif) = split { RC kp ks ku -> refl (mkRC kp ks ku) } ;
 
   isProp-Kside (kp : KopTy) : isProp (KsideTy kp) =
     isProp-Pi Ob (\ X -> (x : TS.Pt X) (s : PS'.Side[X, x]) (W : Ob) (f : Hom W X) (i : Lands W X s.pQ f)
@@ -252,15 +279,17 @@ module Rel (D : PCtx) (S T : PTy[D]) (m : PMap[D, S, T]) {
 
   rc-ext (k k' : RC) (H : (X : Ob) (x : TS.Pt X) (s : PS'.Side[X, x]) -> Id (TT.T X x) (k.kop X x s) (k'.kop X x s))
     : Id RC k k' =
-    idJ KopTy k.kop
-      (\ kp Q -> (ks : KsideTy kp) (ku : KunifTy kp) -> Id RC k (new RC[kp, ks, ku]))
-      (\ ks ku -> transH (apH {KsideTy k.kop} {RC} (\ z -> new RC[k.kop, z, k.kunif]) (isProp-Kside k.kop k.kside ks))
-                         (apH {KunifTy k.kop} {RC} (\ z -> new RC[k.kop, ks, z]) (isProp-Kunif k.kop k.kunif ku)))
+    transH (rc-eta k) (transH
+    (idJ KopTy k.kop
+      (\ kp Q -> (ks : KsideTy kp) (ku : KunifTy kp) -> Id RC (mkRC k.kop k.kside k.kunif) ((mkRC kp ks ku)))
+      (\ ks ku -> transH (apH {KsideTy k.kop} {RC} (\ z -> (mkRC k.kop z k.kunif)) (isProp-Kside k.kop k.kside ks))
+                         (apH {KunifTy k.kop} {RC} (\ z -> (mkRC k.kop ks z)) (isProp-Kunif k.kop k.kunif ku)))
       k'.kop
       (funext Ob (\ X -> (x : TS.Pt X) (s : PS'.Side[X, x]) -> TT.T X x) k.kop k'.kop (\ X ->
          funext (TS.Pt X) (\ x -> (s : PS'.Side[X, x]) -> TT.T X x) (k.kop X) (k'.kop X) (\ x ->
            funext (PS'.Side[X, x]) (\ s -> TT.T X x) (k.kop X x) (k'.kop X x) (H X x))))
-      k'.kside k'.kunif ;
+      k'.kside k'.kunif)
+      (symH (rc-eta k'))) ;
 
   opaque rc-ext ;
 

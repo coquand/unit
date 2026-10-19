@@ -1,0 +1,116 @@
+-- The actual quotient ring A[X], not a setoid interface on lists.
+level l ; open Ring[l] ; open Poly[l] ; open Mul[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Extension (A : CRing) (setA : Pr.isSet A.R) {
+ open A ; open PolyR[A] ; open MulR[A] ;
+ module L = RawLaws[l].Laws[A] ;
+ module M = RawMultiplication[l].Laws[A] ;
+ peq-prop (p q : P) : Pr.isProp (peq p q) =
+   F.isProp-Pi Nat (\ k -> Id R (coef p k) (coef q k)) (\ k -> setA (coef p k) (coef q k)) ;
+ module Q = Quotient[l].Quot[P,peq,peq-prop,L.rr,peq-sym,peq-trans] ;
+ Carrier : U l = Q.Q ;
+ include : P -> Carrier = Q.inc ;
+ set : Pr.isSet Carrier = Q.set ;
+ module Binary (op : P -> P -> P)
+   (cong : (p p' q q' : P) -> peq p p' -> peq q q' -> peq (op p q) (op p' q')) {
+  module Right (p : P) {
+   module D = Q.Descend[Carrier,set,\ q -> include (op p q),\ q q' h -> Q.relates _ _ (cong p p q q' (L.rr p) h)] ;
+  } ;
+  left-respects (p p' : P) (h : peq p p') : Id (Carrier -> Carrier) Right[p].D.map Right[p'].D.map =
+   F.funext Carrier (\ q -> Carrier) _ _
+    (Q.induction @l (\ q -> Id Carrier (Right[p].D.map q) (Right[p'].D.map q)) (\ q -> set _ _)
+     (\ q -> trans (Right[p].D.beta q)
+       (trans (Q.relates _ _ (cong p p' q q h (L.rr q))) (sym (Right[p'].D.beta q))))) ;
+  module Left = Q.Descend[Carrier -> Carrier,F.isSet-Pi Carrier (\ q -> Carrier) (\ q -> set),
+    \ p -> Right[p].D.map,left-respects] ;
+  operation : Carrier -> Carrier -> Carrier = Left.map ;
+  beta (p q : P) : Id Carrier (operation (include p) (include q)) (include (op p q)) =
+   trans (Pr.happly Carrier (\ q -> Carrier) _ _ (Left.beta p) (include q)) (Right[p].D.beta q) ;
+ } ;
+ module Add = Binary[addP,L.add-cong] ;
+ module Multiply = Binary[pmul,M.mul-cong] ;
+ module Negate = Q.Descend[Carrier,set,\ p -> include (L.negP p),\ p q h -> Q.relates _ _ (L.scal-cong (neg o) p q h)] ;
+ addQ : Carrier -> Carrier -> Carrier = Add.operation ;
+ mulQ : Carrier -> Carrier -> Carrier = Multiply.operation ;
+ negQ : Carrier -> Carrier = Negate.map ;
+ zeroQ : Carrier = include nil ;
+ oneQ : Carrier = include (L.constantP o) ;
+
+ forall2 (B : Carrier -> Carrier -> U l) (prop : (x y : Carrier) -> Pr.isProp (B x y))
+   (b : (p q : P) -> B (include p) (include q)) : (x y : Carrier) -> B x y =
+   Q.induction @l (\ x -> (y : Carrier) -> B x y)
+    (\ x -> F.isProp-Pi Carrier (B x) (prop x))
+    (\ p -> Q.induction @l (B (include p)) (prop (include p)) (b p)) ;
+ forall3 (B : Carrier -> Carrier -> Carrier -> U l) (prop : (x y z : Carrier) -> Pr.isProp (B x y z))
+   (b : (p q r : P) -> B (include p) (include q) (include r)) : (x y z : Carrier) -> B x y z =
+   forall2 (\ x y -> (z : Carrier) -> B x y z)
+    (\ x y -> F.isProp-Pi Carrier (B x y) (prop x y))
+    (\ p q -> Q.induction @l (B (include p) (include q)) (prop (include p) (include q)) (b p q)) ;
+
+ -- A small internal syntax packages the repeated beta-rule rewrites.
+ data Expr : U l = atom (p : P) | sumE (a b : Expr) | mulE (a b : Expr) | negE (a : Expr) ;
+ raw : Expr -> P = split {
+   atom p -> p ; sumE a b | ar br -> addP ar br ;
+   mulE a b | ar br -> pmul ar br ; negE a | ar -> L.negP ar } ;
+ value : Expr -> Carrier = split {
+   atom p -> include p ; sumE a b | av bv -> addQ av bv ;
+   mulE a b | av bv -> mulQ av bv ; negE a | av -> negQ av } ;
+ sound : (e : Expr) -> Id Carrier (value e) (include (raw e)) = split {
+   atom p -> refl (include p) ;
+   sumE a b | ah bh -> trans (ap (\ x -> addQ x (value b)) ah)
+    (trans (ap (addQ (include (raw a))) bh) (Add.beta (raw a) (raw b))) ;
+   mulE a b | ah bh -> trans (ap (\ x -> mulQ x (value b)) ah)
+    (trans (ap (mulQ (include (raw a))) bh) (Multiply.beta (raw a) (raw b))) ;
+   negE a | ah -> trans (ap negQ ah) (Negate.beta (raw a)) } ;
+ lift (e e' : Expr) (h : peq (raw e) (raw e')) : Id Carrier (value e) (value e') =
+   trans (sound e) (trans (Q.relates _ _ h) (sym (sound e'))) ;
+ add-assoc : (x y z : Carrier) -> Id Carrier (addQ x (addQ y z)) (addQ (addQ x y) z) =
+   forall3 (\ x y z -> Id Carrier (addQ x (addQ y z)) (addQ (addQ x y) z)) (\ x y z -> set _ _)
+    (\ p q r -> lift (sumE (atom p) (sumE (atom q) (atom r)))
+      (sumE (sumE (atom p) (atom q)) (atom r)) (L.add-assoc p q r)) ;
+ add-comm : (x y : Carrier) -> Id Carrier (addQ x y) (addQ y x) =
+   forall2 (\ x y -> Id Carrier (addQ x y) (addQ y x)) (\ x y -> set _ _)
+    (\ p q -> lift (sumE (atom p) (atom q)) (sumE (atom q) (atom p)) (L.add-comm p q)) ;
+ add-zero : (x : Carrier) -> Id Carrier (addQ x zeroQ) x =
+   Q.induction @l (\ x -> Id Carrier (addQ x zeroQ) x) (\ x -> set _ _)
+    (\ p -> lift (sumE (atom p) (atom nil)) (atom p) (L.add-zero p)) ;
+ add-neg : (x : Carrier) -> Id Carrier (addQ x (negQ x)) zeroQ =
+   Q.induction @l (\ x -> Id Carrier (addQ x (negQ x)) zeroQ) (\ x -> set _ _)
+    (\ p -> lift (sumE (atom p) (negE (atom p))) (atom nil) (L.add-neg p)) ;
+ mul-assoc : (x y z : Carrier) -> Id Carrier (mulQ x (mulQ y z)) (mulQ (mulQ x y) z) =
+   forall3 (\ x y z -> Id Carrier (mulQ x (mulQ y z)) (mulQ (mulQ x y) z)) (\ x y z -> set _ _)
+    (\ p q r -> lift (mulE (atom p) (mulE (atom q) (atom r)))
+      (mulE (mulE (atom p) (atom q)) (atom r)) (M.mul-assoc p q r)) ;
+ mul-comm : (x y : Carrier) -> Id Carrier (mulQ x y) (mulQ y x) =
+   forall2 (\ x y -> Id Carrier (mulQ x y) (mulQ y x)) (\ x y -> set _ _)
+    (\ p q -> lift (mulE (atom p) (atom q)) (mulE (atom q) (atom p)) (M.mul-comm p q)) ;
+ mul-one : (x : Carrier) -> Id Carrier (mulQ x oneQ) x =
+   Q.induction @l (\ x -> Id Carrier (mulQ x oneQ) x) (\ x -> set _ _)
+    (\ p -> lift (mulE (atom p) (atom (L.constantP o))) (atom p) (M.mul-one p)) ;
+ distributive : (x y z : Carrier) -> Id Carrier (mulQ x (addQ y z)) (addQ (mulQ x y) (mulQ x z)) =
+   forall3 (\ x y z -> Id Carrier (mulQ x (addQ y z)) (addQ (mulQ x y) (mulQ x z))) (\ x y z -> set _ _)
+    (\ p q r -> lift (mulE (atom p) (sumE (atom q) (atom r)))
+      (sumE (mulE (atom p) (atom q)) (mulE (atom p) (atom r))) (M.mul-add-right p q r)) ;
+ ring : CRing = mkCRing Carrier zeroQ oneQ addQ mulQ negQ
+   add-assoc add-comm add-zero add-neg mul-assoc mul-comm mul-one distributive ;
+ constant (a : R) : Carrier = include (L.constantP a) ;
+ variable : Carrier = include (cons z (cons o nil)) ;
+
+ constant-add (a b : R) : Id Carrier (constant (add a b)) (addQ (constant a) (constant b)) =
+   sym (Add.beta (L.constantP a) (L.constantP b)) ;
+ constant-mul (a b : R) : Id Carrier (constant (mul a b)) (mulQ (constant a) (constant b)) =
+   sym (trans (Multiply.beta (L.constantP a) (L.constantP b))
+     (Q.relates _ _ (M.mul-single-left a (L.constantP b)))) ;
+ inclusion : RingHom[l].Hom A ring = (constant,refl oneQ,constant-add,constant-mul) ;
+ T : P = cons z (cons o nil) ;
+ T-mul (p : P) : peq (pmul T p) (L.shift p) =
+   L.eq _ _ _ (M.mul-shift-left (L.constantP o) p)
+     (L.shift-cong _ _ (L.eq _ _ _ (M.mul-single-left o p) (L.scal-one p))) ;
+ horner (a : R) (p : P) : Id Carrier (include (cons a p)) (addQ (constant a) (mulQ variable (include p))) =
+   lift (atom (cons a p)) (sumE (atom (L.constantP a)) (mulE (atom T) (atom p)))
+    (L.eq _ _ _ (peq-sym _ _ (L.single-shift a p))
+      (L.add-cong _ _ _ _ (L.rr (L.constantP a)) (peq-sym _ _ (T-mul p)))) ;
+ constant-injective (a b : R) (h : Id Carrier (constant a) (constant b)) : Id R a b =
+   Q.effective (L.constantP a) (L.constantP b) h zero ;
+} ;

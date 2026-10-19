@@ -1,0 +1,175 @@
+-- Ring.seg: the small types, commutative rings (SAG 1.3) and the ring
+-- identities used by the polynomial files.
+
+level a ;
+
+data Top = tt ;
+data Empty = ;
+data Nat = zero | suc (n : Nat) ;
+data Plus (A B : U a) : U a = inl (x : A) | inr (y : B) ;
+data List (A : U a) : U a = nil | cons (x : A) (xs : List A) ;
+
+absurd (A : U a) : Empty -> A = split { } ;
+Not (A : U a) : U a = A -> Empty ;
+efq {A : U a} (e : Empty) : A = absurd A e ;
+
+sym {A : U a} {x y : A} (p : Id A x y) : Id A y x =
+  idJ A x (\ w q -> Id A w x) (refl x) y p ;
+trans {A : U a} {x y w : A} (p : Id A x y) (q : Id A y w) : Id A x w =
+  idJ A y (\ v r -> Id A x v) p w q ;
+ap {A B : U a} (f : A -> B) {x y : A} (p : Id A x y) : Id B (f x) (f y) =
+  idJ A x (\ w q -> Id B (f x) (f w)) (refl (f x)) y p ;
+subst {A : U a} (P : A -> U a) {x y : A} (p : Id A x y) (u : P x) : P y =
+  idJ A x (\ w q -> P w) u y p ;
+
+------------------------------------------------------------------------
+-- natural numbers
+
+plus : Nat -> Nat -> Nat = split {
+  zero -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+pred : Nat -> Nat = split { zero -> zero ; suc n -> n } ;
+isZero : Nat -> U a = split { zero -> Top ; suc n -> Empty } ;
+zero-suc (n : Nat) (p : Id Nat zero (suc n)) : Empty =
+  subst isZero p tt ;
+suc-zero (n : Nat) (p : Id Nat (suc n) zero) : Empty = zero-suc n (sym p) ;
+suc-inj {m n : Nat} (p : Id Nat (suc m) (suc n)) : Id Nat m n = ap pred p ;
+plus-suc : (m n : Nat) -> Id Nat (plus m (suc n)) (suc (plus m n)) = split {
+  zero -> \ n -> refl (suc n) ;
+  suc m | r -> \ n -> ap (\ k -> suc k) (r n) } ;
+
+plus-zero : (m : Nat) -> Id Nat (plus m zero) m = split {
+  zero -> refl zero ;
+  suc m | r -> ap (\ k -> suc k) r } ;
+plus-comm : (m n : Nat) -> Id Nat (plus m n) (plus n m) = split {
+  zero -> \ n -> sym (plus-zero n) ;
+  suc m | r -> \ n -> trans (ap (\ k -> suc k) (r n)) (sym (plus-suc n m)) } ;
+
+len {A : U a} : List A -> Nat = split { nil -> zero ; cons x xs | r -> suc r } ;
+
+------------------------------------------------------------------------
+-- commutative rings
+
+record CRing {
+  R : U a ;
+  z : R ;
+  o : R ;
+  add : R -> R -> R ;
+  mul : R -> R -> R ;
+  neg : R -> R ;
+  addA (x y w : R) : Id R (add x (add y w)) (add (add x y) w) ;
+  addC (x y : R) : Id R (add x y) (add y x) ;
+  addZ (x : R) : Id R (add x z) x ;
+  addN (x : R) : Id R (add x (neg x)) z ;
+  mulA (x y w : R) : Id R (mul x (mul y w)) (mul (mul x y) w) ;
+  mulC (x y : R) : Id R (mul x y) (mul y x) ;
+  mulO (x : R) : Id R (mul x o) x ;
+  dist (x y w : R) : Id R (mul x (add y w)) (add (mul x y) (mul x w)) ;
+} ;
+
+module RL (Rg : CRing) {
+  open Rg ;
+
+  unit (x : R) : U a = (y : R) * Id R (mul x y) o ;
+
+  zl (x : R) : Id R (add z x) x = trans (addC z x) (addZ x) ;
+
+  -- u + v = u  gives  v = 0
+  add-cancel (u v : R) (h : Id R (add u v) u) : Id R v z =
+    calc R { v =< sym (addZ v) > add v z
+               =< ap (add v) (sym (addN u)) > add v (add u (neg u))
+               =< addA v u (neg u) > add (add v u) (neg u)
+               =< ap (\ t -> add t (neg u)) (addC v u) > add (add u v) (neg u)
+               =< ap (\ t -> add t (neg u)) h > add u (neg u)
+               =< addN u > z } ;
+
+  -- x + y = 0  gives  y = -x
+  neg-uniq (x y : R) (h : Id R (add x y) z) : Id R y (neg x) =
+    calc R { y =< sym (addZ y) > add y z
+               =< ap (add y) (sym (addN x)) > add y (add x (neg x))
+               =< addA y x (neg x) > add (add y x) (neg x)
+               =< ap (\ t -> add t (neg x)) (addC y x) > add (add x y) (neg x)
+               =< ap (\ t -> add t (neg x)) h > add z (neg x)
+               =< zl (neg x) > neg x } ;
+
+  mul-zero (x : R) : Id R (mul x z) z =
+    add-cancel (mul x z) (mul x z) (trans (sym (dist x z z)) (ap (mul x) (addZ z))) ;
+
+  neg-zero : Id R (neg z) z = sym (neg-uniq z z (addZ z)) ;
+
+  -- 0 + -(a 0) = 0
+  zero-negmul (x : R) : Id R (add z (neg (mul x z))) z =
+    calc R { add z (neg (mul x z)) =< zl (neg (mul x z)) > neg (mul x z)
+               =< ap neg (mul-zero x) > neg z
+               =< neg-zero > z } ;
+
+  -- (x + y) + -y = x
+  add-neg-cancel (x y : R) : Id R (add (add x y) (neg y)) x =
+    calc R { add (add x y) (neg y) =< sym (addA x y (neg y)) > add x (add y (neg y))
+               =< ap (add x) (addN y) > add x z
+               =< addZ x > x } ;
+
+  -- x + y 0 = x
+  add-mulzero (x y : R) : Id R (add x (mul y z)) x =
+    trans (ap (add x) (mul-zero y)) (addZ x) ;
+
+  -- 0 x = 0
+  zero-mul (x : R) : Id R (mul z x) z = trans (mulC z x) (mul-zero x) ;
+
+  -- if u is a unit and u v = 0, then v = 0
+  unit-reg (u v : R) (hu : unit u) (h : Id R (mul u v) z) : Id R v z =
+    calc R { v =< sym (mulO v) > mul v o
+               =< ap (mul v) (sym hu.2) > mul v (mul u hu.1)
+               =< mulA v u hu.1 > mul (mul v u) hu.1
+               =< ap (\ t -> mul t hu.1) (mulC v u) > mul (mul u v) hu.1
+               =< ap (\ t -> mul t hu.1) h > mul z hu.1
+               =< zero-mul hu.1 > z } ;
+  mul-neg (x y : R) : Id R (mul x (neg y)) (neg (mul x y)) =
+    neg-uniq (mul x y) (mul x (neg y))
+      (trans (sym (dist x y (neg y))) (trans (ap (mul x) (addN y)) (mul-zero x))) ;
+
+  -- (p + q) + (r + s) = (p + r) + (q + s)
+  swap (p q r s : R) : Id R (add (add p q) (add r s)) (add (add p r) (add q s)) =
+    calc R { add (add p q) (add r s) =< sym (addA p q (add r s)) > add p (add q (add r s))
+               =< ap (add p) (addA q r s) > add p (add (add q r) s)
+               =< ap (\ t -> add p (add t s)) (addC q r) > add p (add (add r q) s)
+               =< ap (add p) (sym (addA r q s)) > add p (add r (add q s))
+               =< addA p r (add q s) > add (add p r) (add q s) } ;
+
+  -- -(x - y) = -x + y
+  negsub (x y : R) : Id R (neg (add x (neg y))) (add (neg x) y) =
+    sym (neg-uniq (add x (neg y)) (add (neg x) y)
+      (calc R { add (add x (neg y)) (add (neg x) y)
+                  =< swap x (neg y) (neg x) y > add (add x (neg x)) (add (neg y) y)
+                  =< ap (\ t -> add t (add (neg y) y)) (addN x) > add z (add (neg y) y)
+                  =< zl (add (neg y) y) > add (neg y) y
+                  =< addC (neg y) y > add y (neg y)
+                  =< addN y > z })) ;
+
+  -- -(a (v - b w)) = -(a v) + a (b w)
+  expand (a b v w : R) : Id R (neg (mul a (add v (neg (mul b w)))))
+                              (add (neg (mul a v)) (mul a (mul b w))) =
+    calc R { neg (mul a (add v (neg (mul b w))))
+               =< ap neg (dist a v (neg (mul b w))) > neg (add (mul a v) (mul a (neg (mul b w))))
+               =< ap (\ t -> neg (add (mul a v) t)) (mul-neg a (mul b w))
+               > neg (add (mul a v) (neg (mul a (mul b w))))
+               =< negsub (mul a v) (mul a (mul b w)) > add (neg (mul a v)) (mul a (mul b w)) } ;
+
+  mul-swap (a b w : R) : Id R (mul a (mul b w)) (mul b (mul a w)) =
+    calc R { mul a (mul b w) =< mulA a b w > mul (mul a b) w
+               =< ap (\ t -> mul t w) (mulC a b) > mul (mul b a) w
+               =< sym (mulA b a w) > mul b (mul a w) } ;
+
+  -- the coefficient of (X - a)(X - b) p, from p(k-2), p(k-1), p(k)
+  H2 (a b u v w : R) : R = add (add u (neg (mul b v))) (neg (mul a (add v (neg (mul b w))))) ;
+
+  H2-comm (a b u v w : R) : Id R (H2 a b u v w) (H2 b a u v w) =
+    calc R { H2 a b u v w
+               =< ap (add (add u (neg (mul b v)))) (expand a b v w)
+               > add (add u (neg (mul b v))) (add (neg (mul a v)) (mul a (mul b w)))
+               =< swap u (neg (mul b v)) (neg (mul a v)) (mul a (mul b w))
+               > add (add u (neg (mul a v))) (add (neg (mul b v)) (mul a (mul b w)))
+               =< ap (\ t -> add (add u (neg (mul a v))) (add (neg (mul b v)) t)) (mul-swap a b w)
+               > add (add u (neg (mul a v))) (add (neg (mul b v)) (mul b (mul a w)))
+               =< ap (add (add u (neg (mul a v)))) (sym (expand b a v w)) > H2 b a u v w } ;
+} ;

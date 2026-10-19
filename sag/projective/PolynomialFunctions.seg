@@ -1,0 +1,74 @@
+-- R[X] as finite coefficient lists modulo coefficient equality.
+-- Trailing zeros are identified before stating SQC.
+level l ;
+open Algebra[l] ;
+module P = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Polynomials (ring : CRing) (setR : P.isSet ring.R) {
+ open ring ; open RL[ring] ;
+ Raw : U l = List R ;
+ coefficient : Raw -> Nat -> R = split {
+   nil -> \ k -> z ;
+   cons c p | ih -> split { zero -> c ; suc k -> ih k } } ;
+ equal (p q : Raw) : U l = (k : Nat) -> Id R (coefficient p k) (coefficient q k) ;
+ equal-prop (p q : Raw) : P.isProp (equal p q) =
+   F.isProp-Pi Nat (\ k -> Id R (coefficient p k) (coefficient q k))
+     (\ k -> setR (coefficient p k) (coefficient q k)) ;
+ rr (p : Raw) : equal p p = \ k -> refl (coefficient p k) ;
+ rs (p q : Raw) (h : equal p q) : equal q p = \ k -> sym (h k) ;
+ rt (p q r : Raw) (h : equal p q) (k : equal q r) : equal p r = \ n -> trans (h n) (k n) ;
+ module Q = Quotient[l].Quot[Raw,equal,equal-prop,rr,rs,rt] ;
+ Polynomial : U l = Q.Q ;
+ evaluate : Raw -> R -> R = split {
+   nil -> \ x -> z ;
+   cons c p | ih -> \ x -> add c (mul x (ih x)) } ;
+ all-zero : (p : Raw) -> ((k : Nat) -> Id R (coefficient p k) z) ->
+   (x : R) -> Id R (evaluate p x) z = split {
+    nil -> \ h x -> refl z ;
+    cons c p | ih -> \ h x -> trans (ap (\ t -> add t (mul x (evaluate p x))) (h zero))
+      (trans (ap (\ t -> add z (mul x t)) (ih (\ k -> h (suc k)) x))
+        (trans (ap (add z) (mul-zero x)) (addZ z))) } ;
+ evaluate-equal : (p q : Raw) -> equal p q -> (x : R) -> Id R (evaluate p x) (evaluate q x) = split {
+   nil -> \ q h x -> sym (all-zero q (\ k -> sym (h k)) x) ;
+   cons c p | ih -> split {
+    nil -> \ h x -> all-zero (cons c p) h x ;
+    cons d q -> \ h x -> trans (ap (\ t -> add t (mul x (evaluate p x))) (h zero))
+      (ap (\ t -> add d (mul x t)) (ih q (\ k -> h (suc k)) x)) } } ;
+ module Evaluation = Q.Descend[R -> R,F.isSet-Pi R (\ x -> R) (\ x -> setR),evaluate,
+   \ p q h -> F.funext R (\ x -> R) (evaluate p) (evaluate q) (evaluate-equal p q h)] ;
+ evaluation : Polynomial -> R -> R = Evaluation.map ;
+ -- SQC for the affine line, with the standard coefficient presentation.
+ SQC : U l = P.isEquiv Polynomial (R -> R) evaluation ;
+ singleton (c : R) : Raw = cons c nil ;
+ singleton-eval (c x : R) : Id R (evaluate (singleton c) x) c = add-mulzero c x ;
+ constant : (p : Raw) -> ((k : Nat) -> Id R (coefficient p (suc k)) z) ->
+   (x : R) -> Id R (evaluate p x) (coefficient p zero) = split {
+    nil -> \ h x -> refl z ;
+    cons c p -> \ h x -> trans (ap (\ t -> add c (mul x t)) (all-zero p h x)) (add-mulzero c x) } ;
+ tail : Raw -> Raw = split { nil -> nil ; cons c p -> p } ;
+ tail-coefficient : (p : Raw) -> (k : Nat) -> Id R (coefficient (tail p) k) (coefficient p (suc k)) = split {
+   nil -> \ k -> refl z ; cons c p -> \ k -> refl (coefficient p k) } ;
+ head-tail : (p : Raw) -> (x : R) ->
+   Id R (evaluate p x) (add (coefficient p zero) (mul x (evaluate (tail p) x))) = split {
+    nil -> \ x -> sym (add-mulzero z x) ;
+    cons c p -> \ x -> refl (evaluate (cons c p) x) } ;
+
+ module Polynomiality (sqc : SQC) {
+  Representation (f : R -> R) : U l = (p : Raw) * ((x : R) -> Id R (evaluate p x) (f x)) ;
+  QuotientRep (q : Polynomial) : U l = (p : Raw) * Id Polynomial (Q.inc p) q ;
+  representatives (q : Polynomial) : Truncation[l].Trunc[QuotientRep q].carrier =
+    Q.induction @l (\ q -> Truncation[l].Trunc[QuotientRep q].carrier)
+      (\ q -> Truncation[l].Trunc[QuotientRep q].proposition)
+      (\ p -> Truncation[l].Trunc[QuotientRep (Q.inc p)].inc (p,refl (Q.inc p))) q ;
+  from-representative (f : R -> R) (w : QuotientRep (sqc.sec f)) : Representation f =
+    (w.1,\ x -> P.happly R (\ x -> R) (evaluate w.1) f
+      (trans (sym (Evaluation.beta w.1)) (trans (ap evaluation w.2) (sqc.sec-eq f))) x) ;
+  exists (f : R -> R) : Truncation[l].Trunc[Representation f].carrier =
+    Truncation[l].Trunc[QuotientRep (sqc.sec f)].induction @l
+      (\ t -> Truncation[l].Trunc[Representation f].carrier)
+      (\ t -> Truncation[l].Trunc[Representation f].proposition)
+      (\ w -> Truncation[l].Trunc[Representation f].inc (from-representative f w))
+      (representatives (sqc.sec f)) ;
+ } ;
+} ;

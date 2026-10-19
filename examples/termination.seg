@@ -1,0 +1,98 @@
+-- termination.seg (migrated to seg/primrec): the definitions that the
+-- size-change pass of defenv accepted, written with eliminators; and the
+-- cases it rejected, which now fail by scope (no recursion by name, no
+-- forward reference) or by positivity.  The tests of recursive results
+-- themselves are in examples/primrec.seg.
+
+level a ;
+data Empty = ;
+data N = zero | suc (n : N) ;
+
+------------------------------------------------------------------------
+-- accepted
+
+plus : N -> N -> N = split {
+  zero  -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+
+-- a split in a branch takes the next argument; r : N -> N
+skipN : N -> N -> N = split {
+  zero -> \ n -> suc n ;
+  suc k | r -> split { zero -> zero ; suc n -> suc (r n) } } ;
+
+-- the inner call ack (suc m) n is the inner result s
+ack : N -> N -> N = split {
+  zero -> \ n -> suc n ;
+  suc m | r -> split { zero -> r (suc zero) ; suc n | s -> r s } } ;
+
+-- mutual: one eliminator computes both
+evenOdd : N -> N * N = split { zero -> (suc zero, zero) ; suc m | r -> (r.2, r.1) } ;
+even (n : N) : N = (evenOdd n).1 ;
+odd (n : N) : N = (evenOdd n).2 ;
+
+-- a W-type: r : (y : A) -> U a, the result for f y
+data W : U a+ = sup (A : U a) (f : A -> W) ;
+wsize : W -> U a = split { sup A f | r -> (y : A) -> r y } ;
+
+-- course of values: half (suc (suc k)) = suc (half k), by computing
+-- (half n, half (suc n)) together
+halfPair : N -> N * N = split { zero -> (zero, zero) ; suc m | r -> (r.2, suc r.1) } ;
+half (n : N) : N = (halfPair n).1 ;
+#conv half (suc (suc (suc (suc (suc zero))))) = suc (suc zero) ;
+
+------------------------------------------------------------------------
+-- rejected (now by scope: no recursion by name)
+
+#fails { loop : Empty = loop ; } ;
+#fails { same : N -> N = split { zero -> zero ; suc m -> same (suc m) } ; } ;
+#fails { swap : N -> N -> N = \ x y -> swap y x ; } ;
+
+-- a definition passed to a module instance inside itself: not in scope
+module App (g : N -> N) { run (x : N) : N = g x ; } ;
+#fails { viaInst : N -> N = \ x -> App[viaInst].run x ; } ;
+
+-- a call only in a hidden argument: lem refers to the later viaHole
+idH {n : N} (p : Id N n n) : N = n ;
+#fails {
+  lem (x : N) : Id N (viaHole x) (viaHole x) = refl (viaHole x) ;
+  viaHole : N -> N = \ x -> idH (lem x) ;
+} ;
+
+------------------------------------------------------------------------
+-- positivity
+
+#fails {
+  data D = roll (k : D -> Empty) ;
+  out : D -> Empty = split { roll k -> k (roll k) } ;
+  contradiction : Empty = out (roll out) ;
+} ;
+
+-- through a definition of an earlier group: D2 is an argument of Neg1
+Neg1 (X : U a) : U a = X -> Empty ;
+#fails { data D2 : U a = roll2 (k : Neg1 D2) ; } ;
+
+------------------------------------------------------------------------
+-- a field mentions a later definition (formerly R2): not in scope
+
+#fails {
+  Neg : U a = D3 -> Empty ;
+  data D3 : U a = roll3 (k : Neg) ;
+  out3 : D3 -> Empty = split { roll3 k -> k (roll3 k) } ;
+} ;
+#fails {
+  data T = c (p : Id N (viaCon zero) (viaCon zero)) ;
+  viaCon : N -> N = \ x -> selT (c (refl (viaCon zero))) ;
+  selT : T -> N = split { c p -> idH p } ;
+} ;
+
+------------------------------------------------------------------------
+-- local definitions in types (formerly R1): lp is not in scope in itself
+
+#fails { f1 : (let { lp : U a = lp ; } in lp) = zero ; } ;
+#fails { f2 : (let { lp : Empty = lp ; } in Empty -> Empty) = \ x -> x ; } ;
+#fails { f3 (x : let { lp : U a = lp ; } in N) : N = zero ; } ;
+#fails { p4 : let { lp : U a = lp ; } in N ; } ;
+#fails { data T5 = c5 (x : let { lp : U a = lp ; } in N) ; } ;
+#fails { module A6 = App[let { lp : N -> N = lp ; } in lp] ; } ;
+#fails { #normal (let { lp : N = lp ; } in zero) ; } ;
+#fails { f8 : N = zero where { g8 : (let { lp : U a = lp ; } in N) = zero ; } ; } ;

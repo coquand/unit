@@ -33,7 +33,7 @@ module Psh (C : SmallCat[k].SmallCat) {
   ----------------------------------------------------------------------
   -- The four sorts
 
-  module PCtx {
+  record PCtx {
     ob     : Ob -> W.V ;
     act (J I : Ob) (f : Hom J I) (x : W.Ix (ob I)) : W.Ix (ob J) ;
     act-id (I : Ob) (x : W.Ix (ob I)) : Id (W.Ix (ob I)) (act I I (idC I) x) x ;
@@ -71,13 +71,13 @@ module Psh (C : SmallCat[k].SmallCat) {
     (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
     (e : Id (W.Ix (G.ob J)) (G.act J I f x) y) -> Id (W.Ix (o J y)) (h J I f x y e (n I x)) (n J y) ;
 
-  module PSub (D G : PCtx) {
+  record PSub (D G : PCtx) {
     nt (I : Ob) (x : W.Ix (D.ob I)) : W.Ix (G.ob I) ;
     nt-nat (J I : Ob) (f : Hom J I) (x : W.Ix (D.ob I))
       : Id (W.Ix (G.ob J)) (nt J (D.act J I f x)) (G.act J I f (nt I x)) ;
   } ;
 
-  module PTy (G : PCtx) {
+  record PTy (G : PCtx) {
     tob (I : Ob) (x : W.Ix (G.ob I)) : W.V ;
     tact (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
       (e : Id (W.Ix (G.ob J)) (G.act J I f x) y) (a : W.Ix (tob I x)) : W.Ix (tob J y) ;
@@ -93,7 +93,11 @@ module Psh (C : SmallCat[k].SmallCat) {
   -- the one constructor of types given by their fields (records are compared by name)
   mkTy (G : PCtx) (o : TOb G) (h : TactTy G o) (hi : IdLaw G o h) (ho : OLaw G o h) : PTy[G] = new PTy[G, o, h, hi, ho] ;
 
-  module PEl (G : PCtx) (A : PTy[G]) {
+  -- eta for presheaf types, in Id (no eta by conversion for records)
+  pty-eta (G : PCtx) : (A : PTy[G]) -> Id (PTy[G]) A (mkTy G A.tob A.tact A.tact-id A.tact-o) =
+    split { PTy o h hi ho -> refl (mkTy G o h hi ho) } ;
+
+  record PEl (G : PCtx) (A : PTy[G]) {
     eob (I : Ob) (x : W.Ix (G.ob I)) : W.Ix (A.tob I x) ;
     enat (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
       (e : Id (W.Ix (G.ob J)) (G.act J I f x) y)
@@ -220,14 +224,23 @@ module Psh (C : SmallCat[k].SmallCat) {
     funext Ob (\ I -> W.Ix (D.ob I) -> W.Ix (G.ob I)) n n' (\ I ->
       funext (W.Ix (D.ob I)) (\ x -> W.Ix (G.ob I)) (n I) (n' I) (h I)) ;
 
+  -- one occurrence of new PSub (elements are compared by occurrence)
+  mkPSub (D G : PCtx) (n : NT D G) (nn : NatLaw D G n) : PSub[D, G] = new PSub[D, G, n, nn] ;
+
+  psub-eta (D G : PCtx) : (s : PSub[D, G]) -> Id (PSub[D, G]) s (mkPSub D G s.nt s.nt-nat) =
+    split { PSub n k -> refl (mkPSub D G n k) } ;
+
   sub-ext (D G : PCtx) (s t : PSub[D, G])
     (h : (I : Ob) (x : W.Ix (D.ob I)) -> Id (W.Ix (G.ob I)) (s.nt I x) (t.nt I x))
     : Id (PSub[D, G]) s t =
-    idJ (NT D G) s.nt (\ n1 P1 -> (k1 : NatLaw D G n1)
-                                  -> Id (PSub[D, G]) (new PSub[D, G, s.nt, s.nt-nat]) (new PSub[D, G, n1, k1]))
-        (\ k1 -> ap (NatLaw D G s.nt) (PSub[D, G]) (\ k2 -> new PSub[D, G, s.nt, k2]) s.nt-nat k1
+    trans (PSub[D, G]) s (mkPSub D G s.nt s.nt-nat) t (psub-eta D G s)
+     (trans (PSub[D, G]) (mkPSub D G s.nt s.nt-nat) (mkPSub D G t.nt t.nt-nat) t
+      (idJ (NT D G) s.nt (\ n1 P1 -> (k1 : NatLaw D G n1)
+                                  -> Id (PSub[D, G]) (mkPSub D G s.nt s.nt-nat) (mkPSub D G n1 k1))
+        (\ k1 -> ap (NatLaw D G s.nt) (PSub[D, G]) (\ k2 -> mkPSub D G s.nt k2) s.nt-nat k1
                     (natLaw-prop D G s.nt s.nt-nat k1))
-        t.nt (nt-funext D G s.nt t.nt h) t.nt-nat ;
+        t.nt (nt-funext D G s.nt t.nt h) t.nt-nat)
+      (sym (PSub[D, G]) t (mkPSub D G t.nt t.nt-nat) (psub-eta D G t))) ;
 
   PtEq (G : PCtx) (o : TOb G) (h h' : TactTy G o) : U l =
     (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
@@ -270,29 +283,41 @@ module Psh (C : SmallCat[k].SmallCat) {
                 (subst (TOb G) (\ o -> W.Ix (o J y)) A.tob B.tob P (A.tact J I f x y e a))
                 (B.tact J I f x y e (subst (TOb G) (\ o -> W.Ix (o I x)) A.tob B.tob P a)))
     : Id (PTy[G]) A B =
-    idJ (TOb G) A.tob
+    trans (PTy[G]) A (mkTy G A.tob A.tact A.tact-id A.tact-o) B (pty-eta G A)
+     (trans (PTy[G]) (mkTy G A.tob A.tact A.tact-id A.tact-o) (mkTy G B.tob B.tact B.tact-id B.tact-o) B
+    (idJ (TOb G) A.tob
       (\ o1 P1 -> (h1 : TactTy G o1) (hi1 : IdLaw G o1 h1) (ho1 : OLaw G o1 h1)
          -> ((J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
              (e : Id (W.Ix (G.ob J)) (G.act J I f x) y) (a : W.Ix (A.tob I x))
              -> Id (W.Ix (o1 J y))
                    (subst (TOb G) (\ o -> W.Ix (o J y)) A.tob o1 P1 (A.tact J I f x y e a))
                    (h1 J I f x y e (subst (TOb G) (\ o -> W.Ix (o I x)) A.tob o1 P1 a)))
-         -> Id (PTy[G]) A ((mkTy G o1 h1 hi1 ho1)))
+         -> Id (PTy[G]) (mkTy G A.tob A.tact A.tact-id A.tact-o) ((mkTy G o1 h1 hi1 ho1)))
       (\ h1 hi1 ho1 pt1 -> ty-ext G A.tob A.tact h1 A.tact-id hi1 A.tact-o ho1 pt1)
-      B.tob P B.tact B.tact-id B.tact-o pt ;
+      B.tob P B.tact B.tact-id B.tact-o pt)
+      (sym (PTy[G]) B (mkTy G B.tob B.tact B.tact-id B.tact-o) (pty-eta G B))) ;
+
+  -- one occurrence of new PEl
+  mkPEl (G : PCtx) (A : PTy[G]) (n : EOb G A.tob) (nn : ElNat G A.tob A.tact n) : PEl[G, A] = new PEl[G, A, n, nn] ;
+
+  pel-eta (G : PCtx) (A : PTy[G]) : (s : PEl[G, A]) -> Id (PEl[G, A]) s (mkPEl G A s.eob s.enat) =
+    split { PEl n k -> refl (mkPEl G A n k) } ;
 
   el-ext (G : PCtx) (A : PTy[G]) (s t : PEl[G, A])
     (h : (I : Ob) (x : W.Ix (G.ob I)) -> Id (W.Ix (A.tob I x)) (s.eob I x) (t.eob I x))
     : Id (PEl[G, A]) s t =
-    idJ (EOb G A.tob) s.eob
+    trans (PEl[G, A]) s (mkPEl G A s.eob s.enat) t (pel-eta G A s)
+     (trans (PEl[G, A]) (mkPEl G A s.eob s.enat) (mkPEl G A t.eob t.enat) t
+    (idJ (EOb G A.tob) s.eob
       (\ n1 P1 -> (k1 : ElNat G A.tob A.tact n1)
-                  -> Id (PEl[G, A]) (new PEl[G, A, s.eob, s.enat]) (new PEl[G, A, n1, k1]))
-      (\ k1 -> ap (ElNat G A.tob A.tact s.eob) (PEl[G, A]) (\ k2 -> new PEl[G, A, s.eob, k2]) s.enat k1
+                  -> Id (PEl[G, A]) (mkPEl G A s.eob s.enat) (mkPEl G A n1 k1))
+      (\ k1 -> ap (ElNat G A.tob A.tact s.eob) (PEl[G, A]) (\ k2 -> mkPEl G A s.eob k2) s.enat k1
                   (elNat-prop G A.tob A.tact s.eob s.enat k1))
       t.eob
       (funext Ob (\ I -> (x : W.Ix (G.ob I)) -> W.Ix (A.tob I x)) s.eob t.eob (\ I ->
          funext (W.Ix (G.ob I)) (\ x -> W.Ix (A.tob I x)) (s.eob I) (t.eob I) (h I)))
-      t.enat ;
+      t.enat)
+      (sym (PEl[G, A]) t (mkPEl G A t.eob t.enat) (pel-eta G A t))) ;
 
   -- transport along an equation of types with the same objects part does
   -- not change anything read off through the objects part
@@ -313,7 +338,8 @@ module Psh (C : SmallCat[k].SmallCat) {
 
   isSet-PSub (D G : PCtx) : isSet (PSub[D, G]) =
     isSet-retract (PSub[D, G]) ((n : NT D G) * NatLaw D G n)
-      (\ s -> (s.nt, s.nt-nat)) (\ w -> new PSub[D, G, w.1, w.2]) (\ s -> refl s)
+      (\ s -> (s.nt, s.nt-nat)) (\ w -> new PSub[D, G, w.1, w.2])
+      (\ s -> sym (PSub[D, G]) s (mkPSub D G s.nt s.nt-nat) (psub-eta D G s))
       (isSet-Sigma (NT D G) (\ n -> NatLaw D G n)
          (isSet-Pi Ob (\ I -> W.Ix (D.ob I) -> W.Ix (G.ob I)) (\ I ->
             isSet-Pi (W.Ix (D.ob I)) (\ x -> W.Ix (G.ob I)) (\ x -> W.isSetIx (G.ob I))))
@@ -322,7 +348,8 @@ module Psh (C : SmallCat[k].SmallCat) {
   isSet-PTy (G : PCtx) : isSet (PTy[G]) =
     isSet-retract (PTy[G]) ((o : TOb G) * (h : TactTy G o) * IdLaw G o h * OLaw G o h)
       (\ A -> (A.tob, A.tact, A.tact-id, A.tact-o))
-      (\ w -> (mkTy G w.1 w.2.1 w.2.2.1 w.2.2.2)) (\ A -> refl A)
+      (\ w -> (mkTy G w.1 w.2.1 w.2.2.1 w.2.2.2))
+      (\ A -> sym (PTy[G]) A (mkTy G A.tob A.tact A.tact-id A.tact-o) (pty-eta G A))
       (isSet-Sigma (TOb G) (\ o -> (h : TactTy G o) * IdLaw G o h * OLaw G o h) (isSet-tob G) (\ o ->
        isSet-Sigma (TactTy G o) (\ h -> IdLaw G o h * OLaw G o h) (isSet-tact G o) (\ h ->
        prop-to-set (IdLaw G o h * OLaw G o h)
@@ -330,7 +357,8 @@ module Psh (C : SmallCat[k].SmallCat) {
 
   isSet-PEl (G : PCtx) (A : PTy[G]) : isSet (PEl[G, A]) =
     isSet-retract (PEl[G, A]) ((n : EOb G A.tob) * ElNat G A.tob A.tact n)
-      (\ s -> (s.eob, s.enat)) (\ w -> new PEl[G, A, w.1, w.2]) (\ s -> refl s)
+      (\ s -> (s.eob, s.enat)) (\ w -> new PEl[G, A, w.1, w.2])
+      (\ s -> sym (PEl[G, A]) s (mkPEl G A s.eob s.enat) (pel-eta G A s))
       (isSet-Sigma (EOb G A.tob) (\ n -> ElNat G A.tob A.tact n)
          (isSet-Pi Ob (\ I -> (x : W.Ix (G.ob I)) -> W.Ix (A.tob I x)) (\ I ->
             isSet-Pi (W.Ix (G.ob I)) (\ x -> W.Ix (A.tob I x)) (\ x -> W.isSetIx (A.tob I x))))
@@ -353,6 +381,9 @@ module Psh (C : SmallCat[k].SmallCat) {
                      (s.nt-nat J I f (t.nt I x))] ;
 
   nilP : PCtx = new PCtx[\ I -> W.unitV, \ J I f x -> x, \ I x -> refl x, \ K J I f g x -> refl x] ;
+
+  -- the map to the terminal context (one occurrence of new)
+  epsP (G : PCtx) : PSub[G, nilP] = new PSub[G, nilP, \ I x -> tt, \ J I f x -> refl tt] ;
 
   -- the equation along which subTy acts
   ntEq (D G : PCtx) (s : PSub[D, G]) (J I : Ob) (f : Hom J I) (x : W.Ix (D.ob I)) (y : W.Ix (D.ob J))
@@ -642,8 +673,8 @@ module Psh (C : SmallCat[k].SmallCat) {
                     (\ I x -> refl (s.nt I (s'.nt I (s''.nt I x)))),
 
     nil      := nilP,
-    eps      := \ G -> new PSub[G, nilP, \ I x -> tt, \ J I f x -> refl tt],
-    eps-uniq := \ G s -> sub-ext G nilP s (new PSub[G, nilP, \ I x -> tt, \ J I f x -> refl tt])
+    eps      := epsP,
+    eps-uniq := \ G s -> sub-ext G nilP s (epsP G)
                            (\ I x -> isTop (s.nt I x) tt),
 
     Ty       := \ G -> PTy[G],

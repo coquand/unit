@@ -1,0 +1,118 @@
+-- Read-only-in-origin snapshot from sag/ for the uniform-SQC integration.
+-- Group.seg: the last step of SAG Lemma 2.2.4.  A product of factors
+-- X - b is, not not, a product of powers (X - x)^(e+1) with pairwise
+-- distinct x: each root is inserted, deciding under double negation
+-- whether it equals a root already there.  Factors X - a, X - b commute
+-- coefficientwise (RL.H2-comm).
+
+level a ;
+open Ring[a] ;
+open Poly[a] ;
+open Roots[a] ;
+
+module GroupR (Rg : CRing) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+
+  ----------------------------------------------------------------------
+  -- (X - a)(X - b) = (X - b)(X - a)
+
+  c2 (p : P) : Nat -> R = split { zero -> z ; suc j -> cprev p j } ;
+
+  coef-mm (a b : R) (p : P) : (k : Nat)
+    -> Id R (coef (mulXa a (mulXa b p)) k) (H2 a b (c2 p k) (cprev p k) (coef p k)) = split {
+    zero -> calc R {
+      coef (mulXa a (mulXa b p)) zero
+        =< coef-mulXa a (mulXa b p) zero > add z (neg (mul a (coef (mulXa b p) zero)))
+        =< ap (\ t -> add z (neg (mul a t))) (coef-mulXa b p zero)
+        > add z (neg (mul a (add z (neg (mul b (coef p zero))))))
+        =< ap (\ t -> add t (neg (mul a (add z (neg (mul b (coef p zero)))))))
+              (sym (zero-negmul b))
+        > H2 a b z z (coef p zero) } ;
+    suc j -> calc R {
+      coef (mulXa a (mulXa b p)) (suc j)
+        =< coef-mulXa a (mulXa b p) (suc j)
+        > add (coef (mulXa b p) j) (neg (mul a (coef (mulXa b p) (suc j))))
+        =< ap (\ t -> add t (neg (mul a (coef (mulXa b p) (suc j))))) (coef-mulXa b p j)
+        > add (mform b p j) (neg (mul a (coef (mulXa b p) (suc j))))
+        =< ap (\ t -> add (mform b p j) (neg (mul a t))) (coef-mulXa b p (suc j))
+        > H2 a b (cprev p j) (coef p j) (coef p (suc j)) } } ;
+
+  comm (a b : R) (p : P) : peq (mulXa a (mulXa b p)) (mulXa b (mulXa a p)) =
+    \ k -> trans (coef-mm a b p k)
+             (trans (H2-comm a b (c2 p k) (cprev p k) (coef p k)) (sym (coef-mm b a p k))) ;
+
+  -- (X - x)^(e+1) p
+  powXa (x : R) : Nat -> P -> P = split {
+    zero -> \ p -> mulXa x p ;
+    suc e | r -> \ p -> mulXa x (r p) } ;
+
+  powXa-peq (x : R) : (e : Nat) -> (p q : P) -> peq p q -> peq (powXa x e p) (powXa x e q) = split {
+    zero -> \ p q h -> mulXa-peq x p q h ;
+    suc e | r -> \ p q h -> mulXa-peq x (powXa x e p) (powXa x e q) (r p q h) } ;
+
+  commP (b x : R) : (e : Nat) -> (p : P) -> peq (mulXa b (powXa x e p)) (powXa x e (mulXa b p)) = split {
+    zero -> \ p -> comm b x p ;
+    suc e | r -> \ p -> peq-trans (mulXa b (mulXa x (powXa x e p)))
+                          (mulXa x (mulXa b (powXa x e p))) (mulXa x (powXa x e (mulXa b p)))
+                          (comm b x (powXa x e p))
+                          (mulXa-peq x (mulXa b (powXa x e p)) (powXa x e (mulXa b p)) (r p)) } ;
+
+  ----------------------------------------------------------------------
+  -- lists of distinct roots with multiplicities
+
+  RN : U a = (x : R) * Nat ;
+  Ms : U a = List RN ;
+
+  E : Ms -> P -> P = split {
+    nil -> \ p -> p ;
+    cons y l | r -> \ p -> powXa y.1 y.2 (r p) } ;
+
+  notIn (x : R) : Ms -> U a = split {
+    nil -> Top ;
+    cons y l | r -> (h : Not (Id R x y.1)) * r } ;
+
+  Distinct : Ms -> U a = split {
+    nil -> Top ;
+    cons y l | r -> (h : notIn y.1 l) * r } ;
+
+  -- inserting the root b into l
+  Ins (b : R) (l : Ms) : U a = Distinct l -> NN (
+    (l' : Ms) * (d : Distinct l') * (h : (p : P) -> peq (mulXa b (E l p)) (E l' p))
+    * ((x : R) -> notIn x l -> Not (Id R x b) -> notIn x l')) ;
+
+  insS (b : R) (y : RN) (l : Ms) (r : Ins b l) (d : Distinct (cons y l))
+    : Plus (Id R b y.1) (Not (Id R b y.1)) -> NN (
+        (l' : Ms) * (d : Distinct l') * (h : (p : P) -> peq (mulXa b (E (cons y l) p)) (E l' p))
+        * ((x : R) -> notIn x (cons y l) -> Not (Id R x b) -> notIn x l')) = split {
+    inl eq -> ret (cons (y.1, suc y.2) l, d,
+                   \ p k -> ap (\ t -> coef (mulXa t (powXa y.1 y.2 (E l p))) k) eq,
+                   \ x n h -> n) ;
+    inr ne -> bind (r d.2) (\ v -> ret (cons y v.1, (v.2.2.2 y.1 d.1 (\ h -> ne (sym h)), v.2.1),
+                   \ p -> peq-trans (mulXa b (powXa y.1 y.2 (E l p)))
+                            (powXa y.1 y.2 (mulXa b (E l p))) (powXa y.1 y.2 (E v.1 p))
+                            (commP b y.1 y.2 (E l p))
+                            (powXa-peq y.1 y.2 (mulXa b (E l p)) (E v.1 p) (v.2.2.1 p)),
+                   \ x n h -> (n.1, v.2.2.2 x n.2 h))) } ;
+
+  ins (b : R) : (l : Ms) -> Ins b l = split {
+    nil -> \ d -> ret (cons (b, zero) nil, (tt, tt), \ p k -> refl (coef (mulXa b p) k),
+                       \ x n h -> (h, tt)) ;
+    cons y l | r -> \ d -> bind (lem-nn (Id R b y.1)) (insS b y l r d) } ;
+
+  Grp (bs : P) : U a = (l : Ms) * (d : Distinct l)
+    * ((al : R) -> peq (prodL al bs) (E l (cons al nil))) ;
+
+  grpS (b : R) (bs : P) (w : Grp bs) : NN (Grp (cons b bs)) =
+    nnmap (\ v -> (v.1, v.2.1,
+                   \ al -> peq-trans (mulXa b (prodL al bs)) (mulXa b (E w.1 (cons al nil)))
+                             (E v.1 (cons al nil))
+                             (mulXa-peq b (prodL al bs) (E w.1 (cons al nil)) (w.2.2 al))
+                             (v.2.2.1 (cons al nil))))
+          (ins b w.1 w.2.1) ;
+
+  group : (bs : P) -> NN (Grp bs) = split {
+    nil -> ret (nil, tt, \ al k -> refl (coef (cons al nil) k)) ;
+    cons b bs | r -> bind r (grpS b bs) } ;
+} ;

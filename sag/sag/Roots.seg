@@ -1,0 +1,70 @@
+-- Roots.seg: SAG Lemma 2.2.4 with repeated roots.  For a polynomial f it
+-- is not not the case that f = 0, or f = al (X - b1) .. (X - bn) with al
+-- a unit.  The proof is the paper's: induction on a degree bound n, under
+-- double negation; the top coefficient is zero (drop it) or not (then it
+-- is a unit, and if n >= 2 there is not not a root, and we divide).
+--
+-- The two consequences of (Loc) and (SQC) the proof uses are parameters
+-- here; Mul.seg derives them from the weak Nullstellensatz for R[X]/(f).
+--   inv-nz   SAG 2.2.3(a): an element that is not zero is not not invertible
+--   root     SAG 2.2.2 for R[X]/(f): f of degree >= 1 with a unit top
+--            coefficient has not not a root
+
+level a ;
+open Ring[a] ;
+open Poly[a] ;
+
+NN (A : U a) : U a = Not (Not A) ;
+ret {A : U a} (x : A) : NN A = \ k -> k x ;
+bind {A B : U a} (m : NN A) (f : A -> NN B) : NN B = \ k -> m (\ x -> f x k) ;
+nnmap {A B : U a} (f : A -> B) (m : NN A) : NN B = \ k -> m (\ x -> k (f x)) ;
+lem-nn (A : U a) : NN (Plus A (Not A)) = \ k -> k (inr (\ x -> k (inl x))) ;
+
+module RootsR (Rg : CRing)
+  (inv-nz : (x : Rg.R) -> Not (Id Rg.R x Rg.z) -> NN (RL[Rg].unit x))
+  (root : (f : PolyR[Rg].P) (n : Nat) -> Id Nat (PolyR[Rg].plen f) (suc (suc n))
+          -> RL[Rg].unit (PolyR[Rg].lastD f)
+          -> NN ((x : Rg.R) * Id Rg.R (PolyR[Rg].ev f x) Rg.z)) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+
+  Fact (f : P) : U a =
+    Plus (peq f nil) ((al : R) * (u : unit al) * (bs : P) * peq f (prodL al bs)) ;
+
+  fact-peq (f g : P) (h : peq f g) : Fact g -> Fact f = split {
+    inl e -> inl (peq-trans f g nil h e) ;
+    inr w -> inr (w.1, w.2.1, w.2.2.1, peq-trans f g (prodL w.1 w.2.2.1) h w.2.2.2) } ;
+
+  fact-lift (b : R) (q : P) : Fact q -> Fact (mulXa b q) = split {
+    inl e -> inl (mulXa-peq b q nil e) ;
+    inr w -> inr (w.1, w.2.1, cons b w.2.2.1, mulXa-peq b q (prodL w.1 w.2.2.1) w.2.2.2) } ;
+
+  Hyp (m : Nat) : U a = (f : P) -> Id Nat (plen f) m -> NN (Fact f) ;
+
+  -- a root b gives f = (X - b) q with q one shorter
+  divide (m : Nat) (ih : Hyp (suc m)) (f : P) (e : Id Nat (plen f) (suc (suc m)))
+    (w : (x : R) * Id R (ev f x) z) : NN (Fact f) =
+    nnmap (\ fq -> fact-peq f (mulXa w.1 (sdiv w.1 f).1) (root-factor w.1 f w.2)
+                     (fact-lift w.1 (sdiv w.1 f).1 fq))
+          (ih (sdiv w.1 f).1 (trans (sdiv-len w.1 f) (ap pred e))) ;
+
+  -- the top coefficient is not zero
+  stepNZ : (m : Nat) -> Hyp m -> (f : P) -> Id Nat (plen f) (suc m)
+           -> Not (Id R (lastD f) z) -> NN (Fact f) = split {
+    zero -> \ ih f e hn -> nnmap (\ u -> inr (lastD f, u, nil, single f e)) (inv-nz (lastD f) hn) ;
+    suc m -> \ ih f e hn -> bind (inv-nz (lastD f) hn) (\ u -> bind (root f m e u) (divide m ih f e)) } ;
+
+  step (m : Nat) (ih : Hyp m) (f : P) (e : Id Nat (plen f) (suc m))
+    : Plus (Id R (lastD f) z) (Not (Id R (lastD f) z)) -> NN (Fact f) = split {
+    inl h0 -> nnmap (fact-peq f (initL f) (init-peq f h0))
+                    (ih (initL f) (trans (init-len f) (ap pred e))) ;
+    inr hn -> stepNZ m ih f e hn } ;
+
+  -- induction on the degree bound; the recursive result is a function
+  thm : (n : Nat) -> Hyp n = split {
+    zero -> \ f e -> ret (inl (len0 f e)) ;
+    suc m | ih -> \ f e -> bind (lem-nn (Id R (lastD f) z)) (step m ih f e) } ;
+
+  lemma-2-2-4 (f : P) : NN (Fact f) = thm (plen f) f (refl (plen f)) ;
+} ;

@@ -14,6 +14,7 @@ module Main where
 
 import Seg
 import SegParse
+import Term
 import System.Environment (getArgs, lookupEnv)
 import System.Timeout (timeout)
 import System.Exit (exitFailure)
@@ -25,7 +26,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (forM, when, unless)
 import qualified Data.Set as Set
 import Data.Char (isAlphaNum)
-import Data.List (isPrefixOf, isSuffixOf, sort)
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf, sort)
 import Control.Exception (evaluate, try, ErrorCall(..), IOException)
 import Data.IORef
 import Data.List (nub)
@@ -80,8 +81,75 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
+    [f, "--survey-records"] -> surveyFile f
+    [f, "--survey-termination"] -> surveyTermination f
+    [f, "--survey-primrec"] -> surveyPrimRec f
+    [f, "--quote-test", x] -> quoteTestFile f x
     (f : rest) -> runFile f (opts rest)
     [] -> putStrLn "usage: seg file.seg [+id] [-id] [--none] [-v]"
+
+-- the segments the program uses as records (SegParse.surveyRecords)
+surveyFile :: FilePath -> IO ()
+surveyFile f = do
+  src <- readFile f
+  seen <- newIORef [baseName f]
+  case parseUnits src of
+    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
+    Right us0 -> do
+      rus <- expand seen (dirOf f) us0
+      putStr (either ("SCOPE ERROR\n" ++) id (surveyRecords rus))
+
+-- positivity of the data types and termination of the recursive
+-- definitions (Term), report only
+surveyTermination :: FilePath -> IO ()
+surveyTermination f = do
+  src <- readFile f
+  seen <- newIORef [baseName f]
+  case parseUnits src of
+    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
+    Right us0 -> do
+      rus <- expand seen (dirOf f) us0
+      case resolveProgramWith False rus of
+        Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
+        Right us -> do
+          let res = restrictionReport us
+              pos = positivityReport us
+              ter = terminationReport us
+          mapM_ (putStrLn . ("RESTRICTION  " ++)) res
+          mapM_ (putStrLn . ("NOT POSITIVE  " ++)) pos
+          mapM_ putStrLn ter
+          putStrLn (show (length res) ++ " restriction failures, " ++ show (length pos) ++ " positivity failures, "
+                    ++ show (length [ () | l <- ter, "NOT" `isInfixOf` l ]) ++ " of "
+                    ++ show (length ter) ++ " recursive components not shown to terminate")
+
+-- PRIMREC.md 5.4: the read-back of a nested split under canonical and
+-- under abstract recursive results (Seg.quoteTest)
+quoteTestFile :: FilePath -> String -> IO ()
+quoteTestFile f x = do
+  src <- readFile f
+  case parseUnits src of
+    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
+    Right us0 -> case resolveProgram us0 of
+      Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
+      Right us -> do
+        let (_, _, us') = checkUnitsF emptyCx us
+            (cx, _) = checkUnits emptyCx us'
+        case [ i | UDef i y _ _ <- us', y == x ] of
+          (i : _) -> mapM_ putStrLn (quoteTest cx i)
+          [] -> putStrLn ("no definition " ++ x)
+
+-- which recursive definitions are primitive recursion (Term.primRecReport)
+surveyPrimRec :: FilePath -> IO ()
+surveyPrimRec f = do
+  src <- readFile f
+  seen <- newIORef [baseName f]
+  case parseUnits src of
+    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
+    Right us0 -> do
+      rus <- expand seen (dirOf f) us0
+      case resolveProgramWith False rus of
+        Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
+        Right us -> mapM_ putStrLn (primRecReport us)
 
 dirOf :: FilePath -> FilePath
 dirOf p = reverse (dropWhile (/= '/') (reverse p))
@@ -100,9 +168,9 @@ expand seen dir = fmap concat . mapM go
           Left msg -> error ("in " ++ x ++ ".seg: " ++ msg)
           Right us -> do
             us' <- expand seen dir us
-            return [RModule x [] us']
-    RModule x tel us -> do us' <- expand seen dir us
-                           return [RModule x tel us']
+            return [RModule False x [] us']
+    RModule k x tel us -> do us' <- expand seen dir us
+                             return [RModule k x tel us']
     _ -> return [u]
 
 adjust :: Opt -> [Unit] -> [Unit]
@@ -111,7 +179,7 @@ adjust o us = ULock (fix []) : map go us
   fix s = nub (oOn o ++ filter (`notElem` oOff o) (if oNone o then [] else s))
   go u = case u of
     ULock s -> ULock (fix s)
-    UMod i x mus d -> UMod i x (map go mus) d
+    UMod i x k mus -> UMod i x k (map go mus)
     _ -> u
 
 -- parse, expand imports, resolve: the program's units, and the modules
@@ -137,7 +205,7 @@ loadFiles f o = do
   importsOf us = concatMap imp us
   imp u = case u of
     RImport x -> [x]
-    RModule _ _ vs -> importsOf vs
+    RModule _ _ _ vs -> importsOf vs
     _ -> []
 
 -- check the given events (each with the ten-second budget); prints the
@@ -239,6 +307,8 @@ runFile f o
       printf "%s: %d declarations%s, %d failed, %.2f s\n" f c
              (if noSel then "" else " (" ++ unwords (oOnly o ++ oOnlyTop o) ++ "; the rest trusted)") n tt
       if null pns then return () else putStrLn ("assuming: " ++ unwords pns)
+      fb <- readIORef fallbackCount
+      if fb > 0 then putStrLn ("split conversion fallback (PRIMREC.md 5.3): " ++ show fb) else return ()
       if n > 0 then exitFailure else putStrLn "OK"
 
 -- A session: the program is loaded once and kept; commands are read from

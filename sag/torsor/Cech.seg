@@ -1,0 +1,347 @@
+-- Cech.seg: SAG Theorem 7.4.8, Cech H^2 of a 2-acyclic finite cover is
+-- H^2.  Setting: a type X, a finite cover U 1 .. U n (merely, every x is
+-- in some U i), a family F of abelian groups over X.  With
+-- L x = (i : Fin n) * U i x,  a Cech 2-cocycle is  (x : X) -> L x-2-cocycle
+-- (SAG's identification in the proof of 7.4.5), and Gc c is the family of
+-- gerbes given at each x by Theorem 7.4.7.  The comparison is stated as
+--   (1) Same      cohomologous cocycles give equal families of gerbes;
+--   (2) Inj       merely equal families come from merely cohomologous cocycles;
+--   (3) Surj      every family of gerbes merely comes from a cocycle;
+-- i.e. c |-> Gc c induces a bijection from Cech classes to classes of
+-- families of gerbes, that is H^2(X, F) = || (x : X) -> F x-gerbe ||_0.
+-- 2-acyclicity is stated by sections: families of torsors over U i and over
+-- U i n U j, and families of gerbes over U i, merely have a section.
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open FunExtUA[l] ;
+open Torsor[l] ;
+open TorsorId[l] ;
+open Groupoid[l] ;
+open Gerbe[l] ;
+open Cocycle2[l] ;
+open Gerbe74[l] ;
+open Coboundary[l] ;
+open TrivialGerbe[l] ;
+open Vanish[l] ;
+module Tr = Truncation[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module FL1 = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module P1 = Prelude[l+] ;
+module Tr1 = Truncation[l+] ;
+
+------------------------------------------------------------------------
+-- finite types and finite choice
+
+data Opt (A : U l) : U l = none | some (a : A) ;
+Fin : Nat -> U l = split { zero -> Empty ; suc n | r -> Opt r } ;
+
+fin-zero (P : Fin zero -> U l) : (i : Fin zero) -> P i = split { } ;
+combine (n : Nat) (P : Fin (suc n) -> U l) (a : P none) (g : (i : Fin n) -> P (some i))
+  : (i : Fin (suc n)) -> P i = split { none -> a ; some i -> g i } ;
+
+-- finite choice, by recursion on n (the recursive result is at higher type)
+fc : (n : Nat) (P : Fin n -> U l) -> ((i : Fin n) -> Tr.Trunc[P i].carrier)
+     -> Tr.Trunc[(i : Fin n) -> P i].carrier = split {
+  zero -> \ P h -> Tr.Trunc[(i : Fin zero) -> P i].inc (fin-zero P) ;
+  suc n | r -> \ P h ->
+    Tr.Trunc[P none].induction @l (\ v -> Tr.Trunc[(i : Fin (suc n)) -> P i].carrier)
+      (\ v -> Tr.Trunc[(i : Fin (suc n)) -> P i].proposition)
+      (\ a -> Tr.Trunc[(i : Fin n) -> P (some i)].induction @l
+                (\ v -> Tr.Trunc[(i : Fin (suc n)) -> P i].carrier)
+                (\ v -> Tr.Trunc[(i : Fin (suc n)) -> P i].proposition)
+                (\ g -> Tr.Trunc[(i : Fin (suc n)) -> P i].inc (combine n P a g))
+                (r (\ i -> P (some i)) (\ i -> h (some i))))
+      (h none) } ;
+
+------------------------------------------------------------------------
+-- two lemmas on systems of points and paths in a gerbe: transporting
+-- along a path of gerbes, and conjugating by paths  r k : u k = u'' k,
+-- do not change the cocycle
+
+module PtChange (Gr : Ab) (L : U l) {
+  open Gr ;
+  open Gerbes[Gr] ;
+  open Coc2[Gr,L] ;
+  CC : U l = Coc2[Gr,L].Coc2 ;
+
+  Sys (Gb : AGerbe) : U l = (u : L -> Gb.1) * ((i j : L) -> Id Gb.1 (u i) (u j)) ;
+
+  transp-phi (G1 : AGerbe) : (G2 : AGerbe) (P : Id AGerbe G1 G2) (s : Sys G2)
+    -> Id CC (phi2 (G1, P1.subst AGerbe (\ g -> Sys g) G2 G1 (P1.sym AGerbe G1 G2 P) s)) (phi2 (G2, s)) =
+    \ G2 P -> idJ AGerbe G1
+      (\ G3 P3 -> (s : Sys G3) -> Id CC (phi2 (G1, P1.subst AGerbe (\ g -> Sys g) G3 G1 (P1.sym AGerbe G1 G3 P3) s)) (phi2 (G3, s)))
+      (\ s -> refl (phi2 (G1, s))) G2 P ;
+
+  ptil (Gb : AGerbe) (u u2 : L -> Gb.1) (r : (k : L) -> Id Gb.1 (u k) (u2 k))
+    (p2 : (i j : L) -> Id Gb.1 (u2 i) (u2 j)) (i j : L) : Id Gb.1 (u i) (u j) =
+    trans Gb.1 (u i) (u2 j) (u j) (trans Gb.1 (u i) (u2 i) (u2 j) (r i) (p2 i j)) (sym Gb.1 (u j) (u2 j) (r j)) ;
+
+  pcJ (Gb : AGerbe) (u : L -> Gb.1) : (u2 : L -> Gb.1) (U2 : Id (L -> Gb.1) u u2)
+    (p2 : (i j : L) -> Id Gb.1 (u2 i) (u2 j))
+    -> Id CC (phi2 (Gb, u, ptil Gb u u2 (happly L (\ k -> Gb.1) u u2 U2) p2)) (phi2 (Gb, u2, p2)) =
+    \ u2 U2 -> idJ (L -> Gb.1) u
+      (\ u3 U3 -> (p3 : (i j : L) -> Id Gb.1 (u3 i) (u3 j))
+         -> Id CC (phi2 (Gb, u, ptil Gb u u3 (happly L (\ k -> Gb.1) u u3 U3) p3)) (phi2 (Gb, u3, p3)))
+      (\ p3 -> P1.ap Left2 CC phi2 (Gb, u, ptil Gb u u (happly L (\ k -> Gb.1) u u (refl u)) p3) (Gb, u, p3)
+                 (P1.ap ((i j : L) -> Id Gb.1 (u i) (u j)) Left2 (\ P -> (Gb, u, P))
+                    (ptil Gb u u (happly L (\ k -> Gb.1) u u (refl u)) p3) p3
+                    (FL.funext L (\ i -> (j : L) -> Id Gb.1 (u i) (u j))
+                       (ptil Gb u u (happly L (\ k -> Gb.1) u u (refl u)) p3) p3 (\ i ->
+                       FL.funext L (\ j -> Id Gb.1 (u i) (u j))
+                         (ptil Gb u u (happly L (\ k -> Gb.1) u u (refl u)) p3 i) (p3 i) (\ j ->
+                         trans-refl-l Gb.1 (u i) (u j) (p3 i j))))))
+      u2 U2 ;
+
+  pc (Gb : AGerbe) (u u2 : L -> Gb.1) (r : (k : L) -> Id Gb.1 (u k) (u2 k))
+    (p2 : (i j : L) -> Id Gb.1 (u2 i) (u2 j))
+    : Id CC (phi2 (Gb, u, ptil Gb u u2 r p2)) (phi2 (Gb, u2, p2)) =
+    transH (ap ((k : L) -> Id Gb.1 (u k) (u2 k)) CC (\ r' -> phi2 (Gb, u, ptil Gb u u2 r' p2))
+               r (happly L (\ k -> Gb.1) u u2 (FL.funext L (\ k -> Gb.1) u u2 r))
+               (symH (FL.happly-funext L (\ k -> Gb.1) u u2 r)))
+           (pcJ Gb u u2 (FL.funext L (\ k -> Gb.1) u u2 r) p2) ;
+} ;
+
+------------------------------------------------------------------------
+-- the setting
+
+module CechM (n : Nat) (X : U l) (Uc : Fin n -> X -> U l)
+  (cover : (x : X) -> Tr.Trunc[(i : Fin n) * Uc i x].carrier) (F : X -> Ab) {
+  L (x : X) : U l = (i : Fin n) * Uc i x ;
+  Ax (x : X) : U l = (F x).A ;
+  Z2 : U l = (x : X) -> Coc2[F x, L x].Coc2 ;
+  GF : U l+ = (x : X) -> Gerbes[F x].AGerbe ;
+
+  inv74 (x : X) (cx : Coc2[F x, L x].Coc2) : Coc2[F x, L x].Left2 =
+    (M74[F x, L x, cover x].theorem-7-4-7).2.sec cx ;
+  Gc (c : Z2) : GF = \ x -> (inv74 x (c x)).1 ;
+
+  dlt (x : X) (b : L x -> L x -> Ax x) (i j k : L x) : Ax x =
+    (F x).add ((F x).add (b i j) (b j k)) ((F x).inv (b i k)) ;
+
+  -- c' = c + delta b
+  Rel (c c' : Z2) : U l =
+    (b : (x : X) -> L x -> L x -> Ax x)
+    * ((x : X) (i j k : L x) -> Id (Ax x) ((c' x).1 i j k) ((F x).add ((c x).1 i j k) (dlt x (b x) i j k))) ;
+
+  ----------------------------------------------------------------------
+  -- (1) cohomologous cocycles give the same family of gerbes
+
+  module SamePt (c c' : Z2) (r : Rel c c') (x : X) {
+    module E = M74[F x, L x, cover x] ;
+    w : Coc2[F x, L x].Left2 = inv74 x (c x) ;
+    module CH = Cob[F x, L x, w].Change[r.1 x] ;
+
+    -- phi2 of the changed paths is c' x
+    cw (i j k : L x) : Id (Ax x) (CH.c' i j k) ((c' x).1 i j k) =
+      transH (CH.thm i j k)
+        (transH (ap (Ax x) (Ax x) (\ a -> (F x).add a (dlt x (r.1 x) i j k))
+                    (Coc2[F x, L x].PhiG[w].c i j k) ((c x).1 i j k)
+                    (ap (Coc2[F x, L x].Coc2) (Ax x) (\ v -> v.1 i j k)
+                        (Coc2[F x, L x].phi2 w) (c x) (E.theorem-7-4-7.2.sec-eq (c x))))
+                (symH (r.2 x i j k))) ;
+
+    phi-w' : Id (Coc2[F x, L x].Coc2) (Coc2[F x, L x].phi2 CH.w') (c' x) =
+      Sigma-eq (L x -> L x -> L x -> Ax x) (Coc2[F x, L x].CocP2)
+        (Coc2[F x, L x].phi2 CH.w').1 (c' x).1 (Coc2[F x, L x].phi2 CH.w').2 (c' x).2
+        (FL.funext (L x) (\ i -> L x -> L x -> Ax x) (Coc2[F x, L x].phi2 CH.w').1 (c' x).1 (\ i ->
+           FL.funext (L x) (\ j -> L x -> Ax x) ((Coc2[F x, L x].phi2 CH.w').1 i) ((c' x).1 i) (\ j ->
+             FL.funext (L x) (\ k -> Ax x) ((Coc2[F x, L x].phi2 CH.w').1 i j) ((c' x).1 i j) (\ k -> cw i j k))))
+        (E.coc2-prop (c' x).1) ;
+
+    pt : Id (Gerbes[F x].AGerbe) (Gc c x) (Gc c' x) =
+      P1.sym (Gerbes[F x].AGerbe) (Gc c' x) (Gc c x)
+        (P1.trans (Gerbes[F x].AGerbe) (Gc c' x) (inv74 x (Coc2[F x, L x].phi2 CH.w')).1 (Gc c x)
+           (P1.ap (Coc2[F x, L x].Coc2) (Gerbes[F x].AGerbe) (\ v -> (inv74 x v).1)
+              (c' x) (Coc2[F x, L x].phi2 CH.w')
+              (sym (Coc2[F x, L x].Coc2) (Coc2[F x, L x].phi2 CH.w') (c' x) phi-w'))
+           (P1.ap (Coc2[F x, L x].Left2) (Gerbes[F x].AGerbe) (\ v -> v.1)
+              (inv74 x (Coc2[F x, L x].phi2 CH.w')) CH.w' (E.theorem-7-4-7.2.ret-eq CH.w'))) ;
+  } ;
+
+  same (c c' : Z2) (r : Rel c c') : Id GF (Gc c) (Gc c') =
+    FL1.funext X (\ x -> Gerbes[F x].AGerbe) (Gc c) (Gc c') (\ x -> SamePt[c, c', r, x].pt) ;
+
+  ----------------------------------------------------------------------
+  -- 2-acyclicity, by sections
+
+  TorsAcyc (i j : Fin n) : U l+ =
+    (T : (x : X) -> Uc i x -> Uc j x -> TorId[F x].Tor)
+    -> Tr.Trunc[(x : X) (a : Uc i x) (b : Uc j x) -> (T x a b).1].carrier ;
+  GerbeAcyc (i : Fin n) : U l+ =
+    (G : (x : X) -> Uc i x -> Gerbes[F x].AGerbe)
+    -> Tr.Trunc[(x : X) (a : Uc i x) -> (G x a).1].carrier ;
+
+  ----------------------------------------------------------------------
+  -- (3) every family of gerbes merely comes from a cocycle
+
+  module SurjM (tors : (i j : Fin n) -> TorsAcyc i j) (gerbes : (i : Fin n) -> GerbeAcyc i) (G : GF) {
+    Goal : U l+ = (c : Z2) * Id GF (Gc c) G ;
+    Us : U l = (i : Fin n) (x : X) (a : Uc i x) -> (G x).1 ;
+    Ps (us : Us) : U l = (i j : Fin n) (x : X) (a : Uc i x) (b : Uc j x) -> Id (G x).1 (us i x a) (us j x b) ;
+
+    sys (us : Us) (ps : Ps us) (x : X) : Coc2[F x, L x].Left2 =
+      (G x, \ ia -> us ia.1 x ia.2, \ ia jb -> ps ia.1 jb.1 x ia.2 jb.2) ;
+
+    from (us : Us) (ps : Ps us) : Goal =
+      (\ x -> Coc2[F x, L x].phi2 (sys us ps x),
+       FL1.funext X (\ x -> Gerbes[F x].AGerbe) (Gc (\ x -> Coc2[F x, L x].phi2 (sys us ps x))) G (\ x ->
+         P1.ap (Coc2[F x, L x].Left2) (Gerbes[F x].AGerbe) (\ v -> v.1)
+           (inv74 x (Coc2[F x, L x].phi2 (sys us ps x))) (sys us ps x)
+           ((M74[F x, L x, cover x].theorem-7-4-7).2.ret-eq (sys us ps x)))) ;
+
+    -- choose the paths on all the U i n U j at once
+    paths (us : Us) : Tr.Trunc[Ps us].carrier =
+      fc n (\ i -> (j : Fin n) (x : X) (a : Uc i x) (b : Uc j x) -> Id (G x).1 (us i x a) (us j x b))
+        (\ i -> fc n (\ j -> (x : X) (a : Uc i x) (b : Uc j x) -> Id (G x).1 (us i x a) (us j x b))
+                  (\ j -> tors i j (\ x a b -> Gerbes[F x].GL[G x].PTor (us i x a) (us j x b)))) ;
+
+    -- choose the local objects on all the U i at once
+    objects : Tr.Trunc[Us].carrier =
+      fc n (\ i -> (x : X) (a : Uc i x) -> (G x).1) (\ i -> gerbes i (\ x a -> G x)) ;
+
+    surj : Tr1.Trunc[Goal].carrier =
+      Tr.Trunc[Us].induction @(l+) (\ v -> Tr1.Trunc[Goal].carrier) (\ v -> Tr1.Trunc[Goal].proposition)
+        (\ us -> Tr.Trunc[Ps us].induction @(l+) (\ v -> Tr1.Trunc[Goal].carrier) (\ v -> Tr1.Trunc[Goal].proposition)
+                   (\ ps -> Tr1.Trunc[Goal].inc (from us ps)) (paths us))
+        objects ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- (2) merely equal families of gerbes come from merely cohomologous cocycles
+
+  module InjM (tors : (i j : Fin n) -> TorsAcyc i j) (c c' : Z2) (Pth : Id GF (Gc c) (Gc c')) {
+    Gx (x : X) : Gerbes[F x].AGerbe = Gc c x ;
+    w (x : X) : Coc2[F x, L x].Left2 = inv74 x (c x) ;
+    w' (x : X) : Coc2[F x, L x].Left2 = inv74 x (c' x) ;
+    Px (x : X) : Id (Gerbes[F x].AGerbe) (Gc c x) (Gc c' x) =
+      P1.happly X (\ y -> Gerbes[F y].AGerbe) (Gc c) (Gc c') Pth x ;
+    -- the points and paths of c', carried over to the gerbe of c
+    s2 (x : X) : PtChange[F x, L x].Sys (Gx x) =
+      P1.subst (Gerbes[F x].AGerbe) (\ g -> PtChange[F x, L x].Sys g) (Gc c' x) (Gc c x)
+        (P1.sym (Gerbes[F x].AGerbe) (Gc c x) (Gc c' x) (Px x)) (w' x).2 ;
+    u (x : X) (k : L x) : (Gx x).1 = (w x).2.1 k ;
+    u2 (x : X) (k : L x) : (Gx x).1 = (s2 x).1 k ;
+
+    phi-s2 (x : X) : Id (Coc2[F x, L x].Coc2) (Coc2[F x, L x].phi2 (Gx x, s2 x)) (c' x) =
+      transH (PtChange[F x, L x].transp-phi (Gc c x) (Gc c' x) (Px x) (w' x).2)
+             ((M74[F x, L x, cover x].theorem-7-4-7).2.sec-eq (c' x)) ;
+
+    RT : U l = (i : Fin n) (x : X) (a b : Uc i x) -> Id (Gx x).1 (u x (i, a)) (u2 x (i, b)) ;
+    rs : Tr.Trunc[RT].carrier =
+      fc n (\ i -> (x : X) (a b : Uc i x) -> Id (Gx x).1 (u x (i, a)) (u2 x (i, b)))
+        (\ i -> tors i i (\ x a b -> Gerbes[F x].GL[Gx x].PTor (u x (i, a)) (u2 x (i, b)))) ;
+
+    module RelM (rr : RT) (x : X) {
+      module GX = Gerbes[F x].GL[Gx x] ;
+      r (k : L x) : Id (Gx x).1 (u x k) (u2 x k) = rr k.1 x k.2 k.2 ;
+      pt (i j : L x) : Id (Gx x).1 (u x i) (u x j) = PtChange[F x, L x].ptil (Gx x) (u x) (u2 x) r (s2 x).2 i j ;
+      b (i j : L x) : Ax x =
+        TorBase[F x].D[Id (Gx x).1 (u x i) (u x j), GX.PT (u x i) (u x j)].diff ((w x).2.2 i j) (pt i j) ;
+      module CH = Cob[F x, L x, w x].Change[b] ;
+      -- the changed paths are the conjugated ones
+      w'eq : Id (Coc2[F x, L x].Left2) CH.w' (Gx x, u x, pt) =
+        P1.ap ((i j : L x) -> Id (Gx x).1 (u x i) (u x j)) (Coc2[F x, L x].Left2) (\ P -> (Gx x, u x, P)) CH.p' pt
+          (FL.funext (L x) (\ i -> (j : L x) -> Id (Gx x).1 (u x i) (u x j)) CH.p' pt (\ i ->
+             FL.funext (L x) (\ j -> Id (Gx x).1 (u x i) (u x j)) (CH.p' i) (pt i) (\ j ->
+               TorBase[F x].D[Id (Gx x).1 (u x i) (u x j), GX.PT (u x i) (u x j)].dact ((w x).2.2 i j) (pt i j)))) ;
+      phi-w' : Id (Coc2[F x, L x].Coc2) (Coc2[F x, L x].phi2 CH.w') (c' x) =
+        transH (P1.ap (Coc2[F x, L x].Left2) (Coc2[F x, L x].Coc2) (Coc2[F x, L x].phi2) CH.w' (Gx x, u x, pt) w'eq)
+          (transH (PtChange[F x, L x].pc (Gx x) (u x) (u2 x) r (s2 x).2) (phi-s2 x)) ;
+      eq (i j k : L x) : Id (Ax x) ((c' x).1 i j k) ((F x).add ((c x).1 i j k) (dlt x b i j k)) =
+        transH (ap (Coc2[F x, L x].Coc2) (Ax x) (\ v -> v.1 i j k) (c' x) (Coc2[F x, L x].phi2 CH.w') (symH phi-w'))
+          (transH (CH.thm i j k)
+             (ap (Ax x) (Ax x) (\ a -> (F x).add a (dlt x b i j k))
+                 (Coc2[F x, L x].PhiG[w x].c i j k) ((c x).1 i j k)
+                 (ap (Coc2[F x, L x].Coc2) (Ax x) (\ v -> v.1 i j k) (Coc2[F x, L x].phi2 (w x)) (c x)
+                     ((M74[F x, L x, cover x].theorem-7-4-7).2.sec-eq (c x))))) ;
+    } ;
+
+    rel (rr : RT) : Rel c c' = (\ x -> RelM[rr, x].b, \ x -> RelM[rr, x].eq) ;
+    inj : Tr.Trunc[Rel c c'].carrier =
+      Tr.Trunc[RT].induction @l (\ v -> Tr.Trunc[Rel c c'].carrier) (\ v -> Tr.Trunc[Rel c c'].proposition)
+        (\ rr -> Tr.Trunc[Rel c c'].inc (rel rr)) rs ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- SAG Theorem 7.4.8, for a 2-acyclic finite cover
+
+  module Thm (tors : (i j : Fin n) -> TorsAcyc i j) (gerbes : (i : Fin n) -> GerbeAcyc i) {
+    -- (1) the map on classes is well defined
+    well-defined (c c' : Z2) (r : Rel c c') : Id GF (Gc c) (Gc c') = same c c' r ;
+    -- (2) injective
+    injective (c c' : Z2) (t : Tr1.Trunc[Id GF (Gc c) (Gc c')].carrier) : Tr.Trunc[Rel c c'].carrier =
+      Tr1.Trunc[Id GF (Gc c) (Gc c')].induction @l (\ v -> Tr.Trunc[Rel c c'].carrier)
+        (\ v -> Tr.Trunc[Rel c c'].proposition) (\ P -> InjM[tors, c, c', P].inj) t ;
+    -- (3) surjective
+    surjective (G : GF) : Tr1.Trunc[(c : Z2) * Id GF (Gc c) G].carrier = SurjM[tors, gerbes, G].surj ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- section-acyclicity is vanishing of the cohomology classes: a family
+  -- has a section exactly when it is (merely) the trivial family
+
+  TorF (i j : Fin n) : U l+ = (x : X) -> Uc i x -> Uc j x -> TorId[F x].Tor ;
+  GbF (i : Fin n) : U l+ = (x : X) -> Uc i x -> Gerbes[F x].AGerbe ;
+  trivT (i j : Fin n) : TorF i j = \ x a b -> TrivG[F x].Atriv ;
+  trivG (i : Fin n) : GbF i = \ x a -> TrivG[F x].KG ;
+
+  -- H^1(U i n U j, F) = 0 and H^2(U i, F) = 0
+  H1Zero (i j : Fin n) : U l+ = (T : TorF i j) -> Tr1.Trunc[Id (TorF i j) (trivT i j) T].carrier ;
+  H2Zero (i : Fin n) : U l+ = (G : GbF i) -> Tr1.Trunc[Id (GbF i) (trivG i) G].carrier ;
+
+  Sec1 (i j : Fin n) (T : TorF i j) : U l = (x : X) (a : Uc i x) (b : Uc j x) -> (T x a b).1 ;
+  Sec2 (i : Fin n) (G : GbF i) : U l = (x : X) (a : Uc i x) -> (G x a).1 ;
+
+  hap3 (i j : Fin n) (T T' : TorF i j) (P : Id (TorF i j) T T') (x : X) (a : Uc i x) (b : Uc j x)
+    : Id (TorId[F x].Tor) (T x a b) (T' x a b) =
+    P1.happly (Uc j x) (\ b' -> TorId[F x].Tor) (T x a) (T' x a)
+      (P1.happly (Uc i x) (\ a' -> Uc j x -> TorId[F x].Tor) (T x) (T' x)
+         (P1.happly X (\ x' -> Uc i x' -> Uc j x' -> TorId[F x'].Tor) T T' P x) a) b ;
+  hap2 (i : Fin n) (G G' : GbF i) (P : Id (GbF i) G G') (x : X) (a : Uc i x)
+    : Id (Gerbes[F x].AGerbe) (G x a) (G' x a) =
+    P1.happly (Uc i x) (\ a' -> Gerbes[F x].AGerbe) (G x) (G' x)
+      (P1.happly X (\ x' -> Uc i x' -> Gerbes[F x'].AGerbe) G G' P x) a ;
+
+  tors-of-H1 (i j : Fin n) (h : H1Zero i j) : TorsAcyc i j = \ T ->
+    Tr1.Trunc[Id (TorF i j) (trivT i j) T].induction @l (\ v -> Tr.Trunc[Sec1 i j T].carrier)
+      (\ v -> Tr.Trunc[Sec1 i j T].proposition)
+      (\ P -> Tr.Trunc[Sec1 i j T].inc (\ x a b -> VanPt[F x].tors-sec (T x a b) (hap3 i j (trivT i j) T P x a b)))
+      (h T) ;
+
+  H1-of-tors (i j : Fin n) (h : TorsAcyc i j) : H1Zero i j = \ T ->
+    Tr.Trunc[Sec1 i j T].induction @(l+) (\ v -> Tr1.Trunc[Id (TorF i j) (trivT i j) T].carrier)
+      (\ v -> Tr1.Trunc[Id (TorF i j) (trivT i j) T].proposition)
+      (\ s -> Tr1.Trunc[Id (TorF i j) (trivT i j) T].inc
+         (FL1.funext X (\ x -> Uc i x -> Uc j x -> TorId[F x].Tor) (trivT i j) T (\ x ->
+            FL1.funext (Uc i x) (\ a -> Uc j x -> TorId[F x].Tor) (trivT i j x) (T x) (\ a ->
+              FL1.funext (Uc j x) (\ b -> TorId[F x].Tor) (trivT i j x a) (T x a) (\ b ->
+                VanPt[F x].tors-triv (T x a b) (s x a b))))))
+      (h T) ;
+
+  gerbes-of-H2 (i : Fin n) (h : H2Zero i) : GerbeAcyc i = \ G ->
+    Tr1.Trunc[Id (GbF i) (trivG i) G].induction @l (\ v -> Tr.Trunc[Sec2 i G].carrier)
+      (\ v -> Tr.Trunc[Sec2 i G].proposition)
+      (\ P -> Tr.Trunc[Sec2 i G].inc (\ x a -> VanPt[F x].gerbe-sec (G x a) (hap2 i (trivG i) G P x a)))
+      (h G) ;
+
+  H2-of-gerbes (i : Fin n) (h : GerbeAcyc i) : H2Zero i = \ G ->
+    Tr.Trunc[Sec2 i G].induction @(l+) (\ v -> Tr1.Trunc[Id (GbF i) (trivG i) G].carrier)
+      (\ v -> Tr1.Trunc[Id (GbF i) (trivG i) G].proposition)
+      (\ s -> Tr1.Trunc[Id (GbF i) (trivG i) G].inc
+         (FL1.funext X (\ x -> Uc i x -> Gerbes[F x].AGerbe) (trivG i) G (\ x ->
+            FL1.funext (Uc i x) (\ a -> Gerbes[F x].AGerbe) (trivG i x) (G x) (\ a ->
+              VanPt[F x].gerbe-triv (G x a) (s x a)))))
+      (h G) ;
+
+  -- SAG Theorem 7.4.8 with the acyclicity of SAG Definition 7.4.3
+  module Thm2 (h1 : (i j : Fin n) -> H1Zero i j) (h2 : (i : Fin n) -> H2Zero i) {
+    module T0 = Thm[\ i j -> tors-of-H1 i j (h1 i j), \ i -> gerbes-of-H2 i (h2 i)] ;
+    well-defined (c c' : Z2) (r : Rel c c') : Id GF (Gc c) (Gc c') = T0.well-defined c c' r ;
+    injective (c c' : Z2) (t : Tr1.Trunc[Id GF (Gc c) (Gc c')].carrier) : Tr.Trunc[Rel c c'].carrier =
+      T0.injective c c' t ;
+    surjective (G : GF) : Tr1.Trunc[(c : Z2) * Id GF (Gc c) G].carrier = T0.surjective G ;
+  } ;
+} ;

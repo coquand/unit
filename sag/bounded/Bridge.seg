@@ -1,0 +1,303 @@
+-- Bridge.seg: the polynomial extension A[T] and its spectrum.
+--
+--   A[T]        coefficient lists over A, with addP, pmul (sag/Mul.seg),
+--               the unit [1] and the map r |-> [iota r]
+--   HomT        Spec(A[T]): the maps y : A[T] -> R that respect equality
+--               of coefficients and are R-algebra maps
+--   spec-AT     Spec(A[T]) ~ Spec A * R,   y |-> (a |-> y [a], y T)
+--               with inverse (x, t) |-> (p |-> x(p)(t))
+--
+-- With it, the hypothesis of Bounded.seg on Spec A * R is derived from
+-- SQC for A[T] (surjectivity), stated on Spec(A[T]) itself.
+
+level l ;
+open Ring[l] ;
+open Poly[l] ;
+open Mul[l] ;
+open Bounded[l] ;
+module Pr = Prelude[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Tr = Truncation[l] ;
+
+module BridgeM (Rg : CRing) (B : RAlg[Rg]) (setR : Pr.isSet Rg.R) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+  open SpecM[Rg,B] ;
+  module PA = PolyR[B.A] ;
+  module MA = MulR[B.A] ;
+  module LA = RL[B.A] ;
+
+  ----------------------------------------------------------------------
+  -- evaluation on R is determined by the coefficients
+
+  allz : (p : P) -> peq p nil -> (t : R) -> Id R (ev p t) z = split {
+    nil -> \ h t -> refl z ;
+    cons c p | r -> \ h t -> calc R {
+      add c (mul t (ev p t))
+        =< ap (\ u -> add u (mul t (ev p t))) (h zero) > add z (mul t (ev p t))
+        =< ap (\ u -> add z (mul t u)) (r (\ k -> h (suc k)) t) > add z (mul t z)
+        =< zl (mul t z) > mul t z
+        =< mul-zero t > z } } ;
+
+  ev-peq : (p q : P) -> peq p q -> (t : R) -> Id R (ev p t) (ev q t) = split {
+    nil -> \ q h t -> sym (allz q (\ k -> sym (h k)) t) ;
+    cons c p | r -> split {
+      nil -> \ h t -> allz (cons c p) h t ;
+      cons d q -> \ h t -> calc R {
+        add c (mul t (ev p t))
+          =< ap (\ u -> add u (mul t (ev p t))) (h zero) > add d (mul t (ev p t))
+          =< ap (\ u -> add d (mul t u)) (r q (\ k -> h (suc k)) t) > add d (mul t (ev q t)) } } } ;
+
+  -- x 0 = 0
+  x0 (x : Spec) : Id R (x.1 B.A.z) z =
+    add-cancel (x.1 B.A.z) (x.1 B.A.z)
+      (trans (sym (x.2.2.1 B.A.z B.A.z)) (ap x.1 (B.A.addZ B.A.z))) ;
+
+  ----------------------------------------------------------------------
+  -- (x, t) gives the map  p |-> x(p)(t)  on A[T]
+
+  module EvM (x : Spec) (t : R) {
+    E (p : List S) : R = ev (mapc x.1 p) t ;
+
+    coef-mapc : (p : List S) -> (k : Nat) -> Id R (coef (mapc x.1 p) k) (x.1 (PA.coef p k)) = split {
+      nil -> \ k -> sym (x0 x) ;
+      cons a p | r -> split { zero -> refl (x.1 a) ; suc k -> r k } } ;
+
+    e-resp (p q : List S) (h : PA.peq p q) : Id R (E p) (E q) =
+      ev-peq (mapc x.1 p) (mapc x.1 q)
+        (\ k -> trans (coef-mapc p k) (trans (ap x.1 (h k)) (sym (coef-mapc q k)))) t ;
+
+    e-add : (p q : List S) -> Id R (E (MA.addP p q)) (add (E p) (E q)) = split {
+      nil -> \ q -> sym (zl (E q)) ;
+      cons a p | r -> split {
+        nil -> sym (addZ (E (cons a p))) ;
+        cons b q -> calc R {
+          add (x.1 (B.A.add a b)) (mul t (E (MA.addP p q)))
+            =< ap (\ u -> add u (mul t (E (MA.addP p q)))) (x.2.2.1 a b)
+            > add (add (x.1 a) (x.1 b)) (mul t (E (MA.addP p q)))
+            =< ap (\ u -> add (add (x.1 a) (x.1 b)) (mul t u)) (r q)
+            > add (add (x.1 a) (x.1 b)) (mul t (add (E p) (E q)))
+            =< ap (add (add (x.1 a) (x.1 b))) (dist t (E p) (E q))
+            > add (add (x.1 a) (x.1 b)) (add (mul t (E p)) (mul t (E q)))
+            =< swap (x.1 a) (x.1 b) (mul t (E p)) (mul t (E q))
+            > add (add (x.1 a) (mul t (E p))) (add (x.1 b) (mul t (E q))) } } } ;
+
+    e-scal (b : S) : (p : List S) -> Id R (E (MA.scal b p)) (mul (x.1 b) (E p)) = split {
+      nil -> sym (mul-zero (x.1 b)) ;
+      cons a p | r -> calc R {
+        add (x.1 (B.A.mul b a)) (mul t (E (MA.scal b p)))
+          =< ap (\ u -> add u (mul t (E (MA.scal b p)))) (x.2.2.2.1 b a)
+          > add (mul (x.1 b) (x.1 a)) (mul t (E (MA.scal b p)))
+          =< ap (\ u -> add (mul (x.1 b) (x.1 a)) (mul t u)) r
+          > add (mul (x.1 b) (x.1 a)) (mul t (mul (x.1 b) (E p)))
+          =< ap (add (mul (x.1 b) (x.1 a))) (mul-swap t (x.1 b) (E p))
+          > add (mul (x.1 b) (x.1 a)) (mul (x.1 b) (mul t (E p)))
+          =< sym (dist (x.1 b) (x.1 a) (mul t (E p))) > mul (x.1 b) (E (cons a p)) } } ;
+
+    e-mul (p : List S) : (q : List S) -> Id R (E (MA.pmul p q)) (mul (E p) (E q)) = split {
+      nil -> sym (mul-zero (E p)) ;
+      cons b q | r -> calc R {
+        E (MA.addP (MA.scal b p) (cons B.A.z (MA.pmul p q)))
+          =< e-add (MA.scal b p) (cons B.A.z (MA.pmul p q))
+          > add (E (MA.scal b p)) (add (x.1 B.A.z) (mul t (E (MA.pmul p q))))
+          =< ap (\ u -> add u (add (x.1 B.A.z) (mul t (E (MA.pmul p q))))) (e-scal b p)
+          > add (mul (x.1 b) (E p)) (add (x.1 B.A.z) (mul t (E (MA.pmul p q))))
+          =< ap (\ u -> add (mul (x.1 b) (E p)) (add u (mul t (E (MA.pmul p q))))) (x0 x)
+          > add (mul (x.1 b) (E p)) (add z (mul t (E (MA.pmul p q))))
+          =< ap (add (mul (x.1 b) (E p))) (zl (mul t (E (MA.pmul p q))))
+          > add (mul (x.1 b) (E p)) (mul t (E (MA.pmul p q)))
+          =< ap (\ u -> add (mul (x.1 b) (E p)) (mul t u)) r
+          > add (mul (x.1 b) (E p)) (mul t (mul (E p) (E q)))
+          =< ap (add (mul (x.1 b) (E p))) (mul-swap t (E p) (E q))
+          > add (mul (x.1 b) (E p)) (mul (E p) (mul t (E q)))
+          =< ap (\ u -> add u (mul (E p) (mul t (E q)))) (mulC (x.1 b) (E p))
+          > add (mul (E p) (x.1 b)) (mul (E p) (mul t (E q)))
+          =< sym (dist (E p) (x.1 b) (mul t (E q))) > mul (E p) (E (cons b q)) } } ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- Spec(A[T])
+
+  TResp (y : List S -> R) : U l = (p q : List S) -> PA.peq p q -> Id R (y p) (y q) ;
+  TA (y : List S -> R) : U l = (p q : List S) -> Id R (y (MA.addP p q)) (add (y p) (y q)) ;
+  TM (y : List S -> R) : U l = (p q : List S) -> Id R (y (MA.pmul p q)) (mul (y p) (y q)) ;
+  TI (y : List S -> R) : U l = (r : R) -> Id R (y (cons (B.iota r) nil)) r ;
+  IsHomT (y : List S -> R) : U l =
+    (resp : TResp y) * (h1 : Id R (y (cons B.A.o nil)) o) * (ha : TA y) * (hm : TM y) * TI y ;
+  HomT : U l = (y : List S -> R) * IsHomT y ;
+
+  Pt : U l = (x : Spec) * R ;
+
+  bwd (w : Pt) : HomT =
+    (EvM[w.1, w.2].E,
+     \ p q h -> EvM[w.1, w.2].e-resp p q h,
+     trans (add-mulzero (w.1.1 B.A.o) w.2) w.1.2.1,
+     EvM[w.1, w.2].e-add,
+     EvM[w.1, w.2].e-mul,
+     \ r -> trans (add-mulzero (w.1.1 (B.iota r)) w.2) (w.1.2.2.2.2 r)) ;
+
+  -- [a b] = [a] [b] in A[T]
+  pm (a b : S) : PA.peq (cons (B.A.mul a b) nil) (MA.pmul (cons a nil) (cons b nil)) = split {
+    zero -> sym (trans (B.A.addZ (B.A.mul b a)) (B.A.mulC b a)) ;
+    suc k -> refl B.A.z } ;
+
+  T : List S = cons B.A.z (cons B.A.o nil) ;
+
+  fwd (y : HomT) : Pt =
+    ((\ a -> y.1 (cons a nil),
+      y.2.2.1,
+      \ a b -> y.2.2.2.1 (cons a nil) (cons b nil),
+      \ a b -> trans (y.2.1 (cons (B.A.mul a b) nil) (MA.pmul (cons a nil) (cons b nil)) (pm a b))
+                     (y.2.2.2.2.1 (cons a nil) (cons b nil)),
+      y.2.2.2.2.2),
+     y.1 T) ;
+
+  ----------------------------------------------------------------------
+  -- the hom laws are propositions
+
+  ishom-prop (x : S -> R) : Pr.isProp (IsHom x) =
+    Pr.isProp-Sigma (Id R (x B.A.o) o) (\ h1 -> (ha : HA x) * (hm : HM x) * HI x) (setR (x B.A.o) o) (\ h1 ->
+    Pr.isProp-Sigma (HA x) (\ ha -> (hm : HM x) * HI x)
+      (FL.isProp-Pi S (\ a -> (b : S) -> Id R (x (B.A.add a b)) (add (x a) (x b))) (\ a ->
+       FL.isProp-Pi S (\ b -> Id R (x (B.A.add a b)) (add (x a) (x b))) (\ b ->
+         setR (x (B.A.add a b)) (add (x a) (x b))))) (\ ha ->
+    Pr.isProp-Sigma (HM x) (\ hm -> HI x)
+      (FL.isProp-Pi S (\ a -> (b : S) -> Id R (x (B.A.mul a b)) (mul (x a) (x b))) (\ a ->
+       FL.isProp-Pi S (\ b -> Id R (x (B.A.mul a b)) (mul (x a) (x b))) (\ b ->
+         setR (x (B.A.mul a b)) (mul (x a) (x b)))))
+      (\ hm -> FL.isProp-Pi R (\ r -> Id R (x (B.iota r)) r) (\ r -> setR (x (B.iota r)) r)))) ;
+
+  ishomT-prop (y : List S -> R) : Pr.isProp (IsHomT y) =
+    Pr.isProp-Sigma (TResp y) (\ rs -> (h1 : Id R (y (cons B.A.o nil)) o) * (ha : TA y) * (hm : TM y) * TI y)
+      (FL.isProp-Pi (List S) (\ p -> (q : List S) -> PA.peq p q -> Id R (y p) (y q)) (\ p ->
+       FL.isProp-Pi (List S) (\ q -> PA.peq p q -> Id R (y p) (y q)) (\ q ->
+       FL.isProp-Pi (PA.peq p q) (\ h -> Id R (y p) (y q)) (\ h -> setR (y p) (y q))))) (\ rs ->
+    Pr.isProp-Sigma (Id R (y (cons B.A.o nil)) o) (\ h1 -> (ha : TA y) * (hm : TM y) * TI y)
+      (setR (y (cons B.A.o nil)) o) (\ h1 ->
+    Pr.isProp-Sigma (TA y) (\ ha -> (hm : TM y) * TI y)
+      (FL.isProp-Pi (List S) (\ p -> (q : List S) -> Id R (y (MA.addP p q)) (add (y p) (y q))) (\ p ->
+       FL.isProp-Pi (List S) (\ q -> Id R (y (MA.addP p q)) (add (y p) (y q))) (\ q ->
+         setR (y (MA.addP p q)) (add (y p) (y q))))) (\ ha ->
+    Pr.isProp-Sigma (TM y) (\ hm -> TI y)
+      (FL.isProp-Pi (List S) (\ p -> (q : List S) -> Id R (y (MA.pmul p q)) (mul (y p) (y q))) (\ p ->
+       FL.isProp-Pi (List S) (\ q -> Id R (y (MA.pmul p q)) (mul (y p) (y q))) (\ q ->
+         setR (y (MA.pmul p q)) (mul (y p) (y q)))))
+      (\ hm -> FL.isProp-Pi R (\ r -> Id R (y (cons (B.iota r) nil)) r)
+                 (\ r -> setR (y (cons (B.iota r) nil)) r))))) ;
+
+  ----------------------------------------------------------------------
+  -- fwd (bwd (x, t)) = (x, t)
+
+  fb-t (x : Spec) (t : R) : Id R (EvM[x, t].E T) t = calc R {
+    add (x.1 B.A.z) (mul t (add (x.1 B.A.o) (mul t z)))
+      =< ap (\ u -> add u (mul t (add (x.1 B.A.o) (mul t z)))) (x0 x)
+      > add z (mul t (add (x.1 B.A.o) (mul t z)))
+      =< zl (mul t (add (x.1 B.A.o) (mul t z))) > mul t (add (x.1 B.A.o) (mul t z))
+      =< ap (mul t) (trans (add-mulzero (x.1 B.A.o) t) x.2.1) > mul t o
+      =< mulO t > t } ;
+
+  fwd-bwd (w : Pt) : Id Pt (fwd (bwd w)) w =
+    Pr.trans Pt (fwd (bwd w)) (w.1, EvM[w.1, w.2].E T) w
+      (Pr.ap Spec Pt (\ s -> (s, EvM[w.1, w.2].E T)) (fwd (bwd w)).1 w.1
+        (Pr.Sigma-eq (S -> R) IsHom (fwd (bwd w)).1.1 w.1.1 (fwd (bwd w)).1.2 w.1.2
+          (FL.funext S (\ a -> R) (fwd (bwd w)).1.1 w.1.1 (\ a -> add-mulzero (w.1.1 a) w.2))
+          (ishom-prop w.1.1)))
+      (Pr.ap R Pt (\ r -> (w.1, r)) (EvM[w.1, w.2].E T) w.2 (fb-t w.1 w.2)) ;
+
+  ----------------------------------------------------------------------
+  -- bwd (fwd y) = y: every polynomial is a + T p
+
+  -- T p = 0 + X p
+  -- coefficients of T (b + X p) from those of T p
+  tcS (b : S) (p : List S)
+    (r : PA.peq (MA.pmul T p) (cons B.A.z p))
+    : (k : Nat) -> Id B.A.R (PA.coef (MA.addP (cons (B.A.mul b B.A.o) nil) (MA.pmul T p)) k)
+                            (PA.coef (cons b p) k) = split {
+    zero -> calc B.A.R {
+      PA.coef (MA.addP (cons (B.A.mul b B.A.o) nil) (MA.pmul T p)) zero
+        =< MA.coef-addP (cons (B.A.mul b B.A.o) nil) (MA.pmul T p) zero
+        > B.A.add (B.A.mul b B.A.o) (PA.coef (MA.pmul T p) zero)
+        =< Pr.ap B.A.R B.A.R (B.A.add (B.A.mul b B.A.o)) (PA.coef (MA.pmul T p) zero) B.A.z (r zero)
+        > B.A.add (B.A.mul b B.A.o) B.A.z
+        =< B.A.addZ (B.A.mul b B.A.o) > B.A.mul b B.A.o
+        =< B.A.mulO b > b } ;
+    suc j -> calc B.A.R {
+      PA.coef (MA.addP (cons (B.A.mul b B.A.o) nil) (MA.pmul T p)) (suc j)
+        =< MA.coef-addP (cons (B.A.mul b B.A.o) nil) (MA.pmul T p) (suc j)
+        > B.A.add B.A.z (PA.coef (MA.pmul T p) (suc j))
+        =< LA.zl (PA.coef (MA.pmul T p) (suc j)) > PA.coef (MA.pmul T p) (suc j)
+        =< r (suc j) > PA.coef p j } } ;
+
+  tcoef : (p : List S) -> PA.peq (MA.pmul T p) (cons B.A.z p) = split {
+    nil -> split { zero -> refl B.A.z ; suc k -> refl B.A.z } ;
+    cons b p | r -> split {
+      zero -> Pr.trans B.A.R (B.A.add (B.A.mul b B.A.z) B.A.z) (B.A.mul b B.A.z) B.A.z
+                (B.A.addZ (B.A.mul b B.A.z)) (LA.mul-zero b) ;
+      suc k -> tcS b p r k } } ;
+
+  -- a + X p = [a] + (0 + X p)
+  acons (a : S) (p : List S) : PA.peq (cons a p) (MA.addP (cons a nil) (cons B.A.z p)) = split {
+    zero -> sym (B.A.addZ a) ;
+    suc k -> refl (PA.coef p k) } ;
+
+  module BF (y : HomT) {
+    yT : R = y.1 T ;
+    ynil : Id R (y.1 nil) z = add-cancel (y.1 nil) (y.1 nil) (sym (y.2.2.2.1 nil nil)) ;
+
+    decomp (a : S) (p : List S) : Id R (y.1 (cons a p)) (add (y.1 (cons a nil)) (mul yT (y.1 p))) =
+      calc R {
+        y.1 (cons a p)
+          =< y.2.1 (cons a p) (MA.addP (cons a nil) (cons B.A.z p)) (acons a p)
+          > y.1 (MA.addP (cons a nil) (cons B.A.z p))
+          =< y.2.2.2.1 (cons a nil) (cons B.A.z p) > add (y.1 (cons a nil)) (y.1 (cons B.A.z p))
+          =< ap (add (y.1 (cons a nil)))
+                (y.2.1 (cons B.A.z p) (MA.pmul T p) (PA.peq-sym (MA.pmul T p) (cons B.A.z p) (tcoef p)))
+          > add (y.1 (cons a nil)) (y.1 (MA.pmul T p))
+          =< ap (add (y.1 (cons a nil))) (y.2.2.2.2.1 T p) > add (y.1 (cons a nil)) (mul yT (y.1 p)) } ;
+
+    fun-eq : (p : List S) -> Id R (EvM[(fwd y).1, yT].E p) (y.1 p) = split {
+      nil -> sym ynil ;
+      cons a p | r -> trans (ap (\ u -> add (y.1 (cons a nil)) (mul yT u)) r) (sym (decomp a p)) } ;
+
+    path : Id HomT (bwd (fwd y)) y =
+      Pr.Sigma-eq (List S -> R) IsHomT (bwd (fwd y)).1 y.1 (bwd (fwd y)).2 y.2
+        (FL.funext (List S) (\ p -> R) (bwd (fwd y)).1 y.1 fun-eq) (ishomT-prop y.1) ;
+  } ;
+
+  -- Spec(A[T]) ~ Spec A * R
+  spec-AT : Pr.Equiv HomT Pt = (fwd, Pr.qinv HomT Pt fwd bwd fwd-bwd (\ y -> BF[y].path)) ;
+} ;
+
+------------------------------------------------------------------------
+-- SAG Theorem 3.3.3 from Loc (1 /= 0) and SQC for A[T] and R[T]
+
+module Main (Rg : CRing) (B : RAlg[Rg]) (setR : Pr.isSet Rg.R)
+  (one-nz : Not (Id Rg.R Rg.o Rg.z))
+  -- SQC for A[T], surjectivity: every function on Spec(A[T]) is a polynomial
+  (sqc-AT : (G : BridgeM[Rg,B,setR].HomT -> Rg.R) -> Tr.Trunc[(p : List B.A.R)
+             * ((y : BridgeM[Rg,B,setR].HomT) -> Id Rg.R (y.1 p) (G y))].carrier)
+  -- SQC for R[T], injectivity
+  (sqc-RT : (p q : PolyR[Rg].P) -> ((t : Rg.R) -> Id Rg.R (PolyR[Rg].ev p t) (PolyR[Rg].ev q t))
+            -> PolyR[Rg].peq p q) {
+  open Rg ;
+  open SpecM[Rg,B] ;
+  open BridgeM[Rg,B,setR] ;
+
+  -- the hypothesis of Bounded.seg, on Spec A * R
+  Gof (H : Spec -> R -> R) (y : HomT) : R = H (fwd y).1 (fwd y).2 ;
+  rep-of (H : Spec -> R -> R)
+    (v : (p : List S) * ((y : HomT) -> Id R (y.1 p) (Gof H y))) : Rep H =
+    (v.1, \ x t -> trans (v.2 (bwd (x, t)))
+                         (Pr.ap Pt R (\ w -> H w.1 w.2) (fwd (bwd (x, t))) (x, t) (fwd-bwd (x, t)))) ;
+  sqc-ST (H : Spec -> R -> R) : Tr.Trunc[Rep H].carrier =
+    Tr.Trunc[(p : List S) * ((y : HomT) -> Id R (y.1 p) (Gof H y))].induction @l
+      (\ v -> Tr.Trunc[Rep H].carrier) (\ v -> Tr.Trunc[Rep H].proposition)
+      (\ v -> Tr.Trunc[Rep H].inc (rep-of H v)) (sqc-AT (Gof H)) ;
+
+  open BoundedM[Rg, B, one-nz, sqc-ST, sqc-RT] ;
+
+  -- SAG Theorem 3.3.3: every f : Spec A -> N is merely bounded
+  theorem (f : Spec -> Nat) : Tr.Trunc[(N : Nat) * ((x : Spec) -> le (f x) N)].carrier =
+    theorem-3-3-3 f ;
+} ;

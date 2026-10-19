@@ -1,0 +1,222 @@
+-- Mul.seg: polynomial multiplication, and the two hypotheses of Roots.seg
+-- derived from (Loc) and the weak Nullstellensatz for R[X]/(f):
+--
+--   wn   if f has no root, then f is invertible in R[X]   (SAG 2.2.2 with
+--        SQC, for A = R[X]/(f): Spec A = empty gives A = 0)
+--
+-- inv-nz is wn for the constant polynomial x (SAG 2.2.3(a), up to double negation).  root uses
+-- that f with a unit top coefficient and degree >= 1 is not invertible:
+-- the top coefficient of f g is (top f)(top g), so f g = 1 forces the top
+-- of g to vanish, and induction on the length of g ends with 1 = 0.
+-- What is NOT formalised: SQC for general finitely presented algebras,
+-- and the interpretation of R and the axioms in a model.
+
+level a ;
+open Ring[a] ;
+open Poly[a] ;
+open Roots[a] ;
+open Group[a] ;
+
+record Local (Rg : CRing) {
+  one-nz : Not (Id Rg.R Rg.o Rg.z) ;
+  inv-sum (x y : Rg.R) : RL[Rg].unit (Rg.add x y)
+                         -> Plus (RL[Rg].unit x) (RL[Rg].unit y) ;
+} ;
+
+module MulR (Rg : CRing) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+
+  addP : P -> P -> P = split {
+    nil -> \ q -> q ;
+    cons x p | r -> split {
+      nil -> cons x p ;
+      cons y q -> cons (add x y) (r q) } } ;
+
+  coef-addP : (p q : P) -> (k : Nat) -> Id R (coef (addP p q) k) (add (coef p k) (coef q k)) = split {
+    nil -> \ q k -> sym (zl (coef q k)) ;
+    cons x p | r -> split {
+      nil -> \ k -> sym (addZ (coef (cons x p) k)) ;
+      cons y q -> split { zero -> refl (add x y) ; suc k -> r q k } } } ;
+
+  scal (b : R) : P -> P = split {
+    nil -> nil ;
+    cons x p | r -> cons (mul b x) r } ;
+
+  coef-scal (b : R) : (p : P) -> (k : Nat) -> Id R (coef (scal b p) k) (mul b (coef p k)) = split {
+    nil -> \ k -> sym (mul-zero b) ;
+    cons x p | r -> split { zero -> refl (mul b x) ; suc k -> r k } } ;
+
+  -- f (b + X g) = b f + X (f g)
+  pmul (f : P) : P -> P = split {
+    nil -> nil ;
+    cons b g | r -> addP (scal b f) (cons z r) } ;
+
+  coef0-pmul (f : P) : (g : P) -> Id R (coef (pmul f g) zero) (mul (coef f zero) (coef g zero)) = split {
+    nil -> sym (mul-zero (coef f zero)) ;
+    cons b g -> calc R {
+      coef (pmul f (cons b g)) zero
+        =< coef-addP (scal b f) (cons z (pmul f g)) zero > add (coef (scal b f) zero) z
+        =< addZ (coef (scal b f) zero) > coef (scal b f) zero
+        =< coef-scal b f zero > mul b (coef f zero)
+        =< mulC b (coef f zero) > mul (coef f zero) b } } ;
+
+  consz-peq (p q : P) (h : peq p q) : peq (cons z p) (cons z q) =
+    split { zero -> refl z ; suc k -> h k } ;
+
+  cz : (k : Nat) -> Id R (coef (cons z nil) k) z = split { zero -> refl z ; suc k -> refl z } ;
+
+  -- a zero top coefficient of g can be dropped in f g
+  pinitS (f : P) (b : R) : (g : P) -> (Id R (lastD g) z -> peq (pmul f g) (pmul f (initL g)))
+    -> Id R (lastH b g (lastD g)) z -> peq (pmul f (cons b g)) (pmul f (initH b g (initL g))) = split {
+    nil -> \ r h k -> calc R {
+      coef (pmul f (cons b nil)) k
+        =< coef-addP (scal b f) (cons z nil) k > add (coef (scal b f) k) (coef (cons z nil) k)
+        =< ap (add (coef (scal b f) k)) (cz k) > add (coef (scal b f) k) z
+        =< addZ (coef (scal b f) k) > coef (scal b f) k
+        =< coef-scal b f k > mul b (coef f k)
+        =< ap (\ t -> mul t (coef f k)) h > mul z (coef f k)
+        =< zero-mul (coef f k) > z } ;
+    cons d g -> \ r h k ->
+      trans (coef-addP (scal b f) (cons z (pmul f (cons d g))) k)
+        (trans (ap (add (coef (scal b f) k))
+                   (consz-peq (pmul f (cons d g)) (pmul f (initL (cons d g))) (r h) k))
+               (sym (coef-addP (scal b f) (cons z (pmul f (initL (cons d g)))) k))) } ;
+
+  pmul-init (f : P) : (g : P) -> Id R (lastD g) z -> peq (pmul f g) (pmul f (initL g)) = split {
+    nil -> \ h k -> refl z ;
+    cons b g | r -> pinitS f b g r } ;
+
+  -- coefficients beyond the length vanish
+  coef-beyond : (f : P) -> (j : Nat) -> Id R (coef f (plus (plen f) j)) z = split {
+    nil -> \ j -> refl z ;
+    cons c f | r -> r } ;
+
+  topS (c : R) : (f : P) -> ((N : Nat) -> Id Nat (plen f) (suc N) -> Id R (coef f N) (lastD f))
+    -> (N : Nat) -> Id Nat (suc (plen f)) (suc N) -> Id R (coef (cons c f) N) (lastH c f (lastD f)) = split {
+    nil -> \ r -> split {
+      zero -> \ e -> refl c ;
+      suc N -> \ e -> efq (zero-suc N (suc-inj e)) } ;
+    cons d g -> \ r -> split {
+      zero -> \ e -> efq (suc-zero (plen g) (suc-inj e)) ;
+      suc N -> \ e -> r N (suc-inj e) } } ;
+
+  -- the top coefficient is the last one
+  coef-top : (f : P) -> (N : Nat) -> Id Nat (plen f) (suc N) -> Id R (coef f N) (lastD f) = split {
+    nil -> \ N e -> efq (zero-suc N e) ;
+    cons c f | r -> topS c f r } ;
+} ;
+
+-- f of length n + 2 with a unit top coefficient
+module TopR (Rg : CRing) (f : PolyR[Rg].P) (n : Nat)
+  (ef : Id Nat (PolyR[Rg].plen f) (suc (suc n))) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+  open MulR[Rg] ;
+
+  N : Nat = suc n ;
+
+  -- f_(m' + N + 1) = 0
+  beyond (m : Nat) : Id R (coef f (suc (plus m N))) z =
+    trans (ap (coef f) (trans (ap (\ k -> suc k) (plus-comm m N))
+                              (ap (\ t -> plus t m) (sym ef))))
+          (coef-beyond f m) ;
+
+  Top (g : P) : U a = (m : Nat) -> Id Nat (plen g) (suc m)
+    -> Id R (coef (pmul f g) (plus m N)) (mul (lastD f) (lastD g)) ;
+
+  topMulS (b : R) : (g : P) -> Top g -> (m : Nat) -> Id Nat (suc (plen g)) (suc m)
+    -> Id R (coef (pmul f (cons b g)) (plus m N)) (mul (lastD f) (lastH b g (lastD g))) = split {
+    nil -> \ r -> split {
+      zero -> \ e -> calc R {
+        coef (pmul f (cons b nil)) N
+          =< coef-addP (scal b f) (cons z nil) N > add (coef (scal b f) N) z
+          =< addZ (coef (scal b f) N) > coef (scal b f) N
+          =< coef-scal b f N > mul b (coef f N)
+          =< mulC b (coef f N) > mul (coef f N) b
+          =< ap (\ t -> mul t b) (coef-top f N ef) > mul (lastD f) b } ;
+      suc m -> \ e -> efq (zero-suc m (suc-inj e)) } ;
+    cons d g -> \ r -> split {
+      zero -> \ e -> efq (suc-zero (plen g) (suc-inj e)) ;
+      suc m -> \ e -> calc R {
+        coef (pmul f (cons b (cons d g))) (suc (plus m N))
+          =< coef-addP (scal b f) (cons z (pmul f (cons d g))) (suc (plus m N))
+          > add (coef (scal b f) (suc (plus m N))) (coef (pmul f (cons d g)) (plus m N))
+          =< ap (\ t -> add t (coef (pmul f (cons d g)) (plus m N)))
+                (trans (coef-scal b f (suc (plus m N)))
+                       (trans (ap (mul b) (beyond m)) (mul-zero b)))
+          > add z (coef (pmul f (cons d g)) (plus m N))
+          =< zl (coef (pmul f (cons d g)) (plus m N)) > coef (pmul f (cons d g)) (plus m N)
+          =< r m (suc-inj e) > mul (lastD f) (lastD (cons d g)) } } } ;
+
+  top-pmul : (g : P) -> Top g = split {
+    nil -> \ m e -> efq (zero-suc m e) ;
+    cons b g | r -> topMulS b g r } ;
+
+  NI (m : Nat) : U a = (g : P) -> Id Nat (plen g) m -> Not (peq (pmul f g) (cons o nil)) ;
+
+  -- f is not invertible: induction on the length of g
+  noninv (u : unit (lastD f)) (one-nz : Not (Id R o z)) : (m : Nat) -> NI m = split {
+    zero -> \ g e h -> one-nz (calc R {
+      o =< sym (h zero) > coef (pmul f g) zero
+        =< coef0-pmul f g > mul (coef f zero) (coef g zero)
+        =< ap (mul (coef f zero)) (len0 g e zero) > mul (coef f zero) z
+        =< mul-zero (coef f zero) > z }) ;
+    suc m | r -> \ g e h ->
+      r (initL g) (trans (init-len g) (ap pred e))
+        (\ k -> trans (sym (pmul-init f g
+                   (unit-reg (lastD f) (lastD g) u
+                     (calc R {
+                       mul (lastD f) (lastD g)
+                         =< sym (top-pmul g m e) > coef (pmul f g) (plus m N)
+                         =< h (plus m N) > coef (cons o nil) (plus m N)
+                         =< ap (coef (cons o nil)) (plus-suc m n) > z }))
+                   k))
+                (h k)) } ;
+} ;
+
+-- Lemma 2.2.4 from (Loc) and the weak Nullstellensatz for R[X]/(f).
+-- wn gives an inverse only up to double negation: a merely existing
+-- inverse (||-||, as quotient reasoning provides) implies it, and the
+-- proof below only eliminates it into double negations.
+module SAG (Rg : CRing) (loc : Local[Rg])
+  (wn : (f : PolyR[Rg].P) -> Not ((x : Rg.R) * Id Rg.R (PolyR[Rg].ev f x) Rg.z)
+        -> NN ((g : PolyR[Rg].P) * PolyR[Rg].peq (MulR[Rg].pmul f g) (cons Rg.o nil))) {
+  open Rg ;
+  open RL[Rg] ;
+  open PolyR[Rg] ;
+  open MulR[Rg] ;
+
+  -- SAG 2.2.3(a): the constant x has no root, so it is not not invertible
+  noroot (x : R) (hn : Not (Id R x z)) : Not ((y : R) * Id R (ev (cons x nil) y) z) =
+    \ w -> hn (trans (sym (add-mulzero x w.1)) w.2) ;
+  inv-nz (x : R) (hn : Not (Id R x z)) : NN (unit x) =
+    nnmap (\ w -> (coef w.1 zero, trans (sym (coef0-pmul (cons x nil) w.1)) (w.2 zero)))
+          (wn (cons x nil) (noroot x hn)) ;
+
+  root (f : P) (n : Nat) (e : Id Nat (plen f) (suc (suc n))) (u : unit (lastD f))
+    : NN ((x : R) * Id R (ev f x) z) =
+    \ nr -> wn f nr (\ w -> TopR[Rg, f, n, e].noninv u loc.one-nz (plen w.1) w.1
+                               (refl (plen w.1)) w.2) ;
+
+  open RootsR[Rg, inv-nz, root] ;
+
+  open GroupR[Rg] ;
+
+  -- the paper's statement: f = 0, or f = al (X - x1)^e1 .. (X - xn)^en with
+  -- al a unit, ei >= 1 and the xi pairwise distinct
+  Fact2 (f : P) : U a =
+    Plus (peq f nil)
+         ((al : R) * (u : unit al) * (l : Ms) * (d : Distinct l) * peq f (E l (cons al nil))) ;
+
+  regroup (f : P) : Fact f -> NN (Fact2 f) = split {
+    inl e -> ret (inl e) ;
+    inr w -> nnmap (\ v -> inr (w.1, w.2.1, v.1, v.2.1,
+                              peq-trans f (prodL w.1 w.2.2.1) (E v.1 (cons w.1 nil))
+                                w.2.2.2 (v.2.2 w.1)))
+                   (group w.2.2.1) } ;
+
+  lemma-2-2-4-full (f : P) : NN (Fact2 f) = bind (lemma-2-2-4 f) (regroup f) ;
+} ;

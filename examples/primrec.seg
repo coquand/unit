@@ -1,0 +1,113 @@
+-- primrec.seg: recursion only by eliminators (PRIMREC.md), the first tests.
+
+level a ;
+data Empty = ;
+data N = zero | suc (n : N) ;
+one : N = suc zero ;
+two : N = suc one ;
+three : N = suc two ;
+four : N = suc three ;
+five : N = suc four ;
+
+------------------------------------------------------------------------
+-- computation
+
+plus : N -> N -> N = split {
+  zero -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+#conv plus two one = three ;
+
+-- the outer result r : N -> N in the inner split
+skipN : N -> N -> N = split {
+  zero -> \ n -> suc n ;
+  suc k | r -> split { zero -> zero ; suc n -> suc (r n) } } ;
+#conv skipN one two = three ;
+
+-- ack m (ack (suc m) n): the inner call is the inner result s
+ack : N -> N -> N = split {
+  zero -> \ n -> suc n ;
+  suc m | r -> split { zero -> r one ; suc n | s -> r s } } ;
+#conv ack one one = three ;
+#conv ack two one = five ;
+
+-- a dependent motive: r : Id N (plus m zero) m
+apS (x y : N) (p : Id N x y) : Id N (suc x) (suc y) =
+  idJ N x (\ z q -> Id N (suc x) (suc z)) (refl (suc x)) y p ;
+plus-zero : (n : N) -> Id N (plus n zero) n = split {
+  zero -> refl zero ;
+  suc m | r -> apS (plus m zero) m r } ;
+
+-- a helper declared first, taking the recursive result
+dblH (m : N) (ih : N) : N = suc (suc ih) ;
+dbl : N -> N = split { zero -> zero ; suc m | r -> dblH m r } ;
+#conv dbl two = four ;
+
+-- a W-type: the result for f : A -> W is r : (a : A) -> P (f a)
+data W : U a+ = sup (A : U a) (f : A -> W) ;
+noW : Empty -> W = split { } ;
+w0 : W = sup Empty noW ;
+w1 : W = sup N (\ n -> w0) ;
+copy : W -> W = split { sup A f | r -> sup A r } ;
+depth : W -> (N -> N) -> N = split { sup A f | r -> \ g -> suc zero } ;
+-- the escaped result reads back as the split applied: \ y -> copy (f y)
+#normal copy w1 ;
+#conv copy w1 = sup N (\ n -> copy w0) ;
+
+------------------------------------------------------------------------
+-- the conversion fallback (counted): the same split, two environments
+-- that differ in an unused variable, a nested split in the branch
+
+module Mk (u : N) {
+  ackM : N -> N -> N = split {
+    zero -> \ n -> suc n ;
+    suc m | r -> split { zero -> r one ; suc n | s -> r s } } ;
+} ;
+#conv Mk[zero].ackM = Mk[one].ackM ;
+module Mk2 (u : N) {
+  g : N -> N = split { zero -> u ; suc m | r -> r } ;
+} ;
+#fails { #conv Mk2[zero].g = Mk2[one].g ; } ;
+
+------------------------------------------------------------------------
+-- locks: they act when a name is unfolded
+
+dbl2 : Id N (dbl two) four = refl four ;
+copy1 : Id W (copy w1) (sup N (\ n -> copy w0)) = refl (copy w1) ;
+cw1 : W = copy w1 ;                -- defined before the lock
+opaque dbl ;
+opaque copy ;
+#fails { dbl3 : Id N (dbl two) four = refl four ; } ;
+#fails { copy2 : Id W (copy w1) (sup N (\ n -> copy w0)) = refl (copy w1) ; } ;
+-- values are computed when used: cw1 unfolds to copy w1, which is locked
+#fails { copy3 : Id W cw1 (sup N (\ n -> copy w0)) = refl cw1 ; } ;
+-- the lock is on the name: an eliminator not reached through copy computes
+copyL : W -> W = split { sup A f | r -> sup A r } ;
+copy4 : Id W (copyL w1) (sup N (\ n -> copyL w0)) = refl (copyL w1) ;
+
+------------------------------------------------------------------------
+-- rejected
+
+-- no recursion by name, no forward reference (sequential scope)
+#fails { bad : N -> N = \ n -> bad n ; } ;
+#fails { f1 : N = f2 ; f2 : N = zero ; } ;
+#fails { data T = c (x : L) ; L : U a = N ; } ;
+-- a data type sees itself in its fields only; a record never sees itself
+#fails { data DP (x : DP) : U a = cp ; } ;
+#fails { data DT : DT = ct ; } ;
+#fails { record RS { v : U a ; d : U a = RS ; } ; } ;
+-- a full list of recursive results: node has two recursive fields
+data Tree = leaf | node (l r : Tree) ;
+#fails { size : Tree -> N = split { leaf -> zero ; node l r | rl -> rl } ; } ;
+#fails { pz : N -> N = split { zero | q -> zero ; suc m | r -> r } ; } ;
+-- a branch for a constructor the data type does not have
+#fails { bog : N -> N = split { zero -> zero ; suc m -> m ; bogus x -> x } ; } ;
+#fails { bogE : Empty -> N = split { bogus x -> x } ; } ;
+-- positivity, uniform parameters
+#fails { data D = roll (k : D -> Empty) ; } ;
+#fails { data L (A : U a) : U a = nil | cons (x : A) (xs : L N) ; } ;
+-- the parameter before the split is fixed: r is at the same P
+#fails { mo (P : N -> U a) : (j : N) -> P j -> P zero = split {
+           zero -> \ p -> p ; suc j | r -> \ p -> r p } ; } ;
+-- a record has no recursive results
+record R { v : N ; } ;
+#fails { gR : R -> N = split { R v | q -> v } ; } ;

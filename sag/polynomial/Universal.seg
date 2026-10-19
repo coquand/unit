@@ -1,0 +1,79 @@
+-- The universal property, for every commutative set-ring B:
+-- Hom(A[X],B) ~= Hom(A,B) * B.
+-- The first component is restriction along the constant inclusion;
+-- the second is the image of X.  No geometric axioms are used.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Property (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R) {
+ module AX = PolynomialRing[l].Extension[A,setA] ;
+ module H = RingHom[l] ;
+ module HA = H.Properties[A,B,setB] ;
+ module HX = H.Properties[AX.ring,B,setB] ;
+ Data : U l = H.Hom A B * B.R ;
+ restrict (g : H.Hom AX.ring B) : H.Hom A B = H.compose A AX.ring B g AX.inclusion ;
+ forward (g : H.Hom AX.ring B) : Data = (restrict g,g.1 AX.variable) ;
+ backward (d : Data) : H.Hom AX.ring B = Evaluation[l].Evaluate[A,B,setA,setB,d.1,d.2].extension ;
+ restriction-beta (d : Data) : Id (H.Hom A B) (restrict (backward d)) d.1 =
+   HA.ext (restrict (backward d)) d.1 (Evaluation[l].Evaluate[A,B,setA,setB,d.1,d.2].on-constant) ;
+ variable-beta (d : Data) : Id B.R ((backward d).1 AX.variable) d.2 =
+   Evaluation[l].Evaluate[A,B,setA,setB,d.1,d.2].on-variable ;
+ data-path (d e : Data) (h : Id (H.Hom A B) d.1 e.1) (k : Id B.R d.2 e.2) : Id Data d e =
+   Pr.trans Data d (e.1,d.2) e
+    (Pr.ap (H.Hom A B) Data (\ g -> (g,d.2)) d.1 e.1 h)
+    (Pr.ap B.R Data (\ b -> (e.1,b)) d.2 e.2 k) ;
+ fb (d : Data) : Id Data (forward (backward d)) d =
+   data-path (forward (backward d)) d (restriction-beta d) (variable-beta d) ;
+
+ module Recover (g : H.Hom AX.ring B) {
+  module E = Evaluation[l].Evaluate[A,B,setA,setB,restrict g,g.1 AX.variable] ;
+  raw-unique : (p : Poly[l].PolyR[A].P) -> Id B.R (E.E p) (g.1 (AX.include p)) = split {
+   nil -> sym (H.zero AX.ring B g) ;
+   cons a p | ih -> calc B.R {
+     E.E (cons a p)
+      =< ap (\ b -> B.add (g.1 (AX.constant a)) (B.mul (g.1 AX.variable) b)) ih
+         > B.add (g.1 (AX.constant a)) (B.mul (g.1 AX.variable) (g.1 (AX.include p)))
+      =< ap (B.add (g.1 (AX.constant a))) (sym (g.2.2.2 AX.variable (AX.include p)))
+         > B.add (g.1 (AX.constant a)) (g.1 (AX.mulQ AX.variable (AX.include p)))
+      =< sym (g.2.2.1 (AX.constant a) (AX.mulQ AX.variable (AX.include p)))
+         > g.1 (AX.addQ (AX.constant a) (AX.mulQ AX.variable (AX.include p)))
+      =< ap g.1 (sym (AX.horner a p)) > g.1 (AX.include (cons a p)) } } ;
+  pointwise : (p : AX.Carrier) -> Id B.R (E.evaluate p) (g.1 p) =
+    AX.Q.induction @l (\ p -> Id B.R (E.evaluate p) (g.1 p)) (\ p -> setB _ _)
+      (\ p -> trans (E.D.beta p) (raw-unique p)) ;
+  path : Id (H.Hom AX.ring B) (backward (forward g)) g = HX.ext (backward (forward g)) g pointwise ;
+ } ;
+ bf (g : H.Hom AX.ring B) : Id (H.Hom AX.ring B) (backward (forward g)) g = Recover[g].path ;
+ universal : Pr.Equiv (H.Hom AX.ring B) (H.Hom A B * B.R) =
+   (forward,Pr.qinv _ _ forward backward fb bf) ;
+
+ module Given (f : H.Hom A B) (b : B.R) {
+  extend : H.Hom AX.ring B = backward (f,b) ;
+  on-constants (a : A.R) : Id B.R (extend.1 (AX.constant a)) (f.1 a) =
+    Evaluation[l].Evaluate[A,B,setA,setB,f,b].on-constant a ;
+  on-variable : Id B.R (extend.1 AX.variable) b = variable-beta (f,b) ;
+  restriction : Id (H.Hom A B) (restrict extend) f = restriction-beta (f,b) ;
+  unique (g : H.Hom AX.ring B)
+   (constants : (a : A.R) -> Id B.R (g.1 (AX.constant a)) (f.1 a))
+   (variable : Id B.R (g.1 AX.variable) b) : Id (H.Hom AX.ring B) g extend =
+    trans (sym (bf g))
+      (ap backward (data-path (forward g) (f,b) (HA.ext (restrict g) f constants) variable)) ;
+ } ;
+
+ -- Fix a structure map f:A->B: algebra maps A[X]->B are classified by B.
+ module Over (f : H.Hom A B) {
+  AlgebraHom : U l = (g : H.Hom AX.ring B) * Id (H.Hom A B) (restrict g) f ;
+  at-variable (g : AlgebraHom) : B.R = g.1.1 AX.variable ;
+  extend (b : B.R) : AlgebraHom = (Given[f,b].extend,Given[f,b].restriction) ;
+  eval-extend (b : B.R) : Id B.R (at-variable (extend b)) b = Given[f,b].on-variable ;
+  extends (g : AlgebraHom) (a : A.R) : Id B.R (g.1.1 (AX.constant a)) (f.1 a) =
+    Pr.ap (H.Hom A B) B.R (\ h -> h.1 a) (restrict g.1) f g.2 ;
+  extend-eval (g : AlgebraHom) : Id AlgebraHom (extend (at-variable g)) g =
+    Pr.Sigma-eq (H.Hom AX.ring B) (\ h -> Id (H.Hom A B) (restrict h) f)
+      (extend (at-variable g)).1 g.1 (extend (at-variable g)).2 g.2
+      (sym (Given[f,at-variable g].unique g.1 (extends g) (refl (at-variable g))))
+      (HA.set (restrict g.1) f) ;
+  universal-over : Pr.Equiv AlgebraHom B.R =
+    (at-variable,Pr.qinv AlgebraHom B.R at-variable extend eval-extend extend-eval) ;
+ } ;
+} ;

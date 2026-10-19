@@ -1,0 +1,353 @@
+-- Torsor.seg: SAG Lemma 7.4.2.  Let A be an abelian group and L a type
+-- with ||L||.  An L-cocycle is c : L -> L -> A with c i j + c j k = c i k.
+-- Then
+--        (T : A-torsor) * (L -> T)   is equivalent to   L-cocycles.
+--
+-- phi (T, u) = (i j |-> u i - u j), the a with  a . u j = u i.
+-- psi c      = (T_c, i |-> (k |-> c i k)),
+--              T_c = { v : L -> A | v m = v k + c k m }   (Deligne).
+-- phi (psi c) = c is a computation; psi (phi (T, u)) = (T, u) is the
+-- equivariant bijection  t |-> (k |-> t - u k),  made a path by
+-- univalence (eqind: induction on equivalences).  ||L|| is used where
+-- the goal is a proposition, as in the paper.
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open FunExtUA[l] ;
+module Tr = Truncation[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- propositions and sets
+
+isProp-isContr (X : U l) : isProp (isContr X) = \ c c' ->
+  Sigma-eq X (\ x -> (y : X) -> Id X x y) c.1 c'.1 c.2 c'.2 (pathC X c c.1 c'.1)
+    (FL.isProp-Pi X (\ y -> Id X c'.1 y)
+       (\ y -> prop-to-set X (\ x0 y0 -> pathC X c x0 y0) c'.1 y)) ;
+
+isProp-isSet (X : U l) : isProp (isSet X) = \ s s' ->
+  FL.funext X (\ x -> (y : X) -> isProp (Id X x y)) s s' (\ x ->
+    FL.funext X (\ y -> isProp (Id X x y)) (s x) (s' x) (\ y ->
+      FL.isProp-isProp (Id X x y) (s x y) (s' x y))) ;
+
+-- a subtype of a set is a set
+isSet-sub (X : U l) (Q : X -> U l) (sX : isSet X) (pQ : (x : X) -> isProp (Q x))
+  : isSet ((x : X) * Q x) = \ u v ->
+  retract-prop (Id ((x : X) * Q x) u v)
+    ((p : Id X u.1 v.1) * Id (Q v.1) (subst X Q u.1 v.1 p u.2) v.2)
+    (sPath X Q u v)
+    (\ w -> Sigma-path X Q u.1 v.1 u.2 v.2 w.1 w.2)
+    (rsPath X Q u v)
+    (isProp-Sigma (Id X u.1 v.1) (\ p -> Id (Q v.1) (subst X Q u.1 v.1 p u.2) v.2)
+       (sX u.1 v.1)
+       (\ p -> prop-to-set (Q v.1) (pQ v.1) (subst X Q u.1 v.1 p u.2) v.2)) ;
+
+-- induction on equivalences, from univalence
+eqind (T : U l) (P : (T' : U l) -> Equiv T T' -> U l+) (d : P T (idEquiv T))
+  (T' : U l) (e : Equiv T T') : P T' e =
+  Prelude[l+].subst (Equiv T T') (P T')
+    (Axioms[l].idtoeqv T T' ((univ @l T T').sec e)) e ((univ @l T T').sec-eq e)
+    (idJ (U l) T (\ X q -> P X (Axioms[l].idtoeqv T X q)) d T' ((univ @l T T').sec e)) ;
+
+------------------------------------------------------------------------
+-- abelian groups
+
+record Ab {
+  A : U l ;
+  setA : isSet A ;
+  o : A ;
+  add : A -> A -> A ;
+  inv : A -> A ;
+  assoc (x y w : A) : Id A (add (add x y) w) (add x (add y w)) ;
+  comm (x y : A) : Id A (add x y) (add y x) ;
+  unitr (x : A) : Id A (add x o) x ;
+  invr (x : A) : Id A (add x (inv x)) o ;
+} ;
+
+module AbL (G : Ab) {
+  open G ;
+  unitl (x : A) : Id A (add o x) x = transH (comm o x) (unitr x) ;
+  invl (x : A) : Id A (add (inv x) x) o = transH (comm (inv x) x) (invr x) ;
+
+  -- a + x = y  gives  a = y - x
+  solve (a x y : A) (h : Id A (add a x) y) : Id A a (add y (inv x)) = calc A {
+    a =< symH (unitr a) > add a o
+      =< ap A A (add a) o (add x (inv x)) (symH (invr x)) > add a (add x (inv x))
+      =< symH (assoc a x (inv x)) > add (add a x) (inv x)
+      =< ap A A (\ t -> add t (inv x)) (add a x) y h > add y (inv x) } ;
+
+  -- (w - v) + (v + c) = w + c
+  shift (w v c : A) : Id A (add (add w (inv v)) (add v c)) (add w c) = calc A {
+    add (add w (inv v)) (add v c)
+      =< assoc w (inv v) (add v c) > add w (add (inv v) (add v c))
+      =< ap A A (add w) (add (inv v) (add v c)) (add (add (inv v) v) c)
+            (symH (assoc (inv v) v c)) > add w (add (add (inv v) v) c)
+      =< ap A A (\ t -> add w (add t c)) (add (inv v) v) o (invl v) > add w (add o c)
+      =< ap A A (add w) (add o c) c (unitl c) > add w c } ;
+} ;
+
+------------------------------------------------------------------------
+-- A-torsors
+
+module TorBase (G : Ab) {
+  open G ;
+  open AbL[G] ;
+
+  -- an A-torsor: a set with a free and transitive action, merely inhabited
+  AD (T : U l) (act : A -> T -> T) : U l =
+    (a b : A) (t : T) -> Id T (act (add a b) t) (act a (act b t)) ;
+  ZE (T : U l) (act : A -> T -> T) : U l = (t : T) -> Id T (act o t) t ;
+  FT (T : U l) (act : A -> T -> T) : U l =
+    (t t' : T) -> isContr ((a : A) * Id T (act a t) t') ;
+  Rest3 (T : U l) (act : A -> T -> T) : U l = (ft : FT T act) * Tr.Trunc[T].carrier ;
+  Rest2 (T : U l) (act : A -> T -> T) : U l = (ze : ZE T act) * Rest3 T act ;
+  Rest (T : U l) (act : A -> T -> T) : U l = (ad : AD T act) * Rest2 T act ;
+  Laws (T : U l) (act : A -> T -> T) : U l = (sT : isSet T) * Rest T act ;
+  TorStr (T : U l) : U l = (act : A -> T -> T) * Laws T act ;
+
+  laws-prop (T : U l) (act : A -> T -> T) : isProp (Laws T act) =
+    isProp-Sigma (isSet T) (\ sT -> Rest T act) (isProp-isSet T) (\ sT ->
+    isProp-Sigma (AD T act) (\ x -> Rest2 T act)
+      (FL.isProp-Pi A (\ a -> (b : A) (t : T) -> Id T (act (add a b) t) (act a (act b t))) (\ a ->
+       FL.isProp-Pi A (\ b -> (t : T) -> Id T (act (add a b) t) (act a (act b t))) (\ b ->
+       FL.isProp-Pi T (\ t -> Id T (act (add a b) t) (act a (act b t))) (\ t ->
+         sT (act (add a b) t) (act a (act b t)))))) (\ x ->
+    isProp-Sigma (ZE T act) (\ x' -> Rest3 T act)
+      (FL.isProp-Pi T (\ t -> Id T (act o t) t) (\ t -> sT (act o t) t)) (\ x' ->
+    isProp-Sigma (FT T act) (\ x'' -> Tr.Trunc[T].carrier)
+      (FL.isProp-Pi T (\ t -> (t' : T) -> isContr ((a : A) * Id T (act a t) t')) (\ t ->
+       FL.isProp-Pi T (\ t' -> isContr ((a : A) * Id T (act a t) t')) (\ t' ->
+         isProp-isContr ((a : A) * Id T (act a t) t'))))
+      (\ x'' -> Tr.Trunc[T].proposition)))) ;
+
+  -- the difference t' - t in a torsor: the a with  a . t = t'
+  module D (T : U l) (s : TorStr T) {
+    act : A -> T -> T = s.1 ;
+    ad : AD T act = s.2.2.1 ;
+    ft : FT T act = s.2.2.2.2.1 ;
+    diff (t t' : T) : A = (ft t t').1.1 ;
+    dact (t t' : T) : Id T (act (diff t t') t) t' = (ft t t').1.2 ;
+    uniq (t t' : T) (a : A) (p : Id T (act a t) t') : Id A (diff t t') a =
+      ap ((b : A) * Id T (act b t) t') A (\ w -> w.1) (ft t t').1 (a, p) ((ft t t').2 (a, p)) ;
+  } ;
+
+} ;
+
+------------------------------------------------------------------------
+-- torsors with an L-family of points, and cocycles
+
+module Tors (G : Ab) (L : U l) (hL : Tr.Trunc[L].carrier) {
+  open G ;
+  open AbL[G] ;
+  open TorBase[G] ;
+
+  Left : U l+ = (T : U l) * (s : TorStr T) * (L -> T) ;
+
+  CocP (c : L -> L -> A) : U l = (i j k : L) -> Id A (add (c i j) (c j k)) (c i k) ;
+  Coc : U l = (c : L -> L -> A) * CocP c ;
+
+  coc-prop (c : L -> L -> A) : isProp (CocP c) =
+    FL.isProp-Pi L (\ i -> (j k : L) -> Id A (add (c i j) (c j k)) (c i k)) (\ i ->
+    FL.isProp-Pi L (\ j -> (k : L) -> Id A (add (c i j) (c j k)) (c i k)) (\ j ->
+    FL.isProp-Pi L (\ k -> Id A (add (c i j) (c j k)) (c i k)) (\ k ->
+      setA (add (c i j) (c j k)) (c i k)))) ;
+
+  ----------------------------------------------------------------------
+  -- phi: the cocycle of a torsor with points
+
+  module PhiM (w : Left) {
+    open D[w.1, w.2.1] ;
+    c (i j : L) : A = diff (w.2.2 j) (w.2.2 i) ;
+    coc (i j k : L) : Id A (add (c i j) (c j k)) (c i k) =
+      symH (uniq (w.2.2 k) (w.2.2 i) (add (c i j) (c j k)) (calc w.1 {
+        act (add (c i j) (c j k)) (w.2.2 k)
+          =< ad (c i j) (c j k) (w.2.2 k) > act (c i j) (act (c j k) (w.2.2 k))
+          =< ap w.1 w.1 (act (c i j)) (act (c j k) (w.2.2 k)) (w.2.2 j) (dact (w.2.2 k) (w.2.2 j))
+          > act (c i j) (w.2.2 j)
+          =< dact (w.2.2 j) (w.2.2 i) > w.2.2 i })) ;
+  } ;
+
+  phi (w : Left) : Coc = (PhiM[w].c, PhiM[w].coc) ;
+
+  ----------------------------------------------------------------------
+  -- psi: the torsor T_c of a cocycle
+
+  module PsiM (c : Coc) {
+    Cond (v : L -> A) : U l = (k m : L) -> Id A (v m) (add (v k) (c.1 k m)) ;
+    cond-prop (v : L -> A) : isProp (Cond v) =
+      FL.isProp-Pi L (\ k -> (m : L) -> Id A (v m) (add (v k) (c.1 k m))) (\ k ->
+      FL.isProp-Pi L (\ m -> Id A (v m) (add (v k) (c.1 k m))) (\ m ->
+        setA (v m) (add (v k) (c.1 k m)))) ;
+
+    Tc : U l = (v : L -> A) * Cond v ;
+    tc-set : isSet Tc = isSet-sub (L -> A) Cond (FL.isSet-Pi L (\ k -> A) (\ k -> setA)) cond-prop ;
+    tc-eq (v w : Tc) (h : (k : L) -> Id A (v.1 k) (w.1 k)) : Id Tc v w =
+      Sigma-eq (L -> A) Cond v.1 w.1 v.2 w.2 (FL.funext L (\ k -> A) v.1 w.1 h) (cond-prop w.1) ;
+
+    actc (a : A) (v : Tc) : Tc =
+      (\ k -> add a (v.1 k),
+       \ k m -> transH (ap A A (add a) (v.1 m) (add (v.1 k) (c.1 k m)) (v.2 k m))
+                       (symH (assoc a (v.1 k) (c.1 k m)))) ;
+
+    uc (i : L) : Tc = (\ k -> c.1 i k, \ k m -> symH (c.2 i k m)) ;
+
+    ad-c : AD Tc actc = \ a b v -> tc-eq (actc (add a b) v) (actc a (actc b v))
+      (\ k -> assoc a b (v.1 k)) ;
+    ze-c : ZE Tc actc = \ v -> tc-eq (actc o v) v (\ k -> unitl (v.1 k)) ;
+
+    -- given k0 : L, the difference w - v is w k0 - v k0
+    a0 (k0 : L) (v w : Tc) : A = add (w.1 k0) (inv (v.1 k0)) ;
+    ftk (k0 : L) (v w : Tc) : isContr ((a : A) * Id Tc (actc a v) w) =
+      ((a0 k0 v w, tc-eq (actc (a0 k0 v w) v) w (\ m -> calc A {
+          add (a0 k0 v w) (v.1 m)
+            =< ap A A (add (a0 k0 v w)) (v.1 m) (add (v.1 k0) (c.1 k0 m)) (v.2 k0 m)
+            > add (a0 k0 v w) (add (v.1 k0) (c.1 k0 m))
+            =< shift (w.1 k0) (v.1 k0) (c.1 k0 m) > add (w.1 k0) (c.1 k0 m)
+            =< symH (w.2 k0 m) > w.1 m })),
+       \ y -> Sigma-eq A (\ a -> Id Tc (actc a v) w) (a0 k0 v w) y.1
+                (tc-eq (actc (a0 k0 v w) v) w (\ m -> calc A {
+                   add (a0 k0 v w) (v.1 m)
+                     =< ap A A (add (a0 k0 v w)) (v.1 m) (add (v.1 k0) (c.1 k0 m)) (v.2 k0 m)
+                     > add (a0 k0 v w) (add (v.1 k0) (c.1 k0 m))
+                     =< shift (w.1 k0) (v.1 k0) (c.1 k0 m) > add (w.1 k0) (c.1 k0 m)
+                     =< symH (w.2 k0 m) > w.1 m }))
+                y.2
+                (symH (solve y.1 (v.1 k0) (w.1 k0)
+                         (ap Tc A (\ z -> z.1 k0) (actc y.1 v) w y.2)))
+                (tc-set (actc y.1 v) w)) ;
+
+    ft-c : FT Tc actc = \ v w ->
+      Tr.Trunc[L].induction @l (\ x -> isContr ((a : A) * Id Tc (actc a v) w))
+        (\ x -> isProp-isContr ((a : A) * Id Tc (actc a v) w)) (\ k0 -> ftk k0 v w) hL ;
+
+    inh-c : Tr.Trunc[Tc].carrier =
+      Tr.Trunc[L].induction @l (\ x -> Tr.Trunc[Tc].carrier) (\ x -> Tr.Trunc[Tc].proposition)
+        (\ k -> Tr.Trunc[Tc].inc (uc k)) hL ;
+
+    str : TorStr Tc = (actc, tc-set, ad-c, ze-c, ft-c, inh-c) ;
+    left : Left = (Tc, str, uc) ;
+  } ;
+
+  psi (c : Coc) : Left = PsiM[c].left ;
+
+  ----------------------------------------------------------------------
+  -- phi (psi c) = c
+
+  phipsi (c : Coc) : Id Coc (phi (psi c)) c =
+    Sigma-eq (L -> L -> A) CocP (PhiM[psi c].c) c.1 (PhiM[psi c].coc) c.2
+      (FL.funext L (\ i -> L -> A) (PhiM[psi c].c) c.1 (\ i ->
+        FL.funext L (\ j -> A) (PhiM[psi c].c i) (c.1 i) (\ j ->
+          D[PsiM[c].Tc, PsiM[c].str].uniq (PsiM[c].uc j) (PsiM[c].uc i) (c.1 i j)
+            (PsiM[c].tc-eq (PsiM[c].actc (c.1 i j) (PsiM[c].uc j)) (PsiM[c].uc i)
+               (\ k -> c.2 i j k)))))
+      (coc-prop c.1) ;
+
+  ----------------------------------------------------------------------
+  -- structure identity: an equivariant bijection preserving the points
+  -- gives an identification in Left
+
+  Eqv (T T' : U l) (s : TorStr T) (s' : TorStr T') (u : L -> T) (u' : L -> T')
+    (e : Equiv T T') : U l =
+    (h : (a : A) (t : T) -> Id T' (e.1 (s.1 a t)) (s'.1 a (e.1 t)))
+    * ((i : L) -> Id T' (e.1 (u i)) (u' i)) ;
+
+  SipMot (T : U l) (s : TorStr T) (u : L -> T) (T' : U l) (e : Equiv T T') : U l+ =
+    (s' : TorStr T') (u' : L -> T') -> Eqv T T' s s' u u' e
+    -> Id Left (T, s, u) (T', s', u') ;
+
+  sip-base (T : U l) (s : TorStr T) (u : L -> T) : SipMot T s u T (idEquiv T) = \ s' u' h ->
+    Prelude[l+].trans Left (T, s, u) (T, s', u) (T, s', u')
+      (Prelude[l+].ap (TorStr T) Left (\ x -> (T, x, u)) s s'
+        (Sigma-eq (A -> T -> T) (Laws T) s.1 s'.1 s.2 s'.2
+          (FL.funext A (\ a -> T -> T) s.1 s'.1 (\ a ->
+             FL.funext T (\ t -> T) (s.1 a) (s'.1 a) (\ t -> h.1 a t)))
+          (laws-prop T s'.1)))
+      (Prelude[l+].ap (L -> T) Left (\ y -> (T, s', y)) u u'
+        (FL.funext L (\ i -> T) u u' h.2)) ;
+
+  sip (T : U l) (s : TorStr T) (u : L -> T) (T' : U l) (e : Equiv T T')
+    : SipMot T s u T' e = eqind T (SipMot T s u) (sip-base T s u) T' e ;
+
+  ----------------------------------------------------------------------
+  -- psi (phi (T, u)) = (T, u)
+
+  module Back (w : Left) {
+    open D[w.1, w.2.1] ;
+    T : U l = w.1 ;
+    u : L -> T = w.2.2 ;
+    c (k m : L) : A = PhiM[w].c k m ;
+
+    -- t |-> (k |-> t - u k)
+    e (t : T) : PsiM[phi w].Tc =
+      (\ k -> diff (u k) t,
+       \ k m -> uniq (u m) t (add (diff (u k) t) (c k m)) (calc T {
+         act (add (diff (u k) t) (c k m)) (u m)
+           =< ad (diff (u k) t) (c k m) (u m) > act (diff (u k) t) (act (c k m) (u m))
+           =< ap T T (act (diff (u k) t)) (act (c k m) (u m)) (u k) (dact (u m) (u k))
+           > act (diff (u k) t) (u k)
+           =< dact (u k) t > t })) ;
+
+    e-act (a : A) (t : T) : Id PsiM[phi w].Tc (e (act a t)) (PsiM[phi w].actc a (e t)) =
+      PsiM[phi w].tc-eq (e (act a t)) (PsiM[phi w].actc a (e t)) (\ k ->
+        uniq (u k) (act a t) (add a (diff (u k) t)) (calc T {
+          act (add a (diff (u k) t)) (u k)
+            =< ad a (diff (u k) t) (u k) > act a (act (diff (u k) t) (u k))
+            =< ap T T (act a) (act (diff (u k) t) (u k)) t (dact (u k) t) > act a t })) ;
+
+    e-pt (i : L) : Id PsiM[phi w].Tc (e (u i)) (PsiM[phi w].uc i) =
+      PsiM[phi w].tc-eq (e (u i)) (PsiM[phi w].uc i) (\ k -> refl (diff (u k) (u i))) ;
+
+    -- the fibres of e are contractible; the centre uses a point k0
+    t0 (k0 : L) (y : PsiM[phi w].Tc) : T = act (y.1 k0) (u k0) ;
+
+    fibk (k0 : L) (y : PsiM[phi w].Tc) : isContr ((t : T) * Id PsiM[phi w].Tc (e t) y) =
+      ((t0 k0 y, PsiM[phi w].tc-eq (e (t0 k0 y)) y (\ m ->
+          uniq (u m) (t0 k0 y) (y.1 m) (calc T {
+            act (y.1 m) (u m)
+              =< ap A T (\ b -> act b (u m)) (y.1 m) (add (y.1 k0) (c k0 m)) (y.2 k0 m)
+              > act (add (y.1 k0) (c k0 m)) (u m)
+              =< ad (y.1 k0) (c k0 m) (u m) > act (y.1 k0) (act (c k0 m) (u m))
+              =< ap T T (act (y.1 k0)) (act (c k0 m) (u m)) (u k0) (dact (u m) (u k0))
+              > t0 k0 y }))),
+       \ z -> Sigma-eq T (\ t -> Id PsiM[phi w].Tc (e t) y) (t0 k0 y) z.1
+                (PsiM[phi w].tc-eq (e (t0 k0 y)) y (\ m ->
+                  uniq (u m) (t0 k0 y) (y.1 m) (calc T {
+                    act (y.1 m) (u m)
+                      =< ap A T (\ b -> act b (u m)) (y.1 m) (add (y.1 k0) (c k0 m)) (y.2 k0 m)
+                      > act (add (y.1 k0) (c k0 m)) (u m)
+                      =< ad (y.1 k0) (c k0 m) (u m) > act (y.1 k0) (act (c k0 m) (u m))
+                      =< ap T T (act (y.1 k0)) (act (c k0 m) (u m)) (u k0) (dact (u m) (u k0))
+                      > t0 k0 y })))
+                z.2
+                (calc T {
+                  t0 k0 y
+                    =< ap A T (\ b -> act b (u k0)) (y.1 k0) (diff (u k0) z.1)
+                          (symH (ap PsiM[phi w].Tc A (\ v -> v.1 k0) (e z.1) y z.2))
+                    > act (diff (u k0) z.1) (u k0)
+                    =< dact (u k0) z.1 > z.1 })
+                (PsiM[phi w].tc-set (e z.1) y)) ;
+
+    fib (y : PsiM[phi w].Tc) : isContr ((t : T) * Id PsiM[phi w].Tc (e t) y) =
+      Tr.Trunc[L].induction @l (\ x -> isContr ((t : T) * Id PsiM[phi w].Tc (e t) y))
+        (\ x -> isProp-isContr ((t : T) * Id PsiM[phi w].Tc (e t) y)) (\ k0 -> fibk k0 y) hL ;
+
+    eqv : Equiv T PsiM[phi w].Tc =
+      (e, qinv T PsiM[phi w].Tc e (\ y -> (fib y).1.1) (\ y -> (fib y).1.2)
+            (\ t -> ap ((t' : T) * Id PsiM[phi w].Tc (e t') (e t)) T (\ z -> z.1)
+                      (fib (e t)).1 (t, refl (e t)) ((fib (e t)).2 (t, refl (e t))))) ;
+
+    path : Id Left w (psi (phi w)) =
+      sip w.1 w.2.1 w.2.2 PsiM[phi w].Tc eqv PsiM[phi w].str PsiM[phi w].uc (e-act, e-pt) ;
+  } ;
+
+  psiphi (w : Left) : Id Left (psi (phi w)) w =
+    Prelude[l+].sym Left w (psi (phi w)) Back[w].path ;
+
+  ----------------------------------------------------------------------
+  -- SAG Lemma 7.4.2
+
+  lemma-7-4-2 : Prelude[l+].Equiv Left Coc =
+    (phi, Prelude[l+].qinv Left Coc phi psi phipsi psiphi) ;
+} ;

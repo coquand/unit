@@ -1,0 +1,102 @@
+-- Fixed snapshot of bounded/Bounded.seg, reused without changing that work.
+-- Bounded.seg: SAG Theorem 3.3.3, the coefficient argument.  For an
+-- R-algebra A and f : Spec A -> N there merely is N with f x <= N for
+-- all x.  Proof: H (x, t) = t^(f x) is merely the evaluation of one
+-- polynomial p over A (SQC for A[T], surjectivity, with Spec(A[T]) read
+-- as Spec A * R).  At a point x, the coefficients x(p) and T^(f x) have
+-- the same evaluation, hence are equal (SQC for R[T], injectivity).  If
+-- f x >= length p, the coefficient at f x is 0 on one side and 1 on the
+-- other, contradicting 1 /= 0.  No tensor product, no choice of bounds
+-- at each point: the bound is the length of the one list p.
+
+level l ;
+open Ring[l] ;
+open Poly[l] ;
+module Tr = Truncation[l] ;
+
+-- an R-algebra: a ring with a map from R
+record RAlg (Rg : CRing) {
+  A : CRing ;
+  iota : Rg.R -> A.R ;
+} ;
+
+-- order on N, decidable by recursion
+le : Nat -> Nat -> U l = split {
+  zero -> \ n -> Top ;
+  suc m | r -> split { zero -> Empty ; suc n -> r n } } ;
+le-dec : (m n : Nat) -> Plus (le m n) (le n m) = split {
+  zero -> \ n -> inl tt ;
+  suc m | r -> split { zero -> inr tt ; suc n -> r n } } ;
+
+module SpecM (Rg : CRing) (B : RAlg[Rg]) {
+  open Rg ;
+  open PolyR[Rg] ;
+  S : U l = B.A.R ;
+
+  -- Spec A: the R-algebra maps A -> R
+  HA (x : S -> R) : U l = (a b : S) -> Id R (x (B.A.add a b)) (add (x a) (x b)) ;
+  HM (x : S -> R) : U l = (a b : S) -> Id R (x (B.A.mul a b)) (mul (x a) (x b)) ;
+  HI (x : S -> R) : U l = (r : R) -> Id R (x (B.iota r)) r ;
+  IsHom (x : S -> R) : U l = (h1 : Id R (x B.A.o) o) * (ha : HA x) * (hm : HM x) * HI x ;
+  Spec : U l = (x : S -> R) * IsHom x ;
+
+  -- a polynomial over A, its coefficients sent to R
+  slen (p : List S) : Nat = len {S} p ;
+  mapc (g : S -> R) : List S -> P = split {
+    nil -> nil ;
+    cons a p | r -> cons (g a) r } ;
+
+  -- H is the evaluation of p, on Spec A * R
+  Rep (H : Spec -> R -> R) : U l =
+    (p : List S) * ((x : Spec) (t : R) -> Id R (ev (mapc x.1 p) t) (H x t)) ;
+} ;
+
+module BoundedM (Rg : CRing) (B : RAlg[Rg])
+  (one-nz : Not (Id Rg.R Rg.o Rg.z))
+  -- SQC for A[T], surjectivity
+  (sqc-AT : (H : SpecM[Rg,B].Spec -> Rg.R -> Rg.R) -> Tr.Trunc[SpecM[Rg,B].Rep H].carrier)
+  -- SQC for R[T], injectivity
+  (sqc-RT : (p q : PolyR[Rg].P) -> ((t : Rg.R) -> Id Rg.R (PolyR[Rg].ev p t) (PolyR[Rg].ev q t))
+            -> PolyR[Rg].peq p q) {
+  open Rg ;
+  open PolyR[Rg] ;
+  open SpecM[Rg,B] ;
+
+  -- T^n
+  mono : Nat -> P = split {
+    zero -> cons o nil ;
+    suc n | r -> cons z r } ;
+  coef-mono : (n : Nat) -> Id R (coef (mono n) n) o = split {
+    zero -> refl o ;
+    suc n | r -> r } ;
+
+  -- coefficients beyond the length vanish
+  beyond (g : S -> R) : (p : List S) -> (k : Nat) -> le (slen p) k -> Id R (coef (mapc g p) k) z = split {
+    nil -> \ k h -> refl z ;
+    cons a p | r -> split {
+      zero -> \ h -> efq h ;
+      suc k -> \ h -> r k h } } ;
+
+  module ForF (f : Spec -> Nat) {
+    H (x : Spec) (t : R) : R = ev (mono (f x)) t ;
+    Goal : U l = (N : Nat) * ((x : Spec) -> le (f x) N) ;
+
+    boundS (x : Spec) (w : Rep H) : Plus (le (f x) (slen w.1)) (le (slen w.1) (f x))
+      -> le (f x) (slen w.1) = split {
+      inl h -> h ;
+      inr h -> efq (one-nz (calc R {
+        o =< sym (coef-mono (f x)) > coef (mono (f x)) (f x)
+          =< sym (sqc-RT (mapc x.1 w.1) (mono (f x)) (\ t -> w.2 x t) (f x))
+          > coef (mapc x.1 w.1) (f x)
+          =< beyond x.1 w.1 (f x) h > z })) } ;
+
+    bound (w : Rep H) : Goal = (slen w.1, \ x -> boundS x w (le-dec (f x) (slen w.1))) ;
+
+    theorem : Tr.Trunc[Goal].carrier =
+      Tr.Trunc[Rep H].induction @l (\ v -> Tr.Trunc[Goal].carrier)
+        (\ v -> Tr.Trunc[Goal].proposition) (\ w -> Tr.Trunc[Goal].inc (bound w)) (sqc-AT H) ;
+  } ;
+
+  -- SAG Theorem 3.3.3
+  theorem-3-3-3 (f : Spec -> Nat) : Tr.Trunc[ForF[f].Goal].carrier = ForF[f].theorem ;
+} ;

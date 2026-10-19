@@ -1,0 +1,86 @@
+-- recordrules.seg: records versus modules (RECORDS.md §§1-3).
+
+level a ;
+data N = zero | suc (n : N) ;
+
+record Box (A : U a) {
+  value : A ;
+  get : A = value ;              -- a derived member
+  twice (f : A -> A) : A = f (f value) ;
+} ;
+
+-- formation: the head parameters are given, the fields are not
+BN : U a = Box[N] ;
+#fails { noParam : U a = Box ; } ;
+
+-- construction and beta for projections and derived members
+b0 : Box[N] = new Box[N, zero] ;
+#conv b0.value = zero ;
+#conv b0.get = zero ;
+#conv b0.twice (\ n -> suc n) = suc (suc zero) ;
+#fails { getNotField : Box[N] = new Box[N, zero, zero] ; } ;
+
+-- new is the constructor: equal arguments, equal elements
+one : N = suc zero ;
+eqNew : Id (Box[N]) (new Box[N, one]) (new Box[N, suc zero]) = refl (new Box[N, one]) ;
+#fails { neqNew : Id (Box[N]) (new Box[N, one]) (new Box[N, zero]) = refl (new Box[N, one]) ; } ;
+
+-- the eliminator binds the fields only (the parameter is given by the type)
+unbox : Box[N] -> N = split { Box v -> v } ;
+#conv unbox b0 = zero ;
+#fails { withParam : Box[N] -> N = split { Box A0 v -> v } ; } ;
+
+-- eta holds in Id, by the eliminator ...
+etaBox : (b : Box[N]) -> Id (Box[N]) b (new Box[N, b.value]) =
+  split { Box v -> refl (new Box[N, v]) } ;
+-- ... and not by conversion
+#fails { etaDef (b : Box[N]) : Id (Box[N]) b (new Box[N, b.value]) = refl b ; } ;
+
+-- an unlocked derived member unfolds on a neutral element
+getVar (b : Box[N]) : Id N b.get b.value = refl b.value ;
+getApp (S : N -> Box[N]) : Id N (S zero).get (S zero).value = refl (S zero).value ;
+
+-- records are nominal: the same fields, a different record
+record Box' (A : U a) { value : A ; } ;
+#fails { nominal (b : Box[N]) : Box'[N] = b ; } ;
+
+-- a record inside a module, depending on the module's parameter
+module Outer (B : U a) {
+  record In { val : B ; } ;
+  mkIn (x : B) : In = new In[x] ;
+} ;
+inN : Outer[N].In = Outer[N].mkIn zero ;
+#conv inN.val = zero ;
+
+-- a module is not a type ...
+module M (A : U a) { x : A ; y : A = x ; } ;
+#normal M[N, zero].y ;
+#fails { mType : U a = M[N, zero] ; } ;
+#fails { mVar (c : M[N, zero]) : N = zero ; } ;
+#fails { mNew : N = (new M[N, zero]).y ; } ;
+#fails { mMissing : N = M[N].y ; } ;
+
+-- ... and a record is not a module
+#fails { recMember : N = Box[N].get ; } ;
+#fails { module BM = Box[N] ; } ;
+#fails { module T { open Box[N] ; } ; } ;
+
+-- a record body has fields and definitions only
+#fails { record Bad { module Inner { } ; } ; } ;
+
+-- a locked derived member does not unfold, even on new
+opaque Box.get ;
+#fails { getLocked (b : Box[N]) : Id N b.get b.value = refl b.value ; } ;
+#fails { getLockedNew : Id N b0.get zero = refl zero ; } ;
+
+-- a derived member is the definition applied to the ELEMENT, not to its
+-- fields: locked, b.get and (new Box[N, b.value]).get differ, as b and
+-- new Box[N, b.value] do (no eta)
+#fails { lockedEta (b : Box[N]) : Id N b.get (new Box[N, b.value]).get = refl b.get ; } ;
+lockedSame (b : Box[N]) : Id N b.get b.get = refl b.get ;
+lockedApp (S : N -> Box[N]) : Id N (S zero).get (S zero).get = refl (S zero).get ;
+
+-- a derived member written back for a hidden argument: R[ps].d at the element
+symH {A : U a} {x y : A} (p : Id A x y) : Id A y x = idJ A x (\ z q -> Id A z x) (refl x) y p ;
+hidMem (S : N -> Box[N]) (p : Id N (S zero).get zero) : Id N zero (S zero).get = symH p ;
+hidVar (b : Box[N]) (p : Id N b.get zero) : Id N zero b.get = symH p ;

@@ -1,0 +1,80 @@
+-- Finite Laurent coefficients, with a single slot for exponent zero.
+-- (p,n) denotes p(X) + X^{-1} n(X^{-1}); both lists ignore trailing zeros.
+-- The intersection of the nonnegative and nonpositive parts is proved
+-- here by coefficient comparison, not supplied as an assumption.
+level l ;
+open Algebra[l] ;
+module P = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Laurent (ring : CRing) (setR : P.isSet ring.R) {
+ open ring ; open RL[ring] ;
+ module Poly = PolynomialFunctions[l].Polynomials[ring,setR] ;
+ Raw : U l = Poly.Raw * Poly.Raw ;
+ equal (p q : Raw) : U l = Poly.equal p.1 q.1 * Poly.equal p.2 q.2 ;
+ equal-prop (p q : Raw) : P.isProp (equal p q) =
+   P.isProp-Sigma (Poly.equal p.1 q.1) (\ h -> Poly.equal p.2 q.2)
+    (Poly.equal-prop p.1 q.1) (\ h -> Poly.equal-prop p.2 q.2) ;
+ rr (p : Raw) : equal p p = (Poly.rr p.1,Poly.rr p.2) ;
+ rs (p q : Raw) (h : equal p q) : equal q p = (Poly.rs p.1 q.1 h.1,Poly.rs p.2 q.2 h.2) ;
+ rt (p q r : Raw) (h : equal p q) (k : equal q r) : equal p r =
+   (Poly.rt p.1 q.1 r.1 h.1 k.1,Poly.rt p.2 q.2 r.2 h.2 k.2) ;
+ module Q = Quotient[l].Quot[Raw,equal,equal-prop,rr,rs,rt] ;
+ LaurentPolynomial : U l = Q.Q ;
+ Torus : U l = (x : R) * (y : R) * Id R (mul x y) o ;
+ evaluate (p : Raw) (u : Torus) : R = add (Poly.evaluate p.1 u.1) (mul u.2.1 (Poly.evaluate p.2 u.2.1)) ;
+ evaluate-equal (p q : Raw) (h : equal p q) : Id (Torus -> R) (evaluate p) (evaluate q) =
+   F.funext Torus (\ u -> R) _ _ (\ u ->
+    trans (ap (\ t -> add t (mul u.2.1 (Poly.evaluate p.2 u.2.1))) (Poly.evaluate-equal p.1 q.1 h.1 u.1))
+      (ap (\ t -> add (Poly.evaluate q.1 u.1) (mul u.2.1 t)) (Poly.evaluate-equal p.2 q.2 h.2 u.2.1))) ;
+ module Evaluation = Q.Descend[Torus -> R,F.isSet-Pi Torus (\ u -> R) (\ u -> setR),evaluate,evaluate-equal] ;
+ evaluation : LaurentPolynomial -> Torus -> R = Evaluation.map ;
+ -- SQC for R[X,X^{-1}], whose spectrum is xy=1.  No polynomial
+ -- intersection or constancy statement is included in this hypothesis.
+ SQC : U l = P.isEquiv LaurentPolynomial (Torus -> R) evaluation ;
+ positive (p : Poly.Raw) : Raw = (p,nil) ;
+ negative (q : Poly.Raw) : Raw = (Poly.singleton (Poly.coefficient q zero),Poly.tail q) ;
+ evaluate-positive (p : Poly.Raw) (u : Torus) : Id R (evaluate (positive p) u) (Poly.evaluate p u.1) =
+   add-mulzero (Poly.evaluate p u.1) u.2.1 ;
+ evaluate-negative (q : Poly.Raw) (u : Torus) : Id R (evaluate (negative q) u) (Poly.evaluate q u.2.1) =
+   trans (ap (\ t -> add t (mul u.2.1 (Poly.evaluate (Poly.tail q) u.2.1)))
+     (Poly.singleton-eval (Poly.coefficient q zero) u.1)) (sym (Poly.head-tail q u.2.1)) ;
+
+
+ -- Pure Laurent calculation: no SQC is used in this module.
+ module Intersection (p q : Poly.Raw) (agreement : equal (positive p) (negative q)) {
+  positive-vanishes (k : Nat) : Id R (Poly.coefficient p (suc k)) z = agreement.1 (suc k) ;
+  negative-vanishes (k : Nat) : Id R (Poly.coefficient q (suc k)) z =
+    trans (sym (Poly.tail-coefficient q k)) (sym (agreement.2 k)) ;
+  constants-agree : Id R (Poly.coefficient p zero) (Poly.coefficient q zero) = agreement.1 zero ;
+  positive-constant (x : R) : Id R (Poly.evaluate p x) (Poly.evaluate p z) =
+    trans (Poly.constant p positive-vanishes x) (sym (Poly.constant p positive-vanishes z)) ;
+  negative-constant (y : R) : Id R (Poly.evaluate q y) (Poly.evaluate p z) =
+    trans (Poly.constant q negative-vanishes y)
+      (trans (sym constants-agree) (sym (Poly.constant p positive-vanishes z))) ;
+ } ;
+
+ module Comparison (sqc : SQC) {
+  evaluation-injective (a b : LaurentPolynomial) (h : Id (Torus -> R) (evaluation a) (evaluation b)) :
+    Id LaurentPolynomial a b = trans (sym (P.sec-ret _ _ evaluation sqc a))
+      (trans (ap sqc.sec h) (P.sec-ret _ _ evaluation sqc b)) ;
+  Compatible (p q : Poly.Raw) : U l = (u : Torus) -> Id R (Poly.evaluate p u.1) (Poly.evaluate q u.2.1) ;
+  coefficients (p q : Poly.Raw) (h : Compatible p q) : equal (positive p) (negative q) =
+    Q.effective (positive p) (negative q) (evaluation-injective (Q.inc (positive p)) (Q.inc (negative q))
+      (trans (Evaluation.beta (positive p))
+        (trans (F.funext Torus (\ u -> R) _ _ (\ u -> trans (evaluate-positive p u)
+          (trans (h u) (sym (evaluate-negative q u))))) (sym (Evaluation.beta (negative q)))))) ;
+  positive-vanishes (p q : Poly.Raw) (h : Compatible p q) (k : Nat) : Id R (Poly.coefficient p (suc k)) z =
+    Intersection[p,q,coefficients p q h].positive-vanishes k ;
+  negative-vanishes (p q : Poly.Raw) (h : Compatible p q) (k : Nat) : Id R (Poly.coefficient q (suc k)) z =
+    Intersection[p,q,coefficients p q h].negative-vanishes k ;
+  constants-agree (p q : Poly.Raw) (h : Compatible p q) : Id R (Poly.coefficient p zero) (Poly.coefficient q zero) =
+    Intersection[p,q,coefficients p q h].constants-agree ;
+  positive-constant (p q : Poly.Raw) (h : Compatible p q) (x : R) :
+    Id R (Poly.evaluate p x) (Poly.evaluate p z) =
+    Intersection[p,q,coefficients p q h].positive-constant x ;
+  negative-constant (p q : Poly.Raw) (h : Compatible p q) (y : R) :
+    Id R (Poly.evaluate q y) (Poly.evaluate p z) =
+    Intersection[p,q,coefficients p q h].negative-constant y ;
+ } ;
+} ;
