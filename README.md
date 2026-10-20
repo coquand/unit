@@ -13,9 +13,9 @@ a data type is defined by cases on the constructors; in the case of a
 constructor with arguments of the type being defined, the values of the
 function on these arguments are available as extra variables:
 
-    plus : N -> N -> N = split { zero -> \ n -> n ; suc m | r -> \ n -> suc (r n) } ;
+    plus (n : N) : N -> N = split { zero -> n ; suc m | r -> suc r } ;
 
-Here `r` stands for `plus m`. A definition is not in scope in its own body,
+Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Gödel's system T.
 
