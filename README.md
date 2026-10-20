@@ -1,14 +1,23 @@
 # Unit
 
 **Unit** is a small proof checker for a dependent type theory with
-definitions, whose module system is based on the segments of Automath: a
+definitions. Its module system is based on the segments of Automath: a
 module is a list of declarations (units), its parameters are the
 declarations without a body, and an instance only binds the parameters,
-without copying the body. Records are declared apart from modules. Recursion
-is only through the eliminators of data types: a definition is not in scope
-in its own body, and a branch of a split names the recursive results of its
-recursive fields, so all recursion is primitive recursion at higher types, as
-in Gödel's system T.
+without copying the body. Besides modules there are record types, types of
+tuples with named fields. A record type is written like a module, but it is
+a type, and a module is not.
+
+Recursion is only through the eliminators of data types. A function out of
+a data type is defined by cases on the constructors; in the case of a
+constructor with arguments of the type being defined, the values of the
+function on these arguments are available as extra variables:
+
+    plus : N -> N -> N = split { zero -> \ n -> n ; suc m | r -> \ n -> suc (r n) } ;
+
+Here `r` stands for `plus m`. A definition is not in scope in its own body,
+so this is the only form of recursion: primitive recursion at higher types,
+as in Gödel's system T.
 
 This repository contains the checker and two developments written with it:
 
@@ -22,7 +31,7 @@ This repository contains the checker and two developments written with it:
 ## Documents (`doc/`)
 
 - [`prototype.pdf`](doc/prototype.pdf): the checker: its type theory
-  (Π, Σ, records, labelled sums with recursion through eliminators, identity
+  (Π, Σ, records, data types with recursion through eliminators, identity
   type, cumulative universes with level expressions and constraints) and its
   module system.
 - [`model.pdf`](doc/model.pdf): the model: relative contractibility
