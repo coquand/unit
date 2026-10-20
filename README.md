@@ -17,7 +17,7 @@ function on these arguments are available as extra variables:
 
 Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
-as in Gödel's system T.
+as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
 This repository contains the checker and two developments written with it:
 
