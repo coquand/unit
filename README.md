@@ -43,6 +43,11 @@ This repository contains the checker and two developments written with it:
   model at Sattler's operation D: D is a strict monad, DA is fibrant when A
   is, the two maps DA → D²A are homotopic homotopy equivalences, and the
   universal property of η.
+- [`postnikov-limit.pdf`](doc/postnikov-limit.pdf): for a type A of the
+  poset model, DA is the strict limit of the tower of its finite
+  approximations D_N A and, for fibrant A, its homotopy limit (the
+  comparison with the internal limit is a homotopy equivalence); the maps of
+  the tower need not be fibrations.
 - [`sag.pdf`](doc/sag.pdf): what has been formalised of synthetic algebraic
   geometry, and how.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
@@ -52,11 +57,12 @@ The `.tex` sources are next to the PDFs.
 
 ## The model (`core/`)
 
-`core/All.seg` imports the 205 files in dependency order. Function
+`core/All.seg` imports the 245 files in dependency order. Function
 extensionality and univalence of the metatheory are the two parameters of one
 segment, `Model`; `ModelUA` instantiates the whole development from
 univalence alone (function extensionality is derived in `FunExtUA.seg`).
-`core/DESIGN.md` maps the files to the sections of the model.
+`core/DESIGN.md` maps the files to the sections of the model, and of
+`doc/postnikov-limit.pdf` (layer L9b).
 
 ## Synthetic algebraic geometry (`sag/`)
 
@@ -85,7 +91,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
 
     cabal build
     ./run-tests.sh | diff tests.expected -   # the examples in examples/
-    ./segc core all                # check the model (about 55 s)
+    ./segc core all                # check the model (about 70 s)
     ./segc core changed            # after an edit: the changed files and their dependents
     ./segc sag/torsor all          # one of the sag/ developments (each under 1 s)
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE MagicHash #-}
 -- Seg.hs -- a dependent type theory checked in a context of UNIT
 -- declarations, with AUTOMATH/Wang segments as the module system and the
 -- universe system of bcde.pdf (BCDE4: Russell, cumulative, level- and
@@ -49,6 +50,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import GHC.Exts (reallyUnsafePtrEquality#, isTrue#)
 
 type Name = String
 type Id   = String                   -- the unique identity of a declaration
@@ -851,7 +853,13 @@ traceConv u v x
       return x)
   | otherwise = x
 
+-- the same heap object is the same value (a shortcut only: a False answer
+-- falls through to the comparison below)
+same :: a -> a -> Bool
+same x y = isTrue# (reallyUnsafePtrEquality# x y)
+
 eqVal :: Val -> Val -> Bool
+eqVal u v | same u v = True
 eqVal u v = case (u, v) of
   (VU l, VU m)                     -> l == m
   (VGen i, VGen j)                 -> i == j
@@ -894,6 +902,7 @@ eqVals _ _ = False
 -- the dynamic parts of two environments: the same variables with equal
 -- values
 eqEnvs :: Env -> Env -> Bool
+eqEnvs r s | same r s = True
 eqEnvs r s = go (dynOf r) (dynOf s)
  where
   go [] [] = True

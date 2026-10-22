@@ -1,0 +1,306 @@
+-- CCoskHorn.seg (L9): horn filling of the coskeleton (postnikov.tex,
+-- Lemma cosk (3)).  A fibration structure on A gives a horn filling
+-- operation on i*(KA) (CCosk) for every bound N.  A horn h of i*KA at the
+-- vertex k of [m+1]:
+--
+--   m <= N   its faces, read at the identity, are face data of A
+--            (CLocHorn.FD); the poset filler a0 of A (CLocHorn.FaceFill)
+--            gives the filler etaK a0
+--   m > N    every map [n] -> [m+1] with n <= N lies in the horn (pigeon),
+--            so the filler is h read at these maps
+--
+--   pigN      a monotone g on [0 , n] with g n <= M and n < M misses a
+--             value y <= M
+--   inHorn    n < m: every f : [n] -> [m+1] misses a face y /= k
+
+level a l ;
+constraint a <= l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+module W0 = V[l] ;
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+module DBm = CDeltaBase[a] ;
+module DS = DBm.DS ;
+module DHm = CDeltaCl[a] ;
+module VF = CDeltaFact[a] ;
+
+------------------------------------------------------------------------
+-- a monotone sequence on [0 , n] below M, with n < M, misses a value
+
+MissN (n M : Nat) (g : Nat -> Nat) : U a =
+  (y : Nat) * (IsT (leb y M) * ((i : Nat) -> IsT (leb i n) -> IsT (not (eqN (g i) y)))) ;
+
+Mono (g : Nat -> Nat) : U a = (i j : Nat) -> IsT (leb i j) -> IsT (leb (g i) (g j)) ;
+
+-- the top is missed when g n < M
+missTop (n M : Nat) (g : Nat -> Nat) (mono : Mono g) (lt : IsT (ltb (g n) M)) : MissN n M g =
+  (M, (leb-refl M, \ i hi -> ltb-neq (g i) M (leb-ltb-trans (g i) (g n) M (mono i n hi) lt))) ;
+
+-- i <= n+1 splits into i = n+1 or i <= n
+caseSuc (n i : Nat) (hi : IsT (leb i (suc n))) (R : U a) (k1 : Id Nat i (suc n) -> R) (k2 : IsT (leb i n) -> R) : R =
+  aux (eqN i (suc n)) (refl (eqN i (suc n)))
+ where { leb-neq' (x n' : Nat) (h : IsT (leb x (suc n'))) (e : Id Bool (eqN x (suc n')) false) : IsT (leb x n') =
+           leb-neq x (suc n') h (apH not e) ;
+         aux : (b : Bool) -> Id Bool (eqN i (suc n)) b -> R = split {
+           true -> \ e -> k1 (eqN-sound i (suc n) e) ;
+           false -> \ e -> k2 (leb-neq' i n hi e) } ; } ;
+
+-- the step: if g (n+1) = M, the value missed below is missed by g (n+1)
+lowM (n M : Nat) (g : Nat -> Nat) (w : MissN n M g) (ge : IsT (leb (suc M) (g (suc n)))) : MissN (suc n) (suc M) g =
+  (w.1, (leb-step w.1 M w.2.1, \ i hi -> caseSuc n i hi (IsT (not (eqN (g i) w.1)))
+     (\ e -> substH {Nat} (\ j -> IsT (not (eqN (g j) w.1))) {suc n} {i} (symH e)
+               (neq-sym w.1 (g (suc n)) (ltb-neq w.1 (g (suc n)) (leb-ltb-trans w.1 M (g (suc n)) w.2.1 ge))))
+     (\ h -> w.2.2 i h))) ;
+
+highM (n M : Nat) (g : Nat -> Nat) (w : MissN n (suc M) g) (e : Id Nat (g (suc n)) (g n)) : MissN (suc n) (suc M) g =
+  (w.1, (w.2.1, \ i hi -> caseSuc n i hi (IsT (not (eqN (g i) w.1)))
+     (\ ei -> substH {Nat} (\ j -> IsT (not (eqN (g j) w.1))) {suc n} {i} (symH ei)
+                (substH {Nat} (\ v -> IsT (not (eqN v w.1))) {g n} {g (suc n)} (symH e) (w.2.2 n (leb-refl n))))
+     (\ h -> w.2.2 i h))) ;
+
+pigS (n : Nat) (ih : (M : Nat) (g : Nat -> Nat) -> Mono g -> IsT (leb (g n) M) -> IsT (ltb n M) -> MissN n M g)
+  : (M : Nat) (g : Nat -> Nat) -> Mono g -> IsT (leb (g (suc n)) M) -> IsT (ltb (suc n) M) -> MissN (suc n) M g = split {
+  zero -> \ g mono hr hl -> absurd _ (false-true hl) ;
+  suc M -> \ g mono hr hl ->
+    ltb-dec (MissN (suc n) (suc M) g) (g (suc n)) (suc M)
+      (\ lt -> missTop (suc n) (suc M) g mono lt)
+      (\ ge -> ltb-dec (MissN (suc n) (suc M) g) (g n) (suc M)
+         -- g n <= M: the value missed below M; g (n+1) = M+1 is not it
+         (\ lt' -> lowM n M g (ih M g mono lt' hl) ge)
+         -- g n = M+1 = g (n+1)
+         (\ ge' -> highM n M g (ih (suc M) g mono (leb-trans (g n) (g (suc n)) (suc M) (mono n (suc n) (leb-suc n)) hr) (ltb-leb n M hl))
+                     (leb-anti (g (suc n)) (g n)
+                        (leb-trans (g (suc n)) (suc M) (g n) hr ge') (mono n (suc n) (leb-suc n))))) } ;
+
+pigN : (n M : Nat) (g : Nat -> Nat) -> Mono g -> IsT (leb (g n) M) -> IsT (ltb n M) -> MissN n M g = split {
+  zero -> \ M g mono hr hl ->
+    ltb-dec (MissN zero M g) (g zero) M
+      (\ lt -> missTop zero M g mono lt)
+      (\ ge -> (zero, (refl true, \ i hi ->
+         substH {Nat} (\ j -> IsT (not (eqN (g j) zero))) {zero} {i} (symH (leb-zero i hi))
+           (neq-sym zero (g zero) (ltb-neq zero (g zero) (ltb-leb-trans zero M (g zero) hl ge)))))) ;
+  suc n | ih -> \ M g mono hr hl -> pigS n ih M g mono hr hl } ;
+
+------------------------------------------------------------------------
+-- n < m: every map [n] -> [m+1] lies in the horn at k
+
+module InHorn (n m k : Nat) (hk : IsT (leb k (suc m))) (hnm : IsT (ltb n m)) (f : Hom (lin n) (lin (suc m))) {
+  -- the values of f, collapsed at k
+  gk (i : Nat) : Nat = dg m k (VF.valT n (suc m) f i) ;
+
+  mono : Mono gk = \ i j l -> dg-mono m k (VF.valT n (suc m) f i) (VF.valT n (suc m) f j) (VF.valT-mono n (suc m) f i j l) ;
+
+  w : MissN n m gk = pigN n m gk mono (dg-range m k (VF.valT n (suc m) f n) (VF.valT-range n (suc m) f n)) hnm ;
+
+  y : Nat = skip k w.1 ;
+
+  hy : IsT (leb y (suc m)) = skip-range k w.1 m w.2.1 ;
+
+  ky : IsT (not (eqN y k)) = skip-miss k w.1 ;
+
+  -- f misses y: collapsing a value y would give w.1
+  ms : Miss (lin n) m y f = \ s -> aux s.1 s.2
+   where { aux : (t : Tree) (ht : IsT (car (lin n) t)) -> IsT (not (eqN (vnum (app (lin n) (lin (suc m)) f (t, ht)).1) y)) = split {
+             leaf i -> \ ht ->
+               substH {Nat} (\ v -> IsT (not (eqN v y))) {VF.valT n (suc m) f i} {vnum (app (lin n) (lin (suc m)) f (leaf i, ht)).1}
+                 (apH vnum (symH (VF.valT-tree n (suc m) f i ht)))
+                 (eqN-dec (IsT (not (eqN (VF.valT n (suc m) f i) y))) (VF.valT n (suc m) f i) y
+                    (\ e -> absurd _ (false-true (transH (symH (apH not (transH (apH {Nat} {Bool} (\ v -> eqN v w.1)
+                               (transH (apH (dg m k) e) (dg-skip m k w.1 hk w.2.1))) (eqN-refl w.1)))) (w.2.2 i ht))))
+                    (\ ne -> ne)) ;
+             node c d -> \ ht -> absurd _ (false-true ht) } ; } ;
+
+  lands : DS.Lands n (suc m) (DHm.hornS m k) f = DHm.lands-horn n m k y hy ky f ms ;
+} ;
+
+------------------------------------------------------------------------
+-- the horn filling of i*KA
+
+module PB = CPosInst[a].PB ;
+module PP = PB.GPre[l].PS ;
+module SP = CPosBase[a].SP ;
+module RS = CLocRestr[a, l] ;
+module DHn = CDHornFib[a, l] ;
+module LH = CLocHorn[a, l] ;
+module CK = CCosk[a, l] ;
+module AL = Arith[l] ;
+
+module HK (G : PP.PCtx) (A : PP.PTy[G]) (N : Nat) (c : PB.CLine[l].Lines[G, A].Fib) {
+  module KM = CK.KT[G, A, N] ;
+  module TA = PB.GPre[l].TyL[G, A] ;
+  module TK = KM.TK ;
+  module RG = RS.R[G] ;
+  module DH = DHn.DH[RG.iG, RG.T[KM.KA].iA] ;
+  module FF = LH.FaceFill[G, A, c] ;
+
+  ev (n : Nat) (hn : IsT (leb n N)) (w : TK.EI (lin n)) : TA.EI (lin n) = KM.ev n hn w ;
+  ev-pt (n : Nat) (hn : IsT (leb n N)) (w : TK.EI (lin n)) : Id (W0.Ix (G.ob (lin n))) (ev n hn w).1 w.1 = KM.ev-pt n hn w ;
+  ev-nat (j n : Nat) (hj : IsT (leb j N)) (hn : IsT (leb n N)) (p : Hom (lin j) (lin n)) (w : TK.EI (lin n))
+    : Id (TA.EI (lin j)) (TA.E.act (lin j) (lin n) p (ev n hn w)) (ev j hj (TK.E.act (lin j) (lin n) p w)) = KM.ev-nat j n hj hn p w ;
+  rd-ev (W n : Nat) (hn : IsT (leb n N)) (g : Hom (lin n) (lin W)) (w : TK.EI (lin W))
+    : Id (TA.EI (lin n)) (KM.rd (lin W) w.1 w.2.1 n hn g) (ev n hn (TK.E.act (lin n) (lin W) g w)) = KM.rd-ev W n hn g w ;
+
+  ----------------------------------------------------------------------
+  -- m <= N: the faces are face data of A
+
+  module CA (m k : Nat) (hk : IsT (leb k (suc m))) (hm : IsT (leb m N)) (rho : W0.Ix (G.ob (lin (suc m)))) (h : DH.HornData m k rho) {
+    module H = LH.PH[m, k] ;
+    module FDm = LH.FD[G, A, m, k, rho] ;
+    X : Ob = H.X ;
+    hS : DH.PT.Side[suc m, rho] = DH.hornSide m k rho h ;
+
+    Lf (y : Nat) (hy : IsT (leb y (suc m))) (ky : IsT (not (eqN y k))) : DS.Lands m (suc m) (DHm.hornS m k) (dl m y) =
+      DHm.lands-horn m m k y hy ky (dl m y) (H.dlMiss y ky) ;
+
+    wF (y : Nat) (hy : IsT (leb y (suc m))) (ky : IsT (not (eqN y k))) : TK.EI (lin m) = h.1 m (dl m y) (Lf y hy ky) ;
+
+    fE : FDm.FTy = \ y hy ky -> ev m hm (wF y hy ky) ;
+
+    fpt : FDm.PtTy fE = \ y hy ky -> transH (ev-pt m hm (wF y hy ky)) (h.2.1 m (dl m y) (Lf y hy ky)) ;
+
+    -- the horn on two faces, along maps identified in [m+1]
+    glK (j y y' : Nat) (hy : IsT (leb y (suc m))) (hy' : IsT (leb y' (suc m)))
+      (ky : IsT (not (eqN y k))) (ky' : IsT (not (eqN y' k))) (p q : Hom (lin j) (lin m))
+      (e : Id (Hom (lin j) X) (compH (lin j) (lin m) X (dl m y) p) (compH (lin j) (lin m) X (dl m y') q))
+      : Id (TK.EI (lin j)) (TK.E.act (lin j) (lin m) p (wF y hy ky)) (TK.E.act (lin j) (lin m) q (wF y' hy' ky')) =
+      transH (h.2.2 j m p (dl m y) (Lf y hy ky)
+                (DS.lands-comp j m (suc m) (DHm.hornS m k) (dl m y) p (Lf y hy ky)))
+        (transH (DH.PT.pv-hom (suc m) rho hS j (compH (lin j) (lin m) X (dl m y) p) (compH (lin j) (lin m) X (dl m y') q) e
+                   (DS.lands-comp j m (suc m) (DHm.hornS m k) (dl m y) p (Lf y hy ky))
+                   (DS.lands-comp j m (suc m) (DHm.hornS m k) (dl m y') q (Lf y' hy' ky')))
+                (symH (h.2.2 j m q (dl m y') (Lf y' hy' ky')
+                         (DS.lands-comp j m (suc m) (DHm.hornS m k) (dl m y') q (Lf y' hy' ky'))))) ;
+
+    gl : FDm.GlTy fE = \ j y y' hj hy hy' ky ky' p q e ->
+      transH (ev-nat j m (leb-trans j m N hj hm) hm p (wF y hy ky))
+        (transH (apH (ev j (leb-trans j m N hj hm)) (glK j y y' hy hy' ky ky' p q e))
+                (symH (ev-nat j m (leb-trans j m N hj hm) hm q (wF y' hy' ky')))) ;
+
+    module P = LH.HPF[G, A, m, k, hk, rho, fE, fpt, gl] ;
+
+    -- a filler of the poset horn gives a filler of the horn of i*KA
+    module Ex (a0 : TA.T X rho)
+      (fs : (W : Ob) (f : Hom W X) (i : SP.Lands W X H.hornP f) -> Id (TA.EI W) (TA.E.act W X f (rho, a0)) (P.pv W f i))
+      (W : Nat) (f : Hom (lin W) X) (i : DS.Lands W (suc m) (DHm.hornS m k) f) {
+      wit : DHm.HornWit W m k f = DHm.horn-lands W m k f i ;
+      y : Nat = wit.1 ;
+
+      msg (n : Nat) (g : Hom (lin n) (lin W)) : Miss (lin n) m y (compH (lin n) (lin W) X f g) = \ s ->
+        substH (\ t -> IsT (not (eqN (vnum t) y))) (symH (app-compH1 (lin n) (lin W) X f g s)) (wit.2.2.2 (app (lin n) (lin W) g s)) ;
+
+      fgs (n : Nat) (g : Hom (lin n) (lin W)) : Hom (lin n) (lin m) = compH (lin n) X (lin m) (dgH m y) (compH (lin n) (lin W) X f g) ;
+
+      Lfg (n : Nat) (g : Hom (lin n) (lin W)) : DS.Lands n (suc m) (DHm.hornS m k) (compH (lin n) (lin W) X f g) =
+        DS.lands-comp n W (suc m) (DHm.hornS m k) f g i ;
+
+      -- at g : [n] -> [W], both sides read  h(f g)  at the identity
+      lhs (n : Nat) (hn : IsT (leb n N)) (g : Hom (lin n) (lin W))
+        : Id (TA.EI (lin n)) (KM.rd (lin W) (G.act (lin W) X f rho) (KM.ktact (lin W) X f rho (G.act (lin W) X f rho) (refl (G.act (lin W) X f rho)) (KM.etaF X rho a0)).1 n hn g)
+                             (ev n hn (h.1 n (compH (lin n) (lin W) X f g) (Lfg n g))) =
+        calc (TA.EI (lin n)) {
+            KM.rd (lin W) (G.act (lin W) X f rho) (KM.ktact (lin W) X f rho (G.act (lin W) X f rho) (refl (G.act (lin W) X f rho)) (KM.etaF X rho a0)).1 n hn g
+          =< KM.rd-ktact (lin W) X f rho (G.act (lin W) X f rho) (refl (G.act (lin W) X f rho)) (KM.etaF X rho a0) n hn g >
+            TA.E.act (lin n) X (compH (lin n) (lin W) X f g) (rho, a0)
+          =< fs (lin n) (compH (lin n) (lin W) X f g) (H.inHorn y wit.2.1 wit.2.2.1 (lin n) (compH (lin n) (lin W) X f g) (msg n g)) >
+            P.pv (lin n) (compH (lin n) (lin W) X f g) (H.inHorn y wit.2.1 wit.2.2.1 (lin n) (compH (lin n) (lin W) X f g) (msg n g))
+          =< P.pv-any (lin n) (compH (lin n) (lin W) X f g) (H.inHorn y wit.2.1 wit.2.2.1 (lin n) (compH (lin n) (lin W) X f g) (msg n g))
+               y wit.2.1 wit.2.2.1 (msg n g) >
+            TA.E.act (lin n) (lin m) (fgs n g) (ev m hm (wF y wit.2.1 wit.2.2.1))
+          =< ev-nat n m hn hm (fgs n g) (wF y wit.2.1 wit.2.2.1) >
+            ev n hn (TK.E.act (lin n) (lin m) (fgs n g) (wF y wit.2.1 wit.2.2.1))
+          =< apH (ev n hn)
+               (transH (h.2.2 n m (fgs n g) (dl m y) (Lf y wit.2.1 wit.2.2.1)
+                          (DS.lands-comp n m (suc m) (DHm.hornS m k) (dl m y) (fgs n g) (Lf y wit.2.1 wit.2.2.1)))
+                       (DH.PT.pv-hom (suc m) rho hS n (compH (lin n) (lin m) X (dl m y) (fgs n g)) (compH (lin n) (lin W) X f g)
+                          (hom-eq (lin n) X _ _ (pw-factor (lin n) m y (compH (lin n) (lin W) X f g) wit.2.1 (msg n g)))
+                          (DS.lands-comp n m (suc m) (DHm.hornS m k) (dl m y) (fgs n g) (Lf y wit.2.1 wit.2.2.1)) (Lfg n g))) >
+            ev n hn (h.1 n (compH (lin n) (lin W) X f g) (Lfg n g)) } ;
+
+      rhs (n : Nat) (hn : IsT (leb n N)) (g : Hom (lin n) (lin W))
+        : Id (TA.EI (lin n)) (KM.rd (lin W) (h.1 W f i).1 (h.1 W f i).2.1 n hn g) (ev n hn (h.1 n (compH (lin n) (lin W) X f g) (Lfg n g))) =
+        transH (rd-ev W n hn g (h.1 W f i)) (apH (ev n hn) (h.2.2 n W g f i (Lfg n g))) ;
+
+      eq : Id (TK.EI (lin W)) (TK.E.act (lin W) X f (rho, KM.etaF X rho a0)) (h.1 W f i) =
+        KM.EKext (lin W) (TK.E.act (lin W) X f (rho, KM.etaF X rho a0)) (h.1 W f i) (symH (h.2.1 W f i))
+          (\ n hn g -> transH (lhs n hn g) (symH (rhs n hn g))) ;
+    } ;
+
+    ext (a0 : TA.T X rho)
+      (fs : (W : Ob) (f : Hom W X) (i : SP.Lands W X H.hornP f) -> Id (TA.EI W) (TA.E.act W X f (rho, a0)) (P.pv W f i))
+      : DH.Ext m k rho h =
+      (KM.etaF X rho a0, \ W f i -> Ex[a0, fs, W, f, i].eq) ;
+  } ;
+
+  module CA0 (m : Nat) (hm : IsT (leb m N)) (rho : W0.Ix (G.ob (lin (suc m)))) (h : DH.HornData m zero rho) {
+    module C = CA[m, zero, refl true, hm, rho, h] ;
+    module F = FF.K0[m, rho, C.fE, C.fpt, C.gl].F ;
+    ext : DH.Ext m zero rho h = C.ext F.fill F.fill-side ;
+  } ;
+
+  module CA1 (m k : Nat) (hk : IsT (leb (suc k) (suc m))) (hm : IsT (leb m N)) (rho : W0.Ix (G.ob (lin (suc m)))) (h : DH.HornData m (suc k) rho) {
+    module C = CA[m, suc k, hk, hm, rho, h] ;
+    module F = FF.K1[m, k, hk, rho, C.fE, C.fpt, C.gl].F ;
+    ext : DH.Ext m (suc k) rho h = C.ext F.fill F.fill-side ;
+  } ;
+
+  extA (m : Nat) (hm : IsT (leb m N))
+    : (k : Nat) -> IsT (leb k (suc m)) -> (rho : W0.Ix (G.ob (lin (suc m)))) -> (h : DH.HornData m k rho) -> DH.Ext m k rho h = split {
+    zero -> \ hk rho h -> CA0[m, hm, rho, h].ext ;
+    suc k -> \ hk rho h -> CA1[m, k, hk, hm, rho, h].ext } ;
+
+  ----------------------------------------------------------------------
+  -- N < m: the horn contains every map of dimension <= N
+
+  module CB (m k : Nat) (hk : IsT (leb k (suc m))) (hlt : IsT (ltb N m)) (rho : W0.Ix (G.ob (lin (suc m)))) (h : DH.HornData m k rho) {
+    X : Ob = lin (suc m) ;
+    hS : DH.PT.Side[suc m, rho] = DH.hornSide m k rho h ;
+
+    Lb (n : Nat) (hn : IsT (leb n N)) (f : Hom (lin n) X) : DS.Lands n (suc m) (DHm.hornS m k) f =
+      InHorn[n, m, k, hk, leb-ltb-trans n N m hn hlt, f].lands ;
+
+    vb (n : Nat) (hn : IsT (leb n N)) (f : Hom (lin n) X) : TA.EI (lin n) = ev n hn (h.1 n f (Lb n hn f)) ;
+
+    vb-pt (n : Nat) (hn : IsT (leb n N)) (f : Hom (lin n) X) : Id (W0.Ix (G.ob (lin n))) (vb n hn f).1 (G.act (lin n) X f rho) =
+      transH (ev-pt n hn (h.1 n f (Lb n hn f))) (h.2.1 n f (Lb n hn f)) ;
+
+    cF : KM.Fam X rho = \ n hn f -> TA.fromE (lin n) (G.act (lin n) X f rho) (vb n hn f) (vb-pt n hn f) ;
+
+    rd-cF (n : Nat) (hn : IsT (leb n N)) (f : Hom (lin n) X) : Id (TA.EI (lin n)) (KM.rd X rho cF n hn f) (vb n hn f) =
+      TA.fromE-eq (lin n) (G.act (lin n) X f rho) (vb n hn f) (vb-pt n hn f) ;
+
+    -- h at f g, at the identity
+    vb-act (j n : Nat) (hj : IsT (leb j N)) (hn : IsT (leb n N)) (g : Hom (lin j) (lin n)) (f : Hom (lin n) X)
+      : Id (TA.EI (lin j)) (TA.E.act (lin j) (lin n) g (vb n hn f)) (vb j hj (compH (lin j) (lin n) X f g)) =
+      transH (ev-nat j n hj hn g (h.1 n f (Lb n hn f)))
+        (apH (ev j hj) (transH (h.2.2 j n g f (Lb n hn f) (DS.lands-comp j n (suc m) (DHm.hornS m k) f g (Lb n hn f)))
+                               (DH.PT.pv-irr (suc m) rho hS j (compH (lin j) (lin n) X f g)
+                                  (DS.lands-comp j n (suc m) (DHm.hornS m k) f g (Lb n hn f)) (Lb j hj (compH (lin j) (lin n) X f g))))) ;
+
+    cC : KM.Compat X rho cF = \ j n hj hn g f ->
+      transH (apH (TA.E.act (lin j) (lin n) g) (rd-cF n hn f))
+        (transH (vb-act j n hj hn g f) (symH (rd-cF j hj (compH (lin j) (lin n) X f g)))) ;
+
+    cK : KM.KEl X rho = (cF, cC) ;
+
+    eq (W : Nat) (f : Hom (lin W) X) (i : DS.Lands W (suc m) (DHm.hornS m k) f)
+      : Id (TK.EI (lin W)) (TK.E.act (lin W) X f (rho, cK)) (h.1 W f i) =
+      KM.EKext (lin W) (TK.E.act (lin W) X f (rho, cK)) (h.1 W f i) (symH (h.2.1 W f i)) (\ n hn g ->
+        transH (KM.rd-ktact (lin W) X f rho (G.act (lin W) X f rho) (refl (G.act (lin W) X f rho)) cK n hn g)
+         (transH (rd-cF n hn (compH (lin n) (lin W) X f g))
+          (symH (transH (rd-ev W n hn g (h.1 W f i))
+                  (apH (ev n hn) (transH (h.2.2 n W g f i (DS.lands-comp n W (suc m) (DHm.hornS m k) f g i))
+                                         (DH.PT.pv-irr (suc m) rho hS n (compH (lin n) (lin W) X f g)
+                                            (DS.lands-comp n W (suc m) (DHm.hornS m k) f g i) (Lb n hn (compH (lin n) (lin W) X f g))))))))) ;
+
+    ext : DH.Ext m k rho h = (cK, eq) ;
+  } ;
+
+  horn : DH.isFib = \ m k hk rho h ->
+    AL.ltb-dec (DH.Ext m k rho h) N m (\ lt -> CB[m, k, hk, lt, rho, h].ext) (\ ge -> extA m ge k hk rho h) ;
+} ;

@@ -194,6 +194,28 @@ Files per section of model.tex:
 Final statements: Theorem 7 (CThm7.Thm7, any base); ua as a ContrOp and
 FibU.fibU for posets (CPosFinal) and simplicial sets (CDeltaFinal).
 
+## L9b  The tower D_N A and its limits (doc/postnikov-limit.pdf)
+
+- D_N A = D(K_N A): CCosk (K_N A, eta, ev), CCoskHorn (horn filling on the
+  coskeleton), CCoskCart, CLocDN (fibrancy; Lim: the strict limit),
+  CLocDNC (D_N A as families on the simplices of dimension <= N),
+  CLocDNUniv; faces suffice: CFacesGen (CLocD.FacesGen is its instance).
+- Boxes: CBoxEZ (image factorisation, heights), CBoxFill (prisms over a
+  poset; Fv locked after Fp, Fn, Fe, Fs, Fv-prob; Compare), CBoxSq,
+  CPostSq (squares over [m] * [1]), CPostBox (boxes over [m] * Y, and
+  BoxSCmp, BoxZCmp: equal data, equal fillers), CPostCube (the boundary of
+  a square, end data from four pieces, E4Cmp), CPostBdry (sides; BXm).
+- The internal limit L and phi: CPostLimit; L fibrant: CPostFib.
+- psi and phi psi ~ id: CPostMap, CPostK, CPostStep0-3, CPostRec (the
+  recursion; the face relations stated on Drec: DF), CPostLine,
+  CPostSquare, CPostInput, CPostAssemble, CPostExt, CPostSqNat, CPostNat,
+  CPostHomNat, CPostConvergence (RightInverse.homotopy).
+- psi phi ~ id: CPostRead (readings of u, beta, R, Q), CPostInvIn,
+  CPostInv (G, Xi, the cubes; the data at f named CyD, XiD, CuD, locked
+  after their lemmas; drecS), CPostInvAsm (the cylinder), CPostInvNat
+  (naturality by the generic box comparison; LeftInverse.homotopy).
+- D_0 A is the propositional truncation: CTruncProp, CTruncFill.
+
 ## Discipline
 
 Every file < 5 s; lock a construction right after its characterising

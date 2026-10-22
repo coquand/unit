@@ -1,0 +1,588 @@
+-- CPostRec.seg (L9): the data of the construction of psi (postnikov.tex,
+-- Theorem conv), and the recursion over the stages at one simplex.
+--
+-- For an element (u , p) of the internal limit at (X , x) (u N in D_N A,
+-- p N a line of D_N A from u (N+1) to u N, given by its ends pe0 , pe1 at
+-- the chains), the data at f : [m] -> X are a record Rec m f:
+--
+--   psi                   an element of A([m]) over f
+--   Hs N                  the prism H(f , N) : [m] * [1] -> i*A
+--   Ts N                  the square Theta(f , N+1) : [m] * [1]_t * [1]_s -> i*A
+--   H0 , H1 , Ts1 , Tt0 , Tt1 , Ts0   their edges; those for H1 , T.. hold
+--                         for the stages N >= m + 1 only (Hs and Ts are
+--                         filled with copies below that stage)
+--
+-- SRec builds Hs and Ts by recursion on N from step 1 (base, at N = m + 1)
+-- and step 3 (next, from N to N + 1), carrying an extra invariant ExP
+-- (the face relation, at the dimensions m + 1).
+
+level a l ;
+constraint a <= l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+module W0 = V[l] ;
+open Trees[a] ;
+open Arith[a] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+open CSimp[a] ;
+module PB = CPosInst[a].PB ;
+module PP = PB.GPre[l].PS ;
+module PBs = CPosBase[a] ;
+module SP = PBs.SP ;
+module LD = CLocD[a, l] ;
+module CK = CCosk[a, l] ;
+module EZ = CBoxEZ[a] ;
+module PM = CPostMap[a, l] ;
+module BD = CPostBdry[a, l] ;
+module S0m = CPostStep0[a, l] ;
+module S1m = CPostStep1[a, l] ;
+module S3m = CPostStep3[a, l] ;
+
+------------------------------------------------------------------------
+-- case analysis on a boolean, with its equations
+
+bcaseL (T : U l) : (b : Bool) -> (IsT b -> T) -> (Id Bool b false -> T) -> T = split {
+  true -> \ k1 k2 -> k1 (refl true) ;
+  false -> \ k1 k2 -> k2 (refl false) } ;
+
+bcase-t (T : U l) : (b : Bool) (k1 : IsT b -> T) (k2 : Id Bool b false -> T) (h : IsT b) -> Id T (bcaseL T b k1 k2) (k1 h) = split {
+  true -> \ k1 k2 h -> apH k1 (isProp-IsT' true (refl true) h) ;
+  false -> \ k1 k2 h -> absurd _ (false-true h) } ;
+
+bcase-f (T : U l) : (b : Bool) (k1 : IsT b -> T) (k2 : Id Bool b false -> T) (h : Id Bool b false) -> Id T (bcaseL T b k1 k2) (k2 h) = split {
+  true -> \ k1 k2 h -> absurd _ (false-true (symH h)) ;
+  false -> \ k1 k2 h -> apH k2 (isSet-Bool false false (refl false) h) } ;
+
+bcaseD (T : U l) (P : T -> U l) : (b : Bool) (k1 : IsT b -> T) (k2 : Id Bool b false -> T)
+  -> ((h : IsT b) -> P (k1 h)) -> ((h : Id Bool b false) -> P (k2 h)) -> P (bcaseL T b k1 k2) = split {
+  true -> \ k1 k2 p1 p2 -> p1 (refl true) ;
+  false -> \ k1 k2 p1 p2 -> p2 (refl false) } ;
+
+-- a not <= b gives b < a
+nleb : (a1 b : Nat) -> Id Bool (leb a1 b) false -> IsT (ltb b a1) = split {
+  zero -> \ b e -> absurd _ (false-true (symH e)) ;
+  suc a1 | ih -> split {
+    zero -> \ e -> leb-zero' a1 ;
+    suc b -> \ e -> ih b e } }
+ where { leb-zero' (a2 : Nat) : IsT (ltb zero (suc a2)) = refl true ; } ;
+
+-- below the stage m + 1 and not m: also below at N + 1
+below (m N : Nat) (nh : Id Bool (leb (suc m) N) false) (ne : Id Bool (eqN N m) false) : Id Bool (leb (suc m) (suc N)) false =
+  CDeltaNat[a].bcase (Id Bool (leb m N) false) (leb m N)
+    (\ t -> absurd _ (false-true (transH (symH ne) (eqN-of N m (leb-anti N m (nleb (suc m) N nh) t)))))
+    (\ f -> f)
+ where { eqN-of (x y : Nat) (e : Id Nat x y) : IsT (eqN x y) = substH (\ z -> IsT (eqN x z)) e (eqN-refl x) ; } ;
+
+------------------------------------------------------------------------
+
+module L (G : PP.PCtx) (A : PP.PTy[G]) (c : PB.CLine[l].Lines[G, A].Fib) (X : Ob) (x : W0.Ix (G.ob X))
+  (u : (N : Nat) -> LD.DT[G, CK.KT[G, A, N].KA].DEl X x)
+  (p : (N : Nat) -> LD.DT[G, CK.KT[G, A, N].KA].DEl (prodP X Iv) (G.act (prodP X Iv) X (pr1 X Iv) x))
+  (pe0 : (N r : Nat) (hr : IsT (leb r N)) (hr' : IsT (leb r (suc N))) (q : Hom (lin r) X)
+         -> Id (PB.GPre[l].TyL[G, A].EI (lin r))
+               (CK.KT[G, A, N].rd (lin r) (G.act (lin r) (prodP X Iv) (compH (lin r) X (prodP X Iv) (lid X e0) q) (G.act (prodP X Iv) X (pr1 X Iv) x))
+                  ((p N).1 r (compH (lin r) X (prodP X Iv) (lid X e0) q)).1 r hr (idH (lin r)))
+               (CK.KT[G, A, suc N].rd (lin r) (G.act (lin r) X q x) ((u (suc N)).1 r q).1 r hr' (idH (lin r))))
+  (pe1 : (N r : Nat) (hr : IsT (leb r N)) (q : Hom (lin r) X)
+         -> Id (PB.GPre[l].TyL[G, A].EI (lin r))
+               (CK.KT[G, A, N].rd (lin r) (G.act (lin r) (prodP X Iv) (compH (lin r) X (prodP X Iv) (lid X e1) q) (G.act (prodP X Iv) X (pr1 X Iv) x))
+                  ((p N).1 r (compH (lin r) X (prodP X Iv) (lid X e1) q)).1 r hr (idH (lin r)))
+               (CK.KT[G, A, N].rd (lin r) (G.act (lin r) X q x) ((u N).1 r q).1 r hr (idH (lin r)))) {
+  module TA = PB.GPre[l].TyL[G, A] ;
+  module GL = PB.GPre[l].PshL[G] ;
+  XI : Ob = prodP X Iv ;
+  xI : W0.Ix (G.ob XI) = G.act XI X (pr1 X Iv) x ;
+
+  -- the families
+  HFam (m : Nat) : U l = (W : Nat) -> Hom (lin W) (lin m) -> Hom (lin W) Iv -> TA.EI (lin W) ;
+  TFam (m : Nat) : U l = (W : Nat) -> Hom (lin W) (prodP (lin m) Iv) -> Hom (lin W) Iv -> TA.EI (lin W) ;
+
+  xf (m : Nat) (f : Hom (lin m) X) : W0.Ix (G.ob (lin m)) = G.act (lin m) X f x ;
+  xB (m : Nat) (f : Hom (lin m) X) : W0.Ix (G.ob (prodP (lin m) Iv)) = G.act (prodP (lin m) Iv) (lin m) (pr1 (lin m) Iv) (xf m f) ;
+
+  p1g (m W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) : Hom (lin W) (lin m) = compH (lin W) (prodP (lin m) Iv) (lin m) (pr1 (lin m) Iv) g ;
+  p2g (m W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) : Hom (lin W) Iv = compH (lin W) (prodP (lin m) Iv) Iv (pr2 (lin m) Iv) g ;
+
+  -- the readings of u N along f, of p N along f * [1]
+  module DU (m N : Nat) (hN : IsT (leb (suc m) N)) (f : Hom (lin m) X) {
+    module D = PM.DR[G, A, N, X, x, u N, lin m, EZ.HLin[m].ht, m, EZ.HLin[m].hB, EZ.HLin[m].hm, EZ.HLin[m].hi, leb-trans m (suc m) N (leb-suc m) hN, f] ;
+  } ;
+
+  module HPm (m : Nat) {
+    module H = EZ.HProd[lin m, EZ.HLin[m].ht, m, EZ.HLin[m].hB, EZ.HLin[m].hm, EZ.HLin[m].hi,
+                                  Iv, EZ.HLin[suc zero].ht, suc zero, EZ.HLin[suc zero].hB, EZ.HLin[suc zero].hm, EZ.HLin[suc zero].hi] ;
+  } ;
+
+  module DP (m N : Nat) (hN : IsT (leb (suc m) N)) (f : Hom (lin m) X) {
+    module D = PM.DR[G, A, N, XI, xI, p N, prodP (lin m) Iv, HPm[m].H.ht, plus m (suc zero), HPm[m].H.hB, HPm[m].H.hm, HPm[m].H.hi,
+                     BD.leN m N hN, crossH (lin m) X Iv Iv f (idH Iv)] ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- the data at f
+
+  record Rec (m : Nat) (f : Hom (lin m) X) {
+    psi : TA.EI (lin m) ;
+    psi-pt : Id (W0.Ix (G.ob (lin m))) psi.1 (xf m f) ;
+    Hs : (N : Nat) -> HFam m ;
+    Hp : (N W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv) -> Id (W0.Ix (G.ob (lin W))) (Hs N W g j).1 (G.act (lin W) (lin m) g (xf m f)) ;
+    Hn : (N V W : Nat) (h : Hom (lin V) (lin W)) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+         -> Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (Hs N W g j)) (Hs N V (compH (lin V) (lin W) (lin m) g h) (compH (lin V) (lin W) Iv j h)) ;
+    H0 : (N W : Nat) (g : Hom (lin W) (lin m)) -> Id (TA.EI (lin W)) (Hs N W g (constH (lin W) Iv e0)) (TA.E.act (lin W) (lin m) g psi) ;
+    H1 : (N : Nat) (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (lin m))
+         -> Id (TA.EI (lin W)) (Hs N W g (constH (lin W) Iv e1)) (DU[m, N, hN, f].D.val W g) ;
+    Ts : (N : Nat) -> TFam m ;
+    Tp : (N W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+         -> Id (W0.Ix (G.ob (lin W))) (Ts N W g j).1 (G.act (lin W) (prodP (lin m) Iv) g (xB m f)) ;
+    Tn : (N V W : Nat) (h : Hom (lin V) (lin W)) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+         -> Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (Ts N W g j))
+               (Ts N V (compH (lin V) (lin W) (prodP (lin m) Iv) g h) (compH (lin V) (lin W) Iv j h)) ;
+    Ts1 : (N : Nat) (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (prodP (lin m) Iv))
+          -> Id (TA.EI (lin W)) (Ts N W g (constH (lin W) Iv e1)) (Hs N W (p1g m W g) (p2g m W g)) ;
+    Tt0 : (N : Nat) (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+          -> Id (TA.EI (lin W)) (Ts N W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e0)) j) (TA.E.act (lin W) (lin m) g psi) ;
+    Tt1 : (N : Nat) (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+          -> Id (TA.EI (lin W)) (Ts N W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e1)) j) (DP[m, N, hN, f].D.val W (pairH (lin m) Iv (lin W) g j)) ;
+    Ts0 : (N : Nat) (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+          -> Id (TA.EI (lin W)) (Ts N W (pairH (lin m) Iv (lin W) g j) (constH (lin W) Iv e0)) (Hs (suc N) W g j) ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- the recursion over the stages at f
+
+  -- the prism at a stage, with an extra invariant at the stages >= m + 1
+  record HSt (m : Nat) (f : Hom (lin m) X) (psi : TA.EI (lin m))
+    (ExP : (N : Nat) -> IsT (leb (suc m) N) -> HFam m -> U l) (N : Nat) {
+    Hv : HFam m ;
+    Hp : (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv) -> Id (W0.Ix (G.ob (lin W))) (Hv W g j).1 (G.act (lin W) (lin m) g (xf m f)) ;
+    Hn : (V W : Nat) (h : Hom (lin V) (lin W)) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+         -> Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (Hv W g j)) (Hv V (compH (lin V) (lin W) (lin m) g h) (compH (lin V) (lin W) Iv j h)) ;
+    H0 : (W : Nat) (g : Hom (lin W) (lin m)) -> Id (TA.EI (lin W)) (Hv W g (constH (lin W) Iv e0)) (TA.E.act (lin W) (lin m) g psi) ;
+    H1 : (hN : IsT (leb (suc m) N)) (W : Nat) (g : Hom (lin W) (lin m))
+         -> Id (TA.EI (lin W)) (Hv W g (constH (lin W) Iv e1)) (DU[m, N, hN, f].D.val W g) ;
+    ex : (hN : IsT (leb (suc m) N)) -> ExP N hN Hv ;
+  } ;
+
+  -- the step from N to N + 1: the square and the next prism
+  record NPk (m : Nat) (f : Hom (lin m) X) (psi : TA.EI (lin m))
+    (ExP : (N : Nat) -> IsT (leb (suc m) N) -> HFam m -> U l) (N : Nat) (hN : IsT (leb (suc m) N)) (prev : HSt[m, f, psi, ExP, N]) {
+    Tv : TFam m ;
+    Tp : (W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+         -> Id (W0.Ix (G.ob (lin W))) (Tv W g j).1 (G.act (lin W) (prodP (lin m) Iv) g (xB m f)) ;
+    Tn : (V W : Nat) (h : Hom (lin V) (lin W)) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+         -> Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (Tv W g j))
+               (Tv V (compH (lin V) (lin W) (prodP (lin m) Iv) g h) (compH (lin V) (lin W) Iv j h)) ;
+    Ts1 : (W : Nat) (g : Hom (lin W) (prodP (lin m) Iv))
+          -> Id (TA.EI (lin W)) (Tv W g (constH (lin W) Iv e1)) (prev.Hv W (p1g m W g) (p2g m W g)) ;
+    Tt0 : (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+          -> Id (TA.EI (lin W)) (Tv W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e0)) j) (TA.E.act (lin W) (lin m) g psi) ;
+    Tt1 : (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+          -> Id (TA.EI (lin W)) (Tv W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e1)) j) (DP[m, N, hN, f].D.val W (pairH (lin m) Iv (lin W) g j)) ;
+    H' : HSt[m, f, psi, ExP, suc N] ;
+    link : (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+           -> Id (TA.EI (lin W)) (Tv W (pairH (lin m) Iv (lin W) g j) (constH (lin W) Iv e0)) (H'.Hv W g j) ;
+  } ;
+
+  module SRec (m : Nat) (f : Hom (lin m) X) (psi : TA.EI (lin m)) (psi-pt : Id (W0.Ix (G.ob (lin m))) psi.1 (xf m f))
+    (ExP : (N : Nat) -> IsT (leb (suc m) N) -> HFam m -> U l)
+    (base : (N : Nat) -> Id Nat (suc m) N -> HSt[m, f, psi, ExP, N])
+    (next : (N : Nat) (hN : IsT (leb (suc m) N)) (prev : HSt[m, f, psi, ExP, N]) -> NPk[m, f, psi, ExP, N, hN, prev]) {
+    b0 : HSt[m, f, psi, ExP, suc m] = base (suc m) (refl (suc m)) ;
+
+    -- below the stage m + 1: a copy of the first prism
+    junk (N : Nat) (nh : Id Bool (leb (suc m) N) false) : HSt[m, f, psi, ExP, N] =
+      new HSt[m, f, psi, ExP, N, b0.Hv, b0.Hp, b0.Hn, b0.H0,
+              \ hN W g -> absurd _ (false-true (transH (symH nh) hN)),
+              \ hN -> absurd _ (false-true (transH (symH nh) hN))] ;
+
+    trec : (N : Nat) -> HSt[m, f, psi, ExP, N] = split {
+      zero -> junk zero (refl false) ;
+      suc N | ih -> bcaseL (HSt[m, f, psi, ExP, suc N]) (leb (suc m) N)
+                 (\ h -> (next N h ih).H')
+                 (\ nh -> bcaseL (HSt[m, f, psi, ExP, suc N]) (eqN N m)
+                             (\ e -> base (suc N) (apH (\ k -> suc k) (symH (eqN-sound N m e))))
+                             (\ ne -> junk (suc N) (below m N nh ne))) } ;
+
+    tr (N : Nat) (h : IsT (leb (suc m) N)) : NPk[m, f, psi, ExP, N, h, trec N] = next N h (trec N) ;
+
+    -- The value of the initial prism is independent of the presentation
+    -- of its stage and of all equality proofs used to transport it.
+    base-Hv (N : Nat) (e : Id Nat (suc m) N) : Id (HFam m) (base N e).Hv b0.Hv =
+      idJ Nat (suc m) (\ N1 e1 -> Id (HFam m) (base N1 e1).Hv b0.Hv)
+        (refl b0.Hv) N e ;
+
+    -- Before the first step, trec always returns that initial prism.
+    Hs-low (N : Nat) (nh : Id Bool (leb (suc m) N) false) : Id (HFam m) (trec (suc N)).Hv b0.Hv =
+      transH (apH (\ S -> S.Hv)
+        (bcase-f (HSt[m, f, psi, ExP, suc N]) (leb (suc m) N)
+          (\ h -> (next N h (trec N)).H')
+          (\ nh1 -> bcaseL (HSt[m, f, psi, ExP, suc N]) (eqN N m)
+            (\ e -> base (suc N) (apH (\ k -> suc k) (symH (eqN-sound N m e))))
+            (\ ne -> junk (suc N) (below m N nh1 ne))) nh))
+        (bcaseD (HSt[m, f, psi, ExP, suc N]) (\ S -> Id (HFam m) S.Hv b0.Hv) (eqN N m)
+          (\ e -> base (suc N) (apH (\ k -> suc k) (symH (eqN-sound N m e))))
+          (\ ne -> junk (suc N) (below m N nh ne))
+          (\ e -> base-Hv (suc N) (apH (\ k -> suc k) (symH (eqN-sound N m e))))
+          (\ ne -> refl b0.Hv)) ;
+
+    -- the squares; below the stage m + 1, the prism read on [m] * [1]
+    junkT (N : Nat) : TFam m = \ W g j -> (trec N).Hv W (p1g m W g) (p2g m W g) ;
+
+    Ts (N : Nat) : TFam m = bcaseL (TFam m) (leb (suc m) N) (\ h -> (tr N h).Tv) (\ nh -> junkT N) ;
+
+    Tp (N W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+      : Id (W0.Ix (G.ob (lin W))) (Ts N W g j).1 (G.act (lin W) (prodP (lin m) Iv) g (xB m f)) =
+      bcaseD (TFam m) (\ T -> Id (W0.Ix (G.ob (lin W))) (T W g j).1 (G.act (lin W) (prodP (lin m) Iv) g (xB m f)))
+        (leb (suc m) N) (\ h -> (tr N h).Tv) (\ nh -> junkT N)
+        (\ h -> (tr N h).Tp W g j)
+        (\ nh -> transH ((trec N).Hp W (p1g m W g) (p2g m W g)) (symH (GL.actC (lin W) (prodP (lin m) Iv) (lin m) (pr1 (lin m) Iv) g (xf m f)))) ;
+
+    Tn (N V W : Nat) (h : Hom (lin V) (lin W)) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+      : Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (Ts N W g j))
+           (Ts N V (compH (lin V) (lin W) (prodP (lin m) Iv) g h) (compH (lin V) (lin W) Iv j h)) =
+      bcaseD (TFam m) (\ T -> Id (TA.EI (lin V)) (TA.E.act (lin V) (lin W) h (T W g j))
+                                 (T V (compH (lin V) (lin W) (prodP (lin m) Iv) g h) (compH (lin V) (lin W) Iv j h)))
+        (leb (suc m) N) (\ h1 -> (tr N h1).Tv) (\ nh -> junkT N)
+        (\ h1 -> (tr N h1).Tn V W h g j)
+        (\ nh -> transH ((trec N).Hn V W h (p1g m W g) (p2g m W g))
+                    (transH (apH (\ k -> (trec N).Hv V k (compH (lin V) (lin W) Iv (p2g m W g) h))
+                               (comp-assoc (lin V) (lin W) (prodP (lin m) Iv) (lin m) (pr1 (lin m) Iv) g h))
+                            (apH ((trec N).Hv V (p1g m V (compH (lin V) (lin W) (prodP (lin m) Iv) g h)))
+                               (comp-assoc (lin V) (lin W) (prodP (lin m) Iv) Iv (pr2 (lin m) Iv) g h)))) ;
+
+    -- at the stages >= m + 1 the square is that of the step
+    Ts-eq (N : Nat) (h : IsT (leb (suc m) N)) : Id (TFam m) (Ts N) (tr N h).Tv =
+      bcase-t (TFam m) (leb (suc m) N) (\ h1 -> (tr N h1).Tv) (\ nh -> junkT N) h ;
+
+    Hs-eq (N : Nat) (h : IsT (leb (suc m) N)) : Id (HFam m) (trec (suc N)).Hv (tr N h).H'.Hv =
+      apH (\ S -> S.Hv)
+        (bcase-t (HSt[m, f, psi, ExP, suc N]) (leb (suc m) N) (\ h1 -> (next N h1 (trec N)).H')
+           (\ nh -> bcaseL (HSt[m, f, psi, ExP, suc N]) (eqN N m)
+                       (\ e -> base (suc N) (apH (\ k -> suc k) (symH (eqN-sound N m e))))
+                       (\ ne -> junk (suc N) (below m N nh ne))) h) ;
+
+    rec : Rec[m, f] =
+      new Rec[m, f, psi, psi-pt,
+        \ N -> (trec N).Hv, \ N -> (trec N).Hp, \ N -> (trec N).Hn, \ N -> (trec N).H0, \ N hN -> (trec N).H1 hN,
+        Ts, Tp, Tn,
+        \ N hN W g -> transH (apH (\ T -> T W g (constH (lin W) Iv e1)) (Ts-eq N hN)) ((tr N hN).Ts1 W g),
+        \ N hN W g j -> transH (apH (\ T -> T W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e0)) j) (Ts-eq N hN)) ((tr N hN).Tt0 W g j),
+        \ N hN W g j -> transH (apH (\ T -> T W (pairH (lin m) Iv (lin W) g (constH (lin W) Iv e1)) j) (Ts-eq N hN)) ((tr N hN).Tt1 W g j),
+        \ N hN W g j -> transH (apH (\ T -> T W (pairH (lin m) Iv (lin W) g j) (constH (lin W) Iv e0)) (Ts-eq N hN))
+                           (transH ((tr N hN).link W g j) (symH (apH (\ H -> H W g j) (Hs-eq N hN))))] ;
+
+    -- the extra invariant
+    ex (N : Nat) (h : IsT (leb (suc m) N)) : ExP N h (trec N).Hv = (trec N).ex h ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- dimension 0
+
+  module R0 (f : Hom (lin zero) X) {
+    module Sz = S0m.S1z[G, A, c, X, x, u (suc zero), f] ;
+    psi : TA.EI (lin zero) = Sz.O.psi ;
+
+    ExP (N : Nat) (h : IsT (leb (suc zero) N)) (Hv : HFam zero) : U l = Top ;
+
+    -- the first prism, at the stage 1
+    b1 : HSt[zero, f, psi, ExP, suc zero] =
+      new HSt[zero, f, psi, ExP, suc zero, Sz.O.H0v, Sz.O.H0p, Sz.O.H0n, Sz.O.H0-e0,
+        \ hN W g -> transH (Sz.O.H0-e1 W g)
+                      (PM.DRP[G, A, suc zero, X, x, u (suc zero), lin zero, EZ.HLin[zero].ht, zero, EZ.HLin[zero].hB, EZ.HLin[zero].hm, EZ.HLin[zero].hi,
+                              leb-suc zero, leb-trans zero (suc zero) (suc zero) (leb-suc zero) hN, f, W, g].res),
+        \ hN -> tt] ;
+
+    base (N : Nat) (e : Id Nat (suc zero) N) : HSt[zero, f, psi, ExP, N] =
+      idJ Nat (suc zero) (\ N1 e1 -> HSt[zero, f, psi, ExP, N1]) b1 N e ;
+
+    -- step 3 at a point
+    module NX (N : Nat) (hN : IsT (leb (suc zero) N)) (prev : HSt[zero, f, psi, ExP, N]) {
+      module S = S0m.S3z[G, A, c, X, x, f, N, hN, u N, u (suc N), p N, pe0 N, pe1 N, psi, Sz.O.psi-pt,
+                         prev.Hv, prev.Hp, prev.Hn, prev.H0, prev.H1 hN] ;
+      res : NPk[zero, f, psi, ExP, N, hN, prev] =
+        new NPk[zero, f, psi, ExP, N, hN, prev, S.Thf, S.Thf-p, S.Thf-n, S.Thf-s1, S.Thf-t0, S.Thf-t1,
+          new HSt[zero, f, psi, ExP, suc N, S.HH.H', S.HH.H'p, S.HH.H'n, S.HH.H'0,
+            \ hN' W g -> transH (S.HH.H'1 W g)
+                           (PM.DRP[G, A, suc N, X, x, u (suc N), lin zero, EZ.HLin[zero].ht, zero, EZ.HLin[zero].hB, EZ.HLin[zero].hm, EZ.HLin[zero].hi,
+                                   leb-trans zero N (suc N) (leb-trans zero (suc zero) N (leb-suc zero) hN) (leb-suc N),
+                                   leb-trans zero (suc zero) (suc N) (leb-suc zero) hN', f, W, g].res),
+            \ hN' -> tt],
+          \ W g j -> refl (S.Thf W (pairH (lin zero) Iv (lin W) g j) (constH (lin W) Iv e0))] ;
+    } ;
+
+    next (N : Nat) (hN : IsT (leb (suc zero) N)) (prev : HSt[zero, f, psi, ExP, N]) : NPk[zero, f, psi, ExP, N, hN, prev] = NX[N, hN, prev].res ;
+
+    module SR = SRec[zero, f, psi, Sz.O.psi-pt, ExP, base, next] ;
+    rec : Rec[zero, f] = SR.rec ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- from the dimension m to m + 1
+
+  -- two faces of a simplex agree where they meet (the hypotheses FF1 of
+  -- step 1 and FFt of step 3, at the stages N >= m + 1)
+  FFHty (m : Nat) (R : (f : Hom (lin m) X) -> Rec[m, f]) : U l =
+    (N : Nat) (hN : IsT (leb (suc m) N)) (F : Hom (lin (suc m)) X) (y z : Nat) (hy : IsT (leb y (suc m))) (hz : IsT (leb z (suc m)))
+    (lt : IsT (ltb y z)) (W : Nat) (g : Hom (lin W) (lin (suc m))) (msy : Miss (lin W) m y g) (msz : Miss (lin W) m z g) (j : Hom (lin W) Iv)
+    -> Id (TA.EI (lin W)) ((R (compH (lin m) (lin (suc m)) X F (dl m y))).Hs N W (compH (lin W) (lin (suc m)) (lin m) (dgH m y) g) j)
+                          ((R (compH (lin m) (lin (suc m)) X F (dl m z))).Hs N W (compH (lin W) (lin (suc m)) (lin m) (dgH m z) g) j) ;
+
+  FFTty (m : Nat) (R : (f : Hom (lin m) X) -> Rec[m, f]) : U l =
+    (N : Nat) (hN : IsT (leb (suc m) N)) (F : Hom (lin (suc m)) X) (y z : Nat) (hy : IsT (leb y (suc m))) (hz : IsT (leb z (suc m)))
+    (lt : IsT (ltb y z)) (W : Nat) (g : Hom (lin W) (prodP (lin (suc m)) Iv))
+    (msy : Miss (lin W) m y (BD.BG[m, Iv].p1g W g)) (msz : Miss (lin W) m z (BD.BG[m, Iv].p1g W g)) (j : Hom (lin W) Iv)
+    -> Id (TA.EI (lin W)) ((R (compH (lin m) (lin (suc m)) X F (dl m y))).Ts N W (BD.BG[m, Iv].gy y W g) j)
+                          ((R (compH (lin m) (lin (suc m)) X F (dl m z))).Ts N W (BD.BG[m, Iv].gy z W g) j) ;
+
+  module ST (m : Nat) (R : (f : Hom (lin m) X) -> Rec[m, f]) (FFH : FFHty m R) (FFT : FFTty m R) (F : Hom (lin (suc m)) X) {
+    Fd (y : Nat) : Hom (lin m) X = compH (lin m) (lin (suc m)) X F (dl m y) ;
+
+    -- step 1
+    module S1i = S1m.S1[G, A, c, X, x, m, u (suc (suc m)), F,
+      \ y hy -> (R (Fd y)).psi,
+      \ y hy -> (R (Fd y)).Hs (suc (suc m)),
+      \ y hy -> (R (Fd y)).Hp (suc (suc m)),
+      \ y hy -> (R (Fd y)).Hn (suc (suc m)),
+      \ y hy -> (R (Fd y)).H0 (suc (suc m)),
+      \ y hy W g -> transH ((R (Fd y)).H1 (suc (suc m)) (leb-suc m) W g)
+                      (PM.DRP[G, A, suc (suc m), X, x, u (suc (suc m)), lin m, EZ.HLin[m].ht, m, EZ.HLin[m].hB, EZ.HLin[m].hm, EZ.HLin[m].hi,
+                              leb-trans m (suc m) (suc (suc m)) (leb-suc m) (leb-suc m), leb-step m (suc m) (leb-suc m), Fd y, W, g].res),
+      \ y z hy hz lt W g msy msz j -> FFH (suc (suc m)) (leb-suc m) F y z hy hz lt W g msy msz j] ;
+
+    psi : TA.EI (lin (suc m)) = S1i.psi ;
+
+    ExP (N : Nat) (h : IsT (leb (suc (suc m)) N)) (Hv : HFam (suc m)) : U l =
+      (y : Nat) (hy : IsT (leb y (suc m))) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+      -> Id (TA.EI (lin W)) (Hv W (compH (lin W) (lin m) (lin (suc m)) (dl m y) g) j) ((R (Fd y)).Hs N W g j) ;
+
+    b1 : HSt[suc m, F, psi, ExP, suc (suc m)] =
+      new HSt[suc m, F, psi, ExP, suc (suc m), S1i.H0v, S1i.O.H0p, S1i.O.H0n, S1i.O.H0-e0,
+        \ hN W g -> transH (S1i.O.H0-e1 W g)
+                      (PM.DRP[G, A, suc (suc m), X, x, u (suc (suc m)), lin (suc m), EZ.HLin[suc m].ht, suc m, EZ.HLin[suc m].hB, EZ.HLin[suc m].hm, EZ.HLin[suc m].hi,
+                              leb-suc (suc m), leb-trans (suc m) (suc (suc m)) (suc (suc m)) (leb-suc (suc m)) hN, F, W, g].res),
+        \ hN -> S1i.H0-face] ;
+
+    base (N : Nat) (e : Id Nat (suc (suc m)) N) : HSt[suc m, F, psi, ExP, N] =
+      idJ Nat (suc (suc m)) (\ N1 e1 -> HSt[suc m, F, psi, ExP, N1]) b1 N e ;
+
+    -- step 3
+    module NX (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (prev : HSt[suc m, F, psi, ExP, N]) {
+      hNm : IsT (leb (suc m) N) = leb-trans (suc m) (suc (suc m)) N (leb-suc (suc m)) hN ;
+
+      module S = S3m.S3[G, A, c, X, x, m, F, N, hN, u N, u (suc N), p N, pe0 N, pe1 N, psi, S1i.O.psi-pt,
+        prev.Hv, prev.Hp, prev.Hn, prev.H0, prev.H1 hN,
+        \ y hy -> (R (Fd y)).Ts N, \ y hy -> (R (Fd y)).Tp N, \ y hy -> (R (Fd y)).Tn N,
+        \ y hy W g -> transH ((R (Fd y)).Ts1 N hNm W g) (symH (prev.ex hN y hy W (p1g m W g) (p2g m W g))),
+        \ y hy W g j -> transH ((R (Fd y)).Tt0 N hNm W g j)
+                           (transH (apH (TA.E.act (lin W) (lin m) g) (symH (S1i.psi-face y hy)))
+                                   (TA.PE.actC (lin W) (lin m) (lin (suc m)) (dl m y) g psi)),
+        \ y hy W g j -> (R (Fd y)).Tt1 N hNm W g j,
+        \ y z hy hz lt W g msy msz j -> FFT N hNm F y z hy hz lt W g msy msz j] ;
+
+      res : NPk[suc m, F, psi, ExP, N, hN, prev] =
+        new NPk[suc m, F, psi, ExP, N, hN, prev, S.Thf, S.Thf-p, S.Thf-n, S.Thf-s1, S.Thf-t0, S.Thf-t1,
+          new HSt[suc m, F, psi, ExP, suc N, S.H', S.HH.H'p, S.HH.H'n, S.HH.H'0,
+            \ hN' W g -> transH (S.HH.H'1 W g)
+                           (PM.DRP[G, A, suc N, X, x, u (suc N), lin (suc m), EZ.HLin[suc m].ht, suc m, EZ.HLin[suc m].hB, EZ.HLin[suc m].hm, EZ.HLin[suc m].hi,
+                                   leb-trans (suc m) N (suc N) (leb-trans (suc m) (suc (suc m)) N (leb-suc (suc m)) hN) (leb-suc N),
+                                   leb-trans (suc m) (suc (suc m)) (suc N) (leb-suc (suc m)) hN', F, W, g].res),
+            \ hN' y hy W g j -> transH (S.H'-face y hy W g j) ((R (Fd y)).Ts0 N hNm W g j)],
+          \ W g j -> refl (S.Thf W (pairH (lin (suc m)) Iv (lin W) g j) (constH (lin W) Iv e0))] ;
+    } ;
+
+    next (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (prev : HSt[suc m, F, psi, ExP, N]) : NPk[suc m, F, psi, ExP, N, hN, prev] = NX[N, hN, prev].res ;
+
+    module SR = SRec[suc m, F, psi, S1i.O.psi-pt, ExP, base, next] ;
+    rec : Rec[suc m, F] = SR.rec ;
+
+    -- the faces of the data at F are the data at the faces
+    psi-face (y : Nat) (hy : IsT (leb y (suc m))) : Id (TA.EI (lin m)) (TA.E.act (lin m) (lin (suc m)) (dl m y) rec.psi) (R (Fd y)).psi =
+      S1i.psi-face y hy ;
+
+    H-face (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (y : Nat) (hy : IsT (leb y (suc m))) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+      : Id (TA.EI (lin W)) (rec.Hs N W (compH (lin W) (lin m) (lin (suc m)) (dl m y) g) j) ((R (Fd y)).Hs N W g j) =
+      SR.ex N hN y hy W g j ;
+
+    T-face (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (y : Nat) (hy : IsT (leb y (suc m))) (W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+      : Id (TA.EI (lin W)) (rec.Ts N W (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (BD.BG[m, Iv].dY y) g) j) ((R (Fd y)).Ts N W g j) =
+      transH (apH (\ T -> T W (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (BD.BG[m, Iv].dY y) g) j) (SR.Ts-eq N hN))
+             (NX[N, hN, SR.trec N].S.Thf-face y hy W g j) ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- the faces agree, at the next dimension
+
+  -- dimension 0: no map into [1] misses two vertices
+  pt0 (W : Nat) : El (lin W) = (leaf zero, refl true) ;
+
+  no2 (W : Nat) (g : Hom (lin W) (lin (suc zero))) (y z : Nat) (hy : IsT (leb y (suc zero))) (hz : IsT (leb z (suc zero))) (lt : IsT (ltb y z))
+    (msy : Miss (lin W) zero y g) (msz : Miss (lin W) zero z g) : Empty =
+    CDStageF[a, l].two-miss (vnum (app (lin W) (lin (suc zero)) g (pt0 W)).1) y z
+      (vnum-range (suc zero) (app (lin W) (lin (suc zero)) g (pt0 W)).1 (app (lin W) (lin (suc zero)) g (pt0 W)).2) hy hz
+      (msy (pt0 W)) (msz (pt0 W)) (ltb-neq y z lt) ;
+
+  module FF0 (R : (f : Hom (lin zero) X) -> Rec[zero, f]) {
+    ffh : FFHty zero R = \ N hN F y z hy hz lt W g msy msz j -> absurd _ (no2 W g y z hy hz lt msy msz) ;
+    fft : FFTty zero R = \ N hN F y z hy hz lt W g msy msz j -> absurd _ (no2 W (BD.BG[zero, Iv].p1g W g) y z hy hz lt msy msz) ;
+  } ;
+
+  -- dimension m + 1, from the face relations of the step
+  module FFS (m : Nat) (R : (f : Hom (lin m) X) -> Rec[m, f]) (FFH : FFHty m R) (FFT : FFTty m R) {
+    R' (F : Hom (lin (suc m)) X) : Rec[suc m, F] = ST[m, R, FFH, FFT, F].rec ;
+
+    -- the two compositions of faces
+    dd (F' : Hom (lin (suc (suc m))) X) (y z' : Nat) (hyz : IsT (leb y z'))
+      : Id (Hom (lin m) X) (compH (lin m) (lin (suc m)) X (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y)) (dl m z'))
+                           (compH (lin m) (lin (suc m)) X (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) (suc z'))) (dl m y)) =
+      transH (comp-assoc (lin m) (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y) (dl m z'))
+        (transH (apH (compH (lin m) (lin (suc (suc m))) X F') (symH (hom-eq (lin m) (lin (suc (suc m))) _ _ (pw-dl-dl m y z' hyz))))
+                (symH (comp-assoc (lin m) (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) (suc z')) (dl m y)))) ;
+
+    -- two faces y < z' + 1, through the codimension-2 face (CFaceTwo)
+    module FH (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (F' : Hom (lin (suc (suc m))) X) (y : Nat) (hy : IsT (leb y (suc (suc m))))
+      (z' : Nat) (hz : IsT (leb (suc z') (suc (suc m)))) (lt : IsT (ltb y (suc z'))) (W : Nat) (g : Hom (lin W) (lin (suc (suc m))))
+      (msy : Miss (lin W) (suc m) y g) (msz : Miss (lin W) (suc m) (suc z') g) (j : Hom (lin W) Iv) {
+      Fy : Hom (lin (suc m)) X = compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y) ;
+      Fz : Hom (lin (suc m)) X = compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) (suc z')) ;
+      module T = CFaceTwo[a].TW[m, y, z', lt, hy, hz, lin W, g, msy, msz] ;
+
+      res : Id (TA.EI (lin W)) ((R' Fy).Hs N W (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) y) g) j)
+                               ((R' Fz).Hs N W (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) (suc z')) g) j) =
+        calc (TA.EI (lin W)) {
+            (R' Fy).Hs N W T.g' j
+          =< apH (\ k -> (R' Fy).Hs N W k j) (symH (hom-eq (lin W) (lin (suc m)) _ _ (pw-factor (lin W) m z' T.g' hz T.ms'))) >
+            (R' Fy).Hs N W (compH (lin W) (lin m) (lin (suc m)) (dl m z') T.hh) j
+          =< ST[m, R, FFH, FFT, Fy].H-face N hN z' hz W T.hh j >
+            (R (compH (lin m) (lin (suc m)) X Fy (dl m z'))).Hs N W T.hh j
+          =< apH (\ k -> (R k).Hs N W T.hh j) (dd F' y z' lt) >
+            (R (compH (lin m) (lin (suc m)) X Fz (dl m y))).Hs N W T.hh j
+          =< symH (ST[m, R, FFH, FFT, Fz].H-face N hN y (leb-trans y z' (suc m) lt hz) W T.hh j) >
+            (R' Fz).Hs N W (compH (lin W) (lin m) (lin (suc m)) (dl m y) T.hh) j
+          =< apH (\ k -> (R' Fz).Hs N W k j) T.eq-dlh >
+            (R' Fz).Hs N W (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) (suc z')) g) j } ;
+    } ;
+
+    ffhS (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (F' : Hom (lin (suc (suc m))) X) (y : Nat) (hy : IsT (leb y (suc (suc m))))
+      : (z : Nat) (hz : IsT (leb z (suc (suc m)))) (lt : IsT (ltb y z)) (W : Nat) (g : Hom (lin W) (lin (suc (suc m))))
+        (msy : Miss (lin W) (suc m) y g) (msz : Miss (lin W) (suc m) z g) (j : Hom (lin W) Iv)
+      -> Id (TA.EI (lin W)) ((R' (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y))).Hs N W (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) y) g) j)
+                            ((R' (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) z))).Hs N W (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) z) g) j) = split {
+      zero -> \ hz lt -> absurd _ (false-true lt) ;
+      suc z' -> \ hz lt W g msy msz j -> FH[N, hN, F', y, hy, z', hz, lt, W, g, msy, msz, j].res } ;
+
+    ffh : FFHty (suc m) R' = \ N hN F' y z hy hz lt W g msy msz j -> ffhS N hN F' y hy z hz lt W g msy msz j ;
+
+    -- the same for the squares, through d * [1]
+    module FT (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (F' : Hom (lin (suc (suc m))) X) (y : Nat) (hy : IsT (leb y (suc (suc m))))
+      (z' : Nat) (hz : IsT (leb (suc z') (suc (suc m)))) (lt : IsT (ltb y (suc z'))) (W : Nat) (g : Hom (lin W) (prodP (lin (suc (suc m))) Iv))
+      (msy : Miss (lin W) (suc m) y (BD.BG[suc m, Iv].p1g W g)) (msz : Miss (lin W) (suc m) (suc z') (BD.BG[suc m, Iv].p1g W g)) (j : Hom (lin W) Iv) {
+      module BG' = BD.BG[suc m, Iv] ;
+      module BGf = BD.BG[m, Iv] ;
+      Fy : Hom (lin (suc m)) X = compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y) ;
+      Fz : Hom (lin (suc m)) X = compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) (suc z')) ;
+      q : Hom (lin W) (lin (suc (suc m))) = BG'.p1g W g ;
+      t2 : Hom (lin W) Iv = BG'.p2g W g ;
+      module T = CFaceTwo[a].TW[m, y, z', lt, hy, hz, lin W, q, msy, msz] ;
+
+      -- d * [1] after (k , t2)
+      pq (d : Hom (lin m) (lin (suc m))) (k : Hom (lin W) (lin m))
+        : Id (Hom (lin W) (prodP (lin (suc m)) Iv))
+             (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (crossH (lin m) (lin (suc m)) Iv Iv d (idH Iv)) (pairH (lin m) Iv (lin W) k t2))
+             (pairH (lin (suc m)) Iv (lin W) (compH (lin W) (lin m) (lin (suc m)) d k) t2) =
+        transH (BD.cross-pair (lin m) (lin (suc m)) Iv Iv (lin W) d (idH Iv) k t2)
+               (apH (pairH (lin (suc m)) Iv (lin W) (compH (lin W) (lin m) (lin (suc m)) d k)) (comp-idl (lin W) Iv t2)) ;
+
+      ph : Hom (lin W) (prodP (lin m) Iv) = pairH (lin m) Iv (lin W) T.hh t2 ;
+
+      res : Id (TA.EI (lin W)) ((R' Fy).Ts N W (BG'.gy y W g) j) ((R' Fz).Ts N W (BG'.gy (suc z') W g) j) =
+        calc (TA.EI (lin W)) {
+            (R' Fy).Ts N W (pairH (lin (suc m)) Iv (lin W) T.g' t2) j
+          =< apH (\ k -> (R' Fy).Ts N W (pairH (lin (suc m)) Iv (lin W) k t2) j)
+               (symH (hom-eq (lin W) (lin (suc m)) _ _ (pw-factor (lin W) m z' T.g' hz T.ms'))) >
+            (R' Fy).Ts N W (pairH (lin (suc m)) Iv (lin W) (compH (lin W) (lin m) (lin (suc m)) (dl m z') T.hh) t2) j
+          =< apH (\ k -> (R' Fy).Ts N W k j) (symH (pq (dl m z') T.hh)) >
+            (R' Fy).Ts N W (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (BGf.dY z') ph) j
+          =< ST[m, R, FFH, FFT, Fy].T-face N hN z' hz W ph j >
+            (R (compH (lin m) (lin (suc m)) X Fy (dl m z'))).Ts N W ph j
+          =< apH (\ k -> (R k).Ts N W ph j) (dd F' y z' lt) >
+            (R (compH (lin m) (lin (suc m)) X Fz (dl m y))).Ts N W ph j
+          =< symH (ST[m, R, FFH, FFT, Fz].T-face N hN y (leb-trans y z' (suc m) lt hz) W ph j) >
+            (R' Fz).Ts N W (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (BGf.dY y) ph) j
+          =< apH (\ k -> (R' Fz).Ts N W k j) (pq (dl m y) T.hh) >
+            (R' Fz).Ts N W (pairH (lin (suc m)) Iv (lin W) (compH (lin W) (lin m) (lin (suc m)) (dl m y) T.hh) t2) j
+          =< apH (\ k -> (R' Fz).Ts N W (pairH (lin (suc m)) Iv (lin W) k t2) j) T.eq-dlh >
+            (R' Fz).Ts N W (pairH (lin (suc m)) Iv (lin W) (compH (lin W) (lin (suc (suc m))) (lin (suc m)) (dgH (suc m) (suc z')) q) t2) j } ;
+    } ;
+
+    fftS (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (F' : Hom (lin (suc (suc m))) X) (y : Nat) (hy : IsT (leb y (suc (suc m))))
+      : (z : Nat) (hz : IsT (leb z (suc (suc m)))) (lt : IsT (ltb y z)) (W : Nat) (g : Hom (lin W) (prodP (lin (suc (suc m))) Iv))
+        (msy : Miss (lin W) (suc m) y (BD.BG[suc m, Iv].p1g W g)) (msz : Miss (lin W) (suc m) z (BD.BG[suc m, Iv].p1g W g)) (j : Hom (lin W) Iv)
+      -> Id (TA.EI (lin W)) ((R' (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) y))).Ts N W (BD.BG[suc m, Iv].gy y W g) j)
+                            ((R' (compH (lin (suc m)) (lin (suc (suc m))) X F' (dl (suc m) z))).Ts N W (BD.BG[suc m, Iv].gy z W g) j) = split {
+      zero -> \ hz lt -> absurd _ (false-true lt) ;
+      suc z' -> \ hz lt W g msy msz j -> FT[N, hN, F', y, hy, z', hz, lt, W, g, msy, msz, j].res } ;
+
+    fft : FFTty (suc m) R' = \ N hN F' y z hy hz lt W g msy msz j -> fftS N hN F' y hy z hz lt W g msy msz j ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- the recursion over the dimensions
+
+  record Dm (m : Nat) {
+    R : (f : Hom (lin m) X) -> Rec[m, f] ;
+    FFH : FFHty m R ;
+    FFT : FFTty m R ;
+  } ;
+
+  R0s (f : Hom (lin zero) X) : Rec[zero, f] = R0[f].rec ;
+
+  D0 : Dm[zero] = new Dm[zero, R0s, FF0[R0s].ffh, FF0[R0s].fft] ;
+
+  Dstep (m : Nat) (d : Dm[m]) : Dm[suc m] =
+    new Dm[suc m, FFS[m, d.R, d.FFH, d.FFT].R', FFS[m, d.R, d.FFH, d.FFT].ffh, FFS[m, d.R, d.FFH, d.FFT].fft] ;
+
+  Drec : (m : Nat) -> Dm[m] = split {
+    zero -> D0 ;
+    suc m | ih -> Dstep m ih } ;
+
+  ----------------------------------------------------------------------
+  -- the face relations of the data, stated on Drec (one name for the data
+  -- at a face, whichever way they are reached)
+
+  module DF (m : Nat) (F : Hom (lin (suc m)) X) {
+    module STm = ST[m, (Drec m).R, (Drec m).FFH, (Drec m).FFT, F] ;
+    Fd (y : Nat) : Hom (lin m) X = compH (lin m) (lin (suc m)) X F (dl m y) ;
+    psiF (y : Nat) (hy : IsT (leb y (suc m)))
+      : Id (TA.EI (lin m)) (TA.E.act (lin m) (lin (suc m)) (dl m y) ((Drec (suc m)).R F).psi) ((Drec m).R (Fd y)).psi =
+      STm.psi-face y hy ;
+    HF (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (y : Nat) (hy : IsT (leb y (suc m))) (W : Nat) (g : Hom (lin W) (lin m)) (j : Hom (lin W) Iv)
+      : Id (TA.EI (lin W)) (((Drec (suc m)).R F).Hs N W (compH (lin W) (lin m) (lin (suc m)) (dl m y) g) j) (((Drec m).R (Fd y)).Hs N W g j) =
+      STm.H-face N hN y hy W g j ;
+    TF (N : Nat) (hN : IsT (leb (suc (suc m)) N)) (y : Nat) (hy : IsT (leb y (suc m))) (W : Nat) (g : Hom (lin W) (prodP (lin m) Iv)) (j : Hom (lin W) Iv)
+      : Id (TA.EI (lin W)) (((Drec (suc m)).R F).Ts N W (compH (lin W) (prodP (lin m) Iv) (prodP (lin (suc m)) Iv) (BD.BG[m, Iv].dY y) g) j)
+                           (((Drec m).R (Fd y)).Ts N W g j) =
+      STm.T-face N hN y hy W g j ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- psi(u , p) in D A
+
+  module DTA = LD.DT[G, A] ;
+
+  psiE (n : Nat) (f : Hom (lin n) X) : TA.EI (lin n) = ((Drec n).R f).psi ;
+
+  psiF : DTA.Fam X x = \ n f -> TA.fromE (lin n) (G.act (lin n) X f x) (psiE n f) ((Drec n).R f).psi-pt ;
+
+  rdE (n : Nat) (f : Hom (lin n) X) : Id (TA.EI (lin n)) (DTA.rd X x psiF n f) (psiE n f) =
+    TA.fromE-eq (lin n) (G.act (lin n) X f x) (psiE n f) ((Drec n).R f).psi-pt ;
+
+  fc : DTA.FaceCompat X x psiF = \ n f y hy ->
+    transH (apH (TA.E.act (lin n) (lin (suc n)) (dl n y)) (rdE (suc n) f))
+      (transH (ST[n, (Drec n).R, (Drec n).FFH, (Drec n).FFT, f].psi-face y hy)
+              (symH (rdE n (compH (lin n) (lin (suc n)) X f (dl n y))))) ;
+
+  psi : DTA.DEl X x = (psiF, DTA.FacesGen[X, x, psiF, fc].facesGen) ;
+} ;
