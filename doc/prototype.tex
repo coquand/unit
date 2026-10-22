@@ -18,7 +18,7 @@
 
 \title{\sys: a small dependent type checker\\with segments as modules}
 \author{}
-\date{19 October 2026}
+\date{22 October 2026}
 
 \begin{document}
 \maketitle
@@ -26,18 +26,28 @@
 \begin{abstract}
 \noindent
 \sys is a prototype proof checker for a dependent type theory with
-$\Pi$, $\Sigma$, records, labelled sums, an identity type with its
-eliminator, and a hierarchy of cumulative universes indexed by level
-expressions. Its module system is based on the segments of
-\textsc{Automath}, in the form given in~\cite{Wang}: a module is a list of
-declarations, its parameters are the declarations without a body, and
-an instance only binds the parameters, without copying the body. Records
-are declared apart from modules, with the same syntax for their bodies:
-a record type has fields, one constructor and an eliminator, and its
-elements are compared by their fields, without $\eta$. The prototype has been used to
+$\Pi$, $\Sigma$, record types (tuples with named fields), data types
+given by constructors, an identity type with its eliminator, and a
+hierarchy of cumulative universes indexed by level expressions. Its
+module system develops the theory mechanism already implemented in
+\textsc{Half}~\cite{Ced}, in the tradition of \textsc{Automath} segments
+and the implementation described in~\cite{Wang}:
+a module is a list of declarations, its parameters
+are the declarations without a body, and an instance only binds the
+parameters, without copying the body. A record type is written like a
+module, as a list of declarations, but it is a type and not a module;
+its elements are tuples of values for the declarations without a body. The prototype has been used to
 formalise a model of univalent type theory over posets and simplicial
-sets, about 200 files. This note describes the type theory, the module
-system, and the choices made to keep checking predictable and fast. The
+sets, 210 files. This note describes the type theory, the module
+system, and the choices made to keep checking predictable and fast. We
+also propose an organisation of checking around a list of conversion
+problems generated without unfolding definitions. Pairs settled by strict
+equality are discarded; the remaining pairs expose the work of conversion
+and provide the basis for explaining failures. We distinguish this
+proposal from what the current implementation already provides. The
+LLM-assisted formalisation of substantial examples in synthetic algebraic
+geometry provides a setting in which to investigate this proposal and
+compare the checker's work with the informal arguments. The
 name \sys refers to the units, the declarations of which every file,
 segment and local block is a list.
 \end{abstract}
@@ -80,6 +90,194 @@ omitted are found by a deterministic matching procedure
 definition has one identity wherever it is used, and two uses are
 compared by that identity before anything is unfolded
 (Section~\ref{sec:conv}).
+
+The module mechanism has a direct predecessor in \textsc{Half}, developed
+by Thierry Coquand and implemented by Dan Synek, as described in
+Cederquist's thesis~\cite{Ced}. Its theories are lists of declarations,
+with parameters and local definitions; the thesis explicitly relates the
+theory mechanism to PVS. This work predates Agda and was part of the
+background from which Agda developed. The present note revisits this
+mechanism and its interaction with conversion; it does not claim the
+invention of parameterised modules.
+
+%======================================================================
+\section{Checking a proof through its conversion problems}\label{sec:obligations}
+
+\subsection{The organisation of the argument}
+
+Checking should follow the organisation of a mathematical proof. A
+construction is checked under its assumptions; an application is checked
+by verifying that its arguments satisfy those assumptions. Two uses of
+the same construction should be recognisable without going back through
+its definition. A segment makes this discipline explicit for a whole
+development: check its declarations once, then check the arguments of
+each instance.
+
+This is also a guide to understanding checking time. When an informally
+routine step requires substantial computation, we should examine whether
+the representation or the checker has lost an abstraction used in the
+argument. This is a diagnostic principle, not a complexity bound:
+some proofs deliberately require substantial computation, and an
+implementation can also repeat work unnecessarily.
+
+\subsection{Generate, discard, analyse}
+
+The view of type checking as generating a list of conversion problems
+goes back to de Bruijn. The specific proposal here is to generate that
+list \emph{without unfolding definitions}, and then discard pairs which
+are strictly equal before analysing the remaining conversion problems.
+% TODO: supply the precise de Bruijn reference for the list of
+% conversion problems; distinguish it from the general Automath history.
+The proposal concerns checking explicit terms, after scope resolution and
+the filling of omitted arguments. Level inequalities and other structural
+side conditions remain separate obligations.
+
+Write the generated list schematically as
+\[
+  \mathcal C(\Gamma,t,A)
+     = [\,(\Gamma_i,u_i,v_i,\ell_i)\,]_i,
+\]
+where $\Gamma_i$ is the local context and $\ell_i$ records the source
+location and the reason for the comparison. An entry asks whether $u_i$
+and $v_i$ are convertible in $\Gamma_i$. Definitions in these expressions
+retain their declaration identities and environments. Writing
+$=_{\mathrm{s}}$ for strict equality of this representation, the residual
+list is the sublist
+\[
+  \mathcal C_{\mathrm{res}}
+    = [\,(\Gamma_i,u_i,v_i,\ell_i)\in\mathcal C
+          \mid u_i\not=_{\mathrm{s}}v_i\,].
+\]
+Conversion analyses this residual list. Discarding a strictly equal pair
+is a successful check, not an omission of a proof obligation. Conversely,
+membership in the residual list is not an error: it identifies an
+equality which needs further analysis.
+
+Here strict equality means structural identity of the represented
+expressions, respecting the representation of bound variables, and
+without consulting the bodies of named definitions. In particular,
+references to the same declaration at strictly equal environments are
+strictly equal. It is not merely equality of the names printed for the
+user, and it is not full definitional equality. Administrative operations
+such as extending an environment must be distinguished from unfolding a
+named definition. A complete account must specify the representation and
+the structural comparison precisely.
+
+For example, suppose $f:(x:A)\to B(x)$ and the inferred type of $a$ is
+$A'$. Checking $f\,a$ against $C$ gives the obligations
+\[
+  A'\equiv A,\qquad B(a)\equiv C,
+\]
+in addition to those for the subterms. Their expressions should retain
+the names occurring in the argument. In the segment example of
+Section~\ref{sec:modules}, the two aliases for
+\kw{Mon[N, zero, plus].twice} refer to the same declaration at the same
+environment: their comparison is discarded without inspecting
+\kw{twice}.
+
+\paragraph{Relation to earlier work.}
+Pollack~\cite{Pollack}, Sections~4.1--4.2, discusses sharing through
+definitions, avoiding repeated context checking, and the cost of
+conversion. His example contrasts computing an enormous value in
+$\operatorname{ack}(100)-\operatorname{ack}(100)=0$ with applying the
+general theorem $n-n=0$. These are close motivations. The point to
+investigate here is the separation between generating obligations while
+keeping definitions folded, removing strictly equal pairs, and analysing
+the residual list. Trying structural equality before unfolding within
+each call to conversion is one ingredient, but does not by itself give
+this separation. No claim of priority for the complete organisation is
+made here without a more detailed comparison with earlier checkers.
+
+\subsection{Explaining a failed check}
+
+The residual list should be intelligible as part of the mathematical
+argument. Each entry retains the original two expressions, its context,
+and its origin. If the first obligation in the application example
+fails, the diagnostic can say that the argument has type $A'$ whereas
+the parameter requires $A$, and display the unresolved comparison
+$A'\equiv A$ with both definitions still folded. Conversion may then
+provide a more detailed explanation, tied to this original obligation.
+The diagnostic should not replace the user's expressions by a large
+expansion merely because the conversion algorithm inspected it.
+
+The same information can explain an expensive check: identify the
+original obligation being analysed and, when useful, the definitions
+whose unfolding it requires. This makes it possible to relate the work
+of the checker to a particular step of the proof. A timeout must be
+reported as an unfinished comparison, not as evidence of non-convertibility.
+
+\subsection{Studying mathematical examples with LLM assistance}
+
+Interaction between a mathematician and a large language model (LLM)
+makes it practical in this project to investigate these questions on
+substantial mathematical developments. The LLM helps write and revise
+formal proofs, inspect the implementation, and explore alternative
+representations. The checker determines whether the resulting formal
+terms are accepted. This allows a close iteration between an informal
+argument, its formal expression, and the work required to check it.
+
+The examples come from \emph{A foundation for synthetic algebraic
+geometry}~\cite{SAG} and \emph{Projective space in synthetic algebraic
+geometry}~\cite{Proj}. The companion note \emph{Synthetic algebraic
+geometry in Unit: what has been formalised} records the results already
+checked and their hypotheses. Two examples suggest concrete comparisons.
+For boundedness of maps $\operatorname{Spec} A\to\mathbb N$
+(\cite{SAG}, Theorem~3.3.3), both the argument through eventually
+vanishing sequences and an argument using the polynomial representing
+$(x,t)\mapsto t^{f(x)}$ have been formalised. These give two ways to
+organise the same mathematical result, whose intermediate constructions
+and checking costs can be compared.
+
+The classification of line bundles on projective space gives a different
+test. The formal development separates the algebraic result of Horrocks,
+triviality on the affine charts of $\mathbb P^1$, the transition function
+on their overlap, and the passage to $\mathbb P^n$ using projective lines
+(\cite{Proj}, Proposition~4.6 and Section~7). One can ask whether using a
+result at each stage requires the checker to reopen the constructions
+from the preceding stages, and which equalities actually require their
+definitions. The module and definition mechanisms should preserve these
+mathematical boundaries.
+
+For such a case study, the useful evidence is a correspondence between
+a step of the informal proof, the formal declarations expressing it, and
+the residual conversion problems it generates. We can record which
+problems disappear by strict equality, which require unfolding, and which
+dominate checking time. An unexpectedly expensive problem can then be
+examined with LLM assistance: does it expose a missing mathematical lemma,
+a representation that loses sharing, or repeated work in the checker?
+A proposed change is checked again, keeping track of the theorem and its
+hypotheses as well as the change in conversion work. The same examples
+can test whether a diagnostic identifies the mathematical mismatch in
+terms the reader recognises.
+
+The practical contribution of LLM assistance here is the ability to
+carry out and revise these investigations on real proofs. The completed
+formalisations provide the material; the systematic analysis of their
+residual conversion problems is work to be done. Total checking times
+alone do not establish the correspondence with informal proof checking.
+
+\subsection{Scope of the proposal}\label{sec:obligation-status}
+
+The current prototype preserves definition references in values, tries
+strict comparison before conversion, and retains folded expressions for
+diagnostics. It still interleaves structural type checking with
+conversion rather than first producing the complete residual list.
+There is a further issue in making the generation phase literally free
+of unfolding: the current checker can unfold a type to expose its outer
+form, for example a product when checking an application. Preserving the
+unfolded type's original expression for a diagnostic does not remove
+that computation.
+
+Thus the proposed separation requires an explicit account of how such
+type shapes are obtained, whether from annotations, stored structural
+information, or additional obligations. Its correctness must also account
+for dependencies between obligations: later checks may rely on types or
+contexts whose validity is still pending. The intended result is that,
+when the structural checks succeed, the declaration is accepted exactly
+when its generated obligations are discharged. This section states the
+design to be developed, not a completed correctness theorem or a claim
+that the implementation already generates every obligation without
+unfolding.
 
 %======================================================================
 \section{The type theory}\label{sec:tt}
@@ -128,7 +326,8 @@ are fixed. A nested split has its own results: in Ackermann's function
     suc m | r -> split { zero -> r (suc zero) ; suc n | s -> r s } } ;
 \end{verbatim}
 \kw{s} is \kw{ack (suc m) n} and \kw{r} is \kw{ack m}. This is primitive
-recursion at higher types, as in G\"odel's system~T: since a recursive
+recursion at higher types, as in Hilbert's \emph{On the infinite}~\cite{Hilbert}
+and G\"odel's system~T: since a recursive
 result may be a function, Ackermann's function is definable. Mutual recursion
 is written as one recursion computing a pair, and course-of-values
 recursion likewise. The list of results may be omitted when a branch does
@@ -226,22 +425,39 @@ There is no $\eta$ for records: an element \kw{t} of a record type and
 \kw{new R[ps, t.x$_1$, \dots]} are not convertible. They are equal in
 $\Id$, by the eliminator (Section~\ref{sec:segtypes}).
 
-The checker tests it as follows (a time budget remains as a safeguard,
+The current checker tests it as follows (a time budget remains as a safeguard,
 Section~\ref{sec:checker}). Two values are first compared
-\emph{structurally}, without any computation. A use of a definition is
+\emph{strictly}, by their represented structure, without unfolding
+definitions. This is the first filter in the proposed organisation of
+Section~\ref{sec:obligations}. A use of a definition is
 represented by its name together with its environment: the values of all
 the variables and levels in scope where it is declared (its
-\emph{arguments}), not only those its body uses. Two uses of the same
-definition with convertible arguments are equal without unfolding. Only
-when this fails are both sides brought to head normal form, unfolding
+\emph{arguments}), not only those its body uses. If strict comparison
+fails, two uses of the same definition are next compared by conversion
+of their arguments. This does not unfold the common definition itself,
+although conversion of its arguments may unfold other definitions. Only
+when this comparison fails are both sides brought to head normal form, unfolding
 definitions, and compared component by component.
 
 Two occurrences of the same \kw{split} are compared in the same way, by
-their environments. When these differ, the checker compares the branches
-instead, with fresh variables for the pattern variables and for the
-recursive results. This rule is kept as an experiment: it is counted, and
-its justification, which must cover dependent motives and the fresh
-recursive results, is still to be written.
+their environments. When these differ, the checker compares the branches,
+each in its own environment, with fresh variables for the pattern
+variables and for the recursive results. This is the congruence rule of
+the eliminator: a \kw{split} is an eliminator whose branches bind the
+fields and the recursive results, and two eliminators are equal when their
+branches are equal under these binders. The recursive results stay fresh;
+replacing them by the \kw{split} itself would be an $\eta$ rule for
+inductive types, which the theory does not have. The checker does not yet
+compare the types of the two occurrences; with that comparison the rule is
+exactly congruence of the typed eliminator.
+
+Two occurrences of the same data type are also compared by their
+environments, and otherwise by the telescopes of their constructors. This
+is not congruence: it identifies \kw{D a} and \kw{D b} when the parameter
+is not used. It holds when a data type is read as the initial algebra of
+its description (constructor names and telescopes). Since parameters are
+uniform and there are no indexed families, the description determines the
+data type.
 
 Taking the whole environment is a deliberate choice: it is simple and
 needs no analysis of the bodies. Its consequence is visible under
@@ -262,8 +478,9 @@ parameters and fields are convertible, wherever they are written.
 \paragraph{The unfolding strategy.} \kw{opaque f} declares that, from this
 point on, \kw{f} is not unfolded: it behaves as a constant, though its
 body has not changed. \kw{transparent f} undoes this. The strategy is a
-property of the checking run and not of the values: a value is computed
-in the same way whatever the strategy, and only the comparison consults
+property of the checking run and not of the values: evaluation builds
+values in the same way whatever the strategy. Head normalisation, used
+both by conversion and to expose type shapes during checking, consults
 it. In particular an \kw{opaque} declaration placed after a segment
 applies to every instance of it. Making a definition opaque can only make
 fewer terms convertible, so it never makes an incorrect proof correct.
@@ -534,8 +751,23 @@ member of a record reached without an element, is an error.
   extended version, 2024).
 \bibitem{Ced} J.~Cederquist. \emph{A Pointfree Approach to Constructive
   Analysis in Type Theory}. PhD thesis, Chalmers University of Technology and
-  University of G\"oteborg, 1997. Section~7.1 describes the proof checker
+  University of G\"oteborg, 1997. See Section~2 of the third paper,
+  \emph{An implementation of the Heine--Borel covering theorem in type
+  theory}, and Section~7.1 of the final paper for descriptions of
   \textsc{Half}.
+\bibitem{Hilbert} D.~Hilbert. \"Uber das Unendliche. \emph{Mathematische Annalen}
+  95:161--190, 1926. Lecture given in 1925.
+
+\bibitem{Pollack} R.~Pollack. \emph{How to Believe a Machine-Checked Proof}.
+  BRICS Report RS-97-18, 1997. Sections~4.1--4.2.
+
+\bibitem{SAG} F.~Cherubini, T.~Coquand and M.~Hutzler.
+  \emph{A foundation for synthetic algebraic geometry}.
+  arXiv:2307.00073, 2023.
+\bibitem{Proj} F.~Cherubini, T.~Coquand, M.~Ritter and D.~W\"arn.
+  \emph{Projective space in synthetic algebraic geometry}.
+  arXiv:2405.13916; manuscript version of 19 October 2026.
+
 \bibitem{Wang} Q.~Wang. \emph{A Haskell Implementation for a Dependent Type
   Theory with Definitions}. Master's thesis, Chalmers University of Technology
   and University of Gothenburg, 2021.
