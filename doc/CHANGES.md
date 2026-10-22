@@ -1,5 +1,10 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+**Mathematical attribution:** all mathematical results concerning the D
+modality and the D_n modalities referenced in this document are due to
+Christian Sattler. The implementation and checking notes below concern
+their formalisation in Unit.
+
 > **Physical equality (22 October).** `eqVal` and `eqEnvs` first test whether the two values (or environments) are the same object in memory (`same`, GHC's `reallyUnsafePtrEquality#`), and return `True` if so; otherwise the comparison is unchanged. No table is kept. Measured on `core/CPostNat`: one declaration went from 120 million calls of `eqVal` to 14 thousand.
 
 > **Records (18 October).** Records are now separate from modules, with `new` as their one constructor, an eliminator, and no definitional η; fixed fields are elaborated. `RECORDS.md` is the reference for records; this file has been updated to match it. `core` is migrated (`RECORDS.md` §10).

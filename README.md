@@ -1,5 +1,13 @@
 # Unit
 
+**Mathematical attribution: all mathematical results concerning the D
+modality and the D_n modalities in this repository are due to Christian
+Sattler.** This includes the constructions and proofs, the localisation
+results, the finite approximations, their truncation properties, and the
+strict-limit and homotopy-limit results for their tower. The corresponding
+Unit files and notes record a formalisation and exposition of Christian
+Sattler's mathematics.
+
 **Unit** is a small proof checker for a dependent type theory with
 definitions. Its module system is based on the segments of Automath: a
 module is a list of declarations (units), its parameters are the
@@ -40,10 +48,12 @@ This repository contains the checker and two developments written with it:
   excluded middle at one point), and identity types with a strict
   computation rule.
 - [`localisation.pdf`](doc/localisation.pdf): the localisation of the poset
-  model at Sattler's operation D: D is a strict monad, DA is fibrant when A
+  model at D. All the mathematical results concerning D are due to
+  Christian Sattler: D is a strict monad, DA is fibrant when A
   is, the two maps DA → D²A are homotopic homotopy equivalences, and the
   universal property of η.
-- [`postnikov-limit.pdf`](doc/postnikov-limit.pdf): for a type A of the
+- [`postnikov-limit.pdf`](doc/postnikov-limit.pdf): Christian Sattler's
+  results on D and the D_n modalities. For a type A of the
   poset model, DA is the strict limit of the tower of its finite
   approximations D_N A and, for fibrant A, its homotopy limit (the
   comparison with the internal limit is a homotopy equivalence); the maps of
@@ -63,6 +73,9 @@ segment, `Model`; `ModelUA` instantiates the whole development from
 univalence alone (function extensionality is derived in `FunExtUA.seg`).
 `core/DESIGN.md` maps the files to the sections of the model, and of
 `doc/postnikov-limit.pdf` (layer L9b).
+All mathematical results in the D and D_n development (layers L9 and L9b,
+including its supporting constructions and proofs) are due to Christian
+Sattler; this attribution also appears in the individual source files.
 
 ## Synthetic algebraic geometry (`sag/`)
 

@@ -1,5 +1,11 @@
 # seg/core — the generic core, rebuilt
 
+**All mathematical results concerning the D modality and the D_n
+modalities are due to Christian Sattler.** This attribution covers layers
+L9 and L9b below, including their supporting constructions and proofs,
+localisation, truncation, and the tower and its limits. The files record
+their formalisation in Unit.
+
 The mathematical specification is seg/notes/model.tex; this file maps it
 to layers and files (section numbers refer to model.tex).
 
@@ -156,6 +162,7 @@ Files per section of model.tex:
 
 - L9 Localisation of the poset model (localisation.tex; 2026-10-17,
   seg-62; sits after the instances in All.seg):
+  All mathematical results in this layer are due to Christian Sattler.
   §1 the restriction i* to Delta: CLocRestr (R[G].iG, T[A].iA, rdG, rdA);
   §2 Lemma comp -> horn: CLocHorn (HornOfFib[G, A, c].horn : DH.isFib, the
   two cases of CBoxHorn's retraction: k = 0 from e0, k >= 1 from e1);
@@ -195,6 +202,9 @@ Final statements: Theorem 7 (CThm7.Thm7, any base); ua as a ContrOp and
 FibU.fibU for posets (CPosFinal) and simplicial sets (CDeltaFinal).
 
 ## L9b  The tower D_N A and its limits (doc/postnikov-limit.pdf)
+
+All mathematical results in this layer, including the supporting
+constructions and proofs, are due to Christian Sattler.
 
 - D_N A = D(K_N A): CCosk (K_N A, eta, ev), CCoskHorn (horn filling on the
   coskeleton), CCoskCart, CLocDN (fibrancy; Lim: the strict limit),

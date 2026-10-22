@@ -1,5 +1,10 @@
 # Records and modules in Unit (`seg/defenv`): specification
 
+**Mathematical attribution:** all mathematical results concerning the D
+modality and the D_n modalities referenced in this document are due to
+Christian Sattler. The implementation and checking notes below concern
+their formalisation in Unit.
+
 Step 1 of `seg/HANDOFF-records.md`. §§1–4 are implemented (§8, §11). Omitting a fixed field in `new` is deferred (§11).
 
 ## 1. Two declarations

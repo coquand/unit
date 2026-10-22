@@ -1,5 +1,10 @@
 # Recursion only through eliminators: design
 
+**Mathematical attribution:** all mathematical results concerning the D
+modality and the D_n modalities referenced in this document are due to
+Christian Sattler. The implementation and checking notes below concern
+their formalisation in Unit.
+
 Status: design, 19 October 2026; §5 revised after review (operational details). Nothing is implemented yet. The survey
 behind it is `migration/primrec-survey.txt` (`segd All.seg --survey-primrec`).
 

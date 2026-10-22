@@ -1,5 +1,10 @@
 # seg/core against seg/model: final comparison (2026-10-17)
 
+**Mathematical attribution:** all mathematical results concerning the D
+modality and the D_n modalities referenced in this document are due to
+Christian Sattler. The implementation and checking notes below concern
+their formalisation in Unit.
+
 seg/core formalises every result of seg/notes/model.tex (except the Yoneda
 remark of §6.2, marked as not needed); seg/model is the frozen quarry.
 Same checker binary (the one installed on 2026-10-17), same machine.
