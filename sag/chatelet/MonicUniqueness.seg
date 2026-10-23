@@ -1,0 +1,93 @@
+-- Monic generators of the same principal ideal agree, even when their
+-- stated degrees differ on a zero-ring overlap.
+level l ; open Ring[l] ;
+module Degrees {
+ Less (m n : Nat) : U l = (k : Nat) * Id Nat n (suc (plus m k)) ;
+ Compare (m n : Nat) : U l = Plus (Id Nat m n) (Plus (Less m n) (Less n m)) ;
+ lift-less (m n : Nat) : Plus (Less m n) (Less n m) -> Compare (suc m) (suc n) = split {
+  inl h -> inr (inl (h.1,ap (\ k -> suc k) h.2)) ;
+  inr h -> inr (inr (h.1,ap (\ k -> suc k) h.2)) } ; lift (m n : Nat) : Compare m n -> Compare (suc m) (suc n) = split {
+  inl e -> inl (ap (\ k -> suc k) e) ;
+  inr h -> lift-less m n h } ;
+ compare : (m n : Nat) -> Compare m n = split {
+  zero -> split {
+   zero -> inl (refl zero) ;
+   suc n -> inr (inl (n,refl (suc n))) } ;
+  suc m | ih -> split {
+   zero -> inr (inr (m,refl (suc m))) ;
+   suc n -> lift m n (ih n) } } ;
+
+} ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ module P = Poly[l].PolyR[A] ;
+ module M = Mul[l].MulR[A] ;
+ module L = RawLaws[l].Laws[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Bounds = PolynomialBounds[l].Over[A] ;
+ module BR = RL[B.ring] ;
+ module Reg = Regularity[l].Over[B.ring] ;
+ module EqualDegree (p q : List A.R) (degree : Id Nat (len q) (len p)) {
+  f : B.Carrier = H.monic p ;
+  g : B.Carrier = H.monic q ;
+  d : Nat = len p ;
+  raw : P.P = M.addP (H.monic-list q) (L.negP (H.monic-list p)) ;
+  g-leading : Id A.R (P.coef (H.monic-list q) d) A.o =
+   trans (ap (P.coef (H.monic-list q)) (sym degree)) (H.leading q) ;
+  g-bound : Bounds.Bound (suc d) (H.monic-list q) =
+   \ k -> trans (ap (P.coef (H.monic-list q)) (ap (\ j -> suc (plus j k)) (sym degree)))
+    (H.above q k) ;
+  raw-top : Id A.R (P.coef raw d) A.z =
+   trans (M.coef-addP (H.monic-list q) (L.negP (H.monic-list p)) d)
+    (trans (ap (\ a -> A.add a (P.coef (L.negP (H.monic-list p)) d)) g-leading)
+     (trans (ap (A.add A.o) (trans (L.neg-coef (H.monic-list p) d) (ap A.neg (H.leading p))))
+      (A.addN A.o))) ;
+  raw-bound : Bounds.Bound d raw =
+   Bounds.lower-bound d raw
+    (Bounds.add-bound (suc d) (H.monic-list q) (L.negP (H.monic-list p))
+     g-bound (Bounds.neg-bound (suc d) (H.monic-list p) (H.above p))) raw-top ;
+  raw-equation : Id B.Carrier (B.include raw) (B.addQ g (B.negQ f)) =
+   trans (sym (B.Add.beta (H.monic-list q) (L.negP (H.monic-list p))))
+    (ap (B.addQ g) (sym (B.Negate.beta (H.monic-list p)))) ;
+  module Divides (a : B.Carrier) (equation : Id B.Carrier g (B.mulQ f a)) {
+   difference-factor : Id B.Carrier (B.mulQ f (B.addQ a (B.negQ B.oneQ))) (B.include raw) =
+    trans (B.distributive f a (B.negQ B.oneQ))
+     (trans (ap (\ c -> B.addQ c (B.mulQ f (B.negQ B.oneQ))) (sym equation))
+      (trans (ap (B.addQ g) (trans (BR.mul-neg f B.oneQ) (ap B.negQ (B.mul-one f))))
+       (sym raw-equation))) ;
+   raw-zero : Id B.Carrier (B.include raw) B.zeroQ =
+    MonicSmallMultiple[l].Over[A,setA].At[p].Bounded[raw,raw-bound].remainder-zero
+     (B.addQ a (B.negQ B.oneQ)) difference-factor ;
+   equality : Id B.Carrier g f = Reg.difference g f (trans (sym raw-equation) raw-zero) ;
+  } ;
+ } ;
+ module Smaller (p q : List A.R) (small : Degrees.Less (len q) (len p))
+  (a : B.Carrier) (equation : Id B.Carrier (H.monic q) (B.mulQ (H.monic p) a)) {
+  bound : Bounds.Bound (len p) (H.monic-list q) =
+   \ k -> trans (ap (P.coef (H.monic-list q)) (ap (\ j -> plus j k) small.2))
+    (MonicPowers[l].Raw[A].weaken (suc (len q)) small.1 (H.monic-list q) (H.above q) k) ;
+  vanishes : Id B.Carrier (H.monic q) B.zeroQ =
+   MonicSmallMultiple[l].Over[A,setA].At[p].Bounded[H.monic-list q,bound].remainder-zero a (sym equation) ;
+  collapse : Id A.R A.o A.z =
+   trans (sym (H.leading q)) (B.Q.effective (H.monic-list q) nil vanishes (len q)) ;
+  polynomial-collapse : Id B.Carrier B.oneQ B.zeroQ =
+   trans (ap B.constant collapse) (RingHom[l].zero A B.ring B.inclusion) ;
+  all-zero (b : B.Carrier) : Id B.Carrier b B.zeroQ =
+   trans (sym (B.mul-one b))
+    (trans (ap (B.mulQ b) polynomial-collapse) (BR.mul-zero b)) ;
+  equality : Id B.Carrier (H.monic p) (H.monic q) =
+   trans (all-zero (H.monic p)) (sym vanishes) ;
+ } ;
+ module Mutual (p q : List A.R) (a b : B.Carrier)
+  (forward : Id B.Carrier (H.monic q) (B.mulQ (H.monic p) a))
+  (backward : Id B.Carrier (H.monic p) (B.mulQ (H.monic q) b)) {
+  unequal : Plus (Degrees.Less (len p) (len q)) (Degrees.Less (len q) (len p)) ->
+   Id B.Carrier (H.monic p) (H.monic q) = split {
+   inl small -> sym Smaller[q,p,small,b,backward].equality ;
+   inr small -> Smaller[p,q,small,a,forward].equality } ;
+  cases : Degrees.Compare (len p) (len q) -> Id B.Carrier (H.monic p) (H.monic q) = split {
+   inl degree -> sym EqualDegree[p,q,sym degree].Divides[a,forward].equality ;
+   inr small -> unequal small } ;
+  equality : Id B.Carrier (H.monic p) (H.monic q) = cases (Degrees.compare (len p) (len q)) ;
+ } ;
+} ;

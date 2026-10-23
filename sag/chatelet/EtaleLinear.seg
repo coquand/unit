@@ -1,0 +1,90 @@
+-- Rectangular matrices, with columns first, and division-free elimination.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Tr = Truncation[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ Vector (n : Nat) : U l = Fin n -> R.R ;
+ Matrix (m n : Nat) : U l = Fin m -> Fin n -> R.R ;
+ apply (m n : Nat) (M : Matrix m n) (c : Vector m) : Vector n =
+  \ k -> S.lin m (\ j -> M j k) c ;
+ Witness (m n : Nat) (M : Matrix m n) (v : Vector n) : U l =
+  (c : Vector m) * ((k : Fin n) -> Id R.R (apply m n M c k) (v k)) ;
+ Surj (m n : Nat) (M : Matrix m n) : U l =
+  (v : Vector n) -> Tr.Trunc[Witness m n M v].carrier ;
+ surj-prop (m n : Nat) (M : Matrix m n) : Pr.isProp (Surj m n M) =
+  FL.isProp-Pi (Vector n) (\ v -> Tr.Trunc[Witness m n M v].carrier)
+   (\ v -> Tr.Trunc[Witness m n M v].proposition) ;
+ schur (m n : Nat) (M : Matrix m (suc n)) (j : Fin m) : Matrix m n =
+  \ a k -> R.add (R.mul (M j (inr tt)) (M a (inl k)))
+   (R.neg (R.mul (M j (inl k)) (M a (inr tt)))) ;
+ -- Index checks: a 1x1 reduction has zero rows; a 2x2 reduction has one.
+ one-by-one-apply (M : Matrix (suc zero) (suc zero)) (c : Vector (suc zero)) :
+  Id R.R (apply (suc zero) (suc zero) M c (inr tt))
+   (R.mul (M (inr tt) (inr tt)) (c (inr tt))) = R.addZ _ ;
+ two-by-two-apply (M : Matrix (suc (suc zero)) (suc (suc zero)))
+  (c : Vector (suc (suc zero))) (k : Fin (suc (suc zero))) :
+  Id R.R (apply (suc (suc zero)) (suc (suc zero)) M c k)
+   (R.add (R.mul (M (inr tt) k) (c (inr tt)))
+    (R.mul (M (inl (inr tt)) k) (c (inl (inr tt))))) =
+  ap (R.add (R.mul (M (inr tt) k) (c (inr tt))))
+   (R.addZ (R.mul (M (inl (inr tt)) k) (c (inl (inr tt))))) ;
+ one-by-one (M : Matrix (suc zero) (suc zero)) (a : Fin (suc zero)) (e : Fin zero) :
+  Id R.R (schur (suc zero) zero M (inr tt) a e)
+   (R.add (R.mul (M (inr tt) (inr tt)) (M a (inl e)))
+    (R.neg (R.mul (M (inr tt) (inl e)) (M a (inr tt))))) = refl (schur (suc zero) zero M (inr tt) a e) ;
+ two-by-two (M : Matrix (suc (suc zero)) (suc (suc zero))) :
+  Id R.R (schur (suc (suc zero)) (suc zero) M (inr tt) (inl (inr tt)) (inr tt))
+   (R.add (R.mul (M (inr tt) (inr tt)) (M (inl (inr tt)) (inl (inr tt))))
+    (R.neg (R.mul (M (inr tt) (inl (inr tt))) (M (inl (inr tt)) (inr tt))))) = refl (schur (suc (suc zero)) (suc zero) M (inr tt) (inl (inr tt)) (inr tt)) ;
+ sum-neg : (m : Nat) (v : Vector m) -> Id R.R (S.sum m (\ a -> R.neg (v a))) (R.neg (S.sum m v)) = split {
+  zero -> \ v -> sym L.neg-zero ;
+  suc m | ih -> \ v -> trans (ap (R.add (R.neg (v (inr tt)))) (ih (\ a -> v (inl a))))
+   (sym (L.neg-add (v (inr tt)) (S.sum m (\ a -> v (inl a))))) } ;
+ schur-term (u v a b c : R.R) :
+  Id R.R (R.mul (R.add (R.mul u a) (R.neg (R.mul v b))) c)
+   (R.add (R.mul u (R.mul a c)) (R.neg (R.mul v (R.mul b c)))) =
+  trans (L.dist-left (R.mul u a) (R.neg (R.mul v b)) c)
+   (cong2 R.R R.add _ _ _ _ (sym (R.mulA u a c))
+    (trans (L.neg-mul-left (R.mul v b) c) (ap R.neg (sym (R.mulA v b c))))) ;
+ schur-apply (m n : Nat) (M : Matrix m (suc n)) (j : Fin m) (c : Vector m) (k : Fin n) :
+  Id R.R (apply m n (schur m n M j) c k)
+   (R.add (R.mul (M j (inr tt)) (apply m (suc n) M c (inl k)))
+    (R.neg (R.mul (M j (inl k)) (apply m (suc n) M c (inr tt))))) =
+  let {
+   u : R.R = M j (inr tt) ;
+   v : R.R = M j (inl k) ;
+   first : Vector m = \ a -> R.mul (M a (inl k)) (c a) ;
+   second : Vector m = \ a -> R.mul (M a (inr tt)) (c a) ;
+  } in trans
+   (S.sum-cong m (\ a -> R.mul (schur m n M j a k) (c a))
+    (\ a -> R.add (R.mul u (first a)) (R.neg (R.mul v (second a))))
+    (\ a -> schur-term u v (M a (inl k)) (M a (inr tt)) (c a)))
+   (trans (S.sum-add m (\ a -> R.mul u (first a)) (\ a -> R.neg (R.mul v (second a))))
+    (cong2 R.R R.add _ _ _ _ (S.sum-scale u m first)
+     (trans (sum-neg m (\ a -> R.mul v (second a))) (ap R.neg (S.sum-scale v m second))))) ;
+ apply-correct (m n : Nat) (M : Matrix m n) (c : Vector m) (j : Fin m) (t : R.R) (k : Fin n) :
+  Id R.R (apply m n M (\ a -> R.add (c a) (R.mul t (D.delta m a j))) k)
+   (R.add (apply m n M c k) (R.mul t (M j k))) =
+  trans (S.lin-add m (\ a -> M a k) c (\ a -> R.mul t (D.delta m a j)))
+   (ap (R.add (apply m n M c k))
+    (trans (S.lin-scale m (\ a -> M a k) (\ a -> D.delta m a j) t)
+     (ap (R.mul t) (D.sum-delta-right m j (\ a -> M a k))))) ;
+ opaque schur ;
+ module Unit (u : R.R) (invertible : L.unit u) {
+  undo (x : R.R) : Id R.R (R.mul u (R.mul invertible.1 x)) x =
+   trans (R.mulA u invertible.1 x)
+    (trans (ap (\ a -> R.mul a x) invertible.2) (L.one-left x)) ;
+  inverse-left : Id R.R (R.mul invertible.1 u) R.o =
+   trans (R.mulC invertible.1 u) invertible.2 ;
+  cancel (x y : R.R) (e : Id R.R (R.mul u x) (R.mul u y)) : Id R.R x y =
+   trans (sym (trans (R.mulA invertible.1 u x)
+     (trans (ap (\ a -> R.mul a x) inverse-left) (L.one-left x))))
+    (trans (ap (R.mul invertible.1) e)
+     (trans (R.mulA invertible.1 u y)
+      (trans (ap (\ a -> R.mul a y) inverse-left) (L.one-left y)))) ;
+ } ;
+} ;

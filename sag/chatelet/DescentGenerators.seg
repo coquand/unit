@@ -1,0 +1,80 @@
+-- Step 4: finitely many generators, obtained from the coefficients of
+-- cleared frames on a finite Zariski cover of a monic root scheme.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ; module FP = FiniteProduct[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module MD = Modules[l].Over[R,setR] ; module DL = DescentLinear[l].Over[R,setR] ;
+ module ET = EtaleTopology[l].Over[R,setR] ;
+ module Ax = SAGAxioms[l,l].Over[R,setR] ;
+ module At (M : MD.Module) (modal : ET.T.isModal @l M.M)
+  (sh : [j] SheafClosure[l,j].Over[ET.I,ET.G].Ops)
+  (rank : Nat) (local : (sh @l).close (DL.On[M].Frame rank)) {
+  module LM = DL.On[M] ;
+  module SP = DescentSpan[l].Over[R,setR,axioms].At[M,modal,sh,rank,local] ;
+  module FR = DescentFractions[l].Over[R,setR,axioms].At[M,modal,sh,rank,local] ;
+  Generating : U l = (n : Nat) * (w : Fin n -> M.M) * ((m : M.M) -> SP.Family[n,w].Span m) ;
+  module Generator (idx : ET.I) (h : ET.Root idx -> Tr.Trunc[LM.Frame rank].carrier) {
+   module E = DescentEvaluation[l].Over[R,setR,axioms].Generator[idx] ;
+   module EG = E.At[M,modal,sh,rank,local] ;
+   module FG = FR.Generator[idx] ;
+   Choices : U l = Ax.ChoiceData E.B.A (\ s -> LM.Frame rank) ;
+   module Chosen (c : Choices) {
+    p : Nat = c.1 ;
+    fs : Fin p -> E.B.A.ring.R = c.2.1 ;
+    g (i : Fin p) : E.X -> R.R = E.value (fs i) ;
+    frame (i : Fin p) (x : E.X) (u : MD.RA.unit (g i x)) : LM.Frame rank =
+     c.2.2.2 i (E.Roots.spec-root.2.sec x) u ;
+    columns (i : Fin p) (x : E.X) (u : MD.RA.unit (g i x)) : FG.V.M = (frame i x u).1 ;
+    Clear (i : Fin p) : U l = FG.Af.Rep (g i) (columns i) ;
+    module Cleared (a : (i : Fin p) -> Clear i) {
+     section (i : Fin p) (j : Fin rank) (x : E.X) : M.M = (a i).1 x j ;
+     word (i : Fin p) (j : Fin rank) (t : Fin E.d) : M.M = EG.equivalence.sec (section i j) t ;
+     inner : Nat = FP.size rank E.d ;
+     count : Nat = FP.size p inner ;
+     tuple (z : FP.Pair p inner) : M.M =
+      word z.1 (FP.decode rank E.d z.2).1 (FP.decode rank E.d z.2).2 ;
+     family (z : Fin count) : M.M = tuple (FP.decode p inner z) ;
+     index (i : Fin p) (j : Fin rank) (t : Fin E.d) : Fin count =
+      FP.encode p inner i (FP.encode rank E.d j t) ;
+     entry (i : Fin p) (j : Fin rank) (t : Fin E.d) : Id M.M (family (index i j t)) (word i j t) =
+      trans (ap tuple (FP.decode-encode p inner i (FP.encode rank E.d j t)))
+       (ap (\ z -> word i z.1 z.2) (FP.decode-encode rank E.d j t)) ;
+     module S = SP.Family[count,family] ;
+     word-member (i : Fin p) (j : Fin rank) (t : Fin E.d) : S.Span (word i j t) =
+      Pr.subst M.M S.Span _ _ (entry i j t) (S.generator (index i j t)) ;
+     section-member (i : Fin p) (j : Fin rank) (x : E.X) : S.Span (section i j x) =
+      Pr.subst M.M S.Span _ _
+       (trans (sym (E.evaluate-equation M (word i j) x))
+        (ap (\ u -> u x) (EG.equivalence.sec-eq (section i j))))
+       (S.span-sum E.d (\ t -> M.sm (E.e t x) (word i j t))
+        (\ t -> S.span-scale (E.e t x) (word i j t) (word-member i j t))) ;
+     module OnChart (x : E.X) (i : Fin p) (u : MD.RA.unit (g i x)) {
+      b : LM.Frame rank = frame i x u ;
+      column-member (j : Fin rank) : S.Span (b.1 j) =
+       Pr.subst M.M S.Span _ _ (sym (ap (\ v -> v j) ((a i).2.2 x u)))
+        (S.span-scale (MD.RA.pw u.1 (a i).2.1) (section i j x) (section-member i j x)) ;
+      generates (m : M.M) : S.Span m =
+       Pr.subst M.M S.Span _ _ (b.2.sec-eq m)
+        (S.span-lin rank b.1 (b.2.sec m) column-member) ;
+     } ;
+     module Cover = AffineCovers[l].Over[R,setR,axioms.loc].At[E.B.A,p,fs] ;
+     point (m : M.M) (x : E.X) : S.Span m =
+      TC.rec ((i : Fin p) * MD.RA.unit (g i x)) @l (S.Span m) Tr.Trunc[S.Witness m].proposition
+       (\ z -> OnChart[x,z.1,z.2].generates m) (Cover.cover c.2.2.1 (E.Roots.spec-root.2.sec x)) ;
+     generates (m : M.M) : S.Span m = (S.span-modal m idx).sec
+      (TC.rec E.X @l (S.Span m) Tr.Trunc[S.Witness m].proposition (point m)) ;
+     result : Generating = (count,family,generates) ;
+    } ;
+    theorem : Tr.Trunc[Generating].carrier =
+     TC.map ((i : Fin p) -> Clear i) Generating (\ a -> Cleared[a].result)
+      (AffineFinite[l].choice p Clear (\ i -> FG.clear (g i) (columns i))) ;
+   } ;
+   theorem : Tr.Trunc[Generating].carrier =
+    TC.bind Choices Generating (\ c -> Chosen[c].theorem)
+     (axioms.zchoice E.B.A E.B.fp (\ s -> LM.Frame rank) (\ s -> h (E.Roots.spec-root.1 s))) ;
+   opaque theorem ;
+  } ;
+ } ;
+} ;

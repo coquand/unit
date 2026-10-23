@@ -1,0 +1,60 @@
+-- Division by the interface's arbitrary monic polynomial.
+-- Both quotient and remainder are explicit coefficient lists.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ open A ;
+ module P = Poly[l].PolyR[A] ;
+ module M = Mul[l].MulR[A] ;
+ module RM = RawMultiplication[l].Laws[A] ;
+ module L = RawLaws[l].Laws[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Bound = PolynomialBounds[l].Over[A] ;
+ module Rules = RL[B.ring] ;
+ module Calculation = DivisionIdentity[l].Over[B.ring] ;
+ module General (f : P.P) (d : Nat) (leading : Id R (P.coef f d) o)
+  (bound : Bound.Bound (suc d) f) {
+  F : B.Carrier = B.include f ;
+  Result (p : P.P) : U l = (q r : P.P) * Bound.Bound d r *
+   Id B.Carrier (B.include p) (B.addQ (B.mulQ F (B.include q)) (B.include r)) ;
+  module Step (a : R) (p : P.P) (previous : Result p) {
+   q : P.P = previous.1 ;
+   r : P.P = previous.2.1 ;
+   shifted : P.P = cons a r ;
+   module Sub = Bound.SubtractTop[f,d,leading,bound,shifted,previous.2.2.1] ;
+   c : R = Sub.c ;
+   quotient : P.P = cons c q ;
+   remainder : P.P = Sub.result ;
+   raw-equality : Id B.Carrier (B.include Sub.raw)
+    (B.addQ (B.include shifted) (B.negQ (B.mulQ F (B.constant c)))) =
+    trans (sym (B.Add.beta shifted (L.negP (M.scal c f))))
+     (ap (B.addQ (B.include shifted))
+      (trans (sym (B.Negate.beta (M.scal c f)))
+       (ap B.negQ
+        (sym (trans (B.Multiply.beta f (L.constantP c))
+         (B.Q.relates _ _ (P.peq-trans _ _ _ (RM.mul-comm f (L.constantP c)) (RM.mul-single-left c f)))))))) ;
+   remainder-equality : Id B.Carrier (B.include remainder)
+    (B.addQ (B.addQ (B.constant a) (B.mulQ B.variable (B.include r)))
+     (B.negQ (B.mulQ F (B.constant c)))) =
+    trans (sym (B.Q.relates Sub.raw remainder Sub.equality))
+     (trans raw-equality
+      (ap (\ v -> B.addQ v (B.negQ (B.mulQ F (B.constant c)))) (B.horner a r))) ;
+   equation : Id B.Carrier (B.include (cons a p))
+    (B.addQ (B.mulQ F (B.include quotient)) (B.include remainder)) =
+    trans (B.horner a p)
+     (trans (ap (\ v -> B.addQ (B.constant a) (B.mulQ B.variable v)) previous.2.2.2)
+      (trans (Calculation.identity (B.constant a) B.variable F (B.include q) (B.include r) (B.constant c))
+       (cong2 B.Carrier B.addQ _ _ _ _
+        (ap (B.mulQ F) (sym (B.horner c q))) (sym remainder-equality)))) ;
+   result : Result (cons a p) = (quotient,remainder,Bound.cut-bound d Sub.raw,equation) ;
+  } ;
+  divide : (p : P.P) -> Result p = split {
+   nil -> (nil,nil,(\ k -> refl z),
+    sym (trans (ap (\ v -> B.addQ v B.zeroQ) (Rules.mul-zero F)) (B.add-zero B.zeroQ))) ;
+   cons a p | ih -> Step[a,p,ih].result } ;
+ } ;
+ module At (lower : List R) {
+  module G = General[H.monic-list lower,len lower,H.leading lower,H.above lower] ;
+  divide : (p : P.P) -> G.Result p = G.divide ;
+ } ;
+} ;

@@ -1,0 +1,81 @@
+-- Small frame types and linear algebra for arbitrary R-modules.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module P1 = Prelude[l+] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ;
+ module A7 = Alg73[l] ;
+ module RS = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ Free (n : Nat) : MD.Module = MD.pi (Fin n) (\ j -> MD.regular) ;
+ module On (M : MD.Module) {
+  module MA = A7.MA[MD.ring,M] ;
+  module S = ModuleFiniteSums[l].Over[R,setR,M] ;
+  sum-zero : (n : Nat) -> Id M.M (S.sum n (\ j -> M.mz)) M.mz = split {
+   zero -> refl M.mz ;
+   suc n | ih -> trans (ap (M.madd M.mz) ih) (M.maddZ M.mz) } ;
+  sum-add : (n : Nat) (u v : Fin n -> M.M) ->
+   Id M.M (S.sum n (\ j -> M.madd (u j) (v j))) (M.madd (S.sum n u) (S.sum n v)) = split {
+   zero -> \ u v -> sym (M.maddZ M.mz) ;
+   suc n | ih -> \ u v ->
+    trans (ap (M.madd (M.madd (u (inr tt)) (v (inr tt)))) (ih (\ j -> u (inl j)) (\ j -> v (inl j))))
+     (MA.swap4 (u (inr tt)) (v (inr tt)) (S.sum n (\ j -> u (inl j))) (S.sum n (\ j -> v (inl j)))) } ;
+  scale-sum (a : R.R) : (n : Nat) (u : Fin n -> M.M) ->
+   Id M.M (M.sm a (S.sum n u)) (S.sum n (\ j -> M.sm a (u j))) = split {
+   zero -> \ u -> MA.sm-zr a ;
+   suc n | ih -> \ u -> trans (M.smD a (u (inr tt)) (S.sum n (\ j -> u (inl j))))
+    (ap (M.madd (M.sm a (u (inr tt)))) (ih (\ j -> u (inl j)))) } ;
+  lin (n : Nat) (w : Fin n -> M.M) (c : (Free n).M) : M.M = S.sum n (\ j -> M.sm (c j) (w j)) ;
+  lin-value (n : Nat) (w : Fin n -> M.M) (c : (Free n).M) :
+   Id M.M (lin n w c) (S.sum n (\ j -> M.sm (c j) (w j))) = refl (lin n w c) ;
+  sum-delta : (n : Nat) (w : Fin n -> M.M) (j : Fin n) ->
+   Id M.M (S.sum n (\ k -> M.sm (D.delta n k j) (w k))) (w j) = split {
+   zero -> \ w j -> efq j ;
+   suc n | ih -> \ w -> AffineFinite[l].section n
+    (\ j -> Id M.M (S.sum (suc n) (\ k -> M.sm (D.delta (suc n) k j) (w k))) (w j))
+    (\ j -> trans (cong2 M.M M.madd _ _ _ _ (MA.sm-zl (w (inr tt))) (ih (\ k -> w (inl k)) j))
+     (MA.mzl (w (inl j))))
+    (trans (cong2 M.M M.madd _ _ _ _ (M.smO (w (inr tt)))
+      (trans (S.congruent n (\ k -> M.sm R.z (w (inl k))) (\ k -> M.mz) (\ k -> MA.sm-zl (w (inl k))))
+       (sum-zero n))) (M.maddZ (w (inr tt)))) } ;
+  lin-unit (n : Nat) (w : Fin n -> M.M) (j : Fin n) :
+   Id M.M (lin n w (\ k -> D.delta n k j)) (w j) =
+   trans (lin-value n w (\ k -> D.delta n k j)) (sum-delta n w j) ;
+  lin-add (n : Nat) (w : Fin n -> M.M) (u v : (Free n).M) :
+   Id M.M (lin n w ((Free n).madd u v)) (M.madd (lin n w u) (lin n w v)) =
+   trans (S.congruent n (\ j -> M.sm (R.add (u j) (v j)) (w j))
+    (\ j -> M.madd (M.sm (u j) (w j)) (M.sm (v j) (w j))) (\ j -> M.smE (u j) (v j) (w j)))
+    (sum-add n (\ j -> M.sm (u j) (w j)) (\ j -> M.sm (v j) (w j))) ;
+  lin-scale (n : Nat) (w : Fin n -> M.M) (a : R.R) (u : (Free n).M) :
+   Id M.M (lin n w ((Free n).sm a u)) (M.sm a (lin n w u)) =
+   trans (S.congruent n (\ j -> M.sm (R.mul a (u j)) (w j))
+    (\ j -> M.sm a (M.sm (u j) (w j))) (\ j -> sym (M.smA a (u j) (w j))))
+    (sym (scale-sum a n (\ j -> M.sm (u j) (w j)))) ;
+  Basis (n : Nat) (w : Fin n -> M.M) : U l = Pr.isEquiv (Free n).M M.M (lin n w) ;
+  Frame (n : Nat) : U l = (w : Fin n -> M.M) * Basis n w ;
+  frame-equality (n : Nat) (b : Frame n) : Id MD.Module M (Free n) =
+   P1.sym MD.Module (Free n) M
+    (ModuleSIP[l].Over[MD.ring].sip (Free n) M ((lin n b.1,b.2),lin-add n b.1,lin-scale n b.1)) ;
+  opaque lin ;
+ } ;
+ module Hom (M N : MD.Module) (f : M.M -> N.M)
+  (add : (x y : M.M) -> Id N.M (f (M.madd x y)) (N.madd (f x) (f y)))
+  (scale : (a : R.R) (x : M.M) -> Id N.M (f (M.sm a x)) (N.sm a (f x))) {
+  module LM = On[M] ; module LN = On[N] ;
+  map-zero : Id N.M (f M.mz) N.mz =
+   Alg73[l].MA[MD.ring,N].madd-cancel (f M.mz) (f M.mz)
+    (trans (sym (add M.mz M.mz)) (ap f (M.maddZ M.mz))) ;
+  sum : (n : Nat) (v : Fin n -> M.M) ->
+   Id N.M (f (LM.S.sum n v)) (LN.S.sum n (\ j -> f (v j))) = split {
+   zero -> \ v -> map-zero ;
+   suc n | ih -> \ v -> trans (add (v (inr tt)) (LM.S.sum n (\ j -> v (inl j))))
+    (ap (N.madd (f (v (inr tt)))) (ih (\ j -> v (inl j)))) } ;
+  lin (n : Nat) (w : Fin n -> M.M) (c : (Free n).M) :
+   Id N.M (f (LM.lin n w c)) (LN.lin n (\ j -> f (w j)) c) =
+   trans (ap f (LM.lin-value n w c))
+    (trans (sum n (\ j -> M.sm (c j) (w j)))
+     (trans (LN.S.congruent n (\ j -> f (M.sm (c j) (w j)))
+      (\ j -> N.sm (c j) (f (w j))) (\ j -> scale (c j) (w j)))
+      (sym (LN.lin-value n (\ j -> f (w j)) c)))) ;
+ } ;
+} ;

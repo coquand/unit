@@ -60,6 +60,12 @@ This repository contains the checker and two developments written with it:
   the tower need not be fibrations.
 - [`sag.pdf`](doc/sag.pdf): what has been formalised of synthetic algebraic
   geometry, and how.
+- [`chatelet-descent.pdf`](doc/chatelet-descent.pdf): descent of finite
+  freeness and of bases with a retraction, following the checked proof.
+- [`finite-projective-flat.pdf`](doc/finite-projective-flat.pdf): the
+  constructive finite-matrix proof that finite projective modules are
+  exactly the finitely presented flat modules, with a correspondence to
+  the formal declarations.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -96,6 +102,10 @@ used. Each directory has a `README.txt`.
 - `torsor`: Lemma 7.4.2 (cocycles and torsors), Theorem 7.4.7 (2-cocycles
   and gerbes), Theorem 7.4.8 (Čech H² of a 2-acyclic finite cover is H², as
   abelian groups, natural under refinement).
+- `chatelet`: Châtelet's theorem from SAG and sheafification, with descent
+  of finite freeness and split bases proved, together with the required
+  algebraic and geometric prerequisites; also finite projectivity iff
+  finite presentation and flatness over any commutative ring.
 
 ## Building and checking
 
@@ -107,6 +117,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
     ./segc core all                # check the model (about 70 s)
     ./segc core changed            # after an edit: the changed files and their dependents
     ./segc sag/torsor all          # one of the sag/ developments (each under 1 s)
+    ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
 
 `segc` starts a checking server that loads the development once and keeps
 the results; `./segc core stop` stops it. Every declaration has a budget of

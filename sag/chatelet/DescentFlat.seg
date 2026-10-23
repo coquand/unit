@@ -1,0 +1,60 @@
+-- Flatness by the ordinary finite-relations criterion.  One relation
+-- implies any finite system, by induction.  No tensor products or SAG.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ; module DL = DescentLinear[l].Over[R,setR] ;
+ module SM = DescentSubmodules[l].Over[MD.ring] ;
+ module MM = DescentModuleMaps[l].Over[R,setR] ;
+ module At (M : MD.Module) {
+  -- q is the map with the given finite family of elements as columns.
+  record FiniteFactor (n : Nat) (q : SM.Linear (DL.Free n) M) {
+   size : Nat ;
+   through : SM.Linear (DL.Free n) (DL.Free size) ;
+   values : SM.Linear (DL.Free size) M ;
+   agrees (v : (DL.Free n).M) : Id M.M (values.1 (through.1 v)) (q.1 v) ;
+  } ;
+  Explanation (n m : Nat) (q : SM.Linear (DL.Free n) M) (a : Fin m -> (DL.Free n).M) : U l =
+   (z : FiniteFactor[n,q]) * ((j : Fin m) -> Id (DL.Free z.size).M (z.through.1 (a j)) (DL.Free z.size).mz) ;
+  -- For sum_i a_i x_i = 0, write x_i = sum_k b_ki y_k with
+  -- sum_i a_i b_ki = 0.  through contains the b_ki, values the y_k.
+  Flat : U l = (n : Nat) (q : SM.Linear (DL.Free n) M) (a : (DL.Free n).M) ->
+   Id M.M (q.1 a) M.mz -> Tr.Trunc[Explanation n (suc zero) q (\ j -> a)].carrier ;
+  Systems (m : Nat) : U l = (n : Nat) (q : SM.Linear (DL.Free n) M) (a : Fin m -> (DL.Free n).M) ->
+   ((j : Fin m) -> Id M.M (q.1 (a j)) M.mz) -> Tr.Trunc[Explanation n m q a].carrier ;
+  module OneToMany (flat : Flat) {
+   module Step (m : Nat) (ih : Systems m) (n : Nat) (q : SM.Linear (DL.Free n) M)
+    (a : Fin (suc m) -> (DL.Free n).M) (kills : (j : Fin (suc m)) -> Id M.M (q.1 (a j)) M.mz) {
+    module First (e : Explanation n (suc zero) q (\ j -> a (inr tt))) {
+     k : Nat = e.1.size ;
+     rest (j : Fin m) : (DL.Free k).M = e.1.through.1 (a (inl j)) ;
+     killed (j : Fin m) : Id M.M (e.1.values.1 (rest j)) M.mz =
+      trans (e.1.agrees (a (inl j))) (kills (inl j)) ;
+     module Last (t : Explanation k m e.1.values rest) {
+      factor : FiniteFactor[n,q] = new FiniteFactor[n,q,t.1.size,
+       MM.compose (DL.Free n) (DL.Free k) (DL.Free t.1.size) t.1.through e.1.through,
+       t.1.values,\ v -> trans (t.1.agrees (e.1.through.1 v)) (e.1.agrees v)] ;
+      kill-last : Id (DL.Free t.1.size).M (factor.through.1 (a (inr tt))) (DL.Free t.1.size).mz =
+       trans (ap t.1.through.1 (e.2 (inr tt)))
+        (SM.Lin[DL.Free k,DL.Free t.1.size,t.1.through].map-z) ;
+      result : Explanation n (suc m) q a = (factor,
+       AffineFinite[l].section m
+        (\ j -> Id (DL.Free t.1.size).M (factor.through.1 (a j)) (DL.Free t.1.size).mz)
+        t.2 kill-last) ;
+     } ;
+     result : Tr.Trunc[Explanation n (suc m) q a].carrier =
+      TC.map (Explanation k m e.1.values rest) (Explanation n (suc m) q a)
+       (\ t -> Last[t].result) (ih k e.1.values rest killed) ;
+    } ;
+    theorem : Tr.Trunc[Explanation n (suc m) q a].carrier =
+     TC.bind (Explanation n (suc zero) q (\ j -> a (inr tt))) (Explanation n (suc m) q a)
+      (\ e -> First[e].result) (flat n q (a (inr tt)) (kills (inr tt))) ;
+   } ;
+   theorem : (m : Nat) -> Systems m = split {
+    zero -> \ n q a kills -> Tr.Trunc[Explanation n zero q a].inc
+     (new FiniteFactor[n,q,n,MM.identity (DL.Free n),q,\ v -> refl (q.1 v)],\ j -> efq j) ;
+    suc m | ih -> \ n q a kills -> Step[m,ih,n,q,a,kills].theorem } ;
+   opaque theorem ;
+  } ;
+ } ;
+} ;

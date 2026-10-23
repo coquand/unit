@@ -1,0 +1,107 @@
+-- The concrete multiplicative monoids M(U) and S(I;U) used by
+-- Appendix 1, with denominator decompositions for the two branches.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ open A ; open RL[A] ;
+ module Tr = Truncation[l] ;
+ module IA = Ideals[l].Over[A,setA] ;
+ module Pow = AffinePowers[l].Over[A] ;
+ module Sums = FiniteIdeal[l].Sums[A] ;
+ module MB = MonoidBranch[l].Over[A,setA] ;
+ module Monoid (n : Nat) (us : Fin n -> R) {
+  Word : U l = List (Fin n) ;
+  value : Word -> R = split { nil -> o ; cons i w | ih -> mul (us i) ih } ;
+  append : Word -> Word -> Word = split { nil -> \ v -> v ; cons i w | ih -> \ v -> cons i (ih v) } ;
+  append-value : (w v : Word) -> Id R (value (append w v)) (mul (value w) (value v)) = split {
+   nil -> \ v -> sym (Pow.one-left (value v)) ;
+   cons i w | ih -> \ v -> trans (ap (mul (us i)) (ih v)) (mulA (us i) (value w) (value v)) } ;
+  Member (a : R) : U l = (w : Word) * Id R a (value w) ;
+  one : Member o = (nil,refl o) ;
+  product (a b : R) (ha : Member a) (hb : Member b) : Member (mul a b) =
+   (append ha.1 hb.1,
+    trans (cong2 R mul _ _ _ _ ha.2 hb.2) (sym (append-value ha.1 hb.1))) ;
+  generator (i : Fin n) : Member (us i) = (cons i nil,sym (mulO (us i))) ;
+ } ;
+ module Node (m : Nat) (fs : Fin m -> R) (n : Nat) (us : Fin n -> R) {
+  module J = GeneratedIdeal[l].Over[A,m,fs] ;
+  I : IA.Ideal = IA.Gen[m,fs].ideal ;
+  module M = Monoid[n,us] ;
+  module S = MB.Saturation[I,M.Member,M.one,M.product] ;
+  module At (a : R) {
+   fs-plus : Fin (suc m) -> R = snoc (Fin m) R fs a ;
+   us-plus : Fin (suc n) -> R = snoc (Fin n) R us a ;
+   module JL = GeneratedIdeal[l].Over[A,suc m,fs-plus] ;
+   IL : IA.Ideal = IA.Gen[suc m,fs-plus].ideal ;
+   module SL = MB.Saturation[IL,M.Member,M.one,M.product] ;
+   module MU = Monoid[suc n,us-plus] ;
+   module SU = MB.Saturation[I,MU.Member,MU.one,MU.product] ;
+   RadicalForm (x : R) : U l = (s b : R) * S.Witness s * Id R x (add s (mul a b)) ;
+   module Radical (x : R) (w : SL.Witness x) (c : JL.Witness w.2.2.1) {
+    old : Fin m -> R = \ i -> c.1 (inl i) ;
+    rest : R = Sums.lin m fs old ;
+    s : R = add w.1 rest ;
+    b : R = c.1 (inr tt) ;
+    member : J.Member rest = J.linear-combination m fs old J.generator ;
+    witness : S.Witness s = (w.1,w.2.1,rest,member,refl s) ;
+    equation : Id R x (add s (mul a b)) =
+     trans w.2.2.2.2
+      (trans (ap (add w.1) (trans c.2 (zl (Sums.lin (suc m) fs-plus c.1))))
+       (trans (ap (add w.1) (addC (mul a b) rest)) (addA w.1 rest (mul a b)))) ;
+    result : RadicalForm x = (s,b,witness,equation) ;
+   } ;
+   radical (x : R) (w : SL.Witness x) : Tr.Trunc[RadicalForm x].carrier =
+    Tr.Trunc[JL.Witness w.2.2.1].induction @l
+     (\ c -> Tr.Trunc[RadicalForm x].carrier) (\ c -> Tr.Trunc[RadicalForm x].proposition)
+     (\ c -> Tr.Trunc[RadicalForm x].inc Radical[x,w,c].result) w.2.2.2.1 ;
+   WordForm (x : R) : U l = (v : R) * M.Member v * (k : Nat) * Id R x (mul v (Pow.power a k)) ;
+   letter : (i : Fin (suc n)) -> WordForm (us-plus i) =
+    AffineFinite[l].section n (\ i -> WordForm (us-plus i))
+     (\ i -> (us i,M.generator i,zero,sym (mulO (us i))))
+     (o,M.one,suc zero,
+      sym (trans (Pow.one-left (mul a o)) (mulO a))) ;
+   combine (x y : R) (wx : WordForm x) (wy : WordForm y) : WordForm (mul x y) =
+    (mul wx.1 wy.1,M.product wx.1 wy.1 wx.2.1 wy.2.1,plus wx.2.2.1 wy.2.2.1,
+     trans (cong2 R mul _ _ _ _ wx.2.2.2 wy.2.2.2)
+      (trans (mul-four wx.1 (Pow.power a wx.2.2.1) wy.1 (Pow.power a wy.2.2.1))
+       (ap (mul (mul wx.1 wy.1)) (sym (Pow.power-add a wx.2.2.1 wy.2.2.1))))) ;
+   word : (w : MU.Word) -> WordForm (MU.value w) = split {
+    nil -> (o,M.one,zero,sym (mulO o)) ;
+    cons i w | ih -> combine (us-plus i) (MU.value w) (letter i) ih } ;
+   monoid (u : R) (w : MU.Member u) : WordForm u =
+    ((word w.1).1,(word w.1).2.1,(word w.1).2.2.1,trans w.2 (word w.1).2.2.2) ;
+   UnitForm (y : R) : U l = (v j : R) * (k : Nat) * S.Witness v * I.1 j *
+    Id R y (add (mul v (Pow.power a k)) j) ;
+   unit (y : R) (w : SU.Witness y) : UnitForm y =
+    ((monoid w.1 w.2.1).1,w.2.2.1,(monoid w.1 w.2.1).2.2.1,
+     ((monoid w.1 w.2.1).1,(monoid w.1 w.2.1).2.1,z,I.2.2.1,sym (addZ (monoid w.1 w.2.1).1)),
+     w.2.2.2.1,trans w.2.2.2.2 (ap (\ t -> add t w.2.2.1) (monoid w.1 w.2.1).2.2.2)) ;
+   module Pair (x y : R) (left : RadicalForm x) (right : UnitForm y) {
+    module Calculation = MB.Branch[I,M.Member,M.one,M.product].At[
+     a,left.1,left.2.1,right.1,right.2.1,right.2.2.1,left.2.2.1,right.2.2.2.1,right.2.2.2.2.1] ;
+    gs : Fin (suc (suc zero)) -> R = snoc (Fin (suc zero)) R (\ i -> x) y ;
+    module C = FiniteIdeal[l].Over[A,suc (suc zero),gs] ;
+    coefficients : Fin (suc (suc zero)) -> R = Calculation.certificate.1 ;
+    generator-equality : (i : Fin (suc (suc zero))) -> Id R (Calculation.generators i) (gs i) =
+     AffineFinite[l].section (suc zero) (\ i -> Id R (Calculation.generators i) (gs i))
+      (\ i -> sym left.2.2.2) (sym right.2.2.2.2.2) ;
+    certificate : C.Certificate Calculation.parent z =
+     (coefficients,trans Calculation.certificate.2
+      (ap (add z) (Sums.sum-cong (suc (suc zero))
+       (\ i -> mul (Calculation.generators i) (coefficients i))
+       (\ i -> mul (gs i) (coefficients i))
+       (\ i -> ap (\ t -> mul t (coefficients i)) (generator-equality i))))) ;
+   } ;
+   module For (x y : R) {
+    gs : Fin (suc (suc zero)) -> R = snoc (Fin (suc zero)) R (\ i -> x) y ;
+    Result : U l = (s : R) * S.Witness s * FiniteIdeal[l].Over[A,suc (suc zero),gs].Certificate s z ;
+    from-forms (left : RadicalForm x) (right : UnitForm y) : Result =
+     (Pair[x,y,left,right].Calculation.parent,Pair[x,y,left,right].Calculation.parent-member,
+      Pair[x,y,left,right].certificate) ;
+    comaximal (left : SL.Witness x) (right : SU.Witness y) : Tr.Trunc[Result].carrier =
+     Tr.Trunc[RadicalForm x].induction @l
+      (\ w -> Tr.Trunc[Result].carrier) (\ w -> Tr.Trunc[Result].proposition)
+      (\ w -> Tr.Trunc[Result].inc (from-forms w (unit y right))) (radical x left) ;
+   } ;
+  } ;
+ } ;
+} ;

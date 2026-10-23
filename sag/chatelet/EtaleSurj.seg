@@ -1,0 +1,108 @@
+-- Surjectivity is equivalent to a finite union of Schur pivot conditions.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (loc : StandardOpens[l].Over[R,setR].Locality) {
+ module A = EtaleLinear[l].Over[R,setR] ; open A ;
+ module PivotKernel = MatrixLeftInverse[l].Over[R,setR,loc] ;
+ sub-add (x y : R.R) : Id R.R (R.add (R.add x (R.neg y)) y) x =
+  trans (sym (R.addA x (R.neg y) y))
+   (trans (ap (R.add x) (L.neg-cancel y)) (R.addZ x)) ;
+ add-difference (x y : R.R) : Id R.R (R.add x (R.add y (R.neg x))) y =
+  trans (L.add-swap x y (R.neg x)) (trans (ap (R.add y) (R.addN x)) (R.addZ y)) ;
+ restore (u a b z y v t : R.R)
+  (ut : Id R.R (R.mul u t) (R.add v (R.neg z)))
+  (row : Id R.R (R.add (R.mul u a) (R.neg (R.mul b z)))
+    (R.add (R.mul u y) (R.neg (R.mul b v)))) :
+  Id R.R (R.mul u (R.add a (R.mul t b))) (R.mul u y) = calc R.R {
+   R.mul u (R.add a (R.mul t b))
+    =< R.dist u a (R.mul t b) > R.add (R.mul u a) (R.mul u (R.mul t b))
+    =< ap (R.add (R.mul u a)) (trans (R.mulA u t b) (ap (\ c -> R.mul c b) ut))
+     > R.add (R.mul u a) (R.mul (R.add v (R.neg z)) b)
+    =< ap (R.add (R.mul u a)) (trans (L.dist-left v (R.neg z) b)
+       (cong2 R.R R.add _ _ _ _ (R.mulC v b)
+        (trans (L.neg-mul-left z b) (ap R.neg (R.mulC z b)))))
+     > R.add (R.mul u a) (R.add (R.mul b v) (R.neg (R.mul b z)))
+    =< ap (R.add (R.mul u a)) (R.addC (R.mul b v) (R.neg (R.mul b z)))
+     > R.add (R.mul u a) (R.add (R.neg (R.mul b z)) (R.mul b v))
+    =< R.addA (R.mul u a) (R.neg (R.mul b z)) (R.mul b v)
+     > R.add (R.add (R.mul u a) (R.neg (R.mul b z))) (R.mul b v)
+    =< ap (\ c -> R.add c (R.mul b v)) row
+     > R.add (R.add (R.mul u y) (R.neg (R.mul b v))) (R.mul b v)
+    =< sub-add (R.mul u y) (R.mul b v) > R.mul u y } ;
+ module Step (m n : Nat) (M : Matrix m (suc n)) {
+  module At (j : Fin m) (invertible : L.unit (M j (inr tt))) {
+   u : R.R = M j (inr tt) ;
+   module Inv = Unit[u,invertible] ;
+   reduced : Matrix m n = schur m n M j ;
+   module Forward (onto : Surj m (suc n) M) (w : Vector n) {
+    v : Vector (suc n) = snoc (Fin n) R.R (\ k -> R.mul invertible.1 (w k)) R.z ;
+    solve (c : Witness m (suc n) M v) : Witness m n reduced w =
+     (c.1,\ k -> trans (schur-apply m n M j c.1 k)
+       (trans (cong2 R.R R.add _ _ _ _ (ap (R.mul u) (c.2 (inl k)))
+         (ap (\ a -> R.neg (R.mul (M j (inl k)) a)) (c.2 (inr tt))))
+        (trans (ap (\ a -> R.add a (R.neg (R.mul (M j (inl k)) R.z))) (Inv.undo (w k)))
+         (trans (ap (R.add (w k)) (trans (ap R.neg (L.mul-zero (M j (inl k)))) L.neg-zero)) (R.addZ (w k)))))) ;
+    result : Tr.Trunc[Witness m n reduced w].carrier =
+     TC.map (Witness m (suc n) M v) (Witness m n reduced w) solve (onto v) ;
+   } ;
+   forward (onto : Surj m (suc n) M) : Surj m n reduced = \ w -> Forward[onto,w].result ;
+   module Backward (onto : Surj m n reduced) (v : Vector (suc n)) {
+    w : Vector n = \ k -> R.add (R.mul u (v (inl k))) (R.neg (R.mul (M j (inl k)) (v (inr tt)))) ;
+    module Solution (c : Witness m n reduced w) {
+     z : R.R = apply m (suc n) M c.1 (inr tt) ;
+     t : R.R = R.mul invertible.1 (R.add (v (inr tt)) (R.neg z)) ;
+     corrected : Vector m = \ a -> R.add (c.1 a) (R.mul t (D.delta m a j)) ;
+     ut : Id R.R (R.mul u t) (R.add (v (inr tt)) (R.neg z)) = Inv.undo _ ;
+     last : Id R.R (apply m (suc n) M corrected (inr tt)) (v (inr tt)) =
+      trans (apply-correct m (suc n) M c.1 j t (inr tt))
+       (trans (ap (R.add z) (trans (R.mulC t u) ut)) (add-difference z (v (inr tt)))) ;
+     row (k : Fin n) : Id R.R (apply m (suc n) M corrected (inl k)) (v (inl k)) =
+      Inv.cancel _ _ (trans (ap (R.mul u) (apply-correct m (suc n) M c.1 j t (inl k)))
+       (restore u (apply m (suc n) M c.1 (inl k)) (M j (inl k)) z (v (inl k)) (v (inr tt)) t ut
+        (trans (sym (schur-apply m n M j c.1 k)) (c.2 k)))) ;
+     witness : Witness m (suc n) M v =
+      (corrected,AffineFinite[l].section n
+        (\ k -> Id R.R (apply m (suc n) M corrected k) (v k)) row last) ;
+    } ;
+    result : Tr.Trunc[Witness m (suc n) M v].carrier =
+     TC.map (Witness m n reduced w) (Witness m (suc n) M v) (\ c -> Solution[c].witness) (onto w) ;
+   } ;
+   backward (onto : Surj m n reduced) : Surj m (suc n) M = \ v -> Backward[onto,v].result ;
+  } ;
+  PivotCondition : U l = (j : Fin m) * L.unit (M j (inr tt)) * Surj m n (schur m n M j) ;
+  Cases : U l = Tr.Trunc[PivotCondition].carrier ;
+  pivot-from (onto : Surj m (suc n) M)
+   (c : Witness m (suc n) M (snoc (Fin n) R.R (\ k -> R.z) R.o)) : Cases =
+   TC.map ((j : Fin m) * L.unit (M j (inr tt))) PivotCondition
+    (\ p -> (p.1,p.2,At[p.1,p.2].forward onto))
+    (PivotKernel.pivot m c.1 (\ j -> M j (inr tt))
+      (trans (S.sum-cong m (\ j -> R.mul (c.1 j) (M j (inr tt)))
+        (\ j -> R.mul (M j (inr tt)) (c.1 j)) (\ j -> R.mulC (c.1 j) (M j (inr tt))))
+       (c.2 (inr tt)))) ;
+  forward (onto : Surj m (suc n) M) : Cases =
+   TC.bind (Witness m (suc n) M (snoc (Fin n) R.R (\ k -> R.z) R.o)) PivotCondition
+    (pivot-from onto) (onto (snoc (Fin n) R.R (\ k -> R.z) R.o)) ;
+  backward (cases : Cases) : Surj m (suc n) M =
+   TC.rec PivotCondition @l (Surj m (suc n) M) (surj-prop m (suc n) M)
+    (\ p -> At[p.1,p.2.1].backward p.2.2) cases ;
+  equivalence : Pr.Equiv (Surj m (suc n) M) Cases =
+   (forward,Pr.qinv _ _ forward backward (\ c -> Tr.Trunc[PivotCondition].proposition _ c)
+     (\ s -> surj-prop m (suc n) M _ s)) ;
+ } ;
+ module OP = OpenProp[l].Over[R,setR] ;
+ module OO = OpenOps[l].Over[R,setR] ;
+ module FO = EtaleFiniteOpen[l].Over[R,setR] ;
+ empty-surj (m : Nat) (M : Matrix m zero) : Surj m zero M =
+  \ v -> Tr.Trunc[Witness m zero M v].inc (\ j -> R.z,\ e -> efq e) ;
+ surj-open : (n m : Nat) (M : Matrix m n) -> OP.Open (Surj m n M) = split {
+  zero -> \ m M -> OP.along (Surj m zero M) Top
+   ((\ s -> tt),Pr.qinv (Surj m zero M) Top (\ s -> tt) (\ t -> empty-surj m M)
+    (\ t -> Presentations[l].Over[R,setR].top-prop tt t) (\ s -> surj-prop m zero M _ s)) OO.open-top ;
+  suc n | ih -> \ m M -> OP.along (Surj m (suc n) M) Step[m,n,M].Cases Step[m,n,M].equivalence
+   (FO.finite-open m (\ j -> L.unit (M j (inr tt)) * Surj m n (schur m n M j))
+    (\ j -> OO.open-and (L.unit (M j (inr tt))) (Surj m n (schur m n M j))
+      (FO.unit-open (M j (inr tt))) (ih m (schur m n M j)))) } ;
+} ;

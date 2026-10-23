@@ -1,0 +1,104 @@
+-- Over any commutative ring: finite projective iff finitely presented
+-- and flat.  Finite presentation is a finite exact presentation;
+-- finite projectivity is a retract of a finite free module; flatness
+-- is the single-relation criterion of DescentFlat.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ; module DL = DescentLinear[l].Over[R,setR] ;
+ module SM = DescentSubmodules[l].Over[MD.ring] ;
+ module MM = DescentModuleMaps[l].Over[R,setR] ;
+ module At (M : MD.Module) {
+  module FL = DescentFlat[l].Over[R,setR].At[M] ;
+  record Presentation {
+   generators : Nat ;
+   relations : Nat ;
+   quotient : SM.Linear (DL.Free generators) M ;
+   relators : Fin relations -> (DL.Free generators).M ;
+   kills (j : Fin relations) : Id M.M (quotient.1 (relators j)) M.mz ;
+   onto (x : M.M) : Tr.Trunc[(v : (DL.Free generators).M) * Id M.M (quotient.1 v) x].carrier ;
+   kernel (v : (DL.Free generators).M) : Id M.M (quotient.1 v) M.mz ->
+    Tr.Trunc[(c : (DL.Free relations).M) * Id (DL.Free generators).M
+     (DL.On[DL.Free generators].lin relations relators c) v].carrier ;
+  } ;
+  record Retract {
+   dimension : Nat ;
+   projection : SM.Linear (DL.Free dimension) M ;
+   section : SM.Linear M (DL.Free dimension) ;
+   law (x : M.M) : Id M.M (projection.1 (section.1 x)) x ;
+  } ;
+  FinitelyPresented : U l = Tr.Trunc[Presentation].carrier ;
+  FiniteProjective : U l = Tr.Trunc[Retract].carrier ;
+  module FromPresentation (p : Presentation) (flat : FL.Flat) {
+   P : MD.Module = DL.Free p.generators ;
+   module Explained (e : FL.Explanation p.generators p.relations p.quotient p.relators) {
+    V : MD.Module = DL.Free e.1.size ;
+    kills-kernel (v : P.M) (h : Id M.M (p.quotient.1 v) M.mz) : Id V.M (e.1.through.1 v) V.mz =
+     TC.rec ((c : (DL.Free p.relations).M) * Id P.M (DL.On[P].lin p.relations p.relators c) v) @l
+      (Id V.M (e.1.through.1 v) V.mz) (V.setM _ _)
+      (\ w -> trans (ap e.1.through.1 (sym w.2))
+       (MM.Killed[P,V,e.1.through,p.relations,p.relators,e.2].theorem w.1)) (p.kernel v h) ;
+    module D = DescentSurjectiveFactor[l].Over[R,setR].At[P,M,V,p.quotient,p.onto,e.1.through,kills-kernel] ;
+    module Lifted (x : M.M) (w : (v : P.M) * Id M.M (p.quotient.1 v) x) {
+     result : Id M.M (e.1.values.1 (D.factor x)) x =
+      trans (ap (\ y -> e.1.values.1 (D.factor y)) (sym w.2))
+       (trans (ap e.1.values.1 (D.beta w.1)) (trans (e.1.agrees w.1) w.2)) ;
+    } ;
+    law (x : M.M) : Id M.M (e.1.values.1 (D.factor x)) x =
+     TC.rec ((v : P.M) * Id M.M (p.quotient.1 v) x) @l
+      (Id M.M (e.1.values.1 (D.factor x)) x) (M.setM _ _)
+      (\ w -> Lifted[x,w].result) (p.onto x) ;
+    result : Retract = new Retract[e.1.size,e.1.values,D.linear,law] ;
+   } ;
+   theorem : FiniteProjective =
+    TC.map (FL.Explanation p.generators p.relations p.quotient p.relators) Retract
+     (\ e -> Explained[e].result)
+     (FL.OneToMany[flat].theorem p.relations p.generators p.quotient p.relators p.kills) ;
+  } ;
+  fp-flat-to-projective (fp : FinitelyPresented) (flat : FL.Flat) : FiniteProjective =
+   TC.bind Presentation Retract (\ p -> FromPresentation[p,flat].theorem) fp ;
+  opaque fp-flat-to-projective ;
+  module FromRetract (p : Retract) {
+   P : MD.Module = DL.Free p.dimension ;
+   module MP = Alg73[l].MA[MD.ring,P] ; module MQ = Alg73[l].MA[MD.ring,M] ;
+   module Lp = SM.Lin[P,M,p.projection] ; module Ls = SM.Lin[M,P,p.section] ;
+   h : SM.Linear P P = MM.subtract P P (MM.identity P) (MM.compose P M P p.section p.projection) ;
+   module H = MM.Free[p.dimension].LinearMap[P,h] ;
+   relators : Fin p.dimension -> P.M = H.columns ;
+   kills (j : Fin p.dimension) : Id M.M (p.projection.1 (relators j)) M.mz =
+    trans (Lp.map-sub (MM.Free[p.dimension].unit j)
+      (p.section.1 (p.projection.1 (MM.Free[p.dimension].unit j))))
+     (trans (ap (\ y -> MQ.sub (p.projection.1 (MM.Free[p.dimension].unit j)) y)
+       (p.law (p.projection.1 (MM.Free[p.dimension].unit j))))
+      (MQ.sub-self (p.projection.1 (MM.Free[p.dimension].unit j)))) ;
+   onto (x : M.M) : Tr.Trunc[(v : P.M) * Id M.M (p.projection.1 v) x].carrier =
+    Tr.Trunc[(v : P.M) * Id M.M (p.projection.1 v) x].inc (p.section.1 x,p.law x) ;
+   kernel-value (v : P.M) (zero : Id M.M (p.projection.1 v) M.mz) : Id P.M (h.1 v) v =
+    trans (ap (\ y -> MP.sub v (p.section.1 y)) zero)
+     (trans (ap (MP.sub v) Ls.map-z)
+      (trans (ap (P.madd v) MP.mneg-z) (P.maddZ v))) ;
+   kernel (v : P.M) (zero : Id M.M (p.projection.1 v) M.mz) :
+    Tr.Trunc[(c : P.M) * Id P.M (DL.On[P].lin p.dimension relators c) v].carrier =
+    Tr.Trunc[(c : P.M) * Id P.M (DL.On[P].lin p.dimension relators c) v].inc
+     (v,trans (H.equation v) (kernel-value v zero)) ;
+   presentation : Presentation = new Presentation[p.dimension,p.dimension,p.projection,relators,kills,onto,kernel] ;
+   flat : FL.Flat = \ n q a killed -> Tr.Trunc[FL.Explanation n (suc zero) q (\ j -> a)].inc
+    (new FL.FiniteFactor[n,q,p.dimension,MM.compose (DL.Free n) M P p.section q,p.projection,\ v -> p.law (q.1 v)],
+     \ j -> trans (ap p.section.1 killed) Ls.map-z) ;
+  } ;
+  projective-to-fp (projective : FiniteProjective) : FinitelyPresented =
+   TC.map Retract Presentation (\ p -> FromRetract[p].presentation) projective ;
+  projective-to-flat (projective : FiniteProjective) : FL.Flat = \ n q a killed ->
+   TC.bind Retract (FL.Explanation n (suc zero) q (\ j -> a))
+    (\ p -> FromRetract[p].flat n q a killed) projective ;
+  projective-to-fp-flat (p : FiniteProjective) : FinitelyPresented * FL.Flat =
+   (projective-to-fp p,projective-to-flat p) ;
+  fp-flat-pair-to-projective (p : FinitelyPresented * FL.Flat) : FiniteProjective =
+   fp-flat-to-projective p.1 p.2 ;
+  finite-projective-iff-fp-flat :
+   (FiniteProjective -> (FinitelyPresented * FL.Flat)) *
+   ((FinitelyPresented * FL.Flat) -> FiniteProjective) =
+   (projective-to-fp-flat,fp-flat-pair-to-projective) ;
+  opaque projective-to-fp ; opaque projective-to-flat ; opaque finite-projective-iff-fp-flat ;
+ } ;
+} ;

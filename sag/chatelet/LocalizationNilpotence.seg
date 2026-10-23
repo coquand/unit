@@ -1,0 +1,81 @@
+-- Kernel calculation needed for SAG 3.1.8.
+-- A relative one-variable presentation provides the certificate; the
+-- localization used by callers may be any algebra with the canonical UP.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module Tr1 = Truncation[l+] ;
+module Relative (A : CRing) (setA : Pr.isSet A.R) (f : A.R) {
+ module Lin = LinearPolynomialCertificate[l].Over[A] ;
+ module PC = PolynomialCertificate[l].Over[A,setA,Lin.linear f] ;
+ module K = PC.K ;
+ module P = Presentations[l].Over[A,setA] ;
+ module Pow = AffinePowers[l].Over[A] ;
+ R : U l = K.A.Carrier ;
+ z : R = K.A.zeroQ ; o : R = K.A.oneQ ;
+ add : R -> R -> R = K.A.addQ ; mul : R -> R -> R = K.A.mulQ ; neg : R -> R = K.A.negQ ;
+ addC : (a b : R) -> Id R (add a b) (add b a) = K.A.add-comm ;
+ addZ : (a : R) -> Id R (add a z) a = K.A.add-zero ;
+ mulC : (a b : R) -> Id R (mul a b) (mul b a) = K.A.mul-comm ;
+ module KL = AffineRing[l].Laws[K.A.ring,K.A.set] ;
+ y : R = K.A.generators (inr tt) ;
+ minus-one : Id R (K.A.constant (A.neg A.o)) (neg o) =
+  trans (RingHom[l].negation A K.A.ring K.A.inclusion A.o)
+   (ap neg K.A.inclusion.2.1) ;
+ value : Id R (P.eval PC.W.V K.A.algebra K.A.generators (PC.W.expression (Lin.linear f)))
+  (add (mul (K.A.constant f) y) (neg o)) = calc R {
+  add (K.A.constant (A.neg A.o)) (mul y (add (K.A.constant f) (mul y z)))
+   =< ap (\ v -> add (K.A.constant (A.neg A.o)) (mul y (add (K.A.constant f) v))) (RL[K.A.ring].mul-zero y)
+   > add (K.A.constant (A.neg A.o)) (mul y (add (K.A.constant f) z))
+   =< ap (\ v -> add (K.A.constant (A.neg A.o)) (mul y v)) (addZ (K.A.constant f))
+   > add (K.A.constant (A.neg A.o)) (mul y (K.A.constant f))
+   =< Presentations[l].cong2 R add _ _ _ _ minus-one (mulC y (K.A.constant f))
+   > add (neg o) (mul (K.A.constant f) y)
+   =< addC (neg o) (mul (K.A.constant f) y) > add (mul (K.A.constant f) y) (neg o) } ;
+ inverse : RL[K.A.ring].unit (K.A.constant f) =
+  (y,KL.difference-zero _ _ (trans (sym value) K.A.solution.2.1)) ;
+ collapse (h : Id R o z) : Pow.Nilpotent f =
+  Tr.Trunc[PC.RawInverse].induction @l (\ t -> Pow.Nilpotent f)
+   (\ t -> Tr.Trunc[(n : Nat) * Id A.R (Pow.power f n) A.z].proposition)
+   (\ q -> Tr.Trunc[(n : Nat) * Id A.R (Pow.power f n) A.z].inc
+    (len {A.R} q.1,Lin.inverse-nilpotent f q.1 q.2)) (PC.of-collapse h) ;
+} ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ;
+ module I = AffineInterface[l].Over[R,setR] ;
+ module Model (A : C.Algebra) (f : A.ring.R) {
+  module Rel = Relative[A.ring,A.set,f] ;
+  target : C.Algebra = C.mkAlgebra Rel.K.A.ring Rel.K.A.set
+   (RingHom[l].compose R A.ring Rel.K.A.ring Rel.K.A.inclusion A.iota) ;
+  inclusion : C.Hom A target = (Rel.K.A.inclusion,\ r -> refl (Rel.K.A.constant (A.iota.1 r))) ;
+  inverse : I.Unit target (inclusion.1.1 f) = Rel.inverse ;
+ }
+ ;
+ collapse-nilpotent (A : C.Algebra) (f : A.ring.R) (loc : I.LocalizationWitness A f)
+  (collapsed : Id loc.1.ring.R loc.1.ring.o loc.1.ring.z) :
+  AffinePowers[l].Over[A.ring].Nilpotent f =
+  Model[A,f].Rel.collapse
+   (let {
+     h : C.Hom loc.1 Model[A,f].target =
+      (loc.2.2.2.2 Model[A,f].target).sec (Model[A,f].inclusion,Model[A,f].inverse) ;
+    } in trans (sym h.1.2.1)
+      (trans (ap h.1.1 collapsed) (RingHom[l].zero loc.1.ring Model[A,f].target.ring h.1))) ;
+ module SAG (sqc : P.SQC) (one-nz : Not (Id R.R R.o R.z)) {
+  module W = WeakNullstellensatz[l].Over[R,setR,sqc] ;
+  empty-to-nilpotent (A : C.Algebra) (fp : P.FP A) (f : A.ring.R) (empty : I.D A f -> Empty) :
+   AffinePowers[l].Over[A.ring].Nilpotent f =
+   Tr1.Trunc[I.LocalizationWitness A f].induction @l
+    (\ t -> AffinePowers[l].Over[A.ring].Nilpotent f)
+    (\ t -> Tr.Trunc[(n : Nat) * Id A.ring.R (AffinePowers[l].Over[A.ring].power f n) A.ring.z].proposition)
+    (\ loc -> collapse-nilpotent A f loc
+     (W.empty-collapse loc.1 loc.2.1 (\ x -> empty ((I.spectrum A f loc).1 x)))) (I.localize A fp f) ;
+  nilpotent-to-empty (A : C.Algebra) (f : A.ring.R)
+   (nilpotent : AffinePowers[l].Over[A.ring].Nilpotent f) (x : I.D A f) : Empty =
+   Tr.Trunc[(n : Nat) * Id A.ring.R (AffinePowers[l].Over[A.ring].power f n) A.ring.z].induction @l
+    (\ t -> Empty) (\ t -> \ a b -> efq a)
+    (\ w -> one-nz (AffinePowers[l].Over[R].Units[setR].nilpotent-unit (x.1.1.1 f) x.2
+     (w.1,trans (sym (AffinePowers[l].power-map A.ring R x.1.1 f w.1))
+      (trans (ap x.1.1.1 w.2) (RingHom[l].zero A.ring R x.1.1))))) nilpotent ;
+ } ;
+} ;

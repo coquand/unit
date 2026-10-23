@@ -1,0 +1,70 @@
+-- A function f : R^k -> R with f(t v) = t f(v) for all t : R is additive.
+-- Fix x, y.  By SQC, a(t) = f(x + t y) is a polynomial, so
+-- a(t) = f(x) + t a1(t).  For a unit u, x + u y = u (u^-1 x + y), so
+-- a1(u) = g(u^-1) - u^-1 f(x) with g(s) = f(s x + y).  By the chart
+-- intersection lemma (Lemma 6.2.1 of SAG) both sides are constant, equal to
+-- g(0) = f(y); at t = 1, f(x + y) = f(x) + f(y).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (sqc : Presentations[l].Over[R,setR].SQC) {
+ open R ; open RL[R] ;
+ module CI = ChartIntersection[l].Over[R,setR,sqc] ;
+ module Raw = CI.Raw ;
+ module G = PicardUnits[l].Over[R,setR] ;
+ tailR : Raw.P -> Raw.P = split { nil -> nil ; cons c q -> q } ;
+ factor : (p : Raw.P) (t : R.R) -> Id R.R (Raw.ev p t) (add (Raw.ev p z) (mul t (Raw.ev (tailR p) t))) = split {
+  nil -> \ t -> sym (trans (zl (mul t z)) (mul-zero t)) ;
+  cons c q -> \ t -> ap (\ w -> add w (mul t (Raw.ev q t))) (sym (trans (ap (add c) (zero-mul (Raw.ev q z))) (addZ c))) } ;
+ -- c + X = Y gives X = Y - c
+ solve (c x y : R.R) (h : Id R.R (add c x) y) : Id R.R x (add y (neg c)) =
+  trans (sym (add-neg-cancel x c)) (ap (\ w -> add w (neg c)) (trans (addC x c) h)) ;
+ module Additive (k : Nat) (f : (Fin k -> R.R) -> R.R)
+  (hom : (t : R.R) (v : Fin k -> R.R) -> Id R.R (f (\ i -> mul t (v i))) (mul t (f v))) {
+  V : U l = Fin k -> R.R ;
+  vec-eq (v w : V) (h : (i : Fin k) -> Id R.R (v i) (w i)) : Id V v w = F.funext (Fin k) (\ i -> R.R) v w h ;
+  module At (x y : V) {
+   a (t : R.R) : R.R = f (\ i -> add (x i) (mul t (y i))) ;
+   g (s : R.R) : R.R = f (\ i -> add (mul s (x i)) (y i)) ;
+   -- x + u y = u (u^-1 x + y)
+   vec (u : G.Unit) : Id V (\ i -> add (x i) (mul u.1 (y i))) (\ i -> mul u.1 (add (mul u.2.1 (x i)) (y i))) =
+    vec-eq _ _ (\ i -> sym (trans (dist u.1 (mul u.2.1 (x i)) (y i))
+     (ap (\ w -> add w (mul u.1 (y i))) (trans (mulA u.1 u.2.1 (x i)) (trans (ap (\ w -> mul w (x i)) u.2.2) (one-left (x i))))))) ;
+   a-unit (u : G.Unit) : Id R.R (a u.1) (mul u.1 (g u.2.1)) =
+    trans (ap f (vec u)) (hom u.1 (\ i -> add (mul u.2.1 (x i)) (y i))) ;
+   a-zero : Id R.R (a z) (f x) =
+    ap f (vec-eq (\ i -> add (x i) (mul z (y i))) x (\ i -> trans (ap (add (x i)) (zero-mul (y i))) (addZ (x i)))) ;
+   a-one : Id R.R (a o) (f (\ i -> add (x i) (y i))) =
+    ap f (vec-eq (\ i -> add (x i) (mul o (y i))) (\ i -> add (x i) (y i)) (\ i -> ap (add (x i)) (one-left (y i)))) ;
+   g-zero : Id R.R (g z) (f y) =
+    ap f (vec-eq (\ i -> add (mul z (x i)) (y i)) y (\ i -> trans (ap (\ w -> add w (y i)) (zero-mul (x i))) (zl (y i)))) ;
+   g' (s : R.R) : R.R = add (g s) (neg (mul s (f x))) ;
+   module WithRep (p : Raw.P) (hp : (t : R.R) -> Id R.R (Raw.ev p t) (a t)) {
+    a1 (t : R.R) : R.R = Raw.ev (tailR p) t ;
+    c-eq : Id R.R (Raw.ev p z) (f x) = trans (hp z) a-zero ;
+    expand (t : R.R) : Id R.R (add (f x) (mul t (a1 t))) (a t) =
+     trans (ap (\ w -> add w (mul t (a1 t))) (sym c-eq)) (trans (sym (factor p t)) (hp t)) ;
+    agree (u : G.Unit) : Id R.R (a1 u.1) (g' u.2.1) =
+     trans (sym (trans (mulA u.2.1 u.1 (a1 u.1)) (trans (ap (\ w -> mul w (a1 u.1)) (trans (mulC u.2.1 u.1) u.2.2)) (one-left (a1 u.1)))))
+      (trans (ap (mul u.2.1) (solve (f x) (mul u.1 (a1 u.1)) (mul u.1 (g u.2.1)) (trans (expand u.1) (a-unit u))))
+       (trans (dist u.2.1 (mul u.1 (g u.2.1)) (neg (f x)))
+        (Presentations[l].cong2 R.R add _ _ _ _
+         (trans (mulA u.2.1 u.1 (g u.2.1)) (trans (ap (\ w -> mul w (g u.2.1)) (trans (mulC u.2.1 u.1) u.2.2)) (one-left (g u.2.1))))
+         (mul-neg u.2.1 (f x))))) ;
+    constant : ((t : R.R) -> Id R.R (a1 t) (a1 z)) * ((s : R.R) -> Id R.R (g' s) (a1 z)) = CI.intersection a1 g' agree ;
+    -- a1(1) = g'(0) = f(y)
+    slope : Id R.R (a1 o) (f y) =
+     trans (constant.1 o) (trans (sym (constant.2 z))
+      (trans (ap (add (g z)) (trans (ap neg (zero-mul (f x))) neg-zero)) (trans (addZ (g z)) g-zero))) ;
+    result : Id R.R (f (\ i -> add (x i) (y i))) (add (f x) (f y)) =
+     trans (sym a-one) (trans (sym (expand o)) (ap (add (f x)) (trans (one-left (a1 o)) slope))) ;
+   } ;
+   result : Id R.R (f (\ i -> add (x i) (y i))) (add (f x) (f y)) =
+    Tr.Trunc[CI.Rep a].induction @l (\ u -> Id R.R (f (\ i -> add (x i) (y i))) (add (f x) (f y)))
+     (\ u -> setR (f (\ i -> add (x i) (y i))) (add (f x) (f y)))
+     (\ r -> WithRep[r.1,r.2].result) (CI.representation a) ;
+  } ;
+  additive (x y : V) : Id R.R (f (\ i -> add (x i) (y i))) (add (f x) (f y)) = At[x,y].result ;
+ } ;
+} ;

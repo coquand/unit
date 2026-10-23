@@ -1,0 +1,108 @@
+-- The line bundles O(d) on P^n.  The fibre at p is the torsor of the
+-- cocycle on the representatives of p: for representatives x, y with
+-- y = u x the transition is u^d.  Restricted along a line P^1 -> P^n
+-- (LineMaps), O(d) is the bundle O(d) of PicardTwists: the representatives
+-- of a point of P^1 in the two charts give representatives in P^n with the
+-- same transitions.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module H = Prelude[l+] ;
+module Tr = Truncation[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (n : Nat)
+ (sqc : Presentations[l].Over[R,setR].SQC) (loc : StandardOpens[l].Over[R,setR].Locality) {
+ open R ; open RL[R] ;
+ module LM = LineMaps[l].Over[R,setR,n,sqc,loc] ;
+ module Q2 = LM.Q2 ;
+ module P = LM.P ;
+ module G = LM.G ;
+ module L = PicardLines[l].Over[R,setR] ;
+ module W = PicardTwists[l].Over[R,setR] ;
+ module I = PicardInterface[l].Over[R,setR] ;
+ module CT = PicardTransitions[l].Over[R,setR] ;
+ Degree : U l = PicardInterface[l].Degree ;
+ Pn : U l = Q2.Pn ;
+ -- monomials are homomorphisms
+ power-times (u v : G.Unit) : (k : Nat) ->
+  Id R.R (G.power (G.times u v) k).1 (G.times (G.power u k) (G.power v k)).1 = split {
+  zero -> sym (mulO o) ;
+  suc k | r -> trans (ap (mul (mul u.1 v.1)) r) (G.four u.1 v.1 (G.power u k).1 (G.power v k).1) } ;
+ power-inverse (u : G.Unit) : (k : Nat) -> Id R.R (G.power (G.inverse u) k).1 (G.power u k).2.1 = split {
+  zero -> refl o ;
+  suc k | r -> ap (mul u.2.1) r } ;
+ power-one : (k : Nat) -> Id R.R (G.power G.one k).1 o = split {
+  zero -> refl o ;
+  suc k | r -> trans (ap (mul o) r) (mulO o) } ;
+ power-cong (u v : G.Unit) (h : Id R.R u.1 v.1) (k : Nat) : Id G.Unit (G.power u k) (G.power v k) =
+  Pr.ap G.Unit G.Unit (\ t -> G.power t k) u v (G.eq u v h) ;
+ monomial-times : (d : Degree) (u v : G.Unit) ->
+  Id G.Unit (I.monomial d (G.times u v)) (G.times (I.monomial d u) (I.monomial d v)) = split {
+  nonneg k -> \ u v -> G.eq _ _ (power-times u v k) ;
+  negative k -> \ u v ->
+   trans (power-cong (G.inverse (G.times u v)) (G.times (G.inverse u) (G.inverse v)) (refl (mul u.2.1 v.2.1)) (suc k))
+    (G.eq _ _ (power-times (G.inverse u) (G.inverse v) (suc k))) } ;
+ monomial-inverse : (d : Degree) (u : G.Unit) ->
+  Id G.Unit (I.monomial d (G.inverse u)) (G.inverse (I.monomial d u)) = split {
+  nonneg k -> \ u -> G.eq _ _ (power-inverse u k) ;
+  negative k -> \ u -> G.eq _ _ (power-inverse (G.inverse u) (suc k)) } ;
+ monomial-one : (d : Degree) -> Id G.Unit (I.monomial d G.one) G.one = split {
+  nonneg k -> G.eq _ _ (power-one k) ;
+  negative k -> trans (power-cong (G.inverse G.one) G.one (refl o) (suc k)) (G.eq _ _ (power-one (suc k))) } ;
+
+ -- the torsor of representatives
+ Rep (p : Pn) : U l = (x : Q2.Point) * Id Pn (Q2.class x) p ;
+ covered (p : Pn) : Tr.Trunc[Rep p].carrier =
+  Q2.Q.induction @l (\ q -> Tr.Trunc[Rep q].carrier) (\ q -> Tr.Trunc[Rep q].proposition)
+   (\ x -> Tr.Trunc[Rep (Q2.class x)].inc (x,refl (Q2.class x))) p ;
+ relate (p : Pn) (a b : Rep p) : Q2.Related a.1 b.1 = Q2.Q.effective a.1 b.1 (trans a.2 (sym b.2)) ;
+ module Twist (d : Degree) {
+  module At (p : Pn) {
+   module T = Torsor[l].Tors[G.group,Rep p,covered p] ;
+   c (a b : Rep p) : G.Unit = I.monomial d (relate p a b).1 ;
+   coc (a b e : Rep p) : Id G.Unit (G.times (c a b) (c b e)) (c a e) =
+    trans (G.comm (c a b) (c b e))
+     (trans (sym (monomial-times d (relate p b e).1 (relate p a b).1))
+      (Pr.ap (Q2.Related a.1 e.1) G.Unit (\ r -> I.monomial d r.1) _ _
+       (Q2.related-prop a.1 e.1 (Q2.related-trans a.1 b.1 e.1 (relate p a b) (relate p b e)) (relate p a e)))) ;
+   module S = T.PsiM[(c,coc)] ;
+   torsor : L.TI.Tor = (S.Tc,S.str) ;
+  } ;
+  raw (p : Pn) : L.TI.Tor = At[p].torsor ;
+  bundle (p : Pn) : L.Line = L.pack (raw p) ;
+  trivial-at (x : Q2.Point) : Id L.Line (bundle (Q2.class x)) L.trivial =
+   L.trivialise (raw (Q2.class x)) (At[Q2.class x].S.uc (x,refl (Q2.class x))) ;
+ } ;
+ O (d : Degree) (p : Pn) : L.Line = Twist[d].bundle p ;
+
+ -- restriction to the line through [x] and [y]
+ module Restrict (d : Degree) (x y : Q2.Point) (ne : LM.Apart x y) {
+  module LN = LM.Line[x,y,ne] ;
+  module CTd = CT.At[I.monomial d] ;
+  chart-unit : (c e : P.C) (h : P.relation c e) ->
+   Id G.Unit (I.monomial d (LN.related c e h).1) (CTd.c c e h) = split {
+   lo a -> split {
+    lo b -> \ h -> monomial-one d ;
+    hi b -> \ h -> trans (Pr.ap G.Unit G.Unit (I.monomial d) _ _ (G.eq (b,a,trans (mulC b a) h) (G.inverse (CT.lu a b h)) (refl b)))
+      (monomial-inverse d (CT.lu a b h)) } ;
+   hi a -> split {
+    lo b -> \ h -> Pr.ap G.Unit G.Unit (I.monomial d) _ _ (G.eq (b,a,trans (mulC b a) h) (CT.ru a b h) (refl b)) ;
+    hi b -> \ h -> monomial-one d } } ;
+  rep (p : P.P1) (r : W.Rep p) : Rep (LN.map p) = (LN.vec r.1,trans (sym (LN.beta r.1)) (ap LN.map r.2)) ;
+  transition (p : P.P1) (a b : W.Rep p) :
+   Id G.Unit (Twist[d].At[LN.map p].c (rep p a) (rep p b)) (W.Glue[I.monomial d].At[p].c a b) =
+   trans (Pr.ap (Q2.Related (LN.vec a.1) (LN.vec b.1)) G.Unit (\ r -> I.monomial d r.1) _ _
+     (Q2.related-prop (LN.vec a.1) (LN.vec b.1) (relate (LN.map p) (rep p a) (rep p b)) (LN.related a.1 b.1 (W.relate p a b))))
+    (chart-unit a.1 b.1 (W.relate p a b)) ;
+  module Pull (p : P.P1) {
+   module A = Twist[d].At[LN.map p] ;
+   module B = W.Glue[I.monomial d].At[p] ;
+   f (v : A.S.Tc) : B.S.Tc =
+    (\ k -> v.1 (rep p k),
+     \ k m -> trans (v.2 (rep p k) (rep p m)) (ap (G.times (v.1 (rep p k))) (transition p k m))) ;
+   hom : L.TI.Hom A.torsor B.torsor =
+    (f,\ g v -> B.S.tc-eq (f (A.S.actc g v)) (B.S.actc g (f v)) (\ k -> refl (G.times g (v.1 (rep p k))))) ;
+  } ;
+  restrict (p : P.P1) : Id L.Line (O d (LN.map p)) (W.O d p) =
+   H.ap L.TI.Tor L.Line L.pack (Pull[p].A.torsor) (Pull[p].B.torsor) (L.TI.decode Pull[p].A.torsor Pull[p].B.torsor Pull[p].hom) ;
+  at-o1 : Id L.Line (O d (LN.map LM.o1)) L.trivial = trans (restrict LM.o1) (W.lo-trivial d z) ;
+ } ;
+} ;
