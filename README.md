@@ -60,6 +60,10 @@ This repository contains the checker and two developments written with it:
   the tower need not be fibrations.
 - [`sag.pdf`](doc/sag.pdf): what has been formalised of synthetic algebraic
   geometry, and how.
+- [`chatelet.pdf`](doc/chatelet.pdf): Châtelet's theorem (a Severi–Brauer
+  variety with a point is projective space) as checked in `sag/chatelet`,
+  with the changes made to the source note and a correspondence with the
+  formal declarations.
 - [`chatelet-descent.pdf`](doc/chatelet-descent.pdf): descent of finite
   freeness and of bases with a retraction, following the checked proof.
 - [`finite-projective-flat.pdf`](doc/finite-projective-flat.pdf): the

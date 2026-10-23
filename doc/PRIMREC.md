@@ -5,8 +5,9 @@ modality and the D_n modalities referenced in this document are due to
 Christian Sattler. The implementation and checking notes below concern
 their formalisation in Unit.
 
-Status: design, 19 October 2026; §5 revised after review (operational details). Nothing is implemented yet. The survey
-behind it is `migration/primrec-survey.txt` (`segd All.seg --survey-primrec`).
+Status: implemented (§9) and `core` migrated (§10), 19 October 2026; this
+is the checker in `src/` and `app/`. The survey behind the design is
+`migration/primrec-survey.txt` (`segd All.seg --survey-primrec`).
 
 **Central invariant.** Every recursive computation starts from an eliminator
 (`split` on a data type), and the checker constructs that eliminator's
@@ -190,33 +191,43 @@ clash with `%self`, which the record members use, or with any source name.
 Record β is unchanged, with no recursive results. `whnf` gets no new case,
 because a recursive result is an ordinary application or closure.
 
-### 5.3 Conversion of splits
+### 5.3 Conversion of splits and of data types
 
-Today two splits with the same occurrence `t` are equal when their dynamic
-parts are convertible, or else when their branch bodies are convertible
-under fresh variables for the pattern variables (`Seg.hs:817`).
+**Splits: congruence of the eliminator.** Two occurrences of the same split
+`t` are equal when their dynamic parts are convertible. Otherwise the
+checker compares their branches, each in its own environment, with fresh
+generic variables (`VGen`) for the pattern variables and for the recursive
+results (`Seg.hs:967`).
 
-- **Pattern variables and recursive results are both fresh.** In the
-  fallback, both get fresh generic variables (`VGen`).
-- **Binding the recursive results to actual calls would not terminate.**
-  `r := app f₁ x` against `r := app f₂ x` with `x` a generic variable gives
-  `VApp f₁ x` against `VApp f₂ x`. That compares `f₁` with `f₂` again, so
-  the fallback starts over.
-- **Fresh results keep the fallback structural.** It compares two pieces of
-  code under variables, and terminates as the current fallback does.
-- **Justification.** If the bodies agree for all fields and all recursive
-  results, then by induction on the argument the two eliminators agree on
-  every constructor value. Both satisfy the same recursion equations, and
-  the initial algebra (W-type) has a unique map with given equations, in
-  the set and presheaf models alike. So the fallback is the uniqueness of
-  the eliminator, restricted to two occurrences of the same code.
-- **The alternative** is to remove the fallback. That loses the equalities it
-  gives today: two occurrences of the same split whose environments differ
-  only in variables the branches don't use (locks.seg's `byDeps`, and lemmas
-  instantiated twice).
-- **Proposal.** Keep it with fresh results, and count how often it fires in
-  the prototype and on `core`. If it rarely matters, removing it is the
-  simpler rule; that decision is left for after the measurement.
+- **This is congruence.** Read a split as an eliminator `elim_P(b_1,..,b_k)`,
+  where the branch `b_i` binds the fields and the recursive results of
+  constructor `c_i`. The congruence rule for this term former says that two
+  eliminators are equal when their motives are equal and their branches are
+  equal under fresh variables for all these binders. The rule is exactly
+  that.
+- **It is not uniqueness.** The recursive results stay fresh: they are not
+  replaced by the split itself. Doing that would be an eta rule for
+  inductive types, which is not part of the theory. It would also not
+  terminate: `VApp f₁ x` against `VApp f₂ x` compares `f₁` with `f₂` again.
+- **The motive is not compared yet.** The checker compares only the
+  branches. Comparing the declared types of the two occurrences, each in its
+  environment, makes the rule exactly congruence of a typed eliminator. Then
+  the standard metatheory of MLTT with W-types applies (§5.6).
+- **Why it is needed.** Two occurrences of a split can have environments
+  that differ only in variables the branches don't use. This happens in
+  locks.seg's `byDeps` and with lemmas instantiated twice. The rule is
+  counted: it is tried 19953 times on `core` and 5294 times on `pn`.
+
+**Data types: equal descriptions.** Two occurrences of the same data
+declaration are equal when their parameters are convertible. Otherwise the
+checker compares the telescopes of their constructors, each in its own
+environment (`Seg.hs:965`). This is not congruence: it can identify `D a`
+and `D b` with `a` and `b` different, for example when the parameter is not
+used. It is justified by reading a data type as the initial algebra (W-type)
+of its description, the constructor names with their telescopes. Equal
+descriptions then give the same type, in the set and presheaf models alike.
+Since parameters are uniform and there are no indexed families, the
+description is the whole of the data type.
 
 ### 5.4 Read-back
 
@@ -291,8 +302,8 @@ every checking path. It is tested instead (`examples/primrec.seg`):
   parameters), and the eliminator is the standard dependent one.
   Normalisation of the whole calculus is the standard argument for MLTT
   with W-types, universes and these eliminators.
-- The conversion fallback (§5.3) compares code under fresh variables, and
-  terminates as today.
+- The conversion of splits (§5.3) compares code under fresh variables, and
+  terminates.
 - **Outside the scope of this sketch.** A context whose level constraints
   have a loop collapses (Gonthier's rule: everything converts), so it can
   type non-terminating terms. That is an existing property of the universe
@@ -391,8 +402,7 @@ Decided:
 - The definition-position restriction for `split` is kept.
 
 Open:
-- Whether to keep the conversion fallback (§5.3). This will be decided by
-  measuring how often it fires in the prototype and on `core`.
+- Comparing the motives in the conversion of splits (§5.3).
 
 ## 9. Prototype status (19 October 2026)
 
@@ -568,7 +578,5 @@ have is now an error (`checkSplit`). Regressions: two `#fails` in
 **Result.** Full check: 11816 declarations, 0 failed, 53.3 s, 789 MB;
 fallback 19953. `tests.sh` matches `tests.expected`.
 
-**The implementation is frozen here.** The conversion fallback is left for
-a separate investigation. Its justification must cover dependent motives and
-the fresh variables for recursive results, not only agreement on closed
-constructor values.
+**The implementation is frozen here.** The conversion of splits is
+congruence, apart from the comparison of motives (§5.3).
