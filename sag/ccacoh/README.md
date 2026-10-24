@@ -32,14 +32,15 @@ Uses SSD (`../stone`, `../stoneseq`), worker A's `../cca` (Props 2.3.5,
 | Thm 3.3.2 | form (C') (`../CCA-DESIGN.md` §5): if Ȟ^(m+1)(X, S, A) = 0 for all m, then Hⁿ(X, A) = 0 for all n >= 1 | `Thm332C.Over.thm332` |
 | Lemma B.0.1 | Ȟ⁰(X, Y, A) = H⁰(X, A) for Y x merely inhabited, additive and natural in A | `em/CechZero`: `CechZero.lemmaB01`, `Natural0.natural` |
 | Lemma B.0.2 | Ȟⁿ(X, Y, A^Y) = 0 for n >= 1 (by a cone, at the first point rather than the paper's last) | `em/CechHigher`: `Shift.vanishS` |
+| Lemma B.0.4 | as stated, for groups: Hⁿ(X, E) -> Hⁿ(X, L) -> Hⁿ⁺¹(X, A) -> 0 exact, δ a homomorphism, natural | `em/LES` (`delta`, `delta-onto`, `delta-pstar`, `ker-im`), `em/LESNat.natural` |
+| Lemmas B.0.5, B.0.6, B.0.7 (missing in the paper) | in the degrees used: Ȟⁿ(X, Y, E) -> Ȟⁿ(X, Y, L) -> Ȟⁿ⁺¹(X, Y, A) -> 0 exact for liftable cochains, δ̌ a natural homomorphism | `em/Snake`, `em/CechLES`, `em/CechNat` |
+| **Thm 3.3.2** | **as stated**: Hⁿ(X, B) ~ Ȟⁿ(X, S, B) as groups, natural in homomorphisms of overtly discrete families, every n (Hⁿ = π₁ of (x : X) -> K(B x, n+1)) | `Thm332A.Over.thm332-iso` |
 
 The long exact sequence used in Thm 3.2.5 is the fibre sequence
 `em/FibSeq` and its exactness `em/Exact`; the cokernel L = A^T/A is the
 image of the Čech differential (`em/ImageGroup`), overtly discrete by SSD
 Lemma 2.7 and Prop. 2.3.9 (`Thm325.Over.odiscL`).
 
-Not formalised yet (user's decision, `../CCA-DESIGN.md` §5; worker A
-is now working on them): Lemmas B.0.5, B.0.6 and the missing B.0.7, and
-Thm 3.3.2 as a natural group isomorphism.  The degree-1 comparison is an
-isomorphism of pointed sets (`Prop318Set`); group structures (abelian
-coefficients) come with Thm 3.3.2.
+Thm 3.3.2 is proved as stated (worker A, after B; `Thm332A`), alongside
+the forms (C) and (C') (`Thm332`, `Thm332C`).  The degree-1 comparison for
+non-abelian G is an isomorphism of pointed sets (`Prop318Set`).

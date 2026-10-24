@@ -172,6 +172,8 @@ L B = B^S / B).  Pₘ(B) = (x : X) -> K(B x, m).
    families.
 Estimate: 10-15 files.  The hard part is the boundary d (Ω∂ = ∂Ω, its
 naturality); the Čech side is algebra.
+**Done (2026-10-24):** `ccacoh/Thm332A.thm332-iso`, 21 new files in em/ (no
+Ω∂ = ∂Ω needed: Hⁿ = π₁, homotopies up to conjugation, Eckmann-Hilton).
 
 ## 6. Rules (as for SSD)
 

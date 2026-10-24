@@ -136,6 +136,17 @@ what is proved with DW1 / CCA numbering.
   the step uses it), to be discharged in em/.  Openings: Thm332A.base 630,
   Step.NatAt.on-delta 1622 (the family names E/L and onto/T.Sx carried by
   the instances of Thm332's modules), all others <= 574.
+- Thm 3.3.2 (A), milestone 4 (done): NatDelta proved.  `em/LiftUnique`
+  (lifts through a fibre are unique when pointed maps into the base form a
+  set), `em/FibMap` (maps of fibres along a pointed square; naturality of
+  the boundary), `em/EH` (Eckmann-Hilton; π₁ of a loop space is abelian),
+  `em/LESNat` (δ natural for maps of short exact sequences: pointwise d
+  natural by loopK, FibMap, LiftUnique + KFun + Lemma 4; the composites
+  agree pointwise, so their loopings are conjugate, and conjugation is
+  trivial by EH).  `ccacoh/Thm332A.thm332-iso n : Stage n`: CCA Thm 3.3.2
+  as stated.  Openings above 500: Thm332A.on-delta 1622, base 630;
+  FibMap.dd-nat 819, LESNat.natural 731, LiftUnique.snd-eq 569 (the
+  names-of-one-type pass with Eps, CCA-INTERFACE).
 
 ## Gaps
 
@@ -196,9 +207,12 @@ verification, broken reference, or citation replaced by a proof.)
 - DW1 Thm 2 / Cor. 7 use "Whitehead's principle [Uni13, 8.8.2]" only in
   the uniqueness half; for 0-connected types it is proved here
   (`em/Whitehead`).
-- CCA Thm 3.3.2 is proved in the form (C') only (vanishing in all degrees
-  from vanishing of all Čech groups), not degree by degree and not as a
-  group isomorphism; Lemmas B.0.2, B.0.5, B.0.6 and the missing B.0.7 are
-  replaced by the dimension shift in the vanishing form
-  (`CechHigher.Shift`).  Čech cochains are A's ordered (augmented)
+- CCA Thm 3.3.2: proved as stated by worker A (`Thm332A.thm332-iso`;
+  Hⁿ(X, B) taken as π₁ of (x : X) -> K(B x, n+1), which is
+  ||(x : X) -> K(B x, n)||₀ through Eps.psi), besides the forms (C) and
+  (C').  Lemma B.0.7, missing in the paper, is supplied as em/Snake +
+  em/CechLES (the connecting map of a short exact sequence of complexes
+  with liftable cochains and its exactness); B.0.5 is proved in the
+  degrees the proof uses.  The paper's "isomorphism by the induction
+  hypothesis" is em/Coker.  Čech cochains are A's ordered (augmented)
   cochains: all ordered tuples, degenerate ones included, as in Def. 3.3.1.

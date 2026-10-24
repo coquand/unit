@@ -40,6 +40,12 @@ Levels are indexed by `Base.Nat` with offset 2 (DW1 footnote 2, recursive):
 | — | restriction of Ȟ¹ classes along a map of covers Y' x -> Y x; it commutes with Ψ, so it is injective | `CechPull`: `Pull.map`, `Pull.psi-pull`, `Pull.injective` |
 | CCA Prop. 3.1.4 = Cor. A.0.7, Cor. A.0.8 | as isomorphisms of pointed sets: the unit cocycle goes to the trivial family (psi of the unit cocycle is the trivial torsor) | `CorA07Pt`: `corA07-pointed`, `corA08-pointed` |
 | CCA Def. 3.2.1 | eps m is the canonical map: ev_x o eps m = K(ev_x, m) as pointed maps, so eps m z x = K(ev_x, m) z | `EpsEv`: `EpsEv.claim`, `eps-ev` |
+| — | groups: quotients by a congruence (`QGrp`), π₁ and π₁ of pointed maps (`PiOne`), kernels, quotients by subgroups (`CechGroups.Kern`, `QAb`), isomorphic cokernels (`Coker`) | |
+| — | Puppe sequence, exactness of looped fibre sequences, maps of fibres along pointed squares, unique lifts, conjugation of loopings, Eckmann-Hilton | `Puppe`, `FibMap`, `LiftUnique`, `LoopConj`, `EH` |
+| — | products of pointed maps, their fibres and loopings; K(-, m) is a functor | `PiPt`, `KFun` |
+| CCA Lemma B.0.4 | the long exact sequence Hⁿ(E) -> Hⁿ(L) -> Hⁿ⁺¹(A) -> 0 of groups, natural | `LES`, `LESNat` |
+| CCA Lemmas B.0.5-B.0.7 | the Čech long exact sequence in the degrees used, natural; Ȟᵏ as groups | `CechGroups`, `Snake`, `CechLES`, `CechNat`, `ImageMap` |
+| CCA Thm 3.3.2, n = 0 | H⁰ = Ȟ⁰ as groups, naturally | `CechH0` |
 
 Supporting results: the fundamental theorem of identity types (`FundThm`),
 being an equivalence is a proposition (`EquivProp`), pointed equivalences,

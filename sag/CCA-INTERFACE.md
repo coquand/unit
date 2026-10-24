@@ -214,3 +214,16 @@ rules).  `ScottCech.Stages` keeps its names (now an instance of
 | Prop. 3.1.8 (pointed) | `ccacoh/Prop318Set` | `Over[..].prop318-pointed` | |
 | Def. 3.2.1 | `em/EpsEv` | `EpsEv[S, A].claim m x`, `eps-ev m z x : (eps m).1 z x = (KMap[PA, A x, ev x].K m).1 z` | ε is the canonical map |
 
+Added by worker A (2026-10-24): CCA Thm 3.3.2 as stated.  Link from em/
+(plain HoTT, in this order after EpsEv): `QGrp PiOne Puppe LoopConj PiPt LES
+CechGroups Snake CechLES Coker KFun CechNat CechH0 ImageMap LiftUnique FibMap
+EH LESNat`, then `ccacoh/Thm332A`.
+
+| CCA | file | declaration | statement |
+|---|---|---|---|
+| Thm 3.3.2 | `ccacoh/Thm332A` | `Over[ax, X, sX, idc, S, sS, q, onto].thm332-iso n : Stage n` | `Stage n = (Phi : (B : X -> Ab) -> ODF B -> Iso n B) * Natural n Phi`; `Iso n B`: a group homomorphism `HG[n, B].P.grp -> CH[n, B].C.H[n].Q.QG.grp`, injective and onto; `Natural`: commutes with `HM` (π₁ of the products of K(h)) and `CM` (h_* on Ȟⁿ) |
+| Hⁿ(X, B) | `em/PiOne`, `em/Eps` | `PiOne[Eps[X, B].P (suc n), Eps[X, B].pP (suc n)].grp` | π₁ of (x : X) -> K(B x, n+1) |
+| Ȟⁿ(X, Y, B) | `em/CechGroups` | `CechGrp[X, Y, B].H[n].Q.QG.grp` | cocycles modulo coboundaries (Ȟ⁰ = Z⁰) on `cca/Cochains` |
+| Lemma B.0.4 | `em/LES`, `em/LESNat` | `LES[..., n].delta`, `delta-onto cE`, `delta-pstar`, `ker-im`; `LESNat[...].natural` | exact, δ natural |
+| Lemmas B.0.5-B.0.7 | `em/CechLES`, `em/CechNat` | `CechLES[..., lifts, n].delta`, `Onto[vanB].onto`, `delta-pstar`, `ker-im`; `CechNat[...].natural` | |
+
