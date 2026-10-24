@@ -1,0 +1,202 @@
+-- A sequential limit of finite sets is a closed subset of Cantor space cut
+-- out by relations with truth tables (the core of SSD Lemma 3.2).
+--
+-- Let E n be finite with E n = Fin (c n), and p n : E (n+1) -> E n.  Lay out
+-- blocks of c n + 1 bits (Blocks): a point x of lim E is coded by the
+-- sequence enc x whose block n is the one-hot code of x n, at offset
+-- index (x n) + 1; offset 0 of each block is a dummy bit kept at 0.  The
+-- relation n says: block n is valid (dummy 0, exactly one bit set among the
+-- others) and compatible with block n+1 (if bit i' of block n+1 is set,
+-- then bit p (i') of block n is set).  It only reads the bits of blocks n,
+-- n+1, so it is a function of the first start (n+2) bits (Tabulate).
+--   to:   enc x satisfies every relation;
+--   from: a sequence satisfying every relation has in block n exactly one
+--         set bit, i.e. an element of E n, and these are compatible;
+-- and the two are inverse: the one-hot code of the element read off block n
+-- is block n (the set bit is unique, the dummy is 0), and reading off the
+-- code of x n gives x n.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module T = Truncation[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module NO = NatOrder[l] ;
+module TP = TwoPresented[l] ;
+module BF = BinfFacts[l] ;
+module FB = FinBool[l] ;
+module Tb = Tabulate[l] ;
+module DCh = DependentChoice[l] ;
+
+-- implication of Booleans
+imp (a b : Bool) : Bool = BF.bjoin (BR.not a) b ;
+imp-intro : (a b : Bool) -> (Id Bool a true -> Id Bool b true) -> Id Bool (imp a b) true = split {
+ true -> \ b h -> trans (BR.xor-false b) (h (refl true)) ;
+ false -> \ b h -> BF.join-true-l b } ;
+imp-elim : (a b : Bool) -> Id Bool (imp a b) true -> Id Bool a true -> Id Bool b true = split {
+ true -> \ b e t -> trans (sym (BR.xor-false b)) e ;
+ false -> \ b e t -> Pr.absurd (Id Bool b true) (NO.false-true t) } ;
+not-false : (b : Bool) -> Id Bool (BR.not b) false -> Id Bool b true = split {
+ true -> \ h -> refl true ; false -> \ h -> sym h } ;
+not-true : (b : Bool) -> Id Bool (BR.not b) true -> Id Bool b false = split {
+ true -> \ h -> sym h ; false -> \ h -> refl false } ;
+
+module Code (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (c : Nat -> Nat)
+  (en : (n : Nat) -> Pr.Equiv (E n) (FC.Fin (c n))) (setE : (n : Nat) -> Pr.isSet (E n)) {
+ module L = Blocks[l].Layout[c] ;
+ enc-el (n : Nat) (y : E n) : FC.Fin (c n) = (en n).1 y ;
+ dec (n : Nat) (i : FC.Fin (c n)) : E n = (en n).2.sec i ;
+ dec-enc (n : Nat) (y : E n) : Id (E n) (dec n (enc-el n y)) y = Pr.sec-ret (E n) (FC.Fin (c n)) (en n).1 (en n).2 y ;
+ -- the offset of y in block n, and the one-hot code
+ code (n : Nat) (y : E n) : Nat = suc (FN.index (c n) (enc-el n y)) ;
+ onehot (n : Nat) (y : E n) (o : Nat) : Bool = NO.delta (code n y) o ;
+
+ Vec (n : Nat) : U l = FC.Fin (suc (c n)) -> Bool ;
+ blk (n : Nat) (a : Nat -> Bool) : Vec n = \ j -> a (L.pos n (FN.index (suc (c n)) j)) ;
+ ohv (n : Nat) (y : E n) : Vec n = \ j -> onehot n y (FN.index (suc (c n)) j) ;
+
+ -- some bit set, at most one bit set, valid
+ vany (n : Nat) (g : Vec n) : Bool = FB.anyFin (c n) (\ i -> g (some i)) ;
+ vpair (n : Nat) (g : Vec n) (i j : FC.Fin (c n)) : Bool = imp (BR.and (g (some i)) (g (some j))) (FB.eqFin (c n) i j) ;
+ vrow (n : Nat) (g : Vec n) (i : FC.Fin (c n)) : Bool = FB.allFin (c n) (vpair n g i) ;
+ vone (n : Nat) (g : Vec n) : Bool = FB.allFin (c n) (vrow n g) ;
+ valid (n : Nat) (g : Vec n) : Bool = BR.and (BR.not (g none)) (BR.and (vany n g) (vone n g)) ;
+ cstep (n : Nat) (g0 : Vec n) (g1 : Vec (suc n)) (i : FC.Fin (c (suc n))) : Bool =
+  imp (g1 (some i)) (g0 (some (enc-el n (p n (dec (suc n) i))))) ;
+ compat (n : Nat) (g0 : Vec n) (g1 : Vec (suc n)) : Bool = FB.allFin (c (suc n)) (cstep n g0 g1) ;
+ relvec (n : Nat) (g0 : Vec n) (g1 : Vec (suc n)) : Bool = BR.not (BR.and (valid n g0) (compat n g0 g1)) ;
+ relation (n : Nat) (a : Nat -> Bool) : Bool = relvec n (blk n a) (blk (suc n) a) ;
+
+ -- the relation n reads only the first start (n+2) bits
+ size (n : Nat) : Nat = L.start (suc (suc n)) ;
+ blk-eq (n K : Nat) (a b : Nat -> Bool) (h : (m : Nat) -> NO.Lt m K -> Id Bool (a m) (b m))
+   (bound : (j : FC.Fin (suc (c n))) -> NO.Lt (L.pos n (FN.index (suc (c n)) j)) K) : Id (Vec n) (blk n a) (blk n b) =
+  F.funext (FC.Fin (suc (c n))) (\ j -> Bool) (blk n a) (blk n b) (\ j -> h (L.pos n (FN.index (suc (c n)) j)) (bound j)) ;
+ local (n : Nat) : Tb.Local (size n) (relation n) = \ a b h ->
+  FN.cong2 (relvec n)
+   (blk-eq n (size n) a b h (\ j -> NO.lt-trans (L.pos n (FN.index (suc (c n)) j)) (L.start (suc n)) (size n)
+     (L.pos-lt n (FN.index (suc (c n)) j) (TP.index-lt (suc (c n)) j)) (L.start-step (suc n))))
+   (blk-eq (suc n) (size n) a b h (\ j -> L.pos-lt (suc n) (FN.index (suc (c (suc n))) j) (TP.index-lt (suc (c (suc n))) j))) ;
+ rel (n : Nat) : FN.Elem = Tb.local-elem (size n) (relation n) (local n) ;
+ Zeros (a : Nat -> Bool) : U l = (n : Nat) -> Id Bool (relation n a) false ;
+ zeros-prop (a : Nat -> Bool) : Pr.isProp (Zeros a) =
+  F.isProp-Pi Nat (\ n -> Id Bool (relation n a) false) (\ n -> BR.bool-set _ _) ;
+
+ ---------------------------------------------------------------------
+ -- one-hot vectors are valid and compatible
+
+ oh-some (n : Nat) (y : E n) (i : FC.Fin (c n)) (h : Id Bool (ohv n y (some i)) true) : Id (FC.Fin (c n)) i (enc-el n y) =
+  FB.index-inj (c n) i (enc-el n y) (NO.delta-eq (FN.index (c n) (enc-el n y)) (FN.index (c n) i) h) ;
+ oh-at (n : Nat) (y : E n) : Id Bool (ohv n y (some (enc-el n y))) true = NO.delta-self (FN.index (c n) (enc-el n y)) ;
+ eqFin-same (k : Nat) (i j : FC.Fin k) (p : Id (FC.Fin k) i j) : Id Bool (FB.eqFin k i j) true =
+  subst (\ x -> Id Bool (FB.eqFin k i x) true) p (NO.delta-self (FN.index k i)) ;
+ valid-oh (n : Nat) (y : E n) : Id Bool (valid n (ohv n y)) true =
+  ap (BR.and (BR.not (ohv n y none))) (FN.cong2 BR.and
+   (FB.any-intro (c n) (\ i -> ohv n y (some i)) (enc-el n y) (oh-at n y))
+   (FB.all-intro (c n) (vrow n (ohv n y)) (\ i -> FB.all-intro (c n) (vpair n (ohv n y) i) (\ j ->
+     imp-intro (BR.and (ohv n y (some i)) (ohv n y (some j))) (FB.eqFin (c n) i j) (\ h ->
+      eqFin-same (c n) i j (trans (oh-some n y i (TP.and-true-inv (ohv n y (some i)) (ohv n y (some j)) h).1)
+        (sym (oh-some n y j (TP.and-true-inv (ohv n y (some i)) (ohv n y (some j)) h).2)))))))) ;
+ compat-oh (n : Nat) (y1 : E (suc n)) (y0 : E n) (q : Id (E n) (p n y1) y0) :
+   Id Bool (compat n (ohv n y0) (ohv (suc n) y1)) true =
+  FB.all-intro (c (suc n)) (cstep n (ohv n y0) (ohv (suc n) y1)) (\ i -> imp-intro (ohv (suc n) y1 (some i)) (ohv n y0 (some (enc-el n (p n (dec (suc n) i))))) (\ h ->
+   subst (\ z -> Id Bool (ohv n y0 (some (enc-el n z))) true)
+    (sym (trans (ap (\ w -> p n (dec (suc n) w)) (oh-some (suc n) y1 i h)) (trans (ap (p n) (dec-enc (suc n) y1)) q)))
+    (oh-at n y0))) ;
+ relvec-oh (n : Nat) (y1 : E (suc n)) (y0 : E n) (q : Id (E n) (p n y1) y0) :
+   Id Bool (relvec n (ohv n y0) (ohv (suc n) y1)) false =
+  ap BR.not (FN.cong2 BR.and (valid-oh n y0) (compat-oh n y1 y0 q)) ;
+
+ ---------------------------------------------------------------------
+ -- coding a point of the limit
+
+ Lim : U l = DCh.Lim E p ;
+ bit-at (x : Lim) (s : L.Slot) : Bool = onehot s.1 (x.1 s.1) s.2 ;
+ enc (x : Lim) (m : Nat) : Bool = bit-at x (L.decode m) ;
+ blk-enc (x : Lim) (n : Nat) : Id (Vec n) (blk n (enc x)) (ohv n (x.1 n)) =
+  F.funext (FC.Fin (suc (c n))) (\ j -> Bool) (blk n (enc x)) (ohv n (x.1 n)) (\ j ->
+   ap (bit-at x) (L.decode-pos n (FN.index (suc (c n)) j) (TP.index-lt (suc (c n)) j))) ;
+ enc-zeros (x : Lim) : Zeros (enc x) = \ n ->
+  trans (FN.cong2 (relvec n) (blk-enc x n) (blk-enc x (suc n))) (relvec-oh n (x.1 (suc n)) (x.1 n) (x.2 n)) ;
+ to (x : Lim) : (a : Nat -> Bool) * Zeros a = (enc x, enc-zeros x) ;
+
+ ---------------------------------------------------------------------
+ -- reading off a point
+
+ parts (a : Nat -> Bool) (z : Zeros a) (n : Nat) :
+   Id Bool (valid n (blk n a)) true * Id Bool (compat n (blk n a) (blk (suc n) a)) true =
+  TP.and-true-inv (valid n (blk n a)) (compat n (blk n a) (blk (suc n) a))
+   (not-false (BR.and (valid n (blk n a)) (compat n (blk n a) (blk (suc n) a))) (z n)) ;
+ valid-of (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id Bool (valid n (blk n a)) true = (parts a z n).1 ;
+ compat-of (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id Bool (compat n (blk n a) (blk (suc n) a)) true = (parts a z n).2 ;
+ vparts (a : Nat -> Bool) (z : Zeros a) (n : Nat) :
+   Id Bool (BR.not (blk n a none)) true * Id Bool (BR.and (vany n (blk n a)) (vone n (blk n a))) true =
+  TP.and-true-inv (BR.not (blk n a none)) (BR.and (vany n (blk n a)) (vone n (blk n a))) (valid-of a z n) ;
+ dummy-of (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id Bool (blk n a none) false = not-true (blk n a none) (vparts a z n).1 ;
+ any-of (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id Bool (vany n (blk n a)) true =
+  (TP.and-true-inv (vany n (blk n a)) (vone n (blk n a)) (vparts a z n).2).1 ;
+ one-of (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id Bool (vone n (blk n a)) true =
+  (TP.and-true-inv (vany n (blk n a)) (vone n (blk n a)) (vparts a z n).2).2 ;
+ pick (a : Nat -> Bool) (z : Zeros a) (n : Nat) : (i : FC.Fin (c n)) * Id Bool (blk n a (some i)) true =
+  FB.any-witness (c n) (\ i -> blk n a (some i)) (any-of a z n) ;
+ unique (a : Nat -> Bool) (z : Zeros a) (n : Nat) (i j : FC.Fin (c n))
+   (hi : Id Bool (blk n a (some i)) true) (hj : Id Bool (blk n a (some j)) true) : Id (FC.Fin (c n)) i j =
+  FB.index-inj (c n) i j ((NO.delta-eq (FN.index (c n) j) (FN.index (c n) i)
+   (imp-elim (BR.and (blk n a (some i)) (blk n a (some j))) (FB.eqFin (c n) i j)
+    (FB.all-elim (c n) (vpair n (blk n a) i) (FB.all-elim (c n) (vrow n (blk n a)) (one-of a z n) i) j)
+    (FN.cong2 BR.and hi hj)))) ;
+ point (a : Nat -> Bool) (z : Zeros a) (n : Nat) : E n = dec n (pick a z n).1 ;
+ point-compat (a : Nat -> Bool) (z : Zeros a) (n : Nat) : Id (E n) (p n (point a z (suc n))) (point a z n) =
+  trans (sym (dec-enc n (p n (point a z (suc n)))))
+   (ap (dec n) {enc-el n (p n (point a z (suc n)))} {(pick a z n).1} (unique a z n (enc-el n (p n (point a z (suc n)))) (pick a z n).1
+     (imp-elim (blk (suc n) a (some (pick a z (suc n)).1)) (blk n a (some (enc-el n (p n (point a z (suc n))))))
+       (FB.all-elim (c (suc n)) (cstep n (blk n a) (blk (suc n) a)) (compat-of a z n) (pick a z (suc n)).1) (pick a z (suc n)).2)
+     (pick a z n).2)) ;
+ from (u : (a : Nat -> Bool) * Zeros a) : Lim = (point u.1 u.2, point-compat u.1 u.2) ;
+
+ ---------------------------------------------------------------------
+ -- the two are inverse
+
+ lim-set : Pr.isSet Lim = Pr.isSet-Sigma ((n : Nat) -> E n) (\ x -> (n : Nat) -> Id (E n) (p n (x (suc n))) (x n))
+  (F.isSet-Pi Nat E setE) (\ x -> Pr.prop-to-set _ (F.isProp-Pi Nat (\ n -> Id (E n) (p n (x (suc n))) (x n)) (\ n -> setE n _ _))) ;
+ lim-eq (x y : Lim) (h : (n : Nat) -> Id (E n) (x.1 n) (y.1 n)) : Id Lim x y =
+  Pr.Sigma-eq ((n : Nat) -> E n) (\ x -> (n : Nat) -> Id (E n) (p n (x (suc n))) (x n)) x.1 y.1 x.2 y.2
+   (F.funext Nat E x.1 y.1 h) (F.isProp-Pi Nat (\ n -> Id (E n) (p n (y.1 (suc n))) (y.1 n)) (\ n -> setE n _ _)) ;
+ from-to (x : Lim) : Id Lim (from (to x)) x = lim-eq (from (to x)) x (\ n ->
+  trans (ap (dec n) (oh-some n (x.1 n) (pick (enc x) (enc-zeros x) n).1
+    (trans (sym (ap (\ g -> g (some (pick (enc x) (enc-zeros x) n).1)) (blk-enc x n))) (pick (enc x) (enc-zeros x) n).2)))
+   (dec-enc n (x.1 n))) ;
+
+ -- the code of the point read off a, at offset index j of block n, is a there
+ code-point-some (a : Nat -> Bool) (z : Zeros a) (n : Nat) (i : FC.Fin (c n)) :
+   Plus (Id Bool (blk n a (some i)) true) (Id Bool (blk n a (some i)) false) ->
+   Id Bool (ohv n (point a z n) (some i)) (blk n a (some i)) = split {
+  inl t -> trans (ap (\ w -> NO.delta (FN.index (c n) w) (FN.index (c n) i))
+      (trans ((en n).2.sec-eq (pick a z n).1) (unique a z n (pick a z n).1 i (pick a z n).2 t)))
+    (trans (NO.delta-self (FN.index (c n) i)) (sym t)) ;
+  inr f -> trans (NO.delta-ne (FN.index (c n) (enc-el n (point a z n))) (FN.index (c n) i) (\ q ->
+      NO.false-true (trans (sym f) (trans (ap (\ w -> blk n a (some w))
+        (trans (FB.index-inj (c n) i (enc-el n (point a z n)) q) ((en n).2.sec-eq (pick a z n).1))) (pick a z n).2))))
+    (sym f) } ;
+ code-point (a : Nat -> Bool) (z : Zeros a) (n : Nat) : (j : FC.Fin (suc (c n))) ->
+   Id Bool (ohv n (point a z n) j) (blk n a j) = split {
+  none -> sym (dummy-of a z n) ;
+  some i -> code-point-some a z n i (TP.bool-cases (blk n a (some i))) } ;
+ to-from-at (a : Nat -> Bool) (z : Zeros a) (m : Nat) : Id Bool (enc (point a z, point-compat a z) m) (a m) =
+  calc Bool { enc (point a z, point-compat a z) m
+   =< ap (\ o -> onehot (L.decode m).1 (point a z (L.decode m).1) o)
+       (sym (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).2)
+   > ohv (L.decode m).1 (point a z (L.decode m).1) (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1
+   =< code-point a z (L.decode m).1 (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1
+   > blk (L.decode m).1 a (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1
+   =< ap (\ o -> a (L.pos (L.decode m).1 o)) (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).2
+   > a (L.pos (L.decode m).1 (L.decode m).2)
+   =< ap a (L.decode-ok m).2 > a m } ;
+ to-from (u : (a : Nat -> Bool) * Zeros a) : Id ((a : Nat -> Bool) * Zeros a) (to (from u)) u =
+  Pr.Sigma-eq (Nat -> Bool) Zeros (enc (from u)) u.1 (enc-zeros (from u)) u.2
+   (F.funext Nat (\ m -> Bool) (enc (from u)) u.1 (to-from-at u.1 u.2)) (zeros-prop u.1) ;
+
+ equivalence : Pr.Equiv Lim ((a : Nat -> Bool) * Zeros a) = (to, Pr.qinv Lim ((a : Nat -> Bool) * Zeros a) to from to-from from-to) ;
+} ;

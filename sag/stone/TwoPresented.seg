@@ -1,0 +1,104 @@
+-- 2 is countably presented: 2 = 2[N]/(g n)_n.  So 2 : Booleω.
+--
+-- The point 0 of 2[N]/(g n) (all generators 0) is a morphism p to 2; with
+-- the unit u : 2 -> 2[N]/(g n), p u = 1 since 2 is initial.  And u p = 1:
+-- an element x of 2[N] with a truth table on k generators satisfies
+-- x + x(0) <= J k = g 0 \/ .. \/ g (k-1), pointwise: where J k is 0, all of
+-- the first k bits are 0 and x takes its value x(0).
+level l ;
+open Base ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module P = Presented[l] ;
+module Ex = Examples[l] ;
+module NO = NatOrder[l] ;
+
+bool-cases : (b : Bool) -> Plus (Id Bool b true) (Id Bool b false) = split {
+ true -> inl (refl true) ; false -> inr (refl false) } ;
+join-false : (a b : Bool) -> Id Bool (BR.xor (BR.xor a b) (BR.and a b)) false ->
+  Id Bool a false * Id Bool b false = split {
+ true -> split { true -> \ h -> Pr.absurd _ (BR.true-false h) ; false -> \ h -> Pr.absurd _ (BR.true-false h) } ;
+ false -> split { true -> \ h -> Pr.absurd _ (BR.true-false h) ; false -> \ h -> (refl false, refl false) } } ;
+
+join-true : (a b : Bool) -> Id Bool (BR.xor (BR.xor a b) (BR.and a b)) true ->
+  Plus (Id Bool a true) (Id Bool b true) = split {
+ true -> \ b h -> inl (refl true) ;
+ false -> split { true -> \ h -> inr (refl true) ; false -> \ h -> Pr.absurd _ (BR.true-false (sym h)) } } ;
+
+and-true-inv : (a b : Bool) -> Id Bool (BR.and a b) true -> Id Bool a true * Id Bool b true = split {
+ true -> \ b h -> (refl true, h) ;
+ false -> \ b h -> Pr.absurd (Id Bool false true * Id Bool b true) (BR.true-false (sym h)) } ;
+index-lt : (k : Nat) (i : FC.Fin k) -> NO.Lt (FN.index k i) k = split {
+ zero -> FC.fin-zero (\ i -> NO.Lt (FN.index zero i) zero) ;
+ suc k | r -> split { none -> NO.lt-zero-suc k ; some i -> NO.lt-suc-suc (FN.index k i) k (r i) } } ;
+
+module G = P.Generated[FN.free, FN.gen] ;
+zeroes : Nat -> Bool = \ n -> false ;
+
+-- where J k is 0, the first k bits are 0
+J-false-step (k : Nat) (alpha : Nat -> Bool)
+  (hk : (m : Nat) -> NO.Lt m k -> Id Bool (alpha m) false) (ha : Id Bool (alpha k) false) (m : Nat)
+  : Plus (NO.Lt m k) (Id Nat m k) -> Id Bool (alpha m) false = split {
+ inl lt -> hk m lt ;
+ inr p -> subst (\ n -> Id Bool (alpha n) false) (sym p) ha } ;
+J-false : (k : Nat) (alpha : Nat -> Bool) -> Id Bool ((G.J k).1 alpha) false ->
+  (m : Nat) -> NO.Lt m k -> Id Bool (alpha m) false = split {
+ zero -> \ alpha h m lt -> Pr.absurd (Id Bool (alpha m) false) (NO.not-lt-zero m lt) ;
+ suc k | r -> \ alpha h m lt ->
+  J-false-step k alpha (r alpha (join-false ((G.J k).1 alpha) (alpha k) h).1)
+   (join-false ((G.J k).1 alpha) (alpha k) h).2 m (NO.lt-pred m k lt) } ;
+
+-- there, an element with a truth table on k generators takes its value at 0
+local-value (x : FN.Elem) (r : FN.Rep x.1) (alpha : Nat -> Bool) (h : Id Bool ((G.J r.1).1 alpha) false) :
+  Id Bool (x.1 alpha) (x.1 zeroes) =
+ FN.agree x r alpha zeroes (\ i ->
+  trans (FN.res-index Bool r.1 alpha i)
+   (trans (J-false r.1 alpha h (FN.index r.1 i) (index-lt r.1 i)) (sym (FN.res-index Bool r.1 zeroes i)))) ;
+
+-- the constant b of 2[N]
+const (b : Bool) : FN.Elem = BR.ite FN.Elem b FN.eone FN.ezero ;
+const-value : (b : Bool) (alpha : Nat -> Bool) -> Id Bool ((const b).1 alpha) b = split {
+ true -> \ alpha -> refl true ; false -> \ alpha -> refl false } ;
+and-false : (y : Bool) -> Id Bool (BR.and y false) false = split { true -> refl false ; false -> refl false } ;
+-- y <= j pointwise when j = 0 forces y = 0
+and-leq : (j y : Bool) -> (Id Bool j false -> Id Bool y false) -> Id Bool (BR.and y j) y = split {
+ true -> \ y h -> BR.and-true y ;
+ false -> \ y h -> trans (and-false y) (sym (h (refl false))) } ;
+
+-- x + x(0) <= J k
+below (x : FN.Elem) (r : FN.Rep x.1) : G.Below (FN.eadd x (const (x.1 zeroes))) =
+ (r.1, FN.elem-eq (FN.emul (FN.eadd x (const (x.1 zeroes))) (G.J r.1)) (FN.eadd x (const (x.1 zeroes))) (\ alpha ->
+   and-leq ((G.J r.1).1 alpha) (BR.xor (x.1 alpha) ((const (x.1 zeroes)).1 alpha)) (\ h ->
+    trans (FN.cong2 BR.xor (local-value x r alpha h) (const-value (x.1 zeroes) alpha)) (BR.xor-self (x.1 zeroes))))) ;
+equal-const (x : FN.Elem) : Id G.Q.Carrier (G.Q.include x) (G.Q.include (const (x.1 zeroes))) =
+ G.Q.Q.relates x (const (x.1 zeroes))
+  (TC.map (FN.Rep x.1) (G.Below (FN.eadd x (const (x.1 zeroes)))) (below x) x.2) ;
+
+-- the point 0 and the unit
+kills (n : Nat) : Id Bool ((FN.U2.extend zeroes).1 (FN.gen n)) false = FN.U2.ext-gen zeroes n ;
+module Pt = G.Q.To[BR.two].Extend[(FN.U2.extend zeroes, G.To[BR.two].backward (FN.U2.extend zeroes) kills)] ;
+point : BR.Hom G.quotient BR.two = Pt.hom ;
+unit : BR.Hom BR.two G.quotient = Ex.Initial[G.quotient].unit ;
+ite-include : (b : Bool) -> Id G.Q.Carrier (BR.ite G.Q.Carrier b G.Q.oneQ G.Q.zeroQ) (G.Q.include (const b)) = split {
+ true -> refl G.Q.oneQ ; false -> refl G.Q.zeroQ } ;
+unit-point (q : G.Q.Carrier) : Id G.Q.Carrier (unit.1 (point.1 q)) q =
+ G.Q.Q.induction @l (\ q -> Id G.Q.Carrier (unit.1 (point.1 q)) q) (\ q -> G.Q.Q.set _ _) (\ x ->
+  calc G.Q.Carrier { unit.1 (point.1 (G.Q.include x))
+   =< ap unit.1 (trans (Pt.D.beta x) (FN.ext-two zeroes x)) > unit.1 (x.1 zeroes)
+   =< ite-include (x.1 zeroes) > G.Q.include (const (x.1 zeroes))
+   =< sym (equal-const x) > G.Q.include x }) q ;
+
+iso : P.Iso G.quotient BR.two =
+ (point, Pr.qinv G.Q.Carrier Bool point.1 unit.1
+  (Ex.two-point (RingHom[l].compose BR.two-ring G.quotient.ring BR.two-ring point unit)) unit-point) ;
+two-booleω : P.Booleω = (BR.two, T.Trunc[P.Presentation BR.two].inc (FN.gen, iso)) ;
+-- every presented algebra is in Booleω
+presented-booleω (r : Nat -> FN.Elem) : P.Booleω =
+ (P.Presented r, T.Trunc[P.Presentation (P.Presented r)].inc
+   (r, (RingHom[l].identity (P.Presented r).ring,
+        Pr.qinv (P.Presented r).ring.R (P.Presented r).ring.R (\ q -> q) (\ q -> q) (\ q -> refl q) (\ q -> refl q)))) ;

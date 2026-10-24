@@ -1,0 +1,89 @@
+-- A cofinal reindexing of a sequence has the same colimit.
+--
+-- For T a sequence, M0 : Nat and gap : Nat -> Nat, the stages
+--   stage 0 = M0,  stage (suc n) = (gap n + 1) + stage n
+-- give the sequence  Sub n = T (stage n)  with the maps shift (gap n + 1);
+-- n <= stage n.  The comparison map  Phi (inc n x) = inc (stage n) x  is an
+-- equivalence:
+--   surjective: inc k y = inc (stage k) (raise y) = Phi (inc k (raise y));
+--   injective:  if inc (stage u) x = inc (stage v) y in colim T, they meet at
+--     some stage K; go in Sub to a stage n* beyond K, u and v; both agree
+--     are then the raises of x and y to stage (stage n*) >= K, which agree
+--     (meet-up); equal stages and equal agree give equal points of Sub.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open SeqColim[l] ; open Bijection[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+module Sub (T : Seq) (M0 : Nat) (gap : Nat -> Nat) {
+  module CT = Colim[T] ;
+  stage : Nat -> Nat = split {
+    zero -> M0 ;
+    suc n | r -> plus (suc (gap n)) r } ;
+  seq : Seq = new Seq[\ n -> T.A (stage n), \ n -> CT.shift (suc (gap n)) (stage n)] ;
+  module CS = Colim[seq] ;
+
+  le-stage : (n : Nat) -> Le n (stage n) = split {
+    zero -> (M0, plus-zero M0) ;
+    suc n | r -> (plus (gap n) r.1, calc Nat {
+      plus (plus (gap n) r.1) (suc n) =< plus-assoc (gap n) r.1 (suc n) > plus (gap n) (plus r.1 (suc n))
+        =< apH (plus (gap n)) (plus-suc r.1 n) > plus (gap n) (suc (plus r.1 n))
+        =< plus-suc (gap n) (plus r.1 n) > suc (plus (gap n) (plus r.1 n))
+        =< apH (\ k -> suc (plus (gap n) k)) r.2 > suc (plus (gap n) (stage n)) }) } ;
+
+  -- points of Sub as points of T
+  iota (u : CS.Tot) : CT.Tot = (stage u.1, u.2) ;
+  iota-iter : (d : Nat) (u : CS.Tot) -> (a : Nat) * Id CT.Tot (iota (CS.iter d u)) (CT.iter a (iota u)) = split {
+    zero -> \ u -> (zero, refl (iota u)) ;
+    suc d | r -> \ u -> (plus (suc (gap (plus d u.1))) (r u).1,
+      transH (apH (CT.iter (suc (gap (plus d u.1)))) (r u).2)
+        (symH (CT.iter-plus (suc (gap (plus d u.1))) (r u).1 (iota u)))) } ;
+  -- equal stages and equal agree give equal points
+  iota-cancel (n n' : Nat) (p : Id Nat n n') (x : T.A (stage n)) (x' : T.A (stage n'))
+    (q : Id CT.Tot (stage n, x) (stage n', x')) : Id CS.Tot (n, x) (n', x') =
+    idJ Nat n (\ k p1 -> (x1 : T.A (stage k)) -> Id CT.Tot (stage n, x) (stage k, x1) -> Id CS.Tot (n, x) (k, x1))
+      (\ x1 q1 -> apH (\ y -> (n, y)) (CT.tot-stage (stage n) x x1 q1)) n' p x' q ;
+
+  -- the comparison map
+  module PhiR = CS.Rec[CT.colim, CT.set, new CS.Cocone[CT.colim, \ n x -> CT.inc (stage n) x,
+    \ n x -> CT.inc-iter (suc (gap n)) (stage n, x)]] ;
+  Phi (c : CS.colim) : CT.colim = PhiR.map c ;
+  Phi-inc (n : Nat) (x : T.A (stage n)) : Id CT.colim (Phi (CS.inc n x)) (CT.inc (stage n) x) = PhiR.beta n x ;
+
+  surjective (c : CT.colim) : Tr.Trunc[Fibre Phi c].carrier =
+    TC.map ((u : CT.Tot) * Id CT.colim (CT.Q.inc u) c) (Fibre Phi c)
+      (\ w -> (CS.inc w.1.1 (CT.raise w.1.1 (stage w.1.1) (le-stage w.1.1) w.1.2),
+               transH (Phi-inc w.1.1 (CT.raise w.1.1 (stage w.1.1) (le-stage w.1.1) w.1.2))
+                 (transH (CT.inc-raise w.1.1 (stage w.1.1) (le-stage w.1.1) w.1.2) w.2)))
+      (CT.inc-surj c) ;
+
+  -- injectivity on points: a meeting in T gives a meeting in Sub
+  module Reflect (u v : CS.Tot) (m : CT.Meet[iota u, iota v]) {
+    K : Nat = plus m.d (stage u.1) ;
+    target : Nat = plus K (plus u.1 v.1) ;
+    du : Le u.1 target = le-trans u.1 (plus u.1 v.1) target (le-sum-l v.1 u.1) (le-sum-r (plus u.1 v.1) K) ;
+    dv : Le v.1 target = le-trans v.1 (plus u.1 v.1) target (le-sum-r v.1 u.1) (le-sum-r (plus u.1 v.1) K) ;
+    gu : (a : Nat) * Id CT.Tot (iota (CS.iter du.1 u)) (CT.iter a (iota u)) = iota-iter du.1 u ;
+    gv : (a : Nat) * Id CT.Tot (iota (CS.iter dv.1 v)) (CT.iter a (iota v)) = iota-iter dv.1 v ;
+    -- the stage of a point and of its image
+    st (w w' : CT.Tot) (q : Id CT.Tot w w') : Id Nat w.1 w'.1 = ap CT.Tot Nat (\ t -> t.1) w w' q ;
+    stages : Id Nat (plus du.1 u.1) (plus dv.1 v.1) = transH du.2 (symH dv.2) ;
+    K' : Nat = stage (plus du.1 u.1) ;
+    le-K : Le K K' = le-trans K target K' (le-sum-l (plus u.1 v.1) K)
+      (substH (\ k -> Le target (stage k)) (symH du.2) (le-stage target)) ;
+    agree : Id CT.Tot (iota (CS.iter du.1 u)) (iota (CS.iter dv.1 v)) = calc CT.Tot {
+      iota (CS.iter du.1 u) =< gu.2 > CT.iter gu.1 (iota u)
+        =< CT.meet-up K K' (iota u) (iota v) (CT.meet-at (iota u) (iota v) m) le-K gu.1 gv.1
+             (symH (st (iota (CS.iter du.1 u)) (CT.iter gu.1 (iota u)) gu.2))
+             (transH (symH (st (iota (CS.iter dv.1 v)) (CT.iter gv.1 (iota v)) gv.2)) (apH stage (symH stages))) >
+        CT.iter gv.1 (iota v)
+        =< symH gv.2 > iota (CS.iter dv.1 v) } ;
+    meet : CS.Meet[u,v] = new CS.Meet[u, v, du.1, dv.1,
+      iota-cancel (plus du.1 u.1) (plus dv.1 v.1) stages (CS.iter du.1 u).2 (CS.iter dv.1 v).2 agree] ;
+  } ;
+  injective : Injective Phi = CS.injective-on-inc CT.colim Phi (\ n x n' x' q ->
+    CS.meets (n, x) (n', x')
+      (TC.map CT.Meet[iota (n, x), iota (n', x')] CS.Meet[(n, x),(n', x')] (\ m -> Reflect[(n, x),(n', x'),m].meet)
+        (CT.effective (stage n, x) (stage n', x') (transH (symH (Phi-inc n x)) (transH q (Phi-inc n' x')))))) ;
+
+  equiv : Equiv CS.colim CT.colim = (Phi, Bij[CS.colim, CT.colim, CT.set, Phi, injective, surjective].equiv) ;
+} ;

@@ -1,0 +1,161 @@
+-- Closure properties of finite sets (used for SSD Lemma 2.7): identity
+-- types, propositional truncations and Sigma types of finite sets are
+-- finite.  On Fin k by induction (no decidability needed: equality in
+-- Fin k has a code, Top or Empty or the code one level down; || Fin k || is
+-- Empty or Top; Fin (suc k) splits off its point none), then on any finite
+-- set by univalence (eqind).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open FinChoice[l] ; open Finite[l] ; open Bijection[l] ;
+module Rg = Ring[l] ; module Eq = Equivalences[l] ; module To = Torsor[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module FL2 = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+
+finite-equiv (X Y : U l) (e : Equiv X Y) (fY : isFinite Y) : isFinite X =
+  TC.map (FinEquiv Y) (FinEquiv X) (\ w -> (w.1, Eq.compose X Y (Fin w.1) e w.2)) fY ;
+fin-finite (k : Nat) : isFinite (Fin k) = Tr.Trunc[FinEquiv (Fin k)].inc (k, idEquiv (Fin k)) ;
+empty-finite : isFinite Empty = fin-finite zero ;
+-- Top is Fin 1
+top-sec : (i : Fin (suc zero)) -> Id (Fin (suc zero)) none i = split {
+  none -> refl none ; some e -> absurd (Id (Fin (suc zero)) none (some e)) e } ;
+top-fin : Equiv Top (Fin (suc zero)) =
+  (\ t -> none, qinv Top (Fin (suc zero)) (\ t -> none) (\ i -> tt) top-sec (\ t -> isTop tt t)) ;
+top-finite : isFinite Top = Tr.Trunc[FinEquiv Top].inc (suc zero, top-fin) ;
+
+-- equality in Fin k
+code : (k : Nat) -> Fin k -> Fin k -> U l = split {
+  zero -> \ i j -> Empty ;
+  suc k | r -> split {
+    none -> split { none -> Top ; some j -> Empty } ;
+    some i -> split { none -> Empty ; some j -> r i j } } } ;
+code-prop : (k : Nat) (i j : Fin k) -> isProp (code k i j) = split {
+  zero -> \ i j -> isProp-Empty ;
+  suc k | r -> split {
+    none -> split { none -> isTop ; some j -> isProp-Empty } ;
+    some i -> split { none -> isProp-Empty ; some j -> r i j } } } ;
+code-finite : (k : Nat) (i j : Fin k) -> isFinite (code k i j) = split {
+  zero -> \ i j -> empty-finite ;
+  suc k | r -> split {
+    none -> split { none -> top-finite ; some j -> empty-finite } ;
+    some i -> split { none -> empty-finite ; some j -> r i j } } } ;
+code-refl : (k : Nat) (i : Fin k) -> code k i i = split {
+  zero -> \ i -> fin-zero (\ i1 -> code zero i1 i1) i ;
+  suc k | r -> split { none -> tt ; some i -> r i } } ;
+code-eq : (k : Nat) (i j : Fin k) -> code k i j -> Id (Fin k) i j = split {
+  zero -> \ i j h -> absurd (Id (Fin zero) i j) h ;
+  suc k | r -> split {
+    none -> split { none -> \ h -> refl none ; some j -> \ h -> absurd (Id (Fin (suc k)) none (some j)) h } ;
+    some i -> split { none -> \ h -> absurd (Id (Fin (suc k)) (some i) none) h ;
+                      some j -> \ h -> apH (\ x -> some x) (r i j h) } } } ;
+fin-set (k : Nat) : isSet (Fin k) = \ i -> Hedberg[Fin k, i, code k i, code-prop k i, code-refl k i, code-eq k i].hedberg ;
+id-fin-finite (k : Nat) (i j : Fin k) : isFinite (Id (Fin k) i j) =
+  finite-equiv (Id (Fin k) i j) (code k i j)
+    (prop-equiv (Id (Fin k) i j) (code k i j) (fin-set k i j) (code-prop k i j)
+      (\ p -> substH (code k i) p (code-refl k i)) (code-eq k i j))
+    (code-finite k i j) ;
+
+-- || Fin k || is Empty or Top
+trunc-fin-finite : (k : Nat) -> isFinite Tr.Trunc[Fin k].carrier = split {
+  zero -> finite-equiv Tr.Trunc[Fin zero].carrier Empty
+    (prop-equiv Tr.Trunc[Fin zero].carrier Empty Tr.Trunc[Fin zero].proposition isProp-Empty
+      (TC.rec (Fin zero) @l Empty isProp-Empty (\ i -> i)) (absurd Tr.Trunc[Fin zero].carrier)) empty-finite ;
+  suc k -> finite-equiv Tr.Trunc[Fin (suc k)].carrier Top
+    (prop-equiv Tr.Trunc[Fin (suc k)].carrier Top Tr.Trunc[Fin (suc k)].proposition isTop
+      (\ t -> tt) (\ t -> Tr.Trunc[Fin (suc k)].inc none)) top-finite } ;
+
+-- moving a statement about Fin k to any finite set
+module Transfer (P : U l -> U l+) (pP : (X : U l) -> Prelude[l+].isProp (P X)) (fin : (k : Nat) -> P (Fin k)) {
+  finite (X : U l) (fX : isFinite X) : P X =
+    TC.rec (FinEquiv X) @(l+) (P X) (pP X) (\ w ->
+      To.eqind (Fin w.1) (\ X1 e -> P X1) (fin w.1) X (inverse X (Fin w.1) w.2)) fX ;
+} ;
+finite-set (X : U l) (fX : isFinite X) : isSet X =
+  Transfer[\ X1 -> isSet X1, To.isProp-isSet, fin-set].finite X fX ;
+id-finite (X : U l) (fX : isFinite X) (a b : X) : isFinite (Id X a b) =
+  Transfer[\ X1 -> (a1 b1 : X1) -> isFinite (Id X1 a1 b1),
+    \ X1 -> FL.isProp-Pi X1 (\ a1 -> (b1 : X1) -> isFinite (Id X1 a1 b1)) (\ a1 ->
+      FL.isProp-Pi X1 (\ b1 -> isFinite (Id X1 a1 b1)) (\ b1 -> Tr.Trunc[FinEquiv (Id X1 a1 b1)].proposition)),
+    id-fin-finite].finite X fX a b ;
+trunc-finite (X : U l) (fX : isFinite X) : isFinite Tr.Trunc[X].carrier =
+  Transfer[\ X1 -> isFinite Tr.Trunc[X1].carrier, \ X1 -> Tr.Trunc[FinEquiv Tr.Trunc[X1].carrier].proposition,
+    trunc-fin-finite].finite X fX ;
+
+-- coproducts of Fin
+plus-empty-to (B : U l) : Rg.Plus Empty B -> B = split { inl e -> absurd B e ; inr b -> b } ;
+plus-empty-ret (B : U l) : (x : Rg.Plus Empty B) -> Id (Rg.Plus Empty B) (inr (plus-empty-to B x)) x = split {
+  inl e -> absurd (Id (Rg.Plus Empty B) (inr (plus-empty-to B (inl e))) (inl e)) e ; inr b -> refl (inr b) } ;
+plus-empty (B : U l) : Equiv (Rg.Plus Empty B) B =
+  (plus-empty-to B, qinv (Rg.Plus Empty B) B (plus-empty-to B) (\ b -> inr b) (\ b -> refl b) (plus-empty-ret B)) ;
+
+module OptPlus (A B : U l) {
+  to-inl : Opt A -> Opt (Rg.Plus A B) = split { none -> none ; some a -> some (inl a) } ;
+  to : Rg.Plus (Opt A) B -> Opt (Rg.Plus A B) = split { inl o -> to-inl o ; inr b -> some (inr b) } ;
+  from-some : Rg.Plus A B -> Rg.Plus (Opt A) B = split { inl a -> inl (some a) ; inr b -> inr b } ;
+  from : Opt (Rg.Plus A B) -> Rg.Plus (Opt A) B = split { none -> inl none ; some p -> from-some p } ;
+  to-from-some : (p : Rg.Plus A B) -> Id (Opt (Rg.Plus A B)) (to (from-some p)) (some p) = split {
+    inl a -> refl (some (inl a)) ; inr b -> refl (some (inr b)) } ;
+  to-from : (x : Opt (Rg.Plus A B)) -> Id (Opt (Rg.Plus A B)) (to (from x)) x = split {
+    none -> refl none ; some p -> to-from-some p } ;
+  from-to-inl : (o : Opt A) -> Id (Rg.Plus (Opt A) B) (from (to-inl o)) (inl o) = split {
+    none -> refl (inl none) ; some a -> refl (inl (some a)) } ;
+  from-to : (y : Rg.Plus (Opt A) B) -> Id (Rg.Plus (Opt A) B) (from (to y)) y = split {
+    inl o -> from-to-inl o ; inr b -> refl (inr b) } ;
+  equiv : Equiv (Rg.Plus (Opt A) B) (Opt (Rg.Plus A B)) = (to, qinv (Rg.Plus (Opt A) B) (Opt (Rg.Plus A B)) to from to-from from-to) ;
+} ;
+module OptEquiv (A B : U l) (e : Equiv A B) {
+  to : Opt A -> Opt B = split { none -> none ; some a -> some (e.1 a) } ;
+  from : Opt B -> Opt A = split { none -> none ; some b -> some (e.2.sec b) } ;
+  to-from : (x : Opt B) -> Id (Opt B) (to (from x)) x = split {
+    none -> refl none ; some b -> apH (\ y -> some y) (e.2.sec-eq b) } ;
+  from-to : (x : Opt A) -> Id (Opt A) (from (to x)) x = split {
+    none -> refl none ; some a -> apH (\ y -> some y) (sec-ret A B e.1 e.2 a) } ;
+  equiv : Equiv (Opt A) (Opt B) = (to, qinv (Opt A) (Opt B) to from to-from from-to) ;
+} ;
+module PlusEquiv (A A' B B' : U l) (e : Equiv A A') (d : Equiv B B') {
+  to : Rg.Plus A B -> Rg.Plus A' B' = split { inl a -> inl (e.1 a) ; inr b -> inr (d.1 b) } ;
+  from : Rg.Plus A' B' -> Rg.Plus A B = split { inl a -> inl (e.2.sec a) ; inr b -> inr (d.2.sec b) } ;
+  to-from : (x : Rg.Plus A' B') -> Id (Rg.Plus A' B') (to (from x)) x = split {
+    inl a -> apH (\ y -> inl y) (e.2.sec-eq a) ; inr b -> apH (\ y -> inr y) (d.2.sec-eq b) } ;
+  from-to : (x : Rg.Plus A B) -> Id (Rg.Plus A B) (from (to x)) x = split {
+    inl a -> apH (\ y -> inl y) (sec-ret A A' e.1 e.2 a) ; inr b -> apH (\ y -> inr y) (sec-ret B B' d.1 d.2 b) } ;
+  equiv : Equiv (Rg.Plus A B) (Rg.Plus A' B') = (to, qinv (Rg.Plus A B) (Rg.Plus A' B') to from to-from from-to) ;
+} ;
+fin-plus : (a b : Nat) -> Equiv (Rg.Plus (Fin a) (Fin b)) (Fin (plus a b)) = split {
+  zero -> \ b -> plus-empty (Fin b) ;
+  suc a | r -> \ b -> Eq.compose (Rg.Plus (Fin (suc a)) (Fin b)) (Opt (Rg.Plus (Fin a) (Fin b))) (Fin (plus (suc a) b))
+    OptPlus[Fin a, Fin b].equiv OptEquiv[Rg.Plus (Fin a) (Fin b), Fin (plus a b), r b].equiv } ;
+
+-- Sigma over Opt A splits off the point none
+module SigmaOpt (A : U l) (B : Opt A -> U l) {
+  Rest : U l = (a : A) * B (some a) ;
+  at : (o : Opt A) -> B o -> Rg.Plus (B none) Rest = split { none -> \ b -> inl b ; some a -> \ b -> inr (a, b) } ;
+  to (w : (o : Opt A) * B o) : Rg.Plus (B none) Rest = at w.1 w.2 ;
+  from : Rg.Plus (B none) Rest -> (o : Opt A) * B o = split { inl b -> (none, b) ; inr w -> (some w.1, w.2) } ;
+  to-from : (x : Rg.Plus (B none) Rest) -> Id (Rg.Plus (B none) Rest) (to (from x)) x = split {
+    inl b -> refl (inl b) ; inr w -> refl (inr w) } ;
+  from-at : (o : Opt A) (b : B o) -> Id ((o1 : Opt A) * B o1) (from (at o b)) (o, b) = split {
+    none -> \ b -> refl (none, b) ; some a -> \ b -> refl (some a, b) } ;
+  equiv : Equiv ((o : Opt A) * B o) (Rg.Plus (B none) Rest) =
+    (to, qinv ((o : Opt A) * B o) (Rg.Plus (B none) Rest) to from to-from (\ w -> from-at w.1 w.2)) ;
+} ;
+
+-- a Sigma over Fin k of sets with chosen sizes
+sigma-zero (B : Fin zero -> U l) : FinEquiv ((i : Fin zero) * B i) =
+  (zero, (\ w -> w.1, qinv ((i : Fin zero) * B i) Empty (\ w -> w.1) (\ e -> absurd ((i : Fin zero) * B i) e)
+    (\ e -> absurd (Id Empty (absurd ((i : Fin zero) * B i) e).1 e) e)
+    (\ w -> absurd (Id ((i : Fin zero) * B i) (absurd ((i : Fin zero) * B i) w.1) w) w.1))) ;
+sigma-cons (k : Nat) (B : Fin (suc k) -> U l) (a : FinEquiv (B none)) (b : FinEquiv ((i : Fin k) * B (some i)))
+  : FinEquiv ((i : Fin (suc k)) * B i) = (plus a.1 b.1,
+    Eq.compose ((i : Fin (suc k)) * B i) (Rg.Plus (Fin a.1) (Fin b.1)) (Fin (plus a.1 b.1))
+      (Eq.compose ((i : Fin (suc k)) * B i) (Rg.Plus (B none) ((i : Fin k) * B (some i))) (Rg.Plus (Fin a.1) (Fin b.1))
+        SigmaOpt[Fin k, B].equiv PlusEquiv[B none, Fin a.1, (i : Fin k) * B (some i), Fin b.1, a.2, b.2].equiv)
+      (fin-plus a.1 b.1)) ;
+sigma-fin : (k : Nat) (B : Fin k -> U l) -> ((i : Fin k) -> FinEquiv (B i)) -> FinEquiv ((i : Fin k) * B i) = split {
+  zero -> \ B w -> sigma-zero B ;
+  suc k | r -> \ B w -> sigma-cons k B (w none) (r (\ i -> B (some i)) (\ i -> w (some i))) } ;
+sigma-fin-finite (k : Nat) (B : Fin k -> U l) (fB : (i : Fin k) -> isFinite (B i)) : isFinite ((i : Fin k) * B i) =
+  TC.map ((i : Fin k) -> FinEquiv (B i)) (FinEquiv ((i : Fin k) * B i)) (sigma-fin k B) (fc k (\ i -> FinEquiv (B i)) fB) ;
+SigmaFinite (X : U l) : U l+ = (B : X -> U l) -> ((x : X) -> isFinite (B x)) -> isFinite ((x : X) * B x) ;
+sigma-finite (X : U l) (fX : isFinite X) : SigmaFinite X =
+  Transfer[SigmaFinite, \ X1 -> FL2.isProp-Pi (X1 -> U l) (\ B -> ((x : X1) -> isFinite (B x)) -> isFinite ((x : X1) * B x))
+    (\ B -> FL2.isProp-Pi ((x : X1) -> isFinite (B x)) (\ fB -> isFinite ((x : X1) * B x))
+      (\ fB -> Tr.Trunc[FinEquiv ((x : X1) * B x)].proposition)), sigma-fin-finite].finite X fX ;

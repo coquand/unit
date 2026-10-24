@@ -127,6 +127,13 @@ used. Each directory has a `README.txt`.
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
+- `stone`, `stoneseq`: synthetic Stone duality (Cherubini, Coquand,
+  Geerligs, Moeneclaey, *A Foundation for Synthetic Stone Duality*): Stone
+  spaces and countably presented Boolean algebras up to Theorem 4.18
+  (`stone/DESIGN.md`); sequential colimits, Lemmas 5.8–5.10, Corollary 5.11
+  and Theorem 5.16 (H¹ = 0 iff Čech H¹ = 0; Čech H¹ ≅ ‖X → BZ‖₀)
+  (`stoneseq/README.md`). Gaps in the paper are recorded in the handoff
+  files, the shared statements in `STONE-INTERFACE.md`.
 
 ## Conversion, and what checking opens
 

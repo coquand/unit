@@ -1,0 +1,79 @@
+-- Even and odd bits, and masking the odd bits of a finite stage (for SSD
+-- Remark 3.4).
+--   evens a i = a (2i),  odds a i = a (2i+1);
+--   join (y, x) = the sequence with evens y and odds x (NatOrder.inter);
+--   masked a = a with its odd bits set to 0;
+--   mask n : Bits n -> Bits n does this on the first n bits, so it commutes
+--   with dropping the last bit and with prefix (mask-prefix).
+-- A relation with a truth table on k generators, read on the odd (even)
+-- bits, only reads the first 2k bits (odds-local, evens-local).
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module BR = BooleanRing[l] ;
+module FF = FreeFinite[l] ;
+module FN = FreeCountable[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module CS = CantorStages[l] ;
+module Tb = Tabulate[l] ;
+module Pg = Pairing[l] ;
+
+evens (a : Nat -> Bool) (i : Nat) : Bool = a (NO.dbl i) ;
+odds (a : Nat -> Bool) (i : Nat) : Bool = a (suc (NO.dbl i)) ;
+join (y x : Nat -> Bool) (m : Nat) : Bool = NO.inter Bool m y x ;
+evens-join (y x : Nat -> Bool) (i : Nat) : Id Bool (evens (join y x) i) (y i) = NO.inter-even Bool i y x ;
+odds-join (y x : Nat -> Bool) (i : Nat) : Id Bool (odds (join y x) i) (x i) = NO.inter-odd Bool i y x ;
+-- a sequence is the join of its evens and odds
+join-parts-at (a : Nat -> Bool) (m : Nat) :
+  Plus ((n : Nat) * Id Nat m (NO.dbl n)) ((n : Nat) * Id Nat m (suc (NO.dbl n))) -> Id Bool (join (evens a) (odds a) m) (a m) = split {
+ inl u -> trans (ap (\ j -> join (evens a) (odds a) j) u.2) (trans (evens-join (evens a) (odds a) u.1) (ap a (sym u.2))) ;
+ inr u -> trans (ap (\ j -> join (evens a) (odds a) j) u.2) (trans (odds-join (evens a) (odds a) u.1) (ap a (sym u.2))) } ;
+join-parts (a : Nat -> Bool) (m : Nat) : Id Bool (join (evens a) (odds a) m) (a m) = join-parts-at a m (NO.parity m) ;
+
+-- parity as a Boolean: evenB m = 1 iff m is even
+evenB : Nat -> Bool = split { zero -> true ; suc m | r -> BR.not r } ;
+evenB-dbl : (n : Nat) -> Id Bool (evenB (NO.dbl n)) true = split {
+ zero -> refl true ; suc n | r -> ap (\ b -> BR.not (BR.not b)) r } ;
+evenB-odd (n : Nat) : Id Bool (evenB (suc (NO.dbl n))) false = ap BR.not (evenB-dbl n) ;
+masked (a : Nat -> Bool) (m : Nat) : Bool = BR.and (evenB m) (a m) ;
+masked-at (a : Nat -> Bool) (m : Nat) :
+  Plus ((n : Nat) * Id Nat m (NO.dbl n)) ((n : Nat) * Id Nat m (suc (NO.dbl n))) ->
+  Id Bool (masked a m) (join (evens a) (\ i -> false) m) = split {
+ inl u -> trans (ap (\ j -> masked a j) u.2) (trans (ap (\ b -> BR.and b (a (NO.dbl u.1))) (evenB-dbl u.1))
+   (sym (trans (ap (\ j -> join (evens a) (\ i -> false) j) u.2) (evens-join (evens a) (\ i -> false) u.1)))) ;
+ inr u -> trans (ap (\ j -> masked a j) u.2) (trans (ap (\ b -> BR.and b (a (suc (NO.dbl u.1)))) (evenB-odd u.1))
+   (sym (trans (ap (\ j -> join (evens a) (\ i -> false) j) u.2) (odds-join (evens a) (\ i -> false) u.1)))) } ;
+-- masking keeps the evens and kills the odds
+masked-join (a : Nat -> Bool) (m : Nat) : Id Bool (masked a m) (join (evens a) (\ i -> false) m) = masked-at a m (NO.parity m) ;
+
+mask : (n : Nat) -> CS.Bits n -> CS.Bits n = split {
+ zero -> \ v -> tt ;
+ suc n | r -> \ v -> (r v.1, BR.and (evenB n) v.2) } ;
+mask-prefix : (n : Nat) (a : Nat -> Bool) -> Id (CS.Bits n) (mask n (CS.prefix n a)) (CS.prefix n (masked a)) = split {
+ zero -> \ a -> refl tt ;
+ suc n | r -> \ a -> FF.pair-path (r a) (refl (masked a n)) } ;
+
+-- bounds for reading odd and even bits
+dbl-lt : (k m : Nat) -> NO.Lt m k -> NO.Lt (suc (NO.dbl m)) (NO.dbl k) = split {
+ zero -> \ m h -> Pr.absurd (NO.Lt (suc (NO.dbl m)) zero) (NO.not-lt-zero m h) ;
+ suc k | r -> split {
+  zero -> \ h -> NO.lt-suc-suc zero (suc (NO.dbl k)) (NO.lt-zero-suc (NO.dbl k)) ;
+  suc m -> \ h -> NO.lt-suc-suc (suc (suc (NO.dbl m))) (suc (NO.dbl k))
+    (NO.lt-suc-suc (suc (NO.dbl m)) (NO.dbl k) (r m (NO.lt-pred-suc m k h))) } } ;
+dbl-lt-even (k m : Nat) (h : NO.Lt m k) : NO.Lt (NO.dbl m) (NO.dbl k) =
+ NO.lt-trans (NO.dbl m) (suc (NO.dbl m)) (NO.dbl k) (NO.lt-suc (NO.dbl m)) (dbl-lt k m h) ;
+
+-- a truth table read on the odd (even) bits
+odds-local (k : Nat) (u : FF.Tab k) : Tb.Local (NO.dbl k) (\ a -> FN.ev k u (odds a)) = \ a b h ->
+ CS.table-agree k u (odds a) (odds b) (\ m lt -> h (suc (NO.dbl m)) (dbl-lt k m lt)) ;
+evens-local (k : Nat) (u : FF.Tab k) : Tb.Local (NO.dbl k) (\ a -> FN.ev k u (evens a)) = \ a b h ->
+ CS.table-agree k u (evens a) (evens b) (\ m lt -> h (NO.dbl m) (dbl-lt-even k m lt)) ;
+-- even bit i against a truth table on the odd bits
+coord-bound (i k : Nat) : Nat = suc (FN.max (NO.dbl i) (NO.dbl k)) ;
+coord-local (i k : Nat) (u : FF.Tab k) :
+  Tb.Local (coord-bound i k) (\ a -> BR.xor (a (NO.dbl i)) (FN.ev k u (odds a))) = \ a b h ->
+ FN.cong2 BR.xor (h (NO.dbl i) (Cor37[l,l].lt-max-l (NO.dbl i) (NO.dbl k)))
+  (odds-local k u a b (\ m lt -> h m (NO.lt-trans m (NO.dbl k) (coord-bound i k) lt (Cor37[l,l].lt-max-r (NO.dbl i) (NO.dbl k))))) ;

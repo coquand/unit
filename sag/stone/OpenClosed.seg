@@ -1,0 +1,286 @@
+-- SSD §1.5-1.6: open and closed propositions.
+--
+-- Def 1.19: P is open if P <-> exists n. alpha n = 1 for some alpha : 2^N,
+-- closed if P <-> forall n. alpha n = 0.  (The paper writes alpha n = 0 in
+-- the open case; Lemma 2.8 uses alpha n = 1, which we follow; the two are
+-- equivalent by negating alpha.)
+--
+-- Remark 1.20: not (open) is closed with the same alpha; not (closed) is
+-- open by MP; both are not-not-stable (closed: each alpha n is decidable;
+-- open: by MP); decidable propositions are open and closed; by not WLPO not
+-- every closed (hence not every open) proposition is decidable.
+--
+-- Lemma 1.21: countable conjunctions of closed and countable disjunctions of
+-- open propositions use countable choice for the witnesses and the join over
+-- squares (BoolSeq.sq) instead of a pairing N -> N x N; finite conjunctions
+-- of open propositions use alpha k = (bor a k) /\ (bor b k), which is also
+-- the witness for the finite disjunction of closed ones: there, if this is
+-- 0 everywhere, LLPO applied to the first hit of the interleaving of a and b
+-- says that a or b is 0 everywhere (otherwise the first hit of the
+-- interleaving is at an even, resp. odd, place, and both a and b hit 1).
+-- Cor 1.22, Lemmas 1.23, 1.24 as in the paper.
+level l k ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FN = FreeCountable[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module BS = BoolSeq[l] ;
+module Om = Omniscience[l,k] ;
+module SA = StoneAxioms[l,k] ;
+
+Exists (alpha : Nat -> Bool) : U l = T.Trunc[(n : Nat) * Id Bool (alpha n) true].carrier ;
+OpenW (P : U l) : U l = (alpha : Nat -> Bool) * Iff P (Exists alpha) ;
+ClosedW (P : U l) : U l = (alpha : Nat -> Bool) * Iff P (Om.AllZero alpha) ;
+isOpen (P : U l) : U l = T.Trunc[OpenW P].carrier ;
+isClosed (P : U l) : U l = T.Trunc[ClosedW P].carrier ;
+Open : U l+ = (P : U l) * Pr.isProp P * isOpen P ;
+Closed : U l+ = (P : U l) * Pr.isProp P * isClosed P ;
+Or (P Q : U l) : U l = T.Trunc[Plus P Q].carrier ;
+
+-- Def 1.25 and Remark 1.26
+OpenSub (X : U l) (A : X -> U l) : U l = (x : X) -> isOpen (A x) ;
+ClosedSub (X : U l) (A : X -> U l) : U l = (x : X) -> isClosed (A x) ;
+preimage-open (X Y : U l) (f : X -> Y) (A : Y -> U l) (o : OpenSub Y A) : OpenSub X (\ x -> A (f x)) = \ x -> o (f x) ;
+preimage-closed (X Y : U l) (f : X -> Y) (A : Y -> U l) (c : ClosedSub Y A) : ClosedSub X (\ x -> A (f x)) = \ x -> c (f x) ;
+
+-- transport along a logical equivalence
+iff-trans (P Q R : U l) (a : Iff P Q) (b : Iff Q R) : Iff P R = (\ p -> b.1 (a.1 p), \ r -> a.2 (b.2 r)) ;
+open-iff (P Q : U l) (e : Iff P Q) (o : isOpen Q) : isOpen P =
+ TC.map (OpenW Q) (OpenW P) (\ w -> (w.1, iff-trans P Q (Exists w.1) e w.2)) o ;
+closed-iff (P Q : U l) (e : Iff P Q) (c : isClosed Q) : isClosed P =
+ TC.map (ClosedW Q) (ClosedW P) (\ w -> (w.1, iff-trans P Q (Om.AllZero w.1) e w.2)) c ;
+
+exists-prop (alpha : Nat -> Bool) : Pr.isProp (Exists alpha) = T.Trunc[(n : Nat) * Id Bool (alpha n) true].proposition ;
+or-prop (P Q : U l) : Pr.isProp (Or P Q) = T.Trunc[Plus P Q].proposition ;
+allzero-prop (alpha : Nat -> Bool) : Pr.isProp (Om.AllZero alpha) =
+ F.isProp-Pi Nat (\ n -> Id Bool (alpha n) false) (\ n -> BR.bool-set _ _) ;
+
+-- forall n. alpha n = 0  <->  not (exists n. alpha n = 1)
+bool-false (b : Bool) (n : Not (Id Bool b true)) : Plus (Id Bool b true) (Id Bool b false) -> Id Bool b false = split {
+ inl t -> Pr.absurd (Id Bool b false) (n t) ; inr f -> f } ;
+allzero-not-exists (alpha : Nat -> Bool) : Iff (Om.AllZero alpha) (Not (Exists alpha)) =
+ (\ az e -> TC.rec ((n : Nat) * Id Bool (alpha n) true) @l Empty Pr.isProp-Empty
+    (\ u -> BR.true-false (trans (sym u.2) (az u.1))) e,
+  \ ne n -> bool-false (alpha n) (\ t -> ne (T.Trunc[(n : Nat) * Id Bool (alpha n) true].inc (n, t))) (TP.bool-cases (alpha n))) ;
+
+-- Remark 1.20, the parts without axioms
+neg-open (P : U l) (o : isOpen P) : isClosed (Not P) =
+ TC.map (OpenW P) (ClosedW (Not P)) (\ w -> (w.1,
+   (\ np -> (allzero-not-exists w.1).2 (\ e -> np (w.2.2 e)),
+    \ az p -> (allzero-not-exists w.1).1 az (w.2.1 p)))) o ;
+closed-stable (P : U l) (pP : Pr.isProp P) (c : isClosed P) (nn : Not (Not P)) : P =
+ TC.rec (ClosedW P) @l P pP (\ w -> w.2.2 (\ n ->
+   bool-false (w.1 n) (\ t -> nn (\ p -> BR.true-false (trans (sym t) (w.2.1 p n)))) (TP.bool-cases (w.1 n)))) c ;
+dec-yes (P : U l) (p : P) : OpenW P * ClosedW P =
+ ((\ n -> true, (\ q -> T.Trunc[(n : Nat) * Id Bool true true].inc (zero, refl true), \ e -> p)),
+  (\ n -> false, (\ q n -> refl false, \ z -> p))) ;
+dec-no (P : U l) (np : Not P) : OpenW P * ClosedW P =
+ ((\ n -> false, (\ q -> Pr.absurd (Exists (\ n -> false)) (np q),
+    \ e -> TC.rec ((n : Nat) * Id Bool false true) @l P (\ q q' -> Pr.absurd (Id P q q') (np q))
+      (\ u -> Pr.absurd P (BR.true-false (sym u.2))) e)),
+  (\ n -> true, (\ q -> Pr.absurd (Om.AllZero (\ n -> true)) (np q),
+    \ z -> Pr.absurd P (BR.true-false (z zero))))) ;
+dec-both (P : U l) : Dec P -> OpenW P * ClosedW P = split { yes p -> dec-yes P p ; no n -> dec-no P n } ;
+dec-open (P : U l) (d : Dec P) : isOpen P = T.Trunc[OpenW P].inc (dec-both P d).1 ;
+dec-closed (P : U l) (d : Dec P) : isClosed P = T.Trunc[ClosedW P].inc (dec-both P d).2 ;
+
+-- Lemma 1.21, finite conjunction of open propositions
+both (a b : Nat -> Bool) (m : Nat) : Bool = BR.and (BS.bor a m) (BS.bor b m) ;
+both-true (a b : Nat -> Bool) (i j : Nat) (hi : Id Bool (a i) true) (hj : Id Bool (b j) true) :
+  Id Bool (both a b (suc (NA.plus i j))) true =
+ FN.cong2 BR.and (BS.bor-true (suc (NA.plus i j)) a i (BS.lt-left i j) hi)
+  (BS.bor-true (suc (NA.plus i j)) b j (BS.lt-right i j) hj) ;
+both-exists (a b : Nat -> Bool) : Iff (Exists a * Exists b) (Exists (both a b)) =
+ (\ e -> TC.map2 ((n : Nat) * Id Bool (a n) true) ((n : Nat) * Id Bool (b n) true) ((n : Nat) * Id Bool (both a b n) true)
+    (\ u v -> (suc (NA.plus u.1 v.1), both-true a b u.1 v.1 u.2 v.2)) e.1 e.2,
+  \ e -> TC.rec ((n : Nat) * Id Bool (both a b n) true) @l (Exists a * Exists b)
+    (Pr.isProp-Sigma (Exists a) (\ x -> Exists b) (exists-prop a) (\ x -> exists-prop b)) (\ u ->
+     (T.Trunc[(n : Nat) * Id Bool (a n) true].inc ((BS.bor-true-inv u.1 a (TP.and-true-inv (BS.bor a u.1) (BS.bor b u.1) u.2).1).1,
+        (BS.bor-true-inv u.1 a (TP.and-true-inv (BS.bor a u.1) (BS.bor b u.1) u.2).1).2.2),
+      T.Trunc[(n : Nat) * Id Bool (b n) true].inc ((BS.bor-true-inv u.1 b (TP.and-true-inv (BS.bor a u.1) (BS.bor b u.1) u.2).2).1,
+        (BS.bor-true-inv u.1 b (TP.and-true-inv (BS.bor a u.1) (BS.bor b u.1) u.2).2).2.2))) e) ;
+open-and (P Q : U l) (oP : isOpen P) (oQ : isOpen Q) : isOpen (P * Q) =
+ TC.map2 (OpenW P) (OpenW Q) (OpenW (P * Q)) (\ w v -> (both w.1 v.1,
+   iff-trans (P * Q) (Exists w.1 * Exists v.1) (Exists (both w.1 v.1))
+    (\ pq -> (w.2.1 pq.1, v.2.1 pq.2), \ e -> (w.2.2 e.1, v.2.2 e.2)) (both-exists w.1 v.1))) oP oQ ;
+
+-- finite disjunction of open propositions: interleave the witnesses
+inter-exists-case (a b : Nat -> Bool) (m : Nat) (h : Id Bool (NO.inter Bool m a b) true) :
+  Plus ((n : Nat) * Id Nat m (NO.dbl n)) ((n : Nat) * Id Nat m (suc (NO.dbl n))) -> Plus (Exists a) (Exists b) = split {
+ inl u -> inl (T.Trunc[(n : Nat) * Id Bool (a n) true].inc (u.1,
+   trans (sym (NO.inter-even Bool u.1 a b)) (trans (ap (\ j -> NO.inter Bool j a b) (sym u.2)) h))) ;
+ inr u -> inr (T.Trunc[(n : Nat) * Id Bool (b n) true].inc (u.1,
+   trans (sym (NO.inter-odd Bool u.1 a b)) (trans (ap (\ j -> NO.inter Bool j a b) (sym u.2)) h))) } ;
+open-or-step (P Q : U l) (w : OpenW P) (v : OpenW Q) : Plus (Exists w.1) (Exists v.1) -> Plus P Q = split {
+ inl e -> inl (w.2.2 e) ; inr e -> inr (v.2.2 e) } ;
+open-or-back (P Q : U l) (w : OpenW P) (v : OpenW Q) : Plus P Q -> Exists (\ m -> NO.inter Bool m w.1 v.1) = split {
+ inl p -> TC.map ((n : Nat) * Id Bool (w.1 n) true) ((m : Nat) * Id Bool (NO.inter Bool m w.1 v.1) true)
+   (\ u -> (NO.dbl u.1, trans (NO.inter-even Bool u.1 w.1 v.1) u.2)) (w.2.1 p) ;
+ inr q -> TC.map ((n : Nat) * Id Bool (v.1 n) true) ((m : Nat) * Id Bool (NO.inter Bool m w.1 v.1) true)
+   (\ u -> (suc (NO.dbl u.1), trans (NO.inter-odd Bool u.1 w.1 v.1) u.2)) (v.2.1 q) } ;
+open-or (P Q : U l) (oP : isOpen P) (oQ : isOpen Q) : isOpen (Or P Q) =
+ TC.map2 (OpenW P) (OpenW Q) (OpenW (Or P Q)) (\ w v -> (\ m -> NO.inter Bool m w.1 v.1,
+   (\ o -> TC.rec (Plus P Q) @l (Exists (\ m -> NO.inter Bool m w.1 v.1)) (exists-prop (\ m -> NO.inter Bool m w.1 v.1))
+      (open-or-back P Q w v) o,
+    \ e -> TC.map ((m : Nat) * Id Bool (NO.inter Bool m w.1 v.1) true) (Plus P Q)
+      (\ u -> open-or-step P Q w v (inter-exists-case w.1 v.1 u.1 u.2 (NO.parity u.1))) e))) oP oQ ;
+
+-- Lemma 1.21, finite conjunction of closed propositions: interleave
+allzero-inter-at (a b : Nat -> Bool) (za : Om.AllZero a) (zb : Om.AllZero b) (m : Nat) :
+  Plus ((n : Nat) * Id Nat m (NO.dbl n)) ((n : Nat) * Id Nat m (suc (NO.dbl n))) -> Id Bool (NO.inter Bool m a b) false = split {
+ inl u -> trans (ap (\ j -> NO.inter Bool j a b) u.2) (trans (NO.inter-even Bool u.1 a b) (za u.1)) ;
+ inr u -> trans (ap (\ j -> NO.inter Bool j a b) u.2) (trans (NO.inter-odd Bool u.1 a b) (zb u.1)) } ;
+allzero-inter (a b : Nat -> Bool) : Iff (Om.AllZero a * Om.AllZero b) (Om.AllZero (\ m -> NO.inter Bool m a b)) =
+ (\ z m -> allzero-inter-at a b z.1 z.2 m (NO.parity m),
+  \ z -> (\ n -> trans (sym (NO.inter-even Bool n a b)) (z (NO.dbl n)), \ n -> trans (sym (NO.inter-odd Bool n a b)) (z (suc (NO.dbl n))))) ;
+closed-and (P Q : U l) (cP : isClosed P) (cQ : isClosed Q) : isClosed (P * Q) =
+ TC.map2 (ClosedW P) (ClosedW Q) (ClosedW (P * Q)) (\ w v -> (\ m -> NO.inter Bool m w.1 v.1,
+   iff-trans (P * Q) (Om.AllZero w.1 * Om.AllZero v.1) (Om.AllZero (\ m -> NO.inter Bool m w.1 v.1))
+    (\ pq -> (w.2.1 pq.1, v.2.1 pq.2), \ z -> (w.2.2 z.1, v.2.2 z.2)) (allzero-inter w.1 v.1))) cP cQ ;
+
+-- countable conjunctions and disjunctions, given countable choice
+module Countable (cc : (P : Nat -> U l) -> ((n : Nat) -> T.Trunc[P n].carrier) -> T.Trunc[(n : Nat) -> P n].carrier) {
+ closed-all-step (a : Nat -> Nat -> Bool) (n m : Nat) (z : Om.AllZero (BS.sq a)) :
+   Plus (Id Bool (a n m) true) (Id Bool (a n m) false) -> Id Bool (a n m) false = split {
+  inl t -> Pr.absurd (Id Bool (a n m) false) (BR.true-false (trans (sym (BS.sq-true a n m t)) (z (suc (NA.plus n m))))) ;
+  inr f -> f } ;
+ closed-all (P : Nat -> U l) (c : (n : Nat) -> isClosed (P n)) : isClosed ((n : Nat) -> P n) =
+  TC.map ((n : Nat) -> ClosedW (P n)) (ClosedW ((n : Nat) -> P n)) (\ w -> (BS.sq (\ n -> (w n).1),
+    (\ h k -> BS.sq-false (\ n -> (w n).1) (\ n m -> (w n).2.1 (h n) m) k,
+     \ z n -> (w n).2.2 (\ m -> closed-all-step (\ n -> (w n).1) n m z (TP.bool-cases ((w n).1 m))))))
+   (cc (\ n -> ClosedW (P n)) c) ;
+ open-some (P : Nat -> U l) (o : (n : Nat) -> isOpen (P n)) : isOpen (T.Trunc[(n : Nat) * P n].carrier) =
+  TC.map ((n : Nat) -> OpenW (P n)) (OpenW (T.Trunc[(n : Nat) * P n].carrier)) (\ w -> (BS.sq (\ n -> (w n).1),
+    (\ s -> TC.rec ((n : Nat) * P n) @l (Exists (BS.sq (\ n -> (w n).1))) (exists-prop (BS.sq (\ n -> (w n).1)))
+       (\ u -> TC.map ((m : Nat) * Id Bool ((w u.1).1 m) true) ((k : Nat) * Id Bool (BS.sq (\ n -> (w n).1) k) true)
+         (\ v -> (suc (NA.plus u.1 v.1), BS.sq-true (\ n -> (w n).1) u.1 v.1 v.2)) ((w u.1).2.1 u.2)) s,
+     \ e -> TC.map ((k : Nat) * Id Bool (BS.sq (\ n -> (w n).1) k) true) ((n : Nat) * P n)
+       (\ u -> ((BS.sq-true-inv (\ n -> (w n).1) u.1 u.2).1,
+                (w (BS.sq-true-inv (\ n -> (w n).1) u.1 u.2).1).2.2
+                 (T.Trunc[(m : Nat) * Id Bool ((w (BS.sq-true-inv (\ n -> (w n).1) u.1 u.2).1).1 m) true].inc
+                   (BS.sq-true-inv (\ n -> (w n).1) u.1 u.2).2))) e)))
+   (cc (\ n -> OpenW (P n)) o) ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+ module O = Om.Over[ax] ;
+ module LL = LLPO[l,k].Over[ax] ;
+
+ -- Remark 1.20, with MP and not WLPO
+ not-allzero-exists (alpha : Nat -> Bool) : Iff (Not (Om.AllZero alpha)) (Exists alpha) =
+  (\ n -> T.Trunc[(m : Nat) * Id Bool (alpha m) true].inc (O.markov alpha n),
+   \ e az -> (allzero-not-exists alpha).1 az e) ;
+ neg-closed (P : U l) (c : isClosed P) : isOpen (Not P) =
+  TC.map (ClosedW P) (OpenW (Not P)) (\ w -> (w.1,
+    (\ np -> (not-allzero-exists w.1).1 (\ az -> np (w.2.2 az)),
+     \ e p -> (not-allzero-exists w.1).2 e (w.2.1 p)))) c ;
+ open-stable (P : U l) (pP : Pr.isProp P) (o : isOpen P) (nn : Not (Not P)) : P =
+  TC.rec (OpenW P) @l P pP (\ w -> w.2.2 ((not-allzero-exists w.1).1 (\ az ->
+    nn (\ p -> (allzero-not-exists w.1).1 az (w.2.1 p))))) o ;
+ not-closed-decidable (h : (P : U l) -> Pr.isProp P -> isClosed P -> Dec P) : Empty =
+  O.not-wlpo (\ alpha -> h (Om.AllZero alpha) (allzero-prop alpha)
+    (T.Trunc[ClosedW (Om.AllZero alpha)].inc (alpha, (\ z -> z, \ z -> z)))) ;
+ dec-not-closed (P : U l) (pP : Pr.isProp P) (c : isClosed P) : Dec (Not P) -> Dec P = split {
+  yes n -> no n ;
+  no nn -> yes (closed-stable P pP c nn) } ;
+ not-open-decidable (h : (P : U l) -> Pr.isProp P -> isOpen P -> Dec P) : Empty =
+  not-closed-decidable (\ P pP c -> dec-not-closed P pP c (h (Not P) (not-prop P) (neg-closed P c))) ;
+
+ -- Lemma 1.21, finite disjunction of closed propositions (LLPO)
+ module ClosedOr (a b : Nat -> Bool) (z : Om.AllZero (both a b)) {
+  mu (m : Nat) : Bool = NO.inter Bool m a b ;
+  eps : Nat -> Bool = BS.first mu ;
+  -- the least m with mu m = 1, below k
+  least (k m : Nat) (lt : NO.Lt m k) (h : Id Bool (mu m) true) : (j : Nat) * Om.Min mu j =
+   Om.least-from mu k m lt h (Om.search mu k) ;
+  hit (j : Nat) (mj : Om.Min mu j) : Id Bool (eps j) true = BS.first-least mu j mj.1 mj.2 ;
+  even-case (ev : LLPO[l,k].Evens eps) (n : Nat) (hn : Id Bool (a n) true) (j : Nat) (mj : Om.Min mu j) :
+    Plus ((i : Nat) * Id Nat j (NO.dbl i)) ((i : Nat) * Id Nat j (suc (NO.dbl i))) -> Empty = split {
+   inl u -> BR.true-false (trans (sym (hit j mj)) (trans (ap eps u.2) (ev u.1))) ;
+   inr u -> BR.true-false (trans (sym (both-true a b n u.1 hn
+      (trans (sym (NO.inter-odd Bool u.1 a b)) (trans (ap mu (sym u.2)) mj.1)))) (z (suc (NA.plus n u.1)))) } ;
+  odd-case (od : LLPO[l,k].Odds eps) (n : Nat) (hn : Id Bool (b n) true) (j : Nat) (mj : Om.Min mu j) :
+    Plus ((i : Nat) * Id Nat j (NO.dbl i)) ((i : Nat) * Id Nat j (suc (NO.dbl i))) -> Empty = split {
+   inl u -> BR.true-false (trans (sym (both-true a b u.1 n
+      (trans (sym (NO.inter-even Bool u.1 a b)) (trans (ap mu (sym u.2)) mj.1)) hn)) (z (suc (NA.plus u.1 n)))) ;
+   inr u -> BR.true-false (trans (sym (hit j mj)) (trans (ap eps u.2) (od u.1))) } ;
+  evens (ev : LLPO[l,k].Evens eps) : Om.AllZero a = \ n -> bool-false (a n) (\ hn ->
+   even-case ev n hn (least (suc (NO.dbl n)) (NO.dbl n) (NO.lt-suc (NO.dbl n)) (trans (NO.inter-even Bool n a b) hn)).1
+    (least (suc (NO.dbl n)) (NO.dbl n) (NO.lt-suc (NO.dbl n)) (trans (NO.inter-even Bool n a b) hn)).2
+    (NO.parity (least (suc (NO.dbl n)) (NO.dbl n) (NO.lt-suc (NO.dbl n)) (trans (NO.inter-even Bool n a b) hn)).1))
+   (TP.bool-cases (a n)) ;
+  odds (od : LLPO[l,k].Odds eps) : Om.AllZero b = \ n -> bool-false (b n) (\ hn ->
+   odd-case od n hn (least (suc (suc (NO.dbl n))) (suc (NO.dbl n)) (NO.lt-suc (suc (NO.dbl n))) (trans (NO.inter-odd Bool n a b) hn)).1
+    (least (suc (suc (NO.dbl n))) (suc (NO.dbl n)) (NO.lt-suc (suc (NO.dbl n))) (trans (NO.inter-odd Bool n a b) hn)).2
+    (NO.parity (least (suc (suc (NO.dbl n))) (suc (NO.dbl n)) (NO.lt-suc (suc (NO.dbl n))) (trans (NO.inter-odd Bool n a b) hn)).1))
+   (TP.bool-cases (b n)) ;
+  cases : Plus (LLPO[l,k].Evens eps) (LLPO[l,k].Odds eps) -> Plus (Om.AllZero a) (Om.AllZero b) = split {
+   inl ev -> inl (evens ev) ; inr od -> inr (odds od) } ;
+  result : T.Trunc[Plus (Om.AllZero a) (Om.AllZero b)].carrier =
+   TC.map (Plus (LLPO[l,k].Evens eps) (LLPO[l,k].Odds eps)) (Plus (Om.AllZero a) (Om.AllZero b)) cases
+    (LL.llpo (eps, BS.first-ninf mu)) ;
+ } ;
+ closed-or-to (P Q : U l) (w : ClosedW P) (v : ClosedW Q) : Plus P Q -> Om.AllZero (both w.1 v.1) = split {
+  inl p -> \ m -> ap (\ x -> BR.and x (BS.bor v.1 m)) (BS.bor-false m w.1 (\ i lt -> w.2.1 p i)) ;
+  inr q -> \ m -> trans (ap (BR.and (BS.bor w.1 m)) (BS.bor-false m v.1 (\ i lt -> v.2.1 q i))) (TP.and-false (BS.bor w.1 m)) } ;
+ closed-or-from (P Q : U l) (w : ClosedW P) (v : ClosedW Q) : Plus (Om.AllZero w.1) (Om.AllZero v.1) -> Plus P Q = split {
+  inl z -> inl (w.2.2 z) ; inr z -> inr (v.2.2 z) } ;
+ closed-or (P Q : U l) (cP : isClosed P) (cQ : isClosed Q) : isClosed (Or P Q) =
+  TC.map2 (ClosedW P) (ClosedW Q) (ClosedW (Or P Q)) (\ w v -> (both w.1 v.1,
+    (\ o -> TC.rec (Plus P Q) @l (Om.AllZero (both w.1 v.1)) (allzero-prop (both w.1 v.1)) (closed-or-to P Q w v) o,
+     \ z -> TC.map (Plus (Om.AllZero w.1) (Om.AllZero v.1)) (Plus P Q) (closed-or-from P Q w v) (ClosedOr[w.1, v.1, z].result)))) cP cQ ;
+
+ -- Corollary 1.22
+ or-dec (P : U l) : Plus P (Not P) -> Dec P = split { inl p -> yes p ; inr n -> no n } ;
+ open-closed-dec (P : U l) (pP : Pr.isProp P) (o : isOpen P) (c : isClosed P) : Dec P =
+  TC.rec (Plus P (Not P)) @l (Dec P) (dec-prop P pP) (or-dec P)
+   (open-stable (Or P (Not P)) (or-prop P (Not P)) (open-or P (Not P) o (neg-closed P c))
+     (\ k -> k (T.Trunc[Plus P (Not P)].inc (inr (\ p -> k (T.Trunc[Plus P (Not P)].inc (inl p))))))) ;
+
+ -- Lemma 1.24
+ or-imp (P Q : U l) (p : P) : Plus (Not P) Q -> Q = split { inl n -> Pr.absurd Q (n p) ; inr q -> q } ;
+ imp-or (P Q : U l) (pQ : Pr.isProp Q) (o : Or (Not P) Q) (p : P) : Q =
+  TC.rec (Plus (Not P) Q) @l Q pQ (or-imp P Q p) o ;
+ not-not-or (P Q : U l) (f : P -> Q) : Not (Not (Or (Not P) Q)) = \ k ->
+  k (T.Trunc[Plus (Not P) Q].inc (inl (\ p -> k (T.Trunc[Plus (Not P) Q].inc (inr (f p)))))) ;
+ open-closed-imp (P Q : U l) (pQ : Pr.isProp Q) (oP : isOpen P) (cQ : isClosed Q) : isClosed (P -> Q) =
+  closed-iff (P -> Q) (Or (Not P) Q)
+   (\ f -> closed-stable (Or (Not P) Q) (or-prop (Not P) Q) (closed-or (Not P) Q (neg-open P oP) cQ) (not-not-or P Q f),
+    imp-or P Q pQ)
+   (closed-or (Not P) Q (neg-open P oP) cQ) ;
+ closed-open-imp (P Q : U l) (pQ : Pr.isProp Q) (cP : isClosed P) (oQ : isOpen Q) : isOpen (P -> Q) =
+  open-iff (P -> Q) (Or (Not P) Q)
+   (\ f -> open-stable (Or (Not P) Q) (or-prop (Not P) Q) (open-or (Not P) Q (neg-closed P cP) oQ) (not-not-or P Q f),
+    imp-or P Q pQ)
+   (open-or (Not P) Q (neg-closed P cP) oQ) ;
+
+ -- Lemma 1.23
+ module WithChoice (cc : (P : Nat -> U l) -> ((n : Nat) -> T.Trunc[P n].carrier) -> T.Trunc[(n : Nat) -> P n].carrier) {
+  module C = Countable[cc] ;
+  lemma123 (P : Nat -> U l) (pP : (n : Nat) -> Pr.isProp (P n)) (c : (n : Nat) -> isClosed (P n)) :
+    Iff (Not ((n : Nat) -> P n)) (T.Trunc[(n : Nat) * Not (P n)].carrier) =
+   (\ nall -> open-stable (T.Trunc[(n : Nat) * Not (P n)].carrier) T.Trunc[(n : Nat) * Not (P n)].proposition
+      (C.open-some (\ n -> Not (P n)) (\ n -> neg-closed (P n) (c n)))
+      (\ k -> nall (\ n -> closed-stable (P n) (pP n) (c n) (\ np -> k (T.Trunc[(n : Nat) * Not (P n)].inc (n, np))))),
+    \ e all -> TC.rec ((n : Nat) * Not (P n)) @l Empty Pr.isProp-Empty (\ u -> u.2 (all u.1)) e) ;
+ } ;
+} ;
+
+-- countable choice from Axiom 4 (CountableChoice, worker B): Lemmas 1.21
+-- (countable parts) and 1.23 without hypotheses
+module Choice (ax : SA.Assumptions) {
+ cc : CountableChoice[l].CC = CountableChoice[l].cc (ax.dc @l) ;
+ closed-all (P : Nat -> U l) (c : (n : Nat) -> isClosed (P n)) : isClosed ((n : Nat) -> P n) =
+  Countable[cc].closed-all P c ;
+ open-some (P : Nat -> U l) (o : (n : Nat) -> isOpen (P n)) : isOpen (T.Trunc[(n : Nat) * P n].carrier) =
+  Countable[cc].open-some P o ;
+ lemma123 (P : Nat -> U l) (pP : (n : Nat) -> Pr.isProp (P n)) (c : (n : Nat) -> isClosed (P n)) :
+   Iff (Not ((n : Nat) -> P n)) (T.Trunc[(n : Nat) * Not (P n)].carrier) =
+  Over[ax].WithChoice[cc].lemma123 P pP c ;
+} ;

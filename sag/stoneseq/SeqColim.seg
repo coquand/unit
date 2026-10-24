@@ -1,0 +1,198 @@
+-- Sequential colimits (SSD Def. 2.1, Remark 2.2), defined as in set theory.
+--
+-- A sequence is A 0 -> A 1 -> A 2 -> .. with maps f n : A n -> A (suc n).
+-- On the total type  Tot = (n : Nat) * A n  the maps form one endomap
+-- step (n, x) = (suc n, f n x), iterated d times by iter d (from stage n by
+-- shift d n : A n -> A (d + n)).  Two points u v of Tot meet when
+-- iter d u = iter e v for some d e; the colimit is the quotient of Tot by
+-- the mere relation "u and v meet".  This relation is an equivalence:
+-- for transitivity, from iter d u = iter e v and iter d' v = iter e' w,
+--   iter (d' + d) u = iter d' (iter d u) = iter d' (iter e v)
+--                   = iter e (iter d' v) = iter e (iter e' w) = iter (e + e') w.
+-- Then:  inc n x  the class of (n, x);  glue: inc n x = inc (suc n) (f n x);
+-- effective: inc u = inc v iff u and v merely meet (the identity types of the
+-- colimit are the colimit of the identity types, for sets);  a cocone into
+-- a set B (maps g n with g (suc n) (f n x) = g n x) induces a map from the
+-- colimit, unique.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Bijection[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+record Seq {
+  A : Nat -> U l ;
+  f : (n : Nat) -> A n -> A (suc n) ;
+} ;
+
+module Colim (S : Seq) {
+  Tot : U l = (n : Nat) * S.A n ;
+  step (u : Tot) : Tot = (suc u.1, S.f u.1 u.2) ;
+  -- d steps from stage m, and the same on Tot
+  shift : (d m : Nat) -> S.A m -> S.A (plus d m) = split {
+    zero -> \ m x -> x ;
+    suc d | r -> \ m x -> S.f (plus d m) (r m x) } ;
+  iter (d : Nat) (u : Tot) : Tot = (plus d u.1, shift d u.1 u.2) ;
+  iter-plus : (d e : Nat) (u : Tot) -> Id Tot (iter (plus d e) u) (iter d (iter e u)) = split {
+    zero -> \ e u -> refl (iter e u) ;
+    suc d | r -> \ e u -> apH step (r e u) } ;
+  iter-comm (d e : Nat) (u : Tot) : Id Tot (iter d (iter e u)) (iter e (iter d u)) = calc Tot {
+    iter d (iter e u) =< symH (iter-plus d e u) > iter (plus d e) u
+      =< apH (\ k -> iter k u) (plus-comm d e) > iter (plus e d) u
+      =< iter-plus e d u > iter e (iter d u) } ;
+
+  -- u and v meet at iter d u = iter e v
+  record Meet (u v : Tot) {
+    d : Nat ;
+    e : Nat ;
+    meet : Id Tot (iter d u) (iter e v) ;
+  } ;
+  meet-refl (u : Tot) : Meet[u,u] = new Meet[u, u, zero, zero, refl u] ;
+  meet-sym (u v : Tot) (m : Meet[u,v]) : Meet[v,u] = new Meet[v, u, m.e, m.d, symH m.meet] ;
+  meet-trans (u v w : Tot) (m : Meet[u,v]) (m' : Meet[v,w]) : Meet[u,w] =
+    new Meet[u, w, plus m'.d m.d, plus m.e m'.e, calc Tot {
+      iter (plus m'.d m.d) u =< iter-plus m'.d m.d u > iter m'.d (iter m.d u)
+        =< apH (iter m'.d) m.meet > iter m'.d (iter m.e v)
+        =< iter-comm m'.d m.e v > iter m.e (iter m'.d v)
+        =< apH (iter m.e) m'.meet > iter m.e (iter m'.e w)
+        =< symH (iter-plus m.e m'.e w) > iter (plus m.e m'.e) w }] ;
+
+  Rel (u v : Tot) : U l = Tr.Trunc[Meet[u,v]].carrier ;
+  module Q = Quotient[l].Quot[Tot, Rel, \ u v -> Tr.Trunc[Meet[u,v]].proposition,
+    \ u -> Tr.Trunc[Meet[u,u]].inc (meet-refl u),
+    \ u v -> TC.map Meet[u,v] Meet[v,u] (meet-sym u v),
+    \ u v w -> TC.map2 Meet[u,v] Meet[v,w] Meet[u,w] (meet-trans u v w)] ;
+
+  colim : U l = Q.Q ;
+  set : isSet colim = Q.set ;
+  -- the class of a point of Tot, and of x at stage n
+  cls (u : Tot) : colim = Q.inc u ;
+  inc (n : Nat) (x : S.A n) : colim = cls (n, x) ;
+  glue (n : Nat) (x : S.A n) : Id colim (inc n x) (inc (suc n) (S.f n x)) =
+    Q.relates (n, x) (suc n, S.f n x) (Tr.Trunc[Meet[(n, x),(suc n, S.f n x)]].inc
+      (new Meet[(n, x), (suc n, S.f n x), suc zero, zero, refl (suc n, S.f n x)])) ;
+  effective (u v : Tot) (p : Id colim (Q.inc u) (Q.inc v)) : Rel u v = Q.effective u v p ;
+  meets (u v : Tot) (r : Rel u v) : Id colim (Q.inc u) (Q.inc v) = Q.relates u v r ;
+
+  -- d steps do not change the class
+  inc-iter (d : Nat) (u : Tot) : Id colim (Q.inc (iter d u)) (Q.inc u) =
+    meets (iter d u) u (Tr.Trunc[Meet[iter d u,u]].inc (new Meet[iter d u, u, zero, d, refl (iter d u)])) ;
+  -- the same at a stage: inc (d + n) (shift d n x) = inc n x
+  inc-shift (d n : Nat) (x : S.A n) : Id colim (inc (plus d n) (shift d n x)) (inc n x) = inc-iter d (n, x) ;
+
+  -- two points of Tot at the same stage are equal when their components are
+  -- (Nat is a set, so the stage path is refl)
+  tot-stage (n : Nat) (x y : S.A n) (q : Id Tot (n, x) (n, y)) : Id (S.A n) x y =
+    transH (apH (\ r -> subst Nat S.A n n r x)
+              (symH (loop-refl Nat nat-set n (ap Tot Nat (\ w -> w.1) (n, x) (n, y) q))))
+      (Sigma-snd Nat S.A n n x y q) ;
+
+  -- two points at the same stage can only meet after the same number of steps
+  stage-meet (n : Nat) (x y : S.A n) (m : Meet[(n, x),(n, y)])
+    : (d : Nat) * Id (S.A (plus d n)) (shift d n x) (shift d n y) =
+    (m.d, tot-stage (plus m.d n) (shift m.d n x) (shift m.d n y)
+      (transH m.meet (apH (\ k -> iter k (n, y)) (symH (plus-cancel-r n m.d m.e (apH (\ t -> t.1) m.meet)))))) ;
+
+  -- raising x : A n to a later stage N
+  raise (n N : Nat) (h : Le n N) (x : S.A n) : S.A N =
+    subst Nat S.A (plus h.1 n) N h.2 (shift h.1 n x) ;
+  raise-tot (n N : Nat) (h : Le n N) (x : S.A n) : Id Tot (iter h.1 (n, x)) (N, raise n N h x) =
+    idJ Nat (plus h.1 n) (\ K p -> Id Tot (plus h.1 n, shift h.1 n x) (K, subst Nat S.A (plus h.1 n) K p (shift h.1 n x)))
+      (refl (plus h.1 n, shift h.1 n x)) N h.2 ;
+  inc-raise (n N : Nat) (h : Le n N) (x : S.A n) : Id colim (inc N (raise n N h x)) (inc n x) =
+    transH (apH Q.inc (symH (raise-tot n N h x))) (inc-iter h.1 (n, x)) ;
+
+  -- a raise is determined by any path of steps reaching its stage
+  raise-iter (k m : Nat) (h : Le k m) (z : S.A k) (d : Nat) (w : S.A m)
+    (q : Id Tot (iter d (k, z)) (m, w)) : Id (S.A m) (raise k m h z) w =
+    tot-stage m (raise k m h z) w (calc Tot {
+      (m, raise k m h z) =< symH (raise-tot k m h z) > iter h.1 (k, z)
+        =< apH (\ e -> iter e (k, z)) (plus-cancel-r k h.1 d (transH h.2 (symH (apH (\ t -> t.1) q)))) > iter d (k, z)
+        =< q > (m, w) }) ;
+  -- one more step after a raise, and a raise after one step
+  raise-f (k m : Nat) (h : Le k m) (z : S.A k)
+    : Id (S.A (suc m)) (S.f m (raise k m h z)) (raise k (suc m) (suc h.1, apH (\ e -> suc e) h.2) z) =
+    symH (raise-iter k (suc m) (suc h.1, apH (\ e -> suc e) h.2) z (suc h.1) (S.f m (raise k m h z))
+      (apH step (raise-tot k m h z))) ;
+  raise-of-f (k m : Nat) (h : Le (suc k) m) (h' : Le k m) (z : S.A k)
+    : Id (S.A m) (raise (suc k) m h (S.f k z)) (raise k m h' z) =
+    symH (raise-iter k m h' z (plus h.1 (suc zero)) (raise (suc k) m h (S.f k z))
+      (transH (iter-plus h.1 (suc zero) (k, z)) (raise-tot (suc k) m h (S.f k z)))) ;
+
+  -- u and v meet at stage K
+  record MeetAt (K : Nat) (u v : Tot) {
+    d : Nat ;
+    e : Nat ;
+    stage : Id Nat (plus d u.1) K ;
+    meet : Id Tot (iter d u) (iter e v) ;
+  } ;
+  meet-at (u v : Tot) (m : Meet[u,v]) : MeetAt[plus m.d u.1,u,v] =
+    new MeetAt[plus m.d u.1, u, v, m.d, m.e, refl (plus m.d u.1), m.meet] ;
+  -- the stage of v's side is K too
+  stage-e (K : Nat) (u v : Tot) (m : MeetAt[K,u,v]) : Id Nat (plus m.e v.1) K =
+    transH (symH (ap Tot Nat (\ w -> w.1) (iter m.d u) (iter m.e v) m.meet)) m.stage ;
+  meet-at-up (K a : Nat) (u v : Tot) (m : MeetAt[K,u,v]) : MeetAt[plus a K,u,v] =
+    new MeetAt[plus a K, u, v, plus a m.d, plus a m.e,
+      transH (plus-assoc a m.d u.1) (apH (plus a) m.stage),
+      transH (iter-plus a m.d u) (transH (apH (iter a) m.meet) (symH (iter-plus a m.e v)))] ;
+  -- having met at K, u and v agree at every later stage K'
+  meet-up (K K' : Nat) (u v : Tot) (m : MeetAt[K,u,v]) (h : Le K K') (d' e' : Nat)
+    (pd : Id Nat (plus d' u.1) K') (pe : Id Nat (plus e' v.1) K') : Id Tot (iter d' u) (iter e' v) = calc Tot {
+      iter d' u =< apH (\ k -> iter k u) (plus-cancel-r u.1 d' (plus h.1 m.d)
+                       (transH pd (symH (transH (plus-assoc h.1 m.d u.1) (transH (apH (plus h.1) m.stage) h.2))))) >
+        iter (plus h.1 m.d) u
+        =< iter-plus h.1 m.d u > iter h.1 (iter m.d u)
+        =< apH (iter h.1) m.meet > iter h.1 (iter m.e v)
+        =< symH (iter-plus h.1 m.e v) > iter (plus h.1 m.e) v
+        =< apH (\ k -> iter k v) (plus-cancel-r v.1 (plus h.1 m.e) e'
+             (transH (transH (plus-assoc h.1 m.e v.1) (transH (apH (plus h.1) (stage-e K u v m)) h.2)) (symH pe))) >
+        iter e' v } ;
+
+  -- every point of the colimit merely comes from Tot
+  inc-surj (c : colim) : Tr.Trunc[(u : Tot) * Id colim (Q.inc u) c].carrier =
+    Q.induction @l (\ c -> Tr.Trunc[(u : Tot) * Id colim (Q.inc u) c].carrier)
+      (\ c -> Tr.Trunc[(u : Tot) * Id colim (Q.inc u) c].proposition)
+      (\ u -> Tr.Trunc[(u' : Tot) * Id colim (Q.inc u') (Q.inc u)].inc (u, refl (Q.inc u))) c ;
+
+  -- every point is merely some inc n x
+  induction : [j] (P : colim -> U j) -> ((c : colim) -> Prelude[j].isProp (P c)) ->
+    ((n : Nat) (x : S.A n) -> P (inc n x)) -> (c : colim) -> P c =
+    <j> \ P p b -> Q.induction @j P p (\ u -> b u.1 u.2) ;
+
+  -- a map is injective when it is on the points inc n x
+  injective-on-inc (B : U l) (g : colim -> B)
+    (h : (n : Nat) (x : S.A n) (n' : Nat) (x' : S.A n') -> Id B (g (inc n x)) (g (inc n' x')) -> Id colim (inc n x) (inc n' x'))
+    : Injective g = \ a b ->
+    induction @l (\ a -> Id B (g a) (g b) -> Id colim a b)
+      (\ a -> Axioms[l].FunExtLemmas[fe @l].isProp-Pi (Id B (g a) (g b)) (\ q -> Id colim a b) (\ q -> set a b))
+      (\ n x -> induction @l (\ b -> Id B (g (inc n x)) (g b) -> Id colim (inc n x) b)
+        (\ b -> Axioms[l].FunExtLemmas[fe @l].isProp-Pi (Id B (g (inc n x)) (g b)) (\ q -> Id colim (inc n x) b) (\ q -> set (inc n x) b))
+        (\ n' x' -> h n x n' x') b) a ;
+
+  -- the colimit is a proposition when any two points inc n x are equal
+  -- (the map to Top is then injective)
+  prop-on-inc (h : (n : Nat) (x : S.A n) (n' : Nat) (x' : S.A n') -> Id colim (inc n x) (inc n' x'))
+    : isProp colim = \ a b -> injective-on-inc Top (\ c -> tt) (\ n x n' x' q -> h n x n' x') a b (refl tt) ;
+
+  -- cocones into a set, and the induced map
+  record Cocone (B : U l) {
+    g : (n : Nat) -> S.A n -> B ;
+    c : (n : Nat) (x : S.A n) -> Id B (g (suc n) (S.f n x)) (g n x) ;
+  } ;
+  module Rec (B : U l) (sB : isSet B) (G : Cocone[B]) {
+    at (u : Tot) : B = G.g u.1 u.2 ;
+    at-iter : (d : Nat) (u : Tot) -> Id B (at (iter d u)) (at u) = split {
+      zero -> \ u -> refl (at u) ;
+      suc d | r -> \ u -> transH (G.c (iter d u).1 (iter d u).2) (r u) } ;
+    at-meet (u v : Tot) (m : Meet[u,v]) : Id B (at u) (at v) = calc B {
+      at u =< symH (at-iter m.d u) > at (iter m.d u)
+        =< apH at m.meet > at (iter m.e v)
+        =< at-iter m.e v > at v } ;
+    module D = Q.Descend[B, sB, at, \ u v ->
+      TC.rec Meet[u,v] @l (Id B (at u) (at v)) (sB (at u) (at v)) (at-meet u v)] ;
+    map (c : colim) : B = D.map c ;
+    beta (n : Nat) (x : S.A n) : Id B (map (inc n x)) (G.g n x) = D.beta (n, x) ;
+  } ;
+  -- two maps into a set agreeing on every inc n x are equal
+  ext (B : U l) (sB : isSet B) (h k : colim -> B)
+    (e : (n : Nat) (x : S.A n) -> Id B (h (inc n x)) (k (inc n x))) (c : colim) : Id B (h c) (k c) =
+    induction @l (\ c -> Id B (h c) (k c)) (\ c -> sB (h c) (k c)) e c ;
+} ;

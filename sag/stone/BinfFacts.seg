@@ -1,0 +1,194 @@
+-- Facts about B∞ = 2[N]/(g n /\ (g 0 \/ .. \/ g (n-1)))_n (Examples) used for
+-- SSD Theorem 1.17 (LLPO) and Lemma 1.18.  Instead of the normal form of
+-- Example 1.8 (iv) we use the points of 2^N, where everything is
+-- computation on Booleans:
+--
+-- * the standard points delta i (1 exactly at i) and 0 are in N∞;
+-- * an element of the ideal vanishes at every point of N∞ (J k does);
+-- * conversely (std-ideal), an element y of 2[N] vanishing at all the
+--   standard points is in the ideal: with a truth table of y on k
+--   generators,  y <= J k  pointwise, since where J k is 0 at most one of the
+--   first k bits is 1, so y takes the value it has at 0 or at some delta i
+--   (J-false-inf);
+-- * the morphism f : B∞ -> B∞ x B∞ of Theorem 1.17 is the pair of
+--   f1, f2 : B∞ -> B∞, induced by g (2k) |-> g k, g (2k+1) |-> 0 and by
+--   g (2k) |-> 0, g (2k+1) |-> g k.  On 2[N], f1 is precomposition with the
+--   map  beta |-> (beta 0, 0, beta 1, 0, ..)  (subst-lemma), which sends
+--   delta i to delta (2i) and 0 to 0; so f1 sends the relations into the
+--   ideal by std-ideal.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module P = Presented[l] ;
+module Ex = Examples[l] ;
+module TP = TwoPresented[l] ;
+module Pd = Product[l] ;
+module NO = NatOrder[l] ;
+
+module Gi = P.Generated[FN.free, Ex.rinf] ;
+InNinf (beta : Nat -> Bool) : U l = P.Zeros Ex.rinf beta ;
+-- the Boolean join
+bjoin (a b : Bool) : Bool = BR.xor (BR.xor a b) (BR.and a b) ;
+
+join-true-l : (b : Bool) -> Id Bool (bjoin true b) true = split { true -> refl true ; false -> refl true } ;
+join-true-r : (a : Bool) -> Id Bool (bjoin a true) true = split { true -> refl true ; false -> refl true } ;
+
+-- before k at beta is 1 iff some beta i, i < k, is 1
+bt-step (k : Nat) (beta : Nat -> Bool) (i : Nat)
+  (ih : NO.Lt i k -> Id Bool ((Ex.before k).1 beta) true) (h : Id Bool (beta i) true)
+  : Plus (NO.Lt i k) (Id Nat i k) -> Id Bool ((Ex.before (suc k)).1 beta) true = split {
+ inl lt -> trans (ap (\ a -> bjoin a (beta k)) (ih lt)) (join-true-l (beta k)) ;
+ inr p -> trans (ap (bjoin ((Ex.before k).1 beta)) (subst (\ j -> Id Bool (beta j) true) p h))
+   (join-true-r ((Ex.before k).1 beta)) } ;
+before-true : (k : Nat) (beta : Nat -> Bool) (i : Nat) -> NO.Lt i k -> Id Bool (beta i) true ->
+  Id Bool ((Ex.before k).1 beta) true = split {
+ zero -> \ beta i lt h -> Pr.absurd (Id Bool false true) (NO.not-lt-zero i lt) ;
+ suc k | r -> \ beta i lt h -> bt-step k beta i (\ lt' -> r beta i lt' h) h (NO.lt-pred i k lt) } ;
+before-false : (k : Nat) (beta : Nat -> Bool) -> ((m : Nat) -> NO.Lt m k -> Id Bool (beta m) false) ->
+  Id Bool ((Ex.before k).1 beta) false = split {
+ zero -> \ beta h -> refl false ;
+ suc k | r -> \ beta h -> FN.cong2 bjoin (r beta (\ m lt -> h m (NO.lt-step m k lt))) (h k (NO.lt-suc k)) } ;
+
+-- the standard points are in N∞
+ninf-tri (i n : Nat) : NO.Tri n i -> Id Bool ((Ex.rinf n).1 (NO.delta i)) false = split {
+ less h -> ap (\ b -> BR.and b ((Ex.before n).1 (NO.delta i))) (NO.delta-ne i n (NO.lt-neq n i h)) ;
+ equal p -> trans (ap (BR.and (NO.delta i n)) (before-false n (NO.delta i) (\ m lt ->
+    NO.delta-ne i m (\ q -> NO.lt-neq m n lt (trans q (sym p))))))
+   (TP.and-false (NO.delta i n)) ;
+ greater h -> ap (\ b -> BR.and b ((Ex.before n).1 (NO.delta i))) (NO.delta-ne i n (\ p -> NO.lt-neq i n h (sym p))) } ;
+delta-ninf (i : Nat) : InNinf (NO.delta i) = \ n -> ninf-tri i n (NO.tri n i) ;
+
+-- the ideal vanishes on N∞
+J-ninf (beta : Nat -> Bool) (z : InNinf beta) : (k : Nat) -> Id Bool ((Gi.J k).1 beta) false = split {
+ zero -> refl false ;
+ suc k | r -> FN.cong2 bjoin r (z k) } ;
+ideal-vanishes (y : FN.Elem) (i : Gi.Ideal y) (beta : Nat -> Bool) (z : InNinf beta) : Id Bool (y.1 beta) false =
+ TC.rec (Gi.Below y) @l (Id Bool (y.1 beta) false) (BR.bool-set _ _) (\ p ->
+  trans (sym (ap (\ x -> x.1 beta) p.2)) (trans (ap (BR.and (y.1 beta)) (J-ninf beta z p.1)) (TP.and-false (y.1 beta)))) i ;
+
+-- where J k is 0, at most one of the first k bits is 1
+Shape (k : Nat) (beta : Nat -> Bool) : U l =
+ Plus ((m : Nat) -> NO.Lt m k -> Id Bool (beta m) false)
+      ((i : Nat) * NO.Lt i k * ((m : Nat) -> NO.Lt m k -> Id Bool (beta m) (NO.delta i m))) ;
+-- extending an agreement below k by one at k
+extend-at (k : Nat) (beta gamma : Nat -> Bool) (below : (m : Nat) -> NO.Lt m k -> Id Bool (beta m) (gamma m))
+  (at : Id Bool (beta k) (gamma k)) (m : Nat) : Plus (NO.Lt m k) (Id Nat m k) -> Id Bool (beta m) (gamma m) = split {
+ inl lt -> below m lt ;
+ inr p -> subst (\ j -> Id Bool (beta j) (gamma j)) (sym p) at } ;
+shape-none (k : Nat) (beta : Nat -> Bool) (allz : (m : Nat) -> NO.Lt m k -> Id Bool (beta m) false) :
+  Plus (Id Bool (beta k) true) (Id Bool (beta k) false) -> Shape (suc k) beta = split {
+ inl t -> inr (k, NO.lt-suc k, \ m lt -> extend-at k beta (NO.delta k)
+   (\ m' lt' -> trans (allz m' lt') (sym (NO.delta-ne k m' (NO.lt-neq m' k lt'))))
+   (trans t (sym (NO.delta-self k))) m (NO.lt-pred m k lt)) ;
+ inr f -> inl (\ m lt -> extend-at k beta (\ n -> false) allz f m (NO.lt-pred m k lt)) } ;
+shape-step (k : Nat) (beta : Nat -> Bool) (hb : Id Bool (BR.and (beta k) ((Ex.before k).1 beta)) false) :
+  Shape k beta -> Shape (suc k) beta = split {
+ inl allz -> shape-none k beta allz (TP.bool-cases (beta k)) ;
+ inr u -> inr (u.1, NO.lt-step u.1 k u.2.1, \ m lt -> extend-at k beta (NO.delta u.1) u.2.2
+   (trans (trans (sym (BR.and-true (beta k)))
+            (trans (sym (ap (BR.and (beta k)) (before-true k beta u.1 u.2.1 (trans (u.2.2 u.1 u.2.1) (NO.delta-self u.1))))) hb))
+    (sym (NO.delta-ne u.1 k (\ p -> NO.lt-neq u.1 k u.2.1 (sym p)))))
+   m (NO.lt-pred m k lt)) } ;
+J-false-inf : (k : Nat) (beta : Nat -> Bool) -> Id Bool ((Gi.J k).1 beta) false -> Shape k beta = split {
+ zero -> \ beta h -> inl (\ m lt -> Pr.absurd (Id Bool (beta m) false) (NO.not-lt-zero m lt)) ;
+ suc k | r -> \ beta h -> shape-step k beta (TP.join-false ((Gi.J k).1 beta) ((Ex.rinf k).1 beta) h).2
+   (r beta (TP.join-false ((Gi.J k).1 beta) ((Ex.rinf k).1 beta) h).1) } ;
+
+-- the standard points decide membership in the ideal
+shape-zero (y : FN.Elem) (r : FN.Rep y.1) (hz : Id Bool (y.1 TP.zeroes) false)
+  (hd : (i : Nat) -> Id Bool (y.1 (NO.delta i)) false) (beta : Nat -> Bool) :
+  Shape r.1 beta -> Id Bool (y.1 beta) false = split {
+ inl allz -> trans (FN.agree y r beta TP.zeroes (\ i -> trans (FN.res-index Bool r.1 beta i)
+    (trans (allz (FN.index r.1 i) (TP.index-lt r.1 i)) (sym (FN.res-index Bool r.1 TP.zeroes i))))) hz ;
+ inr u -> trans (FN.agree y r beta (NO.delta u.1) (\ i -> trans (FN.res-index Bool r.1 beta i)
+    (trans (u.2.2 (FN.index r.1 i) (TP.index-lt r.1 i)) (sym (FN.res-index Bool r.1 (NO.delta u.1) i))))) (hd u.1) } ;
+std-ideal (y : FN.Elem) (hz : Id Bool (y.1 TP.zeroes) false) (hd : (i : Nat) -> Id Bool (y.1 (NO.delta i)) false) :
+  Gi.Ideal y =
+ TC.map (FN.Rep y.1) (Gi.Below y) (\ r -> (r.1,
+   FN.elem-eq (FN.emul y (Gi.J r.1)) y (\ beta -> TP.and-leq ((Gi.J r.1).1 beta) (y.1 beta) (\ h ->
+    shape-zero y r hz hd beta (J-false-inf r.1 beta h))))) y.2 ;
+
+------------------------------------------------------------------------
+-- spreading a point over the even, resp. odd, positions
+
+inter-zeroes : (m : Nat) -> Id Bool (NO.inter Bool m TP.zeroes TP.zeroes) false = split {
+ zero -> refl false ; suc m | r -> r } ;
+sd-zero : (i : Nat) -> Id Bool (NO.delta i zero) (NO.delta (NO.dbl i) zero) = split {
+ zero -> refl true ; suc i -> refl false } ;
+Spread (m i : Nat) : U l =
+ Id Bool (NO.inter Bool m (NO.delta i) TP.zeroes) (NO.delta (NO.dbl i) m) *
+ Id Bool (NO.inter Bool m TP.zeroes (NO.delta i)) (NO.delta (suc (NO.dbl i)) m) ;
+sd-first (m : Nat) (r : (i : Nat) -> Spread m i) : (i : Nat) ->
+  Id Bool (NO.inter Bool (suc m) (NO.delta i) TP.zeroes) (NO.delta (NO.dbl i) (suc m)) = split {
+ zero -> inter-zeroes m ; suc i -> (r i).2 } ;
+spread-delta : (m i : Nat) -> Spread m i = split {
+ zero -> \ i -> (sd-zero i, refl false) ;
+ suc m | r -> \ i -> (sd-first m r i, (r i).1) } ;
+
+inter-map (X Y : U l) (phi : X -> Y) : (m : Nat) (a b : Nat -> X) ->
+  Id Y (phi (NO.inter X m a b)) (NO.inter Y m (\ n -> phi (a n)) (\ n -> phi (b n))) = split {
+ zero -> \ a b -> refl (phi (a zero)) ;
+ suc m | r -> \ a b -> r b (\ n -> a (suc n)) } ;
+
+-- a morphism 2[N] -> 2[N] is precomposition with its values at the generators
+subst-lemma (h : BR.Hom FN.free FN.free) (x : FN.Elem) (beta : Nat -> Bool) :
+  Id Bool ((h.1 x).1 beta) (x.1 (\ m -> (h.1 (FN.gen m)).1 beta)) =
+ calc Bool { (h.1 x).1 beta
+  =< sym (FN.ext-two beta (h.1 x)) > FN.U2.ext beta (h.1 x)
+  =< FN.U2.unique (H.compose FN.ring FN.ring BR.two-ring (FN.U2.extend beta) h) x
+  > FN.U2.ext (FN.U2.values (H.compose FN.ring FN.ring BR.two-ring (FN.U2.extend beta) h)) x
+  =< ap (\ g -> FN.U2.ext g x) (F.funext Nat (\ m -> Bool)
+      (FN.U2.values (H.compose FN.ring FN.ring BR.two-ring (FN.U2.extend beta) h)) (\ m -> (h.1 (FN.gen m)).1 beta)
+      (\ m -> FN.ext-two beta (h.1 (FN.gen m))))
+  > FN.U2.ext (\ m -> (h.1 (FN.gen m)).1 beta) x
+  =< FN.ext-two (\ m -> (h.1 (FN.gen m)).1 beta) x > x.1 (\ m -> (h.1 (FN.gen m)).1 beta) } ;
+
+module UF = FN.UP[FN.free] ;
+g1 (m : Nat) : FN.Elem = NO.inter FN.Elem m FN.gen (\ n -> FN.ezero) ;
+g2 (m : Nat) : FN.Elem = NO.inter FN.Elem m (\ n -> FN.ezero) FN.gen ;
+ft1 : BR.Hom FN.free FN.free = UF.extend g1 ;
+ft2 : BR.Hom FN.free FN.free = UF.extend g2 ;
+spread1 (beta : Nat -> Bool) (m : Nat) : Bool = NO.inter Bool m beta TP.zeroes ;
+spread2 (beta : Nat -> Bool) (m : Nat) : Bool = NO.inter Bool m TP.zeroes beta ;
+ft1-at (x : FN.Elem) (beta : Nat -> Bool) : Id Bool ((ft1.1 x).1 beta) (x.1 (spread1 beta)) =
+ trans (subst-lemma ft1 x beta) (ap x.1 (F.funext Nat (\ m -> Bool) (\ m -> (ft1.1 (FN.gen m)).1 beta) (spread1 beta)
+  (\ m -> trans (ap (\ y -> y.1 beta) (UF.ext-gen g1 m)) (inter-map FN.Elem Bool (\ y -> y.1 beta) m FN.gen (\ n -> FN.ezero))))) ;
+ft2-at (x : FN.Elem) (beta : Nat -> Bool) : Id Bool ((ft2.1 x).1 beta) (x.1 (spread2 beta)) =
+ trans (subst-lemma ft2 x beta) (ap x.1 (F.funext Nat (\ m -> Bool) (\ m -> (ft2.1 (FN.gen m)).1 beta) (spread2 beta)
+  (\ m -> trans (ap (\ y -> y.1 beta) (UF.ext-gen g2 m)) (inter-map FN.Elem Bool (\ y -> y.1 beta) m (\ n -> FN.ezero) FN.gen)))) ;
+spread1-zeroes : Id (Nat -> Bool) (spread1 TP.zeroes) TP.zeroes = F.funext Nat (\ m -> Bool) (spread1 TP.zeroes) TP.zeroes inter-zeroes ;
+spread2-zeroes : Id (Nat -> Bool) (spread2 TP.zeroes) TP.zeroes = F.funext Nat (\ m -> Bool) (spread2 TP.zeroes) TP.zeroes inter-zeroes ;
+spread1-delta (i : Nat) : Id (Nat -> Bool) (spread1 (NO.delta i)) (NO.delta (NO.dbl i)) =
+ F.funext Nat (\ m -> Bool) (spread1 (NO.delta i)) (NO.delta (NO.dbl i)) (\ m -> (spread-delta m i).1) ;
+spread2-delta (i : Nat) : Id (Nat -> Bool) (spread2 (NO.delta i)) (NO.delta (suc (NO.dbl i))) =
+ F.funext Nat (\ m -> Bool) (spread2 (NO.delta i)) (NO.delta (suc (NO.dbl i))) (\ m -> (spread-delta m i).2) ;
+
+ft1-kills (n : Nat) : Gi.Ideal (ft1.1 (Ex.rinf n)) =
+ std-ideal (ft1.1 (Ex.rinf n)) (trans (ft1-at (Ex.rinf n) TP.zeroes) (ap (Ex.rinf n).1 spread1-zeroes))
+  (\ i -> trans (ft1-at (Ex.rinf n) (NO.delta i)) (trans (ap (Ex.rinf n).1 (spread1-delta i)) (delta-ninf (NO.dbl i) n))) ;
+ft2-kills (n : Nat) : Gi.Ideal (ft2.1 (Ex.rinf n)) =
+ std-ideal (ft2.1 (Ex.rinf n)) (trans (ft2-at (Ex.rinf n) TP.zeroes) (ap (Ex.rinf n).1 spread2-zeroes))
+  (\ i -> trans (ft2-at (Ex.rinf n) (NO.delta i)) (trans (ap (Ex.rinf n).1 (spread2-delta i)) (delta-ninf (suc (NO.dbl i)) n))) ;
+
+module F1 = Gi.Q.To[Ex.Binf].Extend[(H.compose FN.ring FN.ring Gi.Q.ring Gi.Q.pi ft1,
+  Gi.To[Ex.Binf].backward (H.compose FN.ring FN.ring Gi.Q.ring Gi.Q.pi ft1) (\ n -> Gi.Q.kills (ft1.1 (Ex.rinf n)) (ft1-kills n)))] ;
+module F2 = Gi.Q.To[Ex.Binf].Extend[(H.compose FN.ring FN.ring Gi.Q.ring Gi.Q.pi ft2,
+  Gi.To[Ex.Binf].backward (H.compose FN.ring FN.ring Gi.Q.ring Gi.Q.pi ft2) (\ n -> Gi.Q.kills (ft2.1 (Ex.rinf n)) (ft2-kills n)))] ;
+f1 : BR.Hom Ex.Binf Ex.Binf = F1.hom ;
+f2 : BR.Hom Ex.Binf Ex.Binf = F2.hom ;
+module D = Pd.Prod[Ex.Binf, Ex.Binf] ;
+f : BR.Hom Ex.Binf D.product = D.pair Ex.Binf f1 f2 ;
+-- f1 [g (2j+1)] = 0 and f2 [g (2j)] = 0
+odd-f1 (j : Nat) : Id Gi.Q.Carrier (f1.1 (Gi.Q.include (FN.gen (suc (NO.dbl j))))) Gi.Q.zeroQ =
+ trans (F1.D.beta (FN.gen (suc (NO.dbl j)))) (ap Gi.Q.include (trans (UF.ext-gen g1 (suc (NO.dbl j)))
+  (NO.inter-odd FN.Elem j FN.gen (\ n -> FN.ezero)))) ;
+even-f2 (j : Nat) : Id Gi.Q.Carrier (f2.1 (Gi.Q.include (FN.gen (NO.dbl j)))) Gi.Q.zeroQ =
+ trans (F2.D.beta (FN.gen (NO.dbl j))) (ap Gi.Q.include (trans (UF.ext-gen g2 (NO.dbl j))
+  (NO.inter-even FN.Elem j (\ n -> FN.ezero) FN.gen))) ;

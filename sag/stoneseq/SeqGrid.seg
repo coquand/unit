@@ -1,0 +1,211 @@
+-- The diagonal of a grid (for SSD Lemma 2.6).  A grid is a sequence of
+-- sequences S n with maps of sequences H n : S n -> S (suc n); its colimit
+-- is that of the sequence of colimits  outer n = colim (S n), and it is also
+-- the colimit of the diagonal  diag j = S j at stage j  (maps: H, then one
+-- step).
+--
+-- Proof.  A point s of S n at stage k has a diagonal value at every
+-- m >= n, k: move it right by comp r = H .. H (r + n = m) and up by raise
+-- (to stage m).  Its class in colim diag does not depend on m (one more
+-- diagonal step is one more move right and up, value-step), and does not
+-- change when s moves up (up) or right (right; this needs the coherence
+-- comp (r+1) n = comp r (n+1) . H n over r + (n+1) = (r+n) + 1).  So the
+-- classes form a map Psi : colim outer -> colim diag.  The map
+-- Phi (inc j a) = inc j (inc j a) back is inverse to it: the class of a
+-- diagonal point is itself, and the image of the class of s is s moved to
+-- stage m, the same point of colim outer.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open SeqColim[l] ; open SeqMaps[l] ;
+
+module Grid (S : Nat -> Seq) (H : (n : Nat) -> SeqMap[S n, S (suc n)]) {
+  -- composites of the horizontal maps
+  comp : (r n : Nat) -> SeqMap[S n, S (plus r n)] = split {
+    zero -> \ n -> idmap (S n) ;
+    suc r | rec -> \ n -> compose (S n) (S (plus r n)) (S (suc (plus r n))) (rec n) (H (plus r n)) } ;
+
+  -- transport in the outer index
+  out {a b : Nat} (p : Id Nat a b) (j : Nat) (y : (S a).A j) : (S b).A j =
+    subst Nat (\ n' -> (S n').A j) a b p y ;
+  out-H {a b : Nat} (p : Id Nat a b) (j : Nat) (y : (S a).A j)
+    : Id ((S (suc b)).A j) ((H b).h j (out p j y)) (out (apH (\ e -> suc e) p) j ((H a).h j y)) =
+    idJ Nat a (\ b1 p1 -> Id ((S (suc b1)).A j) ((H b1).h j (out p1 j y)) (out (apH (\ e -> suc e) p1) j ((H a).h j y)))
+      (refl ((H a).h j y)) b p ;
+  out-f {a b : Nat} (p : Id Nat a b) (j : Nat) (y : (S a).A j)
+    : Id ((S b).A (suc j)) ((S b).f j (out p j y)) (out p (suc j) ((S a).f j y)) =
+    idJ Nat a (\ b1 p1 -> Id ((S b1).A (suc j)) ((S b1).f j (out p1 j y)) (out p1 (suc j) ((S a).f j y)))
+      (refl ((S a).f j y)) b p ;
+  out-raise {a b : Nat} (p : Id Nat a b) (k m : Nat) (e : Le k m) (y : (S a).A k)
+    : Id ((S b).A m) (Colim[S b].raise k m e (out p k y)) (out p m (Colim[S a].raise k m e y)) =
+    idJ Nat a (\ b1 p1 -> Id ((S b1).A m) (Colim[S b1].raise k m e (out p1 k y)) (out p1 m (Colim[S a].raise k m e y)))
+      (refl (Colim[S a].raise k m e y)) b p ;
+  out-trans {a b c : Nat} (p : Id Nat a b) (q : Id Nat b c) (j : Nat) (y : (S a).A j)
+    : Id ((S c).A j) (out q j (out p j y)) (out (transH p q) j y) =
+    idJ Nat b (\ c1 q1 -> Id ((S c1).A j) (out q1 j (out p j y)) (out (transH p q1) j y)) (refl (out p j y)) c q ;
+  out-irr {a b : Nat} (p q : Id Nat a b) (j : Nat) (y : (S a).A j) : Id ((S b).A j) (out p j y) (out q j y) =
+    apH (\ r -> out r j y) (nat-set a b p q) ;
+
+  -- comp (suc r) n = comp r (suc n) . H n, over r + (suc n) = suc (r + n)
+  comp-coh : (r n k : Nat) (s : (S n).A k) ->
+    Id ((S (suc (plus r n))).A k) ((comp (suc r) n).h k s) (out (plus-suc r n) k ((comp r (suc n)).h k ((H n).h k s))) = split {
+    zero -> \ n k s -> refl ((H n).h k s) ;
+    suc r | rec -> \ n k s -> transH (apH ((H (suc (plus r n))).h k) (rec n k s))
+      (out-H (plus-suc r n) k ((comp r (suc n)).h k ((H n).h k s))) } ;
+
+  diag : Seq = new Seq[\ j -> (S j).A j, \ j a -> (S (suc j)).f j ((H j).h j a)] ;
+  module CD = Colim[diag] ;
+
+  -- the diagonal value at m of the point s of S n at stage k
+  value (n k : Nat) (s : (S n).A k) (m : Nat) (hn : Le n m) (hk : Le k m) : (S m).A m =
+    out hn.2 m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s)) ;
+  value-irr (n k : Nat) (s : (S n).A k) (m : Nat) (hn hn' : Le n m) (hk hk' : Le k m)
+    : Id ((S m).A m) (value n k s m hn hk) (value n k s m hn' hk') =
+    transH (apH (\ e -> value n k s m e hk) (le-prop n m hn hn')) (apH (\ e -> value n k s m hn' e) (le-prop k m hk hk')) ;
+  value-step (n k : Nat) (s : (S n).A k) (m : Nat) (hn : Le n m) (hk : Le k m)
+    : Id ((S (suc m)).A (suc m)) (diag.f m (value n k s m hn hk))
+         (value n k s (suc m) (suc hn.1, apH (\ e -> suc e) hn.2) (suc hk.1, apH (\ e -> suc e) hk.2)) = calc ((S (suc m)).A (suc m)) {
+    (S (suc m)).f m ((H m).h m (out hn.2 m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s))))
+      =< apH ((S (suc m)).f m) (out-H hn.2 m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s))) >
+    (S (suc m)).f m (out (apH (\ e -> suc e) hn.2) m ((H (plus hn.1 n)).h m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s))))
+      =< out-f (apH (\ e -> suc e) hn.2) m ((H (plus hn.1 n)).h m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s))) >
+    out (apH (\ e -> suc e) hn.2) (suc m)
+      ((S (suc (plus hn.1 n))).f m ((H (plus hn.1 n)).h m (Colim[S (plus hn.1 n)].raise k m hk ((comp hn.1 n).h k s))))
+      =< apH (out (apH (\ e -> suc e) hn.2) (suc m)) (transH
+           (apH ((S (suc (plus hn.1 n))).f m)
+             (Induced[S (plus hn.1 n), S (suc (plus hn.1 n)), H (plus hn.1 n)].raise-nat k m hk ((comp hn.1 n).h k s)))
+           (Colim[S (suc (plus hn.1 n))].raise-f k m hk ((H (plus hn.1 n)).h k ((comp hn.1 n).h k s)))) >
+    out (apH (\ e -> suc e) hn.2) (suc m)
+      (Colim[S (suc (plus hn.1 n))].raise k (suc m) (suc hk.1, apH (\ e -> suc e) hk.2) ((comp (suc hn.1) n).h k s)) } ;
+
+  -- moving up or right does not change the value
+  up (n k : Nat) (s : (S n).A k) (m : Nat) (hn : Le n m) (hk' : Le (suc k) m) (hk : Le k m)
+    : Id ((S m).A m) (value n (suc k) ((S n).f k s) m hn hk') (value n k s m hn hk) =
+    apH (out hn.2 m) (transH
+      (apH (Colim[S (plus hn.1 n)].raise (suc k) m hk') (symH ((comp hn.1 n).c k s)))
+      (Colim[S (plus hn.1 n)].raise-of-f k m hk' hk ((comp hn.1 n).h k s))) ;
+  right (n k : Nat) (s : (S n).A k) (m : Nat) (hn' : Le (suc n) m) (hn : Le n m) (hk : Le k m)
+    : Id ((S m).A m) (value (suc n) k ((H n).h k s) m hn' hk) (value n k s m hn hk) =
+    transH (symH (calc ((S m).A m) {
+      value n k s m (suc hn'.1, transH (symH (plus-suc hn'.1 n)) hn'.2) hk
+        =< apH (\ y -> out (transH (symH (plus-suc hn'.1 n)) hn'.2) m (Colim[S (suc (plus hn'.1 n))].raise k m hk y))
+             (comp-coh hn'.1 n k s) >
+      out (transH (symH (plus-suc hn'.1 n)) hn'.2) m
+        (Colim[S (suc (plus hn'.1 n))].raise k m hk (out (plus-suc hn'.1 n) k ((comp hn'.1 (suc n)).h k ((H n).h k s))))
+        =< apH (out (transH (symH (plus-suc hn'.1 n)) hn'.2) m)
+             (out-raise (plus-suc hn'.1 n) k m hk ((comp hn'.1 (suc n)).h k ((H n).h k s))) >
+      out (transH (symH (plus-suc hn'.1 n)) hn'.2) m
+        (out (plus-suc hn'.1 n) m (Colim[S (plus hn'.1 (suc n))].raise k m hk ((comp hn'.1 (suc n)).h k ((H n).h k s))))
+        =< out-trans (plus-suc hn'.1 n) (transH (symH (plus-suc hn'.1 n)) hn'.2) m
+             (Colim[S (plus hn'.1 (suc n))].raise k m hk ((comp hn'.1 (suc n)).h k ((H n).h k s))) >
+      out (transH (plus-suc hn'.1 n) (transH (symH (plus-suc hn'.1 n)) hn'.2)) m
+        (Colim[S (plus hn'.1 (suc n))].raise k m hk ((comp hn'.1 (suc n)).h k ((H n).h k s)))
+        =< out-irr (transH (plus-suc hn'.1 n) (transH (symH (plus-suc hn'.1 n)) hn'.2)) hn'.2 m
+             (Colim[S (plus hn'.1 (suc n))].raise k m hk ((comp hn'.1 (suc n)).h k ((H n).h k s))) >
+      value (suc n) k ((H n).h k s) m hn' hk }))
+      (value-irr n k s m (suc hn'.1, transH (symH (plus-suc hn'.1 n)) hn'.2) hn hk hk) ;
+
+  -- the class in colim diag; it does not depend on m
+  class (n k : Nat) (s : (S n).A k) (m : Nat) (hn : Le n m) (hk : Le k m) : CD.colim =
+    CD.inc m (value n k s m hn hk) ;
+  iterate (n k : Nat) (s : (S n).A k) (m : Nat) (hn : Le n m) (hk : Le k m) : (a : Nat) ->
+    Id (diag.A (plus a m)) (CD.shift a m (value n k s m hn hk))
+      (value n k s (plus a m) (le-trans n m (plus a m) hn (le-sum-r m a)) (le-trans k m (plus a m) hk (le-sum-r m a))) = split {
+    zero -> value-irr n k s m hn (le-trans n m m hn (le-sum-r m zero)) hk (le-trans k m m hk (le-sum-r m zero)) ;
+    suc a | r -> transH (apH (diag.f (plus a m)) r)
+      (transH (value-step n k s (plus a m) (le-trans n m (plus a m) hn (le-sum-r m a)) (le-trans k m (plus a m) hk (le-sum-r m a)))
+        (value-irr n k s (suc (plus a m)) _ (le-trans n m (plus (suc a) m) hn (le-sum-r m (suc a)))
+           _ (le-trans k m (plus (suc a) m) hk (le-sum-r m (suc a))))) } ;
+  class-later (n k : Nat) (s : (S n).A k) (m a : Nat) (hn : Le n m) (hk : Le k m) (hn' : Le n (plus a m)) (hk' : Le k (plus a m))
+    : Id CD.colim (class n k s (plus a m) hn' hk') (class n k s m hn hk) = calc CD.colim {
+      class n k s (plus a m) hn' hk'
+        =< apH (CD.inc (plus a m)) (value-irr n k s (plus a m) hn' (le-trans n m (plus a m) hn (le-sum-r m a))
+             hk' (le-trans k m (plus a m) hk (le-sum-r m a))) >
+      CD.inc (plus a m) (value n k s (plus a m) (le-trans n m (plus a m) hn (le-sum-r m a)) (le-trans k m (plus a m) hk (le-sum-r m a)))
+        =< apH (CD.inc (plus a m)) (symH (iterate n k s m hn hk a)) > CD.inc (plus a m) (CD.shift a m (value n k s m hn hk))
+        =< CD.inc-iter a (m, value n k s m hn hk) > class n k s m hn hk } ;
+  class-path (n k : Nat) (s : (S n).A k) (m m' : Nat) (p : Id Nat m m') (hn : Le n m) (hk : Le k m) (hn' : Le n m') (hk' : Le k m')
+    : Id CD.colim (class n k s m hn hk) (class n k s m' hn' hk') =
+    transH (idJ Nat m (\ m1 p1 -> Id CD.colim (class n k s m hn hk)
+               (class n k s m1 (substH (Le n) p1 hn) (substH (Le k) p1 hk))) (refl (class n k s m hn hk)) m' p)
+      (apH (CD.inc m') (value-irr n k s m' (substH (Le n) p hn) hn' (substH (Le k) p hk) hk')) ;
+  class-const (n k : Nat) (s : (S n).A k) (m m' : Nat) (hn : Le n m) (hk : Le k m) (hn' : Le n m') (hk' : Le k m')
+    : Id CD.colim (class n k s m hn hk) (class n k s m' hn' hk') = calc CD.colim {
+      class n k s m hn hk
+        =< symH (class-later n k s m m' hn hk (le-trans n m (plus m' m) hn (le-sum-r m m')) (le-trans k m (plus m' m) hk (le-sum-r m m'))) >
+      class n k s (plus m' m) (le-trans n m (plus m' m) hn (le-sum-r m m')) (le-trans k m (plus m' m) hk (le-sum-r m m'))
+        =< class-path n k s (plus m' m) (plus m m') (plus-comm m' m)
+             (le-trans n m (plus m' m) hn (le-sum-r m m')) (le-trans k m (plus m' m) hk (le-sum-r m m'))
+             (le-trans n m' (plus m m') hn' (le-sum-r m' m)) (le-trans k m' (plus m m') hk' (le-sum-r m' m)) >
+      class n k s (plus m m') (le-trans n m' (plus m m') hn' (le-sum-r m' m)) (le-trans k m' (plus m m') hk' (le-sum-r m' m))
+        =< class-later n k s m' m hn' hk' (le-trans n m' (plus m m') hn' (le-sum-r m' m)) (le-trans k m' (plus m m') hk' (le-sum-r m' m)) >
+      class n k s m' hn' hk' } ;
+
+  -- Psi, on each colim (S n), then on colim outer
+  module Col (n : Nat) {
+    module C = Colim[S n] ;
+    at (k : Nat) (s : (S n).A k) : CD.colim = class n k s (plus k n) (le-sum-r n k) (le-sum-l n k) ;
+    module R = C.Rec[CD.colim, CD.set, new C.Cocone[CD.colim, at, \ k s -> transH
+      (apH (CD.inc (plus (suc k) n)) (up n k s (plus (suc k) n) (le-sum-r n (suc k)) (le-sum-l n (suc k))
+         (le-trans k (plus k n) (suc (plus k n)) (le-sum-l n k) (suc zero, refl (suc (plus k n))))))
+      (class-const n k s (plus (suc k) n) (plus k n) (le-sum-r n (suc k))
+         (le-trans k (plus k n) (suc (plus k n)) (le-sum-l n k) (suc zero, refl (suc (plus k n)))) (le-sum-r n k) (le-sum-l n k))]] ;
+    psi (c : C.colim) : CD.colim = R.map c ;
+  } ;
+  outer : Seq = new Seq[\ n -> Colim[S n].colim, \ n -> Induced[S n, S (suc n), H n].map] ;
+  module CO = Colim[outer] ;
+  psi-H (n : Nat) (c : Colim[S n].colim) : Id CD.colim (Col[suc n].psi (outer.f n c)) (Col[n].psi c) =
+    Colim[S n].ext CD.colim CD.set (\ c1 -> Col[suc n].psi (outer.f n c1)) (Col[n].psi) (\ k s -> calc CD.colim {
+      Col[suc n].psi (outer.f n (Colim[S n].inc k s))
+        =< apH (Col[suc n].psi) (Induced[S n, S (suc n), H n].map-inc k s) > Col[suc n].psi (Colim[S (suc n)].inc k ((H n).h k s))
+        =< Col[suc n].R.beta k ((H n).h k s) > Col[suc n].at k ((H n).h k s)
+        =< apH (CD.inc (plus k (suc n))) (right n k s (plus k (suc n)) (le-sum-r (suc n) k)
+             (le-trans n (suc n) (plus k (suc n)) (suc zero, refl (suc n)) (le-sum-r (suc n) k)) (le-sum-l (suc n) k)) >
+      class n k s (plus k (suc n)) (le-trans n (suc n) (plus k (suc n)) (suc zero, refl (suc n)) (le-sum-r (suc n) k)) (le-sum-l (suc n) k)
+        =< class-const n k s (plus k (suc n)) (plus k n)
+             (le-trans n (suc n) (plus k (suc n)) (suc zero, refl (suc n)) (le-sum-r (suc n) k)) (le-sum-l (suc n) k)
+             (le-sum-r n k) (le-sum-l n k) > Col[n].at k s
+        =< symH (Col[n].R.beta k s) > Col[n].psi (Colim[S n].inc k s) }) c ;
+  module PsiR = CO.Rec[CD.colim, CD.set, new CO.Cocone[CD.colim, \ n c -> Col[n].psi c, psi-H]] ;
+  Psi (y : CO.colim) : CD.colim = PsiR.map y ;
+
+  -- Phi (inc j a) = inc j (inc j a)
+  module PhiR = CD.Rec[CO.colim, CO.set, new CD.Cocone[CO.colim, \ j a -> CO.inc j (Colim[S j].inc j a), \ j a -> calc CO.colim {
+    CO.inc (suc j) (Colim[S (suc j)].inc (suc j) ((S (suc j)).f j ((H j).h j a)))
+      =< apH (CO.inc (suc j)) (symH (Colim[S (suc j)].glue j ((H j).h j a))) > CO.inc (suc j) (Colim[S (suc j)].inc j ((H j).h j a))
+      =< apH (CO.inc (suc j)) (symH (Induced[S j, S (suc j), H j].map-inc j a)) > CO.inc (suc j) (outer.f j (Colim[S j].inc j a))
+      =< symH (CO.glue j (Colim[S j].inc j a)) > CO.inc j (Colim[S j].inc j a) }]] ;
+  Phi (x : CD.colim) : CO.colim = PhiR.map x ;
+
+  Psi-Phi (x : CD.colim) : Id CD.colim (Psi (Phi x)) x =
+    CD.ext CD.colim CD.set (\ x1 -> Psi (Phi x1)) (\ x1 -> x1) (\ j a -> calc CD.colim {
+      Psi (Phi (CD.inc j a)) =< apH Psi (PhiR.beta j a) > Psi (CO.inc j (Colim[S j].inc j a))
+        =< PsiR.beta j (Colim[S j].inc j a) > Col[j].psi (Colim[S j].inc j a)
+        =< Col[j].R.beta j a > Col[j].at j a
+        =< class-const j j a (plus j j) j (le-sum-r j j) (le-sum-l j j) (le-refl j) (le-refl j) > CD.inc j a }) x ;
+
+  -- moving right r times is r outer steps
+  outer-comp : (r n : Nat) (c : Colim[S n].colim) ->
+    Id CO.colim (CO.inc (plus r n) (Induced[S n, S (plus r n), comp r n].map c)) (CO.inc n c) = split {
+    zero -> \ n c -> apH (CO.inc n) (induced-id (S n) c) ;
+    suc r | rec -> \ n c -> calc CO.colim {
+      CO.inc (suc (plus r n)) (Induced[S n, S (suc (plus r n)), comp (suc r) n].map c)
+        =< apH (CO.inc (suc (plus r n))) (induced-compose (S n) (S (plus r n)) (S (suc (plus r n))) (comp r n) (H (plus r n)) c) >
+      CO.inc (suc (plus r n)) (outer.f (plus r n) (Induced[S n, S (plus r n), comp r n].map c))
+        =< symH (CO.glue (plus r n) (Induced[S n, S (plus r n), comp r n].map c)) >
+      CO.inc (plus r n) (Induced[S n, S (plus r n), comp r n].map c)
+        =< rec n c > CO.inc n c } } ;
+  Phi-Psi (y : CO.colim) : Id CO.colim (Phi (Psi y)) y =
+    CO.induction @l (\ y1 -> Id CO.colim (Phi (Psi y1)) y1) (\ y1 -> CO.set (Phi (Psi y1)) y1) (\ n c ->
+      Colim[S n].induction @l (\ c1 -> Id CO.colim (Phi (Psi (CO.inc n c1))) (CO.inc n c1))
+        (\ c1 -> CO.set (Phi (Psi (CO.inc n c1))) (CO.inc n c1)) (\ k s -> calc CO.colim {
+          Phi (Psi (CO.inc n (Colim[S n].inc k s)))
+            =< apH Phi (transH (PsiR.beta n (Colim[S n].inc k s)) (Col[n].R.beta k s)) > Phi (Col[n].at k s)
+            =< PhiR.beta (plus k n) (value n k s (plus k n) (le-sum-r n k) (le-sum-l n k)) >
+          CO.inc (plus k n) (Colim[S (plus k n)].inc (plus k n) (value n k s (plus k n) (le-sum-r n k) (le-sum-l n k)))
+            =< apH (CO.inc (plus k n)) (Colim[S (plus k n)].inc-raise k (plus k n) (le-sum-l n k) ((comp k n).h k s)) >
+          CO.inc (plus k n) (Colim[S (plus k n)].inc k ((comp k n).h k s))
+            =< apH (CO.inc (plus k n)) (symH (Induced[S n, S (plus k n), comp k n].map-inc k s)) >
+          CO.inc (plus k n) (Induced[S n, S (plus k n), comp k n].map (Colim[S n].inc k s))
+            =< outer-comp k n (Colim[S n].inc k s) > CO.inc n (Colim[S n].inc k s) }) c) y ;
+
+  equiv : Equiv CD.colim CO.colim = (Phi, qinv CD.colim CO.colim Phi Psi Phi-Psi Psi-Phi) ;
+} ;

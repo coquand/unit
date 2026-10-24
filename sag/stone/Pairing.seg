@@ -1,0 +1,73 @@
+-- A surjection N -> N x N (Cantor's enumeration of the diagonals), and
+-- enumerations of the truth tables and of 2[N].
+--
+-- unpair 0 = (0, 0) and unpair (m+1) = step (unpair m), where step walks
+-- down a diagonal:  step (a+1, b) = (a, b+1),  step (0, b) = (b+1, 0).
+-- Every (a, b) is hit, by induction on s = a + b and then on b:
+-- (a, b+1) = step (a+1, b) on the same diagonal, (s+1, 0) = step (0, s)
+-- from the previous one.
+-- Truth tables: tab (k+1) m = (tab k m1, tab k m2) for (m1, m2) = unpair m,
+-- tab 0 m = parity of m; so every truth table is some tab k m, and
+-- elem m = (the table tab k j as an element of 2[N]), (k, j) = unpair m,
+-- enumerates 2[N].
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FF = FreeFinite[l] ;
+module FN = FreeCountable[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+
+Pair : U l = Nat * Nat ;
+step-at : Nat -> Nat -> Pair = split { zero -> \ b -> (suc b, zero) ; suc a -> \ b -> (a, suc b) } ;
+step (u : Pair) : Pair = step-at u.1 u.2 ;
+unpair : Nat -> Pair = split { zero -> (zero, zero) ; suc m | r -> step r } ;
+
+Hit (a b : Nat) : U l = (m : Nat) * Id Pair (unpair m) (a, b) ;
+hit-step (a b : Nat) (h : Hit a b) : (m : Nat) * Id Pair (unpair m) (step-at a b) = (suc h.1, ap step h.2) ;
+plus-zero-inv : (a b : Nat) -> Id Nat (NA.plus a b) zero -> Id Nat a zero * Id Nat b zero = split {
+ zero -> \ b h -> (refl zero, h) ;
+ suc a -> \ b h -> Pr.absurd (Id Nat (suc a) zero * Id Nat b zero) (NO.zero-not-suc (NA.plus a b) (sym h)) } ;
+diag-zero (b a : Nat) (h : Id Nat (NA.plus a b) zero) : Hit a b =
+ (zero, FF.pair-path (sym (plus-zero-inv a b h).1) (sym (plus-zero-inv a b h).2)) ;
+diag-suc (s : Nat) (rs : (b a : Nat) -> Id Nat (NA.plus a b) s -> Hit a b) :
+  (b a : Nat) -> Id Nat (NA.plus a b) (suc s) -> Hit a b = split {
+ zero -> \ a h -> subst (\ c -> Hit c zero) (sym (trans (sym (NA.plus-zero a)) h)) (hit-step zero s (rs s zero (refl s))) ;
+ suc b | rb -> \ a h -> hit-step (suc a) b (rb (suc a) (trans (sym (NA.plus-suc a b)) h)) } ;
+diag : (s b a : Nat) -> Id Nat (NA.plus a b) s -> Hit a b = split {
+ zero -> diag-zero ;
+ suc s | r -> diag-suc s r } ;
+hit (a b : Nat) : Hit a b = diag (NA.plus a b) b a (refl (NA.plus a b)) ;
+
+-- truth tables
+parity : Nat -> Bool = split { zero -> false ; suc m | r -> BR.not r } ;
+tab : (k : Nat) -> Nat -> FF.Tab k = split {
+ zero -> parity ;
+ suc k | r -> \ m -> (r (unpair m).1, r (unpair m).2) } ;
+tab-bool : (b : Bool) -> (m : Nat) * Id Bool (parity m) b = split {
+ true -> (suc zero, refl true) ; false -> (zero, refl false) } ;
+tab-hit : (k : Nat) (u : FF.Tab k) -> (m : Nat) * Id (FF.Tab k) (tab k m) u = split {
+ zero -> tab-bool ;
+ suc k | r -> \ u -> ((hit (r u.1).1 (r u.2).1).1,
+   trans (ap (\ p -> (tab k p.1, tab k p.2)) (hit (r u.1).1 (r u.2).1).2) (FF.pair-path (r u.1).2 (r u.2).2)) } ;
+
+-- an enumeration of 2[N]
+elem (m : Nat) : FN.Elem = FN.incl (unpair m).1 (tab (unpair m).1 (unpair m).2) ;
+elem-hit (x : FN.Elem) : T.Trunc[(m : Nat) * Id FN.Elem (elem m) x].carrier =
+ TC.map (FN.Rep x.1) ((m : Nat) * Id FN.Elem (elem m) x) (\ rp ->
+  ((hit rp.1 (tab-hit rp.1 rp.2.1).1).1,
+   trans (ap (\ p -> FN.incl p.1 (tab p.1 p.2)) (hit rp.1 (tab-hit rp.1 rp.2.1).1).2)
+    (trans (ap (FN.incl rp.1) (tab-hit rp.1 rp.2.1).2) (FN.incl-rep x rp)))) x.2 ;
+
+-- both components of unpair m are at most m
+step-bound (m : Nat) : (a b : Nat) -> NO.Lt a (suc m) -> NO.Lt b (suc m) ->
+  NO.Lt (step-at a b).1 (suc (suc m)) * NO.Lt (step-at a b).2 (suc (suc m)) = split {
+ zero -> \ b ha hb -> (NO.lt-suc-suc b (suc m) hb, NO.lt-zero-suc (suc m)) ;
+ suc a -> \ b ha hb -> (NO.lt-trans a (suc a) (suc (suc m)) (NO.lt-suc a) (NO.lt-step (suc a) (suc m) ha),
+   NO.lt-suc-suc b (suc m) hb) } ;
+unpair-bound : (m : Nat) -> NO.Lt (unpair m).1 (suc m) * NO.Lt (unpair m).2 (suc m) = split {
+ zero -> (NO.lt-suc zero, NO.lt-suc zero) ;
+ suc m | r -> step-bound m (unpair m).1 (unpair m).2 r.1 r.2 } ;

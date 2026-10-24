@@ -1,0 +1,136 @@
+-- Sigma types commute with sequential colimits (for sets; [18] Thm 5.1, as
+-- used in SSD §2.1).  Let B be a family of sets over colim S.  The sequence
+--   seq n = (x : S n) * B (inc n x),  (x, b) |-> (f n x, b transported along glue)
+-- has colimit (c : colim S) * B c, by theta (inc n (x, b)) = (inc n x, b).
+--
+-- Proof.  Since colim S is a set, a transport in B depends only on the end
+-- points.  Hence iter d (u, b) = (iter d u, b transported to iter d u)
+-- (iter-B).  theta is surjective, every point being merely some inc n x.
+-- It is injective: if (inc u, b) = (inc v, b'), then u and v meet,
+-- iter d u = iter e v, and iter d (u, b), iter e (v, b') are the points over
+-- iter d u = iter e v with the transports of b and of b', which are equal.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open SeqColim[l] ; open Bijection[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+module SigmaColim (S : Seq) (B : Colim[S].colim -> U l) (sB : (c : Colim[S].colim) -> isSet (B c)) {
+  module C = Colim[S] ;
+  -- transport in B, along any path
+  tr {c c' : C.colim} (p : Id C.colim c c') (b : B c) : B c' = subst C.colim B c c' p b ;
+  tr-irr {c c' : C.colim} (p q : Id C.colim c c') (b : B c) : Id (B c') (tr p b) (tr q b) =
+    apH (\ r -> tr r b) (C.set c c' p q) ;
+  tr-trans {c c' c'' : C.colim} (p : Id C.colim c c') (q : Id C.colim c' c'') (b : B c)
+    : Id (B c'') (tr (transH p q) b) (tr q (tr p b)) =
+    idJ C.colim c' (\ z q1 -> Id (B z) (tr (transH p q1) b) (tr q1 (tr p b))) (refl (tr p b)) c'' q ;
+
+  seq : Seq = new Seq[\ n -> (x : S.A n) * B (C.inc n x), \ n w -> (S.f n w.1, tr (C.glue n w.1) w.2)] ;
+  module CB = Colim[seq] ;
+  -- the point b over x at stage n
+  pt (n : Nat) (x : S.A n) (b : B (C.inc n x)) : CB.Tot = (n, (x, b)) ;
+  -- a path in Tot S moves b along
+  tot-path (n : Nat) (x : S.A n) (w : C.Tot) (q : Id C.Tot (n, x) w) (b : B (C.inc n x))
+    : Id CB.Tot (pt n x b) (pt w.1 w.2 (tr (apH C.cls q) b)) =
+    idJ C.Tot (n, x) (\ w1 q1 -> Id CB.Tot (pt n x b) (pt w1.1 w1.2 (tr (apH C.cls q1) b))) (refl (pt n x b)) w q ;
+  -- d steps from (x, b): d steps from x, with b transported
+  iter-B : (d n : Nat) (x : S.A n) (b : B (C.inc n x)) ->
+    Id CB.Tot (CB.iter d (pt n x b)) (pt (plus d n) (C.shift d n x) (tr (symH (C.inc-shift d n x)) b)) = split {
+    zero -> \ n x b -> apH (pt n x) (tr-irr (refl (C.inc n x)) (symH (C.inc-shift zero n x)) b) ;
+    suc d | r -> \ n x b -> transH (apH CB.step (r n x b))
+      (apH (pt (suc (plus d n)) (S.f (plus d n) (C.shift d n x)))
+        (transH (symH (tr-trans (symH (C.inc-shift d n x)) (C.glue (plus d n) (C.shift d n x)) b))
+          (tr-irr (transH (symH (C.inc-shift d n x)) (C.glue (plus d n) (C.shift d n x))) (symH (C.inc-shift (suc d) n x)) b))) } ;
+
+  Total : U l = (c : C.colim) * B c ;
+  total-set : isSet Total = isSet-Sigma C.colim B C.set sB ;
+  module R = CB.Rec[Total, total-set, new CB.Cocone[Total, \ n w -> (C.inc n w.1, w.2),
+    \ n w -> symH (Sigma-path C.colim B (C.inc n w.1) (C.inc (suc n) (S.f n w.1)) w.2 (tr (C.glue n w.1) w.2)
+                    (C.glue n w.1) (refl (tr (C.glue n w.1) w.2)))]] ;
+  theta (c : CB.colim) : Total = R.map c ;
+
+  surjective (t : Total) : Tr.Trunc[Fibre theta t].carrier =
+    C.induction @l (\ c -> (b : B c) -> Tr.Trunc[Fibre theta (c, b)].carrier)
+      (\ c -> FL.isProp-Pi (B c) (\ b -> Tr.Trunc[Fibre theta (c, b)].carrier) (\ b -> Tr.Trunc[Fibre theta (c, b)].proposition))
+      (\ n x b -> Tr.Trunc[Fibre theta (C.inc n x, b)].inc (CB.inc n (x, b), R.beta n (x, b))) t.1 t.2 ;
+
+  -- a meeting in S, with matching points of B, gives a meeting
+  module Reflect (n : Nat) (x : S.A n) (n' : Nat) (x' : S.A n') (b : B (C.inc n x)) (b' : B (C.inc n' x'))
+    (p : Id C.colim (C.inc n x) (C.inc n' x')) (e : Id (B (C.inc n' x')) (tr p b) b') (m : C.Meet[(n, x),(n', x')]) {
+    -- the transports to the meeting point
+    here : B (C.inc (plus m.d n) (C.shift m.d n x)) = tr (symH (C.inc-shift m.d n x)) b ;
+    there : B (C.inc (plus m.e n') (C.shift m.e n' x')) = tr (symH (C.inc-shift m.e n' x')) b' ;
+    over : Id (B (C.inc (plus m.e n') (C.shift m.e n' x'))) (tr (apH C.cls m.meet) here) there =
+      calc (B (C.inc (plus m.e n') (C.shift m.e n' x'))) {
+      tr (apH C.cls m.meet) here
+        =< symH (tr-trans (symH (C.inc-shift m.d n x)) (apH C.cls m.meet) b) >
+      tr (transH (symH (C.inc-shift m.d n x)) (apH C.cls m.meet)) b
+        =< tr-irr (transH (symH (C.inc-shift m.d n x)) (apH C.cls m.meet)) (transH p (symH (C.inc-shift m.e n' x'))) b >
+      tr (transH p (symH (C.inc-shift m.e n' x'))) b
+        =< tr-trans p (symH (C.inc-shift m.e n' x')) b > tr (symH (C.inc-shift m.e n' x')) (tr p b)
+        =< apH (tr (symH (C.inc-shift m.e n' x'))) e > there } ;
+    meet : CB.Meet[pt n x b, pt n' x' b'] = new CB.Meet[pt n x b, pt n' x' b', m.d, m.e, calc CB.Tot {
+      CB.iter m.d (pt n x b) =< iter-B m.d n x b > pt (plus m.d n) (C.shift m.d n x) here
+        =< tot-path (plus m.d n) (C.shift m.d n x) (C.iter m.e (n', x')) m.meet here >
+      pt (plus m.e n') (C.shift m.e n' x') (tr (apH C.cls m.meet) here)
+        =< apH (pt (plus m.e n') (C.shift m.e n' x')) over > pt (plus m.e n') (C.shift m.e n' x') there
+        =< symH (iter-B m.e n' x' b') > CB.iter m.e (pt n' x' b') }] ;
+  } ;
+  -- equal images of two points
+  module Equal (n n' : Nat) (w : seq.A n) (w' : seq.A n')
+    (q : Id Total (theta (CB.inc n w)) (theta (CB.inc n' w'))) {
+    total : Id Total (C.inc n w.1, w.2) (C.inc n' w'.1, w'.2) = transH (symH (R.beta n w)) (transH q (R.beta n' w')) ;
+    parts : (p : Id C.colim (C.inc n w.1) (C.inc n' w'.1)) * Id (B (C.inc n' w'.1)) (tr p w.2) w'.2 =
+      sPath C.colim B (C.inc n w.1, w.2) (C.inc n' w'.1, w'.2) total ;
+    equal : Id CB.colim (CB.inc n w) (CB.inc n' w') = CB.meets (pt n w.1 w.2) (pt n' w'.1 w'.2)
+      (TC.map C.Meet[(n, w.1), (n', w'.1)] CB.Meet[pt n w.1 w.2, pt n' w'.1 w'.2]
+        (\ m -> Reflect[n, w.1, n', w'.1, w.2, w'.2, parts.1, parts.2, m].meet)
+        (C.effective (n, w.1) (n', w'.1) parts.1)) ;
+  } ;
+  injective : Injective theta = CB.injective-on-inc Total theta (\ n w n' w' q -> Equal[n, n', w, w', q].equal) ;
+  equiv : Equiv CB.colim Total = (theta, Bij[CB.colim, Total, total-set, theta, injective, surjective].equiv) ;
+} ;
+
+-- Sigma over a fixed set F of a family of sequences T i:
+--   (i : F) * colim (T i)  is the colimit of  (i : F) * T i n.
+-- theta (inc n (i, t)) = (i, inc n t); injective since a path between
+-- (i, inc n t) and (i', inc n' t') is, after i = i', a meeting in T i,
+-- which is a meeting in the Sigma sequence (its steps act on t only).
+module SigmaFamily (F : U l) (sF : isSet F) (T : F -> Seq) {
+  seq : Seq = new Seq[\ n -> (i : F) * (T i).A n, \ n w -> (w.1, (T w.1).f n w.2)] ;
+  module CF = Colim[seq] ;
+  Total : U l = (i : F) * Colim[T i].colim ;
+  total-set : isSet Total = isSet-Sigma F (\ i -> Colim[T i].colim) sF (\ i -> Colim[T i].set) ;
+  -- the points of T i inside the Sigma sequence
+  at (i : F) (u : Colim[T i].Tot) : CF.Tot = (u.1, (i, u.2)) ;
+  at-shift (i : F) : (d n : Nat) (t : (T i).A n) -> Id (seq.A (plus d n)) (CF.shift d n (i, t)) (i, Colim[T i].shift d n t) = split {
+    zero -> \ n t -> refl (i, t) ;
+    suc d | r -> \ n t -> apH (seq.f (plus d n)) (r n t) } ;
+  at-iter (i : F) (d : Nat) (u : Colim[T i].Tot) : Id CF.Tot (CF.iter d (at i u)) (at i (Colim[T i].iter d u)) =
+    apH (\ w -> (plus d u.1, w)) (at-shift i d u.1 u.2) ;
+  at-meet (i : F) (u v : Colim[T i].Tot) (m : Colim[T i].Meet[u,v]) : CF.Meet[at i u, at i v] =
+    new CF.Meet[at i u, at i v, m.d, m.e, transH (at-iter i m.d u) (transH (apH (at i) m.meet) (symH (at-iter i m.e v)))] ;
+
+  module R = CF.Rec[Total, total-set, new CF.Cocone[Total, \ n w -> (w.1, Colim[T w.1].inc n w.2),
+    \ n w -> apH (\ c -> (w.1, c)) (symH (Colim[T w.1].glue n w.2))]] ;
+  theta (c : CF.colim) : Total = R.map c ;
+  surjective (t : Total) : Tr.Trunc[Fibre theta t].carrier =
+    Colim[T t.1].induction @l (\ c -> Tr.Trunc[Fibre theta (t.1, c)].carrier) (\ c -> Tr.Trunc[Fibre theta (t.1, c)].proposition)
+      (\ n x -> Tr.Trunc[Fibre theta (t.1, Colim[T t.1].inc n x)].inc (CF.inc n (t.1, x), R.beta n (t.1, x))) t.2 ;
+  -- after i = i', a path of second components is a meeting
+  same (n : Nat) (i : F) (t : (T i).A n) : (i' : F) (p : Id F i i') (n' : Nat) (t' : (T i').A n')
+    (q : Id (Colim[T i'].colim) (subst F (\ j -> Colim[T j].colim) i i' p (Colim[T i].inc n t)) (Colim[T i'].inc n' t')) ->
+    Id CF.colim (CF.inc n (i, t)) (CF.inc n' (i', t')) = \ i' p ->
+    idJ F i (\ j p1 -> (n' : Nat) (t' : (T j).A n')
+        (q : Id (Colim[T j].colim) (subst F (\ j1 -> Colim[T j1].colim) i j p1 (Colim[T i].inc n t)) (Colim[T j].inc n' t')) ->
+        Id CF.colim (CF.inc n (i, t)) (CF.inc n' (j, t')))
+      (\ n' t' q -> CF.meets (n, (i, t)) (n', (i, t'))
+        (TC.map Colim[T i].Meet[(n, t), (n', t')] CF.Meet[(n, (i, t)), (n', (i, t'))] (at-meet i (n, t) (n', t'))
+          (Colim[T i].effective (n, t) (n', t') q))) i' p ;
+  injective : Injective theta = CF.injective-on-inc Total theta (\ n w n' w' q ->
+    same n w.1 w.2 w'.1
+      (sPath F (\ j -> Colim[T j].colim) (w.1, Colim[T w.1].inc n w.2) (w'.1, Colim[T w'.1].inc n' w'.2)
+        (transH (symH (R.beta n w)) (transH q (R.beta n' w')))).1 n' w'.2
+      (sPath F (\ j -> Colim[T j].colim) (w.1, Colim[T w.1].inc n w.2) (w'.1, Colim[T w'.1].inc n' w'.2)
+        (transH (symH (R.beta n w)) (transH q (R.beta n' w')))).2) ;
+  equiv : Equiv CF.colim Total = (theta, Bij[CF.colim, Total, total-set, theta, injective, surjective].equiv) ;
+} ;

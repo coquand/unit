@@ -1,0 +1,64 @@
+-- Laying out blocks of sizes c 0 + 1, c 1 + 1, .. one after the other in N
+-- (used to code a point of a limit of finite sets E n, |E n| = c n, as a
+-- point of 2^N: block n is the one-hot code of the n-th component, and its
+-- last bit is a dummy kept at 0, so that no block is empty).
+--
+-- start n is where block n starts; offset o <= c n of block n is at
+-- position pos n o = o + start n.  decode walks through the positions one
+-- by one, so decode (pos n o) = (n, o) (decode-pos) and every m is
+-- pos (decode m) (decode-ok).
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+
+leb-suc-self : (k : Nat) -> Id Bool (NO.leb (suc k) k) false = split { zero -> refl false ; suc k | r -> r } ;
+-- o < k + 1 gives o + s < k + s + 1
+lt-plus-right (o k s : Nat) (h : NO.Lt o (suc k)) : NO.Lt (NA.plus o s) (suc (NA.plus k s)) =
+ (h.1, trans (sym (NA.plus-assoc (suc h.1) o s)) (ap (\ j -> NA.plus j s) h.2)) ;
+
+module Layout (c : Nat -> Nat) {
+ start : Nat -> Nat = split { zero -> zero ; suc n | r -> suc (NA.plus (c n) r) } ;
+ pos (n o : Nat) : Nat = NA.plus o (start n) ;
+ Slot : U l = Nat * Nat ;
+ step-at (n o : Nat) : Bool -> Slot = split { true -> (n, suc o) ; false -> (suc n, zero) } ;
+ step (s : Slot) : Slot = step-at s.1 s.2 (NO.leb (suc s.2) (c s.1)) ;
+ decode : Nat -> Slot = split { zero -> (zero, zero) ; suc m | r -> step r } ;
+
+ -- inside block n
+ decode-in (n : Nat) (base : Id Slot (decode (start n)) (n, zero)) :
+   (o : Nat) -> NO.Lt o (suc (c n)) -> Id Slot (decode (pos n o)) (n, o) = split {
+  zero -> \ lt -> base ;
+  suc o | r -> \ lt -> trans (ap step (r (NO.lt-trans o (suc o) (suc (c n)) (NO.lt-suc o) lt)))
+    (ap (step-at n o) (NO.lt-leb (suc o) (c n) lt)) } ;
+ decode-start : (n : Nat) -> Id Slot (decode (start n)) (n, zero) = split {
+  zero -> refl (zero, zero) ;
+  suc n | r -> trans (ap step (decode-in n r (c n) (NO.lt-suc (c n)))) (ap (step-at n (c n)) (leb-suc-self (c n))) } ;
+ decode-pos (n o : Nat) (lt : NO.Lt o (suc (c n))) : Id Slot (decode (pos n o)) (n, o) =
+  decode-in n (decode-start n) o lt ;
+
+ -- every position is in some block
+ Good (s : Slot) (m : Nat) : U l = NO.Lt s.2 (suc (c s.1)) * Id Nat (pos s.1 s.2) m ;
+ last-case (n o : Nat) (lt : NO.Lt o (suc (c n))) (f : Id Bool (NO.leb (suc o) (c n)) false) :
+   Plus (NO.Lt o (c n)) (Id Nat o (c n)) -> Id Nat o (c n) = split {
+  inl h -> Pr.absurd (Id Nat o (c n)) (NO.false-true (trans (sym f) (NO.lt-leb (suc o) (c n) (NO.lt-suc-suc o (c n) h)))) ;
+  inr p -> p } ;
+ good-step (n o m : Nat) (h : Good (n, o) m) : (b : Bool) -> Id Bool (NO.leb (suc o) (c n)) b -> Good (step-at n o b) (suc m) = split {
+  true -> \ e -> (NO.leb-lt (suc o) (c n) e, ap (\ j -> suc j) h.2) ;
+  false -> \ e -> (NO.lt-zero-suc (c (suc n)),
+    calc Nat { suc (NA.plus (c n) (start n))
+     =< ap (\ j -> suc (NA.plus j (start n))) (sym (last-case n o h.1 e (NO.lt-pred o (c n) h.1))) > suc (NA.plus o (start n))
+     =< ap (\ j -> suc j) h.2 > suc m }) } ;
+ decode-ok : (m : Nat) -> Good (decode m) m = split {
+  zero -> (NO.lt-zero-suc (c zero), refl zero) ;
+  suc m | r -> good-step (decode m).1 (decode m).2 m r (NO.leb (suc (decode m).2) (c (decode m).1)) (refl (NO.leb (suc (decode m).2) (c (decode m).1))) } ;
+
+ -- blocks are increasing, and block n ends before start (n+1)
+ start-step (n : Nat) : NO.Lt (start n) (start (suc n)) = (c n, refl (start (suc n))) ;
+ pos-lt (n o : Nat) (lt : NO.Lt o (suc (c n))) : NO.Lt (pos n o) (start (suc n)) = lt-plus-right o (c n) (start n) lt ;
+ -- the block of position m is at most m
+ block-le : (n : Nat) -> NO.Lt n (suc (start n)) = split {
+  zero -> NO.lt-suc zero ;
+  suc n | r -> NO.lt-suc-suc n (start (suc n)) (NO.le-lt-trans n (start n) (start (suc n)) r (start-step n)) } ;
+} ;

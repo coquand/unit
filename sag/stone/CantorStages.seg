@@ -1,0 +1,157 @@
+-- Finite approximations of the closed subset of Cantor space cut out by
+-- relations with explicit truth tables (towards SSD Lemma 3.1).
+--
+-- Bits n = 2^n, the first n bits, with the last bit outermost so that
+-- dropping it is the first projection; prefix n alpha; bit n v m is the
+-- m-th bit of v (0 beyond n).  For a sequence t of truth tables
+-- t i : Tab (sz i), the n-th stage is the decidable (hence finite) set of
+-- v : 2^n such that every relation i < n with sz i <= n vanishes at v.  A
+-- relation with a truth table on k generators only sees the first k bits
+-- (table-agree), so dropping the last bit maps stage n+1 to stage n, and
+--     { alpha | every relation vanishes at alpha }  =  lim_n stage n :
+-- alpha |-> (prefix n alpha)_n, and a compatible sequence x gives the bits
+-- (x (m+1)).last; the relation i vanishes there since it vanishes at
+-- stage N for N > i, sz i.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module T = Truncation[l] ;
+module BR = BooleanRing[l] ;
+module FF = FreeFinite[l] ;
+module FN = FreeCountable[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module BS = BoolSeq[l] ;
+module FFa = FiniteFacts[l] ;
+module Fi = Finite[l] ;
+module FCl = FiniteClosure[l] ;
+module DCh = DependentChoice[l] ;
+
+Bits : Nat -> U l = split { zero -> Top ; suc n | r -> r * Bool } ;
+bits-set : (n : Nat) -> Pr.isSet (Bits n) = split {
+ zero -> Pr.prop-to-set Top isTop ;
+ suc n | r -> Pr.isSet-Sigma (Bits n) (\ v -> Bool) r (\ v -> BR.bool-set) } ;
+bits-finite : (n : Nat) -> Fi.isFinite (Bits n) = split {
+ zero -> FCl.top-finite ;
+ suc n | r -> FFa.product-finite (Bits n) Bool r FFa.bool-finite } ;
+prefix : (n : Nat) -> (Nat -> Bool) -> Bits n = split {
+ zero -> \ a -> tt ;
+ suc n | r -> \ a -> (r a, a n) } ;
+sel (m n : Nat) : NO.Tri m n -> Bool -> Bool -> Bool = split {
+ less h -> \ a b -> a ; equal p -> \ a b -> b ; greater h -> \ a b -> false } ;
+bit : (n : Nat) -> Bits n -> Nat -> Bool = split {
+ zero -> \ v m -> false ;
+ suc n | r -> \ v m -> sel m n (NO.tri m n) (r v.1 m) v.2 } ;
+sel-less (m n : Nat) (h : NO.Lt m n) (a b : Bool) : (t : NO.Tri m n) -> Id Bool (sel m n t a b) a = split {
+ less h' -> refl a ;
+ equal p -> Pr.absurd (Id Bool b a) (NO.lt-neq m n h p) ;
+ greater h' -> Pr.absurd (Id Bool false a) (NO.lt-asym m n h h') } ;
+sel-equal (m n : Nat) (p : Id Nat m n) (a b : Bool) : (t : NO.Tri m n) -> Id Bool (sel m n t a b) b = split {
+ less h -> Pr.absurd (Id Bool a b) (NO.lt-neq m n h p) ;
+ equal q -> refl b ;
+ greater h -> Pr.absurd (Id Bool false b) (NO.lt-neq n m h (sym p)) } ;
+-- below n, a bit does not see the last one
+bit-step (n : Nat) (v : Bits (suc n)) (m : Nat) (h : NO.Lt m n) : Id Bool (bit (suc n) v m) (bit n v.1 m) =
+ sel-less m n h (bit n v.1 m) v.2 (NO.tri m n) ;
+bp-case (n : Nat) (a : Nat -> Bool) (m : Nat) (r : NO.Lt m n -> Id Bool (bit n (prefix n a) m) (a m)) :
+  Plus (NO.Lt m n) (Id Nat m n) -> Id Bool (bit (suc n) (prefix (suc n) a) m) (a m) = split {
+ inl h -> trans (bit-step n (prefix (suc n) a) m h) (r h) ;
+ inr p -> trans (sel-equal m n p (bit n (prefix n a) m) (a n) (NO.tri m n)) (ap a (sym p)) } ;
+bit-prefix : (n : Nat) (a : Nat -> Bool) (m : Nat) -> NO.Lt m n -> Id Bool (bit n (prefix n a) m) (a m) = split {
+ zero -> \ a m h -> Pr.absurd (Id Bool false (a m)) (NO.not-lt-zero m h) ;
+ suc n | r -> \ a m h -> bp-case n a m (r a m) (NO.lt-pred m n h) } ;
+
+-- m < k <= n gives m < n
+lt-le-case (m k n : Nat) (h : NO.Lt m k) : Plus (NO.Lt k n) (Id Nat k n) -> NO.Lt m n = split {
+ inl h' -> NO.lt-trans m k n h h' ;
+ inr p -> subst (NO.Lt m) p h } ;
+lt-le (m k n : Nat) (h : NO.Lt m k) (h' : NO.Lt k (suc n)) : NO.Lt m n = lt-le-case m k n h (NO.lt-pred k n h') ;
+
+-- a truth table on k generators only sees the first k bits
+table-agree (k : Nat) (u : FF.Tab k) (a b : Nat -> Bool) (h : (m : Nat) -> NO.Lt m k -> Id Bool (a m) (b m)) :
+  Id Bool (FN.ev k u a) (FN.ev k u b) =
+ FN.agree (FN.incl k u) (k, u, refl (FN.ev k u)) a b (\ i ->
+  trans (FN.res-index Bool k a i) (trans (h (FN.index k i) (TP.index-lt k i)) (sym (FN.res-index Bool k b i)))) ;
+
+not-true : (b : Bool) -> Id Bool (BR.not b) true -> Id Bool b false = split {
+ true -> \ h -> sym h ; false -> \ h -> refl false } ;
+
+-- presentations by truth tables
+TPres : U l = Nat -> (k : Nat) * FF.Tab k ;
+
+module Stages (t : TPres) {
+ sz (i : Nat) : Nat = (t i).1 ;
+ rel (i : Nat) : FN.Elem = FN.incl (t i).1 (t i).2 ;
+ value (i : Nat) (a : Nat -> Bool) : Bool = FN.ev (t i).1 (t i).2 a ;
+ Zeros (a : Nat -> Bool) : U l = (i : Nat) -> Id Bool (value i a) false ;
+ zeros-prop (a : Nat -> Bool) : Pr.isProp (Zeros a) =
+  F.isProp-Pi Nat (\ i -> Id Bool (value i a) false) (\ i -> BR.bool-set _ _) ;
+ check (n : Nat) (v : Bits n) (i : Nat) : Bool = BR.and (NO.leb (sz i) n) (value i (bit n v)) ;
+ good (n : Nat) (v : Bits n) : Bool = BR.not (BS.bor (check n v) n) ;
+ Stage (n : Nat) : U l = (v : Bits n) * Id Bool (good n v) true ;
+ stage-set (n : Nat) : Pr.isSet (Stage n) = Pr.isSet-Sigma (Bits n) (\ v -> Id Bool (good n v) true) (bits-set n)
+  (\ v -> Pr.prop-to-set (Id Bool (good n v) true) (BR.bool-set _ _)) ;
+ stage-finite (n : Nat) : Fi.isFinite (Stage n) = FFa.bool-subset-finite (Bits n) (bits-finite n) (good n) ;
+
+ -- at a good v, relation i < n with sz i <= n vanishes
+ holds (n : Nat) (v : Bits n) (g : Id Bool (good n v) true) (i : Nat) (lt : NO.Lt i n)
+   (le : Id Bool (NO.leb (sz i) n) true) : Id Bool (value i (bit n v)) false =
+  trans (sym (ap (\ b -> BR.and b (value i (bit n v))) le))
+   (BS.bor-false-inv n (check n v) (not-true (BS.bor (check n v) n) g) i lt) ;
+ -- conversely, v is good when every check vanishes
+ good-of (n : Nat) (v : Bits n) (h : (i : Nat) -> NO.Lt i n -> Id Bool (check n v i) false) : Id Bool (good n v) true =
+  ap BR.not (BS.bor-false n (check n v) h) ;
+
+ -- dropping the last bit
+ drop-check (n : Nat) (v : Bits (suc n)) (g : Id Bool (good (suc n) v) true) (i : Nat) (lt : NO.Lt i n) :
+   Plus (Id Bool (NO.leb (sz i) n) true) (Id Bool (NO.leb (sz i) n) false) -> Id Bool (check n v.1 i) false = split {
+  inl le -> trans (ap (\ b -> BR.and b (value i (bit n v.1))) le)
+   (trans (table-agree (sz i) (t i).2 (bit n v.1) (bit (suc n) v) (\ m h ->
+      sym (bit-step n v m (lt-le m (sz i) n h (NO.leb-lt (sz i) n le)))))
+    (holds (suc n) v g i (NO.lt-step i n lt)
+      (NO.lt-leb (sz i) (suc n) (NO.lt-step (sz i) (suc n) (NO.leb-lt (sz i) n le))))) ;
+  inr f -> ap (\ b -> BR.and b (value i (bit n v.1))) f } ;
+ restrict (n : Nat) (x : Stage (suc n)) : Stage n =
+  (x.1.1, good-of n x.1.1 (\ i lt -> drop-check n x.1 x.2 i lt (TP.bool-cases (NO.leb (sz i) n)))) ;
+ Lim : U l = DCh.Lim Stage restrict ;
+
+ -- the zeros of the relations are the limit
+ prefix-check (a : Nat -> Bool) (z : Zeros a) (n : Nat) (i : Nat) :
+   Plus (Id Bool (NO.leb (sz i) n) true) (Id Bool (NO.leb (sz i) n) false) -> Id Bool (check n (prefix n a) i) false = split {
+  inl le -> trans (ap (BR.and (NO.leb (sz i) n))
+     (trans (table-agree (sz i) (t i).2 (bit n (prefix n a)) a (\ m h ->
+        bit-prefix n a m (lt-le m (sz i) n h (NO.leb-lt (sz i) n le)))) (z i)))
+   (TP.and-false (NO.leb (sz i) n)) ;
+  inr f -> ap (\ b -> BR.and b (value i (bit n (prefix n a)))) f } ;
+ to (a : (a : Nat -> Bool) * Zeros a) : Lim =
+  (\ n -> (prefix n a.1, good-of n (prefix n a.1) (\ i lt -> prefix-check a.1 a.2 n i (TP.bool-cases (NO.leb (sz i) n)))),
+   \ n -> Pr.Sigma-eq (Bits n) (\ v -> Id Bool (good n v) true) (prefix n a.1) (prefix n a.1) _ _
+     (refl (prefix n a.1)) (BR.bool-set _ _)) ;
+
+ seqbit (x : Lim) (m : Nat) : Bool = (x.1 (suc m)).1.2 ;
+ lim-prefix (x : Lim) : (n : Nat) -> Id (Bits n) (prefix n (seqbit x)) (x.1 n).1 = split {
+  zero -> isTop tt (x.1 zero).1 ;
+  suc n | r -> FF.pair-path (trans r (sym (ap (\ y -> y.1) (x.2 n)))) (refl (seqbit x n)) } ;
+ from-zeros (x : Lim) (i : Nat) : Id Bool (value i (seqbit x)) false =
+  calc Bool { value i (seqbit x)
+   =< sym (table-agree (sz i) (t i).2 (bit (suc (NA.plus i (sz i))) (prefix (suc (NA.plus i (sz i))) (seqbit x))) (seqbit x)
+        (\ m h -> bit-prefix (suc (NA.plus i (sz i))) (seqbit x) m (NO.lt-trans m (sz i) (suc (NA.plus i (sz i))) h (BS.lt-right i (sz i)))))
+   > value i (bit (suc (NA.plus i (sz i))) (prefix (suc (NA.plus i (sz i))) (seqbit x)))
+   =< ap (\ v -> value i (bit (suc (NA.plus i (sz i))) v)) (lim-prefix x (suc (NA.plus i (sz i))))
+   > value i (bit (suc (NA.plus i (sz i))) (x.1 (suc (NA.plus i (sz i)))).1)
+   =< holds (suc (NA.plus i (sz i))) (x.1 (suc (NA.plus i (sz i)))).1 (x.1 (suc (NA.plus i (sz i)))).2 i (BS.lt-left i (sz i))
+       (NO.lt-leb (sz i) (suc (NA.plus i (sz i))) (NO.lt-step (sz i) (suc (NA.plus i (sz i))) (BS.lt-right i (sz i))))
+   > false } ;
+ from (x : Lim) : (a : Nat -> Bool) * Zeros a = (seqbit x, from-zeros x) ;
+
+ equivalence : Pr.Equiv ((a : Nat -> Bool) * Zeros a) Lim =
+  (to, Pr.qinv ((a : Nat -> Bool) * Zeros a) Lim to from
+   (\ x -> Pr.Sigma-eq ((n : Nat) -> Stage n) (\ y -> (n : Nat) -> Id (Stage n) (restrict n (y (suc n))) (y n))
+     (to (from x)).1 x.1 (to (from x)).2 x.2
+     (F.funext Nat Stage (to (from x)).1 x.1 (\ n ->
+       Pr.Sigma-eq (Bits n) (\ v -> Id Bool (good n v) true) _ (x.1 n).1 _ (x.1 n).2 (lim-prefix x n) (BR.bool-set _ _)))
+     (F.isProp-Pi Nat (\ n -> Id (Stage n) (restrict n (x.1 (suc n))) (x.1 n)) (\ n -> stage-set n _ _)))
+   (\ a -> Pr.Sigma-eq (Nat -> Bool) Zeros (seqbit (to a)) a.1 (from-zeros (to a)) a.2 (refl a.1) (zeros-prop a.1))) ;
+} ;

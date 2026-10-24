@@ -1,0 +1,163 @@
+-- SSD §1.4: Theorem 1.14 (not WLPO), Theorem 1.15, Corollary 1.16 (MP).
+--
+-- 1.14.  Suppose every alpha : 2^N decides  forall n. alpha n = 0, and let
+-- f alpha = 1 iff it holds.  On Sp(2[N]) = 2^N (2[N] presented by zero
+-- relations), f is evaluation at some c by Axiom 1, and c is (the class of)
+-- an element with a truth table on k generators, so f is determined by the
+-- first k bits (FreeCountable.agree).  But f(0) = 1 and f(delta_k) = 0,
+-- where delta_k is 1 exactly at k.
+--
+-- 1.16 (MP).  For alpha : 2^N with not (forall n. alpha n = 0), the algebra
+-- 2[N]/(g n \/ alpha n)_n has no point (a point beta has beta n \/ alpha n = 0
+-- for all n), so 0 = 1 in it by Lemma 1.12, so  J k = 1  for some k in
+-- 2[N]; evaluated at the point 0 this gives some m < k with alpha m = 1.
+-- Bounded search then gives the least such m; "the least n with alpha n = 1"
+-- is a proposition, so it is obtained from the mere existence of k.  Here
+-- 2[N]/(g n \/ alpha n) stands for the paper's 2/(alpha n) (Lemma 1.9).
+-- 1.15 is the same statement for alpha : N∞ (the paper derives 1.16 from
+-- 1.15; the argument above does not use that alpha hits 1 at most once).
+level l k ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module P = Presented[l] ;
+module Ex = Examples[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module SA = StoneAxioms[l,k] ;
+module LN = BR.Laws[FN.free.ring, FN.free.idem] ;
+
+decide (A : U l) : Dec A -> Bool = split { yes a -> true ; no n -> false } ;
+decide-yes (A : U l) (a : A) : (d : Dec A) -> Id Bool (decide A d) true = split {
+ yes b -> refl true ; no n -> Pr.absurd (Id Bool false true) (n a) } ;
+decide-no (A : U l) (n : Not A) : (d : Dec A) -> Id Bool (decide A d) false = split {
+ yes a -> Pr.absurd (Id Bool true false) (n a) ; no m -> refl false } ;
+
+AllZero (alpha : Nat -> Bool) : U l = (n : Nat) -> Id Bool (alpha n) false ;
+WLPO : U l = (alpha : Nat -> Bool) -> Dec (AllZero alpha) ;
+
+-- least elements
+Min (alpha : Nat -> Bool) (n : Nat) : U l =
+ Id Bool (alpha n) true * ((m : Nat) -> NO.Lt m n -> Id Bool (alpha m) false) ;
+min-unique-tri (alpha : Nat -> Bool) (n n' : Nat) (u : Min alpha n) (v : Min alpha n') : NO.Tri n n' -> Id Nat n n' = split {
+ less h -> Pr.absurd (Id Nat n n') (BR.true-false (trans (sym u.1) (v.2 n h))) ;
+ equal p -> p ;
+ greater h -> Pr.absurd (Id Nat n n') (BR.true-false (trans (sym v.1) (u.2 n' h))) } ;
+min-prop (alpha : Nat -> Bool) : Pr.isProp ((n : Nat) * Min alpha n) = \ u v ->
+ Pr.Sigma-eq Nat (Min alpha) u.1 v.1 u.2 v.2 (min-unique-tri alpha u.1 v.1 u.2 v.2 (NO.tri u.1 v.1))
+  (Pr.isProp-Sigma (Id Bool (alpha v.1) true) (\ h -> (m : Nat) -> NO.Lt m v.1 -> Id Bool (alpha m) false)
+    (BR.bool-set _ _) (\ h -> F.isProp-Pi Nat (\ m -> NO.Lt m v.1 -> Id Bool (alpha m) false) (\ m ->
+      F.isProp-Pi (NO.Lt m v.1) (\ lt -> Id Bool (alpha m) false) (\ lt -> BR.bool-set _ _)))) ;
+
+-- bounded search below k: the least n < k with alpha n = 1, or none
+First (alpha : Nat -> Bool) (k : Nat) : U l = (n : Nat) * NO.Lt n k * Min alpha n ;
+None (alpha : Nat -> Bool) (k : Nat) : U l = (m : Nat) -> NO.Lt m k -> Id Bool (alpha m) false ;
+none-step (alpha : Nat -> Bool) (k : Nat) (b : None alpha k) (f : Id Bool (alpha k) false) (m : Nat)
+  : Plus (NO.Lt m k) (Id Nat m k) -> Id Bool (alpha m) false = split {
+ inl lt -> b m lt ; inr p -> subst (\ n -> Id Bool (alpha n) false) (sym p) f } ;
+search-step (alpha : Nat -> Bool) (k : Nat) (b : None alpha k) :
+  Plus (Id Bool (alpha k) true) (Id Bool (alpha k) false) -> Plus (First alpha (suc k)) (None alpha (suc k)) = split {
+ inl t -> inl (k, NO.lt-suc k, t, b) ;
+ inr f -> inr (\ m lt -> none-step alpha k b f m (NO.lt-pred m k lt)) } ;
+search-suc (alpha : Nat -> Bool) (k : Nat) :
+  Plus (First alpha k) (None alpha k) -> Plus (First alpha (suc k)) (None alpha (suc k)) = split {
+ inl f -> inl (f.1, NO.lt-step f.1 k f.2.1, f.2.2) ;
+ inr b -> search-step alpha k b (TP.bool-cases (alpha k)) } ;
+search (alpha : Nat -> Bool) : (k : Nat) -> Plus (First alpha k) (None alpha k) = split {
+ zero -> inr (\ m lt -> Pr.absurd (Id Bool (alpha m) false) (NO.not-lt-zero m lt)) ;
+ suc k | r -> search-suc alpha k r } ;
+-- from some m < k with alpha m = 1, the least n
+least-from (alpha : Nat -> Bool) (k m : Nat) (lt : NO.Lt m k) (h : Id Bool (alpha m) true) :
+  Plus (First alpha k) (None alpha k) -> (n : Nat) * Min alpha n = split {
+ inl f -> (f.1, f.2.2) ;
+ inr b -> Pr.absurd ((n : Nat) * Min alpha n) (BR.true-false (trans (sym h) (b m lt))) } ;
+
+module Over (ax : SA.Assumptions) {
+ module SD = StoneDuality[l,k].Over[ax] ;
+
+ ---------------------------------------------------------------------
+ -- Theorem 1.14: not WLPO
+
+ zeros (n : Nat) : FN.Elem = FN.ezero ;
+ module G0 = P.Generated[FN.free, zeros] ;
+ C0 : P.Booleω = TP.presented-booleω zeros ;
+ -- the point alpha of Sp(2[N])
+ pt (alpha : Nat -> Bool) : P.Sp C0.1 = P.Point[zeros, alpha, \ n -> refl false].point ;
+ pt-value (alpha : Nat -> Bool) (x : FN.Elem) : Id Bool ((pt alpha).1 (G0.Q.include x)) (x.1 alpha) =
+  P.Point[zeros, alpha, \ n -> refl false].value x ;
+
+ module NotWLPO (w : WLPO) {
+  f (alpha : Nat -> Bool) : Bool = decide (AllZero alpha) (w alpha) ;
+  g (s : P.Sp C0.1) : Bool = f (\ n -> s.1 (G0.Q.include (FN.gen n))) ;
+  c : G0.Q.Carrier = (ax.duality C0).sec g ;
+  at (alpha : Nat -> Bool) : Id Bool ((pt alpha).1 c) (f alpha) =
+   trans (Pr.happly (P.Sp C0.1) (\ s -> Bool) _ g ((ax.duality C0).sec-eq g) (pt alpha))
+    (ap f (F.funext Nat (\ n -> Bool) (\ n -> (pt alpha).1 (G0.Q.include (FN.gen n))) alpha
+      (\ n -> pt-value alpha (FN.gen n)))) ;
+  f-zero : Id Bool (f TP.zeroes) true = decide-yes (AllZero TP.zeroes) (\ n -> refl false) (w TP.zeroes) ;
+  f-delta (k : Nat) : Id Bool (f (NO.delta k)) false =
+   decide-no (AllZero (NO.delta k)) (\ h -> BR.true-false (trans (sym (NO.delta-self k)) (h k))) (w (NO.delta k)) ;
+  -- on an element x of class c with a truth table on k generators
+  contradiction (x : FN.Elem) (p : Id G0.Q.Carrier (G0.Q.include x) c) (r : FN.Rep x.1) : Empty =
+   BR.true-false (calc Bool { true
+    =< sym f-zero > f TP.zeroes
+    =< sym (at TP.zeroes) > (pt TP.zeroes).1 c
+    =< ap (pt TP.zeroes).1 (sym p) > (pt TP.zeroes).1 (G0.Q.include x)
+    =< pt-value TP.zeroes x > x.1 TP.zeroes
+    =< FN.agree x r TP.zeroes (NO.delta r.1) (\ i -> trans (FN.res-index Bool r.1 TP.zeroes i)
+         (trans (sym (NO.delta-ne r.1 (FN.index r.1 i) (NO.lt-neq (FN.index r.1 i) r.1 (TP.index-lt r.1 i))))
+          (sym (FN.res-index Bool r.1 (NO.delta r.1) i))))
+    > x.1 (NO.delta r.1)
+    =< sym (pt-value (NO.delta r.1) x) > (pt (NO.delta r.1)).1 (G0.Q.include x)
+    =< ap (pt (NO.delta r.1)).1 p > (pt (NO.delta r.1)).1 c
+    =< at (NO.delta r.1) > f (NO.delta r.1)
+    =< f-delta r.1 > false }) ;
+  absurd : Empty =
+   TC.rec ((x : FN.Elem) * Id G0.Q.Carrier (G0.Q.include x) c) @l Empty Pr.isProp-Empty (\ u ->
+    TC.rec (FN.Rep u.1.1) @l Empty Pr.isProp-Empty (contradiction u.1 u.2) u.1.2) (G0.Q.representative c) ;
+ } ;
+ not-wlpo (w : WLPO) : Empty = NotWLPO[w].absurd ;
+
+ ---------------------------------------------------------------------
+ -- Corollary 1.16 (MP) and Theorem 1.15
+
+ module MP (alpha : Nat -> Bool) {
+  t (n : Nat) : FN.Elem = LN.join (FN.gen n) (TP.const (alpha n)) ;
+  module Gt = P.Generated[FN.free, t] ;
+  Ct : P.Booleω = TP.presented-booleω t ;
+  no-point (h : Not (AllZero alpha)) (s : P.Sp Ct.1) : Empty =
+   h (\ n -> trans (sym (TP.const-value (alpha n) ((P.sp-presented t).1 s).1))
+     (TP.join-false (((P.sp-presented t).1 s).1 n) ((TP.const (alpha n)).1 ((P.sp-presented t).1 s).1)
+       (((P.sp-presented t).1 s).2 n)).2) ;
+  -- J k evaluated at the point 0
+  J-true-step (k : Nat) (r : Id Bool ((Gt.J k).1 TP.zeroes) true -> (m : Nat) * NO.Lt m k * Id Bool (alpha m) true)
+    : Plus (Id Bool ((Gt.J k).1 TP.zeroes) true) (Id Bool ((t k).1 TP.zeroes) true) ->
+      (m : Nat) * NO.Lt m (suc k) * Id Bool (alpha m) true = split {
+   inl a -> ((r a).1, NO.lt-step (r a).1 k (r a).2.1, (r a).2.2) ;
+   inr b -> (k, NO.lt-suc k, trans (sym (TP.const-value (alpha k) TP.zeroes))
+     (trans (sym (BR.xor-false ((TP.const (alpha k)).1 TP.zeroes))) b)) } ;
+  J-true : (k : Nat) -> Id Bool ((Gt.J k).1 TP.zeroes) true -> (m : Nat) * NO.Lt m k * Id Bool (alpha m) true = split {
+   zero -> \ h -> Pr.absurd ((m : Nat) * NO.Lt m zero * Id Bool (alpha m) true) (BR.true-false (sym h)) ;
+   suc k | r -> \ h -> J-true-step k r (TP.join-true ((Gt.J k).1 TP.zeroes) ((t k).1 TP.zeroes) h) } ;
+  from-J (p : (k : Nat) * Id FN.Elem (Gt.J k) FN.eone) : (n : Nat) * Min alpha n =
+   least-from alpha p.1 (J-true p.1 (Pr.happly (Nat -> Bool) (\ a -> Bool) _ _ (ap (\ x -> x.1) p.2) TP.zeroes)).1
+    (J-true p.1 (Pr.happly (Nat -> Bool) (\ a -> Bool) _ _ (ap (\ x -> x.1) p.2) TP.zeroes)).2.1
+    (J-true p.1 (Pr.happly (Nat -> Bool) (\ a -> Bool) _ _ (ap (\ x -> x.1) p.2) TP.zeroes)).2.2
+    (search alpha p.1) ;
+  least (h : Not (AllZero alpha)) : (n : Nat) * Min alpha n =
+   TC.rec ((k : Nat) * Id FN.Elem (Gt.J k) FN.eone) @l ((n : Nat) * Min alpha n) (min-prop alpha) from-J
+    (Gt.trivial (sym ((SD.lemma112 Ct).2 (no-point h)))) ;
+ } ;
+ -- Corollary 1.16
+ markov (alpha : Nat -> Bool) (h : Not (AllZero alpha)) : (n : Nat) * Id Bool (alpha n) true =
+  ((MP[alpha].least h).1, (MP[alpha].least h).2.1) ;
+ -- Theorem 1.15
+ theorem115 (alpha : Ex.Ninf) (h : Not (AllZero alpha.1)) : (n : Nat) * Id Bool (alpha.1 n) true =
+  markov alpha.1 h ;
+} ;

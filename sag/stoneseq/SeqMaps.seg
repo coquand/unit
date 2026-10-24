@@ -1,0 +1,82 @@
+-- Maps of sequences (h n : S n -> T n commuting with the maps) and the
+-- induced map of colimits, inc n x |-> inc n (h n x).
+--   On Tot, h commutes with iter (shift-nat, by induction on the steps).
+--   Levelwise injective gives injective: if inc n (h x) = inc n' (h x') the
+--   two points meet, iter d (n, h x) = iter e (n', h x'); these are the
+--   images of iter d (n, x) and iter e (n', x'), at the same stage, so by
+--   injectivity at that stage the latter are equal, and (n, x), (n', x') meet.
+--   Levelwise surjective gives surjective: inc n y with y = h x is the image
+--   of inc n x.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open SeqColim[l] ; open Bijection[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+record SeqMap (S T : Seq) {
+  h : (n : Nat) -> S.A n -> T.A n ;
+  c : (n : Nat) (x : S.A n) -> Id (T.A (suc n)) (T.f n (h n x)) (h (suc n) (S.f n x)) ;
+} ;
+
+idmap (S : Seq) : SeqMap[S,S] = new SeqMap[S, S, \ n x -> x, \ n x -> refl (S.f n x)] ;
+compose (S T V : Seq) (G : SeqMap[S,T]) (G' : SeqMap[T,V]) : SeqMap[S,V] =
+  new SeqMap[S, V, \ n x -> G'.h n (G.h n x), \ n x -> transH (G'.c n (G.h n x)) (apH (G'.h (suc n)) (G.c n x))] ;
+
+module Induced (S T : Seq) (H : SeqMap[S,T]) {
+  module CS = Colim[S] ; module CT = Colim[T] ;
+  module R = CS.Rec[CT.colim, CT.set, new CS.Cocone[CT.colim, \ n x -> CT.inc n (H.h n x),
+    \ n x -> transH (apH (CT.inc (suc n)) (symH (H.c n x))) (symH (CT.glue n (H.h n x)))]] ;
+  map (c : CS.colim) : CT.colim = R.map c ;
+  map-inc (n : Nat) (x : S.A n) : Id CT.colim (map (CS.inc n x)) (CT.inc n (H.h n x)) = R.beta n x ;
+
+  -- h on Tot commutes with the steps
+  tot (u : CS.Tot) : CT.Tot = (u.1, H.h u.1 u.2) ;
+  shift-nat : (d n : Nat) (x : S.A n) -> Id (T.A (plus d n)) (CT.shift d n (H.h n x)) (H.h (plus d n) (CS.shift d n x)) = split {
+    zero -> \ n x -> refl (H.h n x) ;
+    suc d | r -> \ n x -> transH (apH (T.f (plus d n)) (r n x)) (H.c (plus d n) (CS.shift d n x)) } ;
+  tot-iter (d : Nat) (u : CS.Tot) : Id CT.Tot (CT.iter d (tot u)) (tot (CS.iter d u)) =
+    apH (\ y -> (plus d u.1, y)) (shift-nat d u.1 u.2) ;
+
+  -- h commutes with raising
+  raise-nat (k m : Nat) (e : Le k m) (y : S.A k) : Id (T.A m) (H.h m (CS.raise k m e y)) (CT.raise k m e (H.h k y)) =
+    symH (CT.raise-iter k m e (H.h k y) e.1 (H.h m (CS.raise k m e y))
+      (transH (tot-iter e.1 (k, y)) (apH tot (CS.raise-tot k m e y)))) ;
+
+  module Inj (inj : (n : Nat) -> Injective (H.h n)) {
+    -- equal stages and equal images give equal points
+    cancel (n n' : Nat) (p : Id Nat n n') (x : S.A n) (x' : S.A n')
+      (q : Id CT.Tot (n, H.h n x) (n', H.h n' x')) : Id CS.Tot (n, x) (n', x') =
+      idJ Nat n (\ k p1 -> (x1 : S.A k) -> Id CT.Tot (n, H.h n x) (k, H.h k x1) -> Id CS.Tot (n, x) (k, x1))
+        (\ x1 q1 -> apH (\ y -> (n, y)) (inj n x x1 (CT.tot-stage n (H.h n x) (H.h n x1) q1))) n' p x' q ;
+    reflect (u v : CS.Tot) (m : CT.Meet[tot u, tot v]) : CS.Meet[u,v] =
+      new CS.Meet[u, v, m.d, m.e,
+        cancel (plus m.d u.1) (plus m.e v.1) (ap CT.Tot Nat (\ t -> t.1) (CT.iter m.d (tot u)) (CT.iter m.e (tot v)) m.meet)
+          (CS.iter m.d u).2 (CS.iter m.e v).2
+          (transH (symH (tot-iter m.d u)) (transH m.meet (tot-iter m.e v)))] ;
+    injective : Injective map = CS.injective-on-inc CT.colim map (\ n x n' x' q ->
+      CS.meets (n, x) (n', x')
+        (TC.map CT.Meet[tot (n, x), tot (n', x')] CS.Meet[(n, x),(n', x')] (reflect (n, x) (n', x'))
+          (CT.effective (n, H.h n x) (n', H.h n' x') (transH (symH (map-inc n x)) (transH q (map-inc n' x')))))) ;
+  } ;
+
+  module Surj (surj : (n : Nat) (y : T.A n) -> Tr.Trunc[Fibre (H.h n) y].carrier) {
+    surjective (c : CT.colim) : Tr.Trunc[Fibre map c].carrier =
+      TC.bind ((u : CT.Tot) * Id CT.colim (CT.Q.inc u) c) (Fibre map c) (\ w ->
+        TC.map (Fibre (H.h w.1.1) w.1.2) (Fibre map c)
+          (\ v -> (CS.inc w.1.1 v.1, transH (map-inc w.1.1 v.1) (transH (apH (CT.inc w.1.1) v.2) w.2)))
+          (surj w.1.1 w.1.2)) (CT.inc-surj c) ;
+  } ;
+} ;
+
+-- the induced map of the identity and of a composite
+induced-id (S : Seq) (c : Colim[S].colim) : Id (Colim[S].colim) (Induced[S, S, idmap S].map c) c =
+  Colim[S].ext (Colim[S].colim) (Colim[S].set) (Induced[S, S, idmap S].map) (\ c1 -> c1)
+    (Induced[S, S, idmap S].map-inc) c ;
+induced-compose (S T V : Seq) (G : SeqMap[S,T]) (G' : SeqMap[T,V]) (c : Colim[S].colim)
+  : Id (Colim[V].colim) (Induced[S, V, compose S T V G G'].map c) (Induced[T, V, G'].map (Induced[S, T, G].map c)) =
+  Colim[S].ext (Colim[V].colim) (Colim[V].set) (Induced[S, V, compose S T V G G'].map)
+    (\ c1 -> Induced[T, V, G'].map (Induced[S, T, G].map c1)) (\ n x -> calc (Colim[V].colim) {
+      Induced[S, V, compose S T V G G'].map (Colim[S].inc n x)
+        =< Induced[S, V, compose S T V G G'].map-inc n x > Colim[V].inc n (G'.h n (G.h n x))
+        =< symH (Induced[T, V, G'].map-inc n (G.h n x)) > Induced[T, V, G'].map (Colim[T].inc n (G.h n x))
+        =< apH (Induced[T, V, G'].map) (symH (Induced[S, T, G].map-inc n x)) >
+      Induced[T, V, G'].map (Induced[S, T, G].map (Colim[S].inc n x)) }) c ;
+

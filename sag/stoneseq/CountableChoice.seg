@@ -1,0 +1,57 @@
+-- Countable choice from dependent choice: for P : Nat -> U l with every P n
+-- merely inhabited, apply DC to the finite products
+--   Prod n = P 0 * .. * P n,   Prod (suc n) -> Prod n  forgetting the last,
+-- which is surjective since P (suc n) is merely inhabited; a point of the
+-- limit over a point of P 0 gives the sequence of last components.
+level l ;
+open Base ; open Prelude[l] ; open DependentChoice[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+CC : U l+ = (P : Nat -> U l) -> ((n : Nat) -> Tr.Trunc[P n].carrier) ->
+  Tr.Trunc[(n : Nat) -> P n].carrier ;
+
+module FromDC (dc : DC) (P : Nat -> U l) (h : (n : Nat) -> Tr.Trunc[P n].carrier) {
+  Prod : Nat -> U l = split {
+    zero -> P zero ;
+    suc n | r -> r * P (suc n) } ;
+  last : (n : Nat) -> Prod n -> P n = split {
+    zero -> \ x -> x ;
+    suc n -> \ x -> x.2 } ;
+  forget (n : Nat) (x : Prod (suc n)) : Prod n = x.1 ;
+  forget-surj (n : Nat) : Surjective (forget n) = \ y ->
+    TC.map (P (suc n)) ((x : Prod (suc n)) * Id (Prod n) (forget n x) y) (\ a -> ((y, a), refl y)) (h (suc n)) ;
+  choice : Tr.Trunc[(n : Nat) -> P n].carrier =
+    TC.bind (P zero) ((n : Nat) -> P n) (\ a ->
+      TC.map ((x : Lim Prod forget) * Id (P zero) (proj0 Prod forget x) a) ((n : Nat) -> P n)
+        (\ w n -> last n (w.1.1 n)) (dc Prod forget forget-surj a)) (h zero) ;
+} ;
+cc (dc : DC) : CC = \ P h -> FromDC[dc,P,h].choice ;
+
+-- Dependent choice in relational form: types D n, relations R n from D n to
+-- D (suc n) that are total, D 0 merely inhabited; then merely a sequence s
+-- with R n (s n) (s (suc n)) for all n.  DC is applied to the chains
+--   Chain 0 = D 0,  Chain (suc n) = (c : Chain n) * (d : D (suc n)) * R n (last c) d,
+-- forgetting the last step (surjective by totality).
+module Relational (dc : DC) (D : Nat -> U l) (R : (n : Nat) -> D n -> D (suc n) -> U l)
+  (start : Tr.Trunc[D zero].carrier)
+  (total : (n : Nat) (d : D n) -> Tr.Trunc[(d' : D (suc n)) * R n d d'].carrier) {
+  -- the chains of length n + 1 with their last element
+  chain : (n : Nat) -> (T : U l) * (T -> D n) = split {
+    zero -> (D zero, \ d -> d) ;
+    suc n | r -> ((c : r.1) * (d : D (suc n)) * R n (r.2 c) d, \ w -> w.2.1) } ;
+  Chain (n : Nat) : U l = (chain n).1 ;
+  last (n : Nat) (c : Chain n) : D n = (chain n).2 c ;
+  forget (n : Nat) (w : Chain (suc n)) : Chain n = w.1 ;
+  forget-surj (n : Nat) : Surjective (forget n) = \ c ->
+    TC.map ((d : D (suc n)) * R n (last n c) d) ((w : Chain (suc n)) * Id (Chain n) (forget n w) c)
+      (\ v -> ((c, v), refl c)) (total n (last n c)) ;
+  Path : U l = (s : (n : Nat) -> D n) * ((n : Nat) -> R n (s n) (s (suc n))) ;
+  -- the path through a compatible sequence of chains
+  path (x : Lim Chain forget) : Path = (\ n -> last n (x.1 n), \ n ->
+    subst (Chain n) (\ c -> R n (last n c) (last (suc n) (x.1 (suc n)))) (forget n (x.1 (suc n))) (x.1 n) (x.2 n)
+      (x.1 (suc n)).2.2) ;
+  result : Tr.Trunc[Path].carrier =
+    TC.bind (D zero) Path (\ d ->
+      TC.map ((x : Lim Chain forget) * Id (D zero) (proj0 Chain forget x) d) Path (\ w -> path w.1)
+        (dc Chain forget forget-surj d)) start ;
+} ;

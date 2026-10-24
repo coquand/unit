@@ -1,0 +1,92 @@
+-- Boolean sequences: bounded joins, joins over squares, first hits.
+--   bor k f = f 0 \/ .. \/ f (k-1) ;
+--   sq k a = \/ { a n m | n, m < k }  (replaces a pairing N -> N x N);
+--   first mu k = 1 iff k is the first index where mu is 1; first mu is in N∞.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module BR = BooleanRing[l] ;
+module FN = FreeCountable[l] ;
+module Ex = Examples[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module BF = BinfFacts[l] ;
+
+bor (f : Nat -> Bool) : Nat -> Bool = split { zero -> false ; suc k | r -> BF.bjoin r (f k) } ;
+
+bor-false : (k : Nat) (f : Nat -> Bool) -> ((i : Nat) -> NO.Lt i k -> Id Bool (f i) false) -> Id Bool (bor f k) false = split {
+ zero -> \ f h -> refl false ;
+ suc k | r -> \ f h -> FN.cong2 BF.bjoin (r f (\ i lt -> h i (NO.lt-step i k lt))) (h k (NO.lt-suc k)) } ;
+bor-true-step (k : Nat) (f : Nat -> Bool) (i : Nat) (ih : NO.Lt i k -> Id Bool (bor f k) true) (h : Id Bool (f i) true)
+  : Plus (NO.Lt i k) (Id Nat i k) -> Id Bool (bor f (suc k)) true = split {
+ inl lt -> trans (ap (\ a -> BF.bjoin a (f k)) (ih lt)) (BF.join-true-l (f k)) ;
+ inr p -> trans (ap (BF.bjoin (bor f k)) (subst (\ j -> Id Bool (f j) true) p h)) (BF.join-true-r (bor f k)) } ;
+bor-true : (k : Nat) (f : Nat -> Bool) (i : Nat) -> NO.Lt i k -> Id Bool (f i) true -> Id Bool (bor f k) true = split {
+ zero -> \ f i lt h -> Pr.absurd (Id Bool false true) (NO.not-lt-zero i lt) ;
+ suc k | r -> \ f i lt h -> bor-true-step k f i (\ lt' -> r f i lt' h) h (NO.lt-pred i k lt) } ;
+-- the converses
+bor-false-inv : (k : Nat) (f : Nat -> Bool) -> Id Bool (bor f k) false -> (i : Nat) -> NO.Lt i k -> Id Bool (f i) false = split {
+ zero -> \ f h i lt -> Pr.absurd (Id Bool (f i) false) (NO.not-lt-zero i lt) ;
+ suc k | r -> \ f h i lt -> BF.extend-at k f (\ n -> false) (r f (TP.join-false (bor f k) (f k) h).1)
+   (TP.join-false (bor f k) (f k) h).2 i (NO.lt-pred i k lt) } ;
+bor-true-cases (k : Nat) (f : Nat -> Bool) (r : Id Bool (bor f k) true -> (i : Nat) * NO.Lt i k * Id Bool (f i) true) :
+  Plus (Id Bool (bor f k) true) (Id Bool (f k) true) -> (i : Nat) * NO.Lt i (suc k) * Id Bool (f i) true = split {
+ inl a -> ((r a).1, NO.lt-step (r a).1 k (r a).2.1, (r a).2.2) ;
+ inr b -> (k, NO.lt-suc k, b) } ;
+bor-true-inv : (k : Nat) (f : Nat -> Bool) -> Id Bool (bor f k) true -> (i : Nat) * NO.Lt i k * Id Bool (f i) true = split {
+ zero -> \ f h -> Pr.absurd ((i : Nat) * NO.Lt i zero * Id Bool (f i) true) (BR.true-false (sym h)) ;
+ suc k | r -> \ f h -> bor-true-cases k f (r f) (TP.join-true (bor f k) (f k) h) } ;
+
+-- before n at gamma is bor gamma n
+before-bor (gamma : Nat -> Bool) : (n : Nat) -> Id Bool ((Ex.before n).1 gamma) (bor gamma n) = split {
+ zero -> refl false ;
+ suc n | r -> ap (\ b -> BF.bjoin b (gamma n)) r } ;
+
+------------------------------------------------------------------------
+-- joins over squares
+
+sq (a : Nat -> Nat -> Bool) (k : Nat) : Bool = bor (\ n -> bor (a n) k) k ;
+-- n, m < suc (n + m)
+lt-left (n m : Nat) : NO.Lt n (suc (NA.plus n m)) =
+ subst (NO.Lt n) (trans (NA.plus-suc m n) (ap (\ j -> suc j) (NA.plus-comm m n))) (NO.lt-plus n (suc n) (NO.lt-suc n) m) ;
+lt-right (n m : Nat) : NO.Lt m (suc (NA.plus n m)) = subst (NO.Lt m) (NA.plus-suc n m) (NO.lt-plus m (suc m) (NO.lt-suc m) n) ;
+sq-true (a : Nat -> Nat -> Bool) (n m : Nat) (h : Id Bool (a n m) true) : Id Bool (sq a (suc (NA.plus n m))) true =
+ bor-true (suc (NA.plus n m)) (\ n' -> bor (a n') (suc (NA.plus n m))) n (lt-left n m)
+  (bor-true (suc (NA.plus n m)) (a n) m (lt-right n m) h) ;
+sq-true-inv (a : Nat -> Nat -> Bool) (k : Nat) (h : Id Bool (sq a k) true) : (n : Nat) * (m : Nat) * Id Bool (a n m) true =
+ ((bor-true-inv k (\ n -> bor (a n) k) h).1,
+  (bor-true-inv k (a (bor-true-inv k (\ n -> bor (a n) k) h).1) (bor-true-inv k (\ n -> bor (a n) k) h).2.2).1,
+  (bor-true-inv k (a (bor-true-inv k (\ n -> bor (a n) k) h).1) (bor-true-inv k (\ n -> bor (a n) k) h).2.2).2.2) ;
+sq-false (a : Nat -> Nat -> Bool) (h : (n m : Nat) -> Id Bool (a n m) false) (k : Nat) : Id Bool (sq a k) false =
+ bor-false k (\ n -> bor (a n) k) (\ n lt -> bor-false k (a n) (\ m lt' -> h n m)) ;
+
+------------------------------------------------------------------------
+-- first hits
+
+first (mu : Nat -> Bool) (k : Nat) : Bool = BR.and (mu k) (BR.not (bor mu k)) ;
+and-not-true : (a b : Bool) -> Id Bool (BR.and a (BR.not b)) true -> Id Bool b false = split {
+ true -> split { true -> \ h -> Pr.absurd (Id Bool true false) (BR.true-false (sym h)) ; false -> \ h -> refl false } ;
+ false -> \ b h -> Pr.absurd (Id Bool b false) (BR.true-false (sym h)) } ;
+-- below a first hit, mu is 0
+first-below (mu : Nat -> Bool) (k : Nat) (h : Id Bool (first mu k) true) : Id Bool (bor mu k) false =
+ and-not-true (mu k) (bor mu k) h ;
+-- a least index is a first hit
+first-least (mu : Nat -> Bool) (k : Nat) (h1 : Id Bool (mu k) true)
+  (h2 : (i : Nat) -> NO.Lt i k -> Id Bool (mu i) false) : Id Bool (first mu k) true =
+ FN.cong2 (\ a b -> BR.and a (BR.not b)) h1 (bor-false k mu h2) ;
+fninf-at (mu : Nat -> Bool) (n : Nat) :
+  Plus (Id Bool (first mu n) true) (Id Bool (first mu n) false) -> Id Bool ((Ex.rinf n).1 (first mu)) false = split {
+ inl t -> trans (ap (BR.and (first mu n)) (trans (before-bor (first mu) n)
+    (bor-false n (first mu) (\ i lt -> ap (\ b -> BR.and b (BR.not (bor mu i)))
+      (bor-false-inv n mu (first-below mu n t) i lt)))))
+   (TP.and-false (first mu n)) ;
+ inr f -> ap (\ b -> BR.and b ((Ex.before n).1 (first mu))) f } ;
+first-ninf (mu : Nat -> Bool) : BF.InNinf (first mu) = \ n -> fninf-at mu n (TP.bool-cases (first mu n)) ;
+
+-- J k of the ideal generated by r, at a point, is the bounded join
+J-bor (r : Nat -> FN.Elem) (beta : Nat -> Bool) : (K : Nat) ->
+  Id Bool ((Presented[l].Generated[FN.free, r].J K).1 beta) (bor (\ i -> (r i).1 beta) K) = split {
+ zero -> refl false ;
+ suc K | h -> ap (\ b -> BF.bjoin b ((r K).1 beta)) h } ;

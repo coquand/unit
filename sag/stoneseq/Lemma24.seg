@@ -1,0 +1,66 @@
+-- SSD Lemma 2.4: for f = colim h, a sequential colimit of maps h n : S n -> T n,
+-- the factorisation  colim S ->> Im f >-> colim T  is the colimit of the
+-- factorisations  S n ->> Im (h n) >-> T n.
+--
+-- Proof.  The images form a sequence im (T's maps on the first component),
+-- and h factors levelwise as onto : S -> im (surjective) followed by
+-- into : im -> T (injective, the first projection), with into . onto = h.
+-- In the colimit, colim into is injective and colim onto surjective
+-- (SeqMaps), and their composite is colim h.  So theta x = (colim into x, _)
+-- is a bijection from colim im to Im f: injective since colim into is,
+-- surjective since every point of Im f comes from colim S through colim onto.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open SeqColim[l] ; open SeqMaps[l] ; open Bijection[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+-- the image of a map, as a subtype of its codomain
+Im {A B : U l} (f : A -> B) : U l = (b : B) * Tr.Trunc[Fibre f b].carrier ;
+-- two points of an image with the same first component are equal
+im-eq {A B : U l} (f : A -> B) (w w' : Im f) (p : Id B w.1 w'.1) : Id (Im f) w w' =
+  Sigma-eq B (\ b -> Tr.Trunc[Fibre f b].carrier) w.1 w'.1 w.2 w'.2 p (Tr.Trunc[Fibre f w'.1].proposition) ;
+im-set {A B : U l} (f : A -> B) (sB : isSet B) : isSet (Im f) =
+  isSet-Sigma B (\ b -> Tr.Trunc[Fibre f b].carrier) sB
+    (\ b -> prop-to-set (Tr.Trunc[Fibre f b].carrier) (Tr.Trunc[Fibre f b].proposition)) ;
+
+module Images (S T : Seq) (H : SeqMap[S,T]) {
+  module CS = Colim[S] ; module CT = Colim[T] ; module IH = Induced[S,T,H] ;
+  fibre-step (n : Nat) (b : T.A n) (v : Fibre (H.h n) b) : Fibre (H.h (suc n)) (T.f n b) =
+    (S.f n v.1, transH (symH (H.c n v.1)) (apH (T.f n) v.2)) ;
+  im : Seq = new Seq[\ n -> Im (H.h n), \ n w -> (T.f n w.1,
+    TC.map (Fibre (H.h n) w.1) (Fibre (H.h (suc n)) (T.f n w.1)) (fibre-step n w.1) w.2)] ;
+  module CI = Colim[im] ;
+
+  -- S n ->> Im (h n) >-> T n
+  onto : SeqMap[S, im] = new SeqMap[S, im,
+    \ n a -> (H.h n a, Tr.Trunc[Fibre (H.h n) (H.h n a)].inc (a, refl (H.h n a))),
+    \ n a -> im-eq (H.h (suc n)) (im.f n (H.h n a, Tr.Trunc[Fibre (H.h n) (H.h n a)].inc (a, refl (H.h n a))))
+               (H.h (suc n) (S.f n a), Tr.Trunc[Fibre (H.h (suc n)) (H.h (suc n) (S.f n a))].inc (S.f n a, refl (H.h (suc n) (S.f n a))))
+               (H.c n a)] ;
+  into : SeqMap[im, T] = new SeqMap[im, T, \ n w -> w.1, \ n w -> refl (T.f n w.1)] ;
+  module IO = Induced[S, im, onto] ; module II = Induced[im, T, into] ;
+  into-inj (n : Nat) : Injective (into.h n) = \ w w' p -> im-eq (H.h n) w w' p ;
+  onto-surj (n : Nat) (w : Im (H.h n)) : Tr.Trunc[Fibre (onto.h n) w].carrier =
+    TC.map (Fibre (H.h n) w.1) (Fibre (onto.h n) w) (\ v -> (v.1, im-eq (H.h n) (onto.h n v.1) w v.2)) w.2 ;
+  module Into = II.Inj[into-inj] ; module Onto = IO.Surj[onto-surj] ;
+
+  -- colim into . colim onto = colim h
+  composite (c : CS.colim) : Id CT.colim (II.map (IO.map c)) (IH.map c) =
+    CS.ext CT.colim CT.set (\ c1 -> II.map (IO.map c1)) IH.map (\ n a -> calc CT.colim {
+      II.map (IO.map (CS.inc n a)) =< apH II.map (IO.map-inc n a) > II.map (CI.inc n (onto.h n a))
+        =< II.map-inc n (onto.h n a) > CT.inc n (H.h n a)
+        =< symH (IH.map-inc n a) > IH.map (CS.inc n a) }) c ;
+
+  theta (x : CI.colim) : Im IH.map = (II.map x,
+    TC.map (Fibre IO.map x) (Fibre IH.map (II.map x))
+      (\ v -> (v.1, transH (symH (composite v.1)) (apH II.map v.2))) (Onto.surjective x)) ;
+  theta-inj : Injective theta = \ x y p -> Into.injective x y (apH (\ w -> w.1) p) ;
+  theta-surj (w : Im IH.map) : Tr.Trunc[Fibre theta w].carrier =
+    TC.map (Fibre IH.map w.1) (Fibre theta w)
+      (\ v -> (IO.map v.1, im-eq IH.map (theta (IO.map v.1)) w (transH (composite v.1) v.2))) w.2 ;
+  equiv : Equiv CI.colim (Im IH.map) =
+    (theta, Bij[CI.colim, Im IH.map, im-set IH.map CT.set, theta, theta-inj, theta-surj].equiv) ;
+  -- the two halves: theta . colim onto is the corestriction of colim h, and
+  -- the first projection after theta is colim into
+  onto-part (c : CS.colim) : Id CT.colim (theta (IO.map c)).1 (IH.map c) = composite c ;
+  into-part (x : CI.colim) : Id CT.colim (theta x).1 (II.map x) = refl (II.map x) ;
+} ;

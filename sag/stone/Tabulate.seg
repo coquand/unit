@@ -1,0 +1,59 @@
+-- A function R : 2^N -> 2 depending only on the first k bits is an element
+-- of 2[N] with a truth table on k generators: tabulate R on the sequences
+-- that are 0 from k on (ext0), splitting on the first bit as Tab does; the
+-- evaluation of the table at alpha is R at the truncation of alpha, which
+-- is R alpha.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module T = Truncation[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FF = FreeFinite[l] ;
+module FN = FreeCountable[l] ;
+module NO = NatOrder[l] ;
+
+-- extend the first k bits by 0
+ext0 : (k : Nat) -> (FC.Fin k -> Bool) -> Nat -> Bool = split {
+ zero -> \ v m -> false ;
+ suc k | r -> \ v -> FN.cons (v none) (r (\ i -> v (some i))) } ;
+ext0-step (k : Nat) (r : (a : Nat -> Bool) (m : Nat) -> NO.Lt m k -> Id Bool (ext0 k (FN.res Bool k a) m) (a m))
+  (a : Nat -> Bool) : (m : Nat) -> NO.Lt m (suc k) -> Id Bool (ext0 (suc k) (FN.res Bool (suc k) a) m) (a m) = split {
+ zero -> \ h -> refl (a zero) ;
+ suc m -> \ h -> r (\ n -> a (suc n)) m (NO.lt-pred-suc m k h) } ;
+ext0-res : (k : Nat) (a : Nat -> Bool) (m : Nat) -> NO.Lt m k -> Id Bool (ext0 k (FN.res Bool k a) m) (a m) = split {
+ zero -> \ a m h -> Pr.absurd (Id Bool false (a m)) (NO.not-lt-zero m h) ;
+ suc k | r -> ext0-step k r } ;
+
+fcons (k : Nat) (b : Bool) (v : FC.Fin k -> Bool) : FC.Fin (suc k) -> Bool = split { none -> b ; some i -> v i } ;
+res-fcons (k : Nat) (a : Nat -> Bool) : (i : FC.Fin (suc k)) ->
+  Id Bool (FN.res Bool (suc k) a i) (fcons k (a zero) (FN.res Bool k (\ n -> a (suc n))) i) = split {
+ none -> refl (a zero) ; some i -> refl (FN.res Bool k (\ n -> a (suc n)) i) } ;
+
+tabulate : (k : Nat) -> ((FC.Fin k -> Bool) -> Bool) -> FF.Tab k = split {
+ zero -> \ f -> f (Pr.absurd Bool) ;
+ suc k | r -> \ f -> (r (\ v -> f (fcons k false v)), r (\ v -> f (fcons k true v))) } ;
+shannon-gen : (b : Bool) (g : Bool -> Bool) -> Id Bool (FN.L2.shannon b (g false) (g true)) (g b) = split {
+ true -> \ g -> FN.sh-true (g false) (g true) ;
+ false -> \ g -> FN.sh-false (g false) (g true) } ;
+ev-tabulate : (k : Nat) (f : (FC.Fin k -> Bool) -> Bool) (a : Nat -> Bool) ->
+  Id Bool (FN.ev k (tabulate k f) a) (f (FN.res Bool k a)) = split {
+ zero -> \ f a -> FN.ite-tf (f (Pr.absurd Bool)) ;
+ suc k | r -> \ f a ->
+  calc Bool { FN.ev (suc k) (tabulate (suc k) f) a
+   =< FN.cong2 (FN.L2.shannon (a zero)) (r (\ v -> f (fcons k false v)) (\ n -> a (suc n)))
+        (r (\ v -> f (fcons k true v)) (\ n -> a (suc n)))
+   > FN.L2.shannon (a zero) (f (fcons k false (FN.res Bool k (\ n -> a (suc n))))) (f (fcons k true (FN.res Bool k (\ n -> a (suc n)))))
+   =< shannon-gen (a zero) (\ b -> f (fcons k b (FN.res Bool k (\ n -> a (suc n))))) > f (fcons k (a zero) (FN.res Bool k (\ n -> a (suc n))))
+   =< ap f (sym (F.funext (FC.Fin (suc k)) (\ i -> Bool) (FN.res Bool (suc k) a) (fcons k (a zero) (FN.res Bool k (\ n -> a (suc n))))
+        (res-fcons k a))) > f (FN.res Bool (suc k) a) } } ;
+
+-- functions of the first k bits
+Local (k : Nat) (R : FN.Fun) : U l =
+ (a b : Nat -> Bool) -> ((m : Nat) -> NO.Lt m k -> Id Bool (a m) (b m)) -> Id Bool (R a) (R b) ;
+local-rep (k : Nat) (R : FN.Fun) (loc : Local k R) : FN.Rep R =
+ (k, tabulate k (\ v -> R (ext0 k v)),
+  F.funext (Nat -> Bool) (\ a -> Bool) (FN.ev k (tabulate k (\ v -> R (ext0 k v)))) R (\ a ->
+   trans (ev-tabulate k (\ v -> R (ext0 k v)) a) (loc (ext0 k (FN.res Bool k a)) a (ext0-res k a)))) ;
+local-elem (k : Nat) (R : FN.Fun) (loc : Local k R) : FN.Elem = (R, T.Trunc[FN.Rep R].inc (local-rep k R loc)) ;

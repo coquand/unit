@@ -1,0 +1,125 @@
+-- Codes of finite chains (for SSD Lemmas 3.5-3.6 and Corollary 3.7).
+--
+-- In the setting of LimCode, for y : E n let encF n y be the sequence whose
+-- blocks 0 .. n are the one-hot codes of p^(n-j) y (j <= n), and which is 0
+-- beyond block n: block n is the code of y, the lower blocks are those of
+-- encF (n-1) (p y) (encF-step: a multiplexer on the block index).  Then
+--  * block j of encF (n+1) y is block j of encF n (p y) for j <= n (G1),
+--    block n of encF n y is the code of y (G2);
+--  * encF n y satisfies the relations j < n (finite-zeros): for j < n-1
+--    from encF (n-1) (p y), for j = n-1 because the codes of p y and y are
+--    compatible;
+--  * for a point x of lim E, encF n (x n) and enc x have the same blocks
+--    j <= n (blocks-point), so they agree at every position m <= n
+--    (the block of position m is at most m);
+--  * block N of encF (d + N) y is the code of the image of y in E N under
+--    the d maps p (down), the iterate used by sequential colimits.
+level l ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module TP = TwoPresented[l] ;
+module BF = BinfFacts[l] ;
+module FB = FinBool[l] ;
+module LC = LimCode[l] ;
+
+-- choose a or b according to g
+mux (g a b : Bool) : Bool = BF.bjoin (BR.and g a) (BR.and (BR.not g) b) ;
+mux-true : (a b : Bool) -> Id Bool (mux true a b) a = split {
+ true -> \ b -> refl true ; false -> \ b -> refl false } ;
+mux-false (a b : Bool) : Id Bool (mux false a b) b = BR.xor-false b ;
+
+-- d steps down
+down (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (N : Nat) : (d : Nat) -> E (NA.plus d N) -> E N = split {
+ zero -> \ y -> y ;
+ suc d | r -> \ y -> r (p (NA.plus d N) y) } ;
+
+module Chains (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (c : Nat -> Nat)
+  (en : (n : Nat) -> Pr.Equiv (E n) (FC.Fin (c n))) (setE : (n : Nat) -> Pr.isSet (E n)) {
+ module C = LC.Code[E, p, c, en, setE] ;
+ module L = C.L ;
+
+ encF-step (n : Nat) (y : E n) (rest : Nat -> Bool) (m : Nat) : Bool =
+  mux (NO.delta n (L.decode m).1) (C.onehot n y (L.decode m).2) (rest m) ;
+ encF : (n : Nat) -> E n -> Nat -> Bool = split {
+  zero -> \ y -> encF-step zero y (\ m -> false) ;
+  suc n | r -> \ y -> encF-step (suc n) y (r (p n y)) } ;
+
+ step-top (n : Nat) (y : E n) (rest : Nat -> Bool) (o : Nat) (lt : NO.Lt o (suc (c n))) :
+   Id Bool (encF-step n y rest (L.pos n o)) (C.onehot n y o) =
+  trans (ap (\ s -> mux (NO.delta n s.1) (C.onehot n y s.2) (rest (L.pos n o))) (L.decode-pos n o lt))
+   (trans (ap (\ g -> mux g (C.onehot n y o) (rest (L.pos n o))) (NO.delta-self n)) (mux-true (C.onehot n y o) (rest (L.pos n o)))) ;
+ step-other (n : Nat) (y : E n) (rest : Nat -> Bool) (j o : Nat) (lt : NO.Lt o (suc (c j))) (ne : Not (Id Nat j n)) :
+   Id Bool (encF-step n y rest (L.pos j o)) (rest (L.pos j o)) =
+  trans (ap (\ s -> mux (NO.delta n s.1) (C.onehot n y s.2) (rest (L.pos j o))) (L.decode-pos j o lt))
+   (trans (ap (\ g -> mux g (C.onehot n y o) (rest (L.pos j o))) (NO.delta-ne n j ne)) (mux-false (C.onehot n y o) (rest (L.pos j o)))) ;
+
+ -- G2: the top block is the code of y
+ top : (n : Nat) (y : E n) (o : Nat) -> NO.Lt o (suc (c n)) -> Id Bool (encF n y (L.pos n o)) (C.onehot n y o) = split {
+  zero -> \ y -> step-top zero y (\ m -> false) ;
+  suc n | r -> \ y -> step-top (suc n) y (encF n (p n y)) } ;
+ blk-top (n : Nat) (y : E n) : Id (C.Vec n) (C.blk n (encF n y)) (C.ohv n y) =
+  F.funext (FC.Fin (suc (c n))) (\ j -> Bool) (C.blk n (encF n y)) (C.ohv n y) (\ j ->
+   top n y (FN.index (suc (c n)) j) (TP.index-lt (suc (c n)) j)) ;
+ -- G1: lower blocks come from p y
+ blk-lower (n : Nat) (y : E (suc n)) (j : Nat) (h : NO.Lt j (suc n)) :
+   Id (C.Vec j) (C.blk j (encF (suc n) y)) (C.blk j (encF n (p n y))) =
+  F.funext (FC.Fin (suc (c j))) (\ i -> Bool) (C.blk j (encF (suc n) y)) (C.blk j (encF n (p n y))) (\ i ->
+   step-other (suc n) y (encF n (p n y)) j (FN.index (suc (c j)) i) (TP.index-lt (suc (c j)) i) (NO.lt-neq j (suc n) h)) ;
+
+ -- the relations below n hold
+ fz-case (n : Nat) (y : E (suc n)) (j : Nat) (r : NO.Lt j n -> Id Bool (C.relation j (encF n (p n y))) false) :
+   Plus (NO.Lt j n) (Id Nat j n) -> Id Bool (C.relation j (encF (suc n) y)) false = split {
+  inl h -> trans (FN.cong2 (C.relvec j) (blk-lower n y j (NO.lt-step j n h)) (blk-lower n y (suc j) (NO.lt-suc-suc j n h))) (r h) ;
+  inr q -> subst (\ i -> Id Bool (C.relation i (encF (suc n) y)) false) (sym q)
+   (trans (FN.cong2 (C.relvec n) (trans (blk-lower n y n (NO.lt-suc n)) (blk-top n (p n y))) (blk-top (suc n) y))
+    (C.relvec-oh n y (p n y) (refl (p n y)))) } ;
+ finite-zeros : (n : Nat) (y : E n) (j : Nat) -> NO.Lt j n -> Id Bool (C.relation j (encF n y)) false = split {
+  zero -> \ y j h -> Pr.absurd (Id Bool (C.relation j (encF zero y)) false) (NO.not-lt-zero j h) ;
+  suc n | r -> \ y j h -> fz-case n y j (r (p n y) j) (NO.lt-pred j n h) } ;
+
+ -- a point: blocks j <= n of encF n (x n) are the codes of x j
+ bp-case (x : C.Lim) (n : Nat) (j : Nat)
+   (r : NO.Lt j (suc n) -> Id (C.Vec j) (C.blk j (encF n (x.1 n))) (C.ohv j (x.1 j))) :
+   Plus (NO.Lt j (suc n)) (Id Nat j (suc n)) -> Id (C.Vec j) (C.blk j (encF (suc n) (x.1 (suc n)))) (C.ohv j (x.1 j)) = split {
+  inl h -> trans (blk-lower n (x.1 (suc n)) j h) (trans (ap (\ z -> C.blk j (encF n z)) (x.2 n)) (r h)) ;
+  inr q -> subst (\ i -> Id (C.Vec i) (C.blk i (encF (suc n) (x.1 (suc n)))) (C.ohv i (x.1 i))) (sym q) (blk-top (suc n) (x.1 (suc n))) } ;
+ bp-zero (x : C.Lim) (j : Nat) : Plus (NO.Lt j zero) (Id Nat j zero) -> Id (C.Vec j) (C.blk j (encF zero (x.1 zero))) (C.ohv j (x.1 j)) = split {
+  inl h -> Pr.absurd (Id (C.Vec j) (C.blk j (encF zero (x.1 zero))) (C.ohv j (x.1 j))) (NO.not-lt-zero j h) ;
+  inr q -> subst (\ i -> Id (C.Vec i) (C.blk i (encF zero (x.1 zero))) (C.ohv i (x.1 i))) (sym q) (blk-top zero (x.1 zero)) } ;
+ blocks-point (x : C.Lim) : (n : Nat) (j : Nat) -> NO.Lt j (suc n) -> Id (C.Vec j) (C.blk j (encF n (x.1 n))) (C.ohv j (x.1 j)) = split {
+  zero -> \ j h -> bp-zero x j (NO.lt-pred j zero h) ;
+  suc n | r -> \ j h -> bp-case x n j (r j) (NO.lt-pred j (suc n) h) } ;
+
+ -- the block of position m is at most m
+ dec-block-le (m : Nat) : NO.Lt (L.decode m).1 (suc m) =
+  NO.le-lt-trans (L.decode m).1 (L.start (L.decode m).1) (suc m) (L.block-le (L.decode m).1)
+   (subst (\ k -> NO.Lt (L.start (L.decode m).1) (suc k)) (L.decode-ok m).2
+     (subst (NO.Lt (L.start (L.decode m).1)) (NA.plus-suc (L.decode m).2 (L.start (L.decode m).1))
+      (NO.lt-plus (L.start (L.decode m).1) (suc (L.start (L.decode m).1)) (NO.lt-suc (L.start (L.decode m).1)) (L.decode m).2))) ;
+ -- a sequence is read off its blocks
+ at-block (a : Nat -> Bool) (m : Nat) : Id Bool (a m)
+   (C.blk (L.decode m).1 a (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1) =
+  sym (trans (ap (\ o -> a (L.pos (L.decode m).1 o)) (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).2)
+   (ap a (L.decode-ok m).2)) ;
+ -- so enc x and encF n (x n) agree at positions m <= n
+ enc-agree (x : C.Lim) (n m : Nat) (h : NO.Lt m (suc n)) : Id Bool (C.enc x m) (encF n (x.1 n) m) =
+  calc Bool { C.enc x m
+   =< at-block (C.enc x) m > C.blk (L.decode m).1 (C.enc x) (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1
+   =< ap (\ g -> g (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1)
+        (trans (C.blk-enc x (L.decode m).1)
+          (sym (blocks-point x n (L.decode m).1 (NO.le-lt-trans (L.decode m).1 m (suc n) (dec-block-le m) h))))
+   > C.blk (L.decode m).1 (encF n (x.1 n)) (FB.fin-of (suc (c (L.decode m).1)) (L.decode m).2 (L.decode-ok m).1).1
+   =< sym (at-block (encF n (x.1 n)) m) > encF n (x.1 n) m } ;
+
+ blk-down (N : Nat) : (d : Nat) (y : E (NA.plus d N)) -> Id (C.Vec N) (C.blk N (encF (NA.plus d N) y)) (C.ohv N (down E p N d y)) = split {
+  zero -> \ y -> blk-top N y ;
+  suc d | r -> \ y -> trans (blk-lower (NA.plus d N) y N
+     (subst (NO.Lt N) (NA.plus-suc d N) (NO.lt-plus N (suc N) (NO.lt-suc N) d)))
+    (r (p (NA.plus d N) y)) } ;
+} ;

@@ -1,0 +1,163 @@
+-- The free Boolean algebra 2[Fin k] on k generators (SSD Def. 1.3 for a
+-- finite set of generators), as truth tables, by recursion on k:
+--     Tab 0 = Bool ,   Tab (k+1) = Tab k * Tab k .
+-- In Tab (k+1) the pair (u0, u1) is the element equal to u0 where the first
+-- generator x0 is 0 and to u1 where it is 1, i.e. the Shannon combination
+--     u0 (1 + x0) + u1 x0 ;
+-- u0 and u1 are over the remaining generators x1 .. xk.  The operations are
+-- componentwise, so the laws are those of Bool, by recursion on k.
+--
+-- Universal property.  For a Boolean algebra B and g : Fin k -> B, the
+-- extension  ext g : Tab k -> B  sends b : Bool to 1 or 0 and (u0, u1) to
+-- the Shannon combination of ext u0 and ext u1 at g x0.  It is a morphism
+-- because Shannon combinations at a fixed g are added and multiplied
+-- componentwise (Laws.sh-add, Laws.sh-mul), and it is the only morphism with
+-- these values on the generators: every u in Tab (k+1) is the Shannon
+-- combination of the images of u0, u1 under  incl : Tab k -> Tab (k+1),
+-- u |-> (u, u)  (decomp), and a morphism preserves Shannon combinations.
+level l ;
+open Base ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module FC = FinChoice[l] ;
+module BR = BooleanRing[l] ;
+
+pair-path {A B : U l} {a a' : A} {b b' : B} (p : Id A a a') (q : Id B b b')
+  : Id (A * B) (a, b) (a', b') =
+  calc (A * B) { (a, b) =< ap (\ t -> (t, b)) p > (a', b) =< ap (\ t -> (a', t)) q > (a', b') } ;
+
+Tab : Nat -> U l = split { zero -> Bool ; suc k | r -> r * r } ;
+
+tzero : (k : Nat) -> Tab k = split { zero -> false ; suc k | r -> (r, r) } ;
+tone : (k : Nat) -> Tab k = split { zero -> true ; suc k | r -> (r, r) } ;
+tadd : (k : Nat) -> Tab k -> Tab k -> Tab k = split {
+ zero -> BR.xor ; suc k | r -> \ u v -> (r u.1 v.1, r u.2 v.2) } ;
+tmul : (k : Nat) -> Tab k -> Tab k -> Tab k = split {
+ zero -> BR.and ; suc k | r -> \ u v -> (r u.1 v.1, r u.2 v.2) } ;
+
+tadd-assoc : (k : Nat) (x y w : Tab k) -> Id (Tab k) (tadd k x (tadd k y w)) (tadd k (tadd k x y) w) = split {
+ zero -> BR.xor-assoc ; suc k | r -> \ x y w -> pair-path (r x.1 y.1 w.1) (r x.2 y.2 w.2) } ;
+tadd-comm : (k : Nat) (x y : Tab k) -> Id (Tab k) (tadd k x y) (tadd k y x) = split {
+ zero -> BR.xor-comm ; suc k | r -> \ x y -> pair-path (r x.1 y.1) (r x.2 y.2) } ;
+tadd-zero : (k : Nat) (x : Tab k) -> Id (Tab k) (tadd k x (tzero k)) x = split {
+ zero -> BR.xor-false ; suc k | r -> \ x -> pair-path (r x.1) (r x.2) } ;
+tadd-self : (k : Nat) (x : Tab k) -> Id (Tab k) (tadd k x x) (tzero k) = split {
+ zero -> BR.xor-self ; suc k | r -> \ x -> pair-path (r x.1) (r x.2) } ;
+tmul-assoc : (k : Nat) (x y w : Tab k) -> Id (Tab k) (tmul k x (tmul k y w)) (tmul k (tmul k x y) w) = split {
+ zero -> BR.and-assoc ; suc k | r -> \ x y w -> pair-path (r x.1 y.1 w.1) (r x.2 y.2 w.2) } ;
+tmul-comm : (k : Nat) (x y : Tab k) -> Id (Tab k) (tmul k x y) (tmul k y x) = split {
+ zero -> BR.and-comm ; suc k | r -> \ x y -> pair-path (r x.1 y.1) (r x.2 y.2) } ;
+tmul-one : (k : Nat) (x : Tab k) -> Id (Tab k) (tmul k x (tone k)) x = split {
+ zero -> BR.and-true ; suc k | r -> \ x -> pair-path (r x.1) (r x.2) } ;
+tdist : (k : Nat) (x y w : Tab k) -> Id (Tab k) (tmul k x (tadd k y w)) (tadd k (tmul k x y) (tmul k x w)) = split {
+ zero -> BR.and-xor ; suc k | r -> \ x y w -> pair-path (r x.1 y.1 w.1) (r x.2 y.2 w.2) } ;
+tmul-idem : (k : Nat) (x : Tab k) -> Id (Tab k) (tmul k x x) x = split {
+ zero -> BR.and-self ; suc k | r -> \ x -> pair-path (r x.1) (r x.2) } ;
+tab-set : (k : Nat) -> Pr.isSet (Tab k) = split {
+ zero -> BR.bool-set ; suc k | r -> Pr.isSet-Sigma (Tab k) (\ u -> Tab k) r (\ u -> r) } ;
+
+tring (k : Nat) : CRing = mkCRing (Tab k) (tzero k) (tone k) (tadd k) (tmul k) (\ x -> x)
+ (tadd-assoc k) (tadd-comm k) (tadd-zero k) (tadd-self k) (tmul-assoc k) (tmul-comm k) (tmul-one k) (tdist k) ;
+free (k : Nat) : BR.BA = BR.mkBA (tring k) (tab-set k) (tmul-idem k) ;
+
+-- the generators: x0 = (0, 1), and x(i+1) = incl xi
+incl (k : Nat) (u : Tab k) : Tab (suc k) = (u, u) ;
+gen : (k : Nat) -> FC.Fin k -> Tab k = split {
+ zero -> Pr.absurd (Tab zero) ;
+ suc k | r -> split { none -> (tzero k, tone k) ; some i -> incl k (r i) } } ;
+
+incl-hom (k : Nat) : BR.Hom (free k) (free (suc k)) =
+ (incl k, refl (tone (suc k)), \ u v -> refl (incl k (tadd k u v)), \ u v -> refl (incl k (tmul k u v))) ;
+
+-- every element is the Shannon combination of its two halves at x0
+module Decomp (k : Nat) {
+ module L = RL[tring k] ;
+ module BL = BR.Laws[tring k, tmul-idem k] ;
+ module BL1 = BR.Laws[tring (suc k), tmul-idem (suc k)] ;
+ low (u0 u1 : Tab k) :
+  Id (Tab k) (tadd k (tmul k u0 (tadd k (tone k) (tzero k))) (tmul k u1 (tzero k))) u0 =
+  trans (BL.add-cong (trans (ap (tmul k u0) (tadd-zero k (tone k))) (tmul-one k u0)) (L.mul-zero u1))
+   (tadd-zero k u0) ;
+ high (u0 u1 : Tab k) :
+  Id (Tab k) (tadd k (tmul k u0 (tadd k (tone k) (tone k))) (tmul k u1 (tone k))) u1 =
+  trans (BL.add-cong (trans (ap (tmul k u0) (tadd-self k (tone k))) (L.mul-zero u0)) (tmul-one k u1))
+   (L.zl u1) ;
+ decomp (u : Tab (suc k)) : Id (Tab (suc k)) u (BL1.shannon (gen (suc k) none) (incl k u.1) (incl k u.2)) =
+  sym (pair-path (low u.1 u.2) (high u.1 u.2)) ;
+} ;
+
+module Into (B : BR.BA) {
+ module BL = BR.Laws[B.ring, B.idem] ;
+ module L = RL[B.ring] ;
+
+ ext : (k : Nat) -> (FC.Fin k -> B.ring.R) -> Tab k -> B.ring.R = split {
+  zero -> \ g b -> BR.ite B.ring.R b B.ring.o B.ring.z ;
+  suc k | r -> \ g u -> BL.shannon (g none) (r (\ i -> g (some i)) u.1) (r (\ i -> g (some i)) u.2) } ;
+
+ ite-xor : (b c : Bool) -> Id B.ring.R (BR.ite B.ring.R (BR.xor b c) B.ring.o B.ring.z)
+   (B.ring.add (BR.ite B.ring.R b B.ring.o B.ring.z) (BR.ite B.ring.R c B.ring.o B.ring.z)) = split {
+  true -> split { true -> sym (BL.char2 B.ring.o) ; false -> sym (B.ring.addZ B.ring.o) } ;
+  false -> \ c -> sym (L.zl (BR.ite B.ring.R c B.ring.o B.ring.z)) } ;
+ ite-and : (b c : Bool) -> Id B.ring.R (BR.ite B.ring.R (BR.and b c) B.ring.o B.ring.z)
+   (B.ring.mul (BR.ite B.ring.R b B.ring.o B.ring.z) (BR.ite B.ring.R c B.ring.o B.ring.z)) = split {
+  true -> \ c -> sym (L.one-left (BR.ite B.ring.R c B.ring.o B.ring.z)) ;
+  false -> \ c -> sym (L.zero-mul (BR.ite B.ring.R c B.ring.o B.ring.z)) } ;
+
+ ext-one : (k : Nat) (g : FC.Fin k -> B.ring.R) -> Id B.ring.R (ext k g (tone k)) B.ring.o = split {
+  zero -> \ g -> refl B.ring.o ;
+  suc k | r -> \ g -> trans (ap (\ t -> BL.shannon (g none) t t) (r (\ i -> g (some i))))
+   (BL.sh-same (g none) B.ring.o) } ;
+ ext-add : (k : Nat) (g : FC.Fin k -> B.ring.R) (u v : Tab k) ->
+   Id B.ring.R (ext k g (tadd k u v)) (B.ring.add (ext k g u) (ext k g v)) = split {
+  zero -> \ g -> ite-xor ;
+  suc k | r -> \ g u v -> trans
+   (ap (\ t -> BL.shannon (g none) t.1 t.2)
+     (pair-path (r (\ i -> g (some i)) u.1 v.1) (r (\ i -> g (some i)) u.2 v.2)))
+   (BL.sh-add (g none) (ext k (\ i -> g (some i)) u.1) (ext k (\ i -> g (some i)) u.2)
+     (ext k (\ i -> g (some i)) v.1) (ext k (\ i -> g (some i)) v.2)) } ;
+ ext-mul : (k : Nat) (g : FC.Fin k -> B.ring.R) (u v : Tab k) ->
+   Id B.ring.R (ext k g (tmul k u v)) (B.ring.mul (ext k g u) (ext k g v)) = split {
+  zero -> \ g -> ite-and ;
+  suc k | r -> \ g u v -> trans
+   (ap (\ t -> BL.shannon (g none) t.1 t.2)
+     (pair-path (r (\ i -> g (some i)) u.1 v.1) (r (\ i -> g (some i)) u.2 v.2)))
+   (BL.sh-mul (g none) (ext k (\ i -> g (some i)) u.1) (ext k (\ i -> g (some i)) u.2)
+     (ext k (\ i -> g (some i)) v.1) (ext k (\ i -> g (some i)) v.2)) } ;
+
+ extend (k : Nat) (g : FC.Fin k -> B.ring.R) : BR.Hom (free k) B =
+  (ext k g, ext-one k g, ext-add k g, ext-mul k g) ;
+
+ ext-gen : (k : Nat) (g : FC.Fin k -> B.ring.R) (i : FC.Fin k) ->
+   Id B.ring.R (ext k g (gen k i)) (g i) = split {
+  zero -> \ g -> FC.fin-zero (\ i -> Id B.ring.R (ext zero g (gen zero i)) (g i)) ;
+  suc k | r -> \ g -> split {
+   none -> trans (ap (\ t -> BL.shannon (g none) t.1 t.2)
+      (pair-path (H.zero (tring k) B.ring (extend k (\ i -> g (some i)))) (ext-one k (\ i -> g (some i)))))
+    (BL.sh-gen (g none)) ;
+   some i -> trans (BL.sh-same (g none) (ext k (\ i -> g (some i)) (gen k i))) (r (\ i -> g (some i)) i) } } ;
+
+ -- the generators of the values on gen
+ values (k : Nat) (psi : BR.Hom (free k) B) (i : FC.Fin k) : B.ring.R = psi.1 (gen k i) ;
+
+ unique : (k : Nat) (psi : BR.Hom (free k) B) (u : Tab k) ->
+   Id B.ring.R (psi.1 u) (ext k (values k psi) u) = split {
+  zero -> \ psi -> split { true -> psi.2.1 ; false -> H.zero (tring zero) B.ring psi } ;
+  suc k | r -> \ psi u ->
+   calc B.ring.R { psi.1 u
+    =< ap psi.1 (Decomp[k].decomp u)
+    > psi.1 (Decomp[k].BL1.shannon (gen (suc k) none) (incl k u.1) (incl k u.2))
+    =< BR.HomLaws[free (suc k), B, psi].shannon (gen (suc k) none) (incl k u.1) (incl k u.2)
+    > BL.shannon (psi.1 (gen (suc k) none)) (psi.1 (incl k u.1)) (psi.1 (incl k u.2))
+    =< ap (\ t -> BL.shannon (psi.1 (gen (suc k) none)) t.1 t.2)
+         (pair-path (r (H.compose (tring k) (tring (suc k)) B.ring psi (incl-hom k)) u.1)
+                    (r (H.compose (tring k) (tring (suc k)) B.ring psi (incl-hom k)) u.2))
+    > ext (suc k) (values (suc k) psi) u } } ;
+
+ -- Hom(2[Fin k], B) = B^k
+ universal (k : Nat) : Pr.Equiv (BR.Hom (free k) B) (FC.Fin k -> B.ring.R) =
+  (values k, Pr.qinv (BR.Hom (free k) B) (FC.Fin k -> B.ring.R) (values k) (extend k)
+   (\ g -> F.funext (FC.Fin k) (\ i -> B.ring.R) (values k (extend k g)) g (ext-gen k g))
+   (\ psi -> H.Properties[tring k, B.ring, B.set].ext (extend k (values k psi)) psi
+     (\ u -> sym (unique k psi u)))) ;
+} ;

@@ -1,0 +1,316 @@
+-- SSD Corollary 3.7: for a sequence of finite sets E n with S = lim E,
+-- N^S is the sequential colimit of the N^(E n).  The map from the colimit
+-- sends g : E n -> N to g o pi_n.
+--
+-- Proof (Lemmas 3.5 and 3.6 are folded in).  Fix enumerations of the E n
+-- (countable choice); S is then the set of zeros of the relations rel of
+-- LimCode, i.e. the spectrum of B = 2[N]/(rel) (Lemma32).
+--  Injective.  Raise both to a common stage N; so let g, g' : E N -> N with
+--    g o pi_N = g' o pi_N.  The element d of 2[N]: "the block N codes some y
+--    with g y /= g' y" reads only block N, and vanishes at every zero of rel
+--    (such a zero codes a point of S).  By Axiom 1, [d] = 0 in B, so
+--    d <= J K for some K.  For y : E (K + N), the code encF (K + N) y of the
+--    finite chain below y satisfies the relations below K, so J K vanishes
+--    there and so does d: g and g' agree on the image of y in E N.  Thus
+--    g and g' agree after K steps, and are equal in the colimit.
+--  Surjective.  Let f : S -> N.  By Axiom 1 the decidable subsets
+--    {f = j} are evaluations at elements of B; choose (countable choice)
+--    representatives b j in 2[N] with truth tables.  (Lemma 3.6) The algebra
+--    2[N]/(rel, b) has no point (a point is a point x of S with
+--    b (f x) (x) = 0, but it is 1), so by Lemma 1.12 some J K is 1 in 2[N];
+--    at the code of x some generator below K is 1, so f x < K.  (Lemma 3.5)
+--    With M bounding the sizes of the truth tables of b 0 .. b (K-1), each
+--    b j at the code of x only reads positions <= M, where it agrees with
+--    encF M (x M); so  g y = the first j < K with b j (encF M y) = 1  is a
+--    map E M -> N with g o pi_M = f.
+level l k ;
+open Base ; open Logic[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module BR = BooleanRing[l] ;
+module FC = FinChoice[l] ;
+module FN = FreeCountable[l] ;
+module P = Presented[l] ;
+module TP = TwoPresented[l] ;
+module NO = NatOrder[l] ;
+module NA = NatArith[l] ;
+module BF = BinfFacts[l] ;
+module BS = BoolSeq[l] ;
+module FB = FinBool[l] ;
+module Tb = Tabulate[l] ;
+module Fi = Finite[l] ;
+module FCl = FiniteClosure[l] ;
+module DCh = DependentChoice[l] ;
+module SC = SeqColim[l] ;
+module LC = LimCode[l] ;
+module FCo = FiniteCode[l] ;
+module SA = StoneAxioms[l,k] ;
+module L32 = Lemma32[l,k] ;
+
+-- bounds
+lt-max-l : (a b : Nat) -> NO.Lt a (suc (FN.max a b)) = split {
+ zero -> \ b -> NO.lt-zero-suc (FN.max zero b) ;
+ suc a | r -> split { zero -> NO.lt-suc (suc a) ; suc b -> NO.lt-suc-suc a (suc (FN.max a b)) (r b) } } ;
+lt-max-r : (a b : Nat) -> NO.Lt b (suc (FN.max a b)) = split {
+ zero -> \ b -> NO.lt-suc b ;
+ suc a | r -> split { zero -> NO.lt-zero-suc (suc a) ; suc b -> NO.lt-suc-suc b (suc (FN.max a b)) (r b) } } ;
+mx (f : Nat -> Nat) : Nat -> Nat = split { zero -> zero ; suc K | m -> FN.max m (f K) } ;
+mx-case (f : Nat -> Nat) (K j : Nat) (r : NO.Lt j K -> NO.Lt (f j) (suc (mx f K))) :
+  Plus (NO.Lt j K) (Id Nat j K) -> NO.Lt (f j) (suc (mx f (suc K))) = split {
+ inl h -> NO.le-lt-trans (f j) (mx f K) (suc (mx f (suc K))) (r h) (lt-max-l (mx f K) (f K)) ;
+ inr q -> subst (\ i -> NO.Lt (f i) (suc (mx f (suc K)))) (sym q) (lt-max-r (mx f K) (f K)) } ;
+mx-bound (f : Nat -> Nat) : (K j : Nat) -> NO.Lt j K -> NO.Lt (f j) (suc (mx f K)) = split {
+ zero -> \ j h -> Pr.absurd (NO.Lt (f j) (suc zero)) (NO.not-lt-zero j h) ;
+ suc K | r -> \ j h -> mx-case f K j (r j) (NO.lt-pred j K h) } ;
+-- the first j < K with h j = 1
+find : (K : Nat) -> (Nat -> Bool) -> Nat = split {
+ zero -> \ h -> zero ;
+ suc K | r -> \ h -> BR.ite Nat (h zero) zero (suc (r (\ j -> h (suc j)))) } ;
+find-delta : (K v : Nat) -> NO.Lt v K -> Id Nat (find K (NO.delta v)) v = split {
+ zero -> \ v h -> Pr.absurd (Id Nat zero v) (NO.not-lt-zero v h) ;
+ suc K | r -> split {
+  zero -> \ h -> refl zero ;
+  suc v -> \ h -> ap (\ j -> suc j) (r v (NO.lt-pred-suc v K h)) } } ;
+
+find-ext : (K : Nat) (h h' : Nat -> Bool) -> ((j : Nat) -> NO.Lt j K -> Id Bool (h j) (h' j)) ->
+  Id Nat (find K h) (find K h') = split {
+ zero -> \ h h' e -> refl zero ;
+ suc K | r -> \ h h' e -> FN.cong2 (\ b n -> BR.ite Nat b zero (suc n)) (e zero (NO.lt-zero-suc K))
+   (r (\ j -> h (suc j)) (\ j -> h' (suc j)) (\ j lt -> e (suc j) (NO.lt-suc-suc j K lt))) } ;
+lt-dbl (j : Nat) : NO.Lt j (suc (NO.dbl j)) =
+ subst (\ m -> NO.Lt j (suc m)) (sym (NO.dbl-plus j))
+  (subst (NO.Lt j) (NA.plus-suc j j) (NO.lt-plus j (suc j) (NO.lt-suc j) j)) ;
+
+-- the sequence of the N^(E n), and the map to N^S
+module Maps (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) {
+ seq : SC.Seq = SC.mkSeq (\ n -> E n -> Nat) (\ n g y -> g (p n y)) ;
+ module CN = SC.Colim[seq] ;
+ Lim : U l = DCh.Lim E p ;
+ fun-set : Pr.isSet (Lim -> Nat) = F.isSet-Pi Lim (\ x -> Nat) (\ x -> NA.nat-set) ;
+ restrict (n : Nat) (g : E n -> Nat) (x : Lim) : Nat = g (x.1 n) ;
+ cocone : CN.Cocone[Lim -> Nat] = CN.mkCocone (Lim -> Nat) restrict (\ n g ->
+  F.funext Lim (\ x -> Nat) (restrict (suc n) (\ y -> g (p n y))) (restrict n g) (\ x -> ap g (x.2 n))) ;
+ module R = CN.Rec[Lim -> Nat, fun-set, cocone] ;
+ phi (u : CN.colim) : Lim -> Nat = R.map u ;
+ -- d steps of the sequence are composition with the d maps p
+ shift-down (N : Nat) (g : E N -> Nat) : (d : Nat) (y : E (NA.plus d N)) ->
+   Id Nat (CN.shift d N g y) (g (FCo.down E p N d y)) =
+  split { zero -> \ y -> refl (g y) ; suc d | r -> \ y -> r (p (NA.plus d N) y) } ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+ module SD = StoneDuality[l,k].Over[ax] ;
+ module Setting (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (fin : (n : Nat) -> Fi.isFinite (E n))
+   (w : (n : Nat) -> Fi.FinEquiv (E n)) {
+  module M = Maps[E, p] ;
+  module En = L32.Enumerated[E, p, fin, w] ;
+  module C = En.C ;
+  module Ch = FCo.Chains[E, p, \ n -> (w n).1, \ n -> (w n).2, \ n -> FCl.finite-set (E n) (fin n)] ;
+  module G = P.Generated[FN.free, C.rel] ;
+  Bw : P.Booleω = TP.presented-booleω C.rel ;
+
+  -- every zero of the relations is the code of its point
+  zero-code (a : Nat -> Bool) (z : C.Zeros a) : Id (Nat -> Bool) a (C.enc (C.from (a, z))) =
+   sym (ap (\ u -> u.1) (C.to-from (a, z))) ;
+  -- an element vanishing at all zeros is in the ideal (Axiom 1)
+  vanish-ideal (y : FN.Elem) (h : (a : Nat -> Bool) (z : C.Zeros a) -> Id Bool (y.1 a) false) : G.Ideal y =
+   subst G.Ideal (FN.ring.addZ y) (G.Q.Q.effective y FN.ezero
+    (Equivalences[l].injective G.Q.Carrier (P.Sp Bw.1 -> Bool) (SA.evaluation Bw.1) (ax.duality Bw) (G.Q.include y) G.Q.zeroQ
+     (F.funext (P.Sp Bw.1) (\ s -> Bool) (SA.evaluation Bw.1 (G.Q.include y)) (SA.evaluation Bw.1 G.Q.zeroQ) (\ s ->
+       trans (P.sp-value C.rel s y)
+        (trans (h (\ m -> s.1 (G.Q.include (FN.gen m))) ((P.sp-presented C.rel).1 s).2)
+         (sym (H.zero G.Q.ring BR.two-ring s))))))) ;
+  -- J K vanishes where the relations below K do
+  J-zero (a : Nat -> Bool) (K : Nat) (h : (j : Nat) -> NO.Lt j K -> Id Bool (C.relation j a) false) :
+    Id Bool ((G.J K).1 a) false =
+   trans (BS.J-bor C.rel a K) (BS.bor-false K (\ i -> (C.rel i).1 a) h) ;
+  below-zero (y : FN.Elem) (K : Nat) (leq : Id FN.Elem (FN.emul y (G.J K)) y) (a : Nat -> Bool)
+    (h : (j : Nat) -> NO.Lt j K -> Id Bool (C.relation j a) false) : Id Bool (y.1 a) false =
+   trans (sym (ap (\ x -> x.1 a) leq)) (trans (ap (BR.and (y.1 a)) (J-zero a K h)) (TP.and-false (y.1 a))) ;
+  -- the relations below K hold at the code of a chain of length K + N
+  chain-zeros (K N : Nat) (y : E (NA.plus K N)) (j : Nat) (h : NO.Lt j K) : Id Bool (C.relation j (Ch.encF (NA.plus K N) y)) false =
+   Ch.finite-zeros (NA.plus K N) y j (subst (NO.Lt j) (NA.plus-comm N K) (NO.lt-plus j K h N)) ;
+
+  -- injectivity at one stage N
+  -- compactness: a decidable subset D of E N missing the limit is empty
+  -- after finitely many steps
+  module Vanish (N : Nat) (D : E N -> Bool) (miss : (x : M.Lim) -> Id Bool (D (x.1 N)) false) {
+   R (a : Nat -> Bool) : Bool = FB.anyFin (w N).1 (\ i -> BR.and (C.blk N a (some i)) (D (C.dec N i))) ;
+   loc : Tb.Local (C.L.start (suc N)) R = \ a b h ->
+    ap (\ v -> FB.anyFin (w N).1 (\ i -> BR.and (v (some i)) (D (C.dec N i))))
+     (C.blk-eq N (C.L.start (suc N)) a b h (\ j -> C.L.pos-lt N (FN.index (suc (w N).1) j) (TP.index-lt (suc (w N).1) j))) ;
+   d : FN.Elem = Tb.local-elem (C.L.start (suc N)) R loc ;
+   -- at the code of a point, R vanishes
+   R-term (x : M.Lim) (i : FC.Fin (w N).1) :
+     Plus (Id Bool (C.ohv N (x.1 N) (some i)) true) (Id Bool (C.ohv N (x.1 N) (some i)) false) ->
+     Id Bool (BR.and (C.ohv N (x.1 N) (some i)) (D (C.dec N i))) false = split {
+    inl t -> trans (ap (BR.and (C.ohv N (x.1 N) (some i)))
+       (trans (ap (\ j -> D (C.dec N j)) (C.oh-some N (x.1 N) i t)) (trans (ap D (C.dec-enc N (x.1 N))) (miss x))))
+      (TP.and-false (C.ohv N (x.1 N) (some i))) ;
+    inr f -> ap (\ b -> BR.and b (D (C.dec N i))) f } ;
+   R-enc (x : M.Lim) : Id Bool (R (C.enc x)) false =
+    trans (ap (\ v -> FB.anyFin (w N).1 (\ i -> BR.and (v (some i)) (D (C.dec N i)))) (C.blk-enc x N))
+     (FB.any-false (w N).1 (\ i -> BR.and (C.ohv N (x.1 N) (some i)) (D (C.dec N i)))
+       (\ i -> R-term x i (TP.bool-cases (C.ohv N (x.1 N) (some i))))) ;
+   ideal : G.Ideal d = vanish-ideal d (\ a z -> trans (ap R (zero-code a z)) (R-enc (C.from (a, z)))) ;
+   R-chain (K : Nat) (y : E (NA.plus K N)) (t : Id Bool (D (FCo.down E p N K y)) true) :
+     Id Bool (R (Ch.encF (NA.plus K N) y)) true =
+    trans (ap (\ v -> FB.anyFin (w N).1 (\ i -> BR.and (v (some i)) (D (C.dec N i)))) (Ch.blk-down N K y))
+     (FB.any-intro (w N).1 (\ i -> BR.and (C.ohv N (FCo.down E p N K y) (some i)) (D (C.dec N i)))
+       (C.enc-el N (FCo.down E p N K y))
+       (FN.cong2 BR.and (C.oh-at N (FCo.down E p N K y)) (trans (ap D (C.dec-enc N (FCo.down E p N K y))) t))) ;
+   later-case (K : Nat) (leq : Id FN.Elem (FN.emul d (G.J K)) d) (y : E (NA.plus K N)) :
+     Plus (Id Bool (D (FCo.down E p N K y)) true) (Id Bool (D (FCo.down E p N K y)) false) ->
+     Id Bool (D (FCo.down E p N K y)) false = split {
+    inl t -> Pr.absurd (Id Bool (D (FCo.down E p N K y)) false)
+      (NO.false-true (trans (sym (below-zero d K leq (Ch.encF (NA.plus K N) y) (chain-zeros K N y))) (R-chain K y t))) ;
+    inr f -> f } ;
+   Later : U l = (K : Nat) * ((y : E (NA.plus K N)) -> Id Bool (D (FCo.down E p N K y)) false) ;
+   later : T.Trunc[Later].carrier =
+    TC.map (G.Below d) Later (\ b -> (b.1, \ y -> later-case b.1 b.2 y (TP.bool-cases (D (FCo.down E p N b.1 y))))) ideal ;
+  } ;
+
+  -- injectivity at one stage N
+  module Same (N : Nat) (g g' : E N -> Nat) (e : (x : M.Lim) -> Id Nat (g (x.1 N)) (g' (x.1 N))) {
+   D (y : E N) : Bool = BR.not (NO.delta (g' y) (g y)) ;
+   D-point (x : M.Lim) : Id Bool (D (x.1 N)) false =
+    trans (ap (\ v -> BR.not (NO.delta (g' (x.1 N)) v)) (e x)) (ap BR.not (NO.delta-self (g' (x.1 N)))) ;
+   module V = Vanish[N, D, D-point] ;
+   meet (l : V.Later) : Id M.CN.colim (M.CN.inc N g) (M.CN.inc N g') =
+    M.CN.meets (N, g) (N, g') (T.Trunc[M.CN.Meet[(N, g), (N, g')]].inc (M.CN.mkMeet (N, g) (N, g') l.1 l.1
+     (ap (\ h -> (NA.plus l.1 N, h)) (F.funext (E (NA.plus l.1 N)) (\ y -> Nat) (M.CN.shift l.1 N g) (M.CN.shift l.1 N g') (\ y ->
+       trans (M.shift-down N g l.1 y)
+        (trans (NO.delta-eq (g' (FCo.down E p N l.1 y)) (g (FCo.down E p N l.1 y))
+                 (LC.not-false (NO.delta (g' (FCo.down E p N l.1 y)) (g (FCo.down E p N l.1 y))) (l.2 y)))
+         (sym (M.shift-down N g' l.1 y)))))))) ;
+   same : Id M.CN.colim (M.CN.inc N g) (M.CN.inc N g') =
+    TC.rec V.Later @l (Id M.CN.colim (M.CN.inc N g) (M.CN.inc N g')) (M.CN.set _ _) meet V.later ;
+  } ;
+
+  injective : Bijection[l].Injective M.phi = M.CN.injective-on-inc (M.Lim -> Nat) M.phi (\ n g n' g' e ->
+   calc M.CN.colim { M.CN.inc n g
+    =< sym (M.CN.inc-raise n (NA.plus n' n) (NA.le-sum-r n n') g)
+    > M.CN.inc (NA.plus n' n) (M.CN.raise n (NA.plus n' n) (NA.le-sum-r n n') g)
+    =< Same[NA.plus n' n, M.CN.raise n (NA.plus n' n) (NA.le-sum-r n n') g, M.CN.raise n' (NA.plus n' n) (NA.le-sum-l n n') g',
+         \ x -> Pr.happly M.Lim (\ x -> Nat) _ _
+          (trans (sym (M.R.beta (NA.plus n' n) (M.CN.raise n (NA.plus n' n) (NA.le-sum-r n n') g)))
+           (trans (ap M.phi (M.CN.inc-raise n (NA.plus n' n) (NA.le-sum-r n n') g))
+            (trans e (trans (sym (ap M.phi (M.CN.inc-raise n' (NA.plus n' n) (NA.le-sum-l n n') g')))
+             (M.R.beta (NA.plus n' n) (M.CN.raise n' (NA.plus n' n) (NA.le-sum-l n n') g')))))) x].same
+    > M.CN.inc (NA.plus n' n) (M.CN.raise n' (NA.plus n' n) (NA.le-sum-l n n') g')
+    =< M.CN.inc-raise n' (NA.plus n' n) (NA.le-sum-l n n') g' > M.CN.inc n' g' }) ;
+
+  -- surjectivity
+  module Onto (f : M.Lim -> Nat) {
+   pointOf (s : P.Sp Bw.1) : M.Lim = C.from ((P.sp-presented C.rel).1 s) ;
+   chi (j : Nat) (s : P.Sp Bw.1) : Bool = NO.delta (f (pointOf s)) j ;
+   bj (j : Nat) : G.Q.Carrier = (ax.duality Bw).sec (chi j) ;
+   bj-at (j : Nat) (s : P.Sp Bw.1) : Id Bool (s.1 (bj j)) (chi j s) =
+    Pr.happly (P.Sp Bw.1) (\ s -> Bool) _ _ ((ax.duality Bw).sec-eq (chi j)) s ;
+   Rp (j : Nat) : U l = (x : FN.Elem) * Id G.Q.Carrier (G.Q.include x) (bj j) * FN.Rep x.1 ;
+   rp-mere (j : Nat) : T.Trunc[Rp j].carrier =
+    TC.bind ((x : FN.Elem) * Id G.Q.Carrier (G.Q.include x) (bj j)) (Rp j)
+     (\ u -> TC.map (FN.Rep u.1.1) (Rp j) (\ r -> (u.1, u.2, r)) u.1.2) (G.Q.representative (bj j)) ;
+
+   module WithReps (rho : (j : Nat) -> Rp j) {
+    b (j : Nat) : FN.Elem = (rho j).1 ;
+    -- the point of the spectrum at a zero a is the point read off a
+    point-same (a : Nat -> Bool) (z : C.Zeros a) : Id M.Lim (pointOf (P.Point[C.rel, a, z].point)) (C.from (a, z)) =
+     ap C.from {(P.sp-presented C.rel).1 (P.Point[C.rel, a, z].point)} {(a, z)}
+      (Pr.Sigma-eq (Nat -> Bool) C.Zeros ((P.sp-presented C.rel).1 (P.Point[C.rel, a, z].point)).1 a
+       ((P.sp-presented C.rel).1 (P.Point[C.rel, a, z].point)).2 z
+       (F.funext Nat (\ m -> Bool) ((P.sp-presented C.rel).1 (P.Point[C.rel, a, z].point)).1 a
+         (\ m -> P.Point[C.rel, a, z].value (FN.gen m))) (C.zeros-prop a)) ;
+    -- at a zero, b j is the indicator of f = j
+    b-at (a : Nat -> Bool) (z : C.Zeros a) (j : Nat) : Id Bool ((b j).1 a) (NO.delta (f (C.from (a, z))) j) =
+     calc Bool { (b j).1 a
+      =< sym (P.Point[C.rel, a, z].value (b j)) > (P.Point[C.rel, a, z].point).1 (G.Q.include (b j))
+      =< ap (P.Point[C.rel, a, z].point).1 (rho j).2.1 > (P.Point[C.rel, a, z].point).1 (bj j)
+      =< bj-at j (P.Point[C.rel, a, z].point) > chi j (P.Point[C.rel, a, z].point)
+      =< ap (\ x -> NO.delta (f x) j) (point-same a z) > NO.delta (f (C.from (a, z))) j } ;
+    b-enc (x : M.Lim) (j : Nat) : Id Bool ((b j).1 (C.enc x)) (NO.delta (f x) j) =
+     trans (b-at (C.enc x) (C.enc-zeros x) j) (ap (\ y -> NO.delta (f y) j) (C.from-to x)) ;
+
+    -- Lemma 3.6: f is bounded
+    t2 (i : Nat) : FN.Elem = NO.inter FN.Elem i C.rel b ;
+    B2 : P.Booleω = TP.presented-booleω t2 ;
+    module G2 = P.Generated[FN.free, t2] ;
+    rel-of (a : Nat -> Bool) (z2 : P.Zeros t2 a) : C.Zeros a = \ n ->
+     trans (sym (ap (\ y -> y.1 a) (NO.inter-even FN.Elem n C.rel b))) (z2 (NO.dbl n)) ;
+    jOf (a : Nat -> Bool) (z2 : P.Zeros t2 a) : Nat = f (C.from (a, rel-of a z2)) ;
+    no-point-at (a : Nat -> Bool) (z2 : P.Zeros t2 a) : Empty =
+     NO.false-true (calc Bool { false
+      =< sym (z2 (suc (NO.dbl (jOf a z2)))) > (t2 (suc (NO.dbl (jOf a z2)))).1 a
+      =< ap (\ y -> y.1 a) (NO.inter-odd FN.Elem (jOf a z2) C.rel b) > (b (jOf a z2)).1 a
+      =< b-at a (rel-of a z2) (jOf a z2) > NO.delta (jOf a z2) (jOf a z2)
+      =< NO.delta-self (jOf a z2) > true }) ;
+    no-point (s : P.Sp B2.1) : Empty = no-point-at ((P.sp-presented t2).1 s).1 ((P.sp-presented t2).1 s).2 ;
+    trivial : T.Trunc[(K : Nat) * Id FN.Elem (G2.J K) FN.eone].carrier =
+     G2.trivial (sym ((SD.lemma112 B2).2 no-point)) ;
+    bound-case (x : M.Lim) (K i : Nat) (lt : NO.Lt i K) (hi : Id Bool ((t2 i).1 (C.enc x)) true) :
+      Plus ((n : Nat) * Id Nat i (NO.dbl n)) ((n : Nat) * Id Nat i (suc (NO.dbl n))) -> NO.Lt (f x) K = split {
+     inl u -> Pr.absurd (NO.Lt (f x) K) (NO.false-true
+       (trans (sym (C.enc-zeros x u.1)) (trans (sym (ap (\ y -> y.1 (C.enc x)) (NO.inter-even FN.Elem u.1 C.rel b)))
+         (trans (ap (\ m -> (t2 m).1 (C.enc x)) (sym u.2)) hi)))) ;
+     inr u -> subst (\ j -> NO.Lt j K)
+       (NO.delta-eq (f x) u.1 (trans (sym (b-enc x u.1))
+         (trans (sym (ap (\ y -> y.1 (C.enc x)) (NO.inter-odd FN.Elem u.1 C.rel b))) (trans (ap (\ m -> (t2 m).1 (C.enc x)) (sym u.2)) hi))))
+       (NO.lt-trans u.1 (suc (NO.dbl u.1)) K (lt-dbl u.1) (subst (\ m -> NO.Lt m K) u.2 lt)) } ;
+    -- where J K is 1, some generator below K is 1
+    hit (K : Nat) (hK : Id FN.Elem (G2.J K) FN.eone) (x : M.Lim) :
+      (i : Nat) * NO.Lt i K * Id Bool ((t2 i).1 (C.enc x)) true =
+     BS.bor-true-inv K (\ i -> (t2 i).1 (C.enc x)) (trans (sym (BS.J-bor t2 (C.enc x) K)) (ap (\ y -> y.1 (C.enc x)) hK)) ;
+    bound-from (K : Nat) (hK : Id FN.Elem (G2.J K) FN.eone) (x : M.Lim) : NO.Lt (f x) K =
+     bound-case x K (hit K hK x).1 (hit K hK x).2.1 (hit K hK x).2.2 (NO.parity (hit K hK x).1) ;
+
+    -- Lemma 3.5: f factors through a finite stage
+    module Factor (K : Nat) (bound : (x : M.Lim) -> NO.Lt (f x) K) {
+     size (j : Nat) : Nat = (rho j).2.2.1 ;
+     Mx : Nat = mx size K ;
+     g (y : E Mx) : Nat = find K (\ j -> (b j).1 (Ch.encF Mx y)) ;
+     b-chain (x : M.Lim) (j : Nat) (lt : NO.Lt j K) : Id Bool ((b j).1 (Ch.encF Mx (x.1 Mx))) ((b j).1 (C.enc x)) =
+      FN.agree (b j) (rho j).2.2 (Ch.encF Mx (x.1 Mx)) (C.enc x) (\ i ->
+       trans (FN.res-index Bool (size j) (Ch.encF Mx (x.1 Mx)) i)
+        (trans (sym (Ch.enc-agree x Mx (FN.index (size j) i)
+           (NO.lt-trans (FN.index (size j) i) (size j) (suc Mx) (TP.index-lt (size j) i) (mx-bound size K j lt))))
+         (sym (FN.res-index Bool (size j) (C.enc x) i)))) ;
+     g-point (x : M.Lim) : Id Nat (g (x.1 Mx)) (f x) =
+      trans (find-ext K (\ j -> (b j).1 (Ch.encF Mx (x.1 Mx))) (NO.delta (f x)) (\ j lt -> trans (b-chain x j lt) (b-enc x j)))
+       (find-delta K (f x) (bound x)) ;
+     onto : (u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f =
+      (M.CN.inc Mx g, trans (M.R.beta Mx g) (F.funext M.Lim (\ x -> Nat) (M.restrict Mx g) f g-point)) ;
+    } ;
+    surj : T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].carrier =
+     TC.map ((K : Nat) * Id FN.Elem (G2.J K) FN.eone) ((u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f)
+      (\ kh -> Factor[kh.1, bound-from kh.1 kh.2].onto) trivial ;
+   } ;
+   surjective : T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].carrier =
+    TC.rec ((j : Nat) -> Rp j) @l (T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].carrier)
+     T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].proposition
+     (\ rho -> WithReps[rho].surj) (CountableChoice[l].cc (ax.dc @l) Rp rp-mere) ;
+  } ;
+ } ;
+
+ -- Corollary 3.7
+ module Cor37 (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (fin : (n : Nat) -> Fi.isFinite (E n)) {
+  module M = Maps[E, p] ;
+  enumerations : T.Trunc[(n : Nat) -> Fi.FinEquiv (E n)].carrier = CountableChoice[l].cc (ax.dc @l) (\ n -> Fi.FinEquiv (E n)) fin ;
+  injective-prop : Pr.isProp (Bijection[l].Injective M.phi) =
+   F.isProp-Pi M.CN.colim (\ u -> (v : M.CN.colim) -> Id (M.Lim -> Nat) (M.phi u) (M.phi v) -> Id M.CN.colim u v) (\ u ->
+    F.isProp-Pi M.CN.colim (\ v -> Id (M.Lim -> Nat) (M.phi u) (M.phi v) -> Id M.CN.colim u v) (\ v ->
+     F.isProp-Pi (Id (M.Lim -> Nat) (M.phi u) (M.phi v)) (\ q -> Id M.CN.colim u v) (\ q -> M.CN.set u v))) ;
+  injective : Bijection[l].Injective M.phi =
+   TC.rec ((n : Nat) -> Fi.FinEquiv (E n)) @l (Bijection[l].Injective M.phi) injective-prop
+    (\ w -> Setting[E, p, fin, w].injective) enumerations ;
+  surjective (f : M.Lim -> Nat) : T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].carrier =
+   TC.rec ((n : Nat) -> Fi.FinEquiv (E n)) @l (T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].carrier)
+    T.Trunc[(u : M.CN.colim) * Id (M.Lim -> Nat) (M.phi u) f].proposition
+    (\ w -> Setting[E, p, fin, w].Onto[f].surjective) enumerations ;
+  -- N^(lim E) is the colimit of the N^(E n)
+  equivalence : Pr.isEquiv M.CN.colim (M.Lim -> Nat) M.phi =
+   Bijection[l].Bij[M.CN.colim, M.Lim -> Nat, M.fun-set, M.phi, injective, surjective].equiv ;
+ } ;
+} ;

@@ -1,0 +1,74 @@
+-- Finite sets: merely equivalent to some Fin k (FinChoice.Fin).
+-- Finite choice (FinChoice.fc) carries over along the equivalence, and a
+-- map c : X -> Nat on a finite set is bounded: on Fin (suc k) by
+-- c none + (a bound of the rest).  Hence a "uniform stage": if for each x
+-- some stage n has Q x n, and Q x is upward closed, then one stage serves
+-- every x.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open FinChoice[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+FinEquiv (X : U l) : U l = (k : Nat) * Equiv X (Fin k) ;
+isFinite (X : U l) : U l = Tr.Trunc[FinEquiv X].carrier ;
+
+-- the inverse of e, and  e^-1 (e x) = x
+module Along (X : U l) (w : FinEquiv X) {
+  to (x : X) : Fin w.1 = w.2.1 x ;
+  from (i : Fin w.1) : X = w.2.2.sec i ;
+  from-to (x : X) : Id X (from (to x)) x = sec-ret X (Fin w.1) w.2.1 w.2.2 x ;
+} ;
+
+-- finite choice
+choice (X : U l) (fX : isFinite X) (P : X -> U l) (h : (x : X) -> Tr.Trunc[P x].carrier)
+  : Tr.Trunc[(x : X) -> P x].carrier =
+  TC.bind (FinEquiv X) ((x : X) -> P x) (\ w ->
+    TC.map ((i : Fin w.1) -> P (Along[X,w].from i)) ((x : X) -> P x)
+      (\ g x -> substH P (Along[X,w].from-to x) (g (Along[X,w].to x)))
+      (fc w.1 (\ i -> P (Along[X,w].from i)) (\ i -> h (Along[X,w].from i)))) fX ;
+
+-- bounds
+Bound (X : U l) (c : X -> Nat) : U l = (N : Nat) * ((x : X) -> Le (c x) N) ;
+-- c none + N bounds c when N bounds c on the rest
+bound-cons (k : Nat) (c : Fin (suc k) -> Nat) (b : Bound (Fin k) (\ i -> c (some i)))
+  : Bound (Fin (suc k)) c =
+  (plus (c none) b.1, combine k (\ i -> Le (c i) (plus (c none) b.1)) (le-sum-l b.1 (c none))
+     (\ i -> le-trans (c (some i)) b.1 (plus (c none) b.1) (b.2 i) (le-sum-r b.1 (c none)))) ;
+fin-bound : (k : Nat) (c : Fin k -> Nat) -> Bound (Fin k) c = split {
+  zero -> \ c -> (zero, fin-zero (\ i -> Le (c i) zero)) ;
+  suc k | r -> \ c -> bound-cons k c (r (\ i -> c (some i))) } ;
+bound (X : U l) (fX : isFinite X) (c : X -> Nat) : Tr.Trunc[Bound X c].carrier =
+  TC.map (FinEquiv X) (Bound X c) (\ w ->
+    ((fin-bound w.1 (\ i -> c (Along[X,w].from i))).1,
+     \ x -> substH (\ y -> Le (c y) (fin-bound w.1 (\ i -> c (Along[X,w].from i))).1)
+              (Along[X,w].from-to x) ((fin-bound w.1 (\ i -> c (Along[X,w].from i))).2 (Along[X,w].to x)))) fX ;
+
+-- one stage for every point of a finite set
+module Uniform (X : U l) (fX : isFinite X) (Q : X -> Nat -> U l)
+  (up : (x : X) (n a : Nat) -> Q x n -> Q x (plus a n)) {
+  at (x : X) (n N : Nat) (h : Le n N) (q : Q x n) : Q x N = substH (Q x) h.2 (up x n h.1 q) ;
+  stage (h : (x : X) -> Tr.Trunc[(n : Nat) * Q x n].carrier) : Tr.Trunc[(N : Nat) * ((x : X) -> Q x N)].carrier =
+    TC.bind ((x : X) -> (n : Nat) * Q x n) ((N : Nat) * ((x : X) -> Q x N)) (\ c ->
+      TC.map (Bound X (\ x -> (c x).1)) ((N : Nat) * ((x : X) -> Q x N))
+        (\ b -> (b.1, \ x -> at x (c x).1 b.1 (b.2 x) (c x).2))
+        (bound X fX (\ x -> (c x).1))) (choice X fX (\ x -> (n : Nat) * Q x n) h) ;
+} ;
+
+-- finite choice for large families (presentations live in U l+)
+module Up {
+  module T1 = Truncation[l+] ; module TC1 = TruncationCombinators[l+] ;
+  zero-up (P : Fin zero -> U l+) : (i : Fin zero) -> P i = split { } ;
+  combine-up (n : Nat) (P : Fin (suc n) -> U l+) (a : P none) (g : (i : Fin n) -> P (some i))
+    : (i : Fin (suc n)) -> P i = split { none -> a ; some i -> g i } ;
+  fc-up : (n : Nat) (P : Fin n -> U l+) -> ((i : Fin n) -> T1.Trunc[P i].carrier)
+       -> T1.Trunc[(i : Fin n) -> P i].carrier = split {
+    zero -> \ P h -> T1.Trunc[(i : Fin zero) -> P i].inc (zero-up P) ;
+    suc n | r -> \ P h ->
+      TC1.map2 (P none) ((i : Fin n) -> P (some i)) ((i : Fin (suc n)) -> P i) (combine-up n P)
+        (h none) (r (\ i -> P (some i)) (\ i -> h (some i))) } ;
+  choice-up (X : U l) (fX : isFinite X) (P : X -> U l+) (h : (x : X) -> T1.Trunc[P x].carrier)
+    : T1.Trunc[(x : X) -> P x].carrier =
+    TC.rec (FinEquiv X) @(l+) (T1.Trunc[(x : X) -> P x].carrier) (T1.Trunc[(x : X) -> P x].proposition) (\ w ->
+      TC1.map ((i : Fin w.1) -> P (Along[X,w].from i)) ((x : X) -> P x)
+        (\ g x -> Paths[l+].substH P (Along[X,w].from-to x) (g (Along[X,w].to x)))
+        (fc-up w.1 (\ i -> P (Along[X,w].from i)) (\ i -> h (Along[X,w].from i)))) fX ;
+} ;

@@ -1,0 +1,177 @@
+-- Boolean algebras as Boolean rings (DESIGN.md §4).
+--
+-- A Boolean algebra is a commutative ring in which every element is
+-- idempotent.  The lattice operations are
+--     x /\ y = x y ,   not x = 1 + x ,   x \/ y = x + y + x y ,
+--     x <= y  iff  x y = x ,
+-- and a morphism of Boolean algebras is a morphism of rings.  In a Boolean
+-- ring x + x = 0: expanding (x + x)^2 = x + x gives (x + x) + (x + x) = x + x.
+-- So -x = x, and x + y = 0 iff x = y.
+--
+-- The two-element algebra 2 is Bool with exclusive or and conjunction.
+level l ;
+open Base ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module H = RingHom[l] ;
+
+record BA {
+  ring : CRing ;
+  set : Pr.isSet ring.R ;
+  idem (x : ring.R) : Id ring.R (ring.mul x x) x ;
+} ;
+
+Hom (A B : BA) : U l = H.Hom A.ring B.ring ;
+
+-- the laws of a Boolean ring B, as Laws[B.ring, B.idem]
+module Laws (Rg : CRing) (idem : (x : Rg.R) -> Id Rg.R (Rg.mul x x) x) {
+ open Rg ;
+ module L = RL[Rg] ;
+
+ meet (x y : R) : R = mul x y ;
+ compl (x : R) : R = add o x ;
+ join (x y : R) : R = add (add x y) (mul x y) ;
+ Leq (x y : R) : U l = Id R (mul x y) x ;
+
+ -- (x + x) (x + x) = (x + x) + (x + x)
+ double-square (x : R) : Id R (mul (add x x) (add x x)) (add (add x x) (add x x)) =
+  calc R { mul (add x x) (add x x)
+   =< dist (add x x) x x > add (mul (add x x) x) (mul (add x x) x)
+   =< ap (\ t -> add t t) (L.dist-left x x x) > add (add (mul x x) (mul x x)) (add (mul x x) (mul x x))
+   =< ap (\ t -> add (add t t) (add t t)) (idem x) > add (add x x) (add x x) } ;
+
+ char2 (x : R) : Id R (add x x) z =
+  L.add-cancel (add x x) (add x x) (trans (sym (double-square x)) (idem (add x x))) ;
+
+ neg-id (x : R) : Id R (neg x) x = sym (L.neg-uniq x x (char2 x)) ;
+
+ -- x + y = 0 gives x = y
+ sum-zero (x y : R) (h : Id R (add x y) z) : Id R x y =
+  trans (sym (neg-id x)) (sym (L.neg-uniq x y h)) ;
+
+ add-cong {x x' y y' : R} (p : Id R x x') (q : Id R y y') : Id R (add x y) (add x' y') =
+  trans (ap (\ t -> add t y) p) (ap (add x') q) ;
+ mul-cong {x x' y y' : R} (p : Id R x x') (q : Id R y y') : Id R (mul x y) (mul x' y') =
+  trans (ap (\ t -> mul t y) p) (ap (mul x') q) ;
+
+ -- (1 + g) g = 0  and  (1 + g) + g = 1
+ compl-mul (g : R) : Id R (mul (compl g) g) z =
+  calc R { mul (add o g) g =< L.dist-left o g g > add (mul o g) (mul g g)
+   =< add-cong (L.one-left g) (idem g) > add g g
+   =< char2 g > z } ;
+ compl-add (g : R) : Id R (add (compl g) g) o =
+  calc R { add (add o g) g =< sym (addA o g g) > add o (add g g)
+   =< ap (add o) (char2 g) > add o z =< addZ o > o } ;
+
+ -- Shannon's combination  a (1 + g) + b g : the element equal to a where
+ -- g = 0 and to b where g = 1
+ shannon (g a b : R) : R = add (mul a (compl g)) (mul b g) ;
+
+ sh-same (g a : R) : Id R (shannon g a a) a =
+  calc R { add (mul a (compl g)) (mul a g) =< sym (dist a (compl g) g) > mul a (add (compl g) g)
+   =< ap (mul a) (compl-add g) > mul a o =< mulO a > a } ;
+ sh-gen (g : R) : Id R (shannon g z o) g =
+  calc R { add (mul z (compl g)) (mul o g) =< add-cong (L.zero-mul (compl g)) (L.one-left g) > add z g
+   =< L.zl g > g } ;
+ sh-add (g a b a' b' : R) :
+  Id R (shannon g (add a a') (add b b')) (add (shannon g a b) (shannon g a' b')) =
+  calc R { add (mul (add a a') (compl g)) (mul (add b b') g)
+   =< add-cong (L.dist-left a a' (compl g)) (L.dist-left b b' g)
+   > add (add (mul a (compl g)) (mul a' (compl g))) (add (mul b g) (mul b' g))
+   =< L.swap (mul a (compl g)) (mul a' (compl g)) (mul b g) (mul b' g)
+   > add (add (mul a (compl g)) (mul b g)) (add (mul a' (compl g)) (mul b' g)) } ;
+ -- the two halves of the product of two combinations
+ sh-mul-left (g a a' b' : R) :
+  Id R (mul (mul a (compl g)) (shannon g a' b')) (mul (mul a a') (compl g)) =
+  calc R { mul (mul a (compl g)) (add (mul a' (compl g)) (mul b' g))
+   =< dist (mul a (compl g)) (mul a' (compl g)) (mul b' g)
+   > add (mul (mul a (compl g)) (mul a' (compl g))) (mul (mul a (compl g)) (mul b' g))
+   =< add-cong (L.mul-four a (compl g) a' (compl g)) (L.mul-four a (compl g) b' g)
+   > add (mul (mul a a') (mul (compl g) (compl g))) (mul (mul a b') (mul (compl g) g))
+   =< add-cong (ap (mul (mul a a')) (idem (compl g))) (ap (mul (mul a b')) (compl-mul g))
+   > add (mul (mul a a') (compl g)) (mul (mul a b') z)
+   =< L.add-mulzero (mul (mul a a') (compl g)) (mul a b') > mul (mul a a') (compl g) } ;
+ sh-mul-right (g b a' b' : R) :
+  Id R (mul (mul b g) (shannon g a' b')) (mul (mul b b') g) =
+  calc R { mul (mul b g) (add (mul a' (compl g)) (mul b' g))
+   =< dist (mul b g) (mul a' (compl g)) (mul b' g)
+   > add (mul (mul b g) (mul a' (compl g))) (mul (mul b g) (mul b' g))
+   =< add-cong (L.mul-four b g a' (compl g)) (L.mul-four b g b' g)
+   > add (mul (mul b a') (mul g (compl g))) (mul (mul b b') (mul g g))
+   =< add-cong (ap (mul (mul b a')) (trans (mulC g (compl g)) (compl-mul g))) (ap (mul (mul b b')) (idem g))
+   > add (mul (mul b a') z) (mul (mul b b') g)
+   =< ap (\ t -> add t (mul (mul b b') g)) (L.mul-zero (mul b a')) > add z (mul (mul b b') g)
+   =< L.zl (mul (mul b b') g) > mul (mul b b') g } ;
+ sh-mul (g a b a' b' : R) :
+  Id R (shannon g (mul a a') (mul b b')) (mul (shannon g a b) (shannon g a' b')) =
+  sym (trans (L.dist-left (mul a (compl g)) (mul b g) (shannon g a' b'))
+   (add-cong (sh-mul-left g a a' b') (sh-mul-right g b a' b'))) ;
+
+ leq-refl (x : R) : Leq x x = idem x ;
+ leq-one (x : R) : Leq x o = mulO x ;
+ zero-leq (x : R) : Leq z x = L.zero-mul x ;
+} ;
+
+-- a morphism preserves complements and Shannon combinations
+module HomLaws (A B : BA) (h : Hom A B) {
+ module LA = Laws[A.ring, A.idem] ;
+ module LB = Laws[B.ring, B.idem] ;
+ compl (x : A.ring.R) : Id B.ring.R (h.1 (LA.compl x)) (LB.compl (h.1 x)) =
+  trans (h.2.2.1 A.ring.o x) (ap (\ t -> B.ring.add t (h.1 x)) h.2.1) ;
+ shannon (g a b : A.ring.R) :
+  Id B.ring.R (h.1 (LA.shannon g a b)) (LB.shannon (h.1 g) (h.1 a) (h.1 b)) =
+  trans (h.2.2.1 (A.ring.mul a (LA.compl g)) (A.ring.mul b g))
+   (LB.add-cong (trans (h.2.2.2 a (LA.compl g)) (ap (B.ring.mul (h.1 a)) (compl g))) (h.2.2.2 b g)) ;
+} ;
+
+------------------------------------------------------------------------
+-- 2 = Bool
+
+not : Bool -> Bool = split { true -> false ; false -> true } ;
+xor : Bool -> Bool -> Bool = split { true -> not ; false -> \ y -> y } ;
+and : Bool -> Bool -> Bool = split { true -> \ y -> y ; false -> \ y -> false } ;
+
+xor-assoc : (x y w : Bool) -> Id Bool (xor x (xor y w)) (xor (xor x y) w) = split {
+ true -> split {
+  true -> split { true -> refl true ; false -> refl false } ;
+  false -> \ w -> refl (not w) } ;
+ false -> \ y w -> refl (xor y w) } ;
+xor-comm : (x y : Bool) -> Id Bool (xor x y) (xor y x) = split {
+ true -> split { true -> refl false ; false -> refl true } ;
+ false -> split { true -> refl true ; false -> refl false } } ;
+xor-false : (x : Bool) -> Id Bool (xor x false) x = split {
+ true -> refl true ; false -> refl false } ;
+xor-self : (x : Bool) -> Id Bool (xor x x) false = split {
+ true -> refl false ; false -> refl false } ;
+and-assoc : (x y w : Bool) -> Id Bool (and x (and y w)) (and (and x y) w) = split {
+ true -> \ y w -> refl (and y w) ; false -> \ y w -> refl false } ;
+and-comm : (x y : Bool) -> Id Bool (and x y) (and y x) = split {
+ true -> split { true -> refl true ; false -> refl false } ;
+ false -> split { true -> refl false ; false -> refl false } } ;
+and-true : (x : Bool) -> Id Bool (and x true) x = split {
+ true -> refl true ; false -> refl false } ;
+and-xor : (x y w : Bool) -> Id Bool (and x (xor y w)) (xor (and x y) (and x w)) = split {
+ true -> \ y w -> refl (xor y w) ; false -> \ y w -> refl false } ;
+and-self : (x : Bool) -> Id Bool (and x x) x = split {
+ true -> refl true ; false -> refl false } ;
+
+-- Bool is a set: Hedberg with the code of equality
+code : Bool -> Bool -> U l = split {
+ true -> split { true -> Top ; false -> Empty } ;
+ false -> split { true -> Empty ; false -> Top } } ;
+code-prop : (x y : Bool) -> Pr.isProp (code x y) = split {
+ true -> split { true -> isTop ; false -> Pr.isProp-Empty } ;
+ false -> split { true -> Pr.isProp-Empty ; false -> isTop } } ;
+code-refl : (x : Bool) -> code x x = split { true -> tt ; false -> tt } ;
+decode : (x y : Bool) -> code x y -> Id Bool x y = split {
+ true -> split { true -> \ c -> refl true ; false -> Pr.absurd (Id Bool true false) } ;
+ false -> split { true -> Pr.absurd (Id Bool false true) ; false -> \ c -> refl false } } ;
+bool-set : Pr.isSet Bool = \ x ->
+ Pr.Hedberg[Bool,x,code x,code-prop x,code-refl x,decode x].hedberg ;
+
+ite (A : U l) : Bool -> A -> A -> A = split { true -> \ x y -> x ; false -> \ x y -> y } ;
+
+true-false (p : Id Bool true false) : Empty = subst (code true) p tt ;
+
+two-ring : CRing = mkCRing Bool false true xor and (\ x -> x)
+ xor-assoc xor-comm xor-false xor-self and-assoc and-comm and-true and-xor ;
+two : BA = mkBA two-ring bool-set and-self ;

@@ -1,0 +1,127 @@
+-- Strict order on Nat (Base.Nat; addition is NatArith's, worker B), decidable
+-- equality, the sequences delta k, doubling, interleaving and parity.
+--   m < k  iff  k = (d + 1) + m  for some d.
+level l ;
+open Base ; open Logic[l] ; open NatArith[l] ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module Lg = Logic[l] ;
+
+isSuc : Nat -> U l = split { zero -> Empty ; suc n -> Top } ;
+zero-not-suc (n : Nat) (p : Id Nat zero (suc n)) : Empty = subst isSuc (sym p) tt ;
+
+Lt (m k : Nat) : U l = (d : Nat) * Id Nat (plus (suc d) m) k ;
+lt-suc (m : Nat) : Lt m (suc m) = (zero, refl (suc m)) ;
+lt-step (m k : Nat) (h : Lt m k) : Lt m (suc k) = (suc h.1, ap (\ n -> suc n) h.2) ;
+lt-zero-suc (k : Nat) : Lt zero (suc k) = (k, ap (\ n -> suc n) (plus-zero k)) ;
+lt-suc-suc (m k : Nat) (h : Lt m k) : Lt (suc m) (suc k) =
+ (h.1, calc Nat { suc (plus h.1 (suc m)) =< ap (\ n -> suc n) (plus-suc h.1 m) > suc (suc (plus h.1 m))
+   =< ap (\ n -> suc n) h.2 > suc k }) ;
+not-lt-zero (m : Nat) (h : Lt m zero) : Empty = zero-not-suc (plus h.1 m) (sym h.2) ;
+-- m < k + 1 gives m < k or m = k
+lt-suc-cases (m k : Nat) : (d : Nat) -> Id Nat (plus (suc d) m) (suc k) -> Plus (Lt m k) (Id Nat m k) = split {
+ zero -> \ p -> inr (suc-inj p) ;
+ suc d -> \ p -> inl (d, suc-inj p) } ;
+lt-pred (m k : Nat) (h : Lt m (suc k)) : Plus (Lt m k) (Id Nat m k) = lt-suc-cases m k h.1 h.2 ;
+
+-- decidable equality
+dec-suc (m n : Nat) : Lg.Dec (Id Nat m n) -> Lg.Dec (Id Nat (suc m) (suc n)) = split {
+ yes p -> yes (ap (\ k -> suc k) p) ;
+ no q -> no (\ p -> q (suc-inj p)) } ;
+eqN : (m n : Nat) -> Lg.Dec (Id Nat m n) = split {
+ zero -> split { zero -> yes (refl zero) ; suc n -> no (zero-not-suc n) } ;
+ suc m | r -> split {
+  zero -> no (\ p -> zero-not-suc m (sym p)) ;
+  suc n -> dec-suc m n (r n) } } ;
+
+lt-irrefl-aux (d : Nat) : (n : Nat) -> Not (Id Nat (plus (suc d) n) n) = split {
+ zero -> \ p -> zero-not-suc (plus d zero) (sym p) ;
+ suc n | r -> \ p -> r (suc-inj (trans (sym (ap (\ m -> suc m) (plus-suc d n))) p)) } ;
+lt-irrefl (n : Nat) (h : Lt n n) : Empty = lt-irrefl-aux h.1 n h.2 ;
+lt-neq (m k : Nat) (h : Lt m k) (p : Id Nat m k) : Empty = lt-irrefl k (subst (\ n -> Lt n k) p h) ;
+
+-- trichotomy
+data Tri (m n : Nat) : U l = less (h : Lt m n) | equal (p : Id Nat m n) | greater (h : Lt n m) ;
+tri-suc (m n : Nat) : Tri m n -> Tri (suc m) (suc n) = split {
+ less h -> less (lt-suc-suc m n h) ;
+ equal p -> equal (ap (\ k -> suc k) p) ;
+ greater h -> greater (lt-suc-suc n m h) } ;
+tri : (m n : Nat) -> Tri m n = split {
+ zero -> split { zero -> equal (refl zero) ; suc n -> less (lt-zero-suc n) } ;
+ suc m | r -> split { zero -> greater (lt-zero-suc m) ; suc n -> tri-suc m n (r n) } } ;
+
+isT : Bool -> U l = split { true -> Top ; false -> Empty } ;
+false-true (p : Id Bool false true) : Empty = subst isT (sym p) tt ;
+
+-- the sequence that is 1 exactly at k, by recursion
+delta : Nat -> Nat -> Bool = split {
+ zero -> split { zero -> true ; suc m -> false } ;
+ suc k | r -> split { zero -> false ; suc m -> r m } } ;
+delta-self : (k : Nat) -> Id Bool (delta k k) true = split { zero -> refl true ; suc k | r -> r } ;
+delta-ne : (k m : Nat) -> Not (Id Nat m k) -> Id Bool (delta k m) false = split {
+ zero -> split { zero -> \ n -> Prelude[l].absurd (Id Bool true false) (n (refl zero)) ; suc m -> \ n -> refl false } ;
+ suc k | r -> split { zero -> \ n -> refl false ; suc m -> \ n -> r m (\ p -> n (ap (\ j -> suc j) p)) } } ;
+
+delta-eq : (k m : Nat) -> Id Bool (delta k m) true -> Id Nat m k = split {
+ zero -> split { zero -> \ h -> refl zero ; suc m -> \ h -> Prelude[l].absurd (Id Nat (suc m) zero) (false-true h) } ;
+ suc k | r -> split { zero -> \ h -> Prelude[l].absurd (Id Nat zero (suc k)) (false-true h) ;
+                      suc m -> \ h -> ap (\ j -> suc j) (r m h) } } ;
+
+dbl : Nat -> Nat = split { zero -> zero ; suc n | r -> suc (suc r) } ;
+dbl-plus : (n : Nat) -> Id Nat (dbl n) (plus n n) = split {
+ zero -> refl zero ;
+ suc n | r -> calc Nat { suc (suc (dbl n)) =< ap (\ j -> suc (suc j)) r > suc (suc (plus n n))
+   =< ap (\ j -> suc j) (sym (plus-suc n n)) > suc (plus n (suc n)) } } ;
+lt-plus (m k : Nat) (h : Lt m k) : (d : Nat) -> Lt m (plus d k) = split {
+ zero -> h ;
+ suc d | r -> lt-step m (plus d k) r } ;
+
+-- interleaving two sequences
+inter (X : U l) : Nat -> (Nat -> X) -> (Nat -> X) -> X = split {
+ zero -> \ a b -> a zero ;
+ suc m | r -> \ a b -> r b (\ n -> a (suc n)) } ;
+inter-even (X : U l) : (n : Nat) (a b : Nat -> X) -> Id X (inter X (dbl n) a b) (a n) = split {
+ zero -> \ a b -> refl (a zero) ;
+ suc n | r -> \ a b -> r (\ m -> a (suc m)) (\ m -> b (suc m)) } ;
+inter-odd (X : U l) (n : Nat) (a b : Nat -> X) : Id X (inter X (suc (dbl n)) a b) (b n) =
+ inter-even X n b (\ m -> a (suc m)) ;
+parity-suc (m : Nat) : Plus ((n : Nat) * Id Nat m (dbl n)) ((n : Nat) * Id Nat m (suc (dbl n))) ->
+  Plus ((n : Nat) * Id Nat (suc m) (dbl n)) ((n : Nat) * Id Nat (suc m) (suc (dbl n))) = split {
+ inl u -> inr (u.1, ap (\ j -> suc j) u.2) ;
+ inr u -> inl (suc u.1, ap (\ j -> suc j) u.2) } ;
+parity : (m : Nat) -> Plus ((n : Nat) * Id Nat m (dbl n)) ((n : Nat) * Id Nat m (suc (dbl n))) = split {
+ zero -> inl (zero, refl zero) ;
+ suc m | r -> parity-suc m r } ;
+
+lt-trans (a b c : Nat) (h : Lt a b) (h' : Lt b c) : Lt a c =
+ (plus h'.1 (suc h.1),
+  calc Nat { suc (plus (plus h'.1 (suc h.1)) a)
+   =< ap (\ j -> suc j) (plus-assoc h'.1 (suc h.1) a) > suc (plus h'.1 (plus (suc h.1) a))
+   =< ap (\ j -> suc (plus h'.1 j)) h.2 > suc (plus h'.1 b)
+   =< h'.2 > c }) ;
+lt-asym (m n : Nat) (h : Lt m n) (h' : Lt n m) : Empty = lt-irrefl m (lt-trans m n m h h') ;
+
+lt-pred-suc (m k : Nat) (h : Lt (suc m) (suc k)) : Lt m k =
+ (h.1, trans (sym (plus-suc h.1 m)) (suc-inj h.2)) ;
+
+
+-- the Boolean order test
+leb : Nat -> Nat -> Bool = split {
+ zero -> \ n -> true ;
+ suc m | r -> split { zero -> false ; suc n -> r n } } ;
+-- m <= n is m < n + 1
+leb-lt : (m n : Nat) -> Id Bool (leb m n) true -> Lt m (suc n) = split {
+ zero -> \ n h -> lt-zero-suc n ;
+ suc m | r -> split {
+  zero -> \ h -> Prelude[l].absurd (Lt (suc m) (suc zero)) (false-true h) ;
+  suc n -> \ h -> lt-suc-suc m (suc n) (r n h) } } ;
+lt-leb : (m n : Nat) -> Lt m (suc n) -> Id Bool (leb m n) true = split {
+ zero -> \ n h -> refl true ;
+ suc m | r -> split {
+  zero -> \ h -> Prelude[l].absurd (Id Bool false true) (not-lt-zero m (lt-pred-suc m zero h)) ;
+  suc n -> \ h -> r n (lt-pred-suc m (suc n) h) } } ;
+
+-- n <= a < b gives n < b
+le-lt-case (n a b : Nat) (h' : Lt a b) : Plus (Lt n a) (Id Nat n a) -> Lt n b = split {
+ inl h -> lt-trans n a b h h' ;
+ inr p -> subst (\ j -> Lt j b) (sym p) h' } ;
+le-lt-trans (n a b : Nat) (h : Lt n (suc a)) (h' : Lt a b) : Lt n b = le-lt-case n a b h' (lt-pred n a h) ;

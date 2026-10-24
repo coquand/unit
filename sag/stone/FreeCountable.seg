@@ -1,0 +1,314 @@
+-- The free Boolean algebra 2[N] (SSD Def. 1.3; Example 1.8 (iii)).
+--
+-- An element of 2[N] is a function f : 2^N -> 2 which merely is the
+-- evaluation of a truth table u : Tab k for some k (it depends only on the
+-- first k bits).  So 2[N] is a subset of 2^(2^N), the operations are
+-- pointwise and the laws are those of Bool.  Two truth tables are compared
+-- on a common number of generators: padL, padR : Tab k, Tab k' ->
+-- Tab (max k k') add generators that are not used, and do not change the
+-- value (ext-padL, ext-padR).
+--
+-- Universal property.  For g : N -> B, the extension sends f to the
+-- extension (FreeFinite) of any truth table u of f at the first k values of
+-- g.  This does not depend on u: two truth tables of f, padded to a common
+-- size, have the same evaluations, hence are equal (ev-inj: a truth table is
+-- determined by its values).  So it is a weakly constant map into a set,
+-- defined on the truncation (ConstantMap).  It is a morphism, sends the n-th
+-- generator  x |-> x n  to g n, and it is the only such morphism: on the
+-- image of Tab k, a morphism is determined by its values on the generators
+-- (FreeFinite.Into.unique).
+level l ;
+open Base ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module FC = FinChoice[l] ;
+module BR = BooleanRing[l] ;
+module FF = FreeFinite[l] ;
+
+cong2 {A B C : U l} (op : A -> B -> C) {a a' : A} {b b' : B} (p : Id A a a') (q : Id B b b')
+  : Id C (op a b) (op a' b') =
+  calc C { op a b =< ap (\ t -> op t b) p > op a' b =< ap (op a') q > op a' b' } ;
+
+max : Nat -> Nat -> Nat = split {
+ zero -> \ n -> n ;
+ suc m | r -> split { zero -> suc m ; suc n -> suc (r n) } } ;
+
+-- the constant b in Tab k
+cst : (k : Nat) -> Bool -> FF.Tab k = split { zero -> \ b -> b ; suc k | r -> \ b -> (r b, r b) } ;
+
+padL : (k k' : Nat) -> FF.Tab k -> FF.Tab (max k k') = split {
+ zero -> \ k' b -> cst k' b ;
+ suc k | r -> split { zero -> \ u -> u ; suc k' -> \ u -> (r k' u.1, r k' u.2) } } ;
+padR : (k k' : Nat) -> FF.Tab k' -> FF.Tab (max k k') = split {
+ zero -> \ k' u -> u ;
+ suc k | r -> split { zero -> \ b -> cst (suc k) b ; suc k' -> \ u -> (r k' u.1, r k' u.2) } } ;
+
+-- the first k values of g : N -> A, and the index of i : Fin k in N
+res (A : U l) : (k : Nat) -> (Nat -> A) -> FC.Fin k -> A = split {
+ zero -> \ g -> Pr.absurd A ;
+ suc k | r -> \ g -> split { none -> g zero ; some i -> r (\ n -> g (suc n)) i } } ;
+index : (k : Nat) -> FC.Fin k -> Nat = split {
+ zero -> Pr.absurd Nat ;
+ suc k | r -> split { none -> zero ; some i -> suc (r i) } } ;
+res-index (A : U l) : (k : Nat) (g : Nat -> A) (i : FC.Fin k) -> Id A (res A k g i) (g (index k i)) = split {
+ zero -> \ g -> FC.fin-zero (\ i -> Id A (res A zero g i) (g (index zero i))) ;
+ suc k | r -> \ g -> split { none -> refl (g zero) ; some i -> r (\ n -> g (suc n)) i } } ;
+-- the position of n in Fin (suc n)
+last : (n : Nat) -> FC.Fin (suc n) = split { zero -> none ; suc n | r -> some r } ;
+res-last (A : U l) : (n : Nat) (g : Nat -> A) -> Id A (res A (suc n) g (last n)) (g n) = split {
+ zero -> \ g -> refl (g zero) ;
+ suc n | r -> \ g -> r (\ m -> g (suc m)) } ;
+
+-- extension of g : N -> B on truth tables, and padding
+module Into (B : BR.BA) {
+ module I = FF.Into[B] ;
+ module BL = BR.Laws[B.ring, B.idem] ;
+ extN (k : Nat) (g : Nat -> B.ring.R) (u : FF.Tab k) : B.ring.R = I.ext k (res B.ring.R k g) u ;
+
+ ext-cst : (k : Nat) (g : Nat -> B.ring.R) (b : Bool) ->
+   Id B.ring.R (extN k g (cst k b)) (BR.ite B.ring.R b B.ring.o B.ring.z) = split {
+  zero -> \ g b -> refl (BR.ite B.ring.R b B.ring.o B.ring.z) ;
+  suc k | r -> \ g b -> trans (ap (\ t -> BL.shannon (g zero) t t) (r (\ n -> g (suc n)) b))
+   (BL.sh-same (g zero) (BR.ite B.ring.R b B.ring.o B.ring.z)) } ;
+ ext-padL : (k k' : Nat) (g : Nat -> B.ring.R) (u : FF.Tab k) ->
+   Id B.ring.R (extN (max k k') g (padL k k' u)) (extN k g u) = split {
+  zero -> \ k' g b -> ext-cst k' g b ;
+  suc k | r -> split {
+   zero -> \ g u -> refl (extN (suc k) g u) ;
+   suc k' -> \ g u -> ap (\ t -> BL.shannon (g zero) t.1 t.2)
+     (FF.pair-path (r k' (\ n -> g (suc n)) u.1) (r k' (\ n -> g (suc n)) u.2)) } } ;
+ ext-padR : (k k' : Nat) (g : Nat -> B.ring.R) (u : FF.Tab k') ->
+   Id B.ring.R (extN (max k k') g (padR k k' u)) (extN k' g u) = split {
+  zero -> \ k' g u -> refl (extN k' g u) ;
+  suc k | r -> split {
+   zero -> \ g b -> ext-cst (suc k) g b ;
+   suc k' -> \ g u -> ap (\ t -> BL.shannon (g zero) t.1 t.2)
+     (FF.pair-path (r k' (\ n -> g (suc n)) u.1) (r k' (\ n -> g (suc n)) u.2)) } } ;
+} ;
+
+------------------------------------------------------------------------
+-- evaluation of a truth table at a point alpha : 2^N
+
+module E = Into[BR.two] ;
+module L2 = BR.Laws[BR.two-ring, BR.and-self] ;
+
+Fun : U l = (Nat -> Bool) -> Bool ;
+ev (k : Nat) (u : FF.Tab k) : Fun = \ alpha -> E.extN k alpha u ;
+
+sh-false : (a b : Bool) -> Id Bool (L2.shannon false a b) a = split {
+ true -> split { true -> refl true ; false -> refl true } ;
+ false -> split { true -> refl false ; false -> refl false } } ;
+sh-true : (a b : Bool) -> Id Bool (L2.shannon true a b) b = split {
+ true -> split { true -> refl true ; false -> refl false } ;
+ false -> split { true -> refl true ; false -> refl false } } ;
+ite-tf : (b : Bool) -> Id Bool (BR.ite Bool b true false) b = split {
+ true -> refl true ; false -> refl false } ;
+
+cons (b : Bool) (beta : Nat -> Bool) : Nat -> Bool = split { zero -> b ; suc n -> beta n } ;
+
+-- a truth table is determined by its values
+ev-inj : (k : Nat) (u v : FF.Tab k) -> ((alpha : Nat -> Bool) -> Id Bool (ev k u alpha) (ev k v alpha)) ->
+   Id (FF.Tab k) u v = split {
+ zero -> \ u v h -> trans (sym (ite-tf u)) (trans (h (\ n -> false)) (ite-tf v)) ;
+ suc k | r -> \ u v h -> FF.pair-path
+  (r u.1 v.1 (\ beta -> trans (sym (sh-false (ev k u.1 beta) (ev k u.2 beta)))
+     (trans (h (cons false beta)) (sh-false (ev k v.1 beta) (ev k v.2 beta)))))
+  (r u.2 v.2 (\ beta -> trans (sym (sh-true (ev k u.1 beta) (ev k u.2 beta)))
+     (trans (h (cons true beta)) (sh-true (ev k v.1 beta) (ev k v.2 beta))))) } ;
+
+------------------------------------------------------------------------
+-- 2[N]
+
+Rep (f : Fun) : U l = (k : Nat) * (u : FF.Tab k) * Id Fun (ev k u) f ;
+Finitary (f : Fun) : U l = T.Trunc[Rep f].carrier ;
+Elem : U l = (f : Fun) * Finitary f ;
+
+elem-eq (x y : Elem) (h : (alpha : Nat -> Bool) -> Id Bool (x.1 alpha) (y.1 alpha)) : Id Elem x y =
+ Pr.Sigma-eq Fun Finitary x.1 y.1 x.2 y.2 (F.funext (Nat -> Bool) (\ alpha -> Bool) x.1 y.1 h)
+  T.Trunc[Rep y.1].proposition ;
+
+-- a representative of op (f a) (f' a) from representatives of f and f'
+module Combine (op : Bool -> Bool -> Bool) (top : (k : Nat) -> FF.Tab k -> FF.Tab k -> FF.Tab k)
+  (hom : (k : Nat) (u v : FF.Tab k) (alpha : Nat -> Bool) ->
+     Id Bool (ev k (top k u v) alpha) (op (ev k u alpha) (ev k v alpha))) {
+ rep (f f' : Fun) (r : Rep f) (r' : Rep f') : Rep (\ alpha -> op (f alpha) (f' alpha)) =
+  (max r.1 r'.1, top (max r.1 r'.1) (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1),
+   F.funext (Nat -> Bool) (\ alpha -> Bool) _ (\ alpha -> op (f alpha) (f' alpha)) (\ alpha ->
+    trans (hom (max r.1 r'.1) (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1) alpha)
+     (trans (ap (\ t -> op t (ev (max r.1 r'.1) (padR r.1 r'.1 r'.2.1) alpha))
+              (trans (E.ext-padL r.1 r'.1 alpha r.2.1) (Pr.happly (Nat -> Bool) (\ alpha -> Bool) _ f r.2.2 alpha)))
+      (ap (op (f alpha))
+        (trans (E.ext-padR r.1 r'.1 alpha r'.2.1) (Pr.happly (Nat -> Bool) (\ alpha -> Bool) _ f' r'.2.2 alpha)))))) ;
+ elem (x y : Elem) : Elem =
+  (\ alpha -> op (x.1 alpha) (y.1 alpha),
+   TC.map2 (Rep x.1) (Rep y.1) (Rep (\ alpha -> op (x.1 alpha) (y.1 alpha))) (rep x.1 y.1) x.2 y.2) ;
+} ;
+module Add = Combine[BR.xor, FF.tadd, \ k u v alpha -> E.I.ext-add k (res Bool k alpha) u v] ;
+module Mul = Combine[BR.and, FF.tmul, \ k u v alpha -> E.I.ext-mul k (res Bool k alpha) u v] ;
+
+ezero : Elem = (\ alpha -> false, T.Trunc[Rep (\ alpha -> false)].inc (zero, false, refl (\ alpha -> false))) ;
+eone : Elem = (\ alpha -> true, T.Trunc[Rep (\ alpha -> true)].inc (zero, true, refl (\ alpha -> true))) ;
+eadd (x y : Elem) : Elem = Add.elem x y ;
+emul (x y : Elem) : Elem = Mul.elem x y ;
+
+ring : CRing = mkCRing Elem ezero eone eadd emul (\ x -> x)
+ (\ x y w -> elem-eq (eadd x (eadd y w)) (eadd (eadd x y) w) (\ a -> BR.xor-assoc (x.1 a) (y.1 a) (w.1 a)))
+ (\ x y -> elem-eq (eadd x y) (eadd y x) (\ a -> BR.xor-comm (x.1 a) (y.1 a)))
+ (\ x -> elem-eq (eadd x ezero) x (\ a -> BR.xor-false (x.1 a)))
+ (\ x -> elem-eq (eadd x x) ezero (\ a -> BR.xor-self (x.1 a)))
+ (\ x y w -> elem-eq (emul x (emul y w)) (emul (emul x y) w) (\ a -> BR.and-assoc (x.1 a) (y.1 a) (w.1 a)))
+ (\ x y -> elem-eq (emul x y) (emul y x) (\ a -> BR.and-comm (x.1 a) (y.1 a)))
+ (\ x -> elem-eq (emul x eone) x (\ a -> BR.and-true (x.1 a)))
+ (\ x y w -> elem-eq (emul x (eadd y w)) (eadd (emul x y) (emul x w)) (\ a -> BR.and-xor (x.1 a) (y.1 a) (w.1 a))) ;
+set : Pr.isSet Elem = Pr.isSet-Sigma Fun Finitary
+ (F.isSet-Pi (Nat -> Bool) (\ alpha -> Bool) (\ alpha -> BR.bool-set))
+ (\ f -> Pr.prop-to-set (Finitary f) T.Trunc[Rep f].proposition) ;
+free : BR.BA = BR.mkBA ring set (\ x -> elem-eq (emul x x) x (\ a -> BR.and-self (x.1 a))) ;
+
+-- the generators  x |-> x n
+gen (n : Nat) : Elem =
+ (\ alpha -> alpha n, T.Trunc[Rep (\ alpha -> alpha n)].inc
+   (suc n, FF.gen (suc n) (last n),
+    F.funext (Nat -> Bool) (\ alpha -> Bool) (ev (suc n) (FF.gen (suc n) (last n))) (\ alpha -> alpha n)
+     (\ alpha -> trans (E.I.ext-gen (suc n) (res Bool (suc n) alpha) (last n)) (res-last Bool n alpha)))) ;
+
+-- 2[Fin k] -> 2[N]
+incl (k : Nat) (u : FF.Tab k) : Elem = (ev k u, T.Trunc[Rep (ev k u)].inc (k, u, refl (ev k u))) ;
+incl-hom (k : Nat) : BR.Hom (FF.free k) free =
+ (incl k,
+  elem-eq (incl k (FF.tone k)) eone (\ a -> E.I.ext-one k (res Bool k a)),
+  \ u v -> elem-eq (incl k (FF.tadd k u v)) (eadd (incl k u) (incl k v)) (\ a -> E.I.ext-add k (res Bool k a) u v),
+  \ u v -> elem-eq (incl k (FF.tmul k u v)) (emul (incl k u) (incl k v)) (\ a -> E.I.ext-mul k (res Bool k a) u v)) ;
+incl-gen (k : Nat) (i : FC.Fin k) : Id Elem (incl k (FF.gen k i)) (gen (index k i)) =
+ elem-eq (incl k (FF.gen k i)) (gen (index k i)) (\ a ->
+  trans (E.I.ext-gen k (res Bool k a) i) (res-index Bool k a i)) ;
+-- an element with a representative is in the image of its Tab k
+incl-rep (x : Elem) (r : Rep x.1) : Id Elem (incl r.1 r.2.1) x =
+ elem-eq (incl r.1 r.2.1) x (Pr.happly (Nat -> Bool) (\ alpha -> Bool) _ x.1 r.2.2) ;
+
+------------------------------------------------------------------------
+-- the universal property
+
+module UP (B : BR.BA) {
+ module EB = Into[B] ;
+ module L = RL[B.ring] ;
+
+ -- the extension on one representative; it does not depend on it
+ value (g : Nat -> B.ring.R) (f : Fun) (r : Rep f) : B.ring.R = EB.extN r.1 g r.2.1 ;
+ pads (f : Fun) (r r' : Rep f) : Id (FF.Tab (max r.1 r'.1)) (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1) =
+  ev-inj (max r.1 r'.1) (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1) (\ alpha ->
+   trans (E.ext-padL r.1 r'.1 alpha r.2.1)
+    (trans (Pr.happly (Nat -> Bool) (\ a -> Bool) _ f r.2.2 alpha)
+     (trans (sym (Pr.happly (Nat -> Bool) (\ a -> Bool) _ f r'.2.2 alpha))
+      (sym (E.ext-padR r.1 r'.1 alpha r'.2.1))))) ;
+ constant (g : Nat -> B.ring.R) (f : Fun) (r r' : Rep f) : Id B.ring.R (value g f r) (value g f r') =
+  calc B.ring.R { value g f r
+   =< sym (EB.ext-padL r.1 r'.1 g r.2.1) > EB.extN (max r.1 r'.1) g (padL r.1 r'.1 r.2.1)
+   =< ap (EB.extN (max r.1 r'.1) g) (pads f r r') > EB.extN (max r.1 r'.1) g (padR r.1 r'.1 r'.2.1)
+   =< EB.ext-padR r.1 r'.1 g r'.2.1 > value g f r' } ;
+
+ ext (g : Nat -> B.ring.R) (x : Elem) : B.ring.R =
+  ConstantMap[l].Constant[Rep x.1, B.ring.R, B.set, value g x.1, constant g x.1].value x.2 ;
+ ext-at (g : Nat -> B.ring.R) (x : Elem) (r : Rep x.1) : Id B.ring.R (ext g x) (value g x.1 r) =
+  ConstantMap[l].Constant[Rep x.1, B.ring.R, B.set, value g x.1, constant g x.1].value-at x.2 r ;
+
+ -- a statement about two elements, proved on representatives
+ by-reps (x y : Elem) (P : U l) (pP : Pr.isProp P) (h : Rep x.1 -> Rep y.1 -> P) : P =
+  TC.rec (Rep x.1) @l P pP (\ r -> TC.rec (Rep y.1) @l P pP (h r) y.2) x.2 ;
+
+ ext-op (op : Bool -> Bool -> Bool) (top : (k : Nat) -> FF.Tab k -> FF.Tab k -> FF.Tab k)
+  (hom : (k : Nat) (u v : FF.Tab k) (alpha : Nat -> Bool) ->
+     Id Bool (ev k (top k u v) alpha) (op (ev k u alpha) (ev k v alpha)))
+  (bop : B.ring.R -> B.ring.R -> B.ring.R)
+  (bhom : (k : Nat) (g : Nat -> B.ring.R) (u v : FF.Tab k) ->
+     Id B.ring.R (EB.extN k g (top k u v)) (bop (EB.extN k g u) (EB.extN k g v)))
+  (g : Nat -> B.ring.R) (x y : Elem) :
+  Id B.ring.R (ext g (Combine[op, top, hom].elem x y)) (bop (ext g x) (ext g y)) =
+  by-reps x y _ (B.set _ _) (\ r r' ->
+   calc B.ring.R { ext g (Combine[op, top, hom].elem x y)
+    =< ext-at g (Combine[op, top, hom].elem x y) (Combine[op, top, hom].rep x.1 y.1 r r')
+    > EB.extN (max r.1 r'.1) g (top (max r.1 r'.1) (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1))
+    =< bhom (max r.1 r'.1) g (padL r.1 r'.1 r.2.1) (padR r.1 r'.1 r'.2.1)
+    > bop (EB.extN (max r.1 r'.1) g (padL r.1 r'.1 r.2.1)) (EB.extN (max r.1 r'.1) g (padR r.1 r'.1 r'.2.1))
+    =< cong2 bop (EB.ext-padL r.1 r'.1 g r.2.1) (EB.ext-padR r.1 r'.1 g r'.2.1)
+    > bop (value g x.1 r) (value g y.1 r')
+    =< cong2 bop (sym (ext-at g x r)) (sym (ext-at g y r')) > bop (ext g x) (ext g y) }) ;
+ ext-one (g : Nat -> B.ring.R) : Id B.ring.R (ext g eone) B.ring.o =
+  ext-at g eone (zero, true, refl (\ alpha -> true)) ;
+ ext-add (g : Nat -> B.ring.R) (x y : Elem) : Id B.ring.R (ext g (eadd x y)) (B.ring.add (ext g x) (ext g y)) =
+  ext-op BR.xor FF.tadd (\ k u v alpha -> E.I.ext-add k (res Bool k alpha) u v)
+   B.ring.add (\ k g u v -> EB.I.ext-add k (res B.ring.R k g) u v) g x y ;
+ ext-mul (g : Nat -> B.ring.R) (x y : Elem) : Id B.ring.R (ext g (emul x y)) (B.ring.mul (ext g x) (ext g y)) =
+  ext-op BR.and FF.tmul (\ k u v alpha -> E.I.ext-mul k (res Bool k alpha) u v)
+   B.ring.mul (\ k g u v -> EB.I.ext-mul k (res B.ring.R k g) u v) g x y ;
+ extend (g : Nat -> B.ring.R) : BR.Hom free B = (ext g, ext-one g, ext-add g, ext-mul g) ;
+
+ ext-gen (g : Nat -> B.ring.R) (n : Nat) : Id B.ring.R (ext g (gen n)) (g n) =
+  trans (ext-at g (gen n) (suc n, FF.gen (suc n) (last n),
+    F.funext (Nat -> Bool) (\ alpha -> Bool) (ev (suc n) (FF.gen (suc n) (last n))) (\ alpha -> alpha n)
+     (\ alpha -> trans (E.I.ext-gen (suc n) (res Bool (suc n) alpha) (last n)) (res-last Bool n alpha))))
+   (trans (EB.I.ext-gen (suc n) (res B.ring.R (suc n) g) (last n)) (res-last B.ring.R n g)) ;
+
+ values (psi : BR.Hom free B) (n : Nat) : B.ring.R = psi.1 (gen n) ;
+
+ -- psi o incl k has the values  i |-> psi (gen (index k i))  on the generators
+ restricted (psi : BR.Hom free B) (k : Nat) : BR.Hom (FF.free k) B =
+  H.compose (FF.tring k) ring B.ring psi (incl-hom k) ;
+ restricted-values (psi : BR.Hom free B) (k : Nat) :
+  Id (FC.Fin k -> B.ring.R) (EB.I.values k (restricted psi k)) (res B.ring.R k (values psi)) =
+  F.funext (FC.Fin k) (\ i -> B.ring.R) (EB.I.values k (restricted psi k)) (res B.ring.R k (values psi)) (\ i ->
+   trans (ap psi.1 (incl-gen k i)) (sym (res-index B.ring.R k (values psi) i))) ;
+
+ unique (psi : BR.Hom free B) (x : Elem) : Id B.ring.R (psi.1 x) (ext (values psi) x) =
+  TC.rec (Rep x.1) @l _ (B.set _ _) (\ r ->
+   calc B.ring.R { psi.1 x
+    =< ap psi.1 (sym (incl-rep x r)) > psi.1 (incl r.1 r.2.1)
+    =< EB.I.unique r.1 (restricted psi r.1) r.2.1 > EB.I.ext r.1 (EB.I.values r.1 (restricted psi r.1)) r.2.1
+    =< ap (\ h -> EB.I.ext r.1 h r.2.1) (restricted-values psi r.1) > value (values psi) x.1 r
+    =< sym (ext-at (values psi) x r) > ext (values psi) x }) x.2 ;
+
+ -- Hom(2[N], B) = B^N
+ universal : Pr.Equiv (BR.Hom free B) (Nat -> B.ring.R) =
+  (values, Pr.qinv (BR.Hom free B) (Nat -> B.ring.R) values extend
+   (\ g -> F.funext Nat (\ n -> B.ring.R) (values (extend g)) g (ext-gen g))
+   (\ psi -> H.Properties[ring, B.ring, B.set].ext (extend (values psi)) psi
+     (\ x -> sym (unique psi x)))) ;
+} ;
+
+-- Cantor space (SSD Example 1.8 (iii)): Sp(2[N]) = 2^N; the point of alpha
+-- is evaluation at alpha
+module U2 = UP[BR.two] ;
+cantor : Pr.Equiv (BR.Hom free BR.two) (Nat -> Bool) = U2.universal ;
+ext-two (alpha : Nat -> Bool) (x : Elem) : Id Bool (U2.ext alpha x) (x.1 alpha) =
+ TC.rec (Rep x.1) @l _ (BR.bool-set _ _) (\ r ->
+  trans (U2.ext-at alpha x r) (Pr.happly (Nat -> Bool) (\ a -> Bool) _ x.1 r.2.2 alpha)) x.2 ;
+
+-- an element with a truth table on k generators depends only on the first
+-- k bits
+agree (x : Elem) (r : Rep x.1) (alpha beta : Nat -> Bool)
+  (h : (i : FC.Fin r.1) -> Id Bool (res Bool r.1 alpha i) (res Bool r.1 beta i)) :
+  Id Bool (x.1 alpha) (x.1 beta) =
+ calc Bool { x.1 alpha
+  =< sym (Pr.happly (Nat -> Bool) (\ a -> Bool) _ x.1 r.2.2 alpha) > ev r.1 r.2.1 alpha
+  =< ap (\ g -> E.I.ext r.1 g r.2.1)
+      (F.funext (FC.Fin r.1) (\ i -> Bool) (res Bool r.1 alpha) (res Bool r.1 beta) h)
+  > ev r.1 r.2.1 beta
+  =< Pr.happly (Nat -> Bool) (\ a -> Bool) _ x.1 r.2.2 beta > x.1 beta } ;
+
+-- the shift  x |-> (alpha |-> x (alpha o suc)), sending g n to g (n+1)
+shift (x : Elem) : Elem =
+ (\ alpha -> x.1 (\ n -> alpha (suc n)),
+  TC.map (Rep x.1) (Rep (\ alpha -> x.1 (\ n -> alpha (suc n)))) (\ r ->
+   (suc r.1, FF.incl r.1 r.2.1,
+    F.funext (Nat -> Bool) (\ alpha -> Bool) (ev (suc r.1) (FF.incl r.1 r.2.1)) (\ alpha -> x.1 (\ n -> alpha (suc n)))
+     (\ alpha -> trans (L2.sh-same (alpha zero) (ev r.1 r.2.1 (\ n -> alpha (suc n))))
+       (Pr.happly (Nat -> Bool) (\ a -> Bool) _ x.1 r.2.2 (\ n -> alpha (suc n)))))) x.2) ;
+shift-hom : BR.Hom free free =
+ (shift, elem-eq (shift eone) eone (\ a -> refl true),
+  \ x y -> elem-eq (shift (eadd x y)) (eadd (shift x) (shift y)) (\ a -> refl (BR.xor (x.1 (\ n -> a (suc n))) (y.1 (\ n -> a (suc n))))),
+  \ x y -> elem-eq (shift (emul x y)) (emul (shift x) (shift y)) (\ a -> refl (BR.and (x.1 (\ n -> a (suc n))) (y.1 (\ n -> a (suc n)))))) ;
+shift-gen (n : Nat) : Id Elem (shift (gen n)) (gen (suc n)) =
+ elem-eq (shift (gen n)) (gen (suc n)) (\ a -> refl (a (suc n))) ;

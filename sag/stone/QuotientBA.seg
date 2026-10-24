@@ -1,0 +1,204 @@
+-- The quotient of a Boolean algebra by an ideal.
+--
+-- An ideal I of B is a proposition-valued predicate containing 0, closed
+-- under + and under multiplication by any element.  x ~ y iff I (x + y) is
+-- an equivalence relation (x + x = 0; (x + y) + (y + z) = x + z) and a
+-- congruence:  (x + y) + (x' + y') = (x + x') + (y + y')  and
+-- x y + x' y' = x (y + y') + y' (x + x').  The quotient B/I is the effective
+-- set quotient (Quotient.Quot) with the induced operations; the laws hold on
+-- representatives.  The projection  pi : B -> B/I  is a morphism killing I,
+-- and a morphism B/I -> C is the same as a morphism B -> C killing I.
+-- The construction of the operations and laws is that of
+-- pn/MonoidLocalization.seg.
+level l ;
+open Base ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module BR = BooleanRing[l] ;
+
+module Over (B : BR.BA) (I : B.ring.R -> U l) (prop : (x : B.ring.R) -> Pr.isProp (I x))
+ (zero : I B.ring.z)
+ (sum : (x y : B.ring.R) -> I x -> I y -> I (B.ring.add x y))
+ (absorb : (a x : B.ring.R) -> I x -> I (B.ring.mul a x)) {
+ module L = RL[B.ring] ;
+ module BL = BR.Laws[B.ring, B.idem] ;
+
+ Relation (x y : B.ring.R) : U l = I (B.ring.add x y) ;
+ reflexive (x : B.ring.R) : Relation x x = subst I (sym (BL.char2 x)) zero ;
+ symmetric (x y : B.ring.R) (h : Relation x y) : Relation y x = subst I (B.ring.addC x y) h ;
+ -- (x + y) + (y + w) = x + w
+ telescope (x y w : B.ring.R) :
+  Id B.ring.R (B.ring.add (B.ring.add x y) (B.ring.add y w)) (B.ring.add x w) =
+  calc B.ring.R { B.ring.add (B.ring.add x y) (B.ring.add y w)
+   =< sym (B.ring.addA x y (B.ring.add y w)) > B.ring.add x (B.ring.add y (B.ring.add y w))
+   =< ap (B.ring.add x) (B.ring.addA y y w) > B.ring.add x (B.ring.add (B.ring.add y y) w)
+   =< ap (\ t -> B.ring.add x (B.ring.add t w)) (BL.char2 y) > B.ring.add x (B.ring.add B.ring.z w)
+   =< ap (B.ring.add x) (L.zl w) > B.ring.add x w } ;
+ transitive (x y w : B.ring.R) (h : Relation x y) (h' : Relation y w) : Relation x w =
+  subst I (telescope x y w) (sum _ _ h h') ;
+ add-respects (x x' y y' : B.ring.R) (h : Relation x x') (h' : Relation y y') :
+  Relation (B.ring.add x y) (B.ring.add x' y') =
+  subst I (sym (L.swap x y x' y')) (sum _ _ h h') ;
+ -- x y + x' y' = x (y + y') + y' (x + x')
+ mul-split (x x' y y' : B.ring.R) :
+  Id B.ring.R (B.ring.add (B.ring.mul x (B.ring.add y y')) (B.ring.mul y' (B.ring.add x x')))
+   (B.ring.add (B.ring.mul x y) (B.ring.mul x' y')) =
+  calc B.ring.R { B.ring.add (B.ring.mul x (B.ring.add y y')) (B.ring.mul y' (B.ring.add x x'))
+   =< BL.add-cong (B.ring.dist x y y') (B.ring.dist y' x x')
+   > B.ring.add (B.ring.add (B.ring.mul x y) (B.ring.mul x y')) (B.ring.add (B.ring.mul y' x) (B.ring.mul y' x'))
+   =< ap (\ t -> B.ring.add (B.ring.add (B.ring.mul x y) (B.ring.mul x y')) (B.ring.add t (B.ring.mul y' x')))
+        (B.ring.mulC y' x)
+   > B.ring.add (B.ring.add (B.ring.mul x y) (B.ring.mul x y')) (B.ring.add (B.ring.mul x y') (B.ring.mul y' x'))
+   =< telescope (B.ring.mul x y) (B.ring.mul x y') (B.ring.mul y' x')
+   > B.ring.add (B.ring.mul x y) (B.ring.mul y' x')
+   =< ap (B.ring.add (B.ring.mul x y)) (B.ring.mulC y' x') > B.ring.add (B.ring.mul x y) (B.ring.mul x' y') } ;
+ mul-respects (x x' y y' : B.ring.R) (h : Relation x x') (h' : Relation y y') :
+  Relation (B.ring.mul x y) (B.ring.mul x' y') =
+  subst I (mul-split x x' y y') (sum _ _ (absorb x _ h') (absorb y' _ h)) ;
+
+ module Q = Quotient[l].Quot[B.ring.R, Relation, \ x y -> prop (B.ring.add x y), reflexive, symmetric, transitive] ;
+ Carrier : U l = Q.Q ;
+ include : B.ring.R -> Carrier = Q.inc ;
+
+ module Binary (op : B.ring.R -> B.ring.R -> B.ring.R)
+   (cong : (x x' y y' : B.ring.R) -> Relation x x' -> Relation y y' -> Relation (op x y) (op x' y')) {
+  module Right (x : B.ring.R) {
+   module D = Q.Descend[Carrier, Q.set, \ y -> include (op x y), \ y y' h -> Q.relates _ _ (cong x x y y' (reflexive x) h)] ;
+  } ;
+  left-respects (x x' : B.ring.R) (h : Relation x x') : Id (Carrier -> Carrier) Right[x].D.map Right[x'].D.map =
+   F.funext Carrier (\ q -> Carrier) _ _
+    (Q.induction @l (\ q -> Id Carrier (Right[x].D.map q) (Right[x'].D.map q)) (\ q -> Q.set _ _)
+     (\ y -> trans (Right[x].D.beta y)
+       (trans (Q.relates _ _ (cong x x' y y h (reflexive y))) (sym (Right[x'].D.beta y))))) ;
+  module Left = Q.Descend[Carrier -> Carrier, F.isSet-Pi Carrier (\ q -> Carrier) (\ q -> Q.set),
+    \ x -> Right[x].D.map, left-respects] ;
+  operation : Carrier -> Carrier -> Carrier = Left.map ;
+  beta (x y : B.ring.R) : Id Carrier (operation (include x) (include y)) (include (op x y)) =
+   trans (Pr.happly Carrier (\ q -> Carrier) _ _ (Left.beta x) (include y)) (Right[x].D.beta y) ;
+ } ;
+ module Add = Binary[B.ring.add, add-respects] ;
+ module Mul = Binary[B.ring.mul, mul-respects] ;
+ addQ : Carrier -> Carrier -> Carrier = Add.operation ;
+ mulQ : Carrier -> Carrier -> Carrier = Mul.operation ;
+ zeroQ : Carrier = include B.ring.z ;
+ oneQ : Carrier = include B.ring.o ;
+
+ forall2 (P : Carrier -> Carrier -> U l) (pP : (x y : Carrier) -> Pr.isProp (P x y))
+   (b : (x y : B.ring.R) -> P (include x) (include y)) : (x y : Carrier) -> P x y =
+   Q.induction @l (\ x -> (y : Carrier) -> P x y)
+    (\ x -> F.isProp-Pi Carrier (P x) (pP x))
+    (\ x -> Q.induction @l (P (include x)) (pP (include x)) (b x)) ;
+ forall3 (P : Carrier -> Carrier -> Carrier -> U l) (pP : (x y w : Carrier) -> Pr.isProp (P x y w))
+   (b : (x y w : B.ring.R) -> P (include x) (include y) (include w)) : (x y w : Carrier) -> P x y w =
+   forall2 (\ x y -> (w : Carrier) -> P x y w)
+    (\ x y -> F.isProp-Pi Carrier (P x y) (pP x y))
+    (\ x y -> Q.induction @l (P (include x) (include y)) (pP (include x) (include y)) (b x y)) ;
+
+ -- terms over B, evaluated in B and in the quotient
+ data Expr : U l = atom (x : B.ring.R) | sumE (a b : Expr) | mulE (a b : Expr) ;
+ raw : Expr -> B.ring.R = split {
+   atom x -> x ; sumE a b | ar br -> B.ring.add ar br ; mulE a b | ar br -> B.ring.mul ar br } ;
+ value : Expr -> Carrier = split {
+   atom x -> include x ; sumE a b | av bv -> addQ av bv ; mulE a b | av bv -> mulQ av bv } ;
+ sound : (e : Expr) -> Id Carrier (value e) (include (raw e)) = split {
+   atom x -> refl (include x) ;
+   sumE a b | ah bh -> trans (ap (\ q -> addQ q (value b)) ah)
+    (trans (ap (addQ (include (raw a))) bh) (Add.beta (raw a) (raw b))) ;
+   mulE a b | ah bh -> trans (ap (\ q -> mulQ q (value b)) ah)
+    (trans (ap (mulQ (include (raw a))) bh) (Mul.beta (raw a) (raw b))) } ;
+ lift (e e' : Expr) (h : Id B.ring.R (raw e) (raw e')) : Id Carrier (value e) (value e') =
+   trans (sound e) (trans (ap include h) (sym (sound e'))) ;
+
+ add-assoc : (x y w : Carrier) -> Id Carrier (addQ x (addQ y w)) (addQ (addQ x y) w) =
+   forall3 (\ x y w -> Id Carrier (addQ x (addQ y w)) (addQ (addQ x y) w)) (\ x y w -> Q.set _ _)
+    (\ x y w -> lift (sumE (atom x) (sumE (atom y) (atom w))) (sumE (sumE (atom x) (atom y)) (atom w))
+      (B.ring.addA x y w)) ;
+ add-comm : (x y : Carrier) -> Id Carrier (addQ x y) (addQ y x) =
+   forall2 (\ x y -> Id Carrier (addQ x y) (addQ y x)) (\ x y -> Q.set _ _)
+    (\ x y -> lift (sumE (atom x) (atom y)) (sumE (atom y) (atom x)) (B.ring.addC x y)) ;
+ add-zero : (x : Carrier) -> Id Carrier (addQ x zeroQ) x =
+   Q.induction @l (\ x -> Id Carrier (addQ x zeroQ) x) (\ x -> Q.set _ _)
+    (\ x -> lift (sumE (atom x) (atom B.ring.z)) (atom x) (B.ring.addZ x)) ;
+ add-self : (x : Carrier) -> Id Carrier (addQ x x) zeroQ =
+   Q.induction @l (\ x -> Id Carrier (addQ x x) zeroQ) (\ x -> Q.set _ _)
+    (\ x -> lift (sumE (atom x) (atom x)) (atom B.ring.z) (BL.char2 x)) ;
+ mul-assoc : (x y w : Carrier) -> Id Carrier (mulQ x (mulQ y w)) (mulQ (mulQ x y) w) =
+   forall3 (\ x y w -> Id Carrier (mulQ x (mulQ y w)) (mulQ (mulQ x y) w)) (\ x y w -> Q.set _ _)
+    (\ x y w -> lift (mulE (atom x) (mulE (atom y) (atom w))) (mulE (mulE (atom x) (atom y)) (atom w))
+      (B.ring.mulA x y w)) ;
+ mul-comm : (x y : Carrier) -> Id Carrier (mulQ x y) (mulQ y x) =
+   forall2 (\ x y -> Id Carrier (mulQ x y) (mulQ y x)) (\ x y -> Q.set _ _)
+    (\ x y -> lift (mulE (atom x) (atom y)) (mulE (atom y) (atom x)) (B.ring.mulC x y)) ;
+ mul-one : (x : Carrier) -> Id Carrier (mulQ x oneQ) x =
+   Q.induction @l (\ x -> Id Carrier (mulQ x oneQ) x) (\ x -> Q.set _ _)
+    (\ x -> lift (mulE (atom x) (atom B.ring.o)) (atom x) (B.ring.mulO x)) ;
+ distributive : (x y w : Carrier) -> Id Carrier (mulQ x (addQ y w)) (addQ (mulQ x y) (mulQ x w)) =
+   forall3 (\ x y w -> Id Carrier (mulQ x (addQ y w)) (addQ (mulQ x y) (mulQ x w))) (\ x y w -> Q.set _ _)
+    (\ x y w -> lift (mulE (atom x) (sumE (atom y) (atom w)))
+      (sumE (mulE (atom x) (atom y)) (mulE (atom x) (atom w))) (B.ring.dist x y w)) ;
+ mul-idem : (x : Carrier) -> Id Carrier (mulQ x x) x =
+   Q.induction @l (\ x -> Id Carrier (mulQ x x) x) (\ x -> Q.set _ _)
+    (\ x -> lift (mulE (atom x) (atom x)) (atom x) (B.idem x)) ;
+
+ ring : CRing = mkCRing Carrier zeroQ oneQ addQ mulQ (\ x -> x)
+   add-assoc add-comm add-zero add-self mul-assoc mul-comm mul-one distributive ;
+ quotient : BR.BA = BR.mkBA ring Q.set mul-idem ;
+
+ -- the projection
+ pi : BR.Hom B quotient = (include, refl oneQ, \ x y -> sym (Add.beta x y), \ x y -> sym (Mul.beta x y)) ;
+ kills (x : B.ring.R) (h : I x) : Id Carrier (include x) zeroQ =
+  Q.relates x B.ring.z (subst I (sym (B.ring.addZ x)) h) ;
+ -- every class merely has a representative
+ representative (q : Carrier) : Truncation[l].Trunc[(x : B.ring.R) * Id Carrier (include x) q].carrier =
+  Q.induction @l (\ q -> Truncation[l].Trunc[(x : B.ring.R) * Id Carrier (include x) q].carrier)
+   (\ q -> Truncation[l].Trunc[(x : B.ring.R) * Id Carrier (include x) q].proposition)
+   (\ x -> Truncation[l].Trunc[(x' : B.ring.R) * Id Carrier (include x') (include x)].inc (x, refl (include x))) q ;
+ -- 0 = 1 in B/I iff 1 is in I
+ trivial (h : Id Carrier oneQ zeroQ) : I B.ring.o =
+  subst I (B.ring.addZ B.ring.o) (Q.effective B.ring.o B.ring.z h) ;
+
+ -- the universal property
+ module To (C : BR.BA) {
+  module LC = BR.Laws[C.ring, C.idem] ;
+  Kills (h : BR.Hom B C) : U l = (x : B.ring.R) -> I x -> Id C.ring.R (h.1 x) C.ring.z ;
+  kills-prop (h : BR.Hom B C) : Pr.isProp (Kills h) =
+   F.isProp-Pi B.ring.R (\ x -> I x -> Id C.ring.R (h.1 x) C.ring.z) (\ x ->
+    F.isProp-Pi (I x) (\ i -> Id C.ring.R (h.1 x) C.ring.z) (\ i -> C.set _ _)) ;
+  Data : U l = (h : BR.Hom B C) * Kills h ;
+
+  restrict (g : BR.Hom quotient C) : Data =
+   (H.compose B.ring ring C.ring g pi,
+    \ x i -> trans (ap g.1 (kills x i)) (H.zero ring C.ring g)) ;
+
+  module Extend (d : Data) {
+   respects (x y : B.ring.R) (h : Relation x y) : Id C.ring.R (d.1.1 x) (d.1.1 y) =
+    LC.sum-zero (d.1.1 x) (d.1.1 y) (trans (sym (d.1.2.2.1 x y)) (d.2 (B.ring.add x y) h)) ;
+   module D = Q.Descend[C.ring.R, C.set, d.1.1, respects] ;
+   one : Id C.ring.R (D.map oneQ) C.ring.o = trans (D.beta B.ring.o) d.1.2.1 ;
+   add (x y : Carrier) : Id C.ring.R (D.map (addQ x y)) (C.ring.add (D.map x) (D.map y)) =
+    forall2 (\ x y -> Id C.ring.R (D.map (addQ x y)) (C.ring.add (D.map x) (D.map y))) (\ x y -> C.set _ _)
+     (\ x y -> trans (ap D.map (Add.beta x y)) (trans (D.beta (B.ring.add x y))
+       (trans (d.1.2.2.1 x y) (LC.add-cong (sym (D.beta x)) (sym (D.beta y)))))) x y ;
+   mul (x y : Carrier) : Id C.ring.R (D.map (mulQ x y)) (C.ring.mul (D.map x) (D.map y)) =
+    forall2 (\ x y -> Id C.ring.R (D.map (mulQ x y)) (C.ring.mul (D.map x) (D.map y))) (\ x y -> C.set _ _)
+     (\ x y -> trans (ap D.map (Mul.beta x y)) (trans (D.beta (B.ring.mul x y))
+       (trans (d.1.2.2.2 x y) (LC.mul-cong (sym (D.beta x)) (sym (D.beta y)))))) x y ;
+   hom : BR.Hom quotient C = (D.map, one, add, mul) ;
+  } ;
+  extend (d : Data) : BR.Hom quotient C = Extend[d].hom ;
+
+  -- two morphisms out of B/I agreeing on representatives are equal
+  ext (g g' : BR.Hom quotient C) (h : (x : B.ring.R) -> Id C.ring.R (g.1 (include x)) (g'.1 (include x))) :
+   Id (BR.Hom quotient C) g g' =
+   H.Properties[ring, C.ring, C.set].ext g g'
+    (Q.induction @l (\ q -> Id C.ring.R (g.1 q) (g'.1 q)) (\ q -> C.set _ _) h) ;
+
+  universal : Pr.Equiv (BR.Hom quotient C) Data =
+   (restrict, Pr.qinv (BR.Hom quotient C) Data restrict extend
+    (\ d -> Pr.Sigma-eq (BR.Hom B C) Kills (restrict (extend d)).1 d.1 (restrict (extend d)).2 d.2
+      (H.Properties[B.ring, C.ring, C.set].ext (restrict (extend d)).1 d.1 Extend[d].D.beta)
+      (kills-prop d.1))
+    (\ g -> ext (extend (restrict g)) g (Extend[restrict g].D.beta))) ;
+ } ;
+} ;
