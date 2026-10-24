@@ -153,14 +153,18 @@ Changes made after measuring:
   through the component lemma `Pi.PiComp` (maps and pointings given
   separately, no projections of pointed maps): 1187 -> 117.
 - ScottCech.staged: the stage cocycle named once (`Pick`): 1095 -> < 260.
-Remaining above 500:
-- `LES.over1` 689, `LES.fst3` about 520: a chain of pointed-map
-  associativities; what is opened is the identification of one type under
-  two names (Eps.OP / Puppe.OB, PiFib.FP / Fib (Pp ..), Pp / PiFib.PF) and
-  the PtEquiv / pt-inv accessors.  No step of the text is computed (the
-  --opens file em/LES.opens declares none; see its report).  Defining Pp
-  through PiFib.PF made it worse (719) and was reverted.
-- `EpsEv.Step.loops` 572: the same for Ω types (KK.OK / Maps.OB, 137).
+- One name per notion (canonicity-69, after milestone 1): the type
+  abbreviations of the generic modules were aliases of named types and are
+  inlined (Puppe.F/fp/OB/g/G/gp, GEX.F/fp/OE/OF/OF', Puppe2.OE/FD/fd,
+  PiFib.PF/FP/fP/Fx/fx, PiLoopAt.PF), and LES writes Eps.P for the products:
+  LES.over1 689 -> 433, LES.fst3 520 -> 418.
+Remaining (none above 504):
+- LES.sq2 504, Gover 437, over1 433, fst3 418: Eps.P / Eps.pP opened
+  about 200-290 times each, i.e. B's named products (Eps.P m = (x : X) ->
+  K(B x, m), pP) against the Π-types that the generic PiMap / PiFib
+  produce.  Removing this means stating Eps through PiMap (or the
+  reverse): to do in the pass over B's Eps after item 8.
+- EpsEv.Step.loops 572: KK.OK / Maps.OB, the same class; same pass.
 All other declarations of this session: <= 494 (PiOne.Induced.hom).
 
 ## Gaps
