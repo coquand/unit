@@ -1,0 +1,112 @@
+-- The unit interval without reals (CCA-DESIGN §4): I = 2^N / ~, where
+--   alpha ~ beta  iff  for every n, |N_n alpha - N_n beta| <= 1,
+-- N_n alpha the dyadic numerator of the first n bits (cs_n (alpha|n) =
+-- N_n alpha / 2^n): N_0 = 0, N_(n+1) alpha = 2 N_n alpha + alpha n.
+-- (So alpha ~ beta iff cs alpha = cs beta for the map cs : 2^N -> [0, 1] of
+-- CCA §3.4; I is not identified here with the Dedekind or Cauchy interval.)
+--
+--  - ~ is an equivalence relation.  Transitivity at stage n uses only stage
+--    n+1: if a = N_n alpha >= c + 2 with c = N_n gamma, then
+--    2c + 4 <= 2a <= N_(n+1) alpha <= N_(n+1) beta + 1
+--           <= N_(n+1) gamma + 2 <= 2c + 3.
+--  - Each condition is decidable, so ~ is closed; I is the quotient (an
+--    effective quotient, Quotient.Quot), a compact Hausdorff space covered
+--    by cs : 2^N ->> I.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module T1 = Truncation[l+] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module PF = Profinite[l,l] ;
+module SA = StoneAxioms[l,l] ;
+module OC = OpenClosed[l,l] ;
+module NO = NatOrder[l] ;
+module CS = CantorStages[l] ;
+module DCh = DependentChoice[l] ;
+
+-- dyadic numerators
+addb : Bool -> Nat -> Nat = split { true -> \ m -> suc m ; false -> \ m -> m } ;
+Num : (n : Nat) -> CS.Bits n -> Nat = split { zero -> \ v -> zero ; suc n | r -> \ v -> addb v.2 (NO.dbl (r v.1)) } ;
+N (n : Nat) (a : Nat -> Bool) : Nat = Num n (CS.prefix n a) ;
+
+-- |a - b| <= 1
+Near (a b : Nat) : U l = Le a (suc b) * Le b (suc a) ;
+near-prop (a b : Nat) : isProp (Near a b) = isProp-Sigma (Le a (suc b)) (\ h -> Le b (suc a)) (le-prop a (suc b)) (\ h -> le-prop b (suc a)) ;
+le-step (a b : Nat) (h : Le a b) : Le a (suc b) = (suc h.1, apH (\ k -> suc k) h.2) ;
+le-suc-suc (a b : Nat) (h : Le a b) : Le (suc a) (suc b) = (h.1, transH (plus-suc h.1 a) (apH (\ k -> suc k) h.2)) ;
+near-refl (a : Nat) : Near a a = (le-step a a (le-refl a), le-step a a (le-refl a)) ;
+near-sym (a b : Nat) (h : Near a b) : Near b a = (h.2, h.1) ;
+near-eq (a b : Nat) (e : Id Nat a b) : Near a b = substH (Near a) e (near-refl a) ;
+near-suc (a b : Nat) (e : Id Nat a (suc b)) : Near a b =
+  (substH (\ m -> Le m (suc b)) (symH e) (le-refl (suc b)), substH (\ m -> Le b (suc m)) (symH e) (le-step b (suc b) (le-step b b (le-refl b)))) ;
+not-le-suc (k : Nat) (h : Le (suc k) k) : Empty = NO.lt-irrefl-aux h.1 k (transH (symH (plus-suc h.1 k)) h.2) ;
+le-addb : (x : Bool) (v : Nat) -> Le v (addb x v) = split {
+  true -> \ v -> (suc zero, refl (suc v)) ; false -> \ v -> le-refl v } ;
+addb-le : (x : Bool) (v : Nat) -> Le (addb x v) (suc v) = split {
+  true -> \ v -> le-refl (suc v) ; false -> \ v -> (suc zero, refl (suc v)) } ;
+dbl-le (k : Nat) : (d : Nat) -> Le (NO.dbl k) (NO.dbl (plus d k)) = split {
+  zero -> le-refl (NO.dbl k) ;
+  suc d | r -> le-step (NO.dbl k) (suc (NO.dbl (plus d k))) (le-step (NO.dbl k) (NO.dbl (plus d k)) r) } ;
+dbl-mono (a b : Nat) (h : Le a b) : Le (NO.dbl a) (NO.dbl b) = substH (\ m -> Le (NO.dbl a) (NO.dbl m)) h.2 (dbl-le a h.1) ;
+le-cases (a c : Nat) : NO.Tri a (suc c) -> Plus (Le a (suc c)) (Le (suc (suc c)) a) = split {
+  less h -> inl (suc h.1, h.2) ;
+  equal e -> inl (substH (\ m -> Le m (suc c)) (symH e) (le-refl (suc c))) ;
+  greater h -> inr (h.1, transH (plus-suc h.1 (suc c)) h.2) } ;
+le-dec (a b : Nat) : NO.Tri a b -> Dec (Le a b) = split {
+  less h -> yes (suc h.1, h.2) ;
+  equal e -> yes (substH (\ m -> Le a m) e (le-refl a)) ;
+  greater h -> no (\ g -> not-le-suc b (le-trans (suc b) a b (h.1, transH (plus-suc h.1 b) h.2) g)) } ;
+dec-and (A B : U l) : Dec A -> Dec B -> Dec (A * B) = split {
+  yes a -> split { yes b -> yes (a, b) ; no nb -> no (\ w -> nb w.2) } ;
+  no na -> \ d -> no (\ w -> na w.1) } ;
+near-dec (a b : Nat) : Dec (Near a b) = dec-and (Le a (suc b)) (Le b (suc a))
+  (le-dec a (suc b) (NO.tri a (suc b))) (le-dec b (suc a) (NO.tri b (suc a))) ;
+
+-- transitivity at stage n, from stage n+1
+module Trans (a b c : Nat) (x y z : Bool)
+  (ab : Near (addb x (NO.dbl a)) (addb y (NO.dbl b))) (bc : Near (addb y (NO.dbl b)) (addb z (NO.dbl c))) {
+  chain (h : Le (suc (suc c)) a) : Le (suc (suc (suc (suc (NO.dbl c))))) (suc (suc (suc (NO.dbl c)))) =
+    le-trans (NO.dbl (suc (suc c))) (NO.dbl a) (suc (suc (suc (NO.dbl c)))) (dbl-mono (suc (suc c)) a h)
+      (le-trans (NO.dbl a) (addb x (NO.dbl a)) (suc (suc (suc (NO.dbl c)))) (le-addb x (NO.dbl a))
+        (le-trans (addb x (NO.dbl a)) (suc (addb y (NO.dbl b))) (suc (suc (suc (NO.dbl c)))) ab.1
+          (le-trans (suc (addb y (NO.dbl b))) (suc (suc (addb z (NO.dbl c)))) (suc (suc (suc (NO.dbl c))))
+            (le-suc-suc (addb y (NO.dbl b)) (suc (addb z (NO.dbl c))) bc.1)
+            (le-suc-suc (suc (addb z (NO.dbl c))) (suc (suc (NO.dbl c))) (le-suc-suc (addb z (NO.dbl c)) (suc (NO.dbl c)) (addb-le z (NO.dbl c))))))) ;
+  pick : Plus (Le a (suc c)) (Le (suc (suc c)) a) -> Le a (suc c) = split {
+    inl h -> h ; inr h -> absurd (Le a (suc c)) (not-le-suc (suc (suc (suc (NO.dbl c)))) (chain h)) } ;
+  left : Le a (suc c) = pick (le-cases a c (NO.tri a (suc c))) ;
+} ;
+near-trans (a b c : Nat) (x y z : Bool)
+  (ab : Near (addb x (NO.dbl a)) (addb y (NO.dbl b))) (bc : Near (addb y (NO.dbl b)) (addb z (NO.dbl c))) : Near a c =
+  (Trans[a, b, c, x, y, z, ab, bc].left,
+   Trans[c, b, a, z, y, x, near-sym (addb y (NO.dbl b)) (addb z (NO.dbl c)) bc, near-sym (addb x (NO.dbl a)) (addb y (NO.dbl b)) ab].left) ;
+
+-- the relation ~ on 2^N
+Rel (a b : Nat -> Bool) : U l = (n : Nat) -> Near (N n a) (N n b) ;
+rel-prop (a b : Nat -> Bool) : isProp (Rel a b) = F.isProp-Pi Nat (\ n -> Near (N n a) (N n b)) (\ n -> near-prop (N n a) (N n b)) ;
+rel-refl (a : Nat -> Bool) : Rel a a = \ n -> near-refl (N n a) ;
+rel-sym (a b : Nat -> Bool) (r : Rel a b) : Rel b a = \ n -> near-sym (N n a) (N n b) (r n) ;
+rel-trans (a b c : Nat -> Bool) (r : Rel a b) (s : Rel b c) : Rel a c = \ n ->
+  near-trans (N n a) (N n b) (N n c) (a n) (b n) (c n) (r (suc n)) (s (suc n)) ;
+
+-- the interval
+module Q = Quotient[l].Quot[Nat -> Bool, Rel, rel-prop, rel-refl, rel-sym, rel-trans] ;
+I : U l = Q.Q ;
+cs (a : Nat -> Bool) : I = Q.inc a ;
+i-set : isSet I = Q.set ;
+cs-surjective : DCh.Surjective cs = \ x ->
+  Q.induction @l (\ x1 -> Tr.Trunc[(a : Nat -> Bool) * Id I (cs a) x1].carrier) (\ x1 -> Tr.Trunc[(a : Nat -> Bool) * Id I (cs a) x1].proposition)
+    (\ a -> Tr.Trunc[(a' : Nat -> Bool) * Id I (cs a') (cs a)].inc (a, refl (cs a))) x ;
+
+module Over (ax : SA.Assumptions) {
+  rel-closed (a b : Nat -> Bool) : OC.isClosed (Rel a b) =
+    OC.Countable[CountableChoice[l].cc (ax.dc @l)].closed-all (\ n -> Near (N n a) (N n b)) (\ n ->
+      OC.dec-closed (Near (N n a) (N n b)) (near-dec (N n a) (N n b))) ;
+  id-closed (x y : I) : OC.isClosed (Id I x y) =
+    Q.induction @l (\ x1 -> OC.isClosed (Id I x1 y)) (\ x1 -> Tr.Trunc[OC.ClosedW (Id I x1 y)].proposition) (\ a ->
+      Q.induction @l (\ y1 -> OC.isClosed (Id I (cs a) y1)) (\ y1 -> Tr.Trunc[OC.ClosedW (Id I (cs a) y1)].proposition) (\ b ->
+        OC.closed-iff (Id I (cs a) (cs b)) (Rel a b) (Q.effective a b, Q.relates a b) (rel-closed a b)) y) x ;
+  -- I is compact Hausdorff
+  chaus : CHaus[l].isCHaus I = (i-set, id-closed,
+    T1.Trunc[CHaus[l].Cover I].inc (Nat -> Bool, Sigma411[l].cantor-stone, cs, cs-surjective)) ;
+} ;

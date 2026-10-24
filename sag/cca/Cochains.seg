@@ -1,0 +1,195 @@
+-- Ordered cochains with coefficients in an abelian group (CCA Def. 3.3.1
+-- for one fibre, Def. C.0.4), shared by the Čech complex (worker B) and by
+-- the complexes of near vertices (Lemma C.0.6).
+--
+-- A k-tuple of points of Y is t : Fin k -> Y; a cochain of length k is a
+-- map C k = (Fin k -> Y) -> A (the paper's degree is k - 1; C 0 = A is the
+-- augmentation).  The differential is defined by recursion on k through
+-- the first point: for s = v . t,
+--   delta phi (v . t) = phi t - delta (phi_v) t,     phi_v u = phi (v . u),
+-- and delta phi (v) = phi () on C 0.  Unfolding, it is the alternating sum
+-- of the paper, delta phi (s) = sum_i (-1)^i phi (s without s_i); e.g.
+-- delta phi (v, w) = phi w - phi v (B's em/ImageGroup convention).
+--
+--  - delta is additive: delta (phi - psi) = delta phi - delta psi, by
+--    induction ((a - b) - (c - d) = (a - c) - (b - d)).
+--  - delta delta = 0, by induction: (delta phi)_v = phi - delta (phi_v), so
+--    delta ((delta phi)_v) = delta phi - delta delta (phi_v) = delta phi.
+--  - Cone: if delta alpha (v . t) = 0, then delta (alpha_v) t = alpha t (by
+--    definition of delta).
+--  - Locality: for a reflexive symmetric relation R on Y and a predicate Q,
+--    a tuple is good when its points satisfy Q and are pairwise related.
+--    If phi and psi agree on the good tuples, so do delta phi and
+--    delta psi: by induction, the points related to v forming the
+--    predicate for phi_v.
+--  - Naturality: for f : Y -> Y', delta (phi o f) = (delta phi) o f, by
+--    induction (f (v . u) = f v . f u).
+--  - The Čech complex (Def. 3.3.1) of Y : X -> U, coefficients G x: the
+--    pointwise cochains, and its vanishing at length k + 1 (degree k):
+--    every cocycle is merely a coboundary.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Tr = Truncation[l] ;
+module To = Torsor[l] ;
+
+-- laws of abelian groups, with a - b = a + (-b)
+module AbSub (Gr : To.Ab) {
+  open Gr ;
+  module AL = To.AbL[Gr] ;
+  sub (a b : A) : A = add a (inv b) ;
+  -- a + b = o gives b = -a
+  inv-unique (a b : A) (h : Id A (add a b) o) : Id A b (inv a) = calc A {
+    b =< symH (AL.unitl b) > add o b =< apH (\ c -> add c b) (symH (AL.invl a)) > add (add (inv a) a) b
+      =< assoc (inv a) a b > add (inv a) (add a b) =< apH (add (inv a)) h > add (inv a) o =< unitr (inv a) > inv a } ;
+  inv-inv (a : A) : Id A (inv (inv a)) a = symH (inv-unique (inv a) a (AL.invl a)) ;
+  inv-o : Id A (inv o) o = symH (inv-unique o o (unitr o)) ;
+  -- (a + b) + (c + e) = (a + c) + (b + e)
+  shuffle (a b c e : A) : Id A (add (add a b) (add c e)) (add (add a c) (add b e)) = calc A {
+    add (add a b) (add c e) =< assoc a b (add c e) > add a (add b (add c e))
+      =< apH (add a) (symH (assoc b c e)) > add a (add (add b c) e)
+      =< apH (\ z -> add a (add z e)) (comm b c) > add a (add (add c b) e)
+      =< apH (add a) (assoc c b e) > add a (add c (add b e))
+      =< symH (assoc a c (add b e)) > add (add a c) (add b e) } ;
+  inv-add (a b : A) : Id A (inv (add a b)) (add (inv a) (inv b)) =
+    symH (inv-unique (add a b) (add (inv a) (inv b))
+      (transH (shuffle a b (inv a) (inv b)) (transH (apH (\ z -> add z (add b (inv b))) (invr a))
+        (transH (apH (add o) (invr b)) (unitr o))))) ;
+  -- (a - b) - (c - d) = (a - c) - (b - d)
+  interchange (a b c d : A) : Id A (sub (sub a b) (sub c d)) (sub (sub a c) (sub b d)) = calc A {
+    sub (sub a b) (sub c d) =< apH (add (sub a b)) (inv-add c (inv d)) > add (sub a b) (add (inv c) (inv (inv d)))
+      =< shuffle a (inv b) (inv c) (inv (inv d)) > add (sub a c) (add (inv b) (inv (inv d)))
+      =< apH (add (sub a c)) (symH (inv-add b (inv d))) > sub (sub a c) (sub b d) } ;
+  sub-self (a : A) : Id A (sub a a) o = invr a ;
+  sub-o (a : A) : Id A (sub a o) a = transH (apH (add a) inv-o) (unitr a) ;
+  -- a - b = o gives b = a
+  sub-zero (a b : A) (h : Id A (sub a b) o) : Id A b a = calc A {
+    b =< symH (inv-inv b) > inv (inv b) =< apH inv (inv-unique a (inv b) h) > inv (inv a) =< inv-inv a > a } ;
+  -- a - (a - b) = b
+  sub-sub (a b : A) : Id A (sub a (sub a b)) b = calc A {
+    sub a (sub a b) =< apH (add a) (inv-add a (inv b)) > add a (add (inv a) (inv (inv b)))
+      =< symH (assoc a (inv a) (inv (inv b))) > add (add a (inv a)) (inv (inv b))
+      =< apH (\ z -> add z (inv (inv b))) (invr a) > add o (inv (inv b))
+      =< AL.unitl (inv (inv b)) > inv (inv b) =< inv-inv b > b } ;
+} ;
+
+module Cochains (Gr : To.Ab) (Y : U l) {
+  open Gr ;
+  open AbSub[Gr] ;
+  Tup (k : Nat) : U l = Fin k -> Y ;
+  C (k : Nat) : U l = Tup k -> A ;
+  cons (k : Nat) (v : Y) (t : Tup k) : Tup (suc k) = split { none -> v ; some i -> t i } ;
+  tail (k : Nat) (s : Tup (suc k)) : Tup k = \ i -> s (some i) ;
+  -- phi_v
+  at (k : Nat) (v : Y) (phi : C (suc k)) : C k = \ t -> phi (cons k v t) ;
+  -- the differential
+  delta : (k : Nat) -> C k -> C (suc k) = split {
+    zero -> \ phi s -> phi (tail zero s) ;
+    suc k | r -> \ phi s -> sub (phi (tail (suc k) s)) (r (at k (s none) phi) (tail (suc k) s)) } ;
+  -- by definition
+  delta-cons (k : Nat) (phi : C (suc k)) (v : Y) (t : Tup (suc k)) :
+    Id A (delta (suc k) phi (cons (suc k) v t)) (sub (phi t) (delta k (at k v phi) t)) =
+    refl (sub (phi t) (delta k (at k v phi) t)) ;
+  delta-cong (k : Nat) (phi psi : C k) (e : (t : Tup k) -> Id A (phi t) (psi t)) (s : Tup (suc k)) :
+    Id A (delta k phi s) (delta k psi s) =
+    apH (\ f -> delta k f s) (F.funext (Tup k) (\ t -> A) phi psi e) ;
+
+  -- additivity
+  subC (k : Nat) (phi psi : C k) : C k = \ t -> sub (phi t) (psi t) ;
+  delta-sub : (k : Nat) (phi psi : C k) (s : Tup (suc k)) ->
+    Id A (delta k (subC k phi psi) s) (sub (delta k phi s) (delta k psi s)) = split {
+    zero -> \ phi psi s -> refl (sub (phi (tail zero s)) (psi (tail zero s))) ;
+    suc k | r -> \ phi psi s -> calc A {
+      delta (suc k) (subC (suc k) phi psi) s
+        =< apH (sub (sub (phi (tail (suc k) s)) (psi (tail (suc k) s)))) (r (at k (s none) phi) (at k (s none) psi) (tail (suc k) s)) >
+      sub (sub (phi (tail (suc k) s)) (psi (tail (suc k) s)))
+          (sub (delta k (at k (s none) phi) (tail (suc k) s)) (delta k (at k (s none) psi) (tail (suc k) s)))
+        =< interchange (phi (tail (suc k) s)) (psi (tail (suc k) s)) (delta k (at k (s none) phi) (tail (suc k) s)) (delta k (at k (s none) psi) (tail (suc k) s)) >
+      sub (delta (suc k) phi s) (delta (suc k) psi s) } } ;
+
+  -- delta delta = 0
+  delta-delta : (k : Nat) (phi : C k) (s : Tup (suc (suc k))) -> Id A (delta (suc k) (delta k phi) s) o = split {
+    zero -> \ phi s -> sub-self (phi (tail zero (tail (suc zero) s))) ;
+    suc k | r -> \ phi s -> calc A {
+      delta (suc (suc k)) (delta (suc k) phi) s
+        =< apH (sub (delta (suc k) phi (tail (suc (suc k)) s)))
+             (transH (delta-sub (suc k) phi (delta k (at k (s none) phi)) (tail (suc (suc k)) s))
+               (apH (sub (delta (suc k) phi (tail (suc (suc k)) s))) (r (at k (s none) phi) (tail (suc (suc k)) s)))) >
+      sub (delta (suc k) phi (tail (suc (suc k)) s)) (sub (delta (suc k) phi (tail (suc (suc k)) s)) o)
+        =< apH (sub (delta (suc k) phi (tail (suc (suc k)) s))) (sub-o (delta (suc k) phi (tail (suc (suc k)) s))) >
+      sub (delta (suc k) phi (tail (suc (suc k)) s)) (delta (suc k) phi (tail (suc (suc k)) s))
+        =< sub-self (delta (suc k) phi (tail (suc (suc k)) s)) > o } } ;
+
+  -- the cone at v
+  cone (k : Nat) (v : Y) (alpha : C (suc k)) (t : Tup (suc k)) (h : Id A (delta (suc k) alpha (cons (suc k) v t)) o) :
+    Id A (delta k (at k v alpha) t) (alpha t) = sub-zero (alpha t) (delta k (at k v alpha) t) h ;
+
+  -- good tuples for a relation R and a predicate Q
+  module Region (R : Y -> Y -> U l) (rR : (y : Y) -> R y y) (sR : (y y' : Y) -> R y y' -> R y' y) {
+    Good (Q : Y -> U l) (k : Nat) (t : Tup k) : U l = ((i : Fin k) -> Q (t i)) * ((i j : Fin k) -> R (t i) (t j)) ;
+    good-nil (Q : Y -> U l) (t : Tup zero) : Good Q zero t = (\ i -> absurd (Q (t i)) i, \ i j -> absurd (R (t i) (t j)) i) ;
+    -- the points related to v
+    Link (Q : Y -> U l) (v : Y) (y : Y) : U l = Q y * R v y ;
+    good-tail (Q : Y -> U l) (k : Nat) (s : Tup (suc k)) (g : Good Q (suc k) s) : Good (Link Q (s none)) k (tail k s) =
+      (\ i -> (g.1 (some i), g.2 none (some i)), \ i j -> g.2 (some i) (some j)) ;
+    good-drop (Q : Y -> U l) (k : Nat) (s : Tup (suc k)) (g : Good Q (suc k) s) : Good Q k (tail k s) =
+      (\ i -> g.1 (some i), \ i j -> g.2 (some i) (some j)) ;
+    module Cons (Q : Y -> U l) (k : Nat) (v : Y) (qv : Q v) (u : Tup k) (g : Good (Link Q v) k u) {
+      pts : (i : Fin (suc k)) -> Q (cons k v u i) = split { none -> qv ; some i -> (g.1 i).1 } ;
+      row (i : Fin k) : (j : Fin (suc k)) -> R (u i) (cons k v u j) = split {
+        none -> sR v (u i) (g.1 i).2 ; some j -> g.2 i j } ;
+      pairs : (i j : Fin (suc k)) -> R (cons k v u i) (cons k v u j) = split {
+        none -> split { none -> rR v ; some j -> (g.1 j).2 } ;
+        some i -> row i } ;
+      good : Good Q (suc k) (cons k v u) = (pts, pairs) ;
+    } ;
+    good-cons (Q : Y -> U l) (k : Nat) (v : Y) (qv : Q v) (u : Tup k) (g : Good (Link Q v) k u) : Good Q (suc k) (cons k v u) =
+      Cons[Q, k, v, qv, u, g].good ;
+    -- locality
+    locality : (k : Nat) (Q : Y -> U l) (phi psi : C k) (e : (t : Tup k) -> Good Q k t -> Id A (phi t) (psi t))
+      (s : Tup (suc k)) (g : Good Q (suc k) s) -> Id A (delta k phi s) (delta k psi s) = split {
+      zero -> \ Q phi psi e s g -> e (tail zero s) (good-nil Q (tail zero s)) ;
+      suc k | r -> \ Q phi psi e s g -> calc A {
+        delta (suc k) phi s
+          =< apH (\ a -> sub a (delta k (at k (s none) phi) (tail (suc k) s))) (e (tail (suc k) s) (good-drop Q (suc k) s g)) >
+        sub (psi (tail (suc k) s)) (delta k (at k (s none) phi) (tail (suc k) s))
+          =< apH (sub (psi (tail (suc k) s)))
+               (r (Link Q (s none)) (at k (s none) phi) (at k (s none) psi)
+                  (\ u gu -> e (cons k (s none) u) (good-cons Q k (s none) (g.1 none) u gu))
+                  (tail (suc k) s) (good-tail Q (suc k) s g)) >
+        delta (suc k) psi s } } ;
+  } ;
+} ;
+
+-- naturality in the points
+module Natural (Gr : To.Ab) (Y Y' : U l) (f : Y -> Y') {
+  open Gr ;
+  open AbSub[Gr] ;
+  module S = Cochains[Gr, Y] ;
+  module T = Cochains[Gr, Y'] ;
+  ftup (k : Nat) (t : S.Tup k) : T.Tup k = \ i -> f (t i) ;
+  pull (k : Nat) (phi : T.C k) : S.C k = \ t -> phi (ftup k t) ;
+  cons-map (k : Nat) (v : Y) (u : S.Tup k) : (i : Fin (suc k)) -> Id Y' (f (S.cons k v u i)) (T.cons k (f v) (ftup k u) i) = split {
+    none -> refl (f v) ; some i -> refl (f (u i)) } ;
+  at-pull (k : Nat) (v : Y) (phi : T.C (suc k)) (u : S.Tup k) :
+    Id A (S.at k v (pull (suc k) phi) u) (pull k (T.at k (f v) phi) u) =
+    apH phi (F.funext (Fin (suc k)) (\ i -> Y') (ftup (suc k) (S.cons k v u)) (T.cons k (f v) (ftup k u)) (cons-map k v u)) ;
+  natural : (k : Nat) (phi : T.C k) (s : S.Tup (suc k)) -> Id A (S.delta k (pull k phi) s) (T.delta k phi (ftup (suc k) s)) = split {
+    zero -> \ phi s -> refl (phi (ftup zero (S.tail zero s))) ;
+    suc k | r -> \ phi s -> apH (sub (phi (ftup (suc k) (S.tail (suc k) s))))
+      (transH (S.delta-cong k (S.at k (s none) (pull (suc k) phi)) (pull k (T.at k (f (s none)) phi)) (at-pull k (s none) phi) (S.tail (suc k) s))
+        (r (T.at k (f (s none)) phi) (S.tail (suc k) s))) } ;
+} ;
+
+-- the Čech complex of Y : X -> U with coefficients G x (Def. 3.3.1)
+module Cech (X : U l) (Y : X -> U l) (G : X -> To.Ab) {
+  Ch (k : Nat) : U l = (x : X) -> Cochains[G x, Y x].C k ;
+  d (k : Nat) (alpha : Ch k) : Ch (suc k) = \ x -> Cochains[G x, Y x].delta k (alpha x) ;
+  isCocycle (k : Nat) (alpha : Ch (suc k)) : U l =
+    (x : X) (s : Cochains[G x, Y x].Tup (suc (suc k))) -> Id (G x).A (d (suc k) alpha x s) (G x).o ;
+  Bounds (k : Nat) (alpha : Ch (suc k)) (beta : Ch k) : U l =
+    (x : X) (t : Cochains[G x, Y x].Tup (suc k)) -> Id (G x).A (d k beta x t) (alpha x t) ;
+  -- Ȟ^k(X, Y, G) = 0 (k >= 1; at k = 0, exactness at the 0-cochains)
+  Vanish (k : Nat) : U l = (alpha : Ch (suc k)) -> isCocycle k alpha -> Tr.Trunc[(beta : Ch k) * Bounds k alpha beta].carrier ;
+} ;
+

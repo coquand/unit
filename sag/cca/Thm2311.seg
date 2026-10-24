@@ -1,0 +1,358 @@
+-- CCA Def. 2.3.10 and Thm 2.3.11 (Scott continuity for Stone spaces): for a
+-- tower in C_Stone -- Stone spaces S 0 <- S 1 <- .., overtly discrete
+-- families I n over S n, maps q n x : I n (p x) -> I (n+1) x -- the
+-- canonical map
+--   colim_n ((x : S n) -> I n x)  ->  (y : lim S) -> colim_n I n (y n),
+--   [h] |-> (y |-> [h (y n)])
+-- is an equivalence.  (The paper: a chain of equivalences through Props
+-- 2.3.5 and 2.3.7, "we omit the verification that this is the canonical
+-- map"; here the canonical map directly.)
+--
+-- Notation: push e z : I 0 (dn e z) -> I e z along the q, dn e : S e -> S 0.
+-- Ext(0).  If a, a' : (x : S 0) -> I 0 x agree on the image of lim S, then
+--   [a] = [a'].  On the closed set C = {x | a x /= a' x} (equality in I 0 x
+--   is open) the fibres of dn e over x have no limit point, so (LimInhabited,
+--   Markov) one is empty, for one e and every x in C (Lemma 2.1.6); so
+--   push_e a = push_e a' on S e (open propositions are not-not-stable).
+-- Ext(N+1): the same for the tower without its first term (lim S is
+--   unchanged; colim for the shifted tower maps to colim for S).
+-- Injective.  At a common stage N, [h (y N)] = [h' (y N)] for each y, so
+--   they agree after d steps, for one d and every y (Lemma 2.1.6 on lim S);
+--   then Ext(d + N).
+-- Extension(0).  A section h : (y : lim S) -> I 0 (y 0) is the image of a
+--   class.  For x : S 0, h gives a map hat_x on the limit of the fibres of
+--   dn e over x, which comes from a stage (Prop. 2.3.7, a tower of Stone
+--   spaces); the stage is uniform in x (Prop. 2.3.5 on S 0):
+--   G x : Fibre (dn e) x -> I 0 x.  Then g z = push_e z (G (dn e z) z) and
+--   [g] |-> h.
+-- Extension(i+1): the shifted tower.
+-- Surjective.  By Prop. 2.3.5 on lim S, phi = [h] with h at some stage i;
+--   then Extension(i).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Bijection[l] ; open SeqColim[l] ; open Logic[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module T1 = Truncation[l+] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module PF = Profinite[l,l] ;
+module SA = StoneAxioms[l,l] ;
+module OC = OpenClosed[l,l] ;
+module OD = ODisc[l] ;
+module DCh = DependentChoice[l] ;
+module SL = SeqLim[l] ;
+module L216 = Lemma216[l] ;
+module L236 = Lemma236[l] ;
+module L27 = Lemma27[l] ;
+module L28 = Lemma28[l,l] ;
+module P235 = Prop235[l] ;
+
+-- transport lemmas
+subst-cancel (A : U l) (G : A -> U l) (x y : A) (c : Id A x y) (t : G x) : Id (G x) (substH G (symH c) (substH G c t)) t =
+  idJ A x (\ y1 c1 -> Id (G x) (substH G (symH c1) (substH G c1 t)) t) (refl t) y c ;
+subst-trans (A : U l) (G : A -> U l) (x y z : A) (c : Id A x y) (d : Id A y z) (t : G x) :
+  Id (G z) (substH G d (substH G c t)) (substH G (transH c d) t) =
+  idJ A y (\ z1 d1 -> Id (G z1) (substH G d1 (substH G c t)) (substH G (transH c d1) t)) (refl (substH G c t)) z d ;
+
+-- Def. 2.3.10: a tower in C_Stone
+record CTower {
+  S : Nat -> U l ;
+  p : (n : Nat) -> S (suc n) -> S n ;
+  sS : (n : Nat) -> PF.isStone (S n) ;
+  I : (n : Nat) -> S n -> U l ;
+  q : (n : Nat) (x : S (suc n)) -> I n (p n x) -> I (suc n) x ;
+  sI : (n : Nat) (x : S n) -> isSet (I n x) ;
+  oI : (n : Nat) (x : S n) -> OD.isODisc (I n x) ;
+} ;
+-- without its first term
+shift (T : CTower) : CTower = mkCTower (\ n -> T.S (suc n)) (\ n -> T.p (suc n)) (\ n -> T.sS (suc n))
+  (\ n -> T.I (suc n)) (\ n -> T.q (suc n)) (\ n -> T.sI (suc n)) (\ n -> T.oI (suc n)) ;
+
+-- a tower of families (no hypotheses), and the one of a tower in C_Stone
+record FTower {
+  S : Nat -> U l ;
+  p : (n : Nat) -> S (suc n) -> S n ;
+  I : (n : Nat) -> S n -> U l ;
+  q : (n : Nat) (x : S (suc n)) -> I n (p n x) -> I (suc n) x ;
+} ;
+fam (T : CTower) : FTower = mkFTower T.S T.p T.I T.q ;
+
+-- the functor Pi on a tower, and the canonical map
+module Pis (T : FTower) {
+  Pi (n : Nat) : U l = (x : T.S n) -> T.I n x ;
+  next (n : Nat) (h : Pi n) : Pi (suc n) = \ x -> T.q n x (h (T.p n x)) ;
+  pis : Seq = mkSeq Pi next ;
+  module PC = Colim[pis] ;
+  L : U l = DCh.Lim T.S T.p ;
+  -- the tower of the I n (y n) at a point y of the limit
+  move (y : L) (n : Nat) (a : T.I n (y.1 n)) : T.I n (T.p n (y.1 (suc n))) = substH (T.I n) (symH (y.2 n)) a ;
+  at (y : L) : Seq = mkSeq (\ n -> T.I n (y.1 n)) (\ n a -> T.q n (y.1 (suc n)) (move y n a)) ;
+  Target : U l = (y : L) -> Colim[at y].colim ;
+  target-set : isSet Target = F.isSet-Pi L (\ y -> Colim[at y].colim) (\ y -> Colim[at y].set) ;
+  pointwise (n : Nat) (h : Pi n) : Target = \ y -> Colim[at y].inc n (h (y.1 n)) ;
+  move-section (y : L) (n : Nat) (h : Pi n) : Id (T.I n (T.p n (y.1 (suc n)))) (move y n (h (y.1 n))) (h (T.p n (y.1 (suc n)))) =
+    Prop239[l].transport-section (T.S n) (T.I n) h (y.1 n) (T.p n (y.1 (suc n))) (symH (y.2 n)) ;
+  cocone : PC.Cocone[Target] = PC.mkCocone Target pointwise (\ n h ->
+    F.funext L (\ y -> Colim[at y].colim) (pointwise (suc n) (next n h)) (pointwise n h) (\ y ->
+      transH (apH (\ a -> Colim[at y].inc (suc n) (T.q n (y.1 (suc n)) a)) (symH (move-section y n h)))
+        (symH (Colim[at y].glue n (h (y.1 n)))))) ;
+  module R = PC.Rec[Target, target-set, cocone] ;
+  canonical (u : PC.colim) : Target = R.map u ;
+  canonical-inc (n : Nat) (h : Pi n) : Id Target (canonical (PC.inc n h)) (pointwise n h) = R.beta n h ;
+  -- shifting a section, at a point of the limit
+  shift-at : (d n : Nat) (h : Pi n) (y : L) ->
+    Id (T.I (plus d n) (y.1 (plus d n))) (PC.shift d n h (y.1 (plus d n))) (Colim[at y].shift d n (h (y.1 n))) = split {
+    zero -> \ n h y -> refl (h (y.1 n)) ;
+    suc d | r -> \ n h y -> apH (T.q (plus d n) (y.1 (suc (plus d n))))
+      (transH (symH (move-section y (plus d n) (PC.shift d n h))) (apH (move y (plus d n)) (r n h y))) } ;
+  -- down to stage 0, and pushing along the q
+  dn : (e : Nat) -> T.S e -> T.S zero = split { zero -> \ z -> z ; suc e | r -> \ z -> r (T.p e z) } ;
+  push : (e : Nat) (z : T.S e) -> T.I zero (dn e z) -> T.I e z = split {
+    zero -> \ z a -> a ;
+    suc e | r -> \ z a -> T.q e z (r (T.p e z) a) } ;
+  lift-dn (e : Nat) (a : Pi zero) : Pi e = \ z -> push e z (a (dn e z)) ;
+  inc-push : (e : Nat) (a : Pi zero) -> Id PC.colim (PC.inc zero a) (PC.inc e (lift-dn e a)) = split {
+    zero -> \ a -> refl (PC.inc zero a) ;
+    suc e | r -> \ a -> transH (r a) (PC.glue e (lift-dn e a)) } ;
+  -- push along a path of S e
+  push-nat (e : Nat) (z z' : T.S e) (c : Id (T.S e) z z') (b : T.I zero (dn e z)) :
+    Id (T.I e z') (push e z' (substH (T.I zero) (apH (dn e) c) b)) (substH (T.I e) c (push e z b)) =
+    idJ (T.S e) z (\ z1 c1 -> Id (T.I e z1) (push e z1 (substH (T.I zero) (apH (dn e) c1) b)) (substH (T.I e) c1 (push e z b)))
+      (refl (push e z b)) z' c ;
+  -- the path from dn e (y e) to y 0
+  en (y : L) : (e : Nat) -> Id (T.S zero) (dn e (y.1 e)) (y.1 zero) = split {
+    zero -> refl (y.1 zero) ;
+    suc e | r -> transH (apH (dn e) (y.2 e)) r } ;
+  -- [push_e (y e) b] = [b moved to y 0]
+  push-colim (y : L) : (e : Nat) (b : T.I zero (dn e (y.1 e))) ->
+    Id (Colim[at y].colim) (Colim[at y].inc e (push e (y.1 e) b)) (Colim[at y].inc zero (substH (T.I zero) (en y e) b)) = split {
+    zero -> \ b -> refl (Colim[at y].inc zero b) ;
+    suc e | r -> \ b -> calc (Colim[at y].colim) {
+      Colim[at y].inc (suc e) (push (suc e) (y.1 (suc e)) b)
+        =< apH (\ t -> Colim[at y].inc (suc e) (T.q e (y.1 (suc e)) t))
+             (symH (transH (apH (move y e) (push-nat e (T.p e (y.1 (suc e))) (y.1 e) (y.2 e) b))
+               (subst-cancel (T.S e) (T.I e) (T.p e (y.1 (suc e))) (y.1 e) (y.2 e) (push e (T.p e (y.1 (suc e))) b)))) >
+      Colim[at y].inc (suc e) (T.q e (y.1 (suc e)) (move y e (push e (y.1 e) (substH (T.I zero) (apH (dn e) (y.2 e)) b))))
+        =< symH (Colim[at y].glue e (push e (y.1 e) (substH (T.I zero) (apH (dn e) (y.2 e)) b))) >
+      Colim[at y].inc e (push e (y.1 e) (substH (T.I zero) (apH (dn e) (y.2 e)) b))
+        =< r (substH (T.I zero) (apH (dn e) (y.2 e)) b) >
+      Colim[at y].inc zero (substH (T.I zero) (en y e) (substH (T.I zero) (apH (dn e) (y.2 e)) b))
+        =< apH (Colim[at y].inc zero) (subst-trans (T.S zero) (T.I zero) (dn e (T.p e (y.1 (suc e)))) (dn e (y.1 e)) (y.1 zero)
+             (apH (dn e) (y.2 e)) (en y e) b) >
+      Colim[at y].inc zero (substH (T.I zero) (en y (suc e)) b) } } ;
+} ;
+
+-- the shifted tower: the same limit, and a map of colimits
+module Shifted (T : CTower) {
+  module P = Pis[fam T] ;
+  module P' = Pis[fam (shift T)] ;
+  head (w : P'.L) : (n : Nat) -> T.S n = split { zero -> T.p zero (w.1 zero) ; suc d -> w.1 d } ;
+  head-compat (w : P'.L) : (n : Nat) -> Id (T.S n) (T.p n (head w (suc n))) (head w n) = split {
+    zero -> refl (T.p zero (w.1 zero)) ; suc d -> w.2 d } ;
+  extend (w : P'.L) : P.L = (head w, head-compat w) ;
+  restrict (y : P.L) : P'.L = (\ d -> y.1 (suc d), \ d -> y.2 (suc d)) ;
+  module R = P'.PC.Rec[P.PC.colim, P.PC.set, P'.PC.mkCocone P.PC.colim (\ n h -> P.PC.inc (suc n) h) (\ n h -> symH (P.PC.glue (suc n) h))] ;
+  down (u : P'.PC.colim) : P.PC.colim = R.map u ;
+  -- at a point y, the tower for the shifted tower is the tower at y without its first term
+  module At (y : P.L) {
+    module RA = Colim[P'.at (restrict y)].Rec[Colim[P.at y].colim, Colim[P.at y].set,
+      Colim[P'.at (restrict y)].mkCocone (Colim[P.at y].colim) (\ n a -> Colim[P.at y].inc (suc n) a)
+        (\ n a -> symH (Colim[P.at y].glue (suc n) a))] ;
+    down-at (c : Colim[P'.at (restrict y)].colim) : Colim[P.at y].colim = RA.map c ;
+  } ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+  module P214 = Prop214[l].Over[ax] ;
+  module CP = CountableProduct[l].Over[ax] ;
+  module LI = LimInhabited[l].Over[ax] ;
+  stone-set (T : CTower) (n : Nat) : isSet (T.S n) = P214.stone-set (T.S n) (T.sS n) ;
+  extend-at (T : CTower) (y : Pis[fam T].L) : (n : Nat) -> Id (T.S n) ((Shifted[T].extend (Shifted[T].restrict y)).1 n) (y.1 n) = split {
+    zero -> y.2 zero ; suc d -> refl (y.1 (suc d)) } ;
+  extend-restrict (T : CTower) (y : Pis[fam T].L) : Id (Pis[fam T].L) (Shifted[T].extend (Shifted[T].restrict y)) y =
+    SL.Limit[SL.mkInvSeq T.S T.p].Sets[stone-set T].lim-eq (Shifted[T].extend (Shifted[T].restrict y)) y (extend-at T y) ;
+
+  -- Ext(0)
+  module Ext0 (T : CTower) (a a' : Pis[fam T].Pi zero) (agree : (y : Pis[fam T].L) -> Id (T.I zero (y.1 zero)) (a (y.1 zero)) (a' (y.1 zero))) {
+    module P = Pis[fam T] ;
+    Eq (x : T.S zero) : U l = Id (T.I zero x) (a x) (a' x) ;
+    eq-open (x : T.S zero) : OC.isOpen (Eq x) = L28.odisc-open (Eq x) (T.sI zero x (a x) (a' x)) (L27.id-odisc (T.I zero x) (T.oI zero x) (a x) (a' x)) ;
+    Bad : U l = (x : T.S zero) * Not (Eq x) ;
+    bad-stone : PF.isStone Bad = CP.sub-stone (T.S zero) (T.sS zero) (\ x -> Not (Eq x)) (\ x -> not-prop (Eq x)) (\ x -> OC.neg-open (Eq x) (eq-open x)) ;
+    Phi (x : T.S zero) (e : Nat) : U l = Fibre (P.dn e) x ;
+    phi-stone (x : T.S zero) (e : Nat) : PF.isStone (Phi x e) = P214.fibre-stone (T.S e) (T.S zero) (T.sS e) (T.sS zero) (P.dn e) x ;
+    phi-p (x : T.S zero) (e : Nat) (u : Phi x (suc e)) : Phi x e = (T.p e u.1, u.2) ;
+    pt (x : T.S zero) (w : DCh.Lim (Phi x) (phi-p x)) : P.L = (\ e -> (w.1 e).1, \ e -> apH (\ u -> u.1) (w.2 e)) ;
+    no-limit (v : Bad) (w : DCh.Lim (Phi v.1) (phi-p v.1)) : Empty =
+      v.2 (substH Eq (w.1 zero).2 (agree (pt v.1 w))) ;
+    empty-at : L216.Increasing[Bad] = L216.mkIncreasing Bad (\ e v -> Not (Tr.Trunc[Phi v.1 e].carrier))
+      (\ e v -> not-prop (Tr.Trunc[Phi v.1 e].carrier))
+      (\ e v ne t -> ne (TC.map (Phi v.1 (suc e)) (Phi v.1 e) (phi-p v.1 e) t)) ;
+    cover (v : Bad) : Tr.Trunc[L216.Up[Bad, empty-at].Cover v].carrier =
+      CountableProduct[l].NotAll[ax, \ e -> Tr.Trunc[Phi v.1 e].carrier,
+        \ e -> StoneClosed[l,l].Over[ax].cor38 (Phi v.1 e) (phi-stone v.1 e),
+        \ all -> TC.rec (DCh.Lim (Phi v.1) (phi-p v.1)) @l Empty isProp-Empty (no-limit v)
+          (LI.lim-inhabited (Phi v.1) (phi-p v.1) (phi-stone v.1) all)].result ;
+    module Stage (e : Nat) (em : (v : Bad) -> Not (Tr.Trunc[Phi v.1 e].carrier)) {
+      same (z : T.S e) : Eq (P.dn e z) =
+        OC.Over[ax].open-stable (Eq (P.dn e z)) (T.sI zero (P.dn e z) (a (P.dn e z)) (a' (P.dn e z))) (eq-open (P.dn e z))
+          (\ ne -> em (P.dn e z, ne) (Tr.Trunc[Phi (P.dn e z) e].inc (z, refl (P.dn e z)))) ;
+      result : Id P.PC.colim (P.PC.inc zero a) (P.PC.inc zero a') = calc P.PC.colim {
+        P.PC.inc zero a =< P.inc-push e a > P.PC.inc e (P.lift-dn e a)
+          =< apH (P.PC.inc e) (F.funext (T.S e) (T.I e) (P.lift-dn e a) (P.lift-dn e a') (\ z -> apH (P.push e z) (same z))) >
+          P.PC.inc e (P.lift-dn e a')
+          =< symH (P.inc-push e a') > P.PC.inc zero a' } ;
+    } ;
+    result : Id P.PC.colim (P.PC.inc zero a) (P.PC.inc zero a') =
+      TC.rec ((e : Nat) * ((v : Bad) -> Not (Tr.Trunc[Phi v.1 e].carrier))) @l (Id P.PC.colim (P.PC.inc zero a) (P.PC.inc zero a'))
+        (P.PC.set (P.PC.inc zero a) (P.PC.inc zero a')) (\ w -> Stage[w.1, w.2].result)
+        (L216.Over[ax].lemma216 Bad bad-stone empty-at cover) ;
+  } ;
+  -- Ext(N)
+  ext : (N : Nat) (T : CTower) (a a' : Pis[fam T].Pi N) (agree : (y : Pis[fam T].L) -> Id (T.I N (y.1 N)) (a (y.1 N)) (a' (y.1 N))) ->
+    Id (Pis[fam T].PC.colim) (Pis[fam T].PC.inc N a) (Pis[fam T].PC.inc N a') = split {
+    zero -> \ T a a' agree -> Ext0[T, a, a', agree].result ;
+    suc N | r -> \ T a a' agree ->
+      transH (symH (Shifted[T].R.beta N a))
+        (transH (apH Shifted[T].down (r (shift T) a a' (\ w -> agree (Shifted[T].extend w)))) (Shifted[T].R.beta N a')) } ;
+
+  module Thm2311 (T : CTower) {
+    module P = Pis[fam T] ;
+    lim-stone : PF.isStone P.L = CP.lim-stone T.S T.p T.sS ;
+    -- injective at one stage
+    module Same (N : Nat) (h h' : P.Pi N) (e : (y : P.L) -> Id (Colim[P.at y].colim) (Colim[P.at y].inc N (h (y.1 N))) (Colim[P.at y].inc N (h' (y.1 N)))) {
+      agree : L216.Increasing[P.L] = L216.mkIncreasing P.L
+        (\ d y -> Id (T.I (plus d N) (y.1 (plus d N))) (Colim[P.at y].shift d N (h (y.1 N))) (Colim[P.at y].shift d N (h' (y.1 N))))
+        (\ d y -> T.sI (plus d N) (y.1 (plus d N)) (Colim[P.at y].shift d N (h (y.1 N))) (Colim[P.at y].shift d N (h' (y.1 N))))
+        (\ d y c -> apH ((P.at y).f (plus d N)) c) ;
+      cover (y : P.L) : Tr.Trunc[L216.Up[P.L, agree].Cover y].carrier =
+        SeqProp[l].IdColim[P.at y, \ i -> T.sI i (y.1 i), N, h (y.1 N), h' (y.1 N)].to (e y) ;
+      from-stage (w : (d : Nat) * ((y : P.L) -> agree.sub d y)) : Id P.PC.colim (P.PC.inc N h) (P.PC.inc N h') = calc P.PC.colim {
+        P.PC.inc N h =< symH (P.PC.inc-shift w.1 N h) > P.PC.inc (plus w.1 N) (P.PC.shift w.1 N h)
+          =< ext (plus w.1 N) T (P.PC.shift w.1 N h) (P.PC.shift w.1 N h') (\ y ->
+               transH (P.shift-at w.1 N h y) (transH (w.2 y) (symH (P.shift-at w.1 N h' y)))) >
+          P.PC.inc (plus w.1 N) (P.PC.shift w.1 N h')
+          =< P.PC.inc-shift w.1 N h' > P.PC.inc N h' } ;
+      result : Id P.PC.colim (P.PC.inc N h) (P.PC.inc N h') =
+        TC.rec ((d : Nat) * ((y : P.L) -> agree.sub d y)) @l (Id P.PC.colim (P.PC.inc N h) (P.PC.inc N h')) (P.PC.set (P.PC.inc N h) (P.PC.inc N h'))
+          from-stage (L216.Over[ax].lemma216 P.L lim-stone agree cover) ;
+    } ;
+    injective : Injective P.canonical =
+      StageInjective[l].StageInjective[P.pis, P.Target, P.canonical, \ N h h' q ->
+        Same[N, h, h', happly P.L (\ y -> Colim[P.at y].colim) (P.pointwise N h) (P.pointwise N h')
+          (transH (symH (P.canonical-inc N h)) (transH q (P.canonical-inc N h')))].result].injective ;
+  } ;
+
+  -- Extension(0)
+  module Extension0 (T : CTower) (h : (y : Pis[fam T].L) -> T.I zero (y.1 zero)) {
+    module P = Pis[fam T] ;
+    Goal : U l = Tr.Trunc[Fibre P.canonical (\ y -> Colim[P.at y].inc zero (h y))].carrier ;
+    Phi (x : T.S zero) (e : Nat) : U l = Fibre (P.dn e) x ;
+    phi-stone (x : T.S zero) (e : Nat) : PF.isStone (Phi x e) = P214.fibre-stone (T.S e) (T.S zero) (T.sS e) (T.sS zero) (P.dn e) x ;
+    phi-p (x : T.S zero) (e : Nat) (u : Phi x (suc e)) : Phi x e = (T.p e u.1, u.2) ;
+    pt (x : T.S zero) (w : DCh.Lim (Phi x) (phi-p x)) : P.L = (\ e -> (w.1 e).1, \ e -> apH (\ u -> u.1) (w.2 e)) ;
+    hat (x : T.S zero) (w : DCh.Lim (Phi x) (phi-p x)) : T.I zero x = substH (T.I zero) (w.1 zero).2 (h (pt x w)) ;
+    module Mx (x : T.S zero) {
+      module M = L236.FMaps[Phi x, phi-p x, T.I zero x, T.sI zero x] ;
+      eqv : isEquiv M.CF.colim (M.Lim -> T.I zero x) M.canonical =
+        Prop237[l].Over[ax].prop237-stone (Phi x) (phi-p x) (phi-stone x) (T.I zero x) (T.sI zero x) (T.oI zero x) ;
+      psi : M.CF.colim = eqv.sec (hat x) ;
+    } ;
+    Tw : P235.Tower[T.S zero] = P235.mkTower (T.S zero) (\ x -> Mx[x].M.seq) (\ i x -> Mx[x].M.stage-set i) ;
+    module C = P235.Colims[T.S zero, Tw] ;
+    Psi : C.Target = \ x -> Mx[x].psi ;
+    module Stage (e : Nat) (G : (x : T.S zero) -> Phi x e -> T.I zero x)
+      (gq : (x : T.S zero) -> Id (Mx[x].M.CF.colim) (Mx[x].M.CF.inc e (G x)) Mx[x].psi) {
+      -- G is hat on the limit of the fibres
+      G-hat (x : T.S zero) (w : Mx[x].M.Lim) : Id (T.I zero x) (G x (w.1 e)) (hat x w) =
+        happly Mx[x].M.Lim (\ w1 -> T.I zero x) (Mx[x].M.restrict e (G x)) (hat x)
+          (transH (symH (Mx[x].M.canonical-inc e (G x))) (transH (apH Mx[x].M.canonical (gq x)) (Mx[x].eqv.sec-eq (hat x)))) w ;
+      g : P.Pi e = \ z -> P.push e z (G (P.dn e z) (z, refl (P.dn e z))) ;
+      move-G (z : T.S e) (x : T.S zero) (c : Id (T.S zero) (P.dn e z) x) :
+        Id (T.I zero x) (substH (T.I zero) c (G (P.dn e z) (z, refl (P.dn e z)))) (G x (z, c)) =
+        idJ (T.S zero) (P.dn e z) (\ x1 c1 -> Id (T.I zero x1) (substH (T.I zero) c1 (G (P.dn e z) (z, refl (P.dn e z)))) (G x1 (z, c1)))
+          (refl (G (P.dn e z) (z, refl (P.dn e z)))) x c ;
+      -- a point y of the limit as a point of the limit of the fibres over y 0
+      wy (y : P.L) : DCh.Lim (Phi (y.1 zero)) (phi-p (y.1 zero)) =
+        (\ k -> (y.1 k, P.en y k), \ k -> Sigma-eq (T.S k) (\ z -> Id (T.S zero) (P.dn k z) (y.1 zero)) (T.p k (y.1 (suc k))) (y.1 k)
+          (P.en y (suc k)) (P.en y k) (y.2 k) (stone-set T zero (P.dn k (y.1 k)) (y.1 zero))) ;
+      hat-wy (y : P.L) : Id (T.I zero (y.1 zero)) (hat (y.1 zero) (wy y)) (h y) =
+        apH (\ c -> h (y.1, c)) (SL.Limit[SL.mkInvSeq T.S T.p].Sets[stone-set T].compat-prop y.1 (pt (y.1 zero) (wy y)).2 y.2) ;
+      at-point (y : P.L) : Id (Colim[P.at y].colim) (Colim[P.at y].inc e (g (y.1 e))) (Colim[P.at y].inc zero (h y)) = calc (Colim[P.at y].colim) {
+        Colim[P.at y].inc e (g (y.1 e)) =< P.push-colim y e (G (P.dn e (y.1 e)) (y.1 e, refl (P.dn e (y.1 e)))) >
+        Colim[P.at y].inc zero (substH (T.I zero) (P.en y e) (G (P.dn e (y.1 e)) (y.1 e, refl (P.dn e (y.1 e)))))
+          =< apH (Colim[P.at y].inc zero) (transH (move-G (y.1 e) (y.1 zero) (P.en y e)) (transH (G-hat (y.1 zero) (wy y)) (hat-wy y))) >
+        Colim[P.at y].inc zero (h y) } ;
+      onto : Fibre P.canonical (\ y -> Colim[P.at y].inc zero (h y)) =
+        (P.PC.inc e g, transH (P.canonical-inc e g) (F.funext P.L (\ y -> Colim[P.at y].colim) (P.pointwise e g) (\ y -> Colim[P.at y].inc zero (h y)) at-point)) ;
+    } ;
+    result : Goal =
+      TC.rec ((u : C.CP.colim) * Id C.Target (C.canonical u) Psi) @l Goal Tr.Trunc[Fibre P.canonical (\ y -> Colim[P.at y].inc zero (h y))].proposition (\ v ->
+        C.CP.induction @l (\ u -> Id C.Target (C.canonical u) Psi -> Goal)
+          (\ u -> F.isProp-Pi (Id C.Target (C.canonical u) Psi) (\ c -> Goal) (\ c -> Tr.Trunc[Fibre P.canonical (\ y -> Colim[P.at y].inc zero (h y))].proposition))
+          (\ e G c -> Tr.Trunc[Fibre P.canonical (\ y -> Colim[P.at y].inc zero (h y))].inc (Stage[e, G,
+             happly (T.S zero) (\ x -> Mx[x].M.CF.colim) (C.pointwise e G) Psi (transH (symH (C.canonical-inc e G)) c)].onto))
+          v.1 v.2)
+        (P235.Over[ax].Prop235[T.S zero, T.sS zero, Tw].Surjectivity[Psi].result) ;
+  } ;
+  -- a section of a family pulled back from S k respects paths of lim S
+  dep-ap (T : CTower) (k : Nat) (G : T.S k -> U l) (h : (y : Pis[fam T].L) -> G (y.1 k)) (y1 y2 : Pis[fam T].L) (c : Id (Pis[fam T].L) y1 y2)
+    : Id (G (y2.1 k)) (substH G (apH (\ z -> z.1 k) c) (h y1)) (h y2) =
+    idJ (Pis[fam T].L) y1 (\ y3 c3 -> Id (G (y3.1 k)) (substH G (apH (\ z -> z.1 k) c3) (h y1)) (h y3)) (refl (h y1)) y2 c ;
+  -- Extension(i+1) from Extension(i) for the shifted tower
+  module ExtSuc (T : CTower) (i : Nat) (h : (y : Pis[fam T].L) -> T.I (suc i) (y.1 (suc i))) {
+    module P = Pis[fam T] ;
+    module Sh = Shifted[T] ;
+    module P' = Sh.P' ;
+    h' (w : P'.L) : T.I (suc i) (w.1 i) = h (Sh.extend w) ;
+    Target' : P'.Target = \ w -> Colim[P'.at w].inc i (h' w) ;
+    target : P.Target = \ y -> Colim[P.at y].inc (suc i) (h y) ;
+    -- h at extend (restrict y) is h at y
+    h-er (y : P.L) : Id (T.I (suc i) (y.1 (suc i))) (h (Sh.extend (Sh.restrict y))) (h y) =
+      transH (symH (apH (\ c -> substH (T.I (suc i)) c (h (Sh.extend (Sh.restrict y))))
+          (stone-set T (suc i) (y.1 (suc i)) (y.1 (suc i)) (apH (\ z -> z.1 (suc i)) (extend-restrict T y)) (refl (y.1 (suc i))))))
+        (dep-ap T (suc i) (T.I (suc i)) h (Sh.extend (Sh.restrict y)) y (extend-restrict T y)) ;
+    module Stage (k : Nat) (g : P'.Pi k) (e : (w : P'.L) -> Id (Colim[P'.at w].colim) (Colim[P'.at w].inc k (g (w.1 k))) (Colim[P'.at w].inc i (h' w))) {
+      at-point (y : P.L) : Id (Colim[P.at y].colim) (Colim[P.at y].inc (suc k) (g (y.1 (suc k)))) (target y) = calc (Colim[P.at y].colim) {
+        Colim[P.at y].inc (suc k) (g (y.1 (suc k))) =< symH (Sh.At[y].RA.beta k (g (y.1 (suc k)))) >
+        Sh.At[y].down-at (Colim[P'.at (Sh.restrict y)].inc k (g (y.1 (suc k))))
+          =< apH Sh.At[y].down-at (e (Sh.restrict y)) > Sh.At[y].down-at (Colim[P'.at (Sh.restrict y)].inc i (h' (Sh.restrict y)))
+          =< Sh.At[y].RA.beta i (h' (Sh.restrict y)) > Colim[P.at y].inc (suc i) (h (Sh.extend (Sh.restrict y)))
+          =< apH (Colim[P.at y].inc (suc i)) (h-er y) > target y } ;
+      onto : Fibre P.canonical target = (P.PC.inc (suc k) g, transH (P.canonical-inc (suc k) g)
+        (F.funext P.L (\ y -> Colim[P.at y].colim) (P.pointwise (suc k) g) target at-point)) ;
+    } ;
+    from (v : Fibre P'.canonical Target') : Tr.Trunc[Fibre P.canonical target].carrier =
+      P'.PC.induction @l (\ u -> Id P'.Target (P'.canonical u) Target' -> Tr.Trunc[Fibre P.canonical target].carrier)
+        (\ u -> F.isProp-Pi (Id P'.Target (P'.canonical u) Target') (\ c -> Tr.Trunc[Fibre P.canonical target].carrier)
+          (\ c -> Tr.Trunc[Fibre P.canonical target].proposition))
+        (\ k g c -> Tr.Trunc[Fibre P.canonical target].inc (Stage[k, g, happly P'.L (\ w -> Colim[P'.at w].colim) (P'.pointwise k g) Target'
+           (transH (symH (P'.canonical-inc k g)) c)].onto))
+        v.1 v.2 ;
+  } ;
+  extension : (i : Nat) (T : CTower) (h : (y : Pis[fam T].L) -> T.I i (y.1 i)) ->
+    Tr.Trunc[Fibre Pis[fam T].canonical (\ y -> Colim[Pis[fam T].at y].inc i (h y))].carrier = split {
+    zero -> \ T h -> Extension0[T, h].result ;
+    suc i | r -> \ T h -> TC.rec (Fibre (Pis[fam (shift T)]).canonical ExtSuc[T, i, h].Target') @l
+      (Tr.Trunc[Fibre Pis[fam T].canonical ExtSuc[T, i, h].target].carrier) Tr.Trunc[Fibre Pis[fam T].canonical ExtSuc[T, i, h].target].proposition
+      ExtSuc[T, i, h].from (r (shift T) ExtSuc[T, i, h].h') } ;
+
+  -- Thm 2.3.11
+  module Theorem (T : CTower) {
+    module P = Pis[fam T] ;
+    lim-stone : PF.isStone P.L = CP.lim-stone T.S T.p T.sS ;
+    TwL : P235.Tower[P.L] = P235.mkTower P.L P.at (\ i y -> T.sI i (y.1 i)) ;
+    module CL = P235.Colims[P.L, TwL] ;
+    surjective (phi : P.Target) : Tr.Trunc[Fibre P.canonical phi].carrier =
+      TC.rec ((u : CL.CP.colim) * Id CL.Target (CL.canonical u) phi) @l (Tr.Trunc[Fibre P.canonical phi].carrier)
+        Tr.Trunc[Fibre P.canonical phi].proposition (\ v ->
+        CL.CP.induction @l (\ u -> Id CL.Target (CL.canonical u) phi -> Tr.Trunc[Fibre P.canonical phi].carrier)
+          (\ u -> F.isProp-Pi (Id CL.Target (CL.canonical u) phi) (\ c -> Tr.Trunc[Fibre P.canonical phi].carrier)
+            (\ c -> Tr.Trunc[Fibre P.canonical phi].proposition))
+          (\ i h c -> TC.map (Fibre P.canonical (\ y -> Colim[P.at y].inc i (h y))) (Fibre P.canonical phi)
+             (\ w -> (w.1, transH w.2 (transH (symH (CL.canonical-inc i h)) c))) (extension i T h))
+          v.1 v.2)
+        (P235.Over[ax].Prop235[P.L, lim-stone, TwL].Surjectivity[phi].result) ;
+    equivalence : isEquiv P.PC.colim P.Target P.canonical =
+      Bij[P.PC.colim, P.Target, P.target-set, P.canonical, Thm2311[T].injective, surjective].equiv ;
+  } ;
+  thm2311 (T : CTower) : isEquiv (Pis[fam T].PC.colim) (Pis[fam T].Target) (Pis[fam T].canonical) = Theorem[T].equivalence ;
+} ;

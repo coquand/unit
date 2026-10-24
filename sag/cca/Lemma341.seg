@@ -1,0 +1,158 @@
+-- CCA Lemma 3.4.1 (maps from I to a finite set are constant) and
+-- Thm 3.4.3 (i) (maps from I to an overtly discrete type are constant).
+--
+-- Descent.  Let p : 2^N -> B respect ~.  If p factors through the first
+--   k+1 bits as g, it factors through the first k bits: for a word v of
+--   length k, the sequences v 1 0 0 .. and v 0 1 1 .. are ~-related
+--   (their numerators are equal up to stage k and differ by exactly 1
+--   afterwards: 2 (m + 1) + 0 = (2 m + 1) + 1), so g (v, 1) = g (v, 0).
+--   Hence a p that factors through some stage is constant.
+-- Lemma 3.4.1.  For f : I -> F, F finite, f o cs factors through a stage
+--   (Lemma 2.3.6, 2^N = lim_n 2^n); so f o cs is constant, and so is f (cs
+--   is onto).
+-- Thm 3.4.3 (i).  The same with Prop. 2.3.7 for I overtly discrete.  (The
+--   paper uses Thm 2.4.6, or Prop. 2.3.7 through cs; this is the second.)
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module SA = StoneAxioms[l,l] ;
+module NO = NatOrder[l] ;
+module CS = CantorStages[l] ;
+module TP = TwoPresented[l] ;
+module DCh = DependentChoice[l] ;
+module Fi = Finite[l] ;
+module FCl = FiniteClosure[l] ;
+module OD = ODisc[l] ;
+module L236 = Lemma236[l] ;
+module In = Interval[l] ;
+
+pair-eq (A B : U l) (u u' : A) (v v' : B) (e : Id A u u') (f : Id B v v') : Id (A * B) (u, v) (u', v') =
+  Prelude[l].trans (A * B) (u, v) (u', v) (u', v') (Prelude[l].ap A (A * B) (\ w -> (w, v)) u u' e) (Prelude[l].ap B (A * B) (\ w -> (u', w)) v v' f) ;
+-- prefixes only read the bits below n
+prefix-agree : (n : Nat) (a b : Nat -> Bool) (h : (m : Nat) -> NO.Lt m n -> Id Bool (a m) (b m)) ->
+  Id (CS.Bits n) (CS.prefix n a) (CS.prefix n b) = split {
+  zero -> \ a b h -> refl tt ;
+  suc n | r -> \ a b h -> pair-eq (CS.Bits n) Bool (CS.prefix n a) (CS.prefix n b) (a n) (b n)
+    (r a b (\ m lt -> h m (NO.lt-step m n lt))) (h n (NO.lt-suc n)) } ;
+lt-le-trans (m n k : Nat) (lt : NO.Lt m n) (le : Le n k) : NO.Lt m k =
+  (plus le.1 lt.1, transH (apH (\ j -> suc j) (plus-assoc le.1 lt.1 m))
+    (transH (symH (plus-suc le.1 (plus lt.1 m))) (transH (apH (plus le.1) lt.2) le.2))) ;
+
+-- g up to k, then b at k, then c
+upAt (k : Nat) (b c : Bool) (g : Nat -> Bool) (m : Nat) : NO.Tri m k -> Bool = split {
+  less h -> g m ; equal e -> b ; greater h -> c } ;
+up (k : Nat) (b c : Bool) (g : Nat -> Bool) (m : Nat) : Bool = upAt k b c g m (NO.tri m k) ;
+up-less (k : Nat) (b c : Bool) (g : Nat -> Bool) (m : Nat) (lt : NO.Lt m k) : (t : NO.Tri m k) -> Id Bool (upAt k b c g m t) (g m) = split {
+  less h -> refl (g m) ;
+  equal e -> absurd (Id Bool b (g m)) (NO.lt-neq m k lt e) ;
+  greater h -> absurd (Id Bool c (g m)) (NO.lt-asym m k lt h) } ;
+up-at (k : Nat) (b c : Bool) (g : Nat -> Bool) : (t : NO.Tri k k) -> Id Bool (upAt k b c g k t) b = split {
+  less h -> absurd (Id Bool (g k) b) (NO.lt-irrefl k h) ;
+  equal e -> refl b ;
+  greater h -> absurd (Id Bool c b) (NO.lt-irrefl k h) } ;
+up-greater (k : Nat) (b c : Bool) (g : Nat -> Bool) (m : Nat) (lt : NO.Lt k m) : (t : NO.Tri m k) -> Id Bool (upAt k b c g m t) c = split {
+  less h -> absurd (Id Bool (g m) c) (NO.lt-asym m k h lt) ;
+  equal e -> absurd (Id Bool b c) (NO.lt-neq k m lt (symH e)) ;
+  greater h -> refl c } ;
+
+-- v 1 0 0 .. ~ v 0 1 1 ..  (v the first k bits of g)
+module Adjacent (k : Nat) (g : Nat -> Bool) {
+  A (m : Nat) : Bool = up k true false g m ;
+  B (m : Nat) : Bool = up k false true g m ;
+  equal-below (n : Nat) (le : Le n k) : Id Nat (In.N n A) (In.N n B) =
+    apH (In.Num n) (prefix-agree n A B (\ m lt -> transH (up-less k true false g m (lt-le-trans m n k lt le) (NO.tri m k))
+      (symH (up-less k false true g m (lt-le-trans m n k lt le) (NO.tri m k))))) ;
+  A-k : Id Bool (A k) true = up-at k true false g (NO.tri k k) ;
+  B-k : Id Bool (B k) false = up-at k false true g (NO.tri k k) ;
+  above (d : Nat) : NO.Lt k (plus d (suc k)) = (d, symH (plus-suc d k)) ;
+  -- after stage k the numerators differ by one
+  invariant : (d : Nat) -> Id Nat (In.N (plus d (suc k)) A) (suc (In.N (plus d (suc k)) B)) = split {
+    zero -> calc Nat {
+      In.addb (A k) (NO.dbl (In.N k A)) =< apH (\ x -> In.addb x (NO.dbl (In.N k A))) A-k > suc (NO.dbl (In.N k A))
+        =< apH (\ m -> suc (NO.dbl m)) (equal-below k (le-refl k)) > suc (NO.dbl (In.N k B))
+        =< symH (apH (\ y -> suc (In.addb y (NO.dbl (In.N k B)))) B-k) > suc (In.addb (B k) (NO.dbl (In.N k B))) } ;
+    suc d | r -> calc Nat {
+      In.addb (A (plus d (suc k))) (NO.dbl (In.N (plus d (suc k)) A))
+        =< apH (\ x -> In.addb x (NO.dbl (In.N (plus d (suc k)) A))) (up-greater k true false g (plus d (suc k)) (above d) (NO.tri (plus d (suc k)) k)) >
+      NO.dbl (In.N (plus d (suc k)) A)
+        =< apH NO.dbl r > suc (suc (NO.dbl (In.N (plus d (suc k)) B)))
+        =< symH (apH (\ y -> suc (In.addb y (NO.dbl (In.N (plus d (suc k)) B))))
+             (up-greater k false true g (plus d (suc k)) (above d) (NO.tri (plus d (suc k)) k))) >
+      suc (In.addb (B (plus d (suc k))) (NO.dbl (In.N (plus d (suc k)) B))) } } ;
+  near-at (n : Nat) : NO.Tri n k -> In.Near (In.N n A) (In.N n B) = split {
+    less h -> In.near-eq (In.N n A) (In.N n B) (equal-below n (suc h.1, h.2)) ;
+    equal e -> In.near-eq (In.N n A) (In.N n B) (equal-below n (substH (\ m -> Le n m) e (le-refl n))) ;
+    greater h -> substH (\ m -> In.Near (In.N m A) (In.N m B)) (transH (plus-suc h.1 k) h.2)
+      (In.near-suc (In.N (plus h.1 (suc k)) A) (In.N (plus h.1 (suc k)) B) (invariant h.1)) } ;
+  rel : In.Rel A B = \ n -> near-at n (NO.tri n k) ;
+  prefix-A : Id (CS.Bits (suc k)) (CS.prefix (suc k) A) (CS.prefix k g, true) =
+    pair-eq (CS.Bits k) Bool (CS.prefix k A) (CS.prefix k g) (A k) true
+      (prefix-agree k A g (\ m lt -> up-less k true false g m lt (NO.tri m k))) A-k ;
+  prefix-B : Id (CS.Bits (suc k)) (CS.prefix (suc k) B) (CS.prefix k g, false) =
+    pair-eq (CS.Bits k) Bool (CS.prefix k B) (CS.prefix k g) (B k) false
+      (prefix-agree k B g (\ m lt -> up-less k false true g m lt (NO.tri m k))) B-k ;
+} ;
+
+-- descent
+module Descent (B : U l) (p : (Nat -> Bool) -> B) (resp : (a b : Nat -> Bool) -> In.Rel a b -> Id B (p a) (p b)) {
+  Fac (n : Nat) : U l = (g : CS.Bits n -> B) * ((a : Nat -> Bool) -> Id B (p a) (g (CS.prefix n a))) ;
+  module Down (k : Nat) (fac : Fac (suc k)) {
+    g (v : CS.Bits k) : B = fac.1 (v, false) ;
+    module Adj (a : Nat -> Bool) { module X = Adjacent[k, a] ; } ;
+    key (a : Nat -> Bool) : Id B (fac.1 (CS.prefix k a, true)) (fac.1 (CS.prefix k a, false)) = calc B {
+      fac.1 (CS.prefix k a, true) =< symH (apH fac.1 Adj[a].X.prefix-A) > fac.1 (CS.prefix (suc k) Adj[a].X.A)
+        =< symH (fac.2 Adj[a].X.A) > p Adj[a].X.A
+        =< resp Adj[a].X.A Adj[a].X.B Adj[a].X.rel > p Adj[a].X.B
+        =< fac.2 Adj[a].X.B > fac.1 (CS.prefix (suc k) Adj[a].X.B)
+        =< apH fac.1 Adj[a].X.prefix-B > fac.1 (CS.prefix k a, false) } ;
+    by-bit (a : Nat -> Bool) : Plus (Id Bool (a k) true) (Id Bool (a k) false) -> Id B (fac.1 (CS.prefix k a, a k)) (g (CS.prefix k a)) = split {
+      inl t -> transH (apH (\ b -> fac.1 (CS.prefix k a, b)) t) (key a) ;
+      inr t -> apH (\ b -> fac.1 (CS.prefix k a, b)) t } ;
+    fac' : Fac k = (g, \ a -> transH (fac.2 a) (by-bit a (TP.bool-cases (a k)))) ;
+  } ;
+  to-zero : (n : Nat) -> Fac n -> Fac zero = split { zero -> \ f -> f ; suc n | r -> \ f -> r (Down[n, f].fac') } ;
+  constant (n : Nat) (fac : Fac n) (a b : Nat -> Bool) : Id B (p a) (p b) =
+    transH ((to-zero n fac).2 a) (symH ((to-zero n fac).2 b)) ;
+} ;
+
+-- 2^N = lim_n 2^n
+drop (n : Nat) (v : CS.Bits (suc n)) : CS.Bits n = v.1 ;
+to-lim (a : Nat -> Bool) : DCh.Lim CS.Bits drop = (\ n -> CS.prefix n a, \ n -> refl (CS.prefix n a)) ;
+from-lim (x : DCh.Lim CS.Bits drop) (m : Nat) : Bool = (x.1 (suc m)).2 ;
+
+-- a map out of I that factors through a stage of 2^N is constant
+module Constancy (B : U l) (sB : isSet B) (f : In.I -> B)
+  (onto : (h : DCh.Lim CS.Bits drop -> B) -> Tr.Trunc[Bijection[l].Fibre L236.FMaps[CS.Bits, drop, B, sB].canonical h].carrier) {
+  module M = L236.FMaps[CS.Bits, drop, B, sB] ;
+  p (a : Nat -> Bool) : B = f (In.cs a) ;
+  module D = Descent[B, p, \ a b r -> apH f (In.Q.relates a b r)] ;
+  h (x : M.Lim) : B = p (from-lim x) ;
+  factor : Tr.Trunc[(n : Nat) * D.Fac n].carrier =
+    TC.rec (Bijection[l].Fibre M.canonical h) @l (Tr.Trunc[(n : Nat) * D.Fac n].carrier) Tr.Trunc[(n : Nat) * D.Fac n].proposition (\ v ->
+      M.CF.induction @l (\ u -> Id (M.Lim -> B) (M.canonical u) h -> Tr.Trunc[(n : Nat) * D.Fac n].carrier)
+        (\ u -> F.isProp-Pi (Id (M.Lim -> B) (M.canonical u) h) (\ e -> Tr.Trunc[(n : Nat) * D.Fac n].carrier) (\ e -> Tr.Trunc[(n : Nat) * D.Fac n].proposition))
+        (\ n g e -> Tr.Trunc[(n' : Nat) * D.Fac n'].inc (n, g, \ a -> symH (happly M.Lim (\ x -> B) (M.restrict n g) h
+           (transH (symH (M.canonical-inc n g)) e) (to-lim a))))
+        v.1 v.2) (onto h) ;
+  on-cantor (a b : Nat -> Bool) : Id B (p a) (p b) =
+    TC.rec ((n : Nat) * D.Fac n) @l (Id B (p a) (p b)) (sB (p a) (p b)) (\ w -> D.constant w.1 w.2 a b) factor ;
+  constant (x y : In.I) : Id B (f x) (f y) =
+    In.Q.induction @l (\ x1 -> Id B (f x1) (f y)) (\ x1 -> sB (f x1) (f y)) (\ a ->
+      In.Q.induction @l (\ y1 -> Id B (f (In.cs a)) (f y1)) (\ y1 -> sB (f (In.cs a)) (f y1)) (\ b -> on-cantor a b) y) x ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+  -- Lemma 3.4.1
+  lemma341 (B : U l) (fB : Fi.isFinite B) (f : In.I -> B) (x y : In.I) : Id B (f x) (f y) =
+    Constancy[B, FCl.finite-set B fB, f, L236.Over[ax].Lemma236[CS.Bits, drop, CS.bits-finite, B, fB].surjective].constant x y ;
+  -- Thm 3.4.3 (i)
+  module Thm343i (B : U l) (oB : OD.isODisc B) (f : In.I -> B) {
+    sB : isSet B = Lemma27[l].odisc-set B oB ;
+    module M = L236.FMaps[CS.Bits, drop, B, sB] ;
+    eqv : isEquiv M.CF.colim (M.Lim -> B) M.canonical = Prop237[l].Over[ax].prop237 CS.Bits drop CS.bits-finite B sB oB ;
+    constant (x y : In.I) : Id B (f x) (f y) =
+      Constancy[B, sB, f, \ h -> Tr.Trunc[Bijection[l].Fibre M.canonical h].inc (eqv.sec h, eqv.sec-eq h)].constant x y ;
+  } ;
+  thm343i (B : U l) (oB : OD.isODisc B) (f : In.I -> B) (x y : In.I) : Id B (f x) (f y) = Thm343i[B, oB, f].constant x y ;
+} ;

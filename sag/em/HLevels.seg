@@ -1,0 +1,139 @@
+-- Truncation levels (DW1 footnote 2), indexed by Nat with offset 2:
+--     isTrunc n X   means   X is (n-2)-truncated,
+-- isTrunc 0 X = X contractible, isTrunc (n+1) X = all identity types of X
+-- are in isTrunc n.  Closure facts, each by induction on n:
+--   trunc-suc       (n-2)-truncated types are (n-1)-truncated
+--   retract-trunc   a retract of an (n-2)-truncated type is one (identity
+--                   types of a retract are retracts of identity types)
+--   trunc-Pi        Pi of (n-2)-truncated types (weak funext at 0, funext
+--                   for the identity types)
+--   trunc-Sigma     Sigma of (n-2)-truncated types (paths in Sigma are a
+--                   retract of pairs of paths, Prelude.sPath / rsPath)
+--   trunc-prop      being (n-2)-truncated is a proposition
+--   prop-trunc      a proposition is (n-1)-truncated for all n
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FunExtUA[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module W = FunExtUA[l].FE[univ @l] ;
+module N = NatArith[l] ;
+
+isTrunc : Nat -> U l -> U l = split {
+  zero -> \ X -> isContr X ;
+  suc n | r -> \ X -> (x y : X) -> r (Id X x y) } ;
+
+-- by definition
+isTrunc-zero (X : U l) : Id (U l) (isTrunc zero X) (isContr X) = refl (isContr X) ;
+isTrunc-suc (n : Nat) (X : U l) : Id (U l) (isTrunc (suc n) X) ((x y : X) -> isTrunc n (Id X x y)) =
+  refl ((x y : X) -> isTrunc n (Id X x y)) ;
+
+------------------------------------------------------------------------
+-- contractible types and propositions
+
+contr-prop (X : U l) (c : isContr X) : isProp X = pathC X c ;
+
+prop-paths (X : U l) (p : isProp X) (x y : X) : isContr (Id X x y) =
+  (p x y, \ q -> prop-to-set X p x y (p x y) q) ;
+
+contr-paths (X : U l) (c : isContr X) (x y : X) : isContr (Id X x y) =
+  prop-paths X (contr-prop X c) x y ;
+
+trunc-suc : (n : Nat) (X : U l) -> isTrunc n X -> isTrunc (suc n) X = split {
+  zero -> \ X c -> contr-paths X c ;
+  suc n | r -> \ X h x y -> r (Id X x y) (h x y) } ;
+
+-- isTrunc n X gives isTrunc (d + n) X
+trunc-lift (n : Nat) (X : U l) (t : isTrunc n X) : (d : Nat) -> isTrunc (N.plus d n) X = split {
+  zero -> t ;
+  suc d | r -> trunc-suc (N.plus d n) X r } ;
+
+-- the index read up to an equality of numbers
+trunc-index (X : U l) (n k : Nat) (e : Id Nat n k) (t : isTrunc n X) : isTrunc k X =
+  subst Nat (\ m -> isTrunc m X) n k e t ;
+
+contr-trunc : (n : Nat) (X : U l) -> isContr X -> isTrunc n X = split {
+  zero -> \ X c -> c ;
+  suc n | r -> \ X c -> trunc-suc n X (r X c) } ;
+
+prop-trunc : (n : Nat) (X : U l) -> isProp X -> isTrunc (suc n) X = split {
+  zero -> \ X p -> prop-paths X p ;
+  suc n | r -> \ X p -> trunc-suc (suc n) X (r X p) } ;
+
+trunc-one-prop (X : U l) (t : isTrunc (suc zero) X) : isProp X = \ x y -> (t x y).1 ;
+
+set-trunc (X : U l) (s : isSet X) : isTrunc (suc (suc zero)) X = \ x y -> prop-paths (Id X x y) (s x y) ;
+
+trunc-set (X : U l) (t : isTrunc (suc (suc zero)) X) : isSet X = \ x y -> trunc-one-prop (Id X x y) (t x y) ;
+
+trunc-prop : (n : Nat) (X : U l) -> isProp (isTrunc n X) = split {
+  zero -> \ X -> Torsor[l].isProp-isContr X ;
+  suc n | r -> \ X -> FL.isProp-Pi X (\ x -> (y : X) -> isTrunc n (Id X x y)) (\ x ->
+    FL.isProp-Pi X (\ y -> isTrunc n (Id X x y)) (\ y -> r (Id X x y))) } ;
+
+-- transport of a level along a path in the base of a family
+trunc-subst (n : Nat) (A : U l) (P : A -> U l) (x y : A) (p : Id A x y) (t : isTrunc n (P x)) : isTrunc n (P y) =
+  subst A (\ a -> isTrunc n (P a)) x y p t ;
+
+------------------------------------------------------------------------
+-- retracts: s : A -> B, r : B -> A, h : r (s a) = a
+
+retract-contr (A B : U l) (s : A -> B) (r : B -> A) (h : (a : A) -> Id A (r (s a)) a)
+  (c : isContr B) : isContr A =
+  (r c.1, \ a -> trans A (r c.1) (r (s a)) a (ap B A r c.1 (s a) (c.2 (s a))) (h a)) ;
+
+-- the identity types of a retract are retracts: q |-> (h x)^-1 . ap r q . h y
+id-r (A B : U l) (s : A -> B) (r : B -> A) (h : (a : A) -> Id A (r (s a)) a) (x y : A)
+  (q : Id B (s x) (s y)) : Id A x y =
+  trans A x (r (s x)) y (sym A (r (s x)) x (h x)) (trans A (r (s x)) (r (s y)) y (ap B A r (s x) (s y) q) (h y)) ;
+
+id-rs (A B : U l) (s : A -> B) (r : B -> A) (h : (a : A) -> Id A (r (s a)) a) (x y : A)
+  (p : Id A x y) : Id (Id A x y) (id-r A B s r h x y (ap A B s x y p)) p =
+  idJ A x (\ y1 p1 -> Id (Id A x y1) (id-r A B s r h x y1 (ap A B s x y1 p1)) p1)
+    (trans (Id A x x) (id-r A B s r h x x (refl (s x)))
+       (trans A x (r (s x)) x (sym A (r (s x)) x (h x)) (h x)) (refl x)
+       (ap (Id A (r (s x)) x) (Id A x x) (trans A x (r (s x)) x (sym A (r (s x)) x (h x)))
+          (trans A (r (s x)) (r (s x)) x (refl (r (s x))) (h x)) (h x) (trans-refl-l A (r (s x)) x (h x)))
+       (trans-sym-l A (r (s x)) x (h x)))
+    y p ;
+
+retract-trunc : (n : Nat) (A B : U l) (s : A -> B) (r : B -> A) (h : (a : A) -> Id A (r (s a)) a)
+  -> isTrunc n B -> isTrunc n A = split {
+  zero -> \ A B s r h c -> retract-contr A B s r h c ;
+  suc n | rec -> \ A B s r h t x y ->
+    rec (Id A x y) (Id B (s x) (s y)) (ap A B s x y) (id-r A B s r h x y) (id-rs A B s r h x y) (t (s x) (s y)) } ;
+
+equiv-trunc (n : Nat) (A B : U l) (e : Equiv A B) (t : isTrunc n B) : isTrunc n A =
+  retract-trunc n A B e.1 e.2.ret e.2.ret-eq t ;
+
+equiv-trunc' (n : Nat) (A B : U l) (e : Equiv A B) (t : isTrunc n A) : isTrunc n B =
+  retract-trunc n B A e.2.sec e.1 e.2.sec-eq t ;
+
+------------------------------------------------------------------------
+-- Pi and Sigma
+
+trunc-Pi : (n : Nat) (A : U l) (B : A -> U l) -> ((a : A) -> isTrunc n (B a)) -> isTrunc n ((a : A) -> B a) = split {
+  zero -> \ A B c -> W.wfe A B c ;
+  suc n | r -> \ A B t f g ->
+    retract-trunc n (Id ((a : A) -> B a) f g) ((a : A) -> Id (B a) (f a) (g a))
+      (happly A B f g) (FL.funext A B f g) (FL.funext-happly A B f g)
+      (r A (\ a -> Id (B a) (f a) (g a)) (\ a -> t a (f a) (g a))) } ;
+
+trunc-Sigma : (n : Nat) (A : U l) (B : A -> U l) -> isTrunc n A -> ((a : A) -> isTrunc n (B a))
+  -> isTrunc n ((a : A) * B a) = split {
+  zero -> \ A B cA cB ->
+    ((cA.1, (cB cA.1).1), \ w -> Sigma-path A B cA.1 w.1 (cB cA.1).1 w.2 (cA.2 w.1)
+       (pathC (B w.1) (cB w.1) (subst A B cA.1 w.1 (cA.2 w.1) (cB cA.1).1) w.2)) ;
+  suc n | r -> \ A B tA tB u v ->
+    retract-trunc n (Id ((a : A) * B a) u v) ((p : Id A u.1 v.1) * Id (B v.1) (subst A B u.1 v.1 p u.2) v.2)
+      (sPath A B u v) (\ w -> Sigma-path A B u.1 v.1 u.2 v.2 w.1 w.2) (rsPath A B u v)
+      (r (Id A u.1 v.1) (\ p -> Id (B v.1) (subst A B u.1 v.1 p u.2) v.2) (tA u.1 v.1)
+         (\ p -> tB v.1 (subst A B u.1 v.1 p u.2) v.2)) } ;
+
+-- Sigma over a contractible base: the fibre over the centre decides
+trunc-Sigma-contr (n : Nat) (A : U l) (B : A -> U l) (cA : isContr A) (t : isTrunc n (B cA.1))
+  : isTrunc n ((a : A) * B a) =
+  trunc-Sigma n A B (contr-trunc n A cA) (\ a -> trunc-subst n A B cA.1 a (cA.2 a) t) ;
+
+-- a Sigma over propositions is a subtype, at levels >= -1
+trunc-sub (n : Nat) (A : U l) (B : A -> U l) (tA : isTrunc (suc n) A) (pB : (a : A) -> isProp (B a))
+  : isTrunc (suc n) ((a : A) * B a) =
+  trunc-Sigma (suc n) A B tA (\ a -> prop-trunc n (B a) (pB a)) ;

@@ -1,0 +1,221 @@
+-- CCA Lemma C.0.6 (and Lemma C.0.5 for abelian groups): for an abelian
+-- group G, the sequence
+--   G -> G^(I~^0_n) -> G^(I~^1_n) -> G^(I~^2_n) -> ..
+-- is exact everywhere: a cochain alpha of length k + 1 on the tuples of
+-- pairwise near vertices of V n (numerators j < 2^n, |a - b| <= 1) with
+-- delta alpha = 0 is delta beta for a cochain beta of length k.  Cochains
+-- and delta as in Cochains; they are maps on all tuples, and the equations
+-- are asked on the good tuples (pairwise near, points in a region Q).
+--
+-- The paper cites Eilenberg-Steenrod VI.6.10 (the ordered complex is
+-- homotopy equivalent to the alternating one, trivial above degree 1).
+-- Here a direct proof, by induction on the top vertex j, for the regions
+-- Q_j = {a <= j}:
+--  - Cone.  If v is in Q and near every point of Q, beta = alpha_v works
+--    (Cochains.cone).  This gives Q_0, apex 0.
+--  - Q_j to Q_(j+1), if j + 1 < 2^n (else Q_(j+1) = Q_j).  Let w = j + 1,
+--    St = {j, j+1}, Pt = {j}.  By induction delta beta = alpha on Q_j; by
+--    the cone at w, delta beta' = alpha on St, beta' = alpha_w.  Make beta'
+--    agree with beta on Pt: for k = 0 they agree already (both are
+--    alpha (j)); for k > 0, gamma = beta' - beta is a cocycle on Pt, so
+--    gamma = delta (gamma_j) there (cone at j), and
+--    beta'' = beta' - delta (gamma_j) has delta beta'' = alpha on St
+--    (delta delta = 0) and beta'' = beta on Pt.  Glue: beta* t = beta t if
+--    the points of t are in Q_j, else beta'' t.  A good tuple of Q_(j+1)
+--    is in Q_j or contains j + 1, and then (near) lies in St; delta beta*
+--    is delta beta resp. delta beta'' there (Cochains locality).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ; open FinChoice[l] ;
+module NO = NatOrder[l] ;
+module Pg = Pairing[l] ;
+module To = Torsor[l] ;
+module In = Interval[l] ;
+module Dy = Dyadic[l] ;
+module Co = Cochains[l] ;
+
+-- order facts
+le-pred (a b : Nat) (h : Le (suc a) (suc b)) : Le a b = (h.1, suc-inj (transH (symH (plus-suc h.1 a)) h.2)) ;
+le-antisym (a b : Nat) (h : Le a b) (h' : Le b a) : Id Nat a b =
+  transH (symH (apH (\ x -> plus x a) (Pg.plus-zero-inv h'.1 h.1
+    (plus-cancel-r a (plus h'.1 h.1) zero (transH (plus-assoc h'.1 h.1 a) (transH (apH (plus h'.1) h.2) h'.2)))).2)) h.2 ;
+le-zero-l (a : Nat) : Le zero a = (a, plus-zero a) ;
+le-or-eq-at (a j : Nat) : (d : Nat) -> Id Nat (plus d a) (suc j) -> Plus (Le a j) (Id Nat a (suc j)) = split {
+  zero -> \ e -> inr e ;
+  suc d -> \ e -> inl (d, suc-inj e) } ;
+le-or-eq (a j : Nat) (h : Le a (suc j)) : Plus (Le a j) (Id Nat a (suc j)) = le-or-eq-at a j h.1 h.2 ;
+pow2-pos : (m : Nat) -> Le (suc zero) (Dy.pow2 m) = split {
+  zero -> le-refl (suc zero) ;
+  suc m | r -> le-trans (suc zero) (Dy.pow2 m) (NO.dbl (Dy.pow2 m)) r
+    (substH (\ k -> Le (Dy.pow2 m) k) (symH (NO.dbl-plus (Dy.pow2 m))) (le-sum-r (Dy.pow2 m) (Dy.pow2 m))) } ;
+
+-- a decidable predicate on Fin k holds everywhere or fails somewhere
+module FS (k : Nat) (P : Fin (suc k) -> U l) (d : (i : Fin (suc k)) -> Dec (P i))
+  (rest : Plus ((i : Fin k) -> P (some i)) ((i : Fin k) * Not (P (some i)))) {
+  all (p0 : P none) (ps : (i : Fin k) -> P (some i)) : (i : Fin (suc k)) -> P i = split { none -> p0 ; some i -> ps i } ;
+  with-head (p0 : P none) : Plus ((i : Fin k) -> P (some i)) ((i : Fin k) * Not (P (some i))) ->
+    Plus ((i : Fin (suc k)) -> P i) ((i : Fin (suc k)) * Not (P i)) = split {
+    inl ps -> inl (all p0 ps) ;
+    inr w -> inr (some w.1, w.2) } ;
+  at-head : Dec (P none) -> Plus ((i : Fin (suc k)) -> P i) ((i : Fin (suc k)) * Not (P i)) = split {
+    yes p0 -> with-head p0 rest ;
+    no n0 -> inr (none, n0) } ;
+  result : Plus ((i : Fin (suc k)) -> P i) ((i : Fin (suc k)) * Not (P i)) = at-head (d none) ;
+} ;
+fin-search : (k : Nat) (P : Fin k -> U l) (d : (i : Fin k) -> Dec (P i)) -> Plus ((i : Fin k) -> P i) ((i : Fin k) * Not (P i)) = split {
+  zero -> \ P d -> inl (\ i -> absurd (P i) i) ;
+  suc k | r -> \ P d -> FS[k, P, d, r (\ i -> P (some i)) (\ i -> d (some i))].result } ;
+
+module LemmaC06 (Gr : To.Ab) (n : Nat) {
+  open Gr ;
+  open Co.AbSub[Gr] ;
+  V : U l = Dy.V n ;
+  open Co.Cochains[Gr, V] ;
+  Nr (a b : V) : U l = In.Near a.1 b.1 ;
+  open Region[Nr, \ a -> In.near-refl a.1, \ a b -> In.near-sym a.1 b.1] ;
+
+  -- exactness on the good tuples of a region, at length k + 1
+  Cocycle (Q : V -> U l) (k : Nat) (alpha : C (suc k)) : U l =
+    (s : Tup (suc (suc k))) -> Good Q (suc (suc k)) s -> Id A (delta (suc k) alpha s) o ;
+  Solves (Q : V -> U l) (k : Nat) (alpha : C (suc k)) (beta : C k) : U l =
+    (t : Tup (suc k)) -> Good Q (suc k) t -> Id A (delta k beta t) (alpha t) ;
+  Exact (Q : V -> U l) (k : Nat) : U l = (alpha : C (suc k)) -> Cocycle Q k alpha -> (beta : C k) * Solves Q k alpha beta ;
+
+  good-mono (Q Q' : V -> U l) (f : (a : V) -> Q a -> Q' a) (k : Nat) (t : Tup k) (g : Good Q k t) : Good Q' k t =
+    (\ i -> f (t i) (g.1 i), g.2) ;
+  exact-same (Q Q' : V -> U l) (f : (a : V) -> Q a -> Q' a) (f' : (a : V) -> Q' a -> Q a) (k : Nat) (ex : Exact Q k) : Exact Q' k =
+    \ alpha c -> ((ex alpha (\ s g -> c s (good-mono Q Q' f (suc (suc k)) s g))).1,
+                  \ t g -> (ex alpha (\ s g1 -> c s (good-mono Q Q' f (suc (suc k)) s g1))).2 t (good-mono Q' Q f' (suc k) t g)) ;
+
+  -- the cone
+  module Cone (Q : V -> U l) (v : V) (qv : Q v) (rv : (a : V) -> Q a -> Nr v a) (k : Nat) (alpha : C (suc k)) (c : Cocycle Q k alpha) {
+    link (t : Tup (suc k)) (g : Good Q (suc k) t) : Good (Link Q v) (suc k) t = (\ i -> (g.1 i, rv (t i) (g.1 i)), g.2) ;
+    solves : Solves Q k alpha (at k v alpha) = \ t g ->
+      cone k v alpha t (c (cons (suc k) v t) (good-cons Q (suc k) v qv t (link t g))) ;
+  } ;
+  cone-exact (Q : V -> U l) (v : V) (qv : Q v) (rv : (a : V) -> Q a -> Nr v a) (k : Nat) : Exact Q k =
+    \ alpha c -> (at k v alpha, Cone[Q, v, qv, rv, k, alpha, c].solves) ;
+
+  -- the regions
+  Qj (j : Nat) (a : V) : U l = Le a.1 j ;
+  St (j : Nat) (a : V) : U l = Le j a.1 * Le a.1 (suc j) ;
+  Pt (j : Nat) (a : V) : U l = Le j a.1 * Le a.1 j ;
+  zero-v : V = (zero, pow2-pos n) ;
+  base (k : Nat) : Exact (Qj zero) k = cone-exact (Qj zero) zero-v (le-refl zero)
+    (\ a h -> (le-zero-l (suc a.1), In.le-step a.1 zero h)) k ;
+
+  -- Q_(j+1) = Q_j when j + 1 is not a vertex
+  module TopV (j : Nat) (nb : Not (Dy.Below (suc j) (Dy.pow2 n))) {
+    down-at (a : V) : Plus (Le a.1 j) (Id Nat a.1 (suc j)) -> Le a.1 j = split {
+      inl h -> h ;
+      inr e -> absurd (Le a.1 j) (nb (substH (\ m -> Dy.Below m (Dy.pow2 n)) e a.2)) } ;
+    down (a : V) (h : Qj (suc j) a) : Qj j a = down-at a (le-or-eq a.1 j h) ;
+    up (a : V) (h : Qj j a) : Qj (suc j) a = In.le-step a.1 j h ;
+  } ;
+
+  -- Q_j to Q_(j+1), j + 1 a vertex
+  module Step (j : Nat) (wb : Dy.Below (suc j) (Dy.pow2 n)) (ih : (k : Nat) -> Exact (Qj j) k)
+    (k : Nat) (alpha : C (suc k)) (c : Cocycle (Qj (suc j)) k alpha) {
+    w : V = (suc j, wb) ;
+    p : V = (j, le-trans (suc j) (suc (suc j)) (Dy.pow2 n) (In.le-step (suc j) (suc j) (le-refl (suc j))) wb) ;
+    q-up (a : V) (h : Qj j a) : Qj (suc j) a = In.le-step a.1 j h ;
+    st-up (a : V) (h : St j a) : Qj (suc j) a = h.2 ;
+    pt-st (a : V) (h : Pt j a) : St j a = (h.1, In.le-step a.1 j h.2) ;
+    pt-q (a : V) (h : Pt j a) : Qj j a = h.2 ;
+    -- beta on Q_j
+    cq : Cocycle (Qj j) k alpha = \ s g -> c s (good-mono (Qj j) (Qj (suc j)) q-up (suc (suc k)) s g) ;
+    beta : C k = (ih k alpha cq).1 ;
+    beta-solves : Solves (Qj j) k alpha beta = (ih k alpha cq).2 ;
+    -- beta' on St, the cone at w
+    cst : Cocycle (St j) k alpha = \ s g -> c s (good-mono (St j) (Qj (suc j)) st-up (suc (suc k)) s g) ;
+    st-near (a : V) (h : St j a) : Nr w a = (In.le-suc-suc j a.1 h.1, In.le-step a.1 (suc j) h.2) ;
+    beta' : C k = at k w alpha ;
+    beta'-solves : Solves (St j) k alpha beta' =
+      Cone[St j, w, (In.le-step j j (le-refl j), le-refl (suc j)), st-near, k, alpha, cst].solves ;
+  } ;
+
+  -- beta'' : solves on St and agrees with beta on Pt
+  module Fix (j : Nat) (wb : Dy.Below (suc j) (Dy.pow2 n)) (ih : (k : Nat) -> Exact (Qj j) k) {
+    Agree (k : Nat) (alpha : C (suc k)) (c : Cocycle (Qj (suc j)) k alpha) (b : C k) : U l =
+      Solves (St j) k alpha b * ((t : Tup k) -> Good (Pt j) k t -> Id A (b t) (Step[j, wb, ih, k, alpha, c].beta t)) ;
+    module Z (alpha : C (suc zero)) (c : Cocycle (Qj (suc j)) zero alpha) {
+      open Step[j, wb, ih, zero, alpha, c] ;
+      pv (t : Tup zero) : Good (Pt j) (suc zero) (cons zero p t) =
+        good-cons (Pt j) zero p (le-refl j, le-refl j) t (good-nil (Link (Pt j) p) t) ;
+      agree (t : Tup zero) (g : Good (Pt j) zero t) : Id A (beta' t) (beta t) =
+        transH (beta'-solves (cons zero p t) (good-mono (Pt j) (St j) pt-st (suc zero) (cons zero p t) (pv t)))
+          (symH (beta-solves (cons zero p t) (good-mono (Pt j) (Qj j) pt-q (suc zero) (cons zero p t) (pv t)))) ;
+      result : (b : C zero) * Agree zero alpha c b = (beta', (beta'-solves, agree)) ;
+    } ;
+    module S (k : Nat) (alpha : C (suc (suc k))) (c : Cocycle (Qj (suc j)) (suc k) alpha) {
+      open Step[j, wb, ih, suc k, alpha, c] ;
+      gamma : C (suc k) = subC (suc k) beta' beta ;
+      gamma-cocycle : Cocycle (Pt j) k gamma = \ s g -> calc A {
+        delta (suc k) gamma s =< delta-sub (suc k) beta' beta s > sub (delta (suc k) beta' s) (delta (suc k) beta s)
+          =< apH (\ x -> sub x (delta (suc k) beta s)) (beta'-solves s (good-mono (Pt j) (St j) pt-st (suc (suc k)) s g)) >
+        sub (alpha s) (delta (suc k) beta s)
+          =< apH (sub (alpha s)) (beta-solves s (good-mono (Pt j) (Qj j) pt-q (suc (suc k)) s g)) >
+        sub (alpha s) (alpha s) =< sub-self (alpha s) > o } ;
+      pt-near (a : V) (h : Pt j a) : Nr p a = In.near-eq j a.1 (le-antisym j a.1 h.1 h.2) ;
+      eta : C k = at k p gamma ;
+      eta-solves : Solves (Pt j) k gamma eta =
+        Cone[Pt j, p, (le-refl j, le-refl j), pt-near, k, gamma, gamma-cocycle].solves ;
+      b : C (suc k) = subC (suc k) beta' (delta k eta) ;
+      solves : Solves (St j) (suc k) alpha b = \ t g -> calc A {
+        delta (suc k) b t =< delta-sub (suc k) beta' (delta k eta) t > sub (delta (suc k) beta' t) (delta (suc k) (delta k eta) t)
+          =< apH (sub (delta (suc k) beta' t)) (delta-delta k eta t) > sub (delta (suc k) beta' t) o
+          =< sub-o (delta (suc k) beta' t) > delta (suc k) beta' t
+          =< beta'-solves t g > alpha t } ;
+      agree (t : Tup (suc k)) (g : Good (Pt j) (suc k) t) : Id A (b t) (beta t) = calc A {
+        b t =< apH (sub (beta' t)) (eta-solves t g) > sub (beta' t) (sub (beta' t) (beta t)) =< sub-sub (beta' t) (beta t) > beta t } ;
+      result : (b1 : C (suc k)) * Agree (suc k) alpha c b1 = (b, (solves, agree)) ;
+    } ;
+    fix : (k : Nat) (alpha : C (suc k)) (c : Cocycle (Qj (suc j)) k alpha) -> (b : C k) * Agree k alpha c b = split {
+      zero -> \ alpha c -> Z[alpha, c].result ;
+      suc k -> \ alpha c -> S[k, alpha, c].result } ;
+  } ;
+
+  -- glue beta (on Q_j) and beta'' (on St)
+  top-eq-at (a j : Nat) (nq : Not (Le a j)) : Plus (Le a j) (Id Nat a (suc j)) -> Id Nat a (suc j) = split {
+    inl h -> absurd (Id Nat a (suc j)) (nq h) ;
+    inr e -> e } ;
+  module Glue (j : Nat) (wb : Dy.Below (suc j) (Dy.pow2 n)) (ih : (k : Nat) -> Exact (Qj j) k)
+    (k : Nat) (alpha : C (suc k)) (c : Cocycle (Qj (suc j)) k alpha) {
+    open Step[j, wb, ih, k, alpha, c] ;
+    fx : (b : C k) * Fix[j, wb, ih].Agree k alpha c b = Fix[j, wb, ih].fix k alpha c ;
+    b2 : C k = fx.1 ;
+    qdec (a : V) : Dec (Qj j a) = In.le-dec a.1 j (NO.tri a.1 j) ;
+    Srch (m : Nat) (t : Tup m) : U l = Plus ((i : Fin m) -> Qj j (t i)) ((i : Fin m) * Not (Qj j (t i))) ;
+    srch (m : Nat) (t : Tup m) : Srch m t = fin-search m (\ i -> Qj j (t i)) (\ i -> qdec (t i)) ;
+    glue-at (t : Tup k) : Srch k t -> A = split { inl h -> beta t ; inr w -> b2 t } ;
+    bstar : C k = \ t -> glue-at t (srch k t) ;
+    on-q-at (t : Tup k) (g : Good (Qj j) k t) : (x : Srch k t) -> Id A (glue-at t x) (beta t) = split {
+      inl h -> refl (beta t) ;
+      inr w -> absurd (Id A (b2 t) (beta t)) (w.2 (g.1 w.1)) } ;
+    on-st-at (t : Tup k) (g : Good (St j) k t) : (x : Srch k t) -> Id A (glue-at t x) (b2 t) = split {
+      inl h -> symH (fx.2.2 t (\ i -> ((g.1 i).1, h i), g.2)) ;
+      inr w -> refl (b2 t) } ;
+    solves-q : Solves (Qj j) k alpha bstar = \ t g ->
+      transH (locality k (Qj j) bstar beta (\ u gu -> on-q-at u gu (srch k u)) t g) (beta-solves t g) ;
+    solves-st : Solves (St j) k alpha bstar = \ t g ->
+      transH (locality k (St j) bstar b2 (\ u gu -> on-st-at u gu (srch k u)) t g) (fx.2.1 t g) ;
+    -- a good tuple of Q_(j+1) with a point outside Q_j lies in St
+    in-st (s : Tup (suc k)) (g : Good (Qj (suc j)) (suc k) s) (w : (i : Fin (suc k)) * Not (Qj j (s i))) : Good (St j) (suc k) s =
+      (\ i -> (le-pred j (s i).1 (substH (\ m -> Le m (suc (s i).1)) (top-eq-at (s w.1).1 j w.2 (le-or-eq (s w.1).1 j (g.1 w.1))) (g.2 w.1 i).1), g.1 i), g.2) ;
+    case-at (s : Tup (suc k)) (g : Good (Qj (suc j)) (suc k) s) : Srch (suc k) s -> Id A (delta k bstar s) (alpha s) = split {
+      inl h -> solves-q s (h, g.2) ;
+      inr w -> solves-st s (in-st s g w) } ;
+    result : (b : C k) * Solves (Qj (suc j)) k alpha b = (bstar, \ s g -> case-at s g (srch (suc k) s)) ;
+  } ;
+
+  -- the induction on the top vertex
+  step-at (j : Nat) (ih : (k : Nat) -> Exact (Qj j) k) : Dec (Dy.Below (suc j) (Dy.pow2 n)) -> (k : Nat) -> Exact (Qj (suc j)) k = split {
+    yes wb -> \ k alpha c -> Glue[j, wb, ih, k, alpha, c].result ;
+    no nb -> \ k -> exact-same (Qj j) (Qj (suc j)) TopV[j, nb].up TopV[j, nb].down k (ih k) } ;
+  exact-q : (j k : Nat) -> Exact (Qj j) k = split {
+    zero -> base ;
+    suc j | r -> step-at j r (In.le-dec (suc (suc j)) (Dy.pow2 n) (NO.tri (suc (suc j)) (Dy.pow2 n))) } ;
+  -- Lemma C.0.6: exact on all tuples of pairwise near vertices
+  All (a : V) : U l = Top ;
+  below-top (a : V) (h : All a) : Qj (Dy.pow2 n) a = le-trans a.1 (suc a.1) (Dy.pow2 n) (In.le-step a.1 a.1 (le-refl a.1)) a.2 ;
+  exact (k : Nat) : Exact All k = exact-same (Qj (Dy.pow2 n)) All (\ a h -> tt) below-top k (exact-q (Dy.pow2 n) k) ;
+} ;

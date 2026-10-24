@@ -1,0 +1,170 @@
+-- Dyadic stages of the interval (CCA Def. 3.4.2, with the vertices of
+-- Appendix C): V n = { j | j < 2^n } (the numerators of cs_n), finite, with
+-- V (n+1) -> V n, j |-> floor (j / 2); 2^N = lim_n V n through the
+-- numerators N n alpha; and the (k+1)-tuples of pairwise near vertices
+--   I~^k_n = { t : Fin (k+1) -> V n | |t i - t j| <= 1 for all i, j }.
+--
+--  - halfodd j = (floor (j/2), j mod 2), and j = 2 (j div 2) + (j mod 2)
+--    (recompose); halfodd (2m + b) = (m, b).
+--  - { j | j < m + 1 } = 1 + { j | j < m } (0 and the successors), so
+--    the V n are finite.
+--  - alpha |-> (N n alpha)_n is an equivalence 2^N = lim V, with inverse
+--    x |-> (m |-> x_(m+1) mod 2): N (n+1) alpha = 2 N n alpha + alpha n.
+--  - |a - b| <= 1 gives |a div 2 - b div 2| <= 1 (Interval.near-trans).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ; open FinChoice[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module NO = NatOrder[l] ;
+module Fi = Finite[l] ;
+module FCl = FiniteClosure[l] ;
+module FF = FiniteFacts[l] ;
+module DCh = DependentChoice[l] ;
+module SL = SeqLim[l] ;
+module Eq = Equivalences[l] ;
+module PC = PiClosure[l] ;
+module In = Interval[l] ;
+
+pow2 : Nat -> Nat = split { zero -> suc zero ; suc n | r -> NO.dbl r } ;
+
+-- halving with remainder
+step-ho (h : Nat) : Bool -> Nat * Bool = split { true -> (suc h, false) ; false -> (h, true) } ;
+halfodd : Nat -> Nat * Bool = split { zero -> (zero, false) ; suc j | r -> step-ho r.1 r.2 } ;
+half (j : Nat) : Nat = (halfodd j).1 ;
+odd (j : Nat) : Bool = (halfodd j).2 ;
+halfodd-dbl : (m : Nat) -> Id (Nat * Bool) (halfodd (NO.dbl m)) (m, false) = split {
+  zero -> refl (zero, false) ;
+  suc m | r -> apH (\ u -> step-ho (step-ho u.1 u.2).1 (step-ho u.1 u.2).2) r } ;
+halfodd-addb : (b : Bool) (m : Nat) -> Id (Nat * Bool) (halfodd (In.addb b (NO.dbl m))) (m, b) = split {
+  true -> \ m -> apH (\ u -> step-ho u.1 u.2) (halfodd-dbl m) ;
+  false -> \ m -> halfodd-dbl m } ;
+half-addb (b : Bool) (m : Nat) : Id Nat (half (In.addb b (NO.dbl m))) m = apH (\ u -> u.1) (halfodd-addb b m) ;
+odd-addb (b : Bool) (m : Nat) : Id Bool (odd (In.addb b (NO.dbl m))) b = apH (\ u -> u.2) (halfodd-addb b m) ;
+recompose-step (j h : Nat) : (o : Bool) -> Id Nat (In.addb o (NO.dbl h)) j ->
+  Id Nat (In.addb (step-ho h o).2 (NO.dbl (step-ho h o).1)) (suc j) = split {
+  true -> \ e -> apH (\ k -> suc k) e ;
+  false -> \ e -> apH (\ k -> suc k) e } ;
+recompose : (j : Nat) -> Id Nat (In.addb (odd j) (NO.dbl (half j))) j = split {
+  zero -> refl zero ;
+  suc j | r -> recompose-step j (half j) (odd j) r } ;
+
+-- j < m, as suc j <= m
+Below (j m : Nat) : U l = Le (suc j) m ;
+below-prop (j m : Nat) : isProp (Below j m) = le-prop (suc j) m ;
+le-pred (a b : Nat) (h : Le (suc a) (suc b)) : Le a b = (h.1, suc-inj (transH (symH (plus-suc h.1 a)) h.2)) ;
+not-below-zero (j : Nat) (h : Below j zero) : Empty = NO.zero-not-suc (plus h.1 j) (symH (transH (symH (plus-suc h.1 j)) h.2)) ;
+-- { j < m + 1 } = Opt { j < m }
+module BelowSuc (m : Nat) {
+  B (k : Nat) : U l = (j : Nat) * Below j k ;
+  b-eq (k : Nat) (u v : B k) (e : Id Nat u.1 v.1) : Id (B k) u v = Sigma-eq Nat (\ j -> Below j k) u.1 v.1 u.2 v.2 e (below-prop v.1 k) ;
+  to-at : (j : Nat) -> Below j (suc m) -> Opt (B m) = split {
+    zero -> \ h -> none ;
+    suc j -> \ h -> some (j, le-pred (suc j) m h) } ;
+  to (u : B (suc m)) : Opt (B m) = to-at u.1 u.2 ;
+  zero-below : Below zero (suc m) = (m, transH (plus-suc m zero) (apH (\ k -> suc k) (plus-zero m))) ;
+  from : Opt (B m) -> B (suc m) = split { none -> (zero, zero-below) ; some u -> (suc u.1, In.le-suc-suc (suc u.1) m u.2) } ;
+  to-from : (x : Opt (B m)) -> Id (Opt (B m)) (to (from x)) x = split {
+    none -> refl none ;
+    some u -> apH (\ v -> some v) (b-eq m (u.1, le-pred (suc u.1) m (In.le-suc-suc (suc u.1) m u.2)) u (refl u.1)) } ;
+  from-to-at : (j : Nat) (h : Below j (suc m)) -> Id (B (suc m)) (from (to-at j h)) (j, h) = split {
+    zero -> \ h -> b-eq (suc m) (zero, zero-below) (zero, h) (refl zero) ;
+    suc j -> \ h -> b-eq (suc m) (from (to-at (suc j) h)) (suc j, h) (refl (suc j)) } ;
+  equiv : Equiv (B (suc m)) (Opt (B m)) = (to, qinv (B (suc m)) (Opt (B m)) to from to-from (\ u -> from-to-at u.1 u.2)) ;
+} ;
+module BelowZero {
+  B : U l = (j : Nat) * Below j zero ;
+  to (u : B) : Empty = not-below-zero u.1 u.2 ;
+  from (e : Empty) : B = absurd B e ;
+  equiv : Equiv B Empty = (to, qinv B Empty to from (\ e -> absurd (Id Empty (to (from e)) e) e) (\ u -> absurd (Id B (from (to u)) u) (to u))) ;
+} ;
+below-fin : (m : Nat) -> Fi.FinEquiv ((j : Nat) * Below j m) = split {
+  zero -> (zero, BelowZero.equiv) ;
+  suc m | r -> (suc r.1, Eq.compose ((j : Nat) * Below j (suc m)) (Opt ((j : Nat) * Below j m)) (Opt (Fin r.1))
+    BelowSuc[m].equiv FCl.OptEquiv[(j : Nat) * Below j m, Fin r.1, r.2].equiv) } ;
+below-finite (m : Nat) : Fi.isFinite ((j : Nat) * Below j m) = Tr.Trunc[Fi.FinEquiv ((j : Nat) * Below j m)].inc (below-fin m) ;
+
+-- the vertices at stage n
+V (n : Nat) : U l = (j : Nat) * Below j (pow2 n) ;
+v-eq (n : Nat) (u v : V n) (e : Id Nat u.1 v.1) : Id (V n) u v = BelowSuc[zero].b-eq (pow2 n) u v e ;
+v-set (n : Nat) : isSet (V n) = FCl.finite-set (V n) (below-finite (pow2 n)) ;
+not-le-below (j m : Nat) (h : Below j m) (g : Le m j) : Empty = In.not-le-suc j (le-trans (suc j) m j h g) ;
+module HalfBelow (j m : Nat) (h : Below j (NO.dbl m)) {
+  bad (g : Le m (half j)) : Empty = not-le-below j (NO.dbl m) h
+    (le-trans (NO.dbl m) (NO.dbl (half j)) j (In.dbl-mono m (half j) g)
+      (substH (\ k -> Le (NO.dbl (half j)) k) (recompose j) (In.le-addb (odd j) (NO.dbl (half j))))) ;
+  by-tri : NO.Tri (half j) m -> Below (half j) m = split {
+    less e -> (e.1, transH (plus-suc e.1 (half j)) e.2) ;
+    equal e -> absurd (Below (half j) m) (bad (substH (\ k -> Le k (half j)) e (le-refl (half j)))) ;
+    greater e -> absurd (Below (half j) m) (bad (suc e.1, e.2)) } ;
+  result : Below (half j) m = by-tri (NO.tri (half j) m) ;
+} ;
+half-below (j m : Nat) (h : Below j (NO.dbl m)) : Below (half j) m = HalfBelow[j, m, h].result ;
+v-down (n : Nat) (v : V (suc n)) : V n = (half v.1, half-below v.1 (pow2 n) v.2) ;
+
+-- numerators of 2^N are vertices
+num-below : (n : Nat) (a : Nat -> Bool) -> Below (In.N n a) (pow2 n) = split {
+  zero -> \ a -> (zero, refl (suc zero)) ;
+  suc n | r -> \ a -> le-trans (suc (In.addb (a n) (NO.dbl (In.N n a)))) (suc (suc (NO.dbl (In.N n a)))) (NO.dbl (pow2 n))
+    (In.le-suc-suc (In.addb (a n) (NO.dbl (In.N n a))) (suc (NO.dbl (In.N n a))) (In.addb-le (a n) (NO.dbl (In.N n a))))
+    (In.dbl-mono (suc (In.N n a)) (pow2 n) (r a)) } ;
+module BelowOne (j : Nat) (h : Below j (suc zero)) {
+  at : (k : Nat) -> Below k (suc zero) -> Id Nat k zero = split {
+    zero -> \ h1 -> refl zero ;
+    suc k -> \ h1 -> absurd (Id Nat (suc k) zero) (not-below-zero k (le-pred (suc k) zero h1)) } ;
+  result : Id Nat j zero = at j h ;
+} ;
+
+below-one (j : Nat) (h : Below j (suc zero)) : Id Nat j zero = BelowOne[j, h].result ;
+-- 2^N = lim V
+module Cantor {
+  Lim : U l = DCh.Lim V v-down ;
+  lim-set : isSet Lim = SL.Limit[SL.mkInvSeq V v-down].Sets[v-set].set ;
+  to (a : Nat -> Bool) : Lim = (\ n -> (In.N n a, num-below n a),
+    \ n -> v-eq n (v-down n (In.N (suc n) a, num-below (suc n) a)) (In.N n a, num-below n a) (half-addb (a n) (In.N n a))) ;
+  from (x : Lim) (m : Nat) : Bool = odd (x.1 (suc m)).1 ;
+  from-to (a : Nat -> Bool) : Id (Nat -> Bool) (from (to a)) a =
+    F.funext Nat (\ m -> Bool) (from (to a)) a (\ m -> odd-addb (a m) (In.N m a)) ;
+  num-from (x : Lim) : (n : Nat) -> Id Nat (In.N n (from x)) (x.1 n).1 = split {
+    zero -> symH (below-one (x.1 zero).1 (x.1 zero).2) ;
+    suc n | r -> transH (apH (\ k -> In.addb (odd (x.1 (suc n)).1) (NO.dbl k)) (transH r (symH (apH (\ v -> v.1) (x.2 n)))))
+      (recompose (x.1 (suc n)).1) } ;
+  to-from (x : Lim) : Id Lim (to (from x)) x =
+    SL.Limit[SL.mkInvSeq V v-down].Sets[v-set].lim-eq (to (from x)) x (\ n -> v-eq n ((to (from x)).1 n) (x.1 n) (num-from x n)) ;
+  equiv : Equiv (Nat -> Bool) Lim = (to, qinv (Nat -> Bool) Lim to from to-from from-to) ;
+} ;
+
+-- a finite conjunction of decidable propositions is decidable
+module PiDecSuc (m : Nat) (P : Fin (suc m) -> U l) (rest : Dec ((i : Fin m) -> P (some i))) {
+  with-rest (a : P none) : Dec ((i : Fin m) -> P (some i)) -> Dec ((i : Fin (suc m)) -> P i) = split {
+    yes g -> yes (combine m P a g) ;
+    no n -> no (\ h -> n (\ i -> h (some i))) } ;
+  dec : Dec (P none) -> Dec ((i : Fin (suc m)) -> P i) = split {
+    yes a -> with-rest a rest ;
+    no n -> no (\ h -> n (h none)) } ;
+} ;
+
+pi-fin-dec : (m : Nat) (P : Fin m -> U l) -> ((i : Fin m) -> Dec (P i)) -> Dec ((i : Fin m) -> P i) = split {
+  zero -> \ P d -> yes (fin-zero P) ;
+  suc m | r -> \ P d -> PiDecSuc[m, P, r (\ i -> P (some i)) (\ i -> d (some i))].dec (d none) } ;
+-- Def. 3.4.2: (k+1)-tuples of pairwise near vertices
+Pairwise (k n : Nat) (t : Fin (suc k) -> V n) : U l = (i j : Fin (suc k)) -> In.Near (t i).1 (t j).1 ;
+Tuples (k n : Nat) : U l = (t : Fin (suc k) -> V n) * Pairwise k n t ;
+pairwise-prop (k n : Nat) (t : Fin (suc k) -> V n) : isProp (Pairwise k n t) =
+  F.isProp-Pi (Fin (suc k)) (\ i -> (j : Fin (suc k)) -> In.Near (t i).1 (t j).1) (\ i ->
+    F.isProp-Pi (Fin (suc k)) (\ j -> In.Near (t i).1 (t j).1) (\ j -> In.near-prop (t i).1 (t j).1)) ;
+module TupleFinite (k n : Nat) {
+  maps-finite : Fi.isFinite (Fin (suc k) -> V n) = PC.pi-finite (Fin (suc k)) (FCl.fin-finite (suc k)) (\ i -> V n) (\ i -> below-finite (pow2 n)) ;
+  pairwise-dec (t : Fin (suc k) -> V n) : Dec (Pairwise k n t) =
+    pi-fin-dec (suc k) (\ i -> (j : Fin (suc k)) -> In.Near (t i).1 (t j).1) (\ i ->
+      pi-fin-dec (suc k) (\ j -> In.Near (t i).1 (t j).1) (\ j -> In.near-dec (t i).1 (t j).1)) ;
+  finite : Fi.isFinite (Tuples k n) = FCl.sigma-finite (Fin (suc k) -> V n) maps-finite (Pairwise k n) (\ t ->
+    FF.dec-prop-finite (Pairwise k n t) (pairwise-prop k n t) (pairwise-dec t)) ;
+} ;
+-- |a - b| <= 1 gives |a/2 - b/2| <= 1
+near-half (a b : Nat) (h : In.Near a b) : In.Near (half a) (half b) =
+  In.near-trans (half a) (half b) (half b) (odd a) (odd b) (odd b)
+    (substH (\ c -> In.Near c (In.addb (odd b) (NO.dbl (half b)))) (symH (recompose a))
+      (substH (\ c -> In.Near a c) (symH (recompose b)) h))
+    (In.near-refl (In.addb (odd b) (NO.dbl (half b)))) ;
+tuple-down (k n : Nat) (u : Tuples k (suc n)) : Tuples k n =
+  (\ i -> v-down n (u.1 i), \ i j -> near-half (u.1 i).1 (u.1 j).1 (u.2 i j)) ;

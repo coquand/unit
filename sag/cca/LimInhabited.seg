@@ -1,0 +1,90 @@
+-- A sequential limit of inhabited Stone spaces is inhabited (the maps need
+-- not be onto).
+--
+-- Proof.  L = lim S is Stone (Prop. 2.1.4 (iii)), so ||L|| is closed (SSD
+-- Cor. 3.8) and not-not-stable; assume L is empty.  The conditions
+-- C n x : p_n (x (n+1)) = x n on the Stone space X = Pi_n S n are closed and
+-- have no common point, so (SSD Lemma 4.5) for some k no x satisfies
+-- C n x for every n < k.  But a point of S k is the k-th component of such
+-- an x (Reach, by induction on k: from x compatible below k with
+-- x k = p_k z, change the component k+1 to z), and S k is inhabited.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module PF = Profinite[l,l] ;
+module SA = StoneAxioms[l,l] ;
+module OC = OpenClosed[l,l] ;
+module NO = NatOrder[l] ;
+module DCh = DependentChoice[l] ;
+
+-- changing one component of a sequence of points
+module Update (S : Nat -> U l) (x : (n : Nat) -> S n) (m : Nat) (z : S m) {
+  at (j : Nat) : Dec (Id Nat m j) -> S j = split { yes e -> substH S e z ; no ne -> x j } ;
+  upd (j : Nat) : S j = at j (NO.eqN m j) ;
+  at-yes (j : Nat) (e : Id Nat m j) : (d : Dec (Id Nat m j)) -> Id (S j) (at j d) (substH S e z) = split {
+    yes e' -> apH (\ e1 -> substH S e1 z) (nat-set m j e' e) ;
+    no ne -> absurd (Id (S j) (x j) (substH S e z)) (ne e) } ;
+  at-no (j : Nat) (ne : Not (Id Nat m j)) : (d : Dec (Id Nat m j)) -> Id (S j) (at j d) (x j) = split {
+    yes e -> absurd (Id (S j) (substH S e z) (x j)) (ne e) ;
+    no ne' -> refl (x j) } ;
+  same : Id (S m) (upd m) z = at-yes m (refl m) (NO.eqN m m) ;
+  other (j : Nat) (ne : Not (Id Nat m j)) : Id (S j) (upd j) (x j) = at-no j ne (NO.eqN m j) ;
+} ;
+
+-- sequences compatible below k
+module Compatible (S : Nat -> U l) (p : (n : Nat) -> S (suc n) -> S n) {
+  X : U l = (n : Nat) -> S n ;
+  C (n : Nat) (x : X) : U l = Id (S n) (p n (x (suc n))) (x n) ;
+  Below (k : Nat) (x : X) : U l = (n : Nat) -> NO.Lt n k -> C n x ;
+  module Reach (s : X) {
+    Point (k : Nat) (z : S k) : U l = (x : X) * Below k x * Id (S k) (x k) z ;
+    module Step (k : Nat) (z : S (suc k)) (w : Point k (p k z)) {
+      module Up = Update[S, w.1, suc k, z] ;
+      below-lt (n : Nat) (lt : NO.Lt n k) : C n Up.upd = calc (S n) {
+        p n (Up.upd (suc n)) =< apH (p n) (Up.other (suc n) (\ e -> NO.lt-neq (suc n) (suc k) (NO.lt-suc-suc n k lt) (symH e))) >
+        p n (w.1 (suc n))
+          =< w.2.1 n lt > w.1 n
+          =< symH (Up.other n (\ e -> NO.lt-neq n (suc k) (NO.lt-step n k lt) (symH e))) > Up.upd n } ;
+      at-k : C k Up.upd = calc (S k) {
+        p k (Up.upd (suc k)) =< apH (p k) Up.same > p k z
+          =< symH w.2.2 > w.1 k
+          =< symH (Up.other k (\ e -> NO.lt-neq k (suc k) (NO.lt-suc k) (symH e))) > Up.upd k } ;
+      by-cases (n : Nat) : Plus (NO.Lt n k) (Id Nat n k) -> C n Up.upd = split {
+        inl lt -> below-lt n lt ;
+        inr e -> substH (\ j -> C j Up.upd) (symH e) at-k } ;
+      point : Point (suc k) z = (Up.upd, \ n lt -> by-cases n (NO.lt-pred n k lt), Up.same) ;
+    } ;
+    reach : (k : Nat) (z : S k) -> Point k z = split {
+      zero -> \ z -> (Update[S, s, zero, z].upd, \ n lt -> absurd (C n Update[S, s, zero, z].upd) (NO.not-lt-zero n lt),
+        Update[S, s, zero, z].same) ;
+      suc k | r -> \ z -> Step[k, z, r (p k z)].point } ;
+  } ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+  module CP = CountableProduct[l].Over[ax] ;
+  module P214 = Prop214[l].Over[ax] ;
+  module LimInhabited (S : Nat -> U l) (p : (n : Nat) -> S (suc n) -> S n) (sS : (n : Nat) -> PF.isStone (S n))
+    (inh : (k : Nat) -> Tr.Trunc[S k].carrier) {
+    module Cm = Compatible[S, p] ;
+    x-stone : PF.isStone Cm.X = CP.pi-stone S sS ;
+    module Cv = CHaus[l].Over[ax].Covered[Cm.X, P214.stone-set Cm.X x-stone, StoneClosed[l,l].lemma310 Cm.X x-stone,
+      (Cm.X, x-stone, \ x -> x, \ x -> Tr.Trunc[(y : Cm.X) * Id Cm.X y x].inc (x, refl x))] ;
+    module Empty-Lim (e : Not (Tr.Trunc[DCh.Lim S p].carrier)) {
+      module K = Cv.L45[Cm.C, \ n x -> P214.stone-set (S n) (sS n) (p n (x (suc n))) (x n),
+        \ n x -> StoneClosed[l,l].lemma310 (S n) (sS n) (p n (x (suc n))) (x n),
+        \ x c -> e (Tr.Trunc[DCh.Lim S p].inc (x, c))] ;
+      absurd-at (s : Cm.X) (w : (k : Nat) * K.Small k) : Empty =
+        TC.rec (S w.1) @l Empty isProp-Empty (\ z -> w.2 (Cm.Reach[s].reach w.1 z).1 (Cm.Reach[s].reach w.1 z).2.1) (inh w.1) ;
+      result : Empty =
+        TC.rec Cm.X @l Empty isProp-Empty (\ s ->
+          TC.rec ((k : Nat) * K.Small k) @l Empty isProp-Empty (absurd-at s) K.result)
+          (CountableChoice[l].cc (ax.dc @l) S inh) ;
+    } ;
+    result : Tr.Trunc[DCh.Lim S p].carrier =
+      OC.closed-stable (Tr.Trunc[DCh.Lim S p].carrier) Tr.Trunc[DCh.Lim S p].proposition
+        (StoneClosed[l,l].Over[ax].cor38 (DCh.Lim S p) (CP.lim-stone S p sS)) (\ e -> Empty-Lim[e].result) ;
+  } ;
+  lim-inhabited (S : Nat -> U l) (p : (n : Nat) -> S (suc n) -> S n) (sS : (n : Nat) -> PF.isStone (S n))
+    (inh : (k : Nat) -> Tr.Trunc[S k].carrier) : Tr.Trunc[DCh.Lim S p].carrier = LimInhabited[S, p, sS, inh].result ;
+} ;

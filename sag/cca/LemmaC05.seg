@@ -1,0 +1,118 @@
+-- CCA Lemma C.0.5: for a group G, the sequence
+--   G -> G^(I~^0_n) -> G^(I~^1_n) -> G^(I~^2_n)
+-- is exact at G, G^(I~^0_n) and G^(I~^1_n), with the vertices V n of
+-- Dyadic (the numerators j < 2^n) and near pairs |a - b| <= 1.  Cocycles
+-- and trivialisations are as in em/CechNA (worker B): a cocycle on pairs
+-- has d a1 a2 . d a0 a1 = d a0 a2 on near triples; it is trivial when
+-- g a1 . d a0 a1 = g a0.
+--
+--  - At G: V n is inhabited (by 0).
+--  - At G^(I~^0): a map with alpha a = alpha b on near pairs is constant:
+--    alpha j = alpha (j - 1) = .. = alpha 0, by induction on the numerator.
+--  - At G^(I~^1): d a a = e (d a a . d a a = d a a) and
+--    d b a = (d a b)^-1 (d a b . d b a = d b b = e).  Let
+--    g j = (d (0,1))^-1 . (d (1,2))^-1 . .. . (d (j-1, j))^-1, by recursion
+--    on j.  For a near pair, a1 = a0, a1 = a0 + 1 or a0 = a1 + 1, and in
+--    each case g a1 . d a0 a1 = g a0.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Logic[l] ; open Ring[l] ;
+module NO = NatOrder[l] ;
+module Pg = Pairing[l] ;
+module In = Interval[l] ;
+module Dy = Dyadic[l] ;
+module Gp = Group[l] ;
+
+-- the three cases of |a - b| <= 1
+module LtNear (a b : Nat) (lt : NO.Lt a b) (le : Le b (suc a)) {
+  sum : Id Nat (plus (plus le.1 (suc lt.1)) a) (plus (suc zero) a) =
+    transH (plus-assoc le.1 (suc lt.1) a) (transH (apH (plus le.1) lt.2) le.2) ;
+  zero-sum : Id Nat (plus le.1 lt.1) zero = suc-inj (transH (symH (plus-suc le.1 lt.1)) (plus-cancel-r a (plus le.1 (suc lt.1)) (suc zero) sum)) ;
+  result : Id Nat b (suc a) = transH (symH lt.2) (apH (\ d -> suc (plus d a)) (Pg.plus-zero-inv le.1 lt.1 zero-sum).2) ;
+} ;
+lt-near (a b : Nat) (lt : NO.Lt a b) (le : Le b (suc a)) : Id Nat b (suc a) = LtNear[a, b, lt, le].result ;
+near-cases-at (a b : Nat) (h : In.Near a b) : NO.Tri a b -> Plus (Id Nat a b) (Plus (Id Nat b (suc a)) (Id Nat a (suc b))) = split {
+  less lt -> inr (inl (lt-near a b lt h.2)) ;
+  equal e -> inl e ;
+  greater lt -> inr (inr (lt-near b a lt h.1)) } ;
+near-cases (a b : Nat) (h : In.Near a b) : Plus (Id Nat a b) (Plus (Id Nat b (suc a)) (Id Nat a (suc b))) =
+  near-cases-at a b h (NO.tri a b) ;
+
+module LemmaC05 (Gr : Gp.Grp) (n : Nat) {
+  open Gr ;
+  module GL = Gp.GrpL[Gr] ;
+  V : U l = Dy.V n ;
+  Nr (a b : V) : U l = In.Near a.1 b.1 ;
+  -- 1, 2^n are both > 0
+  module Pos {
+    pos : (m : Nat) -> Le (suc zero) (Dy.pow2 m) = split {
+      zero -> le-refl (suc zero) ;
+      suc m | r -> le-trans (suc zero) (Dy.pow2 m) (NO.dbl (Dy.pow2 m)) r (substH (\ k -> Le (Dy.pow2 m) k) (symH (NO.dbl-plus (Dy.pow2 m))) (le-sum-r (Dy.pow2 m) (Dy.pow2 m))) } ;
+  } ;
+  zero-v : V = (zero, Pos.pos n) ;
+
+  -- exactness at G
+  at-G (x y : G) (h : (a : V) -> Id G x y) : Id G x y = h zero-v ;
+
+  -- exactness at G^(I~^0): constant on near pairs gives constant
+  module AtZero (alpha : V -> G) (c : (a b : V) -> Nr a b -> Id G (alpha a) (alpha b)) {
+    step (j : Nat) (h : Dy.Below (suc j) (Dy.pow2 n)) : Dy.Below j (Dy.pow2 n) =
+      le-trans (suc j) (suc (suc j)) (Dy.pow2 n) (In.le-step (suc j) (suc j) (le-refl (suc j))) h ;
+    to-zero : (j : Nat) (h : Dy.Below j (Dy.pow2 n)) -> Id G (alpha (j, h)) (alpha zero-v) = split {
+      zero -> \ h -> apH alpha (Dy.v-eq n (zero, h) zero-v (refl zero)) ;
+      suc j | r -> \ h -> transH (c (suc j, h) (j, step j h) (In.near-suc (suc j) j (refl (suc j)))) (r (step j h)) } ;
+    constant (a : V) : Id G (alpha a) (alpha zero-v) = to-zero a.1 a.2 ;
+  } ;
+
+  -- exactness at G^(I~^1)
+  module AtOne (d : (a b : V) -> Nr a b -> G)
+    (cocycle : (a0 a1 a2 : V) (h01 : Nr a0 a1) (h12 : Nr a1 a2) (h02 : Nr a0 a2) -> Id G (mul (d a1 a2 h12) (d a0 a1 h01)) (d a0 a2 h02)) {
+    d-cong (a b : V) (h h' : Nr a b) : Id G (d a b h) (d a b h') = apH (d a b) (In.near-prop a.1 b.1 h h') ;
+    d-unit (a : V) (h : Nr a a) : Id G (d a a h) e = calc G {
+      d a a h =< symH (GL.cancr' (d a a h) (d a a h)) > mul (mul (d a a h) (d a a h)) (inv (d a a h))
+        =< apH (\ x -> mul x (inv (d a a h))) (cocycle a a a h h h) > mul (d a a h) (inv (d a a h))
+        =< invr (d a a h) > e } ;
+    d-inv (a b : V) (h : Nr a b) (h' : Nr b a) : Id G (d a b h) (inv (d b a h')) = calc G {
+      d a b h =< GL.solve-r (d a b h) (d b a h') e (transH (cocycle b a b h' h (In.near-refl b.1)) (d-unit b (In.near-refl b.1))) >
+        mul e (inv (d b a h')) =< unitl (inv (d b a h')) > inv (d b a h') } ;
+    d-path (a a' b b' : V) (ea : Id V a a') (eb : Id V b b') (h : Nr a b) (h' : Nr a' b') : Id G (d a b h) (d a' b' h') =
+      idJ V a (\ a2 p -> (h2 : Nr a2 b') -> Id G (d a b h) (d a2 b' h2))
+        (idJ V b (\ b2 q -> (h2 : Nr a b2) -> Id G (d a b h) (d a b2 h2)) (d-cong a b h) b' eb) a' ea h' ;
+    -- d on numerators, e off the near pairs
+    Ok (j k : Nat) : U l = Dy.Below j (Dy.pow2 n) * (Dy.Below k (Dy.pow2 n) * In.Near j k) ;
+    ok-dec (j k : Nat) : Dec (Ok j k) =
+      In.dec-and (Dy.Below j (Dy.pow2 n)) (Dy.Below k (Dy.pow2 n) * In.Near j k) (In.le-dec (suc j) (Dy.pow2 n) (NO.tri (suc j) (Dy.pow2 n)))
+        (In.dec-and (Dy.Below k (Dy.pow2 n)) (In.Near j k) (In.le-dec (suc k) (Dy.pow2 n) (NO.tri (suc k) (Dy.pow2 n))) (In.near-dec j k)) ;
+    dd-at (j k : Nat) : Dec (Ok j k) -> G = split { yes w -> d (j, w.1) (k, w.2.1) w.2.2 ; no nw -> e } ;
+    dd (j k : Nat) : G = dd-at j k (ok-dec j k) ;
+    dd-eq-at (a b : V) (h : Nr a b) : (o : Dec (Ok a.1 b.1)) -> Id G (dd-at a.1 b.1 o) (d a b h) = split {
+      yes w -> d-path (a.1, w.1) a (b.1, w.2.1) b (Dy.v-eq n (a.1, w.1) a (refl a.1)) (Dy.v-eq n (b.1, w.2.1) b (refl b.1)) w.2.2 h ;
+      no nw -> absurd (Id G e (d a b h)) (nw (a.2, b.2, h)) } ;
+    dd-eq (a b : V) (h : Nr a b) : Id G (dd a.1 b.1) (d a b h) = dd-eq-at a b h (ok-dec a.1 b.1) ;
+    -- the trivialisation
+    gN : Nat -> G = split { zero -> e ; suc j | r -> mul r (inv (dd j (suc j))) } ;
+    g (a : V) : G = gN a.1 ;
+    -- the three cases
+    same (a0 a1 : V) (h : Nr a0 a1) (q : Id Nat a0.1 a1.1) : Id G (mul (g a1) (d a0 a1 h)) (g a0) =
+      idJ V a0 (\ a2 p -> (h2 : Nr a0 a2) -> Id G (mul (g a2) (d a0 a2 h2)) (g a0))
+        (\ h2 -> transH (apH (mul (g a0)) (d-unit a0 h2)) (unitr (g a0))) a1 (Dy.v-eq n a0 a1 q) h ;
+    up (a0 a1 : V) (h : Nr a0 a1) (q : Id Nat a1.1 (suc a0.1)) : Id G (mul (g a1) (d a0 a1 h)) (g a0) = calc G {
+      mul (g a1) (d a0 a1 h) =< apH (\ k -> mul (gN k) (d a0 a1 h)) q > mul (gN (suc a0.1)) (d a0 a1 h)
+        =< apH (\ x -> mul (mul (g a0) (inv x)) (d a0 a1 h))
+             (transH (apH (dd a0.1) (symH q)) (dd-eq a0 a1 h)) > mul (mul (g a0) (inv (d a0 a1 h))) (d a0 a1 h)
+        =< GL.cancr (d a0 a1 h) (g a0) > g a0 } ;
+    down (a0 a1 : V) (h : Nr a0 a1) (q : Id Nat a0.1 (suc a1.1)) : Id G (mul (g a1) (d a0 a1 h)) (g a0) = calc G {
+      mul (g a1) (d a0 a1 h) =< apH (mul (g a1)) (d-inv a0 a1 h (In.near-sym a0.1 a1.1 h)) > mul (g a1) (inv (d a1 a0 (In.near-sym a0.1 a1.1 h)))
+        =< apH (\ x -> mul (g a1) (inv x)) (symH (transH (apH (dd a1.1) (symH q)) (dd-eq a1 a0 (In.near-sym a0.1 a1.1 h)))) >
+        gN (suc a1.1)
+        =< apH gN (symH q) > g a0 } ;
+    by-cases2 (a0 a1 : V) (h : Nr a0 a1) : Plus (Id Nat a1.1 (suc a0.1)) (Id Nat a0.1 (suc a1.1)) ->
+      Id G (mul (g a1) (d a0 a1 h)) (g a0) = split {
+      inl q -> up a0 a1 h q ;
+      inr q -> down a0 a1 h q } ;
+    by-cases (a0 a1 : V) (h : Nr a0 a1) : Plus (Id Nat a0.1 a1.1) (Plus (Id Nat a1.1 (suc a0.1)) (Id Nat a0.1 (suc a1.1))) ->
+      Id G (mul (g a1) (d a0 a1 h)) (g a0) = split {
+      inl q -> same a0 a1 h q ;
+      inr c -> by-cases2 a0 a1 h c } ;
+    trivial (a0 a1 : V) (h : Nr a0 a1) : Id G (mul (g a1) (d a0 a1 h)) (g a0) = by-cases a0 a1 h (near-cases a0.1 a1.1 h) ;
+  } ;
+} ;

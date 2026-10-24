@@ -134,6 +134,16 @@ used. Each directory has a `README.txt`.
   and Theorem 5.16 (H¹ = 0 iff Čech H¹ = 0; Čech H¹ ≅ ‖X → BZ‖₀)
   (`stoneseq/README.md`). Gaps in the paper are recorded in the handoff
   files, the shared statements in `STONE-INTERFACE.md`.
+- `cca`, `em`, `ccacoh`: cohomology in synthetic Stone duality (Cherubini,
+  Coquand, Geerligs, Moeneclaey, *Cohomology in Synthetic Stone Duality*),
+  with Eilenberg–MacLane spaces after Wärn. `em` (plain HoTT): K(A, n) for
+  all n, deloopings of maps, fibre sequences, non-abelian H¹ and Appendix A.
+  `cca`: Scott continuity for Stone and compact Hausdorff spaces (§2.1–2.4),
+  the interval as a quotient of 2^N, Lemmas 3.4.1, 3.4.4 and Thm 3.4.3
+  (Hⁿ(I, A) = 0), the ordered Čech complex and Lemma C.0.6. `ccacoh`:
+  §3.1, §3.2 (Hⁿ(S, A) = 0 for S Stone) and Thm 3.3.2 in a vanishing form.
+  Design and gaps: `CCA-DESIGN.md`, `HANDOFF-CCA-A.md`, `HANDOFF-CCA-B.md`;
+  shared statements in `CCA-INTERFACE.md`.
 
 ## Conversion, and what checking opens
 

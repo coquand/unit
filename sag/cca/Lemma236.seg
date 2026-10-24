@@ -1,0 +1,162 @@
+-- CCA Lemma 2.3.6, for a tower of finite sets: for E 0 <- E 1 <- .. finite
+-- and F finite, the canonical map
+--   colim_k (E k -> F)  ->  (lim E -> F),   [g] |-> g o pi_k
+-- is an equivalence.  (The paper states it for a tower of Stone spaces,
+-- by Stone duality; here the stages are finite, and the proof is SSD
+-- Cor. 3.7 with its compactness lemma.)
+--
+-- Injective.  At a common stage N, let g, g' : E N -> F agree on lim E.
+--   The decidable subset {y | g y /= g' y} of E N (F has decidable
+--   equality) misses lim E, so it is empty after K more steps (Cor37
+--   Vanish): g and g' agree after K steps.
+-- Surjective.  Let f : lim E -> F and F = Fin m (merely); code Fin m in N.
+--   By SSD Cor. 3.7 code o f = g o pi_M for some g : E M -> N.  The
+--   decidable subset {y | g y is not a code} misses lim E, so it is empty
+--   after K more steps, and decoding g o down is a map E (K + M) -> F
+--   whose composite with pi_(K+M) is f.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open NatArith[l] ; open Bijection[l] ; open SeqColim[l] ; open FinChoice[l] ; open Logic[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module SA = StoneAxioms[l,l] ;
+module BR = BooleanRing[l] ;
+module Fi = Finite[l] ;
+module FCl = FiniteClosure[l] ;
+module FF = FiniteFacts[l] ;
+module DCh = DependentChoice[l] ;
+module FCo = FiniteCode[l] ;
+
+-- maps from the stages to a set F, and the canonical map
+module FMaps (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (B : U l) (sB : isSet B) {
+  seq : Seq = mkSeq (\ n -> E n -> B) (\ n g y -> g (p n y)) ;
+  module CF = Colim[seq] ;
+  Lim : U l = DCh.Lim E p ;
+  fun-set : isSet (Lim -> B) = F.isSet-Pi Lim (\ x -> B) (\ x -> sB) ;
+  stage-set (n : Nat) : isSet (E n -> B) = F.isSet-Pi (E n) (\ y -> B) (\ y -> sB) ;
+  restrict (n : Nat) (g : E n -> B) (x : Lim) : B = g (x.1 n) ;
+  cocone : CF.Cocone[Lim -> B] = CF.mkCocone (Lim -> B) restrict (\ n g ->
+    F.funext Lim (\ x -> B) (restrict (suc n) (\ y -> g (p n y))) (restrict n g) (\ x -> apH g (x.2 n))) ;
+  module R = CF.Rec[Lim -> B, fun-set, cocone] ;
+  canonical (u : CF.colim) : Lim -> B = R.map u ;
+  canonical-inc (n : Nat) (g : E n -> B) : Id (Lim -> B) (canonical (CF.inc n g)) (restrict n g) = R.beta n g ;
+  -- d steps of the sequence are composition with d maps p
+  shift-down (N : Nat) (g : E N -> B) : (d : Nat) (y : E (plus d N)) ->
+    Id B (CF.shift d N g y) (g (FCo.down E p N d y)) =
+    split { zero -> \ y -> refl (g y) ; suc d | r -> \ y -> r (p (plus d N) y) } ;
+  -- going down from a point of the limit
+  down-lim (N : Nat) (x : Lim) : (d : Nat) -> Id (E N) (FCo.down E p N d (x.1 (plus d N))) (x.1 N) =
+    split { zero -> refl (x.1 N) ; suc d | r -> transH (apH (FCo.down E p N d) (x.2 (plus d N))) r } ;
+} ;
+
+-- deciding a difference
+differ (A : U l) : Dec A -> Bool = split { yes a -> false ; no n -> true } ;
+differ-yes (A : U l) : (d : Dec A) -> A -> Id Bool (differ A d) false = split {
+  yes a -> \ a' -> refl false ; no n -> \ a -> absurd (Id Bool true false) (n a) } ;
+differ-elim (A : U l) : (d : Dec A) -> Id Bool (differ A d) false -> A = split {
+  yes a -> \ h -> a ; no n -> \ h -> absurd A (BR.true-false h) } ;
+-- finite sets have decidable equality
+dec-prop (A : U l) (pA : isProp A) : Dec Tr.Trunc[A].carrier -> Dec A = split {
+  yes t -> yes (TC.rec A @l A pA (\ a -> a) t) ;
+  no n -> no (\ a -> n (Tr.Trunc[A].inc a)) } ;
+eq-dec (X : U l) (fX : Fi.isFinite X) (a b : X) : Dec (Id X a b) =
+  dec-prop (Id X a b) (FCl.finite-set X fX a b) (FF.finite-dec (Id X a b) (FCl.id-finite X fX a b)) ;
+
+-- Fin m coded in N
+toNat : (m : Nat) -> Fin m -> Nat = split {
+  zero -> split { } ;
+  suc m | r -> split { none -> zero ; some i -> suc (r i) } } ;
+lift-some (m : Nat) : Opt (Fin m) -> Opt (Fin (suc m)) = split { none -> none ; some i -> some (some i) } ;
+decode : (m : Nat) -> Nat -> Opt (Fin m) = split {
+  zero -> \ n -> none ;
+  suc m | r -> split { zero -> some none ; suc n -> lift-some m (r n) } } ;
+decode-toNat : (m : Nat) (i : Fin m) -> Id (Opt (Fin m)) (decode m (toNat m i)) (some i) = split {
+  zero -> split { } ;
+  suc m | r -> split { none -> refl (some none) ; some i -> apH (lift-some m) (r i) } } ;
+isNone (A : U l) : Opt A -> Bool = split { none -> true ; some a -> false } ;
+extract (A : U l) : (o : Opt A) -> Id Bool (isNone A o) false -> A = split {
+  none -> \ h -> absurd A (BR.true-false h) ; some a -> \ h -> a } ;
+get (A : U l) (d : A) : Opt A -> A = split { none -> d ; some a -> a } ;
+extract-some (A : U l) : (o : Opt A) (h : Id Bool (isNone A o) false) (a : A) -> Id (Opt A) o (some a) ->
+  Id A (extract A o h) a = split {
+  none -> \ h a e -> absurd (Id A (extract A none h) a) (BR.true-false h) ;
+  some b -> \ h a e -> apH (get A b) e } ;
+
+module Over (ax : SA.Assumptions) {
+  module Lemma236 (E : Nat -> U l) (p : (n : Nat) -> E (suc n) -> E n) (fin : (n : Nat) -> Fi.isFinite (E n))
+    (B : U l) (fB : Fi.isFinite B) {
+    module M = FMaps[E, p, B, FCl.finite-set B fB] ;
+    module WithEnum (w : (n : Nat) -> Fi.FinEquiv (E n)) {
+      module St = Cor37[l,l].Over[ax].Setting[E, p, fin, w] ;
+      -- injective, at one stage
+      module Same (N : Nat) (g g' : E N -> B) (e : (x : M.Lim) -> Id B (g (x.1 N)) (g' (x.1 N))) {
+        D (y : E N) : Bool = differ (Id B (g y) (g' y)) (eq-dec B fB (g y) (g' y)) ;
+        D-point (x : M.Lim) : Id Bool (D (x.1 N)) false = differ-yes (Id B (g (x.1 N)) (g' (x.1 N))) (eq-dec B fB (g (x.1 N)) (g' (x.1 N))) (e x) ;
+        module V = St.Vanish[N, D, D-point] ;
+        meet (lt : V.Later) : Id M.CF.colim (M.CF.inc N g) (M.CF.inc N g') = calc M.CF.colim {
+          M.CF.inc N g =< symH (M.CF.inc-shift lt.1 N g) > M.CF.inc (plus lt.1 N) (M.CF.shift lt.1 N g)
+            =< apH (M.CF.inc (plus lt.1 N)) (F.funext (E (plus lt.1 N)) (\ y -> B) (M.CF.shift lt.1 N g) (M.CF.shift lt.1 N g') (\ y ->
+                 transH (M.shift-down N g lt.1 y)
+                   (transH (differ-elim (Id B (g (FCo.down E p N lt.1 y)) (g' (FCo.down E p N lt.1 y)))
+                              (eq-dec B fB (g (FCo.down E p N lt.1 y)) (g' (FCo.down E p N lt.1 y))) (lt.2 y))
+                     (symH (M.shift-down N g' lt.1 y))))) >
+            M.CF.inc (plus lt.1 N) (M.CF.shift lt.1 N g')
+            =< M.CF.inc-shift lt.1 N g' > M.CF.inc N g' } ;
+        same : Id M.CF.colim (M.CF.inc N g) (M.CF.inc N g') =
+          TC.rec V.Later @l (Id M.CF.colim (M.CF.inc N g) (M.CF.inc N g')) (M.CF.set (M.CF.inc N g) (M.CF.inc N g')) meet V.later ;
+      } ;
+      injective : Injective M.canonical =
+        StageInjective[l].StageInjective[M.seq, M.Lim -> B, M.canonical, \ N g g' q ->
+          Same[N, g, g', happly M.Lim (\ x -> B) (M.restrict N g) (M.restrict N g')
+            (transH (symH (M.canonical-inc N g)) (transH q (M.canonical-inc N g')))].same].injective ;
+
+      -- surjective, along an enumeration c of B
+      module Onto (f : M.Lim -> B) (c : Fi.FinEquiv B) {
+        code (b : B) : Nat = toNat c.1 (c.2.1 b) ;
+        Goal : U l = Tr.Trunc[Fibre M.canonical f].carrier ;
+        -- g : E K -> N with g o pi_K = code o f
+        module Coded (K : Nat) (g : E K -> Nat) (gK : (x : M.Lim) -> Id Nat (g (x.1 K)) (code (f x))) {
+          D (y : E K) : Bool = isNone (Fin c.1) (decode c.1 (g y)) ;
+          coded (x : M.Lim) : Id (Opt (Fin c.1)) (decode c.1 (g (x.1 K))) (some (c.2.1 (f x))) =
+            transH (apH (decode c.1) (gK x)) (decode-toNat c.1 (c.2.1 (f x))) ;
+          D-point (x : M.Lim) : Id Bool (D (x.1 K)) false = apH (isNone (Fin c.1)) (coded x) ;
+          module V = St.Vanish[K, D, D-point] ;
+          module Later (lt : V.Later) {
+            N : Nat = plus lt.1 K ;
+            g' (y : E N) : B = c.2.2.sec (extract (Fin c.1) (decode c.1 (g (FCo.down E p K lt.1 y))) (lt.2 y)) ;
+            at-point (x : M.Lim) : Id B (g' (x.1 N)) (f x) = calc B {
+              g' (x.1 N) =< apH c.2.2.sec (extract-some (Fin c.1) (decode c.1 (g (FCo.down E p K lt.1 (x.1 N)))) (lt.2 (x.1 N)) (c.2.1 (f x))
+                  (transH (apH (\ y -> decode c.1 (g y)) (M.down-lim K x lt.1)) (coded x))) > c.2.2.sec (c.2.1 (f x))
+                =< sec-ret B (Fin c.1) c.2.1 c.2.2 (f x) > f x } ;
+            onto : Fibre M.canonical f =
+              (M.CF.inc N g', transH (M.canonical-inc N g') (F.funext M.Lim (\ x -> B) (M.restrict N g') f at-point)) ;
+          } ;
+          result : Goal = TC.map V.Later (Fibre M.canonical f) (\ lt -> Later[lt].onto) V.later ;
+        } ;
+        coded-f (x : M.Lim) : Nat = code (f x) ;
+        from-colim (u : St.M.CN.colim) : Id (M.Lim -> Nat) (St.M.phi u) coded-f -> Goal =
+          St.M.CN.induction @l (\ u -> Id (M.Lim -> Nat) (St.M.phi u) coded-f -> Goal)
+            (\ u -> F.isProp-Pi (Id (M.Lim -> Nat) (St.M.phi u) coded-f) (\ h -> Goal) (\ h -> Tr.Trunc[Fibre M.canonical f].proposition))
+            (\ K g h -> Coded[K, g, \ x -> transH (symH (happly M.Lim (\ z -> Nat) (St.M.phi (St.M.CN.inc K g)) (St.M.restrict K g)
+                 (St.M.R.beta K g) x)) (happly M.Lim (\ z -> Nat) (St.M.phi (St.M.CN.inc K g)) coded-f h x)].result) u ;
+        result : Goal =
+          TC.rec ((u : St.M.CN.colim) * Id (M.Lim -> Nat) (St.M.phi u) coded-f) @l Goal Tr.Trunc[Fibre M.canonical f].proposition
+            (\ v -> from-colim v.1 v.2) (St.Onto[coded-f].surjective) ;
+      } ;
+      surjective (f : M.Lim -> B) : Tr.Trunc[Fibre M.canonical f].carrier =
+        TC.rec (Fi.FinEquiv B) @l (Tr.Trunc[Fibre M.canonical f].carrier) Tr.Trunc[Fibre M.canonical f].proposition
+          (\ c -> Onto[f, c].result) fB ;
+    } ;
+    enumerations : Tr.Trunc[(n : Nat) -> Fi.FinEquiv (E n)].carrier = CountableChoice[l].cc (ax.dc @l) (\ n -> Fi.FinEquiv (E n)) fin ;
+    injective-prop : isProp (Injective M.canonical) =
+      F.isProp-Pi M.CF.colim (\ u -> (v : M.CF.colim) -> Id (M.Lim -> B) (M.canonical u) (M.canonical v) -> Id M.CF.colim u v) (\ u ->
+        F.isProp-Pi M.CF.colim (\ v -> Id (M.Lim -> B) (M.canonical u) (M.canonical v) -> Id M.CF.colim u v) (\ v ->
+          F.isProp-Pi (Id (M.Lim -> B) (M.canonical u) (M.canonical v)) (\ h -> Id M.CF.colim u v) (\ h -> M.CF.set u v))) ;
+    injective : Injective M.canonical =
+      TC.rec ((n : Nat) -> Fi.FinEquiv (E n)) @l (Injective M.canonical) injective-prop (\ w -> WithEnum[w].injective) enumerations ;
+    surjective (f : M.Lim -> B) : Tr.Trunc[Fibre M.canonical f].carrier =
+      TC.rec ((n : Nat) -> Fi.FinEquiv (E n)) @l (Tr.Trunc[Fibre M.canonical f].carrier) Tr.Trunc[Fibre M.canonical f].proposition
+        (\ w -> WithEnum[w].surjective f) enumerations ;
+    equivalence : isEquiv M.CF.colim (M.Lim -> B) M.canonical =
+      Bij[M.CF.colim, M.Lim -> B, M.fun-set, M.canonical, injective, surjective].equiv ;
+  } ;
+} ;
