@@ -1,0 +1,90 @@
+-- Mathematical attribution: Christian Sattler.
+-- All mathematical results concerning the D modality and the D_n
+-- modalities in this file, including their supporting constructions
+-- and proofs, are due to Christian Sattler.
+-- This file records their formalisation in Unit.
+
+-- The dimension induction in Theorem 12.3.  No composition is used here.
+level a l ;
+constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+module W = V[l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ; open CSimp[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+module B = CLocBound[a, l] ;
+
+module Build (G : PCtx) (A : PTy[G]) (spheres : B.Bounds[G, A].SpheresBound) {
+  open B.Problems[G, A] ;
+  open PR.TyL[G, A] ;
+  module S = B.Bounds[G, A] ;
+  Fill (n : Nat) : U l = (b : Prob (lin n)) -> T (lin n) b.1 ;
+  fillE (n : Nat) (F : Fill n) (b : Prob (lin n)) : EI (lin n) = (b.1, F b) ;
+  Full (n : Nat) (F : Fill n) : U l = (b : Prob (lin n)) (i : IsT (fullB n b)) ->
+    Id (EI (lin n)) (fillE n F b) (b.1, forced n b i) ;
+  facets (n : Nat) (F : Fill n) (b : Prob (lin (suc n))) : S.Facets n b.1 =
+    \ y hy -> F (resP (lin n) (lin (suc n)) (dl n y) b) ;
+  Coherent (n : Nat) (F : Fill n) : U l =
+    (b : Prob (lin (suc n))) -> S.Overlap n b.1 (facets n F b) ;
+  Face (n : Nat) (F : Fill (suc n)) (Fp : Fill n) : U l =
+    (b : Prob (lin (suc n))) (y : Nat) (hy : IsT (leb y (suc n))) ->
+      Id (EI (lin n)) (E.act (lin n) (lin (suc n)) (dl n y) (fillE (suc n) F b))
+        (fillE n Fp (resP (lin n) (lin (suc n)) (dl n y) b)) ;
+
+  -- Use the given partial element if the identity lands in its sieve.
+  module Choose (n : Nat) (fallback : Fill n) {
+    pick (b : Prob (lin n)) : (q : Bool) -> Id Bool (fullB n b) q -> T (lin n) b.1 = split {
+      true -> \ i -> forced n b i ;
+      false -> \ i -> fallback b } ;
+    F : Fill n = \ b -> pick b (fullB n b) (refl (fullB n b)) ;
+    fullC (b : Prob (lin n)) (i : IsT (fullB n b)) : (q : Bool) (e : Id Bool (fullB n b) q) ->
+      Id (EI (lin n)) (b.1, pick b q e) (b.1, forced n b i) = split {
+      true -> \ e -> apH {IsT (fullB n b)} {EI (lin n)} (\ p -> (b.1, forced n b p)) (isProp-IsT' (fullB n b) e i) ;
+      false -> \ e -> absurd _ (false-true (transH (symH e) i)) } ;
+    full : Full n F = \ b i -> fullC b i (fullB n b) (refl (fullB n b)) ;
+  } ;
+
+  module Step (n : Nat) (Fp : Fill n) (sp : Full n Fp) (cp : Coherent n Fp) {
+    fallback : Fill (suc n) = \ b -> spheres.fill n b.1 (facets n Fp b) (cp b) ;
+    module C = Choose[suc n, fallback] ;
+    faceC (b : Prob (lin (suc n))) : (q : Bool) (e : Id Bool (fullB (suc n) b) q)
+      (y : Nat) (hy : IsT (leb y (suc n))) ->
+      Id (EI (lin n)) (E.act (lin n) (lin (suc n)) (dl n y) (b.1, C.pick b q e))
+        (fillE n Fp (resP (lin n) (lin (suc n)) (dl n y) b)) = split {
+      true -> \ e y hy -> transH (forced-face n b e y hy (j e y))
+        (symH (sp (resP (lin n) (lin (suc n)) (dl n y) b) (j e y))) ;
+      false -> \ e y hy -> spheres.face n b.1 (facets n Fp b) (cp b) y hy }
+      where {
+        j (e : IsT (fullB (suc n) b)) (y : Nat) : IsT (fullB n (resP (lin n) (lin (suc n)) (dl n y) b)) =
+          land-res n (lin (suc n)) (dl n y) b (full-at (suc n) b e (lin n) (dl n y)) ;
+      } ;
+    face : Face n C.F Fp = \ b -> faceC b (fullB (suc n) b) (refl (fullB (suc n) b)) ;
+  } ;
+
+  -- Agreement on intersections follows from the previous face law and
+  -- dl y . dl z = dl (z+1) . dl y.  This is the only induction invariant
+  -- beyond agreement with the given partial element.
+  nextCoh (n : Nat) (F : Fill (suc n)) (Fp : Fill n) (fp : Face n F Fp) : Coherent (suc n) F =
+    \ b y z yz hz ->
+      transH (fp (resP (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) b) z hz)
+        (transH (apH (fillE n Fp)
+          (resP-sq (lin n) (lin (suc n)) (lin (suc n)) (lin (suc (suc n)))
+            (dl n z) (dl (suc n) y) (dl n y) (dl (suc n) (suc z)) (CDStageF[a, l].dldl n y z yz) b))
+          (symH (fp (resP (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) b) y (leb-trans y z (suc n) yz hz)))) ;
+  opaque nextCoh ;
+
+  State (n : Nat) : U l = (F : Fill n) * (Full n F * Coherent n F) ;
+  module Zero = Choose[zero, \ b -> spheres.point b.1] ;
+  step (n : Nat) (s : State n) : State (suc n) =
+    (Step[n, s.1, s.2.1, s.2.2].C.F,
+     (Step[n, s.1, s.2.1, s.2.2].C.full,
+      nextCoh n (Step[n, s.1, s.2.1, s.2.2].C.F) s.1 (Step[n, s.1, s.2.1, s.2.2].face))) ;
+  stages : (n : Nat) -> State n = split {
+    zero -> (Zero.F, (Zero.full, \ b -> tt)) ;
+    suc n | ih -> step n ih } ;
+  fill (n : Nat) : Fill n = (stages n).1 ;
+  full (n : Nat) : Full n (fill n) = (stages n).2.1 ;
+  face (n : Nat) : Face n (fill (suc n)) (fill n) =
+    Step[n, (stages n).1, (stages n).2.1, (stages n).2.2].face ;
+} ;

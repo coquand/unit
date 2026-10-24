@@ -1,0 +1,68 @@
+-- Finite formal testing of coefficients: on each leaf either every
+-- coefficient belongs to the radical ideal, or one coefficient is a unit.
+-- The test constructs a finite tree; it never decides units in a ring.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ module T = FormalMonoidTree[l].Over[A,setA] ;
+ module Ar = MonoidNodeArrows[l].Over[A,setA] ;
+ module Trees = FormalTreeCover[l].Over[A,setA] ;
+ module Tr = Truncation[l] ;
+ module Input (state : T.State) (n : Nat) (coefficients : Fin n -> Ar.At[state].C.R) {
+  module At (target : T.State) (arrow : Ar.Between[state,target].Arrow) {
+   AllRadical : U l = (i : Fin n) -> Ar.At[target].J.Member (arrow.hom.1 (coefficients i)) ;
+   HasUnit : U l = (i : Fin n) * RL[Ar.At[target].C].unit (arrow.hom.1 (coefficients i)) ;
+   Result : U l = Plus AllRadical HasUnit ;
+  } ;
+  Outcome (target : T.State) : U l = (arrow : Ar.Between[state,target].Arrow) * At[target,arrow].Result ;
+  module Cover = Trees.For[Outcome] ;
+ } ;
+ Statement (n : Nat) : U l = (state : T.State) (coefficients : Fin n -> Ar.At[state].C.R) ->
+  Input[state,n,coefficients].Cover.Cover state ;
+ module Step (n : Nat) (ih : Statement n)
+  (state : T.State) (coefficients : Fin (suc n) -> Ar.At[state].C.R) {
+  module Current = Input[state,suc n,coefficients] ;
+  module B = Ar.At[state].N.Loc.B ;
+  module Chosen (rep : B.Representatives (coefficients (inr tt))) {
+   a : A.R = rep.1.1 ;
+   module Branch = Ar.Branch[state,a] ;
+   module Fraction = Branch.Maps.Fraction[rep.1.2.1,rep.1.2.2] ;
+   left-state : T.State = Branch.left-state ;
+   right-state : T.State = Branch.right-state ;
+   left-last : Ar.At[left-state].J.Member (Branch.left.hom.1 (coefficients (inr tt))) =
+    Ar.At[left-state].J.equal _ _ (ap Branch.left.hom.1 rep.2) Fraction.left-radical ;
+   right-last : RL[Ar.At[right-state].C].unit (Branch.right.hom.1 (coefficients (inr tt))) =
+    subst RL[Ar.At[right-state].C].unit (ap Branch.right.hom.1 rep.2) Fraction.right-unit ;
+   left-coefficients (i : Fin n) : Ar.At[left-state].C.R = Branch.left.hom.1 (coefficients (inl i)) ;
+   module Smaller = Input[left-state,n,left-coefficients] ;
+   module Extend (target : T.State) (arrow : Ar.Between[left-state,target].Arrow) {
+    composite : Ar.Between[state,target].Arrow = Ar.compose state left-state target arrow Branch.left ;
+    radical : Smaller.At[target,arrow].AllRadical -> Current.At[target,composite].AllRadical =
+     \ h -> AffineFinite[l].section n
+      (\ i -> Ar.At[target].J.Member (composite.hom.1 (coefficients i)))
+      h (arrow.radical (Branch.left.hom.1 (coefficients (inr tt))) left-last) ;
+    cases : Smaller.At[target,arrow].Result -> Current.At[target,composite].Result = split {
+     inl h -> inl (radical h) ;
+     inr h -> inr (inl h.1,h.2) } ;
+   } ;
+   extend (target : T.State) (w : Smaller.Outcome target) : Current.Outcome target =
+    (Extend[target,w.1].composite,Extend[target,w.1].cases w.2) ;
+   module Lift = Trees.Map[Smaller.Outcome,Current.Outcome,extend] ;
+   left-cover : Current.Cover.Cover left-state =
+    Lift.map left-state (ih left-state left-coefficients) ;
+   right-cover : Current.Cover.Cover right-state =
+    Current.Cover.immediate right-state (Branch.right,inr (inr tt,right-last)) ;
+   result : Current.Cover.Cover state =
+    Current.Cover.join state a left-cover right-cover ;
+  } ;
+  result : Current.Cover.Cover state =
+   Tr.Trunc[B.Representatives (coefficients (inr tt))].induction @l
+    (\ w -> Current.Cover.Cover state) (\ w -> Tr.Trunc[Current.Cover.Witness state].proposition)
+    (\ w -> Chosen[w].result) (B.representatives (coefficients (inr tt))) ;
+ } ;
+ test : (n : Nat) -> Statement n = split {
+  zero -> \ state coefficients ->
+   Input[state,zero,coefficients].Cover.immediate state
+    (Ar.identity state,inl (AffineFinite[l].empty-section
+     (\ i -> Ar.At[state].J.Member (coefficients i)))) ;
+  suc n | ih -> \ state coefficients -> Step[n,ih,state,coefficients].result } ;
+} ;

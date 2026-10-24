@@ -1,0 +1,83 @@
+Proof-construction experiments, 2026-10-20
+=========================================
+
+1. Truncation combinators
+------------------------
+TruncationCombinators.seg provides:
+  rec A @j P prop f   : ||A|| -> P, with an explicit proof that P is a proposition
+  map A B f          : ||A|| -> ||B||, for f : A -> B
+  bind A B f         : ||A|| -> ||B||, for f : A -> ||B||
+  map2 A B C f       : ||A|| -> ||B|| -> ||C||
+  bind2 A B C f      : ||A|| -> ||B|| -> ||C||
+  pair A B           : ||A|| -> ||B|| -> ||A * B||
+It also proves bind-inc and map-inc from the existing truncation beta lemma.
+The map/bind combinators work at one universe; rec permits a target at any j.
+Dependent elimination remains available in Truncation.Trunc.induction.
+
+Seven blocks in PolynomialClearing and HorrocksProof now use these operations.
+For example, choosing the two partitions of unity is now:
+
+  TC.map2 P1.Coordinates P2.Coordinates (Mat.Size[n].Factors e)
+   (\ c1 c2 -> Final[c1,c2].factors) P1.partition P2.partition
+
+All targets and proposition obligations are still checked by SEG. The original
+replacement/Truncation.seg is unchanged. Existing finite choice is reused.
+
+2. Proof-producing ring normaliser
+----------------------------------
+ring_normalise.py is a 257-line external generator. It parses expressions
+with declared variables, +, -, *, parentheses and integer literals of absolute
+value at most 32. It expands to sorted signed monomials and cancels opposite
+terms. Every transformation emits an ordinary SEG equality proof, using
+Ring.CRing's laws and the shared ring lemmas of RL in Ring.seg.
+
+No Python computation is trusted by SEG. There is no new conversion rule,
+axiom, checker change or solver certificate accepted on authority. The output
+is a .seg source file whose declarations are checked like any other proof.
+This is an external prototype, not yet a tactic integrated into SEG syntax.
+
+Input is a JSON list, for example:
+  [{"name":"SquareDifference", "variables":["x","y"],
+    "left":"(x-y)*(x+y)", "right":"x*x-y*y"}]
+The generated module is used as:
+  GeneratedRing[l].SquareDifference[Rg,x,y].proof
+when the generated output is named GeneratedRing.seg.
+
+From this directory:
+  python3 ring_normalise.py ring_identities.json GeneratedRing.seg
+  python3 test_proof_tools.py
+Then run the full SEG check, or from ../picard/:
+  python3 check.py --isolated
+The test script accepts --checker PATH.
+
+Two existing proofs use generated results: RingRearrange.four and
+CompatibleNumerators.pair. Three further production identities exercise
+subtraction, repeated coefficients, negation, zero and one. The five input
+equations occupy ring_identities.json; the expanded proof file has 697 lines
+(701 checked declarations). It is generated, not handwritten.
+Proof compression is not attempted in this prototype.
+
+Limits: no division, exponent syntax, arbitrary function applications,
+conditional equations, or automatic rewriting by ring homomorphism laws.
+Expressions such as a homomorphism's value can be passed as variables.
+Literals, expression length, proof steps and expanded terms have explicit
+limits; polynomial expansion can grow rapidly. Different normal forms cause
+the generator to refuse the requested identity, without writing an output.
+
+Validation
+----------
+- Deterministic regeneration exactly matches GeneratedRing.seg.
+- SEG checks five production and twelve additional ring identities in a fresh
+  directory containing regular source copies: 6663 declarations, 0 failed.
+- Four false identities and eight unsupported inputs are refused by the generator.
+- Replacing a generated final proof with refl Rg.z is rejected specifically
+  at Theory.GeneratedRing.Four.proof. The mutation exists only in a temporary
+  test directory.
+- Full isolated Picard check: 10464 declarations, 0 failed, 5.2 s;
+  279 regular source files, ten expected inherited negative tests.
+- Full per-module check: 279 modules, 0 with failures. GeneratedRing takes
+  0.19 s. The ring helpers are the shared RL lemmas of Ring.seg, and
+  TruncationCombinators lives in ../replacement.
+
+The record refactor remains in place. Exported Horrocks and Picard theorem
+types are unchanged. All changes are uncommitted.

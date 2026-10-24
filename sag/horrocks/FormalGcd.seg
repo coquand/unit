@@ -1,0 +1,78 @@
+-- Formal gcd computation for an ideal containing a monic polynomial.
+-- On the finite radical/unit tree it produces a monic member generating
+-- the row ideal modulo the node's radical ideal.
+--
+-- Termination: the outer recursion decreases the monic degree bound;
+-- FormalPolynomialScan decreases coefficient position and vector length.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R)
+ (n : Nat) (ys : Fin n -> List A.R) {
+ module T = FormalMonoidTree[l].Over[A,setA] ;
+ module Ar = MonoidNodeArrows[l].Over[A,setA] ;
+ module Trees = FormalTreeCover[l].Over[A,setA] ;
+ module Row = FormalRowIdeal[l].Over[A,setA,n,ys] ;
+ module Scan = FormalPolynomialScan[l].Over[A,setA] ;
+ module CB = CoefficientBound[l] ;
+ module FB = FiniteBounds[l] ;
+ Good (state : T.State) : U l = Row.At[state].Generator ;
+ module Cover = Trees.For[Good] ;
+ Statement (d : Nat) : U l =
+  (state : T.State) (lower : List Ar.At[state].C.R) ->
+  Row.At[state].I.1 (Row.At[state].H.monic lower) ->
+  CB.le (len lower) d -> Cover.Cover state ;
+ module Compute (state : T.State) (lower : List Ar.At[state].C.R)
+  (member : Row.At[state].I.1 (Row.At[state].H.monic lower))
+  (continue : (target : T.State) (r : Nat) -> CB.le (suc r) (len lower) ->
+   (new-lower : List Ar.At[target].C.R) -> Id Nat (len new-lower) r ->
+   Row.At[target].I.1 (Row.At[target].H.monic new-lower) -> Cover.Cover target) {
+  module Current = Row.At[state] ;
+  module Rem = Current.Remainders[lower,member] ;
+  coefficients (i : Fin n) (k : Nat) : Current.C.R = Current.P.coef (Rem.remainder i) k ;
+  module Tested = Scan.Input[state,n,len lower,coefficients] ;
+  high : Tested.High = \ i k ->
+   Ar.At[state].J.equal Current.C.z (coefficients i (plus (len lower) k))
+    (sym (Rem.bound i k)) Ar.At[state].J.zero-member ;
+  module At (target : T.State) (arrow : Ar.Between[state,target].Arrow) {
+   module Transfer = Row.Transfer[state,target,arrow].Monic[lower,member] ;
+   finish (all : Tested.At[target,arrow].AllRadical) : Cover.Cover target =
+    Cover.immediate target Transfer.VanishingResult[all].result ;
+   module Drop (top : Tested.At[target,arrow].HasTop) {
+    module Calculation = Transfer.Drop[top.1,top.2.1,top.2.2.2.1,top.2.2.2.2].Calculation ;
+    result : Cover.Cover target =
+     continue target top.2.1 top.2.2.1
+      Calculation.new-lower Calculation.degree Calculation.new-member ;
+   } ;
+   cases : Tested.At[target,arrow].Result -> Cover.Cover target = split {
+    inl all -> finish all ; inr top -> Drop[top].result } ;
+  } ;
+  process (target : T.State) (w : Tested.Outcome target) : Cover.Cover target =
+   At[target,w.1].cases w.2 ;
+  module Chain = Trees.Bind[Tested.Outcome,Good,process] ;
+  result : Cover.Cover state =
+   Chain.bind state (Scan.scan (len lower) state n coefficients high) ;
+ } ;
+ module BaseCase (state : T.State) (lower : List Ar.At[state].C.R)
+  (member : Row.At[state].I.1 (Row.At[state].H.monic lower)) (bound : CB.le (len lower) zero) {
+  continue (target : T.State) (r : Nat) (smaller : CB.le (suc r) (len lower))
+   (new-lower : List Ar.At[target].C.R) (degree : Id Nat (len new-lower) r)
+   (new-member : Row.At[target].I.1 (Row.At[target].H.monic new-lower)) : Cover.Cover target =
+   efq (FB.le-trans (suc r) (len lower) zero smaller bound) ;
+  result : Cover.Cover state = Compute[state,lower,member,continue].result ;
+ } ;
+ module Step (d : Nat) (ih : Statement d) (state : T.State) (lower : List Ar.At[state].C.R)
+  (member : Row.At[state].I.1 (Row.At[state].H.monic lower)) (bound : CB.le (len lower) (suc d)) {
+  continue (target : T.State) (r : Nat) (smaller : CB.le (suc r) (len lower))
+   (new-lower : List Ar.At[target].C.R) (degree : Id Nat (len new-lower) r)
+   (new-member : Row.At[target].I.1 (Row.At[target].H.monic new-lower)) : Cover.Cover target =
+   ih target new-lower new-member
+    (subst (\ k -> CB.le k d) (sym degree)
+     (FB.le-trans (suc r) (len lower) (suc d) smaller bound)) ;
+  result : Cover.Cover state = Compute[state,lower,member,continue].result ;
+ } ;
+ bounded : (d : Nat) -> Statement d = split {
+  zero -> \ state lower member bound -> BaseCase[state,lower,member,bound].result ;
+  suc d | ih -> \ state lower member bound -> Step[d,ih,state,lower,member,bound].result } ;
+ compute (state : T.State) (lower : List Ar.At[state].C.R)
+  (member : Row.At[state].I.1 (Row.At[state].H.monic lower)) : Cover.Cover state =
+  bounded (len lower) state lower member (FB.le-refl (len lower)) ;
+} ;

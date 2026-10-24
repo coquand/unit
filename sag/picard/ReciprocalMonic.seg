@@ -1,0 +1,89 @@
+-- A polynomial with invertible constant coefficient supplies a monic
+-- standard open in the opposite projective chart. No degree decision.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ open R ; open RL[R] ;
+ module Raw = Poly[l].PolyR[R] ; module MR = Mul[l].MulR[R] ;
+ module Pow = AffinePowers[l].Over[R] ;
+ module AR = AffineRing[l].Laws[R,setR] ;
+ module H = HorrocksInterface[l].Over[R,setR] ;
+ snoc : List R.R -> R.R -> List R.R = split {
+  nil -> \ a -> cons a nil ; cons b p | ih -> \ a -> cons b (ih a) } ;
+ len-snoc : (p : List R.R) (a : R.R) -> Id Nat (len (snoc p a)) (suc (len p)) = split {
+  nil -> \ a -> refl (suc zero) ; cons b p | ih -> \ a -> ap (\ n -> suc n) (ih a) } ;
+ reverse : List R.R -> List R.R = split { nil -> nil ; cons a p | ih -> snoc ih a } ;
+ len-reverse : (p : List R.R) -> Id Nat (len (reverse p)) (len p) = split {
+  nil -> refl zero ; cons a p | ih -> trans (len-snoc (reverse p) a) (ap (\ n -> suc n) ih) } ;
+ eval-snoc : (p : List R.R) (a x : R.R) ->
+  Id R.R (Raw.ev (snoc p a) x) (add (Raw.ev p x) (mul (Pow.power x (len p)) a)) = split {
+  nil -> \ a x -> trans (add-mulzero a x) (sym (trans (zl (mul o a)) (trans (mulC o a) (mulO a)))) ;
+  cons b p | ih -> \ a x ->
+   trans (ap (\ v -> add b (mul x v)) (ih a x))
+    (trans (ap (add b) (dist x (Raw.ev p x) (mul (Pow.power x (len p)) a)))
+     (trans (addA b (mul x (Raw.ev p x)) (mul x (mul (Pow.power x (len p)) a)))
+      (ap (add (Raw.ev (cons b p) x)) (mulA x (Pow.power x (len p)) a)))) } ;
+ cancel-cross (x y u v : R.R) (h : Id R.R (mul x y) o) :
+  Id R.R (mul (mul x u) (mul y v)) (mul u v) =
+  trans (AR.mul-four x u y v) (trans (ap (\ t -> mul t (mul u v)) h)
+   (trans (mulC o (mul u v)) (mulO (mul u v)))) ;
+ reciprocal : (p : List R.R) (x y : R.R) -> Id R.R (mul x y) o ->
+  Id R.R (mul (Pow.power x (len p)) (Raw.ev p y)) (mul x (Raw.ev (reverse p) x)) = split {
+  nil -> \ x y h -> trans (mul-zero o) (sym (mul-zero x)) ;
+  cons a p | ih -> \ x y h ->
+   trans (dist (Pow.power x (suc (len p))) a (mul y (Raw.ev p y)))
+    (trans (ap (add (mul (Pow.power x (suc (len p))) a))
+     (trans (cancel-cross x y (Pow.power x (len p)) (Raw.ev p y) h) (ih x y h)))
+     (trans (addC (mul (Pow.power x (suc (len p))) a) (mul x (Raw.ev (reverse p) x)))
+      (trans (ap (add (mul x (Raw.ev (reverse p) x))) (sym (mulA x (Pow.power x (len p)) a)))
+       (trans (sym (dist x (Raw.ev (reverse p) x) (mul (Pow.power x (len p)) a)))
+        (ap (mul x) (sym (trans (eval-snoc (reverse p) a x)
+         (ap (\ n -> add (Raw.ev (reverse p) x) (mul (Pow.power x n) a)) (len-reverse p))))))))) } ;
+ len-scale (a : R.R) : (p : List R.R) -> Id Nat (len {R.R} (MR.scal a p)) (len p) = split {
+  nil -> refl zero ; cons b p | ih -> ap (\ n -> suc n) ih } ;
+ eval-scale (a : R.R) : (p : List R.R) (x : R.R) -> Id R.R (Raw.ev (MR.scal a p) x) (mul a (Raw.ev p x)) = split {
+  nil -> \ x -> sym (mul-zero a) ;
+  cons b p | ih -> \ x -> trans (ap (add (mul a b)) (ap (mul x) (ih x)))
+   (trans (ap (add (mul a b)) (mul-swap x a (Raw.ev p x))) (sym (dist a b (mul x (Raw.ev p x))))) } ;
+ eval-monic : (p : List R.R) (x : R.R) -> Id R.R (Raw.ev (H.monic-list p) x) (add (Raw.ev p x) (Pow.power x (len p))) = split {
+  nil -> \ x -> trans (add-mulzero o x) (sym (zl o)) ;
+  cons a p | ih -> \ x -> trans (ap (\ v -> add a (mul x v)) (ih x))
+   (trans (ap (add a) (dist x (Raw.ev p x) (Pow.power x (len p))))
+    (addA a (mul x (Raw.ev p x)) (Pow.power x (suc (len p))))) } ;
+ module From (a : R.R) (u : unit a) (p : List R.R) {
+  tail : List R.R = MR.scal u.1 (reverse p) ;
+  lower : List R.R = cons z tail ;
+  value (x : R.R) : R.R = Raw.ev (H.monic-list lower) x ;
+  middle (x : R.R) : R.R = Raw.ev (H.monic-list tail) x ;
+  value-eq (x : R.R) : Id R.R (value x) (mul x (middle x)) = zl (mul x (middle x)) ;
+  normalise (x : R.R) : Id R.R (mul a (middle x))
+   (add (Raw.ev (reverse p) x) (mul a (Pow.power x (len p)))) =
+   trans (ap (mul a) (eval-monic tail x))
+    (trans (dist a (Raw.ev tail x) (Pow.power x (len tail)))
+     (cong2 R.R add _ _ _ _
+      (trans (ap (mul a) (eval-scale u.1 (reverse p) x))
+       (trans (mulA a u.1 (Raw.ev (reverse p) x))
+        (trans (ap (\ t -> mul t (Raw.ev (reverse p) x)) u.2)
+         (trans (mulC o (Raw.ev (reverse p) x)) (mulO (Raw.ev (reverse p) x))))))
+      (ap (\ n -> mul a (Pow.power x n)) (trans (len-scale u.1 (reverse p)) (len-reverse p))))) ;
+  identity (x y : R.R) (h : Id R.R (mul x y) o) :
+   Id R.R (mul (Pow.power x (suc (len p))) (Raw.ev (cons a p) y)) (mul a (value x)) =
+   trans (dist (Pow.power x (suc (len p))) a (mul y (Raw.ev p y)))
+    (trans (ap (add (mul (Pow.power x (suc (len p))) a))
+     (trans (cancel-cross x y (Pow.power x (len p)) (Raw.ev p y) h) (reciprocal p x y h)))
+     (trans (addC (mul (Pow.power x (suc (len p))) a) (mul x (Raw.ev (reverse p) x)))
+      (trans (ap (add (mul x (Raw.ev (reverse p) x)))
+       (trans (sym (mulA x (Pow.power x (len p)) a)) (ap (mul x) (mulC (Pow.power x (len p)) a))))
+       (trans (sym (dist x (Raw.ev (reverse p) x) (mul a (Pow.power x (len p)))))
+        (trans (ap (mul x) (sym (normalise x)))
+         (trans (mul-swap x a (middle x)) (ap (mul a) (sym (value-eq x))))))))) ;
+  module OnOpen (x : R.R) (v : unit (value x)) {
+   product-unit : unit (mul x (middle x)) = Pr.subst R.R unit _ _ (value-eq x) v ;
+   xu : unit x = AR.unit-left x (middle x) product-unit ;
+   inverse : R.R = xu.1 ;
+   original-unit : unit (Raw.ev (cons a p) inverse) =
+    AR.unit-right (Pow.power x (suc (len p))) (Raw.ev (cons a p) inverse)
+     (Pr.subst R.R unit _ _ (sym (identity x inverse xu.2)) (AR.unit-product a (value x) u v)) ;
+  } ;
+ } ;
+} ;

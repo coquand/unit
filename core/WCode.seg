@@ -1,0 +1,66 @@
+-- Ordinary W-types of encoded sets are encoded sets.  Library construction,
+-- used for the normal forms of model-level types with restricted constructors.
+level l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ; module EN = Encode[l, l] ;
+
+module Build (S : U l) (B : S -> U l) (eS : EN.Enc S) (eB : (s : S) -> EN.Enc (B s)) {
+  data Tree : U l = sup (s : S) (f : B s -> Tree) ;
+
+  graph (s : S) (f : B s -> W.V) : W.V =
+    W.mkV (B s) (\ b -> W.pairV ((eB s).1 b) (f b))
+      (\ b c p -> (eB s).2 b c (W.pair-inj ((eB s).1 b) (f b) ((eB s).1 c) (f c) p).1) ;
+  code : Tree -> W.V = split {
+    sup s f | cf -> W.pairV (eS.1 s) (graph s cf)
+  } ;
+
+  graph-at (s : S) (f g : B s -> W.V) (p : Id W.M (graph s f).1 (graph s g).1) (b : B s)
+    : Id W.M (f b).1 (g b).1 = move m.1 eq val
+    where {
+      m : W.Mem (W.elt (graph s f).1 b) (graph s g).1 = W.memT (graph s f).1 (graph s g).1 p b ;
+      eq : Id (B s) m.1 b =
+        (eB s).2 m.1 b (W.pair-inj ((eB s).1 m.1) (g m.1) ((eB s).1 b) (f b) m.2).1 ;
+      val : Id W.M (g m.1).1 (f b).1 =
+        (W.pair-inj ((eB s).1 m.1) (g m.1) ((eB s).1 b) (f b) m.2).2 ;
+      move (c : B s) (q : Id (B s) c b) (v : Id W.M (g c).1 (f b).1) : Id W.M (f b).1 (g b).1 =
+        transH (symH v) (apH (\ j -> (g j).1) q) ;
+    } ;
+  opaque graph-at ;
+
+  same (s : S) (f g : B s -> Tree)
+    (ih : (b : B s) (t : Tree) -> Id W.M (code (f b)).1 (code t).1 -> Id Tree (f b) t)
+    (p : Id W.M (graph s (\ b -> code (f b))).1 (graph s (\ b -> code (g b))).1)
+    : Id Tree (sup s f) (sup s g) =
+    apH (\ h -> sup s h) (funext (B s) (\ b -> Tree) f g
+      (\ b -> ih b (g b) (graph-at s (\ c -> code (f c)) (\ c -> code (g c)) p b))) ;
+  opaque same ;
+
+  different (s : S) (f : B s -> Tree)
+    (ih : (b : B s) (t : Tree) -> Id W.M (code (f b)).1 (code t).1 -> Id Tree (f b) t)
+    (s' : S) (e : Id S s s') (g : B s' -> Tree)
+    (p : Id W.M (graph s (\ b -> code (f b))).1 (graph s' (\ b -> code (g b))).1)
+    : Id Tree (sup s f) (sup s' g) =
+    idJ S s (\ z q -> (h : B z -> Tree) ->
+      Id W.M (graph s (\ b -> code (f b))).1 (graph z (\ b -> code (h b))).1 ->
+      Id Tree (sup s f) (sup z h))
+      (\ h p' -> same s f h ih p') s' e g p ;
+  opaque different ;
+
+  other (s : S) (f : B s -> Tree)
+    (ih : (b : B s) (t : Tree) -> Id W.M (code (f b)).1 (code t).1 -> Id Tree (f b) t)
+    : (t : Tree) -> Id W.M (code (sup s f)).1 (code t).1 -> Id Tree (sup s f) t = split {
+    sup s' g -> \ p -> different s f ih s'
+      (eS.2 s s' (W.pair-inj (eS.1 s) (graph s (\ b -> code (f b)))
+        (eS.1 s') (graph s' (\ b -> code (g b))) p).1) g
+      (W.pair-inj (eS.1 s) (graph s (\ b -> code (f b)))
+        (eS.1 s') (graph s' (\ b -> code (g b))) p).2
+  } ;
+  code-inj : (t t' : Tree) -> Id W.M (code t).1 (code t').1 -> Id Tree t t' = split {
+    sup s f | ih -> other s f ih
+  } ;
+  opaque code-inj ;
+  encoding : EN.Enc Tree = (code, code-inj) ;
+  treeV : W.V = EN.codeOf Tree encoding ;
+  tree-set : isSet Tree = W.isSetIx treeV ;
+} ;

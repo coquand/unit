@@ -1,0 +1,87 @@
+-- A monic polynomial is regular, including degree zero and the zero ring.
+-- No decision procedure for coefficient equality is used.
+level l ; open Ring[l] ;
+module Raw (A : CRing) {
+ open A ; open RL[A] ;
+ open Poly[l].PolyR[A] ; open Mul[l].MulR[A] ;
+ module L = RawLaws[l].Laws[A] ;
+ module At (f : P) (n : Nat) (length : Id Nat (plen f) (suc n)) {
+  beyond (m : Nat) : Id R (coef f (suc (plus m n))) z =
+   trans (ap (coef f)
+     (trans (ap (\ k -> suc k) (plus-comm m n)) (ap (\ k -> plus k m) (sym length))))
+    (coef-beyond f m) ;
+  Top (g : P) : U l = (m : Nat) -> Id Nat (plen g) (suc m) ->
+   Id R (coef (pmul f g) (plus m n)) (mul (lastD f) (lastD g)) ;
+  top-step (b : R) : (g : P) -> Top g -> (m : Nat) ->
+   Id Nat (suc (plen g)) (suc m) ->
+   Id R (coef (pmul f (cons b g)) (plus m n)) (mul (lastD f) (lastH b g (lastD g))) = split {
+   nil -> \ ih -> split {
+    zero -> \ e -> trans (coef-addP (scal b f) (cons z nil) n)
+     (trans (ap (add (coef (scal b f) n)) (cz n))
+      (trans (addZ (coef (scal b f) n))
+       (trans (coef-scal b f n)
+        (trans (mulC b (coef f n)) (ap (\ a -> mul a b) (coef-top f n length)))))) ;
+    suc m -> \ e -> efq (zero-suc m (suc-inj e)) } ;
+   cons d g -> \ ih -> split {
+    zero -> \ e -> efq (suc-zero (plen g) (suc-inj e)) ;
+    suc m -> \ e ->
+     trans (coef-addP (scal b f) (cons z (pmul f (cons d g))) (suc (plus m n)))
+      (trans (ap (\ a -> add a (coef (pmul f (cons d g)) (plus m n)))
+        (trans (coef-scal b f (suc (plus m n)))
+         (trans (ap (mul b) (beyond m)) (mul-zero b))))
+       (trans (zl (coef (pmul f (cons d g)) (plus m n))) (ih m (suc-inj e)))) } } ;
+  top : (g : P) -> Top g = split {
+   nil -> \ m e -> efq (zero-suc m e) ;
+   cons b g | ih -> top-step b g ih } ;
+  module Monic (leading : Id R (lastD f) o) {
+   Statement (m : Nat) : U l =
+    (g : P) -> Id Nat (plen g) m -> peq (pmul f g) nil -> peq g nil ;
+   kernel : (m : Nat) -> Statement m = split {
+    zero -> \ g e h -> len0 g e ;
+    suc m | ih -> \ g e h ->
+     let {
+      last-zero : Id R (lastD g) z =
+       trans (sym (trans (mulC o (lastD g)) (mulO (lastD g))))
+        (trans (ap (\ a -> mul a (lastD g)) (sym leading))
+         (trans (sym (top g m e)) (h (plus m n)))) ;
+      smaller : peq (pmul f (initL g)) nil =
+       \ k -> trans (sym (pmul-init f g last-zero k)) (h k) ;
+     } in peq-trans g (initL g) nil (init-peq g last-zero)
+      (ih (initL g) (trans (init-len g) (ap pred e)) smaller) } ;
+   zero-product (g : P) : peq (pmul f g) nil -> peq g nil =
+    kernel (plen g) g (refl (plen g)) ;
+  } ;
+ } ;
+} ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ open A ;
+ module P = Poly[l].PolyR[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Reg = Regularity[l].Over[B.ring] ;
+ monic-length : (lower : List R) -> Id Nat (P.plen (H.monic-list lower)) (suc (len lower)) = split {
+  nil -> refl (suc zero) ;
+  cons a lower | ih -> ap (\ k -> suc k) ih } ;
+ leading (lower : List R) : Id R (P.lastD (H.monic-list lower)) o =
+  trans (sym (Mul[l].MulR[A].coef-top (H.monic-list lower) (len lower) (monic-length lower)))
+   (H.leading lower) ;
+ module At (lower : List R) {
+  module F = Axioms[l].FunExtLemmas[fe @l] ;
+  module Calculation = Raw[A].At[H.monic-list lower,len lower,monic-length lower].Monic[leading lower] ;
+  raw-kernel (g : P.P) (h : Id B.Carrier (B.mulQ (H.monic lower) (B.include g)) B.zeroQ) :
+   Id B.Carrier (B.include g) B.zeroQ =
+   B.Q.relates g nil
+    (Calculation.zero-product g
+     (B.Q.effective (Mul[l].MulR[A].pmul (H.monic-list lower) g) nil
+      (trans (sym (B.Multiply.beta (H.monic-list lower) g)) h))) ;
+  kernel : Reg.KernelZero (H.monic lower) =
+   B.Q.induction @l
+    (\ q -> Id B.Carrier (B.mulQ (H.monic lower) q) B.zeroQ -> Id B.Carrier q B.zeroQ)
+    (\ q -> F.isProp-Pi (Id B.Carrier (B.mulQ (H.monic lower) q) B.zeroQ)
+     (\ h -> Id B.Carrier q B.zeroQ) (\ h -> B.set q B.zeroQ))
+    raw-kernel ;
+  regular : Reg.Regular (H.monic lower) = Reg.from-kernel (H.monic lower) kernel ;
+  power-regular : (k : Nat) -> Reg.Regular (AffinePowers[l].Over[B.ring].power (H.monic lower) k) =
+   Reg.powers (H.monic lower) regular ;
+ } ;
+} ;

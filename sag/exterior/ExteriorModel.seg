@@ -1,0 +1,97 @@
+-- The exterior algebra of R^n as a concrete model (DESIGN.md §3), by
+-- recursion on n:
+--   L 0 = R ,  L (n+1) = L n * L n ,  (w0, w1) stands for w0 + w1 e
+-- where e is the new basis vector, put at the back, so that the top
+-- coefficient is the coefficient of e_1 ... e_n in this order.  With the
+-- grade involution  alpha (w0, w1) = (alpha w0, - alpha w1)  and  e w = alpha(w) e,
+--   (a0, a1)(b0, b1) = (a0 b0, a0 b1 + a1 alpha(b0)) .
+-- Every operation is a split on n with n before the other arguments.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (Rg : CRing) {
+ open Rg ;
+ module L = RL[Rg] ;
+ Ext : Nat -> U l = split { zero -> R ; suc n | r -> r * r } ;
+
+ -- the additive structure, componentwise
+ ezero : (n : Nat) -> Ext n = split { zero -> z ; suc n | r -> (r,r) } ;
+ eadd : (n : Nat) -> Ext n -> Ext n -> Ext n = split {
+  zero -> add ;
+  suc n | r -> \ u v -> (r u.1 v.1,r u.2 v.2) } ;
+ eneg : (n : Nat) -> Ext n -> Ext n = split {
+  zero -> neg ;
+  suc n | r -> \ u -> (r u.1,r u.2) } ;
+ escale : (n : Nat) -> R -> Ext n -> Ext n = split {
+  zero -> mul ;
+  suc n | r -> \ c u -> (r c u.1,r c u.2) } ;
+
+ -- scalars c . 1, and the unit
+ emb : (n : Nat) -> R -> Ext n = split {
+  zero -> \ c -> c ;
+  suc n | r -> \ c -> (r c,ezero n) } ;
+ eone (n : Nat) : Ext n = emb n o ;
+
+ -- the grade involution
+ alpha : (n : Nat) -> Ext n -> Ext n = split {
+  zero -> \ u -> u ;
+  suc n | r -> \ u -> (r u.1,eneg n (r u.2)) } ;
+
+ -- the product
+ emul : (n : Nat) -> Ext n -> Ext n -> Ext n = split {
+  zero -> mul ;
+  suc n | r -> \ u v -> (r u.1 v.1,eadd n (r u.1 v.2) (r u.2 (alpha n v.1))) } ;
+
+ -- the generators  i : R^n -> L n ,  i (a', a_new) = i a' + a_new e
+ gen : (n : Nat) -> (Ps.Fin n -> R) -> Ext n = split {
+  zero -> \ a -> z ;
+  suc n | r -> \ a -> (r (\ k -> a (inl k)),emb n (a (inr tt))) } ;
+
+ -- the coefficient of e_1 ... e_n
+ top : (n : Nat) -> Ext n -> R = split {
+  zero -> \ u -> u ;
+  suc n | r -> \ u -> r u.2 } ;
+
+ -- u_1 ... u_m, in this order
+ eprod (n : Nat) : (m : Nat) -> (Ps.Fin m -> Ext n) -> Ext n = split {
+  zero -> \ u -> eone n ;
+  suc m | r -> \ u -> emul n (r (\ k -> u (inl k))) (u (inr tt)) } ;
+
+ -- det of the matrix with columns M k:  i(M 1) ... i(M n) = det M . e_1 ... e_n
+ det (n : Nat) (M : Ps.Fin n -> Ps.Fin n -> R) : R =
+  top n (eprod n n (\ k -> gen n (M k))) ;
+
+ ---------------------------------------------------------------------
+ -- smoke test: the 2 x 2 matrix with rows (a b) and (c d)
+
+ two : Nat = suc (suc zero) ;
+ vec2 {A : U l} (x y : A) : Ps.Fin two -> A = split { inl k -> x ; inr t -> y } ;
+ mat2 (a b c d : R) : Ps.Fin two -> Ps.Fin two -> R = vec2 (vec2 a c) (vec2 b d) ;
+ det2 (a b c d : R) : R = det two (mat2 a b c d) ;
+
+ -- by conversion alone, det2 is  (1 a) d + (1 c)(- b)  up to terms multiplied by 0
+ clean (x : R) : R = add (mul o x) (mul z z) ;
+ junk0 : R = mul (mul o z) z ;
+ junk1 (a c : R) : R = mul (add (add (mul o z) (mul z c)) (add (mul z (neg a)) (mul z z))) z ;
+ det2-normal (a b c d : R) :
+  Id R (det2 a b c d)
+   (add (add junk0 (mul (clean a) d)) (add (mul (clean c) (neg b)) (junk1 a c))) =
+  refl (det2 a b c d) ;
+
+ -- and the ring laws remove them
+ clean-id (x : R) : Id R (clean x) x =
+  trans (ap (add (mul o x)) (L.mul-zero z)) (trans (addZ (mul o x)) (L.one-left x)) ;
+ det2-formula (a b c d : R) : Id R (det2 a b c d) (add (mul a d) (neg (mul b c))) =
+  calc R { det2 a b c d
+   =< det2-normal a b c d > add (add junk0 (mul (clean a) d)) (add (mul (clean c) (neg b)) (junk1 a c))
+   =< ap (\ t -> add (add t (mul (clean a) d)) (add (mul (clean c) (neg b)) (junk1 a c))) (L.mul-zero (mul o z))
+   > add (add z (mul (clean a) d)) (add (mul (clean c) (neg b)) (junk1 a c))
+   =< ap (\ t -> add (add z (mul (clean a) d)) (add (mul (clean c) (neg b)) t))
+        (L.mul-zero (add (add (mul o z) (mul z c)) (add (mul z (neg a)) (mul z z))))
+   > add (add z (mul (clean a) d)) (add (mul (clean c) (neg b)) z)
+   =< ap (\ t -> add t (add (mul (clean c) (neg b)) z)) (L.zl (mul (clean a) d))
+   > add (mul (clean a) d) (add (mul (clean c) (neg b)) z)
+   =< ap (add (mul (clean a) d)) (addZ (mul (clean c) (neg b))) > add (mul (clean a) d) (mul (clean c) (neg b))
+   =< ap (\ t -> add (mul t d) (mul (clean c) (neg b))) (clean-id a) > add (mul a d) (mul (clean c) (neg b))
+   =< ap (\ t -> add (mul a d) (mul t (neg b))) (clean-id c) > add (mul a d) (mul c (neg b))
+   =< ap (add (mul a d)) (trans (L.mul-neg c b) (ap neg (mulC c b))) > add (mul a d) (neg (mul b c)) } ;
+} ;

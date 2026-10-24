@@ -1,0 +1,76 @@
+-- Horrocks' theorem in rank one over a local ring, by the divisor argument.
+-- DivisorSplitting builds, once, an A-linear retraction rho of A[X] onto
+-- the row ideal L from one monic member of L; DivisorStep.Retract.Induction
+-- then gives a monic generator of any ideal with such a retraction, and
+-- monic generators are unique (MonicGenerator). The projector form is
+-- recovered by CertificateDescent. No formal gcd tree, no determinant.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R)
+ (loc : (a b : A.R) -> RL[A].unit (A.add a b) ->
+  Tr.Trunc[Plus (RL[A].unit a) (RL[A].unit b)].carrier) {
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module S = FiniteIdeal[l].Sums[B.ring] ;
+ module BR = RL[B.ring] ;
+ module DSp = DivisorSplitting[l].Over[A,setA] ;
+ module DSt = DivisorStep[l].Over[A,setA] ;
+ module MG = MonicGenerator[l].Over[A,setA] ;
+ module Data (n : Nat) (y : Fin n -> B.Carrier) (e : Fin n -> Fin n -> B.Carrier)
+  (exchange : (i j k : Fin n) -> Id B.Carrier (B.mulQ (e i k) (y j)) (B.mulQ (e i j) (y k)))
+  (trace : Id B.Carrier (S.sum n (\ i -> e i i)) B.oneQ) {
+  module Sp = DSp.Data[n,y,e,exchange,trace] ;
+  InL (x : B.Carrier) : U l = Sp.InL x ;
+  module Gen = MG.Of[Sp.Lid] ;
+  -- A monic generator of L; the type of such is a proposition.
+  Generator : U l = Gen.Generator ;
+  generator-prop : Pr.isProp Generator = Gen.generator-prop ;
+  -- The retraction is built once, from the monic F0 = sum_k y_k c_k.
+  module Monic (lower0 : List A.R) (cs0 : Fin n -> B.Carrier)
+   (generated0 : Id B.Carrier (S.lin n y cs0) (H.monic lower0)) {
+   module R0 = Sp.At[lower0,cs0,generated0] ;
+   module Rt = DSt.Retract[Sp.Lid,R0.rho,R0.rho-add,R0.rho-scale,R0.rho-zero,R0.rho-in,R0.rho-fixes] ;
+   -- If L contains a monic polynomial, L has a unique monic generator.
+   generator : Generator = Rt.Induction[loc].generator lower0 (Sp.member cs0 (H.monic lower0) generated0) ;
+  } ;
+  -- The same from mere membership of a monic polynomial.
+  generator-of (lower : List A.R) (h : InL (H.monic lower)) : Generator =
+   Tr.Trunc[Sp.Cert.Certificate (H.monic lower) B.zeroQ].induction @l (\ t -> Generator) (\ t -> generator-prop)
+    (\ c -> Monic[lower,c.1,trans (sym (BR.zl (S.lin n y c.1))) (sym c.2)].generator) h ;
+ } ;
+ -- The interface: a rank-one projector free after inverting a monic is free.
+ module Mat = RankOneProjector[l].Over[B.ring] ;
+ module Pow = AffinePowers[l].Over[B.ring] ;
+ module MR = MonicRegular[l].Over[A,setA] ;
+ module Powers = MonicPowers[l].Over[A,setA] ;
+ module Certificate (lower : List A.R) (n : Nat) (proj : Mat.Size[n].Projector)
+  (w : Mat.Size[n].LocalFactors proj.entry (H.monic lower)) {
+  e : Fin n -> Fin n -> B.Carrier = proj.entry ;
+  t : B.Carrier = Pow.power (H.monic lower) w.1 ;
+  x : Fin n -> B.Carrier = w.2.1 ;
+  y : Fin n -> B.Carrier = w.2.2.1 ;
+  xy (i j : Fin n) : Id B.Carrier (B.mulQ (x i) (y j)) (B.mulQ t (e i j)) = w.2.2.2.1 i j ;
+  regular : MR.Reg.Regular t = MR.At[lower].power-regular w.1 ;
+  module Sc = DSp.FromScalar[n,e,t,regular,x,y,xy,w.2.2.2.2] ;
+  exchange (i j k : Fin n) : Id B.Carrier (B.mulQ (e i k) (y j)) (B.mulQ (e i j) (y k)) = Sc.exchange i j k ;
+  trace : Id B.Carrier (S.sum n (\ i -> e i i)) B.oneQ = Sc.trace ;
+  power : Powers.Witness t = Powers.powers lower w.1 ;
+  generated : Id B.Carrier (S.lin n y x) (H.monic power.1) = trans w.2.2.2.2 (sym power.2) ;
+  module D = Data[n,y,e,exchange,trace] ;
+  module Descent = CertificateDescent[l].Over[B.ring].At[n,e,t,regular,w.2] ;
+  g : D.Generator = D.Monic[power.1,x,generated].generator ;
+  quotient (i : Fin n) : MG.Divides g.1 (y i) = g.2.2.2 (y i) (D.Sp.G.G.generator i) ;
+  -- y_i = g a_i and g = sum_j y_j c_j: a principal row, which descends.
+  free : Mat.Size[n].Free e =
+   Tr.Trunc[D.Sp.Cert.Certificate g.1 B.zeroQ].induction @l (\ u -> Mat.Size[n].Free e)
+    (\ u -> Tr.Trunc[Mat.Size[n].Factors e].proposition)
+    (\ c -> Tr.Trunc[Mat.Size[n].Factors e].inc (Descent.descend
+      (g.1,\ i -> (quotient i).1,c.1,\ i -> (quotient i).2,trans (sym (BR.zl (S.lin n y c.1))) (sym c.2))))
+    g.2.2.1 ;
+ } ;
+ horrocks : H.Horrocks = \ lower n proj after ->
+  Tr.Trunc[Mat.Size[n].LocalFactors proj.entry (H.monic lower)].induction @l
+   (\ u -> Mat.Size[n].Free proj.entry)
+   (\ u -> Tr.Trunc[Mat.Size[n].Factors proj.entry].proposition)
+   (\ w -> Certificate[lower,n,proj,w].free) after ;
+} ;

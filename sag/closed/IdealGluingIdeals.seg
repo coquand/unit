@@ -1,0 +1,109 @@
+-- Generator-independent extension and gluing of finitely generated ideals.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module Tr1 = Truncation[l+] ;
+module Extension (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R)
+ (h : RingHom[l].Hom A B) (J : Ideals[l].Over[A,setA].Ideal) {
+ module IA = Ideals[l].Over[A,setA] ;
+ module IB = Ideals[l].Over[B,setB] ;
+ module Chosen (w : IA.FGWitness J) {
+  module Source = GeneratedIdeal[l].Over[A,w.1,w.2.1] ;
+  module Target = GeneratedIdeal[l].Over[B,w.1,\ k -> h.1 (w.2.1 k)] ;
+  from-member (a : A.R) (ha : J.1 a) : Target.Member (h.1 a) =
+   LocalizationIdeal[l].Map[A,B,setB,h,w.1,w.2.1].member a ((w.2.2 a).1 ha) ;
+  compare (v : IA.FGWitness J) (b : B.R) :
+   GeneratedIdeal[l].Over[B,v.1,\ k -> h.1 (v.2.1 k)].Member b -> Target.Member b =
+   Target.includes v.1 (\ k -> h.1 (v.2.1 k))
+    (\ k -> from-member (v.2.1 k)
+     ((v.2.2 (v.2.1 k)).2 (GeneratedIdeal[l].Over[A,v.1,v.2.1].generator k))) b ;
+ } ;
+ Witness (b : B.R) : U l = (w : IA.FGWitness J) * Chosen[w].Target.Member b ;
+ Member (b : B.R) : U l = Tr.Trunc[Witness b].carrier ;
+ proposition (b : B.R) : Pr.isProp (Member b) = Tr.Trunc[Witness b].proposition ;
+ from-chosen (w : IA.FGWitness J) (b : B.R) (hb : Chosen[w].Target.Member b) : Member b =
+  Tr.Trunc[Witness b].inc (w,hb) ;
+ to-chosen (w : IA.FGWitness J) (b : B.R) : Member b -> Chosen[w].Target.Member b =
+  Tr.Trunc[Witness b].induction @l (\ t -> Chosen[w].Target.Member b)
+   (\ t -> Chosen[w].Target.proposition b) (\ v -> Chosen[w].compare v.1 b v.2) ;
+ -- These closure laws require finite generation only to obtain a witness
+ -- for the zero element. Membership itself supplies the other witnesses.
+ zero-member (fg : IA.FG J) : Member B.z =
+  Tr.Trunc[IA.FGWitness J].induction @l (\ t -> Member B.z) (\ t -> proposition B.z)
+   (\ w -> from-chosen w B.z Chosen[w].Target.zero-member) fg ;
+ addition (a b : B.R) (ha : Member a) (hb : Member b) : Member (B.add a b) =
+  Tr.Trunc[Witness a].induction @l (\ t -> Member (B.add a b)) (\ t -> proposition (B.add a b))
+   (\ w -> from-chosen w.1 (B.add a b)
+    (Chosen[w.1].Target.addition a b w.2 (to-chosen w.1 b hb))) ha ;
+ scale (a b : B.R) (hb : Member b) : Member (B.mul a b) =
+  Tr.Trunc[Witness b].induction @l (\ t -> Member (B.mul a b)) (\ t -> proposition (B.mul a b))
+   (\ w -> from-chosen w.1 (B.mul a b) (Chosen[w.1].Target.scale a b w.2)) hb ;
+ ideal (fg : IA.FG J) : IB.Ideal = (Member,proposition,zero-member fg,addition,scale) ;
+ fg-witness (fg : IA.FG J) (w : IA.FGWitness J) : IB.FGWitness (ideal fg) =
+  (w.1,\ k -> h.1 (w.2.1 k),\ b -> (to-chosen w b,from-chosen w b)) ;
+ finite-generation (fg : IA.FG J) : IB.FG (ideal fg) =
+  Tr.Trunc[IA.FGWitness J].induction @l (\ t -> IB.FG (ideal fg))
+   (\ t -> Tr.Trunc[IB.FGWitness (ideal fg)].proposition)
+   (\ w -> Tr.Trunc[IB.FGWitness (ideal fg)].inc (fg-witness fg w)) fg ;
+ finitely-generated (fg : IA.FG J) : IB.FinitelyGenerated = (ideal fg,finite-generation fg) ;
+} ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module C = Algebras[l].Over[A,setA] ;
+ module I = AffineInterface[l].Over[A,setA] ;
+ module IA = Ideals[l].Over[A,setA] ;
+ module BP = BasePresentation[l].Over[A,setA] ;
+ module At (m : Nat) (fs : Fin m -> A.R)
+  (ls : (i : Fin m) -> I.LocalizationWitness C.base (fs i))
+  (js : (i : Fin m) -> Ideals[l].Over[(ls i).1.ring,(ls i).1.set].FinitelyGenerated)
+  (os : (i j : Fin m) -> I.LocalizationWitness (ls j).1 ((ls j).2.2.1.1.1 (fs i))) {
+  module Local (i : Fin m) {
+   L : C.Algebra = (ls i).1 ;
+   inc : C.Hom C.base L = (ls i).2.2.1 ;
+   module IL = Ideals[l].Over[L.ring,L.set] ;
+   J : IL.FinitelyGenerated = js i ;
+  } ;
+  module Overlap (i j : Fin m) {
+   O : C.Algebra = (os i j).1 ;
+   right : C.Hom Local[j].L O = (os i j).2.2.1 ;
+   base : C.Hom C.base O = C.compose C.base Local[j].L O right Local[j].inc ;
+   left : C.Hom Local[i].L O = ((ls i).2.2.2.2 O).sec (base,(os i j).2.2.2.1) ;
+   module RightIdeal = Extension[Local[j].L.ring,O.ring,Local[j].L.set,O.set,right.1,(js j).1] ;
+  } ;
+  -- Canonical inclusion into the other extended ideal, for all ordered
+  -- pairs. In particular agreement of the two extensions implies this.
+  Compatible : U l = (i j : Fin m) (a : Local[i].L.ring.R) ->
+   (js i).1.1 a -> Overlap[i,j].RightIdeal.Member (Overlap[i,j].left.1.1 a) ;
+  Data : U l = (i : Fin m) -> Local[i].IL.FGWitness (js i).1 ;
+  choices : Tr.Trunc[Data].carrier =
+   AffineFinite[l].choice m (\ i -> Local[i].IL.FGWitness (js i).1) (\ i -> (js i).2) ;
+  module Global (J : IA.FinitelyGenerated) {
+   module In (j : Fin m) {
+    module Ext = Extension[A,Local[j].L.ring,setA,Local[j].L.set,Local[j].inc.1,J.1] ;
+   } ;
+   Matches : U l = (j : Fin m) (a : Local[j].L.ring.R) ->
+    (In[j].Ext.Member a -> (js j).1.1 a) * ((js j).1.1 a -> In[j].Ext.Member a) ;
+  } ;
+  Result : U l+ = (J : IA.FinitelyGenerated) * Global[J].Matches ;
+  module Chosen (w : Data) {
+   ns (i : Fin m) : Nat = (w i).1 ;
+   gs (i : Fin m) : Fin (ns i) -> Local[i].L.ring.R = (w i).2.1 ;
+   module Glue = IdealGluingFractions[l].Over[A,setA].At[C.base,BP.finitely-presented,m,fs,ls,ns,gs,os] ;
+   compatible (agree : Compatible) : Glue.Compatible = \ i j k ->
+    Overlap[i,j].RightIdeal.to-chosen (w j) _
+     (agree i j (gs i k) (((w i).2.2 (gs i k)).2
+      (GeneratedIdeal[l].Over[Local[i].L.ring,ns i,gs i].generator k))) ;
+   module Done (g : Glue.Result) {
+    J : IA.FinitelyGenerated = IA.generated g.1 g.2.1 ;
+    witness : IA.FGWitness J.1 = (g.1,g.2.1,\ a -> ((\ h -> h),(\ h -> h))) ;
+    result : Result =
+     (J,\ j a ->
+      (\ h -> ((w j).2.2 a).2 ((g.2.2 j a).1 (Global[J].In[j].Ext.to-chosen witness a h)),
+       \ h -> Global[J].In[j].Ext.from-chosen witness a ((g.2.2 j a).2 (((w j).2.2 a).1 h)))) ;
+   } ;
+   glue (agree : Compatible) : Tr1.Trunc[Result].carrier =
+    Tr.Trunc[Glue.Result].induction @(l+) (\ t -> Tr1.Trunc[Result].carrier) (\ t -> Tr1.Trunc[Result].proposition)
+     (\ g -> Tr1.Trunc[Result].inc Done[g].result) (Glue.glue (compatible agree)) ;
+  } ;
+  lemma-1-3-8 (agree : Compatible) : Tr1.Trunc[Result].carrier =
+   Tr.Trunc[Data].induction @(l+) (\ t -> Tr1.Trunc[Result].carrier) (\ t -> Tr1.Trunc[Result].proposition)
+    (\ w -> Chosen[w].glue agree) choices ;
+} ;
+} ;

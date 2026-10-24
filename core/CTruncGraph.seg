@@ -1,0 +1,59 @@
+-- Graph of the recursor.  Defining the graph first avoids any mutual or
+-- non-structural recursion between evaluation and its naturality proof.
+level a l ; constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+
+module Graph (G : PCtx) (A B : PTy[G]) (k : CTruncAlg[a, l].Algebras[G,B].Algebra)
+  (f : (z : CTruncRaw[a, l].Build[G, A].Loc) -> W.Ix (A.tob z.1 z.2) -> W.Ix (B.tob z.1 z.2)) {
+  open CTruncRaw[a, l].Build[G, A] ;
+  open CTruncAlg[a, l].Algebras[G,B] ;
+
+  record NodeGraph (z : Loc) (Q : PB.Phi z.1)
+    (EU : (s : Loc) -> Arr s z -> Total -> U l)
+    (EV : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Total -> U l) (w : Total) {
+    bu : Seed z ;
+    bv : Partial z Q ;
+    bn : SeedNat z bu ;
+    vn : Natural z Q bv ;
+    eu (s : Loc) (h : Arr s z) : EU s h (s, bu s h) ;
+    ev (s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) : EV s h i (s, bv s h i) ;
+    equation : Id Total (z, k.extend z Q (bu z (ident z)) bv vn) w ;
+  } ;
+  Eval : Raw -> Total -> U l = split {
+    leaf z v -> \ w -> Id Total (z, f z v) w ;
+    node z Q u v | eu ev -> \ w -> NodeGraph[z, Q, eu, ev, w]
+  } ;
+  move (t : Raw) (w w' : Total) (p : Id Total w w') (d : Eval t w) : Eval t w' =
+    substH (\ x -> Eval t x) p d ;
+  change-tree (t t' : Raw) (p : Id Raw t t') (w : Total) (d : Eval t w) : Eval t' w =
+    substH (\ x -> Eval x w) p d ;
+
+  module UniqueNode (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (iu : (s : Loc) (h : Arr s z) (w w' : Total) -> Eval (u s h) w -> Eval (u s h) w' -> Id Total w w')
+    (iv : (s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) (w w' : Total)
+      -> Eval (v s h i) w -> Eval (v s h i) w' -> Id Total w w')
+    (w w' : Total) (d : Eval (node z Q u v) w) (d' : Eval (node z Q u v) w') {
+    up : Id (F z) (d.bu z (ident z)) (d'.bu z (ident z)) =
+      fibre-inj z _ _ (iu z (ident z) _ _ (d.eu z (ident z)) (d'.eu z (ident z))) ;
+    vp : Id (Partial z Q) d.bv d'.bv =
+      funext Loc (\ s -> (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> F s) d.bv d'.bv (\ s ->
+      funext (Arr s z) (\ h -> PB.Lands s.1 z.1 Q h.1 -> F s) (d.bv s) (d'.bv s) (\ h ->
+      funext (PB.Lands s.1 z.1 Q h.1) (\ i -> F s) (d.bv s h) (d'.bv s h) (\ i ->
+        fibre-inj s _ _ (iv s h i _ _ (d.ev s h i) (d'.ev s h i))))) ;
+    result : Id Total w w' = transH (symH d.equation)
+      (transH (apH (\ b -> (z,b)) (ext-cong k z Q _ _ up d.bv d'.bv vp d.vn d'.vn)) d'.equation) ;
+  } ;
+  unique : (t : Raw) (w w' : Total) -> Eval t w -> Eval t w' -> Id Total w w' = split {
+    leaf z v -> \ w w' p q -> transH (symH p) q ;
+    node z Q u v | iu iv -> \ w w' d d' -> UniqueNode[z, Q, u, v, iu, iv, w, w', d, d'].result
+  } ;
+  opaque unique ;
+} ;

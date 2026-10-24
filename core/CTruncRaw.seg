@@ -1,0 +1,196 @@
+-- SAG section 8.3, in the presheaf model.  Raw normal-form trees.
+-- No additional type-theoretic primitives are used here.
+-- Children include all restrictions, so restricting a node only reindexes
+-- its children.  Hereditary typing/naturality will select the presheaf.
+level a l ; constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+
+-- Deciding a cofibration retains evidence for either branch.
+decide (R : U l+) : (b : Bool) -> (IsT b -> R) -> (Id Bool b false -> R) -> R = split {
+  true -> \ yes no -> yes (refl true) ;
+  false -> \ yes no -> no (refl false)
+} ;
+decide-yes (R : U l+) : (b : Bool) (yes : IsT b -> R) (no : Id Bool b false -> R)
+  (i : IsT b) -> Id R (decide R b yes no) (yes i) = split {
+  true -> \ yes no i -> apH yes (isProp-IsT' true (refl true) i) ;
+  false -> \ yes no i -> absurd (Id R (decide R false yes no) (yes i)) (false-true i)
+} ;
+decide-ind (R : U l+) : (b : Bool) (yes : IsT b -> R) (no : Id Bool b false -> R)
+  (P : R -> U l+) -> ((i : IsT b) -> P (yes i)) -> ((j : Id Bool b false) -> P (no j))
+  -> P (decide R b yes no) = split {
+  true -> \ yes no P py pn -> py (refl true) ;
+  false -> \ yes no P py pn -> pn (refl false)
+} ;
+decide-no (R : U l+) : (b : Bool) (yes : IsT b -> R) (no : Id Bool b false -> R)
+  (j : Id Bool b false) -> Id R (decide R b yes no) (no j) = split {
+  true -> \ yes no j -> absurd (Id R (decide R true yes no) (no j)) (false-true (symH j)) ;
+  false -> \ yes no j -> apH no (isSet-Bool false false (refl false) j)
+} ;
+decide-cong (R : U l+) : (b : Bool) (yes yes' : IsT b -> R) (no no' : Id Bool b false -> R)
+  -> ((i : IsT b) -> Id R (yes i) (yes' i)) -> ((j : Id Bool b false) -> Id R (no j) (no' j))
+  -> Id R (decide R b yes no) (decide R b yes' no') = split {
+  true -> \ yes yes' no no' py pn -> py (refl true) ;
+  false -> \ yes yes' no no' py pn -> pn (refl false)
+} ;
+
+module Build (G : PCtx) (A : PTy[G]) {
+  open PR.TyL[G, A] ;
+  -- Objects and arrows of the category of elements of G.
+  Loc : U l = (X : Ob) * Pt X ;
+  Arr (s t : Loc) : U l = (h : Hom s.1 t.1) * Id (Pt s.1) (G.act s.1 t.1 h t.2) s.2 ;
+  ident (s : Loc) : Arr s s = (idH s.1, G.act-id s.1 s.2) ;
+  compose (r s t : Loc) (h : Arr s t) (g : Arr r s) : Arr r t =
+    (compH r.1 s.1 t.1 h.1 g.1,
+     transH (G.act-o r.1 s.1 t.1 h.1 g.1 t.2)
+       (transH (apH (G.act r.1 s.1 g.1) h.2) g.2)) ;
+  arr-eq (s t : Loc) (h k : Arr s t) (p : Id (Hom s.1 t.1) h.1 k.1) : Id (Arr s t) h k =
+    Sigma-eq (Hom s.1 t.1) (\ f -> Id (Pt s.1) (G.act s.1 t.1 f t.2) s.2)
+      h.1 k.1 h.2 k.2 p (W.isSetIx (G.ob s.1) (G.act s.1 t.1 k.1 t.2) s.2) ;
+  compose-idl (s t : Loc) (h : Arr s t) : Id (Arr s t) (compose s t t (ident t) h) h =
+    arr-eq s t _ h (comp-idl s.1 t.1 h.1) ;
+  compose-idr (s t : Loc) (h : Arr s t) : Id (Arr s t) (compose s s t h (ident s)) h =
+    arr-eq s t _ h (comp-idr s.1 t.1 h.1) ;
+  compose-assoc (q r s t : Loc) (h : Arr s t) (g : Arr r s) (f : Arr q r)
+    : Id (Arr q t) (compose q r t (compose r s t h g) f) (compose q s t h (compose q r s g f)) =
+    arr-eq q t _ _ (comp-assoc q.1 r.1 s.1 t.1 h.1 g.1 f.1) ;
+  opaque arr-eq ; opaque compose-idl ; opaque compose-idr ; opaque compose-assoc ;
+
+  data Raw : U l =
+    leaf (z : Loc) (v : T z.1 z.2)
+    | node (z : Loc) (Q : PB.Phi z.1)
+        (u : (s : Loc) -> Arr s z -> Raw)
+        (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw) ;
+
+  root : Raw -> Loc = split { leaf z v -> z ; node z Q u v -> z } ;
+
+  -- Smart constructor: a total boundary reduces immediately.
+  ext (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw) : Raw =
+    decide Raw (Q.1 z.1 (idH z.1))
+      (\ i -> v z (ident z) i) (\ no -> node z Q u v) ;
+
+  ext-full (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (i : PB.Lands z.1 z.1 Q (idH z.1)) : Id Raw (ext z Q u v) (v z (ident z) i) =
+    decide-yes Raw (Q.1 z.1 (idH z.1)) (\ j -> v z (ident z) j) (\ no -> node z Q u v) i ;
+  opaque ext-full ;
+
+  -- Restriction is defined on all raw trees.  It need not satisfy the
+  -- presheaf laws until the hereditary naturality condition is imposed.
+  restrict : (t : Raw) (s : Loc) -> Arr s (root t) -> Raw = split {
+    leaf z v -> \ s h -> leaf s (A.tact s.1 z.1 h.1 z.2 s.2 h.2 v) ;
+    node z Q u v -> \ s h ->
+      decide Raw (Q.1 s.1 h.1)
+        (\ i -> v s h i)
+        (\ no -> node s (PB.pre s.1 z.1 h.1 Q)
+          (\ r g -> u r (compose r s z h g))
+          (\ r g i -> v r (compose r s z h g) i))
+  } ;
+
+  node-boundary (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1)
+    : Id Raw (restrict (node z Q u v) s h) (v s h i) =
+    decide-yes Raw (Q.1 s.1 h.1) (\ j -> v s h j)
+      (\ no -> node s (PB.pre s.1 z.1 h.1 Q)
+        (\ r g -> u r (compose r s z h g))
+        (\ r g j -> v r (compose r s z h g) j)) i ;
+  opaque node-boundary ;
+
+  -- Restrict a tree whose root is propositionally the required location.
+  at (t : Raw) (z : Loc) (e : Id Loc (root t) z) (s : Loc) (h : Arr s z) : Raw =
+    idJ Loc (root t) (\ z' e' -> Arr s z' -> Raw)
+      (restrict t s) z e h ;
+
+  -- Hereditary well-formedness: correct roots, no reducible root node,
+  -- and natural families of seed and boundary children.
+  Good : Raw -> U l = split {
+    leaf z v -> Top ;
+    node z Q u v | gu gv ->
+      Id Bool (Q.1 z.1 (idH z.1)) false *
+      ((s : Loc) (h : Arr s z) -> gu s h * Id Loc (root (u s h)) s) *
+      ((s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) -> gv s h i * Id Loc (root (v s h i)) s) *
+      ((s : Loc) (h : Arr s z) (r : Loc) (g : Arr r s)
+        (e : Id Loc (root (u s h)) s) ->
+        Id Raw (at (u s h) s e r g) (u r (compose r s z h g))) *
+      ((s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) (r : Loc) (g : Arr r s)
+        (j : PB.Lands r.1 z.1 Q (compose r s z h g).1)
+        (e : Id Loc (root (v s h i)) s) ->
+        Id Raw (at (v s h i) s e r g) (v r (compose r s z h g) j))
+  } ;
+  TrEl (z : Loc) : U l = (t : Raw) * (Good t * Id Loc (root t) z) ;
+  inc (z : Loc) (v : T z.1 z.2) : TrEl z = (leaf z v, (tt, refl z)) ;
+
+  loc-set : isSet Loc = isSet-Sigma Ob (\ X -> Pt X) (V[a].isSetIx obV) (\ X -> W.isSetIx (G.ob X)) ;
+  at-irr (t : Raw) (z : Loc) (e e' : Id Loc (root t) z) (s : Loc) (h : Arr s z)
+    : Id Raw (at t z e s h) (at t z e' s h) =
+    apH (\ q -> at t z q s h) (loc-set (root t) z e e') ;
+  opaque loc-set ; opaque at-irr ;
+  at-cong (t t' : Raw) (p : Id Raw t t') (z : Loc)
+    (e : Id Loc (root t) z) (e' : Id Loc (root t') z) (s : Loc) (h : Arr s z)
+    : Id Raw (at t z e s h) (at t' z e' s h) =
+    idJ Raw t (\ w q -> (ew : Id Loc (root w) z) -> Id Raw (at t z e s h) (at w z ew s h))
+      (\ ew -> at-irr t z e ew s h) t' p e' ;
+  opaque at-cong ;
+
+  boundary-cong (z : Loc) (Q : PB.Phi z.1)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (s : Loc) (h k : Arr s z) (e : Id (Arr s z) h k)
+    (i : PB.Lands s.1 z.1 Q h.1) (j : PB.Lands s.1 z.1 Q k.1)
+    : Id Raw (v s h i) (v s k j) =
+    apH (\ p -> v s p.1 p.2)
+      (Sigma-eq (Arr s z) (\ f -> PB.Lands s.1 z.1 Q f.1) h k i j e
+        (isProp-IsT' (Q.1 s.1 k.1))) ;
+  opaque boundary-cong ;
+
+  module NodeGood (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (good : Good (node z Q u v)) (s : Loc) (h : Arr s z) {
+    R : PB.Phi s.1 = PB.pre s.1 z.1 h.1 Q ;
+    ru (r : Loc) (g : Arr r s) : Raw = u r (compose r s z h g) ;
+    rv (r : Loc) (g : Arr r s) (i : PB.Lands r.1 s.1 R g.1) : Raw =
+      v r (compose r s z h g) i ;
+    rn : Raw = node s R ru rv ;
+    rn-good (no : Id Bool (Q.1 s.1 h.1) false) : Good rn =
+      (transH (apH (Q.1 s.1) (comp-idr s.1 z.1 h.1)) no,
+       (\ r g -> good.2.1 r (compose r s z h g)),
+       (\ r g i -> good.2.2.1 r (compose r s z h g) i),
+       (\ r g q f e -> transH
+         (good.2.2.2.1 r (compose r s z h g) q f e)
+         (apH (u q) (compose-assoc q r s z h g f))),
+       (\ r g i q f j e -> transH
+         (good.2.2.2.2 r (compose r s z h g) i q f
+           (PB.lands-comp q.1 r.1 z.1 Q (compose r s z h g).1 f.1 i) e)
+         (boundary-cong z Q v q _ _ (compose-assoc q r s z h g f) _ j))) ;
+    opaque rn-good ;
+    result : Good (restrict (node z Q u v) s h) * Id Loc (root (restrict (node z Q u v) s h)) s =
+      decide-ind Raw (Q.1 s.1 h.1) (\ i -> v s h i) (\ no -> rn)
+        (\ t -> Good t * Id Loc (root t) s)
+        (\ i -> good.2.2.1 s h i) (\ no -> (rn-good no, refl s)) ;
+  } ;
+
+  restrict-good : (t : Raw) -> Good t -> (s : Loc) (h : Arr s (root t)) ->
+    Good (restrict t s h) * Id Loc (root (restrict t s h)) s = split {
+    leaf z v -> \ good s h -> (tt, refl s) ;
+    node z Q u v -> \ good s h -> NodeGood[z, Q, u, v, good, s, h].result
+  } ;
+  opaque restrict-good ;
+  at-good (t : Raw) (good : Good t) (z : Loc) (e : Id Loc (root t) z)
+    (s : Loc) (h : Arr s z) : Good (at t z e s h) * Id Loc (root (at t z e s h)) s =
+    idJ Loc (root t) (\ z' e' -> (h' : Arr s z') ->
+      Good (at t z' e' s h') * Id Loc (root (at t z' e' s h')) s)
+      (restrict-good t good s) z e h ;
+  opaque at-good ;
+  tr-res (s z : Loc) (h : Arr s z) (t : TrEl z) : TrEl s =
+    (at t.1 z t.2.2 s h, at-good t.1 t.2.1 z t.2.2 s h) ;
+} ;

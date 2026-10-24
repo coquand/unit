@@ -1,0 +1,94 @@
+-- Smallness of the raw normal forms, by a retraction into an encoded W-type.
+level a l ; constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ; module EN = Encode[a, l] ; module EL = Encode[l, l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+
+module Code (G : PCtx) (A : PTy[G]) {
+  open PR.TyL[G, A] ; open CTruncRaw[a, l].Build[G, A] ;
+  encLoc : EN.Enc Loc = EN.encSig Ob (\ X -> Pt X) (EN.encIx0 obV)
+    (\ X -> EL.encIx0 (G.ob X)) ;
+  encArr (s z : Loc) : EN.Enc (Arr s z) =
+    EN.encSig (Hom s.1 z.1) (\ h -> Id (Pt s.1) (G.act s.1 z.1 h z.2) s.2)
+      (EN.encIx0 (homV s.1 z.1)) (\ h -> EN.encProp _ (W.isSetIx (G.ob s.1) _ _)) ;
+  encPhi (X : Ob) : EN.Enc (PB.Phi X) =
+    EN.encInj (PB.Phi X) ((Y : Ob) -> Hom Y X -> Bool) (\ Q -> Q.1)
+      (\ Q R p -> PB.phi-ext X Q R
+        (\ Y f i -> substH (\ b -> IsT b) (apH (\ v -> v Y f) p) i)
+        (\ Y f i -> substH (\ b -> IsT b) (symH (apH (\ v -> v Y f) p)) i))
+      (EN.encPi0 Ob (\ Y -> Hom Y X -> Bool) (EN.encIx0 obV)
+        (\ Y -> EN.encPi0 (Hom Y X) (\ f -> Bool) (EN.encIx0 (homV Y X)) (\ f -> EN.encIx0 V[a].boolV))) ;
+
+  Payload (z : Loc) : Bool -> U l = split { true -> T z.1 z.2 ; false -> PB.Phi z.1 } ;
+  encPayload (z : Loc) : (b : Bool) -> EN.Enc (Payload z b) = split {
+    true -> EL.encIx0 (A.tob z.1 z.2) ; false -> encPhi z.1
+  } ;
+  Shape : U l = (z : Loc) * (b : Bool) * Payload z b ;
+  encShape : EN.Enc Shape = EN.encSig Loc (\ z -> (b : Bool) * Payload z b) encLoc
+    (\ z -> EN.encSig Bool (\ b -> Payload z b) (EN.encIx0 V[a].boolV) (encPayload z)) ;
+
+  Slot (z : Loc) (Q : PB.Phi z.1) (s : Loc) (h : Arr s z) : Bool -> U l = split {
+    true -> Top ; false -> PB.Lands s.1 z.1 Q h.1
+  } ;
+  encSlot (z : Loc) (Q : PB.Phi z.1) (s : Loc) (h : Arr s z) : (b : Bool) -> EN.Enc (Slot z Q s h b) = split {
+    true -> EN.encProp Top isTop ; false -> EN.encProp _ (isProp-IsT' (Q.1 s.1 h.1))
+  } ;
+  Children (z : Loc) (Q : PB.Phi z.1) : U l = (s : Loc) * (h : Arr s z) * (b : Bool) * Slot z Q s h b ;
+  encChildren (z : Loc) (Q : PB.Phi z.1) : EN.Enc (Children z Q) =
+    EN.encSig Loc (\ s -> (h : Arr s z) * (b : Bool) * Slot z Q s h b) encLoc (\ s ->
+    EN.encSig (Arr s z) (\ h -> (b : Bool) * Slot z Q s h b) (encArr s z) (\ h ->
+    EN.encSig Bool (\ b -> Slot z Q s h b) (EN.encIx0 V[a].boolV) (encSlot z Q s h))) ;
+  arity (z : Loc) : (b : Bool) -> Payload z b -> U l = split {
+    true -> \ v -> Empty ; false -> \ Q -> Children z Q
+  } ;
+  encArity (z : Loc) : (b : Bool) (v : Payload z b) -> EN.Enc (arity z b v) = split {
+    true -> \ v -> EN.encProp Empty isProp-Empty ; false -> \ Q -> encChildren z Q
+  } ;
+  B (s : Shape) : U l = arity s.1 s.2.1 s.2.2 ;
+  module WC = WCode[l].Build[Shape, B, encShape, \ s -> encArity s.1 s.2.1 s.2.2] ;
+  open WC ;
+
+  select (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> WC.Tree)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> WC.Tree)
+    (s : Loc) (h : Arr s z) : (b : Bool) -> Slot z Q s h b -> WC.Tree = split {
+    true -> \ i -> u s h ; false -> \ i -> v s h i
+  } ;
+  pack : Raw -> WC.Tree = split {
+    leaf z v -> sup (z, true, v) (\ e -> absurd WC.Tree e) ;
+    node z Q u v | pu pv -> sup (z, false, Q)
+      (\ c -> select z Q pu pv c.1 c.2.1 c.2.2.1 c.2.2.2)
+  } ;
+  unpackNode (z : Loc) : (b : Bool) (v : Payload z b) -> (arity z b v -> Raw) -> Raw = split {
+    true -> \ v f -> leaf z v ;
+    false -> \ Q f -> node z Q (\ s h -> f (s, h, true, tt)) (\ s h i -> f (s, h, false, i))
+  } ;
+  unpack : WC.Tree -> Raw = split {
+    sup s f | uf -> unpackNode s.1 s.2.1 s.2.2 uf
+  } ;
+  roundtrip : (t : Raw) -> Id Raw (unpack (pack t)) t = split {
+    leaf z v -> refl (leaf z v) ;
+    node z Q u v | iu iv -> trans Raw (unpack (pack (node z Q u v)))
+      (node z Q u (\ s h i -> unpack (pack (v s h i)))) (node z Q u v)
+      (apH (\ u' -> node z Q u' (\ s h i -> unpack (pack (v s h i))))
+        (funext Loc (\ s -> Arr s z -> Raw) (\ s h -> unpack (pack (u s h))) u
+          (\ s -> funext (Arr s z) (\ h -> Raw) (\ h -> unpack (pack (u s h))) (u s) (iu s))))
+      (apH (\ v' -> node z Q u v')
+        (funext Loc (\ s -> (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+          (\ s h i -> unpack (pack (v s h i))) v (\ s ->
+        funext (Arr s z) (\ h -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+          (\ h i -> unpack (pack (v s h i))) (v s) (\ h ->
+        funext (PB.Lands s.1 z.1 Q h.1) (\ i -> Raw)
+          (\ i -> unpack (pack (v s h i))) (v s h) (iv s h)))))
+  } ;
+  opaque roundtrip ;
+  rawEncoding : EN.Enc Raw = EN.encInj Raw WC.Tree pack
+    (\ t t' p -> transH (symH (roundtrip t)) (transH (apH unpack p) (roundtrip t'))) WC.encoding ;
+  rawV : W.V = EN.codeOf Raw rawEncoding ;
+  raw-set : isSet Raw = W.isSetIx rawV ;
+  opaque raw-set ;
+} ;

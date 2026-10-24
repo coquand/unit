@@ -1,0 +1,134 @@
+-- SAG 5.1.3: Z-choice on schemes. The resulting small affine open cover
+-- refines standard opens of the original charts and carries local sections.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module Tr1 = Truncation[l+] ;
+module M = SchemeMaps[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ;
+ module I = AffineInterface[l].Over[R,setR] ;
+ module Ax = SAGAxioms[l,l].Over[R,setR] ;
+ module S = Schemes[l].Over[R,setR] ;
+ module SA = SmallAffine[l].Over[R,setR] ;
+ module FA = FunctionAlgebra[l].Over[R,setR] ;
+ module OP = OpenProp[l].Over[R,setR] ;
+ module H = SchemeChoiceHelpers[l].Over[R,setR,axioms] ;
+ Witness (X : U l) (B : X -> U l) : U l =
+  (c : S.Cover[X]) * ((i : Fin c.size) (a : S.Domain X (c.charts i)) -> B ((c.charts i).map a)) ;
+ ImageWitness (X : U l) (B : X -> U l) : U l =
+  (c : S.Cover[X]) * ((i : Fin c.size) (x : X) -> S.Image X (c.charts i) x -> B x) ;
+ module OnImages (X : U l) (B : X -> U l) (w : Witness X B) {
+  at (i : Fin w.1.size) (x : X) (u : S.Image X (w.1.charts i) x) : B x =
+   let {
+    v : M.Fiber (S.Domain X (w.1.charts i)) X (w.1.charts i).map x =
+     M.Embedded[S.Domain X (w.1.charts i),X,(w.1.charts i).map,(w.1.charts i).embedding].choose x u ;
+   } in Pr.subst X B _ _ v.2 (w.2 i v.1) ;
+  result : ImageWitness X B = (w.1,at) ;
+ } ;
+ module FromCover (X : U l) (c : S.Cover[X]) (B : X -> U l)
+  (inhabited : (x : X) -> Tr.Trunc[B x].carrier) {
+  setX : Pr.isSet X = S.cover-set X c ;
+  module Original (i : Fin c.size) {
+   chart : S.Chart[X] = c.charts i ;
+   module Presented = SA.Presented[chart.presentation] ;
+   A : C.Algebra = Presented.Ex.A.algebra ;
+   fp : P.FP A = Presented.Ex.finitely-presented ;
+   spectrum : Pr.Equiv (C.Spec A) (S.Domain X chart) = Presented.spectrum ;
+   module Map = H.Reparametrize[C.Spec A,S.Domain X chart,X,setX,spectrum,
+    chart.map,chart.embedding,chart.open-image] ;
+   Family (x : C.Spec A) : U l = B (Map.map x) ;
+   Choices : U l = Ax.ChoiceData A Family ;
+   choices : Tr.Trunc[Choices].carrier =
+    axioms.zchoice A fp Family (\ x -> inhabited (Map.map x)) ;
+  } ;
+  Choices : U l = (i : Fin c.size) -> Original[i].Choices ;
+  choices : Tr.Trunc[Choices].carrier =
+   AffineFinite[l].choice c.size (\ i -> Original[i].Choices) (\ i -> Original[i].choices) ;
+  module Standard (d : Choices) {
+   ns (i : Fin c.size) : Nat = (d i).1 ;
+   fs (i : Fin c.size) : Fin (ns i) -> Original[i].A.ring.R = (d i).2.1 ;
+   module Piece (i : Fin c.size) (j : Fin (ns i)) {
+    A : C.Algebra = Original[i].A ;
+    f : A.ring.R = fs i j ;
+    Unit (x : C.Spec A) : U l = RL[R].unit (x.1.1 f) ;
+    prop (x : C.Spec A) : Pr.isProp (Unit x) = AffineRing[l].Laws[R,setR].unit-prop (x.1.1 f) ;
+    D : U l = I.D A f ;
+    module Projection = M.Subtype[C.Spec A,Unit,prop] ;
+    open-projection (x : C.Spec A) : OP.Open (M.Image D (C.Spec A) Projection.map x) =
+     OP.along _ _ (Projection.image-equiv x) (H.unit-open (x.1.1 f)) ;
+    module Map = H.Compose[D,C.Spec A,X,setX,Projection.map,Projection.embedding,open-projection,
+     Original[i].Map.map,Original[i].Map.embedding,Original[i].Map.open-image] ;
+    affine : SA.Affine D =
+     Tr1.Trunc[I.LocalizationWitness A f].induction @l
+      (\ t -> SA.Affine D) (\ t -> SA.proposition D)
+      (\ loc -> SA.from-affine D (Tr1.Trunc[FA.AffineWitness D].inc
+       (loc.1,loc.2.1,Functions[l].inverse _ _ (I.spectrum A f loc))))
+      (I.localize A Original[i].fp f) ;
+    section (a : D) : B (Map.map a) = (d i).2.2.2 j a.1 a.2 ;
+    module Small = H.FromAffine[X,setX,B,D,affine,Map.map,Map.embedding,Map.open-image,section] ;
+   } ;
+   Patches : U l = (i : Fin c.size) (j : Fin (ns i)) -> Piece[i,j].Small.Witness ;
+   patches : Tr.Trunc[Patches].carrier =
+    AffineFinite[l].choice c.size (\ i -> (j : Fin (ns i)) -> Piece[i,j].Small.Witness)
+     (\ i -> AffineFinite[l].choice (ns i) (\ j -> Piece[i,j].Small.Witness) (\ j -> Piece[i,j].Small.result)) ;
+   module Chosen (ps : Patches) {
+    patch (i : Fin c.size) (j : Fin (ns i)) : H.Patch[X,B] = (ps i j).1 ;
+    N : Nat = OpenAffine[l].total c.size ns ;
+    flat : Fin N -> H.Patch[X,B] = OpenAffine[l].concat H.Patch[X,B] c.size ns patch ;
+    charts (k : Fin N) : S.Chart[X] = (flat k).chart ;
+    Goal (x : X) : U l = Tr.Trunc[(k : Fin N) * S.Image X (charts k) x].carrier ;
+    pick (x : X) (i : Fin c.size) (j : Fin (ns i))
+     (u : S.Image X (patch i j).chart x) : Goal x =
+     Tr.Trunc[(k : Fin N) * S.Image X (charts k) x].inc
+      ((SchemeFinite[l].choose H.Patch[X,B] c.size ns patch i j).1,
+       Pr.subst H.Patch[X,B] (\ p -> S.Image X p.chart x) (patch i j)
+        (flat (SchemeFinite[l].choose H.Patch[X,B] c.size ns patch i j).1)
+        (sym (SchemeFinite[l].choose H.Patch[X,B] c.size ns patch i j).2) u) ;
+    at-point (x : X) (i : Fin c.size) (a : C.Spec Original[i].A)
+     (eq : Id X (Original[i].Map.map a) x) (j : Fin (ns i))
+     (u : RL[R].unit (a.1.1 (fs i j))) : Goal x =
+     pick x i j (((ps i j).2 x).2.sec
+      (Tr.Trunc[M.Fiber Piece[i,j].D X Piece[i,j].Map.map x].inc ((a,u),eq))) ;
+    in-chart (x : X) (i : Fin c.size) (v : M.Fiber (S.Domain X (c.charts i)) X (c.charts i).map x) : Goal x =
+     let {
+      a : C.Spec Original[i].A = Original[i].spectrum.2.sec v.1 ;
+      eq : Id X (Original[i].Map.map a) x = trans
+       (ap (c.charts i).map (Original[i].spectrum.2.sec-eq v.1)) v.2 ;
+     } in
+     Tr.Trunc[(j : Fin (ns i)) * RL[R].unit (a.1.1 (fs i j))].induction @l
+      (\ t -> Goal x) (\ t -> Tr.Trunc[(k : Fin N) * S.Image X (charts k) x].proposition)
+      (\ u -> at-point x i a eq u.1 u.2)
+      (AffineCovers[l].Over[R,setR,axioms.loc].At[Original[i].A,ns i,fs i].cover (d i).2.2.1 a) ;
+    original (x : X) (i : Fin c.size) (u : S.Image X (c.charts i) x) : Goal x =
+     in-chart x i (M.Embedded[S.Domain X (c.charts i),X,(c.charts i).map,(c.charts i).embedding].choose x u) ;
+    covers (x : X) : Goal x =
+     Tr.Trunc[(i : Fin c.size) * S.Image X (c.charts i) x].induction @l
+      (\ t -> Goal x) (\ t -> Tr.Trunc[(k : Fin N) * S.Image X (charts k) x].proposition)
+      (\ u -> original x u.1 u.2) (c.covers x) ;
+    cover : S.Cover[X] = new S.Cover[X,N,charts,covers] ;
+    result : Witness X B = (cover,\ k -> (flat k).section) ;
+   } ;
+  } ;
+  -- This stronger small witness retains the standard-open refinement data
+  -- on each original chart and each refined chart's image equivalence.
+  Refinement : U l = (d : Choices) * Standard[d].Patches ;
+  refinement : Tr.Trunc[Refinement].carrier =
+   Tr.Trunc[Choices].induction @l (\ t -> Tr.Trunc[Refinement].carrier) (\ t -> Tr.Trunc[Refinement].proposition)
+    (\ d -> Tr.Trunc[Standard[d].Patches].induction @l
+     (\ t -> Tr.Trunc[Refinement].carrier) (\ t -> Tr.Trunc[Refinement].proposition)
+     (\ ps -> Tr.Trunc[Refinement].inc (d,ps)) Standard[d].patches) choices ;
+  theorem : Tr.Trunc[Witness X B].carrier =
+   Tr.Trunc[Refinement].induction @l (\ t -> Tr.Trunc[Witness X B].carrier) (\ t -> Tr.Trunc[Witness X B].proposition)
+    (\ w -> Tr.Trunc[Witness X B].inc Standard[w.1].Chosen[w.2].result) refinement ;
+ } ;
+ theorem (X : U l) (scheme : S.Scheme X) (B : X -> U l)
+  (inhabited : (x : X) -> Tr.Trunc[B x].carrier) : Tr.Trunc[Witness X B].carrier =
+  Tr.Trunc[S.Cover[X]].induction @l (\ t -> Tr.Trunc[Witness X B].carrier) (\ t -> Tr.Trunc[Witness X B].proposition)
+   (\ c -> FromCover[X,c,B,inhabited].theorem) scheme ;
+ theorem-on-images (X : U l) (scheme : S.Scheme X) (B : X -> U l)
+  (inhabited : (x : X) -> Tr.Trunc[B x].carrier) : Tr.Trunc[ImageWitness X B].carrier =
+  Tr.Trunc[Witness X B].induction @l (\ t -> Tr.Trunc[ImageWitness X B].carrier)
+   (\ t -> Tr.Trunc[ImageWitness X B].proposition)
+   (\ w -> Tr.Trunc[ImageWitness X B].inc OnImages[X,B,w].result) (theorem X scheme B inhabited) ;
+} ;

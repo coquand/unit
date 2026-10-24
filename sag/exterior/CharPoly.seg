@@ -1,0 +1,175 @@
+-- The characteristic polynomial  chi_a = det (X I - a)  in A[X] is monic of
+-- degree n (DESIGN.md §5, step 6).  "p has degree <= k and X^k-coefficient
+-- c" is a relation from A[X] to A as in ExteriorRelation.seg: closed under
+-- 0, +, -, and a product with a polynomial of degree <= 1 raises the degree
+-- by one.  The entries X delta_ji - a_ji have degree <= 1 with leading
+-- coefficient delta_ji, so chi_a has degree <= n with leading coefficient
+-- det I = 1.
+-- The coefficient lemmas on A[X] are those of horrocks/MonicReduction.seg,
+-- restated here without its division and Horrocks dependencies.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ open A ;
+ module LA = RL[A] ;
+ module P = Poly[l].PolyR[A] ;
+ module M = Mul[l].MulR[A] ;
+ module RW = RawLaws[l].Laws[A] ;
+ module RM = RawMultiplication[l].Laws[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module LB = RL[B.ring] ;
+ module D = MnSums[l].Over[A] ;
+ module DT = Determinant[l].Over[A,setA] ;
+
+ ---------------------------------------------------------------------
+ -- coefficients on A[X]
+
+ Coefficients : U l = Nat -> R ;
+ module Coef = B.Q.Descend[Coefficients,FE.isSet-Pi Nat (\ k -> R) (\ k -> setA),P.coef,
+  \ p q h -> FE.funext Nat (\ k -> R) (P.coef p) (P.coef q) h] ;
+ coef (x : B.Carrier) (k : Nat) : R = Coef.map x k ;
+ coef-include (p : P.P) (k : Nat) : Id R (coef (B.include p) k) (P.coef p k) =
+  Pr.happly Nat (\ k -> R) (Coef.map (B.include p)) (P.coef p) (Coef.beta p) k ;
+ CoefLaw (lhs rhs : B.Carrier -> Nat -> R) (x : B.Carrier) : U l =
+  (k : Nat) -> Id R (lhs x k) (rhs x k) ;
+ law (lhs rhs : B.Carrier -> Nat -> R)
+  (raw : (p : P.P) -> CoefLaw lhs rhs (B.include p)) : (x : B.Carrier) -> CoefLaw lhs rhs x =
+  B.Q.induction @l (CoefLaw lhs rhs)
+   (\ x -> FE.isProp-Pi Nat (\ k -> Id R (lhs x k) (rhs x k)) (\ k -> setA (lhs x k) (rhs x k))) raw ;
+ -- polynomials with the same coefficients are equal
+ coef-ext : (x y : B.Carrier) -> ((k : Nat) -> Id R (coef x k) (coef y k)) -> Id B.Carrier x y =
+  B.forall2 (\ x y -> ((k : Nat) -> Id R (coef x k) (coef y k)) -> Id B.Carrier x y)
+   (\ x y -> FE.isProp-Pi ((k : Nat) -> Id R (coef x k) (coef y k)) (\ h -> Id B.Carrier x y) (\ h -> B.set x y))
+   (\ p q h -> B.Q.relates p q (\ k -> trans (sym (coef-include p k)) (trans (h k) (coef-include q k)))) ;
+ coef-add : (x y : B.Carrier) (k : Nat) -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k)) =
+  B.forall2 (\ x y -> (k : Nat) -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k)))
+   (\ x y -> FE.isProp-Pi Nat (\ k -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k))) (\ k -> setA _ _))
+   (\ p q k -> trans (ap (\ w -> coef w k) (B.Add.beta p q))
+    (trans (coef-include (M.addP p q) k)
+     (trans (M.coef-addP p q k)
+      (sym (Ps.cong2 R add _ _ _ _ (coef-include p k) (coef-include q k)))))) ;
+ coef-scale (a : R) : (x : B.Carrier) (k : Nat) -> Id R (coef (B.mulQ (B.constant a) x) k) (mul a (coef x k)) =
+  law (\ x k -> coef (B.mulQ (B.constant a) x) k) (\ x k -> mul a (coef x k))
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Multiply.beta (RW.constantP a) p))
+    (trans (coef-include (M.pmul (RW.constantP a) p) k)
+     (trans (RM.mul-single-left a p k)
+      (trans (M.coef-scal a p k) (ap (mul a) (sym (coef-include p k))))))) ;
+ coef-neg : (x : B.Carrier) (k : Nat) -> Id R (coef (B.negQ x) k) (neg (coef x k)) =
+  law (\ x k -> coef (B.negQ x) k) (\ x k -> neg (coef x k))
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Negate.beta p))
+    (trans (coef-include (RW.negP p) k)
+     (trans (RW.neg-coef p k) (ap neg (sym (coef-include p k)))))) ;
+ shifted (x : B.Carrier) : Nat -> R = split { zero -> z ; suc k -> coef x k } ;
+ shift-coef (p : P.P) : (k : Nat) -> Id R (P.coef (RW.shift p) k) (shifted (B.include p) k) = split {
+  zero -> refl z ;
+  suc k -> sym (coef-include p k) } ;
+ coef-variable : (x : B.Carrier) (k : Nat) -> Id R (coef (B.mulQ B.variable x) k) (shifted x k) =
+  law (\ x k -> coef (B.mulQ B.variable x) k) shifted
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Multiply.beta B.T p))
+    (trans (coef-include (M.pmul B.T p) k)
+     (trans (B.T-mul p k) (shift-coef p k)))) ;
+ coef-zero (k : Nat) : Id R (coef B.zeroQ k) z = coef-include nil k ;
+ coef-const0 (a : R) : Id R (coef (B.constant a) zero) a = coef-include (RW.constantP a) zero ;
+ coef-constS (a : R) (k : Nat) : Id R (coef (B.constant a) (suc k)) z = coef-include (RW.constantP a) (suc k) ;
+
+ ---------------------------------------------------------------------
+ -- degree <= k with leading coefficient c
+
+ Bounded (d : Nat) (x : B.Carrier) : U l = (i : Nat) -> Id R (coef x (plus d i)) z ;
+ Lead (k : Nat) (x : B.Carrier) (c : R) : U l = Bounded (suc k) x * Id R (coef x k) c ;
+
+ lead-zero (k : Nat) : Lead k B.zeroQ z = (\ i -> coef-zero (plus (suc k) i),coef-zero k) ;
+ lead-add (k : Nat) (x x' : B.Carrier) (c c' : R) (h : Lead k x c) (h' : Lead k x' c') :
+  Lead k (B.addQ x x') (add c c') =
+  (\ i -> trans (coef-add x x' (plus (suc k) i)) (trans (Ps.cong2 R add _ _ _ _ (h.1 i) (h'.1 i)) (addZ z)),
+   trans (coef-add x x' k) (Ps.cong2 R add _ _ _ _ h.2 h'.2)) ;
+ lead-neg (k : Nat) (x : B.Carrier) (c : R) (h : Lead k x c) : Lead k (B.negQ x) (neg c) =
+  (\ i -> trans (coef-neg x (plus (suc k) i)) (trans (ap neg (h.1 i)) LA.neg-zero),
+   trans (coef-neg x k) (ap neg h.2)) ;
+ lead-one : Lead zero B.oneQ o = (\ i -> coef-constS o i,coef-const0 o) ;
+ -- X d + e has degree <= 1 and leading coefficient d
+ lead-linear (d e : R) : Lead (suc zero) (B.addQ (B.mulQ B.variable (B.constant d)) (B.constant e)) d =
+  (\ i -> trans (coef-add (B.mulQ B.variable (B.constant d)) (B.constant e) (suc (suc i)))
+           (trans (Ps.cong2 R add _ _ _ _ (trans (coef-variable (B.constant d) (suc (suc i))) (coef-constS d i))
+                                           (coef-constS e (suc i)))
+                  (addZ z)),
+   trans (coef-add (B.mulQ B.variable (B.constant d)) (B.constant e) (suc zero))
+    (trans (Ps.cong2 R add _ _ _ _ (trans (coef-variable (B.constant d) (suc zero)) (coef-const0 d)) (coef-constS e zero))
+           (addZ d))) ;
+ -- a polynomial of degree <= 1 is X d + e
+ lin0 (q : B.Carrier) : Id R (add (shifted (B.constant (coef q (suc zero))) zero) (coef (B.constant (coef q zero)) zero)) (coef q zero) =
+  trans (LA.zl (coef (B.constant (coef q zero)) zero)) (coef-const0 (coef q zero)) ;
+ lin1 (q : B.Carrier) : Id R (add (shifted (B.constant (coef q (suc zero))) (suc zero)) (coef (B.constant (coef q zero)) (suc zero))) (coef q (suc zero)) =
+  trans (ap (add (coef (B.constant (coef q (suc zero))) zero)) (coef-constS (coef q zero) zero))
+   (trans (addZ (coef (B.constant (coef q (suc zero))) zero)) (coef-const0 (coef q (suc zero)))) ;
+ lin2 (q : B.Carrier) (h : Bounded (suc (suc zero)) q) (i : Nat) :
+  Id R (add (shifted (B.constant (coef q (suc zero))) (suc (suc i))) (coef (B.constant (coef q zero)) (suc (suc i)))) (coef q (suc (suc i))) =
+  trans (Ps.cong2 R add (coef (B.constant (coef q (suc zero))) (suc i)) z (coef (B.constant (coef q zero)) (suc (suc i))) z
+          (coef-constS (coef q (suc zero)) i) (coef-constS (coef q zero) (suc i)))
+   (trans (addZ z) (sym (h i))) ;
+ linear-suc (q : B.Carrier) (h : Bounded (suc (suc zero)) q) : (k : Nat) ->
+  Id R (add (shifted (B.constant (coef q (suc zero))) (suc k)) (coef (B.constant (coef q zero)) (suc k))) (coef q (suc k)) = split {
+  zero -> lin1 q ;
+  suc i -> lin2 q h i } ;
+ linear-cases (q : B.Carrier) (h : Bounded (suc (suc zero)) q) : (k : Nat) ->
+  Id R (add (shifted (B.constant (coef q (suc zero))) k) (coef (B.constant (coef q zero)) k)) (coef q k) = split {
+  zero -> lin0 q ;
+  suc k -> linear-suc q h k } ;
+ linear (q : B.Carrier) (h : Bounded (suc (suc zero)) q) :
+  Id B.Carrier q (B.addQ (B.mulQ B.variable (B.constant (coef q (suc zero)))) (B.constant (coef q zero))) =
+  coef-ext q (B.addQ (B.mulQ B.variable (B.constant (coef q (suc zero)))) (B.constant (coef q zero)))
+   (\ k -> sym (trans (coef-add (B.mulQ B.variable (B.constant (coef q (suc zero)))) (B.constant (coef q zero)) k)
+                (trans (ap (\ t -> add t (coef (B.constant (coef q zero)) k))
+                           (coef-variable (B.constant (coef q (suc zero))) k))
+                       (linear-cases q h k)))) ;
+
+ -- the product with a polynomial of degree <= 1
+ module Times (k : Nat) (p q : B.Carrier) (c d : R) (hp : Lead k p c) (hq : Lead (suc zero) q d) {
+  d0 : R = coef q (suc zero) ;
+  e0 : R = coef q zero ;
+  split-q : Id B.Carrier (B.mulQ p q)
+   (B.addQ (B.mulQ B.variable (B.mulQ (B.constant d0) p)) (B.mulQ (B.constant e0) p)) =
+   trans (ap (B.mulQ p) (linear q hq.1))
+    (trans (B.distributive p (B.mulQ B.variable (B.constant d0)) (B.constant e0))
+     (Ps.cong2 B.Carrier B.addQ _ _ _ _
+       (trans (LB.mul-swap p B.variable (B.constant d0)) (ap (B.mulQ B.variable) (B.mul-comm p (B.constant d0))))
+       (B.mul-comm p (B.constant e0)))) ;
+  coefs (j : Nat) : Id R (coef (B.mulQ p q) j) (add (shifted (B.mulQ (B.constant d0) p) j) (mul e0 (coef p j))) =
+   trans (ap (\ w -> coef w j) split-q)
+    (trans (coef-add (B.mulQ B.variable (B.mulQ (B.constant d0) p)) (B.mulQ (B.constant e0) p) j)
+     (Ps.cong2 R add _ _ _ _ (coef-variable (B.mulQ (B.constant d0) p) j) (coef-scale e0 p j))) ;
+  bounded (i : Nat) : Id R (coef (B.mulQ p q) (plus (suc (suc k)) i)) z =
+   trans (coefs (suc (suc (plus k i))))
+    (trans (Ps.cong2 R add _ _ _ _
+             (trans (coef-scale d0 p (suc (plus k i))) (trans (ap (mul d0) (hp.1 i)) (LA.mul-zero d0)))
+             (trans (ap {Nat} {R} (\ t -> mul e0 (coef p t)) (sym (ap (\ t -> suc t) (plus-suc k i))))
+                    (trans (ap (mul e0) (hp.1 (suc i))) (LA.mul-zero e0))))
+           (addZ z)) ;
+  leading : Id R (coef (B.mulQ p q) (suc k)) (mul c d) =
+   trans (coefs (suc k))
+    (trans (Ps.cong2 R add _ _ _ _
+             (trans (coef-scale d0 p k) (ap (mul d0) hp.2))
+             (trans (ap {Nat} {R} (\ t -> mul e0 (coef p (suc t))) (sym (plus-zero k)))
+                    (trans (ap (mul e0) (hp.1 zero)) (LA.mul-zero e0))))
+     (trans (addZ (mul d0 c)) (trans (mulC d0 c) (ap (mul c) hq.2)))) ;
+  result : Lead (suc k) (B.mulQ p q) (mul c d) = (bounded,leading) ;
+ } ;
+
+ module G = ExteriorRelation[l].Over[B.ring,A,Lead,lead-zero,lead-add,lead-neg,lead-one,
+  \ k p q c d hp hq -> Times[k,p,q,c,d,hp,hq].result] ;
+
+ ---------------------------------------------------------------------
+ -- the characteristic polynomial
+
+ -- X I - a, by columns like DT.Mat
+ charmat (n : Nat) (a : DT.Mat n) (j i : Ps.Fin n) : B.Carrier =
+  B.addQ (B.mulQ B.variable (B.constant (D.delta n j i))) (B.constant (neg (a j i))) ;
+ char (n : Nat) (a : DT.Mat n) : B.Carrier = G.ER.det n (charmat n a) ;
+
+ char-lead (n : Nat) (a : DT.Mat n) : Lead n (char n a) (G.ES.det n (DT.idm n)) =
+  G.det n (charmat n a) (D.delta n) (\ j i -> lead-linear (D.delta n j i) (neg (a j i))) ;
+ -- chi_a is monic of degree n
+ char-bounded (n : Nat) (a : DT.Mat n) : Bounded (suc n) (char n a) = (char-lead n a).1 ;
+ char-monic (n : Nat) (a : DT.Mat n) : Id R (coef (char n a) n) o = trans (char-lead n a).2 (DT.det-id n) ;
+} ;

@@ -1,0 +1,132 @@
+-- The determinant trick (DESIGN.md §5, step 6).  Over a commutative ring,
+--   M m = 0   gives   det M . m = 0 ,
+-- since  det M . m = (adj(M) M) m = adj(M) (M m)  (Adjugate.seg).
+-- Degree-n integrality: for a ring map iota : A -> L, x in L and a column
+-- m with  x m = (iota a) m , take M = x I - iota a ; by naturality
+-- (Naturality.seg, for the evaluation A[X] -> L at x) det M = chi_a(x),
+-- so chi_a(x) m = 0, and chi_a(x) = 0 when 1 is a combination of the m_k.
+-- chi_a is monic of degree n (CharPoly.seg).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module D = MnSums[l].Over[Rg] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module DT = Determinant[l].Over[Rg,setR] ;
+ module ADJ = Adjugate[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ -- (A B) v = A (B v), both sides being linear forms agreeing on the basis
+ act-lin (n : Nat) (A : DT.Mat n) (i : Ps.Fin n) : ADJ.LinForm n (\ v -> DT.act n A v i) =
+  (\ a b -> DT.act-add n A a b i,\ c a -> DT.act-scale n A c a i) ;
+ act-act-lin (n : Nat) (A B : DT.Mat n) (i : Ps.Fin n) : ADJ.LinForm n (\ v -> DT.act n A (DT.act n B v) i) =
+  (\ a b -> trans (ap (\ w -> DT.act n A w i)
+                    (F.funext (Ps.Fin n) (\ k -> R) (DT.act n B (AL.vadd n a b)) (AL.vadd n (DT.act n B a) (DT.act n B b))
+                      (DT.act-add n B a b)))
+             (DT.act-add n A (DT.act n B a) (DT.act n B b) i),
+   \ c a -> trans (ap (\ w -> DT.act n A w i)
+                    (F.funext (Ps.Fin n) (\ k -> R) (DT.act n B (AL.vscale n c a)) (AL.vscale n c (DT.act n B a))
+                      (DT.act-scale n B c a)))
+             (DT.act-scale n A c (DT.act n B a) i)) ;
+ act-mmul (n : Nat) (A B : DT.Mat n) (v : AL.Vec n) (i : Ps.Fin n) :
+  Id R (DT.act n (DT.mmul n A B) v i) (DT.act n A (DT.act n B v) i) =
+  trans (ADJ.form-expand n (\ w -> DT.act n (DT.mmul n A B) w i) (act-lin n (DT.mmul n A B) i) v)
+   (trans (S.sum-cong n (\ k -> mul (v k) (DT.act n (DT.mmul n A B) (D.delta n k) i))
+                        (\ k -> mul (v k) (DT.act n A (DT.act n B (D.delta n k)) i))
+            (\ k -> ap (mul (v k))
+                     (trans (DT.act-delta n (DT.mmul n A B) k i)
+                      (ap (\ w -> DT.act n A w i)
+                        (sym (F.funext (Ps.Fin n) (\ j -> R) (DT.act n B (D.delta n k)) (B k) (DT.act-delta n B k)))))))
+          (sym (ADJ.form-expand n (\ w -> DT.act n A (DT.act n B w) i) (act-act-lin n A B i) v))) ;
+ act-zero (n : Nat) (A : DT.Mat n) (i : Ps.Fin n) : Id R (DT.act n A (\ j -> z) i) z =
+  trans (S.sum-cong n (\ j -> mul z (A j i)) (\ j -> z) (\ j -> L.zero-mul (A j i))) (S.sum-zero n) ;
+ -- (c I) m = c m
+ act-scalar (n : Nat) (c : R) (m : AL.Vec n) (k : Ps.Fin n) :
+  Id R (DT.act n (\ j i -> mul c (D.delta n j i)) m k) (mul c (m k)) =
+  trans (S.sum-cong n (\ j -> mul (m j) (mul c (D.delta n j k))) (\ j -> mul c (mul (m j) (D.delta n j k)))
+          (\ j -> L.mul-swap (m j) c (D.delta n j k)))
+   (trans (S.sum-scale c n (\ j -> mul (m j) (D.delta n j k))) (ap (mul c) (D.sum-delta-right n k m))) ;
+
+ -- the determinant trick
+ trick (n : Nat) (M : DT.Mat n) (m : AL.Vec n) (h : (i : Ps.Fin n) -> Id R (DT.act n M m i) z) (k : Ps.Fin n) :
+  Id R (mul (det n M) (m k)) z =
+  calc R {
+   mul (det n M) (m k)
+    =< sym (act-scalar n (det n M) m k) > DT.act n (\ j i -> mul (det n M) (D.delta n j i)) m k
+    =< ap (\ N -> DT.act n N m k) (sym (ADJ.adj-mul-mat n M)) > DT.act n (DT.mmul n (ADJ.adj n M) M) m k
+    =< act-mmul n (ADJ.adj n M) M m k > DT.act n (ADJ.adj n M) (DT.act n M m) k
+    =< ap (\ w -> DT.act n (ADJ.adj n M) w k) (F.funext (Ps.Fin n) (\ i -> R) (DT.act n M m) (\ i -> z) h)
+     > DT.act n (ADJ.adj n M) (\ i -> z) k
+    =< act-zero n (ADJ.adj n M) k > z } ;
+} ;
+
+-- degree-n integrality
+module Integral (A : CRing) (setA : Pr.isSet A.R) (Lg : CRing) (setL : Pr.isSet Lg.R)
+ (iota : H.Hom A Lg) (x : Lg.R) (n : Nat) (a : Determinant[l].Over[A,setA].Mat n) (m : Ps.Fin n -> Lg.R)
+ (eq : (i : Ps.Fin n) -> Id Lg.R (Lg.mul x (m i)) (Determinant[l].Over[Lg,setL].act n (\ j i -> iota.1 (a j i)) m i)) {
+ open Lg ;
+ module L = RL[Lg] ;
+ module S = FiniteIdeal[l].Sums[Lg] ;
+ module DA = MnSums[l].Over[A] ;
+ module DL = MnSums[l].Over[Lg] ;
+ module CP = CharPoly[l].Over[A,setA] ;
+ module TR = Over[Lg,setL] ;
+ module UP = Universal[l].Property[A,Lg,setA,setL].Given[iota,x] ;
+ -- evaluation at x
+ ev : H.Hom CP.B.ring Lg = UP.extend ;
+ chi : CP.B.Carrier = CP.char n a ;
+ module NT = Naturality[l].Over[CP.B.ring,Lg,ev] ;
+
+ hom-delta : (k : Nat) (j i : Ps.Fin k) -> Id R (iota.1 (DA.delta k j i)) (DL.delta k j i) = split {
+  zero -> \ j i -> H.zero A Lg iota ;
+  suc k | r -> split {
+   inl b -> split { inl c -> r b c ; inr t -> H.zero A Lg iota } ;
+   inr s -> split { inl c -> H.zero A Lg iota ; inr t -> iota.2.1 } } } ;
+ -- the entries of x I - iota a
+ Mx (j i : Ps.Fin n) : R = ev.1 (CP.charmat n a j i) ;
+ entry (j i : Ps.Fin n) : Id R (Mx j i) (add (mul x (DL.delta n j i)) (neg (iota.1 (a j i)))) =
+  trans (ev.2.2.1 (CP.B.mulQ CP.B.variable (CP.B.constant (DA.delta n j i))) (CP.B.constant (A.neg (a j i))))
+   (Ps.cong2 R add _ _ _ _
+     (trans (ev.2.2.2 CP.B.variable (CP.B.constant (DA.delta n j i)))
+            (Ps.cong2 R mul _ _ _ _ UP.on-variable (trans (UP.on-constants (DA.delta n j i)) (hom-delta n j i))))
+     (trans (UP.on-constants (A.neg (a j i))) (H.negation A Lg iota (a j i)))) ;
+ -- (x I - iota a) m = 0
+ kernel (i : Ps.Fin n) : Id R (TR.DT.act n Mx m i) z =
+  calc R {
+   S.sum n (\ j -> mul (m j) (Mx j i))
+    =< S.sum-cong n (\ j -> mul (m j) (Mx j i)) (\ j -> mul (m j) (add (mul x (DL.delta n j i)) (neg (iota.1 (a j i)))))
+         (\ j -> ap (mul (m j)) (entry j i))
+     > S.lin n m (\ j -> add (mul x (DL.delta n j i)) (neg (iota.1 (a j i))))
+    =< S.lin-add n m (\ j -> mul x (DL.delta n j i)) (\ j -> neg (iota.1 (a j i)))
+     > add (S.lin n m (\ j -> mul x (DL.delta n j i))) (S.lin n m (\ j -> neg (iota.1 (a j i))))
+    =< Ps.cong2 R add _ _ _ _
+         (trans (S.lin-scale n m (\ j -> DL.delta n j i) x) (ap (mul x) (DL.sum-delta-right n i m)))
+         (S.lin-neg n m (\ j -> iota.1 (a j i)))
+     > add (mul x (m i)) (neg (S.lin n m (\ j -> iota.1 (a j i))))
+    =< ap (\ t -> add t (neg (S.lin n m (\ j -> iota.1 (a j i))))) (eq i)
+     > add (S.lin n m (\ j -> iota.1 (a j i))) (neg (S.lin n m (\ j -> iota.1 (a j i))))
+    =< addN (S.lin n m (\ j -> iota.1 (a j i))) > z } ;
+ -- chi_a(x) m = 0
+ annihilates (k : Ps.Fin n) : Id R (mul (ev.1 chi) (m k)) z =
+  trans (ap (\ t -> mul t (m k)) (NT.det-nat n (CP.charmat n a))) (TR.trick n Mx m kernel k) ;
+ -- if 1 = sum c_k m_k then chi_a(x) = 0
+ module Faithful (c : Ps.Fin n -> R) (one : Id R (S.lin n c m) o) {
+  root : Id R (ev.1 chi) z =
+   calc R {
+    ev.1 chi
+     =< sym (mulO (ev.1 chi)) > mul (ev.1 chi) o
+     =< ap (mul (ev.1 chi)) (sym one) > mul (ev.1 chi) (S.lin n c m)
+     =< sym (S.sum-scale (ev.1 chi) n (\ k -> mul (c k) (m k))) > S.sum n (\ k -> mul (ev.1 chi) (mul (c k) (m k)))
+     =< S.sum-cong n (\ k -> mul (ev.1 chi) (mul (c k) (m k))) (\ k -> z)
+          (\ k -> trans (L.mul-swap (ev.1 chi) (c k) (m k)) (trans (ap (mul (c k)) (annihilates k)) (L.mul-zero (c k))))
+      > S.sum n (\ k -> z)
+     =< S.sum-zero n > z } ;
+  -- x is a root of a monic polynomial of degree n with coefficients in A
+  integral : CP.Bounded (suc n) chi * Id A.R (CP.coef chi n) A.o * Id R (ev.1 chi) z =
+   (CP.char-bounded n a,CP.char-monic n a,root) ;
+ } ;
+} ;

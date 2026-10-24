@@ -225,6 +225,22 @@ constructions and proofs, are due to Christian Sattler.
   after their lemmas; drecS), CPostInvAsm (the cylinder), CPostInvNat
   (naturality by the generic box comparison; LeftInverse.homotopy).
 - D_0 A is the propositional truncation: CTruncProp, CTruncFill.
+- Theorem 12.3 of the poset model (bounded spheres give a uniform
+  extension operation on DA; the trivial case of Whitehead's principle):
+  CLocBound, CLocBoundStage, CLocBoundD, CLocBoundRetr, CLocBoundContr,
+  CLocWhitehead.
+
+## Propositional truncation in the model (SAG section 8.3)
+
+- Normal forms and their smallness: CTruncRaw, CTruncCode (with WCode,
+  W-types of encoded sets), CTruncGood, CTruncLaws.
+- The presheaf, its paths and recursor: CTruncType, CTruncExt, CTruncNat,
+  CTruncAlg, CTruncGraph, CTruncGraphNat, CTruncRec, CTruncRecExt, CTrunc,
+  CTruncSeeded, CTruncIsProp, CTruncFinal.
+- Laws and elimination: CTruncEmpty, CTruncEta, CTruncHom, CTruncUnique,
+  CTruncMorphism, CTruncSection, CTruncInd, CTruncTransport,
+  CTruncSeededBack, CTruncLift, CTruncElim, CTruncHProp, CTruncFromProp,
+  CTruncElimProp.
 
 ## Discipline
 

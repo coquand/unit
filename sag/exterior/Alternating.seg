@@ -1,0 +1,77 @@
+-- Alternating maps R^n -> A into an R-algebra A (DESIGN.md §2):
+--   Alt n A = (j : R^n -> A, linear) * ((a : R^n) -> j a . j a = 0) ,
+-- anticommutation  j a . j b = - j b . j a , and the identities in A and
+-- for algebra maps used by the universal property.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module NA = NCAlgebra[l].Over[Rg,setR] ;
+ module S = AlgSIP[l].Over[Rg,setR] ;
+
+ Vec (n : Nat) : U l = Ps.Fin n -> R ;
+ vadd (n : Nat) (a b : Vec n) : Vec n = \ k -> add (a k) (b k) ;
+ vscale (n : Nat) (c : R) (a : Vec n) : Vec n = \ k -> mul c (a k) ;
+
+ AlgHom (E A : S.Alg) : U l = (f : E.A -> A.A) * S.Hom E A f ;
+ comp (E B A : S.Alg) (g : AlgHom B A) (f : AlgHom E B) : AlgHom E A =
+  (\ x -> g.1 (f.1 x),
+   (\ x y -> trans (ap g.1 (f.2.1 x y)) (g.2.1 (f.1 x) (f.1 y)),
+    \ c x -> trans (ap g.1 (f.2.2.1 c x)) (g.2.2.1 c (f.1 x)),
+    \ x y -> trans (ap g.1 (f.2.2.2.1 x y)) (g.2.2.2.1 (f.1 x) (f.1 y)),
+    trans (ap g.1 f.2.2.2.2) g.2.2.2.2)) ;
+
+ module In (A : S.Alg) {
+  module G = ExteriorAlgebra[l].AG[A.A,A.zero,A.add,A.neg,A.addA,A.addC,A.addZ,A.addN] ;
+
+  -- identities in A
+  mul-zero-r (x : A.A) : Id A.A (A.mul x A.zero) A.zero = G.hom-zero (A.mul x) (A.dist-left x) ;
+  mul-zero-l (x : A.A) : Id A.A (A.mul A.zero x) A.zero =
+   G.hom-zero (\ y -> A.mul y x) (\ y w -> A.dist-right y w x) ;
+  mul-neg-r (x y : A.A) : Id A.A (A.mul x (A.neg y)) (A.neg (A.mul x y)) = G.hom-neg (A.mul x) (A.dist-left x) y ;
+  mul-neg-l (x y : A.A) : Id A.A (A.mul (A.neg x) y) (A.neg (A.mul x y)) =
+   G.hom-neg (\ w -> A.mul w y) (\ w w' -> A.dist-right w w' y) x ;
+  scale-zero-l (x : A.A) : Id A.A (A.scale z x) A.zero =
+   G.add-cancel (A.scale z x) (A.scale z x) (trans (sym (A.add-scale z z x)) (ap (\ c -> A.scale c x) (addZ z))) ;
+
+  -- algebra maps into A preserve 0 and negation
+  module H (E : S.Alg) (f : AlgHom E A) {
+   zero : Id A.A (f.1 E.zero) A.zero =
+    G.add-cancel (f.1 E.zero) (f.1 E.zero) (trans (sym (f.2.1 E.zero E.zero)) (ap f.1 (E.addZ E.zero))) ;
+   neg (x : E.A) : Id A.A (f.1 (E.neg x)) (A.neg (f.1 x)) =
+    G.neg-uniq (f.1 x) (f.1 (E.neg x)) (trans (sym (f.2.1 x (E.neg x))) (trans (ap f.1 (E.addN x)) zero)) ;
+  } ;
+
+  -- alternating maps
+  Lin (n : Nat) (j : Vec n -> A.A) : U l =
+   ((a b : Vec n) -> Id A.A (j (vadd n a b)) (A.add (j a) (j b))) *
+   ((c : R) (a : Vec n) -> Id A.A (j (vscale n c a)) (A.scale c (j a))) ;
+  Prop (n : Nat) (j : Vec n -> A.A) : U l = Lin n j * ((a : Vec n) -> Id A.A (A.mul (j a) (j a)) A.zero) ;
+  Alt (n : Nat) : U l = (j : Vec n -> A.A) * Prop n j ;
+  prop-prop (n : Nat) (j : Vec n -> A.A) : Pr.isProp (Prop n j) =
+   S.prod _ _
+    (S.prod _ _ (S.PH[A.A,A.set,Vec n].p2 (\ a b -> j (vadd n a b)) (\ a b -> A.add (j a) (j b)))
+                (S.PH[A.A,A.set,Vec n].r1 (\ c a -> j (vscale n c a)) (\ c a -> A.scale c (j a))))
+    (S.PH[A.A,A.set,Vec n].p1 (\ a -> A.mul (j a) (j a)) (\ a -> A.zero)) ;
+
+  -- j a . j b + j b . j a = 0, from  (j a + j b)^2 = j (a + b)^2 = 0
+  anti (n : Nat) (j : Alt n) (a b : Vec n) : Id A.A (A.mul (j.1 a) (j.1 b)) (A.neg (A.mul (j.1 b) (j.1 a))) =
+   G.neg-uniq (A.mul (j.1 b) (j.1 a)) (A.mul (j.1 a) (j.1 b))
+    (calc A.A {
+      A.add (A.mul (j.1 b) (j.1 a)) (A.mul (j.1 a) (j.1 b))
+       =< sym (G.cong-add (G.zl (A.mul (j.1 b) (j.1 a))) (A.addZ (A.mul (j.1 a) (j.1 b)))) >
+      A.add (A.add A.zero (A.mul (j.1 b) (j.1 a))) (A.add (A.mul (j.1 a) (j.1 b)) A.zero)
+       =< sym (G.cong-add (ap (\ t -> A.add t (A.mul (j.1 b) (j.1 a))) (j.2.2 a))
+                          (ap (A.add (A.mul (j.1 a) (j.1 b))) (j.2.2 b))) >
+      A.add (A.add (A.mul (j.1 a) (j.1 a)) (A.mul (j.1 b) (j.1 a))) (A.add (A.mul (j.1 a) (j.1 b)) (A.mul (j.1 b) (j.1 b)))
+       =< sym (G.cong-add (A.dist-right (j.1 a) (j.1 b) (j.1 a)) (A.dist-right (j.1 a) (j.1 b) (j.1 b))) >
+      A.add (A.mul (A.add (j.1 a) (j.1 b)) (j.1 a)) (A.mul (A.add (j.1 a) (j.1 b)) (j.1 b))
+       =< sym (A.dist-left (A.add (j.1 a) (j.1 b)) (j.1 a) (j.1 b)) >
+      A.mul (A.add (j.1 a) (j.1 b)) (A.add (j.1 a) (j.1 b))
+       =< sym (trans (ap (\ t -> A.mul t (j.1 (vadd n a b))) (j.2.1.1 a b))
+                     (ap (A.mul (A.add (j.1 a) (j.1 b))) (j.2.1.1 a b))) >
+      A.mul (j.1 (vadd n a b)) (j.1 (vadd n a b))
+       =< j.2.2 (vadd n a b) > A.zero }) ;
+ } ;
+} ;

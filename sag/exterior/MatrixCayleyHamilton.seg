@@ -1,0 +1,67 @@
+-- Cayley-Hamilton for matrices: chi_a(a) = 0 in M_n(A) (DESIGN.md §5,
+-- step 6).  In MnAlgebra.seg a matrix is given by rows, x r s; the matrix
+-- of Determinant.seg (by columns, a j i) is  t r s = a s r .  For each row
+-- c, the matrix units u_i = E_ci satisfy  u_i t = sum_j u_j a_ji , so
+-- E_ci chi_a(t) = 0 (CayleyHamilton.seg); and  1 = sum_c E_cc .
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) (a : Determinant[l].Over[A,setA].Mat n) {
+ open A ;
+ module L = RL[A] ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ module D = MnSums[l].Over[A] ;
+ module MA = MnAlgebra[l].Over[A,setA,n] ;
+ E : NCAlgebra[l].Over[A,setA].Algebra = MA.algebra ;
+ module VS = ModuleTrick[l].Sums[E.A,E.zero,E.add,E.neg,E.addA,E.addC,E.addZ,E.addN] ;
+ -- a as a matrix of rows
+ t : MA.Mat = \ r s -> a s r ;
+ unit (c i : Ps.Fin n) : MA.Mat = \ r s -> mul (D.delta n r c) (D.delta n s i) ;
+
+ -- (E_ci y)_rs = delta_rc y_is
+ unit-mul (c i : Ps.Fin n) (y : MA.Mat) (r s : Ps.Fin n) :
+  Id R (MA.mmul (unit c i) y r s) (mul (D.delta n r c) (y i s)) =
+  trans (S.sum-cong n (\ k -> mul (mul (D.delta n r c) (D.delta n k i)) (y k s))
+                      (\ k -> mul (D.delta n r c) (mul (y k s) (D.delta n k i)))
+          (\ k -> trans (sym (mulA (D.delta n r c) (D.delta n k i) (y k s)))
+                   (ap (mul (D.delta n r c)) (mulC (D.delta n k i) (y k s)))))
+   (trans (S.sum-scale (D.delta n r c) n (\ k -> mul (y k s) (D.delta n k i)))
+          (ap (mul (D.delta n r c)) (D.sum-delta-right n i (\ k -> y k s)))) ;
+ vsum-entry : (N : Nat) (X : Ps.Fin N -> MA.Mat) (r s : Ps.Fin n) -> Id R (VS.vsum N X r s) (S.sum N (\ j -> X j r s)) = split {
+  zero -> \ X r s -> refl z ;
+  suc N | ih -> \ X r s -> ap (add (X (inr tt) r s)) (ih (\ j -> X (inl j)) r s) } ;
+
+ module Row (c : Ps.Fin n) {
+  m (i : Ps.Fin n) : MA.Mat = unit c i ;
+  h (i : Ps.Fin n) : Id MA.Mat (MA.mmul (m i) t) (VS.vsum n (\ j -> MA.mmul (m j) (MA.mscale (a j i) MA.mone))) =
+   MA.mat-eq (MA.mmul (m i) t) (VS.vsum n (\ j -> MA.mmul (m j) (MA.mscale (a j i) MA.mone)))
+    (\ r s -> trans (unit-mul c i t r s)
+     (sym (trans (vsum-entry n (\ j -> MA.mmul (m j) (MA.mscale (a j i) MA.mone)) r s)
+           (trans (S.sum-cong n (\ j -> MA.mmul (m j) (MA.mscale (a j i) MA.mone) r s)
+                                (\ j -> mul (D.delta n r c) (mul (a j i) (D.delta n j s)))
+                    (\ j -> unit-mul c j (MA.mscale (a j i) MA.mone) r s))
+            (trans (S.sum-scale (D.delta n r c) n (\ j -> mul (a j i) (D.delta n j s)))
+                   (ap (mul (D.delta n r c)) (D.sum-delta-right n s (\ j -> a j i)))))))) ;
+  module CH = CayleyHamilton[l].Over[A,setA,E,t,n,a,m,h] ;
+ } ;
+ ev : CharPoly[l].Over[A,setA].B.Carrier -> MA.Mat = PolyEval[l].Over[A,setA,E,t].evaluate ;
+ chi : CharPoly[l].Over[A,setA].B.Carrier = CharPoly[l].Over[A,setA].char n a ;
+
+ -- 1 = sum_c E_cc
+ units-one : Id MA.Mat (VS.vsum n (\ c -> unit c c)) MA.mone =
+  MA.mat-eq (VS.vsum n (\ c -> unit c c)) MA.mone
+   (\ r s -> trans (vsum-entry n (\ c -> unit c c) r s)
+     (trans (S.sum-cong n (\ c -> unit c c r s) (\ c -> mul (D.delta n r c) (D.delta n c s))
+              (\ c -> ap (mul (D.delta n r c)) (D.delta-sym n s c)))
+            (D.sum-delta n r (\ c -> D.delta n c s)))) ;
+ -- chi_a(a) = 0
+ cayley-hamilton : Id MA.Mat (ev chi) MA.mzero =
+  calc MA.Mat {
+   ev chi
+    =< sym (E.one-left (ev chi)) > MA.mmul MA.mone (ev chi)
+    =< ap (\ x -> MA.mmul x (ev chi)) (sym units-one) > MA.mmul (VS.vsum n (\ c -> unit c c)) (ev chi)
+    =< VS.hom-sum (\ x -> MA.mmul x (ev chi)) (\ x y -> E.dist-right x y (ev chi)) n (\ c -> unit c c)
+     > VS.vsum n (\ c -> MA.mmul (unit c c) (ev chi))
+    =< VS.vsum-cong n (\ c -> MA.mmul (unit c c) (ev chi)) (\ c -> MA.mzero) (\ c -> Row[c].CH.annihilates c)
+     > VS.vsum n (\ c -> MA.mzero)
+    =< VS.vsum-zero n > MA.mzero } ;
+} ;

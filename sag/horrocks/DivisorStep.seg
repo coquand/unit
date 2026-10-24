@@ -1,0 +1,362 @@
+-- One step of the divisor proof of Horrocks' theorem in rank one.
+-- The central lemma (Stable): let F be monic of degree d = d'+1 and M a
+-- set of polynomials of degree < d with an A-linear retraction pi onto M
+-- (pi maps A[X] into M and fixes M), stable under w |-> r_F(X w). Then
+-- u_t = pi(X^t) span M with the coefficients of w as coordinates; these
+-- coefficients lie in the ideal J of top coefficients of the u_t; by
+-- Nakayama and locality, either M = 0 or 1 is in J, and then M contains a
+-- monic polynomial of degree d'. Retract applies this to M = L intersected
+-- with the polynomials of degree < d, for an ideal L with an A-linear
+-- retraction rho, and any monic F in L: either F divides L, or L contains
+-- a monic of degree d'. Only division by F changes; rho stays fixed.
+-- Retract.Induction is the theorem: L then has a monic generator.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+-- The power-basis index of a finite coordinate (last coordinate = X^0).
+index : (n : Nat) -> Fin n -> Nat = split {
+ zero -> \ i -> efq i ;
+ suc n | ih -> snoc (Fin n) Nat (\ i -> suc (ih i)) zero } ;
+-- Every index below suc m has a complement summing to m.
+complement : (m : Nat) (i : Fin (suc m)) -> (k : Nat) * Id Nat (plus (index (suc m) i) k) m = split {
+ zero -> split {
+  inl i -> efq i ;
+  inr t -> (zero,refl zero) } ;
+ suc m | ih -> split {
+  inl i -> ((ih i).1,ap (\ j -> suc j) (ih i).2) ;
+  inr t -> (suc m,refl (suc m)) } } ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module P = Poly[l].PolyR[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Red = MonicReduction[l].Over[A,setA] ;
+ module SA = FiniteIdeal[l].Sums[A] ;
+ module S = FiniteIdeal[l].Sums[B.ring] ;
+ module AR = RL[A] ;
+ module BR = RL[B.ring] ;
+ module IA = Ideals[l].Over[A,setA] ;
+ module IB = Ideals[l].Over[B.ring,B.set] ;
+ module E = PolynomialFiniteExpansion[l].Over[A,B.ring,setA,RingHom[l].identity B.ring] ;
+ module Lin = AlgebraLinear[l].Over[A,B.ring,B.inclusion] ;
+ module Nak = UnitNakayama[l].Over[A,setA] ;
+ module Bounds = PolynomialBounds[l].Over[A] ;
+ module Normal = MonicNormalForm[l].Over[A,setA] ;
+ module MG = MonicGenerator[l].Over[A,setA] ;
+ cst (a : A.R) : B.Carrier = B.constant a ;
+ coef-sum : (n : Nat) (v : Fin n -> B.Carrier) (k : Nat) ->
+  Id A.R (Red.coef (S.sum n v) k) (SA.sum n (\ i -> Red.coef (v i) k)) = split {
+  zero -> \ v k -> Red.coef-zero k ;
+  suc n | ih -> \ v k -> trans (Red.coef-add (v (inr tt)) (S.sum n (\ i -> v (inl i))) k)
+   (ap (A.add (Red.coef (v (inr tt)) k)) (ih (\ i -> v (inl i)) k)) } ;
+ -- r = x - m whenever x = m + r.
+ solve (x m r : B.Carrier) (h : Id B.Carrier x (B.addQ m r)) :
+  Id B.Carrier r (B.addQ x (B.negQ m)) =
+  trans (sym (BR.add-neg-cancel r m))
+   (trans (ap (\ w -> B.addQ w (B.negQ m)) (B.ring.addC r m))
+    (ap (\ w -> B.addQ w (B.negQ m)) (sym h))) ;
+ -- x = m + (x - m') when m = m'.
+ reassemble (x m m' : B.Carrier) (h : Id B.Carrier m m') :
+  Id B.Carrier x (B.addQ m (B.addQ x (B.negQ m'))) =
+  sym (trans (ap (\ w -> B.addQ w (B.addQ x (B.negQ m'))) h)
+   (trans (BR.add-swap m' x (B.negQ m')) (trans (ap (B.addQ x) (B.ring.addN m')) (B.ring.addZ x)))) ;
+ -- A-linear maps commute with finite A-combinations.
+ module Linear (phi : B.Carrier -> B.Carrier)
+  (phi-add : (x y : B.Carrier) -> Id B.Carrier (phi (B.addQ x y)) (B.addQ (phi x) (phi y)))
+  (phi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (phi (B.mulQ (cst a) x)) (B.mulQ (cst a) (phi x)))
+  (phi-zero : Id B.Carrier (phi B.zeroQ) B.zeroQ) {
+  combination : (n : Nat) (a : Fin n -> A.R) (v : Fin n -> B.Carrier) ->
+   Id B.Carrier (phi (S.sum n (\ i -> B.mulQ (cst (a i)) (v i))))
+    (S.sum n (\ i -> B.mulQ (cst (a i)) (phi (v i)))) = split {
+   zero -> \ a v -> phi-zero ;
+   suc n | ih -> \ a v ->
+    trans (phi-add (B.mulQ (cst (a (inr tt))) (v (inr tt)))
+      (S.sum n (\ i -> B.mulQ (cst (a (inl i))) (v (inl i)))))
+     (cong2 B.Carrier B.addQ _ _ _ _ (phi-scale (a (inr tt)) (v (inr tt)))
+      (ih (\ i -> a (inl i)) (\ i -> v (inl i)))) } ;
+ } ;
+ -- Coordinates in the power basis, read on A[X].
+ coefficients-index : (n : Nat) (p : P.P) (i : Fin n) ->
+  Id A.R (E.coefficients n p i) (P.coef p (index n i)) = split {
+  zero -> \ p i -> efq i ;
+  suc n | ih -> \ p -> split {
+   inl i -> trans (ih (Bounds.tail p) i) (Bounds.tail-coef p (index n i)) ;
+   inr t -> refl (P.coef p zero) } } ;
+ coordinate (d : Nat) (w : B.Carrier) (i : Fin d) : A.R = Red.coef w (index d i) ;
+ Expands (d : Nat) (w : B.Carrier) : U l =
+  Red.Bounded d w -> Id B.Carrier w (S.sum d (\ i -> B.mulQ (cst (coordinate d w i)) (E.basis d i))) ;
+ expand (d : Nat) : (w : B.Carrier) -> Expands d w =
+  B.Q.induction @l (Expands d)
+   (\ w -> FE.isProp-Pi (Red.Bounded d w)
+    (\ h -> Id B.Carrier w (S.sum d (\ i -> B.mulQ (cst (coordinate d w i)) (E.basis d i))))
+    (\ h -> B.set _ _))
+   (\ p h -> trans (E.equation d p (\ k -> trans (sym (Red.coef-include p (plus d k))) (h k)))
+    (S.sum-cong d (\ i -> B.mulQ (cst (E.coefficients d p i)) (E.basis d i))
+     (\ i -> B.mulQ (cst (coordinate d (B.include p) i)) (E.basis d i))
+     (\ i -> ap (\ a -> B.mulQ (cst a) (E.basis d i))
+     (trans (coefficients-index d p i) (sym (Red.coef-include p (index d i))))))) ;
+ raw-representative : (x : B.Carrier) ->
+  Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) x].carrier =
+  B.Q.induction @l (\ x -> Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) x].carrier)
+   (\ x -> Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) x].proposition)
+   (\ p -> Tr.Trunc[(q : P.P) * Id B.Carrier (B.include q) (B.include p)].inc (p,refl (B.include p))) ;
+ -- M with an A-linear retraction pi: the u_t = pi(X^t) span M, with the
+ -- coefficients of w as coordinates.
+ module Summand (lower : List A.R) (InM : B.Carrier -> U l)
+  (bounded : (w : B.Carrier) -> InM w -> Red.Bounded (len lower) w)
+  (pi : B.Carrier -> B.Carrier)
+  (pi-add : (x y : B.Carrier) -> Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
+  (pi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
+  (pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ)
+  (pi-in : (p : B.Carrier) -> InM (pi p))
+  (pi-fixes : (w : B.Carrier) -> InM w -> Id B.Carrier (pi w) w) {
+  module D = Red.At[lower] ;
+  d : Nat = D.d ;
+  module PiLinear = Linear[pi,pi-add,pi-scale,pi-zero] ;
+  u (t : Fin d) : B.Carrier = pi (E.basis d t) ;
+  u-in (t : Fin d) : InM (u t) = pi-in (E.basis d t) ;
+  span (w : B.Carrier) (hw : InM w) :
+   Id B.Carrier w (S.sum d (\ t -> B.mulQ (cst (coordinate d w t)) (u t))) =
+   trans (sym (pi-fixes w hw))
+    (trans (ap pi (expand d w (bounded w hw))) (PiLinear.combination d (coordinate d w) (E.basis d))) ;
+  -- If every u_t vanishes, M = 0.
+  vanish (h : (t : Fin d) -> Id B.Carrier (u t) B.zeroQ) (w : B.Carrier) (hw : InM w) :
+   Id B.Carrier w B.zeroQ =
+   trans (span w hw)
+    (trans (S.sum-cong d _ (\ t -> B.zeroQ)
+      (\ t -> trans (ap (B.mulQ (cst (coordinate d w t))) (h t)) (BR.mul-zero (cst (coordinate d w t)))))
+     (S.sum-zero d)) ;
+  -- Anything killing every u_t kills M.
+  kills (m : A.R) (h : (t : Fin d) -> Id B.Carrier (B.mulQ (cst m) (u t)) B.zeroQ)
+   (w : B.Carrier) (hw : InM w) : Id B.Carrier (B.mulQ (cst m) w) B.zeroQ =
+   trans (ap (B.mulQ (cst m)) (span w hw))
+    (trans (sym (S.sum-scale (cst m) d (\ t -> B.mulQ (cst (coordinate d w t)) (u t))))
+     (trans (S.sum-cong d _ (\ t -> B.zeroQ)
+       (\ t -> trans (BR.mul-swap (cst m) (cst (coordinate d w t)) (u t))
+        (trans (ap (B.mulQ (cst (coordinate d w t))) (h t)) (BR.mul-zero (cst (coordinate d w t))))))
+      (S.sum-zero d))) ;
+  Lower (m : Nat) : U l = (lowered : List A.R) * Id Nat (len lowered) m * InM (H.monic lowered) ;
+  Outcome (m : Nat) : U l = Plus ((w : B.Carrier) -> InM w -> Id B.Carrier w B.zeroQ) (Lower m) ;
+ } ;
+ -- The stable summand lemma: F monic of degree d = suc d', M stable under
+ -- w |-> r_F(X w). Coefficient propagation needs no locality; over a local
+-- ring (Stable.Local), M = 0 or M has a monic of degree d'.
+ module Stable (a0 : A.R) (rest : List A.R) (InM : B.Carrier -> U l)
+  (bounded : (w : B.Carrier) -> InM w -> Red.Bounded (suc (len rest)) w)
+  (pi : B.Carrier -> B.Carrier)
+  (pi-add : (x y : B.Carrier) -> Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
+  (pi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
+  (pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ)
+  (pi-in : (p : B.Carrier) -> InM (pi p))
+  (pi-fixes : (w : B.Carrier) -> InM w -> Id B.Carrier (pi w) w)
+  (shift : (w : B.Carrier) -> InM w -> InM (Red.At[cons a0 rest].remainder (B.mulQ B.variable w))) {
+  module Sm = Summand[cons a0 rest,InM,bounded,pi,pi-add,pi-scale,pi-zero,pi-in,pi-fixes] ;
+  module D = Sm.D ;
+  d' : Nat = len rest ;
+  d : Nat = Sm.d ;
+  top (t : Fin d) : A.R = Red.coef (Sm.u t) d' ;
+  module JG = IA.Gen[d,top] ;
+  J : IA.Ideal = JG.ideal ;
+  module JI = IA.In[J] ;
+  top-in (w : B.Carrier) (hw : InM w) : J.1 (Red.coef w d') =
+   JG.G.equal (A.add A.z (SA.lin d top (coordinate d w))) (Red.coef w d')
+    (sym (trans (ap (\ v -> Red.coef v d') (Sm.span w hw))
+     (trans (coef-sum d (\ t -> B.mulQ (cst (coordinate d w t)) (Sm.u t)) d')
+      (trans (SA.sum-cong d _ (\ t -> A.mul (top t) (coordinate d w t))
+        (\ t -> trans (Red.coef-scale (coordinate d w t) (Sm.u t) d') (A.mulC (coordinate d w t) (top t))))
+       (sym (AR.zl (SA.lin d top (coordinate d w))))))))
+    (Tr.Trunc[JG.G.Witness (A.add A.z (SA.lin d top (coordinate d w)))].inc
+     (coordinate d w,refl (A.add A.z (SA.lin d top (coordinate d w))))) ;
+  -- Multiplication by X, reduced: X w = F c + (X w - c F), c the top coefficient.
+  module Shift (w : B.Carrier) (hw : InM w) {
+   c : A.R = Red.coef w d' ;
+   b : B.Carrier = B.addQ (B.mulQ B.variable w) (B.negQ (B.mulQ (cst c) D.F)) ;
+   coef-b (k : Nat) : Id A.R (Red.coef b k)
+    (A.add (Red.shifted w k) (A.neg (A.mul c (Red.coef D.F k)))) =
+    trans (Red.coef-add (B.mulQ B.variable w) (B.negQ (B.mulQ (cst c) D.F)) k)
+     (cong2 A.R A.add _ _ _ _ (Red.coef-variable w k)
+      (trans (Red.coef-neg (B.mulQ (cst c) D.F) k) (ap A.neg (Red.coef-scale c D.F k)))) ;
+   b-bounded : Red.Bounded d b = split {
+    zero -> trans (coef-b (suc (plus d' zero)))
+     (trans (cong2 A.R A.add _ _ _ _ (ap (Red.coef w) (plus-zero d'))
+       (ap (\ v -> A.neg (A.mul c v)) (trans (ap (\ jj -> Red.coef D.F (suc jj)) (plus-zero d')) D.leading)))
+      (trans (ap (\ v -> A.add c (A.neg v)) (A.mulO c)) (A.addN c))) ;
+    suc k -> trans (coef-b (suc (plus d' (suc k))))
+     (trans (cong2 A.R A.add _ _ _ _ (trans (ap (Red.coef w) (plus-suc d' k)) (bounded w hw k))
+       (ap (\ v -> A.neg (A.mul c v)) (trans (ap (\ jj -> Red.coef D.F (suc jj)) (plus-suc d' k)) (D.above k))))
+      (trans (ap (\ v -> A.add A.z (A.neg v)) (AR.mul-zero c))
+       (trans (ap (A.add A.z) AR.neg-zero) (A.addZ A.z)))) } ;
+   decomposition : Id B.Carrier (B.mulQ B.variable w) (B.addQ (B.mulQ D.F (cst c)) b) =
+    reassemble (B.mulQ B.variable w) (B.mulQ D.F (cst c)) (B.mulQ (cst c) D.F)
+     (B.ring.mulC D.F (cst c)) ;
+   reduced : Id B.Carrier (D.remainder (B.mulQ B.variable w)) b =
+    D.Characterise[B.mulQ B.variable w,cst c,b,b-bounded,decomposition].remainder-is ;
+   next : B.Carrier = D.remainder (B.mulQ B.variable w) ;
+   next-in : InM next = shift w hw ;
+   -- coef w t = coef next (t+1) + c F_(t+1).
+   relation (t : Nat) : Id A.R (Red.coef w t)
+    (A.add (Red.coef next (suc t)) (A.mul c (Red.coef D.F (suc t)))) =
+    sym (trans (ap (\ v -> A.add v (A.mul c (Red.coef D.F (suc t))))
+      (trans (ap (\ v -> Red.coef v (suc t)) reduced) (coef-b (suc t))))
+     (trans (sym (A.addA (Red.coef w t) (A.neg (A.mul c (Red.coef D.F (suc t)))) (A.mul c (Red.coef D.F (suc t)))))
+      (trans (ap (A.add (Red.coef w t)) (AR.neg-cancel (A.mul c (Red.coef D.F (suc t))))) (A.addZ (Red.coef w t))))) ;
+  } ;
+  -- Every coefficient of every w in M lies in J, by descending induction.
+  Down (k : Nat) : U l = (w : B.Carrier) -> InM w -> (t : Nat) -> Id Nat (plus t k) d' -> J.1 (Red.coef w t) ;
+  down : (k : Nat) -> Down k = split {
+   zero -> \ w hw t e -> JI.equal _ _ (ap (Red.coef w) (sym (trans (sym (plus-zero t)) e))) (top-in w hw) ;
+   suc k | ih -> \ w hw t e ->
+    JI.equal _ _ (sym (Shift[w,hw].relation t))
+     (J.2.2.2.1 _ _ (ih Shift[w,hw].next Shift[w,hw].next-in (suc t) (trans (sym (plus-suc t k)) e))
+      (JI.equal _ _ (A.mulC (Red.coef D.F (suc t)) (Red.coef w d'))
+       (J.2.2.2.2 (Red.coef D.F (suc t)) (Red.coef w d') (top-in w hw)))) } ;
+  coordinate-in (w : B.Carrier) (hw : InM w) (i : Fin d) : J.1 (coordinate d w i) =
+   down (complement d' i).1 w hw (index d i) (complement d' i).2 ;
+  module K = Nak.At[J,Lin.structure] ;
+  -- Nakayama on the u_t, without locality: some mu with mu - 1 in J kills M.
+  equations (s : Fin d) : Id B.Carrier (Sm.u s) (K.Sum.lin d (\ t -> coordinate d (Sm.u s) t) Sm.u) =
+   trans (Sm.span (Sm.u s) (Sm.u-in s)) (sym (Lin.lin-equation d (\ t -> coordinate d (Sm.u s) t) Sm.u)) ;
+  killer : K.Killer d Sm.u =
+   K.kill d Sm.u (\ s t -> coordinate d (Sm.u s) t) (\ s t -> coordinate-in (Sm.u s) (Sm.u-in s) t) equations ;
+  mu : A.R = killer.1 ;
+  kills-M (w : B.Carrier) (hw : InM w) : Id B.Carrier (B.mulQ (cst mu) w) B.zeroQ =
+   Sm.kills mu killer.2.2 w hw ;
+  -- A combination of the u_t whose top coefficient is a given element of J.
+  module Top (j : A.R) (gamma : Fin d -> A.R) (jg : Id A.R j (A.add A.z (SA.lin d top gamma))) {
+   W : B.Carrier = S.sum d (\ t -> B.mulQ (cst (gamma t)) (Sm.u t)) ;
+   W-in : InM W =
+    Pr.subst B.Carrier InM (pi (S.sum d (\ t -> B.mulQ (cst (gamma t)) (E.basis d t)))) W
+     (Sm.PiLinear.combination d gamma (E.basis d)) (pi-in (S.sum d (\ t -> B.mulQ (cst (gamma t)) (E.basis d t)))) ;
+   W-top : Id A.R (Red.coef W d') j =
+    trans (coef-sum d (\ t -> B.mulQ (cst (gamma t)) (Sm.u t)) d')
+     (trans (SA.sum-cong d _ (\ t -> A.mul (top t) (gamma t))
+       (\ t -> trans (Red.coef-scale (gamma t) (Sm.u t) d') (A.mulC (gamma t) (top t))))
+      (trans (sym (AR.zl (SA.lin d top gamma))) (sym jg))) ;
+  } ;
+  -- Nakayama and locality on the u_t: they vanish, or 1 is in J.
+  module Local
+   (loc : (a b : A.R) -> AR.unit (A.add a b) -> Tr.Trunc[Plus (AR.unit a) (AR.unit b)].carrier) {
+   module N = K.Local[loc,d,Sm.u,\ s t -> coordinate d (Sm.u s) t,
+    \ s t -> coordinate-in (Sm.u s) (Sm.u-in s) t,equations] ;
+   -- 1 in J: a combination of the u_t with top coefficient 1 is monic of degree d'.
+   module Drop (gamma : Fin d -> A.R) (jg : Id A.R A.o (A.add A.z (SA.lin d top gamma))) {
+    module Tp = Top[A.o,gamma,jg] ;
+    W : B.Carrier = Tp.W ;
+    W-in : InM W = Tp.W-in ;
+    W-top : Id A.R (Red.coef W d') A.o = Tp.W-top ;
+    module Raw (p : P.P) (rep : Id B.Carrier (B.include p) W) {
+     bound : Bounds.Bound (suc d') p =
+      \ k -> trans (sym (Red.coef-include p (plus d k))) (trans (ap (\ v -> Red.coef v (plus d k)) rep) (bounded W W-in k)) ;
+     leading : Id A.R (P.coef p d') A.o =
+      trans (sym (Red.coef-include p d')) (trans (ap (\ v -> Red.coef v d') rep) W-top) ;
+     lowered : List A.R = Bounds.cut d' p ;
+     monic : Id B.Carrier W (H.monic lowered) = trans (sym rep) (Normal.equation d' p bound leading) ;
+     result : Sm.Lower d' = (lowered,Bounds.cut-length d' p,Pr.subst B.Carrier InM W (H.monic lowered) monic W-in) ;
+    } ;
+    result : Tr.Trunc[Sm.Outcome d'].carrier =
+     Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) W].induction @l (\ t -> Tr.Trunc[Sm.Outcome d'].carrier)
+      (\ t -> Tr.Trunc[Sm.Outcome d'].proposition) (\ r -> Tr.Trunc[Sm.Outcome d'].inc (inr Raw[r.1,r.2].result))
+      (raw-representative W) ;
+   } ;
+   decide : N.Outcome -> Tr.Trunc[Sm.Outcome d'].carrier = split {
+    inl h -> Tr.Trunc[Sm.Outcome d'].inc (inl (Sm.vanish h)) ;
+    inr one -> Tr.Trunc[JG.G.Witness A.o].induction @l (\ t -> Tr.Trunc[Sm.Outcome d'].carrier)
+      (\ t -> Tr.Trunc[Sm.Outcome d'].proposition) (\ g -> Drop[g.1,g.2].result) one } ;
+   outcome : Tr.Trunc[Sm.Outcome d'].carrier =
+    Tr.Trunc[N.Outcome].induction @l (\ t -> Tr.Trunc[Sm.Outcome d'].carrier)
+     (\ t -> Tr.Trunc[Sm.Outcome d'].proposition) decide N.outcome ;
+  } ;
+ } ;
+ -- An ideal L with an A-linear retraction rho of A[X] onto L. For a monic
+ -- F in L, M_F = L intersected with the polynomials of degree < deg F has
+ -- the retraction r_F o rho and is stable under w |-> r_F(X w).
+ module Retract (L : IB.Ideal) (rho : B.Carrier -> B.Carrier)
+  (rho-add : (x y : B.Carrier) -> Id B.Carrier (rho (B.addQ x y)) (B.addQ (rho x) (rho y)))
+  (rho-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (rho (B.mulQ (cst a) x)) (B.mulQ (cst a) (rho x)))
+  (rho-zero : Id B.Carrier (rho B.zeroQ) B.zeroQ)
+  (rho-in : (p : B.Carrier) -> L.1 (rho p))
+  (rho-fixes : (p : B.Carrier) -> L.1 p -> Id B.Carrier (rho p) p) {
+  module LI = IB.In[L] ;
+  in-mul (a x : B.Carrier) (h : L.1 x) : L.1 (B.mulQ a x) = L.2.2.2.2 a x h ;
+  in-add (x x' : B.Carrier) (h : L.1 x) (h' : L.1 x') : L.1 (B.addQ x x') = L.2.2.2.1 x x' h h' ;
+  in-neg (x : B.Carrier) (h : L.1 x) : L.1 (B.negQ x) =
+   LI.equal _ _ (trans (BR.neg-mul-left B.oneQ x) (ap B.negQ (BR.one-left x)))
+    (in-mul (B.negQ B.oneQ) x h) ;
+  Lower (m : Nat) : U l = (lowered : List A.R) * Id Nat (len lowered) m * L.1 (H.monic lowered) ;
+  module At (lower : List A.R) (F-in : L.1 (H.monic lower)) {
+   module D = Red.At[lower] ;
+   F : B.Carrier = D.F ;
+   d : Nat = D.d ;
+   InM (w : B.Carrier) : U l = L.1 w * Red.Bounded d w ;
+   bounded (w : B.Carrier) (hw : InM w) : Red.Bounded d w = hw.2 ;
+   remainder-in (p : B.Carrier) (h : L.1 p) : InM (D.remainder p) =
+    (LI.equal _ _ (sym (solve p (B.mulQ F (D.quotient p)) (D.remainder p) (D.equation p)))
+      (in-add p (B.negQ (B.mulQ F (D.quotient p))) h
+       (in-neg (B.mulQ F (D.quotient p)) (LI.equal _ _ (B.ring.mulC (D.quotient p) F)
+        (in-mul (D.quotient p) F F-in)))),
+     D.bounded p) ;
+   pi (p : B.Carrier) : B.Carrier = D.remainder (rho p) ;
+   pi-add (p q : B.Carrier) : Id B.Carrier (pi (B.addQ p q)) (B.addQ (pi p) (pi q)) =
+    trans (ap D.remainder (rho-add p q)) (D.remainder-add (rho p) (rho q)) ;
+   pi-scale (a : A.R) (p : B.Carrier) : Id B.Carrier (pi (B.mulQ (cst a) p)) (B.mulQ (cst a) (pi p)) =
+    trans (ap D.remainder (rho-scale a p)) (D.remainder-scale a (rho p)) ;
+   pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ =
+    trans (ap D.remainder rho-zero) (D.remainder-small B.zeroQ (Red.bounded-zero d)) ;
+   pi-in (p : B.Carrier) : InM (pi p) = remainder-in (rho p) (rho-in p) ;
+   pi-fixes (w : B.Carrier) (hw : InM w) : Id B.Carrier (pi w) w =
+    trans (ap D.remainder (rho-fixes w hw.1)) (D.remainder-small w hw.2) ;
+   shift (w : B.Carrier) (hw : InM w) : InM (D.remainder (B.mulQ B.variable w)) =
+    remainder-in (B.mulQ B.variable w) (in-mul B.variable w hw.1) ;
+   module Sm = Summand[lower,InM,bounded,pi,pi-add,pi-scale,pi-zero,pi-in,pi-fixes] ;
+   -- M_F = 0: F divides every element of L.
+   DividesAll : U l = (x : B.Carrier) -> L.1 x -> MG.Divides F x ;
+   divides (zero : (w : B.Carrier) -> InM w -> Id B.Carrier w B.zeroQ) : DividesAll =
+    \ x hx -> (D.quotient x,
+     trans (D.equation x)
+      (trans (ap (B.addQ (B.mulQ F (D.quotient x))) (zero (D.remainder x) (remainder-in x hx)))
+       (B.ring.addZ (B.mulQ F (D.quotient x))))) ;
+   Outcome (m : Nat) : U l = Plus DividesAll (Lower m) ;
+   convert (m : Nat) : Sm.Outcome m -> Outcome m = split {
+    inl zero -> inl (divides zero) ;
+    inr low -> inr (low.1,low.2.1,low.2.2.1) } ;
+  } ;
+  -- Degree zero: M_F = 0 outright.
+  bottom (F-in : L.1 (H.monic nil)) : At[nil,F-in].DividesAll =
+   At[nil,F-in].divides (At[nil,F-in].Sm.vanish (\ t -> efq t)) ;
+  -- Positive degree: F divides L, or L has a monic of degree one less.
+  module Positive
+   (loc : (a b : A.R) -> AR.unit (A.add a b) -> Tr.Trunc[Plus (AR.unit a) (AR.unit b)].carrier)
+   (a0 : A.R) (rest : List A.R) (F-in : L.1 (H.monic (cons a0 rest))) {
+   module T = At[cons a0 rest,F-in] ;
+   module St = Stable[a0,rest,T.InM,T.bounded,T.pi,T.pi-add,T.pi-scale,T.pi-zero,T.pi-in,T.pi-fixes,T.shift] ;
+   outcome : Tr.Trunc[T.Outcome (len rest)].carrier =
+    Tr.Trunc[St.Sm.Outcome (len rest)].induction @l (\ t -> Tr.Trunc[T.Outcome (len rest)].carrier)
+     (\ t -> Tr.Trunc[T.Outcome (len rest)].proposition)
+     (\ o -> Tr.Trunc[T.Outcome (len rest)].inc (T.convert (len rest) o)) St.Local[loc].outcome ;
+  } ;
+  -- The theorem: over a local ring, if L contains a monic polynomial, then
+  -- L has a monic generator (unique by MonicGenerator). Induction on the
+  -- degree of a monic member of L, with rho fixed.
+  module Induction
+   (loc : (a b : A.R) -> AR.unit (A.add a b) -> Tr.Trunc[Plus (AR.unit a) (AR.unit b)].carrier) {
+   module Gen = MG.Of[L] ;
+   Statement (k : Nat) : U l =
+    (lower : List A.R) -> Id Nat (len lower) k -> L.1 (H.monic lower) -> Gen.Generator ;
+   next (k : Nat) (ih : Statement k) (lower : List A.R) (F-in : L.1 (H.monic lower))
+    (m : Nat) (em : Id Nat m k) : At[lower,F-in].Outcome m -> Gen.Generator = split {
+    inl dv -> Gen.monic lower F-in dv ;
+    inr low -> ih low.1 (trans low.2.1 em) low.2.2 } ;
+   principal : (k : Nat) -> Statement k = split {
+    zero -> split {
+     nil -> \ el F-in -> Gen.monic nil F-in (bottom F-in) ;
+     cons a rest -> \ el F-in -> efq (suc-zero (len rest) el) } ;
+    suc k | ih -> split {
+     nil -> \ el F-in -> efq (zero-suc k el) ;
+     cons a rest -> \ el F-in ->
+      Tr.Trunc[At[cons a rest,F-in].Outcome (len rest)].induction @l (\ t -> Gen.Generator)
+       (\ t -> Gen.generator-prop)
+       (next k ih (cons a rest) F-in (len rest) (suc-inj el)) Positive[loc,a,rest,F-in].outcome } } ;
+   generator (lower : List A.R) (F-in : L.1 (H.monic lower)) : Gen.Generator =
+    principal (len lower) lower (refl (len lower)) F-in ;
+  } ;
+ } ;
+} ;

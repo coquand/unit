@@ -77,7 +77,7 @@ The `.tex` sources are next to the PDFs.
 
 ## The model (`core/`)
 
-`core/All.seg` imports the 245 files in dependency order. Function
+`core/All.seg` imports the files in dependency order. Function
 extensionality and univalence of the metatheory are the two parameters of one
 segment, `Model`; `ModelUA` instantiates the whole development from
 univalence alone (function extensionality is derived in `FunExtUA.seg`).
@@ -106,6 +106,17 @@ used. Each directory has a `README.txt`.
 - `torsor`: Lemma 7.4.2 (cocycles and torsors), Theorem 7.4.7 (2-cocycles
   and gerbes), Theorem 7.4.8 (Čech H² of a 2-acyclic finite cover is H², as
   abelian groups, natural under refinement).
+- `affine`, `tensor`: Section 3 (the affine axioms, Proposition 3.3.4,
+  tensor products, pullbacks, boundedness).
+- `closed`, `opens`: Sections 4.1 and 4.2 (closed and open subtypes).
+- `schemes`, `gluing`: Section 5 (schemes; gluing, Section 5.3).
+- `cokernel7`, `qc-schemes`, `bridge7`: Section 7.1 (kernels and
+  cokernels of weakly quasi-coherent modules, schemes) and Theorem 7.3.6.
+- `pn`, `laurent`, `picard`: projective space P^n; line bundles on P^n are
+  Line × Z (Theorem 7.3), Aut(P^n) = PGL_{n+1}; the Picard group of P^1.
+- `horrocks`: rank-one affine Horrocks over any commutative ring.
+- `exterior`: the exterior algebra, determinants, det(AB), adjugates,
+  Cayley–Hamilton.
 - `chatelet`: Châtelet's theorem from SAG and sheafification, with descent
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
@@ -140,7 +151,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
     ./run-tests.sh | diff tests.expected -   # the examples in examples/
     ./segc core all                # check the model (about 50 s)
     ./segc core changed            # after an edit: the changed files and their dependents
-    ./segc sag/torsor all          # one of the sag/ developments (each under 1 s)
+    ./segc sag/torsor all          # one of the sag/ developments (each under 10 s)
     ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
 
 `segc` starts a checking server that loads the development once and keeps

@@ -1,0 +1,89 @@
+-- Only the additive and scalar laws needed for finite generator elimination.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (A : CRing) {
+ open A ; open RL[A] ;
+ record Module {
+  V : U l ;
+  zeroV : V ;
+  plusV : V -> V -> V ;
+  scale : R -> V -> V ;
+  assoc (u v w : V) : Id V (plusV u (plusV v w)) (plusV (plusV u v) w) ;
+  comm (u v : V) : Id V (plusV u v) (plusV v u) ;
+  zero-right (v : V) : Id V (plusV v zeroV) v ;
+  scalar-add (a b : R) (v : V) :
+   Id V (scale (add a b) v) (plusV (scale a v) (scale b v)) ;
+  vector-add (a : R) (u v : V) :
+   Id V (scale a (plusV u v)) (plusV (scale a u) (scale a v)) ;
+  scalar-mul (a b : R) (v : V) :
+   Id V (scale (mul a b) v) (scale a (scale b v)) ;
+  scalar-one (v : V) : Id V (scale o v) v ;
+  scalar-zero (v : V) : Id V (scale z v) zeroV ;
+  vector-zero (a : R) : Id V (scale a zeroV) zeroV ;
+ } ;
+ module In (D : Module) {
+  open D ;
+  zero-left (v : V) : Id V (plusV zeroV v) v =
+   trans (comm zeroV v) (zero-right v) ;
+  swap (p q r s : V) :
+   Id V (plusV (plusV p q) (plusV r s)) (plusV (plusV p r) (plusV q s)) =
+   trans (assoc (plusV p q) r s)
+    (trans (ap (\ v -> plusV v s)
+      (trans (sym (assoc p q r))
+       (trans (ap (plusV p) (comm q r)) (assoc p r q))))
+     (sym (assoc (plusV p r) q s))) ;
+  sum : (n : Nat) -> (Fin n -> V) -> V = split {
+   zero -> \ v -> zeroV ;
+   suc n | ih -> \ v -> plusV (v (inr tt)) (ih (\ i -> v (inl i))) } ;
+  sum-cong : (n : Nat) (v w : Fin n -> V) ->
+   ((i : Fin n) -> Id V (v i) (w i)) -> Id V (sum n v) (sum n w) = split {
+   zero -> \ v w h -> refl zeroV ;
+   suc n | ih -> \ v w h -> cong2 V plusV _ _ _ _ (h (inr tt))
+    (ih (\ i -> v (inl i)) (\ i -> w (inl i)) (\ i -> h (inl i))) } ;
+  sum-zero : (n : Nat) -> Id V (sum n (\ i -> zeroV)) zeroV = split {
+   zero -> refl zeroV ;
+   suc n | ih -> trans (ap (plusV zeroV) ih) (zero-right zeroV) } ;
+  sum-add : (n : Nat) (v w : Fin n -> V) ->
+   Id V (sum n (\ i -> plusV (v i) (w i))) (plusV (sum n v) (sum n w)) = split {
+   zero -> \ v w -> sym (zero-right zeroV) ;
+   suc n | ih -> \ v w ->
+    trans (ap (plusV (plusV (v (inr tt)) (w (inr tt)))) (ih (\ i -> v (inl i)) (\ i -> w (inl i))))
+     (swap (v (inr tt)) (w (inr tt)) (sum n (\ i -> v (inl i))) (sum n (\ i -> w (inl i)))) } ;
+  sum-scale (a : R) : (n : Nat) (v : Fin n -> V) ->
+   Id V (sum n (\ i -> scale a (v i))) (scale a (sum n v)) = split {
+   zero -> \ v -> sym (vector-zero a) ;
+   suc n | ih -> \ v ->
+    trans (ap (plusV (scale a (v (inr tt)))) (ih (\ i -> v (inl i))))
+     (sym (vector-add a (v (inr tt)) (sum n (\ i -> v (inl i))))) } ;
+  lin (n : Nat) (c : Fin n -> R) (v : Fin n -> V) : V =
+   sum n (\ i -> scale (c i) (v i)) ;
+  lin-add (n : Nat) (a b : Fin n -> R) (v : Fin n -> V) :
+   Id V (lin n (\ i -> add (a i) (b i)) v) (plusV (lin n a v) (lin n b v)) =
+   trans (sum-cong n (\ i -> scale (add (a i) (b i)) (v i)) (\ i -> plusV (scale (a i) (v i)) (scale (b i) (v i))) (\ i -> scalar-add (a i) (b i) (v i)))
+    (sum-add n (\ i -> scale (a i) (v i)) (\ i -> scale (b i) (v i))) ;
+  lin-scale (n : Nat) (a : R) (c : Fin n -> R) (v : Fin n -> V) :
+   Id V (lin n (\ i -> mul a (c i)) v) (scale a (lin n c v)) =
+   trans (sum-cong n (\ i -> scale (mul a (c i)) (v i)) (\ i -> scale a (scale (c i) (v i))) (\ i -> scalar-mul a (c i) (v i)))
+    (sum-scale a n (\ i -> scale (c i) (v i))) ;
+  lin-vanish (n : Nat) (c : Fin n -> R) (v : Fin n -> V)
+   (h : (i : Fin n) -> Id V (v i) zeroV) : Id V (lin n c v) zeroV =
+   trans (sum-cong n (\ i -> scale (c i) (v i)) (\ i -> zeroV) (\ i -> trans (ap (scale (c i)) (h i)) (vector-zero (c i))))
+    (sum-zero n) ;
+  -- Solve x = a*x + s when 1-a is invertible.
+  solve (a : R) (u : unit (add o (neg a))) (x s : V)
+   (h : Id V x (plusV (scale a x) s)) : Id V x (scale u.1 s) =
+   let { cancel : Id V (plusV (scale (neg a) x) (scale a x)) zeroV =
+    trans (sym (scalar-add (neg a) a x))
+     (trans (ap (\ b -> scale b x) (trans (addC (neg a) a) (addN a))) (scalar-zero x)) ;
+   subtract : Id V (scale (add o (neg a)) x) s =
+    trans (scalar-add o (neg a) x)
+     (trans (ap (\ v -> plusV v (scale (neg a) x)) (scalar-one x))
+      (trans (comm x (scale (neg a) x))
+       (trans (ap (plusV (scale (neg a) x)) h)
+        (trans (assoc (scale (neg a) x) (scale a x) s)
+         (trans (ap (\ v -> plusV v s) cancel) (zero-left s)))))) ;
+   } in trans (sym (scalar-one x))
+    (trans (ap (\ b -> scale b x) (sym (trans (mulC u.1 (add o (neg a))) u.2)))
+     (trans (scalar-mul u.1 (add o (neg a)) x) (ap (scale u.1) subtract))) ;
+ } ;
+} ;

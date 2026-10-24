@@ -1,0 +1,195 @@
+-- SAG 3.2.2. The pushout A (x)_C B of two R-algebra maps f : C -> A and
+-- g : C -> B.  Its presentation: the concatenated presentation of A and B,
+-- plus one equation e_v - e'_v for each generator c_v of C, where e_v and
+-- e'_v are expressions for f(c_v) in A and g(c_v) in B.  With target R this
+-- gives Spec(A (x)_C B) = Spec A *_{Spec C} Spec B.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Tr = Truncation[l] ;
+module Tr1 = Truncation[l+] ;
+open Presentations[l] ;
+list-of (X : U l) : (c : Nat) -> (Fin c -> X) -> List X = split {
+ zero -> \ h -> nil ; suc c | r -> \ h -> cons (h (inr tt)) (r (\ v -> h (inl v))) } ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module P = Presentations[l].Over[R,setR] ; open P ;
+ module C = Algebras[l].Over[R,setR] ;
+ module S = FinSum[l].Over[R,setR] ;
+ module G = Generated[l].Over[R,setR] ;
+ module TO = Tensor[l].Over[R,setR] ;
+ ------------------------------------------------------------------
+ -- an equation a - b = 0
+ diff (V : U l) (a b : Expr V) : Expr V = sumE a (mulE (cst (R.neg R.o)) b) ;
+ module Diff (V : U l) (D : C.Algebra) (s : V -> D.ring.R) (a b : Expr V) {
+  x : D.ring.R = eval V D s a ;
+  y : D.ring.R = eval V D s b ;
+  minus : Id D.ring.R (D.ring.mul (D.iota.1 (R.neg R.o)) y) (D.ring.neg y) = calc D.ring.R {
+   D.ring.mul (D.iota.1 (R.neg R.o)) y
+    =< ap (\ t -> D.ring.mul t y) (RingHom[l].negation R D.ring D.iota R.o) > D.ring.mul (D.ring.neg (D.iota.1 R.o)) y
+    =< ap (\ t -> D.ring.mul (D.ring.neg t) y) D.iota.2.1 > D.ring.mul (D.ring.neg D.ring.o) y
+    =< D.ring.mulC (D.ring.neg D.ring.o) y > D.ring.mul y (D.ring.neg D.ring.o)
+    =< RL[D.ring].mul-neg y D.ring.o > D.ring.neg (D.ring.mul y D.ring.o)
+    =< ap D.ring.neg (D.ring.mulO y) > D.ring.neg y } ;
+  equal (h : Id D.ring.R (eval V D s (diff V a b)) D.ring.z) : Id D.ring.R x y =
+   trans (RL[D.ring].neg-uniq (D.ring.neg y) x
+     (trans (D.ring.addC (D.ring.neg y) x) (trans (ap (D.ring.add x) (sym minus)) h)))
+    (sym (RL[D.ring].neg-uniq (D.ring.neg y) y (trans (D.ring.addC (D.ring.neg y) y) (D.ring.addN y)))) ;
+  zero (h : Id D.ring.R x y) : Id D.ring.R (eval V D s (diff V a b)) D.ring.z =
+   trans (ap (D.ring.add x) minus) (trans (ap (\ t -> D.ring.add t (D.ring.neg y)) h) (D.ring.addN y)) ;
+ } ;
+ zeros-all (V : U l) (D : C.Algebra) (s : V -> D.ring.R) : (c : Nat) -> (h : Fin c -> Expr V) ->
+  Zeros V D s (list-of (Expr V) c h) -> (v : Fin c) -> Id D.ring.R (eval V D s (h v)) D.ring.z = split {
+  zero -> \ h z v -> absurd (Id D.ring.R (eval V D s (h v)) D.ring.z) v ;
+  suc c | r -> \ h z -> split {
+   inl v -> r (\ u -> h (inl u)) z.2 v ;
+   inr t -> Generated[l].top-case (\ t -> Id D.ring.R (eval V D s (h (inr t))) D.ring.z) z.1 t } } ;
+ all-zeros (V : U l) (D : C.Algebra) (s : V -> D.ring.R) : (c : Nat) -> (h : Fin c -> Expr V) ->
+  ((v : Fin c) -> Id D.ring.R (eval V D s (h v)) D.ring.z) -> Zeros V D s (list-of (Expr V) c h) = split {
+  zero -> \ h k -> tt ;
+  suc c | r -> \ h k -> (k (inr tt),r (\ u -> h (inl u)) (\ u -> k (inl u))) } ;
+ ------------------------------------------------------------------
+ -- cocones under f and g, and pushouts
+ module Square (A B K : C.Algebra) (f : C.Hom K A) (g : C.Hom K B) {
+  Cocone (D : C.Algebra) : U l =
+   (d : C.Hom A D * C.Hom B D) * ((x : K.ring.R) -> Id D.ring.R (d.1.1.1 (f.1.1 x)) (d.2.1.1 (g.1.1 x))) ;
+  cocone-prop (D : C.Algebra) (d : C.Hom A D * C.Hom B D) :
+   Pr.isProp ((x : K.ring.R) -> Id D.ring.R (d.1.1.1 (f.1.1 x)) (d.2.1.1 (g.1.1 x))) =
+   F.isProp-Pi K.ring.R (\ x -> Id D.ring.R (d.1.1.1 (f.1.1 x)) (d.2.1.1 (g.1.1 x))) (\ x -> D.set _ _) ;
+  restrict (T : C.Algebra) (inA : C.Hom A T) (inB : C.Hom B T)
+   (agree : (x : K.ring.R) -> Id T.ring.R (inA.1.1 (f.1.1 x)) (inB.1.1 (g.1.1 x)))
+   (D : C.Algebra) (h : C.Hom T D) : Cocone D =
+   (TO.restrict A B T inA inB D h,\ x -> ap h.1.1 (agree x)) ;
+  Pushout (T : C.Algebra) : U l+ =
+   (inA : C.Hom A T) * (inB : C.Hom B T) *
+   (agree : (x : K.ring.R) -> Id T.ring.R (inA.1.1 (f.1.1 x)) (inB.1.1 (g.1.1 x))) *
+   ((D : C.Algebra) -> Pr.isEquiv (C.Hom T D) (Cocone D) (restrict T inA inB agree D)) ;
+  -- 3.2.2, with the fibre condition read pointwise on K
+  spec-pullback (T : C.Algebra) (c : Pushout T) : Pr.Equiv (C.Spec T) (Cocone C.base) =
+   (restrict T c.1 c.2.1 c.2.2.1 C.base,c.2.2.2 C.base) ;
+ } ;
+ ------------------------------------------------------------------
+ module Construction (p q k : Presentation) (A B K : C.Algebra)
+  (pa : Presents p A) (pb : Presents q B) (pk : Presents k K)
+  (f : C.Hom K A) (g : C.Hom K B)
+  (eA : (v : Fin k.1) -> G.Representation p A pa (f.1.1 (pk.1.1 v)))
+  (eB : (v : Fin k.1) -> G.Representation q B pb (g.1.1 (pk.1.1 v))) {
+  module Sq = Square[A,B,K,f,g] ;
+  tp : Presentation = S.tensor p q ;
+  W : U l = Fin tp.1 ;
+  lft (v : Fin p.1) : W = FinSum[l].left p.1 q.1 v ;
+  rgt (v : Fin q.1) : W = FinSum[l].right p.1 q.1 v ;
+  eqn (v : Fin k.1) : Expr W = diff W (rename (Fin p.1) W lft (eA v).1) (rename (Fin q.1) W rgt (eB v).1) ;
+  extra : Equations W = list-of (Expr W) k.1 eqn ;
+  push : Presentation = (tp.1,S.append W tp.2 extra) ;
+  -- the solutions of push: solutions of tp in which the two expressions agree
+  Agree (D : C.Algebra) (s : W -> D.ring.R) : U l = (v : Fin k.1) ->
+   Id D.ring.R (eval (Fin p.1) D (\ u -> s (lft u)) (eA v).1) (eval (Fin q.1) D (\ u -> s (rgt u)) (eB v).1) ;
+  base (D : C.Algebra) (s : Solutions push D) : Solutions tp D = (s.1,S.zeros-first W D s.1 tp.2 extra s.2) ;
+  agreement (D : C.Algebra) (s : Solutions push D) : Agree D s.1 = \ v ->
+   trans (sym (eval-rename (Fin p.1) W lft D s.1 (eA v).1))
+    (trans (Diff[W,D,s.1,rename (Fin p.1) W lft (eA v).1,rename (Fin q.1) W rgt (eB v).1].equal
+      (zeros-all W D s.1 k.1 eqn (S.zeros-second W D s.1 tp.2 extra s.2) v))
+     (eval-rename (Fin q.1) W rgt D s.1 (eB v).1)) ;
+  make (D : C.Algebra) (s : Solutions tp D) (a : Agree D s.1) : Solutions push D =
+   (s.1,S.zeros-append W D s.1 tp.2 extra s.2 (all-zeros W D s.1 k.1 eqn (\ v ->
+    Diff[W,D,s.1,rename (Fin p.1) W lft (eA v).1,rename (Fin q.1) W rgt (eB v).1].zero
+     (trans (eval-rename (Fin p.1) W lft D s.1 (eA v).1)
+      (trans (a v) (sym (eval-rename (Fin q.1) W rgt D s.1 (eB v).1))))))) ;
+  -- f(c_v) and g(c_v) after a map
+  imageA (D : C.Algebra) (h : C.Hom A D) (v : Fin k.1) :
+   Id D.ring.R (h.1.1 (f.1.1 (pk.1.1 v))) (eval (Fin p.1) D (\ u -> h.1.1 (pa.1.1 u)) (eA v).1) =
+   trans (ap h.1.1 (sym (eA v).2)) (natural (Fin p.1) A D h pa.1.1 (eA v).1) ;
+  imageB (D : C.Algebra) (h : C.Hom B D) (v : Fin k.1) :
+   Id D.ring.R (h.1.1 (g.1.1 (pk.1.1 v))) (eval (Fin q.1) D (\ u -> h.1.1 (pb.1.1 u)) (eB v).1) =
+   trans (ap h.1.1 (sym (eB v).2)) (natural (Fin q.1) B D h pb.1.1 (eB v).1) ;
+  module On (T : C.Algebra) (pt : Presents push T) {
+   gens : S.Split[p,q,T].Data = S.Split[p,q,T].forward (base T pt.1) ;
+   inA : C.Hom A T = (pa.2 T).sec gens.1 ;
+   inB : C.Hom B T = (pb.2 T).sec gens.2 ;
+   inA-gen (v : Fin p.1) : Id T.ring.R (inA.1.1 (pa.1.1 v)) (pt.1.1 (lft v)) =
+    ap (\ s -> s.1 v) ((pa.2 T).sec-eq gens.1) ;
+   inB-gen (v : Fin q.1) : Id T.ring.R (inB.1.1 (pb.1.1 v)) (pt.1.1 (rgt v)) =
+    ap (\ s -> s.1 v) ((pb.2 T).sec-eq gens.2) ;
+   agree-gen (v : Fin k.1) : Id T.ring.R (inA.1.1 (f.1.1 (pk.1.1 v))) (inB.1.1 (g.1.1 (pk.1.1 v))) = calc T.ring.R {
+    inA.1.1 (f.1.1 (pk.1.1 v))
+     =< imageA T inA v > eval (Fin p.1) T (\ u -> inA.1.1 (pa.1.1 u)) (eA v).1
+     =< G.eval-ext (Fin p.1) T _ _ inA-gen (eA v).1 > eval (Fin p.1) T (\ u -> pt.1.1 (lft u)) (eA v).1
+     =< agreement T pt.1 v > eval (Fin q.1) T (\ u -> pt.1.1 (rgt u)) (eB v).1
+     =< sym (G.eval-ext (Fin q.1) T _ _ inB-gen (eB v).1) > eval (Fin q.1) T (\ u -> inB.1.1 (pb.1.1 u)) (eB v).1
+     =< sym (imageB T inB v) > inB.1.1 (g.1.1 (pk.1.1 v)) } ;
+   agree (x : K.ring.R) : Id T.ring.R (inA.1.1 (f.1.1 x)) (inB.1.1 (g.1.1 x)) =
+    ap (\ h -> h.1.1 x) (TO.hom-eq k K pk T (C.compose K A T inA f) (C.compose K B T inB g) agree-gen) ;
+   module To (D : C.Algebra) {
+    module SD = S.Split[p,q,D] ;
+    pair (d : Sq.Cocone D) : SD.Data = (canonical p A pa.1 D d.1.1,canonical q B pb.1 D d.1.2) ;
+    comb (d : Sq.Cocone D) : W -> D.ring.R = SD.combine (pair d).1.1 (pair d).2.1 ;
+    sol (d : Sq.Cocone D) : Solutions push D = make D (SD.backward (pair d)) (\ v -> calc D.ring.R {
+     eval (Fin p.1) D (\ u -> comb d (lft u)) (eA v).1
+      =< G.eval-ext (Fin p.1) D _ _ (FinSum[l].cases-left p.1 D.ring.R (pair d).1.1 q.1 (pair d).2.1) (eA v).1
+       > eval (Fin p.1) D (\ u -> d.1.1.1.1 (pa.1.1 u)) (eA v).1
+      =< sym (imageA D d.1.1 v) > d.1.1.1.1 (f.1.1 (pk.1.1 v))
+      =< d.2 (pk.1.1 v) > d.1.2.1.1 (g.1.1 (pk.1.1 v))
+      =< imageB D d.1.2 v > eval (Fin q.1) D (\ u -> d.1.2.1.1 (pb.1.1 u)) (eB v).1
+      =< sym (G.eval-ext (Fin q.1) D _ _ (FinSum[l].cases-right p.1 D.ring.R (pair d).1.1 q.1 (pair d).2.1) (eB v).1)
+       > eval (Fin q.1) D (\ u -> comb d (rgt u)) (eB v).1 }) ;
+    backward (d : Sq.Cocone D) : C.Hom T D = (pt.2 D).sec (sol d) ;
+    backward-gen (d : Sq.Cocone D) (w : W) : Id D.ring.R ((backward d).1.1 (pt.1.1 w)) (comb d w) =
+     ap (\ s -> s.1 w) ((pt.2 D).sec-eq (sol d)) ;
+    forward : C.Hom T D -> Sq.Cocone D = Sq.restrict T inA inB agree D ;
+    Maps : U l = C.Hom A D * C.Hom B D ;
+    maps-eq (d : Sq.Cocone D) : Id Maps (forward (backward d)).1 d.1 =
+     Pr.trans Maps _ (d.1.1,(forward (backward d)).1.2) d.1
+      (Pr.ap (C.Hom A D) Maps (\ x -> (x,(forward (backward d)).1.2)) _ _
+       (TO.hom-eq p A pa D _ d.1.1 (\ v ->
+        trans (ap (backward d).1.1 (inA-gen v))
+         (trans (backward-gen d (lft v))
+          (FinSum[l].cases-left p.1 D.ring.R (pair d).1.1 q.1 (pair d).2.1 v)))))
+      (Pr.ap (C.Hom B D) Maps (\ y -> (d.1.1,y)) _ _
+       (TO.hom-eq q B pb D _ d.1.2 (\ v ->
+        trans (ap (backward d).1.1 (inB-gen v))
+         (trans (backward-gen d (rgt v))
+          (FinSum[l].cases-right p.1 D.ring.R (pair d).1.1 q.1 (pair d).2.1 v))))) ;
+    fb (d : Sq.Cocone D) : Id (Sq.Cocone D) (forward (backward d)) d =
+     Pr.Sigma-eq Maps (\ e -> (x : K.ring.R) -> Id D.ring.R (e.1.1.1 (f.1.1 x)) (e.2.1.1 (g.1.1 x)))
+      _ _ _ _ (maps-eq d) (Sq.cocone-prop D d.1) ;
+    bf (h : C.Hom T D) : Id (C.Hom T D) (backward (forward h)) h =
+     TO.hom-eq push T pt D _ h (\ w ->
+      trans (backward-gen (forward h) w)
+       (FinSum[l].cases-unique p.1 D.ring.R (pair (forward h)).1.1 q.1 (pair (forward h)).2.1
+        (\ u -> h.1.1 (pt.1.1 u))
+        (\ v -> ap h.1.1 (inA-gen v)) (\ v -> ap h.1.1 (inB-gen v)) w)) ;
+    universal : Pr.isEquiv (C.Hom T D) (Sq.Cocone D) forward = Pr.qinv _ _ forward backward fb bf ;
+   } ;
+   pushout : Sq.Pushout T = (inA,inB,agree,\ D -> To[D].universal) ;
+  } ;
+  module X = PresentationExistence[l].Over[R,setR,push] ;
+  T : C.Algebra = X.A.algebra ;
+  pushout : Sq.Pushout T = On[T,X.presentation].pushout ;
+ } ;
+ -- finitely presented algebras have a finitely presented pushout
+ Result (A B K : C.Algebra) (f : C.Hom K A) (g : C.Hom K B) : U l+ =
+  (T : C.Algebra) * Square[A,B,K,f,g].Pushout T * FP T ;
+ module Exists (A B K : C.Algebra) (f : C.Hom K A) (g : C.Hom K B) {
+  module Goal = Tr1.Trunc[Result A B K f g] ;
+  Reps (wa : Witness A) (wb : Witness B) (wk : Witness K) : U l =
+   ((v : Fin wk.1.1) -> G.Representation wa.1 A wa.2 (f.1.1 (wk.2.1.1 v))) *
+   ((v : Fin wk.1.1) -> G.Representation wb.1 B wb.2 (g.1.1 (wk.2.1.1 v))) ;
+  build (wa : Witness A) (wb : Witness B) (wk : Witness K) (e : Reps wa wb wk) : Goal.carrier =
+   Goal.inc (Construction[wa.1,wb.1,wk.1,A,B,K,wa.2,wb.2,wk.2,f,g,e.1,e.2].T,
+    Construction[wa.1,wb.1,wk.1,A,B,K,wa.2,wb.2,wk.2,f,g,e.1,e.2].pushout,
+    Construction[wa.1,wb.1,wk.1,A,B,K,wa.2,wb.2,wk.2,f,g,e.1,e.2].X.finitely-presented) ;
+  witnessed (wa : Witness A) (wb : Witness B) (wk : Witness K) : Goal.carrier =
+   Tr.Trunc[(v : Fin wk.1.1) -> G.Representation wa.1 A wa.2 (f.1.1 (wk.2.1.1 v))].induction @(l+)
+    (\ t -> Goal.carrier) (\ t -> Goal.proposition)
+    (\ ea -> Tr.Trunc[(v : Fin wk.1.1) -> G.Representation wb.1 B wb.2 (g.1.1 (wk.2.1.1 v))].induction @(l+)
+     (\ t -> Goal.carrier) (\ t -> Goal.proposition)
+     (\ eb -> build wa wb wk (ea,eb))
+     (G.Generated[wb.1,B,wb.2].generated-family wk.1.1 (\ v -> g.1.1 (wk.2.1.1 v))))
+    (G.Generated[wa.1,A,wa.2].generated-family wk.1.1 (\ v -> f.1.1 (wk.2.1.1 v))) ;
+  exists (fa : FP A) (fb : FP B) (fk : FP K) : Goal.carrier =
+   Tr1.Trunc[Witness A].induction @(l+) (\ t -> Goal.carrier) (\ t -> Goal.proposition) (\ wa ->
+    Tr1.Trunc[Witness B].induction @(l+) (\ t -> Goal.carrier) (\ t -> Goal.proposition) (\ wb ->
+     Tr1.Trunc[Witness K].induction @(l+) (\ t -> Goal.carrier) (\ t -> Goal.proposition) (\ wk ->
+      witnessed wa wb wk) fk) fb) fa ;
+ } ;
+} ;

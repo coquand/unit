@@ -11,11 +11,7 @@ The only hypotheses beyond univalence and replacement are the commutative
 set-ring R, Loc, and uniform SQC. There is no additional wn/root-existence
 axiom and no choice of a coefficient-list representative of an inverse.
 
-Roots.seg, Group.seg and Mul.seg are fixed snapshots of the other worker's
-revised sag/ files, with one provenance comment prepended. Their source
-hashes are recorded in snapshot-sha256.json. Other dependencies are links
-to presentations/, whose Ring/Poly versions are the original fixed snapshots.
-No file in sag/ is modified by this integration.
-
-This isolates the integration check while the other worker continues work.
-It does not change or replace sag/'s own entry point.
+Roots.seg, Group.seg and Mul.seg are links to sag/ (they were snapshots
+while sag/ was still being revised; sag/ is unchanged since). Other
+dependencies are links to presentations/. No file in sag/ is modified by
+this integration, and it does not change or replace sag/'s own entry point.

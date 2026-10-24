@@ -1,0 +1,219 @@
+-- Rank-one affine Horrocks over any commutative ring, by the divisor
+-- argument (Remark 11 of seg/notes/horrocks-divisor.tex).
+-- At a node of the radical/unit tree, with ring C, the retraction rho of
+-- the row ideal L is built from the certificate (DivisorSplitting), and
+-- for a monic F in L the locality-free part of DivisorStep.Stable gives mu
+-- with mu - 1 in J killing M_F. Testing mu on the tree: where mu becomes a
+-- unit, F generates L; where mu falls in the radical, mu - 1 is a unit, so
+-- L has a monic of degree one less, and we recurse. The leaves are glued
+-- by the assembly of HorrocksProof, which is reused unchanged. There is no
+-- formal gcd and no lifting of monic polynomials modulo a radical.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Mat = RankOneProjector[l].Over[B.ring] ;
+ module SB = FiniteIdeal[l].Sums[B.ring] ;
+ module PB = AffinePowers[l].Over[B.ring] ;
+ module T = FormalMonoidTree[l].Over[A,setA] ;
+ module Ar = MonoidNodeArrows[l].Over[A,setA] ;
+ module Trees = FormalTreeCover[l].Over[A,setA] ;
+ module Test = FiniteCoefficientTest[l].Over[A,setA] ;
+ module HP = HorrocksProof[l].Over[A,setA] ;
+ module Reps = PolynomialRepresentatives[l].Over[A,setA] ;
+ module Given (lower : List A.R) (power : Nat) (n : Nat) (e : Mat.Size[n].Matrix)
+  (ys : Fin n -> List A.R) (x : Fin n -> B.Carrier)
+  (xy : (i j : Fin n) -> Id B.Carrier (B.mulQ (x i) (B.include (ys j)))
+   (B.mulQ (PB.power (H.monic lower) power) (e i j)))
+  (contraction : Id B.Carrier (SB.lin n (\ i -> B.include (ys i)) x) (PB.power (H.monic lower) power)) {
+  module G = HP.Given[lower,power,n,e,ys,x,xy,contraction] ;
+  module Row = FormalRowIdeal[l].Over[A,setA,n,ys] ;
+  module Cover = G.Cover ;
+  -- The retraction at a node, built once from the certificate moved there.
+  module Node (state : T.State) {
+   module Rw = Row.At[state] ;
+   module LC = G.Leaf[state].LC ;
+   module Cert = G.Leaf[state].Cert ;
+   module DSp = DivisorSplitting[l].Over[Rw.C,Rw.setC] ;
+   module DSt = DivisorStep[l].Over[Rw.C,Rw.setC] ;
+   module SD = FiniteIdeal[l].Sums[Rw.B.ring] ;
+   regular : Regularity[l].Over[Rw.B.ring].Regular Cert.tC =
+    MonicRegular[l].Over[Rw.C,Rw.setC].At[LC.Change.coefficients lower].power-regular power ;
+   module Sc = DSp.FromScalar[n,Cert.Moved.entries,Cert.tC,regular,Cert.wC.1,Rw.y,
+    Cert.wC.2.2.1,Cert.wC.2.2.2] ;
+   module Sp = DSp.Data[n,Rw.y,Cert.Moved.entries,Sc.exchange,Sc.trace] ;
+   generated : Id Rw.B.Carrier (SD.lin n Rw.y (\ i -> LC.hom (x i)))
+    (Rw.H.monic (LC.Change.coefficients Cert.mp.1)) =
+    trans (sym (LC.Map.combination n LC.yB x))
+     (trans (ap LC.hom contraction) (trans (ap LC.hom (sym Cert.mp.2)) (LC.Change.monic Cert.mp.1))) ;
+   module R0 = Sp.At[LC.Change.coefficients Cert.mp.1,\ i -> LC.hom (x i),generated] ;
+   module Rt = DSt.Retract[Sp.Lid,R0.rho,R0.rho-add,R0.rho-scale,R0.rho-zero,R0.rho-in,R0.rho-fixes] ;
+  } ;
+  -- A monic member of the row ideal dividing every y_i is a leaf.
+  leaf (state : T.State) (h-lower : List Ar.At[state].C.R)
+   (member : Row.At[state].I.1 (Row.At[state].H.monic h-lower))
+   (q : Fin n -> Row.At[state].B.Carrier)
+   (dq : (i : Fin n) -> Id Row.At[state].B.Carrier (Row.At[state].y i)
+    (Row.At[state].B.mulQ (Row.At[state].H.monic h-lower) (q i))) : Cover.Cover state =
+   Tr.Trunc[Row.At[state].Row.Witness (Row.At[state].H.monic h-lower)].induction @l
+    (\ t -> Cover.Cover state) (\ t -> Tr.Trunc[Cover.Witness state].proposition)
+    (\ c -> Cover.immediate state (h-lower,c.1,q,
+      trans (sym (RL[Row.At[state].B.ring].zl (Node[state].SD.lin n (Row.At[state].y) c.1))) (sym c.2),dq))
+    member ;
+  Statement (d : Nat) : U l =
+   (state : T.State) (h-lower : List Ar.At[state].C.R) -> Id Nat (len h-lower) d ->
+   Row.At[state].I.1 (Row.At[state].H.monic h-lower) -> Cover.Cover state ;
+  -- Degree zero: F = 1 divides everything.
+  module Bottom (state : T.State) (member : Row.At[state].I.1 (Row.At[state].H.monic nil)) {
+   module Nd = Node[state] ;
+   divides (i : Fin n) : Nd.DSt.MG.Divides (Nd.Rw.H.monic nil) (Nd.Rw.y i) =
+    Nd.Rt.bottom member (Nd.Rw.y i) (Nd.Rw.Row.generator i) ;
+   result : Cover.Cover state = leaf state nil member (\ i -> (divides i).1) (\ i -> (divides i).2) ;
+  } ;
+  -- Positive degree: test mu on the tree.
+  module Step (d : Nat) (ih : Statement d) (state : T.State) (a0 : Ar.At[state].C.R)
+   (rest : List Ar.At[state].C.R) (el : Id Nat (len rest) d)
+   (member : Row.At[state].I.1 (Row.At[state].H.monic (cons a0 rest))) {
+   module Nd = Node[state] ;
+   module Rw = Nd.Rw ;
+   module At = Nd.Rt.At[cons a0 rest,member] ;
+   module St = Nd.DSt.Stable[a0,rest,At.InM,At.bounded,At.pi,At.pi-add,At.pi-scale,At.pi-zero,
+    At.pi-in,At.pi-fixes,At.shift] ;
+   mu : Rw.C.R = St.mu ;
+   j : Rw.C.R = Rw.C.add mu (Rw.C.neg Rw.C.o) ;
+   module Tested = Test.Input[state,suc zero,\ i -> mu] ;
+   module To (target : T.State) (arrow : Ar.Between[state,target].Arrow) {
+    module Tf = Row.Transfer[state,target,arrow] ;
+    module Dst = Row.At[target] ;
+    module Mo = Tf.Monic[cons a0 rest,member] ;
+    module DR = RL[Dst.C] ;
+    module TB = RL[Dst.B.ring] ;
+    h (p : Rw.B.Carrier) : Dst.B.Carrier = Tf.Change.hom.1 p ;
+    -- mu a unit: F divides every y_i.
+    module Unit (u : DR.unit (arrow.hom.1 mu)) {
+     m : Dst.C.R = arrow.hom.1 mu ;
+     r (i : Fin n) : Rw.B.Carrier = At.D.remainder (Rw.y i) ;
+     r-in (i : Fin n) : At.InM (r i) = At.remainder-in (Rw.y i) (Rw.Row.generator i) ;
+     kills (i : Fin n) : Id Dst.B.Carrier (Dst.B.mulQ (Dst.B.constant m) (h (r i))) Dst.B.zeroQ =
+      trans (ap (\ c -> Dst.B.mulQ c (h (r i))) (sym (Tf.Change.Extension.on-constants mu)))
+       (trans (sym (Tf.Change.hom.2.2.2 (Rw.B.constant mu) (r i)))
+        (trans (ap h (St.kills-M (r i) (r-in i))) (RingHom[l].zero Rw.B.ring Dst.B.ring Tf.Change.hom))) ;
+     zero (i : Fin n) : Id Dst.B.Carrier (h (r i)) Dst.B.zeroQ =
+      trans (sym (TB.one-left (h (r i))))
+       (trans (ap (\ c -> Dst.B.mulQ c (h (r i)))
+         (trans (sym (ap Dst.B.constant u.2))
+          (trans (Dst.B.constant-mul m u.1) (Dst.B.ring.mulC (Dst.B.constant m) (Dst.B.constant u.1)))))
+        (trans (sym (Dst.B.ring.mulA (Dst.B.constant u.1) (Dst.B.constant m) (h (r i))))
+         (trans (ap (Dst.B.mulQ (Dst.B.constant u.1)) (kills i)) (TB.mul-zero (Dst.B.constant u.1))))) ;
+     q (i : Fin n) : Dst.B.Carrier = h (At.D.quotient (Rw.y i)) ;
+     dq (i : Fin n) : Id Dst.B.Carrier (Dst.y i) (Dst.B.mulQ (Dst.H.monic Mo.new-lower) (q i)) =
+      trans (sym (Tf.generator i))
+       (trans (ap h (At.D.equation (Rw.y i)))
+        (trans (Tf.Change.hom.2.2.1 (Rw.B.mulQ At.F (At.D.quotient (Rw.y i))) (r i))
+         (trans (cong2 Dst.B.Carrier Dst.B.addQ _ _ _ _
+           (trans (Tf.Change.hom.2.2.2 At.F (At.D.quotient (Rw.y i)))
+            (ap (\ f -> Dst.B.mulQ f (q i)) (Tf.Change.monic (cons a0 rest))))
+           (zero i))
+          (Dst.B.add-zero (Dst.B.mulQ (Dst.H.monic Mo.new-lower) (q i)))))) ;
+     result : Cover.Cover target = leaf target Mo.new-lower Mo.new-member q dq ;
+    } ;
+    -- mu in the radical: mu - 1 is a unit, and L has a monic of degree d.
+    module Radical (rad : Ar.At[target].J.Member (arrow.hom.1 mu)) {
+     one-minus : DR.unit (Dst.C.add Dst.C.o (Dst.C.neg (arrow.hom.1 mu))) = Dst.radical (arrow.hom.1 mu) rad ;
+     image-j : Id Dst.C.R (arrow.hom.1 j) (Dst.C.add (arrow.hom.1 mu) (Dst.C.neg Dst.C.o)) =
+      trans (arrow.hom.2.2.1 mu (Rw.C.neg Rw.C.o))
+       (ap (Dst.C.add (arrow.hom.1 mu))
+        (trans (RingHom[l].negation Rw.C Dst.C arrow.hom Rw.C.o) (ap Dst.C.neg arrow.hom.2.1))) ;
+     -- -(1 - m) = m - 1.
+     j-unit : DR.unit (arrow.hom.1 j) =
+      let { v : Dst.C.R = Dst.C.add Dst.C.o (Dst.C.neg (arrow.hom.1 mu)) ;
+       neg-v : Id Dst.C.R (Dst.C.neg v) (arrow.hom.1 j) =
+        trans (DR.negsub Dst.C.o (arrow.hom.1 mu))
+         (trans (Dst.C.addC (Dst.C.neg Dst.C.o) (arrow.hom.1 mu)) (sym image-j)) ;
+      } in Pr.subst Dst.C.R DR.unit (Dst.C.neg v) (arrow.hom.1 j) neg-v
+       (Dst.C.neg one-minus.1,
+        trans (DR.mul-neg (Dst.C.neg v) one-minus.1)
+         (trans (ap Dst.C.neg (DR.neg-mul-left v one-minus.1))
+          (trans (DR.neg-neg (Dst.C.mul v one-minus.1)) one-minus.2))) ;
+     module With (gamma : Fin St.d -> Rw.C.R) (jg : Id Rw.C.R j (Rw.C.add Rw.C.z (Nd.DSt.SA.lin St.d St.top gamma))) {
+      module Tp = St.Top[j,gamma,jg] ;
+      module Raw (p : Rw.P.P) (rep : Id Rw.B.Carrier (Rw.B.include p) Tp.W) {
+       p-member : Rw.I.1 (Rw.B.include p) = Rw.Row.equal _ _ (sym rep) Tp.W-in.1 ;
+       coef-p (k : Nat) : Id Rw.C.R (Rw.P.coef p k) (Nd.DSt.Red.coef Tp.W k) =
+        trans (sym (Nd.DSt.Red.coef-include p k)) (ap (\ v -> Nd.DSt.Red.coef v k) rep) ;
+       p' : Dst.P.P = Tf.Change.coefficients p ;
+       p'-member : Dst.I.1 (Dst.B.include p') = Tf.raw-member p p-member ;
+       top-unit : DR.unit (Dst.P.coef p' (len rest)) =
+        Pr.subst Dst.C.R DR.unit (arrow.hom.1 j) (Dst.P.coef p' (len rest))
+         (sym (trans (Tf.Change.coefficient-map p (len rest))
+          (ap arrow.hom.1 (trans (coef-p (len rest)) Tp.W-top)))) j-unit ;
+       bound (k : Nat) : Id Dst.Rad.C.R (Dst.Rad.phi.1 (Dst.P.coef p' (plus (suc (len rest)) k))) Dst.Rad.C.z =
+        trans (ap Dst.Rad.phi.1 (Tf.Change.coefficient-map p (plus (suc (len rest)) k)))
+         (trans (ap (\ c -> Dst.Rad.phi.1 (arrow.hom.1 c))
+           (trans (coef-p (plus (suc (len rest)) k)) (Tp.W-in.2 k)))
+          (trans (ap Dst.Rad.phi.1 (RingHom[l].zero Rw.C Dst.C arrow.hom))
+           (RingHom[l].zero Dst.C Dst.Rad.C Dst.Rad.phi))) ;
+       module Calc = MonicDegreeDrop[l].Over[Dst.C,Dst.Rad.C,Dst.setC,Dst.Rad.phi,
+        Dst.Rad.At[Dst.radical].Kernel.lift-unit].At[
+        Dst.I,Mo.new-lower,Mo.new-member,p',p'-member,len rest,top-unit,bound] ;
+       result : Cover.Cover target = ih target Calc.new-lower (trans Calc.degree el) Calc.new-member ;
+      } ;
+      result : Cover.Cover target =
+       Tr.Trunc[(p : Rw.P.P) * Id Rw.B.Carrier (Rw.B.include p) Tp.W].induction @l
+        (\ t -> Cover.Cover target) (\ t -> Tr.Trunc[Cover.Witness target].proposition)
+        (\ w -> Raw[w.1,w.2].result) (Nd.DSt.raw-representative Tp.W) ;
+     } ;
+     result : Cover.Cover target =
+      Tr.Trunc[St.JG.G.Witness j].induction @l
+       (\ t -> Cover.Cover target) (\ t -> Tr.Trunc[Cover.Witness target].proposition)
+       (\ g -> With[g.1,g.2].result) St.killer.2.1 ;
+    } ;
+    cases : Tested.At[target,arrow].Result -> Cover.Cover target = split {
+     inl all -> Radical[all (inr tt)].result ;
+     inr unit -> Unit[unit.2].result } ;
+   } ;
+   process (target : T.State) (w : Tested.Outcome target) : Cover.Cover target = To[target,w.1].cases w.2 ;
+   module Chain = Trees.Bind[Tested.Outcome,G.LeafData,process] ;
+   result : Cover.Cover state = Chain.bind state (Test.test (suc zero) state (\ i -> mu)) ;
+  } ;
+  cover : (d : Nat) -> Statement d = split {
+   zero -> \ state -> split {
+    nil -> \ el member -> Bottom[state,member].result ;
+    cons a rest -> \ el member -> efq (suc-zero (len rest) el) } ;
+   suc d | ih -> \ state -> split {
+    nil -> \ el member -> efq (zero-suc d el) ;
+    cons a rest -> \ el member -> Step[d,ih,state,a,rest,suc-inj el,member].result } } ;
+  covered : Cover.Cover T.root =
+   cover (len (G.Root.LC.Change.coefficients G.Root.Cert.mp.1)) T.root
+    (G.Root.LC.Change.coefficients G.Root.Cert.mp.1) (refl (len (G.Root.LC.Change.coefficients G.Root.Cert.mp.1)))
+    G.Root.Cert.monic-member ;
+  free : Mat.Size[n].Free e =
+   TC.bind (Cover.Witness T.root) (Mat.Size[n].Factors e)
+    (\ w -> G.Assemble[w.1,w.2].free) covered ;
+ } ;
+ -- Replace the row vector by chosen coefficient lists.
+ module FromCertificate (lower : List A.R) (n : Nat) (e : Mat.Size[n].Matrix)
+  (w : Mat.Size[n].LocalFactors e (H.monic lower)) {
+  power : Nat = w.1 ;
+  F : B.Carrier = PB.power (H.monic lower) power ;
+  x : Mat.Size[n].Vector = w.2.1 ;
+  module Chosen (reps : (i : Fin n) -> Reps.Witness (w.2.2.1 i)) {
+   ys (i : Fin n) : List A.R = (reps i).1 ;
+   xy (i j : Fin n) : Id B.Carrier (B.mulQ (x i) (B.include (ys j))) (B.mulQ F (e i j)) =
+    trans (ap (B.mulQ (x i)) (reps j).2) (w.2.2.2.1 i j) ;
+   contraction : Id B.Carrier (SB.lin n (\ i -> B.include (ys i)) x) F =
+    trans (SB.sum-cong n (\ i -> B.mulQ (B.include (ys i)) (x i)) (\ i -> B.mulQ (w.2.2.1 i) (x i))
+      (\ i -> ap (\ c -> B.mulQ c (x i)) (reps i).2))
+     w.2.2.2.2 ;
+   free : Mat.Size[n].Free e = Given[lower,power,n,e,ys,x,xy,contraction].free ;
+  } ;
+  free : Mat.Size[n].Free e =
+   TC.bind ((i : Fin n) -> Reps.Witness (w.2.2.1 i)) (Mat.Size[n].Factors e)
+    (\ reps -> Chosen[reps].free)
+    (AffineFinite[l].choice n (\ i -> Reps.Witness (w.2.2.1 i)) (\ i -> Reps.choose (w.2.2.1 i))) ;
+ } ;
+ horrocks : H.Horrocks = \ lower n e local ->
+  TC.bind (Mat.Size[n].LocalFactors e.entry (H.monic lower)) (Mat.Size[n].Factors e.entry)
+   (\ w -> FromCertificate[lower,n,e.entry,w].free) local ;
+} ;

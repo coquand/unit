@@ -1,0 +1,86 @@
+-- Maps are classified by their families of fibres, using univalence.
+-- The structured version restricts this equivalence to any proposition-valued
+-- class of small types closed under the relevant totals and fibres.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Hi = Prelude[l+] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module FH = Axioms[l+].FunExtLemmas[fe @l+] ;
+module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
+module M = SchemeMaps[l] ;
+eqind (A : U l) (P : (B : U l) -> Pr.Equiv A B -> U l+) (d : P A (Pr.idEquiv A))
+ (B : U l) (e : Pr.Equiv A B) : P B e =
+ Hi.subst (Pr.Equiv A B) (P B) (Axioms[l].idtoeqv A B ((univ @l A B).sec e)) e
+  ((univ @l A B).sec-eq e)
+  (idJ (U l) A (\ T p -> P T (Axioms[l].idtoeqv A T p)) d B ((univ @l A B).sec e)) ;
+module Over (X : U l) {
+ Maps : U l+ = (Y : U l) * (Y -> X) ;
+ Families : U l+ = X -> U l ;
+ fiber (m : Maps) (x : X) : U l = M.Fiber m.1 X m.2 x ;
+ forward (m : Maps) : Families = fiber m ;
+ backward (B : Families) : Maps = ((x : X) * B x,\ t -> t.1) ;
+ module MapPath (Y : U l) (f : Y -> X) {
+  Motive (Z : U l) (e : Pr.Equiv Y Z) : U l+ =
+   (g : Z -> X) -> ((y : Y) -> Id X (g (e.1 y)) (f y)) -> Id Maps (Y,f) (Z,g) ;
+  base : Motive Y (Pr.idEquiv Y) = \ g h ->
+   Hi.ap (Y -> X) Maps (\ k -> (Y,k)) f g
+    (sym (F.funext Y (\ y -> X) g f h)) ;
+  equality (Z : U l) (e : Pr.Equiv Y Z) : Motive Z e = eqind Y Motive base Z e ;
+ } ;
+ module Projection (B : Families) (x : X) {
+  Total : U l = (y : X) * B y ;
+  Fiber : U l = M.Fiber Total X (\ t -> t.1) x ;
+  to (w : Fiber) : B x = Pr.subst X B w.1.1 x w.2 w.1.2 ;
+  from (b : B x) : Fiber = ((x,b),refl x) ;
+  fb (b : B x) : Id (B x) (to (from b)) b = refl b ;
+  eta (t : Total) (y : X) (p : Id X t.1 y) :
+   Id (M.Fiber Total X (\ t -> t.1) y)
+    ((y,Pr.subst X B t.1 y p t.2),refl y) (t,p) =
+   idJ X t.1 (\ y p ->
+    Id (M.Fiber Total X (\ t -> t.1) y)
+     ((y,Pr.subst X B t.1 y p t.2),refl y) (t,p))
+    (refl (t,refl t.1)) y p ;
+  bf (w : Fiber) : Id Fiber (from (to w)) w = eta w.1 x w.2 ;
+  equivalence : Pr.Equiv Fiber (B x) = (to,Pr.qinv Fiber (B x) to from fb bf) ;
+ } ;
+ module TotalFibers (m : Maps) {
+  Total : U l = (x : X) * fiber m x ;
+  to (w : Total) : m.1 = w.2.1 ;
+  from (y : m.1) : Total = (m.2 y,y,refl (m.2 y)) ;
+  fb (y : m.1) : Id m.1 (to (from y)) y = refl y ;
+  eta (y : m.1) (x : X) (p : Id X (m.2 y) x) :
+   Id Total (from y) (x,y,p) =
+   idJ X (m.2 y) (\ x p -> Id Total (from y) (x,y,p)) (refl (from y)) x p ;
+  bf (w : Total) : Id Total (from (to w)) w = eta w.2.1 w.1 w.2.2 ;
+  equivalence : Pr.Equiv Total m.1 = (to,Pr.qinv Total m.1 to from fb bf) ;
+ } ;
+ fb (B : Families) : Id Families (forward (backward B)) B =
+  FH.funext X (\ x -> U l) _ B (\ x -> UA.ua _ _ Projection[B,x].equivalence) ;
+ bf (m : Maps) : Id Maps (backward (forward m)) m =
+  MapPath[TotalFibers[m].Total,\ t -> t.1].equality m.1 TotalFibers[m].equivalence m.2
+   (\ w -> w.2.2) ;
+ equivalence : Hi.Equiv Maps Families = (forward,Hi.qinv Maps Families forward backward fb bf) ;
+ module Structured (P : U l -> U l) (prop : (Y : U l) -> Pr.isProp (P Y))
+  (totals : (B : X -> U l) -> ((x : X) -> P (B x)) -> P ((x : X) * B x))
+  (fibres : (Y : U l) -> P Y -> (f : Y -> X) -> (x : X) -> P (M.Fiber Y X f x)) {
+  Objects : U l+ = (Y : U l) * P Y ;
+  Arrows : U l+ = (Y : Objects) * (Y.1 -> X) ;
+  Indexed : U l+ = X -> Objects ;
+  to (m : Arrows) (x : X) : Objects = (M.Fiber m.1.1 X m.2 x,fibres m.1.1 m.1.2 m.2 x) ;
+  from (B : Indexed) : Arrows = (((x : X) * (B x).1,totals (\ x -> (B x).1) (\ x -> (B x).2)),\ t -> t.1) ;
+  Decorated : U l+ = (m : Maps) * P m.1 ;
+  encode (m : Arrows) : Decorated = ((m.1.1,m.2),m.1.2) ;
+  decode (d : Decorated) : Arrows = ((d.1.1,d.2),d.1.2) ;
+  arrow-path (m n : Arrows) (e : Pr.Equiv m.1.1 n.1.1)
+   (commutes : (y : m.1.1) -> Id X (n.2 (e.1 y)) (m.2 y)) : Id Arrows m n =
+   Hi.ap Decorated Arrows decode (encode m) (encode n)
+    (Hi.Sigma-eq Maps (\ d -> P d.1) (encode m).1 (encode n).1 (encode m).2 (encode n).2
+     (MapPath[m.1.1,m.2].equality n.1.1 e n.2 commutes) (prop n.1.1)) ;
+  to-from (B : Indexed) : Id Indexed (to (from B)) B =
+   FH.funext X (\ x -> Objects) _ B
+    (\ x -> Hi.Sigma-eq (U l) (\ Y -> P Y) _ _ _ _
+     (UA.ua _ _ Projection[\ x -> (B x).1,x].equivalence) (prop (B x).1)) ;
+  from-to (m : Arrows) : Id Arrows (from (to m)) m =
+   arrow-path (from (to m)) m TotalFibers[(m.1.1,m.2)].equivalence (\ w -> w.2.2) ;
+  classification : Hi.Equiv Arrows Indexed = (to,Hi.qinv Arrows Indexed to from to-from from-to) ;
+ } ;
+} ;

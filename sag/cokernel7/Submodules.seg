@@ -1,0 +1,93 @@
+-- Linear maps, submodules, kernels and images, for modules of torsor/Alg73
+-- over any commutative ring Rg.  A submodule is a proposition-valued
+-- predicate closed under the module operations; its elements form a module.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module A7 = Alg73[l] ; module Tr = Truncation[l] ;
+record Submodule (Rg : A7.CRing) (P : A7.Mod[Rg]) {
+ S : P.M -> U l ;
+ prop (x : P.M) : isProp (S x) ;
+ zero : S P.mz ;
+ add (x y : P.M) : S x -> S y -> S (P.madd x y) ;
+ neg (x : P.M) : S x -> S (P.mneg x) ;
+ scale (a : Rg.R) (x : P.M) : S x -> S (P.sm a x) ;
+} ;
+module Over (Rg : A7.CRing) {
+ Module : U l+ = A7.Mod[Rg] ;
+ Linear (P Q : Module) : U l = (f : P.M -> Q.M)
+  * ((x y : P.M) -> Id Q.M (f (P.madd x y)) (Q.madd (f x) (f y)))
+  * ((a : Rg.R) (x : P.M) -> Id Q.M (f (P.sm a x)) (Q.sm a (f x))) ;
+ module Lin (P Q : Module) (f : Linear P Q) {
+  module MQ = A7.MA[Rg,Q] ;
+  map-z : Id Q.M (f.1 P.mz) Q.mz = MQ.madd-cancel (f.1 P.mz) (f.1 P.mz)
+   (transH (symH (f.2.1 P.mz P.mz)) (apH f.1 (P.maddZ P.mz))) ;
+  map-neg (x : P.M) : Id Q.M (f.1 (P.mneg x)) (Q.mneg (f.1 x)) = MQ.mneg-uniq (f.1 x) (f.1 (P.mneg x))
+   (transH (symH (f.2.1 x (P.mneg x))) (transH (apH f.1 (P.maddN x)) map-z)) ;
+  map-sub (x y : P.M) : Id Q.M (f.1 (A7.MA[Rg,P].sub x y)) (MQ.sub (f.1 x) (f.1 y)) =
+   transH (f.2.1 x (P.mneg y)) (apH (Q.madd (f.1 x)) (map-neg y)) ;
+ } ;
+ -- the elements of a submodule, as a module
+ module Sub (P : Module) (K : Submodule[Rg,P]) {
+  E : U l = (x : P.M) * K.S x ;
+  eq (u v : E) (h : Id P.M u.1 v.1) : Id E u v = Sigma-eq P.M K.S u.1 v.1 u.2 v.2 h (K.prop v.1) ;
+  carrier : Module = new A7.Mod[Rg,E,
+   isSet-Sigma P.M K.S P.setM (\ x -> prop-to-set (K.S x) (K.prop x)),
+   (P.mz,K.zero),
+   \ u v -> (P.madd u.1 v.1,K.add u.1 v.1 u.2 v.2),
+   \ u -> (P.mneg u.1,K.neg u.1 u.2),
+   \ u v w -> eq _ _ (P.maddA u.1 v.1 w.1),
+   \ u v -> eq _ _ (P.maddC u.1 v.1),
+   \ u -> eq _ _ (P.maddZ u.1),
+   \ u -> eq _ _ (P.maddN u.1),
+   \ a u -> (P.sm a u.1,K.scale a u.1 u.2),
+   \ a b u -> eq _ _ (P.smA a b u.1),
+   \ u -> eq _ _ (P.smO u.1),
+   \ a u v -> eq _ _ (P.smD a u.1 v.1),
+   \ a b u -> eq _ _ (P.smE a b u.1)] ;
+ } ;
+ module Kernel (P Q : Module) (f : Linear P Q) {
+  module L = Lin[P,Q,f] ;
+  module MQ = A7.MA[Rg,Q] ;
+  S (x : P.M) : U l = Id Q.M (f.1 x) Q.mz ;
+  sub : Submodule[Rg,P] = new Submodule[Rg,P,S,
+   \ x -> Q.setM _ _,
+   L.map-z,
+   \ x y hx hy -> transH (f.2.1 x y) (transH (apH (\ t -> Q.madd t (f.1 y)) hx)
+    (transH (apH (Q.madd Q.mz) hy) (Q.maddZ Q.mz))),
+   \ x hx -> transH (L.map-neg x) (transH (apH Q.mneg hx) MQ.mneg-z),
+   \ a x hx -> transH (f.2.2 a x) (transH (apH (Q.sm a) hx) (MQ.sm-zr a))] ;
+ } ;
+ module Image (P Q : Module) (f : Linear P Q) {
+  module L = Lin[P,Q,f] ;
+  Fib (y : Q.M) : U l = (x : P.M) * Id Q.M (f.1 x) y ;
+  S (y : Q.M) : U l = Tr.Trunc[Fib y].carrier ;
+  -- a closure step for one argument
+  one (y : Q.M) (g : P.M -> P.M) (h : Q.M -> Q.M)
+   (law : (x : P.M) -> Id Q.M (f.1 (g x)) (h (f.1 x))) (u : S y) : S (h y) =
+   Tr.Trunc[Fib y].induction @l (\ t -> S (h y)) (\ t -> Tr.Trunc[Fib (h y)].proposition)
+    (\ w -> Tr.Trunc[Fib (h y)].inc (g w.1,transH (law w.1) (apH h w.2))) u ;
+  add (y z : Q.M) (u : S y) (v : S z) : S (Q.madd y z) =
+   Tr.Trunc[Fib y].induction @l (\ t -> S (Q.madd y z)) (\ t -> Tr.Trunc[Fib (Q.madd y z)].proposition)
+    (\ w -> one z (P.madd w.1) (Q.madd y) (\ x -> transH (f.2.1 w.1 x) (apH (\ t -> Q.madd t (f.1 x)) w.2)) v) u ;
+  sub : Submodule[Rg,Q] = new Submodule[Rg,Q,S,
+   \ y -> Tr.Trunc[Fib y].proposition,
+   Tr.Trunc[Fib Q.mz].inc (P.mz,L.map-z),
+   add,
+   \ y u -> one y P.mneg Q.mneg L.map-neg u,
+   \ a y u -> one y (P.sm a) (Q.sm a) (f.2.2 a) u] ;
+  module I = Sub[Q,sub] ;
+  -- f onto its image
+  onto : Linear P I.carrier =
+   (\ x -> (f.1 x,Tr.Trunc[Fib (f.1 x)].inc (x,refl (f.1 x))),
+    \ x y -> I.eq _ _ (f.2.1 x y),
+    \ a x -> I.eq _ _ (f.2.2 a x)) ;
+  onto-surjective (y : I.E) : Tr.Trunc[(x : P.M) * Id I.E (onto.1 x) y].carrier =
+   Tr.Trunc[Fib y.1].induction @l (\ t -> Tr.Trunc[(x : P.M) * Id I.E (onto.1 x) y].carrier)
+    (\ t -> Tr.Trunc[(x : P.M) * Id I.E (onto.1 x) y].proposition)
+    (\ w -> Tr.Trunc[(x : P.M) * Id I.E (onto.1 x) y].inc (w.1,I.eq _ _ w.2)) y.2 ;
+  -- the kernel of onto is the kernel of f
+  onto-kernel (x : P.M) (h : Id I.E (onto.1 x) (Q.mz,sub.zero)) : Id Q.M (f.1 x) Q.mz =
+   apH (\ u -> u.1) h ;
+  kernel-onto (x : P.M) (h : Id Q.M (f.1 x) Q.mz) : Id I.E (onto.1 x) (Q.mz,sub.zero) =
+   I.eq _ _ h ;
+ } ;
+} ;

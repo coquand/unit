@@ -1,0 +1,68 @@
+-- A terminating, top-down coefficient scan over the formal tree.
+-- It finds a polynomial with invertible highest surviving coefficient,
+-- or certifies that all input polynomials vanish modulo the radical.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ module T = FormalMonoidTree[l].Over[A,setA] ;
+ module Ar = MonoidNodeArrows[l].Over[A,setA] ;
+ module Trees = FormalTreeCover[l].Over[A,setA] ;
+ module Test = FiniteCoefficientTest[l].Over[A,setA] ;
+ module CB = CoefficientBound[l] ;
+ module FB = FiniteBounds[l] ;
+ module Input (state : T.State) (n d : Nat) (coefficients : Fin n -> Nat -> Ar.At[state].C.R) {
+  High : U l = (i : Fin n) (k : Nat) -> Ar.At[state].J.Member (coefficients i (plus d k)) ;
+  module At (target : T.State) (arrow : Ar.Between[state,target].Arrow) {
+   AllRadical : U l = (i : Fin n) (k : Nat) ->
+    Ar.At[target].J.Member (arrow.hom.1 (coefficients i k)) ;
+   HasTop : U l = (i : Fin n) * (r : Nat) * CB.le (suc r) d *
+    RL[Ar.At[target].C].unit (arrow.hom.1 (coefficients i r)) *
+    ((k : Nat) -> Ar.At[target].J.Member (arrow.hom.1 (coefficients i (plus (suc r) k)))) ;
+   Result : U l = Plus AllRadical HasTop ;
+  } ;
+  Outcome (target : T.State) : U l = (arrow : Ar.Between[state,target].Arrow) * At[target,arrow].Result ;
+  module Cover = Trees.For[Outcome] ;
+ } ;
+ Statement (d : Nat) : U l =
+  (state : T.State) (n : Nat) (coefficients : Fin n -> Nat -> Ar.At[state].C.R) ->
+  Input[state,n,d,coefficients].High -> Input[state,n,d,coefficients].Cover.Cover state ;
+ module Step (d : Nat) (ih : Statement d) (state : T.State) (n : Nat)
+  (coefficients : Fin n -> Nat -> Ar.At[state].C.R) (high : Input[state,n,suc d,coefficients].High) {
+  module Current = Input[state,n,suc d,coefficients] ;
+  top (i : Fin n) : Ar.At[state].C.R = coefficients i d ;
+  module Tested = Test.Input[state,n,top] ;
+  module At (target : T.State) (arrow : Ar.Between[state,target].Arrow) {
+   mapped (i : Fin n) (k : Nat) : Ar.At[target].C.R = arrow.hom.1 (coefficients i k) ;
+   module Smaller = Input[target,n,d,mapped] ;
+   module Continue (all : Tested.At[target,arrow].AllRadical) {
+    lower-high (i : Fin n) : (k : Nat) -> Ar.At[target].J.Member (mapped i (plus d k)) = split {
+     zero -> Ar.At[target].J.equal _ _ (ap (mapped i) (sym (plus-zero d))) (all i) ;
+     suc k -> Ar.At[target].J.equal _ _ (ap (mapped i) (sym (plus-suc d k)))
+      (arrow.radical (coefficients i (suc (plus d k))) (high i k)) } ;
+    module Extend (leaf-state : T.State) (next : Ar.Between[target,leaf-state].Arrow) {
+     composite : Ar.Between[state,leaf-state].Arrow = Ar.compose state target leaf-state next arrow ;
+     cases : Smaller.At[leaf-state,next].Result -> Current.At[leaf-state,composite].Result = split {
+      inl h -> inl h ;
+      inr h -> inr (h.1,h.2.1,FB.le-step (suc h.2.1) d h.2.2.1,h.2.2.2.1,h.2.2.2.2) } ;
+    } ;
+    extend (leaf-state : T.State) (w : Smaller.Outcome leaf-state) : Current.Outcome leaf-state =
+     (Extend[leaf-state,w.1].composite,Extend[leaf-state,w.1].cases w.2) ;
+    module Lift = Trees.Map[Smaller.Outcome,Current.Outcome,extend] ;
+    result : Current.Cover.Cover target = Lift.map target (ih target n mapped lower-high) ;
+   } ;
+   top-result (h : Tested.At[target,arrow].HasUnit) : Current.Cover.Cover target =
+    Current.Cover.immediate target
+     (arrow,inr (h.1,d,FB.le-refl (suc d),h.2,
+      \ k -> arrow.radical (coefficients h.1 (plus (suc d) k)) (high h.1 k))) ;
+   cases : Tested.At[target,arrow].Result -> Current.Cover.Cover target = split {
+    inl h -> Continue[h].result ; inr h -> top-result h } ;
+  } ;
+  process (target : T.State) (w : Tested.Outcome target) : Current.Cover.Cover target =
+   At[target,w.1].cases w.2 ;
+  module Chain = Trees.Bind[Tested.Outcome,Current.Outcome,process] ;
+  result : Current.Cover.Cover state = Chain.bind state (Test.test n state top) ;
+ } ;
+ scan : (d : Nat) -> Statement d = split {
+  zero -> \ state n coefficients high ->
+   Input[state,n,zero,coefficients].Cover.immediate state (Ar.identity state,inl high) ;
+  suc d | ih -> \ state n coefficients high -> Step[d,ih,state,n,coefficients,high].result } ;
+} ;

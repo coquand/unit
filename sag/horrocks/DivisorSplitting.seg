@@ -1,0 +1,142 @@
+-- The splitting: an A-linear retraction of A[X] onto a rank-one ideal.
+-- Data: y_1..y_n in A[X] and e_ij with e_ik y_j = e_ij y_k, sum_i e_ii = 1,
+-- and a monic F = sum_k y_k c_k of degree d in L = (y_1..y_n). With
+-- x_i = sum_k e_ik c_k one has x_i y_j = F e_ij, and
+-- rho(p) = sum_i y_i q_F(x_i p) is A-linear, lands in L and fixes L.
+-- This is the only place where the rank-one data is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module H = HorrocksInterface[l].Over[A,setA] ;
+ module Red = MonicReduction[l].Over[A,setA] ;
+ module S = FiniteIdeal[l].Sums[B.ring] ;
+ module BR = RL[B.ring] ;
+ module IB = Ideals[l].Over[B.ring,B.set] ;
+ cst (a : A.R) : B.Carrier = B.constant a ;
+ sum-swap : (n m : Nat) (f : Fin n -> Fin m -> B.Carrier) ->
+  Id B.Carrier (S.sum n (\ i -> S.sum m (f i))) (S.sum m (\ j -> S.sum n (\ i -> f i j))) = split {
+  zero -> \ m f -> sym (S.sum-zero m) ;
+  suc n | ih -> \ m f ->
+   trans (ap (B.addQ (S.sum m (f (inr tt)))) (ih m (\ i -> f (inl i))))
+    (sym (S.sum-add m (f (inr tt)) (\ j -> S.sum n (\ i -> f (inl i) j)))) } ;
+ -- From a scalar certificate x_i y_j = t e_ij, sum_i y_i x_i = t with t
+ -- regular: the exchange and trace identities.
+ module FromScalar (n : Nat) (e : Fin n -> Fin n -> B.Carrier) (t : B.Carrier)
+  (regular : Regularity[l].Over[B.ring].Regular t) (x y : Fin n -> B.Carrier)
+  (xy : (i j : Fin n) -> Id B.Carrier (B.mulQ (x i) (y j)) (B.mulQ t (e i j)))
+  (contraction : Id B.Carrier (S.lin n y x) t) {
+  exchange (i j k : Fin n) : Id B.Carrier (B.mulQ (e i k) (y j)) (B.mulQ (e i j) (y k)) =
+   regular (B.mulQ (e i k) (y j)) (B.mulQ (e i j) (y k)) (calc B.Carrier {
+    B.mulQ t (B.mulQ (e i k) (y j))
+     =< B.ring.mulA t (e i k) (y j) > B.mulQ (B.mulQ t (e i k)) (y j)
+     =< ap (\ v -> B.mulQ v (y j)) (sym (xy i k)) > B.mulQ (B.mulQ (x i) (y k)) (y j)
+     =< sym (B.ring.mulA (x i) (y k) (y j)) > B.mulQ (x i) (B.mulQ (y k) (y j))
+     =< ap (B.mulQ (x i)) (B.ring.mulC (y k) (y j)) > B.mulQ (x i) (B.mulQ (y j) (y k))
+     =< B.ring.mulA (x i) (y j) (y k) > B.mulQ (B.mulQ (x i) (y j)) (y k)
+     =< ap (\ v -> B.mulQ v (y k)) (xy i j) > B.mulQ (B.mulQ t (e i j)) (y k)
+     =< sym (B.ring.mulA t (e i j) (y k)) > B.mulQ t (B.mulQ (e i j) (y k)) }) ;
+  trace : Id B.Carrier (S.sum n (\ i -> e i i)) B.oneQ =
+   regular (S.sum n (\ i -> e i i)) B.oneQ
+    (trans (sym (S.sum-scale t n (\ i -> e i i)))
+     (trans (S.sum-cong n (\ i -> B.mulQ t (e i i)) (\ i -> B.mulQ (y i) (x i))
+       (\ i -> trans (sym (xy i i)) (B.ring.mulC (x i) (y i))))
+      (trans contraction (sym (B.ring.mulO t))))) ;
+ } ;
+ module Data (n : Nat) (y : Fin n -> B.Carrier) (e : Fin n -> Fin n -> B.Carrier)
+  (exchange : (i j k : Fin n) -> Id B.Carrier (B.mulQ (e i k) (y j)) (B.mulQ (e i j) (y k)))
+  (trace : Id B.Carrier (S.sum n (\ i -> e i i)) B.oneQ) {
+  module G = IB.Gen[n,y] ;
+  module Cert = FiniteIdeal[l].Over[B.ring,n,y] ;
+  Lid : IB.Ideal = G.ideal ;
+  InL (x : B.Carrier) : U l = Lid.1 x ;
+  module LI = IB.In[Lid] ;
+  in-mul (a x : B.Carrier) (h : InL x) : InL (B.mulQ a x) = Lid.2.2.2.2 a x h ;
+  member (c : Fin n -> B.Carrier) (x : B.Carrier) (h : Id B.Carrier (S.lin n y c) x) : InL x =
+   Tr.Trunc[Cert.Certificate x B.zeroQ].inc (c,sym (trans (BR.zl (S.lin n y c)) h)) ;
+  module At (lower : List A.R) (cs : Fin n -> B.Carrier)
+   (generated : Id B.Carrier (S.lin n y cs) (H.monic lower)) {
+   module D = Red.At[lower] ;
+   F : B.Carrier = D.F ;
+   x (i : Fin n) : B.Carrier = S.sum n (\ k -> B.mulQ (e i k) (cs k)) ;
+   -- y_j (e_ik c_k) = e_ij (y_k c_k).
+   term (i j k : Fin n) :
+    Id B.Carrier (B.mulQ (y j) (B.mulQ (e i k) (cs k))) (B.mulQ (e i j) (B.mulQ (y k) (cs k))) =
+    trans (BR.mul-swap (y j) (e i k) (cs k))
+     (trans (B.ring.mulA (e i k) (y j) (cs k))
+      (trans (ap (\ w -> B.mulQ w (cs k)) (exchange i j k))
+       (sym (B.ring.mulA (e i j) (y k) (cs k))))) ;
+   xy (i j : Fin n) : Id B.Carrier (B.mulQ (x i) (y j)) (B.mulQ F (e i j)) =
+    trans (B.ring.mulC (x i) (y j))
+     (trans (sym (S.sum-scale (y j) n (\ k -> B.mulQ (e i k) (cs k))))
+      (trans (S.sum-cong n _ _ (term i j))
+       (trans (S.sum-scale (e i j) n (\ k -> B.mulQ (y k) (cs k)))
+        (trans (ap (B.mulQ (e i j)) generated) (B.ring.mulC (e i j) F))))) ;
+   rho (p : B.Carrier) : B.Carrier = S.sum n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) p))) ;
+   rho-in (p : B.Carrier) : InL (rho p) =
+    LI.finite-sum n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) p)))
+     (\ i -> LI.equal _ _ (B.ring.mulC (D.quotient (B.mulQ (x i) p)) (y i))
+      (in-mul (D.quotient (B.mulQ (x i) p)) (y i) (G.G.generator i))) ;
+   rho-add (p q : B.Carrier) : Id B.Carrier (rho (B.addQ p q)) (B.addQ (rho p) (rho q)) =
+    trans (S.sum-cong n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) (B.addQ p q))))
+      (\ i -> B.addQ (B.mulQ (y i) (D.quotient (B.mulQ (x i) p)))
+       (B.mulQ (y i) (D.quotient (B.mulQ (x i) q))))
+      (\ i -> trans (ap (\ w -> B.mulQ (y i) (D.quotient w)) (B.ring.dist (x i) p q))
+       (trans (ap (B.mulQ (y i)) (D.quotient-add (B.mulQ (x i) p) (B.mulQ (x i) q)))
+        (B.ring.dist (y i) (D.quotient (B.mulQ (x i) p)) (D.quotient (B.mulQ (x i) q))))))
+     (S.sum-add n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) p)))
+      (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) q)))) ;
+   rho-scale (a : A.R) (p : B.Carrier) :
+    Id B.Carrier (rho (B.mulQ (cst a) p)) (B.mulQ (cst a) (rho p)) =
+    trans (S.sum-cong n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) (B.mulQ (cst a) p))))
+      (\ i -> B.mulQ (cst a) (B.mulQ (y i) (D.quotient (B.mulQ (x i) p))))
+      (\ i -> trans (ap (\ w -> B.mulQ (y i) (D.quotient w)) (BR.mul-swap (x i) (cst a) p))
+       (trans (ap (B.mulQ (y i)) (D.quotient-scale a (B.mulQ (x i) p)))
+        (BR.mul-swap (y i) (cst a) (D.quotient (B.mulQ (x i) p))))))
+     (S.sum-scale (cst a) n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) p)))) ;
+   quotient-zero : Id B.Carrier (D.quotient B.zeroQ) B.zeroQ =
+    trans (ap D.quotient (sym (BR.mul-zero F))) (D.quotient-multiple B.zeroQ) ;
+   rho-zero : Id B.Carrier (rho B.zeroQ) B.zeroQ =
+    trans (S.sum-cong n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) B.zeroQ))) (\ i -> B.zeroQ)
+      (\ i -> trans (ap (\ w -> B.mulQ (y i) (D.quotient w)) (BR.mul-zero (x i)))
+       (trans (ap (B.mulQ (y i)) quotient-zero) (BR.mul-zero (y i)))))
+     (S.sum-zero n) ;
+   -- rho is the identity on L.
+   Fixed (p : B.Carrier) : U l = Id B.Carrier (rho p) p ;
+   module Fix (p : B.Carrier) (b : Fin n -> B.Carrier) (hp : Id B.Carrier p (S.lin n y b)) {
+    xp (i : Fin n) : Id B.Carrier (B.mulQ (x i) p) (B.mulQ F (S.sum n (\ j -> B.mulQ (e i j) (b j)))) =
+     trans (ap (B.mulQ (x i)) hp)
+      (trans (sym (S.sum-scale (x i) n (\ j -> B.mulQ (y j) (b j))))
+       (trans (S.sum-cong n _ (\ j -> B.mulQ F (B.mulQ (e i j) (b j)))
+         (\ j -> trans (B.ring.mulA (x i) (y j) (b j))
+          (trans (ap (\ w -> B.mulQ w (b j)) (xy i j)) (sym (B.ring.mulA F (e i j) (b j))))))
+        (S.sum-scale F n (\ j -> B.mulQ (e i j) (b j))))) ;
+    q (i : Fin n) : Id B.Carrier (D.quotient (B.mulQ (x i) p)) (S.sum n (\ j -> B.mulQ (e i j) (b j))) =
+     trans (ap D.quotient (xp i)) (D.quotient-multiple (S.sum n (\ j -> B.mulQ (e i j) (b j)))) ;
+    -- y_i (e_ij b_j) = e_ii (y_j b_j).
+    swap-term (i j : Fin n) :
+     Id B.Carrier (B.mulQ (y i) (B.mulQ (e i j) (b j))) (B.mulQ (e i i) (B.mulQ (y j) (b j))) =
+     trans (BR.mul-swap (y i) (e i j) (b j))
+      (trans (B.ring.mulA (e i j) (y i) (b j))
+       (trans (ap (\ w -> B.mulQ w (b j)) (exchange i i j)) (sym (B.ring.mulA (e i i) (y j) (b j))))) ;
+    fixed : Fixed p =
+     trans (S.sum-cong n (\ i -> B.mulQ (y i) (D.quotient (B.mulQ (x i) p)))
+       (\ i -> S.sum n (\ j -> B.mulQ (y i) (B.mulQ (e i j) (b j))))
+       (\ i -> trans (ap (B.mulQ (y i)) (q i)) (sym (S.sum-scale (y i) n (\ j -> B.mulQ (e i j) (b j))))))
+      (trans (sum-swap n n (\ i j -> B.mulQ (y i) (B.mulQ (e i j) (b j))))
+       (trans (S.sum-cong n (\ j -> S.sum n (\ i -> B.mulQ (y i) (B.mulQ (e i j) (b j))))
+         (\ j -> B.mulQ (y j) (b j))
+         (\ j -> trans (S.sum-cong n _ _ (\ i -> swap-term i j))
+          (trans (S.sum-cong n (\ i -> B.mulQ (e i i) (B.mulQ (y j) (b j)))
+            (\ i -> B.mulQ (B.mulQ (y j) (b j)) (e i i))
+            (\ i -> B.ring.mulC (e i i) (B.mulQ (y j) (b j))))
+           (trans (S.sum-scale (B.mulQ (y j) (b j)) n (\ i -> e i i))
+            (trans (ap (B.mulQ (B.mulQ (y j) (b j))) trace) (B.ring.mulO (B.mulQ (y j) (b j))))))))
+        (sym hp))) ;
+   } ;
+   rho-fixes (p : B.Carrier) (h : InL p) : Fixed p =
+    Tr.Trunc[Cert.Certificate p B.zeroQ].induction @l (\ t -> Fixed p) (\ t -> B.set _ _)
+     (\ w -> Fix[p,w.1,trans w.2 (BR.zl (S.lin n y w.1))].fixed) h ;
+  } ;
+ } ;
+} ;

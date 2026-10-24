@@ -1,0 +1,63 @@
+-- Polynomial base change, including preservation of the interface's monics.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A C : CRing)
+ (setA : Prelude[l].isSet A.R) (setC : Prelude[l].isSet C.R)
+ (phi : RingHom[l].Hom A C) {
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module D = PolynomialRing[l].Extension[C,setC] ;
+ module HA = HorrocksInterface[l].Over[A,setA] ;
+ module HC = HorrocksInterface[l].Over[C,setC] ;
+ coefficients : List A.R -> List C.R = split {
+  nil -> nil ;
+  cons a p | ih -> cons (phi.1 a) ih } ;
+ coefficients-length : (p : List A.R) -> Id Nat (len (coefficients p)) (len p) = split {
+  nil -> refl zero ; cons a p | ih -> ap (\ n -> suc n) ih } ;
+ coefficient-map : (p : List A.R) (k : Nat) ->
+  Id C.R (Poly[l].PolyR[C].coef (coefficients p) k) (phi.1 (Poly[l].PolyR[A].coef p k)) = split {
+  nil -> \ k -> sym (RingHom[l].zero A C phi) ;
+  cons a p | ih -> split { zero -> refl (phi.1 a) ; suc k -> ih k } } ;
+ base : RingHom[l].Hom A D.ring =
+  RingHom[l].compose A C D.ring D.inclusion phi ;
+ module Extension = Universal[l].Property[A,D.ring,setA,D.set].Given[base,D.variable] ;
+ hom : RingHom[l].Hom B.ring D.ring = Extension.extend ;
+ on-list : (p : List A.R) -> Id D.Carrier (hom.1 (B.include p)) (D.include (coefficients p)) = split {
+  nil -> RingHom[l].zero B.ring D.ring hom ;
+  cons a p | ih ->
+   trans (ap hom.1 (B.horner a p))
+    (trans (hom.2.2.1 (B.constant a) (B.mulQ B.variable (B.include p)))
+     (trans (cong2 D.Carrier D.addQ _ _ _ _
+       (Extension.on-constants a)
+       (trans (hom.2.2.2 B.variable (B.include p))
+        (cong2 D.Carrier D.mulQ _ _ _ _ Extension.on-variable ih)))
+      (sym (D.horner (phi.1 a) (coefficients p))))) } ;
+ raw-kernel (p : List A.R) (h : Id D.Carrier (hom.1 (B.include p)) D.zeroQ) (k : Nat) :
+  Id C.R (phi.1 (Poly[l].PolyR[A].coef p k)) C.z =
+  trans (sym (coefficient-map p k))
+   (D.Q.effective (coefficients p) nil (trans (sym (on-list p)) h) k) ;
+ raw-equal (p q : List A.R)
+  (h : (k : Nat) -> Id C.R (phi.1 (Poly[l].PolyR[A].coef p k)) (phi.1 (Poly[l].PolyR[A].coef q k))) :
+  Id D.Carrier (hom.1 (B.include p)) (hom.1 (B.include q)) =
+  trans (on-list p)
+   (trans (D.Q.relates (coefficients p) (coefficients q)
+     (\ k -> trans (coefficient-map p k) (trans (h k) (sym (coefficient-map q k)))))
+    (sym (on-list q))) ;
+ monic-coefficients : (lower : List A.R) ->
+  Id (List C.R) (coefficients (HA.monic-list lower)) (HC.monic-list (coefficients lower)) = split {
+  nil -> ap (\ a -> cons a nil) phi.2.1 ;
+  cons a lower | ih -> ap (\ p -> cons (phi.1 a) p) ih } ;
+ monic (lower : List A.R) :
+  Id D.Carrier (hom.1 (HA.monic lower)) (HC.monic (coefficients lower)) =
+  trans (on-list (HA.monic-list lower)) (ap D.include (monic-coefficients lower)) ;
+ module PA = AffinePowers[l].Over[B.ring] ;
+ module PC = AffinePowers[l].Over[D.ring] ;
+ monic-power (lower : List A.R) (k : Nat) :
+  Id D.Carrier (hom.1 (PA.power (HA.monic lower) k))
+   (PC.power (HC.monic (coefficients lower)) k) =
+  trans (AffinePowers[l].power-map B.ring D.ring hom (HA.monic lower) k)
+   (ap (\ f -> PC.power f k) (monic lower)) ;
+ module Regular = Regularity[l].Over[D.ring] ;
+ power-regular (lower : List A.R) (k : Nat) :
+  Regular.Regular (hom.1 (PA.power (HA.monic lower) k)) =
+  subst Regular.Regular (sym (monic-power lower k))
+   (MonicRegular[l].Over[C,setC].At[coefficients lower].power-regular k) ;
+} ;

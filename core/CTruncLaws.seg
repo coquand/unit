@@ -1,0 +1,128 @@
+-- Presheaf laws for the hereditary natural normal forms.
+level a l ; constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+open CTruncRaw[a, l] ;
+
+module Laws (G : PCtx) (A : PTy[G]) {
+  open Build[G, A] ;
+  open CTruncGood[a, l].GoodSets[G, A] ;
+  Seed (z : Loc) : U l = (s : Loc) -> Arr s z -> Raw ;
+  Side (z : Loc) (Q : PB.Phi z.1) : U l =
+    (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw ;
+
+  same-node (z : Loc) (Q : PB.Phi z.1) (u u' : Seed z) (v v' : Side z Q)
+    (eu : (s : Loc) (h : Arr s z) -> Id Raw (u s h) (u' s h))
+    (ev : (s : Loc) (h : Arr s z) (i j : PB.Lands s.1 z.1 Q h.1) -> Id Raw (v s h i) (v' s h j))
+    : Id Raw (node z Q u v) (node z Q u' v') =
+    trans Raw (node z Q u v) (node z Q u' v) (node z Q u' v') (apH (\ f -> node z Q f v)
+      (funext Loc (\ s -> Arr s z -> Raw) u u' (\ s -> funext (Arr s z) (\ h -> Raw) (u s) (u' s) (eu s))))
+      (apH (\ f -> node z Q u' f)
+        (funext Loc (\ s -> (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw) v v' (\ s ->
+        funext (Arr s z) (\ h -> PB.Lands s.1 z.1 Q h.1 -> Raw) (v s) (v' s) (\ h ->
+        funext (PB.Lands s.1 z.1 Q h.1) (\ i -> Raw) (v s h) (v' s h) (\ i -> ev s h i i))))) ;
+  opaque same-node ;
+
+  node-cong (z : Loc) (Q Q' : PB.Phi z.1) (p : Id (PB.Phi z.1) Q Q')
+    (u u' : Seed z) (v : Side z Q) (v' : Side z Q')
+    (eu : (s : Loc) (h : Arr s z) -> Id Raw (u s h) (u' s h))
+    (ev : (s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) (j : PB.Lands s.1 z.1 Q' h.1)
+      -> Id Raw (v s h i) (v' s h j))
+    : Id Raw (node z Q u v) (node z Q' u' v') =
+    idJ (PB.Phi z.1) Q (\ R e -> (w : Side z R) ->
+      ((s : Loc) (h : Arr s z) (i : PB.Lands s.1 z.1 Q h.1) (j : PB.Lands s.1 z.1 R h.1)
+        -> Id Raw (v s h i) (w s h j)) -> Id Raw (node z Q u v) (node z R u' w))
+      (\ w ew -> same-node z Q u u' v w eu ew) Q' p v' ev ;
+  opaque node-cong ;
+
+  module N (z : Loc) (Q : PB.Phi z.1) (u : Seed z) (v : Side z Q) {
+    R (s : Loc) (h : Arr s z) : Raw =
+      node s (PB.pre s.1 z.1 h.1 Q)
+        (\ r g -> u r (compose r s z h g)) (\ r g i -> v r (compose r s z h g) i) ;
+    outside (s : Loc) (h : Arr s z) (j : Id Bool (Q.1 s.1 h.1) false)
+      : Id Raw (restrict (node z Q u v) s h) (R s h) =
+      decide-no Raw (Q.1 s.1 h.1) (\ i -> v s h i) (\ no -> R s h) j ;
+    identity (good : Good (node z Q u v)) : Id Raw (restrict (node z Q u v) z (ident z)) (node z Q u v) =
+      transH (outside z (ident z) good.1)
+        (node-cong z (PB.pre z.1 z.1 (idH z.1) Q) Q (PB.pre-id z.1 Q)
+          (\ s h -> u s (compose s z z (ident z) h)) u
+          (\ s h i -> v s (compose s z z (ident z) h) i) v
+          (\ s h -> apH (u s) (compose-idl s z h))
+          (\ s h i j -> boundary-cong z Q v s _ h (compose-idl s z h) i j)) ;
+  } ;
+
+  restrict-id : (t : Raw) -> Good t -> Id Raw (restrict t (root t) (ident (root t))) t = split {
+    leaf z v -> \ good -> apH (\ w -> leaf z w) (A.tact-id z.1 z.2 (G.act-id z.1 z.2) v) ;
+    node z Q u v -> \ good -> N[z, Q, u, v].identity good
+  } ;
+  opaque restrict-id ;
+  at-id (t : Raw) (good : Good t) (z : Loc) (e : Id Loc (root t) z)
+    : Id Raw (at t z e z (ident z)) t =
+    idJ Loc (root t) (\ z' e' -> Id Raw (at t z' e' z' (ident z')) t)
+      (restrict-id t good) z e ;
+  opaque at-id ;
+  tr-res-id (z : Loc) (t : TrEl z) : Id (TrEl z) (tr-res z z (ident z) t) t =
+    tr-eq z _ t (at-id t.1 t.2.1 z t.2.2) ;
+  opaque tr-res-id ;
+
+  module NodeComp (z : Loc) (Q : PB.Phi z.1) (u : Seed z) (v : Side z Q)
+    (good : Good (node z Q u v)) (s : Loc) (h : Arr s z) (r : Loc) (g : Arr r s) {
+    module NN = N[z, Q, u, v] ;
+    rh : Raw = restrict (node z Q u v) s h ;
+    hg : Arr r z = compose r s z h g ;
+    goal (e : Id Loc (root rh) s) : U l = Id Raw (at rh s e r g) (restrict (node z Q u v) r hg) ;
+    inside (e : Id Loc (root rh) s) (i : PB.Lands s.1 z.1 Q h.1) : goal e =
+      transH (at-cong rh (v s h i) (node-boundary z Q u v s h i) s e (good.2.2.1 s h i).2 r g)
+        (transH (good.2.2.2.2 s h i r g j (good.2.2.1 s h i).2)
+          (symH (node-boundary z Q u v r hg j)))
+      where { j : PB.Lands r.1 z.1 Q hg.1 = PB.lands-comp r.1 s.1 z.1 Q h.1 g.1 i ; } ;
+    opaque inside ;
+
+    twice : Id Raw (restrict (NN.R s h) r g) (restrict (node z Q u v) r hg) =
+      decide-cong Raw (Q.1 r.1 hg.1) (\ i -> v r hg i) (\ i -> v r hg i)
+        (\ no -> node r (PB.pre r.1 s.1 g.1 (PB.pre s.1 z.1 h.1 Q))
+          (\ q f -> u q (compose q s z h (compose q r s g f)))
+          (\ q f i -> v q (compose q s z h (compose q r s g f)) i))
+        (\ no -> NN.R r hg) (\ i -> refl (v r hg i))
+        (\ no -> node-cong r _ _ (PB.pre-comp r.1 s.1 z.1 g.1 h.1 Q)
+          (\ q f -> u q (compose q s z h (compose q r s g f)))
+          (\ q f -> u q (compose q r z hg f))
+          (\ q f i -> v q (compose q s z h (compose q r s g f)) i)
+          (\ q f i -> v q (compose q r z hg f) i)
+          (\ q f -> apH (u q) (symH (compose-assoc q r s z h g f)))
+          (\ q f i j -> boundary-cong z Q v q _ _ (symH (compose-assoc q r s z h g f)) i j)) ;
+    opaque twice ;
+    outside (e : Id Loc (root rh) s) (no : Id Bool (Q.1 s.1 h.1) false) : goal e =
+      transH (at-cong rh (NN.R s h) (NN.outside s h no) s e (refl s) r g) twice ;
+    result (e : Id Loc (root rh) s) : goal e = decide (goal e) (Q.1 s.1 h.1) (inside e) (outside e) ;
+  } ;
+
+  restrict-o : (t : Raw) -> Good t -> (s : Loc) (h : Arr s (root t)) (r : Loc) (g : Arr r s)
+    (e : Id Loc (root (restrict t s h)) s) ->
+    Id Raw (at (restrict t s h) s e r g) (restrict t r (compose r s (root t) h g)) = split {
+    leaf z v -> \ good s h r g e ->
+      transH (at-irr (restrict (leaf z v) s h) s e (refl s) r g)
+        (apH (\ w -> leaf r w) (symH (A.tact-o r.1 s.1 z.1 h.1 g.1 z.2 s.2 r.2 h.2 g.2
+          (compose r s z h g).2 v))) ;
+    node z Q u v -> \ good s h r g e -> NodeComp[z, Q, u, v, good, s, h, r, g].result e
+  } ;
+  opaque restrict-o ;
+
+  at-o (t : Raw) (good : Good t) (z : Loc) (ez : Id Loc (root t) z)
+    (s : Loc) (h : Arr s z) (r : Loc) (g : Arr r s)
+    (e : Id Loc (root (at t z ez s h)) s) :
+    Id Raw (at (at t z ez s h) s e r g) (at t z ez r (compose r s z h g)) =
+    idJ Loc (root t) (\ z' ez' -> (h' : Arr s z') (e' : Id Loc (root (at t z' ez' s h')) s) ->
+      Id Raw (at (at t z' ez' s h') s e' r g) (at t z' ez' r (compose r s z' h' g)))
+      (\ h' e' -> restrict-o t good s h' r g e') z ez h e ;
+  opaque at-o ;
+  tr-res-o (r s z : Loc) (h : Arr s z) (g : Arr r s) (t : TrEl z)
+    : Id (TrEl r) (tr-res r s g (tr-res s z h t)) (tr-res r z (compose r s z h g) t) =
+    tr-eq r _ _ (at-o t.1 t.2.1 z t.2.2 s h r g (tr-res s z h t).2.2) ;
+  opaque tr-res-o ;
+} ;

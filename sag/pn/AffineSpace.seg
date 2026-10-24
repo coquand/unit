@@ -1,0 +1,74 @@
+-- Affine space R^k as Spec R[x_0,...,x_{k-1}], the polynomial ring built
+-- by adding one variable at a time (variable inr is the newest).  The
+-- variables are regular, and for k >= 2 the newest two satisfy the
+-- divisibility hypothesis of the Hartogs lemma.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ;
+ alg : Nat -> C.Algebra = split { zero -> C.base ; suc k | ih -> C.Polynomial[ih].algebra } ;
+ fp : (k : Nat) -> P.FP (alg k) = split {
+  zero -> BasePresentation[l].Over[R,setR].finitely-presented ;
+  suc k | ih -> AddVariable[l].Over[R,setR].preserves-FP (alg k) ih } ;
+ var : (k : Nat) -> Fin k -> (alg k).ring.R = split {
+  zero -> split { } ;
+  suc k | ih -> split {
+   inl i -> C.Polynomial[alg k].X.constant (ih i) ;
+   inr t -> C.Polynomial[alg k].X.variable } } ;
+ Regular (k : Nat) (c : (alg k).ring.R) : U l =
+  (a : (alg k).ring.R) -> Id (alg k).ring.R ((alg k).ring.mul c a) (alg k).ring.z -> Id (alg k).ring.R a (alg k).ring.z ;
+ regular : (k : Nat) (i : Fin k) -> Regular k (var k i) = split {
+  zero -> split { } ;
+  suc k | ih -> split {
+   inl i -> PolynomialCoefficients[l].Over[(alg k).ring,(alg k).set].constant-regular (var k i) (ih i) ;
+   inr t -> PolynomialCoefficients[l].Over[(alg k).ring,(alg k).set].variable-regular } } ;
+ power-regular (k : Nat) (c : (alg k).ring.R) (reg : Regular k c) :
+  (n : Nat) -> Regular k (AffinePowers[l].Over[(alg k).ring].power c n) = split {
+  zero -> \ a h -> trans (sym (AffinePowers[l].Over[(alg k).ring].one-left a)) h ;
+  suc n | ih -> \ a h -> ih a (reg _ (trans ((alg k).ring.mulA c (AffinePowers[l].Over[(alg k).ring].power c n) a) h)) } ;
+
+ -- s_1^b g = X^a h with s_1 = c a regular constant gives X^a | g
+ module TwoBy (m : Nat) (c : (alg (suc m)).ring.R) (reg : Regular (suc m) c) {
+  B : C.Algebra = alg (suc m) ;
+  module PC = PolynomialCoefficients[l].Over[B.ring,B.set] ;
+  module X = PC.X ;
+  A : C.Algebra = alg (suc (suc m)) ;
+  module AP = AffinePowers[l].Over[A.ring] ;
+  divides (a b : Nat) (g h : A.ring.R)
+   (e : Id A.ring.R (A.ring.mul (AP.power (X.constant c) b) g) (A.ring.mul (AP.power X.variable a) h)) :
+   (g' : A.ring.R) * Id A.ring.R g (A.ring.mul (AP.power X.variable a) g') =
+   PC.divide (AffinePowers[l].Over[B.ring].power c b) (power-regular (suc m) c reg b) a g h
+    (trans (ap (\ t -> X.mulQ t g) (AffinePowers[l].power-map B.ring X.ring X.inclusion c b)) e) ;
+ } ;
+ -- products of regular elements are regular
+ product-regular (k : Nat) (c d : (alg k).ring.R) (rc : Regular k c) (rd : Regular k d) : Regular k ((alg k).ring.mul c d) =
+  \ a h -> rd a (rc _ (trans ((alg k).ring.mulA c d a) h)) ;
+
+ -- points of Spec R[x_0..x_{k-1}] are vectors
+ Vec (k : Nat) : U l = Fin k -> R.R ;
+ coords (k : Nat) (x : C.Spec (alg k)) (i : Fin k) : R.R = x.1.1 (var k i) ;
+ point : (k : Nat) -> Vec k -> C.Spec (alg k) = split {
+  zero -> \ v -> C.identity C.base ;
+  suc k | ih -> \ v -> C.Polynomial[alg k].To[C.base].backward (ih (\ i -> v (inl i)),v (inr tt)) } ;
+ coords-point-new (k : Nat) (v : Vec (suc k)) : (t : Top) ->
+  Id R.R (coords (suc k) (point (suc k) v) (inr t)) (v (inr t)) = split {
+  tt -> ap (\ d -> d.2) (C.Polynomial[alg k].To[C.base].fb (point k (\ j -> v (inl j)),v (inr tt))) } ;
+ coords-point : (k : Nat) (v : Vec k) (i : Fin k) -> Id R.R (coords k (point k v) i) (v i) = split {
+  zero -> \ v -> split { } ;
+  suc k | ih -> \ v -> split {
+   inl i -> trans (ap (\ d -> coords k d.1 i)
+     (C.Polynomial[alg k].To[C.base].fb (point k (\ j -> v (inl j)),v (inr tt))))
+    (ih (\ j -> v (inl j)) i) ;
+   inr t -> coords-point-new k v t } } ;
+ point-coords : (k : Nat) (x : C.Spec (alg k)) -> Id (C.Spec (alg k)) (point k (coords k x)) x = split {
+  zero -> \ x -> C.ext C.base C.base (C.identity C.base) x (\ a -> sym (x.2 a)) ;
+  suc k | ih -> \ x ->
+   trans (ap (\ y -> C.Polynomial[alg k].To[C.base].backward (y,x.1.1 C.Polynomial[alg k].X.variable))
+     (ih (C.Polynomial[alg k].To[C.base].restrict x)))
+    (C.Polynomial[alg k].To[C.base].bf x) } ;
+ spectrum (k : Nat) : Pr.Equiv (C.Spec (alg k)) (Vec k) =
+  (coords k,Pr.qinv _ _ (coords k) (point k)
+   (\ v -> F.funext (Fin k) (\ i -> R.R) _ _ (coords-point k v)) (point-coords k)) ;
+} ;

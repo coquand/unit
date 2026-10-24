@@ -1,0 +1,97 @@
+-- Two leaves, with monoids S1 and S2, and the localisation at the
+-- product monoid S1 S2. There both monic generators generate the row
+-- ideal, so they are equal.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R)
+ (n : Nat) (ys : Fin n -> List A.R)
+ (S1 : A.R -> U l) (one1 : S1 A.o) (product1 : (s t : A.R) -> S1 s -> S1 t -> S1 (A.mul s t))
+ (S2 : A.R -> U l) (one2 : S2 A.o) (product2 : (s t : A.R) -> S2 s -> S2 t -> S2 (A.mul s t)) {
+ module Tr = Truncation[l] ;
+ module Pow = AffinePowers[l].Over[A] ;
+ Witness (x : A.R) : U l = (u : A.R) * (v : A.R) * S1 u * S2 v * Id A.R x (A.mul u v) ;
+ unit : Witness A.o = (A.o,A.o,one1,one2,sym (A.mulO A.o)) ;
+ multiply (x x1 : A.R) (wx : Witness x) (wy : Witness x1) : Witness (A.mul x x1) =
+  (A.mul wx.1 wy.1,A.mul wx.2.1 wy.2.1,
+   product1 wx.1 wy.1 wx.2.2.1 wy.2.2.1,product2 wx.2.1 wy.2.1 wx.2.2.2.1 wy.2.2.2.1,
+   trans (cong2 A.R A.mul _ _ _ _ wx.2.2.2.2 wy.2.2.2.2)
+    (RL[A].mul-four wx.1 wx.2.1 wy.1 wy.2.1)) ;
+ module One = LeafClearing[l].Over[A,setA,n,ys,S1,one1,product1] ;
+ module Two = LeafClearing[l].Over[A,setA,n,ys,S2,one2,product2] ;
+ module Both = LeafClearing[l].Over[A,setA,n,ys,Witness,unit,multiply] ;
+ module LP = Both.L ;
+ module B = Both.B ;
+ module DP = Both.D ;
+ left-unit (s : A.R) (hs : S1 s) : RL[LP.ring].unit (LP.inclusion.1 s) =
+  LP.inverse s (s,A.o,hs,one2,sym (A.mulO s)) ;
+ right-unit (s : A.R) (hs : S2 s) : RL[LP.ring].unit (LP.inclusion.1 s) =
+  LP.inverse s (A.o,s,one1,hs,sym (Pow.one-left s)) ;
+ module LeftMap = MonoidLocalizationMap[l].Over[A,S1,one1,product1,LP.ring,LP.set,LP.inclusion,left-unit] ;
+ module RightMap = MonoidLocalizationMap[l].Over[A,S2,one2,product2,LP.ring,LP.set,LP.inclusion,right-unit] ;
+ module PL = PolynomialMap[l].Over[One.L.ring,LP.ring,One.L.set,LP.set,LeftMap.hom] ;
+ module PR = PolynomialMap[l].Over[Two.L.ring,LP.ring,Two.L.set,LP.set,RightMap.hom] ;
+ module TL = PolynomialMapComposition[l].Over[A,One.L.ring,LP.ring,setA,One.L.set,LP.set,
+  One.L.inclusion,LeftMap.hom,LP.inclusion,LeftMap.constants] ;
+ module TR = PolynomialMapComposition[l].Over[A,Two.L.ring,LP.ring,setA,Two.L.set,LP.set,
+  Two.L.inclusion,RightMap.hom,LP.inclusion,RightMap.constants] ;
+ module SP = FiniteIdeal[l].Sums[DP.ring] ;
+ module SB = FiniteIdeal[l].Sums[B.ring] ;
+ module MapL = StandardOpens[l].SumMap[One.D.ring,DP.ring,PL.hom] ;
+ module MapR = StandardOpens[l].SumMap[Two.D.ring,DP.ring,PR.hom] ;
+ y (i : Fin n) : DP.Carrier = Both.y i ;
+ -- y = h b and sum y c = g give g = h (sum b c).
+ factor-out (h : DP.Carrier) (b c : Fin n -> DP.Carrier)
+  (hy : (i : Fin n) -> Id DP.Carrier (y i) (DP.mulQ h (b i)))
+  (g : DP.Carrier) (hg : Id DP.Carrier (SP.lin n y c) g) :
+  Id DP.Carrier g (DP.mulQ h (SP.lin n b c)) =
+  trans (sym hg)
+   (trans (SP.sum-cong n (\ i -> DP.mulQ (y i) (c i)) (\ i -> DP.mulQ h (DP.mulQ (b i) (c i)))
+     (\ i -> trans (ap (\ t -> DP.mulQ t (c i)) (hy i)) (sym (DP.mul-assoc h (b i) (c i)))))
+    (SP.sum-scale h n (\ i -> DP.mulQ (b i) (c i)))) ;
+ -- The two maps to A_{S1 S2}[X] agree on A[X].
+ commute (a : B.Carrier) : Id DP.Carrier (PL.hom.1 (One.hom a)) (PR.hom.1 (Two.hom a)) =
+  trans (TL.pointwise a) (sym (TR.pointwise a)) ;
+ Killed (p : B.Carrier) : U l = (u : A.R) * (v : A.R) * S1 u * S2 v *
+  Id B.Carrier (B.mulQ (B.constant (A.mul u v)) p) B.zeroQ ;
+ overlap-kernel (p : B.Carrier) (h : Id DP.Carrier (PL.hom.1 (One.hom p)) DP.zeroQ) : Tr.Trunc[Killed p].carrier =
+  TruncationCombinators[l].map (Both.Clearing.Kernel p) (Killed p)
+   (\ k -> (k.2.1.1,k.2.1.2.1,k.2.1.2.2.1,k.2.1.2.2.2.1,
+     trans (ap (\ s -> B.mulQ (B.constant s) p) (sym k.2.1.2.2.2.2)) k.2.2))
+   (Both.Clearing.kernel p (trans (sym (TL.pointwise p)) h)) ;
+ module Compare (local1 : One.LocalPrincipal) (local2 : Two.LocalPrincipal) {
+  lower1 : List LP.Carrier = PL.coefficients local1.1 ;
+  lower2 : List LP.Carrier = PR.coefficients local2.1 ;
+  monic1 : Id DP.Carrier (PL.hom.1 (One.HC.monic local1.1)) (Both.HC.monic lower1) = PL.monic local1.1 ;
+  monic2 : Id DP.Carrier (PR.hom.1 (Two.HC.monic local2.1)) (Both.HC.monic lower2) = PR.monic local2.1 ;
+  c1' (i : Fin n) : DP.Carrier = PL.hom.1 (local1.2.1 i) ;
+  b1' (i : Fin n) : DP.Carrier = PL.hom.1 (local1.2.2.1 i) ;
+  c2' (i : Fin n) : DP.Carrier = PR.hom.1 (local2.2.1 i) ;
+  b2' (i : Fin n) : DP.Carrier = PR.hom.1 (local2.2.2.1 i) ;
+  y1 (i : Fin n) : Id DP.Carrier (PL.hom.1 (One.y i)) (y i) = TL.pointwise (One.yB i) ;
+  y2 (i : Fin n) : Id DP.Carrier (PR.hom.1 (Two.y i)) (y i) = TR.pointwise (Two.yB i) ;
+  generated1 : Id DP.Carrier (SP.lin n y c1') (Both.HC.monic lower1) =
+   trans (SP.sum-cong n (\ i -> DP.mulQ (y i) (c1' i)) (\ i -> DP.mulQ (PL.hom.1 (One.y i)) (c1' i))
+     (\ i -> ap (\ t -> DP.mulQ t (c1' i)) (sym (y1 i))))
+    (trans (sym (MapL.combination n One.y local1.2.1)) (trans (ap PL.hom.1 local1.2.2.2.1) monic1)) ;
+  generated2 : Id DP.Carrier (SP.lin n y c2') (Both.HC.monic lower2) =
+   trans (SP.sum-cong n (\ i -> DP.mulQ (y i) (c2' i)) (\ i -> DP.mulQ (PR.hom.1 (Two.y i)) (c2' i))
+     (\ i -> ap (\ t -> DP.mulQ t (c2' i)) (sym (y2 i))))
+    (trans (sym (MapR.combination n Two.y local2.2.1)) (trans (ap PR.hom.1 local2.2.2.2.1) monic2)) ;
+  divides1 (i : Fin n) : Id DP.Carrier (y i) (DP.mulQ (Both.HC.monic lower1) (b1' i)) =
+   trans (sym (y1 i))
+    (trans (ap PL.hom.1 (local1.2.2.2.2 i))
+     (trans (PL.hom.2.2.2 (One.HC.monic local1.1) (local1.2.2.1 i))
+      (ap (\ t -> DP.mulQ t (b1' i)) monic1))) ;
+  divides2 (i : Fin n) : Id DP.Carrier (y i) (DP.mulQ (Both.HC.monic lower2) (b2' i)) =
+   trans (sym (y2 i))
+    (trans (ap PR.hom.1 (local2.2.2.2.2 i))
+     (trans (PR.hom.2.2.2 (Two.HC.monic local2.1) (local2.2.2.1 i))
+      (ap (\ t -> DP.mulQ t (b2' i)) monic2))) ;
+  module Unique = MonicUniqueness[l].Over[LP.ring,LP.set].Mutual[lower1,lower2,
+   SP.lin n b1' c2',SP.lin n b2' c1',
+   factor-out (Both.HC.monic lower1) b1' c2' divides1 (Both.HC.monic lower2) generated2,
+   factor-out (Both.HC.monic lower2) b2' c1' divides2 (Both.HC.monic lower1) generated1] ;
+  same : Id DP.Carrier (Both.HC.monic lower1) (Both.HC.monic lower2) = Unique.equality ;
+  agree : Id DP.Carrier (PL.hom.1 (One.HC.monic local1.1)) (PR.hom.1 (Two.HC.monic local2.1)) =
+   trans monic1 (trans same (sym monic2)) ;
+ } ;
+} ;

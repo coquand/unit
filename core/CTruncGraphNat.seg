@@ -1,0 +1,93 @@
+-- The recursor's graph is closed under restriction, before existence is proved.
+level a l ; constraint a <= l ;
+open Base ; open Prelude[l+] ; open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+open Trees[a] ; open Arith[a] ; open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+open CPosC[a] ;
+module PB = CPosInst[a].PB ; module PR = PB.GPre[l] ; open PR.PS ;
+open CTruncRaw[a, l] ;
+
+module Stable (G : PCtx) (A B : PTy[G]) (k : CTruncAlg[a, l].Algebras[G,B].Algebra)
+  (f : (z : Build[G, A].Loc) -> W.Ix (A.tob z.1 z.2) -> W.Ix (B.tob z.1 z.2))
+  (fn : (s z : Build[G, A].Loc) (h : Build[G, A].Arr s z) (v : W.Ix (A.tob z.1 z.2)) ->
+    Id (W.Ix (B.tob s.1 s.2)) (B.tact s.1 z.1 h.1 z.2 s.2 h.2 (f z v))
+      (f s (A.tact s.1 z.1 h.1 z.2 s.2 h.2 v))) {
+  open Build[G, A] ;
+  open CTruncAlg[a, l].Algebras[G,B] ;
+  open CTruncGraph[a, l].Graph[G, A, B, k, f] ;
+
+  module Node (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (w : Total) (d : Eval (node z Q u v) w) (s : Loc) (h : Arr s z) {
+    b : F z = k.extend z Q (d.bu z (ident z)) d.bv d.vn ;
+    rh : Raw = restrict (node z Q u v) s h ;
+    goal : U l = Eval rh (s, act s z h b) ;
+    inside (i : PB.Lands s.1 z.1 Q h.1) : goal =
+      change-tree (v s h i) rh (symH (node-boundary z Q u v s h i)) _
+        (move (v s h i) (s, d.bv s h i) (s, act s z h b)
+          (apH (\ c -> (s,c)) (symH (k.boundary z Q (d.bu z (ident z)) d.bv d.vn s h i))) (d.ev s h i)) ;
+    opaque inside ;
+
+    module Proper (no : Id Bool (Q.1 s.1 h.1) false) {
+      module NN = CTruncLaws[a, l].Laws[G, A].N[z, Q, u, v] ;
+      R : PB.Phi s.1 = PB.pre s.1 z.1 h.1 Q ;
+      bu (r : Loc) (g : Arr r s) : F r = d.bu r (compose r s z h g) ;
+      bv : Partial s R = rv z Q d.bv s h ;
+      bn : SeedNat s bu = \ r g q j -> transH (d.bn r (compose r s z h g) q j)
+        (apH (d.bu q) (compose-assoc q r s z h g j)) ;
+      vn : Natural s R bv = rvn z Q d.bv d.vn s h ;
+      seed : Id (F s) (act s z h (d.bu z (ident z))) (bu s (ident s)) =
+        transH (d.bn z (ident z) s h)
+          (apH (d.bu s) (transH (compose-idl s z h) (symH (compose-idr s z h)))) ;
+      equation : Id Total (s, k.extend s R (bu s (ident s)) bv vn) (s, act s z h b) =
+        apH (\ c -> (s,c)) (transH
+          (ext-cong k s R (bu s (ident s)) (act s z h (d.bu z (ident z))) (symH seed)
+            bv bv (refl bv) vn (rvn z Q d.bv d.vn s h))
+          (symH (k.uniform z Q (d.bu z (ident z)) d.bv d.vn s h))) ;
+      dn : Eval (NN.R s h) (s, act s z h b) =
+        new NodeGraph[s, R,
+          \ r g -> Eval (u r (compose r s z h g)),
+          \ r g i -> Eval (v r (compose r s z h g) i),
+          (s, act s z h b), bu, bv, bn, vn,
+          \ r g -> d.eu r (compose r s z h g),
+          \ r g i -> d.ev r (compose r s z h g) i, equation] ;
+      result : goal = change-tree (NN.R s h) rh (symH (NN.outside s h no)) _ dn ;
+    } ;
+    result : goal = decide goal (Q.1 s.1 h.1) inside (\ no -> Proper[no].result) ;
+  } ;
+
+  module NodeAt (z : Loc) (Q : PB.Phi z.1)
+    (u : (s : Loc) -> Arr s z -> Raw)
+    (v : (s : Loc) (h : Arr s z) -> PB.Lands s.1 z.1 Q h.1 -> Raw)
+    (w : Total) (d : Eval (node z Q u v) w) {
+    t : Raw = node z Q u v ;
+    b : F z = k.extend z Q (d.bu z (ident z)) d.bv d.vn ;
+    base (e : Id Loc z z) (s : Loc) (h : Arr s z) : Eval (at t z e s h) (s, act s z h b) =
+      change-tree (restrict t s h) (at t z e s h) (symH (at-irr t z e (refl z) s h)) (s,act s z h b)
+        Node[z, Q, u, v, w, d, s, h].result ;
+    result (e : Id Loc z w.1) (s : Loc) (h : Arr s w.1)
+      : Eval (at t w.1 e s h) (s, act s w.1 h w.2) =
+      idJ Total (z,b) (\ w' p -> (e' : Id Loc z w'.1) (s' : Loc) (h' : Arr s' w'.1) ->
+        Eval (at t w'.1 e' s' h') (s', act s' w'.1 h' w'.2)) base w d.equation e s h ;
+  } ;
+
+  module LeafAt (z : Loc) (v : W.Ix (A.tob z.1 z.2)) (w : Total) (d : Eval (leaf z v) w) {
+    t : Raw = leaf z v ;
+    base (e : Id Loc z z) (s : Loc) (h : Arr s z) : Eval (at t z e s h) (s, act s z h (f z v)) =
+      change-tree (restrict t s h) (at t z e s h) (symH (at-irr t z e (refl z) s h)) (s,act s z h (f z v))
+        (apH (\ b -> (s,b)) (symH (fn s z h v))) ;
+    result (e : Id Loc z w.1) (s : Loc) (h : Arr s w.1)
+      : Eval (at t w.1 e s h) (s, act s w.1 h w.2) =
+      idJ Total (z,f z v) (\ w' p -> (e' : Id Loc z w'.1) (s' : Loc) (h' : Arr s' w'.1) ->
+        Eval (at t w'.1 e' s' h') (s', act s' w'.1 h' w'.2)) base w d e s h ;
+  } ;
+  stable : (t : Raw) (w : Total) -> Eval t w -> (e : Id Loc (root t) w.1) (s : Loc) (h : Arr s w.1) ->
+    Eval (at t w.1 e s h) (s, act s w.1 h w.2) = split {
+    leaf z v -> \ w d -> LeafAt[z, v, w, d].result ;
+    node z Q u v -> \ w d -> NodeAt[z, Q, u, v, w, d].result
+  } ;
+  opaque stable ;
+} ;

@@ -74,11 +74,6 @@ level l ; open Ring[l] ;
 module Pr = Prelude[l] ;
 module Laws (Rg : CRing) {
  open Rg ; open RL[Rg] ;
- dist-left (x y w : R) : Id R (mul (add x y) w) (add (mul x w) (mul y w)) =
-  trans (mulC (add x y) w) (trans (dist w x y)
-   (Presentations[l].cong2 R add _ _ _ _ (mulC w x) (mulC w y))) ;
- add-swap (x y w : R) : Id R (add x (add y w)) (add y (add x w)) =
-  trans (addA x y w) (trans (ap (\\ t -> add t w) (addC x y)) (sym (addA y x w))) ;
 '''
 def emit(name,args,lhs,rhs):
     nl,sl=normalize(lhs); nr,sr=normalize(rhs)

@@ -1,0 +1,111 @@
+-- Evaluation of A[X] at an element t of an A-algebra E, not necessarily
+-- commutative (for Cayley-Hamilton, DESIGN.md §5, step 6).  Horner's rule
+-- on coefficient lists, descended to the quotient as in Evaluation.seg; the
+-- only extra fact is that t commutes with every value, which makes the
+-- evaluation multiplicative.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (E : NCAlgebra[l].Over[A,setA].Algebra) (t : E.A) {
+ module P = Poly[l].PolyR[A] ;
+ module M = Mul[l].MulR[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module G = ExteriorAlgebra[l].AG[E.A,E.zero,E.add,E.neg,E.addA,E.addC,E.addZ,E.addN] ;
+
+ mul-zero (x : E.A) : Id E.A (E.mul x E.zero) E.zero = G.hom-zero (E.mul x) (E.dist-left x) ;
+ zero-mul (x : E.A) : Id E.A (E.mul E.zero x) E.zero = G.hom-zero (\ y -> E.mul y x) (\ y w -> E.dist-right y w x) ;
+
+ -- the scalars c . 1
+ c (a : A.R) : E.A = E.scale a E.one ;
+ c-add (a b : A.R) : Id E.A (c (A.add a b)) (E.add (c a) (c b)) = E.add-scale a b E.one ;
+ c-zero : Id E.A (c A.z) E.zero =
+  G.add-cancel (c A.z) (c A.z) (trans (sym (c-add A.z A.z)) (ap c (A.addZ A.z))) ;
+ c-one : Id E.A (c A.o) E.one = E.scale-one E.one ;
+ c-mul (a b : A.R) : Id E.A (c (A.mul a b)) (E.mul (c a) (c b)) =
+  sym (trans (E.scale-mul-left a E.one (c b))
+       (trans (ap (E.scale a) (E.one-left (c b))) (E.scale-scale a b E.one))) ;
+ c-comm (x : E.A) (a : A.R) : Id E.A (E.mul x (c a)) (E.mul (c a) x) =
+  trans (E.scale-mul-right a x E.one)
+   (trans (ap (E.scale a) (trans (E.one-right x) (sym (E.one-left x)))) (sym (E.scale-mul-left a E.one x))) ;
+
+ ---------------------------------------------------------------------
+ -- Horner's rule
+
+ Ev : P.P -> E.A = split { nil -> E.zero ; cons a p | r -> E.add (c a) (E.mul t r) } ;
+ t-comm : (p : P.P) -> Id E.A (E.mul t (Ev p)) (E.mul (Ev p) t) = split {
+  nil -> trans (mul-zero t) (sym (zero-mul t)) ;
+  cons a p | r -> calc E.A {
+   E.mul t (E.add (c a) (E.mul t (Ev p)))
+    =< E.dist-left t (c a) (E.mul t (Ev p)) > E.add (E.mul t (c a)) (E.mul t (E.mul t (Ev p)))
+    =< G.cong-add (c-comm t a) (trans (ap (E.mul t) r) (E.mulA t (Ev p) t))
+     > E.add (E.mul (c a) t) (E.mul (E.mul t (Ev p)) t)
+    =< sym (E.dist-right (c a) (E.mul t (Ev p)) t) > E.mul (E.add (c a) (E.mul t (Ev p))) t } } ;
+ all-zero : (p : P.P) -> P.peq p nil -> Id E.A (Ev p) E.zero = split {
+  nil -> \ h -> refl E.zero ;
+  cons a p | ih -> \ h -> trans (G.cong-add (trans (ap c (h zero)) c-zero)
+                                            (trans (ap (E.mul t) (ih (\ k -> h (suc k)))) (mul-zero t)))
+                           (E.addZ E.zero) } ;
+ e-resp : (p q : P.P) -> P.peq p q -> Id E.A (Ev p) (Ev q) = split {
+  nil -> \ q h -> sym (all-zero q (\ k -> sym (h k))) ;
+  cons a p | ih -> split {
+   nil -> \ h -> all-zero (cons a p) h ;
+   cons b q -> \ h -> G.cong-add (ap c (h zero)) (ap (E.mul t) (ih q (\ k -> h (suc k)))) } } ;
+ e-add : (p q : P.P) -> Id E.A (Ev (M.addP p q)) (E.add (Ev p) (Ev q)) = split {
+  nil -> \ q -> sym (G.zl (Ev q)) ;
+  cons a p | r -> split {
+   nil -> sym (E.addZ (Ev (cons a p))) ;
+   cons b q -> calc E.A {
+    E.add (c (A.add a b)) (E.mul t (Ev (M.addP p q)))
+     =< G.cong-add (c-add a b) (trans (ap (E.mul t) (r q)) (E.dist-left t (Ev p) (Ev q)))
+      > E.add (E.add (c a) (c b)) (E.add (E.mul t (Ev p)) (E.mul t (Ev q)))
+     =< G.swap (c a) (c b) (E.mul t (Ev p)) (E.mul t (Ev q))
+      > E.add (E.add (c a) (E.mul t (Ev p))) (E.add (c b) (E.mul t (Ev q))) } } } ;
+ e-scal (b : A.R) : (p : P.P) -> Id E.A (Ev (M.scal b p)) (E.mul (c b) (Ev p)) = split {
+  nil -> sym (mul-zero (c b)) ;
+  cons a p | r -> calc E.A {
+   E.add (c (A.mul b a)) (E.mul t (Ev (M.scal b p)))
+    =< G.cong-add (c-mul b a)
+        (trans (ap (E.mul t) r)
+         (trans (E.mulA t (c b) (Ev p))
+          (trans (ap (\ y -> E.mul y (Ev p)) (c-comm t b)) (sym (E.mulA (c b) t (Ev p))))))
+     > E.add (E.mul (c b) (c a)) (E.mul (c b) (E.mul t (Ev p)))
+    =< sym (E.dist-left (c b) (c a) (E.mul t (Ev p))) > E.mul (c b) (E.add (c a) (E.mul t (Ev p))) } } ;
+ e-mul (p : P.P) : (q : P.P) -> Id E.A (Ev (M.pmul p q)) (E.mul (Ev p) (Ev q)) = split {
+  nil -> sym (mul-zero (Ev p)) ;
+  cons b q | r -> calc E.A {
+   Ev (M.addP (M.scal b p) (cons A.z (M.pmul p q)))
+    =< e-add (M.scal b p) (cons A.z (M.pmul p q))
+     > E.add (Ev (M.scal b p)) (E.add (c A.z) (E.mul t (Ev (M.pmul p q))))
+    =< G.cong-add (trans (e-scal b p) (sym (c-comm (Ev p) b)))
+        (trans (ap (\ y -> E.add y (E.mul t (Ev (M.pmul p q)))) c-zero)
+         (trans (G.zl (E.mul t (Ev (M.pmul p q))))
+          (trans (ap (E.mul t) r)
+           (trans (E.mulA t (Ev p) (Ev q))
+            (trans (ap (\ y -> E.mul y (Ev q)) (t-comm p)) (sym (E.mulA (Ev p) t (Ev q))))))))
+     > E.add (E.mul (Ev p) (c b)) (E.mul (Ev p) (E.mul t (Ev q)))
+    =< sym (E.dist-left (Ev p) (c b) (E.mul t (Ev q))) > E.mul (Ev p) (E.add (c b) (E.mul t (Ev q))) } } ;
+
+ ---------------------------------------------------------------------
+ -- on A[X]
+
+ module D = B.Q.Descend[E.A,E.set,Ev,e-resp] ;
+ evaluate : B.Carrier -> E.A = D.map ;
+ preserves-add : (p q : B.Carrier) -> Id E.A (evaluate (B.addQ p q)) (E.add (evaluate p) (evaluate q)) =
+  B.forall2 (\ p q -> Id E.A (evaluate (B.addQ p q)) (E.add (evaluate p) (evaluate q))) (\ p q -> E.set _ _)
+   (\ p q -> trans (ap evaluate (B.Add.beta p q))
+     (trans (D.beta (M.addP p q))
+      (trans (e-add p q) (sym (G.cong-add (D.beta p) (D.beta q)))))) ;
+ preserves-mul : (p q : B.Carrier) -> Id E.A (evaluate (B.mulQ p q)) (E.mul (evaluate p) (evaluate q)) =
+  B.forall2 (\ p q -> Id E.A (evaluate (B.mulQ p q)) (E.mul (evaluate p) (evaluate q))) (\ p q -> E.set _ _)
+   (\ p q -> trans (ap evaluate (B.Multiply.beta p q))
+     (trans (D.beta (M.pmul p q))
+      (trans (e-mul p q)
+       (sym (trans (ap (\ y -> E.mul y (evaluate (B.include q))) (D.beta p)) (ap (E.mul (Ev p)) (D.beta q))))))) ;
+ preserves-zero : Id E.A (evaluate B.zeroQ) E.zero = D.beta nil ;
+ raw-constant (a : A.R) : Id E.A (Ev (cons a nil)) (c a) = trans (ap (E.add (c a)) (mul-zero t)) (E.addZ (c a)) ;
+ on-constant (a : A.R) : Id E.A (evaluate (B.constant a)) (c a) = trans (D.beta (cons a nil)) (raw-constant a) ;
+ preserves-one : Id E.A (evaluate B.oneQ) E.one = trans (on-constant A.o) c-one ;
+ on-variable : Id E.A (evaluate B.variable) t =
+  trans (D.beta B.T)
+   (trans (G.cong-add c-zero (ap (E.mul t) (raw-constant A.o)))
+    (trans (G.zl (E.mul t (c A.o))) (trans (ap (E.mul t) c-one) (E.one-right t)))) ;
+} ;

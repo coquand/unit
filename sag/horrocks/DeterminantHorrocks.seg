@@ -1,0 +1,295 @@
+-- The short determinant proof of the theorem of DivisorStep (rank-one
+-- Horrocks over a local ring), following notes/horrocks-determinant.tex.
+-- L an ideal of A[X] with an A-linear retraction rho and a monic F in L.
+--  1. A[X]/L is presented by X^t (t < deg F) with the coordinates of the
+--     remainder of p - rho(p); over the local ring A it is free
+--     (LocalFree): a basis b_1..b_e with coordinates lam.
+--  2. A^e is an A[X]-module by p . v = lam(p sum_j v_j b_j).  With
+--     a_ji = lam_j(X b_i), the matrix X I - a kills the basis vectors, so
+--     its determinant G = chi_a, monic of degree e (CharPoly), kills A^e
+--     (ModuleTrick); then lam(G) = lam(G . 1) = 0, so G is in L.
+--  3. The map A^e -> A^e, c |-> lam(sum_k c_k X^k), has a right inverse
+--     (reduce b_j modulo G), so its determinant is a unit, and it is
+--     injective (DeterminantTrick).  So an element of L of degree < e is 0,
+--     and G divides every element of L.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module DS = DivisorStep[l].Over[A,setA] ;
+ module B = DS.B ; module P = DS.P ; module H = DS.H ; module Red = DS.Red ;
+ module S = DS.S ; module SA = DS.SA ; module AR = DS.AR ; module BR = DS.BR ;
+ module IB = DS.IB ; module MG = DS.MG ; module E = DS.E ;
+ module Bounds = DS.Bounds ; module Normal = DS.Normal ;
+ module D = MnSums[l].Over[A] ;
+ module DT = Determinant[l].Over[A,setA] ;
+ module DTR = DeterminantTrick[l].Over[A,setA] ;
+ module CP = CharPoly[l].Over[A,setA] ;
+ module EM = ExteriorModel[l].Over[A] ;
+ cst (a : A.R) : B.Carrier = B.constant a ;
+
+ -- A[X] as an A-module
+ sc (a : A.R) (x : B.Carrier) : B.Carrier = B.mulQ (cst a) x ;
+ module LF = LocalFree[l].Over[A,B.Carrier,B.zeroQ,B.addQ,B.negQ,B.add-assoc,B.add-comm,B.add-zero,B.add-neg,sc,
+  \ a x y -> B.distributive (cst a) x y,
+  \ a b x -> trans (ap (\ w -> B.mulQ w x) (B.constant-add a b)) (BR.dist-left (cst a) (cst b) x),
+  \ a b x -> trans (ap (\ w -> B.mulQ w x) (B.constant-mul a b)) (sym (B.mul-assoc (cst a) (cst b) x)),
+  \ x -> BR.one-left x] ;
+ -- linear forms on combinations
+ lin-comb (f : B.Carrier -> A.R) (hf : LF.Lin f) : (m : Nat) (c : Fin m -> A.R) (g : Fin m -> B.Carrier) ->
+  Id A.R (f (LF.comb m c g)) (SA.sum m (\ t -> A.mul (c t) (f (g t)))) = split {
+  zero -> \ c g -> LF.lin-zero f hf ;
+  suc m | ih -> \ c g -> trans (hf.1 (sc (c (inr tt)) (g (inr tt))) (LF.comb m (\ t -> c (inl t)) (\ t -> g (inl t))))
+   (cong2 A.R A.add _ _ _ _ (hf.2 (c (inr tt)) (g (inr tt))) (ih (\ t -> c (inl t)) (\ t -> g (inl t)))) } ;
+ -- the two ways of writing a combination
+ comb-sum : (m : Nat) (c : Fin m -> A.R) (g : Fin m -> B.Carrier) ->
+  Id B.Carrier (S.sum m (\ t -> B.mulQ (cst (c t)) (g t))) (LF.comb m c g) = split {
+  zero -> \ c g -> refl B.zeroQ ;
+  suc m | ih -> \ c g -> ap (B.addQ (sc (c (inr tt)) (g (inr tt)))) (ih (\ t -> c (inl t)) (\ t -> g (inl t))) } ;
+ -- expansion of a bounded polynomial in the power basis
+ expand (d : Nat) (w : B.Carrier) (h : Red.Bounded d w) : Id B.Carrier w (LF.comb d (DS.coordinate d w) (E.basis d)) =
+  trans (DS.expand d w h) (comb-sum d (DS.coordinate d w) (E.basis d)) ;
+ comb-zero : (m : Nat) (g : Fin m -> B.Carrier) -> Id B.Carrier (LF.comb m (\ t -> A.z) g) B.zeroQ = split {
+  zero -> \ g -> refl B.zeroQ ;
+  suc m | ih -> \ g -> trans (cong2 B.Carrier B.addQ _ _ _ _ (LF.sc-zero-l (g (inr tt))) (ih (\ t -> g (inl t))))
+                        (B.add-zero B.zeroQ) } ;
+ -- a - b = 0 gives a = b
+ eq-of-diff (a b : A.R) (h : Id A.R (A.add a (A.neg b)) A.z) : Id A.R a b =
+  trans (sym (trans (sym (A.addA a (A.neg b) b)) (trans (ap (A.add a) (AR.neg-cancel b)) (A.addZ a))))
+   (trans (ap (\ t -> A.add t b) h) (AR.zl b)) ;
+ -- y + ((p - y) - r) = p - r
+ split-sub (p y r : B.Carrier) : Id B.Carrier (B.addQ y (LF.sub (LF.sub p y) r)) (LF.sub p r) =
+  trans (B.add-assoc y (LF.sub p y) (B.negQ r))
+   (ap (\ w -> B.addQ w (B.negQ r))
+     (trans (LF.vswap3 y p (B.negQ y)) (trans (ap (B.addQ p) (B.add-neg y)) (B.add-zero p)))) ;
+
+ module Proof (L : IB.Ideal) (rho : B.Carrier -> B.Carrier)
+  (rho-add : (x y : B.Carrier) -> Id B.Carrier (rho (B.addQ x y)) (B.addQ (rho x) (rho y)))
+  (rho-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (rho (B.mulQ (cst a) x)) (B.mulQ (cst a) (rho x)))
+  (rho-zero : Id B.Carrier (rho B.zeroQ) B.zeroQ)
+  (rho-in : (p : B.Carrier) -> L.1 (rho p))
+  (rho-fixes : (p : B.Carrier) -> L.1 p -> Id B.Carrier (rho p) p)
+  (loc : (a b : A.R) -> AR.unit (A.add a b) -> Tr.Trunc[Plus (AR.unit a) (AR.unit b)].carrier)
+  (lower : List A.R) (F-in : L.1 (H.monic lower)) {
+  module RT = DS.Retract[L,rho,rho-add,rho-scale,rho-zero,rho-in,rho-fixes] ;
+  module Gen = MG.Of[L] ;
+  -- L as an A-submodule
+  is (a : A.R) (x : B.Carrier) (hx : L.1 x) : L.1 (sc a x) = RT.in-mul (cst a) x hx ;
+  module N = LF.Sub[L.1,L.2.2.1,RT.in-add,is] ;
+  in-F-mul (q : B.Carrier) (G : B.Carrier) (hG : L.1 G) : L.1 (B.mulQ G q) =
+   RT.LI.equal _ _ (B.mul-comm q G) (RT.in-mul q G hG) ;
+  -- multiplication preserves congruence modulo L
+  mul-cong (p x y : B.Carrier) (h : N.Cong x y) : N.Cong (B.mulQ p x) (B.mulQ p y) =
+   N.in-eq (trans (B.distributive p x (B.negQ y)) (ap (B.addQ (B.mulQ p x)) (BR.mul-neg p y))) (RT.in-mul p (LF.sub x y) h) ;
+
+  ---------------------------------------------------------------------
+  -- 1. A[X]/L is free
+
+  module AT = RT.At[lower,F-in] ;
+  module Dv = AT.D ;
+  d : Nat = AT.d ;
+  sigma (p : B.Carrier) : B.Carrier = LF.sub p (rho p) ;
+  sigma-add (x y : B.Carrier) : Id B.Carrier (sigma (B.addQ x y)) (B.addQ (sigma x) (sigma y)) =
+   trans (ap (LF.sub (B.addQ x y)) (rho-add x y)) (LF.sub-add x y (rho x) (rho y)) ;
+  sigma-sc (a : A.R) (x : B.Carrier) : Id B.Carrier (sigma (sc a x)) (sc a (sigma x)) =
+   trans (ap (LF.sub (sc a x)) (rho-scale a x)) (sym (LF.sub-sc a x (rho x))) ;
+  rs (p : B.Carrier) : B.Carrier = Dv.remainder (sigma p) ;
+  gen (t : Fin d) : B.Carrier = E.basis d t ;
+  co (p : B.Carrier) (t : Fin d) : A.R = DS.coordinate d (rs p) t ;
+  co-lin (t : Fin d) : LF.Lin (\ p -> co p t) =
+   (\ x y -> trans (ap (\ w -> DS.coordinate d (Dv.remainder w) t) (sigma-add x y))
+              (trans (ap (\ w -> DS.coordinate d w t) (Dv.remainder-add (sigma x) (sigma y)))
+                     (Red.coef-add (rs x) (rs y) (DivisorStep[l].index d t))),
+    \ a x -> trans (ap (\ w -> DS.coordinate d (Dv.remainder w) t) (sigma-sc a x))
+              (trans (ap (\ w -> DS.coordinate d w t) (Dv.remainder-scale a (sigma x)))
+                     (Red.coef-scale a (rs x) (DivisorStep[l].index d t)))) ;
+  spans (p : B.Carrier) : N.Cong p (LF.comb d (co p) gen) =
+   N.in-eq (ap (LF.sub p) (expand d (rs p) (Dv.bounded (sigma p))))
+    (N.in-eq (split-sub p (rho p) (rs p))
+     (RT.in-add (rho p) (LF.sub (sigma p) (rs p)) (rho-in p)
+       (N.in-eq (sym (trans (ap (\ w -> LF.sub w (rs p)) (Dv.equation (sigma p)))
+                        (BR.add-neg-cancel (B.mulQ Dv.F (Dv.quotient (sigma p))) (rs p))))
+         (in-F-mul (Dv.quotient (sigma p)) Dv.F F-in)))) ;
+  kills (p : B.Carrier) (hp : L.1 p) (t : Fin d) : Id A.R (co p t) A.z =
+   trans (ap (\ w -> DS.coordinate d (Dv.remainder w) t)
+           (trans (ap (LF.sub p) (rho-fixes p hp)) (LF.sub-self p)))
+    (trans (ap (\ w -> DS.coordinate d w t) (Dv.remainder-small B.zeroQ (Red.bounded-zero d)))
+           (Red.coef-zero (DivisorStep[l].index d t))) ;
+  module NSd = N.Size[d] ;
+  pres : NSd.Pres = new NSd.Pres[gen,co,co-lin,spans,kills] ;
+  free : N.Free = LF.Local[loc].free d L.1 L.2.2.1 RT.in-add is pres ;
+
+  ---------------------------------------------------------------------
+  -- 2. and 3., from a basis
+
+  module WithBasis (e : Nat) (Bs : N.Size[e].Basis) {
+   module NSe = N.Size[e] ;
+   Q : NSe.Pres = Bs.1 ;
+   b (j : Fin e) : B.Carrier = Q.gen j ;
+   lam (p : B.Carrier) (i : Fin e) : A.R = Q.co p i ;
+   lam-cong (x y : B.Carrier) (h : N.Cong x y) (i : Fin e) : Id A.R (lam x i) (lam y i) =
+    eq-of-diff (lam x i) (lam y i) (trans (sym (LF.lin-sub (\ p -> lam p i) (Q.co-lin i) x y)) (Q.kills (LF.sub x y) h i)) ;
+   lam-comb (v : Fin e -> A.R) (i : Fin e) : Id A.R (lam (LF.comb e v b) i) (v i) =
+    trans (lin-comb (\ p -> lam p i) (Q.co-lin i) e v b)
+     (trans (SA.sum-cong e (\ j -> A.mul (v j) (lam (b j) i)) (\ j -> A.mul (D.delta e i j) (v j))
+              (\ j -> trans (ap (A.mul (v j)) (Bs.2 i j)) (A.mulC (v j) (D.delta e i j))))
+            (D.sum-delta e i v)) ;
+
+   -- A^e as an A[X]-module
+   Vec : U l = Fin e -> A.R ;
+   vz : Vec = \ i -> A.z ;
+   vadd (v w : Vec) : Vec = \ i -> A.add (v i) (w i) ;
+   vneg (v : Vec) : Vec = \ i -> A.neg (v i) ;
+   veq (v w : Vec) (h : (i : Fin e) -> Id A.R (v i) (w i)) : Id Vec v w = FE.funext (Fin e) (\ i -> A.R) v w h ;
+   op (p : B.Carrier) (v : Vec) : Vec = \ i -> lam (B.mulQ p (LF.comb e v b)) i ;
+   op-add-r (p : B.Carrier) (v w : Vec) : Id Vec (op p (vadd v w)) (vadd (op p v) (op p w)) =
+    veq (op p (vadd v w)) (vadd (op p v) (op p w))
+     (\ i -> trans (ap (\ x -> lam (B.mulQ p x) i) (LF.comb-add e v w b))
+              (trans (ap (\ x -> lam x i) (B.distributive p (LF.comb e v b) (LF.comb e w b)))
+                     ((Q.co-lin i).1 (B.mulQ p (LF.comb e v b)) (B.mulQ p (LF.comb e w b))))) ;
+   op-add-l (p p' : B.Carrier) (v : Vec) : Id Vec (op (B.addQ p p') v) (vadd (op p v) (op p' v)) =
+    veq (op (B.addQ p p') v) (vadd (op p v) (op p' v))
+     (\ i -> trans (ap (\ x -> lam x i) (BR.dist-left p p' (LF.comb e v b)))
+              ((Q.co-lin i).1 (B.mulQ p (LF.comb e v b)) (B.mulQ p' (LF.comb e v b)))) ;
+   op-mul (p p' : B.Carrier) (v : Vec) : Id Vec (op (B.mulQ p p') v) (op p (op p' v)) =
+    veq (op (B.mulQ p p') v) (op p (op p' v))
+     (\ i -> trans (ap (\ x -> lam x i) (sym (B.mul-assoc p p' (LF.comb e v b))))
+              (lam-cong (B.mulQ p (B.mulQ p' (LF.comb e v b))) (B.mulQ p (LF.comb e (op p' v) b))
+                (mul-cong p (B.mulQ p' (LF.comb e v b)) (LF.comb e (op p' v) b) (Q.spans (B.mulQ p' (LF.comb e v b)))) i)) ;
+   op-one (v : Vec) : Id Vec (op B.oneQ v) v =
+    veq (op B.oneQ v) v (\ i -> trans (ap (\ x -> lam x i) (BR.one-left (LF.comb e v b))) (lam-comb v i)) ;
+   module MT = ModuleTrick[l].Over[B.ring,B.set,Vec,vz,vadd,vneg,
+    \ x y w -> veq _ _ (\ i -> A.addA (x i) (y i) (w i)),
+    \ x y -> veq _ _ (\ i -> A.addC (x i) (y i)),
+    \ x -> veq _ _ (\ i -> A.addZ (x i)),
+    \ x -> veq _ _ (\ i -> A.addN (x i)),
+    op,op-add-r,op-add-l,op-mul,op-one] ;
+   vsum-at : (m : Nat) (w : Fin m -> Vec) (i : Fin e) -> Id A.R (MT.VS.vsum m w i) (SA.sum m (\ j -> w j i)) = split {
+    zero -> \ w i -> refl A.z ;
+    suc m | ih -> \ w i -> ap (A.add (w (inr tt) i)) (ih (\ j -> w (inl j)) i) } ;
+
+   -- the matrix of X, and the basis vectors
+   a (j i : Fin e) : A.R = lam (B.mulQ B.variable (b i)) j ;
+   m (j : Fin e) : Vec = \ k -> D.delta e j k ;
+   module BD = LF.VS.Delta[A,sc,LF.sc-zero-l,\ x -> BR.one-left x] ;
+   comb-m (j : Fin e) : Id B.Carrier (LF.comb e (m j) b) (b j) =
+    trans (LF.VS.vsum-cong e (\ k -> sc (D.delta e j k) (b k)) (\ k -> sc (D.delta e k j) (b k))
+            (\ k -> ap (\ c -> sc c (b k)) (D.delta-sym e j k)))
+     (BD.delta e j b) ;
+   M (j i : Fin e) : B.Carrier = CP.charmat e a j i ;
+   -- (X delta_ji - a_ji) b_j
+   entry (j i r : Fin e) : Id A.R (op (M j i) (m j) r)
+     (A.add (A.mul (D.delta e j i) (a r j)) (A.mul (A.neg (a j i)) (D.delta e r j))) =
+    trans (ap (\ x -> lam (B.mulQ (M j i) x) r) (comb-m j))
+     (trans (ap (\ x -> lam x r)
+              (trans (BR.dist-left (B.mulQ B.variable (cst (D.delta e j i))) (cst (A.neg (a j i))) (b j))
+                     (ap (\ x -> B.addQ x (sc (A.neg (a j i)) (b j)))
+                       (trans (sym (B.mul-assoc B.variable (cst (D.delta e j i)) (b j)))
+                              (BR.mul-swap B.variable (cst (D.delta e j i)) (b j))))))
+      (trans ((Q.co-lin r).1 (sc (D.delta e j i) (B.mulQ B.variable (b j))) (sc (A.neg (a j i)) (b j)))
+             (cong2 A.R A.add _ _ _ _ ((Q.co-lin r).2 (D.delta e j i) (B.mulQ B.variable (b j)))
+               (trans ((Q.co-lin r).2 (A.neg (a j i)) (b j)) (ap (A.mul (A.neg (a j i))) (Bs.2 r j)))))) ;
+   -- (X I - a) kills the basis vectors
+   kernel (i : Fin e) : Id Vec (MT.VS.vsum e (\ j -> op (M j i) (m j))) vz =
+    veq (MT.VS.vsum e (\ j -> op (M j i) (m j))) vz
+     (\ r -> trans (vsum-at e (\ j -> op (M j i) (m j)) r)
+      (trans (SA.sum-cong e (\ j -> op (M j i) (m j) r)
+               (\ j -> A.add (A.mul (D.delta e j i) (a r j)) (A.mul (A.neg (a j i)) (D.delta e r j))) (\ j -> entry j i r))
+       (trans (SA.sum-add e (\ j -> A.mul (D.delta e j i) (a r j)) (\ j -> A.mul (A.neg (a j i)) (D.delta e r j)))
+        (trans (cong2 A.R A.add _ _ _ _
+                 (trans (SA.sum-cong e (\ j -> A.mul (D.delta e j i) (a r j)) (\ j -> A.mul (D.delta e i j) (a r j))
+                          (\ j -> ap (\ c -> A.mul c (a r j)) (D.delta-sym e j i)))
+                        (D.sum-delta e i (a r)))
+                 (trans (SA.sum-cong e (\ j -> A.mul (A.neg (a j i)) (D.delta e r j)) (\ j -> A.mul (D.delta e r j) (A.neg (a j i)))
+                          (\ j -> A.mulC (A.neg (a j i)) (D.delta e r j)))
+                        (D.sum-delta e r (\ j -> A.neg (a j i)))))
+               (A.addN (a r i)))))) ;
+   chi : B.Carrier = CP.char e a ;
+   kills-m (k : Fin e) : Id Vec (op chi (m k)) vz = MT.trick e M m kernel k ;
+   -- chi kills A^e
+   kills-all (v : Vec) (r : Fin e) : Id A.R (op chi v r) A.z =
+    trans (ap (\ x -> lam x r)
+            (LF.hom-comb (B.mulQ chi) (B.distributive chi) (\ c x -> BR.mul-swap chi (cst c) x) e v b))
+     (trans (lin-comb (\ p -> lam p r) (Q.co-lin r) e v (\ k -> B.mulQ chi (b k)))
+      (trans (SA.sum-cong e (\ k -> A.mul (v k) (lam (B.mulQ chi (b k)) r)) (\ k -> A.z)
+               (\ k -> trans (ap (\ x -> A.mul (v k) (lam (B.mulQ chi x) r)) (sym (comb-m k)))
+                        (trans (ap (\ w -> A.mul (v k) (w r)) (kills-m k)) (AR.mul-zero (v k)))))
+             (SA.sum-zero e))) ;
+   -- so chi is in L
+   chi-lam (r : Fin e) : Id A.R (lam chi r) A.z =
+    trans (ap (\ x -> lam x r) (sym (B.mul-one chi)))
+     (trans (lam-cong (B.mulQ chi B.oneQ) (B.mulQ chi (LF.comb e (lam B.oneQ) b))
+              (mul-cong chi B.oneQ (LF.comb e (lam B.oneQ) b) (Q.spans B.oneQ)) r)
+            (kills-all (lam B.oneQ) r)) ;
+   chi-in : L.1 chi =
+    N.in-eq (trans (ap (LF.sub chi) (trans (LF.VS.vsum-cong e (\ t -> sc (lam chi t) (b t)) (\ t -> sc A.z (b t))
+                                             (\ t -> ap (\ c -> sc c (b t)) (chi-lam t)))
+                                           (comb-zero e b)))
+                   (LF.sub-zero chi))
+     (Q.spans chi) ;
+
+   -- 3. G = chi divides L
+   module Monic (p : P.P) (rep : Id B.Carrier (B.include p) chi) {
+    bound : Bounds.Bound (suc e) p =
+     \ k -> trans (sym (CP.coef-include p (plus (suc e) k)))
+             (trans (ap (\ w -> CP.coef w (plus (suc e) k)) rep) (CP.char-bounded e a k)) ;
+    leading : Id A.R (P.coef p e) A.o =
+     trans (sym (CP.coef-include p e)) (trans (ap (\ w -> CP.coef w e) rep) (CP.char-monic e a)) ;
+    lowerG : List A.R = Bounds.cut e p ;
+    G-eq : Id B.Carrier (H.monic lowerG) chi = trans (sym (Normal.equation e p bound leading)) rep ;
+    G-in : L.1 (H.monic lowerG) = Pr.subst B.Carrier L.1 chi (H.monic lowerG) (sym G-eq) chi-in ;
+    module AG = RT.At[lowerG,G-in] ;
+    module DG = AG.D ;
+    len-e : Id Nat DG.d e = Bounds.cut-length e p ;
+    bnd (w : B.Carrier) (h : Red.Bounded DG.d w) : Red.Bounded e w = Pr.subst Nat (\ k -> Red.Bounded k w) DG.d e len-e h ;
+    -- the map c |-> lam(sum c_k X^k) and its right inverse
+    Sm : DT.Mat e = \ k -> lam (E.basis e k) ;
+    act-S (c : Fin e -> A.R) (i : Fin e) : Id A.R (DT.act e Sm c i) (lam (LF.comb e c (E.basis e)) i) =
+     sym (lin-comb (\ q -> lam q i) (Q.co-lin i) e c (E.basis e)) ;
+    rb (j : Fin e) : B.Carrier = DG.remainder (b j) ;
+    Tm : DT.Mat e = \ j -> DS.coordinate e (rb j) ;
+    ST (j i : Fin e) : Id A.R (DT.mmul e Sm Tm j i) (DT.idm e j i) =
+     trans (act-S (Tm j) i)
+      (trans (ap (\ x -> lam x i) (sym (expand e (rb j) (bnd (rb j) (DG.bounded (b j))))))
+       (trans (sym (lam-cong (b j) (rb j)
+                     (N.in-eq (sym (trans (ap (\ w -> LF.sub w (rb j)) (DG.equation (b j)))
+                                    (BR.add-neg-cancel (B.mulQ DG.F (DG.quotient (b j))) (rb j))))
+                      (in-F-mul (DG.quotient (b j)) DG.F G-in)) i))
+              (trans (Bs.2 i j) (D.delta-sym e i j)))) ;
+    det-unit : Id A.R (A.mul (EM.det e Sm) (EM.det e Tm)) A.o =
+     trans (sym (DT.det-mul e Sm Tm))
+      (trans (ap (EM.det e) (FE.funext (Fin e) (\ j -> Fin e -> A.R) (DT.mmul e Sm Tm) (DT.idm e)
+                                 (\ j -> FE.funext (Fin e) (\ i -> A.R) (DT.mmul e Sm Tm j) (DT.idm e j) (ST j))))
+             (DT.det-id e)) ;
+    -- an element of L of degree < e vanishes
+    module Small (w : B.Carrier) (hw : AG.InM w) {
+     bw : Red.Bounded e w = bnd w hw.2 ;
+     c : Fin e -> A.R = DS.coordinate e w ;
+     w-eq : Id B.Carrier w (LF.comb e c (E.basis e)) = expand e w bw ;
+     Sc (i : Fin e) : Id A.R (DT.act e Sm c i) A.z =
+      trans (act-S c i) (trans (ap (\ x -> lam x i) (sym w-eq)) (Q.kills w hw.1 i)) ;
+     ck (k : Fin e) : Id A.R (c k) A.z =
+      trans (sym (AR.one-left (c k)))
+       (trans (ap (\ t -> A.mul t (c k)) (sym (trans (A.mulC (EM.det e Tm) (EM.det e Sm)) det-unit)))
+        (trans (sym (A.mulA (EM.det e Tm) (EM.det e Sm) (c k)))
+         (trans (ap (A.mul (EM.det e Tm)) (DTR.trick e Sm c Sc k)) (AR.mul-zero (EM.det e Tm))))) ;
+     zero : Id B.Carrier w B.zeroQ =
+      trans w-eq
+       (trans (LF.VS.vsum-cong e (\ t -> sc (c t) (E.basis e t)) (\ t -> sc A.z (E.basis e t))
+                (\ t -> ap (\ x -> sc x (E.basis e t)) (ck t)))
+              (comb-zero e (E.basis e))) ;
+    } ;
+    small (w : B.Carrier) (hw : AG.InM w) : Id B.Carrier w B.zeroQ = Small[w,hw].zero ;
+    generator : Gen.Generator = Gen.monic lowerG G-in (AG.divides small) ;
+   } ;
+   generator : Gen.Generator =
+    Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) chi].induction @l (\ t -> Gen.Generator) (\ t -> Gen.generator-prop)
+     (\ r -> Monic[r.1,r.2].generator) (DS.raw-representative chi) ;
+  } ;
+
+  -- the theorem: L has a monic generator
+  generator : Gen.Generator =
+   Tr.Trunc[(e : Nat) * N.Size[e].Basis].induction @l (\ t -> Gen.Generator) (\ t -> Gen.generator-prop)
+    (\ bs -> WithBasis[bs.1,bs.2].generator) free ;
+ } ;
+} ;

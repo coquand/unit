@@ -94,9 +94,9 @@ Isolation
 ---------
 
 No checker, defenv, core, replacement, or sag source was edited.  The core
-and replacement dependencies are relative read-only symlinks.  Algebra.seg
-is a fixed snapshot of sag/Ring.seg, taken before this work; it is not a
-live dependency on the other LLM's files.  The development has its own
+and replacement dependencies are relative read-only symlinks, and Ring.seg
+links to polynomial/Ring.seg, the shared ring library (sag/Ring.seg plus
+the shared elementary ring lemmas).  The development has its own
 checking server in projective/.segserver-d (ignored by git).
 
 Nothing is committed.  The theorem declarations themselves are checked
@@ -148,5 +148,4 @@ retains Loc and the earlier SQC instances for its nonzero-coordinate
 interpretation.
 
 This extension adds three source files and their imports in All.seg.
-All previously checked geometric proofs and the fixed Algebra snapshot
-are unchanged; there is no new dependency on the other LLM's sag files.
+All previously checked geometric proofs are unchanged.

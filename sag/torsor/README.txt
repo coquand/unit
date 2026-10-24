@@ -1,7 +1,11 @@
-SAG Lemma 7.4.2 (Cherubini, Coquand, Hutzler) in the primrec prototype
-=====================================================================
+SAG Section 7.4 (Cherubini, Coquand, Hutzler) in the primrec prototype
+======================================================================
 
-Check from the repository root:   ./segc sag/torsor all
+Check from the repository root:   ./segc sag/torsor all          (1556 declarations, 1.1 s)
+
+Contents: Lemma 7.4.2 (torsors), Theorem 7.4.7 (gerbes), Theorem 7.4.8
+(Cech H^2 = gerbes, as abelian groups, compatible with refinement), and
+Lemma 7.3.5 / Theorem 7.3.6.
 
 Statement (Tors.lemma-7-4-2): for an abelian group A and L with ||L||,
 
@@ -80,12 +84,11 @@ Thm.surjective     every family of gerbes G : || (c : Z2) * Gc c = G ||
 Together: c |-> Gc c is a bijection from Cech classes onto
 H^2(X, F) = || (x : X) -> F x-gerbe ||_0, stated without quotient types.
 Finite choice (fc, by recursion on n) chooses the local objects and the
-paths on all U i and U i n U j at once.  Not formalised: the group
-structures (addition of gerbes), so this is a bijection of sets; and the
-equivalence of the section form of acyclicity with H^l = 0.
+paths on all U i and U i n U j at once.  The group structures and
+acyclicity as vanishing are below.
 
-Update: acyclicity as vanishing, and the quotient equivalence
--------------------------------------------------------------
+Acyclicity as vanishing, and the quotient equivalence
+-----------------------------------------------------
 Vanish.seg      a torsor has an element iff it is A; a gerbe has an object
                 iff it is K (trivialisation with one point, Sip2 with none)
 Cech.Thm2       the comparison with SAG's acyclicity: H1Zero i j (every
@@ -96,7 +99,6 @@ CechQ.theorem-7-4-8 : Hc ~ H2, an equivalence of sets, where
                 Hc = Cech 2-cocycles / merely cohomologous,
                 H2 = || (x : X) -> F x-gerbe ||_0  (quotient by mere equality),
                 with the quotients of projective/Quotient.seg (linked).
-Still open: compatibility with the group structures (addition of gerbes).
 
 Addition (TorSum, GerbeSum, SumCocycle, CechQ)
 ----------------------------------------------
@@ -132,3 +134,34 @@ refinement receives the two Cech refinement maps without any acyclicity
 for its own comparison map to be an isomorphism.  Here Hc is built inside
 CechQM, which assumes acyclicity, so Ref.Classes states refine for
 2-acyclic covers.
+
+SAG Lemma 7.3.5 and Theorem 7.3.6 (Alg73, Affine)
+-------------------------------------------------
+Alg73.seg   rings, modules, finite sums over Fin n, common bounds of
+            finitely many numbers.  L735.lemma-7-3-5: for an A-module M,
+            f 1 .. f n with sum r k f k = 1, s i j = m i j / (f i f j)^N
+            with s j k - s i k + s i j = 0 in M_(f i f j f k) (killed by a
+            power, FEq/Zero on representatives), there are p, V with
+            V i / (f i)^p - V j / (f j)^p = s i j  in M_(f i f j).
+            Steps: synchronisation of the exponents (bound3), powers of
+            unimodular elements are unimodular (Reg.pow-unim, geometric
+            series), and the computation Core.key:
+              F j V i - F i V j = mu i j,   V i = sum rho k mu i k.
+Affine.seg  Aff.Thm.theorem-7-3-6: every M-torsor T on X merely has a
+            section.  R a ring, X a type, M x R-modules, functions X -> R
+            in place of A, D(g) x = "g x is a unit".  Hypotheses (Aff):
+              LocR     1 /= 0, a + b unit -> merely a or b unit
+              ZChoice  inhabited families merely have sections over the
+                       D(f k) of unimodular f 1 .. f n
+              WQC      M(X)_g = M(D(g)) on elements: sections over D(g)
+                       are merely m / g^N; a global m vanishing on D(g)
+                       is merely killed by a power of g (Lemma 7.1.8, U = X)
+            Proof: local sections s i (Z-choice), differences t i j as
+            m i j / (f i f j)^N (WQC, finite choice, bound), the cocycle
+            numerator vanishes on D(f i f j f k) hence is killed by a power
+            (WQC), Lemma 7.3.5 at each point x with R and M x, corrected
+            sections (-u i) . s i agree on overlaps and glue (Lemma 1.2.2,
+            the D(f i) cover X by Loc).
+Paper: the u i of 7.3.5 satisfy s i j = u j - u i, while the proof of 7.3.6
+uses t i j = u i - u j (replace u i by -u i); "M(U i n U j)_(f i f j)" there
+should read M(X)_(f i f j).
