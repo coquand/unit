@@ -1191,7 +1191,8 @@ notInRecord u = case u of
 
 -- The constructor of a record.  A record gets
 --   mkM (params) (fields) : M[params] = new M[params, fields] ,
--- an ordinary definition (new is itself the constructor).
+-- notation for new: the checker evaluates an access to it to its body
+-- (Seg.isNewDef), so it is never opened.
 -- Not generated when the body has level or constraint units, when a field
 -- has hidden binders (a variable cannot carry hiddenness), or when a field
 -- type mentions a member defined in the body (the definition then does not

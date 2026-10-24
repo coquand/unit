@@ -145,7 +145,9 @@ opened (by sequential scope it is the only one whose unfolding can reach the
 other), and strict equality is tried after each step. Writing back an
 omitted argument as a term recognises the names in scope without computing.
 There is no other choice of what to unfold, so the cost of a check reflects
-the structure of the proof.
+the structure of the proof. A record's constructor `mkM`, generated as
+`mkM params fields = new M[params, fields]`, is notation for `new`: applied
+to its arguments it is an element at once, and it is never opened.
 
     seg File.seg --opened          # per declaration: comparisons settled by names,
                                    # by arguments, by components; definitions opened

@@ -543,9 +543,27 @@ dynOf r = case r of
 dynVals :: Env -> [Val]
 dynVals = map snd . dynOf
 
--- an access to a definition, with its evaluated body (lazily)
+-- an access to a definition, with its evaluated body (lazily).  A record's
+-- constructor  mkM = \params fields. new M[params, fields]  is notation for
+-- new: its access is its body, so applied it is an element at once and
+-- nothing is opened
 mkRef :: Unit -> Env -> Val
-mkRef = VRef
+mkRef u r | isNewDef u = unfoldRef u r
+          | otherwise  = VRef u r
+
+isNewDef :: Unit -> Bool
+isNewDef (UDef _ _ _ b) = go [] b
+ where
+  go xs e = case e of
+    Lam x e'  -> go (x : xs) e'
+    LLam x e' -> go (x : xs) e'
+    New (MApp (MVar _) as) -> not (null xs) && all (bound xs) as
+    _ -> False
+  bound xs a = case a of
+    ATm (Var y)  -> y `elem` xs
+    ALv (LV y)   -> y `elem` xs
+    _            -> False
+isNewDef _ = False
 
 -- the body of a definition, evaluated in its environment
 unfoldRef :: Unit -> Env -> Val
