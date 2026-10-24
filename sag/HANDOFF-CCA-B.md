@@ -102,6 +102,17 @@ what is proved with DW1 / CCA numbering.
   `Prop318Set.prop318-pointed`), ε = x ↦ K(ev_x) (`em/EpsEv`).  Next:
   Thm 3.3.2 as a natural group isomorphism (alongside `Thm332`,
   `Thm332C`, which stay).
+- Thm 3.3.2 (A), milestone 1 (H side, plain HoTT): `em/QGrp` (quotient
+  groups, homomorphisms), `em/PiOne` (π₁ as a group; π₁ of a pointed map
+  is a homomorphism), `em/Puppe` (boundary, Puppe 1 and 2, exactness of
+  looped fibre sequences `GEX`), `em/LoopConj` (conjugation; loopings of
+  homotopic maps), `em/PiPt` (products of pointed maps, fibres of
+  products, `PiLoop`), `em/LES` (Lemma B.0.4 as stated: for 0 -> A -> E ->
+  L -> 0, Hⁿ(E) -> Hⁿ(L) -> Hⁿ⁺¹(A) exact, δ = π₁ of the boundary a
+  homomorphism, onto when Hⁿ⁺¹(E) = 0).  Hⁿ(X, B) is π₁ of
+  (x : X) -> K(B x, n+1).  Openings (TOTALS, sum of the *k counts; see
+  HANDOFF-CCA-A "Openings"): at most 494 per declaration except
+  `LES.over1` 689, `LES.fst3` about 520, `EpsEv.Step.loops` 572.
 
 ## Gaps
 

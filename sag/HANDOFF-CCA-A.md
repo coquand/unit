@@ -136,6 +136,33 @@ Representation notes.
   (isEquiv is a proposition).
 - `fails` is a keyword of the parser.
 
+## Openings (totals, 2026-10-24)
+
+Measured as the TOTAL of the `*k` counts on each `--opened` line (rule 6
+of seg/WRITING.md; earlier reports in this file gave distinct counts).
+Script: sum the counts per declaration (`--opened` piped through awk).
+Changes made after measuring:
+- `fe` (funext from univalence) is `opaque` in em/, ccacoh/, cca/All.seg:
+  funext is used through happly-funext / funext-happly only; checking
+  computed through FunExtUA.FE (48 openings in LES.over1).  All three
+  trees check unchanged, em 0.81 s -> 0.58 s.
+- LES: the aliases m1 = suc n, m2 = suc (suc n) removed (opened 700 times
+  each in LES.over1: one name per notion); psi^-1 typed with Puppe's names.
+- PiPt: `happly-loop` stated generically (`Pi.PiLoopAt`, components named
+  F1, F2, Fy, h-pt, h-ap), PiLoop an instance: 2025 -> 334; `pi-comp`
+  through the component lemma `Pi.PiComp` (maps and pointings given
+  separately, no projections of pointed maps): 1187 -> 117.
+- ScottCech.staged: the stage cocycle named once (`Pick`): 1095 -> < 260.
+Remaining above 500:
+- `LES.over1` 689, `LES.fst3` about 520: a chain of pointed-map
+  associativities; what is opened is the identification of one type under
+  two names (Eps.OP / Puppe.OB, PiFib.FP / Fib (Pp ..), Pp / PiFib.PF) and
+  the PtEquiv / pt-inv accessors.  No step of the text is computed (the
+  --opens file em/LES.opens declares none; see its report).  Defining Pp
+  through PiFib.PF made it worse (719) and was reverted.
+- `EpsEv.Step.loops` 572: the same for Ω types (KK.OK / Maps.OB, 137).
+All other declarations of this session: <= 494 (PiOne.Induced.hom).
+
 ## Gaps
 
 (Log here every statement of the paper used without proof, omitted

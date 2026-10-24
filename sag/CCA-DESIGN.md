@@ -133,6 +133,46 @@ with all Ȟ^(m+1)(X, S, B) = 0, which is closed under L B = B^S / B by the
 `cca/Cochains`.  Built: `em/CechHigher`, `em/FibreTorsor`,
 `ccacoh/LiftStone`, `ccacoh/Thm332C`.
 
+**Form (A), plan of worker A (2026-10-24, user's request, items 8).**
+Alongside `Thm332` / `Thm332C` (unchanged).  X with q : S ->> X, S x the
+fibres, S a Čech cover (Def. B.0.3, `Thm332.Cov`); coefficients: families
+B of overtly discrete abelian groups (closed under E B = B^S and
+L B = B^S / B).  Pₘ(B) = (x : X) -> K(B x, m).
+
+1. Groups.  Hⁿ(X, B) = ||Pₙ(B)||₀ (set quotient by replacement, as
+   `CorA07.H1`), with the group structure of Ω P_(n+1)(B) ≃ Pₙ(B) (`Eps.psi`):
+   path composition (n = 0: pointwise, `CechZero`).  Ȟⁿ(X, S, B) =
+   cocycles / coboundaries (`Cochains.Cech`), pointwise addition.  Maps
+   h_* from K(h, n) pointwise, resp. h o -.
+2. H-side lemmas (plain HoTT, em/):
+   - K is a functor: K(g h, m) = K g o K h, K id = id (unique-loop, as `EpsEv`);
+   - PiLoop: for pointwise maps with loop F_x = e ; G_x ; e^-1,
+     loop (Pi F) = psi ; Pi G ; psi^-1 (the square of `EpsEv`, generalised),
+     so h_* is a homomorphism;
+   - the boundary d : K(L, m) -> K(A, m+1) of 0 -> A -> E -> L -> 0
+     (fibre of K p, `FibSeq`), with loop d_(m+1) = e ; d_m ; e^-1
+     (Ω∂ = ∂Ω under `Fibres.omega-fib`), so δ = (Pi d)_* is a
+     homomorphism, natural in morphisms of short exact sequences
+     (fibre inclusions of FibSeq are unique: null-homotopies of
+     K(A, m) -> K(C, m) form a contractible type);
+   - Lemma B.0.4 as stated: Hⁿ(E) -> Hⁿ(L) -> Hⁿ⁺¹(A) -> 0 exact (LES of a
+     fibration at π₁, π₀; Hⁿ⁺¹(X, E) = 0 by the Čech cover).
+3. Čech side (em/, ccacoh/):
+   - Lemma B.0.5 in the form needed and B.0.7 (supplied): for a short
+     exact sequence of complexes (cochain-level surjectivity of L-lifts
+     = `ccacoh/LiftStone`), the connecting map δ̌ : Ȟⁿ(L) -> Ȟⁿ⁺¹(A) is
+     a well-defined homomorphism with Ȟⁿ(E) -> Ȟⁿ(L) -> Ȟⁿ⁺¹(A) exact;
+   - Lemma B.0.6: δ̌ onto, since Ȟⁿ⁺¹(E) = 0 (B.0.2, `CechHigher`);
+     natural in A.
+4. Thm 3.3.2 (A).  Φ₀ = Lemma B.0.1.  Φₙ₊₁ is induced on cokernels:
+   Hⁿ⁺¹(A) = coker(Hⁿ(E) -> Hⁿ(L)) ~ coker(Ȟⁿ(E) -> Ȟⁿ(L)) = Ȟⁿ⁺¹(A),
+   using Φₙ for E and L and its naturality for p; Φₙ₊₁ is natural
+   because δ, δ̌ and Φₙ are.  Statement: for each n a group isomorphism
+   Hⁿ(X, A) ≅ Ȟⁿ(X, S, A), natural in homomorphisms of overtly discrete
+   families.
+Estimate: 10-15 files.  The hard part is the boundary d (Ω∂ = ∂Ω, its
+naturality); the Čech side is algebra.
+
 ## 6. Rules (as for SSD)
 
 - Checker: the `unit` checkout (`/Users/coquand/CANONICITY/unit`): `cabal build`
