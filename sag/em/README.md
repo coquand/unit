@@ -36,6 +36,10 @@ Levels are indexed by `Base.Nat` with offset 2 (DW1 footnote 2, recursive):
 | CCA Prop. 3.1.4 = Cor. A.0.7, Cor. A.0.8 | as bijections of sets: Ȟ¹(X, Y, G) ≃ H¹(X, Y, G), and ≃ H¹(X, G) when H¹(Σ Y, G ∘ π) = 0; with Lemmas A.0.2 (ii), A.0.4 (iii), A.0.5, A.0.6.  Sets by `Quotient` (replacement); H¹(X, Y, G) is the quotient of the pointed families, a subset of H¹(X, G) (`forget-injective`) | `CorA07`: `CorA07.corA07`, `CorA07.A08.corA08` |
 | CCA Def. 3.3.1 (vanishing form), Čech dimension shift | Ȟ^k = 0 is worker A's `Cochains.Cech.Vanish k` (linked); naturality of δ; Ȟ(B^Y) = 0 (cone); the shift to L = B^Y / B given lifts; Ȟ¹ forms agree with `CechNA` | `CechHigher` |
 | — | the fibre of p over c in 0 -> A -> B -> C -> 0 is an A-torsor | `FibreTorsor` |
+| CCA Lemma B.0.1 | Ȟ⁰(X, Y, A) = H⁰(X, A) = (x : X) -> A x for Y x merely inhabited; additive, natural in A | `CechZero`: `CechZero.lemmaB01`, `Natural0.natural` |
+| — | restriction of Ȟ¹ classes along a map of covers Y' x -> Y x; it commutes with Ψ, so it is injective | `CechPull`: `Pull.map`, `Pull.psi-pull`, `Pull.injective` |
+| CCA Prop. 3.1.4 = Cor. A.0.7, Cor. A.0.8 | as isomorphisms of pointed sets: the unit cocycle goes to the trivial family (psi of the unit cocycle is the trivial torsor) | `CorA07Pt`: `corA07-pointed`, `corA08-pointed` |
+| CCA Def. 3.2.1 | eps m is the canonical map: ev_x o eps m = K(ev_x, m) as pointed maps, so eps m z x = K(ev_x, m) z | `EpsEv`: `EpsEv.claim`, `eps-ev` |
 
 Supporting results: the fundamental theorem of identity types (`FundThm`),
 being an equivalence is a proposition (`EquivProp`), pointed equivalences,

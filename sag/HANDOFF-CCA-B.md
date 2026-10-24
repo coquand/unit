@@ -92,6 +92,17 @@ what is proved with DW1 / CCA numbering.
   (149 modules) cold; largest `--opened` in the new files 26
   (`CechHigher.Shift.Chase.G.T.bound`).
 
+## Continued by worker A (2026-10-24, B on other work; user's decision)
+
+- Lemma B.0.1 (`em/CechZero`), B.0.2 = `CechHigher.Shift.vanishS`
+  (README fixed), Lemma 3.1.5 as stated (`ccacoh/Lemma315`, with
+  `em/CechPull`; `ScottCech.Stages` is now the instance of a general
+  `ScottCech.Tower` of Stone spaces, same names for `H1Stone`), pointed
+  versions of Cor. A.0.7, A.0.8, Prop. 3.1.8 (`em/CorA07Pt`,
+  `Prop318Set.prop318-pointed`), ε = x ↦ K(ev_x) (`em/EpsEv`).  Next:
+  Thm 3.3.2 as a natural group isomorphism (alongside `Thm332`,
+  `Thm332C`, which stay).
+
 ## Gaps
 
 (Log here every statement of the papers used without proof, omitted
@@ -117,19 +128,21 @@ verification, broken reference, or citation replaced by a proof.)
   definition).  The formulas of Appendix A are mirrored and written without
   inverses (cocycle d y1 y2 . d y0 y1 = d y0 y2; trivial: g y1 . d y0 y1 =
   g y0).
-- CCA Lemma 3.1.5 ("We omit the details"): proved in the form used by
-  Lemma 3.1.6 only: cochains of pairs and triples on the limit are the
+- CCA Lemma 3.1.5 ("We omit the details"): now also proved as stated
+  (`Lemma315`, worker A); originally in the form used by Lemma 3.1.6 only: cochains of pairs and triples on the limit are the
   colimits of the stage cochains (Props 2.3.5, 2.3.7); then the cocycle
   is represented at a stage and becomes a cocycle at a later stage (Φ₃
-  injective).  The statement Ȟ¹(S, T, G) = colim_k Ȟ¹(S, T_k, G) itself
-  is not formalised.
+  injective).  As stated: injectivity is not by the paper's formulas for
+  coboundaries but because restriction along a map of covers is injective
+  on Ȟ¹ (`em/CechPull`: both are subsets of H¹ through Ψ).
 - CCA Thm 3.3.2: "S is a Čech cover for X, A in the sense of ??" (broken
   reference): it is Def. B.0.3; proved from Thm 3.2.5 and Cor. 3.2.6
   (`Thm332.Over.Cov`), using that the fibres of S ->> X are Stone (X
   compact Hausdorff: closed equality, SSD Thm 4.18).
 - CCA Prop. 3.1.8: X compact Hausdorff is not used (any X with a Stone
-  S ->> X).  Proved in the vanishing form and as a bijection of sets; the
-  group structures are not formalised.
+  S ->> X).  Proved in the vanishing form and as an isomorphism of pointed
+  sets (G not abelian; `CorA07Pt`, worker A); the group structure for
+  abelian coefficients belongs with Thm 3.3.2.
 - CCA Def. 3.1.2 defines H¹(X, Y, G) as a subset of H¹(X, G); here it is
   the set quotient of the families with points over Y (Lemma 3.1.3), with
   its injection `forget` into H¹(X, G).  The quotients are taken at level
@@ -144,7 +157,8 @@ verification, broken reference, or citation replaced by a proof.)
   of overtly discrete types and truncations (SSD Lemma 2.7, CCA Prop. 2.3.9).
 - CCA Def. 3.2.1 ("the canonical map ε"): ε is defined by delooping
   (determined by its loopings); its identification with x |-> K(ev_x) is
-  not needed and not proved.
+  `em/EpsEv` (worker A): by induction, comparing loopings
+  (`unique-loop`).
 - DW1 Thm 2 / Cor. 7 use "Whitehead's principle [Uni13, 8.8.2]" only in
   the uniqueness half; for 0-connected types it is proved here
   (`em/Whitehead`).

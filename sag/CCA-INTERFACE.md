@@ -200,3 +200,17 @@ notion); everything is stated with A's `Cochains.Cech` (`Ch`, `d`,
 `isCocycle`, `Bounds`, `Vanish k` = Ȟ^k = 0).  For Thm 3.4.3 (iii): pass
 `\ m -> cech-I (suc m)` (type `Cochains.Cech[I, Fibre cs, \ x -> Gr].Vanish (suc m)`)
 as `v` to `Thm332C.Over.thm332`.
+
+Added by worker A in B's directories (2026-10-24, B on other work; same
+rules).  `ScottCech.Stages` keeps its names (now an instance of
+`ScottCech.Tower`, a tower of Stone spaces).
+
+| CCA | file | declaration | statement |
+|---|---|---|---|
+| Lemma B.0.1 | `em/CechZero` | `CechZero[X, Y, hY, A].lemmaB01 : Equiv H0 Z0` | `H0 = (x : X) -> (A x).A`, `Z0` the 0-cocycles of `Cochains.Cech`; additive, natural in A (`Natural0.natural`) |
+| — | `em/CechPull` | `Pull[X, Y, Y', hY, hY', G, f].map`, `.injective` | restriction of Ȟ¹ classes along `f x : Y' x -> Y x`; injective |
+| Lemma 3.1.5 | `ccacoh/Lemma315` | `Over[ax].Lemma315[S, sS, Tk, dk, sT, inh, G, oG].equivalence : Equiv CH.colim AL.Cech` | colim_k Ȟ¹(S, T k, G) = Ȟ¹(S, lim T, G) |
+| Cor. A.0.7, A.0.8 (pointed) | `em/CorA07Pt` | `CorA07Pt[X, Y, hY, G].corA07-pointed`, `corA08-pointed hyp` | base points `base-cech`, `base-h1y`, `base-h1` |
+| Prop. 3.1.8 (pointed) | `ccacoh/Prop318Set` | `Over[..].prop318-pointed` | |
+| Def. 3.2.1 | `em/EpsEv` | `EpsEv[S, A].claim m x`, `eps-ev m z x : (eps m).1 z x = (KMap[PA, A x, ev x].K m).1 z` | ε is the canonical map |
+
