@@ -18,7 +18,8 @@ the `unit` root.  Everything is under `Over (ax : StoneAxioms[l,l].Assumptions)`
 | Lemma 2.1.6 | an increasing cover of a Stone space is eventually everything | `Lemma216.lemma216` |
 | Lemma 2.1.7 | towers of finite families approximating T, with sections | `Lemma217.lemma217` (record `Approx`) |
 | — | a limit of inhabited Stone spaces is inhabited | `LimInhabited.lim-inhabited` |
-| Lemma 2.3.4 | (form used by 2.3.5) | `Prop235.Prop235.Lemma234` |
+| Lemma 2.3.3 | the image of a stage of a tower of overtly discrete types is open | `Lemma233.Over.lemma233` |
+| Lemma 2.3.4 | colim_j Pi_x I_j x -> colim_i Pi_x Im_i x is surjective | `Lemma233.Over.lemma234` (the form used by 2.3.5: `Prop235.Prop235.Lemma234`) |
 | Prop. 2.3.5 | colim_i Pi_x I_i x = Pi_x colim_i I_i x | `Prop235.prop235` |
 | Lemma 2.3.6 | colim_k (S_k -> F) = (lim S -> F), F finite | `Lemma236Stone.lemma236-stone` (finite towers: `Lemma236`) |
 | Prop. 2.3.7 | colim_k (S_k -> I) = (lim S -> I), I overtly discrete | `Prop237.prop237-stone` (finite towers: `prop237`) |
@@ -40,6 +41,7 @@ the `unit` root.  Everything is under `Over (ax : StoneAxioms[l,l].Assumptions)`
 | Thm 3.4.3 (ii) | H^1(I, G) = 0, G overtly discrete | `Thm343ii.thm343ii` |
 | Lemma 3.4.4 (i), (ii) | overtly discrete types and BG are I-local | `Lemma344.odisc-local`, `bg-local` |
 | Def. 3.3.1, C.0.4 | ordered cochains, delta (recursion on the first point), additivity, delta delta = 0, cone, locality, naturality; the Čech complex and its vanishing | `Cochains.Cochains`, `Natural`, `Cech` |
+| Def. 3.3.1 (the sum) | the recursive delta is the alternating sum sum_i (-1)^i phi (s without s_i) | `Cochains.AltSum.alt-delta` |
 | Lemma C.0.6 (C.0.5 for abelian G) | the near-tuple complex on V n is exact at every length | `LemmaC06.LemmaC06[Gr, n].exact` |
 | — | Ȟᵏ(I, cs^-1, A) = 0 for every k, A overtly discrete abelian | `CechI.Over.cech-I` |
 | Thm 3.4.3 (iii) | H^(n+1)(I, A) = 0, A overtly discrete abelian | `Thm343iii.Over.thm343iii` (B's Thm 3.3.2 (C′) + `cech-I`) |

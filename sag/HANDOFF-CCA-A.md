@@ -111,6 +111,13 @@ and a `cca/README.md` lists what is proved with CCA numbering.
   Full check 165 modules, 0 failed, 2.3 s; new files < 0.04 s, openings
   <= 19.  A's part of CCA is complete.
 - Left: nothing in scope (Prop. 3.4.5 is out of scope).
+- Done (2026-10-24, after the join): Lemma 2.3.3 and Lemma 2.3.4 as
+  stated (`Lemma233`, 0.04 s, at most 8 definitions opened per
+  declaration); delta = the alternating sum of Def. 3.3.1
+  (`Cochains.AltSum`, appended, existing declarations untouched, max 12
+  openings).  Cold full checks: cca 166 modules 2.35 s, em 50 modules
+  0.29 s, ccacoh 149 modules 1.71 s, 0 failed.  No declaration opens more
+  than ~500 definitions.
 - Full check 133 modules, 1.5 s; largest openings 84
   (`CountableProduct.NotAll.W.index`), all others <= 30.
 
@@ -136,11 +143,14 @@ verification, broken reference, or citation replaced by a proof.)
 
 - Lemma 2.1.6 assumes the U i open; the proof (local choice +
   boundedness) does not use it.  Hence Lemma 2.3.3 (images are open) is
-  not needed for Prop. 2.3.5, and is not formalised.
+  not needed for Prop. 2.3.5; it is formalised separately
+  (`Lemma233.lemma233`, via SSD Lemmas 2.6-2.8).
 - Prop. 2.3.5 holds for towers of sets; overt discreteness is not used.
-- Lemma 2.3.4 is formalised in the form used by Prop. 2.3.5 (a phi in the
-  image of stage j lifts to a later stage), not as a surjection of
-  colimits.
+- Lemma 2.3.4: Prop. 2.3.5 uses the form "a phi in the image of stage j
+  lifts to a later stage" (`Prop235...Lemma234`); the statement as a
+  surjection of colimits is `Lemma233.lemma234`, derived from it (the
+  forgetful map from the colimit of the image tower is injective).  Only
+  that the I i x are sets is used.
 - Lemmas 2.3.6 and Prop. 2.3.7 "omit the verification that this is the
   canonical map": the formal proofs work with the canonical map directly
   (injective + surjective), not with the chain of equivalences.  So far
@@ -185,7 +195,8 @@ verification, broken reference, or citation replaced by a proof.)
   alternating complex); replaced by a direct proof (cone at the new
   vertex, gluing along {j, j+1}).  The formal differential is the
   recursion delta phi (v . t) = phi t - delta (phi_v) t, equal to the
-  paper's alternating sum (not proved formally: nothing uses the sum).
+  paper's alternating sum (`Cochains.AltSum.alt-delta`; nothing else
+  uses the sum).
 - Thm 3.4.3 (iii) as planned (form (C), Ȟ¹ for all families) is false:
   see A5 above.  The paper's own route only needs constant coefficients.
 - Lemma 3.4.4 (ii): the paper's "identity types in BG are G-torsors" is

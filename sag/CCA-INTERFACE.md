@@ -85,6 +85,15 @@ Added (2026-10-24, last): done with B's `Thm332C`.
 | Lemma 3.4.4 (iii) | `Lemma344iii` | `Over[ax].em-local Gr oA m : Lemma344.isLocal (KK[Gr].K m)` | K(A, m) is I-local |
 | — | `Lemma344` | `ByIds[Z, idl, onto].local` | identity types I-local and maps I -> Z merely constant give Z I-local |
 
+Added (2026-10-24, after the join; same rules).  `Cochains` is unchanged
+except for the module `AltSum` appended at its end.
+
+| CCA | file | declaration | statement |
+|---|---|---|---|
+| Lemma 2.3.3 | `Lemma233` | `Over[ax].lemma233 X oX i y : OC.isOpen (InImage X i y)` | X a `Seq` of overtly discrete types, `InImage X i y = \|\|(z : X.A i) * inc i z = y\|\|`; for a `Prop235.Tower`, `Colims.Image phi i x` is `InImage (Tw.at x) i (phi x)` |
+| Lemma 2.3.4 | `Lemma233` | `Over[ax].lemma234 S sS Tw w : \|\|Fibre Images[S,Tw].map w\|\|` | `Images[S,Tw]`: `Im i x` (image of stage i in colim I x, a subset), `ims` the tower of `(x : S) -> Im i x`, `map : colim_i ((x : S) -> I i x) -> colim ims` (induced by the stage maps); also `forget` (injective) and `forget-map : forget (map u) = canonical u` |
+| Def. 3.3.1 (the sum) | `Cochains` | `AltSum[Gr, Y].alt-delta k phi s : delta k phi s = alt k phi s` | `alt k phi s = sum_{i : Fin (k+1)} sign (index i) (phi (omit k i s))`, i.e. the paper's alternating sum; `omit`, `sum`, `sign`, `index`, `sum-inv` |
+
 ## Worker B: provided
 
 Stable (2026-10-24): K(A, n).  Link the files of `em/` in the order of
