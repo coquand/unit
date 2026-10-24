@@ -169,6 +169,25 @@ All other declarations of this session: <= 494 (PiOne.Induced.hom).
 
 ## Openings pass after item 8 (2026-10-24, totals)
 
+**Rule (WRITING.md rule 2, measured):** each written instance M[a, b] is a
+new expression whose arguments are checked where it is written; name it
+once (`module KA = K[A', oA']`) and use the name.  Thm332A.on-delta wrote
+K[A', oA'].CK.f3 several times and re-checked Coker's 20 arguments each
+time (1622 -> 491 after naming f3 in K).
+
+Rounds (ii), (i), (iii), all committed or ready, 0 failed:
+- (ii) Thm332A: f3, f3-d, iso named in K; base split into base-iso and
+  base-nat; CechH0's alias H0 removed.  on-delta 1622 -> 491, base 630 ->
+  311 + 277.
+- (i) Eps, EMMaps: on loops conj 0 is c0 = unband o h o band (resp. psi^-1 o
+  band), named, with c0-conj by refl and c0-mult stated in EM1 names (K1,
+  k0); accessors for ps, eA, LD0 in Diag.DStep.  Eps.mult0 1362 -> 240 (+
+  c0-mult 490), KMap.mult0 970 -> 382, DStep.LD 671 -> 468.
+- (iii) LES: Pp (suc (suc n)) for the 63 written PiMap's (sq2 504 -> < 290);
+  LESNat.natural: loop types as Id, not PiOne.O (635 -> 454); CechNat:
+  named instances QA2, QC1, MCq, natural split into Goal / on-cl / natural
+  (574 -> on-cl 513: the rest is Snake's cocycle names against CechGrp's).
+
 Changes (all trees check; em 1.61 s, ccacoh 3.95 s, cca 2.54 s cold):
 - inlined the type aliases of FibSeq.SES.Obj (X0 x0 .. OC oc) and of
   Eps.Diag.DStep (X0 .. OZ oz), KK.OK (everywhere: em, cca/Lemma344iii) and
