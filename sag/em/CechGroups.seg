@@ -1,0 +1,179 @@
+-- The Čech cohomology groups Ȟᵏ(X, Y, B) (CCA Def. 3.3.1) on worker A's
+-- ordered cochains (Cochains.Cech), and their maps.
+--   Kern h        the kernel of a homomorphism, an abelian group
+--   QAb G P       G / P for a subgroup P (a predicate closed under o, +,
+--                 -): QGrp with  a ~ b  iff  P (a - b)
+--   delta-add     delta (phi + psi) = delta phi + delta psi (induction on
+--                 the length, as Cochains.delta-sub)
+--   Ȟᵏ            cocycles of length k+1 (the kernel of d) modulo
+--                 coboundaries: for k = 0 nothing (Ȟ⁰ = Z⁰, Lemma B.0.1),
+--                 for k+1 the image of d (ImageGroup.Img)
+--   h_*           a family of homomorphisms acts on cochains by
+--                 composition; it commutes with delta (CechHigher.Natural)
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Torsor[l] ; open EMMaps[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Cc = Cochains[l] ;
+module IG = ImageGroup[l] ;
+
+-- identities of abelian groups, with a - b = a + (-b)
+module AbAlg (G : Ab) {
+  open G ;
+  module AS = Cc.AbSub[G] ;
+  module AL = AbL[G] ;
+  -- (a + b) - (c + e) = (a - c) + (b - e)
+  sub-add (a b c e : A) : Id A (AS.sub (add a b) (add c e)) (add (AS.sub a c) (AS.sub b e)) =
+    transH (apH (add (add a b)) (AS.inv-add c e)) (AS.shuffle a b (inv c) (inv e)) ;
+  -- -(a - b) = b - a
+  inv-sub (a b : A) : Id A (inv (AS.sub a b)) (AS.sub b a) =
+    transH (AS.inv-add a (inv b)) (transH (apH (add (inv a)) (AS.inv-inv b)) (comm (inv a) b)) ;
+  -- (a - b) + (b - c) = a - c
+  sub-trans (a b c : A) : Id A (add (AS.sub a b) (AS.sub b c)) (AS.sub a c) = AL.shift a b (inv c) ;
+  -- (-a) - (-b) = -(a - b)
+  sub-inv (a b : A) : Id A (AS.sub (inv a) (inv b)) (inv (AS.sub a b)) = symH (AS.inv-add a (inv b)) ;
+} ;
+
+-- the kernel of a homomorphism
+module Kern (Ga Gb : Ab) (h : Hom Ga Gb) {
+  Cond (a : Ga.A) : U l = Id Gb.A (h.1 a) Gb.o ;
+  C : U l = (a : Ga.A) * Cond a ;
+  setC : isSet C = isSet-sub Ga.A Cond Ga.setA (\ a -> Gb.setA (h.1 a) Gb.o) ;
+  eqC (u v : C) (e : Id Ga.A u.1 v.1) : Id C u v = Sigma-eq Ga.A Cond u.1 v.1 u.2 v.2 e (Gb.setA (h.1 v.1) Gb.o) ;
+  o : C = (Ga.o, hom-unit Ga Gb h) ;
+  add (u v : C) : C = (Ga.add u.1 v.1,
+    transH (h.2 u.1 v.1) (transH (apH (\ z -> Gb.add z (h.1 v.1)) u.2) (transH (apH (Gb.add Gb.o) v.2) (Gb.unitr Gb.o)))) ;
+  inv (u : C) : C = (Ga.inv u.1, transH (IG.hom-inv Ga Gb h u.1) (transH (apH Gb.inv u.2) Cc.AbSub[Gb].inv-o)) ;
+  ab : Ab = new Ab[C, setC, o, add, inv,
+    \ u v w -> eqC (add (add u v) w) (add u (add v w)) (Ga.assoc u.1 v.1 w.1),
+    \ u v -> eqC (add u v) (add v u) (Ga.comm u.1 v.1),
+    \ u -> eqC (add u o) u (Ga.unitr u.1),
+    \ u -> eqC (add u (inv u)) o (Ga.invr u.1)] ;
+  -- equality of elements, in the group's own terms
+  eqA (u v : ab.A) (e : Id Ga.A u.1 v.1) : Id ab.A u v = eqC u v e ;
+} ;
+
+-- the quotient of an abelian group by a subgroup
+module QAb (G : Ab) (P : G.A -> U l) (pP : (a : G.A) -> isProp (P a)) (p0 : P G.o)
+  (padd : (a b : G.A) -> P a -> P b -> P (G.add a b)) (pinv : (a : G.A) -> P a -> P (G.inv a)) {
+  module AA = AbAlg[G] ;
+  rel (a b : G.A) : U l = P (AA.AS.sub a b) ;
+  rr (a : G.A) : rel a a = subst G.A P G.o (AA.AS.sub a a) (symH (AA.AS.sub-self a)) p0 ;
+  rs (a b : G.A) (r : rel a b) : rel b a = subst G.A P (G.inv (AA.AS.sub a b)) (AA.AS.sub b a) (AA.inv-sub a b) (pinv (AA.AS.sub a b) r) ;
+  rt (a b c : G.A) (r : rel a b) (s : rel b c) : rel a c =
+    subst G.A P (G.add (AA.AS.sub a b) (AA.AS.sub b c)) (AA.AS.sub a c) (AA.sub-trans a b c) (padd (AA.AS.sub a b) (AA.AS.sub b c) r s) ;
+  mul-resp (a a' b b' : G.A) (r : rel a a') (s : rel b b') : rel (G.add a b) (G.add a' b') =
+    subst G.A P (G.add (AA.AS.sub a a') (AA.AS.sub b b')) (AA.AS.sub (G.add a b) (G.add a' b')) (symH (AA.sub-add a b a' b'))
+      (padd (AA.AS.sub a a') (AA.AS.sub b b') r s) ;
+  inv-resp (a a' : G.A) (r : rel a a') : rel (G.inv a) (G.inv a') =
+    subst G.A P (G.inv (AA.AS.sub a a')) (AA.AS.sub (G.inv a) (G.inv a')) (symH (AA.sub-inv a a')) (pinv (AA.AS.sub a a') r) ;
+  module QG = QGrp[l].QGrp[G.A, rel, \ a b -> pP (AA.AS.sub a b), rr, rs, rt, G.o, G.add, G.inv, mul-resp, inv-resp,
+    G.assoc, AA.AL.unitl, G.unitr, AA.AL.invl, G.invr] ;
+} ;
+
+-- delta is additive, for one group
+module DeltaAdd (Gr : Ab) (Y : U l) {
+  open Gr ;
+  module C = Cc.Cochains[Gr, Y] ;
+  module AA = AbAlg[Gr] ;
+  addC (k : Nat) (phi psi : C.C k) : C.C k = \ t -> add (phi t) (psi t) ;
+  delta-add : (k : Nat) (phi psi : C.C k) (s : C.Tup (suc k)) ->
+    Id A (C.delta k (addC k phi psi) s) (add (C.delta k phi s) (C.delta k psi s)) = split {
+    zero -> \ phi psi s -> refl (add (phi (C.tail zero s)) (psi (C.tail zero s))) ;
+    suc k | r -> \ phi psi s -> transH
+      (apH (AA.AS.sub (add (phi (C.tail (suc k) s)) (psi (C.tail (suc k) s)))) (r (C.at k (s none) phi) (C.at k (s none) psi) (C.tail (suc k) s)))
+      (AA.sub-add (phi (C.tail (suc k) s)) (psi (C.tail (suc k) s))
+         (C.delta k (C.at k (s none) phi) (C.tail (suc k) s)) (C.delta k (C.at k (s none) psi) (C.tail (suc k) s))) } ;
+} ;
+
+-- Ȟᵏ(X, Y, B)
+module CechGrp (X : U l) (Y : X -> U l) (B : X -> Ab) {
+  module CB = Cc.Cech[X, Y, B] ;
+  -- cochains of length j, an abelian group (pointwise)
+  Ch-ab (j : Nat) : Ab = Eps[l].prod-ab X (\ x -> Eps[l].prod-ab (Cc.Cochains[B x, Y x].Tup j) (\ t -> B x)) ;
+  dhom (j : Nat) : Hom (Ch-ab j) (Ch-ab (suc j)) = (CB.d j, \ phi psi ->
+    FL.funext X (\ x -> Cc.Cochains[B x, Y x].C (suc j)) (CB.d j (\ x t -> (B x).add (phi x t) (psi x t)))
+      (\ x t -> (B x).add (CB.d j phi x t) (CB.d j psi x t)) (\ x ->
+      FL.funext (Cc.Cochains[B x, Y x].Tup (suc j)) (\ t -> (B x).A) (CB.d j (\ x1 t1 -> (B x1).add (phi x1 t1) (psi x1 t1)) x)
+        (\ t -> (B x).add (CB.d j phi x t) (CB.d j psi x t)) (DeltaAdd[B x, Y x].delta-add j (phi x) (psi x)))) ;
+  -- cocycles of length k+1
+  module Z (k : Nat) { module K = Kern[Ch-ab (suc k), Ch-ab (suc (suc k)), dhom (suc k)] ; } ;
+  module Im (j : Nat) { module I = IG.Img[Ch-ab (suc j), Ch-ab (suc (suc j)), dhom (suc j)] ; } ;
+  -- coboundaries
+  Bnd : (k : Nat) -> Z[k].K.ab.A -> U l = split {
+    zero -> \ u -> Id (CB.Ch (suc zero)) u.1 (Ch-ab (suc zero)).o ;
+    suc j -> \ u -> Im[j].I.Cond u.1 } ;
+  bnd-prop : (k : Nat) (u : Z[k].K.ab.A) -> isProp (Bnd k u) = split {
+    zero -> \ u -> (Ch-ab (suc zero)).setA u.1 (Ch-ab (suc zero)).o ;
+    suc j -> \ u -> Tr.Trunc[Bijection[l].Fibre (dhom (suc j)).1 u.1].proposition } ;
+  bnd-0 : (k : Nat) -> Bnd k Z[k].K.ab.o = split {
+    zero -> refl (Ch-ab (suc zero)).o ;
+    suc j -> Im[j].I.o.2 } ;
+  bnd-add : (k : Nat) (u v : Z[k].K.ab.A) -> Bnd k u -> Bnd k v -> Bnd k (Z[k].K.ab.add u v) = split {
+    zero -> \ u v p q -> transH (apH (\ a -> (Ch-ab (suc zero)).add a v.1) p)
+      (transH (apH ((Ch-ab (suc zero)).add (Ch-ab (suc zero)).o) q) ((Ch-ab (suc zero)).unitr (Ch-ab (suc zero)).o)) ;
+    suc j -> \ u v p q -> (Im[j].I.add (u.1, p) (v.1, q)).2 } ;
+  bnd-inv : (k : Nat) (u : Z[k].K.ab.A) -> Bnd k u -> Bnd k (Z[k].K.ab.inv u) = split {
+    zero -> \ u p -> transH (apH (Ch-ab (suc zero)).inv p) Cc.AbSub[Ch-ab (suc zero)].inv-o ;
+    suc j -> \ u p -> (Im[j].I.inv (u.1, p)).2 } ;
+  module H (k : Nat) { module Q = QAb[Z[k].K.ab, Bnd k, bnd-prop k, bnd-0 k, bnd-add k, bnd-inv k] ; } ;
+} ;
+
+-- homomorphisms preserve differences
+hom-sub (A B : Ab) (h : Hom A B) (a a' : A.A) :
+  Id B.A (h.1 (Cc.AbSub[A].sub a a')) (Cc.AbSub[B].sub (h.1 a) (h.1 a')) =
+  transH (h.2 a (A.inv a')) (apH (B.add (h.1 a)) (IG.hom-inv A B h a')) ;
+
+
+-- a family of homomorphisms h x : G x -> G' x acts on Čech cochains,
+-- cocycles and coboundaries, and induces homomorphisms of the Ȟᵏ
+module CechMap (X : U l) (Y : X -> U l) (G G' : X -> Ab) (h : (x : X) -> Hom (G x) (G' x)) {
+  module S = CechGrp[X, Y, G] ;
+  module T = CechGrp[X, Y, G'] ;
+  module NX (x : X) { module N = CechHigher[l].Natural[Y x, G x, G' x, h x] ; } ;
+  M (j : Nat) : Hom (S.Ch-ab j) (T.Ch-ab j) = (\ phi x t -> (h x).1 (phi x t), \ phi psi ->
+    FL.funext X (\ x -> Cc.Cochains[G' x, Y x].C j) (\ x t -> (h x).1 ((G x).add (phi x t) (psi x t)))
+      (\ x t -> (G' x).add ((h x).1 (phi x t)) ((h x).1 (psi x t))) (\ x ->
+      FL.funext (Cc.Cochains[G' x, Y x].Tup j) (\ t -> (G' x).A) (\ t -> (h x).1 ((G x).add (phi x t) (psi x t)))
+        (\ t -> (G' x).add ((h x).1 (phi x t)) ((h x).1 (psi x t))) (\ t -> (h x).2 (phi x t) (psi x t)))) ;
+  -- h commutes with d
+  sq (j : Nat) (phi : S.CB.Ch j) : Id (T.CB.Ch (suc j)) ((T.dhom j).1 ((M j).1 phi)) ((M (suc j)).1 ((S.dhom j).1 phi)) =
+    FL.funext X (\ x -> Cc.Cochains[G' x, Y x].C (suc j)) ((T.dhom j).1 ((M j).1 phi)) ((M (suc j)).1 ((S.dhom j).1 phi)) (\ x ->
+      FL.funext (Cc.Cochains[G' x, Y x].Tup (suc j)) (\ t -> (G' x).A) ((T.dhom j).1 ((M j).1 phi) x) ((M (suc j)).1 ((S.dhom j).1 phi) x)
+        (NX[x].N.natural j (phi x))) ;
+  -- on cocycles
+  Zmap (k : Nat) (u : S.Z[k].K.ab.A) : T.Z[k].K.ab.A =
+    ((M (suc k)).1 u.1, transH (sq (suc k) u.1) (transH (apH (M (suc (suc k))).1 u.2) (hom-unit (S.Ch-ab (suc (suc k))) (T.Ch-ab (suc (suc k))) (M (suc (suc k)))))) ;
+  -- on coboundaries
+  bnd-map : (k : Nat) (u : S.Z[k].K.ab.A) -> S.Bnd k u -> T.Bnd k (Zmap k u) = split {
+    zero -> \ u r -> transH (apH (M (suc zero)).1 r) (hom-unit (S.Ch-ab (suc zero)) (T.Ch-ab (suc zero)) (M (suc zero))) ;
+    suc j -> \ u r -> TC.map (Bijection[l].Fibre (S.dhom (suc j)).1 u.1) (Bijection[l].Fibre (T.dhom (suc j)).1 ((M (suc (suc j))).1 u.1))
+      (\ w -> ((M (suc j)).1 w.1, transH (sq (suc j) w.1) (apH (M (suc (suc j))).1 w.2))) r } ;
+  -- on Ȟᵏ
+  Zhom (k : Nat) (u v : S.Z[k].K.ab.A) : Id T.Z[k].K.ab.A (Zmap k (S.Z[k].K.ab.add u v)) (T.Z[k].K.ab.add (Zmap k u) (Zmap k v)) =
+    T.Z[k].K.eqA (Zmap k (S.Z[k].K.ab.add u v)) (T.Z[k].K.ab.add (Zmap k u) (Zmap k v)) ((M (suc k)).2 u.1 v.1) ;
+  Zsub (k : Nat) (u v : S.Z[k].K.ab.A) :
+    Id T.Z[k].K.ab.A (Zmap k (S.H[k].Q.AA.AS.sub u v)) (T.H[k].Q.AA.AS.sub (Zmap k u) (Zmap k v)) =
+    T.Z[k].K.eqA (Zmap k (S.H[k].Q.AA.AS.sub u v)) (T.H[k].Q.AA.AS.sub (Zmap k u) (Zmap k v))
+      (hom-sub (S.Ch-ab (suc k)) (T.Ch-ab (suc k)) (M (suc k)) u.1 v.1) ;
+  module Mq (k : Nat) {
+    respect (a b : S.Z[k].K.ab.A) (r : S.H[k].Q.rel a b) : Id T.H[k].Q.QG.grp.G (T.H[k].Q.QG.cl (Zmap k a)) (T.H[k].Q.QG.cl (Zmap k b)) =
+      T.H[k].Q.QG.cl-rel (Zmap k a) (Zmap k b)
+        (subst T.Z[k].K.ab.A (T.Bnd k) (Zmap k (S.H[k].Q.AA.AS.sub a b)) (T.H[k].Q.AA.AS.sub (Zmap k a) (Zmap k b)) (Zsub k a b)
+           (bnd-map k (S.H[k].Q.AA.AS.sub a b) r)) ;
+    module D = S.H[k].Q.QG.Q.Descend[T.H[k].Q.QG.grp.G, T.H[k].Q.QG.grp.setG, \ a -> T.H[k].Q.QG.cl (Zmap k a), respect] ;
+    map (q : S.H[k].Q.QG.grp.G) : T.H[k].Q.QG.grp.G = D.map q ;
+    map-cl (a : S.Z[k].K.ab.A) : Id T.H[k].Q.QG.grp.G (map (S.H[k].Q.QG.cl a)) (T.H[k].Q.QG.cl (Zmap k a)) = D.beta a ;
+  } ;
+  hstar (k : Nat) : QGrp[l].GHom (S.H[k].Q.QG.grp) (T.H[k].Q.QG.grp) = (Mq[k].map, \ q r ->
+    S.H[k].Q.QG.ind @l (\ q1 -> Id (T.H[k].Q.QG.grp).G (Mq[k].map ((S.H[k].Q.QG.grp).mul q1 r)) ((T.H[k].Q.QG.grp).mul (Mq[k].map q1) (Mq[k].map r)))
+      (\ q1 -> T.H[k].Q.QG.grp.setG (Mq[k].map ((S.H[k].Q.QG.grp).mul q1 r)) ((T.H[k].Q.QG.grp).mul (Mq[k].map q1) (Mq[k].map r))) (\ u ->
+    S.H[k].Q.QG.ind @l (\ r1 -> Id (T.H[k].Q.QG.grp).G (Mq[k].map ((S.H[k].Q.QG.grp).mul (S.H[k].Q.QG.cl u) r1)) ((T.H[k].Q.QG.grp).mul (Mq[k].map (S.H[k].Q.QG.cl u)) (Mq[k].map r1)))
+      (\ r1 -> T.H[k].Q.QG.grp.setG (Mq[k].map ((S.H[k].Q.QG.grp).mul (S.H[k].Q.QG.cl u) r1)) ((T.H[k].Q.QG.grp).mul (Mq[k].map (S.H[k].Q.QG.cl u)) (Mq[k].map r1))) (\ v -> calc (T.H[k].Q.QG.grp).G {
+      Mq[k].map ((S.H[k].Q.QG.grp).mul (S.H[k].Q.QG.cl u) (S.H[k].Q.QG.cl v)) =< apH Mq[k].map (S.H[k].Q.QG.cl-mul u v) > Mq[k].map (S.H[k].Q.QG.cl (S.Z[k].K.ab.add u v))
+        =< Mq[k].map-cl (S.Z[k].K.ab.add u v) > T.H[k].Q.QG.cl (Zmap k (S.Z[k].K.ab.add u v))
+        =< apH T.H[k].Q.QG.cl (Zhom k u v) > T.H[k].Q.QG.cl (T.Z[k].K.ab.add (Zmap k u) (Zmap k v))
+        =< symH (T.H[k].Q.QG.cl-mul (Zmap k u) (Zmap k v)) > (T.H[k].Q.QG.grp).mul (T.H[k].Q.QG.cl (Zmap k u)) (T.H[k].Q.QG.cl (Zmap k v))
+        =< symH (transH (apH (\ a -> (T.H[k].Q.QG.grp).mul a (Mq[k].map (S.H[k].Q.QG.cl v))) (Mq[k].map-cl u)) (apH ((T.H[k].Q.QG.grp).mul (T.H[k].Q.QG.cl (Zmap k u))) (Mq[k].map-cl v))) >
+      (T.H[k].Q.QG.grp).mul (Mq[k].map (S.H[k].Q.QG.cl u)) (Mq[k].map (S.H[k].Q.QG.cl v)) }) r) q) ;
+} ;

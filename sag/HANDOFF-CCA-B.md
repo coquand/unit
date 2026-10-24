@@ -113,6 +113,17 @@ what is proved with DW1 / CCA numbering.
   (x : X) -> K(B x, n+1).  Openings (TOTALS, sum of the *k counts; see
   HANDOFF-CCA-A "Openings"): at most 494 per declaration except
   `LES.over1` 689, `LES.fst3` about 520, `EpsEv.Step.loops` 572.
+- Thm 3.3.2 (A), milestone 2 (Čech side and the cokernel step):
+  `em/CechGroups` (Kern, QAb = quotient by a subgroup, delta additive,
+  Ȟᵏ(X, Y, B) = cocycles / coboundaries with Ȟ⁰ = Z⁰, CechMap: h_* on
+  cochains, cocycles and Ȟᵏ), `em/Snake` (the connecting map of a short
+  exact sequence of complexes, as algebra: well defined, additive,
+  exactness), `em/CechLES` (Lemma B.0.5 in the degrees used and the
+  missing B.0.7: for 0 -> A -> B -> C -> 0 with liftable C-cochains,
+  Ȟⁿ(B) -> Ȟⁿ(C) -> Ȟⁿ⁺¹(A) exact, δ a homomorphism, onto when
+  Ȟⁿ⁺¹(B) = 0), `em/Coker` (isomorphic cokernels).  `QGrp` gained the
+  group-typed `cl`, `ind`, `cl-mul` (one name for the carrier).  Openings
+  at most 456 (`CechLES.delta-pstar`).
 
 ## Gaps
 
