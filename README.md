@@ -27,14 +27,17 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and two developments written with it:
+This repository contains the checker and three developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
   (`core/`);
 - formalisations of results of *A foundation for synthetic algebraic
   geometry* (Cherubini, Coquand, Hutzler) over univalence and Rijke's
-  axiom of replacement (`sag/`).
+  axiom of replacement (`sag/`);
+- a constructive theory of Girard's dilators: normal form, well-foundedness
+  up to the Howard ordinal, morphisms, connected components and kinds
+  (`dilators/`).
 
 ## Documents (`doc/`)
 
@@ -70,6 +73,9 @@ This repository contains the checker and two developments written with it:
   constructive finite-matrix proof that finite projective modules are
   exactly the finitely presented flat modules, with a correspondence to
   the formal declarations.
+- [`dilators-constructive.pdf`](doc/dilators-constructive.pdf): a
+  constructive theory of dilators (Girard, *Proof Theory and Logical
+  Complexity*, chapters 8 and 9), as checked in `dilators/`.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
