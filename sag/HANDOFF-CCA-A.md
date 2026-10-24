@@ -167,6 +167,43 @@ Remaining (none above 504):
 - EpsEv.Step.loops 572: KK.OK / Maps.OB, the same class; same pass.
 All other declarations of this session: <= 494 (PiOne.Induced.hom).
 
+## Openings pass after item 8 (2026-10-24, totals)
+
+Changes (all trees check; em 1.61 s, ccacoh 3.95 s, cca 2.54 s cold):
+- inlined the type aliases of FibSeq.SES.Obj (X0 x0 .. OC oc) and of
+  Eps.Diag.DStep (X0 .. OZ oz), KK.OK (everywhere: em, cca/Lemma344iii) and
+  DeloopMaps.Maps.OA / OB (in Maps and at the uses in Fibres, LoopCalc);
+- accessors for the parts of pointed maps in FibMap (ff f0 ff' f0' fu u0
+  fv v0) and LiftUnique (ff f0 m1 m2, mm).
+
+| declaration | before | after |
+|---|---|---|
+| FibSeq.SES.NullStep.chain | 1333 | 475 |
+| FibSeq.SES.Step.u1 | 842 | 436 |
+| FibSeq.SES.Step.sq | 680 | 226 |
+| Eps.Diag.DStep.chain | 1065 | 442 |
+| Eps.Diag.DStep.LD | 874 | 671 |
+| Eps.Eps.mult0 | 1576 | 1362 |
+| EMMaps.KMap.mult0 | 1201 | 970 |
+| EpsEv.Step.loops | 572 | 435 |
+| FibMap.dd-nat | 819 | 271 |
+| LESNat.natural | 731 | 635 |
+| LiftUnique.snd-eq | 569 | 404 |
+| CechNat.natural | 574 | 574 |
+| LES.sq2 | 504 | 504 |
+| Thm325...FromCover.result (B) | 722 | 722 |
+| Thm332A.base | 630 | 630 |
+| Thm332A.Step.NatAt.on-delta | 1622 | 1614 |
+
+Remaining causes: the two mult0 open KK.pt / KK.K against EM.EMSpace.pt /
+K (KK is a reindexing layer over EMSpace, and the band lemmas are typed in
+EM1/TrivialGerbe terms): fixing needs KK restated without the layer.
+Thm332A: Thm332's own onto : Surjective q against T.Sx (B's code mixes
+them; Sx, Surjective, Fibre about 100 each), E / L against Thm332.Cov.AS
+and T.CX[..].C2, and the group record layers (QGrp.grp, Quot.Q).
+LESNat.natural, CechNat.natural, LES.sq2: π₁ names (PiOne.O against Id)
+and Eps.P against the Π-types of PiMap.
+
 ## Gaps
 
 (Log here every statement of the paper used without proof, omitted
