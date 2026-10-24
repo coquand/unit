@@ -751,14 +751,128 @@ countUnfold i x = unsafePerformIO $ do
   if on then modifyIORef' unfoldCount (Map.insertWith (+) i 1) else return ()
   return x
 
+-- Diagnostics (--opened): how each comparison was settled.  Index 0:
+-- strictly equal (eqVal); 1: the same definition at convertible arguments
+-- (sameDef); 2: compared after weak head normalisation.  The flag is read
+-- once, at the first comparison; the driver sets it before checking.
+{-# NOINLINE convOn #-}
+convOn :: IORef Bool
+convOn = unsafePerformIO (newIORef False)
+
+{-# NOINLINE convOnce #-}
+convOnce :: Bool
+convOnce = unsafePerformIO (readIORef convOn)
+
+{-# NOINLINE convCount #-}
+convCount :: IORef (Int, Int, Int)
+convCount = unsafePerformIO (newIORef (0, 0, 0))
+
+{-# NOINLINE countConv #-}
+-- (the two values compared are arguments, and are used, only so that a
+-- use is not a constant expression, which GHC would evaluate once)
+countConv :: Int -> Val -> Val -> Bool -> Bool
+countConv k u v b
+  | not convOnce = b
+  | otherwise = u `seq` v `seq` unsafePerformIO $ do
+      modifyIORef' convCount (\(x, y, z) -> case k of
+        0 -> (x + 1, y, z)
+        1 -> (x, y + 1, z)
+        _ -> (x, y, z + 1))
+      return b
+
 -- with SEG_DISTINCT set, the key includes a short print of the arguments
 {-# NOINLINE distinctOn #-}
 distinctOn :: IORef Bool
 distinctOn = unsafePerformIO (newIORef False)
 
 
+-- a data type: its unfolding exposes its constructors, which is reading
+-- its declaration, not opening a construction (not counted)
+isDataDef :: Unit -> Bool
+isDataDef (UDef _ _ _ b) = dataBody b
+ where
+  dataBody e = case e of
+    Lam _ e' -> dataBody e'
+    LLam _ e' -> dataBody e'
+    Sum _ _ -> True
+    _ -> False
+isDataDef _ = False
+
+-- The one way a definition is opened: at the head, one at a time.  On a
+-- value in folded weak head normal form, the definition blocking it (if
+-- any, and not locked): the head of an elimination, or of the scrutinee
+-- of a split.
+blockingRef :: Locks -> Val -> Maybe Unit
+blockingRef s v = case v of
+  VRef r _ | Set.notMember (defId r) s -> Just r
+  VApp f a -> case f of
+    VSplit{} -> blockingRef s a
+    _        -> blockingRef s f
+  VFst p -> blockingRef s p
+  VSnd p -> blockingRef s p
+  VProj p _ -> blockingRef s p
+  VLApp p _ -> blockingRef s p
+  VIdJ _ _ _ _ _ p -> blockingRef s p
+  _ -> Nothing
+
+-- open the blocking definition (one delta step), then the beta steps this
+-- exposes
+unfold1 :: Locks -> Val -> Val
+unfold1 s v0 = whnfFolded (go v0)
+ where
+  go v = case v of
+    VRef r e | Set.notMember (defId r) s ->
+      (if isDataDef r then id else countUnfold (defId r)) (unfoldRef r e)
+    VApp f a -> case f of
+      VSplit{} -> VApp f (go a)
+      _        -> VApp (go f) a
+    VFst p -> VFst (go p)
+    VSnd p -> VSnd (go p)
+    VProj p l -> VProj (go p) l
+    VLApp p l -> VLApp (go p) l
+    VIdJ a x c d y p -> VIdJ a x c d y (go p)
+    _ -> v
+
+-- weak head normal form: head steps until no definition blocks (whnfP
+-- unfolds exactly the blocking definitions, in one recursion)
 whnf :: Locks -> Val -> Val
 whnf s = whnfP (`Set.notMember` s)
+
+-- in a comparison of two values in folded weak head normal form: open the
+-- head that blocks, and when both are blocked by different definitions,
+-- the later one (it is the only one whose unfolding can reach the other);
+-- Nothing when neither is blocked
+headStep :: CC -> Val -> Val -> Maybe (Val, Val)
+headStep c _ _ | not (ccOpen c) = Nothing
+headStep c u v = case (blockingRef s u, blockingRef s v) of
+  (Nothing, Nothing) -> Nothing
+  -- the other side is in weak head normal form: opening this side cannot
+  -- meet it halfway, so it is opened to its form at once
+  (Just _, Nothing)  -> Just (whnf s u, v)
+  (Nothing, Just _)  -> Just (u, whnf s v)
+  (Just a, Just b)   -> case (rank a, rank b) of
+    (Just i, Just j) | i > j -> Just (unfold1 s u, v)
+                     | j > i -> Just (u, unfold1 s v)
+    _ -> Just (unfold1 s u, unfold1 s v)
+ where
+  s = ccS c
+  rank r = Map.lookup (defId r) (ccRank c)
+
+-- a comparison, once the names have been tried (convNames): the beta
+-- steps, then one head step at a time, with strict equality after each;
+-- when no head is blocked, the given comparison of the outer forms
+compareBy :: CC -> (Val -> Val -> Bool) -> Val -> Val -> Bool
+compareBy c structural u v =
+  let u1 = whnfFolded u
+      v1 = whnfFolded v
+  in if (not (same u u1) || not (same v v1)) && eqVal u1 v1 then countConv 0 u1 v1 True
+     else step u1 v1
+ where
+  -- after a head step only strict equality is tried before the next step
+  step u v = case headStep c u v of
+    Just (u2, v2) | eqVal u2 v2 -> countConv 0 u2 v2 True
+                  | otherwise   -> step u2 v2
+    Nothing -> structural u v
 
 -- weak head normal form without unfolding any definition: only beta,
 -- projections, splits on constructors and idJ on refl (the folded view)
@@ -768,7 +882,7 @@ whnfFolded = whnfP (const False)
 -- weak head normal form, unfolding the definitions that u selects
 whnfP :: (Id -> Bool) -> Val -> Val
 whnfP u v = case v of
-  VRef r e | u (defId r) -> countUnfold (defId r) (whnfP u (unfoldRef r e))
+  VRef r e | u (defId r) -> (if isDataDef r then id else countUnfold (defId r)) (whnfP u (unfoldRef r e))
   VApp f a -> case whnfP u f of
     f'@(VSplit{}) -> case whnfP u a of
       a'@(VCon _ _) -> whnfP u (app f' a')
@@ -805,14 +919,25 @@ whnfP u v = case v of
 -- weak head normal form under the strategy (a locked head stays) and
 -- compared structurally.  Locking only under-approximates conversion.
 
-data CC = CC { ccK :: Int, ccTh :: Theory, ccS :: Locks }
+-- ccRank: the position of each definition in the program (sequential
+-- scope: a definition mentions only definitions of smaller rank)
+-- ccOpen: whether definitions may be opened (False when writing a value
+-- back as a term: the names in scope are recognised, not computed)
+data CC = CC { ccK :: Int, ccTh :: Theory, ccS :: Locks, ccRank :: Map.Map Id Int, ccOpen :: Bool }
 
 conv :: CC -> Val -> Val -> Bool
 conv c u v
+  | convNames c u v = True
+  | otherwise       = countConv 2 u v (traceConv u v (compareBy c (conv' c) u v))
+
+-- the first two stages of conversion, which open nothing: strict equality,
+-- and the same definition at convertible arguments
+convNames :: CC -> Val -> Val -> Bool
+convNames c u v
   | thLoop (ccTh c) = True
-  | eqVal u v       = True                  -- cubicaltt:  conv ns u v | u == v
-  | sameDef u v     = True                  -- lazy delta: the same definition at convertible arguments
-  | otherwise       = traceConv u v (conv' c (whnf (ccS c) u) (whnf (ccS c) v))
+  | eqVal u v       = countConv 0 u v True      -- cubicaltt:  conv ns u v | u == v
+  | sameDef u v     = countConv 1 u v True      -- lazy delta: the same definition at convertible arguments
+  | otherwise       = False
  where
   -- two eliminations of accesses to the same definition, in environments
   -- with convertible dynamic parts, are equal when their arguments are;
@@ -1211,13 +1336,30 @@ data Cx = Cx
   , cxLvls  :: [Name]                -- the level variables in scope
   , cxPSorts :: [(Name, Res Lvl)]    -- sorts of the parameters of this body
   , cxSegSort :: [(Id, [(Name, Res Lvl)])]  -- per segment, its parameters' sorts
+  , cxRank  :: Map.Map Id Int        -- the order of the definitions (ranksOf)
   }
 
 emptyCx :: Cx
-emptyCx = Cx 0 ENil [] emptyTheory Set.empty [] [] []
+emptyCx = Cx 0 ENil [] emptyTheory Set.empty [] [] [] Map.empty
+
+-- the context for checking a program: empty, with the order of its
+-- definitions
+programCx :: [Unit] -> Cx
+programCx us = emptyCx { cxRank = ranksOf us }
+
+-- the definitions of a program numbered in order, through the bodies of
+-- modules and records (definitions local to a let have no rank)
+ranksOf :: [Unit] -> Map.Map Id Int
+ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
+ where
+  go us = concatMap one us
+  one u = case u of
+    UDef i _ _ _ -> [i]
+    UMod _ _ _ vs -> go vs
+    _ -> []
 
 cc :: Cx -> CC
-cc cx = CC (cxK cx) (cxTh cx) (cxLocks cx)
+cc cx = CC (cxK cx) (cxTh cx) (cxLocks cx) (cxRank cx) True
 
 force :: Cx -> Val -> Val
 force cx = whnf (cxLocks cx)
@@ -1310,17 +1452,42 @@ inferSort cx e = do
 
 -- cumulativity, at the top only (bcde.pdf App. B; BCDE4's SubTy)
 sub :: Cx -> Val -> Val -> Bool
-sub cx t' t = (if traceOn then traceSub t' t else id) $ case (force cx t', force cx t) of
-  (VU l, VU m) -> leq (cxTh cx) l m
-  -- an extension with more fields fixed is a subtype (Arend)
-  (VSegT m1 f1, VSegT m2 f2) ->
-    modId m1 == modId m2 && convs (cc cx) (modDyn m1) (modDyn m2)
-    && and [ maybe False (\v' -> conv (cc cx) v' v) (lookup x f1) | (x, v) <- f2 ]
-  _            -> conv (cc cx) t' t
+sub cx t' t = (if traceOn then traceSub t' t else id) $ convNames (cc cx) t' t || compareBy (cc cx) outer t' t
+ where
+  outer a b = case (a, b) of
+    (VU l, VU m) -> leq (cxTh cx) l m
+    -- an extension with more fields fixed is a subtype (Arend)
+    (VSegT m1 f1, VSegT m2 f2) ->
+      modId m1 == modId m2 && convs (cc cx) (modDyn m1) (modDyn m2)
+      && and [ maybe False (\v' -> conv (cc cx) v' v) (lookup x f1) | (x, v) <- f2 ]
+    _ -> conv' (cc cx) a b
 
 check :: Cx -> Exp -> Val -> Res ()
-check cx e t0 = case (e, t) of
-  (_, VCPi cs a) -> check (addCs cx cs) e a          -- <psi> t, silently
+check cx e t0
+  -- <psi> t, silently (no definition unfolds to a constraint product)
+  | VCPi cs a <- whnfFolded t0 = check (addCs cx cs) e a
+  -- an elimination: its type is inferred and compared with the expected
+  -- type as it is; only an introduction needs the outer form of the type
+  | inferable e = checkInfer cx e t0
+  | otherwise = checkW cx e t0
+
+-- the terms whose type is inferred (eliminations and names)
+inferable :: Exp -> Bool
+inferable e = case e of
+  Var _ -> True
+  App _ _ -> True
+  Fst _ -> True
+  Snd _ -> True
+  Proj _ _ -> True
+  ProjU _ _ -> True
+  Acc _ _ -> True
+  Mem _ _ _ _ -> True
+  LApp _ _ -> True
+  IdJ _ _ _ _ _ _ -> True
+  _ -> False
+
+checkW :: Cx -> Exp -> Val -> Res ()
+checkW cx e t0 = case (e, t) of
   (Lam x b, VPi a f) -> let (cx', v) = extVar cx x a in check cx' b (capp f v)
   (LLam x b, VLPi f) -> let (cx', l) = extLvl cx x in check cx' b (lcapp f l)
   (Pi x a b, VU _) -> do check cx a t
@@ -1358,9 +1525,15 @@ check cx e t0 = case (e, t) of
   (Named _ e', _) -> check cx e' t0
   (Let us b, _) -> do cx' <- checkLocal cx us
                       check cx' b t
-  _ -> do
+  _ -> checkInfer cx e t0
+ where
+  t = force cx t0
+
+-- infer the type and compare it with the expected one
+checkInfer :: Cx -> Exp -> Val -> Res ()
+checkInfer cx e t0 = do
     t' <- inferD cx e
-    if sub cx t' t || subSeg t' then ok
+    if sub cx t' t0 || subSeg t' then ok
       -- the original pair, with no constant unfolded
       else failWith ("type mismatch for  " ++ pretty e ++
                      "\n  expected : " ++ showV cx t0 ++
@@ -1383,7 +1556,10 @@ inferD cx e = do
   t <- infer cx e
   discharge t
  where
-  discharge t = case force cx t of
+  -- no definition unfolds to a constraint product (it is large: it lies
+  -- in no universe, so no definition has it as value), hence the folded
+  -- weak head normal form suffices
+  discharge t = case whnfFolded t of
     VCPi cs a
       | all (validCstr (cxTh cx)) cs -> discharge a
       | otherwise -> failWith ("constraint not valid here: " ++ showV cx (VCPi cs a)
@@ -2121,8 +2297,8 @@ fillI cx e
                               ++ shortId (modId md) ++ " cannot be named here (bring it into scope)")
           _ -> retype (Right (Proj a' l))
       Let us b -> do (us', cx') <- fillLocal cx us
-                     (b', _) <- fillI cx' b
-                     retype (Right (Let us' b'))
+                     (b', tb) <- fillI cx' b
+                     Right (Let us' b', tb)
       IdJ a x c d y p -> do
         (a', _) <- fillI cx a
         let va = ev cx a'
@@ -2138,7 +2314,10 @@ fillI cx e
         d' <- fillC cx d (app (app vc vx) (VRefl vx))
         y' <- fillC cx y va
         p' <- fillC cx p (VId va vx (ev cx y'))
-        retype (Right (IdJ a' x' c' d' y' p'))
+        -- the type is the motive at (y, p): computed, not inferred again
+        -- (inferring would check the whole term, and a chain of n steps
+        -- would be checked n times)
+        Right (IdJ a' x' c' d' y' p', app (app vc (ev cx y')) (ev cx p'))
       Acc m x -> do m' <- fillM cx m; retype (Right (Acc m' x))
       SegT m fs -> do m' <- fillM cx m
                       md <- checkModHead cx m'
@@ -2439,9 +2618,8 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
     -- written with names), and compared again if one of them changed
     _ | t' <- whnfFolded t, p' <- whnfFolded p
       , progressed t t' || progressed p p' -> go k p' t' sols
-      -- one side has a primitive head, the other is a defined constant:
-      -- the constant is unfolded down to its head, as the checker does when
-      -- it needs a Pi, a Sigma or an Id (never inside, never for a lock)
+      -- otherwise one head step, as in conversion: the blocking definition,
+      -- or the later of two (never inside, never a locked one)
       | primHead p, t' <- whnf (cxLocks cx) t, progressed t t' -> go k p t' sols
       | primHead t, p' <- whnf (cxLocks cx) p, progressed p p' -> go k p' t sols
       | otherwise -> sols
@@ -2495,6 +2673,8 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
     (VProj a l, VProj b l') | l == l' && not (isHoleV a) -> Just (go k a b sols)
     (VFst a, VFst b) | not (isHoleV a) -> Just (go k a b sols)
     (VSnd a, VSnd b) | not (isHoleV a) -> Just (go k a b sols)
+    -- a definition applied to a level (isModal @l): the same head
+    (VLApp a _, VLApp b _) -> sameHead k a b sols
     _ -> Nothing
   goList k as bs sols = foldl (\acc (a, b) -> go k a b acc) sols (zip as bs)
   under k f g sols = go (k + 1) (capp f (VGen k)) (capp g (VGen k)) sols
@@ -2528,7 +2708,7 @@ fragOf rho us es = QFrag (Map.fromList (es ++ [ (unitIdOf u, e) | u <- us, let x
                          (case rho of { EDef r _ _ _ -> dynOf r ; _ -> [] })
 
 scopeOf :: Cx -> QScope
-scopeOf cx = go (cxEnv cx) (QScope [] [] True (cc cx) (cxK cx) (cxEnv cx) []
+scopeOf cx = go (cxEnv cx) (QScope [] [] True ((cc cx) { ccOpen = False }) (cxK cx) (cxEnv cx) []
                              (Set.fromList (map fst (cxTys cx))) (instancesInScope (cxEnv cx)))
  where
   go r sc = case r of

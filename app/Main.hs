@@ -29,6 +29,7 @@ import Data.Char (isAlphaNum)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf, sort)
 import Control.Exception (evaluate, try, ErrorCall(..), IOException)
 import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
 import Data.List (nub)
 import System.CPUTime (getCPUTime)
 import qualified Data.Map.Strict as Map
@@ -41,7 +42,7 @@ budget = 10000000
 
 data Opt = Opt { oOn :: [Id], oOff :: [Id], oNone :: Bool, oVerbose :: Bool
                , oOnly :: [String], oOnlyTop :: [String], oUnfolds :: Bool, oEach :: Bool, oRepl :: Bool
-               , oServe :: Maybe FilePath }
+               , oServe :: Maybe FilePath, oOpened :: Bool, oOpens :: Maybe FilePath }
 
 -- --only M  (repeatable): check only the declarations of module M (any
 -- module whose path has a component M); everything else is TRUSTED: it is
@@ -51,21 +52,63 @@ data Opt = Opt { oOn :: [Id], oOff :: [Id], oNone :: Bool, oVerbose :: Bool
 -- --only-top M  (repeatable): only the declarations directly in M, not in
 -- the modules nested in M (a segment whose files are imported inside it).
 opts :: [String] -> Opt
-opts = go (Opt [] [] False False [] [] False False False Nothing)
+opts = go (Opt [] [] False False [] [] False False False Nothing False Nothing)
  where
   go o [] = o
   go o ("--only" : m : rest) = go o { oOnly = m : oOnly o } rest
   go o ("--only-top" : m : rest) = go o { oOnlyTop = m : oOnlyTop o } rest
   go o ("--serve" : d : rest) = go o { oServe = Just d } rest
+  go o ("--opens" : d : rest) = go o { oOpens = Just d } rest
   go o (a : rest) = go (add a o) rest
   add "--none" o = o { oNone = True }
   add "--unfolds" o = o { oUnfolds = True }
+  add "--opened" o = o { oOpened = True }
   add "--each" o = o { oEach = True }
   add "--repl" o = o { oRepl = True }
   add "-v" o = o { oVerbose = True }
   add ('+' : x) o = o { oOn = x : oOn o }
   add ('-' : x) o = o { oOff = x : oOff o }
   add _ o = o
+
+-- --unfolds and --opened switch on the counters of the checker
+setDiagnostics :: Opt -> IO ()
+setDiagnostics o = do
+  writeIORef unfoldOn (oUnfolds o || oOpened o || oOpens o /= Nothing)
+  case oOpens o of
+    Just f -> do src <- readFile f
+                 writeIORef opensSpec [ (takeWhile (/= ':') l, words (drop 1 (dropWhile (/= ':') l)))
+                                      | l <- lines src, ':' `elem` l, take 2 l /= "--" ]
+    Nothing -> return ()
+  writeIORef convOn (oOpened o)
+
+-- --opened: for every declaration, how its comparisons were settled and
+-- which definitions were opened (unfolded), with how often
+openedLine :: String -> Double -> (Int, Int, Int) -> Map.Map Id Int -> String
+openedLine l secs (a, b, c) m =
+  printf "  %s (%.2f s): %d strict, %d by arguments, %d by components; opened %d:" l secs a b c (Map.size m)
+  ++ concat [ " " ++ shortId i ++ (if n > 1 then "*" ++ show n else "")
+            | (i, n) <- sortBy (comparing (Down . snd)) (Map.toList m) ]
+
+-- --opens FILE: for each declaration named in FILE (lines "name: d1 d2 .."
+-- naming the definitions its informal proof opens; names are matched on
+-- their last components), the definitions opened beyond the declared ones
+{-# NOINLINE opensSpec #-}
+opensSpec :: IORef [(String, [String])]
+opensSpec = unsafePerformIO (newIORef [])
+
+nameMatches :: String -> String -> Bool
+nameMatches short full = full == short || ('.' : short) `isSuffixOf` full
+
+opensLine :: String -> [String] -> Map.Map Id Int -> String
+opensLine l declared m =
+  let extra = [ (i, n) | (i, n) <- sortBy (comparing (Down . snd)) (Map.toList m)
+                       , not (any (`nameMatches` i) declared) ]
+      unused = [ d | d <- declared, not (any (nameMatches d) (Map.keys m)) ]
+  in "OPENS " ++ l ++ ": declared [" ++ unwords declared ++ "]"
+     ++ (if null extra then "; nothing else opened"
+         else printf "; also opened %d (%d distinct):" (sum (map snd extra)) (length extra)
+              ++ concat [ " " ++ shortId i ++ (if n > 1 then "*" ++ show n else "") | (i, n) <- take 12 extra ])
+     ++ (if null unused then "" else "; declared, not opened: " ++ unwords unused)
 
 -- the most unfolded constants, with their counts
 topUnfolds :: Int -> Map.Map Id Int -> String
@@ -82,8 +125,6 @@ main = do
   args <- getArgs
   case args of
     [f, "--survey-records"] -> surveyFile f
-    [f, "--survey-termination"] -> surveyTermination f
-    [f, "--survey-primrec"] -> surveyPrimRec f
     [f, "--quote-test", x] -> quoteTestFile f x
     (f : rest) -> runFile f (opts rest)
     [] -> putStrLn "usage: seg file.seg [+id] [-id] [--none] [-v]"
@@ -99,29 +140,6 @@ surveyFile f = do
       rus <- expand seen (dirOf f) us0
       putStr (either ("SCOPE ERROR\n" ++) id (surveyRecords rus))
 
--- positivity of the data types and termination of the recursive
--- definitions (Term), report only
-surveyTermination :: FilePath -> IO ()
-surveyTermination f = do
-  src <- readFile f
-  seen <- newIORef [baseName f]
-  case parseUnits src of
-    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
-    Right us0 -> do
-      rus <- expand seen (dirOf f) us0
-      case resolveProgramWith False rus of
-        Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
-        Right us -> do
-          let res = restrictionReport us
-              pos = positivityReport us
-              ter = terminationReport us
-          mapM_ (putStrLn . ("RESTRICTION  " ++)) res
-          mapM_ (putStrLn . ("NOT POSITIVE  " ++)) pos
-          mapM_ putStrLn ter
-          putStrLn (show (length res) ++ " restriction failures, " ++ show (length pos) ++ " positivity failures, "
-                    ++ show (length [ () | l <- ter, "NOT" `isInfixOf` l ]) ++ " of "
-                    ++ show (length ter) ++ " recursive components not shown to terminate")
-
 -- PRIMREC.md 5.4: the read-back of a nested split under canonical and
 -- under abstract recursive results (Seg.quoteTest)
 quoteTestFile :: FilePath -> String -> IO ()
@@ -132,24 +150,11 @@ quoteTestFile f x = do
     Right us0 -> case resolveProgram us0 of
       Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
       Right us -> do
-        let (_, _, us') = checkUnitsF emptyCx us
-            (cx, _) = checkUnits emptyCx us'
+        let (_, _, us') = checkUnitsF (programCx us) us
+            (cx, _) = checkUnits (programCx us') us'
         case [ i | UDef i y _ _ <- us', y == x ] of
           (i : _) -> mapM_ putStrLn (quoteTest cx i)
           [] -> putStrLn ("no definition " ++ x)
-
--- which recursive definitions are primitive recursion (Term.primRecReport)
-surveyPrimRec :: FilePath -> IO ()
-surveyPrimRec f = do
-  src <- readFile f
-  seen <- newIORef [baseName f]
-  case parseUnits src of
-    Left msg -> putStrLn ("PARSE ERROR\n" ++ msg)
-    Right us0 -> do
-      rus <- expand seen (dirOf f) us0
-      case resolveProgramWith False rus of
-        Left msg -> putStrLn ("SCOPE ERROR\n" ++ msg)
-        Right us -> mapM_ putStrLn (primRecReport us)
 
 dirOf :: FilePath -> FilePath
 dirOf p = reverse (dropWhile (/= '/') (reverse p))
@@ -216,6 +221,7 @@ runEvents o total evs = do
   count <- newIORef (0 :: Int)
   mapM_ (\e -> do
            writeIORef unfoldCount Map.empty
+           writeIORef convCount (0, 0, 0)
            t1 <- getCPUTime
            r <- timeout budget (try (evaluate (forceRes (evResult e))))
            t2 <- getCPUTime
@@ -226,6 +232,16 @@ runEvents o total evs = do
                if secs > 0.3 then putStrLn ("  unfolds in " ++ evLabel e ++ printf " (%.2f s): " secs
                                             ++ printf "[%d total, %d distinct] " (sum (Map.elems m)) (Map.size m)
                                             ++ topUnfolds 14 m) else return ()
+             else return ()
+           spec <- readIORef opensSpec
+           case [ ds | (n, ds) <- spec, nameMatches n (evLabel e) ] of
+             (ds : _) -> do m <- readIORef unfoldCount
+                            putStrLn (opensLine (evLabel e) ds m)
+             [] -> return ()
+           if oOpened o then do
+               m <- readIORef unfoldCount
+               k <- readIORef convCount
+               putStrLn (openedLine (evLabel e) secs k m)
              else return ()
            modifyIORef count (+1)
            case r of
@@ -273,10 +289,10 @@ runFile f o
   (us, mods) <- case loaded of
     Left msg -> do putStrLn msg; exitFailure
     Right x -> return x
-  let (_, evs0) = checkUnits emptyCx us
+  let (_, evs0) = checkUnits (programCx us) us
   tl <- secsSince t0
   if oVerbose o then printf "  (parse, resolve: %.3f s)\n" tl else return ()
-  writeIORef unfoldOn (oUnfolds o)
+  setDiagnostics o
   dist <- lookupEnv "SEG_DISTINCT"
   writeIORef distinctOn (dist /= Nothing)
   total <- newIORef (Map.empty :: Map.Map Id Int)
@@ -322,7 +338,7 @@ repl :: FilePath -> Opt -> IO ()
 repl f o = do
   st <- newIORef Nothing
   total <- newIORef (Map.empty :: Map.Map Id Int)
-  writeIORef unfoldOn (oUnfolds o)
+  setDiagnostics o
   let load = do
         t0 <- getCPUTime
         r <- loadProgram f o
@@ -330,7 +346,7 @@ repl f o = do
         case r of
           Left msg -> do putStrLn msg; writeIORef st Nothing
           Right (us, mods) -> do
-            let (_, evs) = checkUnits emptyCx us
+            let (_, evs) = checkUnits (programCx us) us
             writeIORef st (Just (evs, mods))
             printf "loaded %s: %d modules (%.2f s)\n" f (length mods) dt
       run ms = do
@@ -397,7 +413,7 @@ data Srv = Srv { sEvs :: [Event], sFiles :: [String], sMain :: String
 serve :: FilePath -> FilePath -> Opt -> IO ()
 serve f dir o = do
   createDirectoryIfMissing True dir
-  writeIORef unfoldOn (oUnfolds o)
+  setDiagnostics o
   -- the baseline: the files and their contents at the last good check
   -- (changed or all), kept on disk so that a new server knows it; without
   -- one, every file is dirty
@@ -459,7 +475,7 @@ serve f dir o = do
           src <- readFile (dirOf' f ++ x ++ ".seg")
           length src `seq` return (x, src))
         old <- readIORef st
-        let (_, evs) = checkUnits emptyCx us
+        let (_, evs) = checkUnits (programCx us) us
             toks = Map.fromList [ (x, tokens src) | (x, src) <- texts ]
             nested = Map.fromList [ (x, importsIn src) | (x, src) <- texts ]
             keys = Map.fromList [ (x, contentKey src) | (x, src) <- texts ]

@@ -111,6 +111,26 @@ used. Each directory has a `README.txt`.
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
 
+## Conversion, and what checking opens
+
+Conversion is uniform. Two values are first compared by their names:
+strictly, or as the same definition at convertible arguments, without
+unfolding anything. Otherwise definitions are opened one at a time at the
+head: when both heads are blocked by definitions, the one declared later is
+opened (by sequential scope it is the only one whose unfolding can reach the
+other), and strict equality is tried after each step. Writing back an
+omitted argument as a term recognises the names in scope without computing.
+There is no other choice of what to unfold, so the cost of a check reflects
+the structure of the proof.
+
+    seg File.seg --opened          # per declaration: comparisons settled by names,
+                                   # by arguments, by components; definitions opened
+    seg File.seg --opens F         # F has lines  name: d1 d2 ..  (the definitions
+                                   # the informal proof cites); reports the others
+
+`examples/frege.seg` with `examples/frege.opens` is a small example: Frege's
+first lemmas on the transitive closure of a relation.
+
 ## Building and checking
 
 The checker is written in Haskell (GHC; the packages `base`, `containers` and
@@ -118,7 +138,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
 
     cabal build
     ./run-tests.sh | diff tests.expected -   # the examples in examples/
-    ./segc core all                # check the model (about 70 s)
+    ./segc core all                # check the model (about 50 s)
     ./segc core changed            # after an edit: the changed files and their dependents
     ./segc sag/torsor all          # one of the sag/ developments (each under 1 s)
     ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
