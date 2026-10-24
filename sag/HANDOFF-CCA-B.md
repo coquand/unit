@@ -124,6 +124,18 @@ what is proved with DW1 / CCA numbering.
   Ȟⁿ⁺¹(B) = 0), `em/Coker` (isomorphic cokernels).  `QGrp` gained the
   group-typed `cl`, `ind`, `cl-mul` (one name for the carrier).  Openings
   at most 456 (`CechLES.delta-pstar`).
+- Thm 3.3.2 (A), milestone 3 (assembly): `em/KFun` (K(h g) = K g ; K h,
+  equal homomorphisms have equal deloopings; generic `Unloop`),
+  `em/CechNat` (δ̌ natural in maps of short exact sequences),
+  `em/CechH0` (the base case Φ₀ : π₁(Π K(B, 1)) ~ Π B ~ Z⁰ = Ȟ⁰, a natural
+  group isomorphism), `em/ImageMap` (the map of 0 -> A -> A^S -> L -> 0
+  induced by h), `ccacoh/Thm332A` (`Over[..].thm332A nd n : Stage n`: for
+  every n and overtly discrete B a group isomorphism Hⁿ(X, B) ~
+  Ȟⁿ(X, S, B), natural in homomorphisms; induction with em/Coker).  The
+  naturality of δ on the H side is the hypothesis `NatDelta n` (stated as
+  the step uses it), to be discharged in em/.  Openings: Thm332A.base 630,
+  Step.NatAt.on-delta 1622 (the family names E/L and onto/T.Sx carried by
+  the instances of Thm332's modules), all others <= 574.
 
 ## Gaps
 
