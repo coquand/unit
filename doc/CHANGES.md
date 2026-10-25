@@ -1,5 +1,17 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+> **Split comparison by name (25 October).** Split values now compare
+> only by code identity and convertible dynamic arguments. The
+> branch-comparison fallback and its counters are removed; no motive
+> comparison is added. The level-independent Boolean operations are
+> shared in `core/Base.seg`, and tuple construction is shared independently
+> of the coefficient group in `sag/cca/Cochains.seg`. The seven development
+> reruns and the regression comparison are recorded in
+> [review-validation.md](review-validation.md).
+> Data types are compared by name in the same way: the comparison of
+> constructor telescopes when the parameters differ is removed. All
+> developments and the regression tests check unchanged.
+
 **Mathematical attribution:** all mathematical results concerning the D
 modality and the D_n modalities referenced in this document are due to
 Christian Sattler. The implementation and checking notes below concern
@@ -51,8 +63,8 @@ These are the rules of this implementation. Rule 2 is our chosen conversion rule
 1. **Sufficient rule.** The same static identity and equal dynamic parts give equal values. Dynamic parts are compared position by position, names included. Names matter when two pieces of code have the same text without being the same occurrence: `\ z -> y` under the binders `x y` and under `y x` (test `examples/order.seg`). This holds for closures, splits, sums, record types, Σ-types and accesses to definitions. The dynamic part is the whole environment, not only the variables the code uses.
 2. **Same occurrence, different dynamic parts.** For code, the contents are compared:
    - a λ by application to a fresh variable;
-   - a split by its branches;
-   - a sum by its constructor telescopes.
+   - a split only by code identity and convertible dynamic parts;
+   - a sum (data type) only by code identity and convertible dynamic parts.
 
    Record types are nominal and are never compared by contents: a record type (`record`, `sig`, named Σ) is equal to another only if it is the same declaration or occurrence with equal parameters or dynamic parts. Elements are compared by their constructor: two `new` elements are equal when their record is the same and their parameters and fields are convertible; there is no η.
 

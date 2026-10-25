@@ -323,8 +323,6 @@ runFile f o
       printf "%s: %d declarations%s, %d failed, %.2f s\n" f c
              (if noSel then "" else " (" ++ unwords (oOnly o ++ oOnlyTop o) ++ "; the rest trusted)") n tt
       if null pns then return () else putStrLn ("assuming: " ++ unwords pns)
-      fb <- readIORef fallbackCount
-      if fb > 0 then putStrLn ("split conversion fallback (PRIMREC.md 5.3): " ++ show fb) else return ()
       if n > 0 then exitFailure else putStrLn "OK"
 
 -- A session: the program is loaded once and kept; commands are read from

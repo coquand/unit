@@ -747,14 +747,6 @@ memberUnit us x = case [ u | u <- us, unitName u == x ] of
 -- the driver between declarations.
 {-# NOINLINE unfoldOn #-}
 
--- how often the conversion of splits falls back to their branches
-fallbackCount :: IORef Int
-fallbackCount = unsafePerformIO (newIORef 0)
-{-# NOINLINE fallbackCount #-}
-
-countFallback :: Bool -> Bool
-countFallback b = unsafePerformIO (modifyIORef' fallbackCount (+ 1) >> return b)
-{-# NOINLINE countFallback #-}
 unfoldOn :: IORef Bool
 unfoldOn = unsafePerformIO (newIORef False)
 
@@ -858,7 +850,8 @@ whnf s = whnfP (`Set.notMember` s)
 
 -- in a comparison of two values in folded weak head normal form: open the
 -- head that blocks, and when both are blocked by different definitions,
--- the later one (it is the only one whose unfolding can reach the other);
+-- the later one. Sequential scope orders the declarations' bodies, but
+-- instantiated environments may contain later definitions;
 -- Nothing when neither is blocked
 headStep :: CC -> Val -> Val -> Maybe (Val, Val)
 headStep c _ _ | not (ccOpen c) = Nothing
@@ -1114,15 +1107,12 @@ conv' c u1 u2 = case (u1, u2) of
   (VIdJ a1 b1 c1 d1 e1 f1, VIdJ a2 b2 c2 d2 e2 f2) ->
     convs c [a1,b1,c1,d1,e1,f1] [a2,b2,c2,d2,e2,f2]
   (VCon k1 vs, VCon k2 ws)     -> k1 == k2 && convs c vs ws
-  (VSum t1 d1 cs r1, VSum t2 d2 _ r2)    -> t1 == t2 && (convs c d1 d2 ||
-      and [ convTel c tel r1 tel r2 | (_, tel) <- cs ])
-  -- the same split: the same dynamic part, or else (EXPERIMENTAL,
-  -- counted) the same branches under fresh variables for the pattern
-  -- variables AND the recursive results (PRIMREC.md 5.3)
-  (VSplit t1 d1 bs r1, VSplit t2 d2 _ r2) -> t1 == t2 && (convs c d1 d2 ||
-      countFallback (and [ conv (c { ccK = k + length ys }) (eval (bindAll r1 ys gens) b) (eval (bindAll r2 ys gens) b)
-          | (_, (xs, rs, b)) <- bs, let ys = xs ++ recNames rs
-          , let gens = [ VGen (k + j) | j <- [0 .. length ys - 1] ] ]))
+  -- Data types are compared only by their code identity and arguments.
+  -- Their constructor telescopes are not compared.
+  (VSum t1 d1 _ _, VSum t2 d2 _ _) -> t1 == t2 && convs c d1 d2
+  -- Splits are compared only by their code identity and arguments.
+  -- Neither their branches nor their motives are compared.
+  (VSplit t1 d1 _ _, VSplit t2 d2 _ _) -> t1 == t2 && convs c d1 d2
   (VApp a b, VApp a' b')       -> conv c a a' && conv c b b'
   (VFst a, VFst b)             -> conv c a b
   (VSnd a, VSnd b)             -> conv c a b
@@ -2882,8 +2872,8 @@ quoteBlame cx v0 = go (scopeOf cx) v0
 -- split, with a branch that has recursive results and whose body is again
 -- a split (Ackermann).  That nested split, built with the CANONICAL
 -- results, is written back as the definition applied to its path; built
--- with ABSTRACT results (fresh variables, as when the branch is checked or
--- in the conversion fallback), the read-back must refuse it.
+-- with ABSTRACT results (fresh variables, as when a branch is checked),
+-- the read-back must refuse it.
 quoteTest :: Cx -> Id -> [String]
 quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
   f@(VSplit t _ bs rho) -> concat [ one f t rho c xs rs b | (c, (xs, rs@(_ : _), b)) <- bs ]
@@ -3048,8 +3038,8 @@ quoteWith sc v0 = case v0 of
     (fid, _ : ps) -> do
       -- PRIMREC.md 5.4: the definition applied along the path is this value
       -- only when the recursive results bound on the path are the canonical
-      -- ones (not the abstract ones of a branch being checked, or of the
-      -- conversion fallback); otherwise the value is not written back
+      -- ones (not the abstract ones of a branch being checked);
+      -- otherwise the value is not written back
       if canonicalRecs fid (read ps :: [[String]]) then Just () else Nothing
       h <- quoteWith sc { scUnfold = False } (lookupVal r fid)
       let item e it = case it of

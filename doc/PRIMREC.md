@@ -193,41 +193,23 @@ because a recursive result is an ordinary application or closure.
 
 ### 5.3 Conversion of splits and of data types
 
-**Splits: congruence of the eliminator.** Two occurrences of the same split
-`t` are equal when their dynamic parts are convertible. Otherwise the
-checker compares their branches, each in its own environment, with fresh
-generic variables (`VGen`) for the pattern variables and for the recursive
-results (`Seg.hs:967`).
+**Splits: comparison by name and arguments.** Two split values are equal
+only when they have the same code identity and convertible dynamic parts.
+The dynamic part contains all variables and levels of the environment,
+including unused ones. Neither branches nor motives are compared. Once a
+split is applied to a constructor, its ordinary computation rule still
+applies (§5.2).
 
-- **This is congruence.** Read a split as an eliminator `elim_P(b_1,..,b_k)`,
-  where the branch `b_i` binds the fields and the recursive results of
-  constructor `c_i`. The congruence rule for this term former says that two
-  eliminators are equal when their motives are equal and their branches are
-  equal under fresh variables for all these binders. The rule is exactly
-  that.
-- **It is not uniqueness.** The recursive results stay fresh: they are not
-  replaced by the split itself. Doing that would be an eta rule for
-  inductive types, which is not part of the theory. It would also not
-  terminate: `VApp f₁ x` against `VApp f₂ x` compares `f₁` with `f₂` again.
-- **The motive is not compared yet.** The checker compares only the
-  branches. Comparing the declared types of the two occurrences, each in its
-  environment, makes the rule exactly congruence of a typed eliminator. Then
-  the standard metatheory of MLTT with W-types applies (§5.6).
-- **Why it is needed.** Two occurrences of a split can have environments
-  that differ only in variables the branches don't use. This happens in
-  locks.seg's `byDeps` and with lemmas instantiated twice. The rule is
-  counted: it is tried 19953 times on `core` and 5294 times on `pn`.
+The earlier branch-comparison fallback has been removed. In particular,
+`Mk[zero].ackM` and `Mk[one].ackM` in `examples/primrec.seg` are no longer
+convertible merely because the split's branches ignore the parameter.
+The negative regression now records this policy. Historical fallback
+counts below describe the earlier implementation, not the current one.
 
-**Data types: equal descriptions.** Two occurrences of the same data
-declaration are equal when their parameters are convertible. Otherwise the
-checker compares the telescopes of their constructors, each in its own
-environment (`Seg.hs:965`). This is not congruence: it can identify `D a`
-and `D b` with `a` and `b` different, for example when the parameter is not
-used. It is justified by reading a data type as the initial algebra (W-type)
-of its description, the constructor names with their telescopes. Equal
-descriptions then give the same type, in the set and presheaf models alike.
-Since parameters are uniform and there are no indexed families, the
-description is the whole of the data type.
+**Data types: by name.** Two occurrences of the same data declaration are
+equal only when their parameters are convertible. The earlier comparison of
+constructor telescopes, which identified `D a` and `D b` when the parameter
+is not used, has been removed; all developments check without it.
 
 ### 5.4 Read-back
 
@@ -238,11 +220,10 @@ correct only when the split's environment is the one obtained by evaluating
 the definition along that path, so that its recursive results are the
 canonical ones.
 
-- **Split values with abstract results do exist.** Checking a branch never
-  evaluates the unnamed split in it, but the conversion fallback (§5.3)
-  evaluates branch bodies under fresh variables for the recursive results.
-  When such a body is a nested split, the result is a split value with an
-  abstract `r`. These values are allowed internally.
+- **Read-back with abstract results.** A nested split evaluated in an
+  environment with abstract recursive results must not be reconstructed
+  using canonical ones. The `--quote-test` probes exercise this case
+  directly; comparison no longer evaluates branches under fresh results.
 - **So the safeguard below is essential, not defensive.** The text of the
   reconstruction is the same in both cases (`ack (suc m)`); only the check
   of the recursive results tells them apart.
@@ -302,8 +283,8 @@ every checking path. It is tested instead (`examples/primrec.seg`):
   parameters), and the eliminator is the standard dependent one.
   Normalisation of the whole calculus is the standard argument for MLTT
   with W-types, universes and these eliminators.
-- The conversion of splits (§5.3) compares code under fresh variables, and
-  terminates.
+- The conversion of splits (§5.3) compares code identities and dynamic
+  arguments; it does not evaluate their branches.
 - **Outside the scope of this sketch.** A context whose level constraints
   have a loop collapses (Gonthier's rule: everything converts), so it can
   type non-terminating terms. That is an existing property of the universe
@@ -405,6 +386,11 @@ Open:
 - Comparing the motives in the conversion of splits (§5.3).
 
 ## 9. Prototype status (19 October 2026)
+
+The remaining sections are historical records. Their branch-comparison
+fallback and its counters have since been removed; §5.3 describes the
+current rule. Current reruns are recorded in
+[review-validation.md](review-validation.md).
 
 The prototype is in `seg/primrec`, a copy of `defenv`; `defenv` and its
 `core` are unchanged.
