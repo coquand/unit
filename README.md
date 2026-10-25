@@ -27,7 +27,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and three developments written with it:
+This repository contains the checker and four developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -35,6 +35,10 @@ This repository contains the checker and three developments written with it:
 - formalisations of results of *A foundation for synthetic algebraic
   geometry* (Cherubini, Coquand, Hutzler) over univalence and Rijke's
   axiom of replacement (`sag/`);
+- formalisations of *A foundation for synthetic Stone duality* and
+  *Cohomology in synthetic Stone duality* (Cherubini, Coquand, Geerligs,
+  Moeneclaey), up to Theorem 5.16 and Theorem 3.3.2 (`sag/stone`,
+  `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`);
 - a constructive theory of Girard's dilators: normal form, well-foundedness
   up to the Howard ordinal, morphisms, connected components and kinds
   (`dilators/`).
@@ -127,24 +131,46 @@ used. Each directory has a `README.txt`.
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
-- `stone`, `stoneseq`: synthetic Stone duality (Cherubini, Coquand,
-  Geerligs, Moeneclaey, *A Foundation for Synthetic Stone Duality*): Stone
-  spaces and countably presented Boolean algebras up to Theorem 4.18
-  (`stone/DESIGN.md`); sequential colimits, Lemmas 5.8–5.10, Corollary 5.11
-  and Theorem 5.16 (H¹ = 0 iff Čech H¹ = 0; Čech H¹ ≅ ‖X → BZ‖₀)
-  (`stoneseq/README.md`). Gaps in the paper are recorded in the handoff
-  files, the shared statements in `STONE-INTERFACE.md`.
-- `cca`, `em`, `ccacoh`: cohomology in synthetic Stone duality (Cherubini,
-  Coquand, Geerligs, Moeneclaey, *Cohomology in Synthetic Stone Duality*),
-  with Eilenberg–MacLane spaces after Wärn. `em` (plain HoTT): K(A, n) for
-  all n, deloopings of maps, fibre sequences, non-abelian H¹ and Appendix A.
-  `cca`: Scott continuity for Stone and compact Hausdorff spaces (§2.1–2.4),
-  the interval as a quotient of 2^N, Lemmas 3.4.1, 3.4.4 and Thm 3.4.3
-  (Hⁿ(I, A) = 0), the ordered Čech complex and Lemma C.0.6. `ccacoh`:
-  §3.1, §3.2 (Hⁿ(S, A) = 0 for S Stone), and Thm 3.3.2 as stated:
-  Hⁿ(X, B) ≅ Ȟⁿ(X, S, B) as groups, naturally in B (`ccacoh/Thm332A`).
-  Design and gaps: `CCA-DESIGN.md`, `HANDOFF-CCA-A.md`, `HANDOFF-CCA-B.md`;
-  shared statements in `CCA-INTERFACE.md`.
+
+## Synthetic Stone duality (`sag/stone`, `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`)
+
+Formalisations of two papers of Cherubini, Coquand, Geerligs and
+Moeneclaey, in the same setting as `sag/` (univalence and replacement as
+parameters, the axioms of Stone duality as hypotheses), with the
+directories placed beside the SAG ones.
+
+*A Foundation for Synthetic Stone Duality*:
+
+- `stone`: countably presented Boolean algebras and their spectra, the
+  axioms, open and closed propositions, Stone spaces (Lemmas 3.1, 3.2,
+  Corollary 3.7, Theorem 3.11 and its corollaries), compact Hausdorff
+  spaces and Theorem 4.18 (closed equality) (`stone/DESIGN.md`).
+- `stoneseq`: sequential colimits and limits, overtly discrete types
+  (Lemmas 2.3–2.7), countable and dependent choice, Lemmas 5.5–5.10,
+  Corollary 5.11 and Theorem 5.16 (H¹(X, Z) = 0 iff Ȟ¹(X, S, Z) = 0, and
+  Ȟ¹(X, S, Z) ≅ ‖X → BZ‖₀) (`stoneseq/README.md`).
+
+*Cohomology in Synthetic Stone Duality*, with Eilenberg–MacLane spaces
+after Wärn:
+
+- `em` (plain HoTT): K(A, n) for all n, deloopings of maps, fibre sequences
+  and their long exact sequences, non-abelian H¹ and Appendix A, the Čech
+  groups and Appendix B (Lemmas B.0.5–B.0.7 in the degrees used;
+  B.0.7, cited but not in the paper, supplied).
+- `cca`: Scott continuity for Stone and compact Hausdorff spaces
+  (§2.1–2.4), the interval as a quotient of 2^N, Lemma 3.4.1, Theorem 3.4.3
+  (Hⁿ(I, A) = 0 for n ≥ 1), Lemma 3.4.4, the ordered Čech complex and
+  Lemma C.0.6.
+- `ccacoh`: §3.1, §3.2 (Hⁿ(S, A) = 0 for S Stone) and Theorem 3.3.2 as
+  stated: Hⁿ(X, B) ≅ Ȟⁿ(X, S, B) as groups, naturally in B
+  (`ccacoh/Thm332A`).
+
+Not formalised: the real numbers and Brouwer's fixed-point theorem
+(Foundation §4.4, §5.4–5.5), and Proposition 3.4.5 of the second paper
+(it needs n-truncations of arbitrary types). Design, gaps of the papers and
+the statements shared between directories: `stone/DESIGN.md`, the
+`HANDOFF-*` files, `STONE-INTERFACE.md`, `CCA-DESIGN.md`,
+`CCA-INTERFACE.md`.
 
 ## Conversion, and what checking opens
 
