@@ -1,0 +1,66 @@
+-- Enumerations: a list e : Fin N -> X reaching every element (with an
+-- explicit preimage).  Closed under Top, X + Y, X * Y and Fin k -> X, so
+-- the index of the minors, (Fin k -> Fin p) * Index q, is enumerated, and
+-- D_k(u) becomes a list (minor-list), regular iff D_k(u) is regular.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FP = FinPairs[l] ;
+Enum (X : U l) : U l = (N : Nat) * (e : Fin N -> X) * ((x : X) -> (i : Fin N) * Id X (e i) x) ;
+size (X : U l) (h : Enum X) : Nat = h.1 ;
+list (X : U l) (h : Enum X) (i : Fin h.1) : X = h.2.1 i ;
+pre (X : U l) (h : Enum X) (x : X) : Fin h.1 = (h.2.2 x).1 ;
+pre-eq (X : U l) (h : Enum X) (x : X) : Id X (list X h (pre X h x)) x = (h.2.2 x).2 ;
+
+fin (n : Nat) : Enum (Fin n) = (n,\ i -> i,\ i -> (i,refl i)) ;
+top : Enum Top = (suc zero,\ i -> tt,\ x -> (inr tt,MnSums[l].top-eq tt x)) ;
+-- X + Y
+plus-list (X Y : U l) (hx : Enum X) (hy : Enum Y) : Plus (Fin hx.1) (Fin hy.1) -> Plus X Y = split {
+ inl i -> inl (list X hx i) ; inr j -> inr (list Y hy j) } ;
+plus-pre (X Y : U l) (hx : Enum X) (hy : Enum Y) : (u : Plus X Y) ->
+ (i : Fin (plus hx.1 hy.1)) * Id (Plus X Y) (plus-list X Y hx hy (FP.split-fin hx.1 hy.1 i)) u = split {
+ inl x -> (FP.left hx.1 hy.1 (pre X hx x),
+  trans (ap (plus-list X Y hx hy) (FP.split-left hx.1 hy.1 (pre X hx x))) (ap (\ w -> inl w) (pre-eq X hx x))) ;
+ inr y -> (FP.right hx.1 hy.1 (pre Y hy y),
+  trans (ap (plus-list X Y hx hy) (FP.split-right hx.1 hy.1 (pre Y hy y))) (ap (\ w -> inr w) (pre-eq Y hy y))) } ;
+sum (X Y : U l) (hx : Enum X) (hy : Enum Y) : Enum (Plus X Y) =
+ (plus hx.1 hy.1,\ i -> plus-list X Y hx hy (FP.split-fin hx.1 hy.1 i),plus-pre X Y hx hy) ;
+-- X * Y
+product (X Y : U l) (hx : Enum X) (hy : Enum Y) : Enum (X * Y) =
+ (FP.times hx.1 hy.1,
+  \ i -> (list X hx (FP.enum hx.1 hy.1 i).1,list Y hy (FP.enum hx.1 hy.1 i).2),
+  \ u -> ((FP.preimage hx.1 hy.1 (pre X hx u.1) (pre Y hy u.2)).1,
+   trans (ap (\ w -> (list X hx w.1,list Y hy w.2)) (FP.preimage hx.1 hy.1 (pre X hx u.1) (pre Y hy u.2)).2)
+    (ExteriorAlgebra[l].pair-eq (pre-eq X hx u.1) (pre-eq Y hy u.2)))) ;
+-- Fin k -> X
+empty-fun (X : U l) : Enum (Fin zero -> X) =
+ (suc zero,\ i t -> efq t,\ f -> (inr tt,CommonPower[l].empty-eta X f)) ;
+step-fun (X : U l) (k : Nat) (h : Enum ((Fin k -> X) * X)) : Enum (Fin (suc k) -> X) =
+ (h.1,\ i -> CommonPower[l].extend X k (h.2.1 i).1 (h.2.1 i).2,
+  \ f -> ((h.2.2 ((\ t -> f (inl t)),f (inr tt))).1,
+   trans (ap (\ w -> CommonPower[l].extend X k w.1 w.2) (h.2.2 ((\ t -> f (inl t)),f (inr tt))).2)
+    (CommonPower[l].extend-eta X k f))) ;
+functions (X : U l) (hx : Enum X) : (k : Nat) -> Enum (Fin k -> X) = split {
+ zero -> empty-fun X ;
+ suc k | r -> step-fun X k (product (Fin k -> X) X r hx) } ;
+index : (q : Nat) -> Enum (ExteriorCoordinates[l].Index q) = split {
+ zero -> top ;
+ suc q | r -> sum (ExteriorCoordinates[l].Index q) (ExteriorCoordinates[l].Index q) r r } ;
+minors-index (k p q : Nat) : Enum ((Fin k -> Fin p) * ExteriorCoordinates[l].Index q) =
+ product (Fin k -> Fin p) (ExteriorCoordinates[l].Index q) (functions (Fin p) (fin p) k) (index q) ;
+
+-- D_k(u) as a list
+module MinorList (Rg : CRing) (setR : Pr.isSet Rg.R) (k p q : Nat) (u : Matrices[l].Over[Rg].Mat p q) {
+ open Rg ;
+ module MI = Minors[l].Over[Rg,setR] ;
+ module RI = RegularIdeal[l].Over[Rg,RegularIdeal[l].self Rg] ;
+ E : Enum (MI.Index k p q) = minors-index k p q ;
+ N : Nat = E.1 ;
+ minor-list (i : Fin N) : R = MI.minors k p q u (list (MI.Index k p q) E i) ;
+ -- the same annihilator
+ zero-on-list (x : R) (h : RI.ZeroOn (MI.Index k p q) (MI.minors k p q u) x) : RI.ZeroOn (Fin N) minor-list x =
+  \ i -> h (list (MI.Index k p q) E i) ;
+ zero-on-minors (x : R) (h : RI.ZeroOn (Fin N) minor-list x) : RI.ZeroOn (MI.Index k p q) (MI.minors k p q u) x =
+  \ ci -> subst (\ c -> Id R (mul (MI.minors k p q u c) x) z) (pre-eq (MI.Index k p q) E ci) (h (pre (MI.Index k p q) E ci)) ;
+ to-list (reg : MI.RegularD k p q u) : RI.Regular (Fin N) minor-list = \ x t h -> reg x t (zero-on-minors x h) ;
+ from-list (reg : RI.Regular (Fin N) minor-list) : MI.RegularD k p q u = \ x t h -> reg x t (zero-on-list x h) ;
+} ;

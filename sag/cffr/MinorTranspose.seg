@@ -1,0 +1,192 @@
+-- Minors of the transpose of a rectangular matrix (for cffr Lemma 8.4).
+-- u : R^p -> R^q by its columns, u^T : R^q -> R^p (u^T_j = the j-th row
+-- of u), Lambda(u) = Minors.Map[p,q,u].  As ExteriorTranspose does for
+-- square matrices:
+-- * vdot-transpose: (v | u w) = (u^T v | w)  (exchange of two sums).
+-- * natural: c_v Lambda(u) = Lambda(u) c_(u^T v), by induction on
+--   products of generators (contract-right, vdot-transpose, Lambda(u)
+--   commutes with alpha) and linear-map extensionality.
+-- * transpose-pair: (Lambda(u) x | y) = (x | Lambda(u^T) y): the unit case
+--   by the augmentation (bottom), the step x gen(w) by right-pair, the
+--   induction hypothesis and natural for u^T; then linear-form
+--   extensionality.
+-- * column-image: Lambda(u)(e_K) = u_K, the product of the columns of u
+--   selected by K (ColumnBlocks.Selected).
+-- * minor-transpose: the coefficient of u_K at L is the coefficient of
+--   (u^T)_L at K  (pair e_K and e_L by transpose-pair).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module C = ExteriorCoordinates[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ; module L = RL[Rg] ;
+ open ExteriorModel[l].Over[Rg] ;
+ module MM = Matrices[l].Over[Rg] ;
+ module MI = Minors[l].Over[Rg,setR] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module UP = ExteriorUniversal[l].Over[Rg,setR] ;
+ module DT = Determinant[l].Over[Rg,setR] ;
+ module DU = ExteriorDuality[l].Over[Rg,setR] ;
+ module CO = C.Over[Rg,setR] ;
+ module BA = ExteriorBasis[l].Over[Rg,setR] ;
+ module RP = ExteriorReplacement[l].Over[Rg,setR] ;
+ module TP = ExteriorTranspose[l].Over[Rg,setR] ;
+ module VC = ExteriorVectorContraction[l].Over[Rg,setR] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module CB = ColumnBlocks[l].Over[Rg,setR] ;
+ transpose (p q : Nat) (u : MM.Mat p q) : MM.Mat q p = \ j k -> u k j ;
+ transpose-value (p q : Nat) (u : MM.Mat p q) (j : Ps.Fin q) (k : Ps.Fin p) :
+  Id R (transpose p q u j k) (u k j) = refl (u k j) ;
+
+ -- the laws of Lambda(u)
+ module Laws (p q : Nat) (u : MM.Mat p q) {
+  module M = MI.Map[p,q,u] ;
+  value-add (x y : Ext p) : Id (Ext q) (M.value (eadd p x y)) (eadd q (M.value x) (M.value y)) = M.phi.2.1 x y ;
+  value-mul (x y : Ext p) : Id (Ext q) (M.value (emul p x y)) (emul q (M.value x) (M.value y)) = M.phi.2.2.2.1 x y ;
+  value-one : Id (Ext q) (M.value (eone p)) (eone q) = M.phi.2.2.2.2 ;
+  value-gen (v : MM.Vec p) : Id (Ext q) (M.value (gen p v)) (gen q (MM.apply p q u v)) = M.phi-gen v ;
+  value-alpha (x : Ext p) : Id (Ext q) (M.value (alpha p x)) (alpha q (M.value x)) =
+   UP.grade-natural p q M.phi (\ v -> trans (ap (alpha q) (value-gen v))
+    (trans (EA.alpha-gen q (MM.apply p q u v)) (ap (eneg q) (sym (value-gen v))))) x ;
+  value-eprod : (m : Nat) (w : Ps.Fin m -> Ext p) ->
+   Id (Ext q) (M.value (eprod p m w)) (eprod q m (\ k -> M.value (w k))) = split {
+   zero -> \ w -> value-one ;
+   suc m | r -> \ w -> trans (value-mul (eprod p m (\ k -> w (inl k))) (w (inr tt)))
+    (ap (\ t -> emul q t (M.value (w (inr tt)))) (r (\ k -> w (inl k)))) } ;
+  linear : CO.LinearMap p q M.value = (value-add,M.value-scale) ;
+  bottom-map (x : Ext p) : Id R (TP.bottom q (M.value x)) (TP.bottom p x) =
+   UP.In[UP.Lam zero].unique p
+    (AL.comp (UP.Lam p) (UP.Lam q) (UP.Lam zero) (TP.bottom-hom q) M.phi) (TP.bottom-hom p)
+    (\ v -> trans (ap (TP.bottom q) (value-gen v))
+     (trans (TP.bottom-gen q (MM.apply p q u v)) (sym (TP.bottom-gen p v)))) x ;
+  -- Lambda(u)(e_K) = u_K
+  column-image (K : C.Index p) :
+   Id (Ext q) (M.value (CO.basis p K)) (CB.Selected[q].selected-product p K u) =
+   trans (ap M.value (BA.basis-product p K))
+    (trans (value-eprod (BA.count p K) (\ k -> gen p (BA.select p K k)))
+     (DT.eprod-cong q (BA.count p K) (\ k -> M.value (gen p (BA.select p K k)))
+      (\ k -> gen q (RP.Columns[AL.Vec q].selected p K u k))
+      (\ k -> trans (value-gen (BA.select p K k))
+       (ap (gen q) (trans (ap (MM.apply p q u) (RP.select-position p K k))
+        (trans (M.apply-delta (RP.positions p K k)) (sym (RP.Columns[AL.Vec q].selected-value p K u k)))))))) ;
+ } ;
+
+ -- (v | u w) = (u^T v | w)
+ vdot-transpose (p q : Nat) (u : MM.Mat p q) (v : MM.Vec q) (w : MM.Vec p) :
+  Id R (VC.vdot q v (MM.apply p q u w)) (VC.vdot p (MM.apply q p (transpose p q u) v) w) = calc R {
+  VC.vdot q v (MM.apply p q u w)
+   =< WedgeStep[l].Over[Rg,setR,q].vdot-sum q v (MM.apply p q u w)
+   > S.sum q (\ j -> mul (v j) (S.sum p (\ k -> mul (w k) (u k j))))
+   =< S.sum-cong q _ (\ j -> S.sum p (\ k -> mul (v j) (mul (w k) (u k j))))
+       (\ j -> sym (S.sum-scale (v j) p (\ k -> mul (w k) (u k j))))
+   > S.sum q (\ j -> S.sum p (\ k -> mul (v j) (mul (w k) (u k j))))
+   =< MM.interchange q p (\ j k -> mul (v j) (mul (w k) (u k j)))
+   > S.sum p (\ k -> S.sum q (\ j -> mul (v j) (mul (w k) (u k j))))
+   =< S.sum-cong p _ (\ k -> mul (MM.apply q p (transpose p q u) v k) (w k))
+       (\ k -> trans (S.sum-cong q _ (\ j -> mul (w k) (mul (v j) (u k j))) (\ j -> L.mul-swap (v j) (w k) (u k j)))
+        (trans (S.sum-scale (w k) q (\ j -> mul (v j) (u k j)))
+         (mulC (w k) (MM.apply q p (transpose p q u) v k))))
+   > S.sum p (\ k -> mul (MM.apply q p (transpose p q u) v k) (w k))
+   =< sym (WedgeStep[l].Over[Rg,setR,q].vdot-sum p (MM.apply q p (transpose p q u) v) w)
+   > VC.vdot p (MM.apply q p (transpose p q u) v) w } ;
+
+ -- c_v Lambda(u) = Lambda(u) c_(u^T v)
+ module Natural (p q : Nat) (u : MM.Mat p q) (v : MM.Vec q) {
+  module LU = Laws[p,q,u] ;
+  module M = LU.M ;
+  P (x : Ext p) : U l =
+   Id (Ext q) (VC.contract q v (M.value x)) (M.value (VC.contract p (MM.apply q p (transpose p q u) v) x)) ;
+  unit : P (eone p) =
+   trans (ap (VC.contract q v) LU.value-one)
+    (trans (TP.contract-one q v)
+     (sym (trans (ap M.value (TP.contract-one p (MM.apply q p (transpose p q u) v))) M.value-zero))) ;
+  step (x : Ext p) (w : MM.Vec p) (ih : P x) : P (emul p x (gen p w)) =
+   calc (Ext q) { VC.contract q v (M.value (emul p x (gen p w)))
+    =< ap (VC.contract q v) (trans (LU.value-mul x (gen p w)) (ap (emul q (M.value x)) (LU.value-gen w)))
+     > VC.contract q v (emul q (M.value x) (gen q (MM.apply p q u w)))
+    =< VC.contract-right q v (MM.apply p q u w) (M.value x)
+     > eadd q (emul q (VC.contract q v (M.value x)) (gen q (MM.apply p q u w)))
+        (escale q (VC.vdot q v (MM.apply p q u w)) (alpha q (M.value x)))
+    =< EA.At[q].G.cong-add (ap (\ y -> emul q y (gen q (MM.apply p q u w))) ih)
+      (trans (ap (\ a -> escale q a (alpha q (M.value x))) (vdot-transpose p q u v w))
+       (ap (escale q (VC.vdot p (MM.apply q p (transpose p q u) v) w)) (sym (LU.value-alpha x))))
+     > eadd q (emul q (M.value (VC.contract p (MM.apply q p (transpose p q u) v) x)) (gen q (MM.apply p q u w)))
+        (escale q (VC.vdot p (MM.apply q p (transpose p q u) v) w) (M.value (alpha p x)))
+    =< EA.At[q].G.cong-add
+      (sym (trans (LU.value-mul (VC.contract p (MM.apply q p (transpose p q u) v) x) (gen p w))
+       (ap (emul q (M.value (VC.contract p (MM.apply q p (transpose p q u) v) x))) (LU.value-gen w))))
+      (sym (M.value-scale (VC.vdot p (MM.apply q p (transpose p q u) v) w) (alpha p x)))
+     > eadd q (M.value (emul p (VC.contract p (MM.apply q p (transpose p q u) v) x) (gen p w)))
+        (M.value (escale p (VC.vdot p (MM.apply q p (transpose p q u) v) w) (alpha p x)))
+    =< sym (LU.value-add (emul p (VC.contract p (MM.apply q p (transpose p q u) v) x) (gen p w))
+        (escale p (VC.vdot p (MM.apply q p (transpose p q u) v) w) (alpha p x)))
+     > M.value (eadd p (emul p (VC.contract p (MM.apply q p (transpose p q u) v) x) (gen p w))
+        (escale p (VC.vdot p (MM.apply q p (transpose p q u) v) w) (alpha p x)))
+    =< ap M.value (sym (VC.contract-right p (MM.apply q p (transpose p q u) v) w x))
+     > M.value (VC.contract p (MM.apply q p (transpose p q u) v) (emul p x (gen p w))) } ;
+  product : (m : Nat) (w : Ps.Fin m -> MM.Vec p) -> P (eprod p m (\ j -> gen p (w j))) = split {
+   zero -> \ w -> unit ; suc m | r -> \ w -> step (eprod p m (\ j -> gen p (w (inl j)))) (w (inr tt)) (r (\ j -> w (inl j))) } ;
+  left-linear : CO.LinearMap p q (\ x -> VC.contract q v (M.value x)) =
+   ((\ x y -> trans (ap (VC.contract q v) (LU.value-add x y)) (VC.contract-add q v (M.value x) (M.value y))),
+    \ a x -> trans (ap (VC.contract q v) (M.value-scale a x)) (VC.contract-scale q v a (M.value x))) ;
+  right-linear : CO.LinearMap p q (\ x -> M.value (VC.contract p (MM.apply q p (transpose p q u) v) x)) =
+   ((\ x y -> trans (ap M.value (VC.contract-add p (MM.apply q p (transpose p q u) v) x y))
+      (LU.value-add (VC.contract p (MM.apply q p (transpose p q u) v) x) (VC.contract p (MM.apply q p (transpose p q u) v) y))),
+    \ a x -> trans (ap M.value (VC.contract-scale p (MM.apply q p (transpose p q u) v) a x))
+     (M.value-scale a (VC.contract p (MM.apply q p (transpose p q u) v) x))) ;
+  natural (x : Ext p) : P x =
+   CO.map-ext p q (\ y -> VC.contract q v (M.value y)) (\ y -> M.value (VC.contract p (MM.apply q p (transpose p q u) v) y))
+    left-linear right-linear
+    (\ i -> subst P (sym (BA.basis-product p i)) (product (BA.count p i) (BA.select p i))) x ;
+ } ;
+
+ -- (Lambda(u) x | y) = (x | Lambda(u^T) y)
+ module Transpose (p q : Nat) (u : MM.Mat p q) {
+  module LU = Laws[p,q,u] ;
+  module LT = Laws[q,p,transpose p q u] ;
+  module M = LU.M ;
+  module MT = LT.M ;
+  P (x : Ext p) : U l = (y : Ext q) -> Id R (DU.dot q (M.value x) y) (DU.dot p x (MT.value y)) ;
+  unit : P (eone p) = \ y ->
+   trans (ap (\ x -> DU.dot q x y) LU.value-one)
+    (trans (TP.one-dot q y) (sym (trans (TP.one-dot p (MT.value y)) (LT.bottom-map y)))) ;
+  step (x : Ext p) (w : MM.Vec p) (ih : P x) : P (emul p x (gen p w)) = \ y ->
+   calc R { DU.dot q (M.value (emul p x (gen p w))) y
+    =< ap (\ t -> DU.dot q t y) (trans (LU.value-mul x (gen p w)) (ap (emul q (M.value x)) (LU.value-gen w)))
+     > DU.dot q (emul q (M.value x) (gen q (MM.apply p q u w))) y
+    =< TP.right-pair q (MM.apply p q u w) (M.value x) y
+     > DU.dot q (M.value x) (alpha q (VC.contract q (MM.apply p q u w) y))
+    =< ih (alpha q (VC.contract q (MM.apply p q u w) y))
+     > DU.dot p x (MT.value (alpha q (VC.contract q (MM.apply p q u w) y)))
+    =< ap (DU.dot p x) (LT.value-alpha (VC.contract q (MM.apply p q u w) y))
+     > DU.dot p x (alpha p (MT.value (VC.contract q (MM.apply p q u w) y)))
+    =< ap (\ t -> DU.dot p x (alpha p t)) (sym (Natural[q,p,transpose p q u,w].natural y))
+     > DU.dot p x (alpha p (VC.contract p w (MT.value y)))
+    =< sym (TP.right-pair p w x (MT.value y)) > DU.dot p (emul p x (gen p w)) (MT.value y) } ;
+  product : (m : Nat) (w : Ps.Fin m -> MM.Vec p) -> P (eprod p m (\ j -> gen p (w j))) = split {
+   zero -> \ w -> unit ; suc m | r -> \ w -> step (eprod p m (\ j -> gen p (w (inl j)))) (w (inr tt)) (r (\ j -> w (inl j))) } ;
+  transpose-pair (x : Ext p) (y : Ext q) : Id R (DU.dot q (M.value x) y) (DU.dot p x (MT.value y)) =
+   CO.linear-ext p (\ t -> DU.dot q (M.value t) y) (\ t -> DU.dot p t (MT.value y))
+    ((\ t s -> trans (ap (\ b -> DU.dot q b y) (LU.value-add t s)) (DU.dot-add-left q (M.value t) (M.value s) y)),
+     \ a t -> trans (ap (\ b -> DU.dot q b y) (M.value-scale a t)) (DU.dot-scale-left q a (M.value t) y))
+    ((\ t s -> DU.dot-add-left p t s (MT.value y)),\ a t -> DU.dot-scale-left p a t (MT.value y))
+    (\ i -> subst P (sym (BA.basis-product p i)) (product (BA.count p i) (BA.select p i)) y) x ;
+  -- the coefficient of u_K at L is the coefficient of (u^T)_L at K
+  minor-transpose (K : C.Index p) (L : C.Index q) :
+   Id R (CO.coeff q (CB.Selected[q].selected-product p K u) L)
+    (CO.coeff p (CB.Selected[p].selected-product q L (transpose p q u)) K) = calc R {
+   CO.coeff q (CB.Selected[q].selected-product p K u) L
+    =< sym (CO.dot-basis q (CB.Selected[q].selected-product p K u) L)
+    > DU.dot q (CB.Selected[q].selected-product p K u) (CO.basis q L)
+    =< ap (\ t -> DU.dot q t (CO.basis q L)) (sym (LU.column-image K))
+    > DU.dot q (M.value (CO.basis p K)) (CO.basis q L)
+    =< transpose-pair (CO.basis p K) (CO.basis q L)
+    > DU.dot p (CO.basis p K) (MT.value (CO.basis q L))
+    =< ap (DU.dot p (CO.basis p K)) (LT.column-image L)
+    > DU.dot p (CO.basis p K) (CB.Selected[p].selected-product q L (transpose p q u))
+    =< DU.dot-sym p (CO.basis p K) (CB.Selected[p].selected-product q L (transpose p q u))
+    > DU.dot p (CB.Selected[p].selected-product q L (transpose p q u)) (CO.basis p K)
+    =< CO.dot-basis p (CB.Selected[p].selected-product q L (transpose p q u)) K
+    > CO.coeff p (CB.Selected[p].selected-product q L (transpose p q u)) K } ;
+ } ;
+} ;

@@ -1,0 +1,97 @@
+-- The Koszul complex C(a; E) (cffr §5.2).
+--
+-- For a in R^n, C_k(a; E) is the module of coefficient vectors
+-- (Index n -> E) supported in degree k: alpha_I = 0 unless |I| = k
+-- (Supp, the E-valued form of ExteriorHomogeneous.Support), and
+-- d alpha = a ^ alpha is (a ^ -)_E (Coefficients).
+--
+-- Degrees.  If f sends each e_I with |I| = p to an element of degree q,
+-- then f_E sends Supp p to Supp q (apply-supp): at J with |J| /= q, each
+-- term coeff_J (f e_I) alpha_I vanishes, by the coefficient support of
+-- f e_I when |I| = p, and since alpha_I = 0 otherwise (equality of
+-- natural numbers is decidable).  a ^ e_I has degree 1 + |I| (deg-mul,
+-- deg-gen, basis-degree), so d maps C_k to C_(k+1).
+--
+-- d d = 0: (a ^ -)_E (a ^ -)_E = (a ^ (a ^ -))_E (compose), and
+-- a ^ (a ^ x) = (a ^ a) ^ x = 0 ^ x = 0 (mulA', gen-sq), so d d alpha
+-- = 0_E alpha = 0.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module A7 = Alg73[l] ; module Ps = Presentations[l] ;
+module C = ExteriorCoordinates[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+-- equality of natural numbers is decidable
+module DecNat {
+ step (m n : Nat) : Plus (Id Nat m n) (Not (Id Nat m n)) -> Plus (Id Nat (suc m) (suc n)) (Not (Id Nat (suc m) (suc n))) = split {
+  inl e -> inl (ap (\ k -> suc k) e) ;
+  inr ne -> inr (\ e -> ne (suc-inj e)) } ;
+ dec : (m n : Nat) -> Plus (Id Nat m n) (Not (Id Nat m n)) = split {
+  zero -> split { zero -> inl (refl zero) ; suc n -> inr (zero-suc n) } ;
+  suc m | r -> split { zero -> inr (suc-zero m) ; suc n -> step m n (r n) } } ;
+} ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) (E : A7.Mod[RingBridge[l].Over[Rg,setR].ring]) {
+ open Rg ;
+ module CO = C.Over[Rg,setR] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module DG = ExteriorDegree[l].Over[Rg,setR] ;
+ module BA = ExteriorBasis[l].Over[Rg,setR] ;
+ module HO = ExteriorHomogeneous[l].Over[Rg,setR] ;
+ module CF = Coefficients[l].Over[Rg,setR,E] ;
+ module SM = CF.SM ;
+ module ME = CF.ME ;
+ module CX = Complexes[l].Over[CF.MO.ring] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ ---------------------------------------------------------------------
+ -- vectors supported in degree p
+ Supp (n p : Nat) (u : (CF.V n).M) : U l = (I : C.Index n) -> Not (Id Nat (BA.count n I) p) -> Id E.M (u I) E.mz ;
+ supp (n p : Nat) : Submodules[l].Submodule[CF.MO.ring,CF.V n] = new Submodules[l].Submodule[CF.MO.ring,CF.V n,Supp n p,
+  \ u -> F.isProp-Pi (C.Index n) (\ I -> Not (Id Nat (BA.count n I) p) -> Id E.M (u I) E.mz)
+   (\ I -> F.isProp-Pi (Not (Id Nat (BA.count n I) p)) (\ ne -> Id E.M (u I) E.mz) (\ ne -> E.setM (u I) E.mz)),
+  \ I ne -> refl E.mz,
+  \ u v su sv I ne -> trans (ap (\ t -> E.madd t (v I)) (su I ne)) (trans (ap (E.madd E.mz) (sv I ne)) (E.maddZ E.mz)),
+  \ u su I ne -> trans (ap E.mneg (su I ne)) ME.mneg-z,
+  \ a u su I ne -> trans (ap (E.sm a) (su I ne)) (ME.sm-zr a)] ;
+ module Deg (n p : Nat) { module S = SM.Sub[CF.V n,supp n p] ; } ;
+
+ -- f_E respects degrees
+ module ApplySupp (n m : Nat) (f : Ext n -> Ext m) (p q : Nat)
+  (hyp : (I : C.Index n) -> Id Nat (BA.count n I) p -> DG.Deg m q (f (CO.basis n I)))
+  (u : (CF.V n).M) (su : Supp n p u) (J : C.Index m) (nJ : Not (Id Nat (BA.count m J) q)) {
+  term (I : C.Index n) : Plus (Id Nat (BA.count n I) p) (Not (Id Nat (BA.count n I) p)) ->
+   Id E.M (E.sm (CO.coeff m (f (CO.basis n I)) J) (u I)) E.mz = split {
+   inl e -> trans (ap (\ c -> E.sm c (u I)) (HO.coeff-support m q (f (CO.basis n I)) (hyp I e) J nJ)) (ME.sm-zl (u I)) ;
+   inr ne -> trans (ap (E.sm (CO.coeff m (f (CO.basis n I)) J)) (su I ne)) (ME.sm-zr (CO.coeff m (f (CO.basis n I)) J)) } ;
+  result : Id E.M (CF.apply n m f u J) E.mz =
+   CF.sum-zeros n (\ I -> E.sm (CO.coeff m (f (CO.basis n I)) J) (u I)) (\ I -> term I (DecNat.dec (BA.count n I) p)) ;
+ } ;
+ apply-supp (n m : Nat) (f : Ext n -> Ext m) (p q : Nat)
+  (hyp : (I : C.Index n) -> Id Nat (BA.count n I) p -> DG.Deg m q (f (CO.basis n I)))
+  (u : (CF.V n).M) (su : Supp n p u) : Supp m q (CF.apply n m f u) = \ J nJ -> ApplySupp[n,m,f,p,q,hyp,u,su,J,nJ].result ;
+
+ ---------------------------------------------------------------------
+ -- the Koszul complex of a
+ module K (n : Nat) (a : Ps.Fin n -> R) {
+  -- a ^ -
+  wedge (x : Ext n) : Ext n = emul n (gen n a) x ;
+  wedge-linear : CO.LinearMap n n wedge = (\ x y -> EA.dist-left n (gen n a) x y,\ c x -> EA.scale-mul-right n c (gen n a) x) ;
+  wedge-degree (p : Nat) (I : C.Index n) (e : Id Nat (BA.count n I) p) : DG.Deg n (suc p) (wedge (CO.basis n I)) =
+   subst (\ k -> DG.Deg n (suc k) (wedge (CO.basis n I))) e
+    (HO.deg-mul n (suc zero) (BA.count n I) (gen n a) (CO.basis n I) (DG.deg-gen n a) (BA.basis-degree n I)) ;
+  -- a ^ (a ^ x) = 0
+  wedge-wedge (x : Ext n) : Id (Ext n) (wedge (wedge x)) (ezero n) =
+   trans (EA.mulA' n (gen n a) (gen n a) x) (trans (ap (\ y -> emul n y x) (EA.gen-sq n a)) (EA.mul-zero-l n x)) ;
+  -- the complex
+  Ck (p : Nat) : SM.Module = Deg[n,p].S.carrier ;
+  dmap (p : Nat) (u : Deg[n,p].S.E) : Deg[n,suc p].S.E =
+   (CF.apply n n wedge u.1,apply-supp n n wedge p (suc p) (wedge-degree p) u.1 u.2) ;
+  d (p : Nat) : SM.Linear (Ck p) (Ck (suc p)) = (dmap p,
+   \ u v -> Deg[n,suc p].S.eq (dmap p ((Ck p).madd u v)) ((Ck (suc p)).madd (dmap p u) (dmap p v)) (CF.apply-add n n wedge u.1 v.1),
+   \ c u -> Deg[n,suc p].S.eq (dmap p ((Ck p).sm c u)) ((Ck (suc p)).sm c (dmap p u)) (CF.apply-sm n n wedge c u.1)) ;
+  dd-vec (u : (CF.V n).M) : Id (CF.V n).M (CF.apply n n wedge (CF.apply n n wedge u)) (CF.V n).mz =
+   trans (CF.compose n n n wedge wedge wedge-linear u)
+    (trans (CF.apply-ext n n (\ x -> wedge (wedge x)) (\ x -> ezero n) wedge-wedge u) (CF.apply-zero n n u)) ;
+  dd (p : Nat) (u : (Ck p).M) : Id (Ck (suc (suc p))).M ((d (suc p)).1 ((d p).1 u)) (Ck (suc (suc p))).mz =
+   Deg[n,suc (suc p)].S.eq ((d (suc p)).1 ((d p).1 u)) (Ck (suc (suc p))).mz (dd-vec u.1) ;
+  complex : CX.Complex = new CX.Complex[Ck,d,dd] ;
+ } ;
+} ;

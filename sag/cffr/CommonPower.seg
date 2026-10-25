@@ -1,0 +1,81 @@
+-- Common exponents over finite index types.
+-- A family of properties P x e (x : X, e : Nat) monotone in e (P x e gives
+-- P x (e + d) and P x (d + e)) which holds for each x for some e (merely)
+-- holds for one e for all x (merely), when X is Fin n, Index q, a product,
+-- or Fin k -> X.  (Use: a power of c killing all the minors at once.)
+-- Fin n: induction, e = e_rest + e_last.  Index (q+1) = Index q + Index q:
+-- the same with the two halves.  X * Y: first a common e_x over Y for each
+-- x, then a common one over X.  Fin (k+1) -> X: f is determined by its
+-- restriction g and its last value; common over X for each g, then over g.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module AF = AffineFinite[l] ;
+
+Monotone (X : U l) (P : X -> Nat -> U l) : U l =
+ (x : X) (e d : Nat) -> P x e -> P x (plus e d) ;
+mono-left (X : U l) (P : X -> Nat -> U l) (mono : Monotone X P) (x : X) (e d : Nat) (h : P x e) : P x (plus d e) =
+ subst (P x) (plus-comm e d) (mono x e d h) ;
+Common (X : U l) : U l+ =
+ (P : X -> Nat -> U l) -> Monotone X P -> ((x : X) -> Tr.Trunc[(e : Nat) * P x e].carrier) ->
+ Tr.Trunc[(e : Nat) * ((x : X) -> P x e)].carrier ;
+
+module FinStep (n : Nat) (P : Fin (suc n) -> Nat -> U l) (mono : Monotone (Fin (suc n)) P)
+ (r1 : (e : Nat) * ((x : Fin n) -> P (inl x) e)) (r2 : (e : Nat) * P (inr tt) e) {
+ e : Nat = plus r1.1 r2.1 ;
+ result : (e : Nat) * ((x : Fin (suc n)) -> P x e) =
+  (e,AF.section n (\ x -> P x e) (\ x -> mono (inl x) r1.1 r2.1 (r1.2 x)) (mono-left (Fin (suc n)) P mono (inr tt) r2.1 r1.1 r2.2)) ;
+} ;
+common-fin : (n : Nat) -> Common (Fin n) = split {
+ zero -> \ P mono h -> Tr.Trunc[(e : Nat) * ((x : Fin zero) -> P x e)].inc (zero,AF.empty-section (\ x -> P x zero)) ;
+ suc n | r -> \ P mono h ->
+  TC.bind ((e : Nat) * ((x : Fin n) -> P (inl x) e)) ((e : Nat) * ((x : Fin (suc n)) -> P x e))
+   (\ r1 -> TC.map ((e : Nat) * P (inr tt) e) ((e : Nat) * ((x : Fin (suc n)) -> P x e))
+     (\ r2 -> FinStep[n,P,mono,r1,r2].result) (h (inr tt)))
+   (r (\ x -> P (inl x)) (\ x -> mono (inl x)) (\ x -> h (inl x))) } ;
+
+top-common : Common Top = \ P mono h ->
+ TC.map ((e : Nat) * P tt e) ((e : Nat) * ((x : Top) -> P x e))
+  (\ w -> (w.1,\ x -> subst (\ u -> P u w.1) (MnSums[l].top-eq tt x) w.2)) (h tt) ;
+-- X + Y
+module PlusStep (X Y : U l) (P : Plus X Y -> Nat -> U l) (mono : Monotone (Plus X Y) P)
+ (r1 : (e : Nat) * ((x : X) -> P (inl x) e)) (r2 : (e : Nat) * ((y : Y) -> P (inr y) e)) {
+ e : Nat = plus r1.1 r2.1 ;
+ at : (u : Plus X Y) -> P u e = split {
+  inl x -> mono (inl x) r1.1 r2.1 (r1.2 x) ;
+  inr y -> mono-left (Plus X Y) P mono (inr y) r2.1 r1.1 (r2.2 y) } ;
+ result : (e : Nat) * ((u : Plus X Y) -> P u e) = (e,at) ;
+} ;
+plus-common (X Y : U l) (cx : Common X) (cy : Common Y) : Common (Plus X Y) = \ P mono h ->
+ TC.bind ((e : Nat) * ((x : X) -> P (inl x) e)) ((e : Nat) * ((u : Plus X Y) -> P u e))
+  (\ r1 -> TC.map ((e : Nat) * ((y : Y) -> P (inr y) e)) ((e : Nat) * ((u : Plus X Y) -> P u e))
+    (\ r2 -> PlusStep[X,Y,P,mono,r1,r2].result)
+    (cy (\ y -> P (inr y)) (\ y -> mono (inr y)) (\ y -> h (inr y))))
+  (cx (\ x -> P (inl x)) (\ x -> mono (inl x)) (\ x -> h (inl x))) ;
+common-index : (q : Nat) -> Common (ExteriorCoordinates[l].Index q) = split {
+ zero -> top-common ;
+ suc q | r -> plus-common (ExteriorCoordinates[l].Index q) (ExteriorCoordinates[l].Index q) r r } ;
+-- X * Y
+pair-common (X Y : U l) (cx : Common X) (cy : Common Y) : Common (X * Y) = \ P mono h ->
+ TC.map ((e : Nat) * ((x : X) -> (y : Y) -> P (x,y) e)) ((e : Nat) * ((u : X * Y) -> P u e))
+  (\ w -> (w.1,\ u -> w.2 u.1 u.2))
+  (cx (\ x e -> (y : Y) -> P (x,y) e) (\ x e d k y -> mono (x,y) e d (k y))
+   (\ x -> cy (\ y -> P (x,y)) (\ y -> mono (x,y)) (\ y -> h (x,y)))) ;
+-- Fin k -> X
+extend (X : U l) (k : Nat) (g : Fin k -> X) (x : X) : Fin (suc k) -> X = split { inl t -> g t ; inr u -> x } ;
+extend-eta (X : U l) (k : Nat) (f : Fin (suc k) -> X) : Id (Fin (suc k) -> X) (extend X k (\ t -> f (inl t)) (f (inr tt))) f =
+ F.funext (Fin (suc k)) (\ t -> X) _ f (AF.section k (\ t -> Id X (extend X k (\ t1 -> f (inl t1)) (f (inr tt)) t) (f t))
+  (\ t -> refl (f (inl t))) (refl (f (inr tt)))) ;
+empty-eta (X : U l) (f : Fin zero -> X) : Id (Fin zero -> X) (\ t -> efq t) f =
+ F.funext (Fin zero) (\ t -> X) _ f (\ t -> efq t) ;
+function-common (X : U l) (cx : Common X) : (k : Nat) -> Common (Fin k -> X) = split {
+ zero -> \ P mono h -> TC.map ((e : Nat) * P (\ t -> efq t) e) ((e : Nat) * ((f : Fin zero -> X) -> P f e))
+   (\ w -> (w.1,\ f -> subst (\ f1 -> P f1 w.1) (empty-eta X f) w.2)) (h (\ t -> efq t)) ;
+ suc k | r -> \ P mono h ->
+  TC.map ((e : Nat) * ((g : Fin k -> X) (x : X) -> P (extend X k g x) e)) ((e : Nat) * ((f : Fin (suc k) -> X) -> P f e))
+   (\ w -> (w.1,\ f -> subst (\ f1 -> P f1 w.1) (extend-eta X k f) (w.2 (\ t -> f (inl t)) (f (inr tt)))))
+   (r (\ g e -> (x : X) -> P (extend X k g x) e) (\ g e d u x -> mono (extend X k g x) e d (u x))
+    (\ g -> cx (\ x -> P (extend X k g x)) (\ x -> mono (extend X k g x)) (\ x -> h (extend X k g x)))) } ;
+-- the index of the minors
+common-minors (k p q : Nat) : Common ((Fin k -> Fin p) * ExteriorCoordinates[l].Index q) =
+ pair-common (Fin k -> Fin p) (ExteriorCoordinates[l].Index q) (function-common (Fin p) (common-fin p) k) (common-index q) ;

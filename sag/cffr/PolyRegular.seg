@@ -1,0 +1,120 @@
+-- ctete Theorem 4 = cffr Theorem 3.1 in the ring R[X] (PolynomialRing,
+-- the quotient of coefficient lists), for a family F_1, ..., F_m:
+--   the coefficients of the F_j form a regular ideal of R  iff
+--   (F_1, ..., F_m) is a regular ideal of R[X].
+-- The coefficients of an element of R[X] are well defined (coefQ), and both
+-- directions reduce to PolyMcCoy on representatives (finite choice of
+-- representatives for the F_j; the conclusions are propositions).
+-- Corollaries: one polynomial (m = 1): c(f) regular iff f regular; and a
+-- finitely generated ideal (a_j) of R is regular iff it is regular in R[X]
+-- (ctete §1: regularity is invariant under adding an indeterminate).
+-- Several indeterminates: R[u_1, ..., u_p] is reached one indeterminate at
+-- a time, and the statements are applied at each step.
+level l ; open Ring[l] ; open Poly[l] ; open Mul[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ open A ; open PolyR[A] ; open MulR[A] ;
+ module AX = PolynomialRing[l].Extension[A,setA] ;
+ module RL0 = RawLaws[l].Laws[A] ;
+ module RI = RegularIdeal[l].Over[A,RegularIdeal[l].self A] ;
+ module RX = RegularIdeal[l].Over[AX.ring,RegularIdeal[l].self AX.ring] ;
+ Carrier : U l = AX.Carrier ;
+ -- the coefficients of an element of R[X]
+ module Co = AX.Q.Descend[Nat -> R,F.isSet-Pi Nat (\ k -> R) (\ k -> setA),coef,
+   \ p q h -> F.funext Nat (\ k -> R) (coef p) (coef q) h] ;
+ coefQ (x : Carrier) (k : Nat) : R = Co.map x k ;
+ coefQ-include (p : P) (k : Nat) : Id R (coefQ (AX.include p) k) (coef p k) =
+  Pr.happly Nat (\ k1 -> R) _ _ (Co.beta p) k ;
+ Rep (x : Carrier) : U l = (p : P) * Id Carrier (AX.include p) x ;
+ rep (x : Carrier) : Tr.Trunc[Rep x].carrier =
+  AX.Q.induction @l (\ y -> Tr.Trunc[Rep y].carrier) (\ y -> Tr.Trunc[Rep y].proposition)
+   (\ p -> Tr.Trunc[Rep (AX.include p)].inc (p,refl (AX.include p))) x ;
+ product (p q : P) : Id Carrier (AX.mulQ (AX.include p) (AX.include q)) (AX.include (pmul p q)) =
+  AX.Multiply.beta p q ;
+
+ zz : (i : Nat) -> Id R (coef (RL0.constantP z) i) (coef nil i) = split { zero -> refl z ; suc i -> refl z } ;
+
+ module Family (m : Nat) (Fm : Fin m -> Carrier) {
+  Content : U l = Fin m * Nat ;
+  content (ci : Content) : R = coefQ (Fm ci.1) ci.2 ;
+  -- on representatives f_j of the F_j
+  module On (fr : (j : Fin m) -> Rep (Fm j)) {
+   f (j : Fin m) : P = (fr j).1 ;
+   module PM = PolyMcCoy[l].Over[A,RegularIdeal[l].zero-ideal A,Fin m,f] ;
+   same (ci : Content) : Id R (PM.content ci) (content ci) =
+    trans (sym (coefQ-include (f ci.1) ci.2)) (ap (\ y -> coefQ y ci.2) (fr ci.1).2) ;
+   -- c(F) regular => (F_j) regular
+   module Forward (reg : RI.Regular Content content) (x : Carrier)
+    (k : RX.ZeroOn (Fin m) Fm x) (g : Rep x) {
+    kill : PM.Kill g.1 = \ j -> AX.Q.effective (pmul (f j) g.1) nil
+     (trans (sym (product (f j) g.1))
+      (trans (ap (\ y -> AX.mulQ y (AX.include g.1)) (fr j).2) (trans (ap (AX.mulQ (Fm j)) g.2) (k j)))) ;
+    result : Id Carrier x AX.zeroQ =
+     trans (sym g.2) (AX.Q.relates g.1 nil
+      (PM.mccoy (\ y t h -> reg y t (\ ci -> trans (ap (\ c -> mul c y) (sym (same ci))) (h ci))) g.1 kill)) ;
+   } ;
+   -- (F_j) regular => c(F) regular
+   module Backward (reg : RX.Regular (Fin m) Fm) (y : R) (k : RI.ZeroOn Content content y) {
+    kill : PM.Kill (cons y nil) = PM.kill-constant y (\ ci -> trans (ap (\ c -> mul c y) (same ci)) (k ci)) ;
+    zero : Id Carrier (AX.constant y) AX.zeroQ =
+     reg (AX.constant y) tt (\ j -> trans (ap (\ w -> AX.mulQ w (AX.constant y)) (sym (fr j).2))
+       (trans (product (f j) (cons y nil)) (AX.Q.relates (pmul (f j) (cons y nil)) nil (kill j)))) ;
+    result : Id R y z = AX.constant-injective y z (trans zero (sym (AX.Q.relates (RL0.constantP z) nil (\ i -> zz i)))) ;
+   } ;
+  } ;
+  reps : Tr.Trunc[(j : Fin m) -> Rep (Fm j)].carrier = AffineFinite[l].choice m (\ j -> Rep (Fm j)) (\ j -> rep (Fm j)) ;
+  -- the theorem
+  forward (reg : RI.Regular Content content) : RX.Regular (Fin m) Fm = \ x t k ->
+   Tr.Trunc[(j : Fin m) -> Rep (Fm j)].induction @l (\ w -> Id Carrier x AX.zeroQ) (\ w -> AX.set x AX.zeroQ)
+    (\ fr -> Tr.Trunc[Rep x].induction @l (\ w -> Id Carrier x AX.zeroQ) (\ w -> AX.set x AX.zeroQ)
+      (\ g -> On[fr].Forward[reg,x,k,g].result) (rep x)) reps ;
+  backward (reg : RX.Regular (Fin m) Fm) : RI.Regular Content content = \ y t k ->
+   Tr.Trunc[(j : Fin m) -> Rep (Fm j)].induction @l (\ w -> Id R y z) (\ w -> setA y z)
+    (\ fr -> On[fr].Backward[reg,y,k].result) reps ;
+ } ;
+ -- a finitely generated ideal (a_j) is regular in R iff (a_j) is regular in R[X]
+ module Ideal (n : Nat) (a : Fin n -> R) {
+  module Fa = Family[n,\ j -> AX.constant (a j)] ;
+  content-zero (j : Fin n) : Id R (Fa.content (j,zero)) (a j) = coefQ-include (RL0.constantP (a j)) zero ;
+  content-suc (j : Fin n) (i : Nat) : Id R (Fa.content (j,suc i)) z = coefQ-include (RL0.constantP (a j)) (suc i) ;
+  kills (y : R) (k : RI.ZeroOn (Fin n) a y) : (j : Fin n) (i : Nat) -> Id R (mul (Fa.content (j,i)) y) z = \ j -> split {
+   zero -> trans (ap (\ c -> mul c y) (content-zero j)) (k j) ;
+   suc i -> trans (ap (\ c -> mul c y) (content-suc j i)) (RL[A].zero-mul y) } ;
+  up (reg : RI.Regular (Fin n) a) : RX.Regular (Fin n) (\ j -> AX.constant (a j)) =
+   Fa.forward (\ y t k -> reg y t (\ j -> trans (ap (\ c -> mul c y) (sym (content-zero j))) (k (j,zero)))) ;
+  down (reg : RX.Regular (Fin n) (\ j -> AX.constant (a j))) : RI.Regular (Fin n) a =
+   \ y t k -> Fa.backward reg y t (\ ci -> kills y k ci.1 ci.2) ;
+ } ;
+
+ -- the Kronecker polynomial a_n + a_{n-1} X + ... of (a_1, ..., a_n): c(f) = (a_j)
+ kron : (n : Nat) -> (Fin n -> R) -> P = split {
+  zero -> \ a -> nil ; suc n | r -> \ a -> cons (a (inr tt)) (r (\ j -> a (inl j))) } ;
+ kron-kills : (n : Nat) (a : Fin n -> R) (y : R) -> RI.ZeroOn (Fin n) a y ->
+  (i : Nat) -> Id R (mul (coef (kron n a) i) y) z = split {
+  zero -> \ a y k i -> RL[A].zero-mul y ;
+  suc n | r -> \ a y k -> split {
+   zero -> k (inr tt) ;
+   suc i -> r (\ j -> a (inl j)) y (\ j -> k (inl j)) i } } ;
+ kron-killed : (n : Nat) (a : Fin n -> R) (y : R) -> ((i : Nat) -> Id R (mul (coef (kron n a) i) y) z) ->
+  RI.ZeroOn (Fin n) a y = split {
+  zero -> \ a y h -> AffineFinite[l].empty-section (\ j -> Id R (mul (a j) y) z) ;
+  suc n | r -> \ a y h -> AffineFinite[l].section n (\ j -> Id R (mul (a j) y) z)
+   (r (\ j -> a (inl j)) y (\ i -> h (suc i))) (h zero) } ;
+ module Kronecker (n : Nat) (a : Fin n -> R) {
+  f : Carrier = AX.include (kron n a) ;
+  module F1 = Family[suc zero,\ j -> f] ;
+  coef-f (ci : F1.Content) : Id R (F1.content ci) (coef (kron n a) ci.2) = coefQ-include (kron n a) ci.2 ;
+  -- (a_j) regular => f regular in R[X]
+  regular (reg : RI.Regular (Fin n) a) : RX.Regular (Fin (suc zero)) (\ j -> f) =
+   F1.forward (\ y t k -> reg y t (kron-killed n a y (\ i ->
+    trans (ap (\ c -> mul c y) (sym (coef-f (inr tt,i)))) (k (inr tt,i))))) ;
+  -- f regular => (a_j) regular
+  content-regular (reg : RX.Regular (Fin (suc zero)) (\ j -> f)) : RI.Regular (Fin n) a =
+   \ y t k -> F1.backward reg y t (\ ci -> trans (ap (\ c -> mul c y) (coef-f ci)) (kron-kills n a y k ci.2)) ;
+ } ;
+ -- evaluation at 0, a retraction of the constants
+ module Ev0 = Evaluation[l].Evaluate[A,A,setA,setA,RingHom[l].identity A,z] ;
+ ev0 : RingHom[l].Hom AX.ring A = Ev0.extension ;
+ ev0-constant (a : R) : Id R (ev0.1 (AX.constant a)) a = Ev0.on-constant a ;
+} ;

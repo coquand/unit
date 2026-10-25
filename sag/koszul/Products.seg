@@ -1,0 +1,101 @@
+-- Retracts and finite powers of modules, for the grade (used by Thm 6.4).
+--
+-- Retract: if s : A -> B and r : B -> A are maps of complexes with r s = id,
+-- then H^k(B) = 0 gives H^k(A) = 0: for a cocycle z of A, s z = d w, so
+-- z = r s z = r (d w) = d (r w) (in degree 0: s z = 0, z = r 0 = 0).
+--
+-- Powers: X^m = (Fin m -> X), with the projections pi_j.  A Koszul vector
+-- u of X^m is a coboundary when each pi_j u is (assemble): choose
+-- (finite choice over Fin m) w_j with d w_j = pi_j u, and put
+-- w_I = (j |-> (w_j)_I); then pi_j (d w) = d (pi_j w) = d w_j = pi_j u
+-- (KoszulExact.Fun.commute), so d w = u.  Hence Gr(a; X) >= k gives
+-- Gr(a; X^m) >= k (power-upto).  X is a retract of X^(m+1) (put x in the
+-- last coordinate, 0 elsewhere), so Gr(a; X^(m+1)) >= k gives
+-- Gr(a; X) >= k.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module A7 = Alg73[l] ; module Ps = Presentations[l] ;
+module C = ExteriorCoordinates[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Bj = Bijection[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+-- choice over Fin m
+fin-empty (P : Ps.Fin zero -> U l) : (i : Ps.Fin zero) -> P i = split { } ;
+fin-choice : (m : Nat) (P : Ps.Fin m -> U l) -> ((i : Ps.Fin m) -> Tr.Trunc[P i].carrier) -> Tr.Trunc[(i : Ps.Fin m) -> P i].carrier = split {
+ zero -> \ P h -> Tr.Trunc[(i : Ps.Fin zero) -> P i].inc (fin-empty P) ;
+ suc m | r -> \ P h -> TC.map2 ((i : Ps.Fin m) -> P (inl i)) (P (inr tt)) ((i : Ps.Fin (suc m)) -> P i)
+  (\ f p -> KoszulExact[l].plus-fn (Ps.Fin m) Top P f (KoszulExact[l].top-fn (\ t -> P (inr t)) p))
+  (r (\ i -> P (inl i)) (\ i -> h (inl i))) (h (inr tt)) } ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module MO = Modules[l].Over[Rg,setR] ;
+ module SM = Submodules[l].Over[MO.ring] ;
+ module CX = Complexes[l].Over[MO.ring] ;
+ module KX = KoszulExact[l].Over[Rg,setR] ;
+ module GR = Grade[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ ---------------------------------------------------------------------
+ -- retracts
+ module Retract (A B : CX.Complex) (s : CX.Map[A,B]) (r : CX.Map[B,A])
+  (rs : (k : Nat) (x : (A.C k).M) -> Id (A.C k).M ((r.f k).1 ((s.f k).1 x)) x) {
+  module CA = CX.Cx[A] ; module CB = CX.Cx[B] ;
+  module MS = CX.MapL[A,B,s] ; module MR = CX.MapL[B,A,r] ;
+  vanish (k : Nat) (vB : CB.Vanish k) : CA.Vanish k = \ z c ->
+   subst (CA.Bnd k) (rs k z) (MR.bnd k (MS.app k z) (vB (MS.app k z) (MS.cocycle k z c))) ;
+  upto : (k : Nat) -> CB.Upto k -> CA.Upto k = split {
+   zero -> \ g -> tt ;
+   suc k | rr -> \ g -> (rr g.1,vanish k g.2) } ;
+ } ;
+
+ ---------------------------------------------------------------------
+ -- powers
+ Pow (X : MO.Module) (m : Nat) : MO.Module = MO.pi (Ps.Fin m) (\ j -> X) ;
+ proj (X : MO.Module) (m : Nat) (j : Ps.Fin m) : SM.Linear (Pow X m) X =
+  (\ u -> u j,\ u v -> refl (X.madd (u j) (v j)),\ c u -> refl (X.sm c (u j))) ;
+ module Power (X : MO.Module) (m n : Nat) (a : Ps.Fin n -> R) {
+  module KP = Koszul[l].Over[Rg,setR,Pow X m] ;
+  module KQ = Koszul[l].Over[Rg,setR,X] ;
+  module LP = KP.K[n,a] ; module LQ = KQ.K[n,a] ;
+  module CP = CX.Cx[LP.complex] ; module CQ = CX.Cx[LQ.complex] ;
+  module FJ (j : Ps.Fin m) { module Fn = KX.Fun[Pow X m,X,proj X m j,n,a] ; module ML = CX.MapL[LP.complex,LQ.complex,Fn.map] ; } ;
+  -- equality in X^m, coordinatewise
+  peq (u v : (Pow X m).M) (h : (j : Ps.Fin m) -> Id X.M (u j) (v j)) : Id (Pow X m).M u v =
+   F.funext (Ps.Fin m) (\ j -> X.M) u v h ;
+  -- the vector with components w j
+  module Glue (k : Nat) (w : (j : Ps.Fin m) -> KQ.Deg[n,k].S.E) {
+   vec : KP.Deg[n,k].S.E = (\ I j -> (w j).1 I,\ I ne -> peq (\ j -> (w j).1 I) (\ j -> X.mz) (\ j -> (w j).2 I ne)) ;
+   d-at (j : Ps.Fin m) (J : C.Index n) : Id X.M (KP.CF.apply n n LP.wedge vec.1 J j) (KQ.CF.apply n n LQ.wedge (w j).1 J) =
+    sym (ap (\ t -> t J) (FJ[j].Fn.commute n n LQ.wedge vec.1)) ;
+  } ;
+  module Assemble (q : Nat) (u : CP.M (suc q)) (c : (j : Ps.Fin m) -> Bj.Fibre (CQ.d q) (FJ[j].ML.app (suc q) u)) {
+   module GL = Glue[q,\ j -> (c j).1] ;
+   result : Bj.Fibre (CP.d q) u = (GL.vec,
+    KP.Deg[n,suc q].S.eq (CP.d q GL.vec) u (KP.CF.veq n (CP.d q GL.vec).1 u.1 (\ J ->
+     peq ((CP.d q GL.vec).1 J) (u.1 J) (\ j -> trans (GL.d-at j J) (ap (\ t -> t.1 J) (c j).2))))) ;
+  } ;
+  assemble : (k : Nat) (u : CP.M k) -> ((j : Ps.Fin m) -> CQ.Bnd k (FJ[j].ML.app k u)) -> CP.Bnd k u = split {
+   zero -> \ u h -> KP.Deg[n,zero].S.eq u (CP.o zero) (KP.CF.veq n u.1 (KP.CF.V n).mz (\ I ->
+     peq (u.1 I) (\ j -> X.mz) (\ j -> ap (\ t -> t.1 I) (h j)))) ;
+   suc q -> \ u h -> TC.map ((j : Ps.Fin m) -> Bj.Fibre (CQ.d q) (FJ[j].ML.app (suc q) u)) (Bj.Fibre (CP.d q) u)
+    (\ c -> Assemble[q,u,c].result) (fin-choice m (\ j -> Bj.Fibre (CQ.d q) (FJ[j].ML.app (suc q) u)) h) } ;
+  power-vanish (k : Nat) (vX : CQ.Vanish k) : CP.Vanish k = \ u c ->
+   assemble k u (\ j -> vX (FJ[j].ML.app k u) (FJ[j].ML.cocycle k u c)) ;
+  power-upto : (k : Nat) -> CQ.Upto k -> CP.Upto k = split {
+   zero -> \ g -> tt ;
+   suc k | r -> \ g -> (r g.1,power-vanish k g.2) } ;
+ } ;
+ -- X is a retract of X^(m+1)
+ last-in (X : MO.Module) (m : Nat) (x : X.M) : (Pow X (suc m)).M = KoszulExact[l].plus-fn (Ps.Fin m) Top (\ j -> X.M) (\ i -> X.mz) (\ t -> x) ;
+ inc-last (X : MO.Module) (m : Nat) : SM.Linear X (Pow X (suc m)) = (last-in X m,
+  \ x y -> F.funext (Ps.Fin (suc m)) (\ j -> X.M) _ _ (KoszulExact[l].plus-fn (Ps.Fin m) Top (\ j -> Id X.M (last-in X m (X.madd x y) j) (X.madd (last-in X m x j) (last-in X m y j)))
+   (\ i -> sym (X.maddZ X.mz)) (\ t -> refl (X.madd x y))),
+  \ c x -> F.funext (Ps.Fin (suc m)) (\ j -> X.M) _ _ (KoszulExact[l].plus-fn (Ps.Fin m) Top (\ j -> Id X.M (last-in X m (X.sm c x) j) (X.sm c (last-in X m x j)))
+   (\ i -> sym (A7.MA[MO.ring,X].sm-zr c)) (\ t -> refl (X.sm c x)))) ;
+ module Last (X : MO.Module) (m n : Nat) (a : Ps.Fin n -> R) {
+  module FS = KX.Fun[X,Pow X (suc m),inc-last X m,n,a] ;
+  module FR = KX.Fun[Pow X (suc m),X,proj X (suc m) (inr tt),n,a] ;
+  module RT = Retract[FS.LE.complex,FS.LF.complex,FS.map,FR.map,\ k x -> FS.KE.Deg[n,k].S.eq (FR.dmap k (FS.dmap k x)) x (refl x.1)] ;
+  -- Gr(a; X^(m+1)) >= k gives Gr(a; X) >= k
+  retract-upto (k : Nat) (g : GR.Gr (Pow X (suc m)) n a k) : GR.Gr X n a k = RT.upto k g ;
+ } ;
+} ;

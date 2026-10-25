@@ -1,0 +1,175 @@
+-- Complexes of constant matrices over R[X] (PolynomialRing), modulo J[X].
+-- The k-th coefficient of u y is u applied to the k-th coefficients of y
+-- (coef-apply), and an element is in J[X] iff all its coefficients are in
+-- J (PolyIdeal).  Hence:
+-- * u injective mod J gives u injective mod J[X];
+-- * v u = 0 stays v u = 0;
+-- * (u, v) exact mod J gives (u, v) exact mod J[X]: for y with v y in
+--   J[X], every coefficient y_k has v y_k in J, so y_k = u x_k mod J; with
+--   representatives of the y_i of length at most n (n = sum of lengths), the
+--   x_k for k < n are assembled into a polynomial vector x, by induction on
+--   n peeling off the constant coefficients (Assemble).
+level l ; open Ring[l] ; open Poly[l] ; open Mul[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+-- sums of natural numbers
+natsum : (q : Nat) -> (Fin q -> Nat) -> Nat = split {
+ zero -> \ f -> zero ; suc q | r -> \ f -> plus (f (inr tt)) (r (\ i -> f (inl i))) } ;
+plus-assoc : (a b c : Nat) -> Id Nat (plus a (plus b c)) (plus (plus a b) c) = split {
+ zero -> \ b c -> refl (plus b c) ; suc a | r -> \ b c -> ap (\ k -> suc k) (r b c) } ;
+-- natsum = f i + rest
+natsum-at : (q : Nat) (f : Fin q -> Nat) (i : Fin q) -> (r : Nat) * Id Nat (natsum q f) (plus (f i) r) = split {
+ zero -> \ f i -> efq i ;
+ suc q | ih -> \ f -> split {
+  inr t -> (natsum q (\ i -> f (inl i)),ap (\ s -> plus (f (inr s)) (natsum q (\ i -> f (inl i)))) (MnSums[l].top-eq tt t)) ;
+  inl i -> ((plus (f (inr tt)) (ih (\ j -> f (inl j)) i).1),
+   trans (ap (plus (f (inr tt))) (ih (\ j -> f (inl j)) i).2)
+    (trans (plus-assoc (f (inr tt)) (f (inl i)) (ih (\ j -> f (inl j)) i).1)
+     (trans (ap (\ s -> plus s (ih (\ j -> f (inl j)) i).1) (plus-comm (f (inr tt)) (f (inl i))))
+      (sym (plus-assoc (f (inl i)) (f (inr tt)) (ih (\ j -> f (inl j)) i).1))))) } } ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (mJ : Nat) (J : Fin mJ -> A.R) {
+ open A ; open PolyR[A] ; open MulR[A] ;
+ module PI = PolyIdeal[l].Over[A,setA,mJ,J] ;
+ module PR = PI.PR ; module AX = PR.AX ;
+ module RM = RawMultiplication[l].Laws[A] ; module RL0 = RawLaws[l].Laws[A] ;
+ module MA = Matrices[l].Over[A] ; module MX = Matrices[l].Over[AX.ring] ;
+ module EA = ExactMod[l].Over[A,setA] ; module EX = ExactMod[l].Over[AX.ring,AX.set] ;
+ module S = FiniteIdeal[l].Sums[A] ; module SX = FiniteIdeal[l].Sums[AX.ring] ;
+ c (a : R) : AX.Carrier = AX.constant a ;
+ JX (j : Fin mJ) : AX.Carrier = c (J j) ;
+ cmat (p q : Nat) (u : MA.Mat p q) : MX.Mat p q = \ i j -> c (u i j) ;
+ coef-of (x : AX.Carrier) (k : Nat) : R = PR.coefQ x k ;
+
+ module AG = ExteriorAlgebra[l].AG[R,z,add,neg,addA,addC,addZ,addN] ;
+ module G = PI.G ;
+ module IL = RegularIdeal[l].IdealLaws[A,G.ideal] ;
+ -- coefficients are linear, and constants scale them
+ coef-add (k : Nat) : (x y : AX.Carrier) -> Id R (coef-of (AX.addQ x y) k) (add (coef-of x k) (coef-of y k)) =
+  AX.forall2 (\ x1 y1 -> Id R (coef-of (AX.addQ x1 y1) k) (add (coef-of x1 k) (coef-of y1 k))) (\ x1 y1 -> setA _ _)
+   (\ p q -> trans (ap (\ w -> coef-of w k) (AX.Add.beta p q))
+     (trans (PR.coefQ-include (addP p q) k)
+      (trans (coef-addP p q k) (sym (AG.cong-add (PR.coefQ-include p k) (PR.coefQ-include q k)))))) ;
+ coef-neg (k : Nat) (x : AX.Carrier) : Id R (coef-of (AX.negQ x) k) (neg (coef-of x k)) =
+  AX.Q.induction @l (\ x1 -> Id R (coef-of (AX.negQ x1) k) (neg (coef-of x1 k))) (\ x1 -> setA _ _)
+   (\ p -> trans (ap (\ w -> coef-of w k) (AX.Negate.beta p))
+     (trans (PR.coefQ-include (RL0.negP p) k)
+      (trans (RL0.neg-coef p k) (ap neg (sym (PR.coefQ-include p k)))))) x ;
+ coef-zero (k : Nat) : Id R (coef-of AX.zeroQ k) z = PR.coefQ-include nil k ;
+ coef-mulc (k : Nat) (a : R) (x : AX.Carrier) : Id R (coef-of (AX.mulQ x (c a)) k) (mul (coef-of x k) a) =
+  AX.Q.induction @l (\ x1 -> Id R (coef-of (AX.mulQ x1 (c a)) k) (mul (coef-of x1 k) a)) (\ x1 -> setA _ _)
+   (\ p -> trans (ap (\ w -> coef-of w k) (AX.Multiply.beta p (RL0.constantP a)))
+     (trans (PR.coefQ-include (pmul p (RL0.constantP a)) k)
+      (trans (coef-addP (scal a p) (cons z nil) k)
+       (trans (ap (add (coef (scal a p) k)) (cz k))
+        (trans (addZ (coef (scal a p) k))
+         (trans (coef-scal a p k)
+          (trans (mulC a (coef p k)) (ap (\ w -> mul w a) (sym (PR.coefQ-include p k)))))))))) x ;
+ coef-sum (k : Nat) : (n : Nat) (w : Fin n -> AX.Carrier) -> Id R (coef-of (SX.sum n w) k) (S.sum n (\ i -> coef-of (w i) k)) = split {
+  zero -> \ w -> coef-zero k ;
+  suc n | r -> \ w -> trans (coef-add k (w (inr tt)) (SX.sum n (\ i -> w (inl i))))
+   (ap (add (coef-of (w (inr tt)) k)) (r (\ i -> w (inl i)))) } ;
+ coef-apply (p q : Nat) (u : MA.Mat p q) (x : MX.Vec p) (j : Fin q) (k : Nat) :
+  Id R (coef-of (MX.apply p q (cmat p q u) x j) k) (MA.apply p q u (\ i -> coef-of (x i) k) j) =
+  trans (coef-sum k p (\ i -> AX.mulQ (x i) (c (u i j))))
+   (S.sum-cong p (\ i -> coef-of (AX.mulQ (x i) (c (u i j))) k) (\ i -> mul (coef-of (x i) k) (u i j)) (\ i -> coef-mulc k (u i j) (x i))) ;
+ coef-sub (k : Nat) (x y : AX.Carrier) : Id R (coef-of (EX.sub x y) k) (EA.sub (coef-of x k) (coef-of y k)) =
+  trans (coef-add k x (AX.negQ y)) (ap (add (coef-of x k)) (coef-neg k y)) ;
+ -- membership in J[X]
+ in-X (x : AX.Carrier) (h : (k : Nat) -> G.In (coef-of x k)) : EX.In mJ JX x = PI.from-coefficients x h ;
+ X-in (x : AX.Carrier) (h : EX.In mJ JX x) (k : Nat) : G.In (coef-of x k) = PI.to-coefficients x h k ;
+
+ -- injectivity
+ inj (p q : Nat) (u : MA.Mat p q) (h : EA.InjMod mJ J p q u) : EX.InjMod mJ JX p q (cmat p q u) =
+  \ x hx i -> in-X (x i) (\ k -> h (\ i1 -> coef-of (x i1) k)
+    (\ j -> IL.in-eq (coef-of (MX.apply p q (cmat p q u) x j) k) (MA.apply p q u (\ i1 -> coef-of (x i1) k) j)
+      (coef-apply p q u x j k) (X-in (MX.apply p q (cmat p q u) x j) (hx j) k)) i) ;
+ -- v u = 0
+ module CM = McCoyMod[l].Map[A,AX.ring,setA,AX.set,AX.inclusion] ;
+ c-zero : Id AX.Carrier (c z) AX.zeroQ = AX.Q.relates (RL0.constantP z) nil PR.zz ;
+ compose-zero (p q l1 : Nat) (u : MA.Mat p q) (v : MA.Mat q l1) (h : MA.ComposeZero p q l1 u v) :
+  MX.ComposeZero p q l1 (cmat p q u) (cmat q l1 v) = \ k j ->
+  trans (sym (CM.apply-map q l1 v (u k) j)) (trans (ap c (h k j)) c-zero) ;
+
+ -- exactness
+ ptail : P -> P = split { nil -> nil ; cons a f -> f } ;
+ tail-coef : (f : P) (k : Nat) -> Id R (coef (ptail f) k) (coef f (suc k)) = split {
+  nil -> \ k -> refl z ; cons a f -> \ k -> refl (coef f k) } ;
+ module Assemble (p q l1 : Nat) (u : MA.Mat p q) (v : MA.Mat q l1) (ex : EA.ExactMod mJ J p q l1 u v) {
+  Good (f : Fin q -> P) (X : Fin p -> P) : U l =
+   (k : Nat) -> EA.VecIn mJ J q (\ i -> EA.sub (coef (f i) k) (MA.apply p q u (\ c1 -> coef (X c1) k) i)) ;
+  Bounded (n : Nat) (f : Fin q -> P) : U l = (i : Fin q) (k : Nat) -> Id R (coef (f i) (plus n k)) z ;
+  Hv (f : Fin q -> P) : U l = (k : Nat) -> EA.VecIn mJ J l1 (MA.apply q l1 v (\ i -> coef (f i) k)) ;
+  zero-good (f : Fin q -> P) (b : Bounded zero f) : Good f (\ c1 -> nil) = \ k i ->
+   IL.in-eq z (EA.sub (coef (f i) k) (MA.apply p q u (\ c1 -> coef nil k) i))
+    (sym (trans (AG.cong-add (b i k)
+       (ap neg (trans (S.sum-cong p (\ c1 -> mul z (u c1 i)) (\ c1 -> z) (\ c1 -> RL[A].zero-mul (u c1 i))) (S.sum-zero p))))
+      (trans (ap (add z) AG.neg-zero) (addZ z))))
+    G.ideal.in-zero ;
+  module Step (n : Nat) (f : Fin q -> P) (X1 : Fin p -> P) (g1 : Good (\ i -> ptail (f i)) X1)
+   (x0 : MA.Vec p) (h0 : EA.VecIn mJ J q (\ i -> EA.sub (coef (f i) zero) (MA.apply p q u x0 i))) {
+   X (c1 : Fin p) : P = cons (x0 c1) (X1 c1) ;
+   good : (k : Nat) -> EA.VecIn mJ J q (\ i -> EA.sub (coef (f i) k) (MA.apply p q u (\ c1 -> coef (X c1) k) i)) = split {
+    zero -> h0 ;
+    suc k -> \ i -> IL.in-eq (EA.sub (coef (ptail (f i)) k) (MA.apply p q u (\ c1 -> coef (X1 c1) k) i))
+      (EA.sub (coef (f i) (suc k)) (MA.apply p q u (\ c1 -> coef (X c1) (suc k)) i))
+      (ap (\ w -> EA.sub w (MA.apply p q u (\ c1 -> coef (X1 c1) k) i)) (tail-coef (f i) k))
+      (g1 k i) } ;
+   result : (X : Fin p -> P) * Good f X = (X,good) ;
+  } ;
+  assemble : (n : Nat) (f : Fin q -> P) -> Bounded n f -> Hv f -> Tr.Trunc[(X : Fin p -> P) * Good f X].carrier = split {
+   zero -> \ f b hv -> Tr.Trunc[(X : Fin p -> P) * Good f X].inc ((\ c1 -> nil),zero-good f b) ;
+   suc n | r -> \ f b hv ->
+    TC.bind ((X : Fin p -> P) * Good (\ i -> ptail (f i)) X) ((X : Fin p -> P) * Good f X)
+     (\ w1 -> TC.map ((x : MA.Vec p) * EA.VecIn mJ J q (\ i -> EA.sub (coef (f i) zero) (MA.apply p q u x i)))
+       ((X : Fin p -> P) * Good f X) (\ w0 -> Step[n,f,w1.1,w1.2,w0.1,w0.2].result)
+       (ex (\ i -> coef (f i) zero) (hv zero)))
+     (r (\ i -> ptail (f i)) (\ i k -> trans (tail-coef (f i) (plus n k)) (b i k))
+      (\ k -> subst (\ w -> EA.VecIn mJ J l1 (MA.apply q l1 v w))
+        (WedgeStep[l].Over[A,setA,q].vec-ext q (\ i -> coef (f i) (suc k)) (\ i -> coef (ptail (f i)) k) (\ i -> sym (tail-coef (f i) k)))
+        (hv (suc k)))) } ;
+ } ;
+ module Exact (p q l1 : Nat) (u : MA.Mat p q) (v : MA.Mat q l1) (ex : EA.ExactMod mJ J p q l1 u v)
+  (y : MX.Vec q) (hy : EX.VecIn mJ JX l1 (MX.apply q l1 (cmat q l1 v) y)) {
+  module AS = Assemble[p,q,l1,u,v,ex] ;
+  Goal : U l = (x : MX.Vec p) * EX.VecIn mJ JX q (\ j -> EX.sub (y j) (MX.apply p q (cmat p q u) x j)) ;
+  module Reps (fr : (i : Fin q) -> PR.Rep (y i)) {
+   f (i : Fin q) : P = (fr i).1 ;
+   coef-y (i : Fin q) (k : Nat) : Id R (coef-of (y i) k) (coef (f i) k) =
+    trans (ap (\ w -> coef-of w k) (sym (fr i).2)) (PR.coefQ-include (f i) k) ;
+   n : Nat = natsum q (\ i -> plen (f i)) ;
+   bounded : AS.Bounded n f = \ i k ->
+    trans (ap (coef (f i)) (trans (ap (\ s -> plus s k) (natsum-at q (\ i1 -> plen (f i1)) i).2)
+                             (sym (plus-assoc (plen (f i)) (natsum-at q (\ i1 -> plen (f i1)) i).1 k))))
+     (coef-beyond (f i) (plus (natsum-at q (\ i1 -> plen (f i1)) i).1 k)) ;
+   hv : AS.Hv f = \ k j ->
+    IL.in-eq (coef-of (MX.apply q l1 (cmat q l1 v) y j) k) (MA.apply q l1 v (\ i -> coef (f i) k) j)
+     (trans (coef-apply q l1 v y j k)
+      (ap {MA.Vec q} (\ w -> MA.apply q l1 v w j) (WedgeStep[l].Over[A,setA,q].vec-ext q _ (\ i -> coef (f i) k) (\ i -> coef-y i k))))
+     (X-in (MX.apply q l1 (cmat q l1 v) y j) (hy j) k) ;
+   module Built (w : (X : Fin p -> P) * AS.Good f X) {
+    x (c1 : Fin p) : AX.Carrier = AX.include (w.1 c1) ;
+    coef-x (c1 : Fin p) (k : Nat) : Id R (coef-of (x c1) k) (coef (w.1 c1) k) = PR.coefQ-include (w.1 c1) k ;
+    apply-x (j : Fin q) (k : Nat) :
+     Id R (coef-of (MX.apply p q (cmat p q u) x j) k) (MA.apply p q u (\ c1 -> coef (w.1 c1) k) j) =
+     trans (coef-apply p q u x j k)
+      (ap {MA.Vec p} (\ z1 -> MA.apply p q u z1 j)
+       (WedgeStep[l].Over[A,setA,p].vec-ext p (\ c1 -> coef-of (x c1) k) (\ c1 -> coef (w.1 c1) k) (\ c1 -> coef-x c1 k))) ;
+    eq (j : Fin q) (k : Nat) :
+     Id R (coef-of (EX.sub (y j) (MX.apply p q (cmat p q u) x j)) k) (EA.sub (coef (f j) k) (MA.apply p q u (\ c1 -> coef (w.1 c1) k) j)) =
+     trans (coef-sub k (y j) (MX.apply p q (cmat p q u) x j))
+      (trans (ap (\ s -> add s (neg (coef-of (MX.apply p q (cmat p q u) x j) k))) (coef-y j k))
+       (ap (\ s -> add (coef (f j) k) (neg s)) (apply-x j k))) ;
+    result : Goal = (x,\ j -> in-X (EX.sub (y j) (MX.apply p q (cmat p q u) x j)) (\ k ->
+     IL.in-eq (EA.sub (coef (f j) k) (MA.apply p q u (\ c1 -> coef (w.1 c1) k) j))
+      (coef-of (EX.sub (y j) (MX.apply p q (cmat p q u) x j)) k) (sym (eq j k)) (w.2 k j))) ;
+   } ;
+   result : Tr.Trunc[Goal].carrier =
+    TC.map ((X : Fin p -> P) * AS.Good f X) Goal (\ w -> Built[w].result) (AS.assemble n f bounded hv) ;
+  } ;
+  result : Tr.Trunc[Goal].carrier =
+   TC.bind ((i : Fin q) -> PR.Rep (y i)) Goal (\ fr -> Reps[fr].result)
+    (AffineFinite[l].choice q (\ i -> PR.Rep (y i)) (\ i -> PR.rep (y i))) ;
+ } ;
+ exact (p q l1 : Nat) (u : MA.Mat p q) (v : MA.Mat q l1) (ex : EA.ExactMod mJ J p q l1 u v) :
+  EX.ExactMod mJ JX p q l1 (cmat p q u) (cmat q l1 v) = \ y hy -> Exact[p,q,l1,u,v,ex,y,hy].result ;
+} ;

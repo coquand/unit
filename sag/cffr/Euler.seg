@@ -1,0 +1,186 @@
+-- An Euler identity in the exterior algebra of L^q, for cffr Cor. 7.6.
+-- With e_k = i(delta_k) and c_k the contraction by delta_k:
+--   E(P) = sum_k c_k(P) e_k = -m alpha(P)   for P a product of m generators
+-- (induction: c_k(P g) = c_k(P) g + g_k alpha(P), g e_k = - e_k g, and
+-- sum_k g_k e_k = g), hence
+--   S(P) = sum_k c_k(P e_k) = E(P) + q alpha(P) = (q - m) alpha(P).
+-- For m = n, q = n + 1: S(W) = alpha(W).  So W is determined by the
+-- products W e_k (sum-identity).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (Lg : CRing) (setL : Pr.isSet Lg.R) (q : Nat) {
+ open Lg ; module L = RL[Lg] ;
+ open ExteriorModel[l].Over[Lg] ;
+ module MM = Matrices[l].Over[Lg] ;
+ module EA = ExteriorAlgebra[l].Over[Lg,setL] ;
+ module VC = ExteriorVectorContraction[l].Over[Lg,setL] ;
+ module WS = WedgeStep[l].Over[Lg,setL,q] ;
+ module D = MnSums[l].Over[Lg] ;
+ module FS = FiniteIdeal[l].Sums[Lg] ;
+ module G = EA.At[q].G ;
+ module AL = Alternating[l].Over[Lg,setL].In[EA.algebra q] ;
+ -- sums over Fin m in Ext q
+ esum : (m : Nat) -> (Fin m -> Ext q) -> Ext q = split {
+  zero -> \ f -> ezero q ; suc m | r -> \ f -> eadd q (f (inr tt)) (r (\ i -> f (inl i))) } ;
+ esum-cong : (m : Nat) (f g : Fin m -> Ext q) -> ((k : Fin m) -> Id (Ext q) (f k) (g k)) -> Id (Ext q) (esum m f) (esum m g) = split {
+  zero -> \ f g h -> refl (ezero q) ;
+  suc m | r -> \ f g h -> G.cong-add (h (inr tt)) (r (\ i -> f (inl i)) (\ i -> g (inl i)) (\ i -> h (inl i))) } ;
+ esum-add : (m : Nat) (f g : Fin m -> Ext q) -> Id (Ext q) (esum m (\ k -> eadd q (f k) (g k))) (eadd q (esum m f) (esum m g)) = split {
+  zero -> \ f g -> sym (EA.eaddZ q (ezero q)) ;
+  suc m | r -> \ f g -> trans (ap (eadd q (eadd q (f (inr tt)) (g (inr tt)))) (r (\ i -> f (inl i)) (\ i -> g (inl i))))
+   (G.swap (f (inr tt)) (g (inr tt)) (esum m (\ i -> f (inl i))) (esum m (\ i -> g (inl i)))) } ;
+ esum-neg : (m : Nat) (f : Fin m -> Ext q) -> Id (Ext q) (esum m (\ k -> eneg q (f k))) (eneg q (esum m f)) = split {
+  zero -> \ f -> sym G.neg-zero ;
+  suc m | r -> \ f -> trans (ap (eadd q (eneg q (f (inr tt)))) (r (\ i -> f (inl i))))
+   (sym (G.neg-add (f (inr tt)) (esum m (\ i -> f (inl i))))) } ;
+ esum-right : (m : Nat) (f : Fin m -> Ext q) (Y : Ext q) -> Id (Ext q) (esum m (\ k -> emul q (f k) Y)) (emul q (esum m f) Y) = split {
+  zero -> \ f Y -> sym (EA.mul-zero-l q Y) ;
+  suc m | r -> \ f Y -> trans (ap (eadd q (emul q (f (inr tt)) Y)) (r (\ i -> f (inl i)) Y))
+   (sym (EA.dist-right q (f (inr tt)) (esum m (\ i -> f (inl i))) Y)) } ;
+ esum-left : (m : Nat) (X : Ext q) (f : Fin m -> Ext q) -> Id (Ext q) (esum m (\ k -> emul q X (f k))) (emul q X (esum m f)) = split {
+  zero -> \ X f -> sym (EA.mul-zero-r q X) ;
+  suc m | r -> \ X f -> trans (ap (eadd q (emul q X (f (inr tt)))) (r X (\ i -> f (inl i))))
+   (sym (EA.dist-left q X (f (inr tt)) (esum m (\ i -> f (inl i))))) } ;
+ esum-zeros : (m : Nat) -> Id (Ext q) (esum m (\ k -> ezero q)) (ezero q) = split {
+  zero -> refl (ezero q) ; suc m | r -> trans (ap (eadd q (ezero q)) r) (EA.eaddZ q (ezero q)) } ;
+ esum-zero (m : Nat) (f : Fin m -> Ext q) (h : (k : Fin m) -> Id (Ext q) (f k) (ezero q)) : Id (Ext q) (esum m f) (ezero q) =
+  trans (esum-cong m f (\ k -> ezero q) h) (esum-zeros m) ;
+ -- natural numbers in Lg, and sums of a constant
+ natR : Nat -> R = split { zero -> z ; suc m | r -> add o r } ;
+ esum-const : (m : Nat) (Y : Ext q) -> Id (Ext q) (esum m (\ k -> Y)) (escale q (natR m) Y) = split {
+  zero -> \ Y -> sym (AL.scale-zero-l Y) ;
+  suc m | r -> \ Y -> trans (ap (eadd q Y) (r Y))
+   (trans (ap (\ w -> eadd q w (escale q (natR m) Y)) (sym (EA.escale-one q Y))) (sym (EA.eadd-scale q o (natR m) Y))) } ;
+ neg-scale (y : Ext q) : Id (Ext q) (escale q (neg o) y) (eneg q y) =
+  G.neg-uniq y (escale q (neg o) y)
+   (trans (ap (\ t -> eadd q t (escale q (neg o) y)) (sym (EA.escale-one q y)))
+    (trans (sym (EA.eadd-scale q o (neg o) y))
+     (trans (ap (\ d -> escale q d y) (addN o)) (AL.scale-zero-l y)))) ;
+ -- e_k and c_k
+ delta (k : Fin q) : MM.Vec q = D.delta q k ;
+ e (k : Fin q) : Ext q = gen q (delta k) ;
+ c (k : Fin q) (y : Ext q) : Ext q = VC.contract q (delta k) y ;
+ vdot-delta (k : Fin q) (w : MM.Vec q) : Id R (VC.vdot q (delta k) w) (w k) =
+  trans (WS.vdot-sum q (delta k) w) (D.sum-delta q k w) ;
+ -- g = sum_k g_k e_k
+ gen-zero : Id (Ext q) (gen q (\ i -> z)) (ezero q) =
+  trans (ap (gen q) (WS.vec-ext q (\ i -> z) (\ i -> mul z (z)) (\ i -> sym (L.mul-zero z))))
+   (trans (EA.gen-scale q z (\ i -> z)) (AL.scale-zero-l (gen q (\ i -> z)))) ;
+ gen-sum : (m : Nat) (v : Fin m -> MM.Vec q) -> Id (Ext q) (gen q (\ i -> FS.sum m (\ k -> v k i))) (esum m (\ k -> gen q (v k))) = split {
+  zero -> \ v -> gen-zero ;
+  suc m | r -> \ v -> trans (EA.gen-add q (v (inr tt)) (\ i -> FS.sum m (\ k -> v (inl k) i)))
+   (ap (eadd q (gen q (v (inr tt)))) (r (\ k -> v (inl k)))) } ;
+ expand (w : MM.Vec q) : Id (Ext q) (gen q w) (esum q (\ k -> escale q (w k) (e k))) =
+  trans (ap (gen q) (WS.vec-ext q w (\ i -> FS.sum q (\ k -> mul (w k) (delta k i))) (\ i -> sym (D.sum-delta-right q i w))))
+   (trans (gen-sum q (\ k i -> mul (w k) (delta k i))) (esum-cong q _ _ (\ k -> EA.gen-scale q (w k) (delta k)))) ;
+ -- E
+ E (P : Ext q) : Ext q = esum q (\ k -> emul q (c k P) (e k)) ;
+ module EStep (P : Ext q) (w : MM.Vec q) {
+  g : Ext q = gen q w ;
+  term (k : Fin q) : Id (Ext q) (emul q (c k (emul q P g)) (e k))
+   (eadd q (eneg q (emul q (emul q (c k P) (e k)) g)) (emul q (alpha q P) (escale q (w k) (e k)))) =
+   calc (Ext q) { emul q (c k (emul q P g)) (e k)
+    =< ap (\ y -> emul q y (e k)) (VC.contract-right q (delta k) w P)
+    > emul q (eadd q (emul q (c k P) g) (escale q (VC.vdot q (delta k) w) (alpha q P))) (e k)
+    =< EA.dist-right q (emul q (c k P) g) (escale q (VC.vdot q (delta k) w) (alpha q P)) (e k)
+    > eadd q (emul q (emul q (c k P) g) (e k)) (emul q (escale q (VC.vdot q (delta k) w) (alpha q P)) (e k))
+    =< G.cong-add
+        (calc (Ext q) { emul q (emul q (c k P) g) (e k)
+          =< sym (EA.mulA' q (c k P) g (e k)) > emul q (c k P) (emul q g (e k))
+          =< ap (emul q (c k P)) (WS.anti w (delta k)) > emul q (c k P) (eneg q (emul q (e k) g))
+          =< EA.mul-neg-r q (c k P) (emul q (e k) g) > eneg q (emul q (c k P) (emul q (e k) g))
+          =< ap (eneg q) (EA.mulA' q (c k P) (e k) g) > eneg q (emul q (emul q (c k P) (e k)) g) })
+        (trans (EA.scale-mul-left q (VC.vdot q (delta k) w) (alpha q P) (e k))
+         (trans (sym (EA.scale-mul-right q (VC.vdot q (delta k) w) (alpha q P) (e k)))
+          (ap (\ s -> emul q (alpha q P) (escale q s (e k))) (vdot-delta k w))))
+    > eadd q (eneg q (emul q (emul q (c k P) (e k)) g)) (emul q (alpha q P) (escale q (w k) (e k))) } ;
+  result : Id (Ext q) (E (emul q P g)) (eadd q (eneg q (emul q (E P) g)) (emul q (alpha q P) g)) =
+   trans (esum-cong q (\ k -> emul q (c k (emul q P g)) (e k))
+     (\ k -> eadd q (eneg q (emul q (emul q (c k P) (e k)) g)) (emul q (alpha q P) (escale q (w k) (e k)))) term)
+    (trans (esum-add q (\ k -> eneg q (emul q (emul q (c k P) (e k)) g)) (\ k -> emul q (alpha q P) (escale q (w k) (e k))))
+     (G.cong-add
+      (trans (esum-neg q (\ k -> emul q (emul q (c k P) (e k)) g)) (ap (eneg q) (esum-right q (\ k -> emul q (c k P) (e k)) g)))
+      (trans (esum-left q (alpha q P) (\ k -> escale q (w k) (e k))) (ap (emul q (alpha q P)) (sym (expand w)))))) ;
+ } ;
+ -- c_k(1) = 0
+ cemb : (m : Nat) (v : MM.Vec m) (a : R) -> Id (Ext m) (VC.contract m v (emb m a)) (ezero m) = split {
+  zero -> \ v a -> VC.contract-zero-def v (emb zero a) ;
+  suc m | r -> \ v a -> trans (VC.contract-step-def m v (emb (suc m) a))
+   (ExteriorAlgebra[l].pair-eq
+    (calc (Ext m) { eadd m (VC.contract m (VC.vector-prefix m v) (first m (emb (suc m) a))) (escale m (VC.vector-last m v) (alpha m (second m (emb (suc m) a))))
+      =< EA.At[m].G.cong-add (ap (VC.contract m (VC.vector-prefix m v)) (ap (\ w -> w.1) (components m (emb (suc m) a))))
+          (ap (\ y -> escale m (VC.vector-last m v) (alpha m y)) (ap (\ w -> w.2) (components m (emb (suc m) a))))
+      > eadd m (VC.contract m (VC.vector-prefix m v) (emb m a)) (escale m (VC.vector-last m v) (alpha m (ezero m)))
+      =< EA.At[m].G.cong-add (r (VC.vector-prefix m v) a)
+          (trans (ap (escale m (VC.vector-last m v)) (EA.alpha-zero m)) (EA.escale-zero m (VC.vector-last m v)))
+      > eadd m (ezero m) (ezero m)
+      =< EA.eaddZ m (ezero m) > ezero m })
+    (trans (ap (VC.contract m (VC.vector-prefix m v)) (ap (\ w -> w.2) (components m (emb (suc m) a))))
+     (VC.contract-zero m (VC.vector-prefix m v)))) } ;
+ -- the step of euler: P = W', g = i(w), Y = alpha(P) g
+ module ESuc (m : Nat) (v : MM.Mat (suc m) q)
+  (ih : Id (Ext q) (E (MM.wedge m q (\ k -> v (inl k)))) (eneg q (escale q (natR m) (alpha q (MM.wedge m q (\ k -> v (inl k))))))) {
+  P : Ext q = MM.wedge m q (\ k -> v (inl k)) ;
+  g : Ext q = gen q (v (inr tt)) ;
+  Y : Ext q = emul q (alpha q P) g ;
+  alpha-Pg : Id (Ext q) (alpha q (emul q P g)) (eneg q Y) =
+   trans (EA.alpha-mul q P g) (trans (ap (emul q (alpha q P)) (EA.alpha-gen q (v (inr tt)))) (EA.mul-neg-r q (alpha q P) g)) ;
+  result : Id (Ext q) (E (emul q P g)) (eneg q (escale q (natR (suc m)) (alpha q (emul q P g)))) =
+   calc (Ext q) { E (emul q P g)
+    =< EStep[P,v (inr tt)].result > eadd q (eneg q (emul q (E P) g)) Y
+    =< ap (\ y -> eadd q (eneg q (emul q y g)) Y) ih
+    > eadd q (eneg q (emul q (eneg q (escale q (natR m) (alpha q P))) g)) Y
+    =< ap (\ y -> eadd q y Y)
+        (trans (ap (eneg q) (EA.mul-neg-l q (escale q (natR m) (alpha q P)) g))
+         (trans (G.neg-neg (emul q (escale q (natR m) (alpha q P)) g)) (EA.scale-mul-left q (natR m) (alpha q P) g)))
+    > eadd q (escale q (natR m) Y) Y
+    =< EA.eaddC q (escale q (natR m) Y) Y > eadd q Y (escale q (natR m) Y)
+    =< ap (\ y -> eadd q y (escale q (natR m) Y)) (sym (EA.escale-one q Y)) > eadd q (escale q o Y) (escale q (natR m) Y)
+    =< sym (EA.eadd-scale q o (natR m) Y) > escale q (natR (suc m)) Y
+    =< sym (G.neg-neg (escale q (natR (suc m)) Y)) > eneg q (eneg q (escale q (natR (suc m)) Y))
+    =< ap (eneg q) (sym (EA.escale-neg q (natR (suc m)) Y)) > eneg q (escale q (natR (suc m)) (eneg q Y))
+    =< ap (\ y -> eneg q (escale q (natR (suc m)) y)) (sym alpha-Pg)
+    > eneg q (escale q (natR (suc m)) (alpha q (emul q P g))) } ;
+ } ;
+ -- E(P) = - m alpha(P) for P a product of m generators
+ euler : (m : Nat) (v : MM.Mat m q) ->
+  Id (Ext q) (E (MM.wedge m q v)) (eneg q (escale q (natR m) (alpha q (MM.wedge m q v)))) = split {
+  zero -> \ v -> trans (esum-zero q (\ k -> emul q (c k (eone q)) (e k))
+     (\ k -> trans (ap (\ y -> emul q y (e k)) (cemb q (delta k) o)) (EA.mul-zero-l q (e k))))
+    (sym (trans (ap (eneg q) (EA.zero-scale q (alpha q (eone q)))) G.neg-zero)) ;
+  suc m | r -> \ v -> ESuc[m,v,r (\ k -> v (inl k))].result } ;
+ -- S(P) = sum_k c_k(P e_k) = E(P) + q alpha(P)
+ S (P : Ext q) : Ext q = esum q (\ k -> c k (emul q P (e k))) ;
+ sum-step (P : Ext q) (k : Fin q) : Id (Ext q) (c k (emul q P (e k))) (eadd q (emul q (c k P) (e k)) (alpha q P)) =
+  trans (VC.contract-right q (delta k) (delta k) P)
+   (ap (eadd q (emul q (c k P) (e k)))
+    (trans (ap (\ s -> escale q s (alpha q P)) (trans (vdot-delta k (delta k)) (D.delta-diag q k))) (EA.escale-one q (alpha q P)))) ;
+ sum-is (P : Ext q) : Id (Ext q) (S P) (eadd q (E P) (escale q (natR q) (alpha q P))) =
+  trans (esum-cong q (\ k -> c k (emul q P (e k))) (\ k -> eadd q (emul q (c k P) (e k)) (alpha q P)) (sum-step P))
+   (trans (esum-add q (\ k -> emul q (c k P) (e k)) (\ k -> alpha q P))
+    (ap (eadd q (E P)) (esum-const q (alpha q P)))) ;
+} ;
+-- q = n + 1, m = n: S(W) = alpha(W), so W = alpha(S(W))
+module Top (Lg : CRing) (setL : Pr.isSet Lg.R) (n : Nat) (v : Matrices[l].Over[Lg].Mat n (suc n)) {
+ module EU = Over[Lg,setL,suc n] ;
+ open ExteriorModel[l].Over[Lg] ;
+ module EA = ExteriorAlgebra[l].Over[Lg,setL] ;
+ module G = EA.At[suc n].G ;
+ W : Ext (suc n) = Matrices[l].Over[Lg].wedge n (suc n) v ;
+ X : Ext (suc n) = escale (suc n) (EU.natR n) (alpha (suc n) W) ;
+ sum-alpha : Id (Ext (suc n)) (EU.S W) (alpha (suc n) W) =
+  calc (Ext (suc n)) { EU.S W
+   =< EU.sum-is W > eadd (suc n) (EU.E W) (escale (suc n) (EU.natR (suc n)) (alpha (suc n) W))
+   =< G.cong-add (EU.euler n v) (EA.eadd-scale (suc n) Lg.o (EU.natR n) (alpha (suc n) W))
+   > eadd (suc n) (eneg (suc n) X) (eadd (suc n) (escale (suc n) Lg.o (alpha (suc n) W)) X)
+   =< ap (eadd (suc n) (eneg (suc n) X)) (EA.eaddC (suc n) (escale (suc n) Lg.o (alpha (suc n) W)) X)
+   > eadd (suc n) (eneg (suc n) X) (eadd (suc n) X (escale (suc n) Lg.o (alpha (suc n) W)))
+   =< EA.eaddA (suc n) (eneg (suc n) X) X (escale (suc n) Lg.o (alpha (suc n) W))
+   > eadd (suc n) (eadd (suc n) (eneg (suc n) X) X) (escale (suc n) Lg.o (alpha (suc n) W))
+   =< G.cong-add (trans (EA.eaddC (suc n) (eneg (suc n) X) X) (EA.eaddN (suc n) X)) (EA.escale-one (suc n) (alpha (suc n) W))
+   > eadd (suc n) (ezero (suc n)) (alpha (suc n) W)
+   =< G.zl (alpha (suc n) W) > alpha (suc n) W } ;
+ sum-identity : Id (Ext (suc n)) (alpha (suc n) (EU.S W)) W =
+  trans (ap (alpha (suc n)) sum-alpha) (EA.alpha-alpha (suc n) W) ;
+} ;
