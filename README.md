@@ -141,7 +141,8 @@ used. Each directory has a `README.txt`.
   `cca`: Scott continuity for Stone and compact Hausdorff spaces (§2.1–2.4),
   the interval as a quotient of 2^N, Lemmas 3.4.1, 3.4.4 and Thm 3.4.3
   (Hⁿ(I, A) = 0), the ordered Čech complex and Lemma C.0.6. `ccacoh`:
-  §3.1, §3.2 (Hⁿ(S, A) = 0 for S Stone) and Thm 3.3.2 in a vanishing form.
+  §3.1, §3.2 (Hⁿ(S, A) = 0 for S Stone), and Thm 3.3.2 as stated:
+  Hⁿ(X, B) ≅ Ȟⁿ(X, S, B) as groups, naturally in B (`ccacoh/Thm332A`).
   Design and gaps: `CCA-DESIGN.md`, `HANDOFF-CCA-A.md`, `HANDOFF-CCA-B.md`;
   shared statements in `CCA-INTERFACE.md`.
 

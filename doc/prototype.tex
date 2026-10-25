@@ -3,6 +3,7 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{enumitem}
 \usepackage{xspace}
+\usepackage{url}
 \usepackage[T1]{fontenc}
 \setlist{itemsep=1pt,topsep=3pt}
 
@@ -18,7 +19,7 @@
 
 \title{\sys: a small dependent type checker\\with segments as modules}
 \author{}
-\date{22 October 2026}
+\date{24 October 2026}
 
 \begin{document}
 \maketitle
@@ -38,7 +39,9 @@ parameters, without copying the body. A record type is written like a
 module, as a list of declarations, but it is a type and not a module;
 its elements are tuples of values for the declarations without a body. The prototype has been used to
 formalise a model of univalent type theory over posets and simplicial
-sets, 210 files. This note describes the type theory, the module
+sets, results of synthetic algebraic geometry, synthetic Stone duality,
+and the cohomology of
+compact Hausdorff spaces in synthetic Stone duality. This note describes the type theory, the module
 system, and the choices made to keep checking predictable and fast. We
 also propose an organisation of checking around a list of conversion
 problems generated without unfolding definitions. Pairs settled by strict
@@ -47,7 +50,9 @@ and provide the basis for explaining failures. We distinguish this
 proposal from what the current implementation already provides. The
 LLM-assisted formalisation of substantial examples in synthetic algebraic
 geometry provides a setting in which to investigate this proposal and
-compare the checker's work with the informal arguments. The
+compare the checker's work with the informal arguments; the
+formalisation of cohomology in synthetic Stone duality is presented as a
+case study. The
 name \sys refers to the units, the declarations of which every file,
 segment and local block is a list.
 \end{abstract}
@@ -177,19 +182,6 @@ Section~\ref{sec:modules}, the two aliases for
 environment: their comparison is discarded without inspecting
 \kw{twice}.
 
-\paragraph{Relation to earlier work.}
-Pollack~\cite{Pollack}, Sections~4.1--4.2, discusses sharing through
-definitions, avoiding repeated context checking, and the cost of
-conversion. His example contrasts computing an enormous value in
-$\operatorname{ack}(100)-\operatorname{ack}(100)=0$ with applying the
-general theorem $n-n=0$. These are close motivations. The point to
-investigate here is the separation between generating obligations while
-keeping definitions folded, removing strictly equal pairs, and analysing
-the residual list. Trying structural equality before unfolding within
-each call to conversion is one ingredient, but does not by itself give
-this separation. No claim of priority for the complete organisation is
-made here without a more detailed comparison with earlier checkers.
-
 \subsection{Explaining a failed check}
 
 The residual list should be intelligible as part of the mathematical
@@ -217,6 +209,7 @@ formal proofs, inspect the implementation, and explore alternative
 representations. The checker determines whether the resulting formal
 terms are accepted. This allows a close iteration between an informal
 argument, its formal expression, and the work required to check it.
+Section~\ref{sec:cca} reports one such iteration on a complete paper.
 
 The examples come from \emph{A foundation for synthetic algebraic
 geometry}~\cite{SAG} and \emph{Projective space in synthetic algebraic
@@ -313,15 +306,14 @@ A branch may bind, after its pattern variables, one \emph{recursive
 result} for each recursive field of the constructor:
 \begin{verbatim}
   data N = zero | suc (n : N) ;
-  plus : N -> N -> N =
-    split { zero -> \ n -> n ; suc m | r -> \ n -> suc (r n) } ;
+  plus (n : N) : N -> N = split { zero -> n ; suc m | r -> suc r } ;
 \end{verbatim}
 For a field $m : D$ the result has type $P\,m$; for a function field
 $f : (y:\Psi)\to D$, as in \kw{sup (A : U l) (f : A -> M)}, it has type
 $(y:\Psi)\to P\,(f\,y)$. The motive $P$ contains everything after the
 argument split, so the result is a function when the split is followed by
-further arguments, as $r : N\to N$ above. The arguments before the split
-are fixed. A nested split has its own results: in Ackermann's function
+further arguments. The arguments before the split are fixed: in
+\kw{plus}, \kw{r} is \kw{plus n m}, of type \kw{N}. A nested split has its own results: in Ackermann's function
 \begin{verbatim}
   ack : N -> N -> N = split {
     zero -> \ n -> suc n ;
@@ -335,6 +327,13 @@ is written as one recursion computing a pair, and course-of-values
 recursion likewise. The list of results may be omitted when a branch does
 not use them; when present it is complete, and \kw{\_} names an unused
 result.
+This is the \emph{inductive case expression} of
+Burstall~\cite{Burstall}, where a variable $v$ of the type of the
+argument, bound in a pattern, comes with a variable $\$v$ for the value of
+the whole expression at $v$, so that termination follows from the scope
+rules; his \kw{plus} is, up to the order of the arguments, the one
+above, and he already uses results of
+higher type.
 
 The sums are restricted so that these eliminators are the usual ones. A
 data type sees its own name only in its constructor fields, never in its
@@ -460,19 +459,13 @@ There is no $\eta$ for records: an element \kw{t} of a record type and
 \kw{new R[ps, t.x$_1$, \dots]} are not convertible. They are equal in
 $\Id$, by the eliminator (Section~\ref{sec:segtypes}).
 
-The current checker tests it as follows (a time budget remains as a safeguard,
-Section~\ref{sec:checker}). Two values are first compared
-\emph{strictly}, by their represented structure, without unfolding
-definitions. This is the first filter in the proposed organisation of
-Section~\ref{sec:obligations}. A use of a definition is
-represented by its name together with its environment: the values of all
-the variables and levels in scope where it is declared (its
-\emph{arguments}), not only those its body uses. If strict comparison
-fails, two uses of the same definition are next compared by conversion
-of their arguments. This does not unfold the common definition itself,
-although conversion of its arguments may unfold other definitions. Only
-when this comparison fails are both sides brought to head normal form, unfolding
-definitions, and compared component by component.
+A use of a definition is represented by its name together with its
+environment: the values of all the variables and levels in scope where
+it is declared (its \emph{arguments}), not only those its body uses.
+The checker decides definitional equality strictly first, then by the
+arguments of a common definition, and only then by unfolding
+(Section~\ref{sec:impl-conv}); strict comparison is the first filter of
+the organisation proposed in Section~\ref{sec:obligations}.
 
 Two occurrences of the same \kw{split} are compared in the same way, by
 their environments. When these differ, the checker compares the branches,
@@ -512,7 +505,8 @@ parameters and fields are convertible, wherever they are written.
 
 \paragraph{The unfolding strategy.} \kw{opaque f} declares that, from this
 point on, \kw{f} is not unfolded: it behaves as a constant, though its
-body has not changed. \kw{transparent f} undoes this. The strategy is a
+body has not changed. \kw{transparent f} undoes this; the two
+declarations are those of \texttt{cubicaltt}~\cite{cubicaltt}. The strategy is a
 property of the checking run and not of the values: evaluation builds
 values in the same way whatever the strategy. Head normalisation, used
 both by conversion and to expose type shapes during checking, consults
@@ -573,7 +567,18 @@ equation
 \begin{verbatim}
   share : Id (N -> N) (Mon[N, zero, plus].twice) (NM.twice) = refl NM.twice ;
 \end{verbatim}
-holds without unfolding \kw{twice}. When a large development instantiates
+holds without unfolding \kw{twice}.
+
+The arguments of an instance are checked where the instance is written.
+An expression \kw{M[a, b].x} written at several places is checked at
+each of them, against the types of the parameters of \kw{M}; an alias
+\kw{module MI = M[a, b] ;} checks the arguments once, and every later
+\kw{MI.x} is a use of a name. When the parameter types are long, as for
+a lemma with many hypotheses, the difference is visible
+(Section~\ref{sec:cca}). This is the informal practice of introducing a
+notation for an object once and using the notation.
+
+When a large development instantiates
 the same segment many times, as a formalisation of a model typically does
 (a construction made over an abstract base, then applied to each
 instance), this is what keeps checking fast: equal things are recognised
@@ -677,15 +682,187 @@ eliminator.
 %======================================================================
 \section{The checker}\label{sec:checker}
 
-The checker is written in Haskell, about 6000 lines, with no library
-beyond the base. Its parts are: levels and the decision of constraints;
-evaluation into values with closures; head normalisation under the
-unfolding strategy; conversion; type checking of units; the filling of
-holes, which also records in each \kw{split} the positions of the
-recursive fields (evaluation reads only this record); and the parser and
-scope resolution, which also enforces the sequential scope, checks that
-the sums are strictly positive with uniform parameters, and computes, for
-each definition, the variables it depends on.
+The checker is written in Haskell, under 6000 lines, with no library
+beyond the base. It follows the standard architecture of evaluation into
+values with closures, conversion on values, and bidirectional type
+checking~\cite{C96,Wang}. This section gives what is needed to implement it;
+the choices that differ from the usual ones are the representation of
+definitions, the order of the steps of conversion, and the checking of
+a list of units.
+
+\subsection{Syntax after resolution}
+
+The parser produces terms with names; a resolution pass, before any
+checking, decides from scope alone what each name denotes, and the core
+sees only resolved terms. Every declaration (definition, parameter,
+segment, instance, record) gets a unique \emph{identity}, its qualified
+name, and every use of a declaration is written with that identity.
+Bound variables may not shadow a variable in scope (as in~\cite{Wang}),
+so substitution never captures, and every binder ($\lambda$, $\Pi$,
+$\Sigma$, pattern variable) is renamed to a name unique in the program:
+the binder then identifies its occurrence in the source, hence its
+body. Each occurrence of a \kw{split}, of a \kw{data} body, and of an
+anonymous \kw{sig} likewise gets an identity. The same pass checks the
+sequential scope and the strict positivity of the sums; the filling of
+omitted arguments (Section~\ref{sec:hidden}) also records, in each
+branch of a \kw{split}, the positions of the recursive fields.
+
+\subsection{Values}\label{sec:impl-values}
+
+Terms are evaluated into values in an \emph{environment}, a list of
+frames of three kinds: a variable bound to a value, a level variable
+bound to a level, and a \emph{group} of consecutive definitions,
+segments and instances, entered at once and not evaluated. The
+\emph{dynamic part} of an environment is the list of values of its
+variables and levels; groups contribute nothing to it. The values are:
+\begin{center}
+\begin{tabular}{@{}l@{\quad}p{8.6cm}@{}}
+$x_k$ & a generic variable, created when checking under a binder\\
+$c$ & a parameter of the program, or of a segment being checked: a constant\\
+$\langle f;\rho\rangle$ & a use of the definition $f$ in the environment $\rho$ of its group\\
+$n\,v$,\ $n.1$,\ $n.l$,\ $\mathsf{J}(\dots,n)$, \dots & eliminations of a value $n$ that is not canonical\\
+$\lambda(x.t;\rho)$,\ $\Pi(A,x.B;\rho)$, \dots & closures: a binder occurrence, its body, an environment\\
+$c\,\vec v$,\ $\langle D;\rho\rangle$,\ $\langle s;\rho\rangle$ & a constructor; a \kw{data} body; a \kw{split}\\
+$\U\,l$,\ $(u,v)$,\ $\Id\,A\,a\,b$,\ $\mathsf{refl}\,a$, \dots & the other canonical forms\\
+$R[\rho]$,\ $\mathsf{new}\,R[\rho]$ & a record type, an element built by \kw{new}
+\end{tabular}
+\end{center}
+A use of a definition is the closure $\langle f;\rho\rangle$, nothing
+more: its body is evaluated only when the definition is unfolded. A
+parameter is not bound in the environment, so a lookup that reaches the
+outermost frame returns it as a constant; inside a segment the
+parameters are therefore rigid, and an instance binds them.
+
+\paragraph{Evaluation} is the usual one and never unfolds a definition:
+looking up a definition gives $\langle f;\rho\rangle$; application of a
+$\lambda$-closure extends its environment; application of
+$\langle s;\rho\rangle$ to a constructor $c\,\vec v$ evaluates the
+branch of $c$ with its pattern variables bound to $\vec v$ and each
+recursive result bound to the same split applied to the corresponding
+field (to $\lambda\vec y.\,s\,(v_j\,\vec y)$ for a function field); every
+other elimination of a value that is not canonical builds a neutral
+value; $\mathsf J$ computes on $\mathsf{refl}$. A segment in the
+environment is its units, the environment where it is declared, and its
+identity; an instance $M[\vec a]$ is computed by walking the units of
+$M$ in order, binding each parameter to the next argument and entering
+each group of definitions on the way. The member $M[\vec a].f$ is then
+$\langle f;\rho\rangle$ with $\rho$ this environment, whose dynamic part
+consists of the arguments $\vec a$. A record element $\mathsf{new}\,R[\rho]$
+holds the values of the parameters and fields of $R$; a derived member
+$t.d$ is $\langle d;\rho_t\rangle$, where $\rho_t$ binds the element $t$
+itself and its fields as projections of $t$. A variable of record type
+is a generic variable with its record: there is no $\eta$ for records.
+
+\paragraph{Weak head normal forms.} The \emph{folded} weak head normal
+form performs $\beta$ for functions, pairs, records and levels,
+\kw{split} on constructors and $\mathsf J$ on $\mathsf{refl}$, and
+unfolds no definition. A value in folded form may be \emph{blocked} by
+a definition: its head is $\langle f;\rho\rangle$, or an elimination
+whose principal argument (the function, the pair, the scrutinee of a
+\kw{split}, the path of $\mathsf J$) is blocked by $f$. Unfolding replaces
+$\langle f;\rho\rangle$ by the value of the body of $f$ in $\rho$,
+followed by the folded reduction this enables. The weak head normal form
+unfolds blocking definitions until none is left, except the opaque
+ones: the set of opaque identities is part of the checking context and
+is consulted only here.
+
+\subsection{Conversion}\label{sec:impl-conv}
+
+\emph{Strict equality} $u=_{\mathrm s}v$ is structural equality of
+values: two uses $\langle f;\rho\rangle$, $\langle f';\rho'\rangle$ are
+strictly equal when $f=f'$ and the dynamic parts of $\rho$ and $\rho'$
+are strictly equal; two closures when they have the same binder
+occurrence and strictly equal dynamic parts; two \kw{split}s,
+\kw{data} bodies or named record types when they are the same occurrence
+with strictly equal dynamic parts. It unfolds nothing and evaluates
+nothing. Conversion $u\equiv v$ is decided in four stages:
+\begin{enumerate}
+\item if $u=_{\mathrm s}v$, they are convertible;
+\item if $u$ and $v$ are eliminations, with the same eliminators, of uses
+  $\langle f;\rho\rangle$ and $\langle f;\rho'\rangle$ of one definition,
+  and the dynamic parts of $\rho,\rho'$ and the arguments of the
+  eliminations are pairwise convertible, they are convertible;
+\item both are put in folded weak head normal form; then, as long as one
+  is blocked by a non-opaque definition, a \emph{head step} is made and
+  strict equality is tested again. If only one side is blocked, it is
+  put in weak head normal form at once. If both are, by definitions $f$
+  and $g$, the one declared later is unfolded once, since only its
+  unfolding can reach the other; if they are the same, or not ordered,
+  both are;
+\item when neither side is blocked, they are compared by their outer
+  form, recursively with conversion: $\Pi$ and $\Sigma$ by their domains
+  and their codomains at a fresh variable; $\lambda$ by $\eta$ (both
+  sides applied to a fresh variable), pairs by $\eta$; constructors,
+  $\Id$, $\mathsf{refl}$ and neutral eliminations componentwise; named
+  record types by occurrence and dynamic parts (never by fields);
+  elements of records by their record, parameters and fields; universes
+  and levels by the decision procedure for levels; two uses of an opaque
+  definition by their dynamic parts; \kw{split}s and \kw{data} bodies as
+  described in Section~\ref{sec:conv}.
+\end{enumerate}
+Stage~2 is where sharing pays: two uses of a lemma, or of a member of
+one instance, are compared through their arguments without opening the
+lemma. Opening only the later definition in stage~3 matters for
+definitions stacked on each other, where unfolding both sides in lock
+step would expand the earlier one needlessly.
+
+\subsection{Bidirectional checking}
+
+Checking has two judgments, $\Gamma\vdash t\Leftarrow A$ (check $t$
+against the value $A$) and $\Gamma\vdash t\Rightarrow A$ (infer the type
+of $t$). The context $\Gamma$ holds the environment, the types of the
+variables and definitions in scope, a counter for fresh variables, the
+level variables and constraints, and the set of opaque definitions.
+\begin{itemize}
+\item Names, applications, projections, level applications, $\mathsf J$
+  and members of instances are \emph{inferred}; to check them against
+  $A$, their type $A'$ is inferred and $A'\le A$ is tested, where $\le$
+  is conversion except at the top, where $\U\,l\le\U\,m$ when $l\le m$
+  and a record type with more fixed fields is below one with fewer.
+  An inferred type is kept as it is computed, with its definitions
+  folded, so that $A'\le A$ starts with the strict and by-name stages.
+\item The introduction forms ($\lambda$, pairs, $\mathsf{refl}$,
+  constructors, \kw{split}, \kw{struct}, types) are \emph{checked}: the
+  expected type is put in weak head normal form, and its outer form
+  decides the rule. A \kw{split} is checked against $(x:D)\to P\,x$ with
+  $D$ a sum: for each constructor $c$, its pattern variables are fresh
+  variables of the types of the fields, its recursive results fresh
+  variables of type $P\,x_j$ (or $(\vec y:\Psi)\to P\,(x_j\,\vec y)$), and
+  the branch is checked against $P\,(c\,\vec x)$.
+\item To infer $f\,a$, the type of $f$ is inferred and put in weak head
+  normal form; it must be $\Pi(A,x.B;\rho)$; then $a\Leftarrow A$ and the
+  type is $B$ in $\rho$ extended by the value of $a$. Expressions are
+  evaluated in the environment of $\Gamma$ as soon as their values are
+  needed in a type.
+\item A constraint product $[\psi]A$ is discharged silently: an expected
+  type $[\psi]A$ adds $\psi$ to the context, and an inferred type
+  $[\psi]A$ becomes $A$ once $\psi$ is valid.
+\end{itemize}
+
+\subsection{Units and segments}\label{sec:impl-units}
+
+A list of units is checked from left to right, threading the context:
+\begin{itemize}
+\item \kw{level a} and \kw{constraint} extend the level variables and
+  constraints;
+\item a parameter \kw{x : A}: $A$ is checked to be a type, and $x$ is
+  added with type $A$, but not bound: it is a constant;
+\item a group of consecutive definitions is entered at once: the
+  environment receives the group, the context the types; then each
+  definition is checked, its type as a type and its body against it;
+\item a segment \kw{module M (\dots) \{ $\vec u$ \}} is checked once: its
+  units are checked in the current context, with its parameters as
+  constants; then the segment (its units, the current environment, its
+  identity) is added to the environment;
+\item an instance \kw{module N = M[$\vec a$]} walks the units of $M$ as in
+  evaluation, checking each argument against the type of its parameter
+  in the environment built so far, and each constraint of $M$ for the
+  given levels; the result is added to the environment. An expression
+  $M[\vec a].x$ written inside a term is checked in the same way, at the
+  place where it is written;
+\item \kw{opaque f} and \kw{transparent f} change the set of opaque
+  definitions for the rest of the list.
+\end{itemize}
 
 The context after a unit does not depend on whether the unit checked:
 definitions enter the context by their types and bodies, not by their
@@ -697,6 +874,18 @@ development once and, after an edit, checks only the files whose content
 changed and those depending on them; the 210 files of the model (about
 12000 declarations) check from scratch in about 54 seconds, and each file
 separately, the others trusted, in under five seconds.
+
+\paragraph{Measuring the work of conversion.} With the option
+\kw{--opened}, the checker reports for each declaration how its
+comparisons were settled (strictly, by the arguments of a common
+definition, or by unfolding) and which definitions were unfolded, with
+how often. With \kw{--opens F}, where the file \kw{F} lists for each
+declaration the definitions its informal proof uses, it reports any
+other definition it had to unfold. A definition unfolded outside that
+list is a step the text leaves implicit, or work the checker repeats.
+These counts are the current, partial, form of the residual list of
+Section~\ref{sec:obligations}: they show which definitions a comparison
+needed, not yet the comparison itself.
 
 Moving to recursion through eliminators changed little in the model: of
 174 recursive definitions, 161 were rewritten mechanically, a call
@@ -781,6 +970,85 @@ resolver after the record. The resolver also separates segments from
 records: a segment used as a type, \kw{new} applied to a segment, or a
 member of a record reached without an element, is an error.
 
+%======================================================================
+\section{A case study: cohomology in synthetic Stone duality}\label{sec:cca}
+
+\emph{Cohomology in synthetic Stone duality}~\cite{CCA} extends
+synthetic Stone duality~\cite{SSD} with cohomology in all degrees,
+with coefficients in families of abelian groups over a compact
+Hausdorff space. It uses Eilenberg--MacLane spaces as constructed in
+homotopy type theory by W\"arn~\cite{DW1}. The formalisation in \sys
+covers the paper except one proposition that needs $n$-truncations of
+arbitrary types, together with the parts of~\cite{DW1} it uses. Its main
+result is Theorem~3.3.2 of~\cite{CCA} as stated: for $X$ compact
+Hausdorff, a Stone space $S$ with a surjection onto $X$, and every
+family $B$ of overtly discrete abelian groups over $X$,
+\[
+  H^n(X,B)\;\cong\;\check H^n(X,S,B)
+\]
+as groups, naturally in $B$, for every $n$. Here $H^n(X,B)$ is the
+fundamental group of $(x:X)\to K(B\,x,n+1)$, which is the set truncation
+of $(x:X)\to K(B\,x,n)$; with this choice every map between cohomology
+groups is the fundamental group of a pointed map, and is a homomorphism
+for that reason. The proof is by induction on $n$, through the long
+exact sequences of both cohomologies for a short exact sequence of
+coefficients and the naturality of their connecting maps.
+
+\paragraph{Organisation.} The development consists of 91 files of its
+own, in three directories: the topological part (Scott continuity of
+Stone spaces, the Barton--Commelin axioms, the unit interval),
+Eilenberg--MacLane spaces and Čech complexes in plain homotopy type
+theory (no axiom of synthetic Stone duality), and the cohomology of
+compact Hausdorff spaces. The files of synthetic Stone duality are
+reused, not copied: a directory refers to the files of another, and a
+file is checked once in each development importing it. The whole,
+about 8500 declarations in 172 files, checks from scratch in under four
+seconds. The axioms of synthetic Stone duality form one record, a parameter of
+the segments that use them; the files of plain homotopy type theory are
+those whose segments do not take it.
+
+The formalisation was written by an LLM working from the paper, in
+two parallel sessions, one per part, with a mathematician deciding the
+scope and the form of the main statements. The two parts met through a
+file listing, for each result one part used from the other, its
+statement in \sys and its declaration: the boundary between the parts
+is a list of mathematical statements.
+
+\paragraph{Openings.} The measure of Section~\ref{sec:checker} was
+recorded for every declaration, with a guideline of about 500
+unfoldings for one declaration. When the main theorem was first proved,
+16 declarations were above it, although each checked in a fraction of
+a second. Each case had one of three causes, all of them mismatches
+between the formal text and the informal argument, and each was
+removed without changing any statement:
+\begin{itemize}
+\item \emph{An instance written repeatedly.} The induction step used the
+  cokernel lemma, a segment with twenty hypotheses, at two short exact
+  sequences, and wrote the instance at each use; each use checked the
+  twenty arguments again. Naming the induced isomorphism once, inside
+  the step, brought the naturality proof from 1622 unfoldings to 491
+  (Section~\ref{sec:modules}).
+\item \emph{One notion under two names.} An abbreviation such as
+  $\Omega K(A,m+1)$ for the identity type $\Id\,(K(A,m+1))\,\mathrm{pt}\,
+  \mathrm{pt}$, used next to lemmas stated with the identity type, is
+  unfolded at every comparison of the two. Writing the notion one way
+  brought the proof that $K(p)\circ K(i)$ is null from 1333 unfoldings to
+  475.
+\item \emph{A lemma stated in other terms than the lemmas it uses.}
+  That the delooping of a homomorphism $h$ is multiplicative on loops is,
+  informally, the remark that on loops it is
+  $\mathrm{band}^{-1}\circ h\circ\mathrm{band}$, followed by the fact that
+  the band is a homomorphism. Stating the first point as a lemma, proved
+  by reflexivity, and the second in the terms of the band, replaced one
+  proof of 1576 unfoldings by two of 240 and 490.
+\end{itemize}
+Two declarations remain above the guideline, at 513 and 722. The total
+checking time hardly changed (from 4.0 to 3.8 seconds): the counts did
+not measure a performance problem, but places where the formal text did
+not follow the informal argument. This is the correspondence between the
+work of the checker and the steps of a proof that
+Section~\ref{sec:obligations} proposes to make systematic.
+
 
 \begin{thebibliography}{9}
 \bibitem{BC} M.~Bezem and T.~Coquand. Loop-checking and the uniform word
@@ -789,17 +1057,28 @@ member of a record reached without an element, is an error.
 \bibitem{BCDE} M.~Bezem, T.~Coquand, P.~Dybjer and M.~Escard\'o. Type theory
   with explicit universe polymorphism. arXiv:2212.03284, 2022 (revised and
   extended version, 2024).
+\bibitem{CCA} F.~Cherubini, T.~Coquand, F.~Geerligs and H.~Moeneclaey.
+  \emph{Cohomology in synthetic Stone duality}. Manuscript, version of
+  24 October 2026.
+\bibitem{Burstall} R.~M.~Burstall. Inductively defined functions in functional
+  programming languages. \emph{Journal of Computer and System Sciences}
+  34(2/3):409--421, 1987.
+\bibitem{C96} T.~Coquand. An algorithm for type-checking dependent types.
+  \emph{Science of Computer Programming} 26(1--3):167--177, 1996.
+\bibitem{cubicaltt} C.~Cohen, T.~Coquand, S.~Huber and A.~M\"ortberg.
+  Cubical type theory: a constructive interpretation of the univalence
+  axiom. In \emph{TYPES 2015}, LIPIcs 69, 2018. Implementation
+  \texttt{cubicaltt}: \url{https://github.com/mortberg/cubicaltt}.
 \bibitem{Ced} J.~Cederquist. \emph{A Pointfree Approach to Constructive
   Analysis in Type Theory}. PhD thesis, Chalmers University of Technology and
   University of G\"oteborg, 1997. See Section~2 of the third paper,
   \emph{An implementation of the Heine--Borel covering theorem in type
   theory}, and Section~7.1 of the final paper for descriptions of
   \textsc{Half}.
+\bibitem{DW1} D.~W\"arn. \emph{Eilenberg--MacLane spaces and stabilisation
+  in homotopy type theory}. arXiv:2301.03685, 2023.
 \bibitem{Hilbert} D.~Hilbert. \"Uber das Unendliche. \emph{Mathematische Annalen}
   95:161--190, 1926. Lecture given in 1925.
-
-\bibitem{Pollack} R.~Pollack. \emph{How to Believe a Machine-Checked Proof}.
-  BRICS Report RS-97-18, 1997. Sections~4.1--4.2.
 
 \bibitem{SAG} F.~Cherubini, T.~Coquand and M.~Hutzler.
   \emph{A foundation for synthetic algebraic geometry}.
@@ -808,6 +1087,8 @@ member of a record reached without an element, is an error.
   \emph{Projective space in synthetic algebraic geometry}.
   arXiv:2405.13916; manuscript version of 19 October 2026.
 
+\bibitem{SSD} F.~Cherubini, T.~Coquand, F.~Geerligs and H.~Moeneclaey.
+  \emph{A foundation for synthetic Stone duality}. arXiv:2412.03203, 2024.
 \bibitem{Wang} Q.~Wang. \emph{A Haskell Implementation for a Dependent Type
   Theory with Definitions}. Master's thesis, Chalmers University of Technology
   and University of Gothenburg, 2021.

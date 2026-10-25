@@ -1,0 +1,788 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\hypersetup{pdftitle={Unit: a type checker for dependent type theory}}
+
+\newcommand{\sys}{\textsc{Unit}}
+\newcommand{\kw}[1]{\texttt{#1}}
+\newcommand{\U}{\mathsf{U}}
+\newtheorem{proposition}{Proposition}
+
+\title{\sys: a type checker for dependent type theory}
+\author{Thierry Coquand}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present \sys, a type checker for a dependent type theory with
+$\Pi$, $\Sigma$, records, data types with primitive recursion, an
+identity type and cumulative universes, and a module system in the
+tradition of \textsc{Automath}: a module is a list of declarations, its
+parameters are the declarations without a body, and an instance binds
+the parameters without copying the body. Definitions are treated
+uniformly. A definition keeps one identity wherever it is used; two uses
+are compared by their names and arguments before anything is unfolded;
+otherwise one definition is opened at the head of the comparison, the
+one declared last. There is no unification and no unfolding heuristic.
+A consequence is that the work of checking can be observed: \sys\
+reports, for each declaration, which definitions it opened, and this can
+be compared with the informal proof. A difference points either to a
+place where the checker departs from reading, or to one where the formal
+proof is not the proof of the text. We describe the system and this
+method, and report on its use on a model of univalent type theory and on
+synthetic algebraic geometry.
+\end{abstract}
+
+% ======================================================================
+\section{Introduction}
+
+Large proofs are now checked in Lean, Rocq and Agda. The basic ideas of
+these systems go back to \textsc{Automath}: propositions as types,
+proofs as terms checked in a context, and definitions that are not
+expanded in the proof but expressed by convertibility. That definitions
+belong to the calculus, and are unfolded by a reduction of their own, is
+the point of de Bruijn's $\Lambda\Delta$~\cite{LD}, where a definition is
+a declaration of the same kind as an abstraction and can occur anywhere
+in a context. Very little has been worked out since about how
+definitions are represented. In the systems in use, when a definition is
+unfolded during checking is decided by heuristics of the implementation,
+and how this relates to the way a reader of the proof uses the
+definition has not been studied.
+
+These systems have also added to pure dependent type theory notions of
+their own: for instance unification and implicit arguments, type classes
+or instance search, coercions, tactics, impredicative propositions and
+definitional proof irrelevance. Each serves a purpose in large-scale
+formalisation, but they make the work of checking harder to relate to
+the proof being checked, which is what we want to study here, and they
+do not seem necessary for representing mathematical arguments. We
+therefore work with a small dependent type theory with definitions,
+modules and records, in which nothing is guessed and every unfolding of
+a definition can be observed. In particular there are no tactics, as in
+Rocq and Lean: a proof is the term that is checked; and there are no
+placeholders to be refined interactively, as in Agda: a file is checked
+as it is written.
+
+This paper presents such a system, \sys\ (Section~\ref{sec:checker}).
+Its type theory has $\Pi$, $\Sigma$, records, data types with primitive
+recursion, an identity type, and cumulative universes indexed by level
+expressions. Its module system follows the segments of \textsc{Automath}:
+a theorem is stated in a context, and to use it one gives an instance of
+the context, the objects and the proofs of the hypotheses, in order; an
+instance only binds the parameters, and the body is neither copied nor
+checked again. Its treatment of definitions is uniform: a definition is
+a declaration like the others, it keeps one identity wherever it is
+used, and conversion tries to recognise two values by their names before
+it opens anything, and then opens one definition at a time.
+
+This uniformity is not only a matter of simplicity. In \cite{Rem} the
+author recalls translating the first lemmas of Frege's
+\emph{Begriffsschrift} into \textsc{Automath} notation, and observes that
+``these notations represented rather faithfully what is going on when
+one is trying to understand a proof''. We ask whether this holds for the
+work done during checking too. A reader of a proof checks a
+construction once, checks an application of a lemma by its arguments,
+recognises a second use of the same lemma, and opens a definition only
+where the text says ``by definition''. We make two hypotheses.
+\begin{enumerate}
+\item[(H1)] \emph{Checking can follow reading.} A type checker can be
+  built that does what the reader does, and nothing else, on a text
+  written in this way.
+\item[(H2)] \emph{Cost is a diagnostic.} When a step that is routine on
+  paper is expensive to check, either the checker departs from reading,
+  or the formal proof has lost an abstraction that the informal proof
+  uses. This is a heuristic, not a complexity bound: some proofs do
+  compute.
+\end{enumerate}
+For (H2) to be usable the checker must not hide the cost: a checker with
+clever unfolding heuristics can make a badly structured proof cheap, and
+so lose the information. A uniform checker makes its work observable.
+This should be relevant to the problem of proofs \emph{lost in
+translation}~\cite{BCH}: a formal proof can be accepted without being the
+proof of the text it claims to translate. If checking follows reading,
+the correspondence between the steps of the text and those of the formal
+proof can be measured, and a departure from the text shows in what the
+checker opens.
+
+\paragraph{The method} (Section~\ref{sec:method}) uses this. It has
+three parts.
+(1)~The checker reports, for each declaration, how its comparisons were
+settled and which definitions it opened. (2)~The informal proof is
+written, and each step is classified by what a reader does: match
+names, open a definition the text cites, or nothing. The definitions the
+text cites can be given to the checker, which then reports the others.
+(3)~For a declaration that costs more than its text suggests, the formal
+proof is split into the steps of the informal proof, each step is
+measured, and the expensive comparisons are traced to the part of the
+checker that asks for them. The method can be applied to an existing
+development, or while writing a new one.
+
+\paragraph{The aim} (Section~\ref{sec:align}) is that the structure of a
+formal proof be that of a detailed, precise informal proof: one
+definition for each notion, one declaration for each step, the
+intermediate claims written, ``by definition'' where a definition is
+opened, and the facts that a text states with a definition proved once
+by \kw{refl}. That a formal proof is accepted says nothing about whether
+it is the proof of a given text \cite{BCH}; the method gives a checkable
+part of this question.
+
+\paragraph{Results} (Section~\ref{sec:results}) are preliminary.
+The method found four places where the checker did more than a reader,
+and places where the informal proof leaves a step to the reader. Table~\ref{tab:totals} gives the effect on the model of
+univalent type theory.
+
+% ======================================================================
+\section{The checker}\label{sec:checker}
+
+\subsection{Units and segments}
+
+A \emph{unit} is a declaration:
+\[
+\begin{array}{ll}
+x\,(\Delta) : A & \text{a parameter}\\
+x\,(\Delta) : A = t & \text{a definition}\\
+\kw{data}\ D\,(\Delta) = c_1(\Delta_1)\mid\dots & \text{a data type}\\
+\kw{level}\ a,\quad \kw{constraint}\ \psi & \text{levels and constraints}\\
+\kw{module}\ M\,(\Delta)\,\{\,\vec u\,\},\quad \kw{record}\ R\,(\Delta)\,\{\,\vec u\,\}
+  & \text{a segment}\\
+\kw{module}\ N = M[\vec a] & \text{an instance}\\
+\kw{opaque}\ f,\quad \kw{transparent}\ f & \text{the unfolding strategy}
+\end{array}
+\]
+Terms are those of a dependent type theory with $\Pi$, $\Sigma$, an
+identity type with its eliminator $J$, labelled sums with their
+eliminators (\kw{split}), records, cumulative universes \kw{U}\,$l$
+indexed by level expressions, and products over levels and over
+constraints between levels~\cite{BCDE}.
+
+A file, a module body, a record body and a local block are all lists of
+units, checked in the same way: each unit in the context of the units
+before it, and then added to it; a definition stays a definition, with
+its body available for computation. The scope is sequential: a unit sees
+only the units before it, never itself or a later one. This is the block
+structure of \textsc{Automath}, and, as in $\Lambda\Delta$~\cite{LD}, a
+context contains definitions as well as declarations, in any order. The
+context after a unit does not depend on whether the unit checked: a
+definition enters the context with its type and its body, not with its
+proof of correctness. So each declaration can be checked separately,
+with its own time budget, and one file can be checked while the others
+are trusted, as a reader accepts a lemma and reads on.
+
+A \emph{segment} is a named list of units; its parameters are its units
+without a body. It is checked once, with its parameters unknown. An
+instance $M[\vec a]$ checks each $a_i$ against the type of the $i$th
+parameter with the earlier ones substituted; nothing of the body is
+checked again. A module and a record are the same object and differ only
+in what is given: an instance gives every parameter; a record type
+$R[\vec p]$ gives those of the header, and \kw{new}\,$R[\vec p,\vec v]$
+gives the others, its fields. Fixing a field, $R[\vec p][x:=e]$, gives
+the type of the elements whose field $x$ is $e$ (manifest
+fields~\cite{CPT}). A hypothesis can be a parameter of a whole
+development and be discharged by one instance: the model of univalent
+type theory below assumes function extensionality and univalence as two
+parameters, and one instance, which checks two arguments, gives it under
+univalence alone.
+
+Data types are strictly positive. There is no recursion by name: a
+function out of a data type is a \kw{split}, and a branch names, after
+its pattern variables, the recursive results, which are hypotheses like
+any other:
+\begin{verbatim}
+  data N = zero | suc (n : N) ;
+  plus (n : N) : N -> N = split { zero -> n ; suc m | r -> suc r } ;
+\end{verbatim}
+This is primitive recursion at higher types, as in G\"odel's system T,
+written as the inductive case expressions of Burstall~\cite{Burstall},
+where termination follows from the scope rules.
+
+\subsection{Structures without instance search}\label{sec:structures}
+
+Lean finds structure arguments by instance synthesis, and Rocq solves
+some unification problems on record projections by canonical structures;
+both choose automatically an argument that could be given explicitly.
+\sys\ has neither. A mathematical structure is a record, generic
+mathematics about it is a module whose parameter is an element of the
+record, and \kw{open} gives the operations and laws short names:
+\begin{verbatim}
+  record CRing {
+    R : U a ;  z : R ;  o : R ;
+    add : R -> R -> R ;  mul : R -> R -> R ;  neg : R -> R ;
+    addC (x y : R) : Id R (add x y) (add y x) ;
+    addZ (x : R) : Id R (add x z) x ;  ...
+  } ;
+  module RL (Rg : CRing) {
+    open Rg ;
+    unit (x : R) : U a = (y : R) * Id R (mul x y) o ;
+    zl (x : R) : Id R (add z x) x = trans (addC z x) (addZ x) ;
+    ...
+  } ;
+\end{verbatim}
+The ring is given once, for a whole development, as a text says ``let
+$R$ be a commutative ring'' and then uses its operations; an instance
+\kw{RL[Rg]} makes all the results available for a particular ring. The
+choice is explicit, but it is made once, not at each step.
+
+The difficulty that instance search addresses arises when a proof moves
+among many related structures: a ring, its additive group, a module over
+it, a ring of polynomials. With explicit structures each passage is a
+named construction, and the same structure reached by two constructions
+must be identified explicitly. In the cohomology of synthetic Stone
+duality, the groups of cocycles are both kernels of homomorphisms and
+groups of the \v{C}ech complex; statements written with one name and
+used with the other showed in the report as repeated openings (one
+declaration opened 3708 definitions), and stating the types in the
+terms of one construction removed them (447). In the developments of
+Section~\ref{sec:results}, records, parameterised modules and \kw{open}
+have sufficed to organise the structures without instance search, and
+supplying structure arguments at the level of a development has
+introduced little repetition.
+
+\subsection{Definitions as closures}
+
+Evaluation maps terms to values in an environment. Following
+$\Lambda\Delta$, a definition is not replaced by its body when it is
+declared; it is unfolded only where its body is needed. In the
+implementation, after~\cite{C96,Wang}, where type checking is done on
+values with closures, a use of a definition $f$ evaluates
+to the closure $\langle f;\rho\rangle$ of the unit and the environment
+$\rho$ where it is declared. The \emph{arguments} of a use are the values
+in $\rho$ of all the variables and levels in scope at the declaration. A
+member $M[\vec a].f$ of an instance is $\langle f;\rho,\vec a\rangle$.
+Nothing is copied: $f$ has one identity wherever it is used.
+
+\kw{opaque f} declares that from this point on $f$ is not unfolded, and
+\kw{transparent f} undoes it, as in \texttt{cubicaltt}~\cite{cubicaltt}.
+The strategy is a parameter of the run:
+evaluation builds the same values whatever the strategy. Making a
+definition opaque can only make fewer terms convertible, so an
+\kw{opaque} declaration never makes an incorrect proof correct. Its use
+is the mathematical one: once a construction is characterised by lemmas,
+the rest of the development uses the lemmas.
+
+\subsection{Conversion}\label{sec:conv}
+
+Definitional equality is generated by $\beta$ (for functions, pairs,
+levels, projections, \kw{split} on a constructor and $J$ on reflexivity),
+the unfolding of definitions, and $\eta$ for functions and pairs. Two
+values are compared as follows.
+\begin{enumerate}
+\item \emph{By names.} They are equal if they are strictly equal, that
+  is, equal as represented, two closures $\langle f;\rho\rangle$,
+  $\langle f;\rho'\rangle$ being strictly equal when $\rho$ and $\rho'$
+  are; or if they are eliminations of the same definition $f$ with
+  convertible arguments and spines. Nothing is unfolded.
+\item \emph{By head steps.} Otherwise the $\beta$-redexes at the head are
+  reduced, without unfolding. If a definition blocks the head of one side
+  only, that side is brought to weak head normal form. If both heads are
+  blocked by definitions, the one declared later is opened by one
+  $\delta$-step: by sequential scope, it is the only one whose unfolding
+  can reach the other. After each step, strict equality is tried.
+\item \emph{By components.} When no head is blocked, the outer forms are
+  compared and their components are compared recursively, each from
+  stage 1.
+\end{enumerate}
+Stage 1 is a reader who recognises the same lemma at the same arguments;
+stage 2 is opening a definition, the $\delta$-step of $\Lambda\Delta$.
+The strategy is uniform: there is no other choice of what to open, and
+no heuristic depending on the definitions. Two occurrences of the same
+\kw{split} are compared by their branches, each in its own environment;
+two record types are equal when they come from the same declaration with
+equal parameters, and their fields are never compared.
+
+\paragraph{Checking follows the term.} An elimination (an application, a
+projection) is checked by inferring its type and comparing it with the
+expected type as it is; the expected type is unfolded only when the term
+is an introduction (a $\lambda$, a pair) and its outer form is needed.
+A reader does not open the statement of a lemma to check that the lemma
+has been applied.
+
+\paragraph{Notation.} Omitted arguments are filled by one-way matching
+of the inferred types of the explicit arguments against the domains,
+never by unification; two different solutions for a hole are an error.
+A solution is written back as a term in the current scope, recognising
+the names in scope by stage~1 only: a reader who writes an omitted
+argument recognises names and does not compute. Equational chains
+\kw{calc}, \kw{open} and \kw{import} are translated before checking.
+
+% ======================================================================
+\section{The method}\label{sec:method}
+
+\paragraph{The measurement.} With the option \kw{--opened}, \sys\ reports
+for each declaration the number of comparisons (including subproblems)
+settled at stage 1, by arguments (stage 1 with a recursive comparison of
+arguments), and by components (stage 3), and the definitions unfolded
+during its check, with multiplicities. The unfolding of a data type to
+its constructors is not counted: it is reading a declaration, not
+opening a construction.
+
+\paragraph{What the text opens.} In HOL every use of a definition is an
+explicit step, a rewrite with its defining theorem; in \textsc{Automath}
+and in \sys\ the uses of a definition are silent. Objective type
+theory~\cite{OTT} does the same as HOL for computation rules: $\beta$ and
+the computation of the identity eliminator hold only propositionally,
+with explicit witnesses, so each use is a transport written in the
+term. An informal text is in
+between: it says ``by definition of $X$'' where it uses a definition,
+and says nothing at steps it regards as obvious. Frege had no
+definitional equality for defining notions: in the
+\emph{Begriffsschrift}~\cite{Frege} a definition is a judgement of
+identity of content, and each use of it is a step citing it.
+Each step of a text is classified by what a reader does:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+step of the text & the reader & the checker should open\\
+\midrule
+by Lemma $L$ & matches names & nothing\\
+by definition of $X$ & opens $X$ & $X$\\
+without comment & nothing & nothing\\
+\bottomrule
+\end{tabular}
+\end{center}
+With \kw{--opens F}, where each line of \kw{F} has the form
+\kw{name: $d_1$ \dots\ $d_k$}, \sys\ prints for the declaration
+\kw{name} the definitions it opened other than $d_1,\dots,d_k$. Each of
+them is a step the text does not state.
+
+\paragraph{Reading a declaration.} For a declaration that is slow, or
+opens many more definitions than its text cites:
+\begin{enumerate}
+\item write its informal proof;
+\item say how a reader checks each step: by a lemma, by a definition, or
+  without comment;
+\item split the formal proof into these steps, one lemma for each step
+  with its intermediate points written, and measure each;
+\item for the step that costs more than its text, find the comparisons
+  that cost, and the part of the checker that asks for them (a traced
+  version prints each comparison costing more than a threshold with its
+  caller: subsumption, a \kw{refl}, the agreement of two solutions of a
+  hole, the writing back of a solution, the arguments of the same
+  definition, a \kw{split}, a locked definition).
+\end{enumerate}
+The diagnosis is one of three: the checker departs from reading (repair
+the checker); the formal proof names one notion in several ways (repair:
+one name); or it uses a fact that the text states, or makes by notation,
+without stating it (repair: a lemma, stated once at the generic level).
+
+\paragraph{Writing.} The same method applies while writing, and gives
+rules: write the informal proof first; one name for each notion (no
+alias for something that has a name, pass a structure rather than its
+components, name the components of a construction once where it is
+defined); state the facts ``by definition'' once, by \kw{refl}, next to
+the definition, and lock the construction after its characterising
+lemmas; write the intermediate point of a step that the text proves by
+two definitions; give accessors for the parts of elements rather than
+chains of projections; after each declaration, compare what it opened
+with what its text cites.
+
+% ======================================================================
+\section{First results}\label{sec:results}
+
+\subsection{Small examples}
+
+\paragraph{Sharing and the lock.} On
+\begin{verbatim}
+module Mon (A : U a) (e : A) (op : A -> A -> A) {
+  twice (x : A) : A = op x x ; } ;
+module NM = Mon[N, zero, plus] ;
+\end{verbatim}
+the report is:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+declaration & statement & opened\\
+\midrule
+\kw{twiceUnfold} & \kw{NM.twice x = plus x x} & \kw{Mon.twice}\\
+\kw{byName} & \kw{Mon[N,zero,plus].twice x = NM.twice x} & nothing\\
+\multicolumn{3}{l}{\kw{opaque Mon.twice}}\\
+\kw{viaLemma} & \kw{NM.twice one = plus one one}, by \kw{twiceUnfold} & nothing\\
+\multicolumn{3}{l}{\kw{transparent Mon.twice}}\\
+\kw{compAgain} & \kw{NM.twice one = suc one}, by \kw{refl} & \kw{Mon.twice}, \kw{plus}, \kw{one}\\
+\bottomrule
+\end{tabular}
+\end{center}
+The same instance reached by two paths is recognised without opening
+\kw{twice}; after the lock, the lemma \kw{twiceUnfold} is used instead
+of the definition.
+
+\subsection{The developments}
+
+The method was applied to four developments.
+\begin{itemize}
+\item A model of univalent type theory over a base category with an
+  interval, with finite posets and simplicial sets as instances, and the
+  localisation at a modality of Sattler (13\,475 declarations).
+\item Synthetic algebraic geometry \cite{SAG}, up to Ch\^atelet's
+  theorem: a Severi--Brauer variety with a point is projective space,
+  from the axioms and a left exact sheafification for the \'etale
+  topology (15\,547 declarations).
+\item Synthetic Stone duality~\cite{SSD}: Stone spaces and countably
+  presented Boolean algebras up to its Theorem~4.18, and sequential
+  colimits and first cohomology up to its Theorem~5.16 (3264 and 4448
+  declarations in its two parts, which share some files).
+\item Cohomology in synthetic Stone duality~\cite{CCA}, on top of the
+  previous one: the cohomology of compact Hausdorff spaces, up to the
+  comparison of $H^n$ with \v{C}ech cohomology as a natural isomorphism
+  of groups (about 8500 declarations with the files it reuses, checked
+  in under four seconds).
+\end{itemize}
+In the first two, about half of the declarations open no definition at
+all (6325 and 7879). The last two were written from the start by the
+rules of Section~\ref{sec:method}, comparing after each file what its
+declarations open with what their texts cite.
+
+\subsection{Where the checker departed from reading}
+
+Each of the following was found by a declaration that cost more than
+its text, and repaired in the checker.
+\begin{enumerate}
+\item \emph{Checking an application against a type.} The first version
+  brought the expected type to weak head normal form before choosing a
+  rule, even for an application whose type is inferred and compared.
+  This showed as a lemma made of two applications of another opening a
+  definition twenty times. With the rule of Section~\ref{sec:conv}, it
+  opens nothing, and the model
+  checks in 40.1~s instead of 47.5~s.
+\item \emph{Writing back a solution.} In the model, a construction
+  $\omega$ builds a square from a path (a \emph{side}) in a presheaf, and
+  a lemma, \kw{sqVN}, states that $\omega$ is natural: the square of a side
+  restricted along a map of the base category is the restriction of its
+  square. Its proof has three steps: the side is natural, $\omega$ is
+  natural, and the definition of the restriction of a path. The
+  definitional step costs nothing, and the naturality of $\omega$, stated
+  with its points, costs nothing; the cost was in using it under the
+  evaluation of the square at a point. It came from writing back the
+  omitted arguments as terms: the checker searched the instances in scope
+  for one with the right parameters by full conversion. With the
+  write-back recognising names only, \kw{sqVN} checks in 0.03~s instead of
+  0.82~s.
+\item \emph{The type of an equational chain.} While filling omitted
+  arguments, the checker inferred the type of a chain by checking it
+  again, so that a chain of $n$ steps checked its inner steps up to $n$
+  times. Reading the type off the motive of the chain removes 16\% of the
+  unfoldings of the model; a nine-step chain goes from 0.44~s to
+  0.16~s.
+\item \emph{Matching level applications.} Matching did not recognise
+  two applications of the same level-polymorphic definition as having
+  the same head; with this rule, a step of Proposition 3.3.1 of the
+  Ch\^atelet development goes from 2.06~s to 0.06~s.
+\end{enumerate}
+Stage 1 of conversion is essential: an experiment that compares
+arguments only strictly, and otherwise unfolds, takes more than 30~s on
+each file of the model tried, against 1.5--4~s.
+
+\subsection{Where the formal proof departed from the text}
+
+The departures that say something about the text are the places where
+the informal proof leaves a step to the reader, and the report shows
+it.
+
+\paragraph{An identification the text makes by notation.} What remains
+in most files is the decoding of element types: a text writes an element
+of the extension $\Gamma.A$ at $W$ as a pair $(\gamma,a)$ without
+comment, while the checker opens the code of the extension at each
+projection. On the naturality lemma \kw{sqVN} above, the definitions
+opened beyond the one its text
+cites are 838, of 38 kinds, all of this decoding. The report isolates
+them as one notion, the representation of the elements of a presheaf by
+codes. An accessor stated once (``the value of the path at the point
+$(k,j)$'')
+reduces such a declaration from 3091 to 697 definitions opened.
+
+\paragraph{A remark proved by a computation.} In the cohomology of
+synthetic Stone duality, the delooping of a homomorphism $h$ is
+multiplicative on loops because, on loops, it is
+$\mathrm{band}^{-1}\circ h\circ\mathrm{band}$, and the band is a group
+isomorphism. The first proof left the first point to conversion inside
+one comparison, and opened 1576 definitions. Stating it as a lemma,
+proved by \kw{refl} once, and the second point in the terms of the band,
+gives two declarations opening 240 and 490.
+
+\subsection{Totals}
+
+Table~\ref{tab:totals} gives the totals for the model: for a checker
+that brings both sides of a failed comparison by names to weak head
+normal form, as is usual; for the uniform checker, with the corrections
+1, 2 and~3 above; and with five files repaired by the rules of
+Section~\ref{sec:method} (one name for each notion), on a copy of the
+development.
+\begin{table}[ht]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+& by components & definitions opened & time\\
+\midrule
+both sides to normal form & 3\,183\,186 & 7\,699\,675 & 40.5 s\\
+uniform, corrections 1--2 & 1\,027\,755 & 1\,737\,502 & 27.4 s\\
+and correction 3 & 966\,171 & 1\,454\,435 & 29.8 s\\
+and repairs of five files & 632\,549 & 1\,229\,233 & 28.5 s\\
+\bottomrule
+\end{tabular}
+\caption{Checking the model (13\,475 declarations): comparisons settled
+  by components, definitions opened, and time spent in the
+  declarations. Times are of single runs and vary by about 10\%.}
+\label{tab:totals}
+\end{table}
+The Ch\^atelet development checks in 10.4~s with the uniform checker,
+opening 0.41 million definitions. A recent development of the exterior
+algebra and determinants (1385 declarations with the files it uses),
+not written by the rules of Section~\ref{sec:method}, opens 27\,110
+definitions with the uniform checker against 45\,171; its largest
+declaration opens 1364, mostly two aliases, \kw{Alg} and \kw{Ext}, of
+notions that have names.
+
+Several slow declarations of the model have not yet been read: in one,
+no comparison is costly, and the time is elsewhere; others are
+decodings of element types, for which a common accessor is proposed but
+not yet built.
+
+% ======================================================================
+\section{Alignment}\label{sec:align}
+
+That a formal proof is accepted says nothing about whether it is the
+proof of the text. This is the point of \cite{BCH}, who show that the
+Lean formalisation accompanying an announced proof of blow-up for the
+Navier--Stokes equations does not follow the text (some lemmas are proved
+in a different, weaker form), and argue that a faithful translation of a
+mathematical text cannot in general be guaranteed by a computation.
+
+The aim here is narrower and checkable: the \emph{structure} of the
+formal proof corresponds to a detailed, precise informal proof. The
+correspondence is term by term:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+informal proof & formal proof\\
+\midrule
+a notion, with its name & one definition, used under that name\\
+a lemma, a step & a declaration\\
+an intermediate claim & a point written in the chain\\
+``by Lemma $L$'' & an application of $L$, checked by names\\
+``by definition of $X$'' & an opening of $X$, declared\\
+a fact stated with a definition & a lemma proved by \kw{refl}\\
+\bottomrule
+\end{tabular}
+\end{center}
+The checker then measures the correspondence instead of ignoring it: a
+step that opens what its text does not cite, or costs what its text does
+not explain, is a place where the formal proof is not the text's proof,
+because a notion has a second name, a fact is used without being stated,
+or a computation replaces an argument. This does not decide whether the
+translation is faithful. What remains to a human reader is the
+comparison of the statements, which is feasible because they are
+written with the names of the text, and of the structure, which the
+table makes explicit. Alignment is then a property of the pair (text,
+formal proof), maintained while the proof is written.
+
+A formal proof is well written, in this sense, when its structure is
+that of a detailed informal proof, and then what it opens is what its
+text says it uses. The informal proof this asks for is longer than
+usual: it has the explicit connections between convertible notions,
+each a lemma proved by \kw{refl}, checked once, and free to use.
+
+% ======================================================================
+\section{Related work}\label{sec:related}
+
+\paragraph{Definitions in the calculus.} De Bruijn's
+$\Lambda\Delta$~\cite{LD} makes definitions part of the typed
+$\lambda$-calculus, with a reduction of their own, and his
+\emph{mathematical vernacular}~\cite{MV} is a language meant to be close
+to the way mathematics is written. The block structure of
+\textsc{Automath} is that of \sys. The theories of \textsc{Half}
+\cite{Ced} are lists of declarations; Wang~\cite{Wang} implements a type
+theory with definitions as closures, which \sys\ follows.
+
+\paragraph{Controlling unfolding.} Implementations of type theory decide
+what to unfold by heuristics: the kernel of Lean~\cite{Lean4} unfolds
+first the definition of greater height, which is close to our rule of
+opening the later definition, and other systems use priorities set by
+the user. Opaque definitions, and the controlled unfolding of
+\cite{CU}, make unfolding a matter of the theory rather than of the
+implementation. Neither relates unfolding to the informal checking of
+an argument. Our use differs: the strategy is kept uniform so that what
+is opened can be measured and compared with a text.
+
+\paragraph{Computation as explicit terms.} In objective type
+theory~\cite{OTT} the only judgemental equality is syntactic identity;
+the computation rules of $\Pi$ and of the identity type are
+propositional equalities with explicit witnesses, and type checking is
+quadratic. Its rules are interpretable in \sys, each witness becoming
+\kw{refl} (the unbased eliminator being defined from the based one),
+but not conversely: \sys\ has more equalities, hence fewer models, and
+does not inherit the quadratic bound. The two make opposite choices for
+the same information. Objective type theory records each use of a
+computation in the proof term; \sys\ leaves the term unchanged, lets it
+serve at a definitionally equal type, and reports which definitions the
+comparison needed.
+
+\paragraph{Explicit conversion certificates.} Carneiro's MM0~\cite{MM0}
+also aims at a small, efficient verifier. It separates a readable
+specification of axioms, definitions and theorem statements from a proof
+certificate, which can be produced by the MM1 front end. MM0 has a
+convertibility judgement for unfolding definitions, separate from the
+assertions of the chosen object logic. Its certificates give explicit
+conversion steps, including congruence and unfolding, and can share
+expressions and conversion proofs. Unlike the propositional computation
+witnesses of objective type theory, these certify the verifier's
+conversion judgement.
+
+MM0 therefore already makes unfolding explicit and inspectable. The
+difference is where the unfolding steps are supplied: MM0 checks those
+in a certificate; \sys\ chooses them while checking a dependent proof
+term and reports them. MM0's compiled certificates are intended for
+efficient verification; our aim is to relate the work on the written
+proof term to the reading of an accompanying text. Such a comparison
+could also be made from MM0 certificates, given a correspondence with
+the source proof. Observability alone is not a distinction between the
+systems.
+
+\paragraph{Structured formal proofs.} Mizar, Isar~\cite{Isar} and
+Lamport's structured proofs~\cite{Lamport} aim at formal texts whose
+structure is that of an informal proof; this is the aim of
+Section~\ref{sec:align}, which adds a measurement of what each step
+opens. De Bruijn's
+estimate of the ratio between the length of a formal text and that of
+the informal one~\cite{Survey} compares sizes, not structures.
+
+\paragraph{Human checking.} Ganesalingam and Gowers~\cite{GG} build a
+prover whose output reads as a human proof; in it, expanding a definition
+is a move of its own, of low priority, taken when nothing else applies.
+Ganesalingam~\cite{Gan} studies the language of mathematical texts,
+including definitions. Empirical studies of how mathematicians check
+proofs~\cite{Weber,IA} find that experts check steps locally, each
+against its justification, and spend their time on the steps whose
+justification is implicit. We know of no study of when a human reader
+opens a definition; the measurement proposed here gives a prediction
+that such a study could test.
+
+% ======================================================================
+\section{Limitations and open questions}\label{sec:open}
+
+The results are preliminary: the method has been applied to the slow
+declarations of two developments, and the repairs of the formal proofs
+have been made on a copy. The classification of the steps of a text is
+done by hand. We do not give here the metatheory of the algorithm; the
+declarative theory is that of \cite{BCDE} with definitions as in
+$\Lambda\Delta$. Open points of the checker are the comparison of types
+in the congruence rule of \kw{split}, $\eta$ for records, and the
+restrictions on local units (a local block cannot introduce a data type
+or a module).
+
+The checker, the examples and the developments are available at
+\url{https://github.com/coquand/unit}. The implementation is about 5700
+lines of Haskell:
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+part & lines\\
+\midrule
+syntax, values, evaluation, conversion, checking of units and segments & 1850\\
+omitted arguments: matching and writing back & 980\\
+universe levels: the decision of constraints~\cite{BC} & 170\\
+parser and resolver & 1740\\
+printer, with the read-back of values to terms & 170\\
+strict positivity & 130\\
+driver, checking server and reports & 620\\
+\bottomrule
+\end{tabular}
+\end{center}
+Besides the
+Haskell base library, the checker uses only the standard packages
+\kw{containers} (finite maps and sets) and, for the checking server,
+\kw{directory}; the parser is written by hand, without a parsing
+library. Each declaration has a budget of ten seconds; a
+checking server loads a development once and rechecks only the changed
+files and those depending on them.
+
+
+\section*{Acknowledgements}
+
+The design of \sys\ is by the author. Its implementation was written
+autonomously by Claude (Anthropic), and all the formalised examples were
+written autonomously by Claude and by Codex (OpenAI).
+
+\begin{thebibliography}{99}
+\bibitem{BC} M.~Bezem and T.~Coquand. Loop-checking and the uniform word
+  problem for join-semilattices with an inflationary endomorphism.
+  \emph{Theoretical Computer Science} 913, 2022.
+\bibitem{BCDE} M.~Bezem, T.~Coquand, P.~Dybjer and M.~Escard\'o. Type
+  theory with explicit universe polymorphism. arXiv:2212.03284.
+\bibitem{OTT} B.~van~den~Berg and M.~den~Besten. Quadratic type checking
+  for objective type theory. arXiv:2102.00905, 2021.
+\bibitem{BCH} A.~Bastounis, F.~Circelli and A.~C.~Hansen. Navier--Stokes
+  lost in translation: why Lean verification of AI autoformalisation does
+  not guarantee correct natural language proofs. arXiv:2610.08144, 2026.
+\bibitem{Burstall} R.~M.~Burstall. Inductively defined functions in functional
+  programming languages. \emph{Journal of Computer and System Sciences}
+  34(2/3):409--421, 1987.
+\bibitem{C96} T.~Coquand. An algorithm for type-checking dependent types.
+  \emph{Science of Computer Programming} 26(1--3):167--177, 1996.
+\bibitem{cubicaltt} C.~Cohen, T.~Coquand, S.~Huber and A.~M\"ortberg.
+  Cubical type theory: a constructive interpretation of the univalence
+  axiom. In \emph{TYPES 2015}, LIPIcs 69, 2018. Implementation
+  \texttt{cubicaltt}: \url{https://github.com/mortberg/cubicaltt}.
+\bibitem{Ced} J.~Cederquist. \emph{A Pointfree Approach to Constructive
+  Analysis in Type Theory}. PhD thesis, Chalmers, 1997.
+\bibitem{MM0} M.~Carneiro. Metamath Zero: designing a theorem prover
+  prover. In \emph{Intelligent Computer Mathematics (CICM 2020)},
+  LNCS 12236, Springer, 2020, 71--88.
+  \href{https://doi.org/10.1007/978-3-030-53518-6_5}{doi:10.1007/978-3-030-53518-6\_5}.
+\bibitem{CPT} T.~Coquand, R.~Pollack and M.~Takeyama. A logical
+  framework with dependently typed records. \emph{Fundamenta
+  Informaticae} 65, 2005.
+\bibitem{Rem} T.~Coquand. Some remarks about dependent type theory. In
+  B.~Meyer, editor, \emph{The French School of Programming}, Springer,
+  2023, 175--202.
+  \href{https://doi.org/10.1007/978-3-031-34518-0_8}{doi:10.1007/978-3-031-34518-0\_8}.
+\bibitem{LD} N.~G.~de~Bruijn. Generalizing Automath by means of a
+  lambda-typed lambda calculus. In \emph{Mathematical Logic and
+  Theoretical Computer Science}, Lecture Notes in Pure and Applied
+  Mathematics 106, Marcel Dekker, 1987, 71--92. Reprinted in
+  \emph{Selected Papers on Automath}, North-Holland, 1994.
+\bibitem{MV} N.~G.~de~Bruijn. The mathematical vernacular, a language
+  for mathematics with typed sets. In \emph{Workshop on Programming
+  Logic}, Marstrand, 1987. Reprinted in \emph{Selected Papers on
+  Automath}, North-Holland, 1994.
+\bibitem{Survey} N.~G.~de~Bruijn. A survey of the project Automath. In
+  \emph{To H.~B.~Curry: Essays on Combinatory Logic, Lambda Calculus and
+  Formalism}, Academic Press, 1980, 579--606.
+\bibitem{Lean4} L.~de~Moura and S.~Ullrich. The Lean 4 theorem prover and
+  programming language. In \emph{CADE-28}, LNCS 12699, Springer, 2021.
+\bibitem{Frege} G.~Frege. \emph{Begriffsschrift, eine der arithmetischen
+  nachgebildete Formelsprache des reinen Denkens}. Nebert, Halle, 1879.
+  English translation in J.~van Heijenoort, editor, \emph{From Frege to
+  G\"odel}, Harvard University Press, 1967.
+\bibitem{GG} M.~Ganesalingam and W.~T.~Gowers. A fully automatic theorem
+  prover with human-style output. \emph{Journal of Automated Reasoning}
+  58, 2017, 253--291.
+\bibitem{Gan} M.~Ganesalingam. \emph{The Language of Mathematics}. LNCS
+  7805, Springer, 2013.
+\bibitem{CU} D.~Gratzer, J.~Sterling, C.~Angiuli, T.~Coquand and
+  L.~Birkedal. Controlling unfolding in type theory. arXiv:2210.05420,
+  2022.
+\bibitem{IA} M.~Inglis and L.~Alcock. Expert and novice approaches to
+  reading mathematical proofs. \emph{Journal for Research in Mathematics
+  Education} 43, 2012, 358--390.
+\bibitem{Lamport} L.~Lamport. How to write a proof. \emph{American
+  Mathematical Monthly} 102, 1995, 600--608.
+\bibitem{SSD} F.~Cherubini, T.~Coquand, F.~Geerligs and H.~Moeneclaey.
+  A foundation for synthetic Stone duality. arXiv:2412.03203, 2024.
+\bibitem{CCA} F.~Cherubini, T.~Coquand, F.~Geerligs and H.~Moeneclaey.
+  Cohomology in synthetic Stone duality. Manuscript, 2026.
+\bibitem{SAG} F.~Cherubini, T.~Coquand and M.~Hutzler. A foundation for
+  synthetic algebraic geometry. arXiv:2307.00073.
+\bibitem{Wang} Q.~Wang. \emph{A Haskell Implementation for a Dependent
+  Type Theory with Definitions}. Master's thesis, Chalmers, 2021.
+\bibitem{Weber} K.~Weber. How mathematicians determine if an argument is
+  a valid proof. \emph{Journal for Research in Mathematics Education} 39,
+  2008, 431--459.
+\bibitem{Isar} M.~Wenzel. Isar: a generic interpretative approach to
+  readable formal proof documents. In \emph{TPHOLs'99}, LNCS 1690,
+  Springer, 1999.
+\end{thebibliography}
+
+\end{document}
