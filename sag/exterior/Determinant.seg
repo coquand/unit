@@ -6,6 +6,15 @@
 --   i(A b_1) ... i(A b_n) = phi_A (i(b_1) ... i(b_n)) = det B . phi_A (omega)
 --                         = det B . i(a_1) ... i(a_n) ,
 -- so det (A B) = det A . det B; and det I = 1 since i(e_1) ... i(e_n) = omega.
+-- Lock phi after its generator characterisation. Its typed value and
+-- preservation laws name the components of the bundled map once.
+-- value-eprod is induction on the product using the unit and product laws;
+-- phi-omega rewrites omega as std and applies that lemma and act-delta.
+-- Matrix entries and coordinates of the action have named defining
+-- equations. Thus scalar proofs can distribute and exchange sums using
+-- those names, with coordinate and entry locked. value-zero follows
+-- from additivity. value-alpha applies the generic grade-natural theorem
+-- because every generator image is again a generator, hence odd.
 level l ; open Ring[l] ;
 module Pr = Prelude[l] ; module Ps = Presentations[l] ;
 module F = Axioms[l].FunExtLemmas[fe @l] ;
@@ -25,7 +34,16 @@ module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
  -- matrices, by columns
 
  Mat (n : Nat) : U l = Ps.Fin n -> AL.Vec n ;
+ -- Matrix entries and the coordinate equation for matrix action. This is
+ -- the one boundary where the column/function representation is opened.
+ entry (n : Nat) (A : Mat n) (j i : Ps.Fin n) : R = A j i ;
+ entry-value (n : Nat) (A : Mat n) (j i : Ps.Fin n) : Id R (entry n A j i) (A j i) = refl (A j i) ;
  act (n : Nat) (A : Mat n) (v : AL.Vec n) : AL.Vec n = \ i -> S.sum n (\ j -> mul (v j) (A j i)) ;
+ transparent AL.coordinate ;
+ act-coordinate (n : Nat) (A : Mat n) (v : AL.Vec n) (i : Ps.Fin n) :
+  Id R (AL.coordinate n (act n A v) i)
+   (S.sum n (\ j -> mul (AL.coordinate n v j) (entry n A j i))) = refl (act n A v i) ;
+ opaque AL.coordinate ; opaque entry ;
  mmul (n : Nat) (A B : Mat n) : Mat n = \ k -> act n A (B k) ;
  idm (n : Nat) : Mat n = \ k -> D.delta n k ;
 
@@ -56,6 +74,27 @@ module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
      \ v -> EA.gen-sq n (act n A v))) ;
   phi : AL.AlgHom (Lam n) (Lam n) = UP.In[Lam n].ext n alt ;
   phi-gen (v : AL.Vec n) : Id (Ext n) (phi.1 (gen n v)) (gen n (act n A v)) = (UP.In[Lam n].extend n alt).2.1 v ;
+  opaque phi ;
+  -- The value and laws of this algebra map, named once for use on Ext n.
+  -- These accessors decode the bundled homomorphism here, rather than at
+  -- every subsequent application of one of its components.
+  value : Ext n -> Ext n = phi.1 ;
+  value-add (x y : Ext n) : Id (Ext n) (value (eadd n x y)) (eadd n (value x) (value y)) = phi.2.1 x y ;
+  value-scale (a : R) (x : Ext n) : Id (Ext n) (value (escale n a x)) (escale n a (value x)) = phi.2.2.1 a x ;
+  value-mul (x y : Ext n) : Id (Ext n) (value (emul n x y)) (emul n (value x) (value y)) = phi.2.2.2.1 x y ;
+  value-one : Id (Ext n) (value (eone n)) (eone n) = phi.2.2.2.2 ;
+  value-gen (v : AL.Vec n) : Id (Ext n) (value (gen n v)) (gen n (act n A v)) = phi-gen v ;
+  value-zero : Id (Ext n) (value (ezero n)) (ezero n) = EA.At[n].G.hom-zero value value-add ;
+  -- Generator images are generators, hence odd. The generic uniqueness
+  -- argument is checked once in ExteriorUniversal.grade-natural.
+  value-alpha (x : Ext n) : Id (Ext n) (value (alpha n x)) (alpha n (value x)) =
+   UP.grade-natural n n phi (\ v -> trans (ap (alpha n) (value-gen v))
+    (trans (EA.alpha-gen n (act n A v)) (ap (eneg n) (sym (value-gen v))))) x ;
+  value-eprod : (m : Nat) (u : Ps.Fin m -> Ext n) ->
+   Id (Ext n) (value (eprod n m u)) (eprod n m (\ k -> value (u k))) = split {
+   zero -> \ u -> value-one ;
+   suc m | r -> \ u -> trans (value-mul (eprod n m (\ k -> u (inl k))) (u (inr tt)))
+    (ap (\ t -> emul n t (value (u (inr tt)))) (r (\ k -> u (inl k)))) } ;
  } ;
 
  ---------------------------------------------------------------------
@@ -99,19 +138,19 @@ module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
   DG.deg-top n (eprod n n (\ k -> gen n (u k))) (DG.deg-eprod n n (\ k -> gen n (u k)) (\ k -> DG.deg-gen n (u k))) ;
 
  module Product (n : Nat) (A B : Mat n) {
-  phi : AL.AlgHom (Lam n) (Lam n) = Map[n,A].phi ;
+  module M = Map[n,A] ;
   -- phi (omega) = i(A 1) ... i(A n)
-  phi-omega : Id (Ext n) (phi.1 (DG.omega n)) (eprod n n (\ k -> gen n (A k))) =
-   trans (ap phi.1 (sym (std-omega n)))
-    (trans (hom-eprod n n phi n (\ k -> gen n (D.delta n k)))
-     (eprod-cong n n (\ k -> phi.1 (gen n (D.delta n k))) (\ k -> gen n (A k))
-       (\ k -> trans (Map[n,A].phi-gen (D.delta n k))
+  phi-omega : Id (Ext n) (M.value (DG.omega n)) (eprod n n (\ k -> gen n (A k))) =
+   trans (ap M.value (sym (std-omega n)))
+    (trans (M.value-eprod n (\ k -> gen n (D.delta n k)))
+     (eprod-cong n n (\ k -> M.value (gen n (D.delta n k))) (\ k -> gen n (A k))
+       (\ k -> trans (M.value-gen (D.delta n k))
                 (ap (gen n) (F.funext (Ps.Fin n) (\ i -> R) (act n A (D.delta n k)) (A k) (act-delta n A k)))))) ;
   prod-eq : Id (Ext n) (eprod n n (\ k -> gen n (mmul n A B k))) (escale n (det n B) (eprod n n (\ k -> gen n (A k)))) =
-   trans (eprod-cong n n (\ k -> gen n (mmul n A B k)) (\ k -> phi.1 (gen n (B k))) (\ k -> sym (Map[n,A].phi-gen (B k))))
-    (trans (sym (hom-eprod n n phi n (\ k -> gen n (B k))))
-     (trans (ap phi.1 (free n B))
-      (trans (phi.2.2.1 (det n B) (DG.omega n))
+   trans (eprod-cong n n (\ k -> gen n (mmul n A B k)) (\ k -> M.value (gen n (B k))) (\ k -> sym (M.value-gen (B k))))
+    (trans (sym (M.value-eprod n (\ k -> gen n (B k))))
+     (trans (ap M.value (free n B))
+      (trans (M.value-scale (det n B) (DG.omega n))
              (ap (escale n (det n B)) phi-omega)))) ;
   det-mul : Id R (det n (mmul n A B)) (mul (det n A) (det n B)) =
    trans (ap (top n) prod-eq)

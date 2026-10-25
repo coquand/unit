@@ -1,0 +1,126 @@
+-- Informal proof (coordinates for the subset basis used in PCC2).
+-- A subset of n+1 generators either omits or contains the last generator;
+-- Index(n+1) is consequently Index(n) + Index(n), and Index(0) is a point.
+-- Sum splits over these two cases. Congruence and preservation of sums by
+-- an additive map follow by induction on this decomposition.
+--
+-- A vector in Ext(n+1) is a pair. Its coefficient at an inl index is the
+-- corresponding coefficient of its first component, and similarly for
+-- inr and the second component. Tabulation is the inverse construction.
+-- Induction proves coeff-tab and tab-coeff; function extensionality then
+-- gives extensionality of vectors from equality of coefficients.
+--
+-- The basis vector at an index is supported in its selected component.
+-- Pairing a vector with this basis vector extracts its coefficient
+-- (dot-basis). Componentwise induction also proves that coefficients
+-- preserve addition and scaling and that dot is the sum of products of
+-- coefficients. A linear form is determined by its values on the basis:
+-- split a pair into its two coordinate inclusions and use induction.
+-- Testing all dot pairings now proves vector-expansion. Apply scalar
+-- linear-form extensionality to each output coordinate to obtain map-ext;
+-- additive maps preserve the expansion, giving map-expansion.
+--
+-- The induction steps explicitly use the recursive representations of
+-- Index and Ext, the two clauses of coeff/tab/basis/sum, and the
+-- componentwise addition and scaling of ExteriorModel. The named first
+-- and second accessors are opened locally in these component inductions.
+-- isSet identifies the supplied sethood of R at ring-module applications.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+Index : Nat -> U l = split { zero -> Top ; suc n | r -> Plus r r } ;
+
+module Sum (A : U l) (add : A -> A -> A) {
+ sum : (n : Nat) -> (Index n -> A) -> A = split {
+  zero -> \ f -> f tt ; suc n | r -> \ f -> add (r (\ i -> f (inl i))) (r (\ i -> f (inr i))) } ;
+ cong : (n : Nat) (f g : Index n -> A) -> ((i : Index n) -> Id A (f i) (g i)) -> Id A (sum n f) (sum n g) = split {
+  zero -> \ f g h -> h tt ; suc n | r -> \ f g h ->
+   trans (ap (\ x -> add x (sum n (\ i -> f (inr i)))) (r (\ i -> f (inl i)) (\ i -> g (inl i)) (\ i -> h (inl i))))
+    (ap (add (sum n (\ i -> g (inl i)))) (r (\ i -> f (inr i)) (\ i -> g (inr i)) (\ i -> h (inr i)))) } ;
+} ;
+module SumMap (A B : U l) (a : A -> A -> A) (b : B -> B -> B) (f : A -> B)
+ (h : (x y : A) -> Id B (f (a x y)) (b (f x) (f y))) {
+ module SA = Sum[A,a] ; module SB = Sum[B,b] ;
+ map : (n : Nat) (g : Index n -> A) -> Id B (f (SA.sum n g)) (SB.sum n (\ i -> f (g i))) = split {
+  zero -> \ g -> refl (f (g tt)) ; suc n | r -> \ g ->
+   trans (h (SA.sum n (\ i -> g (inl i))) (SA.sum n (\ i -> g (inr i))))
+    (trans (ap (\ x -> b x (f (SA.sum n (\ i -> g (inr i))))) (r (\ i -> g (inl i))))
+     (ap (b (SB.sum n (\ i -> f (g (inl i))))) (r (\ i -> g (inr i))))) } ;
+} ;
+
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module DU = ExteriorDuality[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+ module S = Sum[R,add] ;
+ module ES (n : Nat) { module SumE = Sum[Ext n,eadd n] ; } ;
+ coeff : (n : Nat) -> Ext n -> Index n -> R = split {
+  zero -> \ x i -> x ; suc n | r -> \ x -> split { inl i -> r x.1 i ; inr i -> r x.2 i } } ;
+ tab : (n : Nat) -> (Index n -> R) -> Ext n = split {
+  zero -> \ f -> f tt ; suc n | r -> \ f -> (r (\ i -> f (inl i)),r (\ i -> f (inr i))) } ;
+ coeff-tab : (n : Nat) (f : Index n -> R) (i : Index n) -> Id R (coeff n (tab n f) i) (f i) = split {
+  zero -> \ f -> split { tt -> refl (f tt) } ;
+  suc n | r -> \ f -> split { inl i -> r (\ j -> f (inl j)) i ; inr i -> r (\ j -> f (inr j)) i } } ;
+ transparent first ; transparent second ;
+ tab-coeff : (n : Nat) (x : Ext n) -> Id (Ext n) (tab n (coeff n x)) x = split {
+  zero -> \ x -> refl x ; suc n | r -> \ x -> ExteriorAlgebra[l].pair-eq (r (first n x)) (r (second n x)) } ;
+ ext (n : Nat) (x y : Ext n) (h : (i : Index n) -> Id R (coeff n x i) (coeff n y i)) : Id (Ext n) x y =
+  trans (sym (tab-coeff n x))
+   (trans (ap (tab n) (F.funext (Index n) (\ i -> R) (coeff n x) (coeff n y) h)) (tab-coeff n y)) ;
+ basis : (n : Nat) -> Index n -> Ext n = split {
+  zero -> \ i -> o ; suc n | r -> split { inl i -> (r i,ezero n) ; inr i -> (ezero n,r i) } } ;
+ dot-basis : (n : Nat) (x : Ext n) (i : Index n) -> Id R (DU.dot n x (basis n i)) (coeff n x i) = split {
+  zero -> \ x i -> mulO x ; suc n | r -> \ x -> split {
+   inl i -> trans (DU.cong (r (first n x) i) (DU.dot-zero n (second n x))) (addZ (coeff n (first n x) i)) ;
+   inr i -> trans (DU.cong (DU.dot-zero n (first n x)) (r (second n x) i)) (L.zl (coeff n (second n x) i)) } } ;
+ coeff-add : (n : Nat) (x y : Ext n) (i : Index n) -> Id R (coeff n (eadd n x y) i) (add (coeff n x i) (coeff n y i)) = split {
+  zero -> \ x y i -> refl (add x y) ; suc n | r -> \ x y -> split { inl i -> r (first n x) (first n y) i ; inr i -> r (second n x) (second n y) i } } ;
+ coeff-scale : (n : Nat) (a : R) (x : Ext n) (i : Index n) -> Id R (coeff n (escale n a x) i) (mul a (coeff n x i)) = split {
+  zero -> \ a x i -> refl (mul a x) ; suc n | r -> \ a x -> split { inl i -> r a (first n x) i ; inr i -> r a (second n x) i } } ;
+ coeff-zero : (n : Nat) (i : Index n) -> Id R (coeff n (ezero n) i) z = split {
+  zero -> \ i -> refl z ; suc n | r -> split { inl i -> r i ; inr i -> r i } } ;
+ dot-sum : (n : Nat) (x y : Ext n) -> Id R (DU.dot n x y) (S.sum n (\ i -> mul (coeff n x i) (coeff n y i))) = split {
+  zero -> \ x y -> refl (mul x y) ; suc n | r -> \ x y -> DU.cong (r (first n x) (first n y)) (r (second n x) (second n y)) } ;
+ -- Linear forms are determined by their values on the basis.
+ linear-ext (n : Nat) (f g : Ext n -> R) (hf : DU.Linear n f) (hg : DU.Linear n g)
+  (h : (i : Index n) -> Id R (f (basis n i)) (g (basis n i))) (x : Ext n) : Id R (f x) (g x) =
+  trans (DU.representation n f hf x)
+   (trans (ap (\ y -> DU.dot n y x) (ext n (DU.dual n f) (DU.dual n g)
+    (\ i -> trans (sym (dot-basis n (DU.dual n f) i))
+     (trans (sym (DU.representation n f hf (basis n i)))
+      (trans (h i) (trans (DU.representation n g hg (basis n i)) (dot-basis n (DU.dual n g) i)))))))
+    (sym (DU.representation n g hg x))) ;
+
+ -- The finite basis expansion is an equality in the exterior module.
+ vector-expansion (n : Nat) (x : Ext n) :
+  Id (Ext n) x (ES[n].SumE.sum n (\ i -> escale n (coeff n x i) (basis n i))) =
+  DU.dot-inj n x (ES[n].SumE.sum n (\ i -> escale n (coeff n x i) (basis n i))) (\ y -> calc R {
+   DU.dot n x y =< dot-sum n x y > S.sum n (\ i -> mul (coeff n x i) (coeff n y i))
+    =< sym (S.cong n (\ i -> DU.dot n (escale n (coeff n x i) (basis n i)) y)
+      (\ i -> mul (coeff n x i) (coeff n y i))
+      (\ i -> trans (DU.dot-scale-left n (coeff n x i) (basis n i) y)
+       (ap (mul (coeff n x i)) (trans (DU.dot-sym n (basis n i) y) (dot-basis n y i)))))
+    > S.sum n (\ i -> DU.dot n (escale n (coeff n x i) (basis n i)) y)
+    =< sym (SumMap[Ext n,R,eadd n,add,\ w -> DU.dot n w y,\ u v -> DU.dot-add-left n u v y].map n
+      (\ i -> escale n (coeff n x i) (basis n i)))
+    > DU.dot n (ES[n].SumE.sum n (\ i -> escale n (coeff n x i) (basis n i))) y }) ;
+ LinearMap (n m : Nat) (f : Ext n -> Ext m) : U l =
+  ((x y : Ext n) -> Id (Ext m) (f (eadd n x y)) (eadd m (f x) (f y))) *
+  ((a : R) (x : Ext n) -> Id (Ext m) (f (escale n a x)) (escale m a (f x))) ;
+ coord-linear (n m : Nat) (f : Ext n -> Ext m) (hf : LinearMap n m f) (i : Index m) : DU.Linear n (\ x -> coeff m (f x) i) =
+  ((\ x y -> trans (ap (\ w -> coeff m w i) (hf.1 x y)) (coeff-add m (f x) (f y) i)),
+   \ a x -> trans (ap (\ w -> coeff m w i) (hf.2 a x)) (coeff-scale m a (f x) i)) ;
+ map-ext (n m : Nat) (f g : Ext n -> Ext m) (hf : LinearMap n m f) (hg : LinearMap n m g)
+  (h : (i : Index n) -> Id (Ext m) (f (basis n i)) (g (basis n i))) (x : Ext n) : Id (Ext m) (f x) (g x) =
+  ext m (f x) (g x) (\ j -> linear-ext n (\ y -> coeff m (f y) j) (\ y -> coeff m (g y) j)
+   (coord-linear n m f hf j) (coord-linear n m g hg j) (\ i -> ap (\ w -> coeff m w j) (h i)) x) ;
+ map-expansion (n m : Nat) (f : Ext n -> Ext m) (hf : LinearMap n m f) (x : Ext n) :
+  Id (Ext m) (f x) (ES[m].SumE.sum n (\ i -> escale m (coeff n x i) (f (basis n i)))) =
+  trans (ap f (vector-expansion n x))
+   (trans (SumMap[Ext n,Ext m,eadd n,eadd m,f,hf.1].map n (\ i -> escale n (coeff n x i) (basis n i)))
+    (ES[m].SumE.cong n (\ i -> f (escale n (coeff n x i) (basis n i)))
+     (\ i -> escale m (coeff n x i) (f (basis n i))) (\ i -> hf.2 (coeff n x i) (basis n i)))) ;
+ opaque first ; opaque second ;
+} ;

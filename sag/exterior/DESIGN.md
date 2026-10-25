@@ -1,6 +1,7 @@
 # Exterior algebra and determinants in seg/primrec: design
 
-Status (2026-10-24): §5 steps 1–6 built and checked (47 modules, 0.4 s).
+Baseline status (2026-10-24): §5 steps 1–6 built and checked (47 modules,
+0.4 s). The PCC2 work of 2026-10-25 is recorded separately below.
 `ExteriorModel.seg` (§3, basis vector at the back, see the note there; 2 × 2
 smoke test); `ExteriorAlgebra.seg` (Λ_n as an `NCAlgebra`; i linear,
 α ∘ i = −i, i(a)² = 0); `Alternating.seg` (`Alt`, anticommutation);
@@ -32,6 +33,48 @@ monic polynomial of degree n"), Cayley–Hamilton, minor ideals Δ_k (rank,
 McCoy, `projective.pdf`'s Δ_1(I−P) = 1, Δ_2(I−P) = 0), and later traces,
 norms and discriminants for Châtelet. Model: the exterior algebra of
 Coquand–Quitté, *Constructive finite free resolutions* (`cffr.pdf`, §5).
+
+## PCC2 completion of the main results (2026-10-25)
+
+**PCC2 Theorems 1 and 13 are proved and checked.** The scalar statement is
+CFFR Proposition 8.3. Other developments can use the stable
+`ExteriorPluckerSylvester.Over[Rg,setR].At[n,p,a,B].cramer` and
+`.plucker-sylvester` interfaces. See `PCC2-READY.md` for the precise vector
+conventions, import order, support APIs and remaining packaging scope.
+
+The construction consists of the full perfect pairing (`ExteriorDuality`),
+subset coordinates and products (`ExteriorCoordinates`, `ExteriorBasis`),
+the higher adjugate and its first composition identity (`ExteriorAdjugate`),
+vector contraction and transposition (`ExteriorVectorContraction`,
+`ExteriorTranspose`), and degree/support and complementary-degree laws
+(`ExteriorHomogeneous`). `ExteriorCramerIdentity` adds the second
+composition identity, degree preservation, complementary-minor coefficients
+and the all-subset Cramer formula.
+
+`ExteriorReplacement` identifies those coefficients with determinants of
+the actual column-replaced matrix. `ExteriorPluckerSylvester` restricts the
+sum to subsets of cardinality p and proves Theorem 1. It constructs the
+general interior product by dot-duality, proves its degree, uniqueness,
+linearity in the first argument and volume formula, then transports
+Theorem 1 by star to prove Theorem 13. Star and unstar are also packaged
+as inverse maps on complementary homogeneous degrees.
+
+The former outstanding second identity, replacement coefficient, degree
+restriction and final contraction identity are thus discharged. A separate
+arbitrary homogeneous-form isomorphism, general shuffle lemma and packaged
+reverse implication are not additional premises of these proofs; their
+export status is explained in `PCC2-READY.md`. Identification of the original
+ordinary adjugate definition with the degree-one higher adjugate is not yet
+a separate interface.
+
+All new files have their informal proofs and unfolding specifications.
+The final two theorem proofs open only representation types (20 and 29
+openings respectively); the remaining library representation costs stay
+visible in the audit records. The earlier interface-refinement measurements
+are retained in `PCC2-TRANSPOSE-AUDIT.md`. Full check: **2,090 declarations,
+zero failures** (`PCC2-FULL.checked`). No HIT, extra axiom or checker change
+was introduced; the replacement-based foundation and name-only split
+comparison are retained.
 
 ## 1. Principles
 

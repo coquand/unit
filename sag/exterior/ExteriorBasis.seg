@@ -1,0 +1,138 @@
+-- Informal proof (PCC2's subset basis and the action on the top coefficient).
+-- Count the generators selected by a binary index. Induction proves that
+-- the count is at most n and that an index is either full or has count
+-- strictly below n (classify). The top coefficient of a vector of such a
+-- lower degree vanishes: this follows directly from the clauses of Deg.
+--
+-- List the selected standard vectors in their inherited order (select).
+-- If the last generator is omitted, lift the smaller list through iota;
+-- if included, append the last standard vector. The algebra-map property
+-- of iota transports ordered products, and multiplication by the last
+-- generator sends x to (0,x). Thus the coordinate basis vector is exactly
+-- the ordered product of the selected generators (basis-product).
+-- It has their count as degree; the full index gives the volume omega.
+--
+-- An exterior algebra map sends an ordered product to the product of the
+-- images. Hence image-product and image-degree. For the full index the
+-- top coefficient of that image is det A; for every other index both
+-- sides of top(phi_A b_i) = det A * top(b_i) vanish by degree. Finally both
+-- sides are linear forms in the input, so basis agreement (linear-ext)
+-- proves top-map on the whole exterior algebra.
+--
+-- Computational conventions: Index is a binary sum, Ext is a pair,
+-- Fin(n+1) = Fin(n) + Top; Bound/Low implement the indicated inequalities.
+-- The recursive clauses of count, select and the ordered product are
+-- opened in their induction steps. Algebra maps are used through their
+-- named values and laws where available. Vec is Fin n -> R and Mat is
+-- a family of columns. isSet identifies the supplied ring sethood when
+-- applying lemmas through these shared module instances.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module C = ExteriorCoordinates[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ; module L = RL[Rg] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module DG = ExteriorDegree[l].Over[Rg,setR] ;
+ module UP = ExteriorUniversal[l].Over[Rg,setR] ;
+ module DT = Determinant[l].Over[Rg,setR] ;
+ module CO = C.Over[Rg,setR] ;
+ module DU = ExteriorDuality[l].Over[Rg,setR] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module F = Axioms[l].FunExtLemmas[fe @l] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ -- Bound n p means p <= n; Low n p means p < n.
+ bound0 : Nat -> U l = split { zero -> Top ; suc p -> Empty } ;
+ boundStep (P : Nat -> U l) : Nat -> U l = split { zero -> Top ; suc p -> P p } ;
+ Bound : Nat -> Nat -> U l = split { zero -> bound0 ; suc n | r -> boundStep r } ;
+ Low (n p : Nat) : U l = Bound n (suc p) ;
+ weaken : (n p : Nat) -> Bound n p -> Bound (suc n) p = split {
+  zero -> split { zero -> \ h -> tt ; suc p -> \ h -> efq h } ;
+  suc n | r -> split { zero -> \ h -> tt ; suc p -> \ h -> r p h } } ;
+ count : (n : Nat) -> C.Index n -> Nat = split {
+  zero -> \ i -> zero ; suc n | r -> split { inl i -> r i ; inr i -> suc (r i) } } ;
+ full : (n : Nat) -> C.Index n = split { zero -> tt ; suc n | r -> inr r } ;
+ count-bound : (n : Nat) (i : C.Index n) -> Bound n (count n i) = split {
+  zero -> \ i -> tt ; suc n | r -> split { inl i -> weaken n (count n i) (r i) ; inr i -> r i } } ;
+ classify : (n : Nat) (i : C.Index n) -> Plus (Id (C.Index n) i (full n)) (Low n (count n i)) = split {
+  zero -> split { tt -> inl (refl tt) } ;
+  suc n | r -> split {
+   inl i -> inr (count-bound n i) ;
+   inr i -> aux i (r i)
+    where { aux (i : C.Index n) : Plus (Id (C.Index n) i (full n)) (Low n (count n i)) ->
+      Plus (Id (C.Index (suc n)) (inr i) (full (suc n))) (Low (suc n) (count (suc n) (inr i))) = split {
+       inl h -> inl (ap (\ j -> inr j) h) ; inr h -> inr h } ; } } } ;
+
+ -- Top vanishes below degree n.
+ low-top : (n p : Nat) (x : Ext n) -> Low n p -> DG.Deg n p x -> Id R (top n x) z = split {
+  zero -> \ p x h d -> efq h ;
+  suc n | r -> split {
+   zero -> \ x h d -> trans (ap (top n) d.2) (Adjugate[l].Over[Rg,setR].top-zero n) ;
+   suc p -> \ x h d -> r p x.2 h d.2 } } ;
+
+ select : (n : Nat) (i : C.Index n) -> Ps.Fin (count n i) -> AL.Vec n = split {
+  zero -> \ i -> split { } ;
+  suc n | r -> split {
+   inl i -> \ j -> UP.ext0 n (r i j) ;
+   inr i -> split { inl j -> UP.ext0 n (r i j) ; inr t -> UP.last n } } } ;
+ basis-right (n : Nat) (x : Ext n) : Id (Ext (suc n)) (ezero n,x) (emul (suc n) (UP.iota n x) (UP.E n)) =
+  sym (ExteriorAlgebra[l].pair-eq (EA.mul-zero-r n x)
+   (trans (EA.At[n].G.cong-add (EA.one-right n x) (EA.mul-zero-l n (alpha n (ezero n))))
+    (EA.eaddZ n x))) ;
+ lift-prod (n m : Nat) (v : Ps.Fin m -> AL.Vec n) :
+  Id (Ext (suc n)) (UP.iota n (eprod n m (\ j -> gen n (v j))))
+   (eprod (suc n) m (\ j -> gen (suc n) (UP.ext0 n (v j)))) =
+  trans (UP.iota-eprod n m (\ j -> gen n (v j)))
+   (DT.eprod-cong (suc n) m (\ j -> UP.iota n (gen n (v j)))
+    (\ j -> gen (suc n) (UP.ext0 n (v j))) (\ j -> UP.iota-gen n (v j))) ;
+ basis-product : (n : Nat) (i : C.Index n) ->
+  Id (Ext n) (CO.basis n i) (eprod n (count n i) (\ j -> gen n (select n i j))) = split {
+  zero -> \ i -> refl o ;
+  suc n | r -> split {
+   inl i -> trans (ap (UP.iota n) (r i)) (lift-prod n (count n i) (select n i)) ;
+   inr i -> trans (basis-right n (CO.basis n i))
+    (trans (ap (\ x -> emul (suc n) (UP.iota n x) (UP.E n)) (r i))
+     (DT.emul-cong (suc n) (lift-prod n (count n i) (select n i)) (sym (UP.E-gen n)))) } } ;
+ basis-degree (n : Nat) (i : C.Index n) : DG.Deg n (count n i) (CO.basis n i) =
+  DG.deg-eq n (count n i) (basis-product n i)
+   (DG.deg-eprod n (count n i) (\ j -> gen n (select n i j)) (\ j -> DG.deg-gen n (select n i j))) ;
+ basis-full : (n : Nat) -> Id (Ext n) (CO.basis n (full n)) (DG.omega n) = split {
+  zero -> refl o ; suc n | r -> ExteriorAlgebra[l].pair-eq (refl (ezero n)) r } ;
+
+ -- The exterior map sends each selected product to the product of images.
+ image-product (n : Nat) (A : DT.Mat n) (i : C.Index n) :
+  Id (Ext n) (DT.Map[n,A].value (CO.basis n i))
+   (eprod n (count n i) (\ j -> gen n (DT.act n A (select n i j)))) =
+  trans (ap DT.Map[n,A].value (basis-product n i))
+   (trans (DT.Map[n,A].value-eprod (count n i) (\ j -> gen n (select n i j)))
+    (DT.eprod-cong n (count n i) (\ j -> DT.Map[n,A].value (gen n (select n i j)))
+     (\ j -> gen n (DT.act n A (select n i j))) (\ j -> DT.Map[n,A].value-gen (select n i j)))) ;
+ image-degree (n : Nat) (A : DT.Mat n) (i : C.Index n) : DG.Deg n (count n i) (DT.Map[n,A].value (CO.basis n i)) =
+  DG.deg-eq n (count n i) (image-product n A i)
+   (DG.deg-eprod n (count n i) (\ j -> gen n (DT.act n A (select n i j)))
+    (\ j -> DG.deg-gen n (DT.act n A (select n i j)))) ;
+ image-top (n : Nat) (A : DT.Mat n) : Id R (top n (DT.Map[n,A].value (DG.omega n))) (det n A) =
+  ap (top n) DT.Product[n,A,DT.idm n].phi-omega ;
+ basis-top (n : Nat) (A : DT.Mat n) (i : C.Index n) :
+  Id R (top n (DT.Map[n,A].value (CO.basis n i))) (mul (det n A) (top n (CO.basis n i))) =
+  aux (classify n i)
+  where { aux : Plus (Id (C.Index n) i (full n)) (Low n (count n i)) ->
+    Id R (top n (DT.Map[n,A].value (CO.basis n i))) (mul (det n A) (top n (CO.basis n i))) = split {
+     inl e -> subst (\ j -> Id R (top n (DT.Map[n,A].value (CO.basis n j))) (mul (det n A) (top n (CO.basis n j)))) (sym e)
+      (trans (ap (\ x -> top n (DT.Map[n,A].value x)) (basis-full n))
+       (trans (image-top n A)
+        (sym (trans (ap (mul (det n A)) (trans (ap (top n) (basis-full n)) (DG.top-omega n))) (mulO (det n A)))))) ;
+     inr h -> trans (low-top n (count n i) (DT.Map[n,A].value (CO.basis n i)) h (image-degree n A i))
+      (sym (trans (ap (mul (det n A)) (low-top n (count n i) (CO.basis n i) h (basis-degree n i))) (L.mul-zero (det n A)))) } ; } ;
+
+ -- Multiplication by det(A) describes top on the full algebra, not only
+ -- on decomposable top-degree elements.
+ top-map (n : Nat) (A : DT.Mat n) (x : Ext n) :
+  Id R (top n (DT.Map[n,A].value x)) (mul (det n A) (top n x)) =
+  CO.linear-ext n (\ y -> top n (DT.Map[n,A].value y)) (\ y -> mul (det n A) (top n y))
+   ((\ y w -> trans (ap (top n) (DT.Map[n,A].value-add y w)) (DU.top-add n (DT.Map[n,A].value y) (DT.Map[n,A].value w))),
+    \ a y -> trans (ap (top n) (DT.Map[n,A].value-scale a y)) (DG.top-scale n a (DT.Map[n,A].value y)))
+   ((\ y w -> trans (ap (mul (det n A)) (DU.top-add n y w)) (dist (det n A) (top n y) (top n w))),
+    \ a y -> trans (ap (mul (det n A)) (DG.top-scale n a y)) (L.mul-swap (det n A) a (top n y)))
+   (basis-top n A) x ;
+} ;
