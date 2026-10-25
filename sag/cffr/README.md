@@ -36,5 +36,5 @@ Tools for §8: `ColumnBlocks` (the matrix (y, v), sums over subsets),
 (star(y) = ±y*), `Lemma84.GrTwo` (Gr ≥ 2, explicit form; `Enlarge`),
 `GradeBridge` (true grade ⇒ the explicit forms).
 
-Deviations and gaps: see `../HANDOFF-CFFR-A.md` (section Gaps).  Not yet
-done: Wiebe's theorem (ctete §2, step A7).
+Deviations and gaps: see `../HANDOFF-CFFR-A.md` (section Gaps).  Wiebe's
+theorem (ctete §2, step A7) is in `../wiebe/`.

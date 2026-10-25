@@ -27,7 +27,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and four developments written with it:
+This repository contains the checker and five developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -39,12 +39,18 @@ This repository contains the checker and four developments written with it:
   *Cohomology in synthetic Stone duality* (Cherubini, Coquand, Geerligs,
   Moeneclaey), up to Theorem 5.16 and Theorem 3.3.2 (`sag/stone`,
   `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`);
+- a formalisation of *Constructive finite free resolutions* (Coquand,
+  Quitté), §2–§8, with the true grade and Wiebe's theorem of *An
+  elementary proof of Wiebe's theorem* (Coquand, Tête) (`sag/cffr`,
+  `sag/koszul`, `sag/wiebe`);
 - a constructive theory of Girard's dilators: normal form, well-foundedness
   up to the Howard ordinal, morphisms, connected components and kinds
   (`dilators/`).
 
 ## Documents (`doc/`)
 
+- [`unit.pdf`](doc/unit.pdf): Unit, its uniform treatment of definitions
+  and what checking the developments below opens.
 - [`prototype.pdf`](doc/prototype.pdf): the checker: its type theory
   (Π, Σ, records, data types with recursion through eliminators, identity
   type, cumulative universes with level expressions and constraints) and its
@@ -91,6 +97,10 @@ This repository contains the checker and four developments written with it:
 - [`horrocks-gluing.pdf`](doc/horrocks-gluing.pdf): rank-one Horrocks over
   any commutative ring, by a local-global principle for comaximal monoids,
   organised as the formal proof suggested.
+- [`wiebe.pdf`](doc/wiebe.pdf): Wiebe's theorem relative to an ideal J
+  (Δ⊥ = (a) and (a)⊥ = (Δ) modulo (J, b) when Gr(b) ≥ n), following
+  Coquand–Tête with the generic change as a chain of elementary operations,
+  as checked in `sag/wiebe`.
 - [`dilators-constructive.pdf`](doc/dilators-constructive.pdf): a
   constructive theory of dilators (Girard, *Proof Theory and Logical
   Complexity*, chapters 8 and 9), as checked in `dilators/`.
@@ -145,11 +155,35 @@ used. Each directory has a `README.txt`.
 - `exterior`: the exterior algebra Λ(Aⁿ) by its universal property, and
   the determinant defined from it: det(AB) = det A det B, adj(A) A =
   det A · I, the characteristic polynomial (monic of degree n), the
-  determinant trick, integrality, Cayley–Hamilton (`exterior/DESIGN.md`).
+  determinant trick, integrality, Cayley–Hamilton; exterior coordinates,
+  duality, contraction, det Aᵀ = det A and the Plücker–Sylvester relation
+  of *Preuve conceptuelle d'une relation de Plücker–Sylvester* (pcc2)
+  (`exterior/DESIGN.md`).
 - `chatelet`: Châtelet's theorem from SAG and sheafification, with descent
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
+
+## Finite free resolutions and grade (`sag/cffr`, `sag/koszul`, `sag/wiebe`)
+
+Coquand–Quitté, *Constructive finite free resolutions*, with the true
+grade of Coquand–Tête, in the same setting as `sag/`; no prime ideals, no
+decidable equality, true grade relative to a finitely generated ideal J.
+Each directory has a `README.md` mapping statements to declarations.
+
+- `cffr`: §2 (regularity, the local–global Lemma 2.3, McCoy's Theorems
+  2.4–2.5 with minors as exterior coordinates), Theorem 3.1 (McCoy for
+  polynomials), Lemma 4.3, Theorem 6.8 (ranks and grades along a
+  resolution), Corollaries 7.5 and 7.6, and §8: Lemmas 8.1–8.6, Theorem
+  8.7 (the Cayley determinant is a gcd), Corollary 8.8 (Hilbert–Burch),
+  Theorem 8.9 and Corollary 8.10.
+- `koszul`: complexes and long exact sequences, the Koszul complex and the
+  Koszul grade (Lemmas 6.1–6.5, Theorem 6.4), the true grade (ctete §1:
+  Lemmas 1–7, Theorem 9; cffr Proposition 6.6, Lemma 6.7, localisation),
+  true grade ⇒ Koszul grade, Vasconcelos (Theorem 2.6, Corollary 2.7),
+  Theorems 7.1–7.3 (Peskine–Szpiro) and Corollary 7.4 (Rees).
+- `wiebe`: Wiebe's theorem (ctete Theorem 11, Corollary 12) relative to J;
+  see `doc/wiebe.pdf`.
 
 ## Synthetic Stone duality (`sag/stone`, `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`)
 
