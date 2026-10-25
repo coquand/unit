@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Rerun current-checker validation; this does not reproduce historical variants."""
+"""Rerun current-checker validation; this does not reproduce historical variants.
+
+With no arguments every check runs.  With labels (regressions, core,
+sag-chatelet, ...) only those run, and their results are merged into an
+existing manifest of the same revision and inputs, so that the whole
+validation can be made in several short runs."""
 from pathlib import Path
 import datetime
 import hashlib
@@ -7,6 +12,7 @@ import json
 import platform
 import re
 import subprocess
+import sys
 import time
 
 root = Path(__file__).resolve().parents[2]
@@ -25,7 +31,7 @@ inputs = sorted(set(root.glob('src/*.hs')) | set(root.glob('app/*.hs')) |
                  root / 'run-tests.sh', root / 'tests.expected'})
 manifest = {
     'date_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    'policy': 'split code identity and convertible dynamic arguments only; no branch or motive comparison',
+    'policy': 'splits and data types by code identity and convertible dynamic arguments only; no branch, motive or telescope comparison',
     'checkout_base': output('git', 'rev-parse', 'HEAD'),
     'platform': platform.platform(),
     'ghc': output('ghc', '--numeric-version'),
@@ -45,6 +51,16 @@ checks = [('regressions', ['./run-tests.sh'])] + [
     for name in ['core', 'sag/chatelet', 'sag/stone', 'sag/stoneseq',
                  'sag/cca', 'sag/ccacoh', 'sag/em']
 ]
+wanted = sys.argv[1:]
+if wanted:
+    checks = [c for c in checks if c[0] in wanted]
+    old = logdir / 'manifest.json'
+    if old.exists():
+        prev = json.loads(old.read_text())
+        if (prev.get('checkout_base') == manifest['checkout_base'] and
+                prev.get('inputs_sha256') == manifest['inputs_sha256'] and
+                prev.get('binary_sha256') == manifest['binary_sha256']):
+            manifest['results'] = [r for r in prev['results'] if r['label'] not in wanted]
 save()
 for label, command in checks:
     start = time.monotonic()
