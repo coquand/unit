@@ -1,0 +1,59 @@
+-- Explicit signed sums. These are additive-subgroup certificates, not
+-- arbitrary ring-linear combinations. No integer type or quotient is needed.
+level l ; open Ring[l] ;
+record Group (A : CRing) {
+ In : A.R -> U l ;
+ in-zero : In A.z ;
+ in-add (a b : A.R) : In a -> In b -> In (A.add a b) ;
+ in-neg (a : A.R) : In a -> In (A.neg a) ;
+} ;
+module Laws (A : CRing) (K : Group[A]) {
+ open A ; open RL[A] ;
+ transport (a b : R) (e : Id R a b) (h : K.In a) : K.In b = subst K.In e h ;
+ cancel-right (a b : R) (hb : K.In b) (hab : K.In (add a b)) : K.In a =
+  transport (add (add a b) (neg b)) a (add-neg-cancel a b)
+   (K.in-add (add a b) (neg b) hab (K.in-neg b hb)) ;
+ cancel-left (a b : R) (ha : K.In a) (hab : K.In (add a b)) : K.In b =
+  cancel-right b a ha (transport (add a b) (add b a) (addC a b) hab) ;
+ scaled (s : R) : Group[A] = mkGroup A (\ a -> K.In (mul s a))
+  (transport z (mul s z) (sym (mul-zero s)) K.in-zero)
+  (\ a b ha hb -> transport (add (mul s a) (mul s b)) (mul s (add a b)) (sym (dist s a b))
+    (K.in-add (mul s a) (mul s b) ha hb))
+  (\ a ha -> transport (neg (mul s a)) (mul s (neg a)) (sym (mul-neg s a)) (K.in-neg (mul s a) ha)) ;
+} ;
+data Signed (I : U l) : U l = zeroS | gen (i : I) | plusS (a b : Signed I) | negS (a : Signed I) ;
+module Over (A : CRing) (I : U l) (generator : I -> A.R) {
+ open A ;
+ value : Signed I -> R = split {
+  zeroS -> z ; gen i -> generator i ; plusS a b | va vb -> add va vb ; negS a | va -> neg va } ;
+ Certificate (a : R) : U l = (s : Signed I) * Id R (value s) a ;
+ zero : Certificate z = (zeroS,refl z) ;
+ element (i : I) : Certificate (generator i) = (gen i,refl (generator i)) ;
+ addition (a b : R) (ha : Certificate a) (hb : Certificate b) : Certificate (add a b) =
+  (plusS ha.1 hb.1,trans (ap (\ t -> add t (value hb.1)) ha.2) (ap (add a) hb.2)) ;
+ negative (a : R) (ha : Certificate a) : Certificate (neg a) = (negS ha.1,ap neg ha.2) ;
+ group : Group[A] = mkGroup A Certificate zero addition negative ;
+ module To (K : Group[A]) (on-generators : (i : I) -> K.In (generator i)) {
+  sums : (s : Signed I) -> K.In (value s) = split {
+   zeroS -> K.in-zero ; gen i -> on-generators i ;
+   plusS a b | ha hb -> K.in-add (value a) (value b) ha hb ; negS a | ha -> K.in-neg (value a) ha } ;
+  result (a : R) (w : Certificate a) : K.In a = subst K.In w.2 (sums w.1) ;
+ } ;
+} ;
+
+-- Bounded course-of-values induction, expressed using primitive recursion.
+module Bounded (P : Nat -> U l) {
+ Below (n : Nat) : U l = (i : Nat) -> FiniteJets[l].Lt n i -> P i ;
+}
+;
+extend : (n : Nat) (P : Nat -> U l) -> Bounded[P].Below n -> P n -> Bounded[P].Below (suc n) = split {
+ zero -> \ P h pn -> split { zero -> \ b -> pn ; suc i -> \ b -> efq b } ;
+ suc n | r -> \ P h pn -> split {
+  zero -> \ b -> h zero tt ;
+  suc i -> \ b -> r (\ k -> P (suc k)) (\ k c -> h (suc k) c) pn i b } } ;
+module Induction (P : Nat -> U l) (step : (n : Nat) -> Bounded[P].Below n -> P n) {
+ below : (n : Nat) -> Bounded[P].Below n = split {
+  zero -> \ i b -> efq b ;
+  suc n | r -> extend n P r (step n r) } ;
+ at (n : Nat) : P n = step n (below n) ;
+} ;

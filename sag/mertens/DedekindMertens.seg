@@ -1,0 +1,130 @@
+-- The two inductions of mertens.pdf, with the coefficient order reversed:
+-- write Q = g + X q and induct upwards through the coefficients of P.
+level l ; open Ring[l] ;
+module Over (A : CRing) {
+ open A ; open RL[A] ; open Poly[l].PolyR[A] ; open Mul[l].MulR[A] ;
+ module C = CoefficientProducts[l].Over[A] ;
+ module J = FiniteJets[l].Over[A] ;
+ module M = RawMultiplication[l].Laws[A] ;
+ open C ;
+
+ module Statement (p : P) (g : R) (q : P) {
+  m : Nat = len {R} q ;
+  module Target = ContentProduct[p,pmul p (cons g q),m] ;
+  Theorem : U l = (w : Word (suc m)) (j : Nat) ->
+   Target.Span.Certificate (mul (product p (suc m) w) (coef (cons g q) j)) ;
+ } ;
+
+ module Constant (p : P) (g : R) {
+  module S = Statement[p,g,nil] ;
+  module L = AdditiveSpan[l].Laws[A,S.Target.Span.group] ;
+  constant-coef (i : Nat) : Id R (coef (pmul p (cons g nil)) i) (mul g (coef p i)) =
+   trans (M.mul-comm p (cons g nil) i)
+    (trans (M.mul-single-left g p i) (coef-scal g p i)) ;
+  at-zero (w : Word (suc zero)) : S.Target.Span.Certificate
+   (mul (product p (suc zero) w) g) =
+   L.transport (mul o (coef (pmul p (cons g nil)) w.1)) (mul (mul (coef p w.1) o) g)
+    (trans (one-left (coef (pmul p (cons g nil)) w.1))
+     (trans (constant-coef w.1)
+      (trans (mulC g (coef p w.1)) (ap (\ t -> mul t g) (sym (mulO (coef p w.1)))))))
+    (S.Target.Span.element (tt,w.1)) ;
+  result (w : Word (suc zero)) : (j : Nat) ->
+   S.Target.Span.Certificate (mul (product p (suc zero) w) (coef (cons g nil) j)) = split {
+   zero -> at-zero w ;
+   suc j -> L.transport z (mul (product p (suc zero) w) z)
+    (sym (mul-zero (product p (suc zero) w))) S.Target.Span.zero } ;
+ } ;
+
+ module Step (p : P) (d : R) (q : P) (ih : Statement[p,d,q].Theorem) (g : R) {
+  k : Nat = len {R} q ;
+  m : Nat = suc k ;
+  tailQ : P = cons d q ;
+  wholeQ : P = cons g tailQ ;
+  h : P = pmul p wholeQ ;
+  ht : P = pmul p tailQ ;
+  module S = Statement[p,g,tailQ] ;
+  K : AdditiveSpan[l].Group[A] = S.Target.Span.group ;
+  module L = AdditiveSpan[l].Laws[A,K] ;
+  module IH = Statement[p,d,q] ;
+
+  Inner (i : Nat) : U l = (w : Word m) (j : Nat) ->
+   K.In (mul (coef p i) (mul (product p m w) (coef tailQ j))) ;
+  module B = AdditiveSpan[l].Bounded[Inner] ;
+
+  -- The coefficient identity for P (g + X tailQ).
+  head-equation (i : Nat) : Id R (coef h (suc i))
+   (add (mul g (coef p (suc i))) (coef ht i)) = next p wholeQ i ;
+
+   module HeadAt (i : Nat) (lower : B.Below (suc i)) (w : Word m) {
+    s : R = product p m w ;
+    module Scaled = C.InGroup[L.scaled s] ;
+    lower-products : Scaled.Products p tailQ i = \ a b j ->
+     L.transport (mul (coef p a) (mul s (coef tailQ j))) (mul s (mul (coef p a) (coef tailQ j)))
+      (mul-swap (coef p a) s (coef tailQ j)) (lower a b w j) ;
+    tail-in : K.In (mul s (coef ht i)) = Scaled.coefficient i p tailQ lower-products ;
+    sum-in : K.In (add (mul s (mul g (coef p (suc i)))) (mul s (coef ht i))) =
+     L.transport (mul s (coef h (suc i)))
+      (add (mul s (mul g (coef p (suc i)))) (mul s (coef ht i)))
+      (trans (ap (mul s) (head-equation i)) (dist s (mul g (coef p (suc i))) (coef ht i)))
+      (S.Target.Span.element (w,suc i)) ;
+    result : K.In (mul s (mul (coef p (suc i)) g)) =
+     L.transport (mul s (mul g (coef p (suc i)))) (mul s (mul (coef p (suc i)) g))
+      (ap (mul s) (mulC g (coef p (suc i))))
+      (L.cancel-right (mul s (mul g (coef p (suc i)))) (mul s (coef ht i)) tail-in sum-in) ;
+   } ;
+
+  -- If the inner statement holds below i, then F^m f_i g is in F^m H.
+  head-product : (i : Nat) -> B.Below i -> (w : Word m) ->
+   K.In (mul (product p m w) (mul (coef p i) g)) = split {
+   zero -> \ lower w -> L.transport (mul (product p m w) (coef h zero))
+    (mul (product p m w) (mul (coef p zero) g))
+    (ap (mul (product p m w)) (coef0-pmul p wholeQ)) (S.Target.Span.element (w,zero)) ;
+   suc i -> \ lower w -> HeadAt[i,lower,w].result } ;
+
+  rearrange (a b t : R) : Id R (mul (mul b t) (mul a g)) (mul (mul a t) (mul g b)) =
+   trans (mul-four b t a g)
+    (trans (ap (\ u -> mul u (mul t g)) (mulC b a))
+     (trans (sym (mul-four a t b g)) (ap (mul (mul a t)) (mulC b g)))) ;
+
+  module InnerStep (i : Nat) (lower : B.Below i) {
+   a : R = coef p i ;
+   module Scaled = AdditiveSpan[l].Laws[A,L.scaled a] ;
+   module Generator (w : Word k) (j : Nat) {
+    t : R = product p k w ;
+    s : R = mul a t ;
+    b : R = coef p (suc j) ;
+    head-in : K.In (mul s (mul g b)) =
+     L.transport (mul (mul b t) (mul a g)) (mul s (mul g b))
+      (rearrange a b t) (head-product i lower (suc j,w)) ;
+    sum-in : K.In (add (mul s (mul g b)) (mul s (coef ht j))) =
+     L.transport (mul s (coef h (suc j))) (add (mul s (mul g b)) (mul s (coef ht j)))
+      (trans (ap (mul s) (head-equation j)) (dist s (mul g b) (coef ht j)))
+      (S.Target.Span.element ((i,w),suc j)) ;
+    result : K.In (mul a (mul t (coef ht j))) =
+     L.transport (mul s (coef ht j)) (mul a (mul t (coef ht j)))
+      (sym (mulA a t (coef ht j)))
+      (L.cancel-left (mul s (mul g b)) (mul s (coef ht j)) head-in sum-in) ;
+   } ;
+   on-generators (v : Word k * Nat) : K.In (mul a (Generators p ht k v)) =
+    Generator[v.1,v.2].result ;
+   module Map = IH.Target.Span.To[L.scaled a,on-generators] ;
+   result : Inner i = \ w j ->
+    Map.result (mul (product p m w) (coef tailQ j)) (ih w j) ;
+  } ;
+  step (i : Nat) (lower : B.Below i) : Inner i = InnerStep[i,lower].result ;
+  module Ind = AdditiveSpan[l].Induction[Inner,step] ;
+  result (w : Word (suc m)) : (j : Nat) ->
+   K.In (mul (product p (suc m) w) (coef wholeQ j)) = split {
+   zero -> L.transport (mul (product p m w.2) (mul (coef p w.1) g))
+    (mul (mul (coef p w.1) (product p m w.2)) g)
+    (trans (mul-swap (product p m w.2) (coef p w.1) g) (mulA (coef p w.1) (product p m w.2) g))
+    (head-product w.1 (Ind.below w.1) w.2) ;
+   suc j -> L.transport (mul (coef p w.1) (mul (product p m w.2) (coef tailQ j)))
+    (mul (mul (coef p w.1) (product p m w.2)) (coef tailQ j))
+    (mulA (coef p w.1) (product p m w.2) (coef tailQ j)) (Ind.at w.1 w.2 j) } ;
+ } ;
+
+ theorem (p : P) : (q : P) (g : R) -> Statement[p,g,q].Theorem = split {
+  nil -> \ g -> Constant[p,g].result ;
+  cons d q | ih -> \ g -> Step[p,d,q,ih d,g].result } ;
+} ;
