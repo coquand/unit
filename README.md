@@ -1,13 +1,5 @@
 # Unit
 
-**Mathematical attribution: all mathematical results concerning the D
-modality and the D_n modalities in this repository are due to Christian
-Sattler.** This includes the constructions and proofs, the localisation
-results, the finite approximations, their truncation properties, and the
-strict-limit and homotopy-limit results for their tower. The corresponding
-Unit files and notes record a formalisation and exposition of Christian
-Sattler's mathematics.
-
 **Unit** is a small proof checker for a dependent type theory with
 definitions. Its module system is based on the segments of Automath: a
 module is a list of declarations (units), its parameters are the
@@ -46,6 +38,14 @@ This repository contains the checker and five developments written with it:
 - a constructive theory of Girard's dilators: normal form, well-foundedness
   up to the Howard ordinal, morphisms, connected components and kinds
   (`dilators/`).
+
+**Mathematical attribution: all mathematical results concerning the D
+modality and the D_n modalities in this repository are due to Christian
+Sattler.** This includes the constructions and proofs, the localisation
+results, the finite approximations, their truncation properties, and the
+strict-limit and homotopy-limit results for their tower. The corresponding
+Unit files and notes record a formalisation and exposition of Christian
+Sattler's mathematics.
 
 ## Documents (`doc/`)
 
