@@ -1,0 +1,114 @@
+-- Equality of the coefficients strictly below n. No quotient or infinite series.
+level l ; open Ring[l] ;
+Lt : Nat -> Nat -> U l = split {
+ zero -> \ k -> Empty ;
+ suc n | r -> split { zero -> Top ; suc k -> r k } } ;
+last : (n : Nat) -> Lt (suc n) n = split { zero -> tt ; suc n | r -> r } ;
+weaken : (n : Nat) (k : Nat) -> Lt n k -> Lt (suc n) k = split {
+ zero -> \ k h -> efq h ;
+ suc n | r -> split { zero -> \ h -> tt ; suc k -> r k } } ;
+module Over (A : CRing) {
+ open A ; open RL[A] ; open Poly[l].PolyR[A] ; open Mul[l].MulR[A] ;
+ module L = RawLaws[l].Laws[A] ; module M = RawMultiplication[l].Laws[A] ;
+ cg (op : R -> R -> R) (a b c d : R) (h : Id R a b) (k : Id R c d) :
+  Id R (op a c) (op b d) = trans (ap (\ t -> op t c) h) (ap (op b) k) ;
+ tail : P -> P = split { nil -> nil ; cons a p -> p } ;
+ tail-coef : (p : P) (k : Nat) -> Id R (coef (tail p) k) (coef p (suc k)) = split {
+  nil -> \ k -> refl z ; cons a p -> \ k -> refl (coef p k) } ;
+ Eq (n : Nat) (p q : P) : U l = (k : Nat) -> Lt n k -> Id R (coef p k) (coef q k) ;
+ same (n : Nat) (p : P) : Eq n p p = \ k h -> refl (coef p k) ;
+ from-peq (n : Nat) (p q : P) (h : peq p q) : Eq n p q = \ k b -> h k ;
+ reverse (n : Nat) (p q : P) (h : Eq n p q) : Eq n q p = \ k b -> sym (h k b) ;
+ compose (n : Nat) (p q r : P) (h : Eq n p q) (j : Eq n q r) : Eq n p r =
+  \ k b -> trans (h k b) (j k b) ;
+ down (n : Nat) (p q : P) (h : Eq (suc n) p q) : Eq n p q = \ k b -> h k (weaken n k b) ;
+ tails (n : Nat) (p q : P) (h : Eq (suc n) p q) : Eq n (tail p) (tail q) =
+  \ k b -> trans (tail-coef p k) (trans (h (suc k) b) (sym (tail-coef q k))) ;
+ extend : (n : Nat) (p q : P) -> Eq n p q -> Id R (coef p n) (coef q n) -> Eq (suc n) p q = split {
+  zero -> \ p q h top -> split { zero -> \ b -> top ; suc k -> \ b -> efq b } ;
+  suc n | r -> \ p q h top -> split {
+   zero -> \ b -> h zero tt ;
+   suc k -> \ b -> trans (sym (tail-coef p k))
+    (trans (r (tail p) (tail q) (tails n p q h)
+      (trans (tail-coef p n) (trans top (sym (tail-coef q n)))) k b)
+     (tail-coef q k)) } } ;
+ add-eq (n : Nat) (p p' q q' : P) (h : Eq n p p') (j : Eq n q q') :
+  Eq n (addP p q) (addP p' q') = \ k b ->
+  trans (coef-addP p q k) (trans (cg add _ _ _ _ (h k b) (j k b)) (sym (coef-addP p' q' k))) ;
+ mul-next : (p q : P) (k : Nat) ->
+  Id R (coef (pmul p q) (suc k))
+   (add (mul (coef p zero) (coef q (suc k))) (coef (pmul (tail p) q) k)) = split {
+  nil -> \ q k -> trans (M.mul-zero-left q (suc k))
+   (sym (trans (ap (\ t -> add t (coef (pmul nil q) k)) (zero-mul (coef q (suc k))))
+    (trans (zl (coef (pmul nil q) k)) (M.mul-zero-left q k)))) ;
+  cons a p -> \ q k -> trans (M.mul-cons-left a p q (suc k))
+   (trans (coef-addP (scal a q) (cons z (pmul p q)) (suc k))
+    (ap (\ t -> add t (coef (pmul p q) k)) (coef-scal a q (suc k)))) } ;
+ mul-eq : (n : Nat) (p p' q q' : P) -> Eq n p p' -> Eq n q q' -> Eq n (pmul p q) (pmul p' q') = split {
+  zero -> \ p p' q q' h j k b -> efq b ;
+  suc n | r -> \ p p' q q' h j -> split {
+   zero -> \ b -> trans (coef0-pmul p q)
+    (trans (cg mul _ _ _ _ (h zero tt) (j zero tt)) (sym (coef0-pmul p' q'))) ;
+   suc k -> \ b -> trans (mul-next p q k)
+    (trans (cg add _ _ _ _ (cg mul _ _ _ _ (h zero tt) (j (suc k) b))
+      (r (tail p) (tail p') q q' (tails n p p' h) (down n q q' j) k b))
+     (sym (mul-next p' q' k))) } } ;
+ mono : Nat -> R -> P = split { zero -> \ a -> cons a nil ; suc n | r -> \ a -> cons z (r a) } ;
+ mono-low : (n : Nat) (a : R) -> Eq n (mono n a) nil = split {
+  zero -> \ a k b -> efq b ;
+  suc n | r -> \ a -> split { zero -> \ b -> refl z ; suc k -> r a k } } ;
+ mono-top : (n : Nat) (a : R) -> Id R (coef (mono n a) n) a = split {
+  zero -> \ a -> refl a ; suc n | r -> r } ;
+ Change (n : Nat) (p q : P) (a : R) : U l =
+  Eq n p q * Id R (coef q n) (add (coef p n) a) ;
+ bump (n : Nat) (p : P) (a : R) : P = addP p (mono n a) ;
+ bump-change (n : Nat) (p : P) (a : R) : Change n p (bump n p a) a =
+  (reverse n (bump n p a) p
+    (compose n (bump n p a) (addP p nil) p
+      (add-eq n p p (mono n a) nil (same n p) (mono-low n a))
+      (from-peq n (addP p nil) p (L.add-zero p))),
+   trans (coef-addP p (mono n a) n) (ap (add (coef p n)) (mono-top n a))) ;
+ change-tail (n : Nat) (p q : P) (a : R) (h : Change (suc n) p q a) : Change n (tail p) (tail q) a =
+  (tails n p q h.1,trans (tail-coef q n) (trans h.2 (ap (\ t -> add t a) (sym (tail-coef p n))))) ;
+ change-mul-left : (n : Nat) (p p' q : P) (a : R) -> Change n p p' a ->
+  Change n (pmul p q) (pmul p' q) (mul a (coef q zero)) = split {
+  zero -> \ p p' q a h ->
+   (mul-eq zero p p' q q h.1 (same zero q),
+    trans (coef0-pmul p' q)
+     (trans (ap (\ t -> mul t (coef q zero)) h.2)
+      (trans (dist-left (coef p zero) a (coef q zero))
+       (ap (\ t -> add t (mul a (coef q zero))) (sym (coef0-pmul p q)))))) ;
+  suc n | r -> \ p p' q a h ->
+   (mul-eq (suc n) p p' q q h.1 (same (suc n) q),
+    trans (mul-next p' q n)
+     (trans (cg add _ _ _ _ (ap (\ t -> mul t (coef q (suc n))) (sym (h.1 zero tt)))
+       (r (tail p) (tail p') q a (change-tail n p p' a h)).2)
+      (trans (addA (mul (coef p zero) (coef q (suc n))) (coef (pmul (tail p) q) n) (mul a (coef q zero)))
+       (ap (\ t -> add t (mul a (coef q zero))) (sym (mul-next p q n)))))) } ;
+ change-add (n : Nat) (p p' q q' : P) (a b : R) (h : Change n p p' a) (j : Change n q q' b) :
+  Change n (addP p q) (addP p' q') (add a b) =
+  (add-eq n p p' q q' h.1 j.1,
+   trans (coef-addP p' q' n)
+    (trans (cg add _ _ _ _ h.2 j.2)
+     (trans (swap (coef p n) a (coef q n) b)
+      (ap (\ t -> add t (add a b)) (sym (coef-addP p q n)))))) ;
+ change-delta (n : Nat) (p q : P) (a b : R) (h : Change n p q a) (e : Id R a b) : Change n p q b =
+  (h.1,trans h.2 (ap (add (coef p n)) e)) ;
+ change-constant (n : Nat) (p : P) : Change n p p z = (same n p,sym (addZ (coef p n))) ;
+ module Product (n : Nat) (p p' q q' : P) (a b : R)
+  (h : Change (suc n) p p' a) (j : Change (suc n) q q' b) {
+  left : Change (suc n) (pmul p q') (pmul p' q') (mul a (coef q' zero)) = change-mul-left (suc n) p p' q' a h ;
+  right : Change (suc n) (pmul q p) (pmul q' p) (mul b (coef p zero)) = change-mul-left (suc n) q q' p b j ;
+  result : Change (suc n) (pmul p q) (pmul p' q') (add (mul a (coef q zero)) (mul (coef p zero) b)) =
+   (mul-eq (suc n) p p' q q' h.1 j.1,
+    trans left.2
+     (trans (cg add _ _ _ _
+       (trans (M.mul-comm p q' (suc n))
+        (trans right.2 (ap (\ t -> add t (mul b (coef p zero))) (M.mul-comm q p (suc n)))))
+       (ap (mul a) (sym (j.1 zero tt))))
+      (trans (sym (addA (coef (pmul p q) (suc n)) (mul b (coef p zero)) (mul a (coef q zero))))
+       (ap (add (coef (pmul p q) (suc n)))
+        (trans (addC (mul b (coef p zero)) (mul a (coef q zero)))
+         (ap (add (mul a (coef q zero))) (mulC b (coef p zero)))))))) ;
+ } ;
+} ;

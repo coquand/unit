@@ -1,0 +1,58 @@
+-- Polynomial expressions in two indeterminates, evaluated by ring maps.
+-- dx and dy are the evaluated formal partial derivatives (product rule).
+level l ; open Ring[l] ;
+module Over (A : CRing) {
+ data Expr : U l = xE | yE | cE (a : A.R) | addE (p q : Expr) | mulE (p q : Expr) ;
+ module In (B : CRing) (h : RingHom[l].Hom A B) {
+  open B ; open RL[B] ; open Poly[l].PolyR[B] ; open Mul[l].MulR[B] ;
+  module J = FiniteJets[l].Over[B] ;
+  val (x y : R) : Expr -> R = split {
+   xE -> x ; yE -> y ; cE a -> h.1 a ;
+   addE p q | vp vq -> add vp vq ; mulE p q | vp vq -> mul vp vq } ;
+  raw (x y : P) : Expr -> P = split {
+   xE -> x ; yE -> y ; cE a -> cons (h.1 a) nil ;
+   addE p q | vp vq -> addP vp vq ; mulE p q | vp vq -> pmul vp vq } ;
+  dx (x y : R) : Expr -> R = split {
+   xE -> o ; yE -> z ; cE a -> z ; addE p q | dp dq -> add dp dq ;
+   mulE p q | dp dq -> add (mul dp (val x y q)) (mul (val x y p) dq) } ;
+  dy (x y : R) : Expr -> R = split {
+   xE -> z ; yE -> o ; cE a -> z ; addE p q | dp dq -> add dp dq ;
+   mulE p q | dp dq -> add (mul dp (val x y q)) (mul (val x y p) dq) } ;
+  jacobian (x y : R) (p q : Expr) : R =
+   add (mul (dx x y p) (dy x y q)) (neg (mul (dy x y p) (dx x y q))) ;
+  raw-zero (x y : P) : (e : Expr) -> Id R (coef (raw x y e) zero) (val (coef x zero) (coef y zero) e) = split {
+   xE -> refl (coef x zero) ; yE -> refl (coef y zero) ; cE a -> refl (h.1 a) ;
+   addE p q | hp hq -> trans (coef-addP (raw x y p) (raw x y q) zero) (J.cg add _ _ _ _ hp hq) ;
+   mulE p q | hp hq -> trans (coef0-pmul (raw x y p) (raw x y q)) (J.cg mul _ _ _ _ hp hq) } ;
+  raw-eq (n : Nat) (x x' y y' : P) (hx : J.Eq n x x') (hy : J.Eq n y y') :
+   (e : Expr) -> J.Eq n (raw x y e) (raw x' y' e) = split {
+   xE -> hx ; yE -> hy ; cE a -> J.same n (cons (h.1 a) nil) ;
+   addE p q | hp hq -> J.add-eq n _ _ _ _ hp hq ;
+   mulE p q | hp hq -> J.mul-eq n _ _ _ _ hp hq } ;
+  module Taylor (n : Nat) (x x' y y' : P) (a b : R)
+   (hx : J.Change (suc n) x x' a) (hy : J.Change (suc n) y y' b) {
+   x0 : R = coef x zero ; y0 : R = coef y zero ;
+   delta (e : Expr) : R = add (mul (dx x0 y0 e) a) (mul (dy x0 y0 e) b) ;
+   Statement (e : Expr) : U l = J.Change (suc n) (raw x y e) (raw x' y' e) (delta e) ;
+   add-step (p q : Expr) (hp : Statement p) (hq : Statement q) : Statement (addE p q) =
+    J.change-delta (suc n) (raw x y (addE p q)) (raw x' y' (addE p q)) (add (delta p) (delta q)) (delta (addE p q))
+     (J.change-add (suc n) (raw x y p) (raw x' y' p) (raw x y q) (raw x' y' q) (delta p) (delta q) hp hq)
+     (JetIdentities[l].SumDifferential[B,dx x0 y0 p,dy x0 y0 p,dx x0 y0 q,dy x0 y0 q,a,b].proof) ;
+   mul-step (p q : Expr) (hp : Statement p) (hq : Statement q) : Statement (mulE p q) =
+    J.change-delta (suc n) (raw x y (mulE p q)) (raw x' y' (mulE p q))
+     (add (mul (delta p) (coef (raw x y q) zero)) (mul (coef (raw x y p) zero) (delta q))) (delta (mulE p q))
+     (J.Product[n,raw x y p,raw x' y' p,raw x y q,raw x' y' q,delta p,delta q,hp,hq].result)
+     (trans (J.cg add _ _ _ _ (ap (mul (delta p)) (raw-zero x y q))
+       (ap (\ t -> mul t (delta q)) (raw-zero x y p)))
+      (JetIdentities[l].ProductDifferential[B,val x0 y0 p,val x0 y0 q,dx x0 y0 p,dy x0 y0 p,dx x0 y0 q,dy x0 y0 q,a,b].proof)) ;
+   result : (e : Expr) -> Statement e = split {
+    xE -> J.change-delta (suc n) x x' a (delta xE) hx
+     (sym (trans (J.cg add _ _ _ _ (one-left a) (zero-mul b)) (addZ a))) ;
+    yE -> J.change-delta (suc n) y y' b (delta yE) hy
+     (sym (trans (J.cg add _ _ _ _ (zero-mul a) (one-left b)) (zl b))) ;
+    cE c -> J.change-delta (suc n) _ _ z (delta (cE c)) (J.change-constant (suc n) (cons (h.1 c) nil))
+     (sym (trans (J.cg add _ _ _ _ (zero-mul a) (zero-mul b)) (addZ z))) ;
+    addE p q | hp hq -> add-step p q hp hq ; mulE p q | hp hq -> mul-step p q hp hq } ;
+  } ;
+ } ;
+} ;

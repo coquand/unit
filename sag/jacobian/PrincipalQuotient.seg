@@ -1,0 +1,99 @@
+-- The concrete quotient A/(g), with a proved principal-ideal kernel certificate.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (g : A.R) {
+ open A ; module C = PrincipalCertificates[l].Over[A,g] ;
+ Relation (a b : R) : U l = Tr.Trunc[C.Certificate a b].carrier ;
+ prop (a b : R) : Pr.isProp (Relation a b) = Tr.Trunc[C.Certificate a b].proposition ;
+ equal (a b : R) (e : Id R a b) : Relation a b = Tr.Trunc[C.Certificate a b].inc (C.equal a b e) ;
+ reflexive (a : R) : Relation a a = equal a a (refl a) ;
+ symmetric (a b : R) : Relation a b -> Relation b a =
+  Tr.Trunc[C.Certificate a b].induction @l (\ w -> Relation b a) (\ w -> prop b a)
+   (\ w -> Tr.Trunc[C.Certificate b a].inc (C.symmetric a b w)) ;
+ transitive (a b c : R) (h : Relation a b) (k : Relation b c) : Relation a c =
+  Tr.Trunc[C.Certificate a b].induction @l (\ w -> Relation a c) (\ w -> prop a c)
+   (\ w -> Tr.Trunc[C.Certificate b c].induction @l (\ v -> Relation a c) (\ v -> prop a c)
+    (\ v -> Tr.Trunc[C.Certificate a c].inc (C.transitive a b c w v)) k) h ;
+ module BinaryRelation (op : R -> R -> R)
+  (cert : (a b c d : R) -> C.Certificate a b -> C.Certificate c d -> C.Certificate (op a c) (op b d)) {
+  respects (a b c d : R) (h : Relation a b) (k : Relation c d) : Relation (op a c) (op b d) =
+   Tr.Trunc[C.Certificate a b].induction @l (\ w -> Relation (op a c) (op b d)) (\ w -> prop _ _)
+    (\ w -> Tr.Trunc[C.Certificate c d].induction @l (\ v -> Relation (op a c) (op b d)) (\ v -> prop _ _)
+     (\ v -> Tr.Trunc[C.Certificate (op a c) (op b d)].inc (cert a b c d w v)) k) h ;
+ } ;
+ module AddRel = BinaryRelation[add,C.addition] ; module MulRel = BinaryRelation[mul,C.multiplication] ;
+ module Q = Quotient[l].Quot[R,Relation,prop,reflexive,symmetric,transitive] ;
+ Carrier : U l = Q.Q ; include : R -> Carrier = Q.inc ; set : Pr.isSet Carrier = Q.set ;
+ module Binary (op : R -> R -> R)
+  (cong : (a b c d : R) -> Relation a b -> Relation c d -> Relation (op a c) (op b d)) {
+  module Right (a : R) {
+   module D = Q.Descend[Carrier,set,\ b -> include (op a b),\ b c h -> Q.relates _ _ (cong a a b c (reflexive a) h)] ;
+  } ;
+  respects (a b : R) (h : Relation a b) : Id (Carrier -> Carrier) Right[a].D.map Right[b].D.map =
+   FE.funext Carrier (\ q -> Carrier) _ _
+    (Q.induction @l (\ q -> Id Carrier (Right[a].D.map q) (Right[b].D.map q)) (\ q -> set _ _)
+     (\ c -> trans (Right[a].D.beta c)
+      (trans (Q.relates _ _ (cong a b c c h (reflexive c))) (sym (Right[b].D.beta c))))) ;
+  module Left = Q.Descend[Carrier -> Carrier,FE.isSet-Pi Carrier (\ q -> Carrier) (\ q -> set),\ a -> Right[a].D.map,respects] ;
+  opQ : Carrier -> Carrier -> Carrier = Left.map ;
+  beta (a b : R) : Id Carrier (opQ (include a) (include b)) (include (op a b)) =
+   trans (Pr.happly Carrier (\ q -> Carrier) _ _ (Left.beta a) (include b)) (Right[a].D.beta b) ;
+ } ;
+ module Add = Binary[add,AddRel.respects] ; module Mult = Binary[mul,MulRel.respects] ;
+ addQ : Carrier -> Carrier -> Carrier = Add.opQ ; mulQ : Carrier -> Carrier -> Carrier = Mult.opQ ;
+ negQ (a : Carrier) : Carrier = mulQ (include (neg o)) a ;
+ zeroQ : Carrier = include z ; oneQ : Carrier = include o ;
+ neg-beta (a : R) : Id Carrier (negQ (include a)) (include (neg a)) =
+  trans (Mult.beta (neg o) a)
+   (ap include (trans (RL[A].neg-mul-left o a) (ap neg (RL[A].one-left a)))) ;
+ forall2 (P : Carrier -> Carrier -> U l) (pr : (a b : Carrier) -> Pr.isProp (P a b))
+  (v : (a b : R) -> P (include a) (include b)) : (a b : Carrier) -> P a b =
+  Q.induction @l (\ a -> (b : Carrier) -> P a b) (\ a -> FE.isProp-Pi Carrier (P a) (pr a))
+   (\ a -> Q.induction @l (P (include a)) (pr (include a)) (v a)) ;
+ forall3 (P : Carrier -> Carrier -> Carrier -> U l) (pr : (a b c : Carrier) -> Pr.isProp (P a b c))
+  (v : (a b c : R) -> P (include a) (include b) (include c)) : (a b c : Carrier) -> P a b c =
+  forall2 (\ a b -> (c : Carrier) -> P a b c) (\ a b -> FE.isProp-Pi Carrier (P a b) (pr a b))
+   (\ a b -> Q.induction @l (P (include a) (include b)) (pr (include a) (include b)) (v a b)) ;
+ data Form : U l = atom (a : R) | sumF (p q : Form) | mulF (p q : Form) | negF (p : Form) ;
+ raw : Form -> R = split { atom a -> a ; sumF p q | rp rq -> add rp rq ; mulF p q | rp rq -> mul rp rq ; negF p | rp -> neg rp } ;
+ val : Form -> Carrier = split { atom a -> include a ; sumF p q | vp vq -> addQ vp vq ; mulF p q | vp vq -> mulQ vp vq ; negF p | vp -> negQ vp } ;
+ sound : (p : Form) -> Id Carrier (val p) (include (raw p)) = split {
+  atom a -> refl (include a) ;
+  sumF p q | hp hq -> trans (Presentations[l].cong2 Carrier addQ _ _ _ _ hp hq) (Add.beta (raw p) (raw q)) ;
+  mulF p q | hp hq -> trans (Presentations[l].cong2 Carrier mulQ _ _ _ _ hp hq) (Mult.beta (raw p) (raw q)) ;
+  negF p | hp -> trans (ap negQ hp) (neg-beta (raw p)) } ;
+ lift (p q : Form) (e : Id R (raw p) (raw q)) : Id Carrier (val p) (val q) =
+  trans (sound p) (trans (ap include e) (sym (sound q))) ;
+ add-assoc : (a b c : Carrier) -> Id Carrier (addQ a (addQ b c)) (addQ (addQ a b) c) =
+  forall3 (\ a b c -> Id Carrier (addQ a (addQ b c)) (addQ (addQ a b) c)) (\ a b c -> set _ _)
+   (\ a b c -> lift (sumF (atom a) (sumF (atom b) (atom c))) (sumF (sumF (atom a) (atom b)) (atom c)) (addA a b c)) ;
+ add-comm : (a b : Carrier) -> Id Carrier (addQ a b) (addQ b a) =
+  forall2 (\ a b -> Id Carrier (addQ a b) (addQ b a)) (\ a b -> set _ _)
+   (\ a b -> lift (sumF (atom a) (atom b)) (sumF (atom b) (atom a)) (addC a b)) ;
+ add-zero : (a : Carrier) -> Id Carrier (addQ a zeroQ) a =
+  Q.induction @l (\ a -> Id Carrier (addQ a zeroQ) a) (\ a -> set _ _)
+   (\ a -> lift (sumF (atom a) (atom z)) (atom a) (addZ a)) ;
+ add-neg : (a : Carrier) -> Id Carrier (addQ a (negQ a)) zeroQ =
+  Q.induction @l (\ a -> Id Carrier (addQ a (negQ a)) zeroQ) (\ a -> set _ _)
+   (\ a -> lift (sumF (atom a) (negF (atom a))) (atom z) (addN a)) ;
+ mul-assoc : (a b c : Carrier) -> Id Carrier (mulQ a (mulQ b c)) (mulQ (mulQ a b) c) =
+  forall3 (\ a b c -> Id Carrier (mulQ a (mulQ b c)) (mulQ (mulQ a b) c)) (\ a b c -> set _ _)
+   (\ a b c -> lift (mulF (atom a) (mulF (atom b) (atom c))) (mulF (mulF (atom a) (atom b)) (atom c)) (mulA a b c)) ;
+ mul-comm : (a b : Carrier) -> Id Carrier (mulQ a b) (mulQ b a) =
+  forall2 (\ a b -> Id Carrier (mulQ a b) (mulQ b a)) (\ a b -> set _ _)
+   (\ a b -> lift (mulF (atom a) (atom b)) (mulF (atom b) (atom a)) (mulC a b)) ;
+ mul-one : (a : Carrier) -> Id Carrier (mulQ a oneQ) a =
+  Q.induction @l (\ a -> Id Carrier (mulQ a oneQ) a) (\ a -> set _ _)
+   (\ a -> lift (mulF (atom a) (atom o)) (atom a) (mulO a)) ;
+ distrib : (a b c : Carrier) -> Id Carrier (mulQ a (addQ b c)) (addQ (mulQ a b) (mulQ a c)) =
+  forall3 (\ a b c -> Id Carrier (mulQ a (addQ b c)) (addQ (mulQ a b) (mulQ a c))) (\ a b c -> set _ _)
+   (\ a b c -> lift (mulF (atom a) (sumF (atom b) (atom c))) (sumF (mulF (atom a) (atom b)) (mulF (atom a) (atom c))) (dist a b c)) ;
+ ring : CRing = mkCRing Carrier zeroQ oneQ addQ mulQ negQ add-assoc add-comm add-zero add-neg mul-assoc mul-comm mul-one distrib ;
+ inclusion : RingHom[l].Hom A ring = (include,refl oneQ,\ a b -> sym (Add.beta a b),\ a b -> sym (Mult.beta a b)) ;
+ kills : Id Carrier (include g) zeroQ = Q.relates g z (Tr.Trunc[C.Certificate g z].inc C.generator) ;
+ Divides (a : R) : U l = (w : R) * Id R a (mul g w) ;
+ kernel (a : R) (h : Id Carrier (include a) zeroQ) : Tr.Trunc[Divides a].carrier =
+  Tr.Trunc[C.Certificate a z].induction @l (\ w -> Tr.Trunc[Divides a].carrier) (\ w -> Tr.Trunc[Divides a].proposition)
+   (\ w -> Tr.Trunc[Divides a].inc (w.1,trans w.2 (RL[A].zl (mul g w.1)))) (Q.effective a z h) ;
+} ;
