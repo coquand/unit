@@ -1,0 +1,221 @@
+-- livre B-7.5 in the book's generality: unknowns and right-hand side in a
+-- module F.  U is a ring matrix with n columns u_j in R^m, V in F^m, the
+-- unknowns x in F^n, (U x)_r = sum_j u_j(r) x_j (lin).  The (n + 1)-minors
+-- of W = [U | V] are elements of F, expanded along the V column:
+-- mu_sigma = sum_t c_sigma(t) V_sigma(t), c_sigma(t) = det (W_sigma with
+-- its last column replaced by e_t) (for F = R this is det W_sigma).
+-- Theorem: if every mu_sigma is 0 and Gr(D_n(U); F) >= 2, the system has a
+-- unique solution; conversely a solution makes every mu_sigma vanish.
+--
+-- The proof is Sharpe's (Sharpe.seg), with sums in F:
+-- (row) mu_(rho, r) + (U X_rho)_r = delta_rho V_r, where
+-- X_rho,j = sum_t det U_rho[j <- e_t] V_rho(t): SharpeRows.Row at v = e_t,
+-- multiplied by V_sigma(t) and summed over t (the e_last term gives
+-- det U_rho[j <- 0] = 0).
+-- (unique) sum_t det U_rho[k <- e_t] (U x)_(rho t) = delta_rho x_k
+-- (Adjugate.adj-mul), so U x = U y gives delta_rho x = delta_rho y.
+-- (exists) as in Sharpe.  (necessary) mu_sigma = sum_j c x_j with
+-- c = det W_sigma[last <- u_j o sigma] = 0 (a repeated column).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ; module L = RL[Rg] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module D = MnSums[l].Over[Rg] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module DT = Determinant[l].Over[Rg,setR] ;
+ module ADJ = Adjugate[l].Over[Rg,setR] ;
+ module SR = SharpeRows[l].Over[Rg,setR] ;
+ module DD = Depth[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ module At (E : DD.MO.Module) {
+  module A = DD.At[E] ;
+  module MA = A.MA ;
+  M : U l = A.M ;
+  sc (a : R) (x : M) : M = A.sc a x ;
+
+  ---------------------------------------------------------------------
+  -- finite sums in F
+  msum : (n : Nat) -> (Ps.Fin n -> M) -> M = split {
+   zero -> \ f -> E.mz ; suc n | r -> \ f -> E.madd (f (inr tt)) (r (\ i -> f (inl i))) } ;
+  msum-cong : (n : Nat) (f g : Ps.Fin n -> M) -> ((i : Ps.Fin n) -> Id M (f i) (g i)) -> Id M (msum n f) (msum n g) = split {
+   zero -> \ f g h -> refl E.mz ;
+   suc n | r -> \ f g h -> Ps.cong2 M E.madd _ _ _ _ (h (inr tt)) (r (\ i -> f (inl i)) (\ i -> g (inl i)) (\ i -> h (inl i))) } ;
+  msum-zero : (n : Nat) -> Id M (msum n (\ i -> E.mz)) E.mz = split {
+   zero -> refl E.mz ; suc n | r -> trans (ap (E.madd E.mz) r) (E.maddZ E.mz) } ;
+  msum-add : (n : Nat) (f g : Ps.Fin n -> M) -> Id M (msum n (\ i -> E.madd (f i) (g i))) (E.madd (msum n f) (msum n g)) = split {
+   zero -> \ f g -> sym (E.maddZ E.mz) ;
+   suc n | r -> \ f g -> trans (ap (E.madd (E.madd (f (inr tt)) (g (inr tt)))) (r (\ i -> f (inl i)) (\ i -> g (inl i))))
+    (MA.swap4 (f (inr tt)) (g (inr tt)) (msum n (\ i -> f (inl i))) (msum n (\ i -> g (inl i)))) } ;
+  msum-sm (a : R) : (n : Nat) (f : Ps.Fin n -> M) -> Id M (sc a (msum n f)) (msum n (\ i -> sc a (f i))) = split {
+   zero -> \ f -> MA.sm-zr a ;
+   suc n | r -> \ f -> trans (E.smD a (f (inr tt)) (msum n (\ i -> f (inl i)))) (ap (E.madd (sc a (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+  sum-sc (w : M) : (n : Nat) (f : Ps.Fin n -> R) -> Id M (sc (S.sum n f) w) (msum n (\ i -> sc (f i) w)) = split {
+   zero -> \ f -> MA.sm-zl w ;
+   suc n | r -> \ f -> trans (E.smE (f (inr tt)) (S.sum n (\ i -> f (inl i))) w) (ap (E.madd (sc (f (inr tt)) w)) (r (\ i -> f (inl i)))) } ;
+  exchange (k : Nat) : (n : Nat) (g : Ps.Fin n -> Ps.Fin k -> M) ->
+   Id M (msum n (\ t -> msum k (\ j -> g t j))) (msum k (\ j -> msum n (\ t -> g t j))) = split {
+   zero -> \ g -> sym (msum-zero k) ;
+   suc n | r -> \ g -> trans (ap (E.madd (msum k (\ j -> g (inr tt) j))) (r (\ t j -> g (inl t) j)))
+    (sym (msum-add k (\ j -> g (inr tt) j) (\ j -> msum n (\ t -> g (inl t) j)))) } ;
+  msum-delta : (n : Nat) (i : Ps.Fin n) (x : Ps.Fin n -> M) -> Id M (msum n (\ k -> sc (D.delta n i k) (x k))) (x i) = split {
+   zero -> \ i x -> efq i ;
+   suc n | r -> split {
+    inl a -> \ x -> trans (ap (\ v -> E.madd v (msum n (\ k -> sc (D.delta n a k) (x (inl k))))) (MA.sm-zl (x (inr tt))))
+     (trans (MA.mzl (msum n (\ k -> sc (D.delta n a k) (x (inl k))))) (r a (\ k -> x (inl k)))) ;
+    inr s -> \ x -> trans (Ps.cong2 M E.madd _ _ _ _ (E.smO (x (inr tt)))
+      (trans (msum-cong n (\ k -> sc z (x (inl k))) (\ k -> E.mz) (\ k -> MA.sm-zl (x (inl k)))) (msum-zero n)))
+     (trans (E.maddZ (x (inr tt))) (ap (\ t -> x (inr t)) (MnSums[l].top-eq tt s))) } } ;
+  -- sum_j c delta_jk x_j = c x_k
+  msum-delta-scaled (n : Nat) (c : R) (k : Ps.Fin n) (x : Ps.Fin n -> M) :
+   Id M (msum n (\ j -> sc (mul c (D.delta n j k)) (x j))) (sc c (x k)) = calc M {
+   msum n (\ j -> sc (mul c (D.delta n j k)) (x j))
+    =< msum-cong n (\ j -> sc (mul c (D.delta n j k)) (x j)) (\ j -> sc c (sc (D.delta n k j) (x j)))
+        (\ j -> trans (ap (\ t -> sc (mul c t) (x j)) (D.delta-sym n j k)) (sym (E.smA c (D.delta n k j) (x j)))) >
+   msum n (\ j -> sc c (sc (D.delta n k j) (x j))) =< sym (msum-sm c n (\ j -> sc (D.delta n k j) (x j))) >
+   sc c (msum n (\ j -> sc (D.delta n k j) (x j))) =< ap (sc c) (msum-delta n k x) > sc c (x k) } ;
+
+  ---------------------------------------------------------------------
+  module System (n m : Nat) (u : Ps.Fin n -> AL.Vec m) (V : Ps.Fin m -> M) {
+   module SY = SR.Sys[n,m,u,\ r -> z] ;
+   Rows : U l = Ps.Fin n -> Ps.Fin m ;
+   delta (rho : Rows) : R = SY.delta rho ;
+   lin (x : Ps.Fin n -> M) (r : Ps.Fin m) : M = msum n (\ j -> sc (u j r) (x j)) ;
+   cof (sigma : Ps.Fin (suc n) -> Ps.Fin m) (t : Ps.Fin (suc n)) : R =
+    det (suc n) (ADJ.repl (suc n) (suc n) (SY.Wmat sigma) (inr tt) (D.delta (suc n) t)) ;
+   minor (sigma : Ps.Fin (suc n) -> Ps.Fin m) : M = msum (suc n) (\ t -> sc (cof sigma t) (V (sigma t))) ;
+   Minors : U l = (sigma : Ps.Fin (suc n) -> Ps.Fin m) -> Id M (minor sigma) E.mz ;
+   adjr (rho : Rows) (k t : Ps.Fin n) : R = det n (ADJ.repl n n (SY.Urho rho) k (D.delta n t)) ;
+   X (rho : Rows) (k : Ps.Fin n) : M = msum n (\ t -> sc (adjr rho k t) (V (rho t))) ;
+   Solves (x : Ps.Fin n -> M) : U l = (r : Ps.Fin m) -> Id M (lin x r) (V r) ;
+   Sol : U l = (x : Ps.Fin n -> M) * Solves x ;
+
+   -- (row) mu_(rho, r) + (U X_rho)_r = delta_rho V_r
+   module RowF (rho : Rows) (r : Ps.Fin m) {
+    sigma : Ps.Fin (suc n) -> Ps.Fin m = SY.ext rho r ;
+    vr (t : Ps.Fin (suc n)) (k : Ps.Fin n) : R = SY.Row[rho,r,D.delta (suc n) t].vr k ;
+    -- c_sigma(t) is the first term of Row at e_t
+    repl-twice (t : Ps.Fin (suc n)) : (c : Ps.Fin (suc n)) ->
+     Id (AL.Vec (suc n)) (ADJ.repl (suc n) (suc n) SY.Row[rho,r,D.delta (suc n) t].N (inr tt) (D.delta (suc n) t) c)
+      (ADJ.repl (suc n) (suc n) (SY.Wmat sigma) (inr tt) (D.delta (suc n) t) c) = split {
+     inl j -> refl (SY.Wmat sigma (inl j)) ; inr s -> refl (D.delta (suc n) t) } ;
+    rowt (t : Ps.Fin (suc n)) : Id R (add (cof sigma t) (S.sum n (\ k -> mul (vr t k) (u k r)))) (mul (delta rho) (D.delta (suc n) t (inr tt))) =
+     trans (ap {DT.Mat (suc n)} {R} (\ N -> add (det (suc n) N) (S.sum n (\ k -> mul (vr t k) (u k r))))
+       (sym (F.funext (Ps.Fin (suc n)) (\ c -> AL.Vec (suc n))
+         (ADJ.repl (suc n) (suc n) SY.Row[rho,r,D.delta (suc n) t].N (inr tt) (D.delta (suc n) t))
+         (ADJ.repl (suc n) (suc n) (SY.Wmat sigma) (inr tt) (D.delta (suc n) t)) (repl-twice t))))
+      SY.Row[rho,r,D.delta (suc n) t].result ;
+    -- the V-sum of the second terms is (U X_rho)_r
+    zero-col (k : Ps.Fin n) : Id R (vr (inr tt) k) z =
+     ADJ.form-zero n (ADJ.colform n (SY.Urho rho) k) (ADJ.colform-lin n (SY.Urho rho) k) ;
+    inner (k : Ps.Fin n) : Id M (msum (suc n) (\ t -> sc (vr t k) (V (sigma t)))) (X rho k) =
+     trans (ap (\ v -> E.madd v (msum n (\ t -> sc (vr (inl t) k) (V (sigma (inl t)))))) (trans (ap (\ c -> sc c (V r)) (zero-col k)) (MA.sm-zl (V r))))
+      (MA.mzl (msum n (\ t -> sc (vr (inl t) k) (V (sigma (inl t)))))) ;
+    second : Id M (msum (suc n) (\ t -> sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t)))) (lin (X rho) r) = calc M {
+     msum (suc n) (\ t -> sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t)))
+      =< msum-cong (suc n) (\ t -> sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t))) (\ t -> msum n (\ k -> sc (mul (vr t k) (u k r)) (V (sigma t))))
+          (\ t -> sum-sc (V (sigma t)) n (\ k -> mul (vr t k) (u k r))) >
+     msum (suc n) (\ t -> msum n (\ k -> sc (mul (vr t k) (u k r)) (V (sigma t))))
+      =< exchange n (suc n) (\ t k -> sc (mul (vr t k) (u k r)) (V (sigma t))) >
+     msum n (\ k -> msum (suc n) (\ t -> sc (mul (vr t k) (u k r)) (V (sigma t))))
+      =< msum-cong n (\ k -> msum (suc n) (\ t -> sc (mul (vr t k) (u k r)) (V (sigma t)))) (\ k -> sc (u k r) (msum (suc n) (\ t -> sc (vr t k) (V (sigma t)))))
+          (\ k -> trans (msum-cong (suc n) (\ t -> sc (mul (vr t k) (u k r)) (V (sigma t))) (\ t -> sc (u k r) (sc (vr t k) (V (sigma t))))
+                          (\ t -> trans (ap (\ c -> sc c (V (sigma t))) (mulC (vr t k) (u k r))) (sym (E.smA (u k r) (vr t k) (V (sigma t))))))
+                   (sym (msum-sm (u k r) (suc n) (\ t -> sc (vr t k) (V (sigma t)))))) >
+     msum n (\ k -> sc (u k r) (msum (suc n) (\ t -> sc (vr t k) (V (sigma t)))))
+      =< msum-cong n (\ k -> sc (u k r) (msum (suc n) (\ t -> sc (vr t k) (V (sigma t))))) (\ k -> sc (u k r) (X rho k)) (\ k -> ap (sc (u k r)) (inner k)) > lin (X rho) r } ;
+    -- the V-sum of the right-hand sides is delta_rho V_r
+    right : Id M (msum (suc n) (\ t -> sc (mul (delta rho) (D.delta (suc n) t (inr tt))) (V (sigma t)))) (sc (delta rho) (V r)) =
+     msum-delta-scaled (suc n) (delta rho) (inr tt) (\ t -> V (sigma t)) ;
+    result : Id M (E.madd (minor sigma) (lin (X rho) r)) (sc (delta rho) (V r)) = calc M {
+     E.madd (minor sigma) (lin (X rho) r)
+      =< Ps.cong2 M E.madd _ _ _ _ (refl (minor sigma)) (sym second) >
+     E.madd (minor sigma) (msum (suc n) (\ t -> sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t))))
+      =< sym (msum-add (suc n) (\ t -> sc (cof sigma t) (V (sigma t))) (\ t -> sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t)))) >
+     msum (suc n) (\ t -> E.madd (sc (cof sigma t) (V (sigma t))) (sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t))))
+      =< msum-cong (suc n) (\ t -> E.madd (sc (cof sigma t) (V (sigma t))) (sc (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t)))) (\ t -> sc (mul (delta rho) (D.delta (suc n) t (inr tt))) (V (sigma t))) (\ t -> trans (sym (E.smE (cof sigma t) (S.sum n (\ k -> mul (vr t k) (u k r))) (V (sigma t))))
+                                          (ap (\ c -> sc c (V (sigma t))) (rowt t))) >
+     msum (suc n) (\ t -> sc (mul (delta rho) (D.delta (suc n) t (inr tt))) (V (sigma t))) =< right > sc (delta rho) (V r) } ;
+   } ;
+
+   -- (unique) sum_t det U_rho[k <- e_t] (U x)_(rho t) = delta_rho x_k
+   adj-cancel (rho : Rows) (x : Ps.Fin n -> M) (k : Ps.Fin n) :
+    Id M (msum n (\ t -> sc (adjr rho k t) (lin x (rho t)))) (sc (delta rho) (x k)) = calc M {
+    msum n (\ t -> sc (adjr rho k t) (lin x (rho t)))
+     =< msum-cong n (\ t -> sc (adjr rho k t) (lin x (rho t))) (\ t -> msum n (\ j -> sc (mul (adjr rho k t) (u j (rho t))) (x j))) (\ t -> trans (msum-sm (adjr rho k t) n (\ j -> sc (u j (rho t)) (x j)))
+                                   (msum-cong n (\ j -> sc (adjr rho k t) (sc (u j (rho t)) (x j))) (\ j -> sc (mul (adjr rho k t) (u j (rho t))) (x j)) (\ j -> E.smA (adjr rho k t) (u j (rho t)) (x j)))) >
+    msum n (\ t -> msum n (\ j -> sc (mul (adjr rho k t) (u j (rho t))) (x j)))
+     =< exchange n n (\ t j -> sc (mul (adjr rho k t) (u j (rho t))) (x j)) >
+    msum n (\ j -> msum n (\ t -> sc (mul (adjr rho k t) (u j (rho t))) (x j)))
+     =< msum-cong n (\ j -> msum n (\ t -> sc (mul (adjr rho k t) (u j (rho t))) (x j))) (\ j -> sc (S.sum n (\ t -> mul (adjr rho k t) (u j (rho t)))) (x j)) (\ j -> sym (sum-sc (x j) n (\ t -> mul (adjr rho k t) (u j (rho t))))) >
+    msum n (\ j -> sc (S.sum n (\ t -> mul (adjr rho k t) (u j (rho t)))) (x j))
+     =< msum-cong n (\ j -> sc (S.sum n (\ t -> mul (adjr rho k t) (u j (rho t)))) (x j)) (\ j -> sc (mul (delta rho) (D.delta n j k)) (x j)) (\ j -> ap {R} {M} (\ c -> sc c (x j))
+         (trans (S.sum-cong n _ (\ t -> mul (u j (rho t)) (adjr rho k t)) (\ t -> mulC (adjr rho k t) (u j (rho t))))
+                (ADJ.adj-mul n (SY.Urho rho) j k))) >
+    msum n (\ j -> sc (mul (delta rho) (D.delta n j k)) (x j)) =< msum-delta-scaled n (delta rho) k x > sc (delta rho) (x k) } ;
+   module Inj (rg : A.Reg Rows delta) (x y : Ps.Fin n -> M) (h : (r : Ps.Fin m) -> Id M (lin x r) (lin y r)) {
+    at (k : Ps.Fin n) (rho : Rows) : Id M (sc (delta rho) (x k)) (sc (delta rho) (y k)) =
+     trans (sym (adj-cancel rho x k)) (trans (msum-cong n (\ t -> sc (adjr rho k t) (lin x (rho t))) (\ t -> sc (adjr rho k t) (lin y (rho t))) (\ t -> ap (sc (adjr rho k t)) (h (rho t)))) (adj-cancel rho y k)) ;
+    result (k : Ps.Fin n) : Id M (x k) (y k) = A.reg-eq Rows delta rg (x k) (y k) (at k) ;
+   } ;
+   sol-prop (rg : A.Reg Rows delta) : Pr.isProp Sol = \ a b ->
+    Pr.Sigma-eq (Ps.Fin n -> M) Solves a.1 b.1 a.2 b.2
+     (F.funext (Ps.Fin n) (\ k -> M) a.1 b.1 (Inj[rg,a.1,b.1,\ r -> trans (a.2 r) (sym (b.2 r))].result))
+     (F.isProp-Pi (Ps.Fin m) (\ r -> Id M (lin b.1 r) (V r)) (\ r -> E.setM (lin b.1 r) (V r))) ;
+   lin-scale (a : R) (x : Ps.Fin n -> M) (r : Ps.Fin m) : Id M (lin (\ j -> sc a (x j)) r) (sc a (lin x r)) =
+    trans (msum-cong n (\ j -> sc (u j r) (sc a (x j))) (\ j -> sc a (sc (u j r) (x j))) (\ j -> MA.sm-swap (u j r) a (x j))) (sym (msum-sm a n (\ j -> sc (u j r) (x j)))) ;
+
+   module Exists (mn : Minors) (dp : A.Depth2 Rows delta) {
+    cramer (rho : Rows) (r : Ps.Fin m) : Id M (lin (X rho) r) (sc (delta rho) (V r)) =
+     trans (sym (MA.mzl (lin (X rho) r))) (trans (ap (\ t -> E.madd t (lin (X rho) r)) (sym (mn (SY.ext rho r)))) RowF[rho,r].result) ;
+    cross (rho rho' : Rows) (r : Ps.Fin m) :
+     Id M (lin (\ j -> sc (delta rho') (X rho j)) r) (lin (\ j -> sc (delta rho) (X rho' j)) r) = calc M {
+     lin (\ j -> sc (delta rho') (X rho j)) r =< lin-scale (delta rho') (X rho) r >
+     sc (delta rho') (lin (X rho) r) =< ap (sc (delta rho')) (cramer rho r) >
+     sc (delta rho') (sc (delta rho) (V r)) =< MA.sm-swap (delta rho') (delta rho) (V r) >
+     sc (delta rho) (sc (delta rho') (V r)) =< ap (sc (delta rho)) (sym (cramer rho' r)) >
+     sc (delta rho) (lin (X rho') r) =< sym (lin-scale (delta rho) (X rho') r) >
+     lin (\ j -> sc (delta rho) (X rho' j)) r } ;
+    prop (k : Ps.Fin n) : A.Proportional Rows delta (\ rho -> X rho k) = \ rho rho' ->
+     Inj[dp.1,\ j -> sc (delta rho) (X rho' j),\ j -> sc (delta rho') (X rho j),\ r -> sym (cross rho rho' r)].result k ;
+    mult (k : Ps.Fin n) : A.Multiple Rows delta (\ rho -> X rho k) = A.multiple Rows delta dp (\ rho -> X rho k) (prop k) ;
+    x : Ps.Fin n -> M = \ k -> (mult k).1 ;
+    solves (r : Ps.Fin m) : Id M (lin x r) (V r) = A.reg-eq Rows delta dp.1 (lin x r) (V r) (\ rho -> calc M {
+     sc (delta rho) (lin x r) =< sym (lin-scale (delta rho) x r) >
+     lin (\ j -> sc (delta rho) (x j)) r =< msum-cong n (\ j -> sc (u j r) (sc (delta rho) (x j))) (\ j -> sc (u j r) (X rho j)) (\ j -> ap (sc (u j r)) (sym ((mult j).2 rho))) >
+     lin (X rho) r =< cramer rho r > sc (delta rho) (V r) }) ;
+    result : Sol = (x,solves) ;
+   } ;
+   -- livre B-7.5
+   theorem (mn : Minors) (dp : A.Depth2 Rows delta) : Sol = Exists[mn,dp].result ;
+
+   -- a solution makes the (n + 1)-minors vanish
+   module Necessary (s : Sol) (sigma : Ps.Fin (suc n) -> Ps.Fin m) {
+    W : DT.Mat (suc n) = SY.Wmat sigma ;
+    f (b : AL.Vec (suc n)) : R = ADJ.colform (suc n) W (inr tt) b ;
+    coeff (j : Ps.Fin n) : Id R (S.sum (suc n) (\ t -> mul (cof sigma t) (u j (sigma t)))) z = calc R {
+     S.sum (suc n) (\ t -> mul (cof sigma t) (u j (sigma t)))
+      =< S.sum-cong (suc n) _ _ (\ t -> mulC (cof sigma t) (u j (sigma t))) >
+     S.sum (suc n) (\ t -> mul (W (inl j) t) (f (D.delta (suc n) t)))
+      =< sym (ADJ.form-expand (suc n) f (ADJ.colform-lin (suc n) W (inr tt)) (W (inl j))) >
+     f (W (inl j)) =< ADJ.adj-case (suc n) W (inl j) (inr tt) (ADJ.dec-fin (suc n) (inl j) (inr tt)) >
+     mul (det (suc n) W) (D.delta (suc n) (inl j) (inr tt))
+      =< ap (mul (det (suc n) W)) (D.delta-off (suc n) (inl j) (inr tt) (\ e -> ADJ.inl-inr {Ps.Fin n} e)) >
+     mul (det (suc n) W) z =< L.mul-zero (det (suc n) W) > z } ;
+    result : Id M (minor sigma) E.mz = calc M {
+     minor sigma =< msum-cong (suc n) (\ t -> sc (cof sigma t) (V (sigma t))) (\ t -> msum n (\ j -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j))) (\ t -> trans (ap (sc (cof sigma t)) (sym (s.2 (sigma t))))
+                                                 (trans (msum-sm (cof sigma t) n (\ j -> sc (u j (sigma t)) (s.1 j)))
+                                                  (msum-cong n (\ j -> sc (cof sigma t) (sc (u j (sigma t)) (s.1 j))) (\ j -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j)) (\ j -> E.smA (cof sigma t) (u j (sigma t)) (s.1 j))))) >
+     msum (suc n) (\ t -> msum n (\ j -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j)))
+      =< exchange n (suc n) (\ t j -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j)) >
+     msum n (\ j -> msum (suc n) (\ t -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j)))
+      =< msum-cong n (\ j -> msum (suc n) (\ t -> sc (mul (cof sigma t) (u j (sigma t))) (s.1 j))) (\ j -> E.mz) (\ j -> trans (sym (sum-sc (s.1 j) (suc n) (\ t -> mul (cof sigma t) (u j (sigma t)))))
+                                   (trans (ap (\ c -> sc c (s.1 j)) (coeff j)) (MA.sm-zl (s.1 j)))) >
+     msum n (\ j -> E.mz) =< msum-zero n > E.mz } ;
+   } ;
+   necessary (s : Sol) : Minors = \ sigma -> Necessary[s,sigma].result ;
+  } ;
+ } ;
+} ;
