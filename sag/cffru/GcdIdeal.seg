@@ -1,0 +1,74 @@
+-- A greatest common divisor depends only on the ideal.  Let (a_j)_(j<N)
+-- and (c_k)_(k<r) generate the same ideal: every c_k is in (a) and every
+-- a_j is in (c).  If g is a regular gcd of the c_k, it is a gcd of the a_j.
+-- Proof.  g divides a_j: merely a_j = sum_k c_k v_k = g (sum_k c'_k v_k);
+-- the cofactor t with a_j = g t is unique (g regular), so it is obtained
+-- by unique choice (cofactor).  If s divides every a_j (a_j = s d_j) then
+-- merely every c_k = sum_j a_j v_j = s (sum_j d_j v_j): by finite choice
+-- (fin-choice) merely s divides the c_k, hence merely g = s t.
+-- If every c_k is 0 then every a_j is 0 (vanish).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+-- finite choice over Fin n
+top-fill (n : Nat) (P : Ps.Fin (suc n) -> U l) (x : P (inr tt)) : (t : Top) -> P (inr t) = split { tt -> x } ;
+fill (n : Nat) (P : Ps.Fin (suc n) -> U l) (f : (i : Ps.Fin n) -> P (inl i)) (x : P (inr tt)) :
+ (i : Ps.Fin (suc n)) -> P i = split { inl i -> f i ; inr t -> top-fill n P x t } ;
+fin-choice : (n : Nat) (P : Ps.Fin n -> U l) -> ((i : Ps.Fin n) -> Tr.Trunc[P i].carrier) ->
+ Tr.Trunc[(i : Ps.Fin n) -> P i].carrier = split {
+ zero -> \ P h -> Tr.Trunc[(i : Ps.Fin zero) -> P i].inc (\ i -> efq i) ;
+ suc n | r -> \ P h -> TC.map2 ((i : Ps.Fin n) -> P (inl i)) (P (inr tt)) ((i : Ps.Fin (suc n)) -> P i)
+  (fill n P) (r (\ i -> P (inl i)) (\ i -> h (inl i))) (h (inr tt)) } ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module RI = RegularIdeal[l] ;
+ module L84 = Lemma84[l].Over[Rg,setR] ;
+ module L86 = Lemma86[l].Over[Rg,setR] ;
+ In (n : Nat) (a : Ps.Fin n -> R) (x : R) : U l = RI.Generated[Rg,n,a].In x ;
+ -- sum_i (s d_i) v_i = s (sum_i d_i v_i)
+ lin-factor (n : Nat) (fs d : Ps.Fin n -> R) (s : R) (h : (i : Ps.Fin n) -> Id R (fs i) (mul s (d i))) (v : Ps.Fin n -> R) :
+  Id R (S.lin n fs v) (mul s (S.lin n d v)) =
+  trans (S.sum-cong n (\ i -> mul (fs i) (v i)) (\ i -> mul s (mul (d i) (v i)))
+    (\ i -> trans (ap (\ t -> mul t (v i)) (h i)) (sym (mulA s (d i) (v i)))))
+   (S.sum-scale s n (\ i -> mul (d i) (v i))) ;
+ -- a multiple of every generator divides every element of the ideal
+ factor (n : Nat) (a d : Ps.Fin n -> R) (s : R) (h : (i : Ps.Fin n) -> Id R (a i) (mul s (d i))) (x : R) (hx : In n a x) :
+  Tr.Trunc[(t : R) * Id R x (mul s t)].carrier =
+  TC.map (S.Coordinates n a x) ((t : R) * Id R x (mul s t))
+   (\ v -> (S.lin n d v.1,trans (sym v.2) (lin-factor n a d s h v.1))) hx ;
+ -- the cofactor of a regular element is unique
+ cofactor-prop (g : R) (rg : L86.RegularElement g) (x : R) : Pr.isProp ((t : R) * Id R x (mul g t)) = \ u v ->
+  Pr.Sigma-eq R (\ t -> Id R x (mul g t)) u.1 v.1 u.2 v.2
+   (L84.eq-from-sub u.1 v.1 (rg (add u.1 (neg v.1)) (calc R {
+    mul g (add u.1 (neg v.1))
+     =< dist g u.1 (neg v.1) > add (mul g u.1) (mul g (neg v.1))
+     =< ap (add (mul g u.1)) (L.mul-neg g v.1) > add (mul g u.1) (neg (mul g v.1))
+     =< ap (\ t -> add t (neg (mul g v.1))) (trans (sym u.2) v.2) > add (mul g v.1) (neg (mul g v.1))
+     =< addN (mul g v.1) > z })))
+   (setR x (mul g v.1)) ;
+ cofactor (g : R) (rg : L86.RegularElement g) (x : R) (h : Tr.Trunc[(t : R) * Id R x (mul g t)].carrier) :
+  (t : R) * Id R x (mul g t) =
+  Tr.Trunc[(t : R) * Id R x (mul g t)].induction @l (\ w -> (t : R) * Id R x (mul g t))
+   (\ w -> cofactor-prop g rg x) (\ m -> m) h ;
+ module Same (N r : Nat) (a : Ps.Fin N -> R) (c : Ps.Fin r -> R)
+  (ca : (k : Ps.Fin r) -> In N a (c k)) (ac : (j : Ps.Fin N) -> In r c (a j)) {
+  -- all c_k = 0 gives all a_j = 0
+  vanish (hc : (k : Ps.Fin r) -> Id R (c k) z) (j : Ps.Fin N) : Id R (a j) z =
+   Tr.Trunc[(t : R) * Id R (a j) (mul z t)].induction @l (\ w -> Id R (a j) z) (\ w -> setR (a j) z)
+    (\ m -> trans m.2 (L.zero-mul m.1))
+    (factor r c c z (\ k -> trans (hc k) (sym (L.zero-mul (c k)))) (a j) (ac j)) ;
+  module Gcd (g : R) (gc : L86.Gcd (Ps.Fin r) c g) (rg : L86.RegularElement g) {
+   divides : L86.Divides (Ps.Fin N) g a =
+    (\ j -> (cofactor g rg (a j) (factor r c gc.1.1 g gc.1.2 (a j) (ac j))).1,
+     \ j -> (cofactor g rg (a j) (factor r c gc.1.1 g gc.1.2 (a j) (ac j))).2) ;
+   greatest (s : R) (d : L86.Divides (Ps.Fin N) s a) : Tr.Trunc[(t : R) * Id R g (mul s t)].carrier =
+    TC.bind ((k : Ps.Fin r) -> (t : R) * Id R (c k) (mul s t)) ((t : R) * Id R g (mul s t))
+     (\ f -> gc.2 s (\ k -> (f k).1,\ k -> (f k).2))
+     (fin-choice r (\ k -> (t : R) * Id R (c k) (mul s t)) (\ k -> factor N a d.1 s d.2 (c k) (ca k))) ;
+   result : L86.Gcd (Ps.Fin N) a g = (divides,greatest) ;
+  } ;
+ } ;
+} ;

@@ -1,0 +1,126 @@
+-- Finite free modules (cffru, step 1).  R^n is the module Free n =
+-- Products.Pow R n; its elements are the vectors Vec n of cffr/Matrices.
+-- A finite free module of rank n is a module M with merely a linear
+-- equivalence M ~ R^n (ModuleSIP.LinEquiv), so that by the structure
+-- identity principle M = R^n merely.
+-- A linear map f : R^p -> R^q is given by its matrix, the values on the
+-- basis, mat f k = f(delta_k):  f x = apply (mat f) x, since
+-- x = sum_k x_k delta_k (MnSums.sum-delta-right) and f preserves finite
+-- sums and scaling.  The complex notions for linear maps (composite zero,
+-- exactness, injectivity) are, on R^p -> R^q -> R^r, cffr's notions for
+-- the matrices (compose-zero, exact, injective).
+-- Rank one: if R^n ~ R (linearly) then n = 1 or 1 = 0 (n = 0: R is a
+-- point; n >= 2: an injective R^n -> R^1, Minors.trivial).  A linear
+-- equivalence R^1 ~ R is v |-> v_1 w with w a unit (unit-line).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module MO = Modules[l].Over[Rg,setR] ;
+ module SM = Submodules[l].Over[MO.ring] ;
+ module MS = ModuleSIP2[l].Over[MO.ring] ;
+ module PR = Products[l].Over[Rg,setR] ;
+ module MX = Matrices[l].Over[Rg] ;
+ module DL = MnSums[l].Over[Rg] ;
+ module S = MX.S ;
+ module T64 = Thm64[l].Over[Rg,setR] ;
+ Module : U l+ = MO.Module ;
+ regular : Module = MO.regular ;
+ Free (n : Nat) : Module = PR.Pow regular n ;
+ basis (n : Nat) (k : Ps.Fin n) : MX.Vec n = \ j -> DL.delta n k j ;
+ mat (p q : Nat) (f : SM.Linear (Free p) (Free q)) : MX.Mat p q = \ k -> f.1 (basis p k) ;
+ -- the linear map underlying a linear equivalence
+ lin (P Q : Module) (e : MS.LinEquiv P Q) : SM.Linear P Q = (e.1.1,e.2.1,e.2.2) ;
+ -- finite free of rank n
+ FinFree (M : Module) (n : Nat) : U l = Tr.Trunc[MS.LinEquiv M (Free n)].carrier ;
+
+ ---------------------------------------------------------------------
+ -- a linear map of R^p -> R^q is apply of its matrix
+ lin-msum (P Q : Module) (f : SM.Linear P Q) : (n : Nat) (v : Ps.Fin n -> P.M) ->
+  Id Q.M (f.1 (T64.msum P n v)) (T64.msum Q n (\ k -> f.1 (v k))) = split {
+  zero -> \ v -> SM.Lin[P,Q,f].map-z ;
+  suc n | r -> \ v -> trans (f.2.1 (v (inr tt)) (T64.msum P n (\ i -> v (inl i))))
+   (ap (Q.madd (f.1 (v (inr tt)))) (r (\ i -> v (inl i)))) } ;
+ free-msum (q : Nat) (j : Ps.Fin q) : (n : Nat) (v : Ps.Fin n -> MX.Vec q) ->
+  Id R (T64.msum (Free q) n v j) (S.sum n (\ k -> v k j)) = split {
+  zero -> \ v -> refl z ;
+  suc n | r -> \ v -> ap (add (v (inr tt) j)) (r (\ i -> v (inl i))) } ;
+ -- x = sum_k x_k delta_k
+ expand (p : Nat) (x : MX.Vec p) : Id (MX.Vec p) x (T64.msum (Free p) p (\ k -> (Free p).sm (x k) (basis p k))) =
+  F.funext (Ps.Fin p) (\ j -> R) x (T64.msum (Free p) p (\ k -> (Free p).sm (x k) (basis p k)))
+   (\ j -> sym (trans (free-msum p j p (\ k -> (Free p).sm (x k) (basis p k))) (DL.sum-delta-right p j x))) ;
+ apply-mat (p q : Nat) (f : SM.Linear (Free p) (Free q)) (x : MX.Vec p) (j : Ps.Fin q) :
+  Id R (f.1 x j) (MX.apply p q (mat p q f) x j) =
+  calc R {
+   f.1 x j
+    =< ap (\ y -> f.1 y j) (expand p x) > f.1 (T64.msum (Free p) p (\ k -> (Free p).sm (x k) (basis p k))) j
+    =< ap (\ w -> w j) (lin-msum (Free p) (Free q) f p (\ k -> (Free p).sm (x k) (basis p k)))
+     > T64.msum (Free q) p (\ k -> f.1 ((Free p).sm (x k) (basis p k))) j
+    =< ap {Ps.Fin p -> MX.Vec q} (\ w -> T64.msum (Free q) p w j) (F.funext (Ps.Fin p) (\ k -> MX.Vec q) _ _ (\ k -> f.2.2 (x k) (basis p k)))
+     > T64.msum (Free q) p (\ k -> (Free q).sm (x k) (mat p q f k)) j
+    =< free-msum q j p (\ k -> (Free q).sm (x k) (mat p q f k)) > MX.apply p q (mat p q f) x j } ;
+
+ ---------------------------------------------------------------------
+ -- complexes of linear maps P -f-> Q -g-> E
+ ComposeZeroL (P Q E : Module) (f : SM.Linear P Q) (g : SM.Linear Q E) : U l =
+  (x : P.M) -> Id E.M (g.1 (f.1 x)) E.mz ;
+ ExactL (P Q E : Module) (f : SM.Linear P Q) (g : SM.Linear Q E) : U l =
+  (y : Q.M) -> Id E.M (g.1 y) E.mz -> Tr.Trunc[(x : P.M) * Id Q.M (f.1 x) y].carrier ;
+ InjectiveL (P Q : Module) (f : SM.Linear P Q) : U l =
+  (x : P.M) -> Id Q.M (f.1 x) Q.mz -> Id P.M x P.mz ;
+ -- on R^p -> R^q -> R^r they are cffr's notions for the matrices
+ compose-zero (p q r : Nat) (f : SM.Linear (Free p) (Free q)) (g : SM.Linear (Free q) (Free r))
+  (h : ComposeZeroL (Free p) (Free q) (Free r) f g) : MX.ComposeZero p q r (mat p q f) (mat q r g) =
+  \ k j -> trans (sym (apply-mat q r g (mat p q f k) j)) (ap (\ w -> w j) (h (basis p k))) ;
+ exact (p q r : Nat) (f : SM.Linear (Free p) (Free q)) (g : SM.Linear (Free q) (Free r))
+  (h : ExactL (Free p) (Free q) (Free r) f g) : MX.Exact p q r (mat p q f) (mat q r g) = \ y hy ->
+  TC.map ((x : MX.Vec p) * Id (MX.Vec q) (f.1 x) y) ((x : MX.Vec p) * ((i : Ps.Fin q) -> Id R (MX.apply p q (mat p q f) x i) (y i)))
+   (\ w -> (w.1,\ i -> trans (sym (apply-mat p q f w.1 i)) (ap (\ v -> v i) w.2)))
+   (h y (F.funext (Ps.Fin r) (\ j -> R) (g.1 y) (\ j -> z) (\ j -> trans (apply-mat q r g y j) (hy j)))) ;
+ injective (p q : Nat) (f : SM.Linear (Free p) (Free q)) (h : InjectiveL (Free p) (Free q) f) :
+  MX.Injective p q (mat p q f) = \ x hx k ->
+  ap (\ v -> v k) (h x (F.funext (Ps.Fin q) (\ j -> R) (f.1 x) (\ j -> z) (\ j -> trans (apply-mat p q f x j) (hx j)))) ;
+
+ ---------------------------------------------------------------------
+ -- rank one
+ -- R as R^1
+ one : SM.Linear regular (Free (suc zero)) = (\ r j -> r,\ x y -> refl (\ j -> add x y),\ a x -> refl (\ j -> mul a x)) ;
+ module Line (n : Nat) (e : MS.LinEquiv (Free n) regular) {
+  module LE = SM.Lin[Free n,regular,lin (Free n) regular e] ;
+  inv (r : R) : MX.Vec n = e.1.2.sec r ;
+  -- e x = 0 gives x = 0
+  kernel (x : MX.Vec n) (h : Id R (e.1.1 x) z) : Id (MX.Vec n) x (Free n).mz =
+   calc (MX.Vec n) {
+    x =< sym (e.1.2.ret-eq x) > e.1.2.ret (e.1.1 x)
+     =< ap e.1.2.ret (trans h (sym LE.map-z)) > e.1.2.ret (e.1.1 (Free n).mz)
+     =< e.1.2.ret-eq (Free n).mz > (Free n).mz } ;
+  -- e followed by R = R^1
+  e1 : SM.Linear (Free n) (Free (suc zero)) =
+   (\ x j -> e.1.1 x,
+    \ x y -> F.funext (Ps.Fin (suc zero)) (\ j -> R) _ _ (\ j -> e.2.1 x y),
+    \ a x -> F.funext (Ps.Fin (suc zero)) (\ j -> R) _ _ (\ j -> e.2.2 a x)) ;
+  e1-injective : MX.Injective n (suc zero) (mat n (suc zero) e1) =
+   injective n (suc zero) e1 (\ x h -> kernel x (ap (\ v -> v (inr tt)) h)) ;
+ } ;
+ rank-one-suc : (n : Nat) (e : MS.LinEquiv (Free (suc n)) regular) -> Plus (Id R o z) (Id Nat (suc n) (suc zero)) = split {
+  zero -> \ e -> inr (refl (suc zero)) ;
+  suc k -> \ e -> inl (Minors[l].Over[Rg,setR].trivial (suc zero) k
+    (mat (suc (suc k)) (suc zero) Line[suc (suc k),e].e1) Line[suc (suc k),e].e1-injective) } ;
+ rank-one : (n : Nat) (e : MS.LinEquiv (Free n) regular) -> Plus (Id R o z) (Id Nat n (suc zero)) = split {
+  zero -> \ e -> inl (calc R {
+   o =< sym (e.1.2.sec-eq o) > e.1.1 (e.1.2.sec o)
+     =< ap e.1.1 (F.funext (Ps.Fin zero) (\ j -> R) (e.1.2.sec o) (Free zero).mz (\ j -> efq j)) > e.1.1 (Free zero).mz
+     =< Line[zero,e].LE.map-z > z }) ;
+  suc n -> rank-one-suc n } ;
+ -- a linear equivalence R^1 ~ R is v |-> v_1 w, w a unit
+ module UnitLine (e : MS.LinEquiv (Free (suc zero)) regular) {
+  w : R = e.1.1 (basis (suc zero) (inr tt)) ;
+  value (v : MX.Vec (suc zero)) : Id R (e.1.1 v) (mul (v (inr tt)) w) =
+   trans (apply-mat (suc zero) (suc zero) Line[suc zero,e].e1 v (inr tt)) (addZ (mul (v (inr tt)) w)) ;
+  w-unit : L.unit w = (e.1.2.sec o (inr tt),
+   trans (mulC w (e.1.2.sec o (inr tt))) (trans (sym (value (e.1.2.sec o))) (e.1.2.sec-eq o))) ;
+ } ;
+} ;
