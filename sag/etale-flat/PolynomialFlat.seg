@@ -1,0 +1,126 @@
+-- Polynomial rings are flat (handoff §4), by finite relations.
+--
+-- Step: if B is flat over A (h_B), so is B[X] (over A through B).  Let
+-- sum_i a_i g_i = 0 in B[X], all g_i with coefficients zero from degree L on
+-- (a common bound exists merely: each g_i is the class of a list, and
+-- CommonPower.common-fin).  Induction on L.  For L = 0 all g_i are 0.  For
+-- L+1, write g_i = c_i + X t_i with c_i the constant coefficient and t_i the
+-- tail of g_i - c_i (PolynomialCoefficients.factor-variable), whose
+-- coefficients vanish from L on.  Taking the coefficient of X^0, resp. of
+-- X^(k+1), of the relation gives sum_i a_i c_i = 0 in B, resp.
+-- sum_i a_i t_i = 0 in B[X] (coefficients determine the polynomial).  So
+-- (c_i) is explained in B (flatness of B, sent to B[X]) and (t_i) by
+-- induction; (X t_i) is explained by scaling, and g_i = c_i + X t_i by the
+-- sum of the two explanations.
+-- A[X] and then A[X][Y] = (A[X])[Y] are flat over A, starting from A over A.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module CB = CoefficientBound[l] ; module FB = FiniteBounds[l] ;
+module Step (A B : CRing) (setB : Pr.isSet B.R) (hB : RingHom[l].Hom A B)
+ (flatB : FlatRelations[l].Over[A,B,hB].Flat) {
+ module X = PolynomialRing[l].Extension[B,setB] ; module PC = PolynomialCoefficients[l].Over[B,setB] ;
+ module PR = Poly[l].PolyR[B] ;
+ K : U l = X.Carrier ;
+ H : RingHom[l].Hom A X.ring = RingHom[l].compose A B X.ring X.inclusion hB ;
+ module OB = FlatRelations[l].Over[A,B,hB] ; module OX = FlatRelations[l].Over[A,X.ring,H] ;
+ module SB = FiniteIdeal[l].Sums[B] ; module SX = FiniteIdeal[l].Sums[X.ring] ;
+ module Const = FlatRelations[l].Image[A,B,hB,X.ring,H,X.inclusion,\ x -> refl (X.constant (hB.1 x))] ;
+ -- coefficients from degree L on vanish
+ Bound (L : Nat) (g : K) : U l = (k : Nat) -> CB.le L k -> Id B.R (PC.coef g k) B.z ;
+ raw-bound : (p : PR.P) (k : Nat) -> CB.le (PR.plen p) k -> Id B.R (PR.coef p k) B.z = split {
+  nil -> \ k h -> refl B.z ;
+  cons c p | r -> split { zero -> \ h -> efq h ; suc k -> \ h -> r k h } } ;
+ bounded (g : K) : Tr.Trunc[(L : Nat) * Bound L g].carrier =
+  X.Q.induction @l (\ g -> Tr.Trunc[(L : Nat) * Bound L g].carrier) (\ g -> Tr.Trunc[(L : Nat) * Bound L g].proposition)
+   (\ p -> Tr.Trunc[(L : Nat) * Bound L (X.include p)].inc
+     (PR.plen p,\ k h -> trans (PC.coef-include p k) (raw-bound p k h))) g ;
+ monotone : CommonPower[l].Monotone K (\ g L -> Bound L g) =
+  \ g e d b k h -> b k (FB.le-trans e (plus e d) k (FB.le-left e d) h) ;
+ common (n : Nat) (g : Fin n -> K) : Tr.Trunc[(L : Nat) * ((i : Fin n) -> Bound L (g i))].carrier =
+  CommonPower[l].common-fin n (\ i L -> Bound L (g i)) (\ i -> monotone (g i)) (\ i -> bounded (g i)) ;
+ bound-zero (g : K) (b : Bound zero g) : Id K g X.zeroQ =
+  PC.ext g X.zeroQ (\ k -> trans (b k tt) (sym (PC.coef-zero k))) ;
+ -- the coefficient of X^k is additive, and A-linear through h_B
+ coef-add (k : Nat) : (g g' : K) -> Id B.R (PC.coef (X.addQ g g') k) (B.add (PC.coef g k) (PC.coef g' k)) =
+  X.forall2 (\ g g' -> Id B.R (PC.coef (X.addQ g g') k) (B.add (PC.coef g k) (PC.coef g' k))) (\ g g' -> setB _ _)
+   (\ p q -> trans (ap (\ t -> PC.coef t k) (X.Add.beta p q))
+     (trans (PC.coef-include (Mul[l].MulR[B].addP p q) k)
+      (trans (Mul[l].MulR[B].coef-addP p q k)
+       (Presentations[l].cong2 B.R B.add _ _ _ _ (sym (PC.coef-include p k)) (sym (PC.coef-include q k)))))) ;
+ coef-lin (k : Nat) : (n : Nat) (a : Fin n -> A.R) (g : Fin n -> K) ->
+  Id B.R (PC.coef (SX.lin n (\ i -> H.1 (a i)) g) k) (SB.lin n (\ i -> hB.1 (a i)) (\ i -> PC.coef (g i) k)) = split {
+  zero -> \ a g -> PC.coef-zero k ;
+  suc n | ih -> \ a g ->
+   trans (coef-add k (X.mulQ (H.1 (a (inr tt))) (g (inr tt))) (SX.lin n (\ i -> H.1 (a (inl i))) (\ i -> g (inl i))))
+    (Presentations[l].cong2 B.R B.add _ _ _ _ (PC.scale-coef (hB.1 (a (inr tt))) (g (inr tt)) k)
+     (ih (\ i -> a (inl i)) (\ i -> g (inl i)))) } ;
+ -- a relation in B[X] is a relation on each coefficient, and conversely
+ at (n : Nat) (a : Fin n -> A.R) (g : Fin n -> K) (r : OX.Relation n a g) (k : Nat) :
+  OB.Relation n a (\ i -> PC.coef (g i) k) =
+  trans (sym (coef-lin k n a g)) (trans (ap (\ t -> PC.coef t k) r) (PC.coef-zero k)) ;
+ from (n : Nat) (a : Fin n -> A.R) (g : Fin n -> K)
+  (r : (k : Nat) -> OB.Relation n a (\ i -> PC.coef (g i) k)) : OX.Relation n a g =
+  PC.ext _ X.zeroQ (\ k -> trans (coef-lin k n a g) (trans (r k) (sym (PC.coef-zero k)))) ;
+ -- g = c + X t, with c the constant coefficient
+ module Split (g : K) {
+  c : B.R = PC.coef g zero ;
+  d : K = X.addQ g (X.constant (B.neg c)) ;
+  constant-high (e : B.R) (k : Nat) : Id B.R (PC.coef (X.constant e) (suc k)) B.z =
+   PC.coef-include (cons e nil) (suc k) ;
+  d-zero : Id B.R (PC.coef d zero) B.z =
+   trans (coef-add zero g (X.constant (B.neg c))) (trans (ap (B.add c) (PC.coef-include (cons (B.neg c) nil) zero)) (B.addN c)) ;
+  d-high (k : Nat) : Id B.R (PC.coef d (suc k)) (PC.coef g (suc k)) =
+   trans (coef-add (suc k) g (X.constant (B.neg c)))
+    (trans (ap (B.add (PC.coef g (suc k))) (constant-high (B.neg c) k)) (B.addZ (PC.coef g (suc k)))) ;
+  t : K = PC.tail d ;
+  t-coef (k : Nat) : Id B.R (PC.coef t k) (PC.coef g (suc k)) = trans (PC.tail-coef d k) (d-high k) ;
+  equation : Id K g (X.addQ (X.constant c) (X.mulQ X.variable t)) = calc K {
+   g =< sym (X.add-zero g) > X.addQ g X.zeroQ
+     =< ap (X.addQ g) (trans (sym (RingHom[l].zero B X.ring X.inclusion))
+         (trans (ap X.constant (sym (B.addN c))) (X.constant-add c (B.neg c)))) >
+      X.addQ g (X.addQ (X.constant c) (X.constant (B.neg c)))
+     =< X.add-assoc g (X.constant c) (X.constant (B.neg c)) > X.addQ (X.addQ g (X.constant c)) (X.constant (B.neg c))
+     =< ap (\ s -> X.addQ s (X.constant (B.neg c))) (X.add-comm g (X.constant c)) >
+      X.addQ (X.addQ (X.constant c) g) (X.constant (B.neg c))
+     =< sym (X.add-assoc (X.constant c) g (X.constant (B.neg c))) > X.addQ (X.constant c) d
+     =< ap (X.addQ (X.constant c)) (PC.factor-variable d d-zero) > X.addQ (X.constant c) (X.mulQ X.variable t) } ;
+  bound (L : Nat) (b : Bound (suc L) g) : Bound L t = \ k h -> trans (t-coef k) (b (suc k) h) ;
+ } ;
+ Claim (L : Nat) : U l = (n : Nat) (a : Fin n -> A.R) (g : Fin n -> K) ->
+  ((i : Fin n) -> Bound L (g i)) -> OX.Relation n a g -> OX.Explained n a g ;
+ module Induction (L : Nat) (ih : Claim L) (n : Nat) (a : Fin n -> A.R) (g : Fin n -> K)
+  (b : (i : Fin n) -> Bound (suc L) (g i)) (r : OX.Relation n a g) {
+  module Ops = OX.Ops[n,a] ;
+  c (i : Fin n) : B.R = Split[g i].c ;
+  t (i : Fin n) : K = Split[g i].t ;
+  constants : OX.Explained n a (\ i -> X.constant (c i)) =
+   Const.mere n a c (flatB n a c (at n a g r zero)) ;
+  -- the coefficients of t are the next ones of g
+  tail-relation (k : Nat) : OB.Relation n a (\ i -> PC.coef (t i) k) =
+   trans (SB.sum-cong n (\ i -> B.mul (hB.1 (a i)) (PC.coef (t i) k))
+     (\ i -> B.mul (hB.1 (a i)) (PC.coef (g i) (suc k))) (\ i -> ap (B.mul (hB.1 (a i))) (Split[g i].t-coef k)))
+    (at n a g r (suc k)) ;
+  tails : OX.Explained n a t = ih n a t (\ i -> Split[g i].bound L (b i)) (from n a t tail-relation) ;
+  result : OX.Explained n a g =
+   Ops.equal-mere (\ i -> X.addQ (X.constant (c i)) (X.mulQ X.variable (t i))) g (\ i -> sym (Split[g i].equation))
+    (Ops.add-mere (\ i -> X.constant (c i)) (\ i -> X.mulQ X.variable (t i)) constants
+     (Ops.scale-mere X.variable t tails)) ;
+ } ;
+ claim : (L : Nat) -> Claim L = split {
+  zero -> \ n a g b r -> OX.Ops[n,a].equal-mere (\ i -> X.zeroQ) g (\ i -> sym (bound-zero (g i) (b i)))
+   (Tr.Trunc[OX.Explanation[n,a,\ i -> X.zeroQ]].inc OX.Ops[n,a].zero) ;
+  suc L | ih -> \ n a g b r -> Induction[L,ih,n,a,g,b,r].result } ;
+ flat : OX.Flat = \ n a g r ->
+  TC.bind ((L : Nat) * ((i : Fin n) -> Bound L (g i))) (OX.Explanation[n,a,g])
+   (\ w -> claim w.1 n a g w.2 r) (common n g) ;
+} ;
+-- A[X] and A[X][Y] over A
+module TwoVariables (A : CRing) (setA : Pr.isSet A.R) {
+ module P = PolynomialIdentity[l].Over[A,setA] ;
+ module First = Step[A,A,setA,RingHom[l].identity A,FlatRelations[l].Self[A].flat] ;
+ x-flat : FlatRelations[l].Over[A,P.X.ring,P.X.inclusion].Flat =
+  FlatRelations[l].Retarget[A,P.X.ring,First.H,P.X.inclusion,\ x -> refl (P.X.constant x)].flat First.flat ;
+ module Second = Step[A,P.X.ring,P.X.set,P.X.inclusion,x-flat] ;
+ -- the structure map of A[X][Y] is PolynomialIdentity.inclusion
+ flat : FlatRelations[l].Over[A,P.XY.ring,P.inclusion].Flat = Second.flat ;
+} ;

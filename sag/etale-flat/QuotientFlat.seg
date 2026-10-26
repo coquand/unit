@@ -1,0 +1,107 @@
+-- Correction of a relation modulo (f,g) (handoff §5): a generic flatness
+-- criterion for B = S/(f,g).
+--
+-- Let S be a flat A-algebra and f, g in S such that, for every finite family
+-- a_1..a_m in A and I = (a_1..a_m)S, f is regular modulo I and g is regular
+-- modulo (f) + I (Regular).  Then B = S/(f,g) is flat over A.
+-- Proof.  Let sum_i a_i b_i = 0 in B.  Lift b_i to p_i in S (merely); then
+-- sum_i a_i p_i is in (f,g):  sum_i a_i p_i = f u + g v.  So f u + g v is in
+-- I, and PairSyzygy gives w with u - g w = sum_i a_i u_i and
+-- v + f w = sum_i a_i v_i.  Put p'_i = p_i - (f u_i + g v_i).  Then
+--   sum_i a_i p'_i = (f u + g v) - (f (u - g w) + g (v + f w)) = 0
+-- in S, and p'_i is still a lift of b_i.  Flatness of S explains (p'_i), and
+-- its image in B explains (b_i).  No Tor, no Koszul complex.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A C : CRing) (hC : RingHom[l].Hom A C) (flatC : FlatRelations[l].Over[A,C,hC].Flat) (f g : C.R) {
+ module EI = EtaleIdentities[l] ;
+ two : Nat = suc (suc zero) ;
+ pair : Fin two -> C.R = split { inl i -> g ; inr t -> f } ;
+ module Gen = RegularIdeal[l].Generated[C,two,pair] ;
+ module Q = QuotientRing[l].Over[C,Gen.ideal,Gen.in-prop] ;
+ -- B = S/(f,g)
+ B : CRing = Q.ring ;
+ pi : RingHom[l].Hom C B = Q.projection ;
+ HB : RingHom[l].Hom A B = RingHom[l].compose A C B pi hC ;
+ f-zero : Id B.R (pi.1 f) B.z = Q.to-zero f (Gen.generator (inr tt)) ;
+ g-zero : Id B.R (pi.1 g) B.z = Q.to-zero g (Gen.generator (inl (inr tt))) ;
+ lift (q : B.R) : Tr.Trunc[(x : C.R) * Id B.R (pi.1 x) q].carrier =
+  Q.Q.induction @l (\ q -> Tr.Trunc[(x : C.R) * Id B.R (pi.1 x) q].carrier)
+   (\ q -> Tr.Trunc[(x : C.R) * Id B.R (pi.1 x) q].proposition)
+   (\ x -> Tr.Trunc[(x' : C.R) * Id B.R (pi.1 x') (Q.include x)].inc (x,refl (Q.include x))) q ;
+ module OC = FlatRelations[l].Over[A,C,hC] ; module OB = FlatRelations[l].Over[A,B,HB] ;
+ module SC = FiniteIdeal[l].Sums[C] ; module SB = FiniteIdeal[l].Sums[B] ;
+ -- the ideal (a_1..a_m)S and the pair (f,g) modulo it
+ module At (m : Nat) (a : Fin m -> A.R) {
+  module I = RegularIdeal[l].Generated[C,m,\ i -> hC.1 (a i)] ;
+  module Sz = PairSyzygy[l].Over[C,I.ideal,f,g] ;
+ } ;
+ Regular : U l = (m : Nat) (a : Fin m -> A.R) -> At[m,a].Sz.RegularF * At[m,a].Sz.RegularG ;
+ module Theorem (regular : Regular) {
+  module Relation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> B.R) (r : OB.Relation n a b)
+   (p : (i : Fin n) -> (x : C.R) * Id B.R (pi.1 x) (b i)) {
+   module I = At[n,a].I ; module Sz = At[n,a].Sz ;
+   J (i : Fin n) : C.R = hC.1 (a i) ;
+   P (i : Fin n) : C.R = (p i).1 ;
+   X : C.R = SC.lin n J P ;
+   image-zero : Id B.R (pi.1 X) B.z =
+    trans (FlatRelations[l].MapSums[C,B,pi].lin n J P)
+     (trans (SB.sum-cong n (\ i -> B.mul (HB.1 (a i)) (pi.1 (P i))) (\ i -> B.mul (HB.1 (a i)) (b i))
+       (\ i -> ap (B.mul (HB.1 (a i))) (p i).2)) r) ;
+   -- X = f u + g v
+   module Coordinates (c : SC.Coordinates two pair X) {
+    u : C.R = c.1 (inr tt) ; v : C.R = c.1 (inl (inr tt)) ;
+    in-I : I.In (C.add (C.mul f u) (C.mul g v)) =
+     Tr.Trunc[SC.Coordinates n J (C.add (C.mul f u) (C.mul g v))].inc
+      (P,trans (sym c.2) (ap (C.add (C.mul f u)) (C.addZ (C.mul g v)))) ;
+    module Corrected (w : Sz.Syzygy u v) (cu : SC.Coordinates n J (C.add u (C.neg (C.mul g w.1))))
+     (cv : SC.Coordinates n J (C.add v (C.mul f w.1))) {
+     P' (i : Fin n) : C.R = C.add (P i) (C.neg (C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i)))) ;
+     relation : OC.Relation n a P' = calc C.R {
+      SC.lin n J P'
+       =< SC.lin-add n J P (\ i -> C.neg (C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i)))) >
+        C.add X (SC.lin n J (\ i -> C.neg (C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i)))))
+       =< ap (C.add X) (trans (SC.lin-neg n J (\ i -> C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i))))
+           (ap C.neg (trans (SC.lin-add n J (\ i -> C.mul f (cu.1 i)) (\ i -> C.mul g (cv.1 i)))
+             (Presentations[l].cong2 C.R C.add _ _ _ _
+              (trans (SC.lin-scale n J cu.1 f) (ap (C.mul f) cu.2))
+              (trans (SC.lin-scale n J cv.1 g) (ap (C.mul g) cv.2)))))) >
+        C.add X (C.neg (C.add (C.mul f (C.add u (C.neg (C.mul g w.1)))) (C.mul g (C.add v (C.mul f w.1)))))
+       =< ap (\ t -> C.add t (C.neg (C.add (C.mul f (C.add u (C.neg (C.mul g w.1)))) (C.mul g (C.add v (C.mul f w.1))))))
+           (sym c.2) >
+        C.add (C.add (C.mul f u) (C.add (C.mul g v) C.z))
+         (C.neg (C.add (C.mul f (C.add u (C.neg (C.mul g w.1)))) (C.mul g (C.add v (C.mul f w.1)))))
+       =< EI.PairCorrection[C,f,g,u,v,w.1].proof > C.z } ;
+     image (i : Fin n) : Id B.R (pi.1 (P' i)) (b i) = calc B.R {
+      pi.1 (P' i)
+       =< trans (pi.2.2.1 (P i) (C.neg (C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i)))))
+           (Presentations[l].cong2 B.R B.add _ _ _ _ (p i).2
+            (trans (RingHom[l].negation C B pi (C.add (C.mul f (cu.1 i)) (C.mul g (cv.1 i))))
+             (ap B.neg (trans (pi.2.2.1 (C.mul f (cu.1 i)) (C.mul g (cv.1 i)))
+              (Presentations[l].cong2 B.R B.add _ _ _ _
+               (trans (pi.2.2.2 f (cu.1 i)) (ap (\ t -> B.mul t (pi.1 (cu.1 i))) f-zero))
+               (trans (pi.2.2.2 g (cv.1 i)) (ap (\ t -> B.mul t (pi.1 (cv.1 i))) g-zero))))))) >
+        B.add (b i) (B.neg (B.add (B.mul B.z (pi.1 (cu.1 i))) (B.mul B.z (pi.1 (cv.1 i)))))
+       =< EI.PairImage[B,b i,pi.1 (cu.1 i),pi.1 (cv.1 i)].proof > b i } ;
+     result : OB.Explained n a b =
+      OB.Ops[n,a].equal-mere (\ i -> pi.1 (P' i)) b image
+       (FlatRelations[l].Image[A,C,hC,B,HB,pi,\ x -> refl (pi.1 (hC.1 x))].mere n a P'
+        (flatC n a P' relation)) ;
+    } ;
+    result : OB.Explained n a b =
+     TC.bind (Sz.Syzygy u v) (OB.Explanation[n,a,b])
+      (\ w -> TC.bind2 (SC.Coordinates n J (C.add u (C.neg (C.mul g w.1))))
+        (SC.Coordinates n J (C.add v (C.mul f w.1))) (OB.Explanation[n,a,b])
+        (\ cu cv -> Corrected[w,cu,cv].result) w.2.1 w.2.2)
+      (Sz.Solve[(regular n a).1,(regular n a).2,u,v,in-I].result) ;
+   } ;
+   result : OB.Explained n a b =
+    TC.bind (SC.Coordinates two pair X) (OB.Explanation[n,a,b]) (\ c -> Coordinates[c].result)
+     (Q.kernel X image-zero) ;
+  } ;
+  flat : OB.Flat = \ n a b r ->
+   TC.bind ((i : Fin n) -> (x : C.R) * Id B.R (pi.1 x) (b i)) (OB.Explanation[n,a,b])
+    (\ p -> Relation[n,a,b,r,p].result)
+    (AffineFinite[l].choice n (\ i -> (x : C.R) * Id B.R (pi.1 x) (b i)) (\ i -> lift (b i))) ;
+ } ;
+} ;

@@ -1,0 +1,68 @@
+-- The finite Taylor lift with a constant target for G (handoff §3).
+--
+-- In an A-algebra B with J(x0,y0) invertible, but without assuming
+-- G(x0,y0) = 0, construct x(T), y(T) with x(0) = x0, y(0) = y0 and
+--     F(x(T),y(T)) = f - T,    G(x(T),y(T)) = g0    modulo T^(n+1),
+-- where f = F(x0,y0) and g0 = G(x0,y0).  The proof is that of TaylorLift:
+-- at order n+1 the error of F and of G in degree n+1 is corrected by the
+-- solution (a,b) of the 2 by 2 system with matrix the Jacobian matrix at
+-- (x0,y0) (LinearSolve); only the constant target of G changes, and its
+-- coefficient in degree n+1 is still 0.  TaylorLift is the case g0 = 0
+-- (with cons 0 nil for nil) and is kept unchanged.
+level l ; open Ring[l] ;
+module Over (A B : CRing) (h : RingHom[l].Hom A B) (F G : Bivariate[l].Over[A].Expr) (x0 y0 : B.R)
+ (invertible : RL[B].unit (Bivariate[l].Over[A].In[B,h].jacobian x0 y0 F G)) {
+ open B ; open RL[B] ; open Poly[l].PolyR[B] ; open Mul[l].MulR[B] ;
+ module E = Bivariate[l].Over[A].In[B,h] ;
+ module J = FiniteJets[l].Over[B] ; module S = StableAnnihilator[l].Over[B] ;
+ f : R = E.val x0 y0 F ; g0 : R = E.val x0 y0 G ;
+ targetF : P = S.linear f ; targetG : P = cons g0 nil ;
+ State (n : Nat) : U l =
+  (x : P) * (y : P) * Id R (coef x zero) x0 * Id R (coef y zero) y0 *
+   J.Eq (suc n) (E.raw x y F) targetF * J.Eq (suc n) (E.raw x y G) targetG ;
+ initial : State zero =
+  (cons x0 nil,cons y0 nil,refl x0,refl y0,
+   J.extend zero _ _ (\ k b -> efq b) (E.raw-zero (cons x0 nil) (cons y0 nil) F),
+   J.extend zero _ _ (\ k b -> efq b) (E.raw-zero (cons x0 nil) (cons y0 nil) G)) ;
+ correct (old desired : R) : Id R (add old (add desired (neg old))) desired =
+  trans (add-swap old desired (neg old)) (trans (ap (add desired) (addN old)) (addZ desired)) ;
+ module Step (n : Nat) (s : State n) {
+  x : P = s.1 ; y : P = s.2.1 ;
+  hx : Id R (coef x zero) x0 = s.2.2.1 ; hy : Id R (coef y zero) y0 = s.2.2.2.1 ;
+  hxF : J.Eq (suc n) (E.raw x y F) targetF = s.2.2.2.2.1 ;
+  hxG : J.Eq (suc n) (E.raw x y G) targetG = s.2.2.2.2.2 ;
+  errF : R = add (coef targetF (suc n)) (neg (coef (E.raw x y F) (suc n))) ;
+  errG : R = add (coef targetG (suc n)) (neg (coef (E.raw x y G) (suc n))) ;
+  module Sol = LinearSolve[l].Over[B,E.dx x0 y0 F,E.dy x0 y0 F,E.dx x0 y0 G,E.dy x0 y0 G,invertible,errF,errG] ;
+  a : R = Sol.alpha ; b : R = Sol.beta ;
+  x' : P = J.bump (suc n) x a ; y' : P = J.bump (suc n) y b ;
+  cx : J.Change (suc n) x x' a = J.bump-change (suc n) x a ;
+  cy : J.Change (suc n) y y' b = J.bump-change (suc n) y b ;
+  module T = E.Taylor[n,x,x',y,y',a,b,cx,cy] ;
+  dx-base (e : Bivariate[l].Over[A].Expr) : Id R (E.dx (coef x zero) (coef y zero) e) (E.dx x0 y0 e) =
+   trans (ap (\ t -> E.dx t (coef y zero) e) hx) (ap (\ t -> E.dx x0 t e) hy) ;
+  dy-base (e : Bivariate[l].Over[A].Expr) : Id R (E.dy (coef x zero) (coef y zero) e) (E.dy x0 y0 e) =
+   trans (ap (\ t -> E.dy t (coef y zero) e) hx) (ap (\ t -> E.dy x0 t e) hy) ;
+  delta-base (e : Bivariate[l].Over[A].Expr) : Id R (T.delta e) (add (mul (E.dx x0 y0 e) a) (mul (E.dy x0 y0 e) b)) =
+   J.cg add _ _ _ _ (ap (\ t -> mul t a) (dx-base e)) (ap (\ t -> mul t b) (dy-base e)) ;
+  topF : Id R (coef (E.raw x' y' F) (suc n)) (coef targetF (suc n)) =
+   trans (T.result F).2
+    (trans (ap (add (coef (E.raw x y F) (suc n))) (trans (delta-base F) Sol.first))
+     (correct (coef (E.raw x y F) (suc n)) (coef targetF (suc n)))) ;
+  topG : Id R (coef (E.raw x' y' G) (suc n)) (coef targetG (suc n)) =
+   trans (T.result G).2
+    (trans (ap (add (coef (E.raw x y G) (suc n))) (trans (delta-base G) Sol.second))
+     (correct (coef (E.raw x y G) (suc n)) (coef targetG (suc n)))) ;
+  result : State (suc n) = (x',y',trans (sym (cx.1 zero tt)) hx,trans (sym (cy.1 zero tt)) hy,
+   J.extend (suc n) (E.raw x' y' F) targetF
+    (J.compose (suc n) (E.raw x' y' F) (E.raw x y F) targetF
+     (J.reverse (suc n) (E.raw x y F) (E.raw x' y' F) (T.result F).1) hxF) topF,
+   J.extend (suc n) (E.raw x' y' G) targetG
+    (J.compose (suc n) (E.raw x' y' G) (E.raw x y G) targetG
+     (J.reverse (suc n) (E.raw x y G) (E.raw x' y' G) (T.result G).1) hxG) topG) ;
+ } ;
+ lift : (n : Nat) -> State n = split { zero -> initial ; suc n | r -> Step[n,r].result } ;
+ -- the same compatibility as TaylorCompatibility: x_(n+1) = x_n mod T^(n+1)
+ x-compatible (n : Nat) : J.Eq (suc n) (lift n).1 (lift (suc n)).1 = Step[n,lift n].cx.1 ;
+ y-compatible (n : Nat) : J.Eq (suc n) (lift n).2.1 (lift (suc n)).2.1 = Step[n,lift n].cy.1 ;
+} ;

@@ -1,0 +1,287 @@
+-- Flatness of an A-algebra C (h : A -> C) by finite relations (handoff §4).
+--
+-- A relation is  sum_i h(a_i) b_i = 0  in C  (n terms, a_i in A, b_i in C).
+-- An explanation of it is a finite family of pairs (c_.j, y_j), j < m, with
+--     b_i = sum_j h(c_ij) y_j      and      sum_i a_i c_ij = 0  in A.
+-- C is flat when every relation is merely explained.  Explanations are
+-- closed under the operations used later: the zero family, sums of two
+-- families (the pairs of both, concatenated), finite sums, multiplication by
+-- an element of C, images by a map of A-algebras, and equal families.
+-- A is flat over itself: (b_i, 1) is one pair.
+-- The A-module underlying C (Underlying) is a module of the library, and a
+-- flat C gives DescentFlat.Over[A].At[Underlying].Flat (Bridge): from the
+-- columns b_i of q, the explanation gives through(w)_j = sum_i c_ij w_i and
+-- values(u) = sum_j u_j y_j, and values(through w) = sum_i w_i b_i = q(w)
+-- by exchanging the two finite sums.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+-- ring maps preserve finite sums and linear combinations
+module MapSums (A C : CRing) (h : RingHom[l].Hom A C) {
+ module SA = FiniteIdeal[l].Sums[A] ; module SC = FiniteIdeal[l].Sums[C] ;
+ sum : (n : Nat) (v : Fin n -> A.R) -> Id C.R (h.1 (SA.sum n v)) (SC.sum n (\ i -> h.1 (v i))) = split {
+  zero -> \ v -> RingHom[l].zero A C h ;
+  suc n | ih -> \ v -> trans (h.2.2.1 (v (inr tt)) (SA.sum n (\ i -> v (inl i))))
+   (ap (C.add (h.1 (v (inr tt)))) (ih (\ i -> v (inl i)))) } ;
+ lin (n : Nat) (fs v : Fin n -> A.R) :
+  Id C.R (h.1 (SA.lin n fs v)) (SC.lin n (\ i -> h.1 (fs i)) (\ i -> h.1 (v i))) =
+  trans (sum n (\ i -> A.mul (fs i) (v i)))
+   (SC.sum-cong n (\ i -> h.1 (A.mul (fs i) (v i))) (\ i -> C.mul (h.1 (fs i)) (h.1 (v i)))
+    (\ i -> h.2.2.2 (fs i) (v i))) ;
+} ;
+-- sum_i fs_i v_i = sum_i v_i fs_i
+lin-comm (C : CRing) (n : Nat) (fs v : Fin n -> C.R) :
+ Id C.R (FiniteIdeal[l].Sums[C].lin n fs v) (FiniteIdeal[l].Sums[C].lin n v fs) =
+ FiniteIdeal[l].Sums[C].sum-cong n (\ i -> C.mul (fs i) (v i)) (\ i -> C.mul (v i) (fs i)) (\ i -> C.mulC (fs i) (v i)) ;
+-- concatenated families (FinSum.cases): sums split, properties of all entries
+module Concat (C : CRing) {
+ module SC = FiniteIdeal[l].Sums[C] ;
+ sum (B1 B2 : U l) (phi : B1 -> B2 -> C.R) (n : Nat) (x1 : Fin n -> B1) (x2 : Fin n -> B2) :
+  (m : Nat) (y1 : Fin m -> B1) (y2 : Fin m -> B2) ->
+  Id C.R (SC.sum (plus m n) (\ j -> phi (FinSum[l].cases n B1 x1 m y1 j) (FinSum[l].cases n B2 x2 m y2 j)))
+   (C.add (SC.sum n (\ j -> phi (x1 j) (x2 j))) (SC.sum m (\ j -> phi (y1 j) (y2 j)))) = split {
+  zero -> \ y1 y2 -> sym (C.addZ (SC.sum n (\ j -> phi (x1 j) (x2 j)))) ;
+  suc m | ih -> \ y1 y2 ->
+   trans (ap (C.add (phi (y1 (inr tt)) (y2 (inr tt)))) (ih (\ j -> y1 (inl j)) (\ j -> y2 (inl j))))
+    (RL[C].add-swap (phi (y1 (inr tt)) (y2 (inr tt))) (SC.sum n (\ j -> phi (x1 j) (x2 j)))
+     (SC.sum m (\ j -> phi (y1 (inl j)) (y2 (inl j))))) } ;
+} ;
+cases-all (B : U l) (P : B -> U l) (n : Nat) (x : Fin n -> B) (hx : (i : Fin n) -> P (x i)) :
+ (m : Nat) (y : Fin m -> B) -> ((j : Fin m) -> P (y j)) -> (j : Fin (plus m n)) -> P (FinSum[l].cases n B x m y j) = split {
+ zero -> \ y hy -> hx ;
+ suc m | ih -> \ y hy -> split {
+  inl j -> ih (\ k -> y (inl k)) (\ k -> hy (inl k)) j ;
+  inr t -> hy (inr tt) } } ;
+module Over (A C : CRing) (h : RingHom[l].Hom A C) {
+ module SA = FiniteIdeal[l].Sums[A] ; module SC = FiniteIdeal[l].Sums[C] ;
+ -- sum_i h(a_i) b_i = 0
+ Relation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) : U l =
+  Id C.R (SC.lin n (\ i -> h.1 (a i)) b) C.z ;
+ record Explanation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) {
+  size : Nat ;
+  column (j : Fin size) (i : Fin n) : A.R ;
+  generator (j : Fin size) : C.R ;
+  expands (i : Fin n) : Id C.R (b i) (SC.lin size (\ j -> h.1 (column j i)) generator) ;
+  relations (j : Fin size) : Id A.R (SA.lin n a (column j)) A.z ;
+ } ;
+ Explained (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) : U l = Tr.Trunc[Explanation[n,a,b]].carrier ;
+ Flat : U l = (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) -> Relation n a b -> Explained n a b ;
+ module Ops (n : Nat) (a : Fin n -> A.R) {
+  Ex (b : Fin n -> C.R) : U l = Explanation[n,a,b] ;
+  zero : Ex (\ i -> C.z) =
+   new Explanation[n,a,\ i -> C.z,zero,\ j i -> efq j,\ j -> efq j,\ i -> refl C.z,\ j -> efq j] ;
+  equal (b b' : Fin n -> C.R) (e : (i : Fin n) -> Id C.R (b i) (b' i)) (x : Ex b) : Ex b' =
+   new Explanation[n,a,b',x.size,x.column,x.generator,\ i -> trans (sym (e i)) (x.expands i),x.relations] ;
+  scale (t : C.R) (b : Fin n -> C.R) (x : Ex b) : Ex (\ i -> C.mul t (b i)) =
+   new Explanation[n,a,\ i -> C.mul t (b i),x.size,x.column,\ j -> C.mul t (x.generator j),
+    \ i -> trans (ap (C.mul t) (x.expands i))
+     (sym (SC.lin-scale x.size (\ j -> h.1 (x.column j i)) x.generator t)),
+    x.relations] ;
+  add (u v : Fin n -> C.R) (x : Ex u) (y : Ex v) : Ex (\ i -> C.add (u i) (v i)) =
+   new Explanation[n,a,\ i -> C.add (u i) (v i),plus y.size x.size,
+    FinSum[l].cases x.size (Fin n -> A.R) x.column y.size y.column,
+    FinSum[l].cases x.size C.R x.generator y.size y.generator,
+    \ i -> trans (Presentations[l].cong2 C.R C.add _ _ _ _ (x.expands i) (y.expands i))
+     (sym (Concat[C].sum (Fin n -> A.R) C.R (\ c g -> C.mul (h.1 (c i)) g)
+       x.size x.column x.generator y.size y.column y.generator)),
+    cases-all (Fin n -> A.R) (\ c -> Id A.R (SA.lin n a c) A.z) x.size x.column x.relations
+     y.size y.column y.relations] ;
+  -- a finite sum of explained families is explained
+  sum : (k : Nat) (u : Fin k -> Fin n -> C.R) -> ((t : Fin k) -> Ex (u t)) ->
+   Ex (\ i -> SC.sum k (\ t -> u t i)) = split {
+   zero -> \ u x -> zero ;
+   suc k | ih -> \ u x -> add (u (inr tt)) (\ i -> SC.sum k (\ t -> u (inl t) i))
+    (x (inr tt)) (ih (\ t -> u (inl t)) (\ t -> x (inl t))) } ;
+  -- truncated forms
+  equal-mere (b b' : Fin n -> C.R) (e : (i : Fin n) -> Id C.R (b i) (b' i)) : Explained n a b -> Explained n a b' =
+   TC.map (Ex b) (Ex b') (equal b b' e) ;
+  scale-mere (t : C.R) (b : Fin n -> C.R) : Explained n a b -> Explained n a (\ i -> C.mul t (b i)) =
+   TC.map (Ex b) (Ex (\ i -> C.mul t (b i))) (scale t b) ;
+  add-mere (u v : Fin n -> C.R) : Explained n a u -> Explained n a v -> Explained n a (\ i -> C.add (u i) (v i)) =
+   TC.map2 (Ex u) (Ex v) (Ex (\ i -> C.add (u i) (v i))) (add u v) ;
+  sum-mere (k : Nat) (u : Fin k -> Fin n -> C.R) (x : (t : Fin k) -> Explained n a (u t)) :
+   Explained n a (\ i -> SC.sum k (\ t -> u t i)) =
+   TC.map ((t : Fin k) -> Ex (u t)) (Ex (\ i -> SC.sum k (\ t -> u t i))) (sum k u)
+    (AffineFinite[l].choice k (\ t -> Ex (u t)) x) ;
+ } ;
+ -- the A-module underlying C
+ module Underlying (setA : Pr.isSet A.R) (setC : Pr.isSet C.R) {
+  module MD = Modules[l].Over[A,setA] ;
+  module CL = RL[C] ;
+  M : MD.Module = new Alg73[l].Mod[MD.ring,C.R,setC,C.z,C.add,C.neg,C.addA,C.addC,C.addZ,C.addN,
+   \ x c -> C.mul (h.1 x) c,
+   \ x y c -> trans (C.mulA (h.1 x) (h.1 y) c) (ap (\ t -> C.mul t c) (sym (h.2.2.2 x y))),
+   \ c -> trans (ap (\ t -> C.mul t c) h.2.1) (CL.one-left c),
+   \ x c d -> C.dist (h.1 x) c d,
+   \ x y c -> trans (ap (\ t -> C.mul t c) (h.2.2.1 x y)) (CL.dist-left (h.1 x) (h.1 y) c)] ;
+  scalar (x : A.R) (c : C.R) : Id C.R (M.sm x c) (C.mul (h.1 x) c) = refl (C.mul (h.1 x) c) ;
+  -- the module sums of M are the ring sums of C
+  module MS = ModuleFiniteSums[l].Over[A,setA,M] ;
+  sums : (n : Nat) (w : Fin n -> C.R) -> Id C.R (MS.sum n w) (SC.sum n w) = split {
+   zero -> \ w -> refl C.z ;
+   suc n | ih -> \ w -> ap (C.add (w (inr tt))) (ih (\ i -> w (inl i))) } ;
+  module DL = DescentLinear[l].Over[A,setA] ; module MM = DescentModuleMaps[l].Over[A,setA] ;
+  -- sum_j u_j y_j in M is the ring sum
+  combination (k : Nat) (y : Fin k -> C.R) (u : Fin k -> A.R) :
+   Id C.R ((MM.combination M k y).1 u) (SC.lin k (\ j -> h.1 (u j)) y) =
+   trans (DL.On[M].lin-value k y u) (sums k (\ j -> C.mul (h.1 (u j)) (y j))) ;
+ } ;
+ module Bridge (setA : Pr.isSet A.R) (setC : Pr.isSet C.R) (flat : Flat) {
+  module UM = Underlying[setA,setC] ;
+  module DF = DescentFlat[l].Over[A,setA] ; module DA = DF.At[UM.M] ;
+  module DL = DF.DL ; module SM = DF.SM ; module MM = DF.MM ;
+  module MC = MnSums[l].Over[C] ;
+  module Given (n : Nat) (q : SM.Linear (DL.Free n) UM.M) (v : (DL.Free n).M) (kill : Id UM.M.M (q.1 v) UM.M.mz) {
+   module Col = MM.Free[n].LinearMap[UM.M,q] ;
+   b : Fin n -> C.R = Col.columns ;
+   value (w : (DL.Free n).M) : Id C.R (q.1 w) (SC.lin n (\ i -> h.1 (w i)) b) =
+    trans (sym (Col.equation w)) (UM.combination n b w) ;
+   relation : Relation n v b = trans (sym (value v)) kill ;
+   module From (x : Explanation[n,v,b]) {
+    k : Nat = x.size ;
+    -- through(w)_j = sum_i c_ij w_i
+    th (w : (DL.Free n).M) (j : Fin k) : A.R = SA.lin n (x.column j) w ;
+    through : SM.Linear (DL.Free n) (DL.Free k) =
+     (th,\ w w' -> F.funext (Fin k) (\ j -> A.R) _ _ (\ j -> SA.lin-add n (x.column j) w w'),
+      \ c w -> F.funext (Fin k) (\ j -> A.R) _ _ (\ j -> SA.lin-scale n (x.column j) w c)) ;
+    values : SM.Linear (DL.Free k) UM.M = MM.combination UM.M k x.generator ;
+    -- values(through w) = sum_j (sum_i h(c_ij) h(w_i)) y_j = sum_i h(w_i) b_i
+    agrees (w : (DL.Free n).M) : Id UM.M.M (values.1 (through.1 w)) (q.1 w) = calc C.R {
+     values.1 (through.1 w)
+      =< UM.combination k x.generator (th w) > SC.lin k (\ j -> h.1 (th w j)) x.generator
+      =< SC.sum-cong k (\ j -> C.mul (h.1 (th w j)) (x.generator j))
+          (\ j -> SC.sum n (\ i -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j))))
+          (\ j -> trans (ap (\ t -> C.mul t (x.generator j))
+             (trans (MapSums[A,C,h].lin n (x.column j) w) (lin-comm C n (\ i -> h.1 (x.column j i)) (\ i -> h.1 (w i)))))
+           (trans (sym (MC.sum-scale-right (x.generator j) n (\ i -> C.mul (h.1 (w i)) (h.1 (x.column j i)))))
+            (SC.sum-cong n (\ i -> C.mul (C.mul (h.1 (w i)) (h.1 (x.column j i))) (x.generator j))
+             (\ i -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j)))
+             (\ i -> sym (C.mulA (h.1 (w i)) (h.1 (x.column j i)) (x.generator j)))))) >
+       SC.sum k (\ j -> SC.sum n (\ i -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j))))
+      =< sym (MC.exchange k n (\ i j -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j)))) >
+       SC.sum n (\ i -> SC.sum k (\ j -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j))))
+      =< SC.sum-cong n (\ i -> SC.sum k (\ j -> C.mul (h.1 (w i)) (C.mul (h.1 (x.column j i)) (x.generator j))))
+          (\ i -> C.mul (h.1 (w i)) (b i))
+          (\ i -> trans (SC.sum-scale (h.1 (w i)) k (\ j -> C.mul (h.1 (x.column j i)) (x.generator j)))
+            (ap (C.mul (h.1 (w i))) (sym (x.expands i)))) > SC.lin n (\ i -> h.1 (w i)) b
+      =< sym (value w) > q.1 w } ;
+    factor : DA.FiniteFactor[n,q] = new DA.FiniteFactor[n,q,k,through,values,agrees] ;
+    kills : Id (DL.Free k).M (through.1 v) (DL.Free k).mz =
+     F.funext (Fin k) (\ j -> A.R) _ _ (\ j -> trans (lin-comm A n (x.column j) v) (x.relations j)) ;
+    result : DA.Explanation n (suc zero) q (\ j -> v) = (factor,\ j -> kills) ;
+   } ;
+   result : Tr.Trunc[DA.Explanation n (suc zero) q (\ j -> v)].carrier =
+    TC.map (Explanation[n,v,b]) (DA.Explanation n (suc zero) q (\ j -> v)) (\ x -> From[x].result)
+     (flat n v b relation) ;
+  } ;
+  theorem : DA.Flat = \ n q v kill -> Given[n,q,v,kill].result ;
+ } ;
+ -- conversely, DescentFlat's flatness of the underlying module gives explanations
+ module Converse (setA : Pr.isSet A.R) (setC : Pr.isSet C.R)
+  (flatM : DescentFlat[l].Over[A,setA].At[Underlying[setA,setC].M].Flat) {
+  module UM = Underlying[setA,setC] ;
+  module DF = DescentFlat[l].Over[A,setA] ; module DA = DF.At[UM.M] ;
+  module DL = DF.DL ; module SM = DF.SM ; module MM = DF.MM ;
+  -- the j-th coordinate of sum_i c_i w_i in Free k
+  coordinate (k n : Nat) (w : Fin n -> (DL.Free k).M) (c : (DL.Free n).M) (j : Fin k) :
+   Id A.R (DL.On[DL.Free k].lin n w c j) (SA.lin n c (\ i -> w i j)) =
+   trans (MM.Free[k].Projection[j].H.lin n w c)
+    (trans (DL.On[DF.MD.regular].lin-value n (\ i -> w i j) c)
+     (DL.On[DF.MD.regular].S.map (\ x -> x) (refl A.z) (\ x y -> refl (A.add x y)) n (\ i -> A.mul (c i) (w i j)))) ;
+  module Given (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) (r : Relation n a b) {
+   q : SM.Linear (DL.Free n) UM.M = MM.combination UM.M n b ;
+   kill : Id UM.M.M (q.1 a) UM.M.mz = trans (UM.combination n b a) r ;
+   module From (e : DA.Explanation n (suc zero) q (\ j -> a)) {
+    k : Nat = e.1.size ;
+    column (j : Fin k) (i : Fin n) : A.R = e.1.through.1 (MM.Free[n].unit i) j ;
+    generator (j : Fin k) : C.R = e.1.values.1 (MM.Free[k].unit j) ;
+    expands (i : Fin n) : Id C.R (b i) (SC.lin k (\ j -> h.1 (column j i)) generator) = calc C.R {
+     b i =< sym (DL.On[UM.M].lin-unit n b i) > q.1 (MM.Free[n].unit i)
+      =< sym (e.1.agrees (MM.Free[n].unit i)) > e.1.values.1 (e.1.through.1 (MM.Free[n].unit i))
+      =< ap e.1.values.1 (sym (MM.Free[k].expansion (e.1.through.1 (MM.Free[n].unit i)))) >
+       e.1.values.1 (DL.On[DL.Free k].lin k (MM.Free[k].unit) (e.1.through.1 (MM.Free[n].unit i)))
+      =< MM.Map[DL.Free k,UM.M,e.1.values].H.lin k (MM.Free[k].unit) (e.1.through.1 (MM.Free[n].unit i)) >
+       DL.On[UM.M].lin k generator (e.1.through.1 (MM.Free[n].unit i))
+      =< UM.combination k generator (e.1.through.1 (MM.Free[n].unit i)) >
+       SC.lin k (\ j -> h.1 (column j i)) generator } ;
+    relations (j : Fin k) : Id A.R (SA.lin n a (column j)) A.z = calc A.R {
+     SA.lin n a (column j)
+      =< sym (coordinate k n (\ i -> e.1.through.1 (MM.Free[n].unit i)) a j) >
+       DL.On[DL.Free k].lin n (\ i -> e.1.through.1 (MM.Free[n].unit i)) a j
+      =< ap (\ v -> v j) (sym (MM.Map[DL.Free n,DL.Free k,e.1.through].H.lin n (MM.Free[n].unit) a)) >
+       e.1.through.1 (DL.On[DL.Free n].lin n (MM.Free[n].unit) a) j
+      =< ap (\ v -> e.1.through.1 v j) (MM.Free[n].expansion a) > e.1.through.1 a j
+      =< Pr.happly (Fin k) (\ x -> A.R) (e.1.through.1 a) (DL.Free k).mz (e.2 (inr tt)) j > A.z } ;
+    result : Explanation[n,a,b] = new Explanation[n,a,b,k,column,generator,expands,relations] ;
+   } ;
+   result : Explained n a b =
+    TC.map (DA.Explanation n (suc zero) q (\ j -> a)) (Explanation[n,a,b]) (\ e -> From[e].result) (flatM n q a kill) ;
+  } ;
+  flat : Flat = \ n a b r -> Given[n,a,b,r].result ;
+ } ;
+ -- the two predicates agree
+ equivalent (setA : Pr.isSet A.R) (setC : Pr.isSet C.R) :
+  (Flat -> DescentFlat[l].Over[A,setA].At[Underlying[setA,setC].M].Flat) *
+  (DescentFlat[l].Over[A,setA].At[Underlying[setA,setC].M].Flat -> Flat) =
+  (\ fl -> Bridge[setA,setC,fl].theorem,\ fm -> Converse[setA,setC,fm].flat) ;
+} ;
+-- images by a map of A-algebras phi : C -> D (phi h = h' pointwise)
+module Image (A C : CRing) (h : RingHom[l].Hom A C) (D : CRing) (h' : RingHom[l].Hom A D) (phi : RingHom[l].Hom C D)
+ (over : (x : A.R) -> Id D.R (phi.1 (h.1 x)) (h'.1 x)) {
+ module OC = Over[A,C,h] ; module OD = Over[A,D,h'] ; module MS = MapSums[C,D,phi] ;
+ relation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) (r : OC.Relation n a b) :
+  OD.Relation n a (\ i -> phi.1 (b i)) =
+  trans (FiniteIdeal[l].Sums[D].sum-cong n (\ i -> D.mul (h'.1 (a i)) (phi.1 (b i)))
+    (\ i -> D.mul (phi.1 (h.1 (a i))) (phi.1 (b i))) (\ i -> ap (\ t -> D.mul t (phi.1 (b i))) (sym (over (a i)))))
+   (trans (sym (MS.lin n (\ i -> h.1 (a i)) b)) (trans (ap phi.1 r) (RingHom[l].zero C D phi))) ;
+ explanation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) (x : OC.Explanation[n,a,b]) :
+  OD.Explanation[n,a,\ i -> phi.1 (b i)] =
+  new OD.Explanation[n,a,\ i -> phi.1 (b i),x.size,x.column,\ j -> phi.1 (x.generator j),
+   \ i -> trans (ap phi.1 (x.expands i))
+    (trans (MS.lin x.size (\ j -> h.1 (x.column j i)) x.generator)
+     (FiniteIdeal[l].Sums[D].sum-cong x.size (\ j -> D.mul (phi.1 (h.1 (x.column j i))) (phi.1 (x.generator j)))
+      (\ j -> D.mul (h'.1 (x.column j i)) (phi.1 (x.generator j)))
+      (\ j -> ap (\ t -> D.mul t (phi.1 (x.generator j))) (over (x.column j i))))),
+   x.relations] ;
+ mere (n : Nat) (a : Fin n -> A.R) (b : Fin n -> C.R) : OC.Explained n a b -> OD.Explained n a (\ i -> phi.1 (b i)) =
+  TC.map (OC.Explanation[n,a,b]) (OD.Explanation[n,a,\ i -> phi.1 (b i)]) (explanation n a b) ;
+} ;
+-- A is flat over itself
+module Self (A : CRing) {
+ module O = Over[A,A,RingHom[l].identity A] ;
+ explanation (n : Nat) (a : Fin n -> A.R) (b : Fin n -> A.R) (r : O.Relation n a b) : O.Explanation[n,a,b] =
+  new O.Explanation[n,a,b,suc zero,\ j i -> b i,\ j -> A.o,
+   \ i -> sym (trans (A.addZ (A.mul (b i) A.o)) (A.mulO (b i))),\ j -> r] ;
+ flat : O.Flat = \ n a b r -> Tr.Trunc[O.Explanation[n,a,b]].inc (explanation n a b r) ;
+} ;
+-- the same algebra with a pointwise equal structure map
+module Retarget (A C : CRing) (h h' : RingHom[l].Hom A C) (same : (x : A.R) -> Id C.R (h.1 x) (h'.1 x)) {
+ module To = Image[A,C,h,C,h',RingHom[l].identity C,same] ;
+ module Back = Image[A,C,h',C,h,RingHom[l].identity C,\ x -> sym (same x)] ;
+ flat (fl : Over[A,C,h].Flat) : Over[A,C,h'].Flat =
+  \ n a b r -> To.mere n a b (fl n a b (Back.relation n a b r)) ;
+} ;
+-- along a change of base h : A0 -> A, with phi : C0 -> C over h: an
+-- explanation over A0 of (a0_i, b_i) gives one over A of (h(a0_i), phi(b_i));
+-- its columns are h(c_ij), and sum_i h(a0_i) h(c_ij) = h(0) = 0
+module AlongBase (A0 A : CRing) (h : RingHom[l].Hom A0 A) (C0 : CRing) (h0 : RingHom[l].Hom A0 C0)
+ (C : CRing) (hC : RingHom[l].Hom A C) (phi : RingHom[l].Hom C0 C)
+ (over : (x : A0.R) -> Id C.R (phi.1 (h0.1 x)) (hC.1 (h.1 x))) {
+ module O0 = Over[A0,C0,h0] ; module O = Over[A,C,hC] ;
+ module MS = MapSums[C0,C,phi] ; module MA = MapSums[A0,A,h] ;
+ module SA = FiniteIdeal[l].Sums[A] ; module SC = FiniteIdeal[l].Sums[C] ;
+ explanation (n : Nat) (a0 : Fin n -> A0.R) (a : Fin n -> A.R) (sends : (i : Fin n) -> Id A.R (h.1 (a0 i)) (a i))
+  (b : Fin n -> C0.R) (x : O0.Explanation[n,a0,b]) : O.Explanation[n,a,\ i -> phi.1 (b i)] =
+  new O.Explanation[n,a,\ i -> phi.1 (b i),x.size,\ j i -> h.1 (x.column j i),\ j -> phi.1 (x.generator j),
+   \ i -> trans (ap phi.1 (x.expands i))
+    (trans (MS.lin x.size (\ j -> h0.1 (x.column j i)) x.generator)
+     (SC.sum-cong x.size (\ j -> C.mul (phi.1 (h0.1 (x.column j i))) (phi.1 (x.generator j)))
+      (\ j -> C.mul (hC.1 (h.1 (x.column j i))) (phi.1 (x.generator j)))
+      (\ j -> ap (\ t -> C.mul t (phi.1 (x.generator j))) (over (x.column j i))))),
+   \ j -> trans (SA.sum-cong n (\ i -> A.mul (a i) (h.1 (x.column j i))) (\ i -> A.mul (h.1 (a0 i)) (h.1 (x.column j i)))
+      (\ i -> ap (\ t -> A.mul t (h.1 (x.column j i))) (sym (sends i))))
+    (trans (sym (MA.lin n a0 (x.column j))) (trans (ap h.1 (x.relations j)) (RingHom[l].zero A0 A h)))] ;
+ mere (n : Nat) (a0 : Fin n -> A0.R) (a : Fin n -> A.R) (sends : (i : Fin n) -> Id A.R (h.1 (a0 i)) (a i))
+  (b : Fin n -> C0.R) : O0.Explained n a0 b -> O.Explained n a (\ i -> phi.1 (b i)) =
+  TC.map (O0.Explanation[n,a0,b]) (O.Explanation[n,a,\ i -> phi.1 (b i)]) (explanation n a0 a sends b) ;
+} ;
