@@ -1,0 +1,109 @@
+-- CodedSubring.seg: the subring of the elements that merely have a code,
+-- and the kill argument in a coded noetherian ring.
+--
+-- Over.  Q presents a subring of S (sag/noetherian Span.Pres).  Coded b:
+-- merely b = phi c.  Coded elements are closed under the ring operations
+-- (apply the operation to the codes), so Carrier = (b : S) * Coded b is a
+-- commutative ring with the laws of S: Coded b is a proposition, so two
+-- elements are equal when their images in S are (eq), and incl is an
+-- injective ring map.  The codes of Q present it (pres), and a list of
+-- codes has the same combinations in Carrier as in S, by eq, so the tree
+-- of a bar for Q is one for pres (noeth).
+--
+-- CodedNoetherian S: a noetherian presentation of S onto which every
+-- element merely lifts.  Subring: the coded subring is coded noetherian
+-- when Q is noetherian.
+--
+-- Vanish.  In a coded noetherian ring, u = f^n w_n and f^(n+1) w_n = 0 for
+-- every n give u = 0: Sequence.Kill, walked along merely given codes of
+-- the w_n under the truncation; u = 0 is a proposition, so no choice.
+level l ; open Ring[l] ; open Bar[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (S : CRing) (Q : Span[l].Pres[S]) {
+ Lifts (b : S.R) : U l = (c : Q.K) * Id S.R (Q.phi c) b ;
+ Coded (b : S.R) : U l = Tr.Trunc[Lifts b].carrier ;
+ coded-prop (b : S.R) : Pr.isProp (Coded b) = Tr.Trunc[Lifts b].proposition ;
+ known (c : Q.K) (b : S.R) (e : Id S.R (Q.phi c) b) : Coded b = Tr.Trunc[Lifts b].inc (c,e) ;
+ code (c : Q.K) : Coded (Q.phi c) = known c (Q.phi c) (refl (Q.phi c)) ;
+
+ coded-op (op : S.R -> S.R -> S.R) (kop : Q.K -> Q.K -> Q.K)
+   (law : (c d : Q.K) -> Id S.R (Q.phi (kop c d)) (op (Q.phi c) (Q.phi d)))
+   (a b : S.R) (ha : Coded a) (hb : Coded b) : Coded (op a b) =
+   Tr.Trunc[Lifts a].induction @l (\ t -> Coded (op a b)) (\ t -> coded-prop (op a b))
+     (\ ca -> Tr.Trunc[Lifts b].induction @l (\ t -> Coded (op a b)) (\ t -> coded-prop (op a b))
+       (\ cb -> known (kop ca.1 cb.1) (op a b)
+          (trans (law ca.1 cb.1) (Presentations[l].cong2 S.R op (Q.phi ca.1) a (Q.phi cb.1) b ca.2 cb.2))) hb) ha ;
+ coded-add (a b : S.R) (ha : Coded a) (hb : Coded b) : Coded (S.add a b) = coded-op S.add Q.kadd Q.phi-add a b ha hb ;
+ coded-mul (a b : S.R) (ha : Coded a) (hb : Coded b) : Coded (S.mul a b) = coded-op S.mul Q.kmul Q.phi-mul a b ha hb ;
+ coded-neg (a : S.R) (ha : Coded a) : Coded (S.neg a) =
+   Tr.Trunc[Lifts a].induction @l (\ t -> Coded (S.neg a)) (\ t -> coded-prop (S.neg a))
+     (\ ca -> known (Q.kneg ca.1) (S.neg a) (trans (Q.phi-neg ca.1) (ap S.neg ca.2))) ha ;
+
+ -- the subring
+ Carrier : U l = (b : S.R) * Coded b ;
+ eq (a b : Carrier) (e : Id S.R a.1 b.1) : Id Carrier a b =
+   Pr.Sigma-eq S.R Coded a.1 b.1 a.2 b.2 e (coded-prop b.1) ;
+ zero : Carrier = (S.z, known Q.kz S.z Q.phi-z) ;
+ one : Carrier = (S.o, known Q.ko S.o Q.phi-o) ;
+ plus (a b : Carrier) : Carrier = (S.add a.1 b.1, coded-add a.1 b.1 a.2 b.2) ;
+ times (a b : Carrier) : Carrier = (S.mul a.1 b.1, coded-mul a.1 b.1 a.2 b.2) ;
+ minus (a : Carrier) : Carrier = (S.neg a.1, coded-neg a.1 a.2) ;
+ ring : CRing = mkCRing Carrier zero one plus times minus
+   (\ a b c -> eq _ _ (S.addA a.1 b.1 c.1)) (\ a b -> eq _ _ (S.addC a.1 b.1))
+   (\ a -> eq _ _ (S.addZ a.1)) (\ a -> eq _ _ (S.addN a.1))
+   (\ a b c -> eq _ _ (S.mulA a.1 b.1 c.1)) (\ a b -> eq _ _ (S.mulC a.1 b.1))
+   (\ a -> eq _ _ (S.mulO a.1)) (\ a b c -> eq _ _ (S.dist a.1 b.1 c.1)) ;
+ set (setS : Pr.isSet S.R) : Pr.isSet Carrier =
+   Pr.isSet-Sigma S.R Coded setS (\ b -> Pr.prop-to-set (Coded b) (coded-prop b)) ;
+ incl : RingHom[l].Hom ring S =
+   (\ a -> a.1, refl S.o, \ a b -> refl (S.add a.1 b.1), \ a b -> refl (S.mul a.1 b.1)) ;
+
+ -- the codes present the subring, with the same combinations
+ pres : Span[l].Pres[ring] =
+   Span[l].mkPres ring Q.K (\ c -> (Q.phi c, code c)) Q.kz Q.ko Q.kadd Q.kmul Q.kneg
+     (eq _ _ Q.phi-z) (eq _ _ Q.phi-o) (\ c d -> eq _ _ (Q.phi-add c d))
+     (\ c d -> eq _ _ (Q.phi-mul c d)) (\ c -> eq _ _ (Q.phi-neg c)) ;
+ module SQ = Span[l].Over[S,Q] ; module SR = Span[l].Over[ring,pres] ;
+
+ in-reflect : (s : List Q.K) (y : Carrier) -> SQ.In s y.1 -> SR.In s y = split {
+   nil -> \ y e -> eq y zero e ;
+   cons t s | r -> \ y h -> (h.1, r (plus y (minus (times (pres.phi h.1) (pres.phi t)))) h.2) } ;
+ good-reflect-cons (t : Q.K) (s : List Q.K) (ih : SQ.Good s -> SR.Good s) :
+   Plus (SQ.In s (Q.phi t)) (SQ.Good s) -> Plus (SR.In s (pres.phi t)) (SR.Good s) = split {
+   inl w -> inl (in-reflect s (pres.phi t) w) ;
+   inr g -> inr (ih g) } ;
+ good-reflect : (s : List Q.K) -> SQ.Good s -> SR.Good s = split {
+   nil -> \ g -> g ;
+   cons t s | r -> good-reflect-cons t s r } ;
+
+ Same (s s' : List Q.K) : U l = Id (List Q.K) s s' ;
+ same-cons (x : Q.K) (s s' : List Q.K) (e : Same s s') : Same (cons x s) (cons x s') = ap (\ k -> cons x k) e ;
+ same-good (s s' : List Q.K) (e : Same s s') (g : SQ.Good s) : SR.Good s' = subst SR.Good e (good-reflect s g) ;
+ noeth (n : SQ.Noeth) : SR.Noeth =
+   Keep[Q.K,SQ.Good,SR.Good,Same,same-cons,same-good].bars nil nil (refl nil) n ;
+} ;
+
+CodedNoetherian (S : CRing) : U l+ =
+  (Q : Span[l].Pres[S]) * (Span[l].Over[S,Q].Noeth * ((b : S.R) -> Over[S,Q].Coded b)) ;
+
+module Subring (S : CRing) (Q : Span[l].Pres[S]) (n : Span[l].Over[S,Q].Noeth) {
+ module O = Over[S,Q] ; module C = Over[O.ring,O.pres] ;
+ lifts (b : O.Carrier) : C.Coded b =
+   Tr.Trunc[O.Lifts b.1].induction @l (\ t -> C.Coded b) (\ t -> C.coded-prop b)
+     (\ cb -> C.known cb.1 b (O.eq (O.pres.phi cb.1) b cb.2)) b.2 ;
+ coded-noetherian : CodedNoetherian O.ring = (O.pres, (O.noeth n, lifts)) ;
+} ;
+
+module Vanish (S : CRing) (setS : Pr.isSet S.R) (input : CodedNoetherian S) (f u : S.R) (w : Nat -> S.R)
+  (iterated : (n : Nat) -> Id S.R u (S.mul (StableAnnihilator[l].Over[S].power f n) (w n)))
+  (killed : (n : Nat) -> Id S.R (S.mul (StableAnnihilator[l].Over[S].power f (suc n)) (w n)) S.z) {
+ module St = StableAnnihilator[l].Over[S] ;
+ module K = Sequence[l].Over[S,input.1].Kill[f,u,St.power f,\ n -> refl (St.power f (suc n)),w,iterated,killed] ;
+ T (X : U l) : U l = Tr.Trunc[X].carrier ;
+ ret (X : U l) (x : X) : T X = Tr.Trunc[X].inc x ;
+ bind (X Y : U l) (k : X -> T Y) (t : T X) : T Y =
+  Tr.Trunc[X].induction @l (\ a -> T Y) (\ a -> Tr.Trunc[Y].proposition) k t ;
+ module W = K.Walk[T,ret,bind,\ n -> input.2.2 (w n)] ;
+ vanish : Id S.R u S.z =
+  Tr.Trunc[K.Found].induction @l (\ a -> Id S.R u S.z) (\ a -> setS u S.z) K.zero-of (W.found input.2.1) ;
+} ;

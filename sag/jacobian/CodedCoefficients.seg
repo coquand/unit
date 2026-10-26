@@ -1,0 +1,111 @@
+-- CodedCoefficients.seg: Step II with no annihilator hypothesis, for a
+-- coefficient ring A with a noetherian presentation PA onto which every
+-- element merely lifts (sag/noetherian: quotients of Z[a_1..a_n] or of
+-- k[a_1..a_n], k a discrete field, by Integers/Field + Generated + Transfer).
+--
+-- B = (A[X,Y]/G)[1/J] is presented by the codes of PA mapped to B with x,
+-- y and 1/J adjoined (Generated); it is noetherian by the Hilbert basis
+-- theorem.  Every element of B merely lifts: it is a fraction c/J^n, c the
+-- class of a polynomial, a polynomial is an expression in x, y and
+-- constants, and constants lift by assumption.  This is the input of
+-- JacobianDivisibility.result-coded.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (F G : Bivariate[l].Over[A].Expr)
+  (PA : Span[l].Pres[A]) (nA : Span[l].Over[A,PA].Noeth)
+  (onto : (a : A.R) -> Tr.Trunc[(c : PA.K) * Id A.R (PA.phi c) a].carrier) {
+ module D = JacobianDivisibility[l].Over[A,setA,F,G] ;
+ B : CRing = D.B ;
+ module Pw = AffinePowers[l].Over[B] ;
+ module Rep = ExpressionRepresentation[l].Over[A,setA] ;
+ module TA = Transfer[l].Over[A,B,D.h.1,D.h.2.1,D.h.2.2.1,D.h.2.2.2,PA] ;
+ module Gn = Generated[l].Over[B,TA.image,TA.noeth nA] ;
+ xB : B.R = D.phi.1 D.P.x ; yB : B.R = D.phi.1 D.P.y ;
+ jinv : B.R = D.L.invertible.1 ;
+ xs : List B.R = cons jinv (cons yB (cons xB nil)) ;
+ QB : Span[l].Pres[B] = Gn.gen xs ;
+
+ module C = CodedSubring[l].Over[B,QB] ;
+ coded-base (a : A.R) : C.Coded (D.h.1 a) =
+   Tr.Trunc[(c : PA.K) * Id A.R (PA.phi c) a].induction @l (\ t -> C.Coded (D.h.1 a)) (\ t -> C.coded-prop (D.h.1 a))
+     (\ c -> C.known (Gn.base xs c.1) (D.h.1 a) (trans (Gn.base-phi xs c.1) (ap D.h.1 c.2))) (onto a) ;
+
+ coded-x : C.Coded xB =
+   C.known (Gn.up jinv (cons yB (cons xB nil)) (Gn.up yB (cons xB nil) (Gn.var xB nil))) xB
+     (trans (Gn.up-phi jinv (cons yB (cons xB nil)) (Gn.up yB (cons xB nil) (Gn.var xB nil)))
+       (trans (Gn.up-phi yB (cons xB nil) (Gn.var xB nil)) (Gn.var-phi xB nil))) ;
+ coded-y : C.Coded yB =
+   C.known (Gn.up jinv (cons yB (cons xB nil)) (Gn.var yB (cons xB nil))) yB
+     (trans (Gn.up-phi jinv (cons yB (cons xB nil)) (Gn.var yB (cons xB nil))) (Gn.var-phi yB (cons xB nil))) ;
+ coded-jinv : C.Coded jinv = C.known (Gn.var jinv (cons yB (cons xB nil))) jinv (Gn.var-phi jinv (cons yB (cons xB nil))) ;
+
+ coded-expr : (e : Bivariate[l].Over[A].Expr) -> C.Coded (D.E.val xB yB e) = split {
+   xE -> coded-x ;
+   yE -> coded-y ;
+   cE a -> coded-base a ;
+   addE p q | hp hq -> C.coded-add (D.E.val xB yB p) (D.E.val xB yB q) hp hq ;
+   mulE p q | hp hq -> C.coded-mul (D.E.val xB yB p) (D.E.val xB yB q) hp hq } ;
+
+ coded-poly (p : D.Rg.R) : C.Coded (D.phi.1 p) =
+   Tr.Trunc[Rep.Rep p].induction @l (\ t -> C.Coded (D.phi.1 p)) (\ t -> C.coded-prop (D.phi.1 p))
+     (\ r -> subst C.Coded (trans (sym (D.NatMap.value r.1)) (ap D.phi.1 r.2)) (coded-expr r.1)) (Rep.represent p) ;
+
+ coded-quot (q : D.Q.Carrier) : C.Coded (D.L.inclusion.1 q) =
+   D.Q.Q.induction @l (\ t -> C.Coded (D.L.inclusion.1 t)) (\ t -> C.coded-prop (D.L.inclusion.1 t)) coded-poly q ;
+
+ coded-pow (b : B.R) (h : C.Coded b) : (n : Nat) -> C.Coded (Pw.power b n) = split {
+   zero -> C.known QB.ko B.o QB.phi-o ;
+   suc n | r -> C.coded-mul b (Pw.power b n) h r } ;
+
+ power-one : (n : Nat) -> Id B.R (Pw.power B.o n) B.o = split {
+   zero -> refl B.o ;
+   suc n | r -> trans (ap (B.mul B.o) r) (B.mulO B.o) } ;
+
+ -- s u = a and s t = 1 give u = a t
+ solve (s u a t : B.R) (e : Id B.R (B.mul s u) a) (i : Id B.R (B.mul s t) B.o) : Id B.R u (B.mul a t) =
+   calc B.R { u =< sym (B.mulO u) > B.mul u B.o
+                =< ap (B.mul u) (sym i) > B.mul u (B.mul s t)
+                =< B.mulA u s t > B.mul (B.mul u s) t
+                =< ap (\ v -> B.mul v t) (trans (B.mulC u s) e) > B.mul a t } ;
+
+ -- j^n (1/J)^n = 1
+ cancel-powers (s : D.Q.Carrier) (hs : D.L.Powers s) :
+   Id B.R (B.mul (D.L.inclusion.1 s) (Pw.power jinv hs.1)) B.o =
+   calc B.R { B.mul (D.L.inclusion.1 s) (Pw.power jinv hs.1)
+                =< ap (\ v -> B.mul (D.L.inclusion.1 v) (Pw.power jinv hs.1)) hs.2
+                > B.mul (D.L.inclusion.1 (D.L.P.power (D.Q.include D.j) hs.1)) (Pw.power jinv hs.1)
+                =< ap (\ v -> B.mul v (Pw.power jinv hs.1))
+                      (AffinePowers[l].power-map D.Q.ring B D.L.inclusion (D.Q.include D.j) hs.1)
+                > B.mul (Pw.power (D.L.inclusion.1 (D.Q.include D.j)) hs.1) (Pw.power jinv hs.1)
+                =< sym (Pw.power-mul (D.L.inclusion.1 (D.Q.include D.j)) jinv hs.1)
+                > Pw.power (B.mul (D.L.inclusion.1 (D.Q.include D.j)) jinv) hs.1
+                =< ap (\ v -> Pw.power v hs.1) D.L.invertible.2 > Pw.power B.o hs.1
+                =< power-one hs.1 > B.o } ;
+
+ coded-fraction (p : D.L.L.Raw.Fraction) : C.Coded (D.L.L.include p) =
+   subst C.Coded
+     (sym (solve (D.L.inclusion.1 p.2.1) (D.L.L.include p) (D.L.inclusion.1 p.1) (Pw.power jinv p.2.2.1)
+            (D.L.L.fraction-equation p) (cancel-powers p.2.1 p.2.2)))
+     (C.coded-mul (D.L.inclusion.1 p.1) (Pw.power jinv p.2.2.1) (coded-quot p.1) (coded-pow jinv coded-jinv p.2.2.1)) ;
+
+ coded (b : B.R) : C.Coded b =
+   Tr.Trunc[D.L.L.Representatives b].induction @l (\ t -> C.Coded b) (\ t -> C.coded-prop b)
+     (\ rp -> subst C.Coded rp.2 (coded-fraction rp.1)) (D.L.L.representatives b) ;
+
+ input : CodedSubring[l].CodedNoetherian B = (QB,(Gn.noeth xs,coded)) ;
+
+ result (u v : D.Rg.R) (rel : Id D.Rg.R (D.Rg.mul D.f u) (D.Rg.mul D.g v)) :
+   Tr.Trunc[D.CertificateFor u].carrier = D.result-coded input u v rel ;
+} ;
+
+-- A generated by finitely many elements as over Z: every element merely
+-- has a code as a polynomial in as with integer coefficients.
+module OverZ (A : CRing) (setA : Pr.isSet A.R) (F G : Bivariate[l].Over[A].Expr) (as : List A.R)
+  (onto : (a : A.R) -> Tr.Trunc[(c : (Generated[l].Over[A,Integers[l].Over[A].pres,Integers[l].Over[A].noeth].gen as).K) *
+            Id A.R ((Generated[l].Over[A,Integers[l].Over[A].pres,Integers[l].Over[A].noeth].gen as).phi c) a].carrier) {
+  module Z = Integers[l].Over[A] ;
+  module Gz = Generated[l].Over[A,Z.pres,Z.noeth] ;
+  module C = Over[A,setA,F,G,Gz.gen as,Gz.noeth as,onto] ;
+  result (u v : C.D.Rg.R) (rel : Id C.D.Rg.R (C.D.Rg.mul C.D.f u) (C.D.Rg.mul C.D.g v)) :
+    Tr.Trunc[C.D.CertificateFor u].carrier = C.result u v rel ;
+} ;

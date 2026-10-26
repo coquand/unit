@@ -1,0 +1,65 @@
+-- Bar.seg: the bar predicate of Coquand-Persson (Groebner bases in type
+-- theory, 1999, Definition 6) without inductive families.
+--
+-- "Q bars s" is the least predicate containing Q and closed under: if
+-- Q bars s.x for every x, then Q bars s.  Unit has no indexed inductive
+-- families, so the derivation is a datum: a tree branching over B (a
+-- Brouwer ordinal with branching type B, Bishop's alpha), together with
+-- the predicate Valid t s, defined by recursion on t, saying that every
+-- branch of t, followed from s, ends in a list satisfying Q.
+--
+-- Lists grow at the head: cons x s is s extended by x, so the head is the
+-- newest element.
+level l ; open Ring[l] ;
+
+data Tree (B : U l) : U l = leaf | node (f : B -> Tree B) ;
+
+app {A : U l} : List A -> List A -> List A = split {
+  nil -> \ m -> m ;
+  cons x xs | r -> \ m -> cons x (r m) } ;
+
+app-assoc {A : U l} : (p q m : List A) -> Id (List A) (app (app p q) m) (app p (app q m)) = split {
+  nil -> \ q m -> refl (app q m) ;
+  cons x p | r -> \ q m -> ap (\ k -> cons x k) (r q m) } ;
+
+module Over (B : U l) (Q : List B -> U l) {
+  Valid : Tree B -> List B -> U l = split {
+    leaf -> Q ;
+    node f | r -> \ s -> (x : B) -> r x (cons x s) } ;
+  Bars (s : List B) : U l = (t : Tree B) * Valid t s ;
+
+  here (s : List B) (q : Q s) : Bars s = (leaf,q) ;
+  step (s : List B) (h : (x : B) -> Bars (cons x s)) : Bars s =
+    (node (\ x -> (h x).1), \ x -> (h x).2) ;
+
+  -- the elimination principle of the inductive definition
+  module Ind (Psi : List B -> U l)
+    (base : (s : List B) -> Q s -> Psi s)
+    (ind : (s : List B) -> ((x : B) -> Psi (cons x s)) -> Psi s) {
+    valid : (t : Tree B) (s : List B) -> Valid t s -> Psi s = split {
+      leaf -> base ;
+      node f | r -> \ s v -> ind s (\ x -> r x (cons x s) (v x)) } ;
+    bars (s : List B) (b : Bars s) : Psi s = valid b.1 s b.2 ;
+  } ;
+
+  -- along an infinite sequence, Q holds at some initial segment
+  init (c : Nat -> B) : Nat -> List B = split {
+    zero -> nil ;
+    suc n | r -> cons (c n) r } ;
+  follow (c : Nat -> B) : (t : Tree B) (n : Nat) -> Valid t (init c n) -> (m : Nat) * Q (init c m) = split {
+    leaf -> \ n q -> (n,q) ;
+    node f | r -> \ n v -> r (c n) (suc n) (v (c n)) } ;
+  eventually (c : Nat -> B) (b : Bars nil) : (m : Nat) * Q (init c m) = follow c b.1 zero b.2 ;
+} ;
+
+-- The same tree witnesses a second predicate along a relation that is
+-- stable under extension and carries the first predicate to the second.
+module Keep (B : U l) (Q Q' : List B -> U l) (Rel : List B -> List B -> U l)
+  (rel-cons : (x : B) (s s' : List B) -> Rel s s' -> Rel (cons x s) (cons x s'))
+  (rel-q : (s s' : List B) -> Rel s s' -> Q s -> Q' s') {
+  module V = Over[B,Q] ; module V' = Over[B,Q'] ;
+  valid : (t : Tree B) (s s' : List B) -> Rel s s' -> V.Valid t s -> V'.Valid t s' = split {
+    leaf -> rel-q ;
+    node f | r -> \ s s' e v x -> r x (cons x s) (cons x s') (rel-cons x s s' e) (v x) } ;
+  bars (s s' : List B) (e : Rel s s') (b : V.Bars s) : V'.Bars s' = (b.1, valid b.1 s s' e b.2) ;
+} ;

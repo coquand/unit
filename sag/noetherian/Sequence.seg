@@ -1,0 +1,94 @@
+-- Sequence.seg: using noetherianity on one sequence, and killing an
+-- element with it.
+--
+-- Kill.  Let u, f in S and w_0, w_1, .. in S with
+--     u = f^n w_n    and    f^(n+1) w_n = 0     for every n.
+-- If some w_k is a combination of w_0, .., w_(k-1), then u = 0:
+-- f^k kills every w_j with j < k, hence kills w_k, and u = f^k w_k.
+-- (For k = 0, w_0 = 0 and u = w_0.)  No uniform bound on annihilators of
+-- powers of f is needed.
+--
+-- Walk.  When the w_n are only merely coded, follow the tree of a
+-- noetherian presentation along codes of w_0, w_1, ..: at each node one
+-- code of the next w_n is used.  The result is in any T with return and
+-- bind (propositional truncation in applications), so no choice is used.
+level l ; open Ring[l] ; open Bar[l] ;
+
+module Over (S : CRing) (P : Span[l].Pres[S]) {
+  open S ; open RL[S] ; open P ;
+  module SP = Span[l].Over[S,P] ;
+
+  -- e kills every element of s
+  Kills (e : R) : List K -> U l = split {
+    nil -> Top ;
+    cons t s | r -> Id R (mul e (phi t)) z * r } ;
+
+  kill-step (e y c t : R) : Id R (mul e y) (add (mul e (add y (neg (mul c t)))) (mul c (mul e t))) =
+    calc R { mul e y =< ap (mul e) (sym (SP.sub-add y (mul c t))) > mul e (add (add y (neg (mul c t))) (mul c t))
+               =< dist e (add y (neg (mul c t))) (mul c t)
+               > add (mul e (add y (neg (mul c t)))) (mul e (mul c t))
+               =< ap (add (mul e (add y (neg (mul c t))))) (mul-swap e c t)
+               > add (mul e (add y (neg (mul c t)))) (mul c (mul e t)) } ;
+
+  -- what kills the elements of s kills their combinations
+  in-kill (e : R) : (s : List K) (y : R) -> Kills e s -> SP.In s y -> Id R (mul e y) z = split {
+    nil -> \ y k h -> trans (ap (mul e) h) (mul-zero e) ;
+    cons t s | r -> \ y k h ->
+      calc R { mul e y =< kill-step e y (phi h.1) (phi t)
+                 > add (mul e (add y (neg (mul (phi h.1) (phi t))))) (mul (phi h.1) (mul e (phi t)))
+                 =< ap (\ v -> add v (mul (phi h.1) (mul e (phi t)))) (r (add y (neg (mul (phi h.1) (phi t)))) k.2 h.2)
+                 > add z (mul (phi h.1) (mul e (phi t)))
+                 =< ap (\ v -> add z (mul (phi h.1) v)) k.1 > add z (mul (phi h.1) z)
+                 =< zl (mul (phi h.1) z) > mul (phi h.1) z
+                 =< mul-zero (phi h.1) > z } } ;
+
+  kills-mul (f e : R) : (s : List K) -> Kills e s -> Kills (mul f e) s = split {
+    nil -> \ k -> tt ;
+    cons t s | r -> \ k -> (trans (sym (mulA f e (phi t))) (trans (ap (mul f) k.1) (mul-zero f)), r k.2) } ;
+
+  module Kill (f u : R) (power : Nat -> R)
+    (power-suc : (n : Nat) -> Id R (power (suc n)) (mul f (power n)))
+    (w : Nat -> R)
+    (iterated : (n : Nat) -> Id R u (mul (power n) (w n)))
+    (killed : (n : Nat) -> Id R (mul (power (suc n)) (w n)) z) {
+
+    -- cs codes the initial segment [w_(m-1), .., w_0]
+    Coded : List K -> Nat -> U l = split {
+      nil -> split { zero -> Top ; suc m -> Empty } ;
+      cons c cs | r -> split { zero -> Empty ; suc m -> Id R (phi c) (w m) * r m } } ;
+
+    kills-coded : (cs : List K) (m : Nat) -> Coded cs m -> Kills (power m) cs = split {
+      nil -> \ m cd -> tt ;
+      cons c cs | r -> split {
+        zero -> \ cd -> efq cd ;
+        suc m -> \ cd ->
+          (trans (ap (mul (power (suc m))) cd.1) (killed m),
+           subst (\ e -> Kills e cs) (sym (power-suc m)) (kills-mul f (power m) cs (r m cd.2))) } } ;
+
+    kill-cons (c : K) (cs : List K) (m : Nat) (cd : Coded (cons c cs) (suc m))
+      (ih : SP.Good cs -> Id R u z) : Plus (SP.In cs (phi c)) (SP.Good cs) -> Id R u z = split {
+      inl x -> trans (iterated m)
+                 (trans (ap (mul (power m)) (sym cd.1)) (in-kill (power m) cs (phi c) (kills-coded cs m cd.2) x)) ;
+      inr g -> ih g } ;
+
+    kill : (cs : List K) (m : Nat) -> Coded cs m -> SP.Good cs -> Id R u z = split {
+      nil -> \ m cd g -> efq g ;
+      cons c cs | r -> split {
+        zero -> \ cd g -> efq cd ;
+        suc m -> \ cd g -> kill-cons c cs m cd (r m cd.2) g } } ;
+
+    Found : U l = (m : Nat) * (cs : List K) * (Coded cs m * SP.Good cs) ;
+    zero-of (fd : Found) : Id R u z = kill fd.2.1 fd.1 fd.2.2.1 fd.2.2.2 ;
+
+    module Walk (T : U l -> U l) (ret : (X : U l) -> X -> T X)
+      (bind : (X Y : U l) -> (X -> T Y) -> T X -> T Y)
+      (coded : (n : Nat) -> T ((c : K) * Id R (phi c) (w n))) {
+      walk : (t : Tree K) (m : Nat) (cs : List K) -> Coded cs m -> SP.G.Valid t cs -> T Found = split {
+        leaf -> \ m cs cd g -> ret Found (m,(cs,(cd,g))) ;
+        node h | r -> \ m cs cd v ->
+          bind ((c : K) * Id R (phi c) (w m)) Found
+            (\ ce -> r ce.1 (suc m) (cons ce.1 cs) (ce.2,cd) (v ce.1)) (coded m) } ;
+      found (n : SP.Noeth) : T Found = walk n.1 zero nil tt n.2 ;
+    } ;
+  } ;
+} ;

@@ -1,0 +1,313 @@
+-- Integers.seg: the image of Z in any ring S is noetherian.
+--
+-- Codes are pairs of natural numbers, (a,b) standing for a - b; the
+-- operations are those of Z on differences, and val (a,b) = iota a - iota b
+-- preserves them.  There is no integer type and no decidable equality in S.
+--
+-- Euclid (Kuroki: Z is omega-Euclidean, hence omega-noetherian).  The tree
+-- keeps a positive natural number g = suc k whose image lies in the span of
+-- the list so far.  For a new code y = (a,b), divide: a = q1 g + r1,
+-- b = q2 g + r2, with r1, r2 <= k, and compare r1 and r2:
+--   r1 = r2 + d   gives   val y = (q1 - q2) g + d,
+--   r2 = r1 + d   gives   val y = (q1 - q2) g - d.
+-- If d = 0, val y is in the span: the list is good.  Otherwise d is in the
+-- span of the extended list and d <= k < g: continue with g = d.  The
+-- first nonzero code gives the first g.  The fuel f bounds k.
+level l ; open Ring[l] ; open Bar[l] ; open NatOrder[l] ;
+
+times : Nat -> Nat -> Nat = split {
+  zero -> \ n -> zero ;
+  suc m | r -> \ n -> plus n (r n) } ;
+
+-- a step of division by suc k
+divide-step (k a q r : Nat) (e : Id Nat a (plus (times q (suc k)) r)) :
+  Plus (Lt r k) (Id Nat r k) ->
+  (q' : Nat) * (r' : Nat) * (Id Nat (suc a) (plus (times q' (suc k)) r') * Le r' k) = split {
+  inl lt -> (q,(suc r,(trans (ap (\ n -> suc n) e) (sym (plus-suc (times q (suc k)) r)),lt))) ;
+  inr ek -> (suc q,(zero,(
+    calc Nat { suc a =< ap (\ n -> suc n) e > suc (plus (times q (suc k)) r)
+                 =< ap (\ n -> suc (plus (times q (suc k)) n)) ek > suc (plus (times q (suc k)) k)
+                 =< ap (\ n -> suc n) (plus-comm (times q (suc k)) k) > suc (plus k (times q (suc k)))
+                 =< sym (plus-zero (plus (suc k) (times q (suc k)))) > plus (plus (suc k) (times q (suc k))) zero },
+    tt))) } ;
+
+divide (k : Nat) : (a : Nat) -> (q : Nat) * (r : Nat) * (Id Nat a (plus (times q (suc k)) r) * Le r k) = split {
+  zero -> (zero,(zero,(refl zero,tt))) ;
+  suc a | ih -> divide-step k a ih.1 ih.2.1 ih.2.2.1 (le-cases ih.2.1 k ih.2.2.2) } ;
+
+module Over (S : CRing) {
+  open S ; open RL[S] ;
+
+  iota : Nat -> R = split { zero -> z ; suc n | r -> add o r } ;
+
+  iota-add : (m n : Nat) -> Id R (iota (plus m n)) (add (iota m) (iota n)) = split {
+    zero -> \ n -> sym (zl (iota n)) ;
+    suc m | r -> \ n -> trans (ap (add o) (r n)) (addA o (iota m) (iota n)) } ;
+
+  iota-mul : (m n : Nat) -> Id R (iota (times m n)) (mul (iota m) (iota n)) = split {
+    zero -> \ n -> sym (zero-mul (iota n)) ;
+    suc m | r -> \ n ->
+      calc R { iota (plus n (times m n)) =< iota-add n (times m n) > add (iota n) (iota (times m n))
+                 =< ap (add (iota n)) (r n) > add (iota n) (mul (iota m) (iota n))
+                 =< ap (\ t -> add t (mul (iota m) (iota n))) (sym (one-left (iota n)))
+                 > add (mul o (iota n)) (mul (iota m) (iota n))
+                 =< sym (dist-left o (iota m) (iota n)) > mul (add o (iota m)) (iota n) } } ;
+
+  iota-split (q g r : Nat) : Id R (iota (plus (times q g) r)) (add (mul (iota q) (iota g)) (iota r)) =
+    trans (iota-add (times q g) r) (ap (\ t -> add t (iota r)) (iota-mul q g)) ;
+
+  ------------------------------------------------------------------------
+  -- the presentation
+
+  val (c : Nat * Nat) : R = add (iota c.1) (neg (iota c.2)) ;
+
+  zadd (c d : Nat * Nat) : Nat * Nat = (plus c.1 d.1, plus c.2 d.2) ;
+  zmul (c d : Nat * Nat) : Nat * Nat =
+    (plus (times c.1 d.1) (times c.2 d.2), plus (times c.1 d.2) (times c.2 d.1)) ;
+  zneg (c : Nat * Nat) : Nat * Nat = (c.2, c.1) ;
+
+  val-z : Id R (val (zero,zero)) z = trans (ap (add z) neg-zero) (addZ z) ;
+  val-o : Id R (val (suc zero,zero)) o = trans (ap (add (add o z)) neg-zero) (trans (addZ (add o z)) (addZ o)) ;
+
+  -- (A + C) - (B + D) = (A - B) + (C - D)
+  add-identity (A B C D : R) : Id R (add (add A C) (neg (add B D))) (add (add A (neg B)) (add C (neg D))) =
+    trans (ap (add (add A C)) (neg-add B D)) (swap A C (neg B) (neg D)) ;
+
+  val-add (c d : Nat * Nat) : Id R (val (zadd c d)) (add (val c) (val d)) =
+    calc R { val (zadd c d)
+               =< ap (\ t -> add t (neg (iota (plus c.2 d.2)))) (iota-add c.1 d.1)
+               > add (add (iota c.1) (iota d.1)) (neg (iota (plus c.2 d.2)))
+               =< ap (\ t -> add (add (iota c.1) (iota d.1)) (neg t)) (iota-add c.2 d.2)
+               > add (add (iota c.1) (iota d.1)) (neg (add (iota c.2) (iota d.2)))
+               =< add-identity (iota c.1) (iota c.2) (iota d.1) (iota d.2) > add (val c) (val d) } ;
+
+  -- (AC + BD) - (AD + BC) = (A - B)(C - D)
+  mul-identity (A B C D : R) :
+    Id R (add (add (mul A C) (mul B D)) (neg (add (mul A D) (mul B C)))) (mul (add A (neg B)) (add C (neg D))) =
+    calc R { add (add (mul A C) (mul B D)) (neg (add (mul A D) (mul B C)))
+               =< add-identity (mul A C) (mul A D) (mul B D) (mul B C)
+               > add (add (mul A C) (neg (mul A D))) (add (mul B D) (neg (mul B C)))
+               =< ap (add (add (mul A C) (neg (mul A D)))) (addC (mul B D) (neg (mul B C)))
+               > add (add (mul A C) (neg (mul A D))) (add (neg (mul B C)) (mul B D))
+               =< ap (\ t -> add t (add (neg (mul B C)) (mul B D)))
+                     (sym (trans (dist A C (neg D)) (ap (add (mul A C)) (mul-neg A D))))
+               > add (mul A (add C (neg D))) (add (neg (mul B C)) (mul B D))
+               =< ap (add (mul A (add C (neg D))))
+                     (sym (trans (neg-mul-left B (add C (neg D)))
+                       (trans (ap neg (trans (dist B C (neg D)) (ap (add (mul B C)) (mul-neg B D))))
+                         (negsub (mul B C) (mul B D)))))
+               > add (mul A (add C (neg D))) (mul (neg B) (add C (neg D)))
+               =< sym (dist-left A (neg B) (add C (neg D))) > mul (add A (neg B)) (add C (neg D)) } ;
+
+  val-mul (c d : Nat * Nat) : Id R (val (zmul c d)) (mul (val c) (val d)) =
+    calc R { val (zmul c d)
+               =< ap (\ t -> add t (neg (iota (plus (times c.1 d.2) (times c.2 d.1)))))
+                     (trans (iota-add (times c.1 d.1) (times c.2 d.2))
+                       (trans (ap (\ t -> add t (iota (times c.2 d.2))) (iota-mul c.1 d.1))
+                         (ap (add (mul (iota c.1) (iota d.1))) (iota-mul c.2 d.2))))
+               > add (add (mul (iota c.1) (iota d.1)) (mul (iota c.2) (iota d.2)))
+                     (neg (iota (plus (times c.1 d.2) (times c.2 d.1))))
+               =< ap (\ t -> add (add (mul (iota c.1) (iota d.1)) (mul (iota c.2) (iota d.2))) (neg t))
+                     (trans (iota-add (times c.1 d.2) (times c.2 d.1))
+                       (trans (ap (\ t -> add t (iota (times c.2 d.1))) (iota-mul c.1 d.2))
+                         (ap (add (mul (iota c.1) (iota d.2))) (iota-mul c.2 d.1))))
+               > add (add (mul (iota c.1) (iota d.1)) (mul (iota c.2) (iota d.2)))
+                     (neg (add (mul (iota c.1) (iota d.2)) (mul (iota c.2) (iota d.1))))
+               =< mul-identity (iota c.1) (iota c.2) (iota d.1) (iota d.2) > mul (val c) (val d) } ;
+
+  val-neg (c : Nat * Nat) : Id R (val (zneg c)) (neg (val c)) =
+    trans (addC (iota c.2) (neg (iota c.1))) (sym (negsub (iota c.1) (iota c.2))) ;
+
+  pres : Span[l].Pres[S] =
+    Span[l].mkPres S (Nat * Nat) val (zero,zero) (suc zero,zero) zadd zmul zneg
+      val-z val-o val-add val-mul val-neg ;
+
+  module SP = Span[l].Over[S,pres] ;
+
+  ------------------------------------------------------------------------
+  -- the tree
+
+  dtree (rec : Nat -> Tree (Nat * Nat)) : Nat -> Tree (Nat * Nat) = split {
+    zero -> leaf ;
+    suc d -> rec d } ;
+
+  Cmp (r1 r2 : Nat) : U l = Plus ((d : Nat) * Id Nat r1 (plus r2 d)) ((d : Nat) * Id Nat r2 (plus r1 d)) ;
+
+  branch (rec : Nat -> Tree (Nat * Nat)) (r1 r2 : Nat) : Cmp r1 r2 -> Tree (Nat * Nat) = split {
+    inl p -> dtree rec p.1 ;
+    inr p -> dtree rec p.1 } ;
+
+  rem (k a : Nat) : Nat = (divide k a).2.1 ;
+
+  Tf : Nat -> Nat -> Tree (Nat * Nat) = split {
+    zero -> \ k -> leaf ;
+    suc f | rec -> \ k -> node (\ y -> branch rec (rem k y.1) (rem k y.2) (compare (rem k y.1) (rem k y.2))) } ;
+
+  start : Tree (Nat * Nat) = node (\ y -> branch (\ d -> Tf (suc d) d) y.1 y.2 (compare y.1 y.2)) ;
+
+  ------------------------------------------------------------------------
+  -- validity
+
+  -- val y = val c G + e, G in the span of s: e is in the span of y.s
+  rem-step (s : List (Nat * Nat)) (y c : Nat * Nat) (G e : R) (inv : SP.In s G)
+    (eq : Id R (val y) (add (mul (val c) G) e)) : SP.In (cons y s) e =
+    SP.in-tr (cons y s) (add (val y) (neg (mul (val c) G))) e
+      (calc R { add (val y) (neg (mul (val c) G))
+                  =< ap (\ t -> add t (neg (mul (val c) G))) eq > add (add (mul (val c) G) e) (neg (mul (val c) G))
+                  =< ap (\ t -> add t (neg (mul (val c) G))) (addC (mul (val c) G) e)
+                  > add (add e (mul (val c) G)) (neg (mul (val c) G))
+                  =< add-neg-cancel e (mul (val c) G) > e })
+      (SP.in-add (cons y s) (val y) (neg (mul (val c) G)) (SP.in-gen y s)
+        (SP.in-weak y s (neg (mul (val c) G)) (SP.in-neg s (mul (val c) G) (SP.in-scale s c G inv)))) ;
+
+  -- val y = val c G, G in the span of s: val y is in the span of s
+  zero-step (s : List (Nat * Nat)) (y c : Nat * Nat) (G : R) (inv : SP.In s G)
+    (eq : Id R (val y) (mul (val c) G)) : SP.In s (val y) =
+    SP.in-tr s (mul (val c) G) (val y) (sym eq) (SP.in-scale s c G inv) ;
+
+  -- (Q1 G + (R + D)) - (Q2 G + R) = (Q1 - Q2) G + D
+  identity1 (Q1 Q2 G R0 D : R) :
+    Id R (add (add (mul Q1 G) (add R0 D)) (neg (add (mul Q2 G) R0))) (add (mul (add Q1 (neg Q2)) G) D) =
+    calc R { add (add (mul Q1 G) (add R0 D)) (neg (add (mul Q2 G) R0))
+               =< add-identity (mul Q1 G) (mul Q2 G) (add R0 D) R0
+               > add (add (mul Q1 G) (neg (mul Q2 G))) (add (add R0 D) (neg R0))
+               =< ap (add (add (mul Q1 G) (neg (mul Q2 G))))
+                     (trans (ap (\ t -> add t (neg R0)) (addC R0 D)) (add-neg-cancel D R0))
+               > add (add (mul Q1 G) (neg (mul Q2 G))) D
+               =< ap (\ t -> add t D)
+                     (sym (trans (dist-left Q1 (neg Q2) G) (ap (add (mul Q1 G)) (neg-mul-left Q2 G))))
+               > add (mul (add Q1 (neg Q2)) G) D } ;
+
+  -- (Q1 G + R) - (Q2 G + (R + D)) = (Q1 - Q2) G - D
+  identity2 (Q1 Q2 G R0 D : R) :
+    Id R (add (add (mul Q1 G) R0) (neg (add (mul Q2 G) (add R0 D)))) (add (mul (add Q1 (neg Q2)) G) (neg D)) =
+    calc R { add (add (mul Q1 G) R0) (neg (add (mul Q2 G) (add R0 D)))
+               =< add-identity (mul Q1 G) (mul Q2 G) R0 (add R0 D)
+               > add (add (mul Q1 G) (neg (mul Q2 G))) (add R0 (neg (add R0 D)))
+               =< ap (add (add (mul Q1 G) (neg (mul Q2 G))))
+                     (calc R { add R0 (neg (add R0 D)) =< ap (add R0) (neg-add R0 D) > add R0 (add (neg R0) (neg D))
+                                 =< addA R0 (neg R0) (neg D) > add (add R0 (neg R0)) (neg D)
+                                 =< ap (\ t -> add t (neg D)) (addN R0) > add z (neg D)
+                                 =< zl (neg D) > neg D })
+               > add (add (mul Q1 G) (neg (mul Q2 G))) (neg D)
+               =< ap (\ t -> add t (neg D))
+                     (sym (trans (dist-left Q1 (neg Q2) G) (ap (add (mul Q1 G)) (neg-mul-left Q2 G))))
+               > add (mul (add Q1 (neg Q2)) G) (neg D) } ;
+
+  -- the two cases of the comparison of remainders
+  eqn1 (y : Nat * Nat) (g q1 r1 q2 r2 d : Nat)
+    (e1 : Id Nat y.1 (plus (times q1 g) r1)) (e2 : Id Nat y.2 (plus (times q2 g) r2))
+    (e : Id Nat r1 (plus r2 d)) : Id R (val y) (add (mul (val (q1,q2)) (iota g)) (iota d)) =
+    calc R { val y =< ap (\ n -> add (iota n) (neg (iota y.2))) e1 > add (iota (plus (times q1 g) r1)) (neg (iota y.2))
+               =< ap (\ n -> add (iota (plus (times q1 g) r1)) (neg (iota n))) e2
+               > add (iota (plus (times q1 g) r1)) (neg (iota (plus (times q2 g) r2)))
+               =< ap (\ t -> add t (neg (iota (plus (times q2 g) r2)))) (iota-split q1 g r1)
+               > add (add (mul (iota q1) (iota g)) (iota r1)) (neg (iota (plus (times q2 g) r2)))
+               =< ap (\ t -> add (add (mul (iota q1) (iota g)) (iota r1)) (neg t)) (iota-split q2 g r2)
+               > add (add (mul (iota q1) (iota g)) (iota r1)) (neg (add (mul (iota q2) (iota g)) (iota r2)))
+               =< ap (\ t -> add (add (mul (iota q1) (iota g)) t) (neg (add (mul (iota q2) (iota g)) (iota r2))))
+                     (trans (ap iota e) (iota-add r2 d))
+               > add (add (mul (iota q1) (iota g)) (add (iota r2) (iota d))) (neg (add (mul (iota q2) (iota g)) (iota r2)))
+               =< identity1 (iota q1) (iota q2) (iota g) (iota r2) (iota d)
+               > add (mul (val (q1,q2)) (iota g)) (iota d) } ;
+
+  eqn2 (y : Nat * Nat) (g q1 r1 q2 r2 d : Nat)
+    (e1 : Id Nat y.1 (plus (times q1 g) r1)) (e2 : Id Nat y.2 (plus (times q2 g) r2))
+    (e : Id Nat r2 (plus r1 d)) : Id R (val y) (add (mul (val (q1,q2)) (iota g)) (neg (iota d))) =
+    calc R { val y =< ap (\ n -> add (iota n) (neg (iota y.2))) e1 > add (iota (plus (times q1 g) r1)) (neg (iota y.2))
+               =< ap (\ n -> add (iota (plus (times q1 g) r1)) (neg (iota n))) e2
+               > add (iota (plus (times q1 g) r1)) (neg (iota (plus (times q2 g) r2)))
+               =< ap (\ t -> add t (neg (iota (plus (times q2 g) r2)))) (iota-split q1 g r1)
+               > add (add (mul (iota q1) (iota g)) (iota r1)) (neg (iota (plus (times q2 g) r2)))
+               =< ap (\ t -> add (add (mul (iota q1) (iota g)) (iota r1)) (neg t)) (iota-split q2 g r2)
+               > add (add (mul (iota q1) (iota g)) (iota r1)) (neg (add (mul (iota q2) (iota g)) (iota r2)))
+               =< ap (\ t -> add (add (mul (iota q1) (iota g)) (iota r1)) (neg (add (mul (iota q2) (iota g)) t)))
+                     (trans (ap iota e) (iota-add r1 d))
+               > add (add (mul (iota q1) (iota g)) (iota r1)) (neg (add (mul (iota q2) (iota g)) (add (iota r1) (iota d))))
+               =< identity2 (iota q1) (iota q2) (iota g) (iota r1) (iota d)
+               > add (mul (val (q1,q2)) (iota g)) (neg (iota d)) } ;
+
+  -- what the recursive trees must satisfy
+  RecValid (k : Nat) (rec : Nat -> Tree (Nat * Nat)) : U l =
+    (d : Nat) (s : List (Nat * Nat)) -> Le (suc d) k -> SP.In s (iota (suc d)) -> SP.G.Valid (rec d) s ;
+
+  valid-d1 (k : Nat) (rec : Nat -> Tree (Nat * Nat)) (rv : RecValid k rec)
+    (s : List (Nat * Nat)) (inv : SP.In s (iota (suc k))) (y : Nat * Nat) (q1 r1 q2 r2 : Nat)
+    (e1 : Id Nat y.1 (plus (times q1 (suc k)) r1)) (e2 : Id Nat y.2 (plus (times q2 (suc k)) r2))
+    (l1 : Le r1 k) : (d : Nat) -> Id Nat r1 (plus r2 d) -> SP.G.Valid (dtree rec d) (cons y s) = split {
+    zero -> \ e -> inl (zero-step s y (q1,q2) (iota (suc k)) inv
+                          (trans (eqn1 y (suc k) q1 r1 q2 r2 zero e1 e2 e) (addZ (mul (val (q1,q2)) (iota (suc k)))))) ;
+    suc d -> \ e -> rv d (cons y s)
+                     (le-trans (suc d) r1 k (subst (\ n -> Le (suc d) n) (sym e) (le-plus-right r2 (suc d))) l1)
+                     (rem-step s y (q1,q2) (iota (suc k)) (iota (suc d)) inv (eqn1 y (suc k) q1 r1 q2 r2 (suc d) e1 e2 e)) } ;
+
+  valid-d2 (k : Nat) (rec : Nat -> Tree (Nat * Nat)) (rv : RecValid k rec)
+    (s : List (Nat * Nat)) (inv : SP.In s (iota (suc k))) (y : Nat * Nat) (q1 r1 q2 r2 : Nat)
+    (e1 : Id Nat y.1 (plus (times q1 (suc k)) r1)) (e2 : Id Nat y.2 (plus (times q2 (suc k)) r2))
+    (l2 : Le r2 k) : (d : Nat) -> Id Nat r2 (plus r1 d) -> SP.G.Valid (dtree rec d) (cons y s) = split {
+    zero -> \ e -> inl (zero-step s y (q1,q2) (iota (suc k)) inv
+                          (trans (eqn2 y (suc k) q1 r1 q2 r2 zero e1 e2 e)
+                            (trans (ap (add (mul (val (q1,q2)) (iota (suc k)))) neg-zero)
+                              (addZ (mul (val (q1,q2)) (iota (suc k))))))) ;
+    suc d -> \ e -> rv d (cons y s)
+                     (le-trans (suc d) r2 k (subst (\ n -> Le (suc d) n) (sym e) (le-plus-right r1 (suc d))) l2)
+                     (SP.in-tr (cons y s) (neg (neg (iota (suc d)))) (iota (suc d)) (neg-neg (iota (suc d)))
+                       (SP.in-neg (cons y s) (neg (iota (suc d)))
+                         (rem-step s y (q1,q2) (iota (suc k)) (neg (iota (suc d))) inv
+                           (eqn2 y (suc k) q1 r1 q2 r2 (suc d) e1 e2 e)))) } ;
+
+  valid-cmp (k : Nat) (rec : Nat -> Tree (Nat * Nat)) (rv : RecValid k rec)
+    (s : List (Nat * Nat)) (inv : SP.In s (iota (suc k))) (y : Nat * Nat) (q1 r1 q2 r2 : Nat)
+    (e1 : Id Nat y.1 (plus (times q1 (suc k)) r1)) (e2 : Id Nat y.2 (plus (times q2 (suc k)) r2))
+    (l1 : Le r1 k) (l2 : Le r2 k) : (v : Cmp r1 r2) -> SP.G.Valid (branch rec r1 r2 v) (cons y s) = split {
+    inl p -> valid-d1 k rec rv s inv y q1 r1 q2 r2 e1 e2 l1 p.1 p.2 ;
+    inr p -> valid-d2 k rec rv s inv y q1 r1 q2 r2 e1 e2 l2 p.1 p.2 } ;
+
+  valid-y (k : Nat) (rec : Nat -> Tree (Nat * Nat)) (rv : RecValid k rec)
+    (s : List (Nat * Nat)) (inv : SP.In s (iota (suc k))) (y : Nat * Nat) :
+    SP.G.Valid (branch rec (rem k y.1) (rem k y.2) (compare (rem k y.1) (rem k y.2))) (cons y s) =
+    valid-cmp k rec rv s inv y (divide k y.1).1 (rem k y.1) (divide k y.2).1 (rem k y.2)
+      (divide k y.1).2.2.1 (divide k y.2).2.2.1 (divide k y.1).2.2.2 (divide k y.2).2.2.2
+      (compare (rem k y.1) (rem k y.2)) ;
+
+  valid-tf : (f k : Nat) (s : List (Nat * Nat)) -> Le k f -> SP.In s (iota (suc k)) ->
+             SP.G.Valid (Tf (suc f) k) s = split {
+    zero -> \ k s lk inv y ->
+      valid-y k (Tf zero) (\ d s' l i -> efq (le-trans (suc d) k zero l lk)) s inv y ;
+    suc f | ih -> \ k s lk inv y ->
+      valid-y k (Tf (suc f)) (\ d s' l i -> ih d s' (le-trans (suc d) k (suc f) l lk) i) s inv y } ;
+
+  -- the first code: val y = d or val y = -d
+  start-d1 (y : Nat * Nat) : (d : Nat) -> Id Nat y.1 (plus y.2 d) ->
+    SP.G.Valid (dtree (\ d' -> Tf (suc d') d') d) (cons y nil) = split {
+    zero -> \ e -> inl (trans (ap (\ n -> add (iota n) (neg (iota y.2))) (trans e (plus-zero y.2))) (addN (iota y.2))) ;
+    suc d -> \ e -> valid-tf d d (cons y nil) (le-refl d)
+      (SP.in-tr (cons y nil) (val y) (iota (suc d))
+        (trans (ap (\ n -> add (iota n) (neg (iota y.2))) (trans e (plus-comm y.2 (suc d))))
+          (trans (ap (\ t -> add t (neg (iota y.2))) (iota-add (suc d) y.2))
+            (add-neg-cancel (iota (suc d)) (iota y.2))))
+        (SP.in-gen y nil)) } ;
+
+  start-d2 (y : Nat * Nat) : (d : Nat) -> Id Nat y.2 (plus y.1 d) ->
+    SP.G.Valid (dtree (\ d' -> Tf (suc d') d') d) (cons y nil) = split {
+    zero -> \ e -> inl (trans (ap (\ n -> add (iota y.1) (neg (iota n))) (trans e (plus-zero y.1))) (addN (iota y.1))) ;
+    suc d -> \ e -> valid-tf d d (cons y nil) (le-refl d)
+      (SP.in-tr (cons y nil) (neg (val y)) (iota (suc d))
+        (calc R { neg (val y) =< negsub (iota y.1) (iota y.2) > add (neg (iota y.1)) (iota y.2)
+                    =< ap (\ n -> add (neg (iota y.1)) (iota n)) (trans e (plus-comm y.1 (suc d)))
+                    > add (neg (iota y.1)) (iota (plus (suc d) y.1))
+                    =< ap (add (neg (iota y.1))) (trans (iota-add (suc d) y.1) (addC (iota (suc d)) (iota y.1)))
+                    > add (neg (iota y.1)) (add (iota y.1) (iota (suc d)))
+                    =< addA (neg (iota y.1)) (iota y.1) (iota (suc d))
+                    > add (add (neg (iota y.1)) (iota y.1)) (iota (suc d))
+                    =< ap (\ t -> add t (iota (suc d))) (neg-cancel (iota y.1)) > add z (iota (suc d))
+                    =< zl (iota (suc d)) > iota (suc d) })
+        (SP.in-neg (cons y nil) (val y) (SP.in-gen y nil))) } ;
+
+  start-cmp (y : Nat * Nat) : (v : Cmp y.1 y.2) ->
+    SP.G.Valid (branch (\ d -> Tf (suc d) d) y.1 y.2 v) (cons y nil) = split {
+    inl p -> start-d1 y p.1 p.2 ;
+    inr p -> start-d2 y p.1 p.2 } ;
+
+  noeth : SP.Noeth = (start, \ y -> start-cmp y (compare y.1 y.2)) ;
+} ;
