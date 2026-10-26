@@ -1,0 +1,201 @@
+-- The structure identity principle, once, after Escardó (Introduction to
+-- Univalent Foundations, §3.33) and Rijke (Intro. to HoTT, Thm 11.2.2).
+--
+-- A notion of structure N (Notion) is a family S : U -> U, for each
+-- equivalence e : X ~ Y a type Iota s t e of "e is a homomorphism", a
+-- proof rho that the identity is one, and the one structure-specific fact
+-- (unit): the structures t on X with the identity a homomorphism s -> t
+-- form a contractible type.  Then (Over[N]):
+--   total-contr   (B : Str) * Iso A B is contractible, by induction on
+--                 equivalences (eqind) and unit;
+--   Fd            Fundamental: Id Str A B ~ Iso A B (sip, idToIso),
+--                 iso-induction, transport of structure.
+-- Fundamental is stated for any type with a reflexive relation whose total
+-- spaces are contractible, so a record type of structures (A7.Mod,
+-- NCAlgebra) gets the same names once its total spaces are shown
+-- contractible (ModuleSIP2, AlgSIP2: a retract of Over's).
+-- Notions are built from pieces: a binary operation (binop), an action of
+-- a fixed type (action), a point (point), two notions together (join), and
+-- a notion with axioms, a proposition on the data (axioms).  For each piece
+-- unit is a singleton of pointwise paths (function extensionality); the
+-- algebraic content is only that the axioms form a proposition.
+level l ; open Base ; open Prelude[l] ;
+module Hi = Prelude[l+] ;
+module CL = FunExtUA[l] ;
+module CH = FunExtUA[l+] ;
+module E = FunExtUA[l].FE[univ @l] ;
+module UL = Axioms[l].UnivalenceLemmas[univ @l] ;
+
+-- induction on equivalences
+eqind (T : U l) (P : (T' : U l) -> Equiv T T' -> U l+) (d : P T (idEquiv T))
+ (T' : U l) (e : Equiv T T') : P T' e =
+ Hi.subst (Equiv T T') (P T')
+  (Axioms[l].idtoeqv T T' (UL.ua T T' e)) e ((univ @l T T').sec-eq e)
+  (idJ (U l) T (\ X q -> P X (Axioms[l].idtoeqv T X q)) d T' (UL.ua T T' e)) ;
+
+------------------------------------------------------------------------
+-- contractible types
+
+-- a retract of a contractible type
+ctr-retract (A B : U l) (k : CL.isContr A) (s : B -> A) (r : A -> B)
+ (rs : (b : B) -> Id B (r (s b)) b) : CL.isContr B =
+ (r k.1, \ b -> trans B (r k.1) (r (s b)) b (ap A B r k.1 (s b) (k.2 (s b))) (rs b)) ;
+ctr-prod (A B : U l) (ka : CL.isContr A) (kb : CL.isContr B) : CL.isContr (A * B) =
+ ((ka.1, kb.1), \ w -> trans (A * B) (ka.1, kb.1) (w.1, kb.1) w
+   (ap A (A * B) (\ a -> (a, kb.1)) ka.1 w.1 (ka.2 w.1))
+   (ap B (A * B) (\ b -> (w.1, b)) kb.1 w.2 (kb.2 w.2))) ;
+-- a subtype of a contractible type, through a point
+ctr-sub (A : U l) (P : A -> U l) (k : CL.isContr A) (pP : (a : A) -> isProp (P a))
+ (a0 : A) (p0 : P a0) : CL.isContr ((a : A) * P a) =
+ ((a0, p0), \ w -> Sigma-eq A P a0 w.1 p0 w.2 (CL.pathC A k a0 w.1) (pP w.1)) ;
+-- singletons of pointwise paths, with one and two arguments
+hsing (A X : U l) (f : A -> X) : CL.isContr ((g : A -> X) * ((a : A) -> Id X (f a) (g a))) =
+ E.totC A (\ a -> X) f ;
+hsing2 (A B X : U l) (f : A -> B -> X)
+ : CL.isContr ((g : A -> B -> X) * ((a : A) (b : B) -> Id X (f a b) (g a b))) =
+ ctr-retract ((a : A) -> (u : B -> X) * ((b : B) -> Id X (f a b) (u b)))
+  ((g : A -> B -> X) * ((a : A) (b : B) -> Id X (f a b) (g a b)))
+  (E.wfe A (\ a -> (u : B -> X) * ((b : B) -> Id X (f a b) (u b))) (\ a -> hsing B X (f a)))
+  (\ w -> \ a -> (w.1 a, w.2 a)) (\ v -> (\ a -> (v a).1, \ a -> (v a).2)) (\ w -> refl w) ;
+
+------------------------------------------------------------------------
+-- notions of structure
+
+Notion : U l+ = sig {
+ S : U l -> U l ;
+ Iota : (X Y : U l) -> S X -> S Y -> Equiv X Y -> U l ;
+ rho : (X : U l) (s : S X) -> Iota X X s s (idEquiv X) ;
+ unit : (X : U l) (s : S X) -> CL.isContr ((t : S X) * Iota X X s t (idEquiv X))
+} ;
+
+-- a binary operation
+binop : Notion = struct {
+ S = \ X -> X -> X -> X ;
+ Iota = \ X Y s t e -> (x y : X) -> Id Y (e.1 (s x y)) (t (e.1 x) (e.1 y)) ;
+ rho = \ X s x y -> refl (s x y) ;
+ unit = \ X s -> hsing2 X X X s
+} ;
+-- an action of a fixed type K
+action (K : U l) : Notion = struct {
+ S = \ X -> K -> X -> X ;
+ Iota = \ X Y s t e -> (a : K) (x : X) -> Id Y (e.1 (s a x)) (t a (e.1 x)) ;
+ rho = \ X s a x -> refl (s a x) ;
+ unit = \ X s -> hsing2 K X X s
+} ;
+-- a point
+point : Notion = struct {
+ S = \ X -> X ;
+ Iota = \ X Y s t e -> Id Y (e.1 s) t ;
+ rho = \ X s -> refl s ;
+ unit = \ X s -> ((s, refl s), \ w -> idJ X s (\ y q -> Id ((t : X) * Id X s t) (s, refl s) (y, q))
+   (refl (s, refl s)) w.1 w.2)
+} ;
+-- two structures; a homomorphism of both
+join (N M : Notion) : Notion = struct {
+ S = \ X -> N.S X * M.S X ;
+ Iota = \ X Y s t e -> N.Iota X Y s.1 t.1 e * M.Iota X Y s.2 t.2 e ;
+ rho = \ X s -> (N.rho X s.1, M.rho X s.2) ;
+ unit = \ X s -> ctr-retract
+  (((t : N.S X) * N.Iota X X s.1 t (idEquiv X)) * ((t : M.S X) * M.Iota X X s.2 t (idEquiv X)))
+  ((t : N.S X * M.S X) * (N.Iota X X s.1 t.1 (idEquiv X) * M.Iota X X s.2 t.2 (idEquiv X)))
+  (ctr-prod ((t : N.S X) * N.Iota X X s.1 t (idEquiv X)) ((t : M.S X) * M.Iota X X s.2 t (idEquiv X))
+    (N.unit X s.1) (M.unit X s.2))
+  (\ w -> ((w.1.1, w.2.1), (w.1.2, w.2.2))) (\ v -> ((v.1.1, v.2.1), (v.1.2, v.2.2))) (\ w -> refl w)
+} ;
+-- axioms: a proposition on the data; homomorphisms as before
+axioms (N : Notion) (Ax : (X : U l) -> N.S X -> U l) (pAx : (X : U l) (s : N.S X) -> isProp (Ax X s))
+ : Notion = struct {
+ S = \ X -> (s : N.S X) * Ax X s ;
+ Iota = \ X Y s t e -> N.Iota X Y s.1 t.1 e ;
+ rho = \ X s -> N.rho X s.1 ;
+ unit = \ X s -> ctr-retract
+  ((w : (t : N.S X) * N.Iota X X s.1 t (idEquiv X)) * Ax X w.1)
+  ((t : (u : N.S X) * Ax X u) * N.Iota X X s.1 t.1 (idEquiv X))
+  (ctr-sub ((t : N.S X) * N.Iota X X s.1 t (idEquiv X)) (\ w -> Ax X w.1) (N.unit X s.1)
+    (\ w -> pAx X w.1) (s.1, N.rho X s.1) s.2)
+  (\ w -> ((w.1.1, w.2), w.1.2)) (\ v -> ((v.1.1, v.2), v.1.2)) (\ w -> refl w)
+} ;
+
+------------------------------------------------------------------------
+-- identity types from a contractible total space (Rijke, Thm 11.2.2): for
+-- a reflexive relation I on C with (B : C) * I A B contractible, the map
+-- idToIso : A = B -> I A B is an equivalence with inverse sip;
+-- iso-induction; transport of structure
+
+module Fundamental (C : U l+) (I : C -> C -> U l) (idI : (A : C) -> I A A)
+ (tc : (A : C) -> CH.isContr ((B : C) * I A B)) {
+ Total (A : C) : U l+ = (B : C) * I A B ;
+ pth (A : C) (c : Total A) : Id (Total A) (A, idI A) c = CH.pathC (Total A) (tc A) (A, idI A) c ;
+ pth-id (A : C) : Id (Id (Total A) (A, idI A) (A, idI A)) (pth A (A, idI A)) (refl (A, idI A)) =
+  CH.pathC-refl (Total A) (tc A) (A, idI A) ;
+ opaque pth ;
+ sip (A B : C) (phi : I A B) : Id C A B = Hi.ap (Total A) C (\ c -> c.1) (A, idI A) (B, phi) (pth A (B, phi)) ;
+ idToIso (A B : C) (p : Id C A B) : I A B = Hi.subst C (\ X -> I A X) A B p (idI A) ;
+ sip-id (A : C) : Id (Id C A A) (sip A A (idI A)) (refl A) =
+  Prelude[l++].ap (Id (Total A) (A, idI A) (A, idI A)) (Id C A A)
+   (\ q -> Hi.ap (Total A) C (\ c -> c.1) (A, idI A) (A, idI A) q) (pth A (A, idI A)) (refl (A, idI A)) (pth-id A) ;
+ -- along any path from the centre, idToIso of the first projection is the second
+ idToIso-fst (A : C) (c : Total A) (q : Id (Total A) (A, idI A) c) :
+  Id (I A c.1) (idToIso A c.1 (Hi.ap (Total A) C (\ c1 -> c1.1) (A, idI A) c q)) c.2 =
+  idJ (Total A) (A, idI A)
+   (\ c2 q2 -> Id (I A c2.1) (idToIso A c2.1 (Hi.ap (Total A) C (\ c1 -> c1.1) (A, idI A) c2 q2)) c2.2)
+   (refl (idI A)) c q ;
+ idToIso-sip (A B : C) (phi : I A B) : Id (I A B) (idToIso A B (sip A B phi)) phi =
+  idToIso-fst A (B, phi) (pth A (B, phi)) ;
+ sip-idToIso (A B : C) (p : Id C A B) : Id (Id C A B) (sip A B (idToIso A B p)) p =
+  idJ C A (\ X q -> Id (Id C A X) (sip A X (idToIso A X q)) q) (sip-id A) B p ;
+ opaque sip ;
+ sip-equiv (A B : C) : Hi.Equiv (I A B) (Id C A B) =
+  (sip A B, Hi.qinv (I A B) (Id C A B) (sip A B) (idToIso A B) (sip-idToIso A B) (idToIso-sip A B)) ;
+ -- iso-induction, and its computation at the identity
+ iso-ind (A : C) (P : (B : C) -> I A B -> U l+) (d : P A (idI A)) (B : C) (phi : I A B) : P B phi =
+  Hi.subst (Total A) (\ c -> P c.1 c.2) (A, idI A) (B, phi) (pth A (B, phi)) d ;
+ iso-ind-beta (A : C) (P : (B : C) -> I A B -> U l+) (d : P A (idI A))
+  : Id (P A (idI A)) (iso-ind A P d A (idI A)) d =
+  Prelude[l++].ap (Id (Total A) (A, idI A) (A, idI A)) (P A (idI A))
+   (\ q -> Hi.subst (Total A) (\ c -> P c.1 c.2) (A, idI A) (A, idI A) q d)
+   (pth A (A, idI A)) (refl (A, idI A)) (pth-id A) ;
+ opaque iso-ind ;
+ -- transport of structure: a construction G acting on isomorphisms by
+ -- equivalences Gmap with Gmap (idI A) = idEquiv has ap_G (sip phi) = ua (Gmap phi)
+ module Transport (G : C -> U l) (Gmap : (A B : C) -> I A B -> Equiv (G A) (G B))
+  (Gid : (A : C) -> Id (Equiv (G A) (G A)) (Gmap A A (idI A)) (idEquiv (G A))) {
+  Goal (A B : C) (phi : I A B) : U l+ =
+   Id (Id (U l) (G A) (G B)) (Hi.ap C (U l) G A B (sip A B phi)) (UL.ua (G A) (G B) (Gmap A B phi)) ;
+  ua-id (X : U l) : Id (Id (U l) X X) (UL.ua X X (idEquiv X)) (refl X) =
+   Hi.sec-ret (Id (U l) X X) (Equiv X X) (Axioms[l].idtoeqv X X) (univ @l X X) (refl X) ;
+  base (A : C) : Goal A A (idI A) = calc (Id (U l) (G A) (G A)) {
+   Hi.ap C (U l) G A A (sip A A (idI A))
+    =< Hi.ap (Id C A A) (Id (U l) (G A) (G A)) (Hi.ap C (U l) G A A) (sip A A (idI A)) (refl A) (sip-id A) >
+   refl (G A)
+    =< Hi.sym (Id (U l) (G A) (G A)) (UL.ua (G A) (G A) (idEquiv (G A))) (refl (G A)) (ua-id (G A)) >
+   UL.ua (G A) (G A) (idEquiv (G A))
+    =< Hi.ap (Equiv (G A) (G A)) (Id (U l) (G A) (G A)) (UL.ua (G A) (G A)) (idEquiv (G A)) (Gmap A A (idI A))
+        (sym (Equiv (G A) (G A)) (Gmap A A (idI A)) (idEquiv (G A)) (Gid A)) >
+   UL.ua (G A) (G A) (Gmap A A (idI A)) } ;
+  theorem (A B : C) (phi : I A B) : Goal A B phi = iso-ind A (\ B1 phi1 -> Goal A B1 phi1) (base A) B phi ;
+ } ;
+} ;
+
+------------------------------------------------------------------------
+-- the structure identity principle
+
+module Over (N : Notion) {
+ Str : U l+ = (X : U l) * N.S X ;
+ Iso (A B : Str) : U l = (e : Equiv A.1 B.1) * N.Iota A.1 B.1 A.2 B.2 e ;
+ idIso (A : Str) : Iso A A = (idEquiv A.1, N.rho A.1 A.2) ;
+ Total (A : Str) : U l+ = (B : Str) * Iso A B ;
+ module Core (X : U l) (s : N.S X) {
+  Pairs : U l = (t : N.S X) * N.Iota X X s t (idEquiv X) ;
+  Mot (Y : U l) (e : Equiv X Y) : U l+ =
+   (t : N.S Y) (h : N.Iota X Y s t e) -> Id (Total (X, s)) ((X, s), idIso (X, s)) ((Y, t), (e, h)) ;
+  base : Mot X (idEquiv X) = \ t h ->
+   Hi.ap Pairs (Total (X, s)) (\ w -> ((X, w.1), (idEquiv X, w.2))) (s, N.rho X s) (t, h)
+    (CL.pathC Pairs (N.unit X s) (s, N.rho X s) (t, h)) ;
+  contr (Y : U l) (e : Equiv X Y) : Mot Y e = eqind X Mot base Y e ;
+ } ;
+ total-contr (A : Str) : CH.isContr (Total A) =
+  ((A, idIso A), \ c -> Core[A.1,A.2].contr c.1.1 c.2.1 c.1.2 c.2.2) ;
+ opaque total-contr ;
+ module Fd = Fundamental[Str,Iso,idIso,total-contr] ;
+} ;
