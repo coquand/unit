@@ -1,0 +1,193 @@
+-- The key identity for Sharpe's theorem, in the exterior algebra of R^m.
+-- For columns u_1, ..., u_n in R^m write omega = u_1 ... u_n (Matrices.wedge)
+-- and P_j(b) = u_1 ... b ... u_n, with b in place j (Adjugate.P).  For a
+-- vector v, phi(w) = v . w is a linear form, and c_v the contraction by it
+-- (ExteriorVectorContraction), a graded derivation: c_v(x w) = c_v(x) w +
+-- phi(w) alpha(x) (contract-right), alpha the grade involution.
+--
+-- (derivation) c_v(omega) b = - alpha(Sigma(b)), Sigma(b) = sum_j phi(u_j)
+-- P_j(b).  Induction on n: for n = 0, c_v(1) = 0 and Sigma = 0.  For
+-- omega' = omega u', P'_j(b) = P_j(b) u' (j <= n) and P'_(n+1)(b) =
+-- omega b; contract-right gives c_v(omega u') b = c_v(omega) u' b +
+-- phi(u') alpha(omega) b, and c_v(omega) u' b = - c_v(omega) b u' =
+-- alpha(Sigma(b)) u' by the induction hypothesis; while
+-- - alpha(Sigma'(b)) = alpha(Sigma(b)) u' + phi(u') alpha(omega) b, since
+-- alpha(u') = -u' and alpha(b) = -b.
+-- (identity) Hence c_v(omega b) = - alpha(Sigma(b) - phi(b) omega), and if
+-- omega b = 0 then sum_j phi(u_j) P_j(b) = phi(b) omega.  With phi the r-th
+-- coordinate, at the coefficient of a subset I:
+--     sum_j u_j(r) [P_j(b)]_I = b_r [omega]_I        (coeff-identity).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ; module L = RL[Rg] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module D = MnSums[l].Over[Rg] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module AD = Adjugate[l].Over[Rg,setR] ;
+ module VC = ExteriorVectorContraction[l].Over[Rg,setR] ;
+ module TP = ExteriorTranspose[l].Over[Rg,setR] ;
+ module MM = Matrices[l].Over[Rg] ;
+ module CO = ExteriorCoordinates[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ -- finite sums in Ext m
+ esum (m : Nat) : (k : Nat) -> (Ps.Fin k -> Ext m) -> Ext m = split {
+  zero -> \ f -> ezero m ; suc k | r -> \ f -> eadd m (f (inr tt)) (r (\ i -> f (inl i))) } ;
+ esum-map (m : Nat) (h : Ext m -> Ext m) (ha : (x y : Ext m) -> Id (Ext m) (h (eadd m x y)) (eadd m (h x) (h y)))
+  (hz : Id (Ext m) (h (ezero m)) (ezero m)) : (k : Nat) (f : Ps.Fin k -> Ext m) -> Id (Ext m) (h (esum m k f)) (esum m k (\ i -> h (f i))) = split {
+  zero -> \ f -> hz ;
+  suc k | r -> \ f -> trans (ha (f (inr tt)) (esum m k (\ i -> f (inl i)))) (ap (eadd m (h (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+ esum-cong (m : Nat) : (k : Nat) (f g : Ps.Fin k -> Ext m) -> ((i : Ps.Fin k) -> Id (Ext m) (f i) (g i)) -> Id (Ext m) (esum m k f) (esum m k g) = split {
+  zero -> \ f g h -> refl (ezero m) ;
+  suc k | r -> \ f g h -> EA.At[m].G.cong-add (h (inr tt)) (r (\ i -> f (inl i)) (\ i -> g (inl i)) (\ i -> h (inl i))) } ;
+ coeff-esum (m : Nat) (I : ExteriorCoordinates[l].Index m) : (k : Nat) (f : Ps.Fin k -> Ext m) -> Id R (CO.coeff m (esum m k f) I) (S.sum k (\ i -> CO.coeff m (f i) I)) = split {
+  zero -> \ f -> CO.coeff-zero m I ;
+  suc k | r -> \ f -> trans (CO.coeff-add m (f (inr tt)) (esum m k (\ i -> f (inl i))) I) (ap (add (CO.coeff m (f (inr tt)) I)) (r (\ i -> f (inl i)))) } ;
+
+ -- omega and P_j(b)
+ omega (m n : Nat) (u : Ps.Fin n -> AL.Vec m) : Ext m = MM.wedge n m u ;
+ P (m n : Nat) (u : Ps.Fin n -> AL.Vec m) (j : Ps.Fin n) (b : AL.Vec m) : Ext m = AD.P m n u j b ;
+ Sigma (m n : Nat) (u : Ps.Fin n -> AL.Vec m) (v b : AL.Vec m) : Ext m =
+  esum m n (\ j -> escale m (VC.vdot m v (u j)) (P m n u j b)) ;
+
+ module G (m : Nat) {
+  module GG = EA.At[m].G ;
+  -- - (- x + - y) = x + y
+  negneg (x y : Ext m) : Id (Ext m) (eneg m (eadd m (eneg m x) (eneg m y))) (eadd m x y) =
+   trans (GG.neg-add (eneg m x) (eneg m y)) (GG.cong-add (GG.neg-neg x) (GG.neg-neg y)) ;
+  -- x b = - (b x) for generators
+  anti (a b : AL.Vec m) : Id (Ext m) (emul m (gen m a) (gen m b)) (eneg m (emul m (gen m b) (gen m a))) = AD.gen-anti m a b ;
+ } ;
+
+ -- (derivation)
+ module Step (m n : Nat) (u : Ps.Fin (suc n) -> AL.Vec m) (v b : AL.Vec m)
+  (ih : Id (Ext m) (emul m (VC.contract m v (omega m n (\ k -> u (inl k)))) (gen m b))
+          (eneg m (alpha m (Sigma m n (\ k -> u (inl k)) v b)))) {
+  module GG = EA.At[m].G ;
+  w : Ext m = omega m n (\ k -> u (inl k)) ;
+  u' : AL.Vec m = u (inr tt) ;
+  cw : Ext m = VC.contract m v w ;
+  a : R = VC.vdot m v u' ;
+  S0 : Ext m = Sigma m n (\ k -> u (inl k)) v b ;
+  gb : Ext m = gen m b ;
+  gu : Ext m = gen m u' ;
+  -- alpha(S0) = - (c_v(omega) b)
+  aS0 : Id (Ext m) (alpha m S0) (eneg m (emul m cw gb)) =
+   trans (sym (GG.neg-neg (alpha m S0))) (ap (eneg m) (sym ih)) ;
+  -- the sum for n + 1
+  sigma-low : Id (Ext m) (esum m n (\ j -> escale m (VC.vdot m v (u (inl j))) (P m (suc n) u (inl j) b))) (emul m S0 gu) =
+   trans (esum-cong m n _ (\ j -> emul m (escale m (VC.vdot m v (u (inl j))) (P m n (\ k -> u (inl k)) j b)) gu)
+     (\ j -> sym (EA.scale-mul-left m (VC.vdot m v (u (inl j))) (P m n (\ k -> u (inl k)) j b) gu)))
+    (sym (esum-map m (\ x -> emul m x gu) (\ x y -> EA.dist-right m x y gu) (EA.mul-zero-l m gu) n
+      (\ j -> escale m (VC.vdot m v (u (inl j))) (P m n (\ k -> u (inl k)) j b)))) ;
+  sigma : Id (Ext m) (Sigma m (suc n) u v b) (eadd m (escale m a (emul m w gb)) (emul m S0 gu)) =
+   ap (eadd m (escale m a (emul m w gb))) sigma-low ;
+  -- - alpha(Sigma') = a alpha(omega) b + alpha(S0) u'
+  rhs : Id (Ext m) (eneg m (alpha m (Sigma m (suc n) u v b))) (eadd m (escale m a (emul m (alpha m w) gb)) (emul m (alpha m S0) gu)) = calc (Ext m) {
+   eneg m (alpha m (Sigma m (suc n) u v b)) =< ap (\ x -> eneg m (alpha m x)) sigma >
+   eneg m (alpha m (eadd m (escale m a (emul m w gb)) (emul m S0 gu)))
+    =< ap (eneg m) (trans (EA.alpha-add m (escale m a (emul m w gb)) (emul m S0 gu))
+         (GG.cong-add (trans (EA.alpha-scale m a (emul m w gb)) (ap (escale m a)
+                         (trans (EA.alpha-mul m w gb) (trans (ap (emul m (alpha m w)) (EA.alpha-gen m b)) (EA.mul-neg-r m (alpha m w) gb)))))
+                      (trans (EA.alpha-mul m S0 gu) (trans (ap (emul m (alpha m S0)) (EA.alpha-gen m u')) (EA.mul-neg-r m (alpha m S0) gu))))) >
+   eneg m (eadd m (escale m a (eneg m (emul m (alpha m w) gb))) (eneg m (emul m (alpha m S0) gu)))
+    =< ap (\ x -> eneg m (eadd m x (eneg m (emul m (alpha m S0) gu)))) (EA.escale-neg m a (emul m (alpha m w) gb)) >
+   eneg m (eadd m (eneg m (escale m a (emul m (alpha m w) gb))) (eneg m (emul m (alpha m S0) gu)))
+    =< G[m].negneg (escale m a (emul m (alpha m w) gb)) (emul m (alpha m S0) gu) >
+   eadd m (escale m a (emul m (alpha m w) gb)) (emul m (alpha m S0) gu) } ;
+  -- alpha(S0) u' = c_v(omega) u' b
+  swap : Id (Ext m) (emul m (alpha m S0) gu) (emul m (emul m cw gu) gb) = calc (Ext m) {
+   emul m (alpha m S0) gu =< ap (\ x -> emul m x gu) aS0 > emul m (eneg m (emul m cw gb)) gu
+    =< EA.mul-neg-l m (emul m cw gb) gu > eneg m (emul m (emul m cw gb) gu)
+    =< ap (eneg m) (sym (EA.mulA' m cw gb gu)) > eneg m (emul m cw (emul m gb gu))
+    =< ap (\ x -> eneg m (emul m cw x)) (G[m].anti b u') > eneg m (emul m cw (eneg m (emul m gu gb)))
+    =< ap (eneg m) (EA.mul-neg-r m cw (emul m gu gb)) > eneg m (eneg m (emul m cw (emul m gu gb)))
+    =< GG.neg-neg (emul m cw (emul m gu gb)) > emul m cw (emul m gu gb)
+    =< EA.mulA' m cw gu gb > emul m (emul m cw gu) gb } ;
+  -- c_v(omega u') b
+  lhs : Id (Ext m) (emul m (VC.contract m v (emul m w gu)) gb) (eadd m (emul m (emul m cw gu) gb) (escale m a (emul m (alpha m w) gb))) =
+   trans (ap (\ x -> emul m x gb) (VC.contract-right m v u' w))
+    (trans (EA.dist-right m (emul m cw gu) (escale m a (alpha m w)) gb)
+     (ap (eadd m (emul m (emul m cw gu) gb)) (EA.scale-mul-left m a (alpha m w) gb))) ;
+  result : Id (Ext m) (emul m (VC.contract m v (omega m (suc n) u)) (gen m b)) (eneg m (alpha m (Sigma m (suc n) u v b))) =
+   trans lhs (trans (EA.eaddC m (emul m (emul m cw gu) gb) (escale m a (emul m (alpha m w) gb)))
+    (trans (ap (eadd m (escale m a (emul m (alpha m w) gb))) (sym swap)) (sym rhs))) ;
+ } ;
+ derivation (m : Nat) : (n : Nat) (u : Ps.Fin n -> AL.Vec m) (v b : AL.Vec m) ->
+  Id (Ext m) (emul m (VC.contract m v (omega m n u)) (gen m b)) (eneg m (alpha m (Sigma m n u v b))) = split {
+  zero -> \ u v b -> trans (ap (\ x -> emul m x (gen m b)) (TP.contract-one m v))
+   (trans (EA.mul-zero-l m (gen m b)) (sym (trans (ap (eneg m) (EA.alpha-zero m)) EA.At[m].G.neg-zero))) ;
+  suc n | ih -> \ u v b -> Step[m,n,u,v,b,ih (\ k -> u (inl k)) v b].result } ;
+
+ -- (general) Sigma(b) = phi(b) omega - alpha(c_v(omega b))
+ module General (m n : Nat) (u : Ps.Fin n -> AL.Vec m) (v b : AL.Vec m) {
+  module GG = EA.At[m].G ;
+  w : Ext m = omega m n u ;
+  Sg : Ext m = Sigma m n u v b ;
+  ph : R = VC.vdot m v b ;
+  -- c_v(omega b) = - alpha(Sigma) + phi(b) alpha(omega)
+  c-eq : Id (Ext m) (VC.contract m v (emul m w (gen m b))) (eadd m (eneg m (alpha m Sg)) (escale m ph (alpha m w))) =
+   trans (VC.contract-right m v b w) (ap (\ x -> eadd m x (escale m ph (alpha m w))) (derivation m n u v b)) ;
+  -- - alpha(c_v(omega b)) = Sigma - phi(b) omega
+  na : Id (Ext m) (eneg m (alpha m (VC.contract m v (emul m w (gen m b))))) (eadd m Sg (eneg m (escale m ph w))) = calc (Ext m) {
+   eneg m (alpha m (VC.contract m v (emul m w (gen m b))))
+    =< ap (\ x -> eneg m (alpha m x)) c-eq > eneg m (alpha m (eadd m (eneg m (alpha m Sg)) (escale m ph (alpha m w))))
+    =< ap (eneg m) (trans (EA.alpha-add m (eneg m (alpha m Sg)) (escale m ph (alpha m w)))
+        (GG.cong-add (trans (EA.alpha-neg m (alpha m Sg)) (ap (eneg m) (EA.alpha-alpha m Sg)))
+                     (trans (EA.alpha-scale m ph (alpha m w)) (ap (escale m ph) (EA.alpha-alpha m w))))) >
+   eneg m (eadd m (eneg m Sg) (escale m ph w))
+    =< trans (GG.neg-add (eneg m Sg) (escale m ph w)) (ap (\ x -> eadd m x (eneg m (escale m ph w))) (GG.neg-neg Sg)) >
+   eadd m Sg (eneg m (escale m ph w)) } ;
+  result : Id (Ext m) Sg (eadd m (escale m ph w) (eneg m (alpha m (VC.contract m v (emul m w (gen m b)))))) = calc (Ext m) {
+   Sg =< sym (EA.eaddZ m Sg) > eadd m Sg (ezero m)
+    =< ap (eadd m Sg) (sym (trans (EA.eaddC m (eneg m (escale m ph w)) (escale m ph w)) (EA.eaddN m (escale m ph w)))) >
+   eadd m Sg (eadd m (eneg m (escale m ph w)) (escale m ph w))
+    =< EA.eaddA m Sg (eneg m (escale m ph w)) (escale m ph w) > eadd m (eadd m Sg (eneg m (escale m ph w))) (escale m ph w)
+    =< ap (\ x -> eadd m x (escale m ph w)) (sym na) > eadd m (eneg m (alpha m (VC.contract m v (emul m w (gen m b))))) (escale m ph w)
+    =< EA.eaddC m (eneg m (alpha m (VC.contract m v (emul m w (gen m b))))) (escale m ph w) >
+   eadd m (escale m ph w) (eneg m (alpha m (VC.contract m v (emul m w (gen m b))))) } ;
+ } ;
+
+ -- (identity) omega b = 0 gives Sigma(b) = phi(b) omega
+ module Identity (m n : Nat) (u : Ps.Fin n -> AL.Vec m) (v b : AL.Vec m) (h : Id (Ext m) (emul m (omega m n u) (gen m b)) (ezero m)) {
+  module GG = EA.At[m].G ;
+  w : Ext m = omega m n u ;
+  sum0 : Id (Ext m) (eadd m (eneg m (alpha m (Sigma m n u v b))) (escale m (VC.vdot m v b) (alpha m w))) (ezero m) = calc (Ext m) {
+   eadd m (eneg m (alpha m (Sigma m n u v b))) (escale m (VC.vdot m v b) (alpha m w))
+    =< ap (\ x -> eadd m x (escale m (VC.vdot m v b) (alpha m w))) (sym (derivation m n u v b)) >
+   eadd m (emul m (VC.contract m v w) (gen m b)) (escale m (VC.vdot m v b) (alpha m w))
+    =< sym (VC.contract-right m v b w) > VC.contract m v (emul m w (gen m b))
+    =< ap (VC.contract m v) h > VC.contract m v (ezero m) =< VC.contract-zero m v > ezero m } ;
+  alpha-eq : Id (Ext m) (escale m (VC.vdot m v b) (alpha m w)) (alpha m (Sigma m n u v b)) =
+   trans (GG.neg-uniq (eneg m (alpha m (Sigma m n u v b))) (escale m (VC.vdot m v b) (alpha m w)) sum0)
+    (GG.neg-neg (alpha m (Sigma m n u v b))) ;
+  result : Id (Ext m) (Sigma m n u v b) (escale m (VC.vdot m v b) w) = calc (Ext m) {
+   Sigma m n u v b =< sym (EA.alpha-alpha m (Sigma m n u v b)) > alpha m (alpha m (Sigma m n u v b))
+    =< ap (alpha m) (sym alpha-eq) > alpha m (escale m (VC.vdot m v b) (alpha m w))
+    =< EA.alpha-scale m (VC.vdot m v b) (alpha m w) > escale m (VC.vdot m v b) (alpha m (alpha m w))
+    =< ap (escale m (VC.vdot m v b)) (EA.alpha-alpha m w) > escale m (VC.vdot m v b) w } ;
+ } ;
+
+ -- the r-th coordinate as a linear form
+ vdot-delta (m : Nat) (r : Ps.Fin m) (w : AL.Vec m) : Id R (VC.vdot m (D.delta m r) w) (w r) =
+  trans (TP.vdot-sum m (D.delta m r) w)
+   (trans (S.sum-cong m _ (\ i -> mul (D.delta m r i) (w i))
+     (\ i -> Ps.cong2 R mul _ _ _ _ (AL.coordinate-value m (D.delta m r) i) (AL.coordinate-value m w i)))
+    (D.sum-delta m r w)) ;
+ -- sum_j u_j(r) [P_j(b)]_I = b_r [omega]_I, when omega b = 0
+ coeff-identity (m n : Nat) (u : Ps.Fin n -> AL.Vec m) (b : AL.Vec m) (h : Id (Ext m) (emul m (omega m n u) (gen m b)) (ezero m))
+  (r : Ps.Fin m) (I : ExteriorCoordinates[l].Index m) :
+  Id R (S.sum n (\ j -> mul (u j r) (CO.coeff m (P m n u j b) I))) (mul (b r) (CO.coeff m (omega m n u) I)) = calc R {
+  S.sum n (\ j -> mul (u j r) (CO.coeff m (P m n u j b) I))
+   =< S.sum-cong n _ (\ j -> CO.coeff m (escale m (VC.vdot m (D.delta m r) (u j)) (P m n u j b)) I)
+       (\ j -> sym (trans (CO.coeff-scale m (VC.vdot m (D.delta m r) (u j)) (P m n u j b) I)
+                     (ap (\ c -> mul c (CO.coeff m (P m n u j b) I)) (vdot-delta m r (u j))))) >
+  S.sum n (\ j -> CO.coeff m (escale m (VC.vdot m (D.delta m r) (u j)) (P m n u j b)) I)
+   =< sym (coeff-esum m I n (\ j -> escale m (VC.vdot m (D.delta m r) (u j)) (P m n u j b))) >
+  CO.coeff m (Sigma m n u (D.delta m r) b) I =< ap (\ x -> CO.coeff m x I) (Identity[m,n,u,D.delta m r,b,h].result) >
+  CO.coeff m (escale m (VC.vdot m (D.delta m r) b) (omega m n u)) I
+   =< trans (CO.coeff-scale m (VC.vdot m (D.delta m r) b) (omega m n u) I) (ap (\ c -> mul c (CO.coeff m (omega m n u) I)) (vdot-delta m r b)) >
+  mul (b r) (CO.coeff m (omega m n u) I) } ;
+} ;

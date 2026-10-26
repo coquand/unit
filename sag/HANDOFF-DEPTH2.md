@@ -149,3 +149,25 @@ Gaps (not done):
   elementwise.
 - 7.6 (gluing of modules from a diagram, converse of 7.4).
 - General monoids S_i (only principal ones).
+
+### 2026-10-26: Sharpe in exterior form
+
+Following Coquand's note *Grade and linear equations* (2010, `sharpe1.pdf`):
+the minors are exterior coordinates.  `Cofactor`, `SharpeRows`, `Sharpe`,
+`SharpeModule` (row lists, A adj A = det A . I, block determinants) are
+replaced by
+- `WedgeContraction`: for omega = u_1 ... u_n and the contraction c_v by a
+  linear form, c_v(omega) b = - alpha(sum_j v(u_j) P_j(b)) (induction,
+  contract-right, gen-anti); so sum_j v(u_j) P_j(b) = v(b) omega -
+  alpha(c_v(omega b)) (`General`), and = v(b) omega when omega b = 0
+  (`Identity`, `coeff-identity`).
+- `SharpeExterior`: for a module F, `System[n,m,u,V]`: Gr(Delta_n) is Depth2
+  of the coordinates c_I of omega; the (n+1)-minors mu_I are the coordinates
+  of omega V; Cramer's numerators lam_k(I) = sum_t [P_k(e_t)]_I V_t;
+  `pair` (uniqueness), `Key.result` (U lam(I) = c_I V + a combination of the
+  mu, through the expansion of a linear form on Lambda(R^m)), `theorem`,
+  `sol-prop`, `necessary`; `InRing` (F = R: hypothesis omega V = 0,
+  lam_k(I) = [P_k(V)]_I).
+Cold all: 170 modules, 0 failed, 2.8 s; `--opened` <= 338
+(`SharpeExterior.Key.result`); deliberate errors in both files fail.
+The row-list deviation for minors is gone.

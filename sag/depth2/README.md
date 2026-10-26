@@ -5,7 +5,7 @@ constructives* (2024; `livre.pdf` at the CANONICITY root), chapter B,
 section 7, in the setting of `sag/` (univalence and replacement as
 parameters, no prime ideals, no decidable equality).  Log and plan:
 `../HANDOFF-DEPTH2.md`.  Check from the `unit` root: `./segc sag/depth2 all`
-(171 modules, about 2.6 s cold; every depth2 file under 0.05 s; at most 286
+(170 modules, about 2.8 s cold; every depth2 file under 0.15 s; at most 338
 openings per declaration).
 
 ## Conventions
@@ -29,8 +29,8 @@ openings per declaration).
 | 7.1 (2) | b strong gcd of a regular family in every A[1/s_i] ⇒ strong gcd | `Divisibility.Gcd.result` |
 | 7.2, k = 2 | Gr(a; E[1/s_i]) >= 2 for all i and Gr(s; E) >= 2 ⇒ Gr(a; E) >= 2 | `LocalDepth.At[E].Theorem.result` |
 | 7.4 | Gr(s; E) >= 2: compatible fractions y_i / s_i^(k_i) come from a unique x in E | `Gluing.At[E].Glue.result`, `sol-prop` |
-| 7.5, F = A | D_(n+1)([U \| V]) = 0 and Gr(D_n(U)) >= 2 ⇒ U X = V has a unique solution; and the converse | `Sharpe.System.theorem`, `sol-prop`, `necessary` |
-| 7.5 | the same with unknowns and V in a module F, Gr(D_n(U); F) >= 2 | `SharpeModule.At[F].System.theorem`, `sol-prop`, `necessary` |
+| 7.5 | U_1 ... U_n V = 0 (the (n+1)-minors of [U \| V]) and Gr(D_n(U); F) >= 2 ⇒ U x = V has a unique solution in F^n; and the converse | `SharpeExterior.At[F].System.theorem`, `sol-prop`, `necessary` |
+| 7.5, F = R | the hypothesis as u_1 ... u_n V = 0 in Λ(R^m) | `SharpeExterior.InRing.theorem` |
 
 ## Proof (files)
 
@@ -40,16 +40,17 @@ openings per declaration).
 | `DepthPowers` | powers at the last index, then at every index (induction on Fin n + Y) |
 | `Gluing` | killing by powers, sums of exponents (`kills-sum`), 7.4 |
 | `Divisibility` | 7.1 |
-| `Cofactor` | det A^T[k <- e_i] = det A[i <- e_k] (an elementary matrix clears row and column), A adj(A) = det A . I, Cramer's rule for existence |
-| `SharpeRows` | det W_(rho, r) + (U X_rho)_r = delta_rho V_r, from Cramer on [U_rho, e_last] and the block determinant (`WiebeMatrices.BlockDet`); also for any last column |
-| `Sharpe` | 7.5 for F = A |
 | `LocalDepth` | x = x' in E[1/c] (a congruence), 7.2 for k = 2 by 7.4 |
-| `SharpeModule` | finite sums in a module, 7.5 for a module F |
+| `WedgeContraction` | for ω = u_1 ... u_n and a linear form φ: c_φ(ω) b = -α(Σ_j φ(u_j) P_j(b)) (contraction is a graded derivation), hence Σ_j φ(u_j) P_j(b) = φ(b) ω - α(c_φ(ω b)); so ω b = 0 gives Σ_j u_j(r) [P_j(b)]_I = b_r [ω]_I |
+| `SharpeExterior` | 7.5: Δ_n(U) are the coordinates of ω, the (n+1)-minors those of ω V; uniqueness by [P_k(U x)]_I = [ω]_I x_k; Cramer's numerators λ_k(I) = [P_k(V)]_I |
 | `DepthKoszul` | Depth2 = Gr >= 2 of koszul/ |
 
-The minors of U and of W are indexed by all lists of rows (repetitions and
-any order allowed): they generate D_n(U) and D_(n+1)(W).  With V in a
-module F, the (n+1)-minors are expanded along the V column, as in the book.
+The minors are exterior coordinates (as in cffr/Minors): Δ_n(U) is the
+family of coordinates of u_1 ... u_n, indexed by the subsets of the rows.
+With V in a module F, the (n+1)-minors are the coordinates of ω V =
+Σ_t (ω e_t) V_t.  The proof follows Coquand's note *Grade and linear
+equations* (2010, `sharpe1.pdf`), with the key identity proved by
+contraction; `../../doc/sharpe.pdf` presents it.
 
 Not formalised: 7.2 for k >= 3 and k = ∞, 7.3 (successive localisations),
 7.6 (gluing of modules), general monoids S_i.
