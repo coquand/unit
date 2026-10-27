@@ -1,0 +1,189 @@
+-- Degrees.seg: total degree bounds of the elements of S = A[X][Y][Z], read
+-- on psi (doc/gcd-polynomial.tex, point délicat 6 (ii)).
+--
+--   Up n x : psi x m = 0 when deg m = n + d   (no component of degree >= n),
+--   Dn n x : psi x m = 0 when n = deg m + 1 + d (no component of degree < n);
+-- psi x m = 0 when deg m < 0 (exponents of S are >= 0).
+--   Up-mul : Up (a+1) x, Up b y give Up (a+b) (x y) ;
+--   Dn-mul : Dn a x, Dn b y give Dn (a+b) (x y) .
+-- Proof: psi (x y) = mulP (list of x) (psi y), and the list of x may be
+-- filtered to its terms of degree <= a (>= a): the dropped terms have
+-- coefficient sum 0 (LaurentList.filt-coef, Prod.mulP-resp); then
+-- deg (m - e) = deg m - deg e is compared with b.  Only integers and
+-- natural numbers are compared.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module LLt = LaurentList[l] ; module NA = NatArith[l] ;
+
+------------------------------------------------------------------------
+-- arithmetic
+
+-- pos a + pos b = pos (b + a)
+add-pos (a b : Nat) : Id Int (add (pos a) (pos b)) (pos (NA.plus b a)) = Shift[l].addP-pos a b ;
+-- (j + K) - j = K
+sub-pos (j K : Nat) : Id Int (add (pos (NA.plus j K)) (neg (pos j))) (pos K) =
+ trans (ap (\ v -> add v (neg (pos j))) (sym (add-pos K j)))
+  (trans (assoc (pos K) (pos j) (neg (pos j))) (ap (add (pos K)) (invr (pos j)))) ;
+-- j - (j + e + 1) = -(e+1)
+sub-neg (j e : Nat) : Id Int (add (pos j) (neg (pos (NA.plus j (suc e))))) (negsuc e) =
+ trans (ap (\ v -> add (pos j) (neg v)) (sym (add-pos (suc e) j)))
+  (trans (ap (add (pos j)) (ZG.neg-add (pos (suc e)) (pos j)))
+   (trans (ap (add (pos j)) (comm (negsuc e) (neg (pos j))))
+    (trans (sym (assoc (pos j) (neg (pos j)) (negsuc e)))
+     (trans (ap (\ v -> add v (negsuc e)) (invr (pos j))) (zero-l (negsuc e)))))) ;
+pos-inj (a b : Nat) (e : Id Int (pos a) (pos b)) : Id Nat a b = NA.code-eq a b (encode (pos a) (pos b) e) ;
+pos-negsuc (a b : Nat) (e : Id Int (pos a) (negsuc b)) : Empty = encode (pos a) (negsuc b) e ;
+-- comparison of natural numbers:  j = k + d  or  k = j + d + 1
+cmp-suc (j k : Nat) : Plus ((d : Nat) * Id Nat j (NA.plus k d)) ((d : Nat) * Id Nat k (NA.plus j (suc d))) ->
+ Plus ((d : Nat) * Id Nat (suc j) (NA.plus (suc k) d)) ((d : Nat) * Id Nat (suc k) (NA.plus (suc j) (suc d))) = split {
+ inl p -> inl (p.1, ap (\ n -> suc n) p.2) ;
+ inr p -> inr (p.1, ap (\ n -> suc n) p.2) } ;
+cmp : (j k : Nat) -> Plus ((d : Nat) * Id Nat j (NA.plus k d)) ((d : Nat) * Id Nat k (NA.plus j (suc d))) = split {
+ zero -> split { zero -> inl (zero, refl zero) ; suc k -> inr (k, refl (suc k)) } ;
+ suc j | r -> split { zero -> inl (suc j, refl (suc j)) ; suc k -> cmp-suc j k (r k) } } ;
+
+-- degree of a natural exponent
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ module LA = Lambda[l].Over[A,G] ;
+ module PH = LA.PH ; module PS = LA.PS ; module LO = LA.LO ; module LL = LA.LL ;
+ S : CRing = LA.S ;
+ tdeg (e : PH.Exp) : Nat = NA.plus (NA.plus e.2.2 e.2.1) e.1 ;
+ deg-emb (e : PH.Exp) : Id Int (deg (PH.embE e)) (pos (tdeg e)) =
+  trans (ap (add (pos e.1)) (add-pos e.2.1 e.2.2)) (add-pos e.1 (NA.plus e.2.2 e.2.1)) ;
+
+ -- psi x vanishes in negative degree
+ neg-deg (x : S.R) (n : Nat) : (a b c : Int) -> Id Int (deg (a, (b, c))) (negsuc n) -> Id A.R (PS.psi3 x a b c) A.z = split {
+  pos i -> split {
+   pos j -> split {
+    pos k -> \ e -> Pr.absurd _ (pos-negsuc (NA.plus (NA.plus k j) i) n (trans (sym (deg-emb (i, (j, k)))) e)) ;
+    negsuc k -> \ e -> PS.zero-Y (pos i) (pos j) } ;
+   negsuc j -> \ c e -> PS.LX.at-zero (pos i) } ;
+  negsuc i -> \ b c e -> refl A.z } ;
+ psi-neg-deg (x : S.R) (m : E3) (n : Nat) (e : Id Int (deg m) (negsuc n)) : Id A.R (PS.psi x m) A.z =
+  neg-deg x n (ex m) (ey m) (ez m) e ;
+
+ Up (n : Nat) (x : S.R) : U l = (m : E3) (d : Nat) -> Id Int (deg m) (pos (NA.plus n d)) -> Id A.R (PS.psi x m) A.z ;
+ Dn (n : Nat) (x : S.R) : U l = (m : E3) (j d : Nat) -> Id Int (deg m) (pos j) -> Id Nat n (NA.plus j (suc d)) -> Id A.R (PS.psi x m) A.z ;
+
+ -- the filter by degree: le a e (deg e = pos j, j <= a), ge a e (deg e = pos j, j >= a)
+ leN : Nat -> Nat -> Bool = split {
+  zero -> \ a -> true ;
+  suc j | r -> split { zero -> false ; suc a -> r a } } ;
+ leZ (a : Nat) : Int -> Bool = split { pos j -> leN j a ; negsuc n -> false } ;
+ geZ (a : Nat) : Int -> Bool = split { pos j -> leN a j ; negsuc n -> false } ;
+ le-true : (j a : Nat) -> Id Bool (leN j a) true -> (d : Nat) * Id Nat a (NA.plus j d) = split {
+  zero -> \ a h -> (a, refl a) ;
+  suc j | r -> split {
+   zero -> \ h -> Pr.absurd _ (encodeB false true h) ;
+   suc a -> \ h -> ((r a h).1, ap (\ n -> suc n) (r a h).2) } } ;
+ le-false : (j a : Nat) -> Id Bool (leN j a) false -> (d : Nat) * Id Nat j (NA.plus a (suc d)) = split {
+  zero -> \ a h -> Pr.absurd _ (encodeB true false h) ;
+  suc j | r -> split {
+   zero -> \ h -> (j, refl (suc j)) ;
+   suc a -> \ h -> ((r a h).1, ap (\ n -> suc n) (r a h).2) } } ;
+ -- an exponent from a list of S has degree pos (tdeg e)
+ PosDeg : LO.LPoly -> U l = split { nil -> Top ; cons t g | r -> ((j : Nat) * Id Int (deg t.2) (pos j)) * r } ;
+ posdeg-emb : (g : PH.NList) -> PosDeg (PH.embL g) = split { nil -> tt ; cons t g | r -> ((tdeg t.2, deg-emb t.2), r) } ;
+ -- PosDeg and AllQ for the filtered list
+ Good (q : E3 -> Bool) : LO.LPoly -> U l = split {
+  nil -> Top ; cons t g | r -> (((j : Nat) * Id Int (deg t.2) (pos j)) * Id Bool (q t.2) true) * r } ;
+ good-ifL (q : E3 -> Bool) (t : LL.Term) (r : LO.LPoly) (pt : (j : Nat) * Id Int (deg t.2) (pos j)) (h : Good q r) :
+  (b : Bool) -> Id Bool (q t.2) b -> Good q (LL.ifL b t r) = split {
+  true -> \ e -> ((pt, e), h) ;
+  false -> \ e -> h } ;
+ good-filt (q : E3 -> Bool) : (g : LO.LPoly) -> PosDeg g -> Good q (LL.filt q g) = split {
+  nil -> \ h -> tt ;
+  cons t g | r -> \ h -> good-ifL q t (LL.filt q g) h.1 (r h.2) (q t.2) (refl (q t.2)) } ;
+
+ ---------------------------------------------------------------------
+ -- Up-mul
+
+ module UpMul (a b : Nat) (x y : S.R) (hx : Up (suc a) x) (hy : Up b y) {
+  q (e : E3) : Bool = leZ a (deg e) ;
+  -- x vanishes where q is false
+  van-at (m : E3) : (k : Int) -> Id Int (deg m) k -> Id Bool (leZ a k) false -> Id A.R (PS.psi x m) A.z = split {
+   pos j -> \ e h -> hx m (le-false j a h).1 (trans e (ap (\ n -> pos n) (trans (le-false j a h).2 (NA.plus-suc a (le-false j a h).1)))) ;
+   negsuc n -> \ e h -> psi-neg-deg x m n e } ;
+  g : LO.LPoly = LL.filt q (LA.lst x) ;
+  coef-g : LO.EqL (LL.coef g) (PS.psi x) =
+   LL.filt-coef q (PS.psi x) (\ m h -> van-at m (deg m) (refl (deg m)) h) (LA.lst x) (\ m -> sym (LA.psi-coef x m)) ;
+  -- one term
+  term (m : E3) (d : Nat) (em : Id Int (deg m) (pos (NA.plus (NA.plus a b) d))) (t : LL.Term)
+   (ht : ((j : Nat) * Id Int (deg t.2) (pos j)) * Id Bool (q t.2) true) : Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z =
+   trans (ap (A.mul t.1) (hy (sub3 m t.2) (NA.plus r d) deg-diff)) (RL[A].mul-zero t.1)
+   where {
+    j : Nat = ht.1.1 ;
+    r : Nat = (le-true j a (trans (ap (leZ a) (sym ht.1.2)) ht.2)).1 ;
+    ea : Id Nat a (NA.plus j r) = (le-true j a (trans (ap (leZ a) (sym ht.1.2)) ht.2)).2 ;
+    -- a + b + d = j + (b + (r + d))  and  b + (r + d) = b + r + d
+    arith : Id Nat (NA.plus (NA.plus a b) d) (NA.plus j (NA.plus b (NA.plus r d))) =
+     trans (ap (\ n -> NA.plus (NA.plus n b) d) ea)
+      (trans (NA.plus-assoc (NA.plus j r) b d)
+       (trans (NA.plus-assoc j r (NA.plus b d))
+        (ap (NA.plus j) (trans (sym (NA.plus-assoc r b d))
+          (trans (ap (\ n -> NA.plus n d) (NA.plus-comm r b)) (NA.plus-assoc b r d)))))) ;
+    deg-diff : Id Int (deg (sub3 m t.2)) (pos (NA.plus b (NA.plus r d))) =
+     trans (deg-sub m t.2)
+      (trans (Presentations[l].cong2 Int add _ _ _ _ (trans em (ap (\ n -> pos n) arith)) (ap neg ht.1.2))
+       (sub-pos j (NA.plus b (NA.plus r d)))) } ;
+  sum (m : E3) (d : Nat) (em : Id Int (deg m) (pos (NA.plus (NA.plus a b) d))) :
+   (h : LO.LPoly) -> Good q h -> Id A.R (LO.mulP h (PS.psi y) m) A.z = split {
+   nil -> \ gh -> refl A.z ;
+   cons t h | r -> \ gh -> trans (Presentations[l].cong2 A.R A.add _ _ _ _ (term m d em t gh.1) (r gh.2)) (A.addZ A.z) } ;
+  result : Up (NA.plus a b) (S.mul x y) = \ m d em ->
+   trans (PH.psi-mul x y m)
+    (trans (LA.LP.mulP-resp (LA.lst x) g (\ m' -> trans (sym (LA.psi-coef x m')) (sym (coef-g m'))) (PS.psi y) m)
+     (sum m d em g (good-filt q (LA.lst x) (posdeg-emb (PH.nl x))))) ;
+ } ;
+ up-mul (a b : Nat) (x y : S.R) (hx : Up (suc a) x) (hy : Up b y) : Up (NA.plus a b) (S.mul x y) = UpMul[a,b,x,y,hx,hy].result ;
+
+ ---------------------------------------------------------------------
+ -- Dn-mul
+
+ module DnMul (a b : Nat) (x y : S.R) (hx : Dn a x) (hy : Dn b y) {
+  q (e : E3) : Bool = geZ a (deg e) ;
+  van-at (m : E3) : (k : Int) -> Id Int (deg m) k -> Id Bool (geZ a k) false -> Id A.R (PS.psi x m) A.z = split {
+   pos j -> \ e h -> hx m j (le-false a j h).1 e (le-false a j h).2 ;
+   negsuc n -> \ e h -> psi-neg-deg x m n e } ;
+  g : LO.LPoly = LL.filt q (LA.lst x) ;
+  coef-g : LO.EqL (LL.coef g) (PS.psi x) =
+   LL.filt-coef q (PS.psi x) (\ m h -> van-at m (deg m) (refl (deg m)) h) (LA.lst x) (\ m -> sym (LA.psi-coef x m)) ;
+  -- one term: deg t = i >= a, deg m = jm with a + b = jm + d + 1
+  module Term (m : E3) (jm d : Nat) (em : Id Int (deg m) (pos jm)) (ed : Id Nat (NA.plus a b) (NA.plus jm (suc d)))
+   (t : LL.Term) (ht : ((j : Nat) * Id Int (deg t.2) (pos j)) * Id Bool (q t.2) true) {
+   i : Nat = ht.1.1 ;
+   r : Nat = (le-true a i (trans (ap (geZ a) (sym ht.1.2)) ht.2)).1 ;
+   ei : Id Nat i (NA.plus a r) = (le-true a i (trans (ap (geZ a) (sym ht.1.2)) ht.2)).2 ;
+   dd : Id Int (deg (sub3 m t.2)) (add (pos jm) (neg (pos i))) =
+    trans (deg-sub m t.2) (Presentations[l].cong2 Int add _ _ _ _ em (ap neg ht.1.2)) ;
+   zero-of : Id A.R (PS.psi y (sub3 m t.2)) A.z -> Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z =
+    \ h -> trans (ap (A.mul t.1) h) (RL[A].mul-zero t.1) ;
+   -- jm = i + u : then b = u + (d + r) + 1
+   case-ge (u : Nat) (eu : Id Nat jm (NA.plus i u)) : Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z =
+    zero-of (hy (sub3 m t.2) u (NA.plus d r) (trans dd (trans (ap (\ n -> add (pos n) (neg (pos i))) eu) (sub-pos i u)))
+      (NA.plus-cancel-l a b (NA.plus u (suc (NA.plus d r)))
+        (trans ed (trans (ap (\ n -> NA.plus n (suc d)) (trans eu (ap (\ n -> NA.plus n u) ei)))
+          (trans (NA.plus-assoc (NA.plus a r) u (suc d))
+           (trans (NA.plus-assoc a r (NA.plus u (suc d)))
+            (ap (NA.plus a) (trans (NA.plus-comm r (NA.plus u (suc d)))
+              (trans (NA.plus-assoc u (suc d) r) refl-step)))))))))
+    where { refl-step : Id Nat (NA.plus u (NA.plus (suc d) r)) (NA.plus u (suc (NA.plus d r))) = refl (NA.plus u (suc (NA.plus d r))) } ;
+   -- i = jm + e + 1 : negative degree
+   case-lt (e : Nat) (ee : Id Nat i (NA.plus jm (suc e))) : Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z =
+    zero-of (psi-neg-deg y (sub3 m t.2) e (trans dd (trans (ap (\ n -> add (pos jm) (neg (pos n))) ee) (sub-neg jm e)))) ;
+   by-cmp : Plus ((u : Nat) * Id Nat jm (NA.plus i u)) ((u : Nat) * Id Nat i (NA.plus jm (suc u))) ->
+    Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z = split {
+    inl p -> case-ge p.1 p.2 ;
+    inr p -> case-lt p.1 p.2 } ;
+   result : Id A.R (A.mul t.1 (PS.psi y (sub3 m t.2))) A.z = by-cmp (cmp jm i) ;
+  } ;
+  sum (m : E3) (jm d : Nat) (em : Id Int (deg m) (pos jm)) (ed : Id Nat (NA.plus a b) (NA.plus jm (suc d))) :
+   (h : LO.LPoly) -> Good q h -> Id A.R (LO.mulP h (PS.psi y) m) A.z = split {
+   nil -> \ gh -> refl A.z ;
+   cons t h | r -> \ gh -> trans (Presentations[l].cong2 A.R A.add _ _ _ _ (Term[m,jm,d,em,ed,t,gh.1].result) (r gh.2)) (A.addZ A.z) } ;
+  result : Dn (NA.plus a b) (S.mul x y) = \ m jm d em ed ->
+   trans (PH.psi-mul x y m)
+    (trans (LA.LP.mulP-resp (LA.lst x) g (\ m' -> trans (sym (LA.psi-coef x m')) (sym (coef-g m'))) (PS.psi y) m)
+     (sum m jm d em ed g (good-filt q (LA.lst x) (posdeg-emb (PH.nl x))))) ;
+ } ;
+ dn-mul (a b : Nat) (x y : S.R) (hx : Dn a x) (hy : Dn b y) : Dn (NA.plus a b) (S.mul x y) = DnMul[a,b,x,y,hx,hy].result ;
+} ;

@@ -1,0 +1,232 @@
+-- CechModules.seg: the modules of the Cech model (acl-zmt-formalisation.tex,
+-- section « Le modèle de Čech de B_h », Lemme modele; Liste item 3).
+--
+-- Laurent elements are coefficient functions (Laurent3); with function
+-- extensionality they form an A-module (lmod), and triples of them form
+-- the module of 0- and 1-cochains (tmod).  The cochains actually used are
+-- homogeneous of a given degree, satisfy the support conditions of their
+-- charts and are finitely supported (LaurentList.Fin): these conditions are
+-- propositions closed under the module operations, so they cut out
+-- submodules (SubMod):
+--     SL k : Laurent elements of degree k ,
+--     S1 k : 1-cochains of degree k (Supp1) ,
+--     S0 k : 0-cochains of degree k (Supp0) .
+-- Every condition is a vanishing condition  f(m) = 0 for m in a set
+-- (Van), except Fin.  A linear map preserving the conditions restricts to
+-- the submodules (SubMod.into), so that the trees of I^n M (IdealPowers)
+-- built by linear maps (MapPow) stay inside the submodules.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module IP = IdealPowers[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- submodules cut out by a proposition, and composition of linear maps
+
+module SubMod (A : CRing) (Md : IP.Mod[A]) (S : Md.M -> U l) (sp : (m : Md.M) -> Pr.isProp (S m))
+  (s-zero : S Md.mz) (s-add : (x y : Md.M) -> S x -> S y -> S (Md.madd x y))
+  (s-neg : (x : Md.M) -> S x -> S (Md.mneg x)) (s-sm : (c : A.R) (x : Md.M) -> S x -> S (Md.sm c x)) {
+  E : U l = (m : Md.M) * S m ;
+  eq (u v : E) (h : Id Md.M u.1 v.1) : Id E u v = Pr.Sigma-eq Md.M S u.1 v.1 u.2 v.2 h (sp v.1) ;
+  mod : IP.Mod[A] = IP.mkMod A E (Md.mz, s-zero)
+    (\ u v -> (Md.madd u.1 v.1, s-add u.1 v.1 u.2 v.2)) (\ u -> (Md.mneg u.1, s-neg u.1 u.2))
+    (\ u v w -> eq _ _ (Md.maddA u.1 v.1 w.1)) (\ u v -> eq _ _ (Md.maddC u.1 v.1))
+    (\ u -> eq _ _ (Md.maddZ u.1)) (\ u -> eq _ _ (Md.maddN u.1))
+    (\ c u -> (Md.sm c u.1, s-sm c u.1 u.2))
+    (\ c c' u -> eq _ _ (Md.smA c c' u.1)) (\ u -> eq _ _ (Md.smO u.1))
+    (\ c u v -> eq _ _ (Md.smD c u.1 v.1)) (\ c c' u -> eq _ _ (Md.smE c c' u.1)) ;
+  incl : IP.Lin[A,mod,Md] = IP.mkLin A mod Md (\ u -> u.1) (\ u v -> refl (Md.madd u.1 v.1)) (\ c u -> refl (Md.sm c u.1)) ;
+  -- a linear map landing in S
+  into (Pm : IP.Mod[A]) (F : IP.Lin[A,Pm,Md]) (pres : (x : Pm.M) -> S (F.f x)) : IP.Lin[A,Pm,mod] =
+    IP.mkLin A Pm mod (\ x -> (F.f x, pres x))
+      (\ x x' -> eq _ _ (F.f-add x x')) (\ c x -> eq _ _ (F.f-sm c x)) ;
+} ;
+
+comp (A : CRing) (Pm Qm Rm : IP.Mod[A]) (F : IP.Lin[A,Pm,Qm]) (G : IP.Lin[A,Qm,Rm]) : IP.Lin[A,Pm,Rm] =
+  IP.mkLin A Pm Rm (\ x -> G.f (F.f x))
+    (\ x x' -> trans (ap G.f (F.f-add x x')) (G.f-add (F.f x) (F.f x')))
+    (\ c x -> trans (ap G.f (F.f-sm c x)) (G.f-sm c (F.f x))) ;
+
+-- E = a A' + b B' raises I^n to I^(n+1), and the powers of E
+module RaiseOp (A : CRing) (Md : IP.Mod[A]) (a b : A.R) (Ao Bo : IP.Lin[A,Md,Md]) {
+  module PM = IP.Over[A,Md,a,b] ; module MP = IP.MapPow[A,Md,Md,Ao,a,b] ; module MQ = IP.MapPow[A,Md,Md,Bo,a,b] ;
+  op (x : Md.M) : Md.M = Md.madd (Md.sm a (Ao.f x)) (Md.sm b (Bo.f x)) ;
+  raise (n : Ring[l].Nat) (x : Md.M) (h : PM.Pow n x) : PM.Pow (suc n) (op x) =
+    (Ao.f x, (Bo.f x, (MP.pow-map n x h, (MQ.pow-map n x h, refl (op x))))) ;
+  pw : Ring[l].Nat -> Md.M -> Md.M = split { zero -> \ x -> x ; suc n | r -> \ x -> op (r x) } ;
+  pw-in : (n : Ring[l].Nat) (x : Md.M) -> PM.Pow n (pw n x) = split {
+    zero -> \ x -> tt ;
+    suc n | r -> \ x -> raise n (pw n x) (r x) } ;
+} ;
+
+------------------------------------------------------------------------
+-- the function modules and the conditions
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module LO = Laurent3[l].Over[D] ; open LO ;
+  module CO = Cech3[l].Over[D] ;
+  module LL = LaurentList[l].Over[D] ;
+
+  ext (f g : Lau) (h : EqL f g) : Id Lau f g = FE.funext E3 (\ m -> D.R) f g h ;
+  extT (c c' : CO.Tri) (h : CO.EqT c c') : Id CO.Tri c c' =
+    calc CO.Tri { c =< ap (\ u -> CO.mkT u (CO.t2 c) (CO.t3 c)) (ext (CO.t1 c) (CO.t1 c') h.1)
+                    > CO.mkT (CO.t1 c') (CO.t2 c) (CO.t3 c)
+                    =< ap (\ u -> CO.mkT (CO.t1 c') u (CO.t3 c)) (ext (CO.t2 c) (CO.t2 c') h.2.1)
+                    > CO.mkT (CO.t1 c') (CO.t2 c') (CO.t3 c)
+                    =< ap (\ u -> CO.mkT (CO.t1 c') (CO.t2 c') u) (ext (CO.t3 c) (CO.t3 c') h.2.2) > c' } ;
+
+  lmod : IP.Mod[D] = IP.mkMod D Lau zeroL addL negL
+    (\ f g h -> ext _ _ (\ m -> D.addA (f m) (g m) (h m)))
+    (\ f g -> ext _ _ (\ m -> D.addC (f m) (g m)))
+    (\ f -> ext _ _ (\ m -> D.addZ (f m)))
+    (\ f -> ext _ _ (\ m -> D.addN (f m)))
+    scaleL
+    (\ c c' f -> ext _ _ (\ m -> D.mulA c c' (f m)))
+    (\ f -> ext _ _ (\ m -> L.one-left (f m)))
+    (\ c f g -> ext _ _ (\ m -> D.dist c (f m) (g m)))
+    (\ c c' f -> ext _ _ (\ m -> L.dist-left c c' (f m))) ;
+
+  negT (c : CO.Tri) : CO.Tri = CO.mkT (negL (CO.t1 c)) (negL (CO.t2 c)) (negL (CO.t3 c)) ;
+  tmod : IP.Mod[D] = IP.mkMod D CO.Tri CO.zeroT CO.addT negT
+    (\ u v w -> extT _ _ (\ m -> D.addA (CO.t1 u m) (CO.t1 v m) (CO.t1 w m),
+                          (\ m -> D.addA (CO.t2 u m) (CO.t2 v m) (CO.t2 w m), \ m -> D.addA (CO.t3 u m) (CO.t3 v m) (CO.t3 w m))))
+    (\ u v -> extT _ _ (\ m -> D.addC (CO.t1 u m) (CO.t1 v m), (\ m -> D.addC (CO.t2 u m) (CO.t2 v m), \ m -> D.addC (CO.t3 u m) (CO.t3 v m))))
+    (\ u -> extT _ _ (\ m -> D.addZ (CO.t1 u m), (\ m -> D.addZ (CO.t2 u m), \ m -> D.addZ (CO.t3 u m))))
+    (\ u -> extT _ _ (\ m -> D.addN (CO.t1 u m), (\ m -> D.addN (CO.t2 u m), \ m -> D.addN (CO.t3 u m))))
+    CO.scaleT
+    (\ c c' u -> extT _ _ (\ m -> D.mulA c c' (CO.t1 u m), (\ m -> D.mulA c c' (CO.t2 u m), \ m -> D.mulA c c' (CO.t3 u m))))
+    (\ u -> extT _ _ (\ m -> L.one-left (CO.t1 u m), (\ m -> L.one-left (CO.t2 u m), \ m -> L.one-left (CO.t3 u m))))
+    (\ c u v -> extT _ _ (\ m -> D.dist c (CO.t1 u m) (CO.t1 v m), (\ m -> D.dist c (CO.t2 u m) (CO.t2 v m), \ m -> D.dist c (CO.t3 u m) (CO.t3 v m))))
+    (\ c c' u -> extT _ _ (\ m -> L.dist-left c c' (CO.t1 u m), (\ m -> L.dist-left c c' (CO.t2 u m), \ m -> L.dist-left c c' (CO.t3 u m)))) ;
+
+  -- linear maps from pointwise identities
+  linL (F : Lau -> Lau) (fa : (f g : Lau) -> EqL (F (addL f g)) (addL (F f) (F g)))
+    (fs : (c : D.R) (f : Lau) -> EqL (F (scaleL c f)) (scaleL c (F f))) : IP.Lin[D,lmod,lmod] =
+    IP.mkLin D lmod lmod F (\ f g -> ext _ _ (fa f g)) (\ c f -> ext _ _ (fs c f)) ;
+  linT (F : CO.Tri -> CO.Tri) (fa : (u v : CO.Tri) -> CO.EqT (F (CO.addT u v)) (CO.addT (F u) (F v)))
+    (fs : (c : D.R) (u : CO.Tri) -> CO.EqT (F (CO.scaleT c u)) (CO.scaleT c (F u))) : IP.Lin[D,tmod,tmod] =
+    IP.mkLin D tmod tmod F (\ u v -> extT _ _ (fa u v)) (\ c u -> extT _ _ (fs c u)) ;
+  linLT (F : Lau -> CO.Tri) (fa : (f g : Lau) -> CO.EqT (F (addL f g)) (CO.addT (F f) (F g)))
+    (fs : (c : D.R) (f : Lau) -> CO.EqT (F (scaleL c f)) (CO.scaleT c (F f))) : IP.Lin[D,lmod,tmod] =
+    IP.mkLin D lmod tmod F (\ f g -> extT _ _ (fa f g)) (\ c f -> extT _ _ (fs c f)) ;
+  linTL (F : CO.Tri -> Lau) (fa : (u v : CO.Tri) -> EqL (F (CO.addT u v)) (addL (F u) (F v)))
+    (fs : (c : D.R) (u : CO.Tri) -> EqL (F (CO.scaleT c u)) (scaleL c (F u))) : IP.Lin[D,tmod,lmod] =
+    IP.mkLin D tmod lmod F (\ u v -> ext _ _ (fa u v)) (\ c u -> ext _ _ (fs c u)) ;
+
+  ------------------------------------------------------------------------
+  -- vanishing conditions
+
+  Van (C : E3 -> U l) (f : Lau) : U l = (m : E3) -> C m -> Id D.R (f m) D.z ;
+  van-prop (C : E3 -> U l) (f : Lau) : Pr.isProp (Van C f) =
+    FE.isProp-Pi E3 (\ m -> C m -> Id D.R (f m) D.z) (\ m ->
+      FE.isProp-Pi (C m) (\ c -> Id D.R (f m) D.z) (\ c -> setD (f m) D.z)) ;
+  van-zero (C : E3 -> U l) : Van C zeroL = \ m c -> refl D.z ;
+  van-add (C : E3 -> U l) (f g : Lau) (hf : Van C f) (hg : Van C g) : Van C (addL f g) =
+    \ m c -> CO.vanish-add (f m) (g m) (hf m c) (hg m c) ;
+  van-neg (C : E3 -> U l) (f : Lau) (hf : Van C f) : Van C (negL f) =
+    \ m c -> trans (ap D.neg (hf m c)) L.neg-zero ;
+  van-sm (C : E3 -> U l) (k : D.R) (f : Lau) (hf : Van C f) : Van C (scaleL k f) =
+    \ m c -> trans (ap (D.mul k) (hf m c)) (L.mul-zero k) ;
+  van-cong (C : E3 -> U l) (f g : Lau) (e : EqL f g) (hf : Van C f) : Van C g =
+    \ m c -> trans (sym (e m)) (hf m c) ;
+  -- a pointwise map with phi m 0 = 0
+  van-point (C : E3 -> U l) (phi : E3 -> D.R -> D.R) (p0 : (m : E3) -> Id D.R (phi m D.z) D.z) (f : Lau) (hf : Van C f) :
+    Van C (\ m -> phi m (f m)) = \ m c -> trans (ap (phi m) (hf m c)) (p0 m) ;
+
+  -- the products by polynomials
+  NonNegZ : LPoly -> U l = split { nil -> Top ; cons t g | r -> Id Bool (isNeg (ez t.2)) false * r } ;
+  nnz-mulZ : (g : LPoly) -> NonNegZ g -> (f : Lau) -> NNZ f -> NNZ (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m) (h (sub3 m t.2) (sub-neg (ez m) e (ez t.2) ng.1)) (r ng.2 f h m e) } ;
+  -- a polynomial: nonnegative exponents in each variable, every term of degree k'
+  IsPoly (k' : Int) (g : LPoly) : U l = NonNegX g * (NonNegY g * (NonNegZ g * HomPI k' g)) ;
+
+  ------------------------------------------------------------------------
+  -- the conditions on Laurent elements and cochains
+
+  HomT (k : Int) (c : CO.Tri) : U l = Hom k (CO.t1 c) * (Hom k (CO.t2 c) * Hom k (CO.t3 c)) ;
+  FinT (c : CO.Tri) : U l = LL.Fin (CO.t1 c) * (LL.Fin (CO.t2 c) * LL.Fin (CO.t3 c)) ;
+
+  prod3-prop (X Y Z : U l) (px : Pr.isProp X) (py : Pr.isProp Y) (pz : Pr.isProp Z) : Pr.isProp (X * (Y * Z)) =
+    Pr.isProp-Sigma X (\ u -> Y * Z) px (\ u -> Pr.isProp-Sigma Y (\ w -> Z) py (\ w -> pz)) ;
+  pair-prop (X Y : U l) (px : Pr.isProp X) (py : Pr.isProp Y) : Pr.isProp (X * Y) =
+    Pr.isProp-Sigma X (\ u -> Y) px (\ u -> py) ;
+  hom-prop (k : Int) (f : Lau) : Pr.isProp (Hom k f) = van-prop (\ m -> LG.Not (Id Int (deg m) k)) f ;
+  homT-prop (k : Int) (c : CO.Tri) : Pr.isProp (HomT k c) =
+    prod3-prop (Hom k (CO.t1 c)) (Hom k (CO.t2 c)) (Hom k (CO.t3 c)) (hom-prop k (CO.t1 c)) (hom-prop k (CO.t2 c)) (hom-prop k (CO.t3 c)) ;
+  finT-prop (c : CO.Tri) : Pr.isProp (FinT c) =
+    prod3-prop (LL.Fin (CO.t1 c)) (LL.Fin (CO.t2 c)) (LL.Fin (CO.t3 c)) (LL.fin-prop (CO.t1 c)) (LL.fin-prop (CO.t2 c)) (LL.fin-prop (CO.t3 c)) ;
+  nnx-prop (f : Lau) : Pr.isProp (NNX f) = van-prop (\ m -> Id Bool (isNeg (ex m)) true) f ;
+  nny-prop (f : Lau) : Pr.isProp (NNY f) = van-prop (\ m -> Id Bool (isNeg (ey m)) true) f ;
+  nnz-prop (f : Lau) : Pr.isProp (NNZ f) = van-prop (\ m -> Id Bool (isNeg (ez m)) true) f ;
+  supp0-prop (c : CO.Tri) : Pr.isProp (CO.Supp0 c) =
+    prod3-prop (NNY (CO.t1 c) * NNZ (CO.t1 c)) (NNX (CO.t2 c) * NNZ (CO.t2 c)) (NNX (CO.t3 c) * NNY (CO.t3 c))
+      (pair-prop (NNY (CO.t1 c)) (NNZ (CO.t1 c)) (nny-prop (CO.t1 c)) (nnz-prop (CO.t1 c)))
+      (pair-prop (NNX (CO.t2 c)) (NNZ (CO.t2 c)) (nnx-prop (CO.t2 c)) (nnz-prop (CO.t2 c)))
+      (pair-prop (NNX (CO.t3 c)) (NNY (CO.t3 c)) (nnx-prop (CO.t3 c)) (nny-prop (CO.t3 c))) ;
+  supp1-prop (b : CO.Tri) : Pr.isProp (CO.Supp1 b) =
+    prod3-prop (NNZ (CO.t1 b)) (NNY (CO.t2 b)) (NNX (CO.t3 b)) (nnz-prop (CO.t1 b)) (nny-prop (CO.t2 b)) (nnx-prop (CO.t3 b)) ;
+
+  -- closure of the conditions
+  CH (k : Int) (m : E3) : U l = LG.Not (Id Int (deg m) k) ;
+  CX (m : E3) : U l = Id Bool (isNeg (ex m)) true ;
+  CY (m : E3) : U l = Id Bool (isNeg (ey m)) true ;
+  CZ (m : E3) : U l = Id Bool (isNeg (ez m)) true ;
+
+  homT-zero (k : Int) : HomT k CO.zeroT = (\ m c -> refl D.z, (\ m c -> refl D.z, \ m c -> refl D.z)) ;
+  homT-add (k : Int) (u v : CO.Tri) (hu : HomT k u) (hv : HomT k v) : HomT k (CO.addT u v) =
+    (van-add (CH k) (CO.t1 u) (CO.t1 v) hu.1 hv.1, (van-add (CH k) (CO.t2 u) (CO.t2 v) hu.2.1 hv.2.1, van-add (CH k) (CO.t3 u) (CO.t3 v) hu.2.2 hv.2.2)) ;
+  homT-neg (k : Int) (u : CO.Tri) (hu : HomT k u) : HomT k (negT u) =
+    (van-neg (CH k) (CO.t1 u) hu.1, (van-neg (CH k) (CO.t2 u) hu.2.1, van-neg (CH k) (CO.t3 u) hu.2.2)) ;
+  homT-sm (k : Int) (c : D.R) (u : CO.Tri) (hu : HomT k u) : HomT k (CO.scaleT c u) =
+    (van-sm (CH k) c (CO.t1 u) hu.1, (van-sm (CH k) c (CO.t2 u) hu.2.1, van-sm (CH k) c (CO.t3 u) hu.2.2)) ;
+  finT-zero : FinT CO.zeroT = (LL.fin-zero, (LL.fin-zero, LL.fin-zero)) ;
+  finT-add (u v : CO.Tri) (hu : FinT u) (hv : FinT v) : FinT (CO.addT u v) =
+    (LL.fin-add (CO.t1 u) (CO.t1 v) hu.1 hv.1, (LL.fin-add (CO.t2 u) (CO.t2 v) hu.2.1 hv.2.1, LL.fin-add (CO.t3 u) (CO.t3 v) hu.2.2 hv.2.2)) ;
+  finT-neg (u : CO.Tri) (hu : FinT u) : FinT (negT u) =
+    (LL.fin-neg (CO.t1 u) hu.1, (LL.fin-neg (CO.t2 u) hu.2.1, LL.fin-neg (CO.t3 u) hu.2.2)) ;
+  finT-sm (c : D.R) (u : CO.Tri) (hu : FinT u) : FinT (CO.scaleT c u) =
+    (LL.fin-scale c (CO.t1 u) hu.1, (LL.fin-scale c (CO.t2 u) hu.2.1, LL.fin-scale c (CO.t3 u) hu.2.2)) ;
+  supp0-zero : CO.Supp0 CO.zeroT = ((\ m c -> refl D.z, \ m c -> refl D.z), ((\ m c -> refl D.z, \ m c -> refl D.z), (\ m c -> refl D.z, \ m c -> refl D.z))) ;
+  supp0-add (u v : CO.Tri) (hu : CO.Supp0 u) (hv : CO.Supp0 v) : CO.Supp0 (CO.addT u v) =
+    ((van-add CY (CO.t1 u) (CO.t1 v) hu.1.1 hv.1.1, van-add CZ (CO.t1 u) (CO.t1 v) hu.1.2 hv.1.2),
+     ((van-add CX (CO.t2 u) (CO.t2 v) hu.2.1.1 hv.2.1.1, van-add CZ (CO.t2 u) (CO.t2 v) hu.2.1.2 hv.2.1.2),
+      (van-add CX (CO.t3 u) (CO.t3 v) hu.2.2.1 hv.2.2.1, van-add CY (CO.t3 u) (CO.t3 v) hu.2.2.2 hv.2.2.2))) ;
+  supp0-neg (u : CO.Tri) (hu : CO.Supp0 u) : CO.Supp0 (negT u) =
+    ((van-neg CY (CO.t1 u) hu.1.1, van-neg CZ (CO.t1 u) hu.1.2),
+     ((van-neg CX (CO.t2 u) hu.2.1.1, van-neg CZ (CO.t2 u) hu.2.1.2), (van-neg CX (CO.t3 u) hu.2.2.1, van-neg CY (CO.t3 u) hu.2.2.2))) ;
+  supp0-sm (c : D.R) (u : CO.Tri) (hu : CO.Supp0 u) : CO.Supp0 (CO.scaleT c u) =
+    ((van-sm CY c (CO.t1 u) hu.1.1, van-sm CZ c (CO.t1 u) hu.1.2),
+     ((van-sm CX c (CO.t2 u) hu.2.1.1, van-sm CZ c (CO.t2 u) hu.2.1.2), (van-sm CX c (CO.t3 u) hu.2.2.1, van-sm CY c (CO.t3 u) hu.2.2.2))) ;
+  supp1-neg (u : CO.Tri) (hu : CO.Supp1 u) : CO.Supp1 (negT u) =
+    (van-neg CZ (CO.t1 u) hu.1, (van-neg CY (CO.t2 u) hu.2.1, van-neg CX (CO.t3 u) hu.2.2)) ;
+  supp1-sm (c : D.R) (u : CO.Tri) (hu : CO.Supp1 u) : CO.Supp1 (CO.scaleT c u) =
+    (van-sm CZ c (CO.t1 u) hu.1, (van-sm CY c (CO.t2 u) hu.2.1, van-sm CX c (CO.t3 u) hu.2.2)) ;
+
+  ------------------------------------------------------------------------
+  -- the three families of submodules
+
+  SL (k : Int) (f : Lau) : U l = Hom k f * LL.Fin f ;
+  module ML (k : Int) { module S = SubMod[D,lmod,SL k,
+    \ f -> pair-prop (Hom k f) (LL.Fin f) (hom-prop k f) (LL.fin-prop f),
+    (\ m c -> refl D.z, LL.fin-zero),
+    \ f g hf hg -> (van-add (CH k) f g hf.1 hg.1, LL.fin-add f g hf.2 hg.2),
+    \ f hf -> (van-neg (CH k) f hf.1, LL.fin-neg f hf.2),
+    \ c f hf -> (van-sm (CH k) c f hf.1, LL.fin-scale c f hf.2)] ; } ;
+
+  S1 (k : Int) (b : CO.Tri) : U l = CO.Supp1 b * (HomT k b * FinT b) ;
+  module M1 (k : Int) { module S = SubMod[D,tmod,S1 k,
+    \ b -> prod3-prop (CO.Supp1 b) (HomT k b) (FinT b) (supp1-prop b) (homT-prop k b) (finT-prop b),
+    (CO.supp1-zero, (homT-zero k, finT-zero)),
+    \ u v hu hv -> (CO.supp1-add u v hu.1 hv.1, (homT-add k u v hu.2.1 hv.2.1, finT-add u v hu.2.2 hv.2.2)),
+    \ u hu -> (supp1-neg u hu.1, (homT-neg k u hu.2.1, finT-neg u hu.2.2)),
+    \ c u hu -> (supp1-sm c u hu.1, (homT-sm k c u hu.2.1, finT-sm c u hu.2.2))] ; } ;
+
+  S0 (k : Int) (c : CO.Tri) : U l = CO.Supp0 c * (HomT k c * FinT c) ;
+  module M0 (k : Int) { module S = SubMod[D,tmod,S0 k,
+    \ c -> prod3-prop (CO.Supp0 c) (HomT k c) (FinT c) (supp0-prop c) (homT-prop k c) (finT-prop c),
+    (supp0-zero, (homT-zero k, finT-zero)),
+    \ u v hu hv -> (supp0-add u v hu.1 hv.1, (homT-add k u v hu.2.1 hv.2.1, finT-add u v hu.2.2 hv.2.2)),
+    \ u hu -> (supp0-neg u hu.1, (homT-neg k u hu.2.1, finT-neg u hu.2.2)),
+    \ c u hu -> (supp0-sm c u hu.1, (homT-sm k c u hu.2.1, finT-sm c u hu.2.2))] ; } ;
+} ;

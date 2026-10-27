@@ -1,0 +1,188 @@
+-- Homog.seg: a divisor of a non-zero homogeneous element of S is homogeneous
+-- (doc/gcd-polynomial.tex, point délicat 6 (ii)).
+--
+--  * comp n x in S : the component of degree n of x, psi (comp n x) m =
+--    [deg m = n] psi x m ;  S decides comp n x = 0 ;
+--  * the top degree T of x /= 0 (Up (T+1) x, comp T x /= 0) by a search down
+--    from a bound of the degrees of its list, the bottom degree B (Dn B x,
+--    comp B x /= 0) by a search up ;
+--  * extremes of a product: x = hi + lo, y = hi' + lo' with hi = comp T x,
+--    x y = hi hi' + hi lo' + lo y, and at degree T + T' only hi hi' /= 0
+--    contributes (Degrees.up-mul); hi hi' /= 0 (S is a domain) has a
+--    non-zero coefficient (found on its list), necessarily of degree T + T'.
+--    Symmetrically at the bottom (dn-mul) ;
+--  * if x y is homogeneous of degree d: T_x + T_y = d = B_x + B_y with
+--    B <= T, so B_x = T_x: x is homogeneous of degree T_x.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module LLt = LaurentList[l] ; module NA = NatArith[l] ;
+module DGt = Degrees[l] ;
+
+toB-yes {X : U l} (x : X) : (d : LG.Dec X) -> Id Bool (LLt.toB d) true = split {
+ yes p -> refl true ; no n -> Pr.absurd _ (n x) } ;
+toB-no {X : U l} (n : LG.Not X) : (d : LG.Dec X) -> Id Bool (LLt.toB d) false = split {
+ yes p -> Pr.absurd _ (n p) ; no n' -> refl false } ;
+toB-true {X : U l} : (d : LG.Dec X) -> Id Bool (LLt.toB d) true -> X = split {
+ yes p -> \ h -> p ; no n -> \ h -> Pr.absurd _ (encodeB false true h) } ;
+toB-false {X : U l} : (d : LG.Dec X) -> Id Bool (LLt.toB d) false -> LG.Not X = split {
+ yes p -> \ h -> Pr.absurd _ (encodeB true false h) ; no n -> \ h -> n } ;
+-- n + d + 1 /= n
+ne-suc : (n d : Nat) -> Id Nat (suc (NA.plus n d)) n -> Empty = split {
+ zero -> \ d e -> not-code (suc d) zero e ;
+ suc n | r -> \ d e -> r d (NA.suc-inj e) } ;
+qd (n : Nat) (m : E3) : Bool = LLt.toB (int-dec (deg m) (pos n)) ;
+qd-yes (n : Nat) (m : E3) (e : Id Int (deg m) (pos n)) : Id Bool (qd n m) true = toB-yes e (int-dec (deg m) (pos n)) ;
+qd-no (n : Nat) (m : E3) (ne : LG.Not (Id Int (deg m) (pos n))) : Id Bool (qd n m) false = toB-no ne (int-dec (deg m) (pos n)) ;
+
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ module DG = Degrees[l].Over[A,G] ;
+ module LA = DG.LA ; module PH = LA.PH ; module PS = LA.PS ; module LO = LA.LO ; module LL = LA.LL ;
+ S : CRing = LA.S ;
+ module RS = RL[S] ;
+ module GS = LA.GS ;
+ module RA = RL[A] ;
+
+ ---------------------------------------------------------------------
+ -- the components
+
+ ifLN (t : PH.NTerm) (r : PH.NList) : Bool -> PH.NList = split { true -> cons t r ; false -> r } ;
+ filtN (q : E3 -> Bool) : PH.NList -> PH.NList = split { nil -> nil ; cons t g | r -> ifLN t r (q (PH.embE t.2)) } ;
+ emb-ifL (t : PH.NTerm) (r : PH.NList) : (b : Bool) -> Id LO.LPoly (PH.embL (ifLN t r b)) (LL.ifL b (PH.emb t) (PH.embL r)) = split {
+  true -> refl (cons (PH.emb t) (PH.embL r)) ; false -> refl (PH.embL r) } ;
+ emb-filt (q : E3 -> Bool) : (g : PH.NList) -> Id LO.LPoly (PH.embL (filtN q g)) (LL.filt q (PH.embL g)) = split {
+  nil -> refl nil ;
+  cons t g | r -> trans (emb-ifL t (filtN q g) (q (PH.embE t.2))) (ap (LL.ifL (q (PH.embE t.2)) (PH.emb t)) r) } ;
+ comp (n : Nat) (x : S.R) : S.R = PH.actN (filtN (qd n) (PH.nl x)) S.o ;
+ -- the coefficient of the filtered list
+ filt-at (q : E3 -> Bool) (g : LO.LPoly) (m : E3) : (b : Bool) -> Id Bool (q m) b -> Id A.R (LL.coef (LL.filt q g) m) (LO.ifB b (LL.coef g m)) = split {
+  true -> \ hb -> LL.filt-pt q m (LL.coef g) (\ h -> Pr.absurd _ (encodeB true false (trans (sym hb) h))) g (\ m' -> refl (LL.coef g m')) true hb ;
+  false -> \ hb -> trans (LL.coef-filt q m g)
+    (CechMonomials[l].Over[A].sumL-vanish LL.Term (\ t -> LO.ifB (q t.2) (LL.coefT t m)) (\ t -> LL.filt-term-false q m hb t (LLt.dec3 t.2 m)) g) } ;
+ psi-comp (n : Nat) (x : S.R) (m : E3) : Id A.R (PS.psi (comp n x) m) (LO.ifB (qd n m) (PS.psi x m)) =
+  trans (PH.psi-list (filtN (qd n) (PH.nl x)) m)
+   (trans (ap (\ g -> LL.coef g m) (emb-filt (qd n) (PH.nl x)))
+    (trans (filt-at (qd n) (LA.lst x) m (qd n m) (refl (qd n m))) (ap (LO.ifB (qd n m)) (sym (LA.psi-coef x m))))) ;
+ -- in degree n the component is x, elsewhere 0
+ comp-at (n : Nat) (x : S.R) (m : E3) (e : Id Int (deg m) (pos n)) : Id A.R (PS.psi (comp n x) m) (PS.psi x m) =
+  trans (psi-comp n x m) (ap (\ b -> LO.ifB b (PS.psi x m)) (qd-yes n m e)) ;
+ comp-off (n : Nat) (x : S.R) (m : E3) (ne : LG.Not (Id Int (deg m) (pos n))) : Id A.R (PS.psi (comp n x) m) A.z =
+  trans (psi-comp n x m) (ap (\ b -> LO.ifB b (PS.psi x m)) (qd-no n m ne)) ;
+ comp-up (n : Nat) (x : S.R) : DG.Up (suc n) (comp n x) = \ m d e ->
+  comp-off n x m (\ e' -> ne-suc n d (DGt.pos-inj (suc (NA.plus n d)) n (trans (sym e) e'))) ;
+ comp-dn (n : Nat) (x : S.R) : DG.Dn n (comp n x) = \ m j d e en ->
+  comp-off n x m (\ e' -> ne-suc j d (DGt.pos-inj (suc (NA.plus j d)) j
+    (trans (ap (\ k -> pos k) (sym (trans en (NA.plus-suc j d)))) (trans (sym e') e)))) ;
+ -- a zero component
+ comp-zero (n : Nat) (x : S.R) (z0 : Id S.R (comp n x) S.z) (m : E3) (e : Id Int (deg m) (pos n)) : Id A.R (PS.psi x m) A.z =
+  trans (sym (comp-at n x m e)) (trans (ap (\ u -> PS.psi u m) z0) (PS.psi-zero m)) ;
+
+ ---------------------------------------------------------------------
+ -- a non-zero element has a non-zero coefficient
+
+ AllZ (g : LO.LPoly) : LO.LPoly -> U l = split { nil -> Top ; cons t h | r -> Id A.R (LL.coef g t.2) A.z * r } ;
+ NotIn (m : E3) : LO.LPoly -> U l = split { nil -> Top ; cons t h | r -> LG.Not (Id E3 t.2 m) * r } ;
+ coef-notin (m : E3) : (h : LO.LPoly) -> NotIn m h -> Id A.R (LL.coef h m) A.z = split {
+  nil -> \ n -> refl A.z ;
+  cons t h | r -> \ n -> trans (Presentations[l].cong2 A.R A.add _ _ _ _ (LL.ifD-no n.1 (LLt.dec3 t.2 m) t.1) (r n.2)) (A.addZ A.z) } ;
+ at-pl (g : LO.LPoly) (m : E3) (t : LL.Term) (h : LO.LPoly) (n : LG.Not (Id E3 t.2 m)) :
+  Plus (Id A.R (LL.coef g m) A.z) (NotIn m h) -> Plus (Id A.R (LL.coef g m) A.z) (NotIn m (cons t h)) = split {
+  inl e -> inl e ; inr b -> inr (n, b) } ;
+ at-step (g : LO.LPoly) (m : E3) (t : LL.Term) (h : LO.LPoly) (a1 : Id A.R (LL.coef g t.2) A.z)
+  (rest : Plus (Id A.R (LL.coef g m) A.z) (NotIn m h)) : LG.Dec (Id E3 t.2 m) -> Plus (Id A.R (LL.coef g m) A.z) (NotIn m (cons t h)) = split {
+  yes p -> inl (subst (\ k -> Id A.R (LL.coef g k) A.z) p a1) ;
+  no n -> at-pl g m t h n rest } ;
+ at-m (g : LO.LPoly) (m : E3) : (h : LO.LPoly) -> AllZ g h -> Plus (Id A.R (LL.coef g m) A.z) (NotIn m h) = split {
+  nil -> \ a -> inr tt ;
+  cons t h | r -> \ a -> at-step g m t h a.1 (r a.2) (LLt.dec3 t.2 m) } ;
+ all-zero (g : LO.LPoly) (a : AllZ g g) (m : E3) : Id A.R (LL.coef g m) A.z = az (at-m g m g a)
+  where { az : Plus (Id A.R (LL.coef g m) A.z) (NotIn m g) -> Id A.R (LL.coef g m) A.z = split {
+           inl e -> e ; inr b -> coef-notin m g b } } ;
+ Witness (g : LO.LPoly) : U l = (m : E3) * Not (Id A.R (LL.coef g m) A.z) ;
+ scan-pl (g : LO.LPoly) (t : LL.Term) (h : LO.LPoly) (e : Id A.R (LL.coef g t.2) A.z) :
+  Plus (AllZ g h) (Witness g) -> Plus (AllZ g (cons t h)) (Witness g) = split {
+  inl a -> inl (e, a) ; inr w -> inr w } ;
+ scan-step (g : LO.LPoly) (t : LL.Term) (h : LO.LPoly) (r : Plus (AllZ g h) (Witness g)) :
+  Plus (Id A.R (LL.coef g t.2) A.z) (Not (Id A.R (LL.coef g t.2) A.z)) -> Plus (AllZ g (cons t h)) (Witness g) = split {
+  inl e -> scan-pl g t h e r ;
+  inr n -> inr (t.2, n) } ;
+ scan (g : LO.LPoly) : (h : LO.LPoly) -> Plus (AllZ g h) (Witness g) = split {
+  nil -> inl tt ;
+  cons t h | r -> scan-step g t h r (G.dec (LL.coef g t.2)) } ;
+ witness (x : S.R) (nx : Not (Id S.R x S.z)) : (m : E3) * Not (Id A.R (PS.psi x m) A.z) = wt (scan (LA.lst x) (LA.lst x))
+  where { wt : Plus (AllZ (LA.lst x) (LA.lst x)) (Witness (LA.lst x)) -> (m : E3) * Not (Id A.R (PS.psi x m) A.z) = split {
+           inl a -> efq (nx (PS.psi-inj x (\ m -> trans (LA.psi-coef x m) (all-zero (LA.lst x) a m)))) ;
+           inr w -> (w.1, \ e -> w.2 (trans (sym (LA.psi-coef x w.1)) e)) } } ;
+
+ ---------------------------------------------------------------------
+ -- the degree of a coefficient of x is a bound
+
+ tsum : PH.NList -> Nat = split { nil -> zero ; cons t g | r -> NA.plus (DG.tdeg t.2) r } ;
+ BelowL (N : Nat) : PH.NList -> U l = split { nil -> Top ; cons t g | r -> Shift[l].Le' (DG.tdeg t.2) N * r } ;
+ below : (g : PH.NList) (N : Nat) -> Shift[l].Le' (tsum g) N -> BelowL N g = split {
+  nil -> \ N h -> tt ;
+  cons t g | r -> \ N h -> (Shift[l].le-left (DG.tdeg t.2) (tsum g) N h, r N (Shift[l].le-right (DG.tdeg t.2) (tsum g) N h)) } ;
+ ne-bound (td N r d : Nat) (hb : Id Nat N (NA.plus td r)) (e : Id Nat (NA.plus (suc N) d) td) : Empty =
+  ne-suc td (NA.plus r d) (trans (ap {Nat} {Nat} (\ k -> suc k) (sym (NA.plus-assoc td r d))) (trans (ap {Nat} {Nat} (\ k -> suc (NA.plus k d)) (sym hb)) e)) ;
+ notin-up (N : Nat) (m : E3) (d : Nat) (e : Id Int (deg m) (pos (NA.plus (suc N) d))) : (g : PH.NList) -> BelowL N g -> NotIn m (PH.embL g) = split {
+  nil -> \ b -> tt ;
+  cons t g | r -> \ b -> (\ et -> ne-bound (DG.tdeg t.2) N b.1.1 d b.1.2
+       (DGt.pos-inj (NA.plus (suc N) d) (DG.tdeg t.2) (trans (sym e) (trans (ap deg (sym et)) (DG.deg-emb t.2)))),
+     r b.2) } ;
+ bound (x : S.R) : Nat = tsum (PH.nl x) ;
+ up-bound (x : S.R) : DG.Up (suc (bound x)) x = \ m d e ->
+  trans (LA.psi-coef x m) (coef-notin m (LA.lst x) (notin-up (bound x) m d e (PH.nl x) (below (PH.nl x) (bound x) (zero, sym (NA.plus-zero (bound x)))))) ;
+
+ ---------------------------------------------------------------------
+ -- top and bottom degrees
+
+ TopOf (x : S.R) : U l = (T : Nat) * (DG.Up (suc T) x * Not (Id S.R (comp T x) S.z)) ;
+ BotOf (x : S.R) : U l = (B : Nat) * (DG.Dn B x * Not (Id S.R (comp B x) S.z)) ;
+ module Search (x : S.R) (nx : Not (Id S.R x S.z)) {
+  -- Up 1 x and comp 0 x = 0 give x = 0
+  pz (up : DG.Up (suc zero) x) (z0 : Id S.R (comp zero x) S.z) (m : E3) : (j : Nat) -> Id Int (deg m) (pos j) -> Id A.R (PS.psi x m) A.z = split {
+   zero -> \ e -> comp-zero zero x z0 m e ;
+   suc j -> \ e -> up m j e } ;
+  all-zero0 (up : DG.Up (suc zero) x) (z0 : Id S.R (comp zero x) S.z) (m : E3) : (k : Int) -> Id Int (deg m) k -> Id A.R (PS.psi x m) A.z = split {
+   pos j -> pz up z0 m j ;
+   negsuc n -> \ e -> DG.psi-neg-deg x m n e } ;
+  ud (n : Nat) (up : DG.Up (suc (suc n)) x) (z0 : Id S.R (comp (suc n) x) S.z) (m : E3) : (d : Nat) -> Id Int (deg m) (pos (NA.plus (suc n) d)) -> Id A.R (PS.psi x m) A.z = split {
+   zero -> \ e -> comp-zero (suc n) x z0 m (trans e (ap (\ k -> pos k) (NA.plus-zero (suc n)))) ;
+   suc d -> \ e -> up m d (trans e (ap (\ k -> pos k) (NA.plus-suc (suc n) d))) } ;
+  up-down (n : Nat) (up : DG.Up (suc (suc n)) x) (z0 : Id S.R (comp (suc n) x) S.z) : DG.Up (suc n) x = \ m d -> ud n up z0 m d ;
+  top-at0 (up : DG.Up (suc zero) x) : Plus (Id S.R (comp zero x) S.z) (Not (Id S.R (comp zero x) S.z)) -> TopOf x = split {
+   inl z0 -> efq (nx (PS.psi-inj x (\ m -> all-zero0 up z0 m (deg m) (refl (deg m))))) ;
+   inr nz -> (zero, (up, nz)) } ;
+  top-at (n : Nat) (up : DG.Up (suc (suc n)) x) (rec : DG.Up (suc n) x -> TopOf x) :
+   Plus (Id S.R (comp (suc n) x) S.z) (Not (Id S.R (comp (suc n) x) S.z)) -> TopOf x = split {
+   inl z0 -> rec (up-down n up z0) ;
+   inr nz -> (suc n, (up, nz)) } ;
+  top-search : (n : Nat) -> DG.Up (suc n) x -> TopOf x = split {
+   zero -> \ up -> top-at0 up (PS.gcdS.dec (comp zero x)) ;
+   suc n | r -> \ up -> top-at n up r (PS.gcdS.dec (comp (suc n) x)) } ;
+  top : TopOf x = top-search (bound x) (up-bound x) ;
+
+  -- bottom: from below
+  by-cmp (i : Nat) (dn : DG.Dn i x) (up : DG.Up i x) (m : E3) (j : Nat) (e : Id Int (deg m) (pos j)) :
+   Plus ((d : Nat) * Id Nat j (NA.plus i d)) ((d : Nat) * Id Nat i (NA.plus j (suc d))) -> Id A.R (PS.psi x m) A.z = split {
+   inl p -> up m p.1 (trans e (ap (\ k -> pos k) p.2)) ;
+   inr p -> dn m j p.1 e p.2 } ;
+  all-zero-ud (i : Nat) (dn : DG.Dn i x) (up : DG.Up i x) (m : E3) : (k : Int) -> Id Int (deg m) k -> Id A.R (PS.psi x m) A.z = split {
+   pos j -> \ e -> by-cmp i dn up m j e (DGt.cmp j i) ;
+   negsuc n -> \ e -> DG.psi-neg-deg x m n e } ;
+  du (i : Nat) (dn : DG.Dn i x) (z0 : Id S.R (comp i x) S.z) (m : E3) (j : Nat) (e : Id Int (deg m) (pos j)) :
+   (d : Nat) -> Id Nat i (NA.plus j d) -> Id A.R (PS.psi x m) A.z = split {
+   zero -> \ ei -> comp-zero i x z0 m (trans e (ap (\ k -> pos k) (sym (trans ei (NA.plus-zero j))))) ;
+   suc d -> \ ei -> dn m j d e ei } ;
+  dn-up (i : Nat) (dn : DG.Dn i x) (z0 : Id S.R (comp i x) S.z) : DG.Dn (suc i) x = \ m j d e en ->
+   du i dn z0 m j e d (NA.suc-inj (trans en (NA.plus-suc j d))) ;
+  bot-at (i k : Nat) (dn : DG.Dn i x) (up : DG.Up (NA.plus i (suc k)) x) (rec : (i' : Nat) -> DG.Dn i' x -> DG.Up (NA.plus i' k) x -> BotOf x) :
+   Plus (Id S.R (comp i x) S.z) (Not (Id S.R (comp i x) S.z)) -> BotOf x = split {
+   inl z0 -> rec (suc i) (dn-up i dn z0) (\ m d e -> up m d (trans e (ap (\ n -> pos (NA.plus n d)) (sym (NA.plus-suc i k))))) ;
+   inr nz -> (i, (dn, nz)) } ;
+  bot-search : (k : Nat) (i : Nat) -> DG.Dn i x -> DG.Up (NA.plus i k) x -> BotOf x = split {
+   zero -> \ i dn up -> efq (nx (PS.psi-inj x (\ m -> all-zero-ud i dn (\ m' d e -> up m' d (trans e (ap (\ n -> pos (NA.plus n d)) (sym (NA.plus-zero i))))) m (deg m) (refl (deg m))))) ;
+   suc k | r -> \ i dn up -> bot-at i k dn up r (PS.gcdS.dec (comp i x)) } ;
+  dn0 : DG.Dn zero x = \ m j d e en -> Pr.absurd _ (not-code zero (suc (NA.plus j d)) (trans en (NA.plus-suc j d))) ;
+  bot : BotOf x = bot-search (suc (bound x)) zero dn0 (up-bound x) ;
+ } ;
+}
+;

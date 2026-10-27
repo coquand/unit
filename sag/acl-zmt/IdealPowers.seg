@@ -1,0 +1,219 @@
+-- IdealPowers.seg: modules over a commutative ring, linear maps, and
+-- membership in I^n M for the ideal I = (a,b) (handoff §4).
+--
+-- Every m is in I^0 M; m is in I^(n+1) M when m = a m1 + b m2 with m1, m2
+-- in I^n M.  This is a finite certificate: unfolding the tree gives the
+-- homogeneous form  sum_{j=0}^n a^(n-j) b^j m_j , and `homogeneous` builds
+-- the tree from that form.  No decidable equality in M is used.
+--
+-- Lemmas: I^n M is a submodule (pow-zero, pow-add, pow-neg, pow-scale),
+-- I^(n+1) M is contained in I^n M (pow-down), r in I^i and m in I^j M give
+-- r m in I^(i+j) M (pow-mul), and linear maps preserve I^n (pow-map).
+level l ; open Ring[l] ;
+
+record Mod (A : CRing) {
+  M : U l ;
+  mz : M ;
+  madd : M -> M -> M ;
+  mneg : M -> M ;
+  maddA (x y w : M) : Id M (madd x (madd y w)) (madd (madd x y) w) ;
+  maddC (x y : M) : Id M (madd x y) (madd y x) ;
+  maddZ (x : M) : Id M (madd x mz) x ;
+  maddN (x : M) : Id M (madd x (mneg x)) mz ;
+  sm : A.R -> M -> M ;
+  smA (a b : A.R) (x : M) : Id M (sm a (sm b x)) (sm (A.mul a b) x) ;
+  smO (x : M) : Id M (sm A.o x) x ;
+  smD (a : A.R) (x y : M) : Id M (sm a (madd x y)) (madd (sm a x) (sm a y)) ;
+  smE (a b : A.R) (x : M) : Id M (sm (A.add a b) x) (madd (sm a x) (sm b x)) ;
+} ;
+
+-- A as a module over itself
+regular (A : CRing) : Mod[A] =
+  mkMod A A.R A.z A.add A.neg A.addA A.addC A.addZ A.addN A.mul A.mulA (RL[A].one-left) A.dist (RL[A].dist-left) ;
+
+record Lin (A : CRing) (P Q : Mod[A]) {
+  f : P.M -> Q.M ;
+  f-add (x y : P.M) : Id Q.M (f (P.madd x y)) (Q.madd (f x) (f y)) ;
+  f-sm (c : A.R) (x : P.M) : Id Q.M (f (P.sm c x)) (Q.sm c (f x)) ;
+} ;
+
+-- the abelian group and scalar lemmas of a module
+module ModL (A : CRing) (Md : Mod[A]) {
+  open Md ;
+  module G = ExteriorAlgebra[l].AG[M,mz,madd,mneg,maddA,maddC,maddZ,maddN] ;
+  module L = RL[A] ;
+
+  msub (x y : M) : M = madd x (mneg y) ;
+
+  sm-zero (c : A.R) : Id M (sm c mz) mz = G.hom-zero (sm c) (smD c) ;
+  sm-neg (c : A.R) (x : M) : Id M (sm c (mneg x)) (mneg (sm c x)) = G.hom-neg (sm c) (smD c) x ;
+  sm-sub (c : A.R) (x y : M) : Id M (sm c (msub x y)) (msub (sm c x) (sm c y)) =
+    trans (smD c x (mneg y)) (ap (madd (sm c x)) (sm-neg c y)) ;
+  -- a (c x) = c (a x)
+  sm-comm (a c : A.R) (x : M) : Id M (sm a (sm c x)) (sm c (sm a x)) =
+    trans (smA a c x) (trans (ap (\ t -> sm t x) (A.mulC a c)) (sym (smA c a x))) ;
+  zero-sm (x : M) : Id M (sm A.z x) mz =
+    G.add-cancel (sm A.z x) (sm A.z x)
+      (trans (sym (smE A.z A.z x)) (ap (\ t -> sm t x) (A.addZ A.z))) ;
+  sub-self (x : M) : Id M (msub x x) mz = maddN x ;
+  -- (x + y) - (x' + y') = (x - x') + (y - y')
+  sub-swap (x y x' y' : M) : Id M (msub (madd x y) (madd x' y')) (madd (msub x x') (msub y y')) =
+    trans (ap (madd (madd x y)) (G.neg-add x' y')) (G.swap x y (mneg x') (mneg y')) ;
+  -- (x - y) - w = x - (y + w)
+  sub-sub (x y w : M) : Id M (msub (msub x y) w) (msub x (madd y w)) =
+    trans (sym (maddA x (mneg y) (mneg w))) (ap (madd x) (sym (G.neg-add y w))) ;
+  -- x - (x - y) = y
+  sub-sub-self (x y : M) : Id M (msub x (msub x y)) y =
+    calc M { msub x (msub x y) =< ap (madd x) (G.neg-add x (mneg y)) > madd x (madd (mneg x) (mneg (mneg y)))
+               =< maddA x (mneg x) (mneg (mneg y)) > madd (madd x (mneg x)) (mneg (mneg y))
+               =< ap (\ t -> madd t (mneg (mneg y))) (maddN x) > madd mz (mneg (mneg y))
+               =< G.zl (mneg (mneg y)) > mneg (mneg y)
+               =< G.neg-neg y > y } ;
+  -- (x - w) - (y - w) = x - y
+  sub-cancel (x y w : M) : Id M (msub (msub x w) (msub y w)) (msub x y) =
+    calc M { msub (msub x w) (msub y w) =< sub-swap x (mneg w) y (mneg w) > madd (msub x y) (msub (mneg w) (mneg w))
+               =< ap (madd (msub x y)) (maddN (mneg w)) > madd (msub x y) mz
+               =< maddZ (msub x y) > msub x y } ;
+  -- (x - y) - w = (x - w) - y
+  sub-comm (x y w : M) : Id M (msub (msub x y) w) (msub (msub x w) y) =
+    calc M { msub (msub x y) w =< sym (maddA x (mneg y) (mneg w)) > madd x (madd (mneg y) (mneg w))
+               =< ap (madd x) (maddC (mneg y) (mneg w)) > madd x (madd (mneg w) (mneg y))
+               =< maddA x (mneg w) (mneg y) > msub (msub x w) y } ;
+  -- x = y when x - y = 0
+  sub-zero (x y : M) (h : Id M (msub x y) mz) : Id M x y =
+    calc M { x =< sym (maddZ x) > madd x mz
+               =< ap (madd x) (sym (trans (maddC (mneg y) y) (maddN y))) > madd x (madd (mneg y) y)
+               =< maddA x (mneg y) y > madd (msub x y) y
+               =< ap (\ t -> madd t y) h > madd mz y
+               =< G.zl y > y } ;
+} ;
+
+module Over (A : CRing) (Md : Mod[A]) (a b : A.R) {
+  open Md ; module ML = ModL[A,Md] ; open ML ;
+
+  Pow : Nat -> M -> U l = split {
+    zero -> \ m -> Top ;
+    suc n | r -> \ m -> (m1 : M) * (m2 : M) * (r m1 * (r m2 * Id M m (madd (sm a m1) (sm b m2)))) } ;
+
+  pow-tr (n : Nat) (m m' : M) (e : Id M m m') (h : Pow n m) : Pow n m' = subst (Pow n) e h ;
+
+  pow-zero : (n : Nat) -> Pow n mz = split {
+    zero -> tt ;
+    suc n | r -> (mz, (mz, (r, (r,
+      sym (trans (G.cong-add (sm-zero a) (sm-zero b)) (maddZ mz)))))) } ;
+
+  -- (a m1 + b m2) + (a m1' + b m2') = a (m1 + m1') + b (m2 + m2')
+  add-step (m1 m2 m1' m2' : M) :
+    Id M (madd (madd (sm a m1) (sm b m2)) (madd (sm a m1') (sm b m2')))
+         (madd (sm a (madd m1 m1')) (sm b (madd m2 m2'))) =
+    trans (G.swap (sm a m1) (sm b m2) (sm a m1') (sm b m2'))
+          (G.cong-add (sym (smD a m1 m1')) (sym (smD b m2 m2'))) ;
+
+  pow-add : (n : Nat) (m m' : M) -> Pow n m -> Pow n m' -> Pow n (madd m m') = split {
+    zero -> \ m m' h h' -> tt ;
+    suc n | r -> \ m m' h h' ->
+      (madd h.1 h'.1, (madd h.2.1 h'.2.1,
+        (r h.1 h'.1 h.2.2.1 h'.2.2.1, (r h.2.1 h'.2.1 h.2.2.2.1 h'.2.2.2.1,
+         trans (G.cong-add h.2.2.2.2 h'.2.2.2.2) (add-step h.1 h.2.1 h'.1 h'.2.1))))) } ;
+
+  -- c (a m1 + b m2) = a (c m1) + b (c m2)
+  pow-scale : (n : Nat) (c : A.R) (m : M) -> Pow n m -> Pow n (sm c m) = split {
+    zero -> \ c m h -> tt ;
+    suc n | r -> \ c m h ->
+      (sm c h.1, (sm c h.2.1, (r c h.1 h.2.2.1, (r c h.2.1 h.2.2.2.1,
+        trans (ap (sm c) h.2.2.2.2)
+          (trans (smD c (sm a h.1) (sm b h.2.1))
+                 (G.cong-add (sm-comm c a h.1) (sm-comm c b h.2.1))))))) } ;
+
+  pow-neg : (n : Nat) (m : M) -> Pow n m -> Pow n (mneg m) = split {
+    zero -> \ m h -> tt ;
+    suc n | r -> \ m h ->
+      (mneg h.1, (mneg h.2.1, (r h.1 h.2.2.1, (r h.2.1 h.2.2.2.1,
+        trans (ap mneg h.2.2.2.2)
+          (trans (G.neg-add (sm a h.1) (sm b h.2.1))
+                 (G.cong-add (sym (sm-neg a h.1)) (sym (sm-neg b h.2.1)))))))) } ;
+
+  pow-sub (n : Nat) (m m' : M) (h : Pow n m) (h' : Pow n m') : Pow n (msub m m') =
+    pow-add n m (mneg m') h (pow-neg n m' h') ;
+
+  pow-down : (n : Nat) (m : M) -> Pow (suc n) m -> Pow n m = split {
+    zero -> \ m h -> tt ;
+    suc n | r -> \ m h ->
+      pow-tr (suc n) (madd (sm a h.1) (sm b h.2.1)) m (sym h.2.2.2.2)
+        (pow-add (suc n) (sm a h.1) (sm b h.2.1)
+          (pow-scale (suc n) a h.1 h.2.2.1) (pow-scale (suc n) b h.2.1 h.2.2.2.1)) } ;
+
+  -- I^(j+1) M is contained in I M
+  pow-one : (j : Nat) (m : M) -> Pow (suc j) m -> Pow (suc zero) m = split {
+    zero -> \ m h -> h ;
+    suc j | r -> \ m h -> r m (pow-down (suc j) m h) } ;
+
+  -- I^(k+n) M is contained in I^n M
+  pow-drop : (k n : Nat) (m : M) -> Pow (plus k n) m -> Pow n m = split {
+    zero -> \ n m h -> h ;
+    suc k | r -> \ n m h -> r n m (pow-down (plus k n) m h) } ;
+
+  -- the same tree with leaves in a subset S:  m in I^n S
+  PowIn (S : M -> U l) : Nat -> M -> U l = split {
+    zero -> S ;
+    suc n | r -> \ m -> (m1 : M) * (m2 : M) * (r m1 * (r m2 * Id M m (madd (sm a m1) (sm b m2)))) } ;
+  forget (S : M -> U l) : (n : Nat) (m : M) -> PowIn S n m -> Pow n m = split {
+    zero -> \ m h -> tt ;
+    suc n | r -> \ m h -> (h.1, (h.2.1, (r h.1 h.2.2.1, (r h.2.1 h.2.2.2.1, h.2.2.2.2)))) } ;
+
+  ------------------------------------------------------------------------
+  -- the homogeneous form  sum_{j=0}^n a^(n-j) b^j c_j
+
+  bs : Nat -> M -> M = split {
+    zero -> \ c -> c ;
+    suc n | r -> \ c -> sm b (r c) } ;
+
+  hsum : Nat -> (Nat -> M) -> M = split {
+    zero -> \ c -> c zero ;
+    suc n | r -> \ c -> madd (sm a (r c)) (bs (suc n) (c (suc n))) } ;
+
+  pow-bs : (n : Nat) (c : M) -> Pow n (bs n c) = split {
+    zero -> \ c -> tt ;
+    suc n | r -> \ c -> (mz, (bs n c, (pow-zero n, (r c,
+      sym (trans (ap (\ t -> madd t (sm b (bs n c))) (sm-zero a)) (G.zl (sm b (bs n c)))))))) } ;
+
+  homogeneous : (n : Nat) (c : Nat -> M) -> Pow n (hsum n c) = split {
+    zero -> \ c -> tt ;
+    suc n | r -> \ c ->
+      pow-add (suc n) (sm a (hsum n c)) (bs (suc n) (c (suc n)))
+        (pow-tr (suc n) (madd (sm a (hsum n c)) (sm b mz)) (sm a (hsum n c))
+          (trans (ap (madd (sm a (hsum n c))) (sm-zero b)) (maddZ (sm a (hsum n c))))
+          (hsum n c, (mz, (r c, (pow-zero n, refl (madd (sm a (hsum n c)) (sm b mz)))))))
+        (pow-bs (suc n) (c (suc n))) } ;
+} ;
+
+-- products: r in I^i and m in I^j M give r m in I^(i+j) M
+module Mult (A : CRing) (Md : Mod[A]) (a b : A.R) {
+  open Md ; module ML = ModL[A,Md] ; open ML ;
+  module PA = Over[A,regular A,a,b] ;
+  module PM = Over[A,Md,a,b] ;
+
+  -- (a r1 + b r2) m = a (r1 m) + b (r2 m)
+  mul-step (r1 r2 : A.R) (m : M) :
+    Id M (sm (A.add (A.mul a r1) (A.mul b r2)) m) (madd (sm a (sm r1 m)) (sm b (sm r2 m))) =
+    trans (smE (A.mul a r1) (A.mul b r2) m) (G.cong-add (sym (smA a r1 m)) (sym (smA b r2 m))) ;
+
+  pow-mul : (i : Nat) (j : Nat) (r : A.R) (m : M) -> PA.Pow i r -> PM.Pow j m -> PM.Pow (plus i j) (sm r m) = split {
+    zero -> \ j r m hr hm -> PM.pow-scale j r m hm ;
+    suc i | ih -> \ j r m hr hm ->
+      (sm hr.1 m, (sm hr.2.1 m, (ih j hr.1 m hr.2.2.1 hm, (ih j hr.2.1 m hr.2.2.2.1 hm,
+        trans (ap (\ t -> sm t m) hr.2.2.2.2) (mul-step hr.1 hr.2.1 m))))) } ;
+} ;
+
+-- linear maps preserve I^n
+module MapPow (A : CRing) (P Q : Mod[A]) (F : Lin[A,P,Q]) (a b : A.R) {
+  module PP = Over[A,P,a,b] ; module PQ = Over[A,Q,a,b] ;
+  module GQ = ModL[A,Q] ;
+  pow-map : (n : Nat) (m : P.M) -> PP.Pow n m -> PQ.Pow n (F.f m) = split {
+    zero -> \ m h -> tt ;
+    suc n | r -> \ m h ->
+      (F.f h.1, (F.f h.2.1, (r h.1 h.2.2.1, (r h.2.1 h.2.2.2.1,
+        trans (ap F.f h.2.2.2.2)
+          (trans (F.f-add (P.sm a h.1) (P.sm b h.2.1))
+                 (GQ.G.cong-add (F.f-sm a h.1) (F.f-sm b h.2.1))))))) } ;
+} ;

@@ -1,0 +1,461 @@
+-- LaurentList.seg: Laurent polynomials as finite lists of terms, their
+-- meaning, the product of lists, the regrouping lemma and finite support
+-- (acl-zmt-formalisation.tex, Liste de formalisation, item 1).
+--
+-- A list g of terms c X^e (an LPoly of Laurent3, exponents in Z^3) means the
+-- coefficient function  coef g (m) = sum_{c X^e in g, e = m} c .  Exponents
+-- are compared (dec3), coefficients never are.  The product of two lists
+-- is  mulL g h = [c c' X^(e+e')] , with  coef (mulL g h) = mulP g (coef h).
+--
+-- Regrouping (Lemma regroupement).  Let psi : Z^3 -> D -> T be additive in
+-- its second argument.  If coef g = 0 then  sum_{c X^e in g} psi(e,c) = 0.
+-- By induction on a bound of the length: with g = c X^e :: g', split g'
+-- into the terms of exponent e (kept) and the others (rest).  The kept part
+-- and the head give psi(e, coef g (e)) = psi(e,0) = 0; the rest has
+-- coefficient function 0 (at e by construction, elsewhere it is coef g)
+-- and is shorter.  So sum psi depends only on coef g (respects).
+--
+-- Finite support.  Fin f: f merely is coef g for a list g.  It is closed
+-- under sums, scalars, products by lists and pointwise additive maps
+-- (fin-point: the selections pi, sigma, tau of CechContraction).  A
+-- function vanishing outside a decidable set of exponents is the meaning
+-- of the filtered list (filt-coef).  Descend: a map on lists that respects
+-- meaning gives a map on finitely supported functions (unique choice into
+-- a set: the value is unique, so the truncation is harmless).
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module P = Prelude[l] ; module NA = NatArith[l] ; module LG = Logic[l] ;
+module Tr = Truncation[l] ; module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module CM = CechMonomials[l] ; module NO = NatOrder[l] ;
+
+------------------------------------------------------------------------
+-- exponents: decidable equality and addition
+
+dec3-from (m m' : E3) : LG.Dec (Id Int (ex m) (ex m')) -> LG.Dec (Id Int (ey m) (ey m')) ->
+  LG.Dec (Id Int (ez m) (ez m')) -> LG.Dec (Id E3 m m') = split {
+  yes p -> split {
+    yes q -> split {
+      yes r -> yes (CM.pair3 (ex m) (ey m) (ez m) (ex m') (ey m') (ez m') p q r) ;
+      no n -> no (\ e -> n (ap ez e)) } ;
+    no n -> \ c -> no (\ e -> n (ap ey e)) } ;
+  no n -> \ b c -> no (\ e -> n (ap ex e)) } ;
+dec3 (m m' : E3) : LG.Dec (Id E3 m m') =
+  dec3-from m m' (int-dec (ex m) (ex m')) (int-dec (ey m) (ey m')) (int-dec (ez m) (ez m')) ;
+
+toB {X : U l} : LG.Dec X -> Bool = split { yes p -> true ; no n -> false } ;
+eqb (m m' : E3) : Bool = toB (dec3 m m') ;
+
+add3 (e e' : E3) : E3 = (add (ex e) (ex e'), (add (ey e) (ey e'), add (ez e) (ez e'))) ;
+zero3 : E3 = (zeroZ, (zeroZ, zeroZ)) ;
+
+-- e + e' = m  iff  e' = m - e
+neg-l (x : Int) : Id Int (add (neg x) x) zeroZ = trans (comm (neg x) x) (invr x) ;
+addZ-solve (x y w : Int) (h : Id Int (add x y) w) : Id Int y (add w (neg x)) =
+  calc Int { y =< sym (zero-l y) > add zeroZ y
+               =< sym (ap (\ t -> add t y) (neg-l x)) > add (add (neg x) x) y
+               =< assoc (neg x) x y > add (neg x) (add x y)
+               =< ap (add (neg x)) h > add (neg x) w
+               =< comm (neg x) w > add w (neg x) } ;
+addZ-unsolve (x y w : Int) (h : Id Int y (add w (neg x))) : Id Int (add x y) w =
+  calc Int { add x y =< ap (add x) h > add x (add w (neg x))
+               =< ap (add x) (comm w (neg x)) > add x (add (neg x) w)
+               =< sym (assoc x (neg x) w) > add (add x (neg x)) w
+               =< ap (\ t -> add t w) (invr x) > add zeroZ w
+               =< zero-l w > w } ;
+add3-solve (e e' m : E3) (h : Id E3 (add3 e e') m) : Id E3 e' (sub3 m e) =
+  CM.pair3 (ex e') (ey e') (ez e') (ex (sub3 m e)) (ey (sub3 m e)) (ez (sub3 m e))
+    (addZ-solve (ex e) (ex e') (ex m) (ap ex h))
+    (addZ-solve (ey e) (ey e') (ey m) (ap ey h))
+    (addZ-solve (ez e) (ez e') (ez m) (ap ez h)) ;
+add3-unsolve (e e' m : E3) (h : Id E3 e' (sub3 m e)) : Id E3 (add3 e e') m =
+  CM.pair3 (ex (add3 e e')) (ey (add3 e e')) (ez (add3 e e')) (ex m) (ey m) (ez m)
+    (addZ-unsolve (ex e) (ex e') (ex m) (ap ex h))
+    (addZ-unsolve (ey e) (ey e') (ey m) (ap ey h))
+    (addZ-unsolve (ez e) (ez e') (ez m) (ap ez h)) ;
+
+-- m - (e + e') = (m - e) - e'
+subZ-add (x a b : Int) : Id Int (add x (neg (add a b))) (add (add x (neg a)) (neg b)) =
+  trans (ap (add x) (ZG.neg-add a b)) (sym (assoc x (neg a) (neg b))) ;
+sub3-add (m e e' : E3) : Id E3 (sub3 m (add3 e e')) (sub3 (sub3 m e) e') =
+  CM.pair3 (ex (sub3 m (add3 e e'))) (ey (sub3 m (add3 e e'))) (ez (sub3 m (add3 e e')))
+    (ex (sub3 (sub3 m e) e')) (ey (sub3 (sub3 m e) e')) (ez (sub3 (sub3 m e) e'))
+    (subZ-add (ex m) (ex e) (ex e')) (subZ-add (ey m) (ey e) (ey e')) (subZ-add (ez m) (ez e) (ez e')) ;
+
+-- e = m  iff  m - e = 0
+sub3-zero (e m : E3) (h : Id E3 e m) : Id E3 (sub3 m e) zero3 =
+  subst (\ k -> Id E3 (sub3 m k) zero3) (sym h)
+    (CM.pair3 (ex (sub3 m m)) (ey (sub3 m m)) (ez (sub3 m m)) zeroZ zeroZ zeroZ (invr (ex m)) (invr (ey m)) (invr (ez m))) ;
+zero3-sub (e m : E3) (h : Id E3 (sub3 m e) zero3) : Id E3 e m =
+  sym (trans (sym (add3-unsolve e zero3 m (sym h)))
+             (CM.pair3 (ex (add3 e zero3)) (ey (add3 e zero3)) (ez (add3 e zero3)) (ex e) (ey e) (ez e)
+                (refl (ex e)) (refl (ey e)) (refl (ez e)))) ;
+
+------------------------------------------------------------------------
+-- lists over D
+
+module Over (D : CRing) {
+  module LO = Laurent3[l].Over[D] ; open LO ;
+  module CO = Cech3[l].Over[D] ;
+
+  ifD {X : U l} : LG.Dec X -> D.R -> D.R = split { yes p -> \ c -> c ; no n -> \ c -> D.z } ;
+  ifD-toB {X : U l} : (d : LG.Dec X) (c : D.R) -> Id D.R (ifD d c) (ifB (toB d) c) = split {
+    yes p -> \ c -> refl c ; no n -> \ c -> refl D.z } ;
+  -- two decisions of equivalent propositions select alike
+  ifD-iff {X Y : U l} (f : X -> Y) (g : Y -> X) : (d : LG.Dec X) (d' : LG.Dec Y) (c : D.R) -> Id D.R (ifD d c) (ifD d' c) = split {
+    yes p -> split { yes q -> \ c -> refl c ; no n -> \ c -> P.absurd (Id D.R c D.z) (n (f p)) } ;
+    no n -> split { yes q -> \ c -> P.absurd (Id D.R D.z c) (n (g q)) ; no n' -> \ c -> refl D.z } } ;
+  ifD-add {X : U l} : (d : LG.Dec X) (u v : D.R) -> Id D.R (ifD d (D.add u v)) (D.add (ifD d u) (ifD d v)) = split {
+    yes p -> \ u v -> refl (D.add u v) ; no n -> \ u v -> sym (D.addZ D.z) } ;
+  ifD-zero {X : U l} : (d : LG.Dec X) -> Id D.R (ifD d D.z) D.z = split {
+    yes p -> refl D.z ; no n -> refl D.z } ;
+  ifD-scale {X : U l} : (d : LG.Dec X) (c u : D.R) -> Id D.R (ifD d (D.mul c u)) (D.mul c (ifD d u)) = split {
+    yes p -> \ c u -> refl (D.mul c u) ; no n -> \ c u -> sym (L.mul-zero c) } ;
+  ifD-neg {X : U l} : (d : LG.Dec X) (u : D.R) -> Id D.R (ifD d (D.neg u)) (D.neg (ifD d u)) = split {
+    yes p -> \ u -> refl (D.neg u) ; no n -> \ u -> sym L.neg-zero } ;
+  ifD-yes {X : U l} (x : X) : (d : LG.Dec X) (c : D.R) -> Id D.R (ifD d c) c = split {
+    yes p -> \ c -> refl c ; no n -> \ c -> P.absurd (Id D.R D.z c) (n x) } ;
+  ifD-no {X : U l} (nx : LG.Not X) : (d : LG.Dec X) (c : D.R) -> Id D.R (ifD d c) D.z = split {
+    yes p -> \ c -> P.absurd (Id D.R c D.z) (nx p) ; no n -> \ c -> refl D.z } ;
+
+  Term : U l = D.R * E3 ;
+  coefT (t : Term) (m : E3) : D.R = ifD (dec3 t.2 m) t.1 ;
+  coef : LPoly -> Lau = split {
+    nil -> \ m -> D.z ;
+    cons t g | r -> \ m -> D.add (coefT t m) (r m) } ;
+
+  ------------------------------------------------------------------------
+  -- the meaning of the list operations
+
+  negList : LPoly -> LPoly = split { nil -> nil ; cons t g | r -> cons (D.neg t.1, t.2) r } ;
+
+  coef-app : (g h : LPoly) -> EqL (coef (Bar[l].app g h)) (addL (coef g) (coef h)) = split {
+    nil -> \ h m -> sym (L.zl (coef h m)) ;
+    cons t g | r -> \ h m -> trans (ap (D.add (coefT t m)) (r h m)) (D.addA (coefT t m) (coef g m) (coef h m)) } ;
+  coef-neg : (g : LPoly) -> EqL (coef (negList g)) (negL (coef g)) = split {
+    nil -> \ m -> sym L.neg-zero ;
+    cons t g | r -> \ m -> trans (DG.cong-add (ifD-neg (dec3 t.2 m) t.1) (r m)) (sym (L.neg-add (coefT t m) (coef g m))) } ;
+  coef-scaleList (c : D.R) : (g : LPoly) -> EqL (coef (scaleList c g)) (scaleL c (coef g)) = split {
+    nil -> \ m -> sym (L.mul-zero c) ;
+    cons t g | r -> \ m -> trans (DG.cong-add (ifD-scale (dec3 t.2 m) c t.1) (r m)) (sym (D.dist c (coefT t m) (coef g m))) } ;
+
+  -- the product of lists
+  shiftT (t u : Term) : Term = (D.mul t.1 u.1, add3 t.2 u.2) ;
+  mulL : LPoly -> LPoly -> LPoly = split {
+    nil -> \ h -> nil ;
+    cons t g | r -> \ h -> Bar[l].app (CM.mapL Term Term (shiftT t) h) (r h) } ;
+
+  -- c c' at e + e' = m  is  c (c' at e' = m - e)
+  coefT-shift (t u : Term) (m : E3) : Id D.R (coefT (shiftT t u) m) (D.mul t.1 (coefT u (sub3 m t.2))) =
+    trans (ifD-iff (add3-solve t.2 u.2 m) (add3-unsolve t.2 u.2 m) (dec3 (add3 t.2 u.2) m) (dec3 u.2 (sub3 m t.2)) (D.mul t.1 u.1))
+          (ifD-scale (dec3 u.2 (sub3 m t.2)) t.1 u.1) ;
+  coef-map (t : Term) : (h : LPoly) -> EqL (coef (CM.mapL Term Term (shiftT t) h)) (\ m -> D.mul t.1 (coef h (sub3 m t.2))) = split {
+    nil -> \ m -> sym (L.mul-zero t.1) ;
+    cons u h | r -> \ m -> trans (DG.cong-add (coefT-shift t u m) (r m)) (sym (D.dist t.1 (coefT u (sub3 m t.2)) (coef h (sub3 m t.2)))) } ;
+  coef-mulL : (g h : LPoly) -> EqL (coef (mulL g h)) (mulP g (coef h)) = split {
+    nil -> \ h m -> refl D.z ;
+    cons t g | r -> \ h m -> trans (coef-app (CM.mapL Term Term (shiftT t) h) (mulL g h) m)
+                               (DG.cong-add (coef-map t h m) (r h m)) } ;
+
+  -- the meaning of a list is the product of the list by the unit
+  delta : Lau = \ m -> ifD (dec3 zero3 m) D.o ;
+  coefT-delta (t : Term) (m : E3) : Id D.R (coefT t m) (D.mul t.1 (delta (sub3 m t.2))) =
+    trans (ifD-iff (\ h -> sym (sub3-zero t.2 m h)) (\ h -> zero3-sub t.2 m (sym h)) (dec3 t.2 m) (dec3 zero3 (sub3 m t.2)) t.1)
+      (trans (ap (ifD (dec3 zero3 (sub3 m t.2))) (sym (D.mulO t.1))) (ifD-scale (dec3 zero3 (sub3 m t.2)) t.1 D.o)) ;
+  coef-delta : (g : LPoly) -> EqL (coef g) (mulP g delta) = split {
+    nil -> \ m -> refl D.z ;
+    cons t g | r -> \ m -> DG.cong-add (coefT-delta t m) (r m) } ;
+
+  ------------------------------------------------------------------------
+  -- filtering by a decidable condition on the exponent
+
+  ifL : Bool -> Term -> LPoly -> LPoly = split { true -> \ t r -> cons t r ; false -> \ t r -> r } ;
+  filt (q : E3 -> Bool) : LPoly -> LPoly = split {
+    nil -> nil ;
+    cons t g | r -> ifL (q t.2) t r } ;
+  len-ifL : (b : Bool) (t : Term) (r : LPoly) (n : Ring[l].Nat) -> NO.Le (len {Term} r) n -> NO.Le (len {Term} (ifL b t r)) (suc n) = split {
+    true -> \ t r n h -> h ;
+    false -> \ t r n h -> NO.le-suc (len {Term} r) n h } ;
+  len-filt (q : E3 -> Bool) : (g : LPoly) -> NO.Le (len {Term} (filt q g)) (len {Term} g) = split {
+    nil -> tt ;
+    cons t g | r -> len-ifL (q t.2) t (filt q g) (len {Term} g) r } ;
+
+  ifB-zero : (b : Bool) -> Id D.R (ifB b D.z) D.z = split { true -> refl D.z ; false -> refl D.z } ;
+
+  -- sums of an additive function of the terms
+  module Sums (T : CRing) (psi : E3 -> D.R -> T.R)
+    (psi-add : (e : E3) (u v : D.R) -> Id T.R (psi e (D.add u v)) (T.add (psi e u) (psi e v))) {
+    module LT = RL[T] ;
+    sumPsi : LPoly -> T.R = split { nil -> T.z ; cons t g | r -> T.add (psi t.2 t.1) r } ;
+
+    psi-zero (e : E3) : Id T.R (psi e D.z) T.z =
+      LT.add-cancel (psi e D.z) (psi e D.z) (sym (trans (ap (psi e) (sym (D.addZ D.z))) (psi-add e D.z D.z))) ;
+    psi-neg (e : E3) (u : D.R) : Id T.R (psi e (D.neg u)) (T.neg (psi e u)) =
+      LT.neg-uniq (psi e u) (psi e (D.neg u)) (trans (sym (psi-add e u (D.neg u))) (trans (ap (psi e) (D.addN u)) (psi-zero e))) ;
+
+    sumPsi-app : (g h : LPoly) -> Id T.R (sumPsi (Bar[l].app g h)) (T.add (sumPsi g) (sumPsi h)) = split {
+      nil -> \ h -> sym (LT.zl (sumPsi h)) ;
+      cons t g | r -> \ h -> trans (ap (T.add (psi t.2 t.1)) (r h)) (T.addA (psi t.2 t.1) (sumPsi g) (sumPsi h)) } ;
+    sumPsi-neg : (g : LPoly) -> Id T.R (sumPsi (negList g)) (T.neg (sumPsi g)) = split {
+      nil -> sym LT.neg-zero ;
+      cons t g | r -> trans (ap (\ y -> T.add y (sumPsi (negList g))) (psi-neg t.2 t.1))
+                       (trans (ap (T.add (T.neg (psi t.2 t.1))) r) (sym (LT.neg-add (psi t.2 t.1) (sumPsi g)))) } ;
+
+    -- the kept part and the rest
+    split-ifL : (b : Bool) (t : Term) (r r' : LPoly) ->
+      Id T.R (T.add (sumPsi (ifL b t r)) (sumPsi (ifL (not b) t r'))) (T.add (psi t.2 t.1) (T.add (sumPsi r) (sumPsi r'))) = split {
+      true -> \ t r r' -> sym (T.addA (psi t.2 t.1) (sumPsi r) (sumPsi r')) ;
+      false -> \ t r r' -> LT.add-swap (sumPsi r) (psi t.2 t.1) (sumPsi r') } ;
+    sumPsi-split (q : E3 -> Bool) : (g : LPoly) ->
+      Id T.R (sumPsi g) (T.add (sumPsi (filt q g)) (sumPsi (filt (\ e -> not (q e)) g))) = split {
+      nil -> sym (T.addZ T.z) ;
+      cons t g | r -> trans (ap (T.add (psi t.2 t.1)) r)
+                       (sym (split-ifL (q t.2) t (filt q g) (filt (\ e -> not (q e)) g))) } ;
+
+    -- the terms of exponent e0 sum to psi(e0, sum of their coefficients)
+    kept-step (e0 : E3) (t : Term) (r : LPoly) (S : T.R) (c : D.R) (h : Id T.R (sumPsi r) (psi e0 c)) :
+      (d : LG.Dec (Id E3 t.2 e0)) -> Id T.R (sumPsi (ifL (toB d) t r)) (psi e0 (D.add (ifD d t.1) c)) = split {
+      yes p -> trans (ap (T.add (psi t.2 t.1)) h)
+                 (trans (ap (\ k -> T.add (psi k t.1) (psi e0 c)) p) (sym (psi-add e0 t.1 c))) ;
+      no n -> trans h (ap (psi e0) (sym (L.zl c))) } ;
+  } ;
+
+  -- the coefficient at m is such a sum
+  psiC (m : E3) (e : E3) (c : D.R) : D.R = ifD (dec3 e m) c ;
+  psiC-add (m : E3) (e : E3) (u v : D.R) : Id D.R (psiC m e (D.add u v)) (D.add (psiC m e u) (psiC m e v)) = ifD-add (dec3 e m) u v ;
+  module SumC (m : E3) { module S = Sums[D,psiC m,psiC-add m] ; } ;
+  coef-sum (m : E3) : (g : LPoly) -> Id D.R (coef g m) (SumC[m].S.sumPsi g) = split {
+    nil -> refl D.z ;
+    cons t g | r -> ap (D.add (coefT t m)) r } ;
+
+  keep (e0 : E3) (e : E3) : Bool = eqb e e0 ;
+  rest (e0 : E3) (e : E3) : Bool = not (eqb e e0) ;
+
+  module Kept (T : CRing) (psi : E3 -> D.R -> T.R)
+    (psi-add : (e : E3) (u v : D.R) -> Id T.R (psi e (D.add u v)) (T.add (psi e u) (psi e v))) {
+    module S = Sums[T,psi,psi-add] ;
+    kept (e0 : E3) : (g : LPoly) -> Id T.R (S.sumPsi (filt (keep e0) g)) (psi e0 (coef g e0)) = split {
+      nil -> sym (S.psi-zero e0) ;
+      cons t g | r -> S.kept-step e0 t (filt (keep e0) g) T.z (coef g e0) r (dec3 t.2 e0) } ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- regrouping
+
+  module Regroup (T : CRing) (psi : E3 -> D.R -> T.R)
+    (psi-add : (e : E3) (u v : D.R) -> Id T.R (psi e (D.add u v)) (T.add (psi e u) (psi e v))) {
+    module S = Sums[T,psi,psi-add] ; open S ;
+
+    -- coef g m = (the terms of exponent t.2) + (the rest)
+    coef-split (t : Term) (g : LPoly) (m : E3) :
+      Id D.R (coef g m) (D.add (ifD (dec3 t.2 m) (coef g t.2)) (SumC[m].S.sumPsi (filt (rest t.2) g))) =
+      trans (coef-sum m g)
+        (trans (SumC[m].S.sumPsi-split (keep t.2) g)
+          (ap (\ y -> D.add y (SumC[m].S.sumPsi (filt (rest t.2) g)))
+              (Kept[D,psiC m,psiC-add m].kept t.2 g))) ;
+
+    -- after removing the exponent of the head, the rest has coefficients 0
+    rest-zero (t : Term) (g : LPoly) (h : EqL (coef (cons t g)) zeroL) : EqL (coef (filt (rest t.2) g)) zeroL =
+      \ m -> trans (coef-sum m (filt (rest t.2) g)) (rest-pt m)
+      where {
+        head (m : E3) : Id D.R (D.add t.1 (coef g t.2)) D.z =
+          trans (ap (\ y -> D.add y (coef g t.2)) (sym (ifD-yes (refl t.2) (dec3 t.2 t.2) t.1))) (h t.2) ;
+        rest-pt (m : E3) : Id D.R (SumC[m].S.sumPsi (filt (rest t.2) g)) D.z = calc D.R {
+          SumC[m].S.sumPsi (filt (rest t.2) g)
+            =< sym (L.zl (SumC[m].S.sumPsi (filt (rest t.2) g))) > D.add D.z (SumC[m].S.sumPsi (filt (rest t.2) g))
+            =< ap (\ y -> D.add y (SumC[m].S.sumPsi (filt (rest t.2) g)))
+                  (sym (trans (ap (ifD (dec3 t.2 m)) (head m)) (ifD-zero (dec3 t.2 m))))
+            > D.add (ifD (dec3 t.2 m) (D.add t.1 (coef g t.2))) (SumC[m].S.sumPsi (filt (rest t.2) g))
+            =< ap (\ y -> D.add y (SumC[m].S.sumPsi (filt (rest t.2) g))) (ifD-add (dec3 t.2 m) t.1 (coef g t.2))
+            > D.add (D.add (ifD (dec3 t.2 m) t.1) (ifD (dec3 t.2 m) (coef g t.2))) (SumC[m].S.sumPsi (filt (rest t.2) g))
+            =< sym (D.addA (ifD (dec3 t.2 m) t.1) (ifD (dec3 t.2 m) (coef g t.2)) (SumC[m].S.sumPsi (filt (rest t.2) g)))
+            > D.add (ifD (dec3 t.2 m) t.1) (D.add (ifD (dec3 t.2 m) (coef g t.2)) (SumC[m].S.sumPsi (filt (rest t.2) g)))
+            =< ap (D.add (ifD (dec3 t.2 m) t.1)) (sym (coef-split t g m))
+            > D.add (coefT t m) (coef g m)
+            =< h m > D.z } } ;
+
+    -- the head and the terms of its exponent sum to psi(e, 0) = 0
+    head-zero (t : Term) (g : LPoly) (h : EqL (coef (cons t g)) zeroL) :
+      Id T.R (T.add (psi t.2 t.1) (sumPsi (filt (keep t.2) g))) T.z =
+      calc T.R { T.add (psi t.2 t.1) (sumPsi (filt (keep t.2) g))
+                   =< ap (T.add (psi t.2 t.1)) (Kept[T,psi,psi-add].kept t.2 g)
+                   > T.add (psi t.2 t.1) (psi t.2 (coef g t.2))
+                   =< sym (psi-add t.2 t.1 (coef g t.2)) > psi t.2 (D.add t.1 (coef g t.2))
+                   =< ap (psi t.2) (trans (ap (\ y -> D.add y (coef g t.2)) (sym (ifD-yes (refl t.2) (dec3 t.2 t.2) t.1))) (h t.2))
+                   > psi t.2 D.z
+                   =< psi-zero t.2 > T.z } ;
+
+    -- by induction on a bound of the length
+    vanish-n : (n : Ring[l].Nat) (g : LPoly) -> NO.Le (len {Term} g) n -> EqL (coef g) zeroL -> Id T.R (sumPsi g) T.z = split {
+      zero -> split {
+        nil -> \ b h -> refl T.z ;
+        cons t g -> \ b h -> Ring[l].efq b } ;
+      suc n | ih -> split {
+        nil -> \ b h -> refl T.z ;
+        cons t g -> \ b h -> calc T.R {
+          T.add (psi t.2 t.1) (sumPsi g)
+            =< ap (T.add (psi t.2 t.1)) (sumPsi-split (keep t.2) g)
+            > T.add (psi t.2 t.1) (T.add (sumPsi (filt (keep t.2) g)) (sumPsi (filt (rest t.2) g)))
+            =< T.addA (psi t.2 t.1) (sumPsi (filt (keep t.2) g)) (sumPsi (filt (rest t.2) g))
+            > T.add (T.add (psi t.2 t.1) (sumPsi (filt (keep t.2) g))) (sumPsi (filt (rest t.2) g))
+            =< ap (\ y -> T.add y (sumPsi (filt (rest t.2) g))) (head-zero t g h)
+            > T.add T.z (sumPsi (filt (rest t.2) g))
+            =< LT.zl (sumPsi (filt (rest t.2) g)) > sumPsi (filt (rest t.2) g)
+            =< ih (filt (rest t.2) g) (NO.le-trans (len {Term} (filt (rest t.2) g)) (len {Term} g) n (len-filt (rest t.2) g) b)
+                  (rest-zero t g h)
+            > T.z } } } ;
+    vanish (g : LPoly) (h : EqL (coef g) zeroL) : Id T.R (sumPsi g) T.z = vanish-n (len {Term} g) g (NO.le-refl (len {Term} g)) h ;
+
+    -- sum psi depends only on the meaning
+    respects (g g' : LPoly) (h : EqL (coef g) (coef g')) : Id T.R (sumPsi g) (sumPsi g') =
+      calc T.R { sumPsi g =< sym (T.addZ (sumPsi g)) > T.add (sumPsi g) T.z
+                   =< ap (T.add (sumPsi g)) (sym (LT.neg-cancel (sumPsi g'))) > T.add (sumPsi g) (T.add (T.neg (sumPsi g')) (sumPsi g'))
+                   =< T.addA (sumPsi g) (T.neg (sumPsi g')) (sumPsi g') > T.add (T.add (sumPsi g) (T.neg (sumPsi g'))) (sumPsi g')
+                   =< ap (\ y -> T.add y (sumPsi g')) (sym (trans (sumPsi-app g (negList g')) (ap (T.add (sumPsi g)) (sumPsi-neg g'))))
+                   > T.add (sumPsi (Bar[l].app g (negList g'))) (sumPsi g')
+                   =< ap (\ y -> T.add y (sumPsi g')) (vanish (Bar[l].app g (negList g'))
+                        (\ m -> trans (coef-app g (negList g') m) (trans (ap (D.add (coef g m)) (coef-neg g' m))
+                                  (trans (ap (\ y -> D.add y (D.neg (coef g' m))) (h m)) (D.addN (coef g' m))))))
+                   > T.add T.z (sumPsi g')
+                   =< LT.zl (sumPsi g') > sumPsi g' } ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- products of lists act by composition
+
+  mulP-map (t : Term) : (h : LPoly) (f : Lau) -> EqL (mulP (CM.mapL Term Term (shiftT t) h) f) (scaleL t.1 (shift t.2 (mulP h f))) = split {
+    nil -> \ f m -> sym (L.mul-zero t.1) ;
+    cons u h | r -> \ f m ->
+      trans (DG.cong-add (trans (sym (D.mulA t.1 u.1 (f (sub3 m (add3 t.2 u.2)))))
+                                (ap (\ k -> D.mul t.1 (D.mul u.1 (f k))) (sub3-add m t.2 u.2)))
+                         (r f m))
+            (sym (D.dist t.1 (D.mul u.1 (f (sub3 (sub3 m t.2) u.2))) (mulP h f (sub3 m t.2)))) } ;
+  mulP-mulL : (g h : LPoly) (f : Lau) -> EqL (mulP (mulL g h) f) (mulP g (mulP h f)) = split {
+    nil -> \ h f m -> refl D.z ;
+    cons t g | r -> \ h f m -> trans (mulP-app (CM.mapL Term Term (shiftT t) h) (mulL g h) f m)
+                                 (DG.cong-add (mulP-map t h f m) (r h f m)) } ;
+
+  ------------------------------------------------------------------------
+  -- finite support
+
+  FinW (f : Lau) : U l = (g : LPoly) * EqL (coef g) f ;
+  Fin (f : Lau) : U l = Tr.Trunc[FinW f].carrier ;
+  fin-prop (f : Lau) : P.isProp (Fin f) = Tr.Trunc[FinW f].proposition ;
+  fin-in (g : LPoly) : Fin (coef g) = Tr.Trunc[FinW (coef g)].inc (g, \ m -> refl (coef g m)) ;
+  fin-map (f f' : Lau) (F : FinW f -> FinW f') (h : Fin f) : Fin f' =
+    Tr.Trunc[FinW f].induction @l (\ u -> Fin f') (\ u -> fin-prop f') (\ w -> Tr.Trunc[FinW f'].inc (F w)) h ;
+  fin-map2 (f f' f'' : Lau) (F : FinW f -> FinW f' -> FinW f'') (h : Fin f) (h' : Fin f') : Fin f'' =
+    Tr.Trunc[FinW f].induction @l (\ u -> Fin f'') (\ u -> fin-prop f'')
+      (\ w -> fin-map f' f'' (F w) h') h ;
+
+  fin-cong (f f' : Lau) (e : EqL f f') : Fin f -> Fin f' =
+    fin-map f f' (\ w -> (w.1, \ m -> trans (w.2 m) (e m))) ;
+  fin-zero : Fin zeroL = Tr.Trunc[FinW zeroL].inc (nil, \ m -> refl D.z) ;
+  fin-add (f f' : Lau) : Fin f -> Fin f' -> Fin (addL f f') =
+    fin-map2 f f' (addL f f') (\ w w' -> (Bar[l].app w.1 w'.1, \ m -> trans (coef-app w.1 w'.1 m) (DG.cong-add (w.2 m) (w'.2 m)))) ;
+  fin-neg (f : Lau) : Fin f -> Fin (negL f) =
+    fin-map f (negL f) (\ w -> (negList w.1, \ m -> trans (coef-neg w.1 m) (ap D.neg (w.2 m)))) ;
+  fin-sub (f f' : Lau) (h : Fin f) (h' : Fin f') : Fin (subL f f') = fin-add f (negL f') h (fin-neg f' h') ;
+  fin-scale (c : D.R) (f : Lau) : Fin f -> Fin (scaleL c f) =
+    fin-map f (scaleL c f) (\ w -> (scaleList c w.1, \ m -> trans (coef-scaleList c w.1 m) (ap (D.mul c) (w.2 m)))) ;
+  fin-mulP (g : LPoly) (f : Lau) : Fin f -> Fin (mulP g f) =
+    fin-map f (mulP g f) (\ w -> (mulL g w.1, \ m -> trans (coef-mulL g w.1 m) (mulP-cong g (coef w.1) f w.2 m))) ;
+
+  -- a pointwise additive map
+  module Point (phi : E3 -> D.R -> D.R)
+    (phi-add : (e : E3) (u v : D.R) -> Id D.R (phi e (D.add u v)) (D.add (phi e u) (phi e v))) {
+    module S = Sums[D,phi,phi-add] ;
+    mapT (t : Term) : Term = (phi t.2 t.1, t.2) ;
+    term (t : Term) (m : E3) : (d : LG.Dec (Id E3 t.2 m)) -> Id D.R (ifD d (phi t.2 t.1)) (phi m (ifD d t.1)) = split {
+      yes p -> ap (\ k -> phi k t.1) p ;
+      no n -> sym (S.psi-zero m) } ;
+    coef-mapT (m : E3) : (g : LPoly) -> Id D.R (coef (CM.mapL Term Term mapT g) m) (phi m (coef g m)) = split {
+      nil -> sym (S.psi-zero m) ;
+      cons t g | r -> trans (DG.cong-add (term t m (dec3 t.2 m)) r) (sym (phi-add m (coefT t m) (coef g m))) } ;
+    fin-point (f : Lau) : Fin f -> Fin (\ m -> phi m (f m)) =
+      fin-map f (\ m -> phi m (f m)) (\ w -> (CM.mapL Term Term mapT w.1, \ m -> trans (coef-mapT m w.1) (ap (phi m) (w.2 m)))) ;
+  } ;
+
+  -- a function vanishing where q is false is the meaning of the filtered list
+  filt-term-true (q : E3 -> Bool) (m : E3) (hq : Id Bool (q m) true) (t : Term) :
+    (d : LG.Dec (Id E3 t.2 m)) -> Id D.R (ifB (q t.2) (ifD d t.1)) (ifD d t.1) = split {
+    yes p -> ap (\ b -> ifB b t.1) (trans (ap q p) hq) ;
+    no n -> ifB-zero (q t.2) } ;
+  filt-term-false (q : E3 -> Bool) (m : E3) (hq : Id Bool (q m) false) (t : Term) :
+    (d : LG.Dec (Id E3 t.2 m)) -> Id D.R (ifB (q t.2) (ifD d t.1)) D.z = split {
+    yes p -> ap (\ b -> ifB b t.1) (trans (ap q p) hq) ;
+    no n -> ifB-zero (q t.2) } ;
+  coef-ifL : (b : Bool) (t : Term) (r : LPoly) (m : E3) -> Id D.R (coef (ifL b t r) m) (D.add (ifB b (coefT t m)) (coef r m)) = split {
+    true -> \ t r m -> refl (coef (cons t r) m) ;
+    false -> \ t r m -> sym (L.zl (coef r m)) } ;
+  coef-filt (q : E3 -> Bool) (m : E3) : (g : LPoly) ->
+    Id D.R (coef (filt q g) m) (CM.Over[D].sumL Term (\ t -> ifB (q t.2) (coefT t m)) g) = split {
+    nil -> refl D.z ;
+    cons t g | r -> trans (coef-ifL (q t.2) t (filt q g) m) (ap (D.add (ifB (q t.2) (coefT t m))) r) } ;
+  coef-sumL (m : E3) : (g : LPoly) -> Id D.R (coef g m) (CM.Over[D].sumL Term (\ t -> coefT t m) g) = split {
+    nil -> refl D.z ;
+    cons t g | r -> ap (D.add (coefT t m)) r } ;
+  filt-pt (q : E3 -> Bool) (m : E3) (f : Lau) (hf : Id Bool (q m) false -> Id D.R (f m) D.z) (g : LPoly) (e : EqL (coef g) f) :
+    (b : Bool) -> Id Bool (q m) b -> Id D.R (coef (filt q g) m) (f m) = split {
+    true -> \ hb -> trans (coef-filt q m g)
+                       (trans (CM.Over[D].sumL-cong Term (\ t -> ifB (q t.2) (coefT t m)) (\ t -> coefT t m)
+                                 (\ t -> filt-term-true q m hb t (dec3 t.2 m)) g)
+                              (trans (sym (coef-sumL m g)) (e m))) ;
+    false -> \ hb -> trans (coef-filt q m g)
+                        (trans (CM.Over[D].sumL-vanish Term (\ t -> ifB (q t.2) (coefT t m)) (\ t -> filt-term-false q m hb t (dec3 t.2 m)) g)
+                               (sym (hf hb))) } ;
+  filt-coef (q : E3 -> Bool) (f : Lau) (hf : (m : E3) -> Id Bool (q m) false -> Id D.R (f m) D.z) (g : LPoly) (e : EqL (coef g) f) :
+    EqL (coef (filt q g)) f = \ m -> filt-pt q m f (hf m) g e (q m) (refl (q m)) ;
+
+  -- every term of the filtered list satisfies q
+  AllQ (q : E3 -> Bool) : LPoly -> U l = split { nil -> Top ; cons t g | r -> Id Bool (q t.2) true * r } ;
+  allq-ifL (q : E3 -> Bool) (t : Term) (r : LPoly) (h : AllQ q r) : (b : Bool) -> Id Bool (q t.2) b -> AllQ q (ifL b t r) = split {
+    true -> \ e -> (e, h) ;
+    false -> \ e -> h } ;
+  allq-filt (q : E3 -> Bool) : (g : LPoly) -> AllQ q (filt q g) = split {
+    nil -> tt ;
+    cons t g | r -> allq-ifL q t (filt q g) r (q t.2) (refl (q t.2)) } ;
+
+  ------------------------------------------------------------------------
+  -- descending a map on lists to finitely supported functions
+
+  module Descend (B : U l) (setB : P.isSet B) (F : LPoly -> B)
+    (resp : (g g' : LPoly) -> EqL (coef g) (coef g') -> Id B (F g) (F g')) {
+    Wit (f : Lau) (y : B) : U l = (g : LPoly) * (EqL (coef g) f * Id B (F g) y) ;
+    Has (f : Lau) (y : B) : U l = Tr.Trunc[Wit f y].carrier ;
+    Cand (f : Lau) : U l = (y : B) * Has f y ;
+    uniq (f : Lau) (y y' : B) (h : Has f y) (h' : Has f y') : Id B y y' =
+      Tr.Trunc[Wit f y].induction @l (\ u -> Id B y y') (\ u -> setB y y')
+        (\ w -> Tr.Trunc[Wit f y'].induction @l (\ u -> Id B y y') (\ u -> setB y y')
+                  (\ w' -> trans (sym w.2.2) (trans (resp w.1 w'.1 (\ m -> trans (w.2.1 m) (sym (w'.2.1 m)))) w'.2.2)) h') h ;
+    cand-prop (f : Lau) : P.isProp (Cand f) = \ u v ->
+      P.Sigma-eq B (Has f) u.1 v.1 u.2 v.2 (uniq f u.1 v.1 u.2 v.2) (Tr.Trunc[Wit f v.1].proposition) ;
+    cand (f : Lau) (h : Fin f) : Cand f =
+      Tr.Trunc[FinW f].induction @l (\ u -> Cand f) (\ u -> cand-prop f)
+        (\ w -> (F w.1, Tr.Trunc[Wit f (F w.1)].inc (w.1, (w.2, refl (F w.1))))) h ;
+    value (f : Lau) (h : Fin f) : B = (cand f h).1 ;
+    beta (f : Lau) (h : Fin f) (g : LPoly) (e : EqL (coef g) f) : Id B (value f h) (F g) =
+      uniq f (value f h) (F g) (cand f h).2 (Tr.Trunc[Wit f (F g)].inc (g, (e, refl (F g)))) ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the product of finitely supported functions
+
+  module Prod (setD : P.isSet D.R) {
+    setLau : P.isSet Lau = FE.isSet-Pi E3 (\ m -> D.R) (\ m -> setD) ;
+    extL (f g : Lau) (h : EqL f g) : Id Lau f g = FE.funext E3 (\ m -> D.R) f g h ;
+    psiM (k : Lau) (m : E3) (e : E3) (c : D.R) : D.R = D.mul c (k (sub3 m e)) ;
+    psiM-add (k : Lau) (m : E3) (e : E3) (u v : D.R) : Id D.R (psiM k m e (D.add u v)) (D.add (psiM k m e u) (psiM k m e v)) =
+      L.dist-left u v (k (sub3 m e)) ;
+    mulP-sum (k : Lau) (m : E3) : (g : LPoly) -> Id D.R (mulP g k m) (Sums[D,psiM k m,psiM-add k m].sumPsi g) = split {
+      nil -> refl D.z ;
+      cons t g | r -> ap (D.add (D.mul t.1 (k (sub3 m t.2)))) r } ;
+    -- the product by a list depends only on its meaning
+    mulP-resp (g g' : LPoly) (h : EqL (coef g) (coef g')) (k : Lau) : EqL (mulP g k) (mulP g' k) =
+      \ m -> trans (mulP-sum k m g) (trans (Regroup[D,psiM k m,psiM-add k m].respects g g' h) (sym (mulP-sum k m g'))) ;
+    module DP (k : Lau) {
+      module De = Descend[Lau,setLau,\ g -> mulP g k,\ g g' h -> extL (mulP g k) (mulP g' k) (mulP-resp g g' h k)] ;
+    } ;
+    prod (f k : Lau) (hf : Fin f) : Lau = DP[k].De.value f hf ;
+    prod-beta (f k : Lau) (hf : Fin f) (g : LPoly) (e : EqL (coef g) f) : EqL (prod f k hf) (mulP g k) =
+      \ m -> ap (\ u -> u m) (DP[k].De.beta f hf g e) ;
+  } ;
+} ;

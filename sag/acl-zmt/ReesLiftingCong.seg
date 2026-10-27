@@ -1,0 +1,186 @@
+-- ReesLiftingCong.seg: ReesLifting and the finite correction with
+-- congruences modulo a submodule N of K1 (acl-zmt-formalisation.tex,
+-- Remarque (représentation); Liste de formalisation, item 2).
+--
+-- Same data as ReesLifting, but the classes beta_n are only given modulo N:
+--     B_n = d z* - (G rho_n + d v_n)  is in N .
+-- Then d v_n = (d z* - G rho_n) - B_n, and for the relation
+-- rho_N = sum_i r_i rho_i of GradedDependence, with v = v_N - sum_i r_i v_i,
+--     (d z* - sum_i r_i d z*) - d v = B_N - sum_i r_i B_i ,
+-- which is in N (the G-parts cancel, G is linear).  The finite correction
+-- h = (z* - sum_i r_i z*) - v then satisfies d h in N and h - z* in I K0
+-- (the second statement does not involve d: the proof of
+-- FiniteCorrection.Correct.congruent).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ;
+module IP = IdealPowers[l] ;
+
+-- a submodule, as a predicate closed under the operations
+record Sub (A : CRing) (Md : IP.Mod[A]) {
+  N : Md.M -> U l ;
+  n-zero : N Md.mz ;
+  n-add (x y : Md.M) : N x -> N y -> N (Md.madd x y) ;
+  n-neg (x : Md.M) : N x -> N (Md.mneg x) ;
+  n-sm (c : A.R) (x : Md.M) : N x -> N (Md.sm c x) ;
+} ;
+
+module SubL (A : CRing) (Md : IP.Mod[A]) (S : Sub[A,Md]) {
+  module ML = IP.ModL[A,Md] ;
+  n-sub (x y : Md.M) (hx : S.N x) (hy : S.N y) : S.N (ML.msub x y) = S.n-add x (Md.mneg y) hx (S.n-neg y hy) ;
+  n-tr (x y : Md.M) (e : Id Md.M x y) (h : S.N x) : S.N y = subst S.N e h ;
+} ;
+
+-- group identities used below
+module Grp (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+  -- w = (x - g) - (x - (g + w))
+  grp1 (x g w : M) : Id M w (msub (msub x g) (msub x (madd g w))) =
+    sym (trans (ap (msub (msub x g)) (sym (sub-sub x g w))) (sub-sub-self (msub x g) w)) ;
+  -- ((a - b) - c) + ((a' - b') - c') = ((a + a') - (b + b')) - (c + c')
+  grp2 (a b c a' b' c' : M) :
+    Id M (madd (msub (msub a b) c) (msub (msub a' b') c')) (msub (msub (madd a a') (madd b b')) (madd c c')) =
+    trans (sym (sub-swap (msub a b) (msub a' b') c c'))
+          (ap (\ t -> msub t (madd c c')) (sym (sub-swap a a' b b'))) ;
+  -- ((a - g) - b) - ((a' - g) - b') = (a - a') - (b - b')
+  grp3 (a a' g b b' : M) :
+    Id M (msub (msub (msub a g) b) (msub (msub a' g) b')) (msub (msub a a') (msub b b')) =
+    trans (sub-swap (msub a g) (mneg b) (msub a' g) (mneg b'))
+      (trans (ap (\ t -> madd t (msub (mneg b) (mneg b'))) (sub-cancel a a' g))
+             (ap (madd (msub a a')) (sym (G.neg-add b (mneg b'))))) ;
+  -- (x - y) - ((x - y) - w) = w
+  grp4 (x y w : M) : Id M (msub (msub x y) (msub (msub x y) w)) w = sub-sub-self (msub x y) w ;
+} ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R)
+  (PA : Span[l].Pres[A]) (nA : Span[l].Over[A,PA].Noeth)
+  (onto : (c : A.R) -> Tr.Trunc[(k : PA.K) * Id A.R (PA.phi k) c].carrier)
+  (a b : A.R)
+  (K0 K1 : IP.Mod[A]) (d : IP.Lin[A,K0,K1]) (Nb : Sub[A,K1])
+  (zs : K0.M)
+  (r : Nat) (e : Ps.Fin r -> Nat)
+  (G : IP.Lin[A,ReesLifting[l].Free[A,r].mod,K1])
+  (rho : Nat -> Ps.Fin r -> A.R)
+  (deg : (n : Nat) (k : Ps.Fin r) ->
+     Plus ((dd : Nat) * (Id Nat n (plus dd (e k)) * IP.Over[A,IP.regular A,a,b].Pow dd (rho n k))) (Id A.R (rho n k) A.z))
+  (v : Nat -> K0.M) (hv : (n : Nat) -> IP.Over[A,K0,a,b].Pow n (v n))
+  (beta : (n : Nat) -> Nb.N (IP.ModL[A,K1].msub (d.f zs) (K1.madd (G.f (rho n)) (d.f (v n))))) {
+  module PW = IP.Over[A,IP.regular A,a,b] ;
+  module P0 = IP.Over[A,K0,a,b] ; module M0 = IP.Mult[A,K0,a,b] ;
+  module L0 = IP.ModL[A,K0] ; module L1 = IP.ModL[A,K1] ;
+  module FC = FiniteCorrection[l].Over[A,K0,K1,d,a,b] ;
+  module GD = GradedDependence[l].Over[A,setA,PA,nA,onto,a,b] ;
+  module SQ = GD.Rees[r,e].Seq[rho,deg] ;
+  module FV = ReesLifting[l].Free[A,r] ;
+  module G1 = Grp[A,K1] ; module NL = SubL[A,K1,Nb] ;
+
+  B (n : Nat) : K1.M = L1.msub (d.f zs) (K1.madd (G.f (rho n)) (d.f (v n))) ;
+  -- d v_n = (d z* - G rho_n) - B_n
+  dv (n : Nat) : Id K1.M (d.f (v n)) (L1.msub (L1.msub (d.f zs) (G.f (rho n))) (B n)) = G1.grp1 (d.f zs) (G.f (rho n)) (d.f (v n)) ;
+
+  vSum : List A.R -> K0.M = split {
+    nil -> K0.mz ;
+    cons x xs | rr -> K0.madd (K0.sm x (v (suc (len xs)))) rr } ;
+  rhoSum : List A.R -> FV.Vec = split {
+    nil -> \ k -> A.z ;
+    cons x xs | rr -> \ k -> A.add (A.mul x (rho (suc (len xs)) k)) (rr k) } ;
+  bSum : List A.R -> K1.M = split {
+    nil -> K1.mz ;
+    cons x xs | rr -> K1.madd (K1.sm x (B (suc (len xs)))) rr } ;
+  rhoSum-is (k : Ps.Fin r) : (rs : List A.R) -> Id A.R (rhoSum rs k) (SQ.sumRel k rs) = split {
+    nil -> refl A.z ;
+    cons x xs | rr -> ap (A.add (A.mul x (rho (suc (len xs)) k))) rr } ;
+  bsum-in : (rs : List A.R) -> Nb.N (bSum rs) = split {
+    nil -> Nb.n-zero ;
+    cons x xs | rr -> Nb.n-add (K1.sm x (B (suc (len xs)))) (bSum xs) (Nb.n-sm x (B (suc (len xs))) (beta (suc (len xs)))) rr } ;
+
+  coeffs : (rs : List A.R) (j : Nat) -> SQ.Grades rs j -> FC.CoeffsA rs j = split {
+    nil -> \ j g -> tt ;
+    cons x xs | rr -> \ j g -> (g.1, rr (suc j) g.2) } ;
+  suc-plus (j m : Nat) : Id Nat (plus (suc (suc j)) m) (plus (suc j) (suc m)) =
+    ap (\ q -> suc q) (sym (plus-suc j m)) ;
+  vsum-pow : (rs : List A.R) (j : Nat) -> SQ.Grades rs j -> P0.Pow (plus (suc j) (len rs)) (vSum rs) = split {
+    nil -> \ j g -> P0.pow-zero (plus (suc j) zero) ;
+    cons x xs | rr -> \ j g ->
+      P0.pow-add (plus (suc j) (suc (len xs))) (K0.sm x (v (suc (len xs)))) (vSum xs)
+        (M0.pow-mul (suc j) (suc (len xs)) x (v (suc (len xs))) g.1 (hv (suc (len xs))))
+        (subst (\ q -> P0.Pow q (vSum xs)) (suc-plus j (len xs)) (rr (suc j) g.2)) } ;
+
+  G-zero : Id K1.M (G.f (\ k -> A.z)) K1.mz =
+    trans (ap G.f (sym (IP.ModL[A,FV.mod].zero-sm (\ k -> A.z)))) (trans (G.f-sm A.z (\ k -> A.z)) (L1.zero-sm (G.f (\ k -> A.z)))) ;
+
+  -- d (sum_i r_i v_i) = (sum_i r_i d z* - G (sum_i r_i rho_i)) - sum_i r_i B_i
+  d-vsum : (rs : List A.R) -> Id K1.M (d.f (vSum rs)) (L1.msub (L1.msub (FC.dcomb (FC.fixed zs rs)) (G.f (rhoSum rs))) (bSum rs)) = split {
+    nil -> trans FC.d-zero (sym (trans (ap (\ t -> L1.msub (L1.msub K1.mz t) K1.mz) G-zero)
+                                  (trans (ap (\ t -> L1.msub t K1.mz) (K1.maddN K1.mz)) (K1.maddN K1.mz)))) ;
+    cons x xs | rr -> calc K1.M {
+      d.f (K0.madd (K0.sm x (v (suc (len xs)))) (vSum xs))
+        =< d.f-add (K0.sm x (v (suc (len xs)))) (vSum xs)
+        > K1.madd (d.f (K0.sm x (v (suc (len xs))))) (d.f (vSum xs))
+        =< L1.G.cong-add (trans (d.f-sm x (v (suc (len xs)))) (ap (K1.sm x) (dv (suc (len xs))))) rr
+        > K1.madd (K1.sm x (L1.msub (L1.msub (d.f zs) (G.f (rho (suc (len xs))))) (B (suc (len xs)))))
+                  (L1.msub (L1.msub (FC.dcomb (FC.fixed zs xs)) (G.f (rhoSum xs))) (bSum xs))
+        =< ap (\ t -> K1.madd t (L1.msub (L1.msub (FC.dcomb (FC.fixed zs xs)) (G.f (rhoSum xs))) (bSum xs)))
+             (trans (L1.sm-sub x (L1.msub (d.f zs) (G.f (rho (suc (len xs))))) (B (suc (len xs))))
+                    (ap (\ t -> L1.msub t (K1.sm x (B (suc (len xs))))) (L1.sm-sub x (d.f zs) (G.f (rho (suc (len xs)))))))
+        > K1.madd (L1.msub (L1.msub (K1.sm x (d.f zs)) (K1.sm x (G.f (rho (suc (len xs)))))) (K1.sm x (B (suc (len xs)))))
+                  (L1.msub (L1.msub (FC.dcomb (FC.fixed zs xs)) (G.f (rhoSum xs))) (bSum xs))
+        =< G1.grp2 (K1.sm x (d.f zs)) (K1.sm x (G.f (rho (suc (len xs))))) (K1.sm x (B (suc (len xs))))
+             (FC.dcomb (FC.fixed zs xs)) (G.f (rhoSum xs)) (bSum xs)
+        > L1.msub (L1.msub (K1.madd (K1.sm x (d.f zs)) (FC.dcomb (FC.fixed zs xs)))
+                           (K1.madd (K1.sm x (G.f (rho (suc (len xs))))) (G.f (rhoSum xs))))
+                  (bSum (cons x xs))
+        =< ap (\ t -> L1.msub (L1.msub (K1.madd (K1.sm x (d.f zs)) (FC.dcomb (FC.fixed zs xs))) t) (bSum (cons x xs)))
+             (sym (trans (G.f-add (FV.mod.sm x (rho (suc (len xs)))) (rhoSum xs))
+                         (ap (\ t -> K1.madd t (G.f (rhoSum xs))) (G.f-sm x (rho (suc (len xs)))))))
+        > L1.msub (L1.msub (FC.dcomb (FC.fixed zs (cons x xs))) (G.f (rhoSum (cons x xs)))) (bSum (cons x xs)) } } ;
+
+  module Lifted (rs : List A.R) (g : SQ.Grades rs zero)
+    (rel : (k : Ps.Fin r) -> Id A.R (rho (suc (len rs)) k) (SQ.sumRel k rs)) {
+    N : Nat = suc (len rs) ;
+    vv : K0.M = L0.msub (v N) (vSum rs) ;
+    hvv : P0.Pow (suc (len rs)) vv = P0.pow-sub N (v N) (vSum rs) (hv N) (vsum-pow rs zero g) ;
+    rel-vec : Id FV.Vec (rho N) (rhoSum rs) = FV.ext (rho N) (rhoSum rs) (\ k -> trans (rel k) (sym (rhoSum-is k rs))) ;
+    -- d v = (d z* - sum_i r_i d z*) - (B_N - sum_i r_i B_i)
+    dvv : Id K1.M (d.f vv) (L1.msub (L1.msub (d.f zs) (FC.dcomb (FC.fixed zs rs))) (L1.msub (B N) (bSum rs))) =
+      calc K1.M {
+        d.f vv =< FC.d-sub (v N) (vSum rs) > L1.msub (d.f (v N)) (d.f (vSum rs))
+          =< L1.G.cong-add (trans (dv N) (ap (\ t -> L1.msub (L1.msub (d.f zs) (G.f t)) (B N)) rel-vec)) (ap K1.mneg (d-vsum rs))
+          > L1.msub (L1.msub (L1.msub (d.f zs) (G.f (rhoSum rs))) (B N))
+                    (L1.msub (L1.msub (FC.dcomb (FC.fixed zs rs)) (G.f (rhoSum rs))) (bSum rs))
+          =< G1.grp3 (d.f zs) (FC.dcomb (FC.fixed zs rs)) (G.f (rhoSum rs)) (B N) (bSum rs)
+          > L1.msub (L1.msub (d.f zs) (FC.dcomb (FC.fixed zs rs))) (L1.msub (B N) (bSum rs)) } ;
+    -- the correction h = (z* - sum_i r_i z*) - v
+    h : K0.M = L0.msub (L0.msub zs (FC.comb (FC.fixed zs rs))) vv ;
+    closed : Nb.N (d.f h) =
+      NL.n-tr (L1.msub (B N) (bSum rs)) (d.f h)
+        (sym (calc K1.M {
+          d.f h =< FC.d-sub (L0.msub zs (FC.comb (FC.fixed zs rs))) vv
+                > L1.msub (d.f (L0.msub zs (FC.comb (FC.fixed zs rs)))) (d.f vv)
+                =< L1.G.cong-add (trans (FC.d-sub zs (FC.comb (FC.fixed zs rs))) (ap (L1.msub (d.f zs)) (FC.d-comb (FC.fixed zs rs))))
+                                 (ap K1.mneg dvv)
+                > L1.msub (L1.msub (d.f zs) (FC.dcomb (FC.fixed zs rs)))
+                          (L1.msub (L1.msub (d.f zs) (FC.dcomb (FC.fixed zs rs))) (L1.msub (B N) (bSum rs)))
+                =< G1.grp4 (d.f zs) (FC.dcomb (FC.fixed zs rs)) (L1.msub (B N) (bSum rs))
+                > L1.msub (B N) (bSum rs) }))
+        (NL.n-sub (B N) (bSum rs) (beta N) (bsum-in rs)) ;
+    -- h - z* = (z* - z*) - (sum_i r_i z* + v)  is in I K0
+    shape : Id K0.M (L0.msub h zs) (L0.msub (L0.msub zs zs) (K0.madd (FC.comb (FC.fixed zs rs)) vv)) =
+      trans (ap (\ t -> L0.msub t zs) (L0.sub-sub zs (FC.comb (FC.fixed zs rs)) vv))
+            (L0.sub-comm zs (K0.madd (FC.comb (FC.fixed zs rs)) vv) zs) ;
+    congruent : P0.Pow (suc zero) (L0.msub h zs) =
+      P0.pow-tr (suc zero) _ _ (sym shape)
+        (P0.pow-sub (suc zero) (L0.msub zs zs) (K0.madd (FC.comb (FC.fixed zs rs)) vv)
+          (P0.pow-tr (suc zero) K0.mz (L0.msub zs zs) (sym (L0.sub-self zs)) (P0.pow-zero (suc zero)))
+          (P0.pow-add (suc zero) (FC.comb (FC.fixed zs rs)) vv
+             (FC.comb-in (FC.fixed zs rs) zero (FC.coeffs-fixed zs rs zero (coeffs rs zero g)))
+             (P0.pow-one (len rs) vv hvv))) ;
+  } ;
+
+  -- the lifted section: d h in N and h - z* in I K0, merely
+  Lift : U l = (h : K0.M) * (Nb.N (d.f h) * P0.Pow (suc zero) (L0.msub h zs)) ;
+  module TL = Tr.Trunc[Lift] ;
+  lift : TL.carrier =
+    SQ.TR.induction @l (\ u -> TL.carrier) (\ u -> TL.proposition)
+      (\ res -> TL.inc (Lifted[res.1,res.2.1,res.2.2].h, (Lifted[res.1,res.2.1,res.2.2].closed, Lifted[res.1,res.2.1,res.2.2].congruent)))
+      SQ.dependence ;
+} ;

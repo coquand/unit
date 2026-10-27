@@ -1,0 +1,159 @@
+-- GcdDomain.seg: divisibility, gcds and discrete gcd domains
+-- (doc/gcd-polynomial.tex, §1-2 and Lemme 9).
+--
+--  * a | b is the datum of q with b = a q; it is never decided.
+--  * A gcd of a, b is a datum d with d | a, d | b and c | d for every common
+--    divisor c.  It is unique only up to a unit, so it is data, not a
+--    proposition.
+--  * A discrete domain decides x = 0, 1 /= 0, and x, y /= 0 give x y /= 0.
+--    A gcd domain is a discrete domain with a gcd function.
+--  * Lemma M: d | u a and d | u b give d | u gcd(a,b)  (u = 0 apart, compare
+--    gcd(ua,ub) with u gcd(a,b) by cancelling u).
+--  * Euclid: gcd(a,b) | 1 and a | b c give a | c.
+--  * A discrete field (x = 0 or x invertible, and 1 /= 0) is a gcd domain.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+empty-prop : Pr.isProp Empty = \ e -> absurd ((y : Empty) -> Id Empty e y) e ;
+not-prop (X : U l) : Pr.isProp (Not X) = FE.isProp-Pi X (\ x -> Empty) (\ x -> empty-prop) ;
+
+module Divisibility (A : CRing) {
+ open A ; open RL[A] ;
+ Div (a b : R) : U l = (q : R) * Id R b (mul a q) ;
+ div-refl (a : R) : Div a a = (o, sym (mulO a)) ;
+ div-zero (a : R) : Div a z = (z, sym (mul-zero a)) ;
+ div-one (a : R) : Div o a = (a, sym (one-left a)) ;
+ div-trans (a b c : R) (h : Div a b) (k : Div b c) : Div a c =
+  (mul h.1 k.1,
+   calc R { c =< k.2 > mul b k.1 =< ap (\ t -> mul t k.1) h.2 > mul (mul a h.1) k.1
+              =< sym (mulA a h.1 k.1) > mul a (mul h.1 k.1) }) ;
+ -- a | b gives a | b c and a | c b
+ div-mul (a b c : R) (h : Div a b) : Div a (mul b c) =
+  (mul h.1 c, trans (ap (\ t -> mul t c) h.2) (sym (mulA a h.1 c))) ;
+ div-mul-left (a b c : R) (h : Div a b) : Div a (mul c b) =
+  (mul h.1 c, trans (mulC c b) (trans (ap (\ t -> mul t c) h.2) (sym (mulA a h.1 c)))) ;
+ -- a | c b and a | c gives nothing new; the factor c on the left
+ div-factor (a c : R) : Div a (mul a c) = (c, refl (mul a c)) ;
+ div-factor-left (a c : R) : Div a (mul c a) = (c, mulC c a) ;
+ div-add (a b c : R) (h : Div a b) (k : Div a c) : Div a (add b c) =
+  (add h.1 k.1, trans (Presentations[l].cong2 R add _ _ _ _ h.2 k.2) (sym (dist a h.1 k.1))) ;
+ div-neg (a b : R) (h : Div a b) : Div a (neg b) =
+  (neg h.1, trans (ap neg h.2) (sym (mul-neg a h.1))) ;
+ -- a | b gives c a | c b
+ div-scale (a b c : R) (h : Div a b) : Div (mul c a) (mul c b) =
+  (h.1, trans (ap (mul c) h.2) (mulA c a h.1)) ;
+ -- a | b and c | d give a c | b d
+ div-mul2 (a b c d : R) (h : Div a b) (k : Div c d) : Div (mul a c) (mul b d) =
+  (mul h.1 k.1,
+   calc R { mul b d =< Presentations[l].cong2 R mul _ _ _ _ h.2 k.2 > mul (mul a h.1) (mul c k.1)
+              =< mul-four a h.1 c k.1 > mul (mul a c) (mul h.1 k.1) }) ;
+ div-eq-left (a a' b : R) (e : Id R a a') (h : Div a b) : Div a' b = subst (\ t -> Div t b) e h ;
+ div-eq-right (a b b' : R) (e : Id R b b') (h : Div a b) : Div a b' = subst (Div a) e h ;
+ -- 0 | b gives b = 0
+ div-of-zero (b : R) (h : Div z b) : Id R b z = trans h.2 (zero-mul h.1) ;
+
+ GcdOf (a b : R) : U l = (d : R) * (Div d a * (Div d b * ((c : R) -> Div c a -> Div c b -> Div c d))) ;
+} ;
+
+-- a discrete gcd domain
+record GcdDomain (A : CRing) {
+ set : Pr.isSet A.R ;
+ dec : (x : A.R) -> Plus (Id A.R x A.z) (Not (Id A.R x A.z)) ;
+ integral : (x y : A.R) -> Not (Id A.R x A.z) -> Not (Id A.R y A.z) -> Not (Id A.R (A.mul x y) A.z) ;
+ gcd : (a b : A.R) -> Divisibility[A].GcdOf a b ;
+ nontrivial : Not (Id A.R A.o A.z) ;
+} ;
+
+module Domain (A : CRing) (setA : Pr.isSet A.R)
+ (dec : (x : A.R) -> Plus (Id A.R x A.z) (Not (Id A.R x A.z)))
+ (integral : (x y : A.R) -> Not (Id A.R x A.z) -> Not (Id A.R y A.z) -> Not (Id A.R (A.mul x y) A.z)) {
+ open A ; open RL[A] ; open Divisibility[A] ;
+ -- u (a - b) = u a - u b
+ mul-sub (u a b : R) : Id R (mul u (add a (neg b))) (add (mul u a) (neg (mul u b))) =
+  trans (dist u a (neg b)) (ap (add (mul u a)) (mul-neg u b)) ;
+ sub-zero (a b : R) (h : Id R (add a (neg b)) z) : Id R a b =
+  calc R { a =< sym (add-neg-cancel a b) > add (add a b) (neg b)
+             =< ap (\ t -> add t (neg b)) (addC a b) > add (add b a) (neg b)
+             =< sym (addA b a (neg b)) > add b (add a (neg b))
+             =< ap (add b) h > add b z =< addZ b > b } ;
+ sub-self (a : R) : Id R (add a (neg a)) z = addN a ;
+ -- cancellation by u /= 0
+ cancel (u a b : R) (hu : Not (Id R u z)) (h : Id R (mul u a) (mul u b)) : Id R a b =
+  cancelD (dec (add a (neg b)))
+  where {
+   cancelD : Plus (Id R (add a (neg b)) z) (Not (Id R (add a (neg b)) z)) -> Id R a b = split {
+    inl e -> sub-zero a b e ;
+    inr n -> efq (integral u (add a (neg b)) hu n
+                  (trans (mul-sub u a b) (trans (ap (\ t -> add t (neg (mul u b))) h) (addN (mul u b))))) } } ;
+ -- u x = 0 and u /= 0 give x = 0
+ cancel-zero (u x : R) (hu : Not (Id R u z)) (h : Id R (mul u x) z) : Id R x z =
+  cancel u x z hu (trans h (sym (mul-zero u))) ;
+ div-cancel (u a b : R) (hu : Not (Id R u z)) (h : Div (mul u a) (mul u b)) : Div a b =
+  (h.1, cancel u b (mul a h.1) hu (trans h.2 (sym (mulA u a h.1)))) ;
+ -- for a /= 0, a | b is a proposition
+ div-prop (a b : R) (ha : Not (Id R a z)) : Pr.isProp (Div a b) = \ h k ->
+  Pr.Sigma-eq R (\ q -> Id R b (mul a q)) h.1 k.1 h.2 k.2
+   (cancel a h.1 k.1 ha (trans (sym h.2) k.2)) (setA b (mul a k.1)) ;
+ nonzero-prop (x : R) : Pr.isProp (Not (Id R x z)) = not-prop (Id R x z) ;
+ -- x /= 0 and x | y ... : the product of two non-zero elements
+ mul-nonzero (x y : R) (hx : Not (Id R x z)) (hy : Not (Id R y z)) : Not (Id R (mul x y) z) = integral x y hx hy ;
+} ;
+
+module Gcd (A : CRing) (G : GcdDomain[A]) {
+ open A ; open RL[A] ; open Divisibility[A] ;
+ module D = Domain[A,G.set,G.dec,G.integral] ;
+ gcd (a b : R) : R = (G.gcd a b).1 ;
+ gcd-left (a b : R) : Div (gcd a b) a = (G.gcd a b).2.1 ;
+ gcd-right (a b : R) : Div (gcd a b) b = (G.gcd a b).2.2.1 ;
+ gcd-univ (a b c : R) (ha : Div c a) (hb : Div c b) : Div c (gcd a b) = (G.gcd a b).2.2.2 c ha hb ;
+
+ -- Lemma M, for u /= 0
+ module M (u a b d : R) (hu : Not (Id R u z)) (h1 : Div d (mul u a)) (h2 : Div d (mul u b)) {
+  g : R = gcd (mul u a) (mul u b) ;
+  dg : Div d g = gcd-univ (mul u a) (mul u b) d h1 h2 ;
+  ug : Div u g = gcd-univ (mul u a) (mul u b) u (div-factor u a) (div-factor u b) ;
+  t : R = ug.1 ;
+  ta : Div t a = D.div-cancel u t a hu (div-eq-left g (mul u t) (mul u a) ug.2 (gcd-left (mul u a) (mul u b))) ;
+  tb : Div t b = D.div-cancel u t b hu (div-eq-left g (mul u t) (mul u b) ug.2 (gcd-right (mul u a) (mul u b))) ;
+  gu : Div g (mul u (gcd a b)) =
+   div-eq-left (mul u t) g (mul u (gcd a b)) (sym ug.2) (div-scale t (gcd a b) u (gcd-univ a b t ta tb)) ;
+  result : Div d (mul u (gcd a b)) = div-trans d g (mul u (gcd a b)) dg gu ;
+ } ;
+ lemma-M (u a b d : R) (h1 : Div d (mul u a)) (h2 : Div d (mul u b)) : Div d (mul u (gcd a b)) =
+  byU (G.dec u)
+  where {
+   byU : Plus (Id R u z) (Not (Id R u z)) -> Div d (mul u (gcd a b)) = split {
+    inl e -> div-eq-right d z (mul u (gcd a b)) (sym (trans (ap (\ t -> mul t (gcd a b)) e) (zero-mul (gcd a b)))) (div-zero d) ;
+    inr n -> M[u,a,b,d,n,h1,h2].result } } ;
+
+ -- Euclid: gcd(a,b) | 1 and a | b c give a | c
+ euclid (a b c : R) (hg : Div (gcd a b) o) (h : Div a (mul b c)) : Div a c =
+  div-trans a (mul c (gcd a b)) c
+   (lemma-M c a b a (div-factor-left a c) (div-eq-right a (mul b c) (mul c b) (mulC b c) h))
+   (div-eq-right (mul c (gcd a b)) (mul c o) c (mulO c) (div-scale (gcd a b) o c hg)) ;
+} ;
+
+-- a discrete field is a gcd domain
+module FieldGcd (F : CRing) (setF : Pr.isSet F.R)
+ (dec : (x : F.R) -> Plus (Id F.R x F.z) ((y : F.R) * Id F.R (F.mul x y) F.o))
+ (one-nonzero : Not (Id F.R F.o F.z)) {
+ open F ; open RL[F] ; open Divisibility[F] ;
+ unit-nonzero (x : R) (u : (y : R) * Id R (mul x y) o) (e : Id R x z) : Empty =
+  one-nonzero (trans (sym u.2) (trans (ap (\ t -> mul t u.1) e) (zero-mul u.1))) ;
+ decZ (x : R) : Plus (Id R x z) (Not (Id R x z)) = decD (dec x)
+  where { decD : Plus (Id R x z) ((y : R) * Id R (mul x y) o) -> Plus (Id R x z) (Not (Id R x z)) = split {
+           inl e -> inl e ; inr u -> inr (unit-nonzero x u) } } ;
+ integral (x y : R) (hx : Not (Id R x z)) (hy : Not (Id R y z)) : Not (Id R (mul x y) z) = intD (dec x)
+  where { intD : Plus (Id R x z) ((w : R) * Id R (mul x w) o) -> Not (Id R (mul x y) z) = split {
+           inl e -> efq (hx e) ; inr u -> \ h -> hy (unit-reg x y u h) } } ;
+ -- an invertible element divides everything
+ unit-div (x b : R) (u : (y : R) * Id R (mul x y) o) : Div x b =
+  (mul u.1 b, calc R { b =< sym (one-left b) > mul o b =< ap (\ t -> mul t b) (sym u.2) > mul (mul x u.1) b
+                         =< sym (mulA x u.1 b) > mul x (mul u.1 b) }) ;
+ gcd (a b : R) : GcdOf a b = gcdD (dec a)
+  where { gcdD : Plus (Id R a z) ((y : R) * Id R (mul a y) o) -> GcdOf a b = split {
+           inl e -> (b, (div-eq-right b z a (sym e) (div-zero b), (div-refl b, \ c ha hb -> hb))) ;
+           inr u -> (a, (div-refl a, (unit-div a b u, \ c ha hb -> ha))) } } ;
+ domain : GcdDomain[F] = mkGcdDomain F setF decZ integral gcd one-nonzero ;
+} ;

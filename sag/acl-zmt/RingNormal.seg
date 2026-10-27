@@ -1,0 +1,233 @@
+-- RingNormal.seg: a verified normaliser for polynomial expressions in
+-- a, b, x, y with integer literals (PolyExpr.Ex), in every commutative ring.
+--
+-- A normal form is a list of signed monomials (an integer coefficient n is
+-- n copies of a term), sorted by decreasing exponent vector, a monomial
+-- appearing with one sign only.  merge adds two normal forms, cancelling
+-- a term against an equal monomial of the other sign; mulN multiplies term
+-- by term (the order is compatible with the product of monomials) and
+-- merges.  The value of the normal form of e is the value of e (sound),
+-- so two expressions with the same normal form (checked by computation,
+-- refl) have the same value in every commutative ring (same-value).
+-- No uniqueness of normal forms is proved or needed: a wrong normal form
+-- only makes a check fail.
+level l ; open Ring[l] ; open Base ; open PolyExpr[l] ;
+
+data Ord = lt | eq | gt ;
+
+cmpN : Nat -> Nat -> Ord = split {
+  zero -> split { zero -> eq ; suc n -> lt } ;
+  suc m | r -> split { zero -> gt ; suc n -> r n } } ;
+
+eqOrd : Ord -> Bool = split { lt -> false ; eq -> true ; gt -> false } ;
+
+-- exponents of a, b, x, y
+Mon : U l = Nat * (Nat * (Nat * Nat)) ;
+thenO : Ord -> Ord -> Ord = split { lt -> \ o -> lt ; eq -> \ o -> o ; gt -> \ o -> gt } ;
+cmpM (m n : Mon) : Ord =
+  thenO (cmpN m.1 n.1) (thenO (cmpN m.2.1 n.2.1) (thenO (cmpN m.2.2.1 n.2.2.1) (cmpN m.2.2.2 n.2.2.2))) ;
+mulM (m n : Mon) : Mon = (plus m.1 n.1, (plus m.2.1 n.2.1, (plus m.2.2.1 n.2.2.1, plus m.2.2.2 n.2.2.2))) ;
+
+-- a term: sign (true = +) and monomial
+Term : U l = Bool * Mon ;
+xnor : Bool -> Bool -> Bool = split {
+  true -> \ s -> s ;
+  false -> split { true -> false ; false -> true } } ;
+mulT (t u : Term) : Term = (xnor t.1 u.1, mulM t.2 u.2) ;
+negT (t : Term) : Term = (not t.1, t.2) ;
+
+-- merging, by recursion on the first list and, inside, on the second
+cancels : Bool -> Bool -> Bool = split {
+  true -> split { true -> false ; false -> true } ;
+  false -> split { true -> true ; false -> false } } ;
+eqStep (t u : Term) (p q : List Term) (rpq : List Term) : Bool -> List Term = split {
+  true -> rpq ;
+  false -> cons t (cons u rpq) } ;
+step (t u : Term) (p q : List Term) (rp : List Term -> List Term) (rq : List Term) : Ord -> List Term = split {
+  gt -> cons t (rp (cons u q)) ;
+  lt -> cons u rq ;
+  eq -> eqStep t u p q (rp q) (cancels t.1 u.1) } ;
+mergeIn (t : Term) (p : List Term) (rp : List Term -> List Term) : List Term -> List Term = split {
+  nil -> cons t p ;
+  cons u q | rq -> step t u p q rp rq (cmpM t.2 u.2) } ;
+merge : List Term -> List Term -> List Term = split {
+  nil -> \ q -> q ;
+  cons t p | rp -> mergeIn t p rp } ;
+
+negN : List Term -> List Term = split { nil -> nil ; cons t p | r -> cons (negT t) r } ;
+scaleN (t : Term) : List Term -> List Term = split { nil -> nil ; cons u q | r -> cons (mulT t u) r } ;
+mulN : List Term -> List Term -> List Term = split {
+  nil -> \ q -> nil ;
+  cons t p | r -> \ q -> merge (scaleN t q) (r q) } ;
+
+e0 : Mon = (zero, (zero, (zero, zero))) ;
+norm : Ex -> List Term = split {
+  va -> cons (true, (suc zero, (zero, (zero, zero)))) nil ;
+  vb -> cons (true, (zero, (suc zero, (zero, zero)))) nil ;
+  vx -> cons (true, (zero, (zero, (suc zero, zero)))) nil ;
+  vy -> cons (true, (zero, (zero, (zero, suc zero)))) nil ;
+  zeroE -> nil ;
+  oneE -> cons (true, e0) nil ;
+  addE e f | re rf -> merge re rf ;
+  mulE e f | re rf -> mulN re rf ;
+  negE e | re -> negN re } ;
+
+-- equal exponents
+isEq : Ord -> U l = split { lt -> Empty ; eq -> Top ; gt -> Empty } ;
+cmpN-eq : (m n : Nat) -> Id Ord (cmpN m n) eq -> Id Nat m n = split {
+  zero -> split {
+    zero -> \ h -> refl zero ;
+    suc n -> \ h -> efq (subst isEq (sym h) tt) } ;
+  suc m | r -> split {
+    zero -> \ h -> efq (subst isEq (sym h) tt) ;
+    suc n -> \ h -> ap (\ k -> suc k) (r n h) } } ;
+
+thenO-eq : (o o' : Ord) -> Id Ord (thenO o o') eq -> Id Ord o eq * Id Ord o' eq = split {
+  lt -> \ o' h -> efq (subst isEq (sym h) tt) ;
+  eq -> \ o' h -> (refl eq, h) ;
+  gt -> \ o' h -> efq (subst isEq (sym h) tt) } ;
+
+cmpM-eq (m n : Mon) (h : Id Ord (cmpM m n) eq) : Id Mon m n =
+  calc Mon { m =< ap (\ k -> (k, m.2)) (cmpN-eq m.1 n.1 h1.1) > (n.1, m.2)
+               =< ap (\ k -> (n.1, (k, m.2.2))) (cmpN-eq m.2.1 n.2.1 h2.1) > (n.1, (n.2.1, m.2.2))
+               =< ap (\ k -> (n.1, (n.2.1, (k, m.2.2.2)))) (cmpN-eq m.2.2.1 n.2.2.1 h3.1) > (n.1, (n.2.1, (n.2.2.1, m.2.2.2)))
+               =< ap (\ k -> (n.1, (n.2.1, (n.2.2.1, k)))) (cmpN-eq m.2.2.2 n.2.2.2 h3.2) > n }
+  where {
+    h1 : Id Ord (cmpN m.1 n.1) eq * Id Ord (thenO (cmpN m.2.1 n.2.1) (thenO (cmpN m.2.2.1 n.2.2.1) (cmpN m.2.2.2 n.2.2.2))) eq =
+      thenO-eq (cmpN m.1 n.1) _ h ;
+    h2 : Id Ord (cmpN m.2.1 n.2.1) eq * Id Ord (thenO (cmpN m.2.2.1 n.2.2.1) (cmpN m.2.2.2 n.2.2.2)) eq =
+      thenO-eq (cmpN m.2.1 n.2.1) _ h1.2 ;
+    h3 : Id Ord (cmpN m.2.2.1 n.2.2.1) eq * Id Ord (cmpN m.2.2.2 n.2.2.2) eq =
+      thenO-eq (cmpN m.2.2.1 n.2.2.1) _ h2.2 } ;
+
+module Over (Rg : CRing) (a b x y : Rg.R) {
+  module L = RL[Rg] ;
+  module G = ExteriorAlgebra[l].AG[Rg.R,Rg.z,Rg.add,Rg.neg,Rg.addA,Rg.addC,Rg.addZ,Rg.addN] ;
+
+  pw (c : Rg.R) : Nat -> Rg.R = split { zero -> Rg.o ; suc n | r -> Rg.mul c r } ;
+  pw-add (c : Rg.R) : (i j : Nat) -> Id Rg.R (pw c (plus i j)) (Rg.mul (pw c i) (pw c j)) = split {
+    zero -> \ j -> sym (L.one-left (pw c j)) ;
+    suc i | r -> \ j -> trans (ap (Rg.mul c) (r j)) (Rg.mulA c (pw c i) (pw c j)) } ;
+
+  -- the value of a monomial, a term, a normal form
+  em (m : Mon) : Rg.R = Rg.mul (pw a m.1) (Rg.mul (pw b m.2.1) (Rg.mul (pw x m.2.2.1) (pw y m.2.2.2))) ;
+  sg : Bool -> Rg.R -> Rg.R = split { true -> \ v -> v ; false -> \ v -> Rg.neg v } ;
+  ev (t : Term) : Rg.R = sg t.1 (em t.2) ;
+  evL : List Term -> Rg.R = split { nil -> Rg.z ; cons t p | r -> Rg.add (ev t) r } ;
+
+  em-mul (m n : Mon) : Id Rg.R (em (mulM m n)) (Rg.mul (em m) (em n)) =
+    calc Rg.R { em (mulM m n)
+                  =< Presentations[l].cong2 Rg.R Rg.mul _ _ _ _ (pw-add a m.1 n.1)
+                       (Presentations[l].cong2 Rg.R Rg.mul _ _ _ _ (pw-add b m.2.1 n.2.1)
+                         (Presentations[l].cong2 Rg.R Rg.mul _ _ _ _ (pw-add x m.2.2.1 n.2.2.1) (pw-add y m.2.2.2 n.2.2.2)))
+                  > Rg.mul (Rg.mul (pw a m.1) (pw a n.1)) (Rg.mul (Rg.mul (pw b m.2.1) (pw b n.2.1))
+                      (Rg.mul (Rg.mul (pw x m.2.2.1) (pw x n.2.2.1)) (Rg.mul (pw y m.2.2.2) (pw y n.2.2.2))))
+                  =< ap (\ t -> Rg.mul (Rg.mul (pw a m.1) (pw a n.1)) (Rg.mul (Rg.mul (pw b m.2.1) (pw b n.2.1)) t))
+                       (L.mul-four (pw x m.2.2.1) (pw x n.2.2.1) (pw y m.2.2.2) (pw y n.2.2.2))
+                  > Rg.mul (Rg.mul (pw a m.1) (pw a n.1)) (Rg.mul (Rg.mul (pw b m.2.1) (pw b n.2.1))
+                      (Rg.mul (Rg.mul (pw x m.2.2.1) (pw y m.2.2.2)) (Rg.mul (pw x n.2.2.1) (pw y n.2.2.2))))
+                  =< ap (Rg.mul (Rg.mul (pw a m.1) (pw a n.1)))
+                       (L.mul-four (pw b m.2.1) (pw b n.2.1) (Rg.mul (pw x m.2.2.1) (pw y m.2.2.2)) (Rg.mul (pw x n.2.2.1) (pw y n.2.2.2)))
+                  > Rg.mul (Rg.mul (pw a m.1) (pw a n.1)) (Rg.mul (Rg.mul (pw b m.2.1) (Rg.mul (pw x m.2.2.1) (pw y m.2.2.2)))
+                      (Rg.mul (pw b n.2.1) (Rg.mul (pw x n.2.2.1) (pw y n.2.2.2))))
+                  =< L.mul-four (pw a m.1) (pw a n.1) (Rg.mul (pw b m.2.1) (Rg.mul (pw x m.2.2.1) (pw y m.2.2.2)))
+                       (Rg.mul (pw b n.2.1) (Rg.mul (pw x n.2.2.1) (pw y n.2.2.2)))
+                  > Rg.mul (em m) (em n) } ;
+
+  ------------------------------------------------------------------------
+  -- merge
+
+  -- (u + p) + (w + q) = u + (w + (p + q))
+  rearr (u p w q : Rg.R) : Id Rg.R (Rg.add (Rg.add u p) (Rg.add w q)) (Rg.add u (Rg.add w (Rg.add p q))) =
+    trans (sym (Rg.addA u p (Rg.add w q))) (ap (Rg.add u) (L.add-swap p w q)) ;
+  -- (u + p) + (-u + q) = p + q
+  cancel-pn (u p q : Rg.R) : Id Rg.R (Rg.add (Rg.add u p) (Rg.add (Rg.neg u) q)) (Rg.add p q) =
+    trans (L.swap u p (Rg.neg u) q) (trans (ap (\ t -> Rg.add t (Rg.add p q)) (Rg.addN u)) (L.zl (Rg.add p q))) ;
+  cancel-np (u p q : Rg.R) : Id Rg.R (Rg.add (Rg.add (Rg.neg u) p) (Rg.add u q)) (Rg.add p q) =
+    trans (L.swap (Rg.neg u) p u q) (trans (ap (\ t -> Rg.add t (Rg.add p q)) (L.neg-cancel u)) (L.zl (Rg.add p q))) ;
+
+  eq-sound (p q : List Term) (P Q : Rg.R) (ihpq : Id Rg.R (evL (merge p q)) (Rg.add P Q)) (tm um : Mon) (e : Id Mon tm um) :
+    (s1 s2 : Bool) -> Id Rg.R (evL (eqStep (s1,tm) (s2,um) p q (merge p q) (cancels s1 s2)))
+                              (Rg.add (Rg.add (sg s1 (em tm)) P) (Rg.add (sg s2 (em um)) Q)) = split {
+    true -> split {
+      true -> trans (ap (\ t -> Rg.add (em tm) (Rg.add (em um) t)) ihpq) (sym (rearr (em tm) P (em um) Q)) ;
+      false -> trans ihpq (sym (trans (ap (\ k -> Rg.add (Rg.add (em tm) P) (Rg.add (Rg.neg (em k)) Q)) (sym e)) (cancel-pn (em tm) P Q))) } ;
+    false -> split {
+      true -> trans ihpq (sym (trans (ap (\ k -> Rg.add (Rg.add (Rg.neg (em tm)) P) (Rg.add (em k) Q)) (sym e)) (cancel-np (em tm) P Q))) ;
+      false -> trans (ap (\ t -> Rg.add (Rg.neg (em tm)) (Rg.add (Rg.neg (em um)) t)) ihpq)
+                     (sym (rearr (Rg.neg (em tm)) P (Rg.neg (em um)) Q)) } } ;
+
+  step-sound (t u : Term) (p q : List Term)
+    (ih : (q' : List Term) -> Id Rg.R (evL (merge p q')) (Rg.add (evL p) (evL q')))
+    (rq : List Term) (hq : Id Rg.R (evL rq) (Rg.add (Rg.add (ev t) (evL p)) (evL q))) :
+    (o : Ord) -> Id Ord (cmpM t.2 u.2) o ->
+    Id Rg.R (evL (step t u p q (merge p) rq o)) (Rg.add (Rg.add (ev t) (evL p)) (Rg.add (ev u) (evL q))) = split {
+    gt -> \ h -> trans (ap (Rg.add (ev t)) (ih (cons u q))) (Rg.addA (ev t) (evL p) (Rg.add (ev u) (evL q))) ;
+    lt -> \ h -> trans (ap (Rg.add (ev u)) hq) (L.add-swap (ev u) (Rg.add (ev t) (evL p)) (evL q)) ;
+    eq -> \ h -> eq-sound p q (evL p) (evL q) (ih q) t.2 u.2 (cmpM-eq t.2 u.2 h) t.1 u.1 } ;
+
+  mergeIn-sound (t : Term) (p : List Term)
+    (ih : (q' : List Term) -> Id Rg.R (evL (merge p q')) (Rg.add (evL p) (evL q'))) :
+    (q : List Term) -> Id Rg.R (evL (mergeIn t p (merge p) q)) (Rg.add (Rg.add (ev t) (evL p)) (evL q)) = split {
+    nil -> sym (Rg.addZ (Rg.add (ev t) (evL p))) ;
+    cons u q | rq -> step-sound t u p q ih (mergeIn t p (merge p) q) rq (cmpM t.2 u.2) (refl (cmpM t.2 u.2)) } ;
+
+  merge-sound : (p q : List Term) -> Id Rg.R (evL (merge p q)) (Rg.add (evL p) (evL q)) = split {
+    nil -> \ q -> sym (L.zl (evL q)) ;
+    cons t p | r -> mergeIn-sound t p r } ;
+
+  ------------------------------------------------------------------------
+  -- negation and product
+
+  sg-not : (s : Bool) (v : Rg.R) -> Id Rg.R (sg (not s) v) (Rg.neg (sg s v)) = split {
+    true -> \ v -> refl (Rg.neg v) ;
+    false -> \ v -> sym (L.neg-neg v) } ;
+  negN-sound : (p : List Term) -> Id Rg.R (evL (negN p)) (Rg.neg (evL p)) = split {
+    nil -> sym L.neg-zero ;
+    cons t p | r -> trans (G.cong-add (sg-not t.1 (em t.2)) r) (sym (L.neg-add (ev t) (evL p))) } ;
+
+  sg-mul : (s s' : Bool) (v w : Rg.R) -> Id Rg.R (sg (xnor s s') (Rg.mul v w)) (Rg.mul (sg s v) (sg s' w)) = split {
+    true -> split {
+      true -> \ v w -> refl (Rg.mul v w) ;
+      false -> \ v w -> sym (L.mul-neg v w) } ;
+    false -> split {
+      true -> \ v w -> sym (L.neg-mul-left v w) ;
+      false -> \ v w -> sym (trans (L.neg-mul-left v (Rg.neg w)) (trans (ap Rg.neg (L.mul-neg v w)) (L.neg-neg (Rg.mul v w)))) } } ;
+  ev-mul (t u : Term) : Id Rg.R (ev (mulT t u)) (Rg.mul (ev t) (ev u)) =
+    trans (ap (sg (xnor t.1 u.1)) (em-mul t.2 u.2)) (sg-mul t.1 u.1 (em t.2) (em u.2)) ;
+  scaleN-sound (t : Term) : (q : List Term) -> Id Rg.R (evL (scaleN t q)) (Rg.mul (ev t) (evL q)) = split {
+    nil -> sym (L.mul-zero (ev t)) ;
+    cons u q | r -> trans (G.cong-add (ev-mul t u) r) (sym (Rg.dist (ev t) (ev u) (evL q))) } ;
+  mulN-sound : (p q : List Term) -> Id Rg.R (evL (mulN p q)) (Rg.mul (evL p) (evL q)) = split {
+    nil -> \ q -> sym (L.zero-mul (evL q)) ;
+    cons t p | r -> \ q -> trans (merge-sound (scaleN t q) (mulN p q))
+                             (trans (G.cong-add (scaleN-sound t q) (r q)) (sym (L.dist-left (ev t) (evL p) (evL q)))) } ;
+
+  ------------------------------------------------------------------------
+  -- the value of the normal form
+
+  ones : Id Rg.R (Rg.mul Rg.o (Rg.mul Rg.o Rg.o)) Rg.o = trans (L.one-left (Rg.mul Rg.o Rg.o)) (Rg.mulO Rg.o) ;
+  -- c^1 = c
+  pw1 (c : Rg.R) : Id Rg.R (pw c (suc zero)) c = Rg.mulO c ;
+  sound : (e : Ex) -> Id Rg.R (evL (norm e)) (eval Rg a b x y e) = split {
+    va -> trans (Rg.addZ (em (suc zero, (zero, (zero, zero)))))
+            (trans (ap (Rg.mul (pw a (suc zero))) ones) (trans (Rg.mulO (pw a (suc zero))) (pw1 a))) ;
+    vb -> trans (Rg.addZ (em (zero, (suc zero, (zero, zero)))))
+            (trans (L.one-left (Rg.mul (pw b (suc zero)) (Rg.mul Rg.o Rg.o)))
+              (trans (ap (Rg.mul (pw b (suc zero))) (Rg.mulO Rg.o)) (trans (Rg.mulO (pw b (suc zero))) (pw1 b)))) ;
+    vx -> trans (Rg.addZ (em (zero, (zero, (suc zero, zero)))))
+            (trans (L.one-left (Rg.mul Rg.o (Rg.mul (pw x (suc zero)) Rg.o)))
+              (trans (L.one-left (Rg.mul (pw x (suc zero)) Rg.o)) (trans (Rg.mulO (pw x (suc zero))) (pw1 x)))) ;
+    vy -> trans (Rg.addZ (em (zero, (zero, (zero, suc zero)))))
+            (trans (L.one-left (Rg.mul Rg.o (Rg.mul Rg.o (pw y (suc zero)))))
+              (trans (L.one-left (Rg.mul Rg.o (pw y (suc zero)))) (trans (L.one-left (pw y (suc zero))) (pw1 y)))) ;
+    zeroE -> refl Rg.z ;
+    oneE -> trans (Rg.addZ (em e0)) (trans (ap (Rg.mul Rg.o) ones) (Rg.mulO Rg.o)) ;
+    addE e f | re rf -> trans (merge-sound (norm e) (norm f)) (G.cong-add re rf) ;
+    mulE e f | re rf -> trans (mulN-sound (norm e) (norm f)) (Presentations[l].cong2 Rg.R Rg.mul _ _ _ _ re rf) ;
+    negE e | re -> trans (negN-sound (norm e)) (ap Rg.neg re) } ;
+
+  -- two expressions with the same normal form have the same value
+  same-value (e f : Ex) (h : Id (List Term) (norm e) (norm f)) : Id Rg.R (eval Rg a b x y e) (eval Rg a b x y f) =
+    trans (sym (sound e)) (trans (ap evL h) (sound f)) ;
+} ;

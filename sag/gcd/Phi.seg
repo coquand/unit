@@ -1,0 +1,180 @@
+-- Phi.seg: lists of terms c X^a Y^b Z^d (a, b, d natural numbers) and S.
+--
+--  actN g s = sum_{c X^a Y^b Z^d in g} c X^a Y^b Z^d s ,  so  actN g s = (actN g 1) s ;
+--  psi (actN g s) = mulP (embL g) (psi s)       (embL g: the same terms in LPoly) ;
+--  nl s : the list of s (from the canonical lists of the three levels, Rep),
+--         with actN (nl s) 1 = s : a datum, no truncation.
+-- In particular psi s = coef (embL (nl s)) (LaurentList.coef-delta, psi 1 = delta).
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module LLt = LaurentList[l] ;
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ module PS = Psi[l].Over[A,G] ;
+ S : CRing = PS.S ;
+ module RS = RL[S] ;
+ module LO = PS.LO ; module LL = PS.LL ;
+ module LX = PS.LX ; module LY = PS.LY ; module LZ = PS.LZ ;
+
+ Exp : U l = Nat * (Nat * Nat) ;
+ NTerm : U l = A.R * Exp ;
+ NList : U l = List NTerm ;
+ embE (e : Exp) : E3 = (pos e.1, (pos e.2.1, pos e.2.2)) ;
+ emb (t : NTerm) : LL.Term = (t.1, embE t.2) ;
+ embL : NList -> LO.LPoly = split { nil -> nil ; cons t g | r -> cons (emb t) r } ;
+
+ ---------------------------------------------------------------------
+ -- powers
+
+ pow (V : S.R) : Nat -> S.R -> S.R = split { zero -> \ s -> s ; suc n | r -> \ s -> S.mul V (r s) } ;
+ pow-mul (V : S.R) : (n : Nat) (s : S.R) -> Id S.R (pow V n s) (S.mul (pow V n S.o) s) = split {
+  zero -> \ s -> sym (RS.one-left s) ;
+  suc n | r -> \ s -> trans (ap (S.mul V) (r s)) (S.mulA V (pow V n S.o) s) } ;
+ -- a power commutes with a multiplication
+ pow-comm (V W : S.R) : (n : Nat) (s : S.R) -> Id S.R (pow V n (S.mul W s)) (S.mul W (pow V n s)) = split {
+  zero -> \ s -> refl (S.mul W s) ;
+  suc n | r -> \ s -> trans (ap (S.mul V) (r s)) (RS.mul-swap V W (pow V n s)) } ;
+ mono (e : Exp) (s : S.R) : S.R = pow PS.X e.1 (pow PS.Y e.2.1 (pow PS.Z e.2.2 s)) ;
+ phiT (t : NTerm) (s : S.R) : S.R = S.mul (PS.fromA t.1) (mono t.2 s) ;
+ actN : NList -> S.R -> S.R = split {
+  nil -> \ s -> S.z ;
+  cons t g | r -> \ s -> S.add (phiT t s) (r s) } ;
+
+ -- actN g s = (actN g 1) s
+ module Mono (e : Exp) {
+  Px : S.R = pow PS.X e.1 S.o ;
+  Py : S.R = pow PS.Y e.2.1 S.o ;
+  Pz : S.R = pow PS.Z e.2.2 S.o ;
+  L (s : S.R) : S.R = S.mul Px (S.mul Py (S.mul Pz s)) ;
+  mono-L (s : S.R) : Id S.R (mono e s) (L s) =
+   trans (pow-mul PS.X e.1 (pow PS.Y e.2.1 (pow PS.Z e.2.2 s)))
+    (ap (S.mul Px) (trans (pow-mul PS.Y e.2.1 (pow PS.Z e.2.2 s)) (ap (S.mul Py) (pow-mul PS.Z e.2.2 s)))) ;
+  L-mul (s : S.R) : Id S.R (L s) (S.mul (L S.o) s) =
+   sym (trans (sym (S.mulA Px (S.mul Py (S.mul Pz S.o)) s))
+    (ap (S.mul Px) (trans (sym (S.mulA Py (S.mul Pz S.o) s)) (ap (\ u -> S.mul Py (S.mul u s)) (S.mulO Pz))))) ;
+ } ;
+ mono-mul (e : Exp) (s : S.R) : Id S.R (mono e s) (S.mul (mono e S.o) s) =
+  trans (Mono[e].mono-L s) (trans (Mono[e].L-mul s) (ap (\ u -> S.mul u s) (sym (Mono[e].mono-L S.o)))) ;
+ phiT-mul (t : NTerm) (s : S.R) : Id S.R (phiT t s) (S.mul (phiT t S.o) s) =
+  trans (ap (S.mul (PS.fromA t.1)) (mono-mul t.2 s)) (S.mulA (PS.fromA t.1) (mono t.2 S.o) s) ;
+ act-mul : (g : NList) (s : S.R) -> Id S.R (actN g s) (S.mul (actN g S.o) s) = split {
+  nil -> \ s -> sym (RS.zero-mul s) ;
+  cons t g | r -> \ s -> trans (Presentations[l].cong2 S.R S.add _ _ _ _ (phiT-mul t s) (r s))
+                          (sym (RS.dist-left (phiT t S.o) (actN g S.o) s)) } ;
+
+ ---------------------------------------------------------------------
+ -- psi of a monomial times s
+
+ -- (w - 1) - d = w - (d + 1)
+ sub-suc (w : Int) : (d : Nat) -> Id Int (add (predZ w) (neg (pos d))) (add w (neg (pos (suc d)))) = split {
+  zero -> refl (predZ w) ;
+  suc d -> addN-predL w d } ;
+ psi-powZ : (d : Nat) (s : S.R) (x y w : Int) -> Id A.R (PS.psi3 (pow PS.Z d s) x y w) (PS.psi3 s x y (add w (neg (pos d)))) = split {
+  zero -> \ s x y w -> refl (PS.psi3 s x y w) ;
+  suc d | r -> \ s x y w -> trans (PS.psi-Z (pow PS.Z d s) (x, (y, w)))
+                              (trans (r s x y (predZ w)) (ap (PS.psi3 s x y) (sub-suc w d))) } ;
+ psi-powY : (d : Nat) (s : S.R) (x y w : Int) -> Id A.R (PS.psi3 (pow PS.Y d s) x y w) (PS.psi3 s x (add y (neg (pos d))) w) = split {
+  zero -> \ s x y w -> refl (PS.psi3 s x y w) ;
+  suc d | r -> \ s x y w -> trans (PS.psi-Y (pow PS.Y d s) (x, (y, w)))
+                              (trans (r s x (predZ y) w) (ap (\ v -> PS.psi3 s x v w) (sub-suc y d))) } ;
+ psi-powX : (d : Nat) (s : S.R) (x y w : Int) -> Id A.R (PS.psi3 (pow PS.X d s) x y w) (PS.psi3 s (add x (neg (pos d))) y w) = split {
+  zero -> \ s x y w -> refl (PS.psi3 s x y w) ;
+  suc d | r -> \ s x y w -> trans (PS.psi-X (pow PS.X d s) (x, (y, w)))
+                              (trans (r s (predZ x) y w) (ap (\ v -> PS.psi3 s v y w) (sub-suc x d))) } ;
+ psi-mono (e : Exp) (s : S.R) (m : E3) : Id A.R (PS.psi (mono e s) m) (PS.psi s (sub3 m (embE e))) =
+  trans (psi-powX e.1 (pow PS.Y e.2.1 (pow PS.Z e.2.2 s)) (ex m) (ey m) (ez m))
+   (trans (psi-powY e.2.1 (pow PS.Z e.2.2 s) (add (ex m) (neg (pos e.1))) (ey m) (ez m))
+    (psi-powZ e.2.2 s (add (ex m) (neg (pos e.1))) (add (ey m) (neg (pos e.2.1))) (ez m))) ;
+ psi-act : (g : NList) (s : S.R) -> LO.EqL (PS.psi (actN g s)) (LO.mulP (embL g) (PS.psi s)) = split {
+  nil -> \ s -> PS.psi-zero ;
+  cons t g | r -> \ s m -> trans (PS.psi-add (phiT t s) (actN g s) m)
+    (Presentations[l].cong2 A.R A.add _ _ _ _
+      (trans (PS.psi-scale t.1 (mono t.2 s) m) (ap (A.mul t.1) (psi-mono t.2 s m)))
+      (r s m)) } ;
+ -- psi (actN g 1) = coef (embL g)
+ psi-list (g : NList) : LO.EqL (PS.psi (actN g S.o)) (LL.coef (embL g)) = \ m ->
+  trans (psi-act g S.o m) (trans (LO.mulP-cong (embL g) (PS.psi S.o) LL.delta PS.psi-one m) (sym (LL.coef-delta (embL g) m))) ;
+
+ ---------------------------------------------------------------------
+ -- shifts and concatenation of lists
+
+ appN : NList -> NList -> NList = split { nil -> \ h -> h ; cons t g | r -> \ h -> cons t (r h) } ;
+ act-app : (g h : NList) (s : S.R) -> Id S.R (actN (appN g h) s) (S.add (actN g s) (actN h s)) = split {
+  nil -> \ h s -> sym (RS.zl (actN h s)) ;
+  cons t g | r -> \ h s -> trans (ap (S.add (phiT t s)) (r h s)) (S.addA (phiT t s) (actN g s) (actN h s)) } ;
+ incXE (e : Exp) : Exp = (suc e.1, e.2) ;
+ incYE (e : Exp) : Exp = (e.1, (suc e.2.1, e.2.2)) ;
+ incZE (e : Exp) : Exp = (e.1, (e.2.1, suc e.2.2)) ;
+ mapN (f : NTerm -> NTerm) : NList -> NList = split { nil -> nil ; cons t g | r -> cons (f t) r } ;
+ -- multiplying a term by a variable
+ module Var (V : S.R) (incE : Exp -> Exp) (hm : (t : NTerm) (s : S.R) -> Id S.R (mono (incE t.2) s) (S.mul V (mono t.2 s))) {
+  inc (t : NTerm) : NTerm = (t.1, incE t.2) ;
+  phi-inc (t : NTerm) (s : S.R) : Id S.R (phiT (inc t) s) (S.mul V (phiT t s)) =
+   trans (ap (S.mul (PS.fromA t.1)) (hm t s)) (RS.mul-swap (PS.fromA t.1) V (mono t.2 s)) ;
+  act-inc : (g : NList) (s : S.R) -> Id S.R (actN (mapN inc g) s) (S.mul V (actN g s)) = split {
+   nil -> \ s -> sym (RS.mul-zero V) ;
+   cons t g | r -> \ s -> trans (Presentations[l].cong2 S.R S.add _ _ _ _ (phi-inc t s) (r s))
+                           (sym (S.dist V (phiT t s) (actN g s))) } ;
+ } ;
+ module VX = Var[PS.X,incXE,\ t s -> refl (mono (incXE t.2) s)] ;
+ module VY = Var[PS.Y,incYE,\ t s -> pow-comm PS.X PS.Y t.2.1 (pow PS.Y t.2.2.1 (pow PS.Z t.2.2.2 s))] ;
+ module VZ = Var[PS.Z,incZE,\ t s -> trans (ap (pow PS.X t.2.1) (pow-comm PS.Y PS.Z t.2.2.1 (pow PS.Z t.2.2.2 s)))
+                                          (pow-comm PS.X PS.Z t.2.1 (pow PS.Y t.2.2.1 (pow PS.Z t.2.2.2 s)))] ;
+
+ ---------------------------------------------------------------------
+ -- the list of an element of S
+
+ module RX = Rep[l].Over[A,G] ;
+ module RY = Rep[l].Over[LX.T,LX.ST.domain] ;
+ module RZ = Rep[l].Over[LY.T,LY.ST.domain] ;
+ cZ (v : LY.T.R) : S.R = LZ.E.constant v ;
+ cYZ (u : LX.T.R) : S.R = cZ (LY.E.constant u) ;
+ cZ-add (u v : LY.T.R) : Id S.R (cZ (LY.T.add u v)) (S.add (cZ u) (cZ v)) = LZ.E.constant-add u v ;
+ cZ-mul (u v : LY.T.R) : Id S.R (cZ (LY.T.mul u v)) (S.mul (cZ u) (cZ v)) = LZ.E.constant-mul u v ;
+ cYZ-add (u v : LX.T.R) : Id S.R (cYZ (LX.T.add u v)) (S.add (cYZ u) (cYZ v)) =
+  trans (ap cZ (LY.E.constant-add u v)) (cZ-add (LY.E.constant u) (LY.E.constant v)) ;
+ cYZ-mul (u v : LX.T.R) : Id S.R (cYZ (LX.T.mul u v)) (S.mul (cYZ u) (cYZ v)) =
+  trans (ap cZ (LY.E.constant-mul u v)) (cZ-mul (LY.E.constant u) (LY.E.constant v)) ;
+ -- a constant 0 is 0
+ cZ-zero : Id S.R (cZ LY.T.z) S.z =
+  RS.add-cancel (cZ LY.T.z) (cZ LY.T.z) (sym (trans (ap cZ (sym (LY.T.addZ LY.T.z))) (cZ-add LY.T.z LY.T.z))) ;
+ cY-zero : Id LY.T.R (LY.E.constant LX.T.z) LY.T.z =
+  RL[LY.T].add-cancel (LY.E.constant LX.T.z) (LY.E.constant LX.T.z)
+   (sym (trans (ap LY.E.constant (sym (LX.T.addZ LX.T.z))) (LY.E.constant-add LX.T.z LX.T.z))) ;
+ cYZ-zero : Id S.R (cYZ LX.T.z) S.z = trans (ap cZ cY-zero) cZ-zero ;
+ zeroE : Exp = (zero, (zero, zero)) ;
+ phi-const (c : A.R) : Id S.R (phiT (c, zeroE) S.o) (PS.fromA c) = S.mulO (PS.fromA c) ;
+
+ nlXL : List A.R -> NList = split { nil -> nil ; cons c r | rr -> cons (c, zeroE) (mapN VX.inc rr) } ;
+ nlXL-eq : (r : List A.R) -> Id S.R (actN (nlXL r) S.o) (cYZ (LX.E.include r)) = split {
+  nil -> sym cYZ-zero ;
+  cons c r | ih -> trans (Presentations[l].cong2 S.R S.add _ _ _ _ (phi-const c) (trans (VX.act-inc (nlXL r) S.o) (ap (S.mul PS.X) ih)))
+    (sym (trans (ap cYZ (LX.E.horner c r))
+      (trans (cYZ-add (LX.E.constant c) (LX.E.mulQ LX.E.variable (LX.E.include r)))
+        (ap (S.add (PS.fromA c)) (cYZ-mul LX.E.variable (LX.E.include r)))))) } ;
+ nlX (u : LX.T.R) : NList = nlXL (RX.rep u) ;
+ nlX-eq (u : LX.T.R) : Id S.R (actN (nlX u) S.o) (cYZ u) = trans (nlXL-eq (RX.rep u)) (ap cYZ (RX.rep-eq u)) ;
+
+ nlYL : List LX.T.R -> NList = split { nil -> nil ; cons d q | rr -> appN (nlX d) (mapN VY.inc rr) } ;
+ nlYL-eq : (q : List LX.T.R) -> Id S.R (actN (nlYL q) S.o) (cZ (LY.E.include q)) = split {
+  nil -> sym cZ-zero ;
+  cons d q | ih -> trans (act-app (nlX d) (mapN VY.inc (nlYL q)) S.o)
+    (trans (Presentations[l].cong2 S.R S.add _ _ _ _ (nlX-eq d) (trans (VY.act-inc (nlYL q) S.o) (ap (S.mul PS.Y) ih)))
+     (sym (trans (ap cZ (LY.E.horner d q))
+       (trans (cZ-add (LY.E.constant d) (LY.E.mulQ LY.E.variable (LY.E.include q)))
+         (ap (S.add (cYZ d)) (cZ-mul LY.E.variable (LY.E.include q))))))) } ;
+ nlY (v : LY.T.R) : NList = nlYL (RY.rep v) ;
+ nlY-eq (v : LY.T.R) : Id S.R (actN (nlY v) S.o) (cZ v) = trans (nlYL-eq (RY.rep v)) (ap cZ (RY.rep-eq v)) ;
+
+ nlZL : List LY.T.R -> NList = split { nil -> nil ; cons c p | rr -> appN (nlY c) (mapN VZ.inc rr) } ;
+ nlZL-eq : (p : List LY.T.R) -> Id S.R (actN (nlZL p) S.o) (LZ.E.include p) = split {
+  nil -> refl S.z ;
+  cons c p | ih -> trans (act-app (nlY c) (mapN VZ.inc (nlZL p)) S.o)
+    (trans (Presentations[l].cong2 S.R S.add _ _ _ _ (nlY-eq c) (trans (VZ.act-inc (nlZL p) S.o) (ap (S.mul PS.Z) ih)))
+     (sym (LZ.E.horner c p))) } ;
+ -- the list of s
+ nl (s : S.R) : NList = nlZL (RZ.rep s) ;
+ nl-eq (s : S.R) : Id S.R (actN (nl s) S.o) s = trans (nlZL-eq (RZ.rep s)) (RZ.rep-eq s) ;
+ -- s acts on Laurent elements as its list
+ psi-mul (s s' : S.R) : LO.EqL (PS.psi (S.mul s s')) (LO.mulP (embL (nl s)) (PS.psi s')) = \ m ->
+  trans (ap (\ u -> PS.psi (S.mul u s') m) (sym (nl-eq s)))
+   (trans (ap (\ u -> PS.psi u m) (sym (act-mul (nl s) s'))) (psi-act (nl s) s' m)) ;
+} ;

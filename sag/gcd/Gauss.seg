@@ -1,0 +1,83 @@
+-- Gauss.seg: Gauss's lemma by the content (doc/gcd-polynomial.tex, §3).
+--
+--  Lemme 7 (Gauss): E primitive and d | every coefficient of E q give
+--    d | every coefficient of q.  Dedekind-Mertens (sag/mertens, subgroup
+--    form): E_w q_j, for every word w of length m+1, is a signed sum of
+--    E_w' (E q)_k, so d divides it; peel the word one letter at a time by
+--    Corollaire 5.  No prime element, no factorisation.
+--  Lemme 8: E primitive, lambda /= 0, lambda f = E q give f = E q'
+--    (q = lambda q').
+-- On the lists first; on A[X] for d /= 0 (then the conclusion is a
+-- proposition and holds on the quotient).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
+ module PB = PolyBase[l].Over[A,G] ;
+ open PB ;
+ module CW = CoefficientProducts[l].Over[A] ;
+ module DM = DedekindMertens[l].Over[A] ;
+
+ -- the multiples of d form an additive subgroup
+ multiples (d : R) : AdditiveSpan[l].Group[A] =
+  AdditiveSpan[l].mkGroup A (Div d) (div-zero d) (div-add d) (div-neg d) ;
+
+ -- d | (E q)_k for all k gives d | E_w q_j for every word w of length m+1
+ module Words (p : PL.P) (g : R) (q : PL.P) (d : R) (hd : (k : Nat) -> Div d (PL.coef (ML.pmul p (cons g q)) k)) {
+  module S = DM.Statement[p,g,q] ;
+  on-generators (v : CW.Word S.m * Nat) : Div d (CW.Generators p (ML.pmul p (cons g q)) S.m v) =
+   div-mul-left d (PL.coef (ML.pmul p (cons g q)) v.2) (CW.product p S.m v.1) (hd v.2) ;
+  module Map = S.Target.CSpan.To[multiples d,on-generators] ;
+  result (w : CW.Word (suc S.m)) (j : Nat) : Div d (mul (CW.product p (suc S.m) w) (PL.coef (cons g q) j)) =
+   Map.result (mul (CW.product p (suc S.m) w) (PL.coef (cons g q) j)) (DM.theorem p q g w j) ;
+ } ;
+
+ -- peeling the words, for p primitive
+ module Peel (p : PL.P) (pr : C.Prim (PL.coef p)) (d : R) {
+  module K = C.Bounded[PL.coef p,PL.plen p,bnd-list p] ;
+  -- (c P) v = (P v) c
+  swap3 (c P v : R) : Id R (mul (mul c P) v) (mul (mul P v) c) =
+   trans (sym (mulA c P v)) (mulC c (mul P v)) ;
+  peel : (n : Nat) (v : R) -> ((w : CW.Word n) -> Div d (mul (CW.product p n w) v)) -> Div d v = split {
+   zero -> \ v h -> div-eq-right d (mul o v) v (one-left v) (h tt) ;
+   suc n | r -> \ v h -> r v (\ w' -> K.prim-M pr (mul (CW.product p n w') v) d
+     (\ i -> div-eq-right d (mul (mul (PL.coef p i) (CW.product p n w')) v) (mul (mul (CW.product p n w') v) (PL.coef p i))
+              (swap3 (PL.coef p i) (CW.product p n w') v) (h (i,w')))) } ;
+ } ;
+
+ -- Lemme 7 on the lists
+ gauss-list (p : PL.P) (pr : C.Prim (PL.coef p)) (d : R) : (q : PL.P) ->
+  ((k : Nat) -> Div d (PL.coef (ML.pmul p q) k)) -> (j : Nat) -> Div d (PL.coef q j) = split {
+  nil -> \ hd j -> div-zero d ;
+  cons g q -> \ hd j -> Peel[p,pr,d].peel (suc (len {R} q)) (PL.coef (cons g q) j)
+    (\ w -> Words[p,g,q,d,hd].result w j) } ;
+
+ -- Lemme 7 on A[X], for d /= 0
+ module GaussAt (d : R) (hd0 : Not (Id R d z)) {
+  Concl (y : Pol) : U l = (j : Nat) -> Div d (coef y j) ;
+  concl-prop (y : Pol) : Pr.isProp (Concl y) = FE.isProp-Pi Nat (\ j -> Div d (coef y j)) (\ j -> D.div-prop d (coef y j) hd0) ;
+  Stmt (x y : Pol) : U l = Prim x -> ((k : Nat) -> Div d (coef (B.mulQ x y) k)) -> Concl y ;
+  stmt-prop (x y : Pol) : Pr.isProp (Stmt x y) =
+   FE.isProp-Pi (Prim x) (\ px -> ((k : Nat) -> Div d (coef (B.mulQ x y) k)) -> Concl y)
+    (\ px -> FE.isProp-Pi ((k : Nat) -> Div d (coef (B.mulQ x y) k)) (\ h -> Concl y) (\ h -> concl-prop y)) ;
+  on-lists (p q : PL.P) : Stmt (B.include p) (B.include q) = \ px hd j ->
+   div-eq-right d (PL.coef q j) (coef (B.include q) j) (sym (CP.coef-include q j))
+    (gauss-list p (prim-include p px) d q
+      (\ k -> div-eq-right d (coef (B.mulQ (B.include p) (B.include q)) k) (PL.coef (ML.pmul p q) k) (coef-mul-include p q k) (hd k)) j) ;
+  gauss : (x y : Pol) -> Stmt x y = B.forall2 Stmt stmt-prop on-lists ;
+ } ;
+
+ -- Lemme 8
+ module DivPrim (E f q : Pol) (pE : Prim E) (lam : R) (hl : Not (Id R lam z))
+  (e : Id Pol (sc lam f) (B.mulQ E q)) {
+  module S = Scalar[lam,hl] ;
+  dq : S.Divides q = GaussAt[lam,hl].gauss E q pE
+   (\ k -> div-eq-right lam (coef (sc lam f) k) (coef (B.mulQ E q) k) (ap (\ w -> coef w k) e)
+            (div-eq-right lam (mul lam (coef f k)) (coef (sc lam f) k) (sym (coef-sc lam f k)) (div-factor lam (coef f k)))) ;
+  q' : Pol = (S.divide q dq).1 ;
+  same : Id Pol (sc lam f) (sc lam (B.mulQ E q')) =
+   trans e (trans (ap (B.mulQ E) (S.divide q dq).2) (LB.mul-swap E (B.constant lam) q')) ;
+  result : DB.Div E f = (q', S.cancel f (B.mulQ E q') same) ;
+ } ;
+} ;

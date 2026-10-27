@@ -1,0 +1,126 @@
+-- FiniteCorrection.seg: the finite correction (finite-lifting.tex, Lemme 1;
+-- handoff §4).
+--
+-- Let d : C0 -> C1 be A-linear and I = (a,b).  Let N >= 1, z_1, .., z_N in
+-- C0 with z_N - z_1 in I C0, r_i in I^(N-i) for 1 <= i < N, v in I^N C0, and
+--     d z_N - sum_{1<=i<N} r_i d z_i = d v .                          (*)
+-- Then  h = z_N - sum_i r_i z_i - v  satisfies  d h = 0  and  h - z_1 in I C0.
+-- Proof.  d h = 0 is (*) and the linearity of d.  N - i >= 1, so every r_i
+-- is in I and r_i z_i is in I C0; v is in I^N C0, contained in I C0; and
+--     h - z_1 = (z_N - z_1) - (sum_i r_i z_i + v).
+-- Only d = d^0 of the complex C0 -> C1 -> C2 is used.
+--
+-- The coefficients form a list, the head newest:
+--     [(r_(N-1), z_(N-1)), .., (r_1, z_1)] ,
+-- so the entry at distance j from the head has r in I^(j+1), and
+-- N = 1 + length.  The empty list is the case N = 1 (empty sum).
+-- Fixed: all z_i equal to one cochain z* (handoff §3); then
+-- h = (1 - sum_i r_i) z* - v.
+level l ; open Ring[l] ;
+module IP = IdealPowers[l] ;
+
+module Over (A : CRing) (C0 C1 : IP.Mod[A]) (d : IP.Lin[A,C0,C1]) (a b : A.R) {
+  module L0 = IP.ModL[A,C0] ; module L1 = IP.ModL[A,C1] ;
+  module P0 = IP.Over[A,C0,a,b] ; module PA = IP.Over[A,IP.regular A,a,b] ;
+  module M0 = IP.Mult[A,C0,a,b] ;
+
+  -- the degrees of the coefficients
+  Coeffs : List (A.R * C0.M) -> Nat -> U l = split {
+    nil -> \ j -> Top ;
+    cons rz s | r -> \ j -> PA.Pow (suc j) rz.1 * r (suc j) } ;
+
+  -- sum_i r_i z_i  and  sum_i r_i d z_i
+  comb : List (A.R * C0.M) -> C0.M = split {
+    nil -> C0.mz ;
+    cons rz s | r -> C0.madd (C0.sm rz.1 rz.2) r } ;
+  dcomb : List (A.R * C0.M) -> C1.M = split {
+    nil -> C1.mz ;
+    cons rz s | r -> C1.madd (C1.sm rz.1 (d.f rz.2)) r } ;
+
+  -- linearity of d
+  d-zero : Id C1.M (d.f C0.mz) C1.mz =
+    calc C1.M { d.f C0.mz =< ap d.f (sym (L0.zero-sm C0.mz)) > d.f (C0.sm A.z C0.mz)
+                  =< d.f-sm A.z C0.mz > C1.sm A.z (d.f C0.mz)
+                  =< L1.zero-sm (d.f C0.mz) > C1.mz } ;
+  d-neg (x : C0.M) : Id C1.M (d.f (C0.mneg x)) (C1.mneg (d.f x)) =
+    L1.G.neg-uniq (d.f x) (d.f (C0.mneg x))
+      (trans (sym (d.f-add x (C0.mneg x))) (trans (ap d.f (C0.maddN x)) d-zero)) ;
+  d-sub (x y : C0.M) : Id C1.M (d.f (L0.msub x y)) (L1.msub (d.f x) (d.f y)) =
+    trans (d.f-add x (C0.mneg y)) (ap (C1.madd (d.f x)) (d-neg y)) ;
+  d-comb : (s : List (A.R * C0.M)) -> Id C1.M (d.f (comb s)) (dcomb s) = split {
+    nil -> d-zero ;
+    cons rz s | r -> trans (d.f-add (C0.sm rz.1 rz.2) (comb s)) (L1.G.cong-add (d.f-sm rz.1 rz.2) r) } ;
+
+  -- every r_i z_i is in I C0
+  comb-in : (s : List (A.R * C0.M)) (j : Nat) -> Coeffs s j -> P0.Pow (suc zero) (comb s) = split {
+    nil -> \ j cs -> P0.pow-zero (suc zero) ;
+    cons rz s | r -> \ j cs ->
+      P0.pow-add (suc zero) (C0.sm rz.1 rz.2) (comb s)
+        (M0.pow-mul (suc zero) zero rz.1 rz.2 (PA.pow-one j rz.1 cs.1) tt)
+        (r (suc j) cs.2) } ;
+
+  module Correct (zN z1 : C0.M) (s : List (A.R * C0.M)) (cs : Coeffs s zero)
+    (v : C0.M) (hv : P0.Pow (suc (len s)) v)
+    (hz : P0.Pow (suc zero) (L0.msub zN z1))
+    (star : Id C1.M (L1.msub (d.f zN) (dcomb s)) (d.f v)) {
+
+    h : C0.M = L0.msub (L0.msub zN (comb s)) v ;
+
+    closed : Id C1.M (d.f h) C1.mz =
+      calc C1.M { d.f h =< d-sub (L0.msub zN (comb s)) v > L1.msub (d.f (L0.msub zN (comb s))) (d.f v)
+                    =< ap (\ t -> L1.msub t (d.f v)) (trans (d-sub zN (comb s)) (ap (L1.msub (d.f zN)) (d-comb s)))
+                    > L1.msub (L1.msub (d.f zN) (dcomb s)) (d.f v)
+                    =< ap (\ t -> L1.msub t (d.f v)) star > L1.msub (d.f v) (d.f v)
+                    =< L1.sub-self (d.f v) > C1.mz } ;
+
+    -- h - z_1 = (z_N - z_1) - (sum_i r_i z_i + v)
+    shape : Id C0.M (L0.msub h z1) (L0.msub (L0.msub zN z1) (C0.madd (comb s) v)) =
+      trans (ap (\ t -> L0.msub t z1) (L0.sub-sub zN (comb s) v))
+            (L0.sub-comm zN (C0.madd (comb s) v) z1) ;
+
+    congruent : P0.Pow (suc zero) (L0.msub h z1) =
+      P0.pow-tr (suc zero) _ _ (sym shape)
+        (P0.pow-sub (suc zero) (L0.msub zN z1) (C0.madd (comb s) v) hz
+          (P0.pow-add (suc zero) (comb s) v (comb-in s zero cs) (P0.pow-one (len s) v hv))) ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- one cochain z* at every order (handoff §3)
+
+  fixed (zs : C0.M) : List A.R -> List (A.R * C0.M) = split {
+    nil -> nil ;
+    cons r rs | ih -> cons (r, zs) ih } ;
+
+  sumA : List A.R -> A.R = split { nil -> A.z ; cons r rs | ih -> A.add r ih } ;
+
+  -- sum_i r_i z* = (sum_i r_i) z*
+  comb-fixed (zs : C0.M) : (rs : List A.R) -> Id C0.M (comb (fixed zs rs)) (C0.sm (sumA rs) zs) = split {
+    nil -> sym (L0.zero-sm zs) ;
+    cons r rs | ih -> trans (ap (C0.madd (C0.sm r zs)) ih) (sym (C0.smE r (sumA rs) zs)) } ;
+
+  -- the coefficient degrees of a list of scalars
+  CoeffsA : List A.R -> Nat -> U l = split {
+    nil -> \ j -> Top ;
+    cons r rs | ih -> \ j -> PA.Pow (suc j) r * ih (suc j) } ;
+  coeffs-fixed (zs : C0.M) : (rs : List A.R) (j : Nat) -> CoeffsA rs j -> Coeffs (fixed zs rs) j = split {
+    nil -> \ j c -> tt ;
+    cons r rs | ih -> \ j c -> (c.1, ih (suc j) c.2) } ;
+  len-fixed (zs : C0.M) : (rs : List A.R) -> Id Nat (len (fixed zs rs)) (len rs) = split {
+    nil -> refl zero ;
+    cons r rs | ih -> ap (\ k -> suc k) ih } ;
+
+  module Fixed (zs : C0.M) (rs : List A.R) (cs : CoeffsA rs zero)
+    (v : C0.M) (hv : P0.Pow (suc (len rs)) v)
+    (star : Id C1.M (L1.msub (d.f zs) (dcomb (fixed zs rs))) (d.f v)) {
+    module K = Correct[zs,zs,fixed zs rs,coeffs-fixed zs rs zero cs,v,
+      subst (\ k -> P0.Pow (suc k) v) (sym (len-fixed zs rs)) hv,
+      P0.pow-tr (suc zero) C0.mz (L0.msub zs zs) (sym (L0.sub-self zs)) (P0.pow-zero (suc zero)),
+      star] ;
+    h : C0.M = K.h ;
+    closed : Id C1.M (d.f h) C1.mz = K.closed ;
+    congruent : P0.Pow (suc zero) (L0.msub h zs) = K.congruent ;
+    -- h = (z* - (sum_i r_i) z*) - v
+    value : Id C0.M h (L0.msub (L0.msub zs (C0.sm (sumA rs) zs)) v) =
+      ap (\ t -> L0.msub (L0.msub zs t) v) (comb-fixed zs rs) ;
+  } ;
+} ;

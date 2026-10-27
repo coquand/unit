@@ -1,0 +1,164 @@
+-- PolyGcd.seg: Théorème 11 of doc/gcd-polynomial.tex.  If A is a gcd domain,
+-- so is A[X] (PolynomialRing.Extension).
+--
+--  * discrete: f = 0 iff its content is 0;
+--  * 1 /= 0: the constant coefficient;
+--  * integral: f_i /= 0, f g = 0: Dedekind-Mertens (ZeroProduct) gives
+--    f_i^(m+1) g_j = 0, so g = 0;
+--  * gcd: f = 0 gives g, g = 0 gives f; otherwise D, lambda of Lemme 10,
+--    D = c(D) E with E primitive, E | f and E | g (Lemme 8), and
+--    G = gamma E, gamma = gcd(c(f), c(g)).  G | f by Gauss (gamma divides
+--    the coefficients of f = E q, hence those of q).  A common divisor
+--    h = c(h) h* of f, g has c(h) | gamma, and h* | c(D) E gives h* | E.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
+ module PB = PolyBase[l].Over[A,G] ;
+ open PB ;
+ module Gd = GcdDomain[l].Gcd[A,G] ;
+ module Dg = Degree[l].Over[A,G] ;
+ module GS = Gauss[l].Over[A,G] ;
+ module EL = Elimination[l].Over[A,G] ;
+ module CW = CoefficientProducts[l].Over[A] ;
+
+ ---------------------------------------------------------------------
+ -- the content
+
+ content (x : Pol) : R = Dg.Cx[x].K.c ;
+ zero-content (x : Pol) (h : Id R (content x) z) : Id Pol x B.zeroQ = Dg.zero-of-coefs x (Dg.Cx[x].K.c-zero h) ;
+ content-zero (x : Pol) (h : (i : Nat) -> Id R (coef x i) z) : Id R (content x) z =
+  div-of-zero (content x) (Dg.Cx[x].K.c-univ z (\ i -> div-eq-right z z (coef x i) (sym (h i)) (div-zero z))) ;
+ zero-coef (x : Pol) (e : Id Pol x B.zeroQ) (i : Nat) : Id R (coef x i) z =
+  trans (ap (\ w -> coef w i) e) (CP.coef-zero i) ;
+ -- h = 0 gives h r = 0
+ zero-mul-coef (h r : Pol) (e : Id Pol h B.zeroQ) (i : Nat) : Id R (coef (B.mulQ h r) i) z =
+  zero-coef (B.mulQ h r) (trans (ap (\ w -> B.mulQ w r) e) (LB.zero-mul r)) i ;
+ -- a divisor of a non-zero polynomial is non-zero
+ nz-div (h f : Pol) (d : DB.Div h f) (hf : Not (Id R (content f) z)) : Not (Id R (content h) z) = \ e ->
+  hf (content-zero f (\ i -> trans (ap (\ w -> coef w i) d.2) (zero-mul-coef h d.1 (zero-content h e) i))) ;
+ -- (c E) q = E (c q)
+ shuffle (c : R) (E q : Pol) : Id Pol (B.mulQ (sc c E) q) (B.mulQ E (sc c q)) =
+  trans (sym (B.mul-assoc (B.constant c) E q)) (LB.mul-swap (B.constant c) E q) ;
+
+ -- Lemme 6: the primitive part
+ module PP (x : Pol) (hc : Not (Id R (content x) z)) {
+  module K = Dg.Cx[x].K ;
+  c : R = content x ;
+  module S = Scalar[c,hc] ;
+  xs : Pol = (S.divide x K.c-div).1 ;
+  eq : Id Pol x (sc c xs) = (S.divide x K.c-div).2 ;
+  prim : Prim xs = \ d hd ->
+   D.div-cancel c d o hc
+    (div-eq-right (mul c d) c (mul c o) (sym (mulO c))
+     (K.c-univ (mul c d) (\ i -> div-eq-right (mul c d) (mul c (coef xs i)) (coef x i)
+        (sym (trans (ap (\ w -> coef w i) eq) (coef-sc c xs i))) (div-scale d (coef xs i) c (hd i))))) ;
+ } ;
+
+ ---------------------------------------------------------------------
+ -- the gcd of two non-zero polynomials
+
+ module Main (f g : Pol) (nf : Not (Id R (content f) z)) (ng : Not (Id R (content g) z)) {
+  el : EL.Elim[f,g] = EL.elimination f g (Dg.dg f) (Dg.dg g) (Dg.dg-bnd f) (Dg.dg-bnd g) ;
+  lam : R = el.lam ;
+  nD : Not (Id R (content el.gd) z) = \ e ->
+   nf (content-zero f (\ i -> D.cancel-zero lam (coef f i) el.lam-nz
+     (trans (sym (coef-sc lam f i)) (trans (ap (\ w -> coef w i) el.div-f.2) (zero-mul-coef el.gd el.div-f.1 (zero-content el.gd e) i))))) ;
+  module PD = PP[el.gd,nD] ;
+  E : Pol = PD.xs ;
+  cD : R = content el.gd ;
+  ef : Id Pol (sc lam f) (B.mulQ E (sc cD el.div-f.1)) =
+   trans el.div-f.2 (trans (ap (\ w -> B.mulQ w el.div-f.1) PD.eq) (shuffle cD E el.div-f.1)) ;
+  eg : Id Pol (sc lam g) (B.mulQ E (sc cD el.div-g.1)) =
+   trans el.div-g.2 (trans (ap (\ w -> B.mulQ w el.div-g.1) PD.eq) (shuffle cD E el.div-g.1)) ;
+  Ef : DB.Div E f = GS.DivPrim[E,f,sc cD el.div-f.1,PD.prim,lam,el.lam-nz,ef].result ;
+  Eg : DB.Div E g = GS.DivPrim[E,g,sc cD el.div-g.1,PD.prim,lam,el.lam-nz,eg].result ;
+  gam : R = Gd.gcd (content f) (content g) ;
+  ngam : Not (Id R gam z) = \ e ->
+   nf (div-of-zero (content f) (div-eq-left gam z (content f) e (Gd.gcd-left (content f) (content g)))) ;
+  Gp : Pol = sc gam E ;
+  -- G divides x, for x = f, g
+  module Part (x : Pol) (dE : DB.Div E x) (dg : Div gam (content x)) {
+   dgi (i : Nat) : Div gam (coef (B.mulQ E dE.1) i) =
+    div-trans gam (content x) (coef (B.mulQ E dE.1) i) dg
+     (div-eq-right (content x) (coef x i) (coef (B.mulQ E dE.1) i) (ap (\ w -> coef w i) dE.2) (Dg.Cx[x].K.c-div i)) ;
+   s : Scalar[gam,ngam].Quot dE.1 = Scalar[gam,ngam].divide dE.1 (GS.GaussAt[gam,ngam].gauss E dE.1 PD.prim dgi) ;
+   result : DB.Div Gp x = (s.1, trans dE.2 (trans (ap (B.mulQ E) s.2) (sym (shuffle gam E s.1)))) ;
+  } ;
+  -- a common divisor divides G
+  module Common (h : Pol) (df : DB.Div h f) (dg : DB.Div h g) {
+   hD : DB.Div h el.gd = el.common h df dg ;
+   nh : Not (Id R (content h) z) = nz-div h f df nf ;
+   module PH = PP[h,nh] ;
+   ch : R = content h ;
+   ch-div (x : Pol) (dx : DB.Div h x) (i : Nat) : Div ch (coef x i) =
+    div-eq-right ch (mul ch (coef (B.mulQ PH.xs dx.1) i)) (coef x i)
+     (sym (trans (ap (\ w -> coef w i) (trans dx.2 (trans (ap (\ w -> B.mulQ w dx.1) PH.eq) (sym (B.mul-assoc (B.constant ch) PH.xs dx.1)))))
+                 (coef-sc ch (B.mulQ PH.xs dx.1) i)))
+     (div-factor ch (coef (B.mulQ PH.xs dx.1) i)) ;
+   ch-gam : Div ch gam = Gd.gcd-univ (content f) (content g) ch
+    (Dg.Cx[f].K.c-univ ch (ch-div f df)) (Dg.Cx[g].K.c-univ ch (ch-div g dg)) ;
+   eD : Id Pol (sc cD E) (B.mulQ PH.xs (sc ch hD.1)) =
+    trans (sym PD.eq) (trans hD.2 (trans (ap (\ w -> B.mulQ w hD.1) PH.eq) (shuffle ch PH.xs hD.1))) ;
+   hsE : DB.Div PH.xs E = GS.DivPrim[PH.xs,E,sc ch hD.1,PH.prim,cD,nD,eD].result ;
+   cC : DB.Div (B.constant ch) (B.constant gam) =
+    (B.constant ch-gam.1, trans (ap B.constant ch-gam.2) (B.constant-mul ch ch-gam.1)) ;
+   result : DB.Div h Gp =
+    DB.div-eq-left (sc ch PH.xs) h Gp (sym PH.eq) (DB.div-mul2 (B.constant ch) (B.constant gam) PH.xs E cC hsE) ;
+  } ;
+  gcdOf : DB.GcdOf f g =
+   (Gp, (Part[f,Ef,Gd.gcd-left (content f) (content g)].result,
+        (Part[g,Eg,Gd.gcd-right (content f) (content g)].result,
+         \ h df dg -> Common[h,df,dg].result))) ;
+ } ;
+
+ byG (f g : Pol) (nf : Not (Id R (content f) z)) : Plus (Id R (content g) z) (Not (Id R (content g) z)) -> DB.GcdOf f g = split {
+  inl e -> (f, (DB.div-refl f, (DB.div-eq-right f B.zeroQ g (sym (zero-content g e)) (DB.div-zero f), \ c hf hg -> hf))) ;
+  inr ng -> Main[f,g,nf,ng].gcdOf } ;
+ byF (f g : Pol) : Plus (Id R (content f) z) (Not (Id R (content f) z)) -> DB.GcdOf f g = split {
+  inl e -> (g, (DB.div-eq-right g B.zeroQ f (sym (zero-content f e)) (DB.div-zero g), (DB.div-refl g, \ c hf hg -> hg))) ;
+  inr nf -> byG f g nf (G.dec (content g)) } ;
+ gcdP (f g : Pol) : DB.GcdOf f g = byF f g (G.dec (content f)) ;
+
+ ---------------------------------------------------------------------
+ -- discrete, 1 /= 0, integral
+
+ byDec (x : Pol) : Plus (Id R (content x) z) (Not (Id R (content x) z)) -> Plus (Id Pol x B.zeroQ) (Not (Id Pol x B.zeroQ)) = split {
+  inl e -> inl (zero-content x e) ;
+  inr n -> inr (\ e -> n (content-zero x (zero-coef x e))) } ;
+ decP (x : Pol) : Plus (Id Pol x B.zeroQ) (Not (Id Pol x B.zeroQ)) = byDec x (G.dec (content x)) ;
+
+ nontrivialP : Not (Id Pol B.oneQ B.zeroQ) = \ e ->
+  G.nontrivial (trans (sym (CP.coef-const0 o)) (zero-coef B.oneQ e zero)) ;
+
+ -- the word (i, .., i) and the power f_i^n /= 0
+ wc (i : Nat) : (n : Nat) -> CW.Word n = split { zero -> tt ; suc n | r -> (i, r) } ;
+ pow-nz (p : PL.P) (i : Nat) (hi : Not (Id R (PL.coef p i) z)) : (n : Nat) -> Not (Id R (CW.product p n (wc i n)) z) = split {
+  zero -> G.nontrivial ;
+  suc n | r -> G.integral (PL.coef p i) (CW.product p n (wc i n)) hi r } ;
+ -- a non-zero list has a non-zero coefficient
+ nz-index (p : PL.P) (hp : Not (Id Pol (B.include p) B.zeroQ)) :
+  (n : Nat) -> C.Bnd n (PL.coef p) -> Dg.TopF n (PL.coef p) -> (i : Nat) * Not (Id R (PL.coef p i) z) = split {
+  zero -> \ b t -> efq (hp (Dg.zero-of-coefs (B.include p) (\ i -> trans (CP.coef-include p i) (b i)))) ;
+  suc n -> \ b t -> (n, t) } ;
+ integral-lists (p : PL.P) (hp : Not (Id Pol (B.include p) B.zeroQ)) :
+  (q : PL.P) -> Not (Id Pol (B.include q) B.zeroQ) -> Id Pol (B.mulQ (B.include p) (B.include q)) B.zeroQ -> Empty = split {
+  nil -> \ hq h -> hq (refl B.zeroQ) ;
+  cons g q -> \ hq h -> hq (Dg.zero-of-coefs (B.include (cons g q)) (\ j -> trans (CP.coef-include (cons g q) j)
+    (D.cancel-zero (CW.product p (suc (len {R} q)) (wc idx.1 (suc (len {R} q)))) (PL.coef (cons g q) j)
+      (pow-nz p idx.1 idx.2 (suc (len {R} q)))
+      (ZeroProduct[l].Over[A,p,g,q,\ k -> trans (sym (coef-mul-include p (cons g q) k)) (zero-coef (B.mulQ (B.include p) (B.include (cons g q))) h k)].result
+        (wc idx.1 (suc (len {R} q))) j))))
+   where { idx : (i : Nat) * Not (Id R (PL.coef p i) z) = nz-index p hp (Dg.deg-list p).1 (Dg.deg-list p).2.1 (Dg.deg-list p).2.2 } } ;
+ Integral (x y : Pol) : U l = Not (Id Pol x B.zeroQ) -> Not (Id Pol y B.zeroQ) -> Not (Id Pol (B.mulQ x y) B.zeroQ) ;
+ integralP : (x y : Pol) -> Integral x y =
+  B.forall2 Integral
+   (\ x y -> FE.isProp-Pi (Not (Id Pol x B.zeroQ)) (\ hx -> Not (Id Pol y B.zeroQ) -> Not (Id Pol (B.mulQ x y) B.zeroQ))
+     (\ hx -> FE.isProp-Pi (Not (Id Pol y B.zeroQ)) (\ hy -> Not (Id Pol (B.mulQ x y) B.zeroQ))
+       (\ hy -> GcdDomain[l].not-prop (Id Pol (B.mulQ x y) B.zeroQ))))
+   (\ p q hp hq h -> integral-lists p hp q hq h) ;
+
+ -- Théorème 11
+ domain : GcdDomain[l].GcdDomain[B.ring] = GcdDomain[l].mkGcdDomain B.ring B.set decP integralP gcdP nontrivialP ;
+} ;

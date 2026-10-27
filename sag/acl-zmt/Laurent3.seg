@@ -1,0 +1,302 @@
+-- Laurent3.seg: Laurent polynomials in X, Y, Z over a commutative ring D,
+-- through their coefficients (handoff §6).
+--
+-- An exponent is m = (m_X, m_Y, m_Z) in Z^3.  A Laurent element is its
+-- coefficient function E3 -> D, and two of them are equal when their
+-- coefficients are (EqL, pointwise; no function extensionality and no
+-- decidable equality in D).  Polynomials are finite lists of terms c X^e;
+-- the product of g with f has coefficients
+--     (g f)(m) = sum_{c X^e in g} c f(m - e) ,
+-- a finite sum.  Every construction of the Cech files is pointwise in m,
+-- except this product.  The localisations of the handoff are the support
+-- conditions of Cech3 (which exponents may be negative); the degree of m is
+-- m_X + m_Y + m_Z, and f is homogeneous of degree k when f(m) = 0 for
+-- deg m /= k.  Only integers are compared, never coefficients.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ;
+module P = Prelude[l] ; module NA = NatArith[l] ; module LG = Logic[l] ;
+
+------------------------------------------------------------------------
+-- exponents
+
+E3 : U l = Int * (Int * Int) ;
+ex (m : E3) : Int = m.1 ;
+ey (m : E3) : Int = m.2.1 ;
+ez (m : E3) : Int = m.2.2 ;
+
+isNeg : Int -> Bool = split { pos n -> false ; negsuc n -> true } ;
+
+-- true /= false
+codeB : Bool -> Bool -> U l = split {
+  true -> split { true -> Top ; false -> Empty } ;
+  false -> split { true -> Empty ; false -> Top } } ;
+codeB-refl : (b : Bool) -> codeB b b = split { true -> tt ; false -> tt } ;
+encodeB (x y : Bool) (p : Id Bool x y) : codeB x y = subst (codeB x) p (codeB-refl x) ;
+
+-- the three signs together
+allNeg (m : E3) : Bool = and (isNeg (ex m)) (and (isNeg (ey m)) (isNeg (ez m))) ;
+
+-- m - e, componentwise, and the degree
+sub3 (m e : E3) : E3 = (add (ex m) (neg (ex e)), (add (ey m) (neg (ey e)), add (ez m) (neg (ez e)))) ;
+deg (m : E3) : Int = add (ex m) (add (ey m) (ez m)) ;
+
+-- Int as an abelian group (the laws of ZInt, in the orientation of AG)
+module ZG = ExteriorAlgebra[l].AG[Int,zeroZ,add,neg,\ x y w -> sym (assoc x y w),comm,\ x -> refl x,invr] ;
+
+-- (a - d) + ((b - e) + (c - f)) = (a + (b + c)) - (d + (e + f))
+deg-sub (m e : E3) : Id Int (deg (sub3 m e)) (add (deg m) (neg (deg e))) =
+  trans (ZG.cong-add (refl (add (ex m) (neg (ex e))))
+            (trans (ZG.swap (ey m) (neg (ey e)) (ez m) (neg (ez e)))
+                    (ZG.cong-add (refl (add (ey m) (ez m))) (sym (ZG.neg-add (ey e) (ez e))))))
+   (trans (ZG.swap (ex m) (neg (ex e)) (add (ey m) (ez m)) (neg (add (ey e) (ez e))))
+           (ZG.cong-add (refl (deg m)) (sym (ZG.neg-add (ex e) (add (ey e) (ez e)))))) ;
+
+-- x - d = k  gives  x = k + d
+sub-solve (x d k : Int) (h : Id Int (add x (neg d)) k) : Id Int x (add k d) =
+  calc Int { x =< ap (add x) (sym (trans (comm (neg d) d) (invr d))) > add x (add (neg d) d)
+               =< sym (assoc x (neg d) d) > add (add x (neg d)) d
+               =< ap (\ t -> add t d) h > add k d } ;
+
+-- negative exponents stay negative under m - e with e >= 0
+pred-neg : (x : Int) -> Id Bool (isNeg x) true -> Id Bool (isNeg (predZ x)) true = split {
+  pos n -> \ h -> P.absurd (Id Bool (isNeg (predZ (pos n))) true) (encodeB false true h) ;
+  negsuc n -> \ h -> refl true } ;
+addN-neg (x : Int) (h : Id Bool (isNeg x) true) : (n : Nat) -> Id Bool (isNeg (addN x n)) true = split {
+  zero -> pred-neg x h ;
+  suc n | r -> pred-neg (addN x n) r } ;
+sub-negPos (x : Int) (h : Id Bool (isNeg x) true) : (n : Nat) -> Id Bool (isNeg (add x (neg (pos n)))) true = split {
+  zero -> h ;
+  suc m -> addN-neg x h m } ;
+sub-neg (x : Int) (h : Id Bool (isNeg x) true) : (e : Int) -> Id Bool (isNeg e) false ->
+  Id Bool (isNeg (add x (neg e))) true = split {
+  pos n -> \ he -> sub-negPos x h n ;
+  negsuc n -> \ he -> P.absurd (Id Bool (isNeg (add x (neg (negsuc n)))) true) (encodeB true false he) } ;
+
+-- an all-negative exponent has degree at most -3, so not -1
+addN-negsuc (a : Nat) : (n : Nat) -> Id Int (addN (negsuc a) n) (negsuc (suc (NA.plus n a))) = split {
+  zero -> refl (negsuc (suc a)) ;
+  suc n | r -> ap predZ r } ;
+allneg-deg (a b c : Nat) : Id Int (deg (negsuc a, (negsuc b, negsuc c))) (negsuc (suc (suc (NA.plus (NA.plus b c) a)))) =
+  trans (ap (add (negsuc a)) (addN-negsuc b c))
+    (trans (addN-negsuc a (suc (NA.plus c b)))
+            (ap (\ k -> negsuc (suc (suc (NA.plus k a)))) (NA.plus-comm c b))) ;
+not-minus-one (w : Nat) (p : Id Int (negsuc (suc w)) (negsuc zero)) : Empty = encode (negsuc (suc w)) (negsuc zero) p ;
+
+allneg-not-minus-one : (x y w : Int) -> Id Bool (allNeg (x,(y,w))) true -> LG.Not (Id Int (deg (x,(y,w))) (negsuc zero)) = split {
+  pos a -> \ y w h -> P.absurd (LG.Not (Id Int (deg (pos a,(y,w))) (negsuc zero))) (encodeB false true h) ;
+  negsuc a -> split {
+    pos b -> \ w h -> P.absurd (LG.Not (Id Int (deg (negsuc a,(pos b,w))) (negsuc zero))) (encodeB false true h) ;
+    negsuc b -> split {
+      pos c -> \ h -> P.absurd (LG.Not (Id Int (deg (negsuc a,(negsuc b,pos c))) (negsuc zero))) (encodeB false true h) ;
+      negsuc c -> \ h p -> not-minus-one (suc (NA.plus (NA.plus b c) a))
+                             (trans (sym (allneg-deg a b c)) p) } } } ;
+
+-- (m - e) - e' = (m - e') - e, and (m - (-e)) - e = m
+neg3 (e : E3) : E3 = (neg (ex e), (neg (ey e), neg (ez e))) ;
+subZ-comm (x e e' : Int) : Id Int (add (add x (neg e)) (neg e')) (add (add x (neg e')) (neg e)) =
+  trans (assoc x (neg e) (neg e')) (trans (ap (add x) (comm (neg e) (neg e'))) (sym (assoc x (neg e') (neg e)))) ;
+sub3-comm (m e e' : E3) : Id E3 (sub3 (sub3 m e) e') (sub3 (sub3 m e') e) =
+  calc E3 { sub3 (sub3 m e) e'
+              =< ap (\ u -> (u, (add (add (ey m) (neg (ey e))) (neg (ey e')), add (add (ez m) (neg (ez e))) (neg (ez e')))))
+                    (subZ-comm (ex m) (ex e) (ex e'))
+              > (add (add (ex m) (neg (ex e'))) (neg (ex e)), (add (add (ey m) (neg (ey e))) (neg (ey e')), add (add (ez m) (neg (ez e))) (neg (ez e'))))
+              =< ap (\ u -> (add (add (ex m) (neg (ex e'))) (neg (ex e)), (u, add (add (ez m) (neg (ez e))) (neg (ez e')))))
+                    (subZ-comm (ey m) (ey e) (ey e'))
+              > (add (add (ex m) (neg (ex e'))) (neg (ex e)), (add (add (ey m) (neg (ey e'))) (neg (ey e)), add (add (ez m) (neg (ez e))) (neg (ez e'))))
+              =< ap (\ u -> (add (add (ex m) (neg (ex e'))) (neg (ex e)), (add (add (ey m) (neg (ey e'))) (neg (ey e)), u)))
+                    (subZ-comm (ez m) (ez e) (ez e'))
+              > sub3 (sub3 m e') e } ;
+subZ-cancel (x e : Int) : Id Int (add (add x (neg (neg e))) (neg e)) x =
+  trans (assoc x (neg (neg e)) (neg e)) (trans (ap (add x) (trans (comm (neg (neg e)) (neg e)) (invr (neg e)))) (refl x)) ;
+sub3-cancel (m e : E3) : Id E3 (sub3 (sub3 m (neg3 e)) e) m =
+  calc E3 { sub3 (sub3 m (neg3 e)) e
+              =< ap (\ u -> (u, (add (add (ey m) (neg (neg (ey e)))) (neg (ey e)), add (add (ez m) (neg (neg (ez e)))) (neg (ez e)))))
+                    (subZ-cancel (ex m) (ex e))
+              > (ex m, (add (add (ey m) (neg (neg (ey e)))) (neg (ey e)), add (add (ez m) (neg (neg (ez e)))) (neg (ez e))))
+              =< ap (\ u -> (ex m, (u, add (add (ez m) (neg (neg (ez e)))) (neg (ez e))))) (subZ-cancel (ey m) (ey e))
+              > (ex m, (ey m, add (add (ez m) (neg (neg (ez e)))) (neg (ez e))))
+              =< ap (\ u -> (ex m, (ey m, u))) (subZ-cancel (ez m) (ez e))
+              > m } ;
+
+------------------------------------------------------------------------
+-- Laurent elements over D
+
+module Over (D : CRing) {
+  module L = RL[D] ;
+  module DG = ExteriorAlgebra[l].AG[D.R,D.z,D.add,D.neg,D.addA,D.addC,D.addZ,D.addN] ;
+
+  Lau : U l = E3 -> D.R ;
+  EqL (f g : Lau) : U l = (m : E3) -> Id D.R (f m) (g m) ;
+
+  zeroL : Lau = \ m -> D.z ;
+  addL (f g : Lau) : Lau = \ m -> D.add (f m) (g m) ;
+  negL (f : Lau) : Lau = \ m -> D.neg (f m) ;
+  subL (f g : Lau) : Lau = \ m -> D.add (f m) (D.neg (g m)) ;
+  scaleL (c : D.R) (f : Lau) : Lau = \ m -> D.mul c (f m) ;
+
+  -- c if b, else 0
+  ifB : Bool -> D.R -> D.R = split { true -> \ c -> c ; false -> \ c -> D.z } ;
+
+  -- polynomials: finite lists of terms c X^e
+  LPoly : U l = List (D.R * E3) ;
+
+  mulP : LPoly -> Lau -> Lau = split {
+    nil -> \ f m -> D.z ;
+    cons t g | r -> \ f m -> D.add (D.mul t.1 (f (sub3 m t.2))) (r f m) } ;
+
+  mulP-cong : (g : LPoly) (f f' : Lau) -> EqL f f' -> EqL (mulP g f) (mulP g f') = split {
+    nil -> \ f f' h m -> refl D.z ;
+    cons t g | r -> \ f f' h m ->
+      DG.cong-add (ap (D.mul t.1) (h (sub3 m t.2))) (r f f' h m) } ;
+
+  -- small ring identities
+  sub-z (x : D.R) : Id D.R (D.add x (D.neg D.z)) x = trans (ap (D.add x) L.neg-zero) (D.addZ x) ;
+  z-sub (x : D.R) : Id D.R (D.add D.z (D.neg x)) (D.neg x) = L.zl (D.neg x) ;
+  -- c (u + v) + (r + s) = (c u + r) + (c v + s)
+  lin-add (c u v r s : D.R) :
+    Id D.R (D.add (D.mul c (D.add u v)) (D.add r s)) (D.add (D.add (D.mul c u) r) (D.add (D.mul c v) s)) =
+    trans (ap (\ t -> D.add t (D.add r s)) (D.dist c u v)) (L.swap (D.mul c u) (D.mul c v) r s) ;
+  -- c (-u) + (-r) = -(c u + r)
+  lin-neg (c u r : D.R) : Id D.R (D.add (D.mul c (D.neg u)) (D.neg r)) (D.neg (D.add (D.mul c u) r)) =
+    trans (ap (\ t -> D.add t (D.neg r)) (L.mul-neg c u)) (sym (L.neg-add (D.mul c u) r)) ;
+  -- c (d u) + d r = d (c u + r)
+  lin-scale (c d u r : D.R) : Id D.R (D.add (D.mul c (D.mul d u)) (D.mul d r)) (D.mul d (D.add (D.mul c u) r)) =
+    trans (ap (\ t -> D.add t (D.mul d r)) (L.mul-swap c d u)) (sym (D.dist d (D.mul c u) r)) ;
+
+  -- the product by a polynomial is linear
+  mulP-zero : (g : LPoly) -> EqL (mulP g zeroL) zeroL = split {
+    nil -> \ m -> refl D.z ;
+    cons t g | r -> \ m -> trans (DG.cong-add (L.mul-zero t.1) (r m)) (D.addZ D.z) } ;
+  mulP-add : (g : LPoly) (f f' : Lau) -> EqL (mulP g (addL f f')) (addL (mulP g f) (mulP g f')) = split {
+    nil -> \ f f' m -> sym (D.addZ D.z) ;
+    cons t g | r -> \ f f' m ->
+      trans (ap (D.add (D.mul t.1 (D.add (f (sub3 m t.2)) (f' (sub3 m t.2))))) (r f f' m))
+            (lin-add t.1 (f (sub3 m t.2)) (f' (sub3 m t.2)) (mulP g f m) (mulP g f' m)) } ;
+  mulP-neg : (g : LPoly) (f : Lau) -> EqL (mulP g (negL f)) (negL (mulP g f)) = split {
+    nil -> \ f m -> sym L.neg-zero ;
+    cons t g | r -> \ f m ->
+      trans (ap (D.add (D.mul t.1 (D.neg (f (sub3 m t.2))))) (r f m))
+            (lin-neg t.1 (f (sub3 m t.2)) (mulP g f m)) } ;
+  mulP-sub (g : LPoly) (f f' : Lau) : EqL (mulP g (subL f f')) (subL (mulP g f) (mulP g f')) =
+    \ m -> trans (mulP-add g f (negL f') m) (ap (D.add (mulP g f m)) (mulP-neg g f' m)) ;
+  mulP-scale : (g : LPoly) (c : D.R) (f : Lau) -> EqL (mulP g (scaleL c f)) (scaleL c (mulP g f)) = split {
+    nil -> \ c f m -> sym (L.mul-zero c) ;
+    cons t g | r -> \ c f m ->
+      trans (ap (D.add (D.mul t.1 (D.mul c (f (sub3 m t.2))))) (r c f m))
+            (lin-scale t.1 c (f (sub3 m t.2)) (mulP g f m)) } ;
+  -- the product by g ++ g' is the sum
+  mulP-app : (g g' : LPoly) (f : Lau) -> EqL (mulP (Bar[l].app g g') f) (addL (mulP g f) (mulP g' f)) = split {
+    nil -> \ g' f m -> sym (L.zl (mulP g' f m)) ;
+    cons t g | r -> \ g' f m ->
+      trans (ap (D.add (D.mul t.1 (f (sub3 m t.2)))) (r g' f m))
+            (D.addA (D.mul t.1 (f (sub3 m t.2))) (mulP g f m) (mulP g' f m)) } ;
+
+  ------------------------------------------------------------------------
+  -- degrees and signs
+
+  Hom (k : Int) (f : Lau) : U l = (m : E3) -> LG.Not (Id Int (deg m) k) -> Id D.R (f m) D.z ;
+
+  -- every term of g has degree d, and nonnegative exponents
+  HomP (d : Nat) : LPoly -> U l = split {
+    nil -> Top ;
+    cons t g | r -> Id Int (deg t.2) (pos d) * r } ;
+  NonNeg : LPoly -> U l = split {
+    nil -> Top ;
+    cons t g | r -> (Id Bool (isNeg (ex t.2)) false * (Id Bool (isNeg (ey t.2)) false * Id Bool (isNeg (ez t.2)) false)) * r } ;
+
+  -- f vanishes where the exponent of X (Y, Z) is negative
+  NNX (f : Lau) : U l = (m : E3) -> Id Bool (isNeg (ex m)) true -> Id D.R (f m) D.z ;
+  NNY (f : Lau) : U l = (m : E3) -> Id Bool (isNeg (ey m)) true -> Id D.R (f m) D.z ;
+  NNZ (f : Lau) : U l = (m : E3) -> Id Bool (isNeg (ez m)) true -> Id D.R (f m) D.z ;
+
+  term-zero (c u r : D.R) (hu : Id D.R u D.z) (hr : Id D.R r D.z) : Id D.R (D.add (D.mul c u) r) D.z =
+    trans (DG.cong-add (trans (ap (D.mul c) hu) (L.mul-zero c)) hr) (D.addZ D.z) ;
+
+  -- a polynomial with nonnegative exponents keeps the support conditions
+  nnx-mul : (g : LPoly) -> NonNeg g -> (f : Lau) -> NNX f -> NNX (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m)
+        (h (sub3 m t.2) (sub-neg (ex m) e (ex t.2) ng.1.1)) (r ng.2 f h m e) } ;
+  nny-mul : (g : LPoly) -> NonNeg g -> (f : Lau) -> NNY f -> NNY (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m)
+        (h (sub3 m t.2) (sub-neg (ey m) e (ey t.2) ng.1.2.1)) (r ng.2 f h m e) } ;
+  nnz-mul : (g : LPoly) -> NonNeg g -> (f : Lau) -> NNZ f -> NNZ (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m)
+        (h (sub3 m t.2) (sub-neg (ez m) e (ez t.2) ng.1.2.2)) (r ng.2 f h m e) } ;
+
+  -- homogeneity: g of degree d and f of degree k give g f of degree k + d
+  hom-mul (k : Int) (d : Nat) (f : Lau) (hf : Hom k f) : (g : LPoly) -> HomP d g -> Hom (add k (pos d)) (mulP g f) = split {
+    nil -> \ hg m ne -> refl D.z ;
+    cons t g | r -> \ hg m ne ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m)
+        (hf (sub3 m t.2) (\ p -> ne (sub-solve (deg m) (pos d) k
+           (trans (sym (trans (deg-sub m t.2) (ap (\ y -> add (deg m) (neg y)) hg.1))) p))))
+        (r hg.2 m ne) } ;
+
+  ------------------------------------------------------------------------
+  -- products by polynomials commute; monomials and scaled lists
+
+  shift (e : E3) (f : Lau) : Lau = \ m -> f (sub3 m e) ;
+  mulP-shift (e : E3) (f : Lau) : (h : LPoly) -> EqL (shift e (mulP h f)) (mulP h (shift e f)) = split {
+    nil -> \ m -> refl D.z ;
+    cons u h | r -> \ m -> DG.cong-add (ap (\ k -> D.mul u.1 (f k)) (sub3-comm m e u.2)) (r m) } ;
+  -- g (h f) = h (g f)
+  mulP-comm : (g h : LPoly) (f : Lau) -> EqL (mulP g (mulP h f)) (mulP h (mulP g f)) = split {
+    nil -> \ h f m -> sym (mulP-zero h m) ;
+    cons t g | r -> \ h f m ->
+      calc D.R { D.add (D.mul t.1 (mulP h f (sub3 m t.2))) (mulP g (mulP h f) m)
+                   =< DG.cong-add (ap (D.mul t.1) (mulP-shift t.2 f h m)) (r h f m)
+                   > D.add (D.mul t.1 (mulP h (shift t.2 f) m)) (mulP h (mulP g f) m)
+                   =< ap (\ y -> D.add y (mulP h (mulP g f) m)) (sym (mulP-scale h t.1 (shift t.2 f) m))
+                   > D.add (mulP h (scaleL t.1 (shift t.2 f)) m) (mulP h (mulP g f) m)
+                   =< sym (mulP-add h (scaleL t.1 (shift t.2 f)) (mulP g f) m)
+                   > mulP h (mulP (cons t g) f) m } } ;
+
+  scaleList (c : D.R) : LPoly -> LPoly = split {
+    nil -> nil ;
+    cons t g | r -> cons (D.mul c t.1, t.2) r } ;
+  mulP-scaleList (c : D.R) : (g : LPoly) (f : Lau) -> EqL (mulP (scaleList c g) f) (scaleL c (mulP g f)) = split {
+    nil -> \ f m -> sym (L.mul-zero c) ;
+    cons t g | r -> \ f m -> trans (DG.cong-add (sym (D.mulA c t.1 (f (sub3 m t.2)))) (r f m))
+                                    (sym (D.dist c (D.mul t.1 (f (sub3 m t.2))) (mulP g f m))) } ;
+  -- the monomial X^e
+  monoP (e : E3) : LPoly = cons (D.o, e) nil ;
+  mulP-mono (e : E3) (f : Lau) (m : E3) : Id D.R (mulP (monoP e) f m) (f (sub3 m e)) =
+    trans (D.addZ (D.mul D.o (f (sub3 m e)))) (L.one-left (f (sub3 m e))) ;
+  -- X^-e X^e f = f
+  mono-cancel (e : E3) (f : Lau) : EqL (mulP (monoP (neg3 e)) (mulP (monoP e) f)) f =
+    \ m -> trans (mulP-mono (neg3 e) (mulP (monoP e) f) m)
+             (trans (mulP-mono e f (sub3 m (neg3 e))) (ap f (sub3-cancel m e))) ;
+
+  ------------------------------------------------------------------------
+  -- one variable at a time; degrees in Z
+
+  -- the exponents of X (of Y) in g are >= 0
+  NonNegX : LPoly -> U l = split { nil -> Top ; cons t g | r -> Id Bool (isNeg (ex t.2)) false * r } ;
+  NonNegY : LPoly -> U l = split { nil -> Top ; cons t g | r -> Id Bool (isNeg (ey t.2)) false * r } ;
+  nnx-mulX : (g : LPoly) -> NonNegX g -> (f : Lau) -> NNX f -> NNX (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m) (h (sub3 m t.2) (sub-neg (ex m) e (ex t.2) ng.1)) (r ng.2 f h m e) } ;
+  nny-mulY : (g : LPoly) -> NonNegY g -> (f : Lau) -> NNY f -> NNY (mulP g f) = split {
+    nil -> \ ng f h m e -> refl D.z ;
+    cons t g | r -> \ ng f h m e ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m) (h (sub3 m t.2) (sub-neg (ey m) e (ey t.2) ng.1)) (r ng.2 f h m e) } ;
+  -- every term of g has degree k'
+  HomPI (k' : Int) : LPoly -> U l = split { nil -> Top ; cons t g | r -> Id Int (deg t.2) k' * r } ;
+  hom-mulI (k k' : Int) (f : Lau) (hf : Hom k f) : (g : LPoly) -> HomPI k' g -> Hom (add k k') (mulP g f) = split {
+    nil -> \ hg m ne -> refl D.z ;
+    cons t g | r -> \ hg m ne ->
+      term-zero t.1 (f (sub3 m t.2)) (mulP g f m)
+        (hf (sub3 m t.2) (\ p -> ne (sub-solve (deg m) k' k
+           (trans (sym (trans (deg-sub m t.2) (ap (\ y -> add (deg m) (neg y)) hg.1))) p))))
+        (r hg.2 m ne) } ;
+  neg-nnx (f : Lau) (h : NNX f) : NNX (negL f) = \ m e -> trans (ap D.neg (h m e)) L.neg-zero ;
+  neg-nny (f : Lau) (h : NNY f) : NNY (negL f) = \ m e -> trans (ap D.neg (h m e)) L.neg-zero ;
+  neg-hom (k : Int) (f : Lau) (h : Hom k f) : Hom k (negL f) = \ m ne -> trans (ap D.neg (h m ne)) L.neg-zero ;
+  hom-tr (k k' : Int) (e : Id Int k k') (f : Lau) (h : Hom k f) : Hom k' f = subst (\ j -> Hom j f) e h ;
+} ;

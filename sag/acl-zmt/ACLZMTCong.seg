@@ -1,0 +1,295 @@
+-- ACLZMTCong.seg: the conditional ZMT certificate with congruences
+-- (acl-zmt-formalisation.tex, Remarque (représentation) and section « Deux
+-- raccourcis »; Liste de formalisation, item 2).  CONDITIONAL: every datum
+-- below is a parameter; CechZMT constructs them for the Cech model.
+--
+-- Differences with ACLZMT:
+--   * equalities in K1 and in C0 are replaced by congruences modulo
+--     submodules N1 of K1 and N0 of C0 (ReesLiftingCong.Sub), and the
+--     restriction res : C0 -> L kills N0;
+--   * gen1 is replaced by its only instance, the classes
+--     beta_n : d0 z* - (G rho_n + d0 v_n) in N1 (ReesLiftingCong);
+--   * gen2 / one-comb are replaced by the shortcut (F2): a closed section c
+--     (Closed c: data, a witness) has coordinates kappa(c) in A^s and a
+--     linear Phi : A^s -> C0 with  c - Phi(kappa c) in N0 .
+-- Closed sections are stable under products (closed-mul) and contain 1.
+--
+-- Proof of the monic equations (no generators, no IntegralSections).  For
+-- c closed, consider the sequence kappa(c^0), kappa(c^1), ...  Coded
+-- noetherianity of A (GradedDependence with the ideal I = (1,0), so that
+-- every element is in I^n) gives merely M and a list rs with
+--     kappa(c^M) = sum_{x :: xs in rs} x kappa(c^(len xs)) ,  M = len rs .
+-- Then c^M - sum x c^(len xs) = (c^M - Phi kappa(c^M))
+--   - (sum x c^(len xs) - Phi (sum x kappa(c^(len xs))))  is in N0, so after
+-- restriction  res(c)^M = sum iota(x) res(c)^(len xs) : res(c) is a root of
+-- the monic polynomial  X^M - sum x X^(len xs)  (MonicRel).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ;
+module H = RingHom[l] ; module IP = IdealPowers[l] ; module RC = ReesLiftingCong[l] ;
+module AZ = ACLZMT[l] ;
+
+------------------------------------------------------------------------
+-- a root of  X^M - sum_{x :: xs} x X^(len xs)
+
+module MonicRel (A : CRing) (setA : Pr.isSet A.R) (Lg : CRing) (setL : Pr.isSet Lg.R) (iota : H.Hom A Lg) (v : Lg.R) {
+  module CP = CharPoly[l].Over[A,setA] ;
+  module B = CP.B ;
+  module LA = RL[A] ; module LL = RL[Lg] ;
+  module UG = Universal[l].Property[A,Lg,setA,setL].Given[iota,v] ;
+  ev (f : B.Carrier) : Lg.R = UG.extend.1 f ;
+
+  MonicRoot : U l =
+    (m : Nat) * ((f : B.Carrier) * (CP.Bounded (suc m) f * (Id A.R (CP.coef f m) A.o * Id Lg.R (ev f) Lg.z))) ;
+
+  q : B.Carrier = B.addQ (B.mulQ B.variable (B.constant A.o)) (B.constant A.z) ;
+  xp : Nat -> B.Carrier = split { zero -> B.oneQ ; suc n | r -> B.mulQ r q } ;
+  T : List A.R -> B.Carrier = split {
+    nil -> B.zeroQ ;
+    cons x xs | r -> B.addQ (B.mulQ (B.constant x) (xp (len xs))) r } ;
+  f (rs : List A.R) : B.Carrier = B.addQ (xp (len rs)) (B.negQ (T rs)) ;
+
+  -- degrees and leading coefficients
+  lead-tr (k : Nat) (g : B.Carrier) (c c' : A.R) (e : Id A.R c c') (h : CP.Lead k g c) : CP.Lead k g c' =
+    subst (CP.Lead k g) e h ;
+  lead-xp : (n : Nat) -> CP.Lead n (xp n) A.o = split {
+    zero -> CP.lead-one ;
+    suc n | r -> lead-tr (suc n) (xp (suc n)) (A.mul A.o A.o) A.o (A.mulO A.o)
+                   (CP.Times[n,xp n,q,A.o,A.o,r,CP.lead-linear A.o A.z].result) } ;
+  -- c X^n has degree <= n with leading coefficient c
+  lead-cx (c : A.R) (n : Nat) : CP.Lead n (B.mulQ (B.constant c) (xp n)) c =
+    (\ i -> trans (CP.coef-scale c (xp n) (plus (suc n) i)) (trans (ap (A.mul c) ((lead-xp n).1 i)) (LA.mul-zero c)),
+     trans (CP.coef-scale c (xp n) n) (trans (ap (A.mul c) (lead-xp n).2) (A.mulO c))) ;
+  -- degree <= k gives degree <= k with X^k-coefficient 0
+  lead-up (k : Nat) (g : B.Carrier) (h : CP.Bounded k g) : CP.Lead k g A.z =
+    (\ i -> trans (ap (CP.coef g) (sym (plus-suc k i))) (h (suc i)),
+     trans (ap (CP.coef g) (sym (plus-zero k))) (h zero)) ;
+  lead-T : (rs : List A.R) -> CP.Lead (len rs) (T rs) A.z = split {
+    nil -> CP.lead-zero zero ;
+    cons x xs | r -> lead-up (suc (len xs)) (T (cons x xs))
+      (\ i -> trans (CP.coef-add (B.mulQ (B.constant x) (xp (len xs))) (T xs) (plus (suc (len xs)) i))
+                (trans (Ps.cong2 A.R A.add _ _ _ _ ((lead-cx x (len xs)).1 i) (r.1 i)) (A.addZ A.z))) } ;
+  lead-f (rs : List A.R) : CP.Lead (len rs) (f rs) A.o =
+    lead-tr (len rs) (f rs) (A.add A.o (A.neg A.z)) A.o (trans (ap (A.add A.o) LA.neg-zero) (A.addZ A.o))
+      (CP.lead-add (len rs) (xp (len rs)) (B.negQ (T rs)) A.o (A.neg A.z) (lead-xp (len rs))
+         (CP.lead-neg (len rs) (T rs) A.z (lead-T rs))) ;
+
+  -- evaluation
+  pow (u : Lg.R) : Nat -> Lg.R = split { zero -> Lg.o ; suc n | r -> Lg.mul r u } ;
+  ev-add (g g' : B.Carrier) : Id Lg.R (ev (B.addQ g g')) (Lg.add (ev g) (ev g')) = UG.extend.2.2.1 g g' ;
+  ev-mul (g g' : B.Carrier) : Id Lg.R (ev (B.mulQ g g')) (Lg.mul (ev g) (ev g')) = UG.extend.2.2.2 g g' ;
+  ev-const (c : A.R) : Id Lg.R (ev (B.constant c)) (iota.1 c) = UG.on-constants c ;
+  ev-q : Id Lg.R (ev q) v =
+    calc Lg.R { ev q =< ev-add (B.mulQ B.variable (B.constant A.o)) (B.constant A.z)
+                     > Lg.add (ev (B.mulQ B.variable (B.constant A.o))) (ev (B.constant A.z))
+                     =< Ps.cong2 Lg.R Lg.add _ _ _ _ (trans (ev-mul B.variable (B.constant A.o))
+                           (Ps.cong2 Lg.R Lg.mul _ _ _ _ UG.on-variable (trans (ev-const A.o) iota.2.1)))
+                           (trans (ev-const A.z) (H.zero A Lg iota))
+                     > Lg.add (Lg.mul v Lg.o) Lg.z
+                     =< trans (Lg.addZ (Lg.mul v Lg.o)) (Lg.mulO v) > v } ;
+  ev-xp : (n : Nat) -> Id Lg.R (ev (xp n)) (pow v n) = split {
+    zero -> trans (ev-const A.o) iota.2.1 ;
+    suc n | r -> trans (ev-mul (xp n) q) (Ps.cong2 Lg.R Lg.mul _ _ _ _ r ev-q) } ;
+  -- the sum  sum_{x :: xs} iota(x) v^(len xs)
+  S : List A.R -> Lg.R = split {
+    nil -> Lg.z ;
+    cons x xs | r -> Lg.add (Lg.mul (iota.1 x) (pow v (len xs))) r } ;
+  ev-T : (rs : List A.R) -> Id Lg.R (ev (T rs)) (S rs) = split {
+    nil -> H.zero B.ring Lg UG.extend ;
+    cons x xs | r -> trans (ev-add (B.mulQ (B.constant x) (xp (len xs))) (T xs))
+      (Ps.cong2 Lg.R Lg.add _ _ _ _ (trans (ev-mul (B.constant x) (xp (len xs))) (Ps.cong2 Lg.R Lg.mul _ _ _ _ (ev-const x) (ev-xp (len xs)))) r) } ;
+  ev-neg (g : B.Carrier) : Id Lg.R (ev (B.negQ g)) (Lg.neg (ev g)) = H.negation B.ring Lg UG.extend g ;
+
+  monic (rs : List A.R) (rel : Id Lg.R (pow v (len rs)) (S rs)) : MonicRoot =
+    (len rs, (f rs, ((lead-f rs).1, ((lead-f rs).2,
+      calc Lg.R { ev (f rs) =< ev-add (xp (len rs)) (B.negQ (T rs)) > Lg.add (ev (xp (len rs))) (ev (B.negQ (T rs)))
+                    =< Ps.cong2 Lg.R Lg.add _ _ _ _ (trans (ev-xp (len rs)) rel) (trans (ev-neg (T rs)) (ap Lg.neg (ev-T rs)))
+                    > Lg.add (S rs) (Lg.neg (S rs))
+                    =< Lg.addN (S rs) > Lg.z })))) ;
+} ;
+
+------------------------------------------------------------------------
+-- the theorem
+
+module Over (A : CRing) (setA : Pr.isSet A.R)
+  (PA : Span[l].Pres[A]) (nA : Span[l].Over[A,PA].Noeth)
+  (onto : (c : A.R) -> Tr.Trunc[(k : PA.K) * Id A.R (PA.phi k) c].carrier)
+  (a b : A.R)
+  (Lg : CRing) (setL : Pr.isSet Lg.R) (iota : H.Hom A Lg) (x y : Lg.R)
+  -- the lifting: Cech cochains of degree -1, modulo N1
+  (K0 K1 : IP.Mod[A]) (d0 : IP.Lin[A,K0,K1]) (N1 : RC.Sub[A,K1])
+  (zs : K0.M)
+  (r : Nat) (e : Ps.Fin r -> Nat)
+  (G : IP.Lin[A,ReesLifting[l].Free[A,r].mod,K1])
+  (rho : Nat -> Ps.Fin r -> A.R)
+  (deg : (n : Nat) (k : Ps.Fin r) ->
+     Plus ((dd : Nat) * (Id Nat n (plus dd (e k)) * IP.Over[A,IP.regular A,a,b].Pow dd (rho n k))) (Id A.R (rho n k) A.z))
+  (v : Nat -> K0.M) (hv : (n : Nat) -> IP.Over[A,K0,a,b].Pow n (v n))
+  (beta : (n : Nat) -> N1.N (IP.ModL[A,K1].msub (d0.f zs) (K1.madd (G.f (rho n)) (d0.f (v n)))))
+  -- sections of degree 0, modulo N0, and the restriction to the chart Z
+  (C0 : IP.Mod[A]) (N0 : RC.Sub[A,C0])
+  (mX mY mZ : IP.Lin[A,K0,C0])
+  (Closed : C0.M -> U l)
+  (closedX : (w : K0.M) -> N1.N (d0.f w) -> Closed (mX.f w))
+  (closedY : (w : K0.M) -> N1.N (d0.f w) -> Closed (mY.f w))
+  (closedZ : (w : K0.M) -> N1.N (d0.f w) -> Closed (mZ.f w))
+  (mulC : C0.M -> C0.M -> C0.M) (oneC : C0.M) (closed-one : Closed oneC)
+  (closed-mul : (c c' : C0.M) -> Closed c -> Closed c' -> Closed (mulC c c'))
+  (res : IP.Lin[A,C0,AZ.LinearTarget[A,Lg,iota].mod])
+  (res-N0 : (c : C0.M) -> N0.N c -> Id Lg.R (res.f c) Lg.z)
+  (res-one : Id Lg.R (res.f oneC) Lg.o)
+  (res-mul : (c c' : C0.M) -> Id Lg.R (res.f (mulC c c')) (Lg.mul (res.f c) (res.f c')))
+  (chartX : (w : K0.M) -> Id Lg.R (res.f (mX.f w)) (Lg.mul x (res.f (mZ.f w))))
+  (chartY : (w : K0.M) -> Id Lg.R (res.f (mY.f w)) (Lg.mul y (res.f (mZ.f w))))
+  (zs-res : Id Lg.R (res.f (mZ.f zs)) Lg.o)
+  -- (F2), the shortcut: coordinates of closed sections
+  (s : Nat) (kappa : (c : C0.M) -> Closed c -> Ps.Fin s -> A.R)
+  (Phi : IP.Lin[A,ReesLifting[l].Free[A,s].mod,C0])
+  (decomp : (c : C0.M) (hc : Closed c) -> N0.N (IP.ModL[A,C0].msub c (Phi.f (kappa c hc)))) {
+
+  module LT = AZ.LinearTarget[A,Lg,iota] ;
+  module LL = RL[Lg] ; module LA = RL[A] ;
+  module L0 = IP.ModL[A,K0] ; module LC = IP.ModL[A,C0] ; module LLT = IP.ModL[A,LT.mod] ;
+  module P0 = IP.Over[A,K0,a,b] ;
+  module NC = RC.SubL[A,C0,N0] ;
+  module FS = ReesLifting[l].Free[A,s] ;
+  module RLC = RC.Over[A,setA,PA,nA,onto,a,b,K0,K1,d0,N1,zs,r,e,G,rho,deg,v,hv,beta] ;
+
+  res-zero : Id Lg.R (res.f C0.mz) Lg.z = AZ.LinSum[A,C0,LT.mod,res].zero ;
+  res-neg (c : C0.M) : Id Lg.R (res.f (C0.mneg c)) (Lg.neg (res.f c)) =
+    LLT.G.neg-uniq (res.f c) (res.f (C0.mneg c)) (trans (sym (res.f-add c (C0.mneg c))) (trans (ap res.f (C0.maddN c)) res-zero)) ;
+
+  ------------------------------------------------------------------------
+  -- powers of a closed section
+
+  pw (c : C0.M) : Nat -> C0.M = split { zero -> oneC ; suc n | rr -> mulC rr c } ;
+  closed-pw (c : C0.M) (hc : Closed c) : (n : Nat) -> Closed (pw c n) = split {
+    zero -> closed-one ;
+    suc n | rr -> closed-mul (pw c n) c rr hc } ;
+
+  -- every element is in (1,0)^n
+  module P1 = IP.Over[A,IP.regular A,A.o,A.z] ;
+  all-pow : (n : Nat) (u : A.R) -> P1.Pow n u = split {
+    zero -> \ u -> tt ;
+    suc n | rr -> \ u -> (u, (A.z, (rr u, (rr A.z,
+      sym (trans (ap (\ t -> A.add t (A.mul A.z A.z)) (LA.one-left u)) (trans (ap (A.add u) (LA.mul-zero A.z)) (A.addZ u))))))) } ;
+
+  ------------------------------------------------------------------------
+  -- one closed section has a monic equation, merely
+
+  module Walk (c : C0.M) (hc : Closed c) {
+    module MR = MonicRel[A,setA,Lg,setL,iota,res.f c] ;
+    kap (n : Nat) : FS.Vec = kappa (pw c n) (closed-pw c hc n) ;
+    rhoW : Nat -> Ps.Fin s -> A.R = split { zero -> \ k -> A.z ; suc n -> kap n } ;
+    degW (n : Nat) (k : Ps.Fin s) :
+      Plus ((dd : Nat) * (Id Nat n (plus dd zero) * P1.Pow dd (rhoW n k))) (Id A.R (rhoW n k) A.z) =
+      inl (n, (sym (plus-zero n), all-pow n (rhoW n k))) ;
+    module GD1 = GradedDependence[l].Over[A,setA,PA,nA,onto,A.o,A.z] ;
+    module SQ = GD1.Rees[s,\ k -> zero].Seq[rhoW,degW] ;
+
+    -- sum_{x :: xs} x c^(len xs), and its coordinates
+    cSum : List A.R -> C0.M = split {
+      nil -> C0.mz ;
+      cons u us | rr -> C0.madd (C0.sm u (pw c (len us))) rr } ;
+    kSum (rs : List A.R) : FS.Vec = \ k -> SQ.sumRel k rs ;
+    Phi-zero : Id C0.M (Phi.f (\ k -> A.z)) C0.mz =
+      trans (ap Phi.f (sym (IP.ModL[A,FS.mod].zero-sm (\ k -> A.z)))) (trans (Phi.f-sm A.z (\ k -> A.z)) (LC.zero-sm (Phi.f (\ k -> A.z)))) ;
+    -- (u p + q) - (u p' + q') = u (p - p') + (q - q')
+    lin-step (u : A.R) (p p' q q' : C0.M) :
+      Id C0.M (LC.msub (C0.madd (C0.sm u p) q) (C0.madd (C0.sm u p') q')) (C0.madd (C0.sm u (LC.msub p p')) (LC.msub q q')) =
+      trans (LC.sub-swap (C0.sm u p) q (C0.sm u p') q') (ap (\ t -> C0.madd t (LC.msub q q')) (sym (LC.sm-sub u p p'))) ;
+    csum-in : (rs : List A.R) -> N0.N (LC.msub (cSum rs) (Phi.f (kSum rs))) = split {
+      nil -> NC.n-tr C0.mz (LC.msub C0.mz (Phi.f (kSum nil)))
+               (sym (trans (ap (LC.msub C0.mz) Phi-zero) (C0.maddN C0.mz))) N0.n-zero ;
+      cons u us | rr -> NC.n-tr (C0.madd (C0.sm u (LC.msub (pw c (len us)) (Phi.f (kap (len us))))) (LC.msub (cSum us) (Phi.f (kSum us))))
+          (LC.msub (cSum (cons u us)) (Phi.f (kSum (cons u us))))
+          (sym (trans (ap (LC.msub (cSum (cons u us)))
+                        (trans (Phi.f-add (FS.mod.sm u (kap (len us))) (kSum us)) (ap (\ t -> C0.madd t (Phi.f (kSum us))) (Phi.f-sm u (kap (len us))))))
+                      (lin-step u (pw c (len us)) (Phi.f (kap (len us))) (cSum us) (Phi.f (kSum us)))))
+          (N0.n-add (C0.sm u (LC.msub (pw c (len us)) (Phi.f (kap (len us))))) (LC.msub (cSum us) (Phi.f (kSum us)))
+             (N0.n-sm u (LC.msub (pw c (len us)) (Phi.f (kap (len us)))) (decomp (pw c (len us)) (closed-pw c hc (len us))))
+             rr) } ;
+
+    -- the restriction
+    res-pw : (n : Nat) -> Id Lg.R (res.f (pw c n)) (MR.pow (res.f c) n) = split {
+      zero -> res-one ;
+      suc n | rr -> trans (res-mul (pw c n) c) (ap (\ t -> Lg.mul t (res.f c)) rr) } ;
+    res-csum : (rs : List A.R) -> Id Lg.R (res.f (cSum rs)) (MR.S rs) = split {
+      nil -> res-zero ;
+      cons u us | rr -> trans (res.f-add (C0.sm u (pw c (len us))) (cSum us))
+        (Ps.cong2 Lg.R Lg.add _ _ _ _ (trans (res.f-sm u (pw c (len us))) (ap (Lg.mul (iota.1 u)) (res-pw (len us)))) rr) } ;
+
+    module From (rs : List A.R) (rel : (k : Ps.Fin s) -> Id A.R (rhoW (suc (len rs)) k) (SQ.sumRel k rs)) {
+      M : Nat = len rs ;
+      rel-vec : Id FS.Vec (kap M) (kSum rs) = FS.ext (kap M) (kSum rs) rel ;
+      -- c^M - sum x c^(len xs) is in N0
+      diff : N0.N (LC.msub (pw c M) (cSum rs)) =
+        NC.n-tr (LC.msub (LC.msub (pw c M) (Phi.f (kSum rs))) (LC.msub (cSum rs) (Phi.f (kSum rs))))
+                (LC.msub (pw c M) (cSum rs)) (LC.sub-cancel (pw c M) (cSum rs) (Phi.f (kSum rs)))
+          (NC.n-sub (LC.msub (pw c M) (Phi.f (kSum rs))) (LC.msub (cSum rs) (Phi.f (kSum rs)))
+             (NC.n-tr (LC.msub (pw c M) (Phi.f (kap M))) (LC.msub (pw c M) (Phi.f (kSum rs)))
+                (ap (\ t -> LC.msub (pw c M) (Phi.f t)) rel-vec) (decomp (pw c M) (closed-pw c hc M)))
+             (csum-in rs)) ;
+      res-eq : Id Lg.R (MR.pow (res.f c) M) (MR.S rs) =
+        trans (sym (res-pw M))
+          (trans (LLT.sub-zero (res.f (pw c M)) (res.f (cSum rs))
+                    (trans (sym (trans (res.f-add (pw c M) (C0.mneg (cSum rs)))
+                                       (ap (Lg.add (res.f (pw c M))) (res-neg (cSum rs)))))
+                           (res-N0 (LC.msub (pw c M) (cSum rs)) diff)))
+                 (res-csum rs)) ;
+      root : MR.MonicRoot = MR.monic rs res-eq ;
+    } ;
+
+    module TM = Tr.Trunc[MR.MonicRoot] ;
+    monic : TM.carrier =
+      SQ.TR.induction @l (\ u -> TM.carrier) (\ u -> TM.proposition)
+        (\ w -> TM.inc (From[w.1,w.2.2].root)) SQ.dependence ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the certificate
+
+  MonicRoot (w : Lg.R) : U l = MonicRel[A,setA,Lg,setL,iota,w].MonicRoot ;
+  Certificate : U l =
+    (sv : Lg.R) * (((rr tt' : Lg.R) * Id Lg.R sv (Lg.add Lg.o (Lg.add (Lg.mul (iota.1 a) rr) (Lg.mul (iota.1 b) tt'))))
+      * (MonicRoot sv * (MonicRoot (Lg.mul sv x) * MonicRoot (Lg.mul sv y)))) ;
+  module TC = Tr.Trunc[Certificate] ;
+
+  module From (h : K0.M) (closed : N1.N (d0.f h)) (cong : P0.Pow (suc zero) (L0.msub h zs)) {
+    sv : Lg.R = res.f (mZ.f h) ;
+    sx : Id Lg.R (res.f (mX.f h)) (Lg.mul sv x) = trans (chartX h) (Lg.mulC x sv) ;
+    sy : Id Lg.R (res.f (mY.f h)) (Lg.mul sv y) = trans (chartY h) (Lg.mulC y sv) ;
+    m1 : K0.M = cong.1 ;
+    m2 : K0.M = cong.2.1 ;
+    split-h : Id K0.M (K0.madd zs (L0.msub h zs)) h =
+      trans (K0.maddC zs (L0.msub h zs))
+        (trans (sym (K0.maddA h (K0.mneg zs) zs)) (trans (ap (K0.madd h) (trans (K0.maddC (K0.mneg zs) zs) (K0.maddN zs))) (K0.maddZ h))) ;
+    resZ-add (u w : K0.M) : Id Lg.R (res.f (mZ.f (K0.madd u w))) (Lg.add (res.f (mZ.f u)) (res.f (mZ.f w))) =
+      trans (ap res.f (mZ.f-add u w)) (res.f-add (mZ.f u) (mZ.f w)) ;
+    resZ-sm (c : A.R) (u : K0.M) : Id Lg.R (res.f (mZ.f (K0.sm c u))) (Lg.mul (iota.1 c) (res.f (mZ.f u))) =
+      trans (ap res.f (mZ.f-sm c u)) (res.f-sm c (mZ.f u)) ;
+    residual : Id Lg.R sv (Lg.add Lg.o (Lg.add (Lg.mul (iota.1 a) (res.f (mZ.f m1))) (Lg.mul (iota.1 b) (res.f (mZ.f m2))))) =
+      calc Lg.R {
+        sv =< ap (\ t -> res.f (mZ.f t)) (sym split-h) > res.f (mZ.f (K0.madd zs (L0.msub h zs)))
+           =< resZ-add zs (L0.msub h zs) > Lg.add (res.f (mZ.f zs)) (res.f (mZ.f (L0.msub h zs)))
+           =< IP.ModL[A,LT.mod].G.cong-add zs-res
+                (trans (ap (\ t -> res.f (mZ.f t)) cong.2.2.2.2)
+                  (trans (resZ-add (K0.sm a m1) (K0.sm b m2))
+                    (IP.ModL[A,LT.mod].G.cong-add (resZ-sm a m1) (resZ-sm b m2))))
+           > Lg.add Lg.o (Lg.add (Lg.mul (iota.1 a) (res.f (mZ.f m1))) (Lg.mul (iota.1 b) (res.f (mZ.f m2)))) } ;
+    module WZ = Walk[mZ.f h,closedZ h closed] ;
+    module WX = Walk[mX.f h,closedX h closed] ;
+    module WY = Walk[mY.f h,closedY h closed] ;
+    cert : TC.carrier =
+      WZ.TM.induction @l (\ u -> TC.carrier) (\ u -> TC.proposition) (\ rz ->
+        WX.TM.induction @l (\ u -> TC.carrier) (\ u -> TC.proposition) (\ rx ->
+          WY.TM.induction @l (\ u -> TC.carrier) (\ u -> TC.proposition) (\ ry ->
+            TC.inc (sv, ((res.f (mZ.f m1), (res.f (mZ.f m2), residual)),
+                         (rz, (subst MonicRoot sx rx, subst MonicRoot sy ry)))))
+            WY.monic) WX.monic) WZ.monic ;
+  } ;
+
+  -- the conditional theorem
+  certificate : TC.carrier =
+    RLC.TL.induction @l (\ u -> TC.carrier) (\ u -> TC.proposition)
+      (\ lf -> From[lf.1,lf.2.1,lf.2.2].cert) RLC.lift ;
+} ;

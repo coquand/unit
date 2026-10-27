@@ -1,0 +1,245 @@
+-- CechContraction.seg: the monomial contractions of the Cech complex
+-- (finite-cohomology.tex §2; handoff §6).
+--
+-- For a Laurent element q, pi(q) keeps the monomials with all three
+-- exponents negative.  sigma(q) places each other monomial m, with i the
+-- first index whose exponent is >= 0, with sign (-1)^i in the component
+-- omitting i:
+--     X >= 0               : +m in YZ
+--     X < 0, Y >= 0        : -m in XZ
+--     X < 0, Y < 0, Z >= 0 : +m in XY .
+-- Then  q = pi(q) + delta1 sigma(q)  (decomp), and sigma(q) satisfies the
+-- support conditions (supp-sigma).  Only exponents are compared.
+--
+-- For a 1-cochain b, with E the set of negative exponents of m:
+--     E = {}  : (0, b_XY, b_XZ)      E = {X} : (-b_XY, 0, 0)
+--     E = {Y} : (0, b_XY, 0)         E = {Z} : (0, 0, b_XZ)
+--     |E| >= 2 : 0 ,
+-- that is, tau(b)_X = -b_XY on E = {X}, tau(b)_Y = b_XY on X, Z >= 0,
+-- tau(b)_Z = b_XZ on X, Y >= 0.  If b satisfies the support conditions and
+-- delta1 b = 0, then delta0 tau(b) = b, in every degree (contraction); the
+-- proof is the case analysis on E, with the support conditions killing the
+-- components that cannot occur and delta1 b = 0 relating the others.
+-- In degree -1, pi = 0 (an all-negative exponent has degree <= -3), so
+-- delta1 sigma(q) = q (pi-kill gives the instance used in CechH1Finite).
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+
+module Over (D : CRing) {
+  module LO = Laurent3[l].Over[D] ; open LO ;
+  module CO = Cech3[l].Over[D] ; open CO ;
+
+  nx (m : E3) : Bool = isNeg (ex m) ;
+  ny (m : E3) : Bool = isNeg (ey m) ;
+  nz (m : E3) : Bool = isNeg (ez m) ;
+
+  ------------------------------------------------------------------------
+  -- pi and sigma
+
+  -- the coefficient selections, as functions of the three signs
+  selPi (bx by bz : Bool) (v : D.R) : D.R = ifB (and bx (and by bz)) v ;
+  selXY (bx by bz : Bool) (v : D.R) : D.R = ifB (and bx (and by (not bz))) v ;
+  selXZ (bx by bz : Bool) (v : D.R) : D.R = ifB (and bx (not by)) (D.neg v) ;
+  selYZ (bx by bz : Bool) (v : D.R) : D.R = ifB (not bx) v ;
+
+  pi (q : Lau) : Lau = \ m -> selPi (nx m) (ny m) (nz m) (q m) ;
+  sigma (q : Lau) : Tri =
+    mkT (\ m -> selXY (nx m) (ny m) (nz m) (q m))
+        (\ m -> selXZ (nx m) (ny m) (nz m) (q m))
+        (\ m -> selYZ (nx m) (ny m) (nz m) (q m)) ;
+
+  -- 0 + ((v - 0) + 0) = v
+  dec-yz (v : D.R) : Id D.R (D.add D.z (D.add (D.add v (D.neg D.z)) D.z)) v =
+    trans (L.zl (D.add (D.add v (D.neg D.z)) D.z)) (trans (D.addZ (D.add v (D.neg D.z))) (sub-z v)) ;
+  -- 0 + ((0 - -v) + 0) = v
+  dec-xz (v : D.R) : Id D.R (D.add D.z (D.add (D.add D.z (D.neg (D.neg v))) D.z)) v =
+    trans (L.zl (D.add (D.add D.z (D.neg (D.neg v))) D.z))
+      (trans (D.addZ (D.add D.z (D.neg (D.neg v)))) (trans (L.zl (D.neg (D.neg v))) (L.neg-neg v))) ;
+  -- (0 - 0) + v = v
+  zz-add (v : D.R) : Id D.R (D.add (D.add D.z (D.neg D.z)) v) v =
+    trans (ap (\ t -> D.add t v) (D.addN D.z)) (L.zl v) ;
+  -- 0 + ((0 - 0) + v) = v
+  dec-xy (v : D.R) : Id D.R (D.add D.z (D.add (D.add D.z (D.neg D.z)) v)) v =
+    trans (L.zl (D.add (D.add D.z (D.neg D.z)) v)) (zz-add v) ;
+  -- v + ((0 - 0) + 0) = v
+  dec-pi (v : D.R) : Id D.R (D.add v (D.add (D.add D.z (D.neg D.z)) D.z)) v =
+    trans (ap (D.add v) (zz-add D.z)) (D.addZ v) ;
+
+  decomp-pt : (bx by bz : Bool) (v : D.R) ->
+    Id D.R (D.add (selPi bx by bz v)
+                  (D.add (D.add (selYZ bx by bz v) (D.neg (selXZ bx by bz v))) (selXY bx by bz v))) v = split {
+    true -> split {
+      true -> split {
+        true -> \ v -> dec-pi v ;
+        false -> \ v -> dec-xy v } ;
+      false -> \ bz v -> dec-xz v } ;
+    false -> \ by bz v -> dec-yz v } ;
+
+  -- q = pi(q) + delta1 sigma(q)
+  decomp (q : Lau) : EqL (addL (pi q) (d1 (sigma q))) q =
+    \ m -> decomp-pt (nx m) (ny m) (nz m) (q m) ;
+
+  -- sigma(q) satisfies the support conditions
+  supp-xy : (bx by bz : Bool) (v : D.R) -> Id Bool bz true -> Id D.R (selXY bx by bz v) D.z = split {
+    true -> split {
+      true -> split {
+        true -> \ v e -> refl D.z ;
+        false -> \ v e -> P.absurd (Id D.R v D.z) (encodeB false true e) } ;
+      false -> \ bz v e -> refl D.z } ;
+    false -> \ by bz v e -> refl D.z } ;
+  supp-xz : (bx by bz : Bool) (v : D.R) -> Id Bool by true -> Id D.R (selXZ bx by bz v) D.z = split {
+    true -> split {
+      true -> \ bz v e -> refl D.z ;
+      false -> \ bz v e -> P.absurd (Id D.R (D.neg v) D.z) (encodeB false true e) } ;
+    false -> \ by bz v e -> refl D.z } ;
+  supp-yz : (bx by bz : Bool) (v : D.R) -> Id Bool bx true -> Id D.R (selYZ bx by bz v) D.z = split {
+    true -> \ by bz v e -> refl D.z ;
+    false -> \ by bz v e -> P.absurd (Id D.R v D.z) (encodeB false true e) } ;
+
+  supp-sigma (q : Lau) : Supp1 (sigma q) =
+    (\ m e -> supp-xy (nx m) (ny m) (nz m) (q m) e,
+     (\ m e -> supp-xz (nx m) (ny m) (nz m) (q m) e,
+      \ m e -> supp-yz (nx m) (ny m) (nz m) (q m) e)) ;
+
+  -- pi and sigma respect equality and are linear
+  ifB-zero : (b : Bool) -> Id D.R (ifB b D.z) D.z = split {
+    true -> refl D.z ; false -> refl D.z } ;
+  ifB-cong : (b : Bool) (v v' : D.R) -> Id D.R v v' -> Id D.R (ifB b v) (ifB b v') = split {
+    true -> \ v v' e -> e ;
+    false -> \ v v' e -> refl D.z } ;
+  -- ifB b (u + v) = ifB b u + ifB b v, and the same for -u and c u
+  ifB-add : (b : Bool) (u v : D.R) -> Id D.R (ifB b (D.add u v)) (D.add (ifB b u) (ifB b v)) = split {
+    true -> \ u v -> refl (D.add u v) ;
+    false -> \ u v -> sym (D.addZ D.z) } ;
+  ifB-neg : (b : Bool) (u : D.R) -> Id D.R (ifB b (D.neg u)) (D.neg (ifB b u)) = split {
+    true -> \ u -> refl (D.neg u) ;
+    false -> \ u -> sym L.neg-zero } ;
+  ifB-scale : (b : Bool) (c u : D.R) -> Id D.R (ifB b (D.mul c u)) (D.mul c (ifB b u)) = split {
+    true -> \ c u -> refl (D.mul c u) ;
+    false -> \ c u -> sym (L.mul-zero c) } ;
+
+  pi-cong (q q' : Lau) (e : EqL q q') : EqL (pi q) (pi q') =
+    \ m -> ifB-cong (and (nx m) (and (ny m) (nz m))) (q m) (q' m) (e m) ;
+  sigma-cong (q q' : Lau) (e : EqL q q') : EqT (sigma q) (sigma q') =
+    (\ m -> ifB-cong (and (nx m) (and (ny m) (not (nz m)))) (q m) (q' m) (e m),
+     (\ m -> ifB-cong (and (nx m) (not (ny m))) (D.neg (q m)) (D.neg (q' m)) (ap D.neg (e m)),
+      \ m -> ifB-cong (not (nx m)) (q m) (q' m) (e m))) ;
+  sigma-add (q q' : Lau) : EqT (sigma (addL q q')) (addT (sigma q) (sigma q')) =
+    (\ m -> ifB-add (and (nx m) (and (ny m) (not (nz m)))) (q m) (q' m),
+     (\ m -> trans (ifB-cong (and (nx m) (not (ny m))) (D.neg (D.add (q m) (q' m))) (D.add (D.neg (q m)) (D.neg (q' m))) (L.neg-add (q m) (q' m)))
+                   (ifB-add (and (nx m) (not (ny m))) (D.neg (q m)) (D.neg (q' m))),
+      \ m -> ifB-add (not (nx m)) (q m) (q' m))) ;
+  sigma-scale (c : D.R) (q : Lau) : EqT (sigma (scaleL c q)) (scaleT c (sigma q)) =
+    (\ m -> ifB-scale (and (nx m) (and (ny m) (not (nz m)))) c (q m),
+     (\ m -> trans (ifB-cong (and (nx m) (not (ny m))) (D.neg (D.mul c (q m))) (D.mul c (D.neg (q m))) (sym (L.mul-neg c (q m))))
+                   (ifB-scale (and (nx m) (not (ny m))) c (D.neg (q m))),
+      \ m -> ifB-scale (not (nx m)) c (q m))) ;
+  sigma-zero : EqT (sigma zeroL) zeroT =
+    (\ m -> ifB-zero (and (nx m) (and (ny m) (not (nz m)))),
+     (\ m -> trans (ifB-cong (and (nx m) (not (ny m))) (D.neg D.z) D.z L.neg-zero) (ifB-zero (and (nx m) (not (ny m)))),
+      \ m -> ifB-zero (not (nx m)))) ;
+
+  ------------------------------------------------------------------------
+  -- tau, and delta0 tau(b) = b for a closed b
+
+  selX (bx by bz : Bool) (v : D.R) : D.R = ifB (and bx (and (not by) (not bz))) (D.neg v) ;
+  selY (bx by bz : Bool) (v : D.R) : D.R = ifB (and (not bx) (not bz)) v ;
+  selZ (bx by bz : Bool) (v : D.R) : D.R = ifB (and (not bx) (not by)) v ;
+
+  tau (b : Tri) : Tri =
+    mkT (\ m -> selX (nx m) (ny m) (nz m) (t1 b m))
+        (\ m -> selY (nx m) (ny m) (nz m) (t1 b m))
+        (\ m -> selZ (nx m) (ny m) (nz m) (t2 b m)) ;
+
+  -- from (b3 - b2) + b1 = 0:  b3 = b2 - b1
+  solve (b1 b2 b3 : D.R) (hc : Id D.R (D.add (D.add b3 (D.neg b2)) b1) D.z) : Id D.R b3 (D.add b2 (D.neg b1)) =
+    calc D.R { b3 =< sym (sub-add b3 b2) > D.add (D.add b3 (D.neg b2)) b2
+                 =< ap (\ t -> D.add t b2)
+                       (L.neg-uniq b1 (D.add b3 (D.neg b2)) (trans (D.addC b1 (D.add b3 (D.neg b2))) hc))
+                 > D.add (D.neg b1) b2
+                 =< D.addC (D.neg b1) b2 > D.add b2 (D.neg b1) } ;
+
+  -- the three components of delta0 tau(b), at one exponent
+  Contracts (bx by bz : Bool) (b1 b2 b3 : D.R) : U l =
+    Id D.R (D.add (selY bx by bz b1) (D.neg (selX bx by bz b1))) b1 *
+    (Id D.R (D.add (selZ bx by bz b2) (D.neg (selX bx by bz b1))) b2 *
+     Id D.R (D.add (selZ bx by bz b2) (D.neg (selY bx by bz b1))) b3) ;
+
+  neg-zero-is (x : D.R) (h : Id D.R (D.neg x) D.z) : Id D.R x D.z =
+    trans (sym (L.neg-neg x)) (trans (ap D.neg h) L.neg-zero) ;
+  zz-is (y : D.R) (h : Id D.R y D.z) : Id D.R (D.add D.z (D.neg D.z)) y = trans (D.addN D.z) (sym h) ;
+  znn (v : D.R) : Id D.R (D.add D.z (D.neg (D.neg v))) v = trans (L.zl (D.neg (D.neg v))) (L.neg-neg v) ;
+
+  contract-pt : (bx by bz : Bool) (b1 b2 b3 : D.R)
+    (h1 : Id Bool bz true -> Id D.R b1 D.z) (h2 : Id Bool by true -> Id D.R b2 D.z)
+    (h3 : Id Bool bx true -> Id D.R b3 D.z)
+    (hc : Id D.R (D.add (D.add b3 (D.neg b2)) b1) D.z) -> Contracts bx by bz b1 b2 b3 = split {
+    true -> split {
+      true -> split {
+        -- E = {X,Y,Z}
+        true -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (zz-is b1 (h1 (refl true)), (zz-is b2 (h2 (refl true)), zz-is b3 (h3 (refl true)))) ;
+        -- E = {X,Y}: b3 = 0, b2 = 0, so b1 = 0
+        false -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (zz-is b1 (neg-zero-is b1
+             (calc D.R { D.neg b1 =< sym (L.zl (D.neg b1)) > D.add D.z (D.neg b1)
+                           =< ap (\ t -> D.add t (D.neg b1)) (sym (h2 (refl true))) > D.add b2 (D.neg b1)
+                           =< sym (solve b1 b2 b3 hc) > b3
+                           =< h3 (refl true) > D.z })),
+           (zz-is b2 (h2 (refl true)), zz-is b3 (h3 (refl true)))) } ;
+      false -> split {
+        -- E = {X,Z}: b3 = 0, b1 = 0, so b2 = 0
+        true -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (zz-is b1 (h1 (refl true)),
+           (zz-is b2 (calc D.R { b2 =< sym (sub-z b2) > D.add b2 (D.neg D.z)
+                                   =< ap (\ t -> D.add b2 (D.neg t)) (sym (h1 (refl true))) > D.add b2 (D.neg b1)
+                                   =< sym (solve b1 b2 b3 hc) > b3
+                                   =< h3 (refl true) > D.z }),
+            zz-is b3 (h3 (refl true)))) ;
+        -- E = {X}: b3 = 0, so b2 = b1
+        false -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (znn b1,
+           (trans (znn b1) (sym (sub-eq b2 b1 (trans (sym (solve b1 b2 b3 hc)) (h3 (refl true))))),
+            zz-is b3 (h3 (refl true)))) } } ;
+    false -> split {
+      true -> split {
+        -- E = {Y,Z}: b2 = 0, b1 = 0, so b3 = 0
+        true -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (zz-is b1 (h1 (refl true)), (zz-is b2 (h2 (refl true)),
+           zz-is b3 (trans (solve b1 b2 b3 hc)
+             (trans (DG.cong-add (h2 (refl true)) (trans (ap D.neg (h1 (refl true))) L.neg-zero)) (D.addZ D.z))))) ;
+        -- E = {Y}: b2 = 0, so b3 = -b1
+        false -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (sub-z b1, (zz-is b2 (h2 (refl true)),
+           trans (L.zl (D.neg b1)) (sym (trans (solve b1 b2 b3 hc) (trans (ap (\ t -> D.add t (D.neg b1)) (h2 (refl true))) (L.zl (D.neg b1))))))) } ;
+      false -> split {
+        -- E = {Z}: b1 = 0, so b3 = b2
+        true -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (zz-is b1 (h1 (refl true)), (sub-z b2,
+           trans (sub-z b2) (sym (trans (solve b1 b2 b3 hc) (trans (ap (\ t -> D.add b2 (D.neg t)) (h1 (refl true))) (sub-z b2)))))) ;
+        -- E = {}: b3 = b2 - b1
+        false -> \ b1 b2 b3 h1 h2 h3 hc ->
+          (sub-z b1, (sub-z b2, sym (solve b1 b2 b3 hc))) } } } ;
+
+  contraction (b : Tri) (hs : Supp1 b) (hc : EqL (d1 b) zeroL) : EqT (d0 (tau b)) b =
+    (\ m -> (contract-pt (nx m) (ny m) (nz m) (t1 b m) (t2 b m) (t3 b m) (hs.1 m) (hs.2.1 m) (hs.2.2 m) (hc m)).1,
+     (\ m -> (contract-pt (nx m) (ny m) (nz m) (t1 b m) (t2 b m) (t3 b m) (hs.1 m) (hs.2.1 m) (hs.2.2 m) (hc m)).2.1,
+      \ m -> (contract-pt (nx m) (ny m) (nz m) (t1 b m) (t2 b m) (t3 b m) (hs.1 m) (hs.2.1 m) (hs.2.2 m) (hc m)).2.2)) ;
+
+  ------------------------------------------------------------------------
+  -- degree -1
+
+  -- -(d+1) + d = -1
+  addP-negsuc : (d : Nat) -> Id Int (addP (negsuc d) d) (negsuc zero) = split {
+    zero -> refl (negsuc zero) ;
+    suc d | r -> trans (sym (addP-sucL (negsuc (suc d)) d)) r } ;
+
+  -- pi vanishes in degree -1
+  pi-deg-b (f : Lau) (hf : Hom (negsuc zero) f) (x y w : Int) : (b : Bool) -> Id Bool (allNeg (x,(y,w))) b ->
+    Id D.R (ifB b (f (x,(y,w)))) D.z = split {
+    true -> \ e -> hf (x,(y,w)) (allneg-not-minus-one x y w e) ;
+    false -> \ e -> refl D.z } ;
+  pi-deg-pt (f : Lau) (hf : Hom (negsuc zero) f) (x y w : Int) :
+    Id D.R (selPi (isNeg x) (isNeg y) (isNeg w) (f (x,(y,w)))) D.z =
+    pi-deg-b f hf x y w (allNeg (x,(y,w))) (refl (allNeg (x,(y,w)))) ;
+  pi-deg (f : Lau) (hf : Hom (negsuc zero) f) : EqL (pi f) zeroL = \ m -> pi-deg-pt f hf m.1 m.2.1 m.2.2 ;
+} ;

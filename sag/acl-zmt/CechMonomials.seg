@@ -1,0 +1,243 @@
+-- CechMonomials.seg: the all-negative monomials of a given degree, and
+-- pi(q) as a finite D-combination of them (finite-cohomology.tex §2;
+-- handoff §6).
+--
+-- An all-negative exponent is (-i-1, -j-1, -k-1) for (i,j,k) in N^3 (expo);
+-- its degree is -(i+j+k)-3.  The exponents of degree -d-1 are those with
+-- i + j + k = d - 2: none for d < 2, and the list  triples (d-2)  otherwise,
+-- of length binom(d,2) (gens d).  For q homogeneous of degree -d-1,
+--     pi(q) = sum_{t in gens d} q(expo t) X^(expo t)            (pi-gens)
+-- pointwise: at an exponent with a nonnegative component both sides are
+-- 0; at expo s, the sum has exactly one nonzero term, the one with t = s,
+-- when i+j+k = d-2 (triples-count), and none otherwise, where q(expo s) = 0
+-- by homogeneity.  Only natural numbers are compared.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+
+mapL (X Y : U l) (f : X -> Y) : List X -> List Y = split {
+  nil -> nil ;
+  cons x xs | r -> cons (f x) r } ;
+
+-- natural numbers
+eqN-refl : (a : Nat) -> Id Bool (eqN a a) true = split { zero -> refl true ; suc a | r -> r } ;
+eqN-sound : (a b : Nat) -> Id Bool (eqN a b) true -> Id Nat a b = split {
+  zero -> split {
+    zero -> \ e -> refl zero ;
+    suc b -> \ e -> P.absurd (Id Nat zero (suc b)) (encodeB false true e) } ;
+  suc a | r -> split {
+    zero -> \ e -> P.absurd (Id Nat (suc a) zero) (encodeB false true e) ;
+    suc b -> \ e -> ap (\ k -> suc k) (r b e) } } ;
+eqN-comm : (a b : Nat) -> Id Bool (eqN a b) (eqN b a) = split {
+  zero -> split { zero -> refl true ; suc b -> refl false } ;
+  suc a | r -> split { zero -> refl false ; suc b -> r b } } ;
+and-l : (x y : Bool) -> Id Bool (and x y) true -> Id Bool x true = split {
+  true -> \ y e -> refl true ;
+  false -> \ y e -> e } ;
+and-r : (x y : Bool) -> Id Bool (and x y) true -> Id Bool y true = split {
+  true -> \ y e -> e ;
+  false -> \ y e -> P.absurd (Id Bool y true) (encodeB false true e) } ;
+and-false : (x : Bool) -> Id Bool (and x false) false = split { true -> refl false ; false -> refl false } ;
+
+-- exponents
+N3 : U l = Nat * (Nat * Nat) ;
+expo (t : N3) : E3 = (negsuc t.1, (negsuc t.2.1, negsuc t.2.2)) ;
+size (t : N3) : Nat = NA.plus t.1 (NA.plus t.2.1 t.2.2) ;
+
+pairs : Nat -> List (Nat * Nat) = split {
+  zero -> cons (zero, zero) nil ;
+  suc n | r -> cons (zero, suc n) (mapL (Nat * Nat) (Nat * Nat) (\ p -> (suc p.1, p.2)) r) } ;
+triples : Nat -> List N3 = split {
+  zero -> cons (zero, (zero, zero)) nil ;
+  suc n | r -> Bar[l].app (mapL (Nat * Nat) N3 (\ p -> (zero, p)) (pairs (suc n))) (mapL N3 N3 (\ t -> (suc t.1, t.2)) r) } ;
+
+-- the exponents of degree -d-1:  alpha + beta + gamma = d + 1
+gens2 : Nat -> List N3 = split { zero -> nil ; suc n -> triples n } ;
+gens : Nat -> List N3 = split { zero -> nil ; suc d -> gens2 d } ;
+
+-- comparison of an exponent with expo t
+eqI (i : Nat) : Int -> Bool = split { pos n -> false ; negsuc n -> eqN i n } ;
+isExpo (t : N3) (m : E3) : Bool = and (eqI t.1 (ex m)) (and (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))) ;
+
+pair3 (a b c a' b' c' : Int) (p : Id Int a a') (q : Id Int b b') (r : Id Int c c') : Id E3 (a,(b,c)) (a',(b',c')) =
+  calc E3 { (a,(b,c)) =< ap (\ u -> (u,(b,c))) p > (a',(b,c))
+              =< ap (\ u -> (a',(u,c))) q > (a',(b',c))
+              =< ap (\ u -> (a',(b',u))) r > (a',(b',c')) } ;
+
+eqI-sound (i : Nat) : (x : Int) -> Id Bool (eqI i x) true -> Id Int x (negsuc i) = split {
+  pos n -> \ e -> P.absurd (Id Int (pos n) (negsuc i)) (encodeB false true e) ;
+  negsuc n -> \ e -> ap (\ k -> negsuc k) (sym (eqN-sound i n e)) } ;
+isExpo-sound (t : N3) (m : E3) (e : Id Bool (isExpo t m) true) : Id E3 m (expo t) =
+  pair3 (ex m) (ey m) (ez m) (negsuc t.1) (negsuc t.2.1) (negsuc t.2.2) (eqI-sound t.1 (ex m) (and-l (eqI t.1 (ex m)) (and (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))) e))
+        (eqI-sound t.2.1 (ey m) (and-l (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))
+           (and-r (eqI t.1 (ex m)) (and (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))) e)))
+        (eqI-sound t.2.2 (ez m) (and-r (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))
+           (and-r (eqI t.1 (ex m)) (and (eqI t.2.1 (ey m)) (eqI t.2.2 (ez m))) e))) ;
+
+module Over (D : CRing) {
+  module LO = Laurent3[l].Over[D] ; open LO ;
+
+  -- finite sums over a list
+  sumL (X : U l) (F : X -> D.R) : List X -> D.R = split {
+    nil -> D.z ;
+    cons x xs | r -> D.add (F x) r } ;
+  sumL-map (X Y : U l) (f : X -> Y) (F : Y -> D.R) : (xs : List X) -> Id D.R (sumL Y F (mapL X Y f xs)) (sumL X (\ x -> F (f x)) xs) = split {
+    nil -> refl D.z ;
+    cons x xs | r -> ap (D.add (F (f x))) r } ;
+  sumL-app (X : U l) (F : X -> D.R) : (xs ys : List X) -> Id D.R (sumL X F (Bar[l].app xs ys)) (D.add (sumL X F xs) (sumL X F ys)) = split {
+    nil -> \ ys -> sym (L.zl (sumL X F ys)) ;
+    cons x xs | r -> \ ys -> trans (ap (D.add (F x)) (r ys)) (D.addA (F x) (sumL X F xs) (sumL X F ys)) } ;
+  sumL-cong (X : U l) (F G : X -> D.R) (e : (x : X) -> Id D.R (F x) (G x)) : (xs : List X) -> Id D.R (sumL X F xs) (sumL X G xs) = split {
+    nil -> refl D.z ;
+    cons x xs | r -> DG.cong-add (e x) r } ;
+  sumL-zero (X : U l) : (xs : List X) -> Id D.R (sumL X (\ x -> D.z) xs) D.z = split {
+    nil -> refl D.z ;
+    cons x xs | r -> trans (ap (D.add D.z) r) (D.addZ D.z) } ;
+  sumL-vanish (X : U l) (F : X -> D.R) (e : (x : X) -> Id D.R (F x) D.z) (xs : List X) : Id D.R (sumL X F xs) D.z =
+    trans (sumL-cong X F (\ x -> D.z) e xs) (sumL-zero X xs) ;
+
+  ifB-eq : (b : Bool) (v w : D.R) -> (Id Bool b true -> Id D.R v w) -> Id D.R (ifB b v) (ifB b w) = split {
+    true -> \ v w e -> e (refl true) ;
+    false -> \ v w e -> refl D.z } ;
+  ifB-at (b b' : Bool) (e : Id Bool b b') (v : D.R) : Id D.R (ifB b v) (ifB b' v) = ap (\ c -> ifB c v) e ;
+
+  ------------------------------------------------------------------------
+  -- counting
+
+  pairs-count : (n j k : Nat) (v : D.R) ->
+    Id D.R (sumL (Nat * Nat) (\ p -> ifB (and (eqN p.1 j) (eqN p.2 k)) v) (pairs n)) (ifB (eqN (NA.plus j k) n) v) = split {
+    zero -> split {
+      zero -> \ k v -> trans (D.addZ (ifB (eqN zero k) v)) (ifB-at (eqN zero k) (eqN k zero) (eqN-comm zero k) v) ;
+      suc j -> \ k v -> D.addZ D.z } ;
+    suc n | r -> split {
+      zero -> \ k v ->
+        calc D.R { sumL (Nat * Nat) (\ p -> ifB (and (eqN p.1 zero) (eqN p.2 k)) v) (pairs (suc n))
+                     =< ap (D.add (ifB (eqN (suc n) k) v))
+                           (trans (sumL-map (Nat * Nat) (Nat * Nat) (\ p -> (suc p.1, p.2)) (\ p -> ifB (and (eqN p.1 zero) (eqN p.2 k)) v) (pairs n))
+                                  (sumL-zero (Nat * Nat) (pairs n)))
+                     > D.add (ifB (eqN (suc n) k) v) D.z
+                     =< D.addZ (ifB (eqN (suc n) k) v) > ifB (eqN (suc n) k) v
+                     =< ifB-at (eqN (suc n) k) (eqN k (suc n)) (eqN-comm (suc n) k) v > ifB (eqN k (suc n)) v } ;
+      suc j -> \ k v ->
+        calc D.R { sumL (Nat * Nat) (\ p -> ifB (and (eqN p.1 (suc j)) (eqN p.2 k)) v) (pairs (suc n))
+                     =< ap (D.add D.z)
+                           (trans (sumL-map (Nat * Nat) (Nat * Nat) (\ p -> (suc p.1, p.2)) (\ p -> ifB (and (eqN p.1 (suc j)) (eqN p.2 k)) v) (pairs n))
+                                  (r j k v))
+                     > D.add D.z (ifB (eqN (NA.plus j k) n) v)
+                     =< L.zl (ifB (eqN (NA.plus j k) n) v) > ifB (eqN (NA.plus j k) n) v } } } ;
+
+  isT (t s : N3) : Bool = and (eqN t.1 s.1) (and (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)) ;
+
+  triples-count0 : (i j k : Nat) (v : D.R) ->
+    Id D.R (D.add (ifB (isT (zero,(zero,zero)) (i,(j,k))) v) D.z) (ifB (eqN (size (i,(j,k))) zero) v) = split {
+    zero -> split {
+      zero -> split {
+        zero -> \ v -> D.addZ v ;
+        suc k -> \ v -> D.addZ D.z } ;
+      suc j -> \ k v -> D.addZ D.z } ;
+    suc i -> \ j k v -> D.addZ D.z } ;
+
+  triples-count : (n i j k : Nat) (v : D.R) ->
+    Id D.R (sumL N3 (\ t -> ifB (isT t (i,(j,k))) v) (triples n)) (ifB (eqN (size (i,(j,k))) n) v) = split {
+    zero -> \ i j k v -> triples-count0 i j k v ;
+    suc n | r -> split {
+      zero -> \ j k v ->
+        calc D.R { sumL N3 (\ t -> ifB (isT t (zero,(j,k))) v) (triples (suc n))
+                     =< sumL-app N3 (\ t -> ifB (isT t (zero,(j,k))) v) (mapL (Nat * Nat) N3 (\ p -> (zero, p)) (pairs (suc n))) (mapL N3 N3 (\ t -> (suc t.1, t.2)) (triples n))
+                     > D.add (sumL N3 (\ t -> ifB (isT t (zero,(j,k))) v) (mapL (Nat * Nat) N3 (\ p -> (zero, p)) (pairs (suc n))))
+                             (sumL N3 (\ t -> ifB (isT t (zero,(j,k))) v) (mapL N3 N3 (\ t -> (suc t.1, t.2)) (triples n)))
+                     =< DG.cong-add
+                          (trans (sumL-map (Nat * Nat) N3 (\ p -> (zero, p)) (\ t -> ifB (isT t (zero,(j,k))) v) (pairs (suc n)))
+                                 (pairs-count (suc n) j k v))
+                          (trans (sumL-map N3 N3 (\ t -> (suc t.1, t.2)) (\ t -> ifB (isT t (zero,(j,k))) v) (triples n))
+                                 (sumL-zero N3 (triples n)))
+                     > D.add (ifB (eqN (NA.plus j k) (suc n)) v) D.z
+                     =< D.addZ (ifB (eqN (NA.plus j k) (suc n)) v) > ifB (eqN (NA.plus j k) (suc n)) v } ;
+      suc i -> \ j k v ->
+        calc D.R { sumL N3 (\ t -> ifB (isT t (suc i,(j,k))) v) (triples (suc n))
+                     =< sumL-app N3 (\ t -> ifB (isT t (suc i,(j,k))) v) (mapL (Nat * Nat) N3 (\ p -> (zero, p)) (pairs (suc n))) (mapL N3 N3 (\ t -> (suc t.1, t.2)) (triples n))
+                     > D.add (sumL N3 (\ t -> ifB (isT t (suc i,(j,k))) v) (mapL (Nat * Nat) N3 (\ p -> (zero, p)) (pairs (suc n))))
+                             (sumL N3 (\ t -> ifB (isT t (suc i,(j,k))) v) (mapL N3 N3 (\ t -> (suc t.1, t.2)) (triples n)))
+                     =< DG.cong-add
+                          (trans (sumL-map (Nat * Nat) N3 (\ p -> (zero, p)) (\ t -> ifB (isT t (suc i,(j,k))) v) (pairs (suc n)))
+                                 (sumL-zero (Nat * Nat) (pairs (suc n))))
+                          (trans (sumL-map N3 N3 (\ t -> (suc t.1, t.2)) (\ t -> ifB (isT t (suc i,(j,k))) v) (triples n))
+                                 (r i j k v))
+                     > D.add D.z (ifB (eqN (size (i,(j,k))) n) v)
+                     =< L.zl (ifB (eqN (size (i,(j,k))) n) v) > ifB (eqN (size (i,(j,k))) n) v } } } ;
+
+  ------------------------------------------------------------------------
+  -- pi(q) as a finite combination
+
+  -- the combination  sum_{t in gens d} q(expo t) X^(expo t)
+  piG (d : Nat) (q : Lau) : Lau = \ m -> sumL N3 (\ t -> D.mul (q (expo t)) (ifB (isExpo t m) D.o)) (gens d) ;
+
+  mul-ifB (c : D.R) : (b : Bool) -> Id D.R (D.mul c (ifB b D.o)) (ifB b c) = split {
+    true -> D.mulO c ;
+    false -> L.mul-zero c } ;
+  term-off (q : Lau) (t : N3) (m : E3) (h : Id Bool (isExpo t m) false) :
+    Id D.R (D.mul (q (expo t)) (ifB (isExpo t m) D.o)) D.z =
+    trans (ap (\ c -> D.mul (q (expo t)) (ifB c D.o)) h) (L.mul-zero (q (expo t))) ;
+  off-y (a b : Nat) (w : Int) (t : N3) : Id Bool (isExpo t (negsuc a,(pos b,w))) false = and-false (eqN t.1 a) ;
+  off-z (a b c : Nat) (t : N3) : Id Bool (isExpo t (negsuc a,(negsuc b,pos c))) false =
+    trans (ap (and (eqN t.1 a)) (and-false (eqN t.2.1 b))) (and-false (eqN t.1 a)) ;
+
+  isT-sound (t s : N3) (e : Id Bool (isT t s) true) : Id N3 t s =
+    calc N3 { t =< ap (\ u -> (u,(t.2.1,t.2.2))) (eqN-sound t.1 s.1 (and-l (eqN t.1 s.1) (and (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)) e))
+                > (s.1,(t.2.1,t.2.2))
+                =< ap (\ u -> (s.1,(u,t.2.2))) (eqN-sound t.2.1 s.2.1 (and-l (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)
+                     (and-r (eqN t.1 s.1) (and (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)) e)))
+                > (s.1,(s.2.1,t.2.2))
+                =< ap (\ u -> (s.1,(s.2.1,u))) (eqN-sound t.2.2 s.2.2 (and-r (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)
+                     (and-r (eqN t.1 s.1) (and (eqN t.2.1 s.2.1) (eqN t.2.2 s.2.2)) e)))
+                > s } ;
+
+  -- at expo s, the term of t is q(expo s) when t = s, and 0 otherwise
+  term-at (q : Lau) (s t : N3) :
+    Id D.R (D.mul (q (expo t)) (ifB (isT t s) D.o)) (ifB (isT t s) (q (expo s))) =
+    trans (mul-ifB (q (expo t)) (isT t s))
+          (ifB-eq (isT t s) (q (expo t)) (q (expo s)) (\ e -> ap (\ u -> q (expo u)) (isT-sound t s e))) ;
+
+  -- the degree of expo s is -(size s)-3
+  negsucPred : Int -> Nat = split { pos n -> zero ; negsuc n -> n } ;
+  deg-expo (s : N3) : Id Int (deg (expo s)) (negsuc (suc (suc (size s)))) =
+    trans (allneg-deg s.1 s.2.1 s.2.2) (ap (\ k -> negsuc (suc (suc k))) (NA.plus-comm (NA.plus s.2.1 s.2.2) s.1)) ;
+  deg-expo-n (s : N3) (n : Nat) (p : Id Int (deg (expo s)) (negsuc (suc (suc n)))) : Id Bool (eqN (size s) n) true =
+    trans (ap {Nat} {Bool} (\ k -> eqN k n)
+             (NA.suc-inj (NA.suc-inj (ap negsucPred (trans (sym (deg-expo s)) p))))) (eqN-refl n) ;
+  deg-expo-0 (s : N3) (p : Id Int (deg (expo s)) (negsuc zero)) : Empty =
+    encode (negsuc (suc (suc (size s)))) (negsuc zero) (trans (sym (deg-expo s)) p) ;
+  deg-expo-1 (s : N3) (p : Id Int (deg (expo s)) (negsuc (suc zero))) : Empty =
+    encode (negsuc (suc (suc (size s)))) (negsuc (suc zero)) (trans (sym (deg-expo s)) p) ;
+
+  on-expo-n (n : Nat) (q : Lau) (hq : Hom (negsuc (suc (suc n))) q) (s : N3) :
+    (bb : Bool) -> Id Bool (eqN (size s) n) bb -> Id D.R (q (expo s)) (ifB bb (q (expo s))) = split {
+    true -> \ e -> refl (q (expo s)) ;
+    false -> \ e -> hq (expo s) (\ p -> encodeB true false (trans (sym (deg-expo-n s n p)) e)) } ;
+
+  on-expo-suc : (d : Nat) (q : Lau) (hq : Hom (negsuc (suc d)) q) (s : N3) -> Id D.R (q (expo s)) (piG (suc d) q (expo s)) = split {
+    zero -> \ q hq s -> hq (expo s) (deg-expo-1 s) ;
+    suc n -> \ q hq s ->
+      sym (calc D.R { piG (suc (suc n)) q (expo s)
+                        =< sumL-cong N3 (\ t -> D.mul (q (expo t)) (ifB (isT t s) D.o)) (\ t -> ifB (isT t s) (q (expo s)))
+                             (term-at q s) (triples n)
+                        > sumL N3 (\ t -> ifB (isT t s) (q (expo s))) (triples n)
+                        =< triples-count n s.1 s.2.1 s.2.2 (q (expo s)) > ifB (eqN (size s) n) (q (expo s))
+                        =< sym (on-expo-n n q hq s (eqN (size s) n) (refl (eqN (size s) n))) > q (expo s) }) } ;
+  on-expo : (d : Nat) (q : Lau) (hq : Hom (negsuc d) q) (s : N3) -> Id D.R (q (expo s)) (piG d q (expo s)) = split {
+    zero -> \ q hq s -> hq (expo s) (deg-expo-0 s) ;
+    suc d -> on-expo-suc d } ;
+
+  pi-gens-pt (d : Nat) (q : Lau) (hq : Hom (negsuc d) q) : (x y w : Int) -> Id D.R (CechContraction[l].Over[D].pi q (x,(y,w))) (piG d q (x,(y,w))) = split {
+    pos a -> \ y w -> sym (sumL-vanish N3 (\ t -> D.mul (q (expo t)) (ifB (isExpo t (pos a,(y,w))) D.o))
+                            (\ t -> term-off q t (pos a,(y,w)) (refl false)) (gens d)) ;
+    negsuc a -> split {
+      pos b -> \ w -> sym (sumL-vanish N3 (\ t -> D.mul (q (expo t)) (ifB (isExpo t (negsuc a,(pos b,w))) D.o))
+                            (\ t -> term-off q t (negsuc a,(pos b,w)) (off-y a b w t)) (gens d)) ;
+      negsuc b -> split {
+        pos c -> sym (sumL-vanish N3 (\ t -> D.mul (q (expo t)) (ifB (isExpo t (negsuc a,(negsuc b,pos c))) D.o))
+                       (\ t -> term-off q t (negsuc a,(negsuc b,pos c)) (off-z a b c t)) (gens d)) ;
+        negsuc c -> on-expo d q hq (a,(b,c)) } } } ;
+
+  -- pi(q) = sum_{t in gens d} q(expo t) X^(expo t)
+  pi-gens (d : Nat) (q : Lau) (hq : Hom (negsuc d) q) : EqL (CechContraction[l].Over[D].pi q) (piG d q) =
+    \ m -> pi-gens-pt d q hq m.1 m.2.1 m.2.2 ;
+} ;

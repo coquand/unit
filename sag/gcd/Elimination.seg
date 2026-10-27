@@ -1,0 +1,175 @@
+-- Elimination.seg: Lemme 10 of doc/gcd-polynomial.tex, without the field of
+-- fractions.  For f, g in A[X] (A a gcd domain) we construct D and
+-- lambda /= 0 with D | lambda f, D | lambda g, and every common divisor of
+-- f, g dividing D.
+--
+-- Recursion on n_f + n_g, f of degree < n_f, g of degree < n_g:
+--  * n_f = 0: f = 0, D = g, lambda = 1 (and symmetrically);
+--  * a zero top coefficient f_(n_f - 1) = 0: f has degree < n_f - 1;
+--  * alpha = f_(n_f - 1), beta = g_(n_g - 1) non-zero, n_f >= n_g,
+--    k = n_f - n_g:  f' = beta f - alpha X^k g  has degree < n_f - 1; from
+--    (D, lambda') for f', g:  lambda = lambda' beta,
+--    lambda f = lambda' f' + alpha X^k (lambda' g) ,  lambda g = beta (lambda' g) ;
+--    a common divisor of f, g divides f'.  n_f < n_g: exchange f and g.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module NO = NatOrder[l] ;
+-- (L Bt) f = L (Bt f - T g) + T (L g)  in any commutative ring
+module Ident (S : CRing) {
+ open S ; module RS = RL[S] ;
+ ident (L Bt T f g : R) : Id R (mul (mul L Bt) f) (add (mul L (add (mul Bt f) (neg (mul T g)))) (mul T (mul L g))) =
+  sym (calc R { add (mul L (add (mul Bt f) (neg (mul T g)))) (mul T (mul L g))
+    =< ap (\ t -> add t (mul T (mul L g))) (dist L (mul Bt f) (neg (mul T g)))
+    > add (add (mul L (mul Bt f)) (mul L (neg (mul T g)))) (mul T (mul L g))
+    =< ap (\ t -> add (add (mul L (mul Bt f)) t) (mul T (mul L g))) (trans (RS.mul-neg L (mul T g)) (ap neg (RS.mul-swap L T g)))
+    > add (add (mul L (mul Bt f)) (neg (mul T (mul L g)))) (mul T (mul L g))
+    =< sym (addA (mul L (mul Bt f)) (neg (mul T (mul L g))) (mul T (mul L g)))
+    > add (mul L (mul Bt f)) (add (neg (mul T (mul L g))) (mul T (mul L g)))
+    =< ap (add (mul L (mul Bt f))) (RS.neg-cancel (mul T (mul L g))) > add (mul L (mul Bt f)) z
+    =< addZ (mul L (mul Bt f)) > mul L (mul Bt f)
+    =< mulA L Bt f > mul (mul L Bt) f }) ;
+ -- (L Bt) g = Bt (L g)
+ ident2 (L Bt g : R) : Id R (mul (mul L Bt) g) (mul Bt (mul L g)) = trans (sym (mulA L Bt g)) (RS.mul-swap L Bt g) ;
+} ;
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
+ module PB = PolyBase[l].Over[A,G] ;
+ open PB ;
+ Bounded (n : Nat) (x : Pol) : U l = CP.Bounded n x ;
+
+ record Elim (f g : Pol) {
+  gd : Pol ;
+  lam : R ;
+  lam-nz : Not (Id R lam z) ;
+  div-f : DB.Div gd (sc lam f) ;
+  div-g : DB.Div gd (sc lam g) ;
+  common : (h : Pol) -> DB.Div h f -> DB.Div h g -> DB.Div h gd ;
+ } ;
+ swap (f g : Pol) (e : Elim[f,g]) : Elim[g,f] = mkElim g f e.gd e.lam e.lam-nz e.div-g e.div-f (\ h hg hf -> e.common h hf hg) ;
+
+ ---------------------------------------------------------------------
+ -- n_f = 0
+
+ sc-one (x : Pol) : Id Pol (sc o x) x = trans (B.mul-comm B.oneQ x) (B.mul-one x) ;
+ zero-left (f g : Pol) (hf : Bounded zero f) : Elim[f,g] =
+  mkElim f g g o G.nontrivial
+   (DB.div-eq-right g B.zeroQ (sc o f) (sym (trans (sc-one f) f0)) (DB.div-zero g))
+   (DB.div-eq-right g g (sc o g) (sym (sc-one g)) (DB.div-refl g))
+   (\ h hf' hg -> hg)
+  where {
+   f0 : Id Pol f B.zeroQ = CP.coef-ext f B.zeroQ (\ k -> trans (hf k) (sym (CP.coef-zero k))) } ;
+
+ ---------------------------------------------------------------------
+ -- X^k and the indices
+
+ plus-assoc : (a b c : Nat) -> Id Nat (plus (plus a b) c) (plus a (plus b c)) = split {
+  zero -> \ b c -> refl (plus b c) ;
+  suc a | r -> \ b c -> ap (\ n -> suc n) (r b c) } ;
+ xp : Nat -> Pol -> Pol = split { zero -> \ x -> x ; suc k | r -> \ x -> B.mulQ B.variable (r x) } ;
+ coef-xp : (k : Nat) -> (x : Pol) -> (i : Nat) -> Id R (coef (xp k x) (plus k i)) (coef x i) = split {
+  zero -> \ x i -> refl (coef x i) ;
+  suc k | r -> \ x i -> trans (CP.coef-variable (xp k x) (suc (plus k i))) (r x i) } ;
+ xp-mul : (k : Nat) -> (x : Pol) -> Id Pol (xp k x) (B.mulQ (xp k B.oneQ) x) = split {
+  zero -> \ x -> sym (sc-one x) ;
+  suc k | r -> \ x -> trans (ap (B.mulQ B.variable) (r x)) (B.mul-assoc B.variable (xp k B.oneQ) x) } ;
+ -- a zero top coefficient can be dropped
+ bound-down (x : Pol) (n : Nat) (hx : Bounded (suc n) x) (h0 : Id R (coef x n) z) : Bounded n x = split {
+  zero -> trans (ap (coef x) (plus-zero n)) h0 ;
+  suc i -> trans (ap (coef x) (plus-suc n i)) (hx i) } ;
+
+ module IB = Ident[B.ring] ;
+
+ ---------------------------------------------------------------------
+ -- the recursion
+
+ Rec (N : Nat) : U l = (f g : Pol) (nf ng : Nat) -> Id Nat (plus nf ng) N -> Bounded nf f -> Bounded ng g -> Elim[f,g] ;
+
+ -- the elimination step: f' = beta f - alpha X^k g, n_f - 1 = k + (n_g - 1)
+ module Reduce (f g : Pol) (k nf' ng' : Nat) (e : Id Nat nf' (plus k ng'))
+  (hf : Bounded (suc nf') f) (hg : Bounded (suc ng') g)
+  (N : Nat) (r : Rec N) (eN : Id Nat (plus nf' (suc ng')) N) (bn : Not (Id R (coef g ng') z)) {
+  alpha : R = coef f nf' ;
+  beta : R = coef g ng' ;
+  T : Pol = sc alpha (xp k B.oneQ) ;
+  f' : Pol = B.addQ (sc beta f) (B.negQ (B.mulQ T g)) ;
+  coef-T (j : Nat) : Id R (coef (B.mulQ T g) j) (mul alpha (coef (xp k g) j)) =
+   trans (ap (\ w -> coef w j) (trans (sym (B.mul-assoc (B.constant alpha) (xp k B.oneQ) g)) (ap (sc alpha) (sym (xp-mul k g)))))
+    (coef-sc alpha (xp k g) j) ;
+  coef-f' (j : Nat) : Id R (coef f' j) (add (mul beta (coef f j)) (neg (mul alpha (coef (xp k g) j)))) =
+   trans (CP.coef-add (sc beta f) (B.negQ (B.mulQ T g)) j)
+    (Ps.cong2 R add _ _ _ _ (coef-sc beta f j) (trans (CP.coef-neg (B.mulQ T g) j) (ap neg (coef-T j)))) ;
+  idx (i : Nat) : Id R (coef (xp k g) (plus nf' i)) (coef g (plus ng' i)) =
+   trans (ap (\ n -> coef (xp k g) (plus n i)) e) (trans (ap (coef (xp k g)) (plus-assoc k ng' i)) (coef-xp k g (plus ng' i))) ;
+  top : Id R (coef f' (plus nf' zero)) z =
+   trans (coef-f' (plus nf' zero))
+    (trans (Ps.cong2 R add _ _ _ _ (ap (\ t -> mul beta (coef f t)) (plus-zero nf'))
+                                   (ap (\ t -> neg (mul alpha t)) (trans (idx zero) (ap (coef g) (plus-zero ng')))))
+     (trans (ap (\ t -> add t (neg (mul alpha beta))) (mulC beta alpha)) (addN (mul alpha beta)))) ;
+  above (j : Nat) : Id R (coef f' (plus nf' (suc j))) z =
+   trans (coef-f' (plus nf' (suc j)))
+    (trans (Ps.cong2 R add _ _ _ _ (ap (mul beta) (trans (ap (coef f) (plus-suc nf' j)) (hf j)))
+                                   (ap (\ t -> neg (mul alpha t)) (trans (idx (suc j)) (trans (ap (coef g) (plus-suc ng' j)) (hg j)))))
+     (trans (Ps.cong2 R add _ _ _ _ (mul-zero beta) (trans (ap neg (mul-zero alpha)) neg-zero)) (addZ z))) ;
+  bounded : Bounded nf' f' = split { zero -> top ; suc j -> above j } ;
+  -- a common divisor of f, g divides f'
+  common' (h : Pol) (df : DB.Div h f) (dg : DB.Div h g) : DB.Div h f' =
+   DB.div-add h (sc beta f) (B.negQ (B.mulQ T g)) (DB.div-mul-left h f (B.constant beta) df)
+    (DB.div-neg h (B.mulQ T g) (DB.div-mul-left h g T dg)) ;
+  rec : Elim[f',g] = r f' g nf' (suc ng') eN bounded hg ;
+  lam : R = mul rec.lam beta ;
+  sc-f : Id Pol (sc lam f) (B.addQ (sc rec.lam f') (B.mulQ T (sc rec.lam g))) =
+   trans (ap (\ t -> B.mulQ t f) (B.constant-mul rec.lam beta))
+    (IB.ident (B.constant rec.lam) (B.constant beta) T f g) ;
+  sc-g : Id Pol (sc lam g) (B.mulQ (B.constant beta) (sc rec.lam g)) =
+   trans (ap (\ t -> B.mulQ t g) (B.constant-mul rec.lam beta)) (IB.ident2 (B.constant rec.lam) (B.constant beta) g) ;
+  result : Elim[f,g] =
+   mkElim f g rec.gd lam (G.integral rec.lam beta rec.lam-nz bn)
+    (DB.div-eq-right rec.gd (B.addQ (sc rec.lam f') (B.mulQ T (sc rec.lam g))) (sc lam f) (sym sc-f)
+      (DB.div-add rec.gd (sc rec.lam f') (B.mulQ T (sc rec.lam g)) rec.div-f (DB.div-mul-left rec.gd (sc rec.lam g) T rec.div-g)))
+    (DB.div-eq-right rec.gd (B.mulQ (B.constant beta) (sc rec.lam g)) (sc lam g) (sym sc-g)
+      (DB.div-mul-left rec.gd (sc rec.lam g) (B.constant beta) rec.div-g))
+    (\ h df dg -> rec.common h (common' h df dg) dg) ;
+ } ;
+
+ -- both bounds positive
+ module Tops (N : Nat) (r : Rec N) (f g : Pol) (nf' ng' : Nat)
+  (e : Id Nat (plus (suc nf') (suc ng')) (suc N)) (hf : Bounded (suc nf') f) (hg : Bounded (suc ng') g) {
+  alpha : R = coef f nf' ;
+  beta : R = coef g ng' ;
+  eF : Id Nat (plus nf' (suc ng')) N = suc-inj e ;
+  eG : Id Nat (plus (suc nf') ng') N = trans (sym (plus-suc nf' ng')) eF ;
+  eSym : Id Nat (plus ng' (suc nf')) N =
+   trans (plus-suc ng' nf') (trans (ap (\ n -> suc n) (plus-comm ng' nf')) eG) ;
+  byCmp (an : Not (Id R alpha z)) (bn : Not (Id R beta z)) :
+   Plus ((d : Nat) * Id Nat nf' (plus ng' d)) ((d : Nat) * Id Nat ng' (plus nf' d)) -> Elim[f,g] = split {
+   inl p -> Reduce[f,g,p.1,nf',ng',trans p.2 (plus-comm ng' p.1),hf,hg,N,r,eF,bn].result ;
+   inr p -> swap g f (Reduce[g,f,p.1,ng',nf',trans p.2 (plus-comm nf' p.1),hg,hf,N,r,eSym,an].result) } ;
+  byG (an : Not (Id R alpha z)) : Plus (Id R beta z) (Not (Id R beta z)) -> Elim[f,g] = split {
+   inl b0 -> r f g (suc nf') ng' eG hf (bound-down g ng' hg b0) ;
+   inr bn -> byCmp an bn (NO.compare nf' ng') } ;
+  byF : Plus (Id R alpha z) (Not (Id R alpha z)) -> Elim[f,g] = split {
+   inl a0 -> r f g nf' (suc ng') eF (bound-down f nf' hf a0) hg ;
+   inr an -> byG an (G.dec beta) } ;
+  result : Elim[f,g] = byF (G.dec alpha) ;
+ } ;
+
+ onG (N : Nat) (r : Rec N) (f g : Pol) (nf' : Nat) (hf : Bounded (suc nf') f) :
+  (ng : Nat) -> Id Nat (plus (suc nf') ng) (suc N) -> Bounded ng g -> Elim[f,g] = split {
+  zero -> \ e hg -> swap g f (zero-left g f hg) ;
+  suc ng' -> \ e hg -> Tops[N,r,f,g,nf',ng',e,hf,hg].result } ;
+ onF (N : Nat) (r : Rec N) (f g : Pol) (ng : Nat) (hg : Bounded ng g) :
+  (nf : Nat) -> Id Nat (plus nf ng) (suc N) -> Bounded nf f -> Elim[f,g] = split {
+  zero -> \ e hf -> zero-left f g hf ;
+  suc nf' -> \ e hf -> onG N r f g nf' hf ng e hg } ;
+ onZero (f g : Pol) (ng : Nat) (hg : Bounded ng g) :
+  (nf : Nat) -> Id Nat (plus nf ng) zero -> Bounded nf f -> Elim[f,g] = split {
+  zero -> \ e hf -> zero-left f g hf ;
+  suc n -> \ e hf -> efq (suc-zero (plus n ng) e) } ;
+ elim : (N : Nat) -> Rec N = split {
+  zero -> \ f g nf ng e hf hg -> onZero f g ng hg nf e hf ;
+  suc N | r -> \ f g nf ng e hf hg -> onF N r f g ng hg nf e hf } ;
+
+ -- Lemme 10
+ elimination (f g : Pol) (nf ng : Nat) (hf : Bounded nf f) (hg : Bounded ng g) : Elim[f,g] =
+  elim (plus nf ng) f g nf ng (refl (plus nf ng)) hf hg ;
+} ;

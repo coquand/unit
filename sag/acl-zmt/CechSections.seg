@@ -1,0 +1,832 @@
+-- CechSections.seg: the sections of degree 0 modulo N^0, their product, and
+-- the data (F2) of ACLZMTCong under the syzygy datum (S1)
+-- (acl-zmt-formalisation.tex, Lemme modele (2), Proposition F2 and
+-- « Deux raccourcis », (F2) : l'équation unitaire directement; Liste item 6).
+--
+-- C0 = 0-cochains of degree 0 (supports, finite support), N0 = P U + Q V.
+-- A section c is closed when delta0 c = P u + Q v (Closed: the witnesses).
+-- 1 = (delta, delta, delta), delta the unit monomial, is closed.  The product
+-- is componentwise (LaurentList.Prod); closed sections are stable:
+--     (c c')_j - (c c')_i = c_j (c'_j - c'_i) + c'_i (c_j - c_i)
+--                         = P (c_j u' + c'_i u) + Q (c_j v' + c'_i v) .
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module IP = IdealPowers[l] ; module RC = ReesLiftingCong[l] ;
+module Tr = Truncation[l] ; module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+toB-true {X : U l} : (d : LG.Dec X) -> Id Bool (LaurentList[l].toB d) true -> X = split {
+  yes p -> \ h -> p ;
+  no n -> \ h -> P.absurd X (encodeB false true h) } ;
+toB-false {X : U l} : (d : LG.Dec X) -> Id Bool (LaurentList[l].toB d) false -> LG.Not X = split {
+  yes p -> \ h -> P.absurd (LG.Not X) (encodeB true false h) ;
+  no n -> \ h -> n } ;
+not-true : (b : Bool) -> Id Bool (not b) true -> Id Bool b false = split {
+  true -> \ h -> P.absurd (Id Bool true false) (encodeB false true h) ;
+  false -> \ h -> refl false } ;
+not-false : (b : Bool) -> Id Bool (not b) false -> Id Bool b true = split {
+  true -> \ h -> refl true ;
+  false -> \ h -> P.absurd (Id Bool false true) (encodeB true false h) } ;
+
+module CMn = CechMonomials[l] ; module NA = NatArith[l] ; module Ps = Presentations[l] ;
+
+-- the monomials of gens d have degree -d-1
+AllN (Pp : CMn.N3 -> U l) : List CMn.N3 -> U l = split { nil -> Top ; cons t ts | r -> Pp t * r } ;
+alln-app (Pp : CMn.N3 -> U l) : (xs ys : List CMn.N3) -> AllN Pp xs -> AllN Pp ys -> AllN Pp (Bar[l].app xs ys) = split {
+  nil -> \ ys hx hy -> hy ;
+  cons t ts | r -> \ ys hx hy -> (hx.1, r ys hx.2 hy) } ;
+AllP (Pp : (Nat * Nat) -> U l) : List (Nat * Nat) -> U l = split { nil -> Top ; cons t ts | r -> Pp t * r } ;
+pairs-sum : (n : Nat) -> AllP (\ p -> Id Nat (NA.plus p.1 p.2) n) (CMn.pairs n) = split {
+  zero -> (refl zero, tt) ;
+  suc n | r -> (refl (suc n), map-suc n (CMn.pairs n) r) }
+  where { map-suc (n : Nat) : (ps : List (Nat * Nat)) -> AllP (\ p -> Id Nat (NA.plus p.1 p.2) n) ps ->
+            AllP (\ p -> Id Nat (NA.plus p.1 p.2) (suc n)) (CMn.mapL (Nat * Nat) (Nat * Nat) (\ p -> (suc p.1, p.2)) ps) = split {
+            nil -> \ h -> tt ;
+            cons p ps | rr -> \ h -> (ap (\ k -> suc k) h.1, rr h.2) } } ;
+map-zero (n : Nat) : (ps : List (Nat * Nat)) -> AllP (\ p -> Id Nat (NA.plus p.1 p.2) n) ps ->
+  AllN (\ t -> Id Nat (CMn.size t) n) (CMn.mapL (Nat * Nat) CMn.N3 (\ p -> (zero, p)) ps) = split {
+  nil -> \ h -> tt ;
+  cons p ps | rr -> \ h -> (h.1, rr h.2) } ;
+map-sucT (n : Nat) : (ts : List CMn.N3) -> AllN (\ t -> Id Nat (CMn.size t) n) ts ->
+  AllN (\ t -> Id Nat (CMn.size t) (suc n)) (CMn.mapL CMn.N3 CMn.N3 (\ t -> (suc t.1, t.2)) ts) = split {
+  nil -> \ h -> tt ;
+  cons t ts | rr -> \ h -> (ap (\ k -> suc k) h.1, rr h.2) } ;
+triples-size : (n : Nat) -> AllN (\ t -> Id Nat (CMn.size t) n) (CMn.triples n) = split {
+  zero -> (refl zero, tt) ;
+  suc n | r -> alln-app (\ t -> Id Nat (CMn.size t) (suc n)) _ _ (map-zero (suc n) (CMn.pairs (suc n)) (pairs-sum (suc n))) (map-sucT n (CMn.triples n) r) } ;
+lift-size (n : Nat) : (ts : List CMn.N3) -> AllN (\ t -> Id Nat (CMn.size t) n) ts ->
+  AllN (\ t -> Id Nat (suc (suc (CMn.size t))) (suc (suc n))) ts = split {
+  nil -> \ h -> tt ;
+  cons t ts | rr -> \ h -> (ap (\ k -> suc (suc k)) h.1, rr h.2) } ;
+gens2-size : (d : Nat) -> AllN (\ t -> Id Nat (suc (suc (CMn.size t))) (suc d)) (CMn.gens2 d) = split {
+  zero -> tt ;
+  suc n -> lift-size n (CMn.triples n) (triples-size n) } ;
+gens-size : (d : Nat) -> AllN (\ t -> Id Nat (suc (suc (CMn.size t))) d) (CMn.gens d) = split {
+  zero -> tt ;
+  suc d -> gens2-size d } ;
+
+-- the elements of a list, by position (the order of ModSum.sum)
+nth : (xs : List CMn.N3) -> Ps.Fin (len {CMn.N3} xs) -> CMn.N3 = split {
+  nil -> \ k -> Ring[l].efq k ;
+  cons t xs | rr -> split { inl i -> rr i ; inr u -> t } } ;
+nth-all (Pp : CMn.N3 -> U l) : (xs : List CMn.N3) -> AllN Pp xs -> (i : Ps.Fin (len {CMn.N3} xs)) -> Pp (nth xs i) = split {
+  nil -> \ h k -> Ring[l].efq k ;
+  cons t xs | rr -> \ h -> split { inl i -> rr h.2 i ; inr u -> h.1 } } ;
+
+-- a nonnegative exponent of degree 0 is 0
+unpos : Int -> Nat = split { pos n -> n ; negsuc n -> zero } ;
+add-pos (i : Nat) : (j : Nat) -> Id Int (add (pos i) (pos j)) (pos (NA.plus j i)) = split {
+  zero -> refl (pos i) ;
+  suc j | r -> ap sucZ r } ;
+plus-zero-l : (a b : Nat) -> Id Nat (NA.plus a b) zero -> Id Nat a zero * Id Nat b zero = split {
+  zero -> \ b h -> (refl zero, h) ;
+  suc a -> \ b h -> P.absurd (Id Nat (suc a) zero * Id Nat b zero) (encode (pos (suc (NA.plus a b))) (pos zero) (ap (\ k -> pos k) h)) } ;
+deg0-zero (i j k : Nat) (h : Id Int (deg (pos i, (pos j, pos k))) zeroZ) : Id E3 LaurentList[l].zero3 (pos i, (pos j, pos k)) =
+  CMn.pair3 zeroZ zeroZ zeroZ (pos i) (pos j) (pos k) (ap (\ n -> pos n) (sym h3.2)) (ap (\ n -> pos n) (sym h2.2)) (ap (\ n -> pos n) (sym h2.1))
+  where {
+    hs : Id Nat (NA.plus (NA.plus k j) i) zero =
+      ap unpos (trans (sym (trans (ap (add (pos i)) (add-pos j k)) (add-pos i (NA.plus k j)))) h) ;
+    h3 : Id Nat (NA.plus k j) zero * Id Nat i zero = plus-zero-l (NA.plus k j) i hs ;
+    h2 : Id Nat k zero * Id Nat j zero = plus-zero-l k j h3.1 } ;
+
+-- group identities
+module GrpF2 (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+  -- (A + B) - (C + E) = ((A + X) - C) + ((B - X) - E)
+  l5 (a b c e x : M) : Id M (madd (msub (madd a x) c) (msub (msub b x) e)) (msub (madd a b) (madd c e)) =
+    calc M { madd (msub (madd a x) c) (msub (msub b x) e)
+               =< G.swap (madd a x) (mneg c) (msub b x) (mneg e) > madd (madd (madd a x) (msub b x)) (madd (mneg c) (mneg e))
+               =< ap (\ t -> madd t (madd (mneg c) (mneg e))) (G.swap a x b (mneg x)) > madd (madd (madd a b) (madd x (mneg x))) (madd (mneg c) (mneg e))
+               =< ap (\ t -> madd (madd (madd a b) t) (madd (mneg c) (mneg e))) (maddN x) > madd (madd (madd a b) mz) (madd (mneg c) (mneg e))
+               =< ap (\ t -> madd t (madd (mneg c) (mneg e))) (maddZ (madd a b)) > madd (madd a b) (madd (mneg c) (mneg e))
+               =< ap (madd (madd a b)) (sym (G.neg-add c e)) > msub (madd a b) (madd c e) } ;
+  -- ((y + z) - y) - z = 0
+  yz (y z : M) : Id M (msub (msub (madd y z) y) z) mz =
+    trans (ap (\ t -> msub t z) (trans (ap (\ t -> msub t y) (maddC y z)) (trans (sym (maddA z y (mneg y))) (trans (ap (madd z) (maddN y)) (maddZ z))))) (maddN z) ;
+  grpF2 (a b c e x : M) : Id M (msub (msub (msub (madd a b) (madd c e)) (msub (madd a x) c)) (msub (msub b x) e)) mz =
+    trans (ap (\ t -> msub (msub t (msub (madd a x) c)) (msub (msub b x) e)) (sym (l5 a b c e x))) (yz (msub (madd a x) c) (msub (msub b x) e)) ;
+  -- x - ((((x - a) - p) - q) + a) = p + q
+  grpX (x a p q : M) : Id M (msub x (madd (msub (msub (msub x a) p) q) a)) (madd p q) =
+    calc M { msub x (madd (msub (msub (msub x a) p) q) a)
+               =< ap (\ t -> msub x (madd t a)) (trans (sub-sub (msub x a) p q) (sub-comm x a (madd p q)))
+               > msub x (madd (msub (msub x (madd p q)) a) a)
+               =< ap (msub x) (trans (sym (maddA (msub x (madd p q)) (mneg a) a)) (trans (ap (madd (msub x (madd p q))) (trans (maddC (mneg a) a) (maddN a))) (maddZ (msub x (madd p q)))))
+               > msub x (msub x (madd p q))
+               =< sub-sub-self x (madd p q) > madd p q } ;
+} ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module LO = Laurent3[l].Over[D] ; open LO ;
+  module CO = Cech3[l].Over[D] ;
+  module CC = CechContraction[l].Over[D] ;
+  module LL = LaurentList[l].Over[D] ;
+  module CMd = CechModules[l].Over[D,setD] ;
+  module COp = CechOps[l].Over[D,setD] ;
+  module PR = LL.Prod[setD] ;
+
+  eqL-prop (f g : Lau) : Pr.isProp (EqL f g) = FE.isProp-Pi E3 (\ m -> Id D.R (f m) (g m)) (\ m -> setD (f m) (g m)) ;
+
+  ------------------------------------------------------------------------
+  -- the product of finitely supported functions: conditions and laws
+
+  qdeg (k : Int) (e : E3) : Bool = LaurentList[l].toB (int-dec (deg e) k) ;
+  qnx (e : E3) : Bool = not (isNeg (ex e)) ;
+  qny (e : E3) : Bool = not (isNeg (ey e)) ;
+  qnz (e : E3) : Bool = not (isNeg (ez e)) ;
+  all-deg (k : Int) : (g : LPoly) -> LL.AllQ (qdeg k) g -> HomPI k g = split {
+    nil -> \ h -> tt ;
+    cons t g | r -> \ h -> (toB-true (int-dec (deg t.2) k) h.1, r h.2) } ;
+  all-nx : (g : LPoly) -> LL.AllQ qnx g -> NonNegX g = split {
+    nil -> \ h -> tt ; cons t g | r -> \ h -> (not-true (isNeg (ex t.2)) h.1, r h.2) } ;
+  all-ny : (g : LPoly) -> LL.AllQ qny g -> NonNegY g = split {
+    nil -> \ h -> tt ; cons t g | r -> \ h -> (not-true (isNeg (ey t.2)) h.1, r h.2) } ;
+  all-nz : (g : LPoly) -> LL.AllQ qnz g -> CMd.NonNegZ g = split {
+    nil -> \ h -> tt ; cons t g | r -> \ h -> (not-true (isNeg (ez t.2)) h.1, r h.2) } ;
+
+  -- a representing list of f, filtered by q
+  module Rep (f : Lau) (q : E3 -> Bool) (van : (m : E3) -> Id Bool (q m) false -> Id D.R (f m) D.z) (w : LL.FinW f) {
+    g : LPoly = LL.filt q w.1 ;
+    e : EqL (LL.coef g) f = LL.filt-coef q f van w.1 w.2 ;
+    all : LL.AllQ q g = LL.allq-filt q w.1 ;
+  } ;
+  van-deg (k : Int) (f : Lau) (h : Hom k f) (m : E3) (e : Id Bool (qdeg k m) false) : Id D.R (f m) D.z =
+    h m (toB-false (int-dec (deg m) k) e) ;
+  van-nx (f : Lau) (h : NNX f) (m : E3) (e : Id Bool (qnx m) false) : Id D.R (f m) D.z = h m (not-false (isNeg (ex m)) e) ;
+  van-ny (f : Lau) (h : NNY f) (m : E3) (e : Id Bool (qny m) false) : Id D.R (f m) D.z = h m (not-false (isNeg (ey m)) e) ;
+  van-nz (f : Lau) (h : NNZ f) (m : E3) (e : Id Bool (qnz m) false) : Id D.R (f m) D.z = h m (not-false (isNeg (ez m)) e) ;
+
+  prod (f g : Lau) (hf : LL.Fin f) : Lau = PR.prod f g hf ;
+  -- an elimination of the truncation into a proposition about prod f g
+  module Elim (f : Lau) (hf : LL.Fin f) (C : U l) (pC : Pr.isProp C) (step : LL.FinW f -> C) {
+    out : C = Tr.Trunc[LL.FinW f].induction @l (\ u -> C) (\ u -> pC) step hf ;
+  } ;
+  prod-hom (k k' : Int) (f g : Lau) (hf : LL.Fin f) (Hf : Hom k f) (Hg : Hom k' g) : Hom (add k' k) (prod f g hf) =
+    Elim[f,hf,Hom (add k' k) (prod f g hf),CMd.hom-prop (add k' k) (prod f g hf),
+      \ w -> CMd.van-cong (CMd.CH (add k' k)) (mulP (Rep[f,qdeg k,van-deg k f Hf,w].g) g) (prod f g hf)
+               (\ m -> sym (PR.prod-beta f g hf Rep[f,qdeg k,van-deg k f Hf,w].g Rep[f,qdeg k,van-deg k f Hf,w].e m))
+               (hom-mulI k' k g Hg Rep[f,qdeg k,van-deg k f Hf,w].g (all-deg k Rep[f,qdeg k,van-deg k f Hf,w].g Rep[f,qdeg k,van-deg k f Hf,w].all))].out ;
+  prod-nnx (f g : Lau) (hf : LL.Fin f) (Xf : NNX f) (Xg : NNX g) : NNX (prod f g hf) =
+    Elim[f,hf,NNX (prod f g hf),CMd.nnx-prop (prod f g hf),
+      \ w -> CMd.van-cong CMd.CX (mulP (Rep[f,qnx,van-nx f Xf,w].g) g) (prod f g hf)
+               (\ m -> sym (PR.prod-beta f g hf Rep[f,qnx,van-nx f Xf,w].g Rep[f,qnx,van-nx f Xf,w].e m))
+               (nnx-mulX Rep[f,qnx,van-nx f Xf,w].g (all-nx Rep[f,qnx,van-nx f Xf,w].g Rep[f,qnx,van-nx f Xf,w].all) g Xg)].out ;
+  prod-nny (f g : Lau) (hf : LL.Fin f) (Yf : NNY f) (Yg : NNY g) : NNY (prod f g hf) =
+    Elim[f,hf,NNY (prod f g hf),CMd.nny-prop (prod f g hf),
+      \ w -> CMd.van-cong CMd.CY (mulP (Rep[f,qny,van-ny f Yf,w].g) g) (prod f g hf)
+               (\ m -> sym (PR.prod-beta f g hf Rep[f,qny,van-ny f Yf,w].g Rep[f,qny,van-ny f Yf,w].e m))
+               (nny-mulY Rep[f,qny,van-ny f Yf,w].g (all-ny Rep[f,qny,van-ny f Yf,w].g Rep[f,qny,van-ny f Yf,w].all) g Yg)].out ;
+  prod-nnz (f g : Lau) (hf : LL.Fin f) (Zf : NNZ f) (Zg : NNZ g) : NNZ (prod f g hf) =
+    Elim[f,hf,NNZ (prod f g hf),CMd.nnz-prop (prod f g hf),
+      \ w -> CMd.van-cong CMd.CZ (mulP (Rep[f,qnz,van-nz f Zf,w].g) g) (prod f g hf)
+               (\ m -> sym (PR.prod-beta f g hf Rep[f,qnz,van-nz f Zf,w].g Rep[f,qnz,van-nz f Zf,w].e m))
+               (CMd.nnz-mulZ Rep[f,qnz,van-nz f Zf,w].g (all-nz Rep[f,qnz,van-nz f Zf,w].g Rep[f,qnz,van-nz f Zf,w].all) g Zg)].out ;
+  prod-fin (f g : Lau) (hf : LL.Fin f) (hg : LL.Fin g) : LL.Fin (prod f g hf) =
+    Elim[f,hf,LL.Fin (prod f g hf),LL.fin-prop (prod f g hf),
+      \ w -> LL.fin-cong (mulP w.1 g) (prod f g hf) (\ m -> sym (PR.prod-beta f g hf w.1 w.2 m)) (LL.fin-mulP w.1 g hg)].out ;
+  -- laws, pointwise
+  coef-comm (g h : LPoly) : EqL (mulP g (LL.coef h)) (mulP h (LL.coef g)) =
+    \ m -> trans (mulP-cong g (LL.coef h) (mulP h LL.delta) (LL.coef-delta h) m)
+             (trans (mulP-comm g h LL.delta m) (mulP-cong h (mulP g LL.delta) (LL.coef g) (\ k -> sym (LL.coef-delta g k)) m)) ;
+  prod-comm (f g : Lau) (hf : LL.Fin f) (hg : LL.Fin g) : EqL (prod f g hf) (prod g f hg) =
+    Elim[f,hf,EqL (prod f g hf) (prod g f hg),eqL-prop (prod f g hf) (prod g f hg),
+      \ w -> Elim[g,hg,EqL (prod f g hf) (prod g f hg),eqL-prop (prod f g hf) (prod g f hg),
+        \ w' -> \ m -> trans (PR.prod-beta f g hf w.1 w.2 m)
+                  (trans (mulP-cong w.1 g (LL.coef w'.1) (\ k -> sym (w'.2 k)) m)
+                    (trans (coef-comm w.1 w'.1 m)
+                      (trans (mulP-cong w'.1 (LL.coef w.1) f w.2 m) (sym (PR.prod-beta g f hg w'.1 w'.2 m)))))].out].out ;
+  prod-cong2 (f g g' : Lau) (hf : LL.Fin f) (e : EqL g g') : EqL (prod f g hf) (prod f g' hf) =
+    Elim[f,hf,EqL (prod f g hf) (prod f g' hf),eqL-prop (prod f g hf) (prod f g' hf),
+      \ w -> \ m -> trans (PR.prod-beta f g hf w.1 w.2 m) (trans (mulP-cong w.1 g g' e m) (sym (PR.prod-beta f g' hf w.1 w.2 m)))].out ;
+  prod-add2 (f g g' : Lau) (hf : LL.Fin f) : EqL (prod f (addL g g') hf) (addL (prod f g hf) (prod f g' hf)) =
+    Elim[f,hf,EqL (prod f (addL g g') hf) (addL (prod f g hf) (prod f g' hf)),eqL-prop (prod f (addL g g') hf) (addL (prod f g hf) (prod f g' hf)),
+      \ w -> \ m -> trans (PR.prod-beta f (addL g g') hf w.1 w.2 m)
+               (trans (mulP-add w.1 g g' m) (sym (DG.cong-add (PR.prod-beta f g hf w.1 w.2 m) (PR.prod-beta f g' hf w.1 w.2 m))))].out ;
+  prod-sub2 (f g g' : Lau) (hf : LL.Fin f) : EqL (prod f (subL g g') hf) (subL (prod f g hf) (prod f g' hf)) =
+    Elim[f,hf,EqL (prod f (subL g g') hf) (subL (prod f g hf) (prod f g' hf)),eqL-prop (prod f (subL g g') hf) (subL (prod f g hf) (prod f g' hf)),
+      \ w -> \ m -> trans (PR.prod-beta f (subL g g') hf w.1 w.2 m)
+               (trans (mulP-sub w.1 g g' m) (sym (DG.cong-add (PR.prod-beta f g hf w.1 w.2 m) (ap D.neg (PR.prod-beta f g' hf w.1 w.2 m)))))].out ;
+  prod-mulP (f g : Lau) (hf : LL.Fin f) (p : LPoly) : EqL (prod f (mulP p g) hf) (mulP p (prod f g hf)) =
+    Elim[f,hf,EqL (prod f (mulP p g) hf) (mulP p (prod f g hf)),eqL-prop (prod f (mulP p g) hf) (mulP p (prod f g hf)),
+      \ w -> \ m -> trans (PR.prod-beta f (mulP p g) hf w.1 w.2 m)
+               (trans (mulP-comm w.1 p g m) (mulP-cong p (mulP w.1 g) (prod f g hf) (\ k -> sym (PR.prod-beta f g hf w.1 w.2 k)) m))].out ;
+
+  ------------------------------------------------------------------------
+  -- pi (delta1 b) = 0 for a 1-cochain with the support conditions
+
+  d1-zero-at (b : CO.Tri) (hb : CO.Supp1 b) (m : E3) (hx : Id Bool (CC.nx m) true) (hy : Id Bool (CC.ny m) true) (hz : Id Bool (CC.nz m) true) :
+    Id D.R (CO.d1 b m) D.z =
+    CO.vanish-add (D.add (CO.t3 b m) (D.neg (CO.t2 b m))) (CO.t1 b m)
+      (CO.vanish-sub (CO.t3 b m) (CO.t2 b m) (hb.2.2 m hx) (hb.2.1 m hy)) (hb.1 m hz) ;
+  pi-d1 (b : CO.Tri) (hb : CO.Supp1 b) : EqL (CC.pi (CO.d1 b)) zeroL =
+    \ m -> trans (CMn.Over[D].ifB-eq (and (CC.nx m) (and (CC.ny m) (CC.nz m))) (CO.d1 b m) D.z
+                   (\ h -> d1-zero-at b hb m (CMn.and-l (CC.nx m) (and (CC.ny m) (CC.nz m)) h)
+                             (CMn.and-l (CC.ny m) (CC.nz m) (CMn.and-r (CC.nx m) (and (CC.ny m) (CC.nz m)) h))
+                             (CMn.and-r (CC.ny m) (CC.nz m) (CMn.and-r (CC.nx m) (and (CC.ny m) (CC.nz m)) h))))
+                 (CC.ifB-zero (and (CC.nx m) (and (CC.ny m) (CC.nz m)))) ;
+
+  -- X^(expo t) is a finite list
+  mono-pt (t : CMn.N3) (m : E3) : (d : LG.Dec (Id E3 (CMn.expo t) m)) -> Id D.R (LL.ifD d D.o) (CechH1Finite[l].Over[D].mono t m) = split {
+    yes p -> sym (trans (ap (\ k -> ifB (CMn.isExpo t k) D.o) (sym p)) (ap (\ b -> ifB b D.o) (isExpo-refl t))) ;
+    no n -> sym (no-pt t m n (CMn.isExpo t m) (refl (CMn.isExpo t m))) }
+    where {
+      isExpo-refl (t : CMn.N3) : Id Bool (CMn.isExpo t (CMn.expo t)) true =
+        trans (ap (\ b -> and b (and (CMn.eqI t.2.1 (negsuc t.2.1)) (CMn.eqI t.2.2 (negsuc t.2.2)))) (CMn.eqN-refl t.1))
+          (trans (ap (\ b -> and b (CMn.eqI t.2.2 (negsuc t.2.2))) (CMn.eqN-refl t.2.1)) (CMn.eqN-refl t.2.2)) ;
+      no-pt (t : CMn.N3) (m : E3) (n : LG.Not (Id E3 (CMn.expo t) m)) : (bb : Bool) -> Id Bool (CMn.isExpo t m) bb ->
+        Id D.R (ifB (CMn.isExpo t m) D.o) D.z = split {
+        true -> \ e -> P.absurd (Id D.R (ifB (CMn.isExpo t m) D.o) D.z) (n (sym (CMn.isExpo-sound t m e))) ;
+        false -> \ e -> ap (\ b -> ifB b D.o) e } } ;
+  mono-fin (t : CMn.N3) : LL.Fin (CechH1Finite[l].Over[D].mono t) =
+    LL.fin-cong (LL.coef (cons (D.o, CMn.expo t) nil)) (CechH1Finite[l].Over[D].mono t)
+      (\ m -> trans (D.addZ (LL.coefT (D.o, CMn.expo t) m)) (mono-pt t m (LaurentList[l].dec3 (CMn.expo t) m)))
+      (LL.fin-in (cons (D.o, CMn.expo t) nil)) ;
+
+  -- a closed 0-cochain of degree 0 is a constant
+  delta : Lau = LL.coef (cons (D.o, LaurentList[l].zero3) nil) ;
+  oneT : CO.Tri = CO.mkT delta delta delta ;
+  module Const (x : CO.Tri) (hs : CO.Supp0 x) (hh : CMd.HomT (pos zero) x) (hd : CO.EqT (CO.d0 x) CO.zeroT) {
+    a0 : D.R = CO.t1 x LaurentList[l].zero3 ;
+    e21 (m : E3) : Id D.R (CO.t2 x m) (CO.t1 x m) = CO.sub-eq (CO.t2 x m) (CO.t1 x m) (hd.1 m) ;
+    e31 (m : E3) : Id D.R (CO.t3 x m) (CO.t1 x m) = CO.sub-eq (CO.t3 x m) (CO.t1 x m) (hd.2.1 m) ;
+    off : (xx yy zz : Int) -> LG.Not (Id E3 LaurentList[l].zero3 (xx,(yy,zz))) -> Id D.R (CO.t1 x (xx,(yy,zz))) D.z = split {
+      negsuc a -> \ yy zz n -> trans (sym (e21 (negsuc a,(yy,zz)))) (hs.2.1.1 (negsuc a,(yy,zz)) (refl true)) ;
+      pos i -> split {
+        negsuc b -> \ zz n -> hs.1.1 (pos i,(negsuc b,zz)) (refl true) ;
+        pos j -> split {
+          negsuc c -> \ n -> hs.1.2 (pos i,(pos j,negsuc c)) (refl true) ;
+          pos k -> \ n -> hh.1 (pos i,(pos j,pos k)) (\ dz -> n (deg0-zero i j k dz)) } } } ;
+    pt (m : E3) : (d : LG.Dec (Id E3 LaurentList[l].zero3 m)) -> Id D.R (CO.t1 x m) (D.mul a0 (D.add (LL.ifD d D.o) D.z)) = split {
+      yes p -> trans (ap (CO.t1 x) (sym p)) (sym (trans (ap (D.mul a0) (D.addZ D.o)) (D.mulO a0))) ;
+      no n -> trans (off m.1 m.2.1 m.2.2 n) (sym (trans (ap (D.mul a0) (D.addZ D.z)) (L.mul-zero a0))) } ;
+    const : CO.EqT x (CO.scaleT a0 oneT) =
+      (\ m -> pt m (LaurentList[l].dec3 LaurentList[l].zero3 m),
+       (\ m -> trans (e21 m) (pt m (LaurentList[l].dec3 LaurentList[l].zero3 m)),
+        \ m -> trans (e31 m) (pt m (LaurentList[l].dec3 LaurentList[l].zero3 m)))) ;
+  } ;
+
+  -- c_t = tau(P sigma(-Q t) + Q sigma(P t)), a linear map
+  addLin (Mm Nm : IP.Mod[D]) (F G : IP.Lin[D,Mm,Nm]) : IP.Lin[D,Mm,Nm] =
+    IP.mkLin D Mm Nm (\ x -> Nm.madd (F.f x) (G.f x))
+      (\ x y -> trans (IP.ModL[D,Nm].G.cong-add (F.f-add x y) (G.f-add x y)) (IP.ModL[D,Nm].G.swap (F.f x) (F.f y) (G.f x) (G.f y)))
+      (\ c x -> trans (IP.ModL[D,Nm].G.cong-add (F.f-sm c x) (G.f-sm c x)) (sym (Nm.smD c (F.f x) (G.f x)))) ;
+  negLin : IP.Lin[D,CMd.lmod,CMd.lmod] =
+    CMd.linL negL (\ f g m -> L.neg-add (f m) (g m)) (\ c f m -> sym (L.mul-neg c (f m))) ;
+  module CT (P Q : LPoly) {
+    comp3 (F : IP.Lin[D,CMd.lmod,CMd.lmod]) (G : IP.Lin[D,CMd.lmod,CMd.tmod]) (H : IP.Lin[D,CMd.tmod,CMd.tmod]) : IP.Lin[D,CMd.lmod,CMd.tmod] =
+      CechModules[l].comp D CMd.lmod CMd.tmod CMd.tmod (CechModules[l].comp D CMd.lmod CMd.lmod CMd.tmod F G) H ;
+    ctL : IP.Lin[D,CMd.lmod,CMd.tmod] =
+      CechModules[l].comp D CMd.lmod CMd.tmod CMd.tmod
+        (addLin CMd.lmod CMd.tmod
+           (comp3 (CechModules[l].comp D CMd.lmod CMd.lmod CMd.lmod (COp.mulPL Q) negLin) COp.sigmaL (COp.mulTL P))
+           (comp3 (COp.mulPL P) COp.sigmaL (COp.mulTL Q)))
+        COp.tauL ;
+    ct (t : Lau) : CO.Tri = ctL.f t ;
+  } ;
+  -- c_t = tau(P sigma(-Q' t) + Q sigma(P' t)), for P = D0 P', Q = D0 Q'
+  module CT4 (P Q P' Q' : LPoly) {
+    comp3 (F : IP.Lin[D,CMd.lmod,CMd.lmod]) (G : IP.Lin[D,CMd.lmod,CMd.tmod]) (H : IP.Lin[D,CMd.tmod,CMd.tmod]) : IP.Lin[D,CMd.lmod,CMd.tmod] =
+      CechModules[l].comp D CMd.lmod CMd.tmod CMd.tmod (CechModules[l].comp D CMd.lmod CMd.lmod CMd.tmod F G) H ;
+    ctL : IP.Lin[D,CMd.lmod,CMd.tmod] =
+      CechModules[l].comp D CMd.lmod CMd.tmod CMd.tmod
+        (addLin CMd.lmod CMd.tmod
+           (comp3 (CechModules[l].comp D CMd.lmod CMd.lmod CMd.lmod (COp.mulPL Q') negLin) COp.sigmaL (COp.mulTL P))
+           (comp3 (COp.mulPL P') COp.sigmaL (COp.mulTL Q)))
+        COp.tauL ;
+    ct (t : Lau) : CO.Tri = ctL.f t ;
+  } ;
+
+  -- linear maps and differences; identities of triples
+  linNeg (Mm Nm : IP.Mod[D]) (F : IP.Lin[D,Mm,Nm]) (x : Mm.M) : Id Nm.M (F.f (Mm.mneg x)) (Nm.mneg (F.f x)) =
+    IP.ModL[D,Nm].G.neg-uniq (F.f x) (F.f (Mm.mneg x))
+      (trans (sym (F.f-add x (Mm.mneg x))) (trans (ap F.f (Mm.maddN x)) (ACLZMT[l].LinSum[D,Mm,Nm,F].zero))) ;
+  linSub (Mm Nm : IP.Mod[D]) (F : IP.Lin[D,Mm,Nm]) (x y : Mm.M) : Id Nm.M (F.f (IP.ModL[D,Mm].msub x y)) (IP.ModL[D,Nm].msub (F.f x) (F.f y)) =
+    trans (F.f-add x (Mm.mneg y)) (ap (Nm.madd (F.f x)) (linNeg Mm Nm F y)) ;
+  idEqT (x y : CO.Tri) (p : Id CO.Tri x y) : CO.EqT x y =
+    (\ m -> ap (\ z -> CO.t1 z m) p, (\ m -> ap (\ z -> CO.t2 z m) p, \ m -> ap (\ z -> CO.t3 z m) p)) ;
+  d0-mulT (g : LPoly) (x : CO.Tri) : CO.EqT (CO.d0 (CO.mulT g x)) (CO.mulT g (CO.d0 x)) =
+    (\ m -> sym (mulP-sub g (CO.t2 x) (CO.t1 x) m), (\ m -> sym (mulP-sub g (CO.t3 x) (CO.t1 x) m), \ m -> sym (mulP-sub g (CO.t3 x) (CO.t2 x) m))) ;
+  mulT-comm (g h : LPoly) (x : CO.Tri) : CO.EqT (CO.mulT g (CO.mulT h x)) (CO.mulT h (CO.mulT g x)) =
+    (mulP-comm g h (CO.t1 x), (mulP-comm g h (CO.t2 x), mulP-comm g h (CO.t3 x))) ;
+  -- degrees, transported
+  slT (k k2 : Int) (e : Id Int k k2) (f : Lau) (h : CMd.SL k f) : CMd.SL k2 f = subst (\ j -> CMd.SL j f) e h ;
+  s1T (k k2 : Int) (e : Id Int k k2) (b : CO.Tri) (h : CMd.S1 k b) : CMd.S1 k2 b = subst (\ j -> CMd.S1 j b) e h ;
+  s0T (k k2 : Int) (e : Id Int k k2) (b : CO.Tri) (h : CMd.S0 k b) : CMd.S0 k2 b = subst (\ j -> CMd.S0 j b) e h ;
+  negSL (k : Int) (f : Lau) (h : CMd.SL k f) : CMd.SL k (negL f) = (CMd.van-neg (CMd.CH k) f h.1, LL.fin-neg f h.2) ;
+  mulS1-pres (k k' : Int) (g : LPoly) (pg : CMd.IsPoly k' g) (b : CO.Tri) (h : CMd.S1 k b) : CMd.S1 (add k k') (CO.mulT g b) =
+    (COp.supp1-mulT k' g pg b h.1, (COp.homT-mul k k' g pg b h.2.1, COp.finT-mul g b h.2.2)) ;
+  mulS0-pres (k k' : Int) (g : LPoly) (pg : CMd.IsPoly k' g) (b : CO.Tri) (h : CMd.S0 k b) : CMd.S0 (add k k') (CO.mulT g b) =
+    (COp.supp0-mulT k' g pg b h.1, (COp.homT-mul k k' g pg b h.2.1, COp.finT-mul g b h.2.2)) ;
+  d1-SL (k : Int) (b : CO.Tri) (hb : CMd.S1 k b) : CMd.SL k (CO.d1 b) =
+    (CMd.van-add (CMd.CH k) (subL (CO.t3 b) (CO.t2 b)) (CO.t1 b)
+       (CMd.van-add (CMd.CH k) (CO.t3 b) (negL (CO.t2 b)) hb.2.1.2.2 (CMd.van-neg (CMd.CH k) (CO.t2 b) hb.2.1.2.1)) hb.2.1.1,
+     LL.fin-add (subL (CO.t3 b) (CO.t2 b)) (CO.t1 b) (LL.fin-sub (CO.t3 b) (CO.t2 b) hb.2.2.2.2 hb.2.2.2.1) hb.2.2.1) ;
+  -- -a + (a - b) = -b ,  a - (a - b) = b
+  r1 (x y : D.R) : Id D.R (D.add (D.neg x) (D.add x (D.neg y))) (D.neg y) =
+    trans (D.addA (D.neg x) x (D.neg y)) (trans (ap (\ z -> D.add z (D.neg y)) (L.neg-cancel x)) (L.zl (D.neg y))) ;
+  r2 (x y : D.R) : Id D.R (D.add x (D.neg (D.add x (D.neg y)))) y =
+    trans (ap (D.add x) (L.negsub x y)) (trans (D.addA x (D.neg x) y) (trans (ap (\ z -> D.add z y) (D.addN x)) (L.zl y))) ;
+
+  ------------------------------------------------------------------------
+  -- one component of the product of two closed sections
+
+  ring-tel (x y z : D.R) : Id D.R (D.add x (D.neg z)) (D.add (D.add x (D.neg y)) (D.add y (D.neg z))) =
+    sym (trans (sym (D.addA x (D.neg y) (D.add y (D.neg z))))
+          (ap (D.add x) (trans (D.addA (D.neg y) y (D.neg z)) (trans (ap (\ t -> D.add t (D.neg z)) (L.neg-cancel y)) (L.zl (D.neg z)))))) ;
+  comp-id (P Q : LPoly) (ci cj ci' cj' : Lau) (fi : LL.Fin ci) (fj : LL.Fin cj) (fi' : LL.Fin ci') (fj' : LL.Fin cj')
+    (u v u' v' : Lau) (e : EqL (subL cj ci) (addL (mulP P u) (mulP Q v))) (e' : EqL (subL cj' ci') (addL (mulP P u') (mulP Q v'))) :
+    EqL (subL (prod cj cj' fj) (prod ci ci' fi))
+        (addL (mulP P (addL (prod cj u' fj) (prod ci' u fi'))) (mulP Q (addL (prod cj v' fj) (prod ci' v fi')))) =
+    \ m -> calc D.R {
+      D.add (prod cj cj' fj m) (D.neg (prod ci ci' fi m))
+        =< ring-tel (prod cj cj' fj m) (prod cj ci' fj m) (prod ci ci' fi m)
+        > D.add (D.add (prod cj cj' fj m) (D.neg (prod cj ci' fj m))) (D.add (prod cj ci' fj m) (D.neg (prod ci ci' fi m)))
+        =< DG.cong-add (sym (prod-sub2 cj cj' ci' fj m))
+             (DG.cong-add (prod-comm cj ci' fj fi' m) (ap D.neg (prod-comm ci ci' fi fi' m)))
+        > D.add (prod cj (subL cj' ci') fj m) (D.add (prod ci' cj fi' m) (D.neg (prod ci' ci fi' m)))
+        =< ap (D.add (prod cj (subL cj' ci') fj m)) (sym (prod-sub2 ci' cj ci fi' m))
+        > D.add (prod cj (subL cj' ci') fj m) (prod ci' (subL cj ci) fi' m)
+        =< DG.cong-add (trans (prod-cong2 cj (subL cj' ci') (addL (mulP P u') (mulP Q v')) fj e' m)
+                              (trans (prod-add2 cj (mulP P u') (mulP Q v') fj m) (DG.cong-add (prod-mulP cj u' fj P m) (prod-mulP cj v' fj Q m))))
+                       (trans (prod-cong2 ci' (subL cj ci) (addL (mulP P u) (mulP Q v)) fi' e m)
+                              (trans (prod-add2 ci' (mulP P u) (mulP Q v) fi' m) (DG.cong-add (prod-mulP ci' u fi' P m) (prod-mulP ci' v fi' Q m))))
+        > D.add (D.add (mulP P (prod cj u' fj) m) (mulP Q (prod cj v' fj) m)) (D.add (mulP P (prod ci' u fi') m) (mulP Q (prod ci' v fi') m))
+        =< L.swap (mulP P (prod cj u' fj) m) (mulP Q (prod cj v' fj) m) (mulP P (prod ci' u fi') m) (mulP Q (prod ci' v fi') m)
+        > D.add (D.add (mulP P (prod cj u' fj) m) (mulP P (prod ci' u fi') m)) (D.add (mulP Q (prod cj v' fj) m) (mulP Q (prod ci' v fi') m))
+        =< sym (DG.cong-add (mulP-add P (prod cj u' fj) (prod ci' u fi') m) (mulP-add Q (prod cj v' fj) (prod ci' v fi') m))
+        > D.add (mulP P (addL (prod cj u' fj) (prod ci' u fi')) m) (mulP Q (addL (prod cj v' fj) (prod ci' v fi')) m) } ;
+
+  ------------------------------------------------------------------------
+  -- the sections of degree 0, for two equations P, Q
+
+  module Sec (P Q : LPoly) (dP dQ : Int) (pP : CMd.IsPoly dP P) (pQ : CMd.IsPoly dQ Q) (kP1 kQ1 : Int) {
+    k0 : Int = pos zero ;
+    module C0 = CMd.M0[k0].S ;
+    module NW1 = COp.NW[CMd.S1,COp.s1-zero,COp.s1-add,COp.s1-neg,COp.s1-sm,P,Q,kP1,kQ1] ;
+    module NW0 = COp.NW[CMd.S0,COp.s0-zero,COp.s0-add,COp.s0-neg,COp.s0-sm,P,Q,kP1,kQ1] ;
+    Closed (c : C0.E) : U l = NW1.N (CO.d0 c.1) ;
+    N0 : RC.Sub[D,C0.mod] = RC.mkSub D C0.mod (\ c -> NW0.N c.1) NW0.sub.n-zero
+      (\ x y -> NW0.sub.n-add x.1 y.1) (\ x -> NW0.sub.n-neg x.1) (\ c x -> NW0.sub.n-sm c x.1) ;
+
+    -- the unit
+    delta-van (C : E3 -> U l) (h : C LaurentList[l].zero3 -> Empty) : CMd.Van C delta =
+      \ m c -> trans (D.addZ (LL.ifD (LaurentList[l].dec3 LaurentList[l].zero3 m) D.o))
+                     (LL.ifD-no (\ p -> h (subst C (sym p) c)) (LaurentList[l].dec3 LaurentList[l].zero3 m) D.o) ;
+    nz-false (h : Id Bool false true) : Empty = encodeB false true h ;
+    hom-delta : Hom k0 delta = delta-van (CMd.CH k0) (\ h -> h (refl k0)) ;
+    oneS : C0.E = (oneT,
+      (((delta-van CMd.CY nz-false, delta-van CMd.CZ nz-false), ((delta-van CMd.CX nz-false, delta-van CMd.CZ nz-false), (delta-van CMd.CX nz-false, delta-van CMd.CY nz-false))),
+       ((hom-delta, (hom-delta, hom-delta)), (LL.fin-in (cons (D.o, LaurentList[l].zero3) nil), (LL.fin-in (cons (D.o, LaurentList[l].zero3) nil), LL.fin-in (cons (D.o, LaurentList[l].zero3) nil)))))) ;
+    pq0 (m : E3) : Id D.R (D.add (mulP P zeroL m) (mulP Q zeroL m)) D.z =
+      CO.vanish-add (mulP P zeroL m) (mulP Q zeroL m) (mulP-zero P m) (mulP-zero Q m) ;
+    closed-one : Closed oneS =
+      (CO.zeroT, (CO.zeroT, (COp.s1-zero kP1, (COp.s1-zero kQ1,
+        (\ m -> trans (D.addN (delta m)) (sym (pq0 m)), (\ m -> trans (D.addN (delta m)) (sym (pq0 m)), \ m -> trans (D.addN (delta m)) (sym (pq0 m)))))))) ;
+
+    -- the product
+    mulT (c c' : C0.E) : CO.Tri =
+      CO.mkT (prod (CO.t1 c.1) (CO.t1 c'.1) c.2.2.2.1) (prod (CO.t2 c.1) (CO.t2 c'.1) c.2.2.2.2.1) (prod (CO.t3 c.1) (CO.t3 c'.1) c.2.2.2.2.2) ;
+    mulC (c c' : C0.E) : C0.E = (mulT c c',
+      (((prod-nny (CO.t1 c.1) (CO.t1 c'.1) c.2.2.2.1 c.2.1.1.1 c'.2.1.1.1, prod-nnz (CO.t1 c.1) (CO.t1 c'.1) c.2.2.2.1 c.2.1.1.2 c'.2.1.1.2),
+        ((prod-nnx (CO.t2 c.1) (CO.t2 c'.1) c.2.2.2.2.1 c.2.1.2.1.1 c'.2.1.2.1.1, prod-nnz (CO.t2 c.1) (CO.t2 c'.1) c.2.2.2.2.1 c.2.1.2.1.2 c'.2.1.2.1.2),
+         (prod-nnx (CO.t3 c.1) (CO.t3 c'.1) c.2.2.2.2.2 c.2.1.2.2.1 c'.2.1.2.2.1, prod-nny (CO.t3 c.1) (CO.t3 c'.1) c.2.2.2.2.2 c.2.1.2.2.2 c'.2.1.2.2.2))),
+       ((prod-hom k0 k0 (CO.t1 c.1) (CO.t1 c'.1) c.2.2.2.1 c.2.2.1.1 c'.2.2.1.1,
+         (prod-hom k0 k0 (CO.t2 c.1) (CO.t2 c'.1) c.2.2.2.2.1 c.2.2.1.2.1 c'.2.2.1.2.1,
+          prod-hom k0 k0 (CO.t3 c.1) (CO.t3 c'.1) c.2.2.2.2.2 c.2.2.1.2.2 c'.2.2.1.2.2)),
+        (prod-fin (CO.t1 c.1) (CO.t1 c'.1) c.2.2.2.1 c'.2.2.2.1,
+         (prod-fin (CO.t2 c.1) (CO.t2 c'.1) c.2.2.2.2.1 c'.2.2.2.2.1, prod-fin (CO.t3 c.1) (CO.t3 c'.1) c.2.2.2.2.2 c'.2.2.2.2.2))))) ;
+
+    -- closed sections are stable under products
+    module CM2 (c c' : C0.E) (hc : Closed c) (hc' : Closed c') {
+      cX : Lau = CO.t1 c.1 ; cY : Lau = CO.t2 c.1 ; cZ : Lau = CO.t3 c.1 ;
+      dX : Lau = CO.t1 c'.1 ; dY : Lau = CO.t2 c'.1 ; dZ : Lau = CO.t3 c'.1 ;
+      fX : LL.Fin cX = c.2.2.2.1 ; fY : LL.Fin cY = c.2.2.2.2.1 ; fZ : LL.Fin cZ = c.2.2.2.2.2 ;
+      gX : LL.Fin dX = c'.2.2.2.1 ; gY : LL.Fin dY = c'.2.2.2.2.1 ; gZ : LL.Fin dZ = c'.2.2.2.2.2 ;
+      u : CO.Tri = hc.1 ; v : CO.Tri = hc.2.1 ; u' : CO.Tri = hc'.1 ; v' : CO.Tri = hc'.2.1 ;
+      W (a b : CO.Tri) : CO.Tri =
+        CO.mkT (addL (prod cY (CO.t1 b) fY) (prod dX (CO.t1 a) gX))
+               (addL (prod cZ (CO.t2 b) fZ) (prod dX (CO.t2 a) gX))
+               (addL (prod cZ (CO.t3 b) fZ) (prod dY (CO.t3 a) gY)) ;
+      W-in (k : Int) (a b : CO.Tri) (ha : CMd.S1 k a) (hb : CMd.S1 k b) : CMd.S1 k (W a b) =
+        ((CMd.van-add CMd.CZ (prod cY (CO.t1 b) fY) (prod dX (CO.t1 a) gX)
+            (prod-nnz cY (CO.t1 b) fY c.2.1.2.1.2 hb.1.1) (prod-nnz dX (CO.t1 a) gX c'.2.1.1.2 ha.1.1),
+          (CMd.van-add CMd.CY (prod cZ (CO.t2 b) fZ) (prod dX (CO.t2 a) gX)
+            (prod-nny cZ (CO.t2 b) fZ c.2.1.2.2.2 hb.1.2.1) (prod-nny dX (CO.t2 a) gX c'.2.1.1.1 ha.1.2.1),
+           CMd.van-add CMd.CX (prod cZ (CO.t3 b) fZ) (prod dY (CO.t3 a) gY)
+            (prod-nnx cZ (CO.t3 b) fZ c.2.1.2.2.1 hb.1.2.2) (prod-nnx dY (CO.t3 a) gY c'.2.1.2.1.1 ha.1.2.2))),
+         ((CMd.van-add (CMd.CH k) (prod cY (CO.t1 b) fY) (prod dX (CO.t1 a) gX)
+             (prod-hom k0 k cY (CO.t1 b) fY c.2.2.1.2.1 hb.2.1.1) (prod-hom k0 k dX (CO.t1 a) gX c'.2.2.1.1 ha.2.1.1),
+           (CMd.van-add (CMd.CH k) (prod cZ (CO.t2 b) fZ) (prod dX (CO.t2 a) gX)
+             (prod-hom k0 k cZ (CO.t2 b) fZ c.2.2.1.2.2 hb.2.1.2.1) (prod-hom k0 k dX (CO.t2 a) gX c'.2.2.1.1 ha.2.1.2.1),
+            CMd.van-add (CMd.CH k) (prod cZ (CO.t3 b) fZ) (prod dY (CO.t3 a) gY)
+             (prod-hom k0 k cZ (CO.t3 b) fZ c.2.2.1.2.2 hb.2.1.2.2) (prod-hom k0 k dY (CO.t3 a) gY c'.2.2.1.2.1 ha.2.1.2.2))),
+          (LL.fin-add (prod cY (CO.t1 b) fY) (prod dX (CO.t1 a) gX) (prod-fin cY (CO.t1 b) fY hb.2.2.1) (prod-fin dX (CO.t1 a) gX ha.2.2.1),
+           (LL.fin-add (prod cZ (CO.t2 b) fZ) (prod dX (CO.t2 a) gX) (prod-fin cZ (CO.t2 b) fZ hb.2.2.2.1) (prod-fin dX (CO.t2 a) gX ha.2.2.2.1),
+            LL.fin-add (prod cZ (CO.t3 b) fZ) (prod dY (CO.t3 a) gY) (prod-fin cZ (CO.t3 b) fZ hb.2.2.2.2) (prod-fin dY (CO.t3 a) gY ha.2.2.2.2))))) ;
+      closed : Closed (mulC c c') =
+        (W u u', (W v v', (W-in kP1 u u' hc.2.2.1 hc'.2.2.1, (W-in kQ1 v v' hc.2.2.2.1 hc'.2.2.2.1,
+          (comp-id P Q cX cY dX dY fX fY gX gY (CO.t1 u) (CO.t1 v) (CO.t1 u') (CO.t1 v') hc.2.2.2.2.1 hc'.2.2.2.2.1,
+           (comp-id P Q cX cZ dX dZ fX fZ gX gZ (CO.t2 u) (CO.t2 v) (CO.t2 u') (CO.t2 v') hc.2.2.2.2.2.1 hc'.2.2.2.2.2.1,
+            comp-id P Q cY cZ dY dZ fY fZ gY gZ (CO.t3 u) (CO.t3 v) (CO.t3 u') (CO.t3 v') hc.2.2.2.2.2.2 hc'.2.2.2.2.2.2)))))) ;
+    } ;
+    closed-mul (c c' : C0.E) (hc : Closed c) (hc' : Closed c') : Closed (mulC c c') = CM2[c,c',hc,hc'].closed ;
+
+    ----------------------------------------------------------------------
+    -- (F2) under the syzygy datum (S1)
+
+    module F2 (kW : Int) (hW1 : Id Int (add kW dQ) kP1) (hW2 : Id Int (add kW dP) kQ1)
+      (h01 : Id Int (add kP1 dP) k0) (h02 : Id Int (add kQ1 dQ) k0) (dW : Nat) (hWn : Id Int kW (negsuc dW))
+      (s1 : (al be : Lau) -> CMd.SL kP1 al -> CMd.SL kQ1 be -> EqL (addL (mulP P al) (mulP Q be)) zeroL ->
+            (w : Lau) * (CMd.SL kW w * (EqL al (negL (mulP Q w)) * EqL be (mulP P w)))) {
+      module CTm = CT[P,Q] ;
+      module CH = CechH1Finite[l].Over[D] ;
+      module LT = IP.ModL[D,CMd.tmod] ; module GT = GrpF2[D,CMd.tmod] ;
+      gs : List CMn.N3 = CMn.gens dW ;
+      sg : Ring[l].Nat = len {CMn.N3} gs ;
+      ss : Ring[l].Nat = suc sg ;
+      module FV = ReesLifting[l].Free[D,ss] ;
+      module MC = ACLZMT[l].ModSum[D,C0.mod] ;
+      module MT = ACLZMT[l].ModSum[D,CMd.tmod] ;
+      module ML = ACLZMT[l].ModSum[D,CMd.lmod] ;
+      module CLc = CechF1[l].CombLin[D,C0.mod] ;
+      module LC0 = IP.ModL[D,C0.mod] ;
+
+      -- c_t lands in the sections of degree 0
+      ct-arg (t : Lau) : CO.Tri = CO.addT (CO.mulT P (CC.sigma (negL (mulP Q t)))) (CO.mulT Q (CC.sigma (mulP P t))) ;
+      u1-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 kP1 (CC.sigma (negL (mulP Q t))) =
+        COp.sigma-pres kP1 (negL (mulP Q t)) (slT (add kW dQ) kP1 hW1 (negL (mulP Q t)) (negSL (add kW dQ) (mulP Q t) (COp.mulP-pres kW dQ Q pQ t h))) ;
+      u2-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 kQ1 (CC.sigma (mulP P t)) =
+        COp.sigma-pres kQ1 (mulP P t) (slT (add kW dP) kQ1 hW2 (mulP P t) (COp.mulP-pres kW dP P pP t h)) ;
+      arg-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 k0 (ct-arg t) =
+        COp.s1-add k0 (CO.mulT P (CC.sigma (negL (mulP Q t)))) (CO.mulT Q (CC.sigma (mulP P t)))
+          (s1T (add kP1 dP) k0 h01 (CO.mulT P (CC.sigma (negL (mulP Q t)))) (mulS1-pres kP1 dP P pP (CC.sigma (negL (mulP Q t))) (u1-in t h)))
+          (s1T (add kQ1 dQ) k0 h02 (CO.mulT Q (CC.sigma (mulP P t))) (mulS1-pres kQ1 dQ Q pQ (CC.sigma (mulP P t)) (u2-in t h))) ;
+      ct-in (t : Lau) (h : CMd.SL kW t) : CMd.S0 k0 (CTm.ct t) = COp.tau-pres k0 (ct-arg t) (arg-in t h) ;
+      mono-in (i : Ps.Fin sg) : CMd.SL kW (CH.mono (nth gs i)) =
+        (CH.hom-mono (nth gs i) kW (trans (ap (\ k -> negsuc k) (nth-all (\ t -> Id Nat (suc (suc (CMn.size t))) dW) gs (gens-size dW) i)) (sym hWn)),
+         mono-fin (nth gs i)) ;
+      CSi (i : Ps.Fin sg) : C0.E = (CTm.ct (CH.mono (nth gs i)), ct-in (CH.mono (nth gs i)) (mono-in i)) ;
+
+      -- Phi(a0, (mu_i)) = a0 1 + sum_i mu_i C_i
+      Phi : IP.Lin[D,FV.mod,C0.mod] =
+        IP.mkLin D FV.mod C0.mod (\ rh -> C0.mod.madd (C0.mod.sm (rh (inr tt)) oneS) (MC.comb sg (\ i -> rh (inl i)) CSi))
+          (\ rh rh' -> trans (LC0.G.cong-add (C0.mod.smE (rh (inr tt)) (rh' (inr tt)) oneS) (CLc.comb-add sg (\ i -> rh (inl i)) (\ i -> rh' (inl i)) CSi))
+                             (LC0.G.swap (C0.mod.sm (rh (inr tt)) oneS) (C0.mod.sm (rh' (inr tt)) oneS)
+                                         (MC.comb sg (\ i -> rh (inl i)) CSi) (MC.comb sg (\ i -> rh' (inl i)) CSi)))
+          (\ c rh -> trans (LC0.G.cong-add (sym (C0.mod.smA c (rh (inr tt)) oneS)) (CLc.comb-sm sg c (\ i -> rh (inl i)) CSi))
+                           (sym (C0.mod.smD c (C0.mod.sm (rh (inr tt)) oneS) (MC.comb sg (\ i -> rh (inl i)) CSi)))) ;
+
+      -- pi(w) as a combination of the monomials
+      comb-list (F : CMn.N3 -> D.R) : (xs : List CMn.N3) ->
+        EqL (ML.comb (len {CMn.N3} xs) (\ i -> F (nth xs i)) (\ i -> CH.mono (nth xs i)))
+            (\ m -> CMn.Over[D].sumL CMn.N3 (\ t -> D.mul (F t) (ifB (CMn.isExpo t m) D.o)) xs) = split {
+        nil -> \ m -> refl D.z ;
+        cons t xs | r -> \ m -> ap (D.add (D.mul (F t) (ifB (CMn.isExpo t m) D.o))) (r m) } ;
+
+      module K (c : C0.E) (hc : Closed c) {
+        u : CO.Tri = hc.1 ; v : CO.Tri = hc.2.1 ;
+        hu : CMd.S1 kP1 u = hc.2.2.1 ; hv : CMd.S1 kQ1 v = hc.2.2.2.1 ;
+        ec : CO.EqT (CO.d0 c.1) (NW1.comb u v) = hc.2.2.2.2 ;
+        -- P (delta1 u) + Q (delta1 v) = delta1 delta0 c = 0
+        eqab : EqL (addL (mulP P (CO.d1 u)) (mulP Q (CO.d1 v))) zeroL =
+          \ m -> calc D.R {
+            D.add (mulP P (CO.d1 u) m) (mulP Q (CO.d1 v) m)
+              =< sym (DG.cong-add (CO.d1-mul P u m) (CO.d1-mul Q v m)) > D.add (CO.d1 (CO.mulT P u) m) (CO.d1 (CO.mulT Q v) m)
+              =< sym (CO.d1-add (CO.mulT P u) (CO.mulT Q v) m) > CO.d1 (NW1.comb u v) m
+              =< sym (CO.d1-cong (CO.d0 c.1) (NW1.comb u v) ec m) > CO.d1 (CO.d0 c.1) m
+              =< CO.d1d0 c.1 m > D.z } ;
+        sr : (w : Lau) * (CMd.SL kW w * (EqL (CO.d1 u) (negL (mulP Q w)) * EqL (CO.d1 v) (mulP P w))) =
+          s1 (CO.d1 u) (CO.d1 v) (d1-SL kP1 u hu) (d1-SL kQ1 v hv) eqab ;
+        w : Lau = sr.1 ;
+        hw : CMd.SL kW w = sr.2.1 ;
+        t : Lau = CC.pi w ;
+        ht : CMd.SL kW t = COp.pi-pres kW w hw ;
+        sw : CO.Tri = CC.sigma w ;
+        u1 : CO.Tri = CC.sigma (negL (mulP Q t)) ;
+        u2 : CO.Tri = CC.sigma (mulP P t) ;
+        Aa : CO.Tri = CO.addT u (CO.mulT Q sw) ;
+        Bb : CO.Tri = CO.subT v (CO.mulT P sw) ;
+        dA : EqL (CO.d1 Aa) (negL (mulP Q t)) =
+          \ m -> trans (CO.d1-add u (CO.mulT Q sw) m)
+                   (trans (DG.cong-add (sr.2.2.1 m) (trans (CO.d1-mul Q sw m) (trans (mulP-cong Q (CO.d1 sw) (subL w t) (CH.d1-sigma w) m) (mulP-sub Q w t m))))
+                          (r1 (mulP Q w m) (mulP Q t m))) ;
+        dB : EqL (CO.d1 Bb) (mulP P t) =
+          \ m -> trans (CO.d1-sub v (CO.mulT P sw) m)
+                   (trans (DG.cong-add (sr.2.2.2 m) (ap D.neg (trans (CO.d1-mul P sw m) (trans (mulP-cong P (CO.d1 sw) (subL w t) (CH.d1-sigma w) m) (mulP-sub P w t m)))))
+                          (r2 (mulP P w m) (mulP P t m))) ;
+        hsw : CMd.S1 kW sw = COp.sigma-pres kW w hw ;
+        hAa : CMd.S1 kP1 Aa = COp.s1-add kP1 u (CO.mulT Q sw) hu (s1T (add kW dQ) kP1 hW1 (CO.mulT Q sw) (mulS1-pres kW dQ Q pQ sw hsw)) ;
+        hBb : CMd.S1 kQ1 Bb = COp.s1-add kQ1 v (CMd.negT (CO.mulT P sw)) hv
+                                (COp.s1-neg kQ1 (CO.mulT P sw) (s1T (add kW dP) kQ1 hW2 (CO.mulT P sw) (mulS1-pres kW dP P pP sw hsw))) ;
+        -- pi(-Q t) = pi(delta1 A) = 0 ,  pi(P t) = 0
+        piQ : EqL (CC.pi (negL (mulP Q t))) zeroL =
+          \ m -> trans (CC.pi-cong (negL (mulP Q t)) (CO.d1 Aa) (\ k -> sym (dA k)) m) (pi-d1 Aa hAa.1 m) ;
+        piP : EqL (CC.pi (mulP P t)) zeroL =
+          \ m -> trans (CC.pi-cong (mulP P t) (CO.d1 Bb) (\ k -> sym (dB k)) m) (pi-d1 Bb hBb.1 m) ;
+        hu1 : CMd.S1 kP1 u1 = u1-in t ht ;
+        hu2 : CMd.S1 kQ1 u2 = u2-in t ht ;
+        uu : CO.Tri = CO.subT Aa u1 ;
+        vv : CO.Tri = CO.subT Bb u2 ;
+        huu : CMd.S1 kP1 uu = COp.s1-add kP1 Aa (CMd.negT u1) hAa (COp.s1-neg kP1 u1 hu1) ;
+        hvv : CMd.S1 kQ1 vv = COp.s1-add kQ1 Bb (CMd.negT u2) hBb (COp.s1-neg kQ1 u2 hu2) ;
+        d1uu : EqL (CO.d1 uu) zeroL =
+          \ m -> trans (CO.d1-sub Aa u1 m)
+                   (trans (DG.cong-add (dA m) (ap D.neg (CH.d1-sigma (negL (mulP Q t)) m)))
+                          (trans (r2 (D.neg (mulP Q t m)) (CC.pi (negL (mulP Q t)) m)) (piQ m))) ;
+        d1vv : EqL (CO.d1 vv) zeroL =
+          \ m -> trans (CO.d1-sub Bb u2 m)
+                   (trans (DG.cong-add (dB m) (ap D.neg (CH.d1-sigma (mulP P t) m)))
+                          (trans (r2 (mulP P t m) (CC.pi (mulP P t) m)) (piP m))) ;
+        U0 : CO.Tri = CC.tau uu ;
+        V0 : CO.Tri = CC.tau vv ;
+        conU : CO.EqT (CO.d0 U0) uu = CC.contraction uu huu.1 d1uu ;
+        conV : CO.EqT (CO.d0 V0) vv = CC.contraction vv hvv.1 d1vv ;
+        -- c_t, closed: delta0 c_t = P u1 + Q u2
+        arg : CO.Tri = ct-arg t ;
+        ctT : CO.Tri = CTm.ct t ;
+        pin-zero (q : Lau) (h : EqL (CC.pi q) zeroL) : EqL (CO.d1 (CC.sigma q)) q =
+          \ k -> trans (CH.d1-sigma q k) (trans (ap (D.add (q k)) (trans (ap D.neg (h k)) L.neg-zero)) (D.addZ (q k))) ;
+        d1arg : EqL (CO.d1 arg) zeroL =
+          \ m -> calc D.R {
+            CO.d1 arg m =< CO.d1-add (CO.mulT P u1) (CO.mulT Q u2) m > D.add (CO.d1 (CO.mulT P u1) m) (CO.d1 (CO.mulT Q u2) m)
+              =< DG.cong-add (trans (CO.d1-mul P u1 m) (mulP-cong P (CO.d1 u1) (negL (mulP Q t)) (pin-zero (negL (mulP Q t)) piQ) m))
+                             (trans (CO.d1-mul Q u2 m) (mulP-cong Q (CO.d1 u2) (mulP P t) (pin-zero (mulP P t) piP) m))
+              > D.add (mulP P (negL (mulP Q t)) m) (mulP Q (mulP P t) m)
+              =< ap (\ y -> D.add y (mulP Q (mulP P t) m)) (trans (mulP-neg P (mulP Q t) m) (ap D.neg (mulP-comm P Q t m)))
+              > D.add (D.neg (mulP Q (mulP P t) m)) (mulP Q (mulP P t) m)
+              =< L.neg-cancel (mulP Q (mulP P t) m) > D.z } ;
+        conCt : CO.EqT (CO.d0 ctT) arg = CC.contraction arg (arg-in t ht).1 d1arg ;
+
+        -- c' = c - c_t - P tau(u'') - Q tau(v'') is closed exactly
+        pU : CO.Tri = CO.mulT P U0 ;
+        qV : CO.Tri = CO.mulT Q V0 ;
+        cp : CO.Tri = LT.msub (LT.msub (LT.msub c.1 ctT) pU) qV ;
+        d0L : IP.Lin[D,CMd.tmod,CMd.tmod] = COp.d0L ;
+        lsub (F : IP.Lin[D,CMd.tmod,CMd.tmod]) (x y : CO.Tri) : Id CO.Tri (F.f (LT.msub x y)) (LT.msub (F.f x) (F.f y)) = linSub CMd.tmod CMd.tmod F x y ;
+        X1 : CO.Tri = CO.mulT P (CO.mulT Q sw) ;
+        Pu-is : Id CO.Tri (CO.d0 pU) (LT.msub (CO.addT (CO.mulT P u) X1) (CO.mulT P u1)) =
+          trans (CMd.extT (CO.d0 pU) (CO.mulT P (CO.d0 U0)) (d0-mulT P U0))
+            (trans (ap (CO.mulT P) (CMd.extT (CO.d0 U0) uu conU))
+              (trans (lsub (COp.mulTL P) Aa u1) (ap (\ z -> LT.msub z (CO.mulT P u1)) ((COp.mulTL P).f-add u (CO.mulT Q sw))))) ;
+        Qv-is : Id CO.Tri (CO.d0 qV) (LT.msub (LT.msub (CO.mulT Q v) X1) (CO.mulT Q u2)) =
+          trans (CMd.extT (CO.d0 qV) (CO.mulT Q (CO.d0 V0)) (d0-mulT Q V0))
+            (trans (ap (CO.mulT Q) (CMd.extT (CO.d0 V0) vv conV))
+              (trans (lsub (COp.mulTL Q) Bb u2)
+                (ap (\ z -> LT.msub z (CO.mulT Q u2))
+                  (trans (lsub (COp.mulTL Q) v (CO.mulT P sw))
+                         (ap (LT.msub (CO.mulT Q v)) (CMd.extT (CO.mulT Q (CO.mulT P sw)) X1 (mulT-comm Q P sw))))))) ;
+        d0cp : Id CO.Tri (CO.d0 cp) CO.zeroT =
+          trans (lsub d0L (LT.msub (LT.msub c.1 ctT) pU) qV)
+            (trans (ap (\ z -> LT.msub z (CO.d0 qV)) (trans (lsub d0L (LT.msub c.1 ctT) pU) (ap (\ z -> LT.msub z (CO.d0 pU)) (lsub d0L c.1 ctT))))
+              (trans (ap (\ z -> LT.msub (LT.msub (LT.msub z (CO.d0 ctT)) (CO.d0 pU)) (CO.d0 qV)) (CMd.extT (CO.d0 c.1) (NW1.comb u v) ec))
+                (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) z) (CO.d0 pU)) (CO.d0 qV)) (CMd.extT (CO.d0 ctT) arg conCt))
+                  (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) arg) z) (CO.d0 qV)) Pu-is)
+                    (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) arg) (LT.msub (CO.addT (CO.mulT P u) X1) (CO.mulT P u1))) z) Qv-is)
+                           (GT.grpF2 (CO.mulT P u) (CO.mulT Q v) (CO.mulT P u1) (CO.mulT Q u2) X1)))))) ;
+        hU0 : CMd.S0 kP1 U0 = COp.tau-pres kP1 uu huu ;
+        hV0 : CMd.S0 kQ1 V0 = COp.tau-pres kQ1 vv hvv ;
+        hcp : CMd.S0 k0 cp =
+          COp.s0-add k0 (LT.msub (LT.msub c.1 ctT) pU) (CMd.negT qV)
+            (COp.s0-add k0 (LT.msub c.1 ctT) (CMd.negT pU)
+               (COp.s0-add k0 c.1 (CMd.negT ctT) c.2 (COp.s0-neg k0 ctT (ct-in t ht)))
+               (COp.s0-neg k0 pU (s0T (add kP1 dP) k0 h01 pU (mulS0-pres kP1 dP P pP U0 hU0))))
+            (COp.s0-neg k0 qV (s0T (add kQ1 dQ) k0 h02 qV (mulS0-pres kQ1 dQ Q pQ V0 hV0))) ;
+        module CK = Const[cp,hcp.1,hcp.2.1,idEqT (CO.d0 cp) CO.zeroT d0cp] ;
+        a0 : D.R = CK.a0 ;
+
+        -- the coordinates  kappa(c) = (a0, w(expo t_i))
+        kapF : Plus (Ps.Fin sg) Ring[l].Top -> D.R = split { inl i -> w (CMn.expo (nth gs i)) ; inr x -> a0 } ;
+        kap : FV.Vec = kapF ;
+        -- c_t = sum_i w(expo t_i) C_i
+        ct-sum : Id CO.Tri ctT (MC.comb sg (\ i -> kap (inl i)) CSi).1 =
+          calc CO.Tri {
+            ctT =< ap CTm.ctL.f (CMd.ext t (CMn.Over[D].piG dW w) (CMn.Over[D].pi-gens dW w (hom-tr kW (negsuc dW) hWn w hw.1)))
+                > CTm.ctL.f (CMn.Over[D].piG dW w)
+                =< ap CTm.ctL.f (CMd.ext (CMn.Over[D].piG dW w) (ML.comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i)))
+                                   (\ m -> sym (comb-list (\ x -> w (CMn.expo x)) gs m)))
+                > CTm.ctL.f (ML.comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i)))
+                =< ACLZMT[l].LinSum[D,CMd.lmod,CMd.tmod,CTm.ctL].map-comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i))
+                > MT.comb sg (\ i -> kap (inl i)) (\ i -> (CSi i).1)
+                =< sym (ACLZMT[l].LinSum[D,C0.mod,CMd.tmod,C0.incl].map-comb sg (\ i -> kap (inl i)) CSi)
+                > (MC.comb sg (\ i -> kap (inl i)) CSi).1 } ;
+        -- c - Phi(kappa c) = P tau(u'') + Q tau(v'')
+        dec-eq : Id CO.Tri (LT.msub c.1 (Phi.f kap).1) (NW0.comb U0 V0) =
+          calc CO.Tri {
+            LT.msub c.1 (Phi.f kap).1
+              =< ap (\ z -> LT.msub c.1 (CO.addT z (MC.comb sg (\ i -> kap (inl i)) CSi).1))
+                    (sym (CMd.extT cp (CO.scaleT a0 oneT) CK.const))
+              > LT.msub c.1 (CO.addT cp (MC.comb sg (\ i -> kap (inl i)) CSi).1)
+              =< ap (\ z -> LT.msub c.1 (CO.addT cp z)) (sym ct-sum)
+              > LT.msub c.1 (CO.addT cp ctT)
+              =< GT.grpX c.1 ctT pU qV > NW0.comb U0 V0 } ;
+        dec : N0.N (LC0.msub c (Phi.f kap)) =
+          (U0, (V0, (hU0, (hV0, idEqT (LT.msub c.1 (Phi.f kap).1) (NW0.comb U0 V0) dec-eq)))) ;
+      } ;
+      kappa (c : C0.E) (hc : Closed c) : FV.Vec = K[c,hc].kap ;
+      decomp (c : C0.E) (hc : Closed c) : N0.N (LC0.msub c (Phi.f (kappa c hc))) = K[c,hc].dec ;
+    } ;
+
+    -- (F2) for a common divisor D0: P = D0 P', Q = D0 Q' ((S0) for D0, (S1) for P', Q')
+    module F2D (kW : Int) (D0 P' Q' : LPoly) (dP' dQ' : Int) (pP' : CMd.IsPoly dP' P') (pQ' : CMd.IsPoly dQ' Q')
+      (hW1 : Id Int (add kW dQ') kP1) (hW2 : Id Int (add kW dP') kQ1)
+      (h01 : Id Int (add kP1 dP) k0) (h02 : Id Int (add kQ1 dQ) k0) (dW : Nat) (hWn : Id Int kW (negsuc dW))
+      (fP : (f : Lau) -> EqL (mulP P f) (mulP D0 (mulP P' f))) (fQ : (f : Lau) -> EqL (mulP Q f) (mulP D0 (mulP Q' f)))
+      (s0 : (f : Lau) -> LL.Fin f -> EqL (mulP D0 f) zeroL -> EqL f zeroL)
+      (s1 : (al be : Lau) -> CMd.SL kP1 al -> CMd.SL kQ1 be -> EqL (addL (mulP P' al) (mulP Q' be)) zeroL ->
+            (w : Lau) * (CMd.SL kW w * (EqL al (negL (mulP Q' w)) * EqL be (mulP P' w)))) {
+      module CTm = CT4[P,Q,P',Q'] ;
+      -- P Q' f = D0 P' Q' f = D0 Q' P' f = Q P' f
+      cross (f : Lau) : EqL (mulP P (mulP Q' f)) (mulP Q (mulP P' f)) =
+        \ m -> trans (fP (mulP Q' f) m) (trans (mulP-cong D0 (mulP P' (mulP Q' f)) (mulP Q' (mulP P' f)) (mulP-comm P' Q' f) m) (sym (fQ (mulP P' f) m))) ;
+      module CH = CechH1Finite[l].Over[D] ;
+      module LT = IP.ModL[D,CMd.tmod] ; module GT = GrpF2[D,CMd.tmod] ;
+      gs : List CMn.N3 = CMn.gens dW ;
+      sg : Ring[l].Nat = len {CMn.N3} gs ;
+      ss : Ring[l].Nat = suc sg ;
+      module FV = ReesLifting[l].Free[D,ss] ;
+      module MC = ACLZMT[l].ModSum[D,C0.mod] ;
+      module MT = ACLZMT[l].ModSum[D,CMd.tmod] ;
+      module ML = ACLZMT[l].ModSum[D,CMd.lmod] ;
+      module CLc = CechF1[l].CombLin[D,C0.mod] ;
+      module LC0 = IP.ModL[D,C0.mod] ;
+
+      -- c_t lands in the sections of degree 0
+      ct-arg (t : Lau) : CO.Tri = CO.addT (CO.mulT P (CC.sigma (negL (mulP Q' t)))) (CO.mulT Q (CC.sigma (mulP P' t))) ;
+      u1-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 kP1 (CC.sigma (negL (mulP Q' t))) =
+        COp.sigma-pres kP1 (negL (mulP Q' t)) (slT (add kW dQ') kP1 hW1 (negL (mulP Q' t)) (negSL (add kW dQ') (mulP Q' t) (COp.mulP-pres kW dQ' Q' pQ' t h))) ;
+      u2-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 kQ1 (CC.sigma (mulP P' t)) =
+        COp.sigma-pres kQ1 (mulP P' t) (slT (add kW dP') kQ1 hW2 (mulP P' t) (COp.mulP-pres kW dP' P' pP' t h)) ;
+      arg-in (t : Lau) (h : CMd.SL kW t) : CMd.S1 k0 (ct-arg t) =
+        COp.s1-add k0 (CO.mulT P (CC.sigma (negL (mulP Q' t)))) (CO.mulT Q (CC.sigma (mulP P' t)))
+          (s1T (add kP1 dP) k0 h01 (CO.mulT P (CC.sigma (negL (mulP Q' t)))) (mulS1-pres kP1 dP P pP (CC.sigma (negL (mulP Q' t))) (u1-in t h)))
+          (s1T (add kQ1 dQ) k0 h02 (CO.mulT Q (CC.sigma (mulP P' t))) (mulS1-pres kQ1 dQ Q pQ (CC.sigma (mulP P' t)) (u2-in t h))) ;
+      ct-in (t : Lau) (h : CMd.SL kW t) : CMd.S0 k0 (CTm.ct t) = COp.tau-pres k0 (ct-arg t) (arg-in t h) ;
+      mono-in (i : Ps.Fin sg) : CMd.SL kW (CH.mono (nth gs i)) =
+        (CH.hom-mono (nth gs i) kW (trans (ap (\ k -> negsuc k) (nth-all (\ t -> Id Nat (suc (suc (CMn.size t))) dW) gs (gens-size dW) i)) (sym hWn)),
+         mono-fin (nth gs i)) ;
+      CSi (i : Ps.Fin sg) : C0.E = (CTm.ct (CH.mono (nth gs i)), ct-in (CH.mono (nth gs i)) (mono-in i)) ;
+
+      -- Phi(a0, (mu_i)) = a0 1 + sum_i mu_i C_i
+      Phi : IP.Lin[D,FV.mod,C0.mod] =
+        IP.mkLin D FV.mod C0.mod (\ rh -> C0.mod.madd (C0.mod.sm (rh (inr tt)) oneS) (MC.comb sg (\ i -> rh (inl i)) CSi))
+          (\ rh rh' -> trans (LC0.G.cong-add (C0.mod.smE (rh (inr tt)) (rh' (inr tt)) oneS) (CLc.comb-add sg (\ i -> rh (inl i)) (\ i -> rh' (inl i)) CSi))
+                             (LC0.G.swap (C0.mod.sm (rh (inr tt)) oneS) (C0.mod.sm (rh' (inr tt)) oneS)
+                                         (MC.comb sg (\ i -> rh (inl i)) CSi) (MC.comb sg (\ i -> rh' (inl i)) CSi)))
+          (\ c rh -> trans (LC0.G.cong-add (sym (C0.mod.smA c (rh (inr tt)) oneS)) (CLc.comb-sm sg c (\ i -> rh (inl i)) CSi))
+                           (sym (C0.mod.smD c (C0.mod.sm (rh (inr tt)) oneS) (MC.comb sg (\ i -> rh (inl i)) CSi)))) ;
+
+      -- pi(w) as a combination of the monomials
+      comb-list (F : CMn.N3 -> D.R) : (xs : List CMn.N3) ->
+        EqL (ML.comb (len {CMn.N3} xs) (\ i -> F (nth xs i)) (\ i -> CH.mono (nth xs i)))
+            (\ m -> CMn.Over[D].sumL CMn.N3 (\ t -> D.mul (F t) (ifB (CMn.isExpo t m) D.o)) xs) = split {
+        nil -> \ m -> refl D.z ;
+        cons t xs | r -> \ m -> ap (D.add (D.mul (F t) (ifB (CMn.isExpo t m) D.o))) (r m) } ;
+
+      module K (c : C0.E) (hc : Closed c) {
+        u : CO.Tri = hc.1 ; v : CO.Tri = hc.2.1 ;
+        hu : CMd.S1 kP1 u = hc.2.2.1 ; hv : CMd.S1 kQ1 v = hc.2.2.2.1 ;
+        ec : CO.EqT (CO.d0 c.1) (NW1.comb u v) = hc.2.2.2.2 ;
+        -- P (delta1 u) + Q (delta1 v) = delta1 delta0 c = 0
+        eqab0 : EqL (addL (mulP P (CO.d1 u)) (mulP Q (CO.d1 v))) zeroL =
+          \ m -> calc D.R {
+            D.add (mulP P (CO.d1 u) m) (mulP Q (CO.d1 v) m)
+              =< sym (DG.cong-add (CO.d1-mul P u m) (CO.d1-mul Q v m)) > D.add (CO.d1 (CO.mulT P u) m) (CO.d1 (CO.mulT Q v) m)
+              =< sym (CO.d1-add (CO.mulT P u) (CO.mulT Q v) m) > CO.d1 (NW1.comb u v) m
+              =< sym (CO.d1-cong (CO.d0 c.1) (NW1.comb u v) ec m) > CO.d1 (CO.d0 c.1) m
+              =< CO.d1d0 c.1 m > D.z } ;
+        -- cancel D0 (S0): P' (delta1 u) + Q' (delta1 v) = 0
+        eqab : EqL (addL (mulP P' (CO.d1 u)) (mulP Q' (CO.d1 v))) zeroL =
+          s0 (addL (mulP P' (CO.d1 u)) (mulP Q' (CO.d1 v)))
+             (LL.fin-add (mulP P' (CO.d1 u)) (mulP Q' (CO.d1 v)) (LL.fin-mulP P' (CO.d1 u) (d1-SL kP1 u hu).2) (LL.fin-mulP Q' (CO.d1 v) (d1-SL kQ1 v hv).2))
+             (\ m -> trans (mulP-add D0 (mulP P' (CO.d1 u)) (mulP Q' (CO.d1 v)) m)
+                       (trans (DG.cong-add (sym (fP (CO.d1 u) m)) (sym (fQ (CO.d1 v) m))) (eqab0 m))) ;
+        sr : (w : Lau) * (CMd.SL kW w * (EqL (CO.d1 u) (negL (mulP Q' w)) * EqL (CO.d1 v) (mulP P' w))) =
+          s1 (CO.d1 u) (CO.d1 v) (d1-SL kP1 u hu) (d1-SL kQ1 v hv) eqab ;
+        w : Lau = sr.1 ;
+        hw : CMd.SL kW w = sr.2.1 ;
+        t : Lau = CC.pi w ;
+        ht : CMd.SL kW t = COp.pi-pres kW w hw ;
+        sw : CO.Tri = CC.sigma w ;
+        u1 : CO.Tri = CC.sigma (negL (mulP Q' t)) ;
+        u2 : CO.Tri = CC.sigma (mulP P' t) ;
+        Aa : CO.Tri = CO.addT u (CO.mulT Q' sw) ;
+        Bb : CO.Tri = CO.subT v (CO.mulT P' sw) ;
+        dA : EqL (CO.d1 Aa) (negL (mulP Q' t)) =
+          \ m -> trans (CO.d1-add u (CO.mulT Q' sw) m)
+                   (trans (DG.cong-add (sr.2.2.1 m) (trans (CO.d1-mul Q' sw m) (trans (mulP-cong Q' (CO.d1 sw) (subL w t) (CH.d1-sigma w) m) (mulP-sub Q' w t m))))
+                          (r1 (mulP Q' w m) (mulP Q' t m))) ;
+        dB : EqL (CO.d1 Bb) (mulP P' t) =
+          \ m -> trans (CO.d1-sub v (CO.mulT P' sw) m)
+                   (trans (DG.cong-add (sr.2.2.2 m) (ap D.neg (trans (CO.d1-mul P' sw m) (trans (mulP-cong P' (CO.d1 sw) (subL w t) (CH.d1-sigma w) m) (mulP-sub P' w t m)))))
+                          (r2 (mulP P' w m) (mulP P' t m))) ;
+        hsw : CMd.S1 kW sw = COp.sigma-pres kW w hw ;
+        hAa : CMd.S1 kP1 Aa = COp.s1-add kP1 u (CO.mulT Q' sw) hu (s1T (add kW dQ') kP1 hW1 (CO.mulT Q' sw) (mulS1-pres kW dQ' Q' pQ' sw hsw)) ;
+        hBb : CMd.S1 kQ1 Bb = COp.s1-add kQ1 v (CMd.negT (CO.mulT P' sw)) hv
+                                (COp.s1-neg kQ1 (CO.mulT P' sw) (s1T (add kW dP') kQ1 hW2 (CO.mulT P' sw) (mulS1-pres kW dP' P' pP' sw hsw))) ;
+        -- pi(-Q t) = pi(delta1 A) = 0 ,  pi(P t) = 0
+        piQ : EqL (CC.pi (negL (mulP Q' t))) zeroL =
+          \ m -> trans (CC.pi-cong (negL (mulP Q' t)) (CO.d1 Aa) (\ k -> sym (dA k)) m) (pi-d1 Aa hAa.1 m) ;
+        piP : EqL (CC.pi (mulP P' t)) zeroL =
+          \ m -> trans (CC.pi-cong (mulP P' t) (CO.d1 Bb) (\ k -> sym (dB k)) m) (pi-d1 Bb hBb.1 m) ;
+        hu1 : CMd.S1 kP1 u1 = u1-in t ht ;
+        hu2 : CMd.S1 kQ1 u2 = u2-in t ht ;
+        uu : CO.Tri = CO.subT Aa u1 ;
+        vv : CO.Tri = CO.subT Bb u2 ;
+        huu : CMd.S1 kP1 uu = COp.s1-add kP1 Aa (CMd.negT u1) hAa (COp.s1-neg kP1 u1 hu1) ;
+        hvv : CMd.S1 kQ1 vv = COp.s1-add kQ1 Bb (CMd.negT u2) hBb (COp.s1-neg kQ1 u2 hu2) ;
+        d1uu : EqL (CO.d1 uu) zeroL =
+          \ m -> trans (CO.d1-sub Aa u1 m)
+                   (trans (DG.cong-add (dA m) (ap D.neg (CH.d1-sigma (negL (mulP Q' t)) m)))
+                          (trans (r2 (D.neg (mulP Q' t m)) (CC.pi (negL (mulP Q' t)) m)) (piQ m))) ;
+        d1vv : EqL (CO.d1 vv) zeroL =
+          \ m -> trans (CO.d1-sub Bb u2 m)
+                   (trans (DG.cong-add (dB m) (ap D.neg (CH.d1-sigma (mulP P' t) m)))
+                          (trans (r2 (mulP P' t m) (CC.pi (mulP P' t) m)) (piP m))) ;
+        U0 : CO.Tri = CC.tau uu ;
+        V0 : CO.Tri = CC.tau vv ;
+        conU : CO.EqT (CO.d0 U0) uu = CC.contraction uu huu.1 d1uu ;
+        conV : CO.EqT (CO.d0 V0) vv = CC.contraction vv hvv.1 d1vv ;
+        -- c_t, closed: delta0 c_t = P u1 + Q u2
+        arg : CO.Tri = ct-arg t ;
+        ctT : CO.Tri = CTm.ct t ;
+        pin-zero (q : Lau) (h : EqL (CC.pi q) zeroL) : EqL (CO.d1 (CC.sigma q)) q =
+          \ k -> trans (CH.d1-sigma q k) (trans (ap (D.add (q k)) (trans (ap D.neg (h k)) L.neg-zero)) (D.addZ (q k))) ;
+        d1arg : EqL (CO.d1 arg) zeroL =
+          \ m -> calc D.R {
+            CO.d1 arg m =< CO.d1-add (CO.mulT P u1) (CO.mulT Q u2) m > D.add (CO.d1 (CO.mulT P u1) m) (CO.d1 (CO.mulT Q u2) m)
+              =< DG.cong-add (trans (CO.d1-mul P u1 m) (mulP-cong P (CO.d1 u1) (negL (mulP Q' t)) (pin-zero (negL (mulP Q' t)) piQ) m))
+                             (trans (CO.d1-mul Q u2 m) (mulP-cong Q (CO.d1 u2) (mulP P' t) (pin-zero (mulP P' t) piP) m))
+              > D.add (mulP P (negL (mulP Q' t)) m) (mulP Q (mulP P' t) m)
+              =< ap (\ y -> D.add y (mulP Q (mulP P' t) m)) (trans (mulP-neg P (mulP Q' t) m) (ap D.neg (cross t m)))
+              > D.add (D.neg (mulP Q (mulP P' t) m)) (mulP Q (mulP P' t) m)
+              =< L.neg-cancel (mulP Q (mulP P' t) m) > D.z } ;
+        conCt : CO.EqT (CO.d0 ctT) arg = CC.contraction arg (arg-in t ht).1 d1arg ;
+
+        -- c' = c - c_t - P tau(u'') - Q tau(v'') is closed exactly
+        pU : CO.Tri = CO.mulT P U0 ;
+        qV : CO.Tri = CO.mulT Q V0 ;
+        cp : CO.Tri = LT.msub (LT.msub (LT.msub c.1 ctT) pU) qV ;
+        d0L : IP.Lin[D,CMd.tmod,CMd.tmod] = COp.d0L ;
+        lsub (F : IP.Lin[D,CMd.tmod,CMd.tmod]) (x y : CO.Tri) : Id CO.Tri (F.f (LT.msub x y)) (LT.msub (F.f x) (F.f y)) = linSub CMd.tmod CMd.tmod F x y ;
+        X1 : CO.Tri = CO.mulT P (CO.mulT Q' sw) ;
+        Pu-is : Id CO.Tri (CO.d0 pU) (LT.msub (CO.addT (CO.mulT P u) X1) (CO.mulT P u1)) =
+          trans (CMd.extT (CO.d0 pU) (CO.mulT P (CO.d0 U0)) (d0-mulT P U0))
+            (trans (ap (CO.mulT P) (CMd.extT (CO.d0 U0) uu conU))
+              (trans (lsub (COp.mulTL P) Aa u1) (ap (\ z -> LT.msub z (CO.mulT P u1)) ((COp.mulTL P).f-add u (CO.mulT Q' sw))))) ;
+        Qv-is : Id CO.Tri (CO.d0 qV) (LT.msub (LT.msub (CO.mulT Q v) X1) (CO.mulT Q u2)) =
+          trans (CMd.extT (CO.d0 qV) (CO.mulT Q (CO.d0 V0)) (d0-mulT Q V0))
+            (trans (ap (CO.mulT Q) (CMd.extT (CO.d0 V0) vv conV))
+              (trans (lsub (COp.mulTL Q) Bb u2)
+                (ap (\ z -> LT.msub z (CO.mulT Q u2))
+                  (trans (lsub (COp.mulTL Q) v (CO.mulT P' sw))
+                         (ap (LT.msub (CO.mulT Q v)) (CMd.extT (CO.mulT Q (CO.mulT P' sw)) X1
+                           (\ m -> sym (cross (CO.t1 sw) m), (\ m -> sym (cross (CO.t2 sw) m), \ m -> sym (cross (CO.t3 sw) m))))))))) ;
+        d0cp : Id CO.Tri (CO.d0 cp) CO.zeroT =
+          trans (lsub d0L (LT.msub (LT.msub c.1 ctT) pU) qV)
+            (trans (ap (\ z -> LT.msub z (CO.d0 qV)) (trans (lsub d0L (LT.msub c.1 ctT) pU) (ap (\ z -> LT.msub z (CO.d0 pU)) (lsub d0L c.1 ctT))))
+              (trans (ap (\ z -> LT.msub (LT.msub (LT.msub z (CO.d0 ctT)) (CO.d0 pU)) (CO.d0 qV)) (CMd.extT (CO.d0 c.1) (NW1.comb u v) ec))
+                (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) z) (CO.d0 pU)) (CO.d0 qV)) (CMd.extT (CO.d0 ctT) arg conCt))
+                  (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) arg) z) (CO.d0 qV)) Pu-is)
+                    (trans (ap (\ z -> LT.msub (LT.msub (LT.msub (NW1.comb u v) arg) (LT.msub (CO.addT (CO.mulT P u) X1) (CO.mulT P u1))) z) Qv-is)
+                           (GT.grpF2 (CO.mulT P u) (CO.mulT Q v) (CO.mulT P u1) (CO.mulT Q u2) X1)))))) ;
+        hU0 : CMd.S0 kP1 U0 = COp.tau-pres kP1 uu huu ;
+        hV0 : CMd.S0 kQ1 V0 = COp.tau-pres kQ1 vv hvv ;
+        hcp : CMd.S0 k0 cp =
+          COp.s0-add k0 (LT.msub (LT.msub c.1 ctT) pU) (CMd.negT qV)
+            (COp.s0-add k0 (LT.msub c.1 ctT) (CMd.negT pU)
+               (COp.s0-add k0 c.1 (CMd.negT ctT) c.2 (COp.s0-neg k0 ctT (ct-in t ht)))
+               (COp.s0-neg k0 pU (s0T (add kP1 dP) k0 h01 pU (mulS0-pres kP1 dP P pP U0 hU0))))
+            (COp.s0-neg k0 qV (s0T (add kQ1 dQ) k0 h02 qV (mulS0-pres kQ1 dQ Q pQ V0 hV0))) ;
+        module CK = Const[cp,hcp.1,hcp.2.1,idEqT (CO.d0 cp) CO.zeroT d0cp] ;
+        a0 : D.R = CK.a0 ;
+
+        -- the coordinates  kappa(c) = (a0, w(expo t_i))
+        kapF : Plus (Ps.Fin sg) Ring[l].Top -> D.R = split { inl i -> w (CMn.expo (nth gs i)) ; inr x -> a0 } ;
+        kap : FV.Vec = kapF ;
+        -- c_t = sum_i w(expo t_i) C_i
+        ct-sum : Id CO.Tri ctT (MC.comb sg (\ i -> kap (inl i)) CSi).1 =
+          calc CO.Tri {
+            ctT =< ap CTm.ctL.f (CMd.ext t (CMn.Over[D].piG dW w) (CMn.Over[D].pi-gens dW w (hom-tr kW (negsuc dW) hWn w hw.1)))
+                > CTm.ctL.f (CMn.Over[D].piG dW w)
+                =< ap CTm.ctL.f (CMd.ext (CMn.Over[D].piG dW w) (ML.comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i)))
+                                   (\ m -> sym (comb-list (\ x -> w (CMn.expo x)) gs m)))
+                > CTm.ctL.f (ML.comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i)))
+                =< ACLZMT[l].LinSum[D,CMd.lmod,CMd.tmod,CTm.ctL].map-comb sg (\ i -> kap (inl i)) (\ i -> CH.mono (nth gs i))
+                > MT.comb sg (\ i -> kap (inl i)) (\ i -> (CSi i).1)
+                =< sym (ACLZMT[l].LinSum[D,C0.mod,CMd.tmod,C0.incl].map-comb sg (\ i -> kap (inl i)) CSi)
+                > (MC.comb sg (\ i -> kap (inl i)) CSi).1 } ;
+        -- c - Phi(kappa c) = P tau(u'') + Q tau(v'')
+        dec-eq : Id CO.Tri (LT.msub c.1 (Phi.f kap).1) (NW0.comb U0 V0) =
+          calc CO.Tri {
+            LT.msub c.1 (Phi.f kap).1
+              =< ap (\ z -> LT.msub c.1 (CO.addT z (MC.comb sg (\ i -> kap (inl i)) CSi).1))
+                    (sym (CMd.extT cp (CO.scaleT a0 oneT) CK.const))
+              > LT.msub c.1 (CO.addT cp (MC.comb sg (\ i -> kap (inl i)) CSi).1)
+              =< ap (\ z -> LT.msub c.1 (CO.addT cp z)) (sym ct-sum)
+              > LT.msub c.1 (CO.addT cp ctT)
+              =< GT.grpX c.1 ctT pU qV > NW0.comb U0 V0 } ;
+        dec : N0.N (LC0.msub c (Phi.f kap)) =
+          (U0, (V0, (hU0, (hV0, idEqT (LT.msub c.1 (Phi.f kap).1) (NW0.comb U0 V0) dec-eq)))) ;
+      } ;
+      kappa (c : C0.E) (hc : Closed c) : FV.Vec = K[c,hc].kap ;
+      decomp (c : C0.E) (hc : Closed c) : N0.N (LC0.msub c (Phi.f (kappa c hc))) = K[c,hc].dec ;
+    } ;
+  } ;
+} ;

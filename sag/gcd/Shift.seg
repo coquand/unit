@@ -1,0 +1,81 @@
+-- Shift.seg: a finitely supported Laurent element, times X^K Y^K Z^K for K
+-- large, is psi of an element of S.
+--
+-- For a list g of terms c X^e (e in Z^3) and K >= the sum of the negative
+-- parts of the exponents of g, every e + (K,K,K) is >= 0; toN K g is the
+-- list with these exponents as natural numbers, and
+--   coef (embL (toN K g)) = shift (K,K,K) (coef g) ,
+-- so  psi (actN (toN K g) 1) = shift (K,K,K) (coef g)   (Phi.psi-list).
+-- Only integers are compared.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module LLt = LaurentList[l] ; module NA = NatArith[l] ;
+module CM = CechMonomials[l] ;
+
+negPart : Int -> Nat = split { pos n -> zero ; negsuc n -> suc n } ;
+natPart : Int -> Nat = split { pos n -> n ; negsuc n -> zero } ;
+-- y is pos of its natural part
+IsPos (y : Int) : U l = Id Int (pos (natPart y)) y ;
+isPos-of (y : Int) (j : Nat) (e : Id Int y (pos j)) : IsPos y = trans (ap (\ v -> pos (natPart v)) e) (sym e) ;
+addP-pos (K : Nat) : (m : Nat) -> Id Int (addP (pos K) m) (pos (NA.plus m K)) = split {
+ zero -> refl (pos K) ;
+ suc m | r -> ap sucZ r } ;
+addN-pos : (n d : Nat) -> Id Int (addN (pos (suc (NA.plus n d))) n) (pos d) = split {
+ zero -> \ d -> refl (pos d) ;
+ suc n | r -> \ d -> trans (ap predZ (addN-sucL (pos (suc (NA.plus n d))) n)) (ap (\ v -> predZ (sucZ v)) (r d)) } ;
+-- (K + d) + x >= 0 when K is the negative part of x
+pos-form : (x : Int) (d : Nat) -> IsPos (add (pos (NA.plus (negPart x) d)) x) = split {
+ pos m -> \ d -> isPos-of (add (pos d) (pos m)) (NA.plus m d) (addP-pos d m) ;
+ negsuc n -> \ d -> isPos-of (add (pos (suc (NA.plus n d))) (negsuc n)) d (addN-pos n d) } ;
+
+-- x <= K, as K = x + d
+Le' (x K : Nat) : U l = (d : Nat) * Id Nat K (NA.plus x d) ;
+le-left (a b K : Nat) (h : Le' (NA.plus a b) K) : Le' a K = (NA.plus b h.1, trans h.2 (NA.plus-assoc a b h.1)) ;
+le-right (a b K : Nat) (h : Le' (NA.plus a b) K) : Le' b K =
+ le-left b a K (h.1, trans h.2 (ap (\ y -> NA.plus y h.1) (NA.plus-comm a b))) ;
+pos-add (x : Int) (K : Nat) (h : Le' (negPart x) K) : IsPos (add (pos K) x) =
+ subst (\ k -> IsPos (add (pos k) x)) (sym h.2) (pos-form x h.1) ;
+
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ module PH = Phi[l].Over[A,G] ;
+ module PS = PH.PS ; module LO = PS.LO ; module LL = PS.LL ;
+ S : CRing = PH.S ;
+ btm (t : LL.Term) : Nat = NA.plus (negPart (ex t.2)) (NA.plus (negPart (ey t.2)) (negPart (ez t.2))) ;
+ Bsum : LO.LPoly -> Nat = split { nil -> zero ; cons t g | r -> NA.plus (btm t) r } ;
+ AboveT (K : Nat) (t : LL.Term) : U l = Le' (negPart (ex t.2)) K * (Le' (negPart (ey t.2)) K * Le' (negPart (ez t.2)) K) ;
+ Above (K : Nat) : LO.LPoly -> U l = split { nil -> Top ; cons t g | r -> AboveT K t * r } ;
+ above : (g : LO.LPoly) (K : Nat) -> Le' (Bsum g) K -> Above K g = split {
+  nil -> \ K h -> tt ;
+  cons t g | r -> \ K h ->
+   ((le-left (negPart (ex t.2)) (NA.plus (negPart (ey t.2)) (negPart (ez t.2))) K (le-left (btm t) (Bsum g) K h),
+     (le-left (negPart (ey t.2)) (negPart (ez t.2)) K (le-right (negPart (ex t.2)) (NA.plus (negPart (ey t.2)) (negPart (ez t.2))) K (le-left (btm t) (Bsum g) K h)),
+      le-right (negPart (ey t.2)) (negPart (ez t.2)) K (le-right (negPart (ex t.2)) (NA.plus (negPart (ey t.2)) (negPart (ez t.2))) K (le-left (btm t) (Bsum g) K h)))),
+    r K (le-right (btm t) (Bsum g) K h)) } ;
+
+ eK (K : Nat) : E3 = (pos K, (pos K, pos K)) ;
+ toNT (K : Nat) (t : LL.Term) : PH.NTerm =
+  (t.1, (natPart (add (pos K) (ex t.2)), (natPart (add (pos K) (ey t.2)), natPart (add (pos K) (ez t.2))))) ;
+ toN (K : Nat) : LO.LPoly -> PH.NList = split { nil -> nil ; cons t g | r -> cons (toNT K t) r } ;
+ -- the exponent of toNT K t is (K,K,K) + e
+ exp-eq (K : Nat) (t : LL.Term) (h : AboveT K t) : Id E3 (PH.emb (toNT K t)).2 (LLt.add3 (eK K) t.2) =
+  CM.pair3 _ _ _ _ _ _ (pos-add (ex t.2) K h.1) (pos-add (ey t.2) K h.2.1) (pos-add (ez t.2) K h.2.2) ;
+ coefT-toN (K : Nat) (t : LL.Term) (h : AboveT K t) (m : E3) :
+  Id A.R (LL.coefT (PH.emb (toNT K t)) m) (LL.coefT t (sub3 m (eK K))) =
+  LL.ifD-iff (\ e -> LLt.add3-solve (eK K) t.2 m (trans (sym (exp-eq K t h)) e))
+             (\ e -> trans (exp-eq K t h) (LLt.add3-unsolve (eK K) t.2 m e))
+             (LLt.dec3 (PH.emb (toNT K t)).2 m) (LLt.dec3 t.2 (sub3 m (eK K))) t.1 ;
+ coef-toN (K : Nat) : (g : LO.LPoly) -> Above K g -> LO.EqL (LL.coef (PH.embL (toN K g))) (LO.shift (eK K) (LL.coef g)) = split {
+  nil -> \ h m -> refl A.z ;
+  cons t g | r -> \ h m -> Presentations[l].cong2 A.R A.add _ _ _ _ (coefT-toN K t h.1 m) (r h.2 m) } ;
+
+ -- the lift of a finitely supported f, from a list g of f and K >= Bsum g
+ module Lift (f : LO.Lau) (w : LL.FinW f) (K : Nat) (hK : Le' (Bsum w.1) K) {
+  s : S.R = PH.actN (toN K w.1) S.o ;
+  psi-s : LO.EqL (PS.psi s) (LO.shift (eK K) f) = \ m ->
+   trans (PH.psi-list (toN K w.1) m) (trans (coef-toN K w.1 (above w.1 K hK) m) (w.2 (sub3 m (eK K)))) ;
+ } ;
+ -- the shift of a finitely supported element is finitely supported
+ fin-shift (e : E3) (f : LO.Lau) (h : LL.Fin f) : LL.Fin (LO.shift e f) =
+  LL.fin-cong (LO.mulP (LO.monoP e) f) (LO.shift e f) (\ m -> LO.mulP-mono e f m) (LL.fin-mulP (LO.monoP e) f h) ;
+ -- shifting back
+ unshift (e : E3) (f : LO.Lau) : LO.EqL (LO.shift (neg3 e) (LO.shift e f)) f = \ m -> ap f (sub3-cancel m e) ;
+} ;

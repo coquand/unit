@@ -1,0 +1,148 @@
+-- Psi.seg: from S = A[X][Y][Z] to the Laurent elements of Laurent3.
+--
+--   psi(s)(i,j,k) = coefficient of X^i Y^j Z^k in s   (i, j, k >= 0),
+--   psi(s)(m)     = 0 when an exponent of m is negative.
+-- psi is additive, A-linear (psi(a s) = a psi(s) for a in A), turns the
+-- multiplication by X, Y, Z into the shifts m |-> m - e_X, m - e_Y, m - e_Z,
+-- sends 1 to delta (LaurentList.delta), and is injective (psi s = 0 gives
+-- s = 0, by CharPoly.coef-ext three times).
+-- Each property is proved once for one variable (module Level: B0[T] with
+-- its coefficient at an integer index), then composed.
+level l ; open Base ; open Ring[l] ; open ZInt[l] ; open Laurent3[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ; module LG = Logic[l] ; module LLt = LaurentList[l] ;
+RNat : U l = Ring[l].Nat ;
+
+-- the two copies of the natural numbers
+toR : Nat -> RNat = split { zero -> zero ; suc n | r -> suc r } ;
+toB : RNat -> Nat = split { zero -> zero ; suc n | r -> suc r } ;
+toR-toB : (k : RNat) -> Id RNat (toR (toB k)) k = split {
+ zero -> refl zero ;
+ suc k | r -> ap {RNat} {RNat} (\ n -> suc n) r } ;
+
+-- one variable: B0[T], the coefficient at an integer index
+module Level (B0 : CRing) (G0 : GcdDomain[l].GcdDomain[B0]) {
+ module ST = Iterate[l].Step[B0,G0] ;
+ module E = ST.PG.PB.B ;
+ module CP = CharPoly[l].Over[B0,G0.set] ;
+ module LB0 = RL[B0] ;
+ T : CRing = ST.ring ;
+ at (x : T.R) : Int -> B0.R = split { pos n -> CP.coef x (toR n) ; negsuc n -> B0.z } ;
+ at-add (x y : T.R) : (i : Int) -> Id B0.R (at (T.add x y) i) (B0.add (at x i) (at y i)) = split {
+  pos n -> CP.coef-add x y (toR n) ;
+  negsuc n -> sym (B0.addZ B0.z) } ;
+ at-neg (x : T.R) : (i : Int) -> Id B0.R (at (T.neg x) i) (B0.neg (at x i)) = split {
+  pos n -> CP.coef-neg x (toR n) ;
+  negsuc n -> sym LB0.neg-zero } ;
+ at-zero : (i : Int) -> Id B0.R (at T.z i) B0.z = split {
+  pos n -> CP.coef-zero (toR n) ;
+  negsuc n -> refl B0.z } ;
+ at-scale (c : B0.R) (x : T.R) : (i : Int) -> Id B0.R (at (T.mul (E.constant c) x) i) (B0.mul c (at x i)) = split {
+  pos n -> CP.coef-scale c x (toR n) ;
+  negsuc n -> sym (LB0.mul-zero c) } ;
+ -- the variable shifts the index by one
+ at-var (x : T.R) : (i : Int) -> Id B0.R (at (T.mul E.variable x) i) (at x (predZ i)) = split {
+  pos n -> trans (CP.coef-variable x (toR n)) (shifted-pos n) ;
+  negsuc n -> refl B0.z }
+  where {
+   shifted-pos : (n : Nat) -> Id B0.R (CP.shifted x (toR n)) (at x (predPos n)) = split {
+    zero -> refl B0.z ;
+    suc n -> refl (CP.coef x (toR n)) } } ;
+ -- the coefficients of 1
+ at-one-zero : Id B0.R (at T.o zeroZ) B0.o = CP.coef-const0 B0.o ;
+ at-one-pos (n : Nat) : Id B0.R (at T.o (pos (suc n))) B0.z = CP.coef-constS B0.o (toR n) ;
+ -- injectivity
+ inj (x : T.R) (h : (n : Nat) -> Id B0.R (at x (pos n)) B0.z) : Id T.R x T.z =
+  CP.coef-ext x T.z (\ k -> trans (ap (CP.coef x) (sym (toR-toB k))) (trans (h (toB k)) (sym (CP.coef-zero k)))) ;
+} ;
+
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ module LX = Level[A,G] ;
+ module LY = Level[LX.T,LX.ST.domain] ;
+ module LZ = Level[LY.T,LY.ST.domain] ;
+ S : CRing = LZ.T ;
+ gcdS : GcdDomain[l].GcdDomain[S] = LZ.ST.domain ;
+ module LO = Laurent3[l].Over[A] ;
+ module LL = LaurentList[l].Over[A] ;
+ module LA = RL[A] ;
+ Lau : U l = LO.Lau ;
+ X : S.R = LZ.E.constant (LY.E.constant LX.E.variable) ;
+ Y : S.R = LZ.E.constant LY.E.variable ;
+ Z : S.R = LZ.E.variable ;
+ fromA (c : A.R) : S.R = LZ.E.constant (LY.E.constant (LX.E.constant c)) ;
+
+ psi3 (s : S.R) (x y w : Int) : A.R = LX.at (LY.at (LZ.at s w) y) x ;
+ psi (s : S.R) : Lau = \ m -> psi3 s (ex m) (ey m) (ez m) ;
+
+ psi-add (s s' : S.R) : LO.EqL (psi (S.add s s')) (LO.addL (psi s) (psi s')) = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-add s s' (ez m)))
+   (trans (ap (\ t -> LX.at t (ex m)) (LY.at-add (LZ.at s (ez m)) (LZ.at s' (ez m)) (ey m)))
+    (LX.at-add (LY.at (LZ.at s (ez m)) (ey m)) (LY.at (LZ.at s' (ez m)) (ey m)) (ex m))) ;
+ psi-neg (s : S.R) : LO.EqL (psi (S.neg s)) (LO.negL (psi s)) = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-neg s (ez m)))
+   (trans (ap (\ t -> LX.at t (ex m)) (LY.at-neg (LZ.at s (ez m)) (ey m)))
+    (LX.at-neg (LY.at (LZ.at s (ez m)) (ey m)) (ex m))) ;
+ psi-zero : LO.EqL (psi S.z) LO.zeroL = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-zero (ez m)))
+   (trans (ap (\ t -> LX.at t (ex m)) (LY.at-zero (ey m))) (LX.at-zero (ex m))) ;
+ psi-scale (c : A.R) (s : S.R) : LO.EqL (psi (S.mul (fromA c) s)) (LO.scaleL c (psi s)) = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-scale (LY.E.constant (LX.E.constant c)) s (ez m)))
+   (trans (ap (\ t -> LX.at t (ex m)) (LY.at-scale (LX.E.constant c) (LZ.at s (ez m)) (ey m)))
+    (LX.at-scale c (LY.at (LZ.at s (ez m)) (ey m)) (ex m))) ;
+ -- the shifts; sub3 m e_Z is (ex m, ey m, predZ (ez m)) by computation
+ shiftL (e : E3) (f : Lau) : Lau = \ m -> f (sub3 m e) ;
+ eX : E3 = (pos (suc zero), (zeroZ, zeroZ)) ;
+ eY : E3 = (zeroZ, (pos (suc zero), zeroZ)) ;
+ eZ : E3 = (zeroZ, (zeroZ, pos (suc zero))) ;
+ psi-Z (s : S.R) : LO.EqL (psi (S.mul Z s)) (shiftL eZ (psi s)) = \ m ->
+  ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-var s (ez m)) ;
+ psi-Y (s : S.R) : LO.EqL (psi (S.mul Y s)) (shiftL eY (psi s)) = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-scale LY.E.variable s (ez m)))
+   (ap (\ t -> LX.at t (ex m)) (LY.at-var (LZ.at s (ez m)) (ey m))) ;
+ psi-X (s : S.R) : LO.EqL (psi (S.mul X s)) (shiftL eX (psi s)) = \ m ->
+  trans (ap (\ t -> LX.at (LY.at t (ey m)) (ex m)) (LZ.at-scale (LY.E.constant LX.E.variable) s (ez m)))
+   (trans (ap (\ t -> LX.at t (ex m)) (LY.at-scale LX.E.variable (LZ.at s (ez m)) (ey m)))
+    (LX.at-var (LY.at (LZ.at s (ez m)) (ey m)) (ex m))) ;
+ -- injectivity
+ psi-inj (s : S.R) (h : LO.EqL (psi s) LO.zeroL) : Id S.R s S.z =
+  LZ.inj s (\ w -> LY.inj (LZ.at s (pos w)) (\ y -> LX.inj (LY.at (LZ.at s (pos w)) (pos y)) (\ x -> h (pos x, (pos y, pos w))))) ;
+
+ ---------------------------------------------------------------------
+ -- psi 1 = delta
+
+ delta3 (x y w : Int) : A.R = LL.delta (x, (y, w)) ;
+ -- exponents different from LLt.zero3
+ nz-w (x y w : Int) (h : LG.Not (Id Int zeroZ w)) : Id A.R (delta3 x y w) A.z =
+  LL.ifD-no (\ e -> h (ap (\ m -> ez m) e)) (LLt.dec3 LLt.zero3 (x, (y, w))) A.o ;
+ nz-y (x y w : Int) (h : LG.Not (Id Int zeroZ y)) : Id A.R (delta3 x y w) A.z =
+  LL.ifD-no (\ e -> h (ap (\ m -> ey m) e)) (LLt.dec3 LLt.zero3 (x, (y, w))) A.o ;
+ nz-x (x y w : Int) (h : LG.Not (Id Int zeroZ x)) : Id A.R (delta3 x y w) A.z =
+  LL.ifD-no (\ e -> h (ap (\ m -> ex m) e)) (LLt.dec3 LLt.zero3 (x, (y, w))) A.o ;
+ -- psi3 of an element whose Z-coefficient is 0
+ zero-Y (x y : Int) : Id A.R (LX.at (LY.at LY.T.z y) x) A.z =
+  trans (ap (\ t -> LX.at t x) (LY.at-zero y)) (LX.at-zero x) ;
+ one-X : (x : Int) -> Id A.R (LX.at LX.T.o x) (delta3 x zeroZ zeroZ) = split {
+  pos n -> oneXp n ;
+  negsuc n -> sym (nz-x (negsuc n) zeroZ zeroZ (\ e -> encode zeroZ (negsuc n) e)) }
+  where {
+   oneXp : (n : Nat) -> Id A.R (LX.at LX.T.o (pos n)) (delta3 (pos n) zeroZ zeroZ) = split {
+    zero -> trans LX.at-one-zero (sym (LL.ifD-yes (refl LLt.zero3) (LLt.dec3 LLt.zero3 LLt.zero3) A.o)) ;
+    suc n -> trans (LX.at-one-pos n) (sym (nz-x (pos (suc n)) zeroZ zeroZ (\ e -> encode zeroZ (pos (suc n)) e))) } } ;
+ one-Y (x : Int) : (y : Int) -> Id A.R (LX.at (LY.at LY.T.o y) x) (delta3 x y zeroZ) = split {
+  pos n -> oneYp n ;
+  negsuc n -> trans (zero-Y' x) (sym (nz-y x (negsuc n) zeroZ (\ e -> encode zeroZ (negsuc n) e))) }
+  where {
+   zero-Y' (x' : Int) : Id A.R (LX.at LX.T.z x') A.z = LX.at-zero x' ;
+   oneYp : (n : Nat) -> Id A.R (LX.at (LY.at LY.T.o (pos n)) x) (delta3 x (pos n) zeroZ) = split {
+    zero -> trans (ap (\ t -> LX.at t x) LY.at-one-zero) (one-X x) ;
+    suc n -> trans (ap (\ t -> LX.at t x) (LY.at-one-pos n))
+                   (trans (LX.at-zero x) (sym (nz-y x (pos (suc n)) zeroZ (\ e -> encode zeroZ (pos (suc n)) e)))) } } ;
+ one3 (x y : Int) : (w : Int) -> Id A.R (psi3 S.o x y w) (delta3 x y w) = split {
+  pos n -> oneZp n ;
+  negsuc n -> trans (zero-Y x y) (sym (nz-w x y (negsuc n) (\ e -> encode zeroZ (negsuc n) e))) }
+  where {
+   oneZp : (n : Nat) -> Id A.R (psi3 S.o x y (pos n)) (delta3 x y (pos n)) = split {
+    zero -> trans (ap (\ t -> LX.at (LY.at t y) x) LZ.at-one-zero) (one-Y x y) ;
+    suc n -> trans (ap (\ t -> LX.at (LY.at t y) x) (LZ.at-one-pos n))
+                   (trans (zero-Y x y) (sym (nz-w x y (pos (suc n)) (\ e -> encode zeroZ (pos (suc n)) e)))) } } ;
+ psi-one : LO.EqL (psi S.o) LL.delta = \ m -> one3 (ex m) (ey m) (ez m) ;
+} ;
