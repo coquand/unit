@@ -54,8 +54,7 @@ Sattler's mathematics.
 π₄(S³) = ℤ/2): David Wärn developed the universal-property strategy used
 here, together with the delooping and cup-product constructions.** Our
 contribution was to develop the argument in detail and formalise it in Unit.
-Owen Milner formulated the Sính invariant in homotopy type theory, an
-inspiration for Wärn's approach.
+Owen Milner formulated the Sính invariant in homotopy type theory.
 
 ## Documents (`doc/`)
 
@@ -115,8 +114,8 @@ inspiration for Wärn's approach.
   constructive theory of dilators (Girard, *Proof Theory and Logical
   Complexity*, chapters 8 and 9), as checked in `dilators/`.
 - [`pi4-s3.pdf`](doc/pi4-s3.pdf): π₄(S³) = ℤ/2 by a Postnikov universal
-  property: the main ideas of the formal proof (strategy due to David Wärn,
-  inspired by Owen Milner's formulation of the Sính invariant). The detailed notes:
+  property: the main ideas of the formal proof (strategy due to David Wärn;
+  Owen Milner formulated the Sính invariant in homotopy type theory). The detailed notes:
   [`br-universal.pdf`](doc/br-universal.pdf) (the marked universal property
   of BR), [`cross-term.pdf`](doc/cross-term.pdf) (R deloops),
   [`cup-square.pdf`](doc/cup-square.pdf), [`h4.pdf`](doc/h4.pdf),
