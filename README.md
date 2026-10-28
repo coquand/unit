@@ -51,8 +51,8 @@ Unit files and notes record a formalisation and exposition of Christian
 Sattler's mathematics.
 
 **Mathematical attribution: the strategy of the proofs of π₃(S²) = ℤ and
-π₄(S³) = ℤ/2 in `sag/pi3-s2-postnikov` is due to David Wärn, with
-contributions of Owen Milner.** The delooping machinery on which they rest
+π₄(S³) = ℤ/2 in `sag/pi3-s2-postnikov` is due to David Wärn (personal
+communication), with contributions of Owen Milner (personal communication).** The delooping machinery on which they rest
 (Eilenberg–MacLane spaces as iterated torsors, and the criterion for a map of
 loop spaces to be a looping) and the construction of the cup product are also
 due to David Wärn. The Unit files and notes record the development of the
