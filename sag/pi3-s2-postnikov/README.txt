@@ -141,6 +141,109 @@ TOWARDS pi_4(S^3) = Z/2 (doc/cross-term.pdf, refereed; doc/pi3-s2-postnikov-hand
                         Pi4S3[S3,base,surf,ump3].pi4-S3 : GIso[pi4 S3 base, ab-grp Z2ab],
                         trunc4 instantiated inside: UNCONDITIONAL beyond the S^3 axiom (and the
                         Theory parameters univalence, images, surjectivity)
+CLASSIFICATION of pointed simply connected 3-types (doc/postnikov-classification.pdf;
+Hart-Milner, Classifying 2-Groups in HoTT, LICS 2026, Lemma 40, Theorem 41 (Owen Milner's
+equivalence, per the Agda README), Note 42, at n = 2 and simply connected; Agda branch lics,
+commit 9ec62dd; classification.opens)
+  ClassAb               paths in Ab from additive bijections (ab-path: eqind; the rest of the
+                        structure is a proposition for a given addition)
+  ClassBase             PtProp/StageId: (u = v) ~ (u ~pt v) for pointed types with a property and
+                        for EM.Stage[n] (J); stage-gpd: Stage[1] is a 1-type; conn-lift (isConn at
+                        l to l+); const-contr ((z : Z) * (d -> z = g d) contractible, D 1-connected,
+                        Z a 1-type); conn-back, total-conn; ap-equiv, subst-cancel, pair-path
+  ClassEM               Theorem 38 at n = 2, 3: K2 : Ab ~ Stage[0], K3 : Ab ~ Stage[1] (Rec2 = the
+                        steps G1, G2 of Presentation.Rec at a 1-connected 2-type; Band2, Band3:
+                        Omega^n K(B,n) ~ B additive)
+  ClassFib              Theorem 41 at a simply connected base V: (W : Stage[1]) * V ->pt Tor W ~
+                        Fam V = (F : V -> U) * F v0 * ((v) -> F v 2-connected 3-type); TorW (tau =
+                        Theorem 36(1), Tor ~ TorL), Key (Lemma 9: S F is a proposition, by
+                        const-contr over Sigma F), Chain.fib-equiv
+  ClassPost             SC3 = (X : U) * (x : X) * isConn 3 X * isTrunc 5 X; Lemma 40: alpha :
+                        (V : Stage[0]) * Fam V ~ SC3 (delta X = (||X||_2, fib eta, ..); DA: ehat,
+                        its inverse by ConnectedMaps.null, t, coh, sip)
+  PostnikovClassification  Triples = (A B : Ab) * K(A,2) ->pt K(B,4); realise (A,B,k) =
+                        (Fib k, (pt, k0), conn3, trunc5) (PostnikovRealization.Triple); chain (Theorem
+                        38 on the bases, ClassFib, ClassPost); realise-agree (Note 42);
+                        realise-equiv : isEquiv Triples ClassPost.SC3 realise and classification =
+                        (realise, realise-equiv) : Equiv Triples SC3 in U (l+1), UNCONDITIONAL
+                        (only the Theory parameters; no sphere axiom)
+  Pi3Classified         Final[S2, base, surf, ump]: rep (MapThm for every simply connected
+                        3-type X: MapFib.Final.rep-fib at the triple sec X, transported along
+                        realise-equiv.sec-eq X), map-thm, pi3-S2 : GIso[pi3 S2 base, ab-grp Zab]
+                        (Pi3Sphere.Conditional.pi3-S2-T); only the S2 axiom
+DELOOPING EMBEDDING (doc/delooping-embedding.pdf; David Wärn's idea; embedding.opens)
+  DeloopEmbedding       SC4 = pointed 2-connected 4-types (isConn 4, isTrunc 6; ClassBase.PtProp),
+                        Omega : SC4 -> SC3; LoopEq: loopPE has the section delta (SourceS3.LoopEquiv
+                        at c = 2, Whitehead), loop-delta; Theorem E: (v) * (Omega u = Omega v) is
+                        contractible (retract of (v) * Omega u ~pt Omega v, itself a retract of
+                        (v) * u ~pt v), so ap Omega is an equivalence (Emb.emb) and the fibres of
+                        Omega are propositions (fib-prop); Corollary C: Deloopable t = fib Omega
+                        (realise t), a proposition, sc4-equiv : (t : Triples) * Deloopable t ~ SC4;
+                        step 1: deloop-R (BR deloops R = Fib kbar), BR-Tor : BR ~pt Tor_R (the two
+                        deloopings agree); Mark[S3,..]: statement M (s^* : [BR, Y]_* -> [S3, Y]_*
+                        bijective) and marked: M for every Y : SC4, via Presentation4.Pres4.
+                        M for every Y : SC4 WITHOUT Pres4: MarkDirect.Direct.marked (below).  The
+                        Crux at A = Z is Statement T with G = id (TwoTorsion.TwoTors.unloop); for
+                        general A it is not formalised, and not needed
+  MarkLoop              (doc/delooping-direct.pdf, Section 1; markloop.opens) LoopCls: looping on
+                        classes [X, Y]_* -> [Omega X, Omega Y]_* is a bijection for X isConn 4,
+                        Y isTrunc 6 (SourceS3.LoopEquiv at c = 2, classes-equiv);
+                        LMark[S3,..]: r = loop s ; [omega-BR] in [Omega S3, R]_*, Proposition L:
+                        At[u].to-loop / from-loop, statement M at u iff r^* : [R, Omega Y]_* ->
+                        [Omega S3, Omega Y]_* is bijective (loopC-comp, comp-assoc, pre-pteq,
+                        2-out-of-3); no presentation
+  CrossDeloop           (doc/delooping-direct.pdf, Section 2; crossdeloop.opens)
+                        LoopIrr, PtIrr.lambda0 (Lemma (lambda0): pointed maps into a loop space
+                        with pointwise equal functions have pointwise equal loop^2: LoopHomotopy,
+                        then Eckmann-Hilton, twice); loop2-comp; Inv[X,W]: lam (lambda_g m =
+                        loop^2 m g), Delta^f_q (dfun, locked), delta0 (Delta0), lam-zero
+                        (lambda2); Delta1.d1 (Delta1, for multiplicative L); lam-pre (lambda1);
+                        ELoop.At.e-loop and EDelta.At.e-delta (Lemma (lambda3): (E c)(x) =
+                        loop^2 (c ; ev_x) gamma0, and = loop^2 e4 (lambda_{gamma^0} m) when
+                        ev_x o c = e2^-1 ; m ; e4 pointwise).  With it: CrossTerm.CrossGen[B, f]
+                        (Dp, tau, Cj, delta, cell-of for any B, f; Cross is its instance at Z/2),
+                        DeloopR.UnloopGen[B, f, delta = 0] (Theorem 16 for any B: Unloop f
+                        contractible), MapFib.FibP[A, B, k] (cp, fseq, (F1) surj2: loop^2 fpr
+                        surjective, (F2) const-ext, PStar[C]: p^* bijective on classes into
+                        K(C,2), Lemma 7 for any triple; SourceP uses it at (Z, Z, kappa));
+                        Necessity.ThetaEq.theta-pt (Theta c = Theta c', the set-level part of
+                        theta-eq)
+  TwoTorsion            Statement T (doc/delooping-direct.pdf, Section 2.3, Steps 1-6;
+                        twotorsion.opens), NO sphere axiom, no presentation: for a deloopable
+                        triple (A, B, k) (dl : DeloopEmbedding.Deloopable), Loop[t, dl]: eps :
+                        Omega Y ~pt Fib k, pi = eps ; fpr ; e_2^-1 is loop P (Lemma 1: pi-cell,
+                        pi-loop, pi-mult), N: pi ; f_k = 0 from fpr ; k = 0; TwoTors[t, dl, G]
+                        for G : K(Z,2) ->pt K(A,2): Ghat = e_2 ; G ; e_2^-1 = loop K(a,3)
+                        (ghat-loop), f' = f_{G;k} = Ghat ; f_k (f'-eq); Elim[n, w, ew] (the mere
+                        N of Step 2 and gamma' of Step 4, (F1), eliminated into the set-level
+                        Theta delta = Theta 0): gamma', eg, phi, phi-pi (the only use of
+                        deloopability: (lambda0), (Delta1) at L = pi, N, (Delta0), (lambda2)),
+                        phi-refl ((F2)), lam-fp, h-cell, e-zero ((lambda3), ETwo.e-zero),
+                        theta; then theta, cross (delta_{f'} = 0, theta-inj), CONCLUSION 1
+                        unloop : Unloop f_{G;k} (DeloopR.UnloopGen); Two[h, eh] for
+                        [G ; k] = Phi_B(h): CONCLUSION 2 two-tors : 2 h(1) = 0 (conj-bridge
+                        with Lev.eB-def, Necessity.Conv)
+  MarkDirect            statement M for every pointed 2-connected 4-type WITHOUT a presentation
+                        (doc/delooping-direct.pdf, Section 3; markdirect.opens): ExR (E) at R =
+                        Fib kbar for a deloopable triple (FibP[Z, Z/2, kbar].PStar, h4, Statement
+                        T, Factor, Psi, fseq), qR (MapFib.Lifting at R, (U) = MapBR.ur);
+                        Direct[S3,..]: RStar, transfer (ptEqInd), rA (r^* bijective into K(A,2):
+                        SourceS3.Final.right is M at K(A,3), Proposition L, e_2), ExS, UnS, qS
+                        (the source Omega S3: rA, comp-assoc, comp-zero-r; Lemma 1 at (S3,
+                        K(B,4)) and s3-paths), rF (r^* bijective into Fib k for every deloopable
+                        triple: 2-out-of-3), AtU[u] (u : SC4: the triple realise^-1 (Omega u),
+                        deloopable by u; transfer along eps^-1; LMark.At.from-loop), marked :
+                        Mark.Marked u for every u : SC4.  The marked class r is MarkLoop.LMark.r
+  Pi4Direct             THE NEW ENDPOINT pi4 S3 = Z/2 through the delooping embedding
+                        (pi4direct.opens): Assemble (sT = MarkDirect.Direct.marked at the
+                        truncation (T, t0, connT, truncT) : SC4, sP = SourceS3.Final.rep-fib,
+                        Pi4Sphere.Two4, Pi4Sphere.pi4-BR); Pi4S3[S3,base,surf,ump3].pi4-S3 :
+                        GIso[pi4 S3 base, ab-grp Z2ab], UNCONDITIONAL beyond the S^3 axiom.
+                        It does NOT depend on Presentation4 (Pres4, Final4) nor on
+                        DeloopEmbedding.Mark.marked: checked by deleting Presentation4.seg,
+                        Mark.At / Mark.marked and Pi4Sphere.Assemble4 / Pi4S3 in a copy of the
+                        development, which still checks (4874 declarations, 0 failed).
+                        Pi4Sphere.Pi4S3 (through Pres4) is kept unchanged as the reference
 CHECKED, CONDITIONAL on explicit interfaces (not Theory assumptions)
   SphereUniversal       Trunc3 + Rep  =>  pi3 S2 = pi3 P (two-map Yoneda); Two: the same from
                         the two instances sP (X = P), sT (X = T) of Rep.rep
@@ -148,11 +251,19 @@ CHECKED, CONDITIONAL on explicit interfaces (not Theory assumptions)
                         pi3-S2-T: kappa + MapThm, with the constructed Trunc3
 STATEMENTS
   KZ2Cohomology         H3 (proved: H3Proof.h3), H4 for kappa (proved: H4Proof.h4)
+DONE (28 Oct 2026): SC3 ~ Triples by the fibre realisation, PostnikovClassification.classification.
 DONE (28 Oct 2026): pi4 S3 = Z/2, Pi4Sphere.Pi4S3.pi4-S3, from the S^3 axiom alone.
+DONE (28 Oct 2026): pi4 S3 = Z/2 using David Wärn's delooping embedding, Pi4Direct.Pi4S3.pi4-S3 (not his
+intended route: arbitrary maps between triples are not classified; doc/pi4-s3-embedding.pdf): M for
+every pointed 2-connected 4-type (MarkDirect) from Statement T (TwoTorsion: the cup-square
+calculations of CrossDeloop, CrossTerm.CrossGen, H4Bilinear underneath), no presentation.
 DONE (28 Oct 2026): pi3 S2 = Z, Presentation.Final.pi3-S2; MapThm is only needed at X = P and
-X = T, where it is MapFib.Final.rep-fib and Presentation.Final.sT (MapThm for every simply
-connected 3-type is not proved: it would need a presentation of every such type).
-pi4.opens, trunc4.opens, pres4.opens, s3.opens, conj.opens, necessity.opens, z2.opens, double.opens, cross.opens, deloop.opens, pi3.opens, truncation.opens, circle.opens, cup.opens, h4.opens, fibre.opens, mapfib.opens, present.opens (reproducible; textual audit
+X = T, where it is MapFib.Final.rep-fib and Presentation.Final.sT.  Since the classification,
+MapThm holds for EVERY pointed simply connected 3-type X (Pi3Classified.Final.rep: rep-fib
+transported along realise (sec X) = X), and Pi3Classified.Final.pi3-S2 obtains pi3 S2 = Z from
+it through Pi3Sphere.Conditional.pi3-S2-T, without Presentation.Pres.
+twotorsion.opens, markdirect.opens, pi4direct.opens, markloop.opens, crossdeloop.opens,
+embedding.opens, classification.opens, pi4.opens, trunc4.opens, pres4.opens, s3.opens, conj.opens, necessity.opens, z2.opens, double.opens, cross.opens, deloop.opens, pi3.opens, truncation.opens, circle.opens, cup.opens, h4.opens, fibre.opens, mapfib.opens, present.opens (reproducible; textual audit
 against doc/h4.tex not yet done): --opens specifications (seg/WRITING.md,
 rule 6), one entry per declaration; a checker diagnostic on locks:
 ../../doc/etav-lock-diagnostic.txt.

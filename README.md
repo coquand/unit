@@ -219,7 +219,13 @@ S³) is the parameter telescope of a module. Two theorems are checked:
 - `Presentation.Final.pi3-S2 : GIso[pi3 S2 base, ab-grp Zab]`, π₃(S²) = ℤ
   from the S² axiom;
 - `Pi4Sphere.Pi4S3[S3, base, surf, ump3].pi4-S3 : GIso[pi4 S3 base, ab-grp Z2ab]`,
-  π₄(S³) = ℤ/2 from the S³ axiom (π₄X is π₃(ΩX) by definition).
+  π₄(S³) = ℤ/2 from the S³ axiom (π₄X is π₃(ΩX) by definition). A second
+  assembly, `Pi4Direct.Pi4S3[S3, base, surf, ump3].pi4-S3`, uses David Wärn's
+  delooping embedding (but not his intended classification of arbitrary maps
+  between triples, see [`pi4-s3-embedding.pdf`](doc/pi4-s3-embedding.pdf)): the universal property at ‖S³‖₄ comes
+  from statement M for every pointed 2-connected 4-type (`MarkDirect`), proved
+  from the restricted 2-torsion lemma (`TwoTorsion`), without a Postnikov
+  presentation of ‖S³‖₄ ([`delooping-direct.pdf`](doc/delooping-direct.pdf)).
 
 The candidate Postnikov stage is BR, the delooping of the fibre R of the cup
 square reduced mod 2; a marked class s : [S³, BR]_* is shown to have the
