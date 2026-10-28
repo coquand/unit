@@ -1,0 +1,202 @@
+-- Finite truncations from replacement (doc/finite-truncation.pdf, §3).
+--   TruncOp m     a truncation structure at level m: T A, a unit, T A is
+--                 isTrunc m, the fibres of the unit are isConn m; it
+--                 eliminates into isTrunc m families (ConnectedMaps.Elim)
+--   base          m = 1: the propositional truncation (Lemma 5)
+--   Step          m+1 >= 2 from m >= 1: the image of a |-> (c |-> T (a = c))
+--                 in the locally small type A -> U (Rijke's construction):
+--     Yon         Lemma 6, Yoneda for truncated families
+--     all-equiv   Lemma 7, every family T (a = c) -> T (b = c) is one of
+--                 equivalences
+--     ident       Proposition 8, (q a = q b) = T (b = a)
+--     trunc'      Proposition 9, the image is isTrunc (m+1)
+--     conn'       Proposition 10, the fibres of q are isConn (m+1)
+--   TO m          Theorem 11, a truncation structure at every level m+1
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FunExtUA[l] ; open HLevels[l] ; open Connected[l] ;
+open ConnectedMaps[l] ;
+module Tr = Truncation[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module W = Whitehead[l] ; module E = Equivalences[l] ;
+module P1 = Prelude[l+] ; module E1 = Equivalences[l+] ;
+module Rep = Replacement[l,l+] ;
+
+record TruncOp (m : Nat) {
+  T : U l -> U l ;
+  unit (A : U l) : A -> T A ;
+  trunc (A : U l) : isTrunc m (T A) ;
+  conn (A : U l) (z : T A) : isConn m (W.fib A (T A) (unit A) z) ;
+} ;
+
+-- an equivalence of the larger universe between small types is one of U l
+lower (A B : U l) (e : P1.Equiv A B) : Equiv A B =
+  (e.1, struct { sec = e.2.sec ; sec-eq = e.2.sec-eq ; ret = e.2.ret ; ret-eq = e.2.ret-eq }) ;
+
+-- postcomposition with a path, an equivalence
+post-equiv (X : U l+) (x y z : X) (r : Id X y z) : P1.Equiv (Id X x y) (Id X x z) =
+  idJ X y (\ z1 r1 -> P1.Equiv (Id X x y) (Id X x z1)) (P1.idEquiv (Id X x y)) z r ;
+
+------------------------------------------------------------------------
+-- Lemma 5: the base
+
+module Base1 (A : U l) {
+  fib-inh (z : Tr.Trunc[A].carrier) : Tr.Trunc[W.fib A Tr.Trunc[A].carrier Tr.Trunc[A].inc z].carrier =
+    Tr.Trunc[A].induction @l (\ z1 -> Tr.Trunc[W.fib A Tr.Trunc[A].carrier Tr.Trunc[A].inc z1].carrier)
+      (\ z1 -> Tr.Trunc[W.fib A Tr.Trunc[A].carrier Tr.Trunc[A].inc z1].proposition)
+      (\ a -> Tr.Trunc[W.fib A Tr.Trunc[A].carrier Tr.Trunc[A].inc (Tr.Trunc[A].inc a)].inc (a, refl (Tr.Trunc[A].inc a))) z ;
+} ;
+
+base : TruncOp[suc zero] =
+  new TruncOp[suc zero, \ A -> Tr.Trunc[A].carrier, \ A -> Tr.Trunc[A].inc,
+    \ A -> prop-trunc zero Tr.Trunc[A].carrier Tr.Trunc[A].proposition,
+    \ A z -> (Base1[A].fib-inh z, \ w w' -> tt)] ;
+
+------------------------------------------------------------------------
+-- the step
+
+module Step (m : Nat) (TO : TruncOp[suc m]) {
+
+  -- Lemma 6: maps of families T (a = -) -> Q are Q a
+  module Yon (A : U l) (a : A) (Q : A -> U l) (tQ : (c : A) -> isTrunc (suc m) (Q c)) {
+    M : U l = (c : A) -> TO.T (Id A a c) -> Q c ;
+    -- precomposition with the units
+    pre (Phi : M) (c : A) (p : Id A a c) : Q c = Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].precomp (Phi c) p ;
+    pre-equiv : isEquiv M ((c : A) -> Id A a c -> Q c) pre =
+      pi-equiv A (\ c -> TO.T (Id A a c) -> Q c) (\ c -> Id A a c -> Q c) (\ c -> Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].precomp) (\ c -> Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].equiv) ;
+    -- evaluation at refl
+    evr (g : (c : A) -> Id A a c -> Q c) : Q a = g a (refl a) ;
+    tra (v : Q a) (c : A) (p : Id A a c) : Q c = subst A Q a c p v ;
+    tra-evr (g : (c : A) -> Id A a c -> Q c) : Id ((c : A) -> Id A a c -> Q c) (tra (evr g)) g =
+      FL.funext A (\ c -> Id A a c -> Q c) (tra (evr g)) g (\ c ->
+        FL.funext (Id A a c) (\ p -> Q c) (tra (evr g) c) (g c) (\ p ->
+          idJ A a (\ c1 p1 -> Id (Q c1) (tra (evr g) c1 p1) (g c1 p1)) (refl (g a (refl a))) c p)) ;
+    evr-equiv : isEquiv ((c : A) -> Id A a c -> Q c) (Q a) evr =
+      qinv ((c : A) -> Id A a c -> Q c) (Q a) evr tra (\ v -> refl v) tra-evr ;
+    Y (Phi : M) : Q a = Phi a (TO.unit (Id A a a) (refl a)) ;
+    -- by definition
+    Y-def (Phi : M) : Id (Q a) (Y Phi) (evr (pre Phi)) = refl (Y Phi) ;
+    equiv : isEquiv M (Q a) Y =
+      E.homotopy M (Q a) (E.compose M ((c : A) -> Id A a c -> Q c) (Q a) (pre, pre-equiv) (evr, evr-equiv)) Y Y-def ;
+    -- the family of a point: the extensions of p |-> p_* v
+    Phi-of (v : Q a) (c : A) : TO.T (Id A a c) -> Q c = Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].ext (tra v c) ;
+    -- every family is the family of its value
+    Phi-of-Y (Phi : M) : Id M (Phi-of (Y Phi)) Phi =
+      FL.funext A (\ c -> TO.T (Id A a c) -> Q c) (Phi-of (Y Phi)) Phi (\ c ->
+        Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].unique (Phi-of (Y Phi) c) (Phi c) (\ p -> transH (Elim[suc m, Id A a c, TO.T (Id A a c), TO.unit (Id A a c), TO.conn (Id A a c), \ z -> Q c, \ z -> tQ c].ext-beta (tra (Y Phi) c) p)
+          (idJ A a (\ c1 p1 -> Id (Q c1) (tra (Y Phi) c1 p1) (Elim[suc m, Id A a c1, TO.T (Id A a c1), TO.unit (Id A a c1), TO.conn (Id A a c1), \ z -> Q c1, \ z -> tQ c1].precomp (Phi c1) p1)) (refl (Y Phi)) c p))) ;
+  } ;
+
+  module At (A : U l) {
+    f (a : A) (c : A) : U l = TO.T (Id A a c) ;
+    small : Rep.LocallySmall (A -> U l) = \ g h -> Quotient[l].FunctionSmall[A, g, h].small ;
+    image : Rep.Image[A, A -> U l, f] = images @l @(l+) A (A -> U l) small f ;
+    I : U l = image.carrier ;
+    q (a : A) : I = image.quotient a ;
+    -- induction along q into propositions
+    q-ind (F : I -> U l) (pF : (z : I) -> isProp (F z)) (b : (a : A) -> F (q a)) (z : I) : F z =
+      (surjections @l @(l+) @l A (A -> U l) small f F pF).sec b z ;
+
+    -- Lemma 7
+    module AllEq (a b : A) {
+      Good (a1 : A) (v : TO.T (Id A b a1)) : U l = (c : A) -> isEquiv (TO.T (Id A a1 c)) (TO.T (Id A b c)) (Yon[A, a1, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of v c) ;
+      good-prop (a1 : A) (v : TO.T (Id A b a1)) : isProp (Good a1 v) =
+        FL.isProp-Pi A (\ c -> isEquiv (TO.T (Id A a1 c)) (TO.T (Id A b c)) (Yon[A, a1, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of v c))
+          (\ c -> EquivProp[l].isEquiv-prop (TO.T (Id A a1 c)) (TO.T (Id A b c)) (Yon[A, a1, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of v c)) ;
+      -- at refl the family is the identity
+      id-at (c : A) : Id (TO.T (Id A b c) -> TO.T (Id A b c)) (Yon[A, b, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of (TO.unit (Id A b b) (refl b)) c) (\ z -> z) =
+        Elim[suc m, Id A b c, TO.T (Id A b c), TO.unit (Id A b c), TO.conn (Id A b c), \ z -> TO.T (Id A b c), \ z -> TO.trunc (Id A b c)].unique (Yon[A, b, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of (TO.unit (Id A b b) (refl b)) c) (\ z -> z) (\ p ->
+          transH (Elim[suc m, Id A b c, TO.T (Id A b c), TO.unit (Id A b c), TO.conn (Id A b c), \ z -> TO.T (Id A b c), \ z -> TO.trunc (Id A b c)].ext-beta (Yon[A, b, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].tra (TO.unit (Id A b b) (refl b)) c) p)
+            (idJ A b (\ c1 p1 -> Id (TO.T (Id A b c1)) (Yon[A, b, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].tra (TO.unit (Id A b b) (refl b)) c1 p1) (TO.unit (Id A b c1) p1))
+               (refl (TO.unit (Id A b b) (refl b))) c p)) ;
+      good-refl : Good b (TO.unit (Id A b b) (refl b)) = \ c ->
+        E.homotopy (TO.T (Id A b c)) (TO.T (Id A b c)) (idEquiv (TO.T (Id A b c))) (Yon[A, b, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of (TO.unit (Id A b b) (refl b)) c)
+          (happly (TO.T (Id A b c)) (\ z -> TO.T (Id A b c)) _ _ (id-at c)) ;
+      good-unit (a1 : A) (r : Id A b a1) : Good a1 (TO.unit (Id A b a1) r) =
+        idJ A b (\ a2 r2 -> Good a2 (TO.unit (Id A b a2) r2)) good-refl a1 r ;
+      good (v : TO.T (Id A b a)) : Good a v =
+        Elim[suc m, Id A b a, TO.T (Id A b a), TO.unit (Id A b a), TO.conn (Id A b a), Good a, \ v1 -> prop-trunc m (Good a v1) (good-prop a v1)].ext (good-unit a) v ;
+      all-equiv (Phi : Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M) (c : A) : isEquiv (TO.T (Id A a c)) (TO.T (Id A b c)) (Phi c) =
+        subst Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M (\ Ps -> isEquiv (TO.T (Id A a c)) (TO.T (Id A b c)) (Ps c)) (Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of (Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Y Phi)) Phi
+          (Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Phi-of-Y Phi) (good (Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Y Phi) c) ;
+    } ;
+
+    -- Proposition 8
+    module Ident (a b : A) {
+      module FS = Quotient[l].FunctionSmall[A, f a, f b] ;
+      module AE = AllEq[a, b] ;
+      e1 : P1.Equiv (Id I (q a) (q b)) (Id (A -> U l) (image.inclusion (q a)) (image.inclusion (q b))) =
+        (P1.ap I (A -> U l) image.inclusion (q a) (q b), image.embedding (q a) (q b)) ;
+      e2 : P1.Equiv (Id (A -> U l) (image.inclusion (q a)) (image.inclusion (q b))) (Id (A -> U l) (f a) (f b)) =
+        E1.compose (Id (A -> U l) (image.inclusion (q a)) (image.inclusion (q b))) (Id (A -> U l) (image.inclusion (q a)) (f b)) (Id (A -> U l) (f a) (f b))
+          (post-equiv (A -> U l) (image.inclusion (q a)) (image.inclusion (q b)) (f b) (image.triangle b))
+          (Fibres[l+].trans-equiv (A -> U l) (f a) (image.inclusion (q a)) (f b) (P1.sym (A -> U l) (image.inclusion (q a)) (f a) (image.triangle a))) ;
+      e3 : P1.Equiv (Id (A -> U l) (f a) (f b)) FS.E = (FS.encode, P1.qinv FS.Path FS.E FS.encode FS.decode FS.ed FS.de) ;
+      big : Equiv (Id I (q a) (q b)) FS.E =
+        lower (Id I (q a) (q b)) FS.E (E1.compose (Id I (q a) (q b)) (Id (A -> U l) (f a) (f b)) FS.E
+          (E1.compose (Id I (q a) (q b)) (Id (A -> U l) (image.inclusion (q a)) (image.inclusion (q b))) (Id (A -> U l) (f a) (f b)) e1 e2) e3) ;
+      -- the subtype of equivalences is everything
+      forget (e : FS.E) : Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M = \ c -> (e c).1 ;
+      e4 : Equiv FS.E Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M =
+        (forget, qinv FS.E Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M forget (\ Phi c -> (Phi c, AE.all-equiv Phi c)) (\ Phi -> refl Phi)
+          (\ e -> FL.funext A (\ c -> Equiv (f a c) (f b c)) (\ c -> ((e c).1, AE.all-equiv (forget e) c)) e (\ c ->
+             Sigma-eq (f a c -> f b c) (\ g -> isEquiv (f a c) (f b c) g) (e c).1 (e c).1 (AE.all-equiv (forget e) c) (e c).2
+               (refl (e c).1) (EquivProp[l].isEquiv-prop (f a c) (f b c) (e c).1)))) ;
+      ident : Equiv (Id I (q a) (q b)) (TO.T (Id A b a)) =
+        E.compose (Id I (q a) (q b)) Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M (TO.T (Id A b a))
+          (E.compose (Id I (q a) (q b)) FS.E Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].M big e4) (Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].Y, Yon[A, a, \ c -> TO.T (Id A b c), \ c -> TO.trunc (Id A b c)].equiv) ;
+    } ;
+
+    -- Proposition 9
+    trunc' : isTrunc (suc (suc m)) I = \ z w ->
+      q-ind (\ z1 -> isTrunc (suc m) (Id I z1 w)) (\ z1 -> trunc-prop (suc m) (Id I z1 w)) (\ a ->
+        q-ind (\ w1 -> isTrunc (suc m) (Id I (q a) w1)) (\ w1 -> trunc-prop (suc m) (Id I (q a) w1)) (\ b ->
+          equiv-trunc (suc m) (Id I (q a) (q b)) (TO.T (Id A b a)) Ident[a, b].ident (TO.trunc (Id A b a))) w) z ;
+
+    -- Proposition 10
+    module ConnS (b : A) {
+      S : U l = (a : A) * TO.T (Id A b a) ;
+      s0 : S = (b, TO.unit (Id A b b) (refl b)) ;
+      -- transport of the unit at refl
+      tr-unit (a1 : A) (r : Id A b a1) : Id (TO.T (Id A b a1)) (subst A (\ x -> TO.T (Id A b x)) b a1 r (TO.unit (Id A b b) (refl b))) (TO.unit (Id A b a1) r) =
+        idJ A b (\ a2 r2 -> Id (TO.T (Id A b a2)) (subst A (\ x -> TO.T (Id A b x)) b a2 r2 (TO.unit (Id A b b) (refl b))) (TO.unit (Id A b a2) r2))
+          (refl (TO.unit (Id A b b) (refl b))) a1 r ;
+      -- the paths from s0 are the fibres of the unit
+      paths0 (w : S) : Equiv (Id S s0 w) (W.fib (Id A b w.1) (TO.T (Id A b w.1)) (TO.unit (Id A b w.1)) w.2) =
+        E.compose (Id S s0 w) ((r : Id A b w.1) * Id (TO.T (Id A b w.1)) (subst A (\ x -> TO.T (Id A b x)) b w.1 r s0.2) w.2)
+          (W.fib (Id A b w.1) (TO.T (Id A b w.1)) (TO.unit (Id A b w.1)) w.2)
+          (sigma-paths A (\ x -> TO.T (Id A b x)) s0 w)
+          (Fibres[l].sigma-equiv (Id A b w.1) (\ r -> Id (TO.T (Id A b w.1)) (subst A (\ x -> TO.T (Id A b x)) b w.1 r s0.2) w.2)
+             (\ r -> Id (TO.T (Id A b w.1)) (TO.unit (Id A b w.1) r) w.2)
+             (\ r -> Fibres[l].trans-equiv (TO.T (Id A b w.1)) (TO.unit (Id A b w.1) r) (subst A (\ x -> TO.T (Id A b x)) b w.1 r s0.2) w.2
+                       (sym (TO.T (Id A b w.1)) (subst A (\ x -> TO.T (Id A b x)) b w.1 r s0.2) (TO.unit (Id A b w.1) r) (tr-unit w.1 r)))) ;
+      conn0 (w : S) : isConn (suc m) (Id S s0 w) =
+        Deloop[l].equiv-conn (suc m) (Id S s0 w) (W.fib (Id A b w.1) (TO.T (Id A b w.1)) (TO.unit (Id A b w.1)) w.2) (paths0 w)
+          (TO.conn (Id A b w.1) w.2) ;
+      -- from a point (a, unit p): J on p
+      Ok (a : A) (u : TO.T (Id A b a)) : U l = (w : S) -> isConn (suc m) (Id S (a, u) w) ;
+      ok-prop (a : A) (u : TO.T (Id A b a)) : isProp (Ok a u) =
+        FL.isProp-Pi S (\ w -> isConn (suc m) (Id S (a, u) w)) (\ w -> conn-prop (suc m) (Id S (a, u) w)) ;
+      ok-unit (a : A) (p : Id A b a) : Ok a (TO.unit (Id A b a) p) =
+        idJ A b (\ a1 p1 -> Ok a1 (TO.unit (Id A b a1) p1)) conn0 a p ;
+      ok (w : S) : Ok w.1 w.2 =
+        Elim[suc m, Id A b w.1, TO.T (Id A b w.1), TO.unit (Id A b w.1), TO.conn (Id A b w.1), Ok w.1, \ u -> prop-trunc m (Ok w.1 u) (ok-prop w.1 u)].ext (ok-unit w.1) w.2 ;
+      connS : isConn (suc (suc m)) S = (Tr.Trunc[S].inc s0, \ w w' -> ok w w') ;
+    } ;
+
+    conn' (z : I) : isConn (suc (suc m)) (W.fib A I q z) =
+      q-ind (\ z1 -> isConn (suc (suc m)) (W.fib A I q z1)) (\ z1 -> conn-prop (suc (suc m)) (W.fib A I q z1)) (\ b ->
+        Deloop[l].equiv-conn (suc (suc m)) (W.fib A I q (q b)) ConnS[b].S
+          (Fibres[l].sigma-equiv A (\ a -> Id I (q a) (q b)) (\ a -> TO.T (Id A b a)) (\ a -> Ident[a, b].ident))
+          ConnS[b].connS) z ;
+  } ;
+
+  op : TruncOp[suc (suc m)] = new TruncOp[suc (suc m), \ A -> At[A].I, \ A -> At[A].q, \ A -> At[A].trunc', \ A -> At[A].conn'] ;
+} ;
+
+------------------------------------------------------------------------
+-- Theorem 11
+
+TO : (m : Nat) -> TruncOp[suc m] = split { zero -> base ; suc m | r -> Step[m, r].op } ;
+
+-- locked: used only through the fields of TruncOp
+opaque TO ;

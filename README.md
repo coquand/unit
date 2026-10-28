@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and five developments written with it:
+This repository contains the checker and six developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -38,6 +38,9 @@ This repository contains the checker and five developments written with it:
 - a constructive theory of Girard's dilators: normal form, well-foundedness
   up to the Howard ordinal, morphisms, connected components and kinds
   (`dilators/`).
+- π₃(S²) = ℤ and π₄(S³) = ℤ/2 in univalent type theory, each from the
+  universal property of the sphere alone, by a Postnikov universal property
+  (`sag/pi3-s2-postnikov`).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -46,6 +49,14 @@ results, the finite approximations, their truncation properties, and the
 strict-limit and homotopy-limit results for their tower. The corresponding
 Unit files and notes record a formalisation and exposition of Christian
 Sattler's mathematics.
+
+**Mathematical attribution: the strategy of the proofs of π₃(S²) = ℤ and
+π₄(S³) = ℤ/2 in `sag/pi3-s2-postnikov` is due to David Wärn, with
+contributions of Owen Milner.** The delooping machinery on which they rest
+(Eilenberg–MacLane spaces as iterated torsors, and the criterion for a map of
+loop spaces to be a looping) and the construction of the cup product are also
+due to David Wärn. The Unit files and notes record the development of the
+argument in detail and its formalisation.
 
 ## Documents (`doc/`)
 
@@ -104,6 +115,18 @@ Sattler's mathematics.
 - [`dilators-constructive.pdf`](doc/dilators-constructive.pdf): a
   constructive theory of dilators (Girard, *Proof Theory and Logical
   Complexity*, chapters 8 and 9), as checked in `dilators/`.
+- [`pi4-s3.pdf`](doc/pi4-s3.pdf): π₄(S³) = ℤ/2 by a Postnikov universal
+  property: the main ideas of the formal proof (strategy due to David Wärn,
+  with contributions of Owen Milner). The detailed notes:
+  [`br-universal.pdf`](doc/br-universal.pdf) (the marked universal property
+  of BR), [`cross-term.pdf`](doc/cross-term.pdf) (R deloops),
+  [`cup-square.pdf`](doc/cup-square.pdf), [`h4.pdf`](doc/h4.pdf),
+  [`fibre-h3.pdf`](doc/fibre-h3.pdf),
+  [`circle-torsors.pdf`](doc/circle-torsors.pdf),
+  [`mapping-fib.pdf`](doc/mapping-fib.pdf),
+  [`postnikov-presentation.pdf`](doc/postnikov-presentation.pdf),
+  [`finite-truncation.pdf`](doc/finite-truncation.pdf), and
+  [`pi3-s2-postnikov.pdf`](doc/pi3-s2-postnikov.pdf) for π₃(S²) = ℤ.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -184,6 +207,26 @@ Each directory has a `README.md` mapping statements to declarations.
   Theorems 7.1–7.3 (Peskine–Szpiro) and Corollary 7.4 (Rees).
 - `wiebe`: Wiebe's theorem (ctete Theorem 11, Corollary 12) relative to J;
   see `doc/wiebe.pdf`.
+
+## Homotopy groups of spheres (`sag/pi3-s2-postnikov`)
+
+In the setting of `sag/em` (univalence and replacement as parameters; function
+extensionality, truncations and Eilenberg–MacLane spaces derived). The sphere
+is not a parameter of the development: the universal property of S² (resp.
+S³) is the parameter telescope of a module. Two theorems are checked:
+
+- `Presentation.Final.pi3-S2 : GIso[pi3 S2 base, ab-grp Zab]`, π₃(S²) = ℤ
+  from the S² axiom;
+- `Pi4Sphere.Pi4S3[S3, base, surf, ump3].pi4-S3 : GIso[pi4 S3 base, ab-grp Z2ab]`,
+  π₄(S³) = ℤ/2 from the S³ axiom (π₄X is π₃(ΩX) by definition).
+
+The candidate Postnikov stage is BR, the delooping of the fibre R of the cup
+square reduced mod 2; a marked class s : [S³, BR]_* is shown to have the
+universal property s* : [BR, Y]_* ≅ [S³, Y]_* for BR and for ‖S³‖₄, which
+gives π₄(S³) ≅ π₄(BR) ≅ π₃(R) ≅ ℤ/2. Check with
+`./segc sag/pi3-s2-postnikov all`; `README.txt` there maps files to the
+notes, and the `.opens` files record, declaration by declaration, the
+definitions the checker unfolds. See [`pi4-s3.pdf`](doc/pi4-s3.pdf).
 
 ## Synthetic Stone duality (`sag/stone`, `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`)
 

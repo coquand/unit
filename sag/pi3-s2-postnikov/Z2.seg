@@ -1,0 +1,79 @@
+-- The group Z/2 (doc/cross-term.pdf, Definition 1 and Lemma 2): carrier
+-- Bool, zero false, addition xor, every element its own inverse; a set by
+-- Hedberg (equality has a code, as in Integers).  The reduction
+-- rho : Z -> Z/2 is the parity, with rho (suc x) = rho (pred x) = not (rho x),
+-- so rho (x + y) = rho x + rho y by induction on y (addition in Z is
+-- iterated suc / pred in the second argument).  For an abelian group A,
+-- twoH A : Hom A A is a |-> a + a and zeroH A B the constant o; over Z/2,
+-- twoH = zeroH (x + x = 0 by cases).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ;
+open Torsor[l] ; open EMMaps[l] ;
+module ZZ = Integers[l] ;
+
+xor : Bool -> Bool -> Bool = split { true -> \ b -> not b ; false -> \ b -> b } ;
+
+-- the group laws, by cases
+not-not : (b : Bool) -> Id Bool (not (not b)) b = split { true -> refl true ; false -> refl false } ;
+xor-assoc : (x y z : Bool) -> Id Bool (xor (xor x y) z) (xor x (xor y z)) = split {
+  true -> split {
+    true -> split { true -> refl true ; false -> refl false } ;
+    false -> split { true -> refl false ; false -> refl true } } ;
+  false -> \ y z -> refl (xor y z) } ;
+xor-comm : (x y : Bool) -> Id Bool (xor x y) (xor y x) = split {
+  true -> split { true -> refl false ; false -> refl true } ;
+  false -> split { true -> refl true ; false -> refl false } } ;
+xor-unitr : (x : Bool) -> Id Bool (xor x false) x = split { true -> refl true ; false -> refl false } ;
+xor-invr : (x : Bool) -> Id Bool (xor x x) false = split { true -> refl false ; false -> refl false } ;
+xor-not : (a b : Bool) -> Id Bool (xor a (not b)) (not (xor a b)) = split {
+  true -> \ b -> refl (not (not b)) ; false -> \ b -> refl (not b) } ;
+
+-- Bool is a set
+code : Bool -> Bool -> U l = split {
+  true -> split { true -> Top ; false -> Empty } ;
+  false -> split { true -> Empty ; false -> Top } } ;
+code-prop : (x y : Bool) -> isProp (code x y) = split {
+  true -> split { true -> isTop ; false -> isProp-Empty } ;
+  false -> split { true -> isProp-Empty ; false -> isTop } } ;
+code-refl : (x : Bool) -> code x x = split { true -> tt ; false -> tt } ;
+code-eq : (x y : Bool) -> code x y -> Id Bool x y = split {
+  true -> split { true -> \ h -> refl true ; false -> \ h -> absurd (Id Bool true false) h } ;
+  false -> split { true -> \ h -> absurd (Id Bool false true) h ; false -> \ h -> refl false } } ;
+bool-set : isSet Bool = \ x -> Hedberg[Bool, x, code x, code-prop x, code-refl x, code-eq x].hedberg ;
+
+-- Definition 1
+Z2ab : Ab = new Ab[Bool, bool-set, false, xor, \ x -> x, xor-assoc, xor-comm, xor-unitr, xor-invr] ;
+
+-- the parity
+rhoN : Nat -> Bool = split { zero -> false ; suc n | r -> not r } ;
+rhoZ : ZZ.Int -> Bool = split { pos n -> rhoN n ; negsuc n -> not (rhoN n) } ;
+rho-sucNeg : (n : Nat) -> Id Bool (rhoZ (ZZ.sucNeg n)) (not (not (rhoN n))) = split {
+  zero -> refl false ; suc m -> symH (not-not (not (rhoN m))) } ;
+rho-suc : (x : ZZ.Int) -> Id Bool (rhoZ (ZZ.sucZ x)) (not (rhoZ x)) = split {
+  pos n -> refl (not (rhoN n)) ; negsuc n -> rho-sucNeg n } ;
+rho-predPos : (n : Nat) -> Id Bool (rhoZ (ZZ.predPos n)) (not (rhoN n)) = split {
+  zero -> refl true ; suc m -> symH (not-not (rhoN m)) } ;
+rho-pred : (x : ZZ.Int) -> Id Bool (rhoZ (ZZ.predZ x)) (not (rhoZ x)) = split {
+  pos n -> rho-predPos n ; negsuc n -> refl (not (not (rhoN n))) } ;
+rho-addP (x : ZZ.Int) : (n : Nat) -> Id Bool (rhoZ (ZZ.addP x n)) (xor (rhoZ x) (rhoN n)) = split {
+  zero -> symH (xor-unitr (rhoZ x)) ;
+  suc n | r -> transH (rho-suc (ZZ.addP x n)) (transH (apH not r) (symH (xor-not (rhoZ x) (rhoN n)))) } ;
+rho-addN (x : ZZ.Int) : (n : Nat) -> Id Bool (rhoZ (ZZ.addN x n)) (xor (rhoZ x) (not (rhoN n))) = split {
+  zero -> transH (rho-pred x) (transH (apH not (symH (xor-unitr (rhoZ x)))) (symH (xor-not (rhoZ x) false))) ;
+  suc n | r -> transH (rho-pred (ZZ.addN x n)) (transH (apH not r) (symH (xor-not (rhoZ x) (not (rhoN n))))) } ;
+rho-hom (x : ZZ.Int) : (y : ZZ.Int) -> Id Bool (rhoZ (ZZ.add x y)) (xor (rhoZ x) (rhoZ y)) = split {
+  pos n -> rho-addP x n ; negsuc n -> rho-addN x n } ;
+rho : Hom ZZ.intAb Z2ab = (rhoZ, rho-hom) ;
+
+-- doubling and zero
+twoH (Ga : Ab) : Hom Ga Ga = (\ x -> Ga.add x x, \ x y -> calc Ga.A {
+  Ga.add (Ga.add x y) (Ga.add x y)
+    =< Ga.assoc x y (Ga.add x y) > Ga.add x (Ga.add y (Ga.add x y))
+    =< apH (Ga.add x) (symH (Ga.assoc y x y)) > Ga.add x (Ga.add (Ga.add y x) y)
+    =< apH (\ t -> Ga.add x (Ga.add t y)) (Ga.comm y x) > Ga.add x (Ga.add (Ga.add x y) y)
+    =< apH (Ga.add x) (Ga.assoc x y y) > Ga.add x (Ga.add x (Ga.add y y))
+    =< symH (Ga.assoc x x (Ga.add y y)) > Ga.add (Ga.add x x) (Ga.add y y) }) ;
+zeroH (Ga Gb : Ab) : Hom Ga Gb = (\ x -> Gb.o, \ x y -> symH (Gb.unitr Gb.o)) ;
+
+-- Lemma 2
+two-zero : Id (Hom Z2ab Z2ab) (twoH Z2ab) (zeroH Z2ab Z2ab) = KFun[l].hom-path Z2ab Z2ab (twoH Z2ab) (zeroH Z2ab Z2ab) xor-invr ;

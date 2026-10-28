@@ -1,0 +1,157 @@
+-- Connected maps and truncated families (doc/finite-truncation.pdf, §2).
+--   null          Lemma 1: isConn m C, isTrunc m D  =>  const : D -> (C -> D)
+--                 is an equivalence (induction on m; the inverse is
+--                 evaluation at a point, and g = const (g c0) by the
+--                 induction hypothesis on the identity types)
+--   Elim          Lemma 2: along f with isConn m fibres, precomposition
+--                 Pi_b P b -> Pi_a P (f a) is an equivalence for a family of
+--                 isTrunc m types; it is Psi o K (by definition, precomp-def)
+--                 with K a Pi of the equivalences of Lemma 1 and Psi the
+--                 currying of the fibres
+--   fib-ap        Lemma 3: fib (ap f) w = ((x, w) = (y, refl)) in fib f (f y)
+--   conn-up       Lemma 4: isConn m fibres and isConn m A give isConn m B
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FunExtUA[l] ; open HLevels[l] ; open Connected[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module W = Whitehead[l] ; module E = Equivalences[l] ;
+
+-- a map of contractible types is an equivalence
+contr-map-equiv (A B : U l) (f : A -> B) (cA : isContr A) (cB : isContr B) : isEquiv A B f =
+  qinv A B f (\ b -> cA.1) (\ b -> contr-prop B cB (f cA.1) b) (\ a -> contr-prop A cA cA.1 a) ;
+
+-- a Pi of equivalences is an equivalence
+pi-equiv (X : U l) (Y Z : X -> U l) (e : (x : X) -> Y x -> Z x) (ee : (x : X) -> isEquiv (Y x) (Z x) (e x)) :
+  isEquiv ((x : X) -> Y x) ((x : X) -> Z x) (\ s x -> e x (s x)) =
+  qinv ((x : X) -> Y x) ((x : X) -> Z x) (\ s x -> e x (s x)) (\ t x -> (ee x).sec (t x))
+    (\ t -> FL.funext X Z (\ x -> e x ((ee x).sec (t x))) t (\ x -> (ee x).sec-eq (t x)))
+    (\ s -> FL.funext X Y (\ x -> (ee x).sec (e x (s x))) s (\ x -> sec-ret (Y x) (Z x) (e x) (ee x) (s x))) ;
+
+------------------------------------------------------------------------
+-- Lemma 1
+
+null : (m : Nat) (C D : U l) -> isConn m C -> isTrunc m D -> isEquiv D (C -> D) (\ d c -> d) = split {
+  zero -> \ C D cC tD -> contr-map-equiv D (C -> D) (\ d c -> d) tD (trunc-Pi zero C (\ c -> D) (\ c -> tD)) ;
+  suc m | r -> \ C D cC tD ->
+    Tr.Trunc[C].induction @l (\ t -> isEquiv D (C -> D) (\ d c -> d)) (\ t -> EquivProp[l].isEquiv-prop D (C -> D) (\ d c -> d))
+      (\ c0 -> qinv D (C -> D) (\ d c -> d) (\ g -> g c0)
+         (\ g -> FL.funext C (\ c -> D) (\ c -> g c0) g (\ c ->
+            sym D (g c) (g c0) ((r (Id C c c0) (Id D (g c) (g c0)) (cC.2 c c0) (tD (g c) (g c0))).sec (ap C D g c c0))))
+         (\ d -> refl d))
+      cC.1 } ;
+
+------------------------------------------------------------------------
+-- Lemma 2
+
+module Elim (m : Nat) (A B : U l) (f : A -> B) (cf : (b : B) -> isConn m (W.fib A B f b))
+  (P : B -> U l) (tP : (b : B) -> isTrunc m (P b)) {
+  Fam : U l = (b : B) -> W.fib A B f b -> P b ;
+  Psi (t : Fam) (a : A) : P (f a) = t (f a) (a, refl (f a)) ;
+  Phi (s : (a : A) -> P (f a)) : Fam = \ b w -> subst B P (f w.1) b w.2 (s w.1) ;
+  psi-phi (s : (a : A) -> P (f a)) : Id ((a : A) -> P (f a)) (Psi (Phi s)) s = refl s ;
+  phi-psi-at (t : Fam) (a : A) : (b : B) (p : Id B (f a) b) -> Id (P b) (Phi (Psi t) b (a, p)) (t b (a, p)) =
+    \ b p -> idJ B (f a) (\ b1 p1 -> Id (P b1) (Phi (Psi t) b1 (a, p1)) (t b1 (a, p1))) (refl (t (f a) (a, refl (f a)))) b p ;
+  phi-psi (t : Fam) : Id Fam (Phi (Psi t)) t =
+    FL.funext B (\ b -> W.fib A B f b -> P b) (Phi (Psi t)) t (\ b ->
+      FL.funext (W.fib A B f b) (\ w -> P b) (Phi (Psi t) b) (t b) (\ w -> phi-psi-at t w.1 b w.2)) ;
+  psi-equiv : isEquiv Fam ((a : A) -> P (f a)) Psi = qinv Fam ((a : A) -> P (f a)) Psi Phi psi-phi phi-psi ;
+  K (s : (b : B) -> P b) : Fam = \ b w -> s b ;
+  K-equiv : isEquiv ((b : B) -> P b) Fam K =
+    pi-equiv B P (\ b -> W.fib A B f b -> P b) (\ b d w -> d) (\ b -> null m (W.fib A B f b) (P b) (cf b) (tP b)) ;
+  precomp (s : (b : B) -> P b) (a : A) : P (f a) = s (f a) ;
+  -- by definition
+  precomp-def (s : (b : B) -> P b) : Id ((a : A) -> P (f a)) (precomp s) (Psi (K s)) = refl (precomp s) ;
+  equiv : isEquiv ((b : B) -> P b) ((a : A) -> P (f a)) precomp =
+    E.homotopy ((b : B) -> P b) ((a : A) -> P (f a)) (E.compose ((b : B) -> P b) Fam ((a : A) -> P (f a)) (K, K-equiv) (Psi, psi-equiv))
+      precomp precomp-def ;
+  -- the extension of a section along f, and its characterisation
+  ext (s : (a : A) -> P (f a)) (b : B) : P b = equiv.sec s b ;
+  ext-beta (s : (a : A) -> P (f a)) (a : A) : Id (P (f a)) (ext s (f a)) (s a) =
+    happly A (\ a1 -> P (f a1)) (precomp (equiv.sec s)) s (equiv.sec-eq s) a ;
+  -- sections agreeing along f are equal
+  unique (s s' : (b : B) -> P b) (e : (a : A) -> Id (P (f a)) (s (f a)) (s' (f a))) : Id ((b : B) -> P b) s s' =
+    E.injective ((b : B) -> P b) ((a : A) -> P (f a)) precomp equiv s s'
+      (FL.funext A (\ a -> P (f a)) (precomp s) (precomp s') e) ;
+  -- locked after their characterising lemmas ext-beta, unique
+  opaque equiv ; opaque ext ;
+} ;
+
+------------------------------------------------------------------------
+-- paths in a Sigma type
+
+sigma-paths (A : U l) (B : A -> U l) (u v : (x : A) * B x) :
+  Equiv (Id ((x : A) * B x) u v) ((p : Id A u.1 v.1) * Id (B v.1) (subst A B u.1 v.1 p u.2) v.2) =
+  (sPath A B u v, qinv (Id ((x : A) * B x) u v) ((p : Id A u.1 v.1) * Id (B v.1) (subst A B u.1 v.1 p u.2) v.2)
+     (sPath A B u v) (\ w -> Sigma-path A B u.1 v.1 u.2 v.2 w.1 w.2)
+     (\ w -> idJ A u.1 (\ a1 p1 -> (b1 : B a1) (q1 : Id (B a1) (subst A B u.1 a1 p1 u.2) b1) ->
+                 Id ((p : Id A u.1 a1) * Id (B a1) (subst A B u.1 a1 p u.2) b1)
+                   (sPath A B u (a1, b1) (Sigma-path A B u.1 a1 u.2 b1 p1 q1)) (p1, q1))
+               (\ b1 q1 -> idJ (B u.1) u.2 (\ b2 q2 -> Id ((p : Id A u.1 u.1) * Id (B u.1) (subst A B u.1 u.1 p u.2) b2)
+                   (sPath A B u (u.1, b2) (Sigma-path A B u.1 u.1 u.2 b2 (refl u.1) q2)) (refl u.1, q2))
+                 (refl (refl u.1, refl u.2)) b1 q1)
+               v.1 w.1 v.2 w.2)
+     (rsPath A B u v)) ;
+
+-- sym is an equivalence
+sym-equiv (A : U l) (x y : A) : Equiv (Id A x y) (Id A y x) =
+  (sym A x y, qinv (Id A x y) (Id A y x) (sym A x y) (sym A y x) (Groupoid[l].sym-sym A y x) (Groupoid[l].sym-sym A x y)) ;
+
+-- (a^-1 . w = refl) = (a = w)
+cancel-refl (B : U l) (u : B) : (v : B) (a : Id B u v) (w : Id B u v) ->
+  Equiv (Id (Id B v v) (trans B v u v (sym B u v a) w) (refl v)) (Id (Id B u v) a w) =
+  \ v a -> idJ B u (\ v1 a1 -> (w : Id B u v1) -> Equiv (Id (Id B v1 v1) (trans B v1 u v1 (sym B u v1 a1) w) (refl v1)) (Id (Id B u v1) a1 w))
+    (\ w -> E.compose (Id (Id B u u) (trans B u u u (refl u) w) (refl u)) (Id (Id B u u) w (refl u)) (Id (Id B u u) (refl u) w)
+       (Fibres[l].trans-equiv (Id B u u) w (trans B u u u (refl u) w) (refl u) (sym (Id B u u) (trans B u u u (refl u) w) w (trans-refl-l B u u w)))
+       (sym-equiv (Id B u u) w (refl u)))
+    v a ;
+
+------------------------------------------------------------------------
+-- Lemma 3
+
+fib-ap (A B : U l) (f : A -> B) (x y : A) (w : Id B (f x) (f y)) :
+  Equiv (W.fib (Id A x y) (Id B (f x) (f y)) (ap A B f x y) w) (Id (W.fib A B f (f y)) (x, w) (y, refl (f y))) =
+  E.compose (W.fib (Id A x y) (Id B (f x) (f y)) (ap A B f x y) w)
+    ((q : Id A x y) * Id (Id B (f y) (f y)) (subst A (\ z -> Id B (f z) (f y)) x y q w) (refl (f y)))
+    (Id (W.fib A B f (f y)) (x, w) (y, refl (f y)))
+    (Fibres[l].sigma-equiv (Id A x y) (\ q -> Id (Id B (f x) (f y)) (ap A B f x y q) w)
+       (\ q -> Id (Id B (f y) (f y)) (subst A (\ z -> Id B (f z) (f y)) x y q w) (refl (f y)))
+       (\ q -> E.compose (Id (Id B (f x) (f y)) (ap A B f x y q) w)
+                 (Id (Id B (f y) (f y)) (trans B (f y) (f x) (f y) (sym B (f x) (f y) (ap A B f x y q)) w) (refl (f y)))
+                 (Id (Id B (f y) (f y)) (subst A (\ z -> Id B (f z) (f y)) x y q w) (refl (f y)))
+                 ((cancel-refl B (f x) (f y) (ap A B f x y q) w).2.sec,
+                  W.inv-equiv _ _ (cancel-refl B (f x) (f y) (ap A B f x y q) w).1 (cancel-refl B (f x) (f y) (ap A B f x y q) w).2)
+                 (Fibres[l].trans-equiv (Id B (f y) (f y)) (subst A (\ z -> Id B (f z) (f y)) x y q w)
+                    (trans B (f y) (f x) (f y) (sym B (f x) (f y) (ap A B f x y q)) w) (refl (f y))
+                    (Groupoid[l].transport-fib A B f (f y) x y q w))))
+    (sec-sigma)
+  where {
+    sec-sigma : Equiv ((q : Id A x y) * Id (Id B (f y) (f y)) (subst A (\ z -> Id B (f z) (f y)) x y q w) (refl (f y)))
+        (Id (W.fib A B f (f y)) (x, w) (y, refl (f y))) =
+      (\ v -> Sigma-path A (\ z -> Id B (f z) (f y)) x y w (refl (f y)) v.1 v.2,
+       W.inv-equiv _ _ (sigma-paths A (\ z -> Id B (f z) (f y)) (x, w) (y, refl (f y))).1
+         (sigma-paths A (\ z -> Id B (f z) (f y)) (x, w) (y, refl (f y))).2) ;
+  } ;
+
+-- fibres of ap are one level less connected
+fib-ap-conn (m : Nat) (A B : U l) (f : A -> B) (cf : (b : B) -> isConn (suc m) (W.fib A B f b)) (x y : A) (w : Id B (f x) (f y)) :
+  isConn m (W.fib (Id A x y) (Id B (f x) (f y)) (ap A B f x y) w) =
+  Deloop[l].equiv-conn m (W.fib (Id A x y) (Id B (f x) (f y)) (ap A B f x y) w) (Id (W.fib A B f (f y)) (x, w) (y, refl (f y)))
+    (fib-ap A B f x y w) ((cf (f y)).2 (x, w) (y, refl (f y))) ;
+
+------------------------------------------------------------------------
+-- Lemma 4
+
+conn-up : (m : Nat) (A B : U l) (f : A -> B) -> ((b : B) -> isConn m (W.fib A B f b)) -> isConn m A -> isConn m B = split {
+  zero -> \ A B f cf cA -> tt ;
+  suc m | r -> \ A B f cf cA -> (TC.map A B f cA.1, \ b b' ->
+    Tr.Trunc[W.fib A B f b].induction @l (\ t -> isConn m (Id B b b')) (\ t -> conn-prop m (Id B b b')) (\ u ->
+    Tr.Trunc[W.fib A B f b'].induction @l (\ t -> isConn m (Id B b b')) (\ t -> conn-prop m (Id B b b')) (\ u' ->
+      subst B (\ z -> isConn m (Id B z b')) (f u.1) b u.2
+        (subst B (\ z -> isConn m (Id B (f u.1) z)) (f u'.1) b' u'.2
+           (r (Id A u.1 u'.1) (Id B (f u.1) (f u'.1)) (ap A B f u.1 u'.1)
+              (fib-ap-conn m A B f cf u.1 u'.1) (cA.2 u.1 u'.1))))
+      (cf b').1)
+      (cf b).1) } ;
+
+-- locked: used only as an equivalence
+opaque null ;

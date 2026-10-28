@@ -1,0 +1,87 @@
+CHECKER DIAGNOSTIC: a fresh variable's type is normalised without the locks
+28 October 2026 (handoff doc/pi3-s2-postnikov-handoff-2.txt, §2a).
+The checker was NOT changed; this reports the defect.
+
+Where.  seg/headlinear/src/Seg.hs (and unit/src/Seg.hs, same code):
+
+  extVar cx x t = ... v = etaV t (VGen k)
+  etaV t v = case (whnf Set.empty t, v) of
+    (VSegT md fs, VGen k) -> VVar (freshVarName k) md fs
+    _ -> v
+
+To decide whether a fresh variable of type t is a variable of record type,
+etaV puts t in weak head normal form with the EMPTY lock set, so locked
+definitions in t are opened.  The value is lazy: the opening happens (and is
+counted by --opened/--opens) only when the variable's value is forced, e.g.
+as an argument of a module instance in a later type.  Conversion itself is
+not affected (the negative #fails tests below still pass), but (1) --opened
+attributes to a declaration openings that no step of its text makes, and
+(2) whether a variable is treated as a record variable depends on the
+unlocked type, which conversion under the locks cannot see.
+
+Isolated example (15 lines; run with segd FILE --opened):
+
+  level a ;
+  data N = zero | suc (n : N) ;
+  record P { px : N ; py : N ; } ;
+  record Box { T : U a ; } ;
+  B : N -> Box = split { zero -> new Box[P] ; suc n -> new Box[N] } ;
+  opaque B ;
+  #fails { neg : Id (U a) (B zero).T P = refl P ; } ;
+  module M (A : U a) (x : A) { y : U a = A ; } ;
+  k1 (x : (B zero).T) : (B zero).T = x ;
+  k2 (x : (B zero).T) (c : M[(B zero).T, x].y) : M[(B zero).T, x].y = c ;
+  k3 (x : (B (suc zero)).T) (c : M[(B (suc zero)).T, x].y) : M[(B (suc zero)).T, x].y = c ;
+  k4 : (x : (B zero).T) -> M[(B zero).T, x].y -> M[(B zero).T, x].y = \ x c -> c ;
+
+Output of the uniform checker:
+  #fails ok: ... not convertible (no constant unfolded):  P   /=   (B zero).T
+  k1: opened 0          (x is never forced)
+  k2: opened 1: B       (x forced by the instance M[(B zero).T, x])
+  k3: opened 1: B       (also when the field is not a record type)
+  k4: opened 1: B
+With etaV using the context's locks (a scratch build, one line, not
+installed): k2, k3, k4 open nothing.
+
+In the development.  The same scratch build removed exactly the openings
+Truncations.TO, Truncations.Step.op, Step.At.I, Step.At.image from
+SphereTrunc.V-contr, c5, connT (lambda/parameter over (TO m).T S2), and
+nothing else.  Independently of the checker, SphereTruncation.seg was
+rewritten so that (b), (c) and Theorem 15 are proved for a truncation
+structure passed as a parameter (Simply (T3 : TruncOp[three]),
+Theorem15 (T5 : TruncOp[five])), instantiated once at TO two, TO four.
+This also removes the aliases V, v0, T, t0 (WRITING.md rule 2); no
+declaration of the development opens TO now.
+
+Suggested repair (for the checker's maintainer): pass the locks to etaV
+(extVar has cx: etaV (cxLocks cx) t), or decide record-ness from the
+type's head without unfolding; the same pattern is at Seg.hs:2005 (UPar).
+
+ADDENDUM (28 Oct 2026, handoff-5 §3a): the same mechanism for K(Z,2),
+without any lock.  In h4.opens, 12 entries open the presentation of the
+type K(Z,2) once: KZ2 -> KK.K two -> EMSpace.K -> EMn.Kstage -> stage2 ->
+EM2.K2 -> Deloop.Torsors.Tor.  Isolation (temporary declarations in
+H4Diagonal.DiagAt.Lift, removed afterwards; Lift has parameter
+G : PtMap KZ2 kz2 PMO f0 and P (x : KZ2) = (m : M) * Id PMO (loop m) (G.1 x)):
+
+  XPcontr  generic lemma4 instance over (X : U l) (x0 : X) (cX : isConn 3 X) ...
+                                                      opened: isTrunc, plus
+  XPcK2 : isConn 3 KZ2 = A.conn 1                     opened: KZ2, two, KK.K
+  XPc4  = XPcontr KZ2 kz2 XPcK2 P XPfs2 ppt           opened: nothing
+  XPg (x : KZ2) : PMO = G.1 x                         opened: PtMap, PtSec
+  XPid (x : KZ2) (h : isTrunc two (P x)) : isTrunc two (P x) = h
+                                                      opened: the whole chain to Tor
+  XPfs3 (x : KZ2) : isTrunc two (P x) = fib-set (G.1 x)
+                                                      opened: Lift.P and the chain
+  XPG.fsP: the step of XPfs3 for an abstract X, Y, G, M, L
+                                                      opened: XPG.P only
+
+XPid has no step at all, yet opens the chain: the opening is etaV's whnf of
+the type of the bound variable x : KZ2, counted once x is forced (here as
+the argument of P).  The connectivity witness, lemma4 and the type of
+pointed sections do not depend on the torsor presentation.  Each of the 12
+entries binds a variable over KZ2 (a parameter, or a lambda in a PtSec /
+ptmap-path over KZ2); that their opening is this one is inferred from the
+pattern, not shown entry by entry.  Note: passing the locks to etaV would
+not remove these openings (KZ2 is not locked); deciding record-ness from
+the type's head without unfolding, or not counting etaV's whnf, would.
