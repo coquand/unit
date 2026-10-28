@@ -125,6 +125,9 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   [`postnikov-presentation.pdf`](doc/postnikov-presentation.pdf),
   [`finite-truncation.pdf`](doc/finite-truncation.pdf), and
   [`pi3-s2-postnikov.pdf`](doc/pi3-s2-postnikov.pdf) for π₃(S²) = ℤ.
+- [`pi3-s2.pdf`](doc/pi3-s2.pdf): π₃(S²) = ℤ by a Postnikov universal
+  property: the main ideas of the formal proof, in the same form as
+  `pi4-s3.pdf`.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -224,7 +227,7 @@ universal property s* : [BR, Y]_* ≅ [S³, Y]_* for BR and for ‖S³‖₄, wh
 gives π₄(S³) ≅ π₄(BR) ≅ π₃(R) ≅ ℤ/2. Check with
 `./segc sag/pi3-s2-postnikov all`; `README.txt` there maps files to the
 notes, and the `.opens` files record, declaration by declaration, the
-definitions the checker unfolds. See [`pi4-s3.pdf`](doc/pi4-s3.pdf).
+definitions the checker unfolds. See [`pi3-s2.pdf`](doc/pi3-s2.pdf) and [`pi4-s3.pdf`](doc/pi4-s3.pdf).
 
 ## Synthetic Stone duality (`sag/stone`, `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`)
 
