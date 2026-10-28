@@ -50,13 +50,12 @@ strict-limit and homotopy-limit results for their tower. The corresponding
 Unit files and notes record a formalisation and exposition of Christian
 Sattler's mathematics.
 
-**Mathematical attribution: the strategy of the proofs of π₃(S²) = ℤ and
-π₄(S³) = ℤ/2 in `sag/pi3-s2-postnikov` is due to David Wärn (personal
-communication), with contributions of Owen Milner (personal communication).** The delooping machinery on which they rest
-(Eilenberg–MacLane spaces as iterated torsors, and the criterion for a map of
-loop spaces to be a looping) and the construction of the cup product are also
-due to David Wärn. The Unit files and notes record the development of the
-argument in detail and its formalisation.
+**Mathematical attribution for `sag/pi3-s2-postnikov` (π₃(S²) = ℤ and
+π₄(S³) = ℤ/2): Owen Milner's idea of using the Sính invariant in homotopy
+type theory was an inspiration for David Wärn's approach. Wärn developed the
+universal-property strategy used here, together with the delooping and
+cup-product constructions.** Our contribution was to develop the argument in
+detail and formalise it in Unit.
 
 ## Documents (`doc/`)
 
@@ -117,7 +116,7 @@ argument in detail and its formalisation.
   Complexity*, chapters 8 and 9), as checked in `dilators/`.
 - [`pi4-s3.pdf`](doc/pi4-s3.pdf): π₄(S³) = ℤ/2 by a Postnikov universal
   property: the main ideas of the formal proof (strategy due to David Wärn,
-  with contributions of Owen Milner). The detailed notes:
+  inspired by Owen Milner's idea of using the Sính invariant). The detailed notes:
   [`br-universal.pdf`](doc/br-universal.pdf) (the marked universal property
   of BR), [`cross-term.pdf`](doc/cross-term.pdf) (R deloops),
   [`cup-square.pdf`](doc/cup-square.pdf), [`h4.pdf`](doc/h4.pdf),
