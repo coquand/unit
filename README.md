@@ -128,6 +128,12 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
 - [`pi3-s2.pdf`](doc/pi3-s2.pdf): π₃(S²) = ℤ by a Postnikov universal
   property: the main ideas of the formal proof, in the same form as
   `pi4-s3.pdf`.
+- [`postnikov-morphisms-overview.pdf`](doc/postnikov-morphisms-overview.pdf):
+  arbitrary pointed maps between Postnikov triples, the isomorphism of
+  homotopy precategories, and both sphere arguments redone on the triple
+  side (David Wärn's strategy): a high-level account. The detailed proof,
+  with the declaration correspondence:
+  [`postnikov-morphisms.pdf`](doc/postnikov-morphisms.pdf).
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -226,6 +232,23 @@ S³) is the parameter telescope of a module. Two theorems are checked:
   from statement M for every pointed 2-connected 4-type (`MarkDirect`), proved
   from the restricted 2-torsion lemma (`TwoTorsion`), without a Postnikov
   presentation of ‖S³‖₄ ([`delooping-direct.pdf`](doc/delooping-direct.pdf)).
+
+Arbitrary pointed maps between pointed simply connected 3-types are
+classified by maps of Postnikov triples
+([`postnikov-morphisms-overview.pdf`](doc/postnikov-morphisms-overview.pdf),
+[`postnikov-morphisms.pdf`](doc/postnikov-morphisms.pdf)):
+`TripleMapsEquiv.Maps2.realise-map-equiv` shows that the canonical fibre map
+(`FibMap.fm`) is an equivalence from
+Mor((A,B,k),(A',B',k')) = Σ a b, (K(a,2);k' = k;K(b,4)) onto
+Map_*(Fib k, Fib k'), for all triples. With the object classification this
+gives an isomorphism of homotopy precategories (`TripleHomotopy.Cat`:
+an equivalence of object types, bijections on hom-sets, identities and
+composition preserved). The sphere universal properties are then identified on the triple
+side, following David Wärn's strategy and looping embedding:
+`Pi3TripleUniversal.Final.pi3-S2` and
+`Pi4TripleUniversal.Final4.pi4-S3` compute the hom-sets out of (ℤ,ℤ,κ) and
+(ℤ,ℤ/2,κ̄) directly from Mor, using (H4), Statement T and (H3). They do not
+use the earlier specialised mapping theorems, which are kept as references.
 
 The candidate Postnikov stage is BR, the delooping of the fibre R of the cup
 square reduced mod 2; a marked class s : [S³, BR]_* is shown to have the

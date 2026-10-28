@@ -244,6 +244,51 @@ DELOOPING EMBEDDING (doc/delooping-embedding.pdf; David Wärn's idea; embedding.
                         Mark.At / Mark.marked and Pi4Sphere.Assemble4 / Pi4S3 in a copy of the
                         development, which still checks (4874 declarations, 0 failed).
                         Pi4Sphere.Pi4S3 (through Pres4) is kept unchanged as the reference
+ARBITRARY MAPS OF TRIPLES (doc/postnikov-morphisms.pdf, the proof formalised; overview:
+doc/postnikov-morphisms-overview.pdf; the sphere strategy and the looping embedding are David Wärn's)
+  TripleMaps            generic lemmas (any pointed V, Y, Y' with the bounds of the text): PtPath
+                        (Lemma ptpath: (c = g) ~ homotopy + coherence, by (happly o ap, pt-coh)),
+                        rmul-equiv, Transl (Lemma transl: translates z . G of a fixed family form an
+                        embedding, Tl F a proposition), Tc (T(c): pointed fibrewise null-homotopies
+                        of p ; c), Key[V, Y, Y', k, c]: S(c) = factorisations of c through k, Phi
+                        (the canonical map, the formula of FibMap.fm), fac-equiv (Lemma fac), res
+                        (restriction to the fibre over the point), to-loop / from-loop (Lemma
+                        at-point), unique-fac (Lemma unique-fac: the linear part is the unique
+                        delooping of the restriction, DeloopMaps cor11), key : isEquiv S T Phi
+                        (THE KEY LEMMA: null-homotopies of p ; c are factorisations of c through k);
+                        res-phi (the restriction of Phi (K(b,4), H) is loop K(b,4))
+  TripleMapsEquiv       Coef (Lemma coef: Hom ~ Map_*(K(-,m), K(-,m)) at m = 2, 4; unconj-conj at
+                        every level), Dec (Lemma dec: pointed maps Fib k -> Fib k' are (al, T(al ; k'))),
+                        Maps2[A, B, k, A', B', k']: Mor = (a : Hom A A') * (b : Hom B B') *
+                        (K(a,2) ; k' = k ; K(b,4)) (a path of pointed maps), mor-a/b/H,
+                        realise-map = FibMap.fm at (k, k', K(a,2), K(b,4), H), realise-map-def
+                        (it is Dec of (K(a,2), Phi (K(b,4), H)), refl), THEOREM 1
+                        realise-map-equiv : isEquiv Mor (PtMap (Fib k) (Fib k')) realise-map,
+                        for ALL triples, no sphere axiom, no hypothesis on A, B, k, A', B', k'
+  TripleComponents      Lemma translation (PtTransl: F |-> F . G^-1 in Map_*(X, Omega Z)) and Lemma
+                        components (Unique, unique-pt: two paths f = g in Map_*(X, Y), Y ~pt Omega Z,
+                        are merely equal when every map X -> Omega^2 Z is merely constant)
+  TripleHomotopy        hp lemmas, Bridge, Paste, FmId (fm along paths, of a pasting, of the
+                        identity, pointwise), kc-lev, KId (K(1, m) = id, m = 2, 4), Maps3.mcomp
+                        (intrinsic composition: k-comp, pasting, k-comp^-1), Maps1.mid, rmap-comp,
+                        rmap-id (in [Fib k, Fib k'']_*: pi-mere; no coherent pointed path claimed),
+                        Cat: homT = ||Mor||_0, R bijective, compT / idT with compT-rep / idT-rep
+                        (agreement with the intrinsic pasting), the category laws; with the
+                        classification an isomorphism of homotopy precategories
+  Pi3TripleUniversal    H3U (H3 for the compatible homotopies), KCls, ThetaGen (hom(t0, t') ~
+                        Hom(Z, A') from existence and uniqueness of b), Theta (t0 = (Z, Z, kappa):
+                        H4), Final[S2,..].At.marked (s^* bijective at every Fib k' through Theorem 1),
+                        Final.pi3-S2 : GIso[pi3 S2 base, ab-grp Zab] THROUGH TRIPLE MORPHISMS
+                        (not used: MapFib.Final.rep-fib, Lifting at P, fib-h3, Presentation)
+  Pi4TripleUniversal    Theta4 (tbar = (Z, Z/2, kbar), deloopable targets: H4, Statement T, Factor,
+                        Psi injective), Final4[S3,..].At (ExS4: (E) at Omega S3 from theta4, WITHOUT
+                        MarkDirect.ExR; qS4; rFt: r^* bijective at Fib k'), AtU / marked (M for every
+                        u : SC4), Assemble (sP and sT both from marked), Final4.pi4-S3 :
+                        GIso[pi4 S3 base, ab-grp Z2ab] THROUGH TRIPLE MORPHISMS AND THE LOOPING
+                        EMBEDDING (not used: MarkDirect rF / marked / qS / ExS / ExR / qR,
+                        DeloopEmbedding.Mark.marked, SourceS3.Final.rep-fib, Presentation4, MapBR.ur)
+                        Dependency test: a scratch copy with the old specialised results deleted
+                        checks with all new modules (doc/postnikov-morphisms.pdf, Validation)
 CHECKED, CONDITIONAL on explicit interfaces (not Theory assumptions)
   SphereUniversal       Trunc3 + Rep  =>  pi3 S2 = pi3 P (two-map Yoneda); Two: the same from
                         the two instances sP (X = P), sT (X = T) of Rep.rep
@@ -252,6 +297,10 @@ CHECKED, CONDITIONAL on explicit interfaces (not Theory assumptions)
 STATEMENTS
   KZ2Cohomology         H3 (proved: H3Proof.h3), H4 for kappa (proved: H4Proof.h4)
 DONE (28 Oct 2026): SC3 ~ Triples by the fibre realisation, PostnikovClassification.classification.
+DONE (28 Oct 2026): arbitrary pointed maps: Mor t t' ~ Map_*(Fib k, Fib k') by realise-map = FibMap.fm
+(TripleMapsEquiv.Maps2.realise-map-equiv); the homotopy-category equivalence (TripleHomotopy.Cat, on
+classes); pi3 S2 = Z and pi4 S3 = Z/2 through triple morphisms (Pi3TripleUniversal.Final.pi3-S2,
+Pi4TripleUniversal.Final4.pi4-S3).
 DONE (28 Oct 2026): pi4 S3 = Z/2, Pi4Sphere.Pi4S3.pi4-S3, from the S^3 axiom alone.
 DONE (28 Oct 2026): pi4 S3 = Z/2 using David Wärn's delooping embedding, Pi4Direct.Pi4S3.pi4-S3 (not his
 intended route: arbitrary maps between triples are not classified; doc/pi4-s3-embedding.pdf): M for
@@ -262,7 +311,8 @@ X = T, where it is MapFib.Final.rep-fib and Presentation.Final.sT.  Since the cl
 MapThm holds for EVERY pointed simply connected 3-type X (Pi3Classified.Final.rep: rep-fib
 transported along realise (sec X) = X), and Pi3Classified.Final.pi3-S2 obtains pi3 S2 = Z from
 it through Pi3Sphere.Conditional.pi3-S2-T, without Presentation.Pres.
-twotorsion.opens, markdirect.opens, pi4direct.opens, markloop.opens, crossdeloop.opens,
+triplemaps.opens, triplemapsequiv.opens, triplecomponents.opens, triplehomotopy.opens, pi3triple.opens,
+pi4triple.opens, twotorsion.opens, markdirect.opens, pi4direct.opens, markloop.opens, crossdeloop.opens,
 embedding.opens, classification.opens, pi4.opens, trunc4.opens, pres4.opens, s3.opens, conj.opens, necessity.opens, z2.opens, double.opens, cross.opens, deloop.opens, pi3.opens, truncation.opens, circle.opens, cup.opens, h4.opens, fibre.opens, mapfib.opens, present.opens (reproducible; textual audit
 against doc/h4.tex not yet done): --opens specifications (seg/WRITING.md,
 rule 6), one entry per declaration; a checker diagnostic on locks:
