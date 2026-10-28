@@ -51,11 +51,11 @@ Unit files and notes record a formalisation and exposition of Christian
 Sattler's mathematics.
 
 **Mathematical attribution for `sag/pi3-s2-postnikov` (π₃(S²) = ℤ and
-π₄(S³) = ℤ/2): Owen Milner's idea of using the Sính invariant in homotopy
-type theory was an inspiration for David Wärn's approach. Wärn developed the
-universal-property strategy used here, together with the delooping and
-cup-product constructions.** Our contribution was to develop the argument in
-detail and formalise it in Unit.
+π₄(S³) = ℤ/2): David Wärn developed the universal-property strategy used
+here, together with the delooping and cup-product constructions.** Our
+contribution was to develop the argument in detail and formalise it in Unit.
+Owen Milner formulated the Sính invariant in homotopy type theory, an
+inspiration for Wärn's approach.
 
 ## Documents (`doc/`)
 
@@ -116,7 +116,7 @@ detail and formalise it in Unit.
   Complexity*, chapters 8 and 9), as checked in `dilators/`.
 - [`pi4-s3.pdf`](doc/pi4-s3.pdf): π₄(S³) = ℤ/2 by a Postnikov universal
   property: the main ideas of the formal proof (strategy due to David Wärn,
-  inspired by Owen Milner's idea of using the Sính invariant). The detailed notes:
+  inspired by Owen Milner's formulation of the Sính invariant). The detailed notes:
   [`br-universal.pdf`](doc/br-universal.pdf) (the marked universal property
   of BR), [`cross-term.pdf`](doc/cross-term.pdf) (R deloops),
   [`cup-square.pdf`](doc/cup-square.pdf), [`h4.pdf`](doc/h4.pdf),
