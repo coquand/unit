@@ -1,7 +1,7 @@
 -- One step of the divisor proof of Horrocks' theorem in rank one.
 -- The central lemma (Stable): let F be monic of degree d = d'+1 and M a
 -- set of polynomials of degree < d with an A-linear retraction pi onto M
--- (pi maps A[X] into M and fixes M), stable under w |-> r_F(X w). Then
+-- (pi maps A[X]_{<d} into M and fixes M), stable under w |-> r_F(X w). Then
 -- u_t = pi(X^t) span M with the coefficients of w as coordinates; these
 -- coefficients lie in the ideal J of top coefficients of the u_t; by
 -- Nakayama and locality, either M = 0 or 1 is in J, and then M contains a
@@ -59,20 +59,33 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
   Id B.Carrier x (B.addQ m (B.addQ x (B.negQ m'))) =
   sym (trans (ap (\ w -> B.addQ w (B.addQ x (B.negQ m'))) h)
    (trans (BR.add-swap m' x (B.negQ m')) (trans (ap (B.addQ x) (B.ring.addN m')) (B.ring.addZ x)))) ;
- -- A-linear maps commute with finite A-combinations.
- module Linear (phi : B.Carrier -> B.Carrier)
-  (phi-add : (x y : B.Carrier) -> Id B.Carrier (phi (B.addQ x y)) (B.addQ (phi x) (phi y)))
-  (phi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (phi (B.mulQ (cst a) x)) (B.mulQ (cst a) (phi x)))
+ -- A-combinations of polynomials of degree < e have degree < e.
+ combination-bounded (e : Nat) : (n : Nat) (a : Fin n -> A.R) (v : Fin n -> B.Carrier)
+  (hv : (i : Fin n) -> Red.Bounded e (v i)) ->
+  Red.Bounded e (S.sum n (\ i -> B.mulQ (cst (a i)) (v i))) = split {
+  zero -> \ a v hv -> Red.bounded-zero e ;
+  suc n | ih -> \ a v hv ->
+   Red.bounded-add e _ _ (Red.bounded-scale e (a (inr tt)) (v (inr tt)) (hv (inr tt)))
+    (ih (\ i -> a (inl i)) (\ i -> v (inl i)) (\ i -> hv (inl i))) } ;
+ -- A-linear maps on A[X]_{<e} commute with finite A-combinations.
+ module Linear (e : Nat) (phi : B.Carrier -> B.Carrier)
+  (phi-add : (x y : B.Carrier) -> Red.Bounded e x -> Red.Bounded e y ->
+   Id B.Carrier (phi (B.addQ x y)) (B.addQ (phi x) (phi y)))
+  (phi-scale : (a : A.R) (x : B.Carrier) -> Red.Bounded e x ->
+   Id B.Carrier (phi (B.mulQ (cst a) x)) (B.mulQ (cst a) (phi x)))
   (phi-zero : Id B.Carrier (phi B.zeroQ) B.zeroQ) {
-  combination : (n : Nat) (a : Fin n -> A.R) (v : Fin n -> B.Carrier) ->
+  combination : (n : Nat) (a : Fin n -> A.R) (v : Fin n -> B.Carrier)
+   (hv : (i : Fin n) -> Red.Bounded e (v i)) ->
    Id B.Carrier (phi (S.sum n (\ i -> B.mulQ (cst (a i)) (v i))))
     (S.sum n (\ i -> B.mulQ (cst (a i)) (phi (v i)))) = split {
-   zero -> \ a v -> phi-zero ;
-   suc n | ih -> \ a v ->
+   zero -> \ a v hv -> phi-zero ;
+   suc n | ih -> \ a v hv ->
     trans (phi-add (B.mulQ (cst (a (inr tt))) (v (inr tt)))
-      (S.sum n (\ i -> B.mulQ (cst (a (inl i))) (v (inl i)))))
-     (cong2 B.Carrier B.addQ _ _ _ _ (phi-scale (a (inr tt)) (v (inr tt)))
-      (ih (\ i -> a (inl i)) (\ i -> v (inl i)))) } ;
+      (S.sum n (\ i -> B.mulQ (cst (a (inl i))) (v (inl i))))
+      (Red.bounded-scale e (a (inr tt)) (v (inr tt)) (hv (inr tt)))
+      (combination-bounded e n (\ i -> a (inl i)) (\ i -> v (inl i)) (\ i -> hv (inl i))))
+     (cong2 B.Carrier B.addQ _ _ _ _ (phi-scale (a (inr tt)) (v (inr tt)) (hv (inr tt)))
+      (ih (\ i -> a (inl i)) (\ i -> v (inl i)) (\ i -> hv (inl i)))) } ;
  } ;
  -- Coordinates in the power basis, read on A[X].
  coefficients-index : (n : Nat) (p : P.P) (i : Fin n) ->
@@ -82,6 +95,12 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
    inl i -> trans (ih (Bounds.tail p) i) (Bounds.tail-coef p (index n i)) ;
    inr t -> refl (P.coef p zero) } } ;
  coordinate (d : Nat) (w : B.Carrier) (i : Fin d) : A.R = Red.coef w (index d i) ;
+ -- The power basis of A[X]_{<d} has degree < d.
+ basis-bounded : (d : Nat) (i : Fin d) -> Red.Bounded d (E.basis d i) = split {
+  zero -> \ i -> efq i ;
+  suc d | ih -> split {
+   inl i -> \ k -> trans (Red.coef-variable (E.basis d i) (suc (plus d k))) (ih i k) ;
+   inr t -> \ k -> Red.coef-include (B.L.constantP A.o) (suc (plus d k)) } } ;
  Expands (d : Nat) (w : B.Carrier) : U l =
   Red.Bounded d w -> Id B.Carrier w (S.sum d (\ i -> B.mulQ (cst (coordinate d w i)) (E.basis d i))) ;
  expand (d : Nat) : (w : B.Carrier) -> Expands d w =
@@ -99,25 +118,27 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
   B.Q.induction @l (\ x -> Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) x].carrier)
    (\ x -> Tr.Trunc[(p : P.P) * Id B.Carrier (B.include p) x].proposition)
    (\ p -> Tr.Trunc[(q : P.P) * Id B.Carrier (B.include q) (B.include p)].inc (p,refl (B.include p))) ;
- -- M with an A-linear retraction pi: the u_t = pi(X^t) span M, with the
+ -- M with an A-linear retraction pi of A[X]_{<d}: the u_t = pi(X^t) span M, with the
  -- coefficients of w as coordinates.
  module Summand (lower : List A.R) (InM : B.Carrier -> U l)
   (bounded : (w : B.Carrier) -> InM w -> Red.Bounded (len lower) w)
   (pi : B.Carrier -> B.Carrier)
-  (pi-add : (x y : B.Carrier) -> Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
-  (pi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
+  (pi-add : (x y : B.Carrier) -> Red.Bounded (len lower) x -> Red.Bounded (len lower) y ->
+   Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
+  (pi-scale : (a : A.R) (x : B.Carrier) -> Red.Bounded (len lower) x ->
+   Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
   (pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ)
-  (pi-in : (p : B.Carrier) -> InM (pi p))
+  (pi-in : (p : B.Carrier) -> Red.Bounded (len lower) p -> InM (pi p))
   (pi-fixes : (w : B.Carrier) -> InM w -> Id B.Carrier (pi w) w) {
   module D = Red.At[lower] ;
   d : Nat = D.d ;
-  module PiLinear = Linear[pi,pi-add,pi-scale,pi-zero] ;
+  module PiLinear = Linear[d,pi,pi-add,pi-scale,pi-zero] ;
   u (t : Fin d) : B.Carrier = pi (E.basis d t) ;
-  u-in (t : Fin d) : InM (u t) = pi-in (E.basis d t) ;
+  u-in (t : Fin d) : InM (u t) = pi-in (E.basis d t) (basis-bounded d t) ;
   span (w : B.Carrier) (hw : InM w) :
    Id B.Carrier w (S.sum d (\ t -> B.mulQ (cst (coordinate d w t)) (u t))) =
    trans (sym (pi-fixes w hw))
-    (trans (ap pi (expand d w (bounded w hw))) (PiLinear.combination d (coordinate d w) (E.basis d))) ;
+    (trans (ap pi (expand d w (bounded w hw))) (PiLinear.combination d (coordinate d w) (E.basis d) (basis-bounded d))) ;
   -- If every u_t vanishes, M = 0.
   vanish (h : (t : Fin d) -> Id B.Carrier (u t) B.zeroQ) (w : B.Carrier) (hw : InM w) :
    Id B.Carrier w B.zeroQ =
@@ -143,10 +164,12 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
  module Stable (a0 : A.R) (rest : List A.R) (InM : B.Carrier -> U l)
   (bounded : (w : B.Carrier) -> InM w -> Red.Bounded (suc (len rest)) w)
   (pi : B.Carrier -> B.Carrier)
-  (pi-add : (x y : B.Carrier) -> Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
-  (pi-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
+  (pi-add : (x y : B.Carrier) -> Red.Bounded (suc (len rest)) x -> Red.Bounded (suc (len rest)) y ->
+   Id B.Carrier (pi (B.addQ x y)) (B.addQ (pi x) (pi y)))
+  (pi-scale : (a : A.R) (x : B.Carrier) -> Red.Bounded (suc (len rest)) x ->
+   Id B.Carrier (pi (B.mulQ (cst a) x)) (B.mulQ (cst a) (pi x)))
   (pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ)
-  (pi-in : (p : B.Carrier) -> InM (pi p))
+  (pi-in : (p : B.Carrier) -> Red.Bounded (suc (len rest)) p -> InM (pi p))
   (pi-fixes : (w : B.Carrier) -> InM w -> Id B.Carrier (pi w) w)
   (shift : (w : B.Carrier) -> InM w -> InM (Red.At[cons a0 rest].remainder (B.mulQ B.variable w))) {
   module Sm = Summand[cons a0 rest,InM,bounded,pi,pi-add,pi-scale,pi-zero,pi-in,pi-fixes] ;
@@ -225,7 +248,9 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
    W : B.Carrier = S.sum d (\ t -> B.mulQ (cst (gamma t)) (Sm.u t)) ;
    W-in : InM W =
     Pr.subst B.Carrier InM (pi (S.sum d (\ t -> B.mulQ (cst (gamma t)) (E.basis d t)))) W
-     (Sm.PiLinear.combination d gamma (E.basis d)) (pi-in (S.sum d (\ t -> B.mulQ (cst (gamma t)) (E.basis d t)))) ;
+     (Sm.PiLinear.combination d gamma (E.basis d) (basis-bounded d))
+     (pi-in (S.sum d (\ t -> B.mulQ (cst (gamma t)) (E.basis d t)))
+      (combination-bounded d d gamma (E.basis d) (basis-bounded d))) ;
    W-top : Id A.R (Red.coef W d') j =
     trans (coef-sum d (\ t -> B.mulQ (cst (gamma t)) (Sm.u t)) d')
      (trans (SA.sum-cong d _ (\ t -> A.mul (top t) (gamma t))
@@ -268,7 +293,8 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
  } ;
  -- An ideal L with an A-linear retraction rho of A[X] onto L. For a monic
  -- F in L, M_F = L intersected with the polynomials of degree < deg F has
- -- the retraction r_F o rho and is stable under w |-> r_F(X w).
+ -- the retraction r_F o rho, used on degree < deg F only, and is stable
+ -- under w |-> r_F(X w).
  module Retract (L : IB.Ideal) (rho : B.Carrier -> B.Carrier)
   (rho-add : (x y : B.Carrier) -> Id B.Carrier (rho (B.addQ x y)) (B.addQ (rho x) (rho y)))
   (rho-scale : (a : A.R) (x : B.Carrier) -> Id B.Carrier (rho (B.mulQ (cst a) x)) (B.mulQ (cst a) (rho x)))
@@ -295,13 +321,13 @@ module Over (A : CRing) (setA : Pr.isSet A.R) {
         (in-mul (D.quotient p) F F-in)))),
      D.bounded p) ;
    pi (p : B.Carrier) : B.Carrier = D.remainder (rho p) ;
-   pi-add (p q : B.Carrier) : Id B.Carrier (pi (B.addQ p q)) (B.addQ (pi p) (pi q)) =
+   pi-add (p q : B.Carrier) (hp : Red.Bounded d p) (hq : Red.Bounded d q) : Id B.Carrier (pi (B.addQ p q)) (B.addQ (pi p) (pi q)) =
     trans (ap D.remainder (rho-add p q)) (D.remainder-add (rho p) (rho q)) ;
-   pi-scale (a : A.R) (p : B.Carrier) : Id B.Carrier (pi (B.mulQ (cst a) p)) (B.mulQ (cst a) (pi p)) =
+   pi-scale (a : A.R) (p : B.Carrier) (hp : Red.Bounded d p) : Id B.Carrier (pi (B.mulQ (cst a) p)) (B.mulQ (cst a) (pi p)) =
     trans (ap D.remainder (rho-scale a p)) (D.remainder-scale a (rho p)) ;
    pi-zero : Id B.Carrier (pi B.zeroQ) B.zeroQ =
     trans (ap D.remainder rho-zero) (D.remainder-small B.zeroQ (Red.bounded-zero d)) ;
-   pi-in (p : B.Carrier) : InM (pi p) = remainder-in (rho p) (rho-in p) ;
+   pi-in (p : B.Carrier) (hp : Red.Bounded d p) : InM (pi p) = remainder-in (rho p) (rho-in p) ;
    pi-fixes (w : B.Carrier) (hw : InM w) : Id B.Carrier (pi w) w =
     trans (ap D.remainder (rho-fixes w hw.1)) (D.remainder-small w hw.2) ;
    shift (w : B.Carrier) (hw : InM w) : InM (D.remainder (B.mulQ B.variable w)) =

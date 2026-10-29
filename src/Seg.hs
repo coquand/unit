@@ -892,34 +892,38 @@ whnfFolded = whnfP (const False)
 
 -- weak head normal form, unfolding the definitions that u selects
 whnfP :: (Id -> Bool) -> Val -> Val
-whnfP u v = case v of
-  VRef r e | u (defId r) -> (if isDataDef r then id else countUnfold (defId r)) (whnfP u (unfoldRef r e))
-  VApp f a -> case whnfP u f of
-    f'@(VSplit{}) -> case whnfP u a of
-      a'@(VCon _ _) -> whnfP u (app f' a')
-      a' | Just _ <- recordFields a' -> whnfP u (app f' a')
+whnfP = whnfC True
+
+-- the same; the unfoldings are counted (--opened) when c holds
+whnfC :: Bool -> (Id -> Bool) -> Val -> Val
+whnfC c u v = case v of
+  VRef r e | u (defId r) -> (if c && not (isDataDef r) then countUnfold (defId r) else id) (whnfC c u (unfoldRef r e))
+  VApp f a -> case whnfC c u f of
+    f'@(VSplit{}) -> case whnfC c u a of
+      a'@(VCon _ _) -> whnfC c u (app f' a')
+      a' | Just _ <- recordFields a' -> whnfC c u (app f' a')
          | otherwise -> VApp f' a'
-    VLam cl -> whnfP u (capp cl a)
+    VLam cl -> whnfC c u (capp cl a)
     f' -> VApp f' a                      -- a locked head stays
-  VFst p -> case whnfP u p of
-    VPair a _ -> whnfP u a
+  VFst p -> case whnfC c u p of
+    VPair a _ -> whnfC c u a
     p'        -> vfst p'
-  VSnd p -> case whnfP u p of
-    VPair _ b -> whnfP u b
+  VSnd p -> case whnfC c u p of
+    VPair _ b -> whnfC c u b
     p'        -> vsnd p'
-  VProj p l -> case whnfP u p of
-    VStruct fs -> whnfP u (fromMaybe (error ("no field " ++ l)) (lookup l fs))
-    i@(VInst _ _) -> whnfP u (vproj i l)
+  VProj p l -> case whnfC c u p of
+    VStruct fs -> whnfC c u (fromMaybe (error ("no field " ++ l)) (lookup l fs))
+    i@(VInst _ _) -> whnfC c u (vproj i l)
     w@(VVar{}) -> case vproj w l of
                     VProj{} -> VProj w l
-                    a       -> whnfP u a
+                    a       -> whnfC c u a
     p'         -> vproj p' l
-  VLApp t l -> case whnfP u t of
-    VLLam cl -> whnfP u (lcapp cl l)
+  VLApp t l -> case whnfC c u t of
+    VLLam cl -> whnfC c u (lcapp cl l)
     t'       -> VLApp t' l
-  VIdJ a x c d y p -> case whnfP u p of
-    VRefl _ -> whnfP u d
-    p'      -> VIdJ a x c d y p'
+  VIdJ a x m d y p -> case whnfC c u p of
+    VRefl _ -> whnfC c u d
+    p'      -> VIdJ a x m d y p'
   _ -> v
 
 ------------------------------------------------------------------------
@@ -1384,9 +1388,11 @@ extVar cx x t = (cx { cxK = k + 1, cxEnv = EVar (cxEnv cx) x v, cxTys = (x, t) :
 -- A fresh variable of record type is itself (no eta for records), with
 -- its record and the parameters its type gives, which its derived members
 -- need.  A fixed field is not a value here: c.x is written as the fixed
--- value where it is checked (RECORDS.md §4).
+-- value where it is checked (RECORDS.md §4).  Finding whether the type is
+-- a record type is work of the checker, not an opening of the proof, so
+-- its unfoldings are not counted (--opened).
 etaV :: Val -> Val -> Val
-etaV t v = case (whnf Set.empty t, v) of
+etaV t v = case (whnfC False (const True) t, v) of
   (VSegT md fs, VGen k) -> VVar (freshVarName k) md fs
   _ -> v
 
@@ -2009,8 +2015,9 @@ checkUnitsF cx (u : us) = case u of
         -- a declared variable is not bound in the environment: it is
         -- itself (Wang: ()(x) = x), so it is never part of a dynamic part
         -- (a variable of segment type is bound to itself with the fields
-        -- its type fixes,  c : M[x := e]  gives  c.x = e ; not dynamic)
-        cx' = cx { cxEnv = case whnf Set.empty va of
+        -- its type fixes,  c : M[x := e]  gives  c.x = e ; not dynamic;
+        -- as in etaV, the test is not counted as an opening)
+        cx' = cx { cxEnv = case whnfC False (const True) va of
                              VSegT md fs -> EDecl (cxEnv cx) x (VVar x md fs)
                              _          -> cxEnv cx
                  , cxTys = (x, va) : cxTys cx
