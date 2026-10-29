@@ -243,14 +243,16 @@ split essentially surjective (Lemma B), i.e. an equivalence of categories.
 
 *Corollary (equivalence of object types).*  If moreover `Fun(B,E)` and
 `Fun(C,E)` are categories, `q^*` on objects is an equivalence of types.
-Proof: for a fully faithful, split essentially surjective `P : X -> Y`
-between categories, the fibre `(x : X) * (P x = y)` is equivalent (by
-univalence of `Y`) to `(x : X) * Iso_Y(Px, y)`, which is inhabited (split
-essential surjectivity) and a proposition: for `(x, e)`, `(x', e')`,
-`e'^-1 o e = P phi` with `phi` an iso (ff), `x = x'` by `isotoid phi`, and
-the transported `e` is `e' o P phi = e`... i.e. the identity type of the
-total space is `Iso_X(x,x')` restricted to `phi` with `e' o P phi = e`,
-which has exactly one element by full faithfulness.
+Proof: let `P : X -> Y` be fully faithful and split essentially surjective,
+`X`, `Y` categories.  By univalence of `Y` the fibre `(x : X) * (P x = y)`
+is equivalent to `S_y = (x : X) * Iso_Y(Px, y)`, which is inhabited.  It is
+a proposition: for `(x, e)`, `(x', e')` in `S_y`, a path is a pair
+`(p : x = x')` with `e` transported along `p` equal to `e'`; by
+univalence of `X`, `p = isotoid phi` with `phi : Iso_X(x,x')`, and the
+transport of `e` is `e o (P phi)^-1` (J, then `idtoiso` of `isotoid`).  So
+the paths form `(phi : Iso_X(x,x')) * (e' o P phi = e)`, which is
+contractible: `P phi = e'^-1 o e` determines the arrow `phi` (ff), and it
+is an iso as `P` reflects isos; the equation is a proposition.
 
 *Univalence of functor categories* (doc Proposition 1.1), needed for the
 corollary: for `E` a category and `F : B -> E`, the total space
