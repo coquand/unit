@@ -38,9 +38,10 @@ This repository contains the checker and six developments written with it:
 - a constructive theory of Girard's dilators: normal form, well-foundedness
   up to the Howard ordinal, morphisms, connected components and kinds
   (`dilators/`).
-- π₃(S²) = ℤ and π₄(S³) = ℤ/2 in univalent type theory, each from the
-  universal property of the sphere alone, by a Postnikov universal property
-  (`sag/pi3-s2-postnikov`).
+- **π₄(S³) = ℤ/2** in univalent type theory, a non-trivial computation of
+  a homotopy group of a sphere, from the universal property of S³ alone, by
+  a Postnikov universal property; on the way, π₃(S²) = ℤ
+  (`sag/pi3-s2-postnikov`; the directory is named after its first theorem).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -215,7 +216,12 @@ Each directory has a `README.md` mapping statements to declarations.
 - `wiebe`: Wiebe's theorem (ctete Theorem 11, Corollary 12) relative to J;
   see `doc/wiebe.pdf`.
 
-## Homotopy groups of spheres (`sag/pi3-s2-postnikov`)
+## π₄(S³) = ℤ/2 (`sag/pi3-s2-postnikov`)
+
+The main theorem of this development is π₄(S³) ≅ ℤ/2, the first torsion in
+the homotopy groups of spheres (the first stable stem). Unlike π₃(S²) = ℤ,
+which is proved on the way, it needs the cup square on K(ℤ,2) reduced mod 2
+and a 2-torsion argument (Statement T, `TwoTorsion`).
 
 In the setting of `sag/em` (univalence and replacement as parameters; function
 extensionality, truncations and Eilenberg–MacLane spaces derived). The sphere
