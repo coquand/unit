@@ -51,7 +51,7 @@ of arbitrary types (paths ~ equivalences, which need not form sets), so it
 is not literally the case D = U l of the theorem; restricted to families of
 sets it is a categorical instance.
 
-Theorem (CompletionUP.Instance.Universal, DESIGN.md §4).  With C_F
+Theorem (CompletionUP.Instance.ForEvery, DESIGN.md §4).  With C_F
 (objects A, arrows D(Fa,Fb)) and q : C_F -> D_F (quotient on objects,
 conjugation by t_a = idtoiso (triangle a) on arrows), q is fully faithful
 and essentially surjective, and for every category E : Category[m,n],
@@ -61,8 +61,8 @@ bounding the others (constraints k l m n <= j).  completion.opens records
 what each declaration of §4 opens (seg All.seg --opens completion.opens).
 
 Moreover (DESIGN.md §4.6-4.9) Fun(D_F,E) and Fun(C_F,E) are categories
-(Instance.Universal.fun-D, fun-C), and
-  Instance.Universal.equiv : isEquiv Fun(D_F,E) Fun(C_F,E) (G |-> G o q),
+(Instance.ForEvery.fun-D, fun-C), and
+  Instance.ForEvery.equiv : isEquiv Fun(D_F,E) Fun(C_F,E) (G |-> G o q),
 from FunctorUnivalence (the total space (G : Fun(B,E)) * Iso(F,G) is a
 proposition, through a Sigma form; record eta used once, by the eliminator)
 and EquivObjects (fibres are propositions by univalence of both sides).
