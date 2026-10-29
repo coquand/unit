@@ -1,0 +1,90 @@
+-- Set-valued functors on a small precategory and the Yoneda lemma
+-- (DESIGN.md §7).  C : Precategory[l,l]; the instance is the category of
+-- finitely presented algebras (FPYoneda).
+--  SetFunctor: sets F x, maps F f, F 1 u = u, F (g o f) u = F g (F f u).
+--  SetNat[F,G]: components alpha_x : F x -> G x, natural pointwise;
+--   naturality is a proposition (G y a set), so nat-eq; Nat in U l.
+--  rep A: h_A x = C(A,x), h_A f g = f o g (unit law, associativity).
+--  Yoneda[A,F]: eval alpha = alpha_A 1 and ext u = (f |-> F f u) (natural
+--   by map-comp) are inverse: eval (ext u) = F 1 u = u;
+--   ext (eval alpha)_x f = F f (alpha_A 1) = alpha_x (f o 1) = alpha_x f.
+--  Embedding[A,B]: yon f = ext f is precomposition with f (yon-at, by
+--   definition), an equivalence C(B,A) ~ Nat(h_A,h_B).
+--  yon-idn, yon-comp: yon 1 = 1 (unit law), yon (f o g) = yon g o yon f
+--   (associativity): the embedding is contravariant.
+level l ; open Base ;
+module Pr = Prelude[l] ; module H = Paths[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module CC = Category[l,l] ;
+module Over (C : CC.Precategory) {
+ record SetFunctor {
+  obj : C.ob -> U l ;
+  set (x : C.ob) : Pr.isSet (obj x) ;
+  map (x y : C.ob) : C.hom x y -> obj x -> obj y ;
+  map-idn (x : C.ob) (u : obj x) : Id (obj x) (map x x (C.idn x) u) u ;
+  map-comp (x y z : C.ob) (g : C.hom y z) (f : C.hom x y) (u : obj x) :
+   Id (obj z) (map x z (C.comp x y z g f) u) (map y z g (map x y f u)) ;
+ } ;
+
+ module SetNat (F G : SetFunctor) {
+  Comp : U l = (x : C.ob) -> F.obj x -> G.obj x ;
+  Natural (alpha : Comp) : U l =
+   (x y : C.ob) (f : C.hom x y) (u : F.obj x) -> Id (G.obj y) (alpha y (F.map x y f u)) (G.map x y f (alpha x u)) ;
+  natural-prop (alpha : Comp) : Pr.isProp (Natural alpha) =
+   FE.isProp-Pi C.ob (\ x -> (y : C.ob) (f : C.hom x y) (u : F.obj x) -> Id (G.obj y) (alpha y (F.map x y f u)) (G.map x y f (alpha x u))) (\ x ->
+    FE.isProp-Pi C.ob (\ y -> (f : C.hom x y) (u : F.obj x) -> Id (G.obj y) (alpha y (F.map x y f u)) (G.map x y f (alpha x u))) (\ y ->
+     FE.isProp-Pi (C.hom x y) (\ f -> (u : F.obj x) -> Id (G.obj y) (alpha y (F.map x y f u)) (G.map x y f (alpha x u))) (\ f ->
+      FE.isProp-Pi (F.obj x) (\ u -> Id (G.obj y) (alpha y (F.map x y f u)) (G.map x y f (alpha x u))) (\ u ->
+       G.set y (alpha y (F.map x y f u)) (G.map x y f (alpha x u)))))) ;
+  Nat : U l = (alpha : Comp) * Natural alpha ;
+  at (a : Nat) (x : C.ob) (u : F.obj x) : G.obj x = a.1 x u ;
+  natural (a : Nat) (x y : C.ob) (f : C.hom x y) (u : F.obj x) :
+   Id (G.obj y) (at a y (F.map x y f u)) (G.map x y f (at a x u)) = a.2 x y f u ;
+  nat-eq (a a' : Nat) (h : (x : C.ob) (u : F.obj x) -> Id (G.obj x) (at a x u) (at a' x u)) : Id Nat a a' =
+   Pr.Sigma-eq Comp Natural a.1 a'.1 a.2 a'.2
+    (FE.funext C.ob (\ x -> F.obj x -> G.obj x) a.1 a'.1
+      (\ x -> FE.funext (F.obj x) (\ u -> G.obj x) (a.1 x) (a'.1 x) (h x)))
+    (natural-prop a'.1) ;
+ } ;
+ -- identity and composite of transformations
+ idn (F : SetFunctor) : SetNat[F,F].Nat = (\ x u -> u, \ x y f u -> refl (F.map x y f u)) ;
+ comp (F G K : SetFunctor) (b : SetNat[G,K].Nat) (a : SetNat[F,G].Nat) : SetNat[F,K].Nat =
+  (\ x u -> SetNat[G,K].at b x (SetNat[F,G].at a x u),
+   \ x y f u -> H.transH (H.apH (SetNat[G,K].at b y) (SetNat[F,G].natural a x y f u))
+    (SetNat[G,K].natural b x y f (SetNat[F,G].at a x u))) ;
+
+ -- the functor represented by A
+ rep (A : C.ob) : SetFunctor = mkSetFunctor (\ x -> C.hom A x) (C.hom-set A)
+  (\ x y f g -> C.comp A x y f g) (\ x g -> C.unit-l A x g)
+  (\ x y z g f u -> H.symH (C.assoc A x y z u f g)) ;
+
+ module Yoneda (A : C.ob) (F : SetFunctor) {
+  module N = SetNat[rep A, F] ;
+  eval (a : N.Nat) : F.obj A = N.at a A (C.idn A) ;
+  ext (u : F.obj A) : N.Nat = (\ x f -> F.map A x f u, \ x y f g -> F.map-comp A x y f g u) ;
+  eval-ext (u : F.obj A) : Id (F.obj A) (eval (ext u)) u = F.map-idn A u ;
+  ext-eval (a : N.Nat) : Id N.Nat (ext (eval a)) a =
+   N.nat-eq (ext (eval a)) a (\ x f ->
+    H.transH (H.symH (N.natural a A x f (C.idn A))) (H.apH (N.at a x) (C.unit-r A x f))) ;
+  yoneda : Pr.Equiv N.Nat (F.obj A) = (eval, Pr.qinv N.Nat (F.obj A) eval ext eval-ext ext-eval) ;
+ } ;
+
+ -- the representable embedding, contravariant and fully faithful
+ module Embedding (A B : C.ob) {
+  module N = SetNat[rep A, rep B] ;
+  module Y = Yoneda[A, rep B] ;
+  yon (f : C.hom B A) : N.Nat = Y.ext f ;
+  -- by definition, yon f is precomposition with f
+  yon-at (f : C.hom B A) (x : C.ob) (g : C.hom A x) : Id (C.hom B x) (N.at (yon f) x g) (C.comp B A x g f) =
+   refl (C.comp B A x g f) ;
+  fully-faithful : Pr.isEquiv (C.hom B A) N.Nat yon = Pr.qinv (C.hom B A) N.Nat yon Y.eval Y.ext-eval Y.eval-ext ;
+ } ;
+ yon-idn (A : C.ob) : Id (SetNat[rep A, rep A].Nat) (Embedding[A,A].yon (C.idn A)) (idn (rep A)) =
+  SetNat[rep A, rep A].nat-eq (Embedding[A,A].yon (C.idn A)) (idn (rep A)) (\ x g -> C.unit-r A x g) ;
+ yon-comp (A B D : C.ob) (f : C.hom B A) (g : C.hom D B) :
+  Id (SetNat[rep A, rep D].Nat) (Embedding[A,D].yon (C.comp D B A f g))
+   (comp (rep A) (rep B) (rep D) (Embedding[B,D].yon g) (Embedding[A,B].yon f)) =
+  SetNat[rep A, rep D].nat-eq (Embedding[A,D].yon (C.comp D B A f g))
+   (comp (rep A) (rep B) (rep D) (Embedding[B,D].yon g) (Embedding[A,B].yon f))
+   (\ x k -> C.assoc D B A x g f k) ;
+} ;

@@ -29,6 +29,12 @@ propUA derived from univalence; no new axioms.
                    (PresentationComparison; transport along isotoid)
   FPDescent        CU = CompletionUP[l+,l,m,n,j].Instance[category, codes,
                    interpret]; descent E
+  Yoneda           Over[C], C : Precategory[l,l]: SetFunctor (pointwise
+                   laws), SetNat (nat-eq), idn, comp, rep A (h_A), Yoneda[A,F]
+                   (eval, ext, yoneda), Embedding[A,B] (yon, fully-faithful),
+                   yon-idn, yon-comp (contravariant)
+  FPYoneda         C = SFI.pre: points (h_a b = Hom_R(A_a,A_b)), yoneda,
+                   affine, fully-faithful
 
 Checkpoint 1 (AlgebraSIP.Over.category).  Small commutative R-algebras
 (carriers in U l) form a univalent category, Category[l+1, l]: objects in
@@ -47,6 +53,14 @@ with constraints l <= j, m <= j, n <= j,
 where C_F has the presentations as objects and Hom_R(interpret a,
 interpret b) as arrows, and D_F = SFI.category.  A functor on codes
 descends uniquely to the finitely presented algebras.
+
+Yoneda (FPYoneda.Over).  For a in the small category and every covariant
+set-valued functor F,
+  yoneda a F : Nat(h_a, F) ~ F a          (evaluation at 1_a)
+  affine a b : Nat(h_a, h_b) ~ Hom_R(A_b, A_a)
+with h_a b = Hom_R(A_a, A_b) (points) and the inverse precomposition
+(fully-faithful); yon-idn, yon-comp: the representable embedding has
+source (Alg_R^fp)^op.  All in U l.
 
 Module-system note (integration only, not part of the mathematics).  The
 checker forbids shadowing and has no renaming on import, and module names

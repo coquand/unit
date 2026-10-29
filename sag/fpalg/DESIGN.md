@@ -158,3 +158,37 @@ E : Category[m,n], with l, m, n <= j,
 is an equivalence of types (`Universal[E].equiv`): a functor defined on
 codes descends uniquely to the small category of finitely presented
 algebras.
+
+## 7. Set-valued functors and Yoneda (Yoneda, FPYoneda)
+
+C is a small precategory (objects and arrows in U l); the instance is
+C = D_F, the finitely presented algebras, whose arrows a -> b are
+Hom_R (A_a, A_b).
+
+**Set-valued functors.**  A covariant functor F : C -> Set is a family of
+sets F x (in U l), maps F f : F x -> F y for f : x -> y, with F 1 u = u and
+F (g o f) u = F g (F f u) pointwise.  A natural transformation
+alpha : F -> G is a family alpha_x : F x -> G x with
+alpha_y (F f u) = G f (alpha_x u).  Naturality is a proposition (G y is a
+set), so transformations with pointwise equal components are equal
+(nat-eq).  Nat (F, G) lies in U l because the objects are small.
+
+**Representables.**  h_A x = C (A, x), with h_A f g = f o g; the laws are
+the unit law 1 o g = g and associativity.  For the algebras,
+h_A (B) = Hom_R (A, B): the affine scheme Spec A as a functor of points.
+
+**Yoneda.**  For every F, evaluation at the identity,
+eval alpha = alpha_A (1_A), is an equivalence Nat (h_A, F) ~ F A.  The
+inverse sends u in F A to ext u, ext u_x f = F f u, which is natural:
+ext u_y (f o g) = F (f o g) u = F f (F g u).
+* eval (ext u) = F 1 u = u.
+* ext (eval alpha) = alpha, componentwise:
+  F f (alpha_A 1) = alpha_x (f o 1) = alpha_x f, by naturality of alpha at f
+  applied to 1_A, and the unit law.
+
+**Affine representables.**  With F = h_B: Nat (h_A, h_B) ~ C (B, A), and
+the inverse is y f = ext f, with (y f)_x g = g o f: precomposition with f.
+So y is a bijection on hom sets.  It reverses composition: y 1 = 1 (unit
+law) and y (f o g) = y g o y f (associativity), so the representable
+embedding is a fully faithful functor with source C^op; for the algebras,
+(Alg_R^fp)^op.
