@@ -52,8 +52,9 @@ CMoveLaws CGlueRC CSub COp COpMove CLine CConn CFillProb CFill CFillEnd
 CLineSide CHornRetr CMapLine CCart CFillMove CFibSub CCartLaws CTrFib COpTr
 COpLaws CCartLaws2 CFibExt CPath CPathProb CPathComp CPathFib CHtpyOps
 CPathCart CPathNat CSig CPiE CPi CSigNat CPiCart CPiNat CEquiv CTr CTrOm
-CTrB CTrP CTrE).
-Next: CHFibCart, CHSub, CHFibLaws, ... in CBase order, then the instances,
+CTrB CTrP CTrE CHFibCart CHSub CHFibLaws CTrEq CSmall CUniv CElC CYonCart
+CEnc CFibCl COpCl CCof).
+Next: CExt, CExt2, ... in CBase order, then the instances,
 L9, L9b, truncation; then lock (Presheaf + VCode as above) and measure.
 Method per file: under the lock the checker reports each raw pair
 ("cannot infer a type for (x, b)") and projection ("not a pair: e : Idx
