@@ -157,7 +157,7 @@ algebraic infrastructure only.
 
 ## Status
 
-Checked (`../../segc qcqs all`: 45 modules, 0 failed, 0.37 s):
+Checked (`../../segc qcqs all`: 47 modules, 0 failed, 0.36 s):
 
 - `RingMaps`: named parts of a ring map (`map`, `map-one`, `map-add`, `map-mul`,
   `map-zero`, `map-neg`; `map-identity`, `map-compose` by definition).
@@ -185,6 +185,15 @@ Checked (`../../segc qcqs all`: 45 modules, 0 failed, 0.37 s):
   …), `cls`, `join-cls`, `meet-cls`, `bot-cls`, `top-cls`, `forall1-3`,
   `D`, `support`, `order`, `reflect`, `generated`; the descended
   operations are locked after `join-cls`/`meet-cls`.
+  Presentations (step 3, item 1), the only access to opens later files
+  need: `Presentation u` (`generators`, `presents`: `u = ⋁ D(a_j)`),
+  `presented : ∥Presentation u∥`, `gen-below`, `bot-presentation`,
+  `join-presents`/`join-presentation`; `Refinement n us`: a presentation
+  of `⋁ u_i` whose generators each lie below one `u_i` (`count`, `piece`,
+  `refines`, `tag`, `tag-below`), `refined : ∥Refinement n us∥` by finite
+  choice; `BasicCover[g,n,a,le]` for `D g ≤ ⋁ D(a_j)`: `below`,
+  `below-gen`, `covers`, `join-eq : D g = ⋁ D(g a_j)`. `D` is typed
+  `lattice.L`, so clients never compare through the quotient.
 - `ZariskiUniversal`: **D is the universal support**: for a support
   `d : A → M`, `factor : Hom L_A M` with `factor-D : factor(D x) = d x`,
   and `unique`: every lattice map `k` with `k(D x) = d x` agrees with
@@ -209,7 +218,8 @@ Checked (`../../segc qcqs all`: 45 modules, 0 failed, 0.37 s):
   `Ops[u].add-at`/`mul-at` by refl); `restriction` and `component` (π_g)
   are ring maps.
 - `BasicOpen`: `O(D g) ≅ R_g`: `evaluation = component at g`, inverse
-  `extend x = (rho_{g,h} x)_h`, `iso` (no cover, no presentation).
+  `extend x = (rho_{g,h} x)_h`, `iso` (no cover, no presentation);
+  `natural`: `eval_h(s|D h) = ρ_{g,h}(eval_g s)`.
 - `Limit`: O(u) is the limit of the R_g: cones (`Maps`, `Cone`), the
   components of a ring map form one; `Lift.lift` with `lift-proj` by refl
   and `unique` (pointwise, as in `ZariskiUniversal`).
@@ -224,32 +234,27 @@ Checked (`../../segc qcqs all`: 45 modules, 0 failed, 0.37 s):
   `(x : R_g) × (ρ_i x = x_i)`. Normal form (`Fr`, `Ks`: `k_i = h_i^(M+1) s_i`
   with exact cross relations), strict case (`Strict.Rad`: `x = f(Σ y_i c_i)
   / f(g^p)`), back to the `h_i` by `Single.injective`.
+- `Separated`: `Pair[u,u2,s,s2].Agree v` (s ∈ O(u), s2 ∈ O(u2) have equal
+  components below v; `agree-prop`); `Local` (agreement on the generators
+  of a presentation, by `Separation`), `Join` (binary, through
+  presentations), `agree-bot`, `agree-joins`, `agree-cover`,
+  `agree-restrict`; `equal`; `Cover[u,n,us,le,covers]`: `separated`,
+  `Amalgam xs` (`amalgam`, `matches`), `amalgam-prop`.
+- `Sheaf` (`Cover[u,n,us,le,covers,xs,compatible]`, compatibility as
+  equality of restrictions to `u_i ∧ u_j`): **the sheaf property on L_A**
+  `sheaf : isContr Amalgam`, for every finite cover of every open (the empty
+  cover included). Built one component at a time: `Glued g` (y ∈ O(D g)
+  agreeing with each x_i on `D g ∧ u_i`) is a proposition (`glued-prop`);
+  `Basic.Refined` glues over a refinement with `Gluing.sheaf`;
+  `component g = eval(y_g)`, compatible by `natural` and `glued-prop`.
 
-Step 3 items 1–5 (basic lemma) are done (2026-10-29). Remaining in step 3
-(order and method from the review of 2026-10-29):
+Step 3 items 0–5 are done (2026-10-29): naturality of evaluation,
+presentations behind the lattice interface, separation on arbitrary opens,
+amalgams one component at a time, and the sheaf property for all finite
+covers. The empty cover needs no separate treatment (n = 0), and no
+induction on covers was needed: a refinement of `⋁ u_i` reduces each
+component to the basic lemma. Remaining in step 3:
 
-0. Naturality of basic-open evaluation, named once in `BasicOpen`:
-   `eval_h(s|D h) = ρ_{h,g}(eval_g s)` for `D h ≤ D g` (compatibility +
-   `component-irr`). Later comparisons of sections with localised elements
-   go through it.
-1. Presentations behind the lattice interface: in `ZariskiLattice` (from
-   `forall1` and `generated`), every `u : L_A` merely is `⋁ D(a_j)`; clients
-   never touch `Q` again. For `D g ≤ ⋁ D(a_j)`: `D g = ⋁ D(g a_j)`, each
-   `D(g a_j) ≤ D g`.
-2. Separation on arbitrary opens **first**: if `u ≤ ⋁ u_i` and
-   `s|u_i = s'|u_i` for all `i`, then `s = s'` (per component `g`: eliminate a
-   merely given presentation into the proposition `s_g = s'_g`; then
-   `Separation`). Hence the type of amalgams of a compatible family is a
-   proposition.
-3. Amalgams: build one component at a time. For each `g`, eliminate the
-   truncated presentations into the (propositional) type of the glued
-   component and glue with `Gluing.sheaf`; compatibility of the resulting
-   family by uniqueness. No simultaneous choice of presentations for all `g`.
-4. The empty cover explicitly: `O(⊥)` is the terminal ring. `⊥ = D 0`, the
-   basic lemma for the empty cover of `D 0` makes `R_0` contractible, and
-   `BasicOpen` transfers it to `O(D 0)`. Binary gluing gives nonempty covers;
-   the induction on `n` starts from this.
-5. Then the binary sheaf property and `n`-ary covers by induction.
 6. The extension lemma for maps out of `O` (sheaf `G` on `M`, `π : L_A → M`,
    compatible `φ_g : R_g → G(π(D g))`).
 7. Modules wait. First concrete example after the affine sheaf and the

@@ -174,7 +174,7 @@ module Over (A : CRing) {
   le-trans a (prod a b) b (Q.effective (prod a b) a (trans (sym (meet-cls a b)) h)).2 (le-prod-right a b) ;
 
  -- D is a support
- D (x : R) : Q.Q = cls (single x) ;
+ D (x : R) : lattice.L = cls (single x) ;
  le-zero : Le (single z) empty = \ i -> inc empty z (rad-zero empty) ;
  le-mul (x y : R) : Eqv (single (mul x y)) (prod (single x) (single y)) =
   (le-prod-glb (single x) (single y) (single (mul x y))
@@ -213,4 +213,81 @@ module Over (A : CRing) {
       (ap (lattice.join (cls (single (w (inr tt))))) (r (\ i -> w (inl i))))) } ;
  generated (a : Fam) : Id lattice.L (cls a) (J.bigJ (size a) (\ i -> D (gen a i))) =
   generated-at (size a) (gen a) ;
+
+ -- every open merely is a finite join of basic opens; clients use this,
+ -- not the quotient
+ Presentation (u : lattice.L) : U l = (a : Fam) * Id lattice.L u (J.bigJ (size a) (\ i -> D (gen a i))) ;
+ generators {u : lattice.L} (p : Presentation u) : Fam = p.1 ;
+ presents {u : lattice.L} (p : Presentation u) : Id lattice.L u (J.bigJ (size (generators p)) (\ i -> D (gen (generators p) i))) = p.2 ;
+ Presented (u : lattice.L) : U l = Tr.Trunc[Presentation u].carrier ;
+ presented-prop (u : lattice.L) : Pr.isProp (Presented u) = Tr.Trunc[Presentation u].proposition ;
+ presented : (u : lattice.L) -> Presented u =
+  forall1 Presented presented-prop (\ a -> Tr.Trunc[Presentation (cls a)].inc (a,generated a)) ;
+ -- each generator lies below the open it presents
+ gen-below {v : lattice.L} (p : Presentation v) (i : Fin (size (generators p))) : O.Le (D (gen (generators p) i)) v =
+  Pr.subst lattice.L (\ t -> O.Le (D (gen (generators p) i)) t)
+   (J.bigJ (size (generators p)) (\ j -> D (gen (generators p) j))) v (sym (presents p))
+   (J.below (size (generators p)) (\ j -> D (gen (generators p) j)) i) ;
+ -- bottom has no generators; a join is presented by both families
+ bot-presents : Id lattice.L lattice.bot (J.bigJ (size empty) (\ i -> D (gen empty i))) = refl lattice.bot ;
+ bot-presentation : Presentation lattice.bot = (empty,bot-presents) ;
+ join-presents {v w : lattice.L} (p : Presentation v) (q : Presentation w) :
+  Id lattice.L (lattice.join v w)
+   (J.bigJ (size (cat (generators p) (generators q))) (\ i -> D (gen (cat (generators p) (generators q)) i))) = calc lattice.L {
+   lattice.join v w
+    =< cong2 lattice.L lattice.join _ _ _ _ (trans (presents p) (sym (generated (generators p))))
+        (trans (presents q) (sym (generated (generators q))))
+     > lattice.join (cls (generators p)) (cls (generators q))
+    =< join-cls (generators p) (generators q) > cls (cat (generators p) (generators q))
+    =< generated (cat (generators p) (generators q))
+     > J.bigJ (size (cat (generators p) (generators q))) (\ i -> D (gen (cat (generators p) (generators q)) i)) } ;
+ join-presentation {v w : lattice.L} (p : Presentation v) (q : Presentation w) : Presentation (lattice.join v w) =
+  (cat (generators p) (generators q),join-presents p q) ;
+ -- a presentation of u_1 \/ .. \/ u_n whose generators each lie below one
+ -- u_i: join presentations of the u_i (finite choice), tagging each
+ -- generator with its u_i
+ BelowOne (n : Nat) (us : Fin n -> lattice.L) (x : R) : U l = (i : Fin n) * O.Le (D x) (us i) ;
+ Refinement (n : Nat) (us : Fin n -> lattice.L) : U l =
+  (p : Presentation (J.bigJ n us)) * ((k : Fin (size (generators p))) -> BelowOne n us (gen (generators p) k)) ;
+ refining {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) : Presentation (J.bigJ n us) = r.1 ;
+ count {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) : Nat = size (generators (refining r)) ;
+ piece {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) (k : Fin (count r)) : R = gen (generators (refining r)) k ;
+ refines {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) :
+  Id lattice.L (J.bigJ n us) (J.bigJ (count r) (\ k -> D (piece r k))) = presents (refining r) ;
+ tag {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) (k : Fin (count r)) : Fin n = (r.2 k).1 ;
+ tag-below {n : Nat} {us : Fin n -> lattice.L} (r : Refinement n us) (k : Fin (count r)) :
+  O.Le (D (piece r k)) (us (tag r k)) = (r.2 k).2 ;
+ module Extend (n : Nat) (us : Fin (suc n) -> lattice.L) (p : Presentation (us (inr tt)))
+  (r : Refinement n (\ i -> us (inl i))) {
+  refinement : Refinement (suc n) us =
+   (join-presentation p (refining r),
+    cat-all (generators p) (generators (refining r)) (BelowOne (suc n) us)
+     (\ k -> (inr tt,gen-below p k))
+     (\ k -> (inl (tag r k),tag-below r k))) ;
+ } ;
+ refinement : (n : Nat) (us : Fin n -> lattice.L) -> ((i : Fin n) -> Presentation (us i)) -> Refinement n us = split {
+  zero -> \ us ps -> (bot-presentation,AF.empty-section (\ k -> BelowOne zero us (gen empty k))) ;
+  suc n | r -> \ us ps -> Extend[n,us,ps (inr tt),r (\ i -> us (inl i)) (\ i -> ps (inl i))].refinement } ;
+ refined (n : Nat) (us : Fin n -> lattice.L) : Tr.Trunc[Refinement n us].carrier =
+  Tr.Trunc[(i : Fin n) -> Presentation (us i)].induction @l (\ x -> Tr.Trunc[Refinement n us].carrier)
+   (\ x -> Tr.Trunc[Refinement n us].proposition)
+   (\ ps -> Tr.Trunc[Refinement n us].inc (refinement n us ps))
+   (AF.choice n (\ i -> Presentation (us i)) (\ i -> presented (us i))) ;
+
+ -- a basic open below a join of basic opens is covered by the D(g a_i)
+ module BasicCover (g : R) (n : Nat) (a : Fin n -> R) (le : O.Le (D g) (J.bigJ n (\ i -> D (a i)))) {
+  module S = Sup.Of[D,support] ;
+  below (i : Fin n) : O.Le (D (mul g (a i))) (D g) = S.scaled g (a i) ;
+  below-gen (i : Fin n) : O.Le (D (mul g (a i))) (D (a i)) =
+   Pr.subst R (\ t -> O.Le (D t) (D (a i))) (mul (a i) g) (mul g (a i)) (mulC (a i) g) (S.scaled (a i) g) ;
+  -- D g = D g /\ \/ D(a_i) = \/ (D g /\ D(a_i)) = \/ D(g a_i)
+  covers : O.Le (D g) (J.bigJ n (\ i -> D (mul g (a i)))) =
+   O.le-trans (D g) (lattice.meet (D g) (J.bigJ n (\ i -> D (a i)))) (J.bigJ n (\ i -> D (mul g (a i))))
+    (O.meet-glb (D g) (J.bigJ n (\ i -> D (a i))) (D g) (O.le-refl (D g)) le)
+    (J.meet-below (D g) n (\ i -> D (a i)) (J.bigJ n (\ i -> D (mul g (a i)))) (\ i ->
+      Pr.subst lattice.L (\ t -> O.Le t (J.bigJ n (\ j -> D (mul g (a j))))) (D (mul g (a i))) (lattice.meet (D g) (D (a i)))
+       (S.at-mul g (a i)) (J.below n (\ j -> D (mul g (a j))) i))) ;
+  join-eq : Id lattice.L (D g) (J.bigJ n (\ i -> D (mul g (a i)))) =
+   O.le-antisym (D g) (J.bigJ n (\ i -> D (mul g (a i)))) covers (J.least n (\ i -> D (mul g (a i))) (D g) below) ;
+ } ;
 } ;
