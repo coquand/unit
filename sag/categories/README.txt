@@ -6,15 +6,23 @@ Check:   ./segc sag/categories all
 Design: doc/univalent-categories.tex; the informal proofs are in DESIGN.md
 and at the head of each file.  Same Theory segment as sag/replacement
 (univalence, images, surjections); no other axiom; function extensionality
-is not used.  Base, Prelude, Paths, Axioms, FunExtUA link to core;
+(fe) is derived from univalence in Theory, as in sag/replacement, and used
+from DESIGN.md §4 on.  Base, Prelude, Paths, Axioms, FunExtUA link to core;
 Replacement, Truncation, TruncationCombinators link to sag/replacement.
 Nothing outside this directory is modified.
 
   Equivalences   inverse, compose, homotopy, then, conjugate, lower
   Category       Precategory (Iso, idtoiso), Univalent, Category (isotoid),
                  Objects: locally-small (replacement's hypothesis), one-type
-  Functor        Functor, FullyFaithful
+  Arrows         arrows with hidden objects: laws, isos, cancellation
+  Functor        Functor, FullyFaithful, EssSurj, SplitEssSurj; Maps (isos
+                 to isos), Faithful (pre, reflect-iso, lift, unique, paste)
+  FunctorCat     NatTrans, FunCat (Fun(B,E)), Precompose (q^*)
+  PrecomposeFF   LemmaA: q^* fully faithful
+  Descent        LemmaB: descent of functors along q
+  UniversalProperty  Theorem: q^* fully faithful + split ess. surjective
   SmallImage     SmallFullImage[D, A, F]: the small full image theorem
+  CompletionUP   Instance: q : C_F -> D_F, and the theorem for every E
 
 Theorem (SmallImage.SmallFullImage).  D : Category[k,l] (objects in U k,
 arrows in U l), A : U l, F : A -> D.pre.ob.  Then
@@ -38,5 +46,14 @@ of arbitrary types (paths ~ equivalences, which need not form sets), so it
 is not literally the case D = U l of the theorem; restricted to families of
 sets it is a categorical instance.
 
-Not done here: the universal property of the completion (DESIGN.md §4,
-doc/univalent-categories.tex Theorem 3.1).
+Theorem (CompletionUP.Instance.Universal, DESIGN.md §4).  With C_F
+(objects A, arrows D(Fa,Fb)) and q : C_F -> D_F (quotient on objects,
+conjugation by t_a = idtoiso (triangle a) on arrows), q is fully faithful
+and essentially surjective, and for every category E : Category[m,n],
+q^* : Fun(D_F,E) -> Fun(C_F,E) is fully faithful and split essentially
+surjective.  The functor categories are Precategory[j,j] for a level j
+bounding the others (constraints k l m n <= j).  completion.opens records
+what each declaration of §4 opens (seg All.seg --opens completion.opens).
+
+Not done here: univalence of functor categories and the corollary
+(q^* an equivalence of object types), DESIGN.md §4.4.

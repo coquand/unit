@@ -1,7 +1,8 @@
 -- Functors (DESIGN.md §2): C with objects in U k1 and arrows in U l1,
 -- D with objects in U k2 and arrows in U l2.  A functor maps objects and
 -- arrows, preserving identities and composites; it is fully faithful when
--- every map on hom sets is an equivalence.
+-- every map on hom sets is an equivalence, and essentially surjective when
+-- every object of D is merely isomorphic to an image.
 level k1 l1 k2 l2 ; open Base ;
 module C1 = Category[k1,l1] ; module C2 = Category[k2,l2] ;
 
@@ -16,3 +17,91 @@ record Functor (C : C1.Precategory) (D : C2.Precategory) {
 
 FullyFaithful (C : C1.Precategory) (D : C2.Precategory) (F : Functor[C,D]) : U (k1 \/ l1 \/ l2) =
  (x y : C.ob) -> Prelude[l1 \/ l2].isEquiv (C.hom x y) (D.hom (F.obj x) (F.obj y)) (F.map x y) ;
+
+EssSurj (C : C1.Precategory) (D : C2.Precategory) (F : Functor[C,D]) : U (k1 \/ k2 \/ l2) =
+ (d : D.ob) -> Truncation[k1 \/ l2].Trunc[(c : C.ob) * D.Iso (F.obj c) d].carrier ;
+
+-- split: a chosen preimage up to iso for every object
+SplitEssSurj (C : C1.Precategory) (D : C2.Precategory) (F : Functor[C,D]) : U (k1 \/ k2 \/ l2) =
+ (d : D.ob) -> (c : C.ob) * D.Iso (F.obj c) d ;
+
+-- A functor applied to an equation of arrows (map-eq), to a composite
+-- (map-cmp, the law with the objects hidden); it maps isos to isos:
+-- F g o F f = F (g o f) = F 1 = 1.
+module Maps (C : C1.Precategory) (D : C2.Precategory) (F : Functor[C,D]) {
+ module AC = Arrows[k1,l1].Arrows[C] ; module AD = Arrows[k2,l2].Arrows[D] ;
+ map-eq {x y : C.ob} {f f' : C.hom x y} (p : Id (C.hom x y) f f') :
+  Id (D.hom (F.obj x) (F.obj y)) (F.map x y f) (F.map x y f') =
+  Prelude[l1 \/ l2].ap (C.hom x y) (D.hom (F.obj x) (F.obj y)) (F.map x y) f f' p ;
+ map-cmp {x y z : C.ob} (g : C.hom y z) (f : C.hom x y) :
+  Id (D.hom (F.obj x) (F.obj z)) (F.map x z (AC.cmp g f)) (AD.cmp (F.map y z g) (F.map x y f)) =
+  F.map-comp x y z g f ;
+ map-inv {x y : C.ob} {f : C.hom x y} {g : C.hom y x} (p : Id (C.hom x x) (AC.cmp g f) (C.idn x)) :
+  Id (D.hom (F.obj x) (F.obj x)) (AD.cmp (F.map y x g) (F.map x y f)) (D.idn (F.obj x)) =
+  Paths[l2].transH (Paths[l2].symH (F.map-comp x y x g f))
+   (Paths[l2].transH (Prelude[l1 \/ l2].ap (C.hom x x) (D.hom (F.obj x) (F.obj x)) (F.map x x) (AC.cmp g f) (C.idn x) p)
+     (F.map-idn x)) ;
+ map-iso {x y : C.ob} (e : C.Iso x y) : D.Iso (F.obj x) (F.obj y) =
+  (F.map x y (AC.arr e), F.map y x (AC.inv e), map-inv (AC.inv-arr e), map-inv (AC.arr-inv e)) ;
+} ;
+
+-- A fully faithful functor F.  pre is the inverse of F on arrows (pre-eq:
+-- F (pre g) = g).  Faithful: f = pre (F f) = pre (F f') = f'.  F reflects
+-- isos: pre g o pre f = 1 when g o f = 1, as F (pre g o pre f) = g o f = 1
+-- = F 1.  Lifting along an iso e : F c' ~ b: lift e v = pre (e^-1 o v),
+-- with e o F (lift e v) = e o (e^-1 o v) = v (lift-eq); two arrows f, f'
+-- with e o F f = v = e o F f' are equal (unique: cancel e, faithful).
+-- paste: a2 o F f2 = g o a1 and a1 o F f1 = v give a2 o F (f2 o f1) =
+-- a2 o (F f2 o F f1) = (a2 o F f2) o F f1 = (g o a1) o F f1 = g o (a1 o
+-- F f1) = g o v; paste1 the same without g.
+module Faithful (C : C1.Precategory) (D : C2.Precategory) (F : Functor[C,D]) (ff : FullyFaithful C D F) {
+ module AC = Arrows[k1,l1].Arrows[C] ; module AD = Arrows[k2,l2].Arrows[D] ;
+ module H = Paths[l2] ; module P = Prelude[l1 \/ l2] ;
+ pre {x y : C.ob} (g : D.hom (F.obj x) (F.obj y)) : C.hom x y = (ff x y).sec g ;
+ pre-eq {x y : C.ob} (g : D.hom (F.obj x) (F.obj y)) : Id (D.hom (F.obj x) (F.obj y)) (F.map x y (pre g)) g =
+  (ff x y).sec-eq g ;
+ faithful {x y : C.ob} {f f' : C.hom x y} (p : Id (D.hom (F.obj x) (F.obj y)) (F.map x y f) (F.map x y f')) :
+  Id (C.hom x y) f f' =
+  P.trans (C.hom x y) f (pre (F.map x y f')) f'
+   (P.trans (C.hom x y) f (pre (F.map x y f)) (pre (F.map x y f'))
+     (P.sym (C.hom x y) (pre (F.map x y f)) f (P.sec-ret (C.hom x y) (D.hom (F.obj x) (F.obj y)) (F.map x y) (ff x y) f))
+     (P.ap (D.hom (F.obj x) (F.obj y)) (C.hom x y) (\ g -> pre g) (F.map x y f) (F.map x y f') p))
+   (P.sec-ret (C.hom x y) (D.hom (F.obj x) (F.obj y)) (F.map x y) (ff x y) f') ;
+
+ reflect-id {x y : C.ob} {g : D.hom (F.obj y) (F.obj x)} {f : D.hom (F.obj x) (F.obj y)}
+  (p : Id (D.hom (F.obj x) (F.obj x)) (AD.cmp g f) (D.idn (F.obj x))) :
+  Id (C.hom x x) (AC.cmp (pre g) (pre f)) (C.idn x) =
+  faithful (H.transH (F.map-comp x y x (pre g) (pre f))
+   (H.transH (AD.right (pre-eq g) (F.map x y (pre f)))
+    (H.transH (AD.left g (pre-eq f)) (H.transH p (H.symH (F.map-idn x)))))) ;
+ reflect-iso {x y : C.ob} (e : D.Iso (F.obj x) (F.obj y)) : C.Iso x y =
+  (pre (AD.arr e), pre (AD.inv e), reflect-id (AD.inv-arr e), reflect-id (AD.arr-inv e)) ;
+
+ lift {c c' : C.ob} {b : D.ob} (e : D.Iso (F.obj c') b) (v : D.hom (F.obj c) b) : C.hom c c' =
+  pre (AD.cmp (AD.inv e) v) ;
+ lift-eq {c c' : C.ob} {b : D.ob} (e : D.Iso (F.obj c') b) (v : D.hom (F.obj c) b) :
+  Id (D.hom (F.obj c) b) (AD.cmp (AD.arr e) (F.map c c' (lift e v))) v =
+  H.transH (AD.left (AD.arr e) (pre-eq (AD.cmp (AD.inv e) v))) (AD.undo-l (AD.iso-inv e) v) ;
+ unique {c c' : C.ob} {b : D.ob} (e : D.Iso (F.obj c') b) {v : D.hom (F.obj c) b} {f f' : C.hom c c'}
+  (p : Id (D.hom (F.obj c) b) (AD.cmp (AD.arr e) (F.map c c' f)) v)
+  (p' : Id (D.hom (F.obj c) b) (AD.cmp (AD.arr e) (F.map c c' f')) v) : Id (C.hom c c') f f' =
+  faithful (AD.cancel-l e (H.transH p (H.symH p'))) ;
+
+ paste {c0 c1 c2 : C.ob} {b1 b2 : D.ob} {a2 : D.hom (F.obj c2) b2} {f2 : C.hom c1 c2} {g : D.hom b1 b2}
+  {a1 : D.hom (F.obj c1) b1} {f1 : C.hom c0 c1} {v : D.hom (F.obj c0) b1}
+  (w2 : Id (D.hom (F.obj c1) b2) (AD.cmp a2 (F.map c1 c2 f2)) (AD.cmp g a1))
+  (w1 : Id (D.hom (F.obj c0) b1) (AD.cmp a1 (F.map c0 c1 f1)) v) :
+  Id (D.hom (F.obj c0) b2) (AD.cmp a2 (F.map c0 c2 (AC.cmp f2 f1))) (AD.cmp g v) =
+  H.transH (AD.left a2 (F.map-comp c0 c1 c2 f2 f1))
+   (H.transH (AD.assoc a2 (F.map c1 c2 f2) (F.map c0 c1 f1))
+    (H.transH (AD.right w2 (F.map c0 c1 f1))
+     (H.transH (H.symH (AD.assoc g a1 (F.map c0 c1 f1))) (AD.left g w1)))) ;
+ paste1 {c0 c1 c2 : C.ob} {b : D.ob} {a2 : D.hom (F.obj c2) b} {f2 : C.hom c1 c2}
+  {a1 : D.hom (F.obj c1) b} {f1 : C.hom c0 c1} {v : D.hom (F.obj c0) b}
+  (w2 : Id (D.hom (F.obj c1) b) (AD.cmp a2 (F.map c1 c2 f2)) a1)
+  (w1 : Id (D.hom (F.obj c0) b) (AD.cmp a1 (F.map c0 c1 f1)) v) :
+  Id (D.hom (F.obj c0) b) (AD.cmp a2 (F.map c0 c2 (AC.cmp f2 f1))) v =
+  H.transH (AD.left a2 (F.map-comp c0 c1 c2 f2 f1))
+   (H.transH (AD.assoc a2 (F.map c1 c2 f2) (F.map c0 c1 f1))
+    (H.transH (AD.right w2 (F.map c0 c1 f1)) w1)) ;
+} ;

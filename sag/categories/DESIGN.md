@@ -4,7 +4,8 @@ Design: `doc/univalent-categories.tex`.  This file states the informal
 mathematics each `.seg` file follows; every declaration is a step or a
 lemma below.  Setting: the `Theory` segment of `All.seg` (univalence and
 replacement, the parameters of `sag/replacement`); function extensionality
-is not used in the first milestone.  No other axiom.
+`fe` is derived from univalence in `Theory` as in `sag/replacement`, and is
+used from §4 on (not in §1-3).  No other axiom.
 
 Universe bounds.  A category `C : Category[k,l]` has objects in `U k`
 and arrows in `U l`; "small" means in `U l`.  Nothing forces `l <= k`
@@ -112,7 +113,14 @@ the isomorphisms of a category with hom sets the functions) gives a
 categorical instance.  Neither proves the universal property of the
 completion (§4).
 
-## 4. The universal property of the completion (planned, not yet code)
+## 4. The universal property of the completion
+
+Files: `Arrows.seg` (arrows with hidden objects: laws, isos, cancellation,
+`square-inv`), `Functor.seg` (`EssSurj`, `SplitEssSurj`, `Maps`: functors
+preserve isos; `Faithful`: `pre`, `faithful`, `reflect-iso`, `lift`,
+`unique`, `paste`), `FunctorCat.seg` (4.1), `PrecomposeFF.seg` (4.2),
+`Descent.seg` (4.3), `UniversalProperty.seg` (4.4), `CompletionUP.seg`
+(4.5); `completion.opens` records what each declaration opens.
 
 After HoTT book §9.9 (Lemmas 9.9.1-9.9.2, Theorem 9.9.4), stated for an
 arbitrary weak equivalence and then instantiated at `q : C_F -> D_F`.
@@ -142,10 +150,11 @@ are componentwise; the laws hold componentwise.  This is the precategory
 `G |-> G o q` and `(q^* alpha)_c = alpha_{qc}`; it is a functor by
 definition (refl lemmas).
 
-Universe bounds: `B : Precategory[kB,lB]`, `C : Precategory[kC,lC]`,
-`E : Category[kE,lE]`.  `Fun(B,E)` has objects in `U (kB \/ lB \/ kE \/ lE)`
-and arrows in `U (kB \/ lB \/ lE)`.  At `C_F`, `D_F` all of `kB, lB, kC,
-lC` are `l`.
+Universe bounds: `B, C : Precategory[k,l]`, `E : Category[m,n]` (at
+`C_F`, `D_F` both `k` and `l` are `l`), and a level `j` with
+`k, l, m, n <= j` (constraints); `Fun(B,E) : Precategory[j,j]`, and
+function extensionality is used at `j`.  Its objects are in
+`U (k \/ l \/ m \/ n)` and arrows in `U (k \/ l \/ n)`, which `j` bounds.
 
 ### 4.2 Lemma A (q^* is fully faithful)
 
@@ -153,8 +162,16 @@ For `G, H : B -> E`, `alpha |-> q^* alpha : Nat(G,H) -> Nat(Gq,Hq)` is an
 equivalence.  `E` need only be a precategory here.
 
 *Proof.*  Fix `beta : Nat(Gq,Hq)`.  For `b : B` let
-  `T_b = (gamma : E(Gb,Hb)) * ((c : C) (e : Iso_B(qc,b)) ->
-                                 gamma o G e = H e o beta_c)`.
+  `T_b = (gamma : E(Gb,Hb)) * ((c : C) (u : B(qc,b)) ->
+                                 gamma o G u = H u o beta_c)`,
+the condition at every arrow `u`, not only at isos (this makes (iii)
+need one chosen `(c, e)`).
+
+(transfer) If `u' o q f = u` (`f : C(c,c')`) and the condition holds at
+`(c', u')`, it holds at `(c, u)`:
+  `gamma o G u = (gamma o G u') o G q f = H u' o beta_c' o G q f
+              = H u' o H q f o beta_c = H u o beta_c`
+(functoriality, naturality of `beta` at `f`).
 
 (i) `T_b` is a proposition.  The second component is a proposition (hom
 sets, fe), so it suffices that `gamma = gamma'` for two elements; this is a
@@ -162,31 +179,28 @@ proposition, so merely pick `(c, e)`.  Then `gamma o Ge = He o beta_c =
 gamma' o Ge`, and `Ge` is an iso, so `gamma = gamma'`.
 
 (ii) `T_b` is inhabited.  It is a proposition, so merely pick `(c0, e0)`.
-Put `gamma0 = H e0 o beta_c0 o G(e0^-1)`.  For `(c, e)`: by fullness
-`e0^-1 o e = q f` with `f : C(c,c0)`.  Then
-  `gamma0 o Ge = H e0 o beta_c0 o G(q f) = H e0 o H(q f) o beta_c
-              = H(e0 o e0^-1 o e) o beta_c = H e o beta_c`
-(functoriality of `G`, `H`; naturality of `beta` at `f`).
+Put `gamma0 = (H e0 o beta_c0) o G(e0^-1)`; then `gamma0 o G e0 =
+H e0 o beta_c0`.  For `(c, u)`: by fullness `u = e0 o q f` with
+`f = lift e0 u : C(c,c0)` (the preimage of `e0^-1 o u`); apply transfer.
 
 Let `alpha_b` be the first component of the element of `T_b`; so
-`alpha_b o Ge = He o beta_c` for all `(c, e)` (*).
+`alpha_b o Gu = Hu o beta_c` for all `(c, u)` (*).
 
 (iii) `alpha` is natural.  For `g : B(b,b')` the equation is a proposition;
-merely pick `(c, e)` for `b` and `(c', e')` for `b'`, and by fullness
-`e'^-1 o g o e = q f`, `f : C(c,c')`.  By (*) at `b'` and at `b`,
-  `alpha_b' o Gg o Ge = alpha_b' o G e' o G(q f) = He' o beta_c' o Gq f
-     = He' o Hq f o beta_c = H g o He o beta_c = Hg o alpha_b o Ge`,
+merely pick `(c, e)` for `b`.  By (*) at `b` and at `(c, g o e)` for `b'`,
+  `(Hg o alpha_b) o Ge = Hg o He o beta_c = H(g o e) o beta_c
+     = alpha_b' o G(g o e) = (alpha_b' o Gg) o Ge`,
 and `Ge` is an iso.
 
 (iv) `q^* alpha = beta`: (*) at `(c, 1_{qc})` gives `alpha_{qc} = beta_c`
 (`G 1 = 1`, `H 1 = 1`).
 
 (v) Uniqueness.  If `alpha'` is natural with `q^* alpha' = beta`, then
-`(alpha'_b, -)` is in `T_b`: naturality of `alpha'` at `e` gives
-`alpha'_b o Ge = He o alpha'_{qc} = He o beta_c`.  By (i)
+`(alpha'_b, -)` is in `T_b`: naturality of `alpha'` at `u` gives
+`alpha'_b o Gu = Hu o alpha'_{qc} = Hu o beta_c`.  By (i)
 `alpha'_b = alpha_b`, so `alpha' = alpha` (4.1).
 
-So the fibre of `q^*` over every `beta` is contractible.  QED.
+So `beta |-> alpha` is inverse to `q^*` ((iv), (v)).  QED.
 
 ### 4.3 Lemma B (descent of functors)
 
@@ -202,6 +216,11 @@ contractible is a proposition, so merely pick `(c0, e0)`.  The map
   `X_b -> (x : E.ob) * Iso_E(Gc0, x)`,   `(x, h, k) |-> (x, h c0 e0)`
 is an equivalence, and its codomain is contractible (univalence of `E`:
 it is equivalent to the based path space `(x : E.ob) * (Gc0 = x)`).
+Formally only the retraction is used: `X_b` is a retract of
+`(x : E.ob) * Iso_E(Gc0, x)`, itself a retract of the based path space,
+so `X_b` is a proposition (eliminating the truncation into the
+proposition "`X_b` is a proposition"), and it is inhabited by the image
+of `(G c0, 1)`.
 Inverse: `(x, phi)` goes to `h c e = phi o G f` where `q f = e0^-1 o e`
 (`f` is an iso as `q` reflects isos, so `h c e` is one); `k` holds since
 `e' o q f = e` gives `q (f'_e' o f) = q f_e` hence `f_e' o f = f_e`
@@ -281,5 +300,6 @@ it is essentially surjective by `generated` (§3.1), composing with `t`.
 Hence `q^* : Fun(D_F,E) ~ Fun(C_F,E)` for every category `E` (4.4), and,
 `D_F` being a category, the corollary applies.
 
-Order of work: 4.1, Lemma A, Lemma B, Theorem 4.4, instance 4.5; then
-univalence of functor categories and the corollary.
+Order of work: 4.1, Lemma A, Lemma B, Theorem 4.4, instance 4.5 (done,
+checked); then univalence of functor categories and the corollary (not
+done).
