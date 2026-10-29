@@ -1,32 +1,46 @@
 -- Effective small quotients of proposition-valued equivalence relations.
--- Derived from univalence and replacement; no quotient axiom.
+-- Derived from replacement, function extensionality and univalence for
+-- propositions (propUA); no quotient axiom, no univalence.
+--
+-- The quotient of A by rel is the image (replacement) of
+--     family : A -> (A -> Prop),  a |-> (x |-> rel x a),
+-- where Prop = (X : U l) * isProp X.  The image exists because A -> Prop
+-- is locally small: a path f = g is the same as a pointwise logical
+-- equivalence (PropFamilies), since both are propositions and there are
+-- maps both ways (funext and propUA one way, transport the other; Hedberg
+-- for the paths).
 level l ;
 open Base ; open Prelude[l] ;
 module H = Prelude[l+] ;
 module F = Axioms[l].FunExtLemmas[fe @l] ;
 module G = Axioms[l+].FunExtLemmas[fe @(l+)] ;
-module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
 module Rep = Replacement[l,l+] ;
 
-module FunctionSmall (A : U l) (f g : A -> U l) {
-  E : U l = (a : A) -> Equiv (f a) (g a) ;
-  Path : U l+ = Id (A -> U l) f g ;
-  encode (p : Path) : E = \ a -> Axioms[l].idtoeqv (f a) (g a) (H.happly A (\ a -> U l) f g p a) ;
-  decode (e : E) : Path = G.funext A (\ a -> U l) f g (\ a -> UA.ua (f a) (g a) (e a)) ;
-  ed (e : E) : Id E (encode (decode e)) e = F.funext A (\ a -> Equiv (f a) (g a)) _ e (\ a ->
-    trans _ _ _ _
-      (H.ap _ _ (Axioms[l].idtoeqv (f a) (g a)) _ _
-        (H.happly A (\ a -> Id (U l) (f a) (g a)) _ _
-          (G.happly-funext A (\ a -> U l) f g (\ a -> UA.ua (f a) (g a) (e a))) a))
-      ((univ @l (f a) (g a)).sec-eq (e a))) ;
-  de (p : Path) : Id Path (decode (encode p)) p = H.trans _ _ _ _
-    (H.ap ((a : A) -> Id (U l) (f a) (g a)) Path (G.funext A (\ a -> U l) f g)
-      (\ a -> UA.ua (f a) (g a) (encode p a)) (\ a -> H.happly A (\ a -> U l) f g p a)
-      (G.funext A (\ a -> Id (U l) (f a) (g a)) _ _ (\ a ->
-        H.sec-ret _ _ (Axioms[l].idtoeqv (f a) (g a)) (univ @l (f a) (g a))
-          (H.happly A (\ a -> U l) f g p a))))
-    (G.funext-happly A (\ a -> U l) f g p) ;
-  small : Rep.Small Path = (E,(decode,H.qinv E Path decode encode de ed)) ;
+Prop : U l+ = (X : U l) * isProp X ;
+
+-- a logical equivalence of propositions is a path in Prop
+prop-path (P Q : Prop) (u : P.1 -> Q.1) (v : Q.1 -> P.1) : Id Prop P Q =
+  H.Sigma-eq (U l) (\ X -> isProp X) P.1 Q.1 P.2 Q.2
+    ((propUA @l P.1 Q.1 P.2 Q.2).sec (u, qinv P.1 Q.1 u v (\ y -> Q.2 (u (v y)) y) (\ x -> P.2 (v (u x)) x)))
+    (F.isProp-isProp Q.1) ;
+
+-- paths between families of propositions, from f
+module PropFamilies (A : U l) (f : A -> Prop) {
+  Logical (g : A -> Prop) : U l = (a : A) -> ((f a).1 -> (g a).1) * ((g a).1 -> (f a).1) ;
+  logical-prop (g : A -> Prop) : isProp (Logical g) = F.isProp-Pi A (\ a -> ((f a).1 -> (g a).1) * ((g a).1 -> (f a).1)) (\ a ->
+    isProp-Sigma ((f a).1 -> (g a).1) (\ u -> (g a).1 -> (f a).1)
+      (F.isProp-Pi (f a).1 (\ u -> (g a).1) (\ u -> (g a).2))
+      (\ u -> F.isProp-Pi (g a).1 (\ v -> (f a).1) (\ v -> (f a).2))) ;
+  logical-refl : Logical f = \ a -> (\ x -> x, \ x -> x) ;
+  decode (g : A -> Prop) (h : Logical g) : Id (A -> Prop) f g =
+    G.funext A (\ a -> Prop) f g (\ a -> prop-path (f a) (g a) (h a).1 (h a).2) ;
+  encode (g : A -> Prop) (p : Id (A -> Prop) f g) : Logical g =
+    H.subst (A -> Prop) (\ k -> Logical k) f g p logical-refl ;
+  path-prop (g : A -> Prop) : H.isProp (Id (A -> Prop) f g) =
+    H.Hedberg[A -> Prop, f, \ k -> Logical k, logical-prop, logical-refl, decode].hedberg g ;
+  small (g : A -> Prop) : Rep.Small (Id (A -> Prop) f g) =
+    (Logical g,(decode g,H.qinv (Logical g) (Id (A -> Prop) f g) (decode g) (encode g)
+      (\ p -> path-prop g (decode g (encode g p)) p) (\ h -> logical-prop g (encode g (decode g h)) h))) ;
 } ;
 
 module Quot (A : U l) (rel : A -> A -> U l)
@@ -34,42 +48,31 @@ module Quot (A : U l) (rel : A -> A -> U l)
  (rr : (a : A) -> rel a a)
  (rs : (a b : A) -> rel a b -> rel b a)
  (rt : (a b c : A) -> rel a b -> rel b c -> rel a c) {
-  small : Rep.LocallySmall (A -> U l) = \ f g -> FunctionSmall[A,f,g].small ;
-  family (a : A) : A -> U l = \ x -> rel x a ;
-  image : Rep.Image[A,A -> U l,family] = images @l @(l+) A (A -> U l) small family ;
+  small : Rep.LocallySmall (A -> Prop) = \ f g -> PropFamilies[A,f].small g ;
+  family (a : A) : A -> Prop = \ x -> (rel x a, prop x a) ;
+  image : Rep.Image[A,A -> Prop,family] = images @l @(l+) A (A -> Prop) small family ;
   Q : U l = image.carrier ;
   inc : A -> Q = image.quotient ;
-  code : Q -> A -> U l = image.inclusion ;
+  code (q : Q) (a : A) : U l = (image.inclusion q a).1 ;
   induction : [j] (P : Q -> U j) -> ((q : Q) -> Prelude[j].isProp (P q)) ->
     ((a : A) -> P (inc a)) -> (q : Q) -> P q = <j> \ P p b ->
-    (surjections @l @(l+) @j A (A -> U l) small family P p).sec b ;
-  code-prop (q : Q) : (a : A) -> isProp (code q a) =
-    induction @l (\ q -> (a : A) -> isProp (code q a))
-      (\ q -> F.isProp-Pi A (\ a -> isProp (code q a)) (\ a -> F.isProp-isProp (code q a)))
-      (\ b -> H.subst (A -> U l) (\ f -> (a : A) -> isProp (f a))
-        (family b) (code (inc b)) (H.sym _ _ _ (image.triangle b)) (\ a -> prop a b)) q ;
-  Logical (q r : Q) : U l = (a : A) -> ((code q a -> code r a) * (code r a -> code q a)) ;
-  logical-prop (q r : Q) : isProp (Logical q r) = F.isProp-Pi A (\ a -> ((code q a -> code r a) * (code r a -> code q a))) (\ a ->
-    isProp-Sigma (code q a -> code r a) (\ u -> code r a -> code q a)
-      (F.isProp-Pi (code q a) (\ u -> code r a) (\ u -> code-prop r a))
-      (\ u -> F.isProp-Pi (code r a) (\ v -> code q a) (\ v -> code-prop q a))) ;
+    (surjections @l @(l+) @j A (A -> Prop) small family P p).sec b ;
+  code-prop (q : Q) (a : A) : isProp (code q a) = (image.inclusion q a).2 ;
+  Logical (q r : Q) : U l = PropFamilies[A,image.inclusion q].Logical (image.inclusion r) ;
+  logical-prop (q r : Q) : isProp (Logical q r) = PropFamilies[A,image.inclusion q].logical-prop (image.inclusion r) ;
   logical-path (q r : Q) (h : Logical q r) : Id Q q r = (image.embedding q r).sec
-    (G.funext A (\ a -> U l) (code q) (code r) (\ a ->
-      UA.ua _ _ ((h a).1,qinv _ _ (h a).1 (h a).2
-        (\ v -> code-prop r a _ v) (\ u -> code-prop q a _ u)))) ;
+    (PropFamilies[A,image.inclusion q].decode (image.inclusion r) h) ;
   set : isSet Q = \ q -> Hedberg[Q,q,Logical q,logical-prop q,
     \ a -> (\ u -> u,\ u -> u),logical-path q].hedberg ;
   relates (a b : A) (h : rel a b) : Id Q (inc a) (inc b) = (image.embedding (inc a) (inc b)).sec
     (H.trans _ _ _ _ (image.triangle a)
       (H.trans _ _ _ _
-        (G.funext A (\ x -> U l) (family a) (family b) (\ x -> UA.ua _ _
-          (\ u -> rt x a b u h,qinv (rel x a) (rel x b) (\ u -> rt x a b u h) (\ v -> rt x b a v (rs a b h))
-            (\ v -> prop x b _ v) (\ u -> prop x a _ u))))
+        (PropFamilies[A,family a].decode (family b) (\ x -> (\ u -> rt x a b u h,\ v -> rt x b a v (rs a b h))))
         (H.sym _ _ _ (image.triangle b)))) ;
   effective (a b : A) (p : Id Q (inc a) (inc b)) : rel a b =
-    H.subst (A -> U l) (\ f -> f a) (family a) (family b)
+    H.subst (A -> Prop) (\ f -> (f a).1) (family a) (family b)
       (H.trans _ _ _ _ (H.sym _ _ _ (image.triangle a))
-        (H.trans _ _ _ _ (H.ap Q (A -> U l) code _ _ p) (image.triangle b))) (rr a) ;
+        (H.trans _ _ _ _ (H.ap Q (A -> Prop) image.inclusion _ _ p) (image.triangle b))) (rr a) ;
 
   module Descend (B : U l) (sB : isSet B) (f : A -> B)
     (respect : (a b : A) -> rel a b -> Id B (f a) (f b)) {
