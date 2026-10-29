@@ -7,7 +7,8 @@ The categorical packaging of sag/presentations with sag/categories; the
 informal proofs are in DESIGN.md and at the head of each file.  Every
 dependency is linked unchanged (core, sag/replacement, sag/categories,
 sag/sip/SipGeneric, sag/polynomial, sag/projective/Quotient,
-sag/presentations); Equivalences is sag/categories'.  Theory as in
+sag/presentations); both Equivalences (sag/presentations) and EquivalenceLemmas
+(sag/categories) are linked.  Theory as in
 sag/presentations: univalence and the two parts of replacement, fe and
 propUA derived from univalence; no new axioms.
 
@@ -23,6 +24,8 @@ propUA derived from univalence; no new axioms.
   FPImage          interpret p = PresentedAlgebra[l].Over[R,setR,p].algebra;
                    SFI = SmallImage[l+,l].SmallFullImage[category, codes,
                    interpret]; characterisation; automorphisms
+  FPComparison     comparison A : (A in the image) ~ Presentations.FP A
+                   (PresentationComparison; transport along isotoid)
   FPDescent        CU = CompletionUP[l+,l,m,n,j].Instance[category, codes,
                    interpret]; descent E
 
@@ -51,8 +54,10 @@ are global, so independently written developments can collide:
    Descent; All.seg imports them before sag/categories' file Descent.
  - sag/categories' CompletionUP had a nested module Universal, the name of
    sag/polynomial's file Universal; it is now CompletionUP.Instance.ForEvery.
- - sag/presentations and sag/categories each have a file Equivalences with
-   different contents; this directory uses sag/categories'.
+ - sag/presentations and sag/categories each had a file Equivalences with
+   different contents; sag/categories' is now EquivalenceLemmas, and both
+   are linked here (PresentationComparison uses Equivalences.injective).
 
-Open: "A in the image" vs Presentations.FP A (needs PresentationComparison,
-which uses sag/presentations' Equivalences; see DESIGN.md §5).
+Comparison (FPComparison.Over.comparison A).  A in the image ~ FP A, an
+equivalence of propositions in U (l+1); so the objects of SFI.category are
+exactly the finitely presented algebras (FP, universal-property form).

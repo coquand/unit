@@ -117,10 +117,23 @@ gives:
 
 **Checkpoint 2.**
 
-Not done here: identifying "A lies in the image" with the universal-property
-predicate `Presentations.FP A`.  One direction transports `Presents p (F p)`
-along an iso; the other uses `PresentationComparison` (two algebras with the
-same presentation are isomorphic).
+**Comparison with FP (FPComparison).**  For every algebra A,
+
+  A lies in the image  ~  FP A,
+
+an equivalence of propositions.
+* FP A -> image.  Eliminate the truncation (the target is a proposition).
+  A witness is p with Presents p A.  F p also has presentation p
+  (`PresentationExistence.presentation`), so `PresentationComparison` gives
+  algebra maps F p -> A -> F p that are inverse to each other, i.e. an iso
+  F p ~ A.  Then (p, iso) is a generator, and A lies in the image.
+* image -> FP A.  A lies in the image, so merely there is p with an iso
+  i : F p ~ A.  By univalence of the category of algebras (§4), i gives a
+  path F p = A, and transporting Presents p (F p) along it gives
+  Presents p A.
+
+So the objects of the small category are exactly the algebras that are
+finitely presented in the sense of the universal-property predicate FP.
 
 ## 6. Descent of functors on codes (FPDescent)
 

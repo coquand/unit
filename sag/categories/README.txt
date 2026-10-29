@@ -11,7 +11,7 @@ from DESIGN.md §4 on.  Base, Prelude, Paths, Axioms, FunExtUA link to core;
 Replacement, Truncation, TruncationCombinators link to sag/replacement.
 Nothing outside this directory is modified.
 
-  Equivalences   inverse, compose, homotopy, then, conjugate, lower
+  EquivalenceLemmas  inverse, compose, homotopy, then, conjugate, lower
   Category       Precategory (Iso, idtoiso), Univalent, Category (isotoid),
                  Singletons (Singl x), FromTotal (univalent when every Singl x
                  is a proposition), Objects: locally-small (replacement's
