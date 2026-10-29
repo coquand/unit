@@ -121,6 +121,26 @@ For `U : L_R`, indexed by ring elements, not by basic opens:
   invertibility open needs a finite presentation of `U`: eliminate into the
   proposition "there is a unique invertibility supremum".
 
+Order of work (review of 2026-10-29), three stages kept distinct:
+
+1. **Abstract invertibility opens**, over any `RingedLattice` sheaf:
+   `IsInvOpen u s v` iff `v ≤ u` and, for all `w ≤ u`,
+   `w ≤ v ⇔ s|w is invertible`. Prove uniqueness and compatibility with
+   restriction *before* imposing any support laws.
+2. **Invertibility support on Spec A.** On a basic open `D g`, a fraction
+   `a/gⁿ` has invertibility open `D(ga)`: prove this characterisation first;
+   uniqueness of invertibility opens makes it independent of the fraction
+   chosen. For an arbitrary `u`, take a finite presentation and join the
+   local invertibility opens, eliminating the presentation into unique
+   existence (as in `Sheaf` and `Extension`).
+3. **Locally ringed lattices and their morphisms.** Require the support laws
+   on the invertibility map; define morphisms by preservation of the
+   invertibility support. Then package the affine construction as `Spec A`.
+
+The doubled-origin line follows directly: its invertibility support is
+componentwise, and agreement on the overlap follows from compatibility with
+restriction.
+
 ## Step 5 — Γ ⊣ Spec, affine and qcqs schemes
 
 - The concrete correspondence is primary (it avoids the conventions: in
