@@ -177,7 +177,7 @@ algebraic infrastructure only.
 
 ## Status
 
-Checked (`../../segc qcqs all`: 49 modules, 0 failed, about 0.5 s):
+Checked (`../../segc qcqs all`: 53 modules, 0 failed, about 0.6 s):
 
 - `RingMaps`: named parts of a ring map (`map`, `map-one`, `map-add`, `map-mul`,
   `map-zero`, `map-neg`; `map-identity`, `map-compose` by definition).
@@ -282,6 +282,56 @@ Checked (`../../segc qcqs all`: 49 modules, 0 failed, about 0.5 s):
   the `π(D(g a_j))`); `extend`, `extend-fits`, `unique`; then by uniqueness:
   `extension-map` (a ring map), `extend-restrict`, `extend-basic`
   (`= φ_g ∘ eval` on `D g`), `Unique.agrees` (the only such family).
+
+- `InvOpen` (step 4, stage 1; `On[M].Of[G]`, any presheaf of rings):
+  `Unit`, `IsInvOpen u s v` (`below`, `to-unit`, `from-unit`; clauses
+  `Forward`/`Backward`), a proposition; `unit-on`, **`unique`** (Remark
+  3.3), `InvOpen`/`inv-open-prop`, `InvMap`/`inv-map-prop`;
+  `Restrict.restrict` (`w ∧ v` is the open of `s|w`) and `restrict-eq`;
+  `whole` (a unit is invertible everywhere); `res-twice`, `unit-twice`,
+  `unit-once`, `unit-restrict`. In a sheaf (`Local[sheaf]`): `Units` (units
+  are local), `Basis[B,el].Criterion` (test on a basis), `Join`
+  (`D_{⋁uᵢ}(s) = ⋁ D_{uᵢ}(s|uᵢ)`). No support law used. Also
+  `DistLattice.Joins.meet-cover`.
+- `SpecInv` (stage 2): `Units[h]` (units of O(D h) = units of R_h via
+  evaluation), `Fraction` (for `x = a/gⁿ`, `D h ≤ D g`: `ρ(x)` unit ⇔
+  `D h ≤ D(ga)`), `basis`, `Basic[g,s]` (`D(ga)` is the open; `on-fraction`:
+  independent of the fraction), `General[u,s]` (presentation + `Join`),
+  `inv-map`, locked after its definition.
+- `LocallyRinged` (stage 3): `Laws[G,inv]`: `d`, `d-open`; **`one-law` and
+  `mul-law` hold for every invertibility map**, so the conditions are
+  `ZeroLaw` and `AddLaw`; `IsSupport` (Def. 3.4), `support`; record
+  `LocallyRinged` (`sheaf`, `is-sheaf`, `inv`, `is-support`), which
+  packages varying sheaf data; over a fixed ringed lattice, locality (an
+  invertibility map that is a support) is a proposition. `Maps[L,M,F,G]`: record `Ringed` (`lat`, `sharp`,
+  `natural`); `Of[pi,DF,DG]`: `image-le` (Remark 3.6, `π D_u s ≤
+  D_{πu}(π♯ s)`), `IsLocal` (the converse), `local-eq`.
+- `SpecLocal` (stage 3): `Test` (an inequality tested on basic opens),
+  `zero-law` (Bridge at 0), `add-law` (fractions `a/p`, `c/q` on `D b`:
+  `f(qa+pc) = f(p)f(q)(x+y)`), and **`spec : LocallyRinged`** on `L_A`.
+
+Step 4 stages 1–3 are done (2026-10-29).
+
+Next (review of 2026-10-29), in this order:
+
+1. **Doubling along an open**, for any locally ringed lattice `(L, O)` and
+   `d : L`: `L' = {(u, v) : L² | u ∧ d = v ∧ d}` (operations
+   componentwise), sections over `(u, v)` the pairs `(s, t)` in
+   `O(u) × O(v)` with `s|(u ∧ d) = t|(v ∧ d)`. The sheaf condition, the
+   invertibility opens and the support laws are all componentwise
+   (agreement on the overlap from `InvOpen.Restrict`). No adjunction, no
+   general gluing library.
+2. Specialise to `Spec k[X]`, `d = D(X)`: the doubled-origin line.
+3. Its two chart identifications (each copy of the affine line is an open
+   of `L'` with the restricted sheaf `Spec k[X]`).
+4. The classification of its points waits until after the universal
+   property of Spec (step 5).
+
+Locks: leave `lattice` (ZariskiLattice) transparent. Clients opening it to
+`Quotient.Quot.Q` is not by itself a defect; lock it only if a small trial
+(as in `core/`) shows clearer dependencies without bookkeeping spreading into
+clients. The lock on `inv-map` stays: later proofs use its defining
+property, not its construction.
 
 Step 3 items 0–5 are done (2026-10-29): naturality of evaluation,
 presentations behind the lattice interface, separation on arbitrary opens,
