@@ -15,7 +15,9 @@
 -- (induction on n; d(b v) = d b /\ d v <= d b).
 -- x /\ (f_1 \/ .. \/ f_n) <= w when each x /\ f_i <= w, since
 -- x /\ (y \/ y') = (x /\ y) \/ (x /\ y'); a lattice map preserves finite
--- joins (induction on n).
+-- joins (induction on n).  The identity and composites of lattice maps are
+-- lattice maps.  Lattice maps carry complementary pairs (u \/ v = top,
+-- u /\ v = bot) to complementary pairs.
 level l ; open Ring[l] ; open Presentations[l] ;
 module Pr = Prelude[l] ;
 
@@ -50,6 +52,40 @@ hmap-join {D E : DLat} (h : Hom D E) (x y : D.L) :
  Id E.L (hmap h (D.join x y)) (E.join (hmap h x) (hmap h y)) = h.2.2.2.1 x y ;
 hmap-meet {D E : DLat} (h : Hom D E) (x y : D.L) :
  Id E.L (hmap h (D.meet x y)) (E.meet (hmap h x) (hmap h y)) = h.2.2.2.2 x y ;
+
+-- the identity and the composite of lattice maps
+identity (D : DLat) : Hom D D =
+ (\ x -> x,refl D.bot,refl D.top,\ x y -> refl (D.join x y),\ x y -> refl (D.meet x y)) ;
+compose (D E F : DLat) (k : Hom E F) (h : Hom D E) : Hom D F =
+ (\ x -> hmap k (hmap h x),trans (ap (hmap k) (hmap-bot h)) (hmap-bot k),trans (ap (hmap k) (hmap-top h)) (hmap-top k),
+  \ x y -> trans (ap (hmap k) (hmap-join h x y)) (hmap-join k (hmap h x) (hmap h y)),
+  \ x y -> trans (ap (hmap k) (hmap-meet h x y)) (hmap-meet k (hmap h x) (hmap h y))) ;
+hmap-identity {D : DLat} (x : D.L) : Id D.L (hmap (identity D) x) x = refl x ;
+hmap-compose {D E F : DLat} (k : Hom E F) (h : Hom D E) (x : D.L) :
+ Id F.L (hmap (compose D E F k h) x) (hmap k (hmap h x)) = refl (hmap k (hmap h x)) ;
+
+-- lattice maps form a set, and pointwise equal ones are equal (funext;
+-- the laws are equations in a set)
+module HomProperties (D E : DLat) {
+ module FE = Axioms[l].FunExtLemmas[fe @l] ;
+ JoinLaw (h : D.L -> E.L) : U l = (x y : D.L) -> Id E.L (h (D.join x y)) (E.join (h x) (h y)) ;
+ MeetLaw (h : D.L -> E.L) : U l = (x y : D.L) -> Id E.L (h (D.meet x y)) (E.meet (h x) (h y)) ;
+ Laws (h : D.L -> E.L) : U l = Id E.L (h D.bot) E.bot * Id E.L (h D.top) E.top * JoinLaw h * MeetLaw h ;
+ join-prop (h : D.L -> E.L) : Pr.isProp (JoinLaw h) =
+  FE.isProp-Pi D.L (\ x -> (y : D.L) -> Id E.L (h (D.join x y)) (E.join (h x) (h y))) (\ x ->
+   FE.isProp-Pi D.L (\ y -> Id E.L (h (D.join x y)) (E.join (h x) (h y))) (\ y -> E.setL (h (D.join x y)) (E.join (h x) (h y)))) ;
+ meet-prop (h : D.L -> E.L) : Pr.isProp (MeetLaw h) =
+  FE.isProp-Pi D.L (\ x -> (y : D.L) -> Id E.L (h (D.meet x y)) (E.meet (h x) (h y))) (\ x ->
+   FE.isProp-Pi D.L (\ y -> Id E.L (h (D.meet x y)) (E.meet (h x) (h y))) (\ y -> E.setL (h (D.meet x y)) (E.meet (h x) (h y)))) ;
+ laws-prop (h : D.L -> E.L) : Pr.isProp (Laws h) =
+  Pr.isProp-Sigma (Id E.L (h D.bot) E.bot) (\ a -> Id E.L (h D.top) E.top * JoinLaw h * MeetLaw h) (E.setL (h D.bot) E.bot) (\ a ->
+   Pr.isProp-Sigma (Id E.L (h D.top) E.top) (\ b -> JoinLaw h * MeetLaw h) (E.setL (h D.top) E.top) (\ b ->
+    Pr.isProp-Sigma (JoinLaw h) (\ c -> MeetLaw h) (join-prop h) (\ c -> meet-prop h))) ;
+ set : Pr.isSet (Hom D E) =
+  Pr.isSet-Sigma (D.L -> E.L) Laws (FE.isSet-Pi D.L (\ x -> E.L) (\ x -> E.setL)) (\ h -> Pr.prop-to-set (Laws h) (laws-prop h)) ;
+ ext (h k : Hom D E) (e : (x : D.L) -> Id E.L (hmap h x) (hmap k x)) : Id (Hom D E) h k =
+  Pr.Sigma-eq (D.L -> E.L) Laws h.1 k.1 h.2 k.2 (FE.funext D.L (\ x -> E.L) h.1 k.1 e) (laws-prop k.1) ;
+} ;
 
 module Order (D : DLat) {
  open D ;
@@ -93,6 +129,28 @@ module Order (D : DLat) {
   meet-glb x' y' (meet x y)
    (le-trans (meet x y) x x' (meet-left x y) h)
    (le-trans (meet x y) y y' (meet-right x y) k) ;
+ -- (a \/ b) \/ (c \/ e) = (a \/ c) \/ (b \/ e)
+ join-interchange (a b c e : L) : Id L (join (join a b) (join c e)) (join (join a c) (join b e)) = calc L {
+  join (join a b) (join c e) =< sym (joinA a b (join c e)) > join a (join b (join c e))
+   =< ap (join a) (joinA b c e) > join a (join (join b c) e)
+   =< ap (\ t -> join a (join t e)) (joinC b c) > join a (join (join c b) e)
+   =< ap (join a) (sym (joinA c b e)) > join a (join c (join b e))
+   =< joinA a c (join b e) > join (join a c) (join b e) } ;
+ meet-bot (x : L) : Id L (meet x bot) bot = le-antisym (meet x bot) bot (meet-right x bot) (bot-le (meet x bot)) ;
+ -- x /\ (y \/ z) <= w when x /\ y <= w and x /\ z <= w (distributivity)
+ meet-join-below (x y z w : L) (h : Le (meet x y) w) (k : Le (meet x z) w) : Le (meet x (join y z)) w =
+  Pr.subst L (\ t -> Le t w) (join (meet x y) (meet x z)) (meet x (join y z)) (sym (dist x y z))
+   (join-lub (meet x y) (meet x z) w h k) ;
+ -- (p \/ q) /\ (r \/ s) <= w when the four meets p /\ r, p /\ s, q /\ r, q /\ s are
+ meet-joins-below (p q r s w : L) (h1 : Le (meet p r) w) (h2 : Le (meet p s) w) (h3 : Le (meet q r) w)
+  (h4 : Le (meet q s) w) : Le (meet (join p q) (join r s)) w =
+  meet-join-below (join p q) r s w
+   (Pr.subst L (\ t -> Le t w) (meet r (join p q)) (meet (join p q) r) (meetC r (join p q))
+    (meet-join-below r p q w (Pr.subst L (\ t -> Le t w) (meet p r) (meet r p) (meetC p r) h1)
+     (Pr.subst L (\ t -> Le t w) (meet q r) (meet r q) (meetC q r) h3)))
+   (Pr.subst L (\ t -> Le t w) (meet s (join p q)) (meet (join p q) s) (meetC s (join p q))
+    (meet-join-below s p q w (Pr.subst L (\ t -> Le t w) (meet p s) (meet s p) (meetC p s) h2)
+     (Pr.subst L (\ t -> Le t w) (meet q s) (meet s q) (meetC q s) h4))) ;
 }
 ;
 
@@ -125,6 +183,12 @@ module Joins (D : DLat) {
   O.le-trans w (meet w (bigJ n f)) (bigJ n (\ i -> meet w (f i)))
    (O.meet-glb w (bigJ n f) w (O.le-refl w) h)
    (meet-below w n f (bigJ n (\ i -> meet w (f i))) (\ i -> below n (\ j -> meet w (f j)) i)) ;
+ -- (f_1 \/ .. \/ f_n) /\ y <= (f_1 /\ y) \/ .. \/ (f_n /\ y)
+ meet-join-right (n : Nat) (f : Fin n -> L) (y : L) : O.Le (meet (bigJ n f) y) (bigJ n (\ i -> meet (f i) y)) =
+  Pr.subst L (\ t -> O.Le t (bigJ n (\ i -> meet (f i) y))) (meet y (bigJ n f)) (meet (bigJ n f) y) (meetC y (bigJ n f))
+   (meet-below y n f (bigJ n (\ i -> meet (f i) y)) (\ i ->
+    O.le-trans (meet y (f i)) (meet (f i) y) (bigJ n (\ j -> meet (f j) y))
+     (O.le-of-eq (meet y (f i)) (meet (f i) y) (meetC y (f i))) (below n (\ j -> meet (f j) y) i))) ;
  -- (f_1 \/ .. \/ f_n) /\ (g_1 \/ .. \/ g_m) <= w when every f_i /\ g_j <= w
  meet-joins (n : Nat) (f : Fin n -> L) (m : Nat) (g : Fin m -> L) (w : L)
   (h : (i : Fin n) (j : Fin m) -> O.Le (meet (f i) (g j)) w) : O.Le (meet (bigJ n f) (bigJ m g)) w =
@@ -132,6 +196,43 @@ module Joins (D : DLat) {
    Pr.subst L (\ t -> O.Le t w) (meet (g j) (bigJ n f)) (meet (bigJ n f) (g j)) (meetC (g j) (bigJ n f))
     (meet-below (g j) n f w (\ i ->
       Pr.subst L (\ t -> O.Le t w) (meet (f i) (g j)) (meet (g j) (f i)) (meetC (f i) (g j)) (h i j)))) ;
+}
+;
+
+-- complementary pairs: u \/ v = top and u /\ v = bot; a lattice map carries
+-- them to complementary pairs, and mutually inverse lattice maps give a
+-- bijection
+module Complements (D : DLat) {
+ Complementary (p : D.L * D.L) : U l = Id D.L (D.join p.1 p.2) D.top * Id D.L (D.meet p.1 p.2) D.bot ;
+ Pairs : U l = (p : D.L * D.L) * Complementary p ;
+ complementary-prop (p : D.L * D.L) : Pr.isProp (Complementary p) =
+  Pr.isProp-Sigma (Id D.L (D.join p.1 p.2) D.top) (\ c -> Id D.L (D.meet p.1 p.2) D.bot)
+   (D.setL (D.join p.1 p.2) D.top) (\ c -> D.setL (D.meet p.1 p.2) D.bot) ;
+ pair-ext (c c2 : Pairs) (e1 : Id D.L c.1.1 c2.1.1) (e2 : Id D.L c.1.2 c2.1.2) : Id Pairs c c2 =
+  Pr.Sigma-eq (D.L * D.L) Complementary c.1 c2.1 c.2 c2.2
+   (calc (D.L * D.L) { c.1 =< ap (\ a -> (a,c.1.2)) e1 > (c2.1.1,c.1.2) =< ap (\ b -> (c2.1.1,b)) e2 > c2.1 })
+   (complementary-prop c2.1) ;
+ exchange (u v : D.L) (c : Complementary (u,v)) : Complementary (v,u) =
+  (trans (D.joinC v u) c.1,trans (D.meetC v u) c.2) ;
+}
+;
+module ComplementMaps (D E : DLat) (h : Hom D E) {
+ module CD = Complements[D] ; module CE = Complements[E] ;
+ image (c : CD.Pairs) : CE.Pairs =
+  ((hmap h c.1.1,hmap h c.1.2),
+   trans (sym (hmap-join h c.1.1 c.1.2)) (trans (ap (hmap h) c.2.1) (hmap-top h)),
+   trans (sym (hmap-meet h c.1.1 c.1.2)) (trans (ap (hmap h) c.2.2) (hmap-bot h))) ;
+}
+;
+-- mutually inverse lattice maps
+module ComplementIso (D E : DLat) (h : Hom D E) (k : Hom E D)
+ (kh : (x : D.L) -> Id D.L (hmap k (hmap h x)) x) (hk : (y : E.L) -> Id E.L (hmap h (hmap k y)) y) {
+ module CD = Complements[D] ; module CE = Complements[E] ;
+ module H = ComplementMaps[D,E,h] ; module K = ComplementMaps[E,D,k] ;
+ equivalence : Pr.isEquiv CD.Pairs CE.Pairs H.image =
+  Pr.qinv CD.Pairs CE.Pairs H.image K.image
+   (\ c -> CE.pair-ext (H.image (K.image c)) c (hk c.1.1) (hk c.1.2))
+   (\ c -> CD.pair-ext (K.image (H.image c)) c (kh c.1.1) (kh c.1.2)) ;
 }
 ;
 
@@ -179,3 +280,28 @@ module Supports (A : CRing) (D : DLat) {
  } ;
 }
 ;
+
+-- a ring map followed by a support, and a support followed by a lattice
+-- map, are supports
+module SupportMaps (A B : CRing) (D : DLat) {
+ module O = Order[D] ;
+ module Pull (phi : RingHom[l].Hom A B) (d : B.R -> D.L) (sd : Supports[B,D].Support d) {
+  module S = Supports[B,D].Of[d,sd] ;
+  support : Supports[A,D].Support (\ x -> d (phi.1 x)) =
+   (trans (ap d phi.2.1) S.at-one,
+    trans (ap d (RingHom[l].zero A B phi)) S.at-zero,
+    \ x y -> trans (ap d (phi.2.2.2 x y)) (S.at-mul (phi.1 x) (phi.1 y)),
+    \ x y -> Pr.subst B.R (\ t -> O.Le (d t) (D.join (d (phi.1 x)) (d (phi.1 y)))) _ _ (sym (phi.2.2.1 x y))
+     (S.at-add (phi.1 x) (phi.1 y))) ;
+ } ;
+} ;
+module SupportAfter (A : CRing) (D E : DLat) (h : Hom D E) (d : A.R -> D.L) (sd : Supports[A,D].Support d) {
+ module S = Supports[A,D].Of[d,sd] ;
+ support : Supports[A,E].Support (\ x -> hmap h (d x)) =
+  (trans (ap (hmap h) S.at-one) (hmap-top h),
+   trans (ap (hmap h) S.at-zero) (hmap-bot h),
+   \ x y -> trans (ap (hmap h) (S.at-mul x y)) (hmap-meet h (d x) (d y)),
+   \ x y -> Pr.subst E.L (\ t -> Order[E].Le (hmap h (d (A.add x y))) t) _ _ (hmap-join h (d x) (d y))
+    (JoinMaps[D,E,h].monotone (d (A.add x y)) (D.join (d x) (d y)) (S.at-add x y))) ;
+} ;
+
