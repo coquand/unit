@@ -33,6 +33,10 @@ eliminated at level k \/ l (to-fibre).
 smallimage.opens records, per declaration, the definitions the text
 opens (seg All.seg --opens smallimage.opens: nothing else opened).
 
-Not done here: the universal property of the completion (Rezk completion,
-doc/univalent-categories.tex Theorem 3.1); Completion.seg in
-sag/replacement is the case D = U l, not that universal property.
+Completion.seg in sag/replacement is the same image argument for a family
+of arbitrary types (paths ~ equivalences, which need not form sets), so it
+is not literally the case D = U l of the theorem; restricted to families of
+sets it is a categorical instance.
+
+Not done here: the universal property of the completion (DESIGN.md §4,
+doc/univalent-categories.tex Theorem 3.1).
