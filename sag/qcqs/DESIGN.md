@@ -157,7 +157,7 @@ algebraic infrastructure only.
 
 ## Status
 
-Checked (`../../segc qcqs all`: 47 modules, 0 failed, 0.36 s):
+Checked (`../../segc qcqs all`: 49 modules, 0 failed, about 0.5 s):
 
 - `RingMaps`: named parts of a ring map (`map`, `map-one`, `map-add`, `map-mul`,
   `map-zero`, `map-neg`; `map-identity`, `map-compose` by definition).
@@ -246,17 +246,31 @@ Checked (`../../segc qcqs all`: 47 modules, 0 failed, 0.36 s):
   cover included). Built one component at a time: `Glued g` (y ∈ O(D g)
   agreeing with each x_i on `D g ∧ u_i`) is a proposition (`glued-prop`);
   `Basic.Refined` glues over a refinement with `Gluing.sheaf`;
-  `component g = eval(y_g)`, compatible by `natural` and `glued-prop`.
+  `component g = eval(y_g)`, compatible by `natural` and `glued-prop`. `structure`/`structure-sheaf`: O as an instance of `RingedLattice`.
+- `RingedLattice` (`On[M]`): the concrete interface for sheaves of rings on a
+  distributive lattice: record `Presheaf` (`ring`, `ring-set`, `res`,
+  `res-id`, `res-comp`); `Of[G]`: `restrict`, `res-irr`, `Cover[..]` with
+  `Compatible`, `Matches`, `Amalgam`, `restrictions(-compatible)`, and
+  `IsSheaf` (every finite cover, the empty one included);
+  `Sheaf[G,sheaf].Cover`: `glue`, `separated`. Also in `DistLattice`:
+  `le-of-eq`, `JoinMaps.monotone`.
+- `Extension` (`Over[..,M,G,sheafG,pi].Extend[phi,phi-compat]`): **the
+  extension lemma**. `Fits u s t` (`t|π(D g) = φ_g(s_g)` for all `D g ≤ u`),
+  `Ext u s` a proposition (`ext-prop`, separation in G along a merely given
+  presentation); `Exists` from a presentation (`compatible` via
+  `π(D a_j) ∧ π(D a_k) ≤ π(D(a_j a_k))`, `At.fits-g` by separation over
+  the `π(D(g a_j))`); `extend`, `extend-fits`, `unique`; then by uniqueness:
+  `extension-map` (a ring map), `extend-restrict`, `extend-basic`
+  (`= φ_g ∘ eval` on `D g`), `Unique.agrees` (the only such family).
 
 Step 3 items 0–5 are done (2026-10-29): naturality of evaluation,
 presentations behind the lattice interface, separation on arbitrary opens,
 amalgams one component at a time, and the sheaf property for all finite
 covers. The empty cover needs no separate treatment (n = 0), and no
 induction on covers was needed: a refinement of `⋁ u_i` reduces each
-component to the basic lemma. Remaining in step 3:
+component to the basic lemma. Item 6, the extension lemma, is done too
+(2026-10-29), with the `RingedLattice` interface it needs. Remaining:
 
-6. The extension lemma for maps out of `O` (sheaf `G` on `M`, `π : L_A → M`,
-   compatible `φ_g : R_g → G(π(D g))`).
 7. Modules wait. First concrete example after the affine sheaf and the
    invertibility support (step 4): the doubled-origin line, its lattice and
    sheaf from compatible pairs as in the note.

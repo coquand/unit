@@ -1,0 +1,78 @@
+-- Sheaves of rings on a distributive lattice M (DESIGN.md, step 3, item 6,
+-- and step 4), stated concretely.
+--
+-- A presheaf of rings: rings G(m), restriction ring maps G(m2) -> G(m)
+-- for m <= m2, the identity for m <= m, and composition.  A witness of
+-- m <= m2 is a proof of an equation in a set, so restriction does not
+-- depend on it (res-irr).
+-- A cover of m: m_i <= m and m <= m_1 \/ .. \/ m_n.  A family x_i in G(m_i)
+-- is compatible when x_i and x_j have the same restriction to m_i /\ m_j;
+-- an amalgam is an x in G(m) restricting to every x_i.  G is a sheaf when
+-- every compatible family on every finite cover, the empty one included,
+-- has exactly one amalgam.
+-- Separation.  In a sheaf, x and x' with the same restrictions to the m_i
+-- are equal: the restrictions of x are compatible (both restrictions to
+-- m_i /\ m_j are x|(m_i /\ m_j)), and x and x' are amalgams of them.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module DL = DistLattice[l] ;
+module On (M : DL.DLat) {
+ module O = DL.Order[M] ;
+ module J = DL.Joins[M] ;
+ record Presheaf {
+  ring : M.L -> CRing ;
+  ring-set (m : M.L) : Pr.isSet (ring m).R ;
+  res (m m2 : M.L) (k : O.Le m m2) : RH.Hom (ring m2) (ring m) ;
+  res-id (m : M.L) (k : O.Le m m) (x : (ring m).R) : Id (ring m).R (map (res m m k) x) x ;
+  res-comp (m1 m2 m3 : M.L) (a : O.Le m1 m2) (b : O.Le m2 m3) (c : O.Le m1 m3) (x : (ring m3).R) :
+   Id (ring m1).R (map (res m1 m2 a) (map (res m2 m3 b) x)) (map (res m1 m3 c) x) ;
+ } ;
+
+ module Of (G : Presheaf) {
+  -- x|m, for m <= m2
+  restrict (m m2 : M.L) (k : O.Le m m2) (x : (G.ring m2).R) : (G.ring m).R = map (G.res m m2 k) x ;
+  res-irr (m m2 : M.L) (k k2 : O.Le m m2) (x : (G.ring m2).R) :
+   Id (G.ring m).R (restrict m m2 k x) (restrict m m2 k2 x) =
+   ap (\ k3 -> restrict m m2 k3 x) (O.le-prop m m2 k k2) ;
+
+  module Cover (m : M.L) (n : Nat) (ms : Fin n -> M.L) (le : (i : Fin n) -> O.Le (ms i) m)
+   (covers : O.Le m (J.bigJ n ms)) {
+   Compatible (xs : (i : Fin n) -> (G.ring (ms i)).R) : U l =
+    (i j : Fin n) -> Id (G.ring (M.meet (ms i) (ms j))).R
+     (restrict (M.meet (ms i) (ms j)) (ms i) (O.meet-left (ms i) (ms j)) (xs i))
+     (restrict (M.meet (ms i) (ms j)) (ms j) (O.meet-right (ms i) (ms j)) (xs j)) ;
+   Matches (xs : (i : Fin n) -> (G.ring (ms i)).R) (x : (G.ring m).R) : U l =
+    (i : Fin n) -> Id (G.ring (ms i)).R (restrict (ms i) m (le i) x) (xs i) ;
+   Amalgam (xs : (i : Fin n) -> (G.ring (ms i)).R) : U l = (x : (G.ring m).R) * Matches xs x ;
+   amalgam {xs : (i : Fin n) -> (G.ring (ms i)).R} (a : Amalgam xs) : (G.ring m).R = a.1 ;
+   matches {xs : (i : Fin n) -> (G.ring (ms i)).R} (a : Amalgam xs) : Matches xs (amalgam a) = a.2 ;
+   -- the restrictions of one element are compatible
+   restrictions (x : (G.ring m).R) (i : Fin n) : (G.ring (ms i)).R = restrict (ms i) m (le i) x ;
+   restrictions-compatible (x : (G.ring m).R) : Compatible (restrictions x) = \ i j ->
+    trans (G.res-comp (M.meet (ms i) (ms j)) (ms i) m (O.meet-left (ms i) (ms j)) (le i)
+      (O.le-trans (M.meet (ms i) (ms j)) (ms i) m (O.meet-left (ms i) (ms j)) (le i)) x)
+     (sym (G.res-comp (M.meet (ms i) (ms j)) (ms j) m (O.meet-right (ms i) (ms j)) (le j)
+       (O.le-trans (M.meet (ms i) (ms j)) (ms i) m (O.meet-left (ms i) (ms j)) (le i)) x)) ;
+  } ;
+  IsSheaf : U l =
+   (m : M.L) (n : Nat) (ms : Fin n -> M.L) (le : (i : Fin n) -> O.Le (ms i) m) (covers : O.Le m (J.bigJ n ms))
+   (xs : (i : Fin n) -> (G.ring (ms i)).R) ->
+   Cover[m,n,ms,le,covers].Compatible xs -> Localisation[l].isContr (Cover[m,n,ms,le,covers].Amalgam xs) ;
+ } ;
+
+ module Sheaf (G : Presheaf) (sheaf : Of[G].IsSheaf) {
+  module Cover (m : M.L) (n : Nat) (ms : Fin n -> M.L) (le : (i : Fin n) -> O.Le (ms i) m)
+   (covers : O.Le m (J.bigJ n ms)) {
+   module C = Of[G].Cover[m,n,ms,le,covers] ;
+   glue (xs : (i : Fin n) -> (G.ring (ms i)).R) (c : C.Compatible xs) : Localisation[l].isContr (C.Amalgam xs) =
+    sheaf m n ms le covers xs c ;
+   -- separation
+   separated (x x2 : (G.ring m).R) (e : (i : Fin n) -> Id (G.ring (ms i)).R (C.restrictions x i) (C.restrictions x2 i)) :
+    Id (G.ring m).R x x2 =
+    ap (\ a -> C.amalgam a)
+     (trans (sym ((glue (C.restrictions x) (C.restrictions-compatible x)).2 (x,\ i -> refl (C.restrictions x i))))
+       ((glue (C.restrictions x) (C.restrictions-compatible x)).2 (x2,\ i -> sym (e i)))) ;
+  } ;
+ } ;
+} ;
