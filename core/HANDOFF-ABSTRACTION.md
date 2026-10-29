@@ -36,6 +36,30 @@ derive the field form by apH.
   names, CPath end0g/end1g (one endg).
 - Result: 49.7 -> about 43 s at equal load; 18051 -> 17972 declarations.
 
+## Step 1 in progress (points of a comprehension)
+
+DESIGN.md "Interfaces of the encoding" states the design.  Presheaf has
+SigE/SigT, pairE/fstE/sndE (+ fstE-pair, sndE-pair, pairE-eta, act-pair by
+refl; pairE-snd, sndE-path, pairE-inj); TyL[G, B] has pr/pr1/pr2 (the same
+at G, B); CLine.FT has lline/lover/lval/lnat (the line of an element of
+AI; replaces .2.1/.2.2/.2.1.1/.2.1.2 on TL points).  The code is NOT
+locked yet: the lock is `SigE = VC.SigO ..`, pairE/fstE/sndE through
+pairO/fstO/sndO, and VCode's pairO/fstO/sndO made transparent (only SigO
+stays opaque); checked on a scratch copy of core with that patch applied.
+Migrated so far (they check with the lock): Presheaf, PresheafFormers,
+PresheafPi, GPre, CPartial .. CHtpyOps in CBase order (CPartial CMove
+CMoveLaws CGlueRC CSub COp COpMove CLine CConn CFillProb CFill CFillEnd
+CLineSide CHornRetr CMapLine CCart CFillMove CFibSub CCartLaws CTrFib COpTr
+COpLaws CCartLaws2 CFibExt CPath CPathProb CPathComp CPathFib CHtpyOps).
+Next: CPathCart, CPathNat, CSig, ... in CBase order, then the instances,
+L9, L9b, truncation; then lock (Presheaf + VCode as above) and measure.
+Method per file: under the lock the checker reports each raw pair
+("cannot infer a type for (x, b)") and projection ("not a pair: e : Idx
+(VCode.SigO ..)"); rewrite them to M.pr S x b / M.pr1 S e / M.pr2 S e with
+M the TyL module of the point and S its stage.  Hidden arguments for
+fstE/sndE were tried and dropped: inference only works when the type is
+literally SigT (fails through Pts K = SigT ..).
+
 ## Plan (remaining)
 1. Interface for points (largest effect).  Presheaf: extP.ob via SigT;
    pairE/fstE/sndE with refl lemmas (fstE-pair, sndE-pair, pairE-eta,
