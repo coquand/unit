@@ -260,34 +260,9 @@ For `q : C -> B` fully faithful and essentially surjective and `E` a
 category, `q^* : Fun(B,E) -> Fun(C,E)` is fully faithful (Lemma A) and
 split essentially surjective (Lemma B), i.e. an equivalence of categories.
 
-*Corollary (equivalence of object types).*  If moreover `Fun(B,E)` and
-`Fun(C,E)` are categories, `q^*` on objects is an equivalence of types.
-Proof: let `P : X -> Y` be fully faithful and split essentially surjective,
-`X`, `Y` categories.  By univalence of `Y` the fibre `(x : X) * (P x = y)`
-is equivalent to `S_y = (x : X) * Iso_Y(Px, y)`, which is inhabited.  It is
-a proposition: for `(x, e)`, `(x', e')` in `S_y`, a path is a pair
-`(p : x = x')` with `e` transported along `p` equal to `e'`; by
-univalence of `X`, `p = isotoid phi` with `phi : Iso_X(x,x')`, and the
-transport of `e` is `e o (P phi)^-1` (J, then `idtoiso` of `isotoid`).  So
-the paths form `(phi : Iso_X(x,x')) * (e' o P phi = e)`, which is
-contractible: `P phi = e'^-1 o e` determines the arrow `phi` (ff), and it
-is an iso as `P` reflects isos; the equation is a proposition.
-
-*Univalence of functor categories* (doc Proposition 1.1), needed for the
-corollary: for `E` a category and `F : B -> E`, the total space
-`(G : Fun(B,E)) * Iso_Fun(F, G)` is contractible; this is the structure
-identity principle (`sag/sip/SipGeneric`, Fundamental, can be linked
-read-only).  It is equivalent to
-  `(G0 : B.ob -> E.ob) * (a : (b : B) -> Iso_E(Fb, G0 b)) *
-   (G1 : arrows) * (naturality of a) * (laws)`;
-`(G0, a)` is contractible (fe, and univalence of `E` pointwise), and given
-`(G0, a) = (F.obj, 1)` naturality says `G1 g = F g`, a singleton (fe); the
-laws are propositions.  An iso of functors is a natural transformation
-whose components are isos (inverse componentwise, natural automatically).
-
-Implementation note: records have no definitional eta, so paths between
-functors pass through the eta lemma of the record (`split`), or functors
-are compared through the Sigma form above.
+*Corollary.*  If moreover `Fun(B,E)` and `Fun(C,E)` are categories,
+`q^*` on objects is an equivalence of types (4.8); `Fun(B,E)` is a
+category for every precategory `B` when `E` is a category (4.7).
 
 ### 4.5 Instance
 
@@ -297,9 +272,112 @@ are compared through the Sigma form above.
 it preserves identities and composites (`t t^-1 = 1`); it is fully
 faithful (conjugation by isos has the inverse `h' |-> t_b o h' o t_a^-1`);
 it is essentially surjective by `generated` (§3.1), composing with `t`.
-Hence `q^* : Fun(D_F,E) ~ Fun(C_F,E)` for every category `E` (4.4), and,
-`D_F` being a category, the corollary applies.
+Hence `q^*` is fully faithful and split essentially surjective for every
+category `E` (4.4), and an equivalence of object types (4.9).
 
-Order of work: 4.1, Lemma A, Lemma B, Theorem 4.4, instance 4.5 (done,
-checked); then univalence of functor categories and the corollary (not
-done).
+### 4.6 Univalence from total spaces (`Category.seg`)
+
+For a precategory `C` and an object `x`, write
+`Singl x = (y : C) * Iso(x, y)`.
+
+*Lemma.*  (i) If `C` is a category, `Singl x` is a proposition.
+(ii) Conversely, if every `Singl x` is a proposition, `C` is a category.
+
+*Proof.*  (i) `Singl x` is a retract of the based path space
+`(y : C) * (x = y)`, a proposition (J), by `(y, e) |-> (y, isotoid e)` and
+`(y, p) |-> (y, idtoiso p)` (`sec-eq`).
+(ii) Put `isotoid e = ap fst (c : (x, 1_x) = (y, e))`, `c` given by the
+hypothesis.  For any path `Q : (x, 1_x) = w` in `Singl x`,
+`idtoiso (ap fst Q) = w.2`, by J on `Q` (at `refl`, both are `1_x`); at
+`Q = c` this is `idtoiso (isotoid e) = e`.  For `p : x = y`,
+`isotoid (idtoiso p) = p` by J on `p`: at `refl` the path
+`c : (x, 1_x) = (x, 1_x)` is a loop in a proposition, hence a set, so it is
+`refl` and `ap fst refl = refl`.  So `isotoid` is a two-sided inverse of
+`idtoiso`.  QED.
+
+### 4.7 Univalence of functor categories (`FunctorUnivalence.seg`)
+
+*Proposition* (doc Proposition 1.1).  For `B` a precategory and `E` a
+category, `Fun(B,E)` is a category.
+
+By 4.6 (ii) it suffices that, for `F : B -> E`, the total space
+`Total F = (G : Fun(B,E)) * Iso_Fun(F, G)` is a proposition.
+
+*Components.*  An iso of functors `(alpha, beta, p, p')` has iso
+components `(alpha_b, beta_b, p_b, p'_b)`, where `p_b`, `p'_b` are the
+components at `b` of the equations `beta o alpha = 1`, `alpha o beta = 1`
+of natural transformations (composite and identity are componentwise).
+Conversely, a natural transformation `alpha` with iso components `a_b` is an
+iso of functors: the inverses `a_b^-1` are natural (`square-inv` of the
+naturality square of `alpha`), and the two identities hold componentwise
+(4.1).
+
+*The Sigma form.*  Let
+  `S = (o : Obj) * (G1 : Maps o) * (L : Laws o G1) * Natural_{F, G(o,G1,L)} (arr o.2)`
+where `Obj = (G0 : B.ob -> E.ob) * ((b : B) -> Iso_E(Fb, G0 b))`,
+`Maps o` the families `G1 b b' : B(b,b') -> E(G0 b, G0 b')`, `Laws o G1`
+the two functor laws for `(G0, G1)`, and `G(o, G1, L)` the functor with
+these components.  Maps `s : Total F -> S` (the components of `G`, the iso
+components of the iso, its naturality) and `r : S -> Total F` (the
+functor `G(o, G1, L)`, and the natural transformation `arr o.2`, an iso by
+*Components*).  `r (s (G, i)) = (G, i)`: by the eliminator of the functor
+record, `G` is a constructed functor, for which `r (s (G, i))` has first
+component `G` by definition; the second components are isos of functors
+with the same natural transformation, whose components agree by definition
+(an iso is determined by its arrow, a natural transformation by its
+components, 4.1).  This is the one use of record eta; nothing is
+transported along a path of functors.
+
+*`S` is a proposition.*  (a) `Obj` is a proposition: it is a retract (by
+the pairing of Sigma and Pi, `r s = id` by definition) of
+`(b : B) -> Singl (F b)`, a product of propositions by 4.6 (i) and fe.
+(b) Given `o = (G0, a)`, two elements `(G1, L, nu)`, `(G1', L', nu')` of the
+rest have `G1 = G1'`: for `g : B(b,b')`, `nu` and `nu'` give
+`G1 g o a_b = a_b' o F g = G1' g o a_b`, and `a_b` is an iso (cancel), so
+`G1 g = G1' g` and `G1 = G1'` (fe, three times).  The laws and naturality
+are propositions (hom sets), so the rest is a proposition.
+`S`, a Sigma of propositions over a proposition, is a proposition.
+
+Hence `Total F`, a retract of `S`, is a proposition.  QED.
+
+### 4.8 Corollary: an equivalence of object types (`EquivObjects.seg`)
+
+*Corollary.*  Let `X`, `Y` be categories and `P : X -> Y` fully faithful
+and split essentially surjective, with chosen `(c_y, e_y : Iso_Y(P c_y, y))`.
+Then `P` on objects is an equivalence of types.
+
+*Proof.*  Fix `y` and let `S_y = (x : X) * Iso_Y(P x, y)`.
+
+(a) `S_y` is a proposition.  Let `(x, e)`, `(x', e')` be in `S_y`.
+First, for `p : x = x'` and `e'' : Iso_Y(P x', y)`,
+  `(x, e'' o P (idtoiso p)) = (x', e'')`                         (*)
+by J on `p`: at `refl`, `idtoiso refl = 1` and `e'' o P 1 = e'' o 1 = e''`
+(an iso is determined by its arrow).  Now let `phi : Iso_X(x, x')` be the
+iso of `X` lifting `e'^-1 o e` (`P` reflects isos), so `e' o P phi = e`
+(`lift-eq`).  Then
+  `(x, e) = (x, e' o P phi) = (x, e' o P (idtoiso (isotoid phi))) = (x', e')`,
+by `lift-eq`, `sec-eq` of the univalence of `X`, and (*) at
+`p = isotoid phi`.
+
+(b) The fibre `Fib_y = (x : X) * (P x = y)` is a proposition: a retract of
+`S_y` by `(x, u) |-> (x, idtoiso u)`, `(x, e) |-> (x, isotoid e)`
+(`sec-ret` of the univalence of `Y`).  It is inhabited by
+`(c_y, isotoid e_y)`.
+
+(c) `P` is an equivalence: the section is `y |-> c_y`, with
+`P c_y = y` the second component of the point of `Fib_y`; it is also a
+retraction, as for `x : X` the point of `Fib_{P x}` equals `(x, refl)` (b),
+so `c_{P x} = x`.  QED.
+
+Only (a) uses the univalence of `X`, and only (b) that of `Y`.
+
+### 4.9 Application
+
+`q^* : Fun(D_F,E) -> Fun(C_F,E)` is fully faithful and split essentially
+surjective (4.4, 4.5), and both functor categories are categories (4.7:
+`D_F` and `C_F` need only be precategories there).  By 4.8, `q^*` on
+objects, `G |-> G o q`, is an equivalence of types
+`Fun(D_F,E) ~ Fun(C_F,E)`, for every category `E`.
+
+Order of work: 4.1, Lemma A, Lemma B, Theorem 4.4, instance 4.5; then
+4.6-4.9.

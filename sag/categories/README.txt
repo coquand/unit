@@ -13,7 +13,9 @@ Nothing outside this directory is modified.
 
   Equivalences   inverse, compose, homotopy, then, conjugate, lower
   Category       Precategory (Iso, idtoiso), Univalent, Category (isotoid),
-                 Objects: locally-small (replacement's hypothesis), one-type
+                 Singletons (Singl x), FromTotal (univalent when every Singl x
+                 is a proposition), Objects: locally-small (replacement's
+                 hypothesis), one-type, singl-prop
   Arrows         arrows with hidden objects: laws, isos, cancellation
   Functor        Functor, FullyFaithful, EssSurj, SplitEssSurj; Maps (isos
                  to isos), Faithful (pre, reflect-iso, lift, unique, paste)
@@ -21,6 +23,9 @@ Nothing outside this directory is modified.
   PrecomposeFF   LemmaA: q^* fully faithful
   Descent        LemmaB: descent of functors along q
   UniversalProperty  Theorem: q^* fully faithful + split ess. surjective
+  FunctorUnivalence  Univalence[B,E]: Fun(B,E) is a category (B a precategory)
+  EquivObjects   Corollary: ff + split ess. surj. between categories is an
+                 equivalence of object types
   SmallImage     SmallFullImage[D, A, F]: the small full image theorem
   CompletionUP   Instance: q : C_F -> D_F, and the theorem for every E
 
@@ -55,5 +60,9 @@ surjective.  The functor categories are Precategory[j,j] for a level j
 bounding the others (constraints k l m n <= j).  completion.opens records
 what each declaration of §4 opens (seg All.seg --opens completion.opens).
 
-Not done here: univalence of functor categories and the corollary
-(q^* an equivalence of object types), DESIGN.md §4.4.
+Moreover (DESIGN.md §4.6-4.9) Fun(D_F,E) and Fun(C_F,E) are categories
+(Instance.Universal.fun-D, fun-C), and
+  Instance.Universal.equiv : isEquiv Fun(D_F,E) Fun(C_F,E) (G |-> G o q),
+from FunctorUnivalence (the total space (G : Fun(B,E)) * Iso(F,G) is a
+proposition, through a Sigma form; record eta used once, by the eliminator)
+and EquivObjects (fibres are propositions by univalence of both sides).
