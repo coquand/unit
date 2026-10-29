@@ -24,7 +24,8 @@ propUA derived from univalence; no new axioms.
   FPImage          interpret p = PresentedAlgebra[l].Over[R,setR,p].algebra;
                    SFI = SmallImage[l+,l].SmallFullImage[category, codes,
                    interpret]; characterisation; automorphisms
-  FPComparison     comparison A : (A in the image) ~ Presentations.FP A
+  FPComparison     comparison A : (A in the image) ~ Presentations.FP A;
+                   objects : image.carrier ~ (A : Algebra) * FP A
                    (PresentationComparison; transport along isotoid)
   FPDescent        CU = CompletionUP[l+,l,m,n,j].Instance[category, codes,
                    interpret]; descent E
@@ -61,3 +62,9 @@ are global, so independently written developments can collide:
 Comparison (FPComparison.Over.comparison A).  A in the image ~ FP A, an
 equivalence of propositions in U (l+1); so the objects of SFI.category are
 exactly the finitely presented algebras (FP, universal-property form).
+
+Smallness (FPComparison.Over.objects).
+  SFI.image.carrier ~ (A : Algebra) * FP A
+with the left side in U l and the right side in U (l+1): the type of
+finitely presented R-algebras has a small model, by replacement, without
+propositional resizing.

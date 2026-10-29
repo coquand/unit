@@ -135,6 +135,17 @@ an equivalence of propositions.
 So the objects of the small category are exactly the algebras that are
 finitely presented in the sense of the universal-property predicate FP.
 
+**Smallness.**  Ob(D_F) ~ (A : Algebra) * FP A, the left side in U l, the
+right side in U (l+1).  A map with propositional fibres has domain
+equivalent to the sum of its fibres; here the fibres are equivalent to FP A
+by the comparison.  Directly: a |-> (i a, FP proof of (a, refl)); back,
+(A, u) |-> first component of the fibre point of u.  The round trip from a
+is the first component of a path in a proposition (the fibre over i a); the
+round trip from (A, u) is (i a', _) with p : i a' = A, equal to (A, u)
+along p because FP A is a proposition.  So the type of finitely presented
+algebras has a small model, by replacement and without propositional
+resizing.
+
 ## 6. Descent of functors on codes (FPDescent)
 
 `CompletionUP[l+1, l, m, n, j].Instance` with the same D, codes and F:
