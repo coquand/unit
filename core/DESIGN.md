@@ -23,6 +23,9 @@ V, never up to iso), funext and univalence as parameters of one segment,
 
 ### Interfaces of the encoding (core-abstraction, 2026-10-29)
 
+Status: stopped before the lock was enabled; see HANDOFF-ABSTRACTION.md
+"Step 1: stopped" for the measurements and the decision.
+
 A text about presheaves never looks at how a set is coded in V; it uses
 pairs, their projections and the action on them.  The formal proof should
 do the same: the codes are locked, and what the text uses is stated once,

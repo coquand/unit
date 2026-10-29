@@ -36,33 +36,45 @@ derive the field form by apH.
   names, CPath end0g/end1g (one endg).
 - Result: 49.7 -> about 43 s at equal load; 18051 -> 17972 declarations.
 
-## Step 1 in progress (points of a comprehension)
+## Step 1: stopped (points of a comprehension), 2026-10-29
 
-DESIGN.md "Interfaces of the encoding" states the design.  Presheaf has
-SigE/SigT, pairE/fstE/sndE (+ fstE-pair, sndE-pair, pairE-eta, act-pair by
-refl; pairE-snd, sndE-path, pairE-inj); TyL[G, B] has pr/pr1/pr2 (the same
-at G, B); CLine.FT has lline/lover/lval/lnat (the line of an element of
-AI; replaces .2.1/.2.2/.2.1.1/.2.1.2 on TL points).  The code is NOT
-locked yet: the lock is `SigE = VC.SigO ..`, pairE/fstE/sndE through
-pairO/fstO/sndO, and VCode's pairO/fstO/sndO made transparent (only SigO
-stays opaque); checked on a scratch copy of core with that patch applied.
-Migrated so far (they check with the lock): Presheaf, PresheafFormers,
-PresheafPi, GPre, CPartial .. CHtpyOps in CBase order (CPartial CMove
-CMoveLaws CGlueRC CSub COp COpMove CLine CConn CFillProb CFill CFillEnd
-CLineSide CHornRetr CMapLine CCart CFillMove CFibSub CCartLaws CTrFib COpTr
-COpLaws CCartLaws2 CFibExt CPath CPathProb CPathComp CPathFib CHtpyOps
-CPathCart CPathNat CSig CPiE CPi CSigNat CPiCart CPiNat CEquiv CTr CTrOm
-CTrB CTrP CTrE CHFibCart CHSub CHFibLaws CTrEq CSmall CUniv CElC CYonCart
-CEnc CFibCl COpCl CCof CExt CExt2 CExt3 CExt4 CExtEquiv CExtEquiv2 CExtEquiv3
-CExtComp1 CExtComp2 CExtComp3 CExtComp4 CThm7).
-Next: CExtFull, CExtFullCart, ... in CBase order, then the instances,
-L9, L9b, truncation; then lock (Presheaf + VCode as above) and measure.
-Method per file: under the lock the checker reports each raw pair
-("cannot infer a type for (x, b)") and projection ("not a pair: e : Idx
-(VCode.SigO ..)"); rewrite them to M.pr S x b / M.pr1 S e / M.pr2 S e with
-M the TyL module of the point and S its stage.  Hidden arguments for
-fstE/sndE were tried and dropped: inference only works when the type is
-literally SigT (fails through Pts K = SigT ..).
+Status: the barrier is NOT enabled in core; the migration is stopped.
+Passing checkpoint: commit 96270b9, tag `abstraction-step1-stopped`
+(full check 282 modules, 0 failed, 52.8 s).
+
+What exists: Presheaf SigE/SigT, pairE/fstE/sndE with refl lemmas; TyL
+pr/pr1/pr2 (+ pr-eqV); CLine.FT lline/lover/lval/lnat.  The intended lock
+(SigE = VC.SigO, pairE/fstE/sndE through pairO/fstO/sndO, VCode leaving
+only SigO opaque) was applied only to a scratch copy.  Under it, 21 files
+(CLocHtpy, CLocEtaH, CLocUniv, CLocBound*, CTrunc*; about 170
+declarations) still use raw points.
+
+Measurement (identical migrated sources, barrier off vs on, segd --opened
+--only M, alternating, 3 runs each; counts identical across runs):
+
+| module       | opened        | encoding opened | time          |
+|--------------|---------------|-----------------|---------------|
+| CPath        | 5784 -> 5573  | 3292 -> 3092    | ~0.01 s both  |
+| CLocDNUniv   | 7039 -> 7378  | 3780 -> 3999    | 3.0 s both    |
+| CGlueCartNat | 68235 -> 65323| 17983 -> 15123  | 2.0 s both    |
+
+No checking-time benefit; openings change by about 5% either way (SigV/mkV
+saved, one extra layer through pairO).  Readability cost is large: every
+projection names the point's type and stage, e.g. `v.1` becomes
+`(TKD.pr1 W v)`, and in parameter telescopes without a local module name a
+single declaration reaches about 600 characters (CGlueCartNat PtA).
+
+Decision: stop.  Do not migrate the remaining files, and do not start
+step 2 to recover readability lost here.  Revisit the barrier only for a
+concrete need to change the point representation.
+
+Limitation: the experiment isolates the barrier, not the accessor
+migration against the original source.  Before carrying the mechanical
+pr/pr1/pr2 rewrites elsewhere (or merging them), assess them separately;
+a passing check does not show they improve the development.  The targeted
+repairs (lval/lnat in place of .2.1.1 chains, pr-eqV in place of
+pair-eqV/pair-eqV1, CLocD.evalE on whole points, explicit arguments where
+inference had hidden a step) stand on their own.
 
 ## Plan (remaining)
 1. Interface for points (largest effect).  Presheaf: extP.ob via SigT;
