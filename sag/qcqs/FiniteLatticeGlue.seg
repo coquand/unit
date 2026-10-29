@@ -1,0 +1,72 @@
+-- The small lattice of compatible tuples for a finite atlas.
+-- Given L_i and two maps p_ij : L_i -> M_ij, q_ij : L_j -> M_ij,
+-- an open is a tuple v_i with p_ij(v_i)=q_ij(v_j).  Compatibility is a
+-- proposition; function extensionality gives tuple extensionality and
+-- sethood.  Bottom, top, joins and meets are componentwise and preserve
+-- compatibility because all comparison maps are lattice maps.  The laws
+-- are checked componentwise.  Projections preserve the operations and
+-- finite joins.  A compatible family of maps into the L_i gives a unique
+-- map into this lattice, by tupling and extensionality.  This construction
+-- is in U l and requires no cocycle yet; those enter the chart theorem.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module DL = DistLattice[l] ;
+module Over (n : Nat) (L : Fin n -> DL.DLat) (M : Fin n -> Fin n -> DL.DLat)
+ (p : (i j : Fin n) -> DL.Hom (L i) (M i j)) (q : (i j : Fin n) -> DL.Hom (L j) (M i j)) {
+ Tuple : U l = (i : Fin n) -> (L i).L ;
+ Compatible (v : Tuple) : U l = (i j : Fin n) -> Id (M i j).L (DL.hmap (p i j) (v i)) (DL.hmap (q i j) (v j)) ;
+ compatible-prop (v : Tuple) : Pr.isProp (Compatible v) =
+  FE.isProp-Pi (Fin n) (\ i -> (j : Fin n) -> Id (M i j).L (DL.hmap (p i j) (v i)) (DL.hmap (q i j) (v j))) (\ i ->
+  FE.isProp-Pi (Fin n) (\ j -> Id (M i j).L (DL.hmap (p i j) (v i)) (DL.hmap (q i j) (v j))) (\ j -> (M i j).setL _ _)) ;
+ Opens : U l = (v : Tuple) * Compatible v ;
+ coordinate (v : Opens) (i : Fin n) : (L i).L = v.1 i ;
+ match (v : Opens) (i j : Fin n) : Id (M i j).L (DL.hmap (p i j) (coordinate v i)) (DL.hmap (q i j) (coordinate v j)) = v.2 i j ;
+ ext (v w : Opens) (e : (i : Fin n) -> Id (L i).L (coordinate v i) (coordinate w i)) : Id Opens v w =
+  Pr.Sigma-eq Tuple Compatible v.1 w.1 v.2 w.2 (FE.funext (Fin n) (\ i -> (L i).L) v.1 w.1 e) (compatible-prop w.1) ;
+ opens-set : Pr.isSet Opens = Pr.isSet-Sigma Tuple Compatible
+  (FE.isSet-Pi (Fin n) (\ i -> (L i).L) (\ i -> (L i).setL)) (\ v -> Pr.prop-to-set (Compatible v) (compatible-prop v)) ;
+ bottom : Opens = (\ i -> (L i).bot,\ i j -> trans (DL.hmap-bot (p i j)) (sym (DL.hmap-bot (q i j)))) ;
+ whole : Opens = (\ i -> (L i).top,\ i j -> trans (DL.hmap-top (p i j)) (sym (DL.hmap-top (q i j)))) ;
+ join (v w : Opens) : Opens = (\ i -> (L i).join (coordinate v i) (coordinate w i),\ i j ->
+  trans (DL.hmap-join (p i j) (coordinate v i) (coordinate w i))
+   (trans (cong2 (M i j).L (M i j).join _ _ _ _ (match v i j) (match w i j)) (sym (DL.hmap-join (q i j) (coordinate v j) (coordinate w j))))) ;
+ meet (v w : Opens) : Opens = (\ i -> (L i).meet (coordinate v i) (coordinate w i),\ i j ->
+  trans (DL.hmap-meet (p i j) (coordinate v i) (coordinate w i))
+   (trans (cong2 (M i j).L (M i j).meet _ _ _ _ (match v i j) (match w i j)) (sym (DL.hmap-meet (q i j) (coordinate v j) (coordinate w j))))) ;
+ lattice : DL.DLat = new DL.DLat[Opens,opens-set,bottom,whole,join,meet,
+  \ v w z -> ext (join v (join w z)) (join (join v w) z) (\ i -> (L i).joinA (coordinate v i) (coordinate w i) (coordinate z i)),
+  \ v w -> ext (join v w) (join w v) (\ i -> (L i).joinC (coordinate v i) (coordinate w i)),
+  \ v -> ext (join v bottom) v (\ i -> (L i).joinB (coordinate v i)),
+  \ v w z -> ext (meet v (meet w z)) (meet (meet v w) z) (\ i -> (L i).meetA (coordinate v i) (coordinate w i) (coordinate z i)),
+  \ v w -> ext (meet v w) (meet w v) (\ i -> (L i).meetC (coordinate v i) (coordinate w i)),
+  \ v -> ext (meet v whole) v (\ i -> (L i).meetT (coordinate v i)),
+  \ v w -> ext (meet v (join v w)) v (\ i -> (L i).absorb-meet (coordinate v i) (coordinate w i)),
+  \ v w -> ext (join v (meet v w)) v (\ i -> (L i).absorb-join (coordinate v i) (coordinate w i)),
+  \ v w z -> ext (meet v (join w z)) (join (meet v w) (meet v z)) (\ i -> (L i).dist (coordinate v i) (coordinate w i) (coordinate z i))] ;
+ projection (i : Fin n) : DL.Hom lattice (L i) =
+  (\ v -> coordinate v i,refl (L i).bot,refl (L i).top,\ v w -> refl ((L i).join (coordinate v i) (coordinate w i)),
+   \ v w -> refl ((L i).meet (coordinate v i) (coordinate w i))) ;
+ -- Order and finite joins are detected coordinatewise.  The order is
+ -- the equation v /\ w = v, so its converse is tuple extensionality.
+ module O = DL.Order[lattice] ;
+ module J = DL.Joins[lattice] ;
+ le-coordinate (v w : Opens) (h : O.Le v w) (i : Fin n) : DL.Order[L i].Le (coordinate v i) (coordinate w i) =
+  DL.JoinMaps[lattice,L i,projection i].monotone v w h ;
+ le-tuple (v w : Opens) (hs : (i : Fin n) -> DL.Order[L i].Le (coordinate v i) (coordinate w i)) : O.Le v w =
+  ext (meet v w) v hs ;
+ coordinate-joins (m : Nat) (vs : Fin m -> Opens) (i : Fin n) :
+  Id (L i).L (coordinate (J.bigJ m vs) i) (DL.Joins[L i].bigJ m (\ a -> coordinate (vs a) i)) =
+  DL.JoinMaps[lattice,L i,projection i].preserves m vs ;
+ module Lift (D : DL.DLat) (hs : (i : Fin n) -> DL.Hom D (L i))
+  (agrees : (x : D.L) (i j : Fin n) -> Id (M i j).L (DL.hmap (p i j) (DL.hmap (hs i) x)) (DL.hmap (q i j) (DL.hmap (hs j) x))) {
+  lift-map (x : D.L) : Opens = (\ i -> DL.hmap (hs i) x,agrees x) ;
+  lift : DL.Hom D lattice = (lift-map,
+   ext (lift-map D.bot) bottom (\ i -> DL.hmap-bot (hs i)),ext (lift-map D.top) whole (\ i -> DL.hmap-top (hs i)),
+   \ x y -> ext (lift-map (D.join x y)) (join (lift-map x) (lift-map y)) (\ i -> DL.hmap-join (hs i) x y),
+   \ x y -> ext (lift-map (D.meet x y)) (meet (lift-map x) (lift-map y)) (\ i -> DL.hmap-meet (hs i) x y)) ;
+  at (x : D.L) (i : Fin n) : Id (L i).L (coordinate (DL.hmap lift x) i) (DL.hmap (hs i) x) = refl (DL.hmap (hs i) x) ;
+  unique (k : DL.Hom D lattice) (e : (x : D.L) (i : Fin n) -> Id (L i).L (coordinate (DL.hmap k x) i) (DL.hmap (hs i) x)) : Id (DL.Hom D lattice) k lift =
+   DL.HomProperties[D,lattice].ext k lift (\ x -> ext (DL.hmap k x) (DL.hmap lift x) (e x)) ;
+ } ;
+} ;

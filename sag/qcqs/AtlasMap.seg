@@ -1,0 +1,74 @@
+-- Build a geometric map from a natural family and an actual affine atlas.
+-- On each affine open U of X, pull alpha back along U -> X and recover
+-- the map U -> Y by AffineSource.  Its value on every affine probe p is
+-- alpha(j p), by the induced-recover law.
+-- On an overlap W, both chart maps have value alpha(W -> X composed with
+-- p) on each affine probe of W: use associativity and the triangle of
+-- OpenMaps.Below.  W is qcqs (SliceQcqs), so ProbeSeparation makes the
+-- restricted chart maps equal.  OpenAgreement turns this equality into
+-- MapGluing's exact lattice and section hypotheses.  Glue gives a local
+-- morphism, with its actual restrictions equal to the recovered chart
+-- maps.  Its equation on chart probes is the restriction equation followed
+-- by the affine evaluation equation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Hi = Prelude[l+] ;
+module Tr = Truncation[l] ;
+module DL = DistLattice[l] ;
+module Sp = Spaces[l] ;
+module Op = OpenMaps[l] ;
+module T = AffineTests[l] ;
+module FP = FunctorPoints[l] ;
+module Over (X Y : Sp.Space) (alpha : FP.Maps[X,Y].Nat) {
+ module O = DL.Order[X.lattice] ;
+ module N = FP.Maps[X,Y] ;
+ module Q = Qcqs[l].Over[X.lattice,X.structure] ;
+ module Value (u : X.lattice.L) (affine : Q.AffineOpen u) {
+  module NU = FP.Maps[Op.space X u,Y] ;
+  module E = AffineSource[l].FromAffine[Op.space X u,Y,affine] ;
+  pulled : NU.Nat = FP.NaturalComposition[Op.space X u,X,Y,alpha,FP.Maps[Op.space X u,X].induced (Op.inclusion X u)].composite ;
+  morphism : Sp.Hom (Op.space X u) Y = E.AtAffine.recover pulled ;
+  equation (B : T.Test) (p : Sp.Hom (T.space B) (Op.space X u)) : Id (Sp.Hom (T.space B) Y)
+   (Sp.compose (T.space B) (Op.space X u) Y morphism p) (N.at alpha B (Sp.compose (T.space B) (Op.space X u) X (Op.inclusion X u) p)) =
+   Hi.ap NU.Nat (Sp.Hom (T.space B) Y) (\ a -> NU.at a B p) (NU.induced morphism) pulled (E.AtAffine.induced-recover pulled) ;
+ } ;
+ module OnOpen (u e : X.lattice.L) (le : O.Le u e) (affine : Q.AffineOpen e) {
+  module V = Value[e,affine] ;
+  module B = Op.Below[X,u,e,le] ;
+  module P = B.Pull[Y,V.morphism] ;
+  on-probe (A : T.Test) (p : Sp.Hom (T.space A) (Op.space X u)) : Id (Sp.Hom (T.space A) Y)
+   (Sp.compose (T.space A) (Op.space X u) Y P.C.composite p)
+   (N.at alpha A (Sp.compose (T.space A) (Op.space X u) X (Op.inclusion X u) p)) =
+   trans (sym Sp.Associativity[T.space A,Op.space X u,Op.space X e,Y,V.morphism,B.embedding,p].assoc)
+    (trans (V.equation A (Sp.compose (T.space A) (Op.space X u) (Op.space X e) B.embedding p))
+     (ap (N.at alpha A)
+      (trans Sp.Associativity[T.space A,Op.space X u,Op.space X e,X,Op.inclusion X e,B.embedding,p].assoc
+       (ap (\ j -> Sp.compose (T.space A) (Op.space X u) X j p) B.triangle)))) ;
+ } ;
+ module FromCover (c : Q.AffineCover) {
+  cover-le : O.Le X.lattice.top (DL.Joins[X.lattice].bigJ c.count c.opens) =
+   O.le-of-eq X.lattice.top (DL.Joins[X.lattice].bigJ c.count c.opens) (sym c.covers) ;
+  module Compatible (i j : Fin c.count) {
+   module OA = OpenAgreement[l].Over[X,Y,c.opens i,c.opens j,Value[c.opens i,c.affine i].morphism,Value[c.opens j,c.affine j].morphism] ;
+   module Left = OnOpen[X.lattice.meet (c.opens i) (c.opens j),c.opens i,O.meet-left (c.opens i) (c.opens j),c.affine i] ;
+   module Right = OnOpen[X.lattice.meet (c.opens i) (c.opens j),c.opens j,O.meet-right (c.opens i) (c.opens j),c.affine j] ;
+   module PS = ProbeSeparation[l].Over[Op.space X (X.lattice.meet (c.opens i) (c.opens j)),Y] ;
+   agree : Id (Sp.Hom (Op.space X (X.lattice.meet (c.opens i) (c.opens j))) Y) OA.P0.C.composite OA.P1.C.composite =
+    PS.Compare[OA.P0.C.composite,OA.P1.C.composite,\ A p -> trans (Left.on-probe A p) (sym (Right.on-probe A p))].separated
+     (SliceQcqs[l].Over[X.lattice,X.structure,X.lattice.meet (c.opens i) (c.opens j)].qcqs (Tr.Trunc[Q.AffineCover].inc c)) ;
+   module Equal = OA.Equal[agree] ;
+  } ;
+  module MG = MapGluing[l].Over[Y.lattice,X.lattice,Y.structure.sheaf,X.structure,c.count,c.opens,cover-le] ;
+  module Family = MG.Family[\ i -> Sp.underlying Value[c.opens i,c.affine i].morphism] ;
+  module Glue = Family.Compatible[\ i j v -> Compatible[i,j].Equal.overlap v,\ v s i j -> Compatible[i,j].Equal.At[v].agree s] ;
+  morphism : Sp.Hom X Y = (Glue.morphism,Glue.Local[Y.structure.inv,\ i -> Sp.is-local Value[c.opens i,c.affine i].morphism].local) ;
+  on-chart (i : Fin c.count) : Id (Sp.Hom (Op.space X (c.opens i)) Y)
+   (Sp.compose (Op.space X (c.opens i)) X Y morphism (Op.inclusion X (c.opens i))) Value[c.opens i,c.affine i].morphism =
+   Sp.ext (Op.space X (c.opens i)) Y (Sp.compose (Op.space X (c.opens i)) X Y morphism (Op.inclusion X (c.opens i)))
+    Value[c.opens i,c.affine i].morphism Glue.Restricts[i].restricts ;
+  chart-equation (i : Fin c.count) (B : T.Test) (p : Sp.Hom (T.space B) (Op.space X (c.opens i))) : Id (Sp.Hom (T.space B) Y)
+   (Sp.compose (T.space B) X Y morphism (Sp.compose (T.space B) (Op.space X (c.opens i)) X (Op.inclusion X (c.opens i)) p))
+   (N.at alpha B (Sp.compose (T.space B) (Op.space X (c.opens i)) X (Op.inclusion X (c.opens i)) p)) =
+   trans Sp.Associativity[T.space B,Op.space X (c.opens i),X,Y,morphism,Op.inclusion X (c.opens i),p].assoc
+    (trans (ap (\ f -> Sp.compose (T.space B) (Op.space X (c.opens i)) Y f p) (on-chart i)) (Value[c.opens i,c.affine i].equation B p)) ;
+ } ;
+} ;

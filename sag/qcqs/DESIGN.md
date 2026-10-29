@@ -177,6 +177,18 @@ algebraic infrastructure only.
 
 ## Status
 
+Latest checkpoint (2026-10-29): 249 modules, zero failures. Both absolute
+and relative totalisation, essential image, and equivalence of univalent
+categories are checked. RelativeTotalisation proves the intrinsic native
+sheaf and qcqs criteria for the total functor. RelativeEssentialImage
+proves relative representability, and RelativeCategories.equivalence
+packages the comparison over an arbitrary base ring with an inverse
+functor and both natural isomorphisms. The independent full audit checks
+9,250 declarations with no extra openings in all 3,752 lists. The final
+relative checkpoint below records the proof, implementation and validation;
+the earlier checkpoints retain their historical continuation boundaries.
+
+
 Checked (`../../segc qcqs all`: 74 modules, 0 failed, about 1.4 s):
 
 - `RingMaps`: named parts of a ring map (`map`, `map-one`, `map-add`, `map-mul`,
@@ -1036,3 +1048,1095 @@ recursive call of `power` at `suc M` as a stuck split, compared against
 
 Pointwise uniqueness in `ZariskiUniversal` is enough (funext + propositional
 laws recover equality of lattice maps); no contractibility packaging.
+
+## Functor of points: autonomous development, first checkpoint (2026-10-29)
+
+Scope: full faithfulness of X |-> (B |-> Hom_k(Spec B, X)), on **all**
+k-algebras with carriers in U l. The test object type and natural
+transformations may live in U (l+1). This does not use the small category
+of finitely presented algebras as a substitute for all affine tests.
+The essential-image characterisation of scheme-valued functors is later.
+The user has authorised continuing autonomously: write the precise informal
+argument, review it, and formalise it. No new confirmation is needed for
+routine steps in this scope.
+
+Informal argument, written before the code: `doc/functor-of-points.tex`.
+Evaluate a natural transformation at affine chart maps, use naturality on
+affine probes to get agreement on chart overlaps, then glue. To show that
+the resulting map induces the transformation, pull the chart cover back
+to each affine test and refine by basic affine opens. Separation proves
+the equation. Independence of a merely given atlas is proved before
+eliminating it: the type of a map inducing the transformation is a
+proposition. This proof needs a general finite-cover descent interface and
+finite affine refinements of compact opens. The target can in fact be any
+locally ringed lattice; only the source needs the qcqs atlas.
+
+Checked supporting interfaces (14 new modules):
+
+- `LatticeCover`: finite covers detect inequalities and equalities.
+- `LatticeDescent`: p(u) = join_i p_i(u) glues inverse-image lattice maps;
+  p(u) meet e_i = p_i(u), and uniqueness. The construction of image is
+  opaque after its laws and cover equation.
+- `FiniteLatticeFamilies`: concatenate finite families and compute their
+  join. No ring structure on the lattice carrier is assumed.
+- `SheafMaps`: compatible ring maps into a sheaf glue uniquely on a finite
+  cover. `lift-matches` is the public restriction equation; lift is opaque.
+- `MapAgreement`: agreement on e expressed in the ambient lattice, with
+  equality of sections after restriction to any common smaller open.
+  Finite-cover separation follows from lattice separation and the sheaf.
+- `MapSeparation`: actual restriction to a source open, its lattice and
+  section trace formulas, and equality detected by the restricted maps.
+- `MapGluing`: compatible maps X|e_i -> Y glue; `Restricts.restricts` gives
+  their actual restrictions and `unique` gives uniqueness. Ringed amalgams
+  are contractible (`gluing`). Locality is proved by restricting the
+  invertibility open to each e_i; local amalgams are contractible too
+  (`Local.local-gluing`). Compatibility is stated explicitly on inverse
+  images and section maps, without transporting a slice record.
+- `SliceMap`: restrict a morphism to an inverse-image open, with the
+  factorisation triangle, uniqueness, and locality.
+- `SliceNested`: (X|e)|u is isomorphic to X|u for u <= e.
+- `SliceIso`: an isomorphism restricts to an isomorphism on inverse-image
+  opens. Section maps are the original bijection followed by restriction
+  between equal opens.
+- `AffineTransport`: affineness transfers across an isomorphism, by
+  composition and AffineCriterion.
+- `AffineBasis`: a compact open of an affine X merely has a finite affine
+  cover. Lift it to Zar(Gamma X), present it by basic opens, and use
+  SliceIso, SpecBasicOpen and AffineTransport.
+- `AffineCoverJoin`: finite joins of opens with finite affine covers have
+  finite affine covers, also under truncation.
+- `AffineRefinement.refined`: every compact open of a qcqs scheme merely
+  has a finite affine cover. Refine u meet e_i inside each affine atlas
+  member; use SliceNested to forget the outer slice, then flatten.
+
+All empty-cover cases are included. No existing proof or shared dependency
+was changed: only All.seg imports and these new files. First full check:
+`./segc sag/qcqs all`: 114 modules, 0 failed, 3.96 s. Each new declaration
+was inspected with --opened, at most 25 distinct definitions and 0.01 s
+in the inspected runs. One repair: MapGluing.matches originally unfolded
+SheafMaps' amalgam construction. Adding lift-at / lift-matches beside lift
+and making lift opaque removes that opening. Remaining slice-record field
+comparisons are precisely the concrete restriction and identity-map steps;
+AffineBasis also pays the existing transparent-Zariski-lattice comparison.
+No fraction construction or truncation eliminator opens in gluing clients.
+The inspected openings are recorded in `descent.opens` (428 entries).
+The full `seg All.seg --opens descent.opens` check passes, with 4,985
+declarations, zero failures, and no opening beyond the recorded lists.
+
+Not yet formalised: full faithfulness itself. Next steps, in order:
+
+1. Morphism identity laws and the two composition equations for Iso.Invert;
+   its inverse map and bijectivity exist, but clients need the equations.
+   Also record compatibility of SliceNested with inclusions.
+2. A category-free large-test interface initially: points of X at a small
+   ring B, precomposition by Spec of a ring map, and natural families.
+   Prove the identity/composition laws for Spec as equality of local maps.
+   Start with absolute morphisms; obtain the k-relative statement by the
+   commuting structure-map condition.
+3. Affine evaluation: a natural family on Spec A is determined by its value
+   on the identity. SpecUniversal and Global identify every affine probe
+   with Spec of its ring map. Keep level l+1 for the natural-family type.
+4. Using an actual affine atlas, construct the local chart values, show
+   compatibility via AffineRefinement and MapSeparation, then apply
+   MapGluing. Check the induced transformation on every affine test.
+5. Prove uniqueness first, eliminate mere existence of an atlas into the
+   proposition of maps inducing the given transformation, and expose the
+   equivalence of sets. Then impose the k-condition.
+
+The mathematical note's final section distinguishes these checked
+interfaces from the remaining theorem. It must continue to do so until
+both inverse laws have checked.
+
+### Relative comparison: precise reduction (informal proof first)
+
+To pass from all-ring full faithfulness to the k-algebra statement, do not
+merely take a fibre of the all-ring natural-transformation type: the test
+category changes. For a base test K and a test ring B, a point p : Spec B -> X
+has a unique lift (iota : K -> B, e : s_X p = Spec iota). AffineTests'
+map equivalence gives this lift and proves its uniqueness. Thus
+Sigma iota. PointOver(B,iota) is equivalent to the ordinary point set.
+Reindexing a lifted point along h : B -> C uses the algebra structure
+h iota; uniqueness compares this with the canonical lift of its ordinary
+reindexing. Apply a relative natural transformation to the lift and forget
+its base equation. This yields an all-ring natural transformation. The
+absolute theorem recovers f, and its base compatibility is detected on
+affine probes from the output base equations. Finally, any relative point
+is the canonical lift of its ordinary point; this gives the relative
+induced-recover law. Relative faithfulness follows by taking canonical
+lifts of all ordinary probes, so gives the other inverse law. The same
+argument is added to doc/functor-of-points.tex before formalising it.
+
+## Functor of points: full faithfulness checked (2026-10-29)
+
+The first-checkpoint Next 1--5 are now done for both absolute and relative
+morphisms. The relative test category is **all** small k-algebras.
+
+Public results:
+
+- `PointsUniversal[l].Over[X,Y,qcqs].equivalence`: induced is an equivalence
+  Hom(X,Y) -> Nat(h_X,h_Y), on all small commutative rings.
+- `RelativeUniversal[l].Over[K,X,Y,sx,sy,qcqs].equivalence`: induced is an
+  equivalence Hom_K(X,Y) -> Nat(h_X^K,h_Y^K), on all small K-algebras.
+- Only X needs to be qcqs; Y may be any locally ringed lattice.
+- `induced-recover` and `recover-induced` are both checked equalities.
+  `recover` uses a merely existing atlas, eliminated only after showing
+  its type of solutions is a proposition. The elimination is at l+1.
+- Hom and relative Hom are sets in U l; natural transformation types are
+  sets in U (l+1). There is no resizing and no restriction to f.p. tests.
+
+19 new modules in this checkpoint:
+
+1. `MapLaws`: both unit laws and both equations for Iso.Invert's inverse,
+   as equalities of maps. The second inverse law uses injectivity of pi#,
+   naturality and proof-independence of restriction.
+2. `Spaces`: one packaging of a lattice with its existing locally ringed
+   structure, with local maps in geometric order. Hom, set, ext, identity,
+   composition, associativity, inverses and cancellation. No univalence
+   of this object type is asserted.
+3. `AffineTests`: all small rings with set carriers; Spec of their maps,
+   the identity and composition laws, and every affine morphism as Spec
+   of a unique ring map (MapsEquivalence).
+4. `FunctorPoints`: ordinary point sets, reindexing and its laws, natural
+   families, their extensionality and sethood, induced transformations,
+   composition of natural families, and naturality for arbitrary affine
+   morphisms via MapsEquivalence.
+5. `AffineEvaluation`: Nat(h_(Spec A),h_Y) equivalent to Hom(Spec A,Y),
+   by evaluation at identity, on this large test category.
+6. `AffineSource`: the same theorem for any affine source, transferred
+   along its canonical isomorphism. canonical-iso is the public witness;
+   canonical is opaque after it.
+7. `OpenMaps`: geometric open inclusions, inclusions X|u -> X|e for u<=e,
+   their triangle and the lattice and section traces of restriction.
+   These supply the inclusion comparisons needed here without identifying
+   nested slices along a path of records.
+8. `SliceQcqs`: every compact open of a qcqs scheme is qcqs, using the
+   affine refinement and inverse of the nested-slice isomorphism.
+9. `ProbeSeparation`: equality detected on all affine probes out of a
+   qcqs source, and faithfulness of induced natural transformations.
+10. `OpenAgreement`: equality on the overlap becomes MapGluing's exact
+    inverse-image and section agreement conditions.
+11. `AtlasMap`: evaluate a natural family on affine charts, compare on
+    overlap probes, and glue the chart maps. Gives the actual restriction
+    equations and the equation on all chart probes.
+12. `OpenPullback`: the geometric square obtained by restricting a map to
+    an inverse-image open, using SliceMap.triangle.
+13. `TopOpen`: X|top -> X is an isomorphism, including its section maps.
+14. `AffineQcqs`: an affine space is qcqs; in particular each affine test
+    is qcqs, by AffineCriterion at the identity.
+15. `AtlasMapPoints`: the map from AtlasMap induces the given family on
+    every affine point. Pull back the chart cover; compare on affine
+    probes into each inverse image; use separation twice.
+16. `PointsUniversal`: solutions form a proposition by faithfulness and
+    sethood of Nat. Mere existence of an atlas gives its solution; the
+    two inverse laws give the absolute equivalence.
+17. `BasePoints`: all K-algebra tests as (test ring, structure map), their
+    morphisms and relative points, with reindexing laws. For a fixed ring,
+    lifts of an ordinary point form a proposition. Total relative points
+    and ordinary points are equivalent (At.forget-equivalence).
+18. `RelativeFamilies`: relative natural transformations and induced maps,
+    and extension to ordinary rings using canonical lifts. Shows ordinary
+    naturality, compatibility with the base point, and recovery of the
+    underlying value on any relative point. Both map and Nat types are sets.
+19. `RelativeUniversal`: recover the absolute map of the extended family;
+    affine probes prove its base condition. Relative point extensionality
+    gives induced-recover, and relative faithfulness gives recover-induced.
+
+Informal proof and review: `doc/functor-of-points.tex`, including a new
+section explaining why the relative statement needs more than taking a
+fibre of the all-ring Nat type (the test category changes). The final
+section now states what is checked, including both theorem names.
+
+Checking after these changes: `./segc sag/qcqs all` gives 133 modules,
+0 failed, 3.98 s. `points.opens` records 625 reviewed declarations;
+`seg All.seg --opens points.opens` checks 5,610 declarations, 0 failed,
+and nothing beyond the recorded lists (4.83 s in that run).
+
+Opening repairs, following WRITING.md:
+
+- AffineTests' first composition proof took 6.2 s and opened the extension
+  and truncation construction while comparing differently named views.
+  `underlying-map`, `composite-view`, and `second-view` state the common
+  points explicitly; Map.morphism is opaque after its interface. The
+  entire AffineTests file then checks in about 0.26 s.
+- ProbeSeparation initially compared the old affine criterion witness
+  with the packaged canonical map, opening the Spec construction while
+  instantiating an inverse. AffineSource now exposes canonical-iso and
+  makes canonical opaque. That inverse-module instance now opens 7 names
+  in 0.00 s instead of 54 names in 0.14 s.
+- The largest remaining distinct count is 35, in AffineTests.Identity's
+  by-definition global component comparison. Map.component still opens
+  spec/structure views repeatedly (about 0.13 s in the audit); no extension
+  construction or truncation eliminator is opened there. This is a local
+  interface observation, not a reason to change shared code.
+- Algebra tests use the ordinary Sigma (B, iota) with named accessors.
+  This makes the total-point argument a reordering of Sigma types, without
+  requiring an eta law for an anonymous algebra record.
+
+No shared dependencies or core files were changed. All earlier examples
+continue to pass. The new work and the earlier first checkpoint remain
+uncommitted.
+
+Next comparison milestone: essential image, not full faithfulness.
+Define open subfunctors and finite open affine atlases, formulate overlap
+quasi-compactness, and prove reconstruction by gluing with transition
+isomorphisms and cocycle laws. Write and review that mathematical proof
+before coding it. Packaging the geometric objects as a univalent category
+is a separate interface theorem; the pairwise Hom--Nat equivalences above
+are already checked and do not depend on that packaging.
+
+## Essential image: compact-open foundations (2026-10-29)
+
+The user authorised autonomous continuation after full faithfulness. No
+fresh session was required to begin. Informal statement and reviewed proof,
+written before the code: `doc/functorial-schemes.tex` (compiled PDF beside it).
+It follows zeuner1 Sections 4--5 and zeuner3 Sections 5--6, with a direct
+small finite-tuple reconstruction rather than constructing a large locally
+ringed lattice and then implementing universe lifts. References include
+Coquand--Lombardi--Schuster, Spectral schemes as ringed lattices.
+
+Precise statement to prove: a small-set-valued functor on **all** small
+commutative rings is a Zariski sheaf with a merely given finite affine
+compact-open atlas iff it is merely naturally equivalent to h_X for a
+small qcqs locally ringed lattice X. Relative version: totalise a functor
+on k-algebras by Sigma(iota:k->B).F(B,iota), apply absolute reconstruction,
+and recover the structure map to Spec k by full faithfulness.
+
+Review points fixed before implementation:
+
+- Compact opens are natural maps F -> Zar, not a collection of arbitrary
+  subobjects modulo isomorphism. Their realisation is Sigma(x:F(B)).U(x)=top.
+- Requiring an atlas of these compact opens already ensures compactness
+  of every affine pullback, hence of overlaps. Do not require affine
+  overlaps (that would be a stronger condition) or add a redundant extra
+  quasi-separatedness assumption.
+- CompOpen(F) initially lives in U(l+1), even though each Zar(B) is small.
+  Do not silently resize it. The proposed small reconstruction uses
+  compatible tuples in finitely many chart lattices, and rings of tuples.
+- Transition isomorphisms require domain equations on triple overlaps
+  before their cocycle equation is stated. Equality of chart maps into F
+  supplies these through full faithfulness and monicity of the inclusions.
+- An actual atlas yields an actual reconstruction. For a merely given
+  atlas, conclude mere existence of a representing small scheme. An
+  untruncated canonical geometric representative requires the separate
+  univalence theorem for the category of spaces.
+- Empty covers are included. The empty scheme's value on the zero ring
+  is a singleton, so it must not be confused with the everywhere-empty
+  functor. Locality demands F(0) contractible.
+
+Checked: 23 new modules; existing full faithfulness and examples unchanged.
+
+1. TestFunctors: arbitrary small-set-valued functors on all small test
+   rings, natural transformations, their extensionality and sethood,
+   composition and affine representables. Existing FunctorPoints are
+   instances, and their natural families coincide with this Sigma form
+   by definition. No existing full-faithfulness proof was refactored.
+2. TestYoneda: evaluation Nat(h_A,F) equivalent to F(A) for arbitrary F;
+   the equivalence is at l+1. Also Nat(h_A,h_B) equivalent to Hom(B,A).
+3. TestEquivalences: componentwise equivalences have natural inverses;
+   inverse equations and composition, without equality of functor records.
+4. ZariskiFunctor: h_* is the unique lattice map D(a) |-> D(h(a)); identity
+   and composition from uniqueness. spec-lattice identifies the geometric
+   inverse image with this lattice map. Public unique and on-D interfaces;
+   lattice-map is opaque after them.
+5. CompactOpens: Nat(F,Zar) as a bounded distributive lattice in U(l+1),
+   pointwise operations, pullback along natural maps, and the affine
+   Yoneda equivalence with Zar(A).
+6. OpenRealisation: |U| as a set functor, its injective inclusion, and
+   unique natural lifting of maps whose values satisfy membership.
+7. CompactPullback: along x in F(A), the classifier is the Yoneda extension
+   of U_A(x); membership at h is equivalent to h_*(U_A(x))=top.
+8. GeometricOpens: e |-> (p |-> p*(e)), preserving lattice operations;
+   realisation naturally equivalent to h_(X|e), from factor-cut and restore.
+9. TestSheaves: the finite basic localisation diagram, with overlap rings
+   B[1/(a_i a_j)] and restriction maps rho; compatible families, contractible
+   amalgams, and IsSheaf as a proposition. Includes empty covers.
+10. RepresentableSheaf: every h_A is a sheaf, via the earlier basic ring
+    gluing and separation theorem. Glue values into B[1/1], prove they
+    form a ring map by separation, then use Global.back to land in B.
+11. ZariskiSeparated: Zar is separated on finite basic covers. Use
+    SpecBasicOpen's isomorphism and factor-cut to turn equality after
+    localisation into equality after meeting with D(a_i), then LatticeCover.
+12. OpenSheaf: realisations of compact opens of sheaves are sheaves.
+    Forget membership, glue, and use Zar separation to prove membership.
+13. WholeRealisation: realisation of top naturally equivalent to F.
+14. SheafTransfer: sheafhood transfers across a natural equivalence.
+15. FunctorialQcqs: intrinsic IsAffine, finite affine compact-open covers,
+    IsQcqs (a proposition), and representables as functorial qcqs schemes.
+    Affine functors are sheaves by transfer under truncation.
+16. GeometricEquivalence: isomorphic spaces give naturally equivalent
+    geometric functors, using the geometric inverse equations.
+17. AffineFunctor: h_(Spec A) naturally equivalent to algebraic h_A, and
+    every geometric affine space gives an affine functor.
+18. GeometricAtlas: a geometric qcqs atlas gives a functorial compact-open
+    affine atlas, using GeometricOpens and AffineFunctor. This proves the
+    atlas statement; it does not yet prove sheafhood for general h_X.
+19. ZariskiUnits: D(b)=top iff b is a unit, via Bridge at powers of 1 and
+    reflection of units along the bijective inclusion B -> B[1/1].
+20. BasicAffineFunctor: |D(a)| naturally equivalent to h_(A[1/a]), using
+    localisation's universal property and ZariskiUnits. Exposes affine.
+21. CompactAffineCover: every compact open of h_A is a functorial qcqs
+    scheme. Present U_A(1) by D(a_i), pull these back to |U|, and prove
+    each realisation equivalent to |D(a_i)| by forgetting the redundant
+    membership proof. The atlas merely exists; its construction is
+    eliminated into HasAtlas at l+1. Sheafhood comes from OpenSheaf.
+22. FiniteLatticeGlue: the small lattice of compatible tuples v_i for
+    arbitrary comparison maps L_i -> M_ij <- L_j; projections and its
+    universal property. No cocycle hypothesis is needed for this limit.
+23. FiniteRingGlue: corresponding small ring of compatible tuples, its
+    projections and universal property. Units are detected coordinatewise;
+    inverse compatibility is uniqueness of inverses on each overlap.
+
+Checks: `./segc sag/qcqs all`: 156 modules, 0 failed, 4.38 s. All new
+702 declarations were inspected with --opened, maximum 42 distinct
+names and 0.05 s per declaration in that run. `essential-image.opens`
+records these openings; `seg All.seg --opens essential-image.opens`
+checks 6,312 declarations, zero failures, and nothing beyond the lists
+(5.12 s in that run). No new axiom, no shared dependency changes.
+Everything since the previous qcqs checkpoint is still uncommitted.
+
+Opening repair: composition in ZariskiFunctor initially opened the
+radical-transitivity proof and Trunc.induction while comparing the
+constructed map with its composite. Exposing unique at the public
+lattice-map type, stating hmap-compose explicitly, and making lattice-map
+opaque fixes it: on-D now opens 9 names and composition 4, with no
+radical proof or truncation eliminator. The remaining maximum is the
+comparison between SpecBasicOpen's factorisation and ZariskiFunctor's
+map in ZariskiSeparated.cut-image (42 names, 0.05 s): it opens the
+slice/Spec/Zariski interface records, not their existence proofs.
+
+### Essential-image continuation: historical checklist (superseded below)
+
+Do not claim the essential-image theorem or general h_X sheafhood yet.
+
+1. Finite geometric gluing using the two new limits. Given spaces X_i and
+   local maps Y_ij -> X_i, Y_ij -> X_j, form the FiniteLatticeGlue lattice
+   and the FiniteRingGlue section rings, with the second overlap leg
+   restricted along the equality of overlap opens. Generalise GlueAlong's
+   componentwise restrictions, sheaf proof, and invertibility support.
+   Prove the resulting structure and projection maps. Then impose actual
+   open-transition data with domain and cocycle laws to prove the chart
+   isomorphisms and finite-cover equation. Follow Section 5 of the note;
+   do not impose affine overlaps. The two finite limits are already checked.
+2. Compact-cover descent of natural maps into a sheaf (Section 6 of the
+   note, zeuner1 Lemma 4.26). Use a finite basic refinement of U_i(x) on
+   each test ring. Prove uniqueness first; eliminate presentations into
+   that proposition; use the characterising equation to prove naturality.
+3. Connect geometric finite-cover descent to TestSheaves' localisation
+   diagram to prove IsSheaf(h_X) for arbitrary geometric X. BasicOpen's
+   chart isomorphisms and the Spec/restriction triangles identify the
+   Cech diagram; use the geometric gluing theorem for its amalgams.
+   HasAtlas(h_X) is already GeometricAtlas.has-atlas for qcqs X.
+4. From a functorial affine atlas, obtain the transition isomorphisms on
+   compact-open overlaps. CompactAffineCover makes these overlaps qcqs;
+   GeometricOpens, affine Yoneda and full faithfulness recover the maps
+   and their inverse/domain/cocycle equations. Glue and identify F with
+   h_X by compact-cover descent in both directions.
+5. Conclude mere representability from a mere atlas. Then totalise
+   relative functors as Sigma(iota:k->B).F(B,iota) and recover the base
+   map by full faithfulness, as in Section 7 of the note.
+6. Separate later result: univalence of geometric objects/category and
+   categorical equivalence. It is not implied merely by Hom--Nat
+   equivalences and mere representability without that packaging.
+
+## Essential image: finite gluing and compact descent checked (2026-10-29)
+
+This checkpoint supersedes the preceding continuation checklist. The
+mathematical presentation is `unit/doc/functorial-schemes.tex` (seven-page
+PDF), mathematics first and implementation correspondence only at the
+end. No claim of the full essential-image theorem is made yet.
+
+### Precise finite gluing hypotheses and theorem
+
+For spaces X_i and compact opens d_ij in X_i, write Y_ij=X_j|d_ji.
+A local map h_ij:Y_ij->X_i gives a bounded lattice map
+r_ij:L_i -> L_j|d_ji; let t_ij be its underlying function into L_j.
+Use the following domain-sensitive laws:
+
+    t_ii(u) = u,
+    t_jk(t_ij(u)) = d_kj /\ t_ik(u).
+
+In particular t_ji(t_ij(u))=d_ij /\ u. The diagonal top law d_ii=top
+follows from identity and preservation of top by r_ii. These laws say
+where triple compositions are defined, as well as what they do there.
+The corresponding ring maps c_ij,u:O_i(u)->O_j(t_ij(u)) satisfy:
+
+    c_ii,u(s)|u = s,
+    c_jk,t_ij(u)(c_ij,u(s)) = c_ik,u(s)|t_jk(t_ij(u)).
+
+The second equation is expressed as compatibility of the transported
+tuple, with the restrictions and equal domains in its type. These are
+hypotheses of the gluing theorem, not added axioms. In particular the
+extraction of these hypotheses from a functorial atlas remains to do.
+
+Checked files (informal proofs at their heads):
+
+- FiniteRingedGlue: for any finite diagram of local maps, sections on a
+  compatible tuple of opens form FiniteRingGlue's ring. Restriction is
+  componentwise; naturality of the legs proves compatibility. Sheaf
+  gluing is coordinatewise; separation on each overlap proves that the
+  glued coordinates agree. Includes empty atlases and empty covers.
+- FiniteLocalGlue: D(s) is the tuple of D_i(s_i). Locality of the legs
+  and InvOpen.Restrict prove compatibility. FiniteRingGlue's unit
+  criterion proves that it is the invertibility open; support laws hold
+  coordinatewise. Each component has a local projection map into the
+  glued space. OverlapAgreement proves that the two composites from
+  each Y_ij into the glued space are equal (matching on opens and rings).
+- FiniteTransitionLattice: extend u in chart i to (t_ij(u))_j. The
+  cocycle law is exactly its compatibility. Chart e_i is extension of
+  top, with j-coordinate d_ji and i-coordinate top. The charts cover.
+  Below e_i, matching says t_ij(v_i)=v_j /\ d_ji=v_j. Projection and
+  extension are inverse, proving the lattice chart theorem.
+- FiniteTransitionGlue: on v<=e_i a section tuple is determined by its
+  i-th coordinate. Matching gives every other coordinate by transport
+  and restriction between equal opens. Conversely transport a section
+  over v_i to the tuple on extension_i(v_i), then restrict to the equal
+  open v. Section identity proves it projects back to the given section.
+  Thus section projections are bijective. SliceUniversal factors the
+  projection X_i->glued through e_i; its lattice and section maps are
+  bijective, so X_i is isomorphic to glued|e_i. AffineInputs packages
+  affine charts into an actual affine cover and proves qcqs. Affineness
+  of pairwise overlaps is never assumed.
+
+FiniteLatticeGlue also exposes coordinatewise order and preservation of
+finite joins, needed to send covers to component and overlap covers.
+
+### Geometric functors are sheaves
+
+- SpaceGluing: the existing geometric finite-cover gluing theorem with
+  hypotheses and conclusions directly in Spaces.Hom. Maps on X|e_i
+  agreeing on intersections have contractible amalgams. OpenAgreement
+  supplies MapGluing's component hypotheses; MapSeparation supplies
+  uniqueness. No affine or qcqs source hypothesis is used.
+- OpenMonic: an open inclusion is a monomorphism, by SliceUniversal.cancel.
+- BasicGeometry: j_g:Spec(B[1/g])->Spec(B)|Dg, its isomorphism and
+  factor-cut triangle. For Dh<=Dg, the square between j_h,j_g, Spec(rho)
+  and the open inclusion commutes. After composing into Spec B this is
+  Spec's composition law and rho-on; OpenMonic cancels that inclusion.
+  Value and Pull.trace compare maps on the localised affine with their
+  restrictions on basic opens.
+- GeometricSheaf: compatible points on the standard basic localisation
+  diagram transfer via inverse j_i to maps on D(a_i). Pull.trace and
+  cancellation of j_(a_i a_j) prove agreement on D(a_i a_j); transport
+  along D(a_i a_j)=D(a_i)/\D(a_j) gives intersection agreement. SpaceGluing
+  gives the point on Spec B; its chart equations give the matching laws.
+  Uniqueness follows after cancelling each j_i and using geometric
+  uniqueness. Thus IsSheaf(h_X) holds for EVERY locally ringed lattice X.
+- GeometricAtlas.qcqs now combines this with its already checked atlas:
+  every geometric qcqs scheme is a functorial qcqs scheme. This completes
+  the necessary direction of the essential-image theorem.
+
+Spaces.InvertMap gains cancel-forward (precomposition by an isomorphism
+detects equality), by associativity and its inverse law. AffineTests
+names the localised test once as localised B g; the recent localisation
+and geometric interfaces and TestSheaves use this same test.
+
+### Compact-cover descent and local-to-global equivalence
+
+- LocalisationTests: Dg<=u iff beta_g*(u)=top. The forward direction uses
+  the unit beta_g(g); the reverse uses ZariskiSeparated's intersection
+  lemma. The localisation base-change square B_g->C_(h g) comes from
+  the universal property alone; Functor.equation states its image under
+  any test functor. No fraction construction is analysed.
+- CompactMembership: local membership from Dg<=U_B(x), and its general
+  version for a ring map sending Dg to top, by naturality of U.
+- TestSheaves.SheafProperties: separation follows from uniqueness of
+  amalgams of the restrictions.
+- CompactCoverDescent: for any F, sheaf H, finite compact-open cover U_i,
+  and compatible alpha_i:|U_i|->H, the type of natural extensions is
+  contractible (Glue.universal). F need not be a sheaf.
+
+  A candidate y at x in F(B) fits when for every h:B->C and every i
+  with F(h)x in U_i, H(h)y equals alpha_i(F(h)x). First prove candidates
+  form a proposition: a merely existing tagged basic refinement of
+  U_i(x) detects equality by sheaf separation. For existence, take a
+  refinement, apply alpha to the localised points, and glue. Overlaps
+  agree by naturality and compatibility. To prove fitting after h,
+  use the pulled-back cover h(a_k) and the localisation base-change
+  square; both restrictions become local alpha values at the same point.
+  Separation proves fitting. Eliminate the mere refinement into the
+  proposition of candidates. Naturality follows from stability of
+  fitting under change of B. The fitting equation at identity gives
+  the local equation. Any other natural extension fits, hence is equal.
+  candidate is opaque after result and fits are exposed: no client
+  opens the refinement selection or sheaf construction.
+- CompactCoverSeparation: natural maps into a sheaf are equal if they
+  agree on a finite compact-open cover, by the uniqueness above.
+- LocalFunctorIso: given finite compact-open covers of sheaves F,H and
+  natural equivalences between their chart realisations, compatible in
+  both directions, glue their maps and inverses by CompactCoverDescent.
+  Each composite restricts to identity by the local inverse equations;
+  CompactCoverSeparation proves both global inverse equations. Exposes
+  a natural equivalence. This is the final local-to-global interface
+  needed after geometric atlas reconstruction.
+
+### Correspondence with reading: repairs made before accepting the check
+
+1. Affineness of a glued chart initially overran the 10 s declaration
+   limit. Using Iso.Invert at the slice's own ringed type, then stating
+   the affine criterion at that same slice before Qcqs.AffineOpen, makes
+   the comparison immediate. No proof or mathematical theorem changed.
+2. A chart map initially opened the glued space 18,313 times and opened
+   funext's construction. Naming the slice via OpenMaps.At[G.space,e]
+   and its factorisation at G.space's own lattice/structure removes the
+   duplicated comparison; morphism now opens 16 names in 0.00 s.
+3. Packaging BasicGeometry.j and its triangle directly compared every
+   lattice/sheaf law, including quotient induction and funext's proof.
+   Splitting the ringed and local components only moved that comparison.
+   SpacePaths is the mathematical solution: transport morphisms and
+   diagrams along equalities of spaces, preserving composition and
+   isomorphisms by path induction. Check the basic-open triangle at its
+   defining spaces, then change the WHOLE diagram. The source/target
+   equalities each open only 3 names, and no downstream proof rechecks
+   lattice or sheaf laws. All BasicGeometry declarations now open at
+   most 29 names. This illustrates why equal presentations should be
+   related once, rather than compared repeatedly by computation.
+4. Module-name collisions were handled locally (e.g. AtChart,
+   AffineInputs); they do not enter the mathematical note. The module
+   system is unchanged.
+
+Validation: 170 modules, zero failures. The full independent
+`seg All.seg --opens essential-image.opens` checks 6,991 declarations,
+zero failures (6.76 s in that run). This historical 1,493-entry audit was
+subsequently refreshed to record the shared AffineTests.localised
+constructor in existing basic-cover clients; the complete audit at the
+following checkpoint supersedes it. The 20 refreshed/extended modules have 920 audited
+entries; the 14 new source modules have 764 checked declarations in
+1,300 lines. Each new declaration takes at most 0.07 s and opens at
+most 38 distinct names in the isolated audit run. No new axiom, no shared
+dependency changes, and no edits to core or the category development.
+Everything since the previous qcqs checkpoint remains uncommitted.
+
+### Coherent atlas extraction: historical checklist (superseded below)
+
+Do not claim the sufficient direction or the complete essential-image
+theorem yet. The following are genuine remaining arguments.
+
+1. Realisations of pullbacks and intersections: natural equivalences
+   identify |U_i /\ U_j| with the compact-open subfunctor pulled back
+   along either affine chart. On h_A this compact open is classified
+   by its value at identity (TestYoneda/CompactPullback). Relate it to
+   GeometricOpens on Spec A, using AffineFunctor. This produces geometric
+   overlap representations Spec(A_i)|d_ij, with compatible inclusion
+   maps into the common functor F.
+2. Recover transition isomorphisms by full faithfulness on these qcqs
+   overlaps (SliceQcqs). Their composites agree because they describe
+   the same point in F. Prove the domain equations on triple overlaps
+   BEFORE applying faithfulness to the section cocycle. In particular
+   verify the precise FiniteTransitionLattice and FiniteTransitionGlue
+   hypotheses above; they have not been extracted automatically from an
+   arbitrary chart equivalence yet. Do not assume affine overlaps.
+3. Apply FiniteTransitionGlue. Its chart isomorphisms, GeometricOpens,
+   and the original chart equivalences give chartwise equivalences
+   between F and the geometric functor of the resulting space. Check
+   compatibility in both directions, using the recovered transitions
+   and FiniteLocalGlue.OverlapAgreement. LocalFunctorIso then gives the
+   global natural equivalence; GeometricSheaf supplies sheafhood of
+   the geometric functor and AffineInputs supplies geometric qcqs.
+4. Untruncate only into mere representability. A functorial affine atlas
+   and its affine witnesses merely exist; use finite choice and the
+   proposition of mere representations, not a choice of presentations
+   for each algebra or a presumed univalence theorem for spaces.
+5. Relative version: totalise F as Sigma(iota:k->B).F(B,iota), apply the
+   absolute result, recover X->Spec k by full faithfulness, and take
+   fibres. Follow Section 7 of the note.
+6. A literal equivalence of univalent categories additionally needs the
+   geometric category's packaging and univalence; neither is asserted
+   merely from full faithfulness and mere essential surjectivity.
+
+## Essential image: overlap representations and domains checked (2026-10-29)
+
+Continued beyond the finite-gluing/descent checkpoint. The full tree now
+has 179 modules, zero failures (5.68 s). The independent full
+`seg All.seg --opens essential-image.opens` checks 7,232 declarations,
+zero failures, with no openings outside its 1,734 lists (7.22 s).
+The 23 new files of this continuation contain 1,004 declarations and
+1,759 lines. New declarations take at most 0.07 s; the maximum number
+of distinct openings is now 45, in AtlasDomains.first (the comparison
+between its slice type and the recovered transition's source type).
+
+### Overlap representation: mathematics first
+
+For an actual chart e:h_A ~= |U| of F, compose the inverse affine
+comparison h_(Spec A) ~= h_A with e and the inclusion into F. This is
+its geometric chart-inclusion transformation. It is injective on affine
+points: its lift to |U| is an equivalence and |U|->F has proposition
+fibres. On a qcqs source, equality of maps into this affine chart is
+therefore detected after their inclusion into F, using affine probes.
+
+For a second compact open V, pull V back first to |U| and then along e.
+The result W is a compact open of h_A; write d=W_A(1). Naturality gives
+h_*(d)=W_B(h). The affine comparison takes h to Spec h, so this equation
+identifies |W| with the realisation of the geometric classifier of d.
+Thus |W| is represented by (Spec A)|d, a qcqs space. Forgetting the two
+membership proofs identifies |W| with |U /\ V|. This comparison keeps
+the underlying F-point and identifies the open inclusion with the
+restriction of the geometric chart-inclusion transformation.
+
+Using two charts gives geometric representations of |U /\ V| and
+|V /\ U|. Swapping the intersection preserves the F-point. Compose one
+representation with the inverse of the other. Full faithfulness recovers
+a transition map and the inverse natural equivalence recovers its
+inverse map. Equality on all affine points gives both inverse equations;
+Compose.Inverse gives isomorphism in the concrete ringed-lattice sense.
+The transition still preserves the point of F.
+
+For any third compact open W, let d_AW and d_BW be its extents in the
+two affine charts. On every affine probe p of the first overlap, the
+inverse images of cut_B(d_BW) under the transition and of cut_A(d_AW)
+are the W-values of the same F-point. Hence they are equal. Affine
+probes detect compact opens of qcqs spaces: choose an actual affine
+atlas, test with the inverse canonical affine isomorphisms, cancel their
+bijective lattice maps, and apply LatticeCover. Mere existence of the
+atlas is eliminated only into equality. This proves the DOMAIN equation
+before the cocycle is stated on those triple domains.
+
+### Checked interfaces
+
+- RealisationTransfer: a natural equivalence preserving and reflecting
+  membership restricts to an equivalence of realisations. forward-point
+  records its underlying point. It is opaque after that equation.
+- OpenIntersections: realising the pullback of V to |U| gives |U /\ V|.
+  The inverse splits a meet equal to top into its two top equations.
+  forward-point records the same F-point; the equivalence is then opaque.
+- AffineOpenRealisation: for every compact open u of h_A, equivalence
+  represents |u| by AR.space=(Spec A)|u_A(1), with AR.qcqs and trace for
+  its inclusion into h_(Spec A). Does not assume the open is affine.
+- AtlasOverlap: chart-equivalence, chart-inclusion and generic point;
+  injectivity on affine points and detection of equality of maps from
+  qcqs sources. With[V] gives the overlap's geometric representation
+  (AR.space, AR.qcqs, equivalence), extent at the generic chart point,
+  classifier on every affine probe, and trace of the inclusion into F.
+- OpenSymmetry: swap the intersection realisations, keeping the F-point.
+- GeometricRecovery: recover a geometric isomorphism from a natural
+  equivalence of the geometric functors of two qcqs spaces, with its
+  inverse and both equations. The recovered maps are opaque once their
+  equations on probes are exposed. Neither space needs to be affine.
+- GeometricOpenSeparation: affine probes detect equality of compact
+  opens of any qcqs space, by the affine-atlas argument above.
+- AtlasTransition: the natural equivalence of overlap functors, recovered
+  transition G.forward and isomorphism G.iso. Point.overlap-equation
+  preserves the F-point, and Point.chart-equation is the usual square
+  with both geometric chart inclusions.
+- AtlasDomains: for that transition and ANY third compact open W,
+  equation states theta*(cut_B d_BW)=cut_A d_AW. Thus triple-overlap
+  domains agree. The proof uses AtlasOverlap.classifier, the transition
+  chart-equation, and GeometricOpenSeparation.
+
+AffineFunctor.Spectrum.map-at now states the value of the forward
+natural equivalence, and the equivalence is opaque immediately afterward.
+The source-level inverse must not compute the inverse in its proof of
+bijectivity. Before this lock, AtlasOverlap.trace opened Global.iso,
+Global.back, and polynomial/section representations; after the lock it
+uses only the inverse law. Likewise the realisation and overlap
+comparisons are opaque after their forward-point/trace equations.
+The largest AtlasOverlap declarations now open 36 names (formerly 92),
+and AtlasTransition at most 39 (formerly 64). No existence construction
+or proof of equivalence is recomputed in the clients.
+
+The mathematical note is updated, including the order of the domain
+argument before the cocycle argument. Implementation details occur only
+at the end. No new axiom or shared dependency change; no edits to core
+or sag/categories. Everything remains uncommitted.
+
+### Previous continuation: cocycles, reconstruction, truncation (completed below)
+
+1. Cocycle on the identified domains. For three affine charts, restrict
+   the transitions using AtlasDomains. On every affine probe the two
+   composites into the final affine chart give the same F-point, by
+   AtlasTransition.Point.chart-equation and associativity. Use the
+   final chart's AtlasOverlap.injective, then its Maps.equal on the qcqs
+   triple overlap. This gives equality of actual local maps. Prove
+   identity and inverse compatibility in the same way. Do not compare
+   composites before identifying their domains.
+2. Convert this geometric cocycle to the exact restriction-and-transport
+   hypotheses of FiniteTransitionLattice and FiniteTransitionGlue.
+   For h_ij:X_j|d_ji->X_i use the recovered transition followed by the
+   chart inclusion. Its underlying t_ij satisfies the domain-sensitive
+   lattice identity, and equality of maps on the triple domain gives
+   SectionCocycle by MapAgreement.restrict-eq and res-comp. The identity
+   map gives SectionIdentity. These specific hypotheses have NOT yet
+   been verified for the extracted atlas data.
+3. Apply FiniteTransitionGlue to these maps. Its chart isomorphisms,
+   GeometricOpens, and the original affine chart equivalences identify
+   the realisations of the chart covers of F and of h_X. Verify forward
+   and inverse overlap compatibility using the extracted transition
+   equations and FiniteLocalGlue.OverlapAgreement; LocalFunctorIso then
+   gives F ~= h_X. GeometricSheaf gives sheafhood of h_X, AffineInputs
+   gives the geometric qcqs proof. This is the sufficient direction.
+4. The actual affine chart witnesses merely exist in FunctorialQcqs's
+   atlas. Use finite choice and eliminate into MERE representability,
+   not a chosen space and not a presumed univalence theorem for spaces.
+5. Relative totalisation and categorical packaging remain as in the
+   note. Neither is needed to state the absolute Hom--Nat comparison
+   with mere essential surjectivity; literal equivalence of univalent
+   categories additionally needs the geometric category's univalence.
+
+Audit detail for continuation: `--opens` reports extra openings but can
+still exit zero. The final audit explicitly checks that every OPENS line
+says "nothing else opened" (1,734 of 1,734). Naming the localised test
+centrally added AffineTests.localised as a by-definition opening in 19
+existing basic-cover declarations; those exact entries were inspected
+and recorded, with no other extra opening.
+
+
+## Essential image: absolute reconstruction complete (2026-10-29)
+
+Continued from the final overlap/domain checkpoint without changing core,
+the category development, or any shared dependency implementation. The
+informal restricted-cocycle proof and its review were written first in
+`unit/doc/functorial-schemes.tex`; every new module also starts with its
+informal argument. The note and its eight-page PDF now describe the
+checked absolute theorem and the remaining relative/categorical boundary.
+
+### Transition equations on their identified domains
+
+Use the gluing indices `h_ij : X_j|d_ji -> X_i`. AtlasData packages these
+maps from the recovered transitions. Their trace preserves the F-point;
+the generic point belongs to its own chart, so `d_ii=top`. AtlasInverse
+proves that a repeated transition is identity and that reversing the two
+charts gives an inverse transition. Cancelling the final open inclusion
+turns equality into the chart into equality in the overlap space itself.
+
+For a triple, first put `q=t_jk(d_ji)`. AtlasDomains gives
+`q=d_ki /\ d_kj`, so `q<=d_kj,d_ki`. OpenFactor restricts `h_jk` to
+`X_k|q` and factors it through `X_j|d_ji`. AtlasCocycle compares
+`h_ij` after this factor with `h_ik` after the inclusion into `X_k|d_ki`.
+Their F-points agree on every affine probe by the transition traces and
+factorisation triangles. The source is qcqs by SliceQcqs, so the final
+chart's injectivity and Maps.equal give equality of these actual maps.
+The domains have been identified before the composites are compared.
+
+AtlasLaws takes inverse images of that equality. Monotonicity removes
+the meet with q on the left; the domain equation and `t_ik(b)<=d_ki`
+simplify the right. This is exactly
+`t_jk(t_ij(b))=d_kj /\ t_ik(b)`. The diagonal gives `t_ii(b)=b`.
+AtlasSections restricts the equality of maps to the common open
+`w=t_jk(t_ij(b))`. The sharp-composite formula, OpenFactor.trace,
+OpenMaps.Below.Pull.trace, Slice.res-inc and res-comp give precisely
+FiniteTransitionGlue.SectionCocycle. The diagonal map equality gives
+SectionIdentity. Neither law is left as an extra atlas hypothesis.
+
+### Reconstruction, compatibility, and mere witnesses
+
+AtlasReconstruction applies FiniteTransitionGlue to these extracted laws.
+It exposes the glued space, its geometric chart realisations, their
+natural equivalences with the affine input charts, and the classifier
+identity `V_j(inclusion_i p)=U_j(point_i p)`. AffineInputs proves qcqs.
+
+AtlasCompatibility proves both required directions. Equal F-points put
+one chart point in the overlap by the original classifier. Factor that
+point, identify its transition image using original chart injectivity,
+and use FiniteLocalGlue.OverlapAgreement to get equal glued points.
+Conversely equal glued points put the point in the overlap using the
+reconstructed classifier. The same overlap square and reconstructed
+chart injectivity identify its transition image; the transition trace
+then gives equal F-points. AtlasRealisation applies LocalFunctorIso to
+these two compatibility statements. Its result is `F ~= h_X`.
+
+FiniteLargeChoice proves finite choice for witnesses in `U(l+1)` indexed
+by the existing `Presentations[l].Fin n`. Instantiating AffineFinite at
+`l+1` would instead change the finite index type, so it is not silently
+used in place of this lemma. FunctorialTransfer pulls affine atlases and
+sheafhood back across natural equivalences.
+
+EssentialImage.Over[F] exposes:
+
+- `Representation`: a small space X, its geometric qcqs proof, and
+  `F ~= h_X`.
+- `IsRepresentable`: the propositional truncation of Representation.
+- `reconstruct : FunctorialQcqs.Over[F].IsQcqs -> IsRepresentable`.
+  Finite choice supplies the affine witnesses merely; both their
+  truncation and the atlas truncation are eliminated only into this
+  proposition.
+- `recognise : IsRepresentable -> FunctorialQcqs.Over[F].IsQcqs`, using
+  GeometricAtlas and FunctorialTransfer.
+- `equivalence`: the equivalence of these two propositions.
+
+### Review and validation
+
+The opening audit prompted two local repairs before acceptance.
+OpenFactor.factor is opaque after its triangle, lattice equation and
+section restriction equation. Its at-le accessor is stated at that
+opaque map, so clients do not depend on computation of Back. The atlas
+transition maps are likewise opaque after their equations. The diagonal
+uses AtlasInverse's proved identity, avoiding a second comparison of the
+same chart structures that had reopened quotient induction. The section
+composite is split at its intermediate section images, as in the text.
+Finally the reconstruction triangle is checked at the defining glued
+space; this reduced its distinct openings from 74 to 29 and avoided
+rechecking component proofs through a second presentation.
+
+Validation after these repairs:
+
+- `unit/segc unit/sag/qcqs all`: 191 modules, zero failures (6.02 s in
+  the full run; subsequent affected-module checks also pass).
+- Independent full `seg All.seg --opens essential-image.opens`:
+  7,629 declarations, zero failures (8.50 s).
+- Every one of the 2,131 OPENS lines explicitly says
+  `nothing else opened`; extra openings are checked separately from
+  the process exit code.
+- The 12 new modules have 397 audited declarations. Each new declaration
+  takes at most 0.05 s in the isolated audit; at most 49 distinct names
+  are opened, in AtlasSections.At.second (the explicit comparison of
+  the equaliser's second leg with ambient restriction).
+- The mathematical note compiles successfully. No new axiom; no edits
+  to core or sag/categories. Existing uncommitted work is preserved,
+  and this continuation is also left uncommitted.
+
+### Previous continuation boundary (categorical item completed below)
+
+The absolute essential-image theorem and the transition cocycles are
+complete. The existing absolute Hom--Nat comparison together with
+EssentialImage gives full faithfulness and mere essential surjectivity.
+
+The remaining work is separate:
+
+1. Relative totalisation over a base ring, followed by recovering the
+   structure map and taking fibres (Section 7 of the note).
+2. Packaging the geometric category and proving its univalence, before
+   claiming a literal equivalence of univalent categories.
+
+Neither item is an assumption of the absolute theorem just checked.
+
+
+### Informal categorical comparison (2026-10-29; formalised below)
+
+Section 8 of `unit/doc/functorial-schemes.tex` now gives the informal
+proof of equivalence of univalent categories and its review. It proves
+structured identity principles for locally ringed lattices and for
+set-valued functors, then restricts to the propositional qcqs properties.
+Full faithfulness makes the object map an embedding; essential
+surjectivity inhabits its propositional fibres after truncation
+elimination. Conjugation by the resulting counit isomorphisms and the
+Hom--Nat inverse define a quasi-inverse functor.
+
+This section is an informal proof, not an additional checked `.seg`
+theorem. Geometric and functorial category packaging, their structured
+identity principles, and the assembled categorical equivalence still
+need formalisation. The checked absolute essential-image theorem and
+its opening audit are unchanged. The updated PDF compiles successfully.
+
+
+## Equivalence of univalent categories checked (2026-10-29)
+
+The informal proof and review in Section 8 of
+`unit/doc/functorial-schemes.tex` are now formalised. The final theorem is
+`QcqsCategories.equivalence`. Its type is the categorical equivalence
+record of CategoryQuasiInverse, containing an actual inverse functor,
+component isomorphisms for both composites, and both naturality proofs.
+Both source and target are constructed univalent category records;
+univalence is not an additional assumption of this theorem.
+
+### Structure identity and categorical univalence
+
+The proof uses the existing SipGeneric, Category, Arrows, Functor and
+EquivalenceLemmas through local symlinks. Their sources are unchanged.
+
+- IdentityTools proves the elementary proposition lemmas, including
+  uniqueness of bi-invertibility witnesses between sets.
+- RingIdentity and LatticeIdentity apply SipGeneric to the actual
+  commutative-ring and bounded-distributive-lattice records. Their
+  equation laws over sets are propositions. Explicit field/reconstruction
+  maps and record induction give the required retractions.
+- FamilyIdentity passes an identity system to indexed families and
+  supplies right induction. DecoratedIdentity extends one by structure
+  or by a propositional property. The proofs use contractible total
+  spaces and reuse SipGeneric.Fundamental.
+- PresheafIdentity handles the ring family, restriction maps and their
+  laws. On the identity ring-family isomorphism, naturality identifies
+  the restriction maps by extensionality. LocalIdentity adds sheafhood,
+  invertibility maps and support laws as a proposition. In particular
+  uniqueness of invertibility opens is used; an arbitrary extra support
+  operation is not silently discarded.
+- SpaceIdentity handles the dependent lattice/structure pair, retaining
+  the contravariant direction of geometric maps. SpaceIsoIdentity takes
+  every actual isomorphism to this structural presentation together
+  with equality of the underlying ringed maps. Replacing a lattice map
+  by its structured presentation transports the WHOLE ringed map along
+  their equality; lattice iso induction and ring Hom-of prove agreement.
+- GeometricCategory proves that the bijectivity criterion and the
+  categorical two-sided-inverse criterion agree. Its categorical
+  singletons retract onto the contractible structural total spaces;
+  Category.FromTotal gives univalence for the existing category of all
+  spaces and local geometric maps.
+- SetIdentity, FunctorIdentity and FunctorCategory give the corresponding
+  proof for existing small-set-valued functors and natural transformations.
+  Structural functor isomorphisms and NaturalEquivalence are the same
+  component data, reordered, with the original natural map retained.
+- FullSubcategory restricts a univalent category to any propositional
+  property, inheriting its arrows and operations. This gives the two
+  univalent qcqs categories without chosen atlases in their objects.
+
+### Comparison and inverse
+
+QcqsCategories.functor is the existing functor of points: GeometricAtlas
+supplies the object property, FunctorPoints.induced supplies the arrow
+map, and geometric units/associativity prove its laws. PointsUniversal
+supplies fully-faithful. EssentialImage.reconstruct, followed by inversion
+of its representing equivalence, supplies essentially-surjective.
+
+WeakCategoryEquivalence proves the general unsplit theorem. Full
+faithfulness gives an equivalence on isomorphism types. The functor's
+idtoiso square is path induction; univalence on both sides identifies
+its object-path map as an equivalence. EmbeddingFibres therefore makes
+every object fibre a proposition. Mere essential surjectivity inhabits
+that fibre after converting isomorphisms to paths. Truncation elimination
+is now valid, and the resulting section and retraction give the object
+equivalence. No global choice of representatives is assumed.
+
+CategoryQuasiInverse constructs the inverse functor from those unique
+fibres. Its arrow map is the unique lift of conjugation by the counit
+isomorphisms. Functor.Faithful.lift-eq gives its defining square;
+Functor.Faithful.unique and paste prove identity and composition. The
+same square is counit naturality. Reflecting the counit at H(X) gives
+the unit isomorphism, whose naturality follows by faithfulness. The
+Equivalence record packages this quasi-inverse and both natural
+isomorphisms. QcqsCategories.equivalence instantiates it, while
+QcqsCategories.object-equivalence separately records the equivalence
+of object types.
+
+### Validation and continuation
+
+- Full server check: 214 modules, zero failures (6.58 s).
+- Independent full checker with the combined essential-image.opens and
+  categories.opens lists: 8,387 declarations, zero failures (9.59 s).
+- All 2,889 OPENS lines explicitly say `nothing else opened`; zero extra
+  openings. The new categories.opens file records 758 declarations:
+  591 in the 18 new modules and 167 in the five reused source modules.
+- Isolated opening audit: each audited declaration takes at most 0.01 s;
+  the largest opens 24 distinct names (RingIdentity.fields, the explicit
+  record-to-structure presentation). No construction proof is reopened
+  in the comparison clients.
+- The mathematical note and PDF are updated and compile successfully.
+  No new axiom, no resizing or choice principle, no core or category
+  refactoring. All earlier uncommitted work is preserved and all new
+  work remains uncommitted.
+
+To reproduce the combined audit from qcqs, concatenate
+`essential-image.opens` and `categories.opens` into a temporary file,
+then run `seg All.seg --opens` on that file. Besides checking the exit
+status, verify that every OPENS line says `nothing else opened`.
+
+The absolute equivalence of univalent categories is complete. The
+remaining comparison work is the relative totalisation theorem over a
+base ring, as described in Section 7 of the note. It is not an assumption
+of the absolute categorical equivalence.
+
+
+## Final relative checkpoint — 2026-10-29
+
+The relative totalisation theorem and the relative equivalence of univalent
+categories are complete. The detailed informal argument was written and
+reviewed in `../../doc/relative-totalisation.tex` before formalisation.
+Its sections follow the formal declarations, including the intermediate
+transport, matching, and inverse-law steps. The three LaTeX documents
+and PDFs are updated after completion of the formalisation, as requested.
+
+### Intrinsic relative objects and dependent transport
+
+The tests are the existing BasePoints.Algebra objects `(B, i : K → B)`
+and their actual commuting algebra maps. RelativeFunctors and
+RelativeSheaves define the native functor and algebra-cover sheaf
+condition. RelativeQcqs defines the native finite affine atlas and qcqs
+condition intrinsically, before proving the criteria via totalisation.
+
+DependentPairs gives transport, composition and inverse transport,
+pair-equality, fibre-equality over a specified base path, and rebase-pair.
+Sethood of the base identifies the extracted path with the specified
+path; dependent second projections are never compared without transport.
+RelativeTests names canonical algebra lifts, their evaluation equations,
+and commuting-path. RelativeTotal.change-target is path induction on
+that base equation; on-algebra states the action on an arbitrary genuine
+algebra map. Identity and composition use this interface.
+RelativeTotalMaps proves totalised naturality, its base equation, and
+identity and composition laws.
+
+RelativeCovers first proves the pointwise base square and then the square
+of algebra maps. RelativeCoverFibre pairs native families and extracts
+compatibility over a fixed base. RelativeBaseGlue projects a compatible
+total family to the representable base, glues that base, rebases each
+local value backwards along its matching path, and retains the whole
+pair equation. RelativeTotalSheaf then uses native gluing and uniqueness.
+RelativeSheafOfTotal gives the converse using total gluing and separation
+of the representable base before extracting a native amalgam.
+
+RelativeOpens compares native and total opens, with inverse laws, and
+RelativeRealisationTotal compares their realisations. RelativeTotalAffine
+compares a native representable's total with an absolute representable.
+For the converse RelativeAffineOfTotal extracts the algebra structure
+at the generic point, names the base equation, transports the value,
+and retains its total-point trace for naturality and both inverse laws.
+RelativeTotalQcqs and RelativeQcqsOfTotal transfer affine atlases and
+sheafhood in the two directions. The final interface is
+`RelativeTotalisation.Over[K,F].sheaf-equivalence` and `qcqs-equivalence`.
+
+### Reconstruction and categories
+
+RelativeFibres recovers a native functor from `G → h_K`.
+TotalFibreEquivalence proves its total is equivalent to G over h_K;
+RelativeFibreRecovery proves that taking fibres of a total recovers F.
+Both proofs retain the displayed base path, including in their inverse
+laws. RelativeFibreEquivalence restricts equivalences over the base.
+RelativeGeometric reuses the existing geometric points over Spec K.
+GeometricBaseRecovery recovers a structure map from a natural map to h_K;
+RelativeGeometricFibre compares its fibres with those geometric points.
+
+RelativeEssentialImage applies the absolute reconstruction to the total,
+recovers the structure map, then composes the three native equivalences.
+Mere existence is eliminated only into the proposition of mere relative
+representation. Its reconstruct and recognise maps give the equivalence
+between intrinsic native qcqs and mere representation by a qcqs space
+over Spec K. RelativeQcqsTransfer and RelativeGeometricQcqs provide
+invariance and the geometric example.
+
+RelativeFunctorIdentity and RelativeFunctorCategory establish univalence
+for the native functors on the fixed existing algebra-test type.
+SliceCategory proves univalence of the actual slice, retaining its
+commuting equation; it uses the decorated identity system and the
+contractibility of `(t, t·id=s)`. RelativeCategories uses that geometric
+qcqs slice and the full subcategory of intrinsic native qcqs functors.
+Existing RelativeUniversal supplies full faithfulness; the new relative
+essential image supplies essential surjectivity. The existing generic
+WeakCategoryEquivalence and CategoryQuasiInverse then give
+`RelativeCategories.Over[K].object-equivalence` and `equivalence`.
+The latter contains an inverse functor and both natural isomorphisms.
+
+### Opening review and validation
+
+The isolated review found and repaired three interface leaks without
+changing the core or category library:
+
+- Lock RelativeTests.commuting-path after its interface so on-algebra
+  does not recompute the function-extensionality construction.
+- State left/right commuting and base-square equations pointwise using
+  push-at and compose-at, then apply algebra-map extensionality. This
+  avoids reopening localisation and fraction constructions.
+- State the geometric fibre inverse's back-point equation and lock back
+  before proving its inverse laws. Clients use that equation rather
+  than reopening the proof of its base equality.
+
+The final checks, after all source edits:
+
+- Full server: **249 modules, zero failures**, 6.70 s.
+- Independent full checker: **9,250 declarations, zero failures**, 10.07 s.
+- Combined opening audit: **3,752 lists, all explicitly reporting
+  `nothing else opened`**, zero extra openings.
+- The 35 new modules contribute **863 audited declarations** in
+  `relative.opens`. The isolated maximum is 0.05 s per declaration and
+  33 distinct opened names. No construction proof of function
+  extensionality, quotients or localisation is reopened by these clients.
+
+Reproduce the server check with `unit/segc unit/sag/qcqs all` from the
+repository root. For the independent audit concatenate
+`essential-image.opens`, `categories.opens`, and `relative.opens` into a
+temporary file, then run the unit checker on `unit/sag/qcqs/All.seg` with
+`--opens` pointing at that file. Verify every OPENS line as well as the
+exit status. Imports remain local to qcqs; no new axiom, resizing, choice,
+core change or category-library refactoring is involved. Earlier
+uncommitted work is preserved, and the development remains uncommitted.
+
+There is no remaining proof obligation in the requested absolute and
+relative comparison programme. The current detailed proof is
+`../../doc/relative-totalisation.pdf`; the broader account is
+`../../doc/functorial-schemes.pdf`, and the categorical theorem appears
+in `../../doc/univalent-categories.pdf`.

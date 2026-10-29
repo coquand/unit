@@ -1,0 +1,71 @@
+-- The small ring of compatible tuples for a finite atlas.
+-- A tuple x_i in R_i is compatible if f_ij(x_i)=g_ij(x_j) in S_ij.
+-- This condition is a proposition; funext gives extensionality and sethood.
+-- All ring operations are componentwise; compatibility is preserved by
+-- the ring-map laws, and all ring laws follow coordinatewise.
+-- The projections are ring maps.  A compatible family T -> R_i lifts
+-- uniquely to this ring, by tupling.  A tuple is a unit iff every component
+-- is: image inverses agree on overlaps by uniqueness of inverses, so the
+-- inverse tuple is compatible.  The construction works for n=0 as well.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module Over (n : Nat) (R : Fin n -> CRing) (S : Fin n -> Fin n -> CRing)
+ (setR : (i : Fin n) -> Pr.isSet (R i).R) (setS : (i j : Fin n) -> Pr.isSet (S i j).R)
+ (f : (i j : Fin n) -> RH.Hom (R i) (S i j)) (g : (i j : Fin n) -> RH.Hom (R j) (S i j)) {
+ Tuple : U l = (i : Fin n) -> (R i).R ;
+ Compatible (x : Tuple) : U l = (i j : Fin n) -> Id (S i j).R (map (f i j) (x i)) (map (g i j) (x j)) ;
+ compatible-prop (x : Tuple) : Pr.isProp (Compatible x) =
+  FE.isProp-Pi (Fin n) (\ i -> (j : Fin n) -> Id (S i j).R (map (f i j) (x i)) (map (g i j) (x j))) (\ i ->
+  FE.isProp-Pi (Fin n) (\ j -> Id (S i j).R (map (f i j) (x i)) (map (g i j) (x j))) (\ j -> setS i j _ _)) ;
+ Carrier : U l = (x : Tuple) * Compatible x ;
+ coordinate (x : Carrier) (i : Fin n) : (R i).R = x.1 i ;
+ match (x : Carrier) (i j : Fin n) : Id (S i j).R (map (f i j) (coordinate x i)) (map (g i j) (coordinate x j)) = x.2 i j ;
+ ext (x y : Carrier) (e : (i : Fin n) -> Id (R i).R (coordinate x i) (coordinate y i)) : Id Carrier x y =
+  Pr.Sigma-eq Tuple Compatible x.1 y.1 x.2 y.2 (FE.funext (Fin n) (\ i -> (R i).R) x.1 y.1 e) (compatible-prop y.1) ;
+ carrier-set : Pr.isSet Carrier = Pr.isSet-Sigma Tuple Compatible (FE.isSet-Pi (Fin n) (\ i -> (R i).R) setR)
+  (\ x -> Pr.prop-to-set (Compatible x) (compatible-prop x)) ;
+ zeroG : Carrier = (\ i -> (R i).z,\ i j -> trans (map-zero (f i j)) (sym (map-zero (g i j)))) ;
+ oneG : Carrier = (\ i -> (R i).o,\ i j -> trans (map-one (f i j)) (sym (map-one (g i j)))) ;
+ addG (x y : Carrier) : Carrier = (\ i -> (R i).add (coordinate x i) (coordinate y i),\ i j ->
+  trans (map-add (f i j) (coordinate x i) (coordinate y i))
+   (trans (cong2 (S i j).R (S i j).add _ _ _ _ (match x i j) (match y i j)) (sym (map-add (g i j) (coordinate x j) (coordinate y j))))) ;
+ mulG (x y : Carrier) : Carrier = (\ i -> (R i).mul (coordinate x i) (coordinate y i),\ i j ->
+  trans (map-mul (f i j) (coordinate x i) (coordinate y i))
+   (trans (cong2 (S i j).R (S i j).mul _ _ _ _ (match x i j) (match y i j)) (sym (map-mul (g i j) (coordinate x j) (coordinate y j))))) ;
+ negG (x : Carrier) : Carrier = (\ i -> (R i).neg (coordinate x i),\ i j ->
+  trans (map-neg (f i j) (coordinate x i)) (trans (ap (S i j).neg (match x i j)) (sym (map-neg (g i j) (coordinate x j))))) ;
+ ring : CRing = mkCRing Carrier zeroG oneG addG mulG negG
+  (\ x y z -> ext (addG x (addG y z)) (addG (addG x y) z) (\ i -> (R i).addA (coordinate x i) (coordinate y i) (coordinate z i)))
+  (\ x y -> ext (addG x y) (addG y x) (\ i -> (R i).addC (coordinate x i) (coordinate y i)))
+  (\ x -> ext (addG x zeroG) x (\ i -> (R i).addZ (coordinate x i)))
+  (\ x -> ext (addG x (negG x)) zeroG (\ i -> (R i).addN (coordinate x i)))
+  (\ x y z -> ext (mulG x (mulG y z)) (mulG (mulG x y) z) (\ i -> (R i).mulA (coordinate x i) (coordinate y i) (coordinate z i)))
+  (\ x y -> ext (mulG x y) (mulG y x) (\ i -> (R i).mulC (coordinate x i) (coordinate y i)))
+  (\ x -> ext (mulG x oneG) x (\ i -> (R i).mulO (coordinate x i)))
+  (\ x y z -> ext (mulG x (addG y z)) (addG (mulG x y) (mulG x z)) (\ i -> (R i).dist (coordinate x i) (coordinate y i) (coordinate z i))) ;
+ projection (i : Fin n) : RH.Hom ring (R i) = (\ x -> coordinate x i,refl (R i).o,
+  \ x y -> refl ((R i).add (coordinate x i) (coordinate y i)),\ x y -> refl ((R i).mul (coordinate x i) (coordinate y i))) ;
+ module Lift (T : CRing) (hs : (i : Fin n) -> RH.Hom T (R i))
+  (agree : (t : T.R) (i j : Fin n) -> Id (S i j).R (map (f i j) (map (hs i) t)) (map (g i j) (map (hs j) t))) {
+  lift-map (t : T.R) : Carrier = (\ i -> map (hs i) t,agree t) ;
+  lift : RH.Hom T ring = (lift-map,ext (lift-map T.o) oneG (\ i -> map-one (hs i)),
+   \ t u -> ext (lift-map (T.add t u)) (addG (lift-map t) (lift-map u)) (\ i -> map-add (hs i) t u),
+   \ t u -> ext (lift-map (T.mul t u)) (mulG (lift-map t) (lift-map u)) (\ i -> map-mul (hs i) t u)) ;
+  at (t : T.R) (i : Fin n) : Id (R i).R (coordinate (map lift t) i) (map (hs i) t) = refl (map (hs i) t) ;
+  unique (k : RH.Hom T ring) (e : (t : T.R) (i : Fin n) -> Id (R i).R (coordinate (map k t) i) (map (hs i) t)) : Id (RH.Hom T ring) k lift =
+   RH.Properties[T,ring,carrier-set].ext k lift (\ t -> ext (map k t) (map lift t) (e t)) ;
+ } ;
+ unit-component (x : Carrier) (u : RL[ring].unit x) (i : Fin n) : RL[R i].unit (coordinate x i) =
+  (coordinate u.1 i,ap (\ z -> coordinate z i) u.2) ;
+ module Units (x : Carrier) (us : (i : Fin n) -> RL[R i].unit (coordinate x i)) {
+  inverse-agree (i j : Fin n) : Id (S i j).R (map (f i j) (us i).1) (map (g i j) (us j).1) =
+   AffineRing[l].Laws[S i j,setS i j].inverse-unique (map (f i j) (coordinate x i)) (map (f i j) (us i).1) (map (g i j) (us j).1)
+    (AffineRing[l].unit-map (R i) (S i j) (f i j) (coordinate x i) (us i)).2
+    (trans (ap (\ z -> (S i j).mul z (map (g i j) (us j).1)) (match x i j))
+     (AffineRing[l].unit-map (R j) (S i j) (g i j) (coordinate x j) (us j)).2) ;
+  inverse : Carrier = (\ i -> (us i).1,inverse-agree) ;
+  unit : RL[ring].unit x = (inverse,ext (mulG x inverse) oneG (\ i -> (us i).2)) ;
+ } ;
+} ;

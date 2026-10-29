@@ -1,0 +1,76 @@
+-- Geometric notation for the existing locally ringed lattices and maps.
+-- A Space packages a lattice and its locally ringed structure once.  A
+-- morphism X -> Y is exactly a local ringed-lattice map from Y to X;
+-- this changes notation, not the notion of map or equality.
+-- Identity, composition and their laws are Compose and MapLaws, with
+-- equality of local maps reduced to equality of their ringed maps.
+-- An isomorphism has the inverse constructed by Iso.Invert.  MapLaws
+-- gives the two inverse equations.  No univalence of spaces is asserted.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module DL = DistLattice[l] ;
+record Space {
+ lattice : DL.DLat ;
+ structure : LocallyRinged[l].On[lattice].LocallyRinged ;
+} ;
+module Between (X Y : Space) {
+ module MP = LocallyRinged[l].Maps[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf] ;
+ module EQ = MapEquality[l].Maps[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf] ;
+ module LM = EQ.Local[Y.structure.inv,X.structure.inv] ;
+} ;
+Hom (X Y : Space) : U l = Between[X,Y].LM.LocalMap ;
+underlying {X Y : Space} (f : Hom X Y) : Between[X,Y].MP.Ringed = f.1 ;
+is-local {X Y : Space} (f : Hom X Y) : Between[X,Y].MP.Of[underlying f,Y.structure.inv,X.structure.inv].IsLocal = f.2 ;
+ext (X Y : Space) (f g : Hom X Y) (e : Id Between[X,Y].MP.Ringed (underlying f) (underlying g)) : Id (Hom X Y) f g =
+ Between[X,Y].LM.local-ext f g e ;
+set (X Y : Space) : Pr.isSet (Hom X Y) = Between[X,Y].LM.local-set ;
+module Identity (X : Space) {
+ module I = Compose[l].Identity[X.lattice,X.structure.sheaf] ;
+ identity : Hom X X = (I.identity,I.local X.structure.inv) ;
+} ;
+module Composite (X Y Z : Space) (g : Hom Y Z) (f : Hom X Y) {
+ module C = Compose[l].Maps[Z.lattice,Y.lattice,X.lattice,Z.structure.sheaf,Y.structure.sheaf,X.structure.sheaf].Of[underlying f,underlying g] ;
+ composite : Hom X Z = (C.composite,C.Local[Z.structure.inv,Y.structure.inv,X.structure.inv,is-local g,is-local f].local) ;
+} ;
+compose (X Y Z : Space) (g : Hom Y Z) (f : Hom X Y) : Hom X Z = Composite[X,Y,Z,g,f].composite ;
+module Laws (X Y : Space) (f : Hom X Y) {
+ module UnitLaws = MapLaws[l].Units[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf,underlying f] ;
+ left : Id (Hom X Y) (compose X Y Y Identity[Y].identity f) f = ext X Y (compose X Y Y Identity[Y].identity f) f UnitLaws.right ;
+ right : Id (Hom X Y) (compose X X Y f Identity[X].identity) f = ext X Y (compose X X Y f Identity[X].identity) f UnitLaws.left ;
+} ;
+module Associativity (W X Y Z : Space) (h : Hom Y Z) (g : Hom X Y) (f : Hom W X) {
+ module A = Compose[l].Assoc[Z.lattice,Y.lattice,X.lattice,W.lattice,Z.structure.sheaf,Y.structure.sheaf,X.structure.sheaf,W.structure.sheaf,
+  underlying h,underlying g,underlying f] ;
+ assoc : Id (Hom W Z) (compose W Y Z h (compose W X Y g f)) (compose W X Z (compose X Y Z h g) f) =
+  ext W Z (compose W Y Z h (compose W X Y g f)) (compose W X Z (compose X Y Z h g) f) (sym A.assoc) ;
+} ;
+IsIso (X Y : Space) (f : Hom X Y) : U l = Iso[l].Maps[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf].IsIso (underlying f) ;
+module InvertMap (X Y : Space) (f : Hom X Y) (iso : IsIso X Y f) {
+ module V = Iso[l].Invert[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf,underlying f,iso] ;
+ module I = Iso[l].Maps[X.lattice,Y.lattice,X.structure.sheaf,Y.structure.sheaf] ;
+ module E = MapLaws[l].Inverse[Y.lattice,X.lattice,Y.structure.sheaf,X.structure.sheaf,underlying f,iso] ;
+ inverse : Hom Y X = (V.inverse,I.Local[V.inverse,V.inverse-iso,X.structure.inv,Y.structure.inv].local) ;
+ inverse-iso : IsIso Y X inverse = V.inverse-iso ;
+ inverse-left : Id (Hom X X) (compose X Y X inverse f) Identity[X].identity =
+  ext X X (compose X Y X inverse f) Identity[X].identity E.right ;
+ inverse-right : Id (Hom Y Y) (compose Y X Y f inverse) Identity[Y].identity =
+  ext Y Y (compose Y X Y f inverse) Identity[Y].identity E.left ;
+ -- precomposition with the inverse detects equality of maps out of X
+ restore (Z : Space) (h : Hom Y Z) : Hom X Z = compose X Y Z h f ;
+ restore-after (Z : Space) (h : Hom X Z) : Id (Hom X Z) (restore Z (compose Y X Z h inverse)) h =
+  trans (sym Associativity[X,Y,X,Z,h,inverse,f].assoc)
+   (trans (ap (compose X X Z h) inverse-left) Laws[X,Z,h].right) ;
+ cancel (Z : Space) (h k : Hom X Z)
+  (e : Id (Hom Y Z) (compose Y X Z h inverse) (compose Y X Z k inverse)) : Id (Hom X Z) h k =
+  trans (sym (restore-after Z h)) (trans (ap (restore Z) e) (restore-after Z k)) ;
+ -- Precomposition with the original isomorphism also detects equality.
+ -- Compose the equation with its inverse, associate, and use f inverse=1.
+ cancel-forward (Z : Space) (h k : Hom Y Z)
+  (e : Id (Hom X Z) (compose X Y Z h f) (compose X Y Z k f)) : Id (Hom Y Z) h k =
+  trans (sym Laws[Y,Z,h].right)
+   (trans (ap (compose Y Y Z h) (sym inverse-right))
+    (trans Associativity[Y,X,Y,Z,h,f,inverse].assoc
+     (trans (ap (\ q -> compose Y X Z q inverse) e)
+      (trans (sym Associativity[Y,X,Y,Z,k,f,inverse].assoc)
+       (trans (ap (compose Y Y Z k) inverse-right) Laws[Y,Z,k].right))))) ;
+} ;
