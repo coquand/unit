@@ -1,7 +1,11 @@
 # cffr/: Coquand–Quitté, *Constructive finite free resolutions* (cffr.pdf)
 
 Worker A's files; worker B's are in `../koszul/` (linked read-only here).
-Check: `./segc sag/cffr all` from the `unit` root (cold: 209 modules, 0 failed, about 5.6 s).
+Check: `./segc sag/cffr all` from the `unit` root (cold: 184 modules, 0 failed, about 5 s).
+Assumptions (segment parameters of `All.seg`): function extensionality `fe`,
+univalence for propositions `propUA` (`Axioms.PropUnivalence`; it is used only
+by `Quotient`) and replacement; no univalence.  The univalent sharpening is
+`../cffru/`.
 Ring `Rg : Ring[l].CRing` with `setR`, or `D : TrueGrade.RD`; matrices by their
 columns (`Matrices`); minors as exterior coordinates (`Minors`).
 
