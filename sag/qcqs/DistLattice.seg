@@ -1,0 +1,172 @@
+-- Bounded distributive lattices as algebras (DESIGN.md, step 2), their
+-- maps, finite joins, and supports of a commutative ring.
+--
+-- A lattice is given by bot, top, join, meet with the equational laws
+-- (associativity, commutativity, units, absorption, distributivity).  The
+-- order is x <= y iff x /\ y = x.  From the laws: x /\ x = x; <= is a
+-- partial order; x /\ y is the greatest lower bound (associativity) and
+-- x \/ y the least upper bound (distributivity: (x \/ y) /\ z =
+-- (z /\ x) \/ (z /\ y) = x \/ y when x, y <= z); bot <= x <= top.
+-- The finite join of f : Fin n -> L is bot for n = 0 and f(n) \/ (join of
+-- the rest) otherwise; it is the least upper bound of the f(i).
+-- A support d : A -> L (Joyal): d 1 = top, d 0 = bot, d(x y) = d x /\ d y,
+-- d(x + y) <= d x \/ d y.  Then d(x^k) >= d x (k = 0: d 1 = top; k + 1:
+-- d x <= d x /\ d(x^k)), and d(sum v_i b_i) <= join of the d(b_i)
+-- (induction on n; d(b v) = d b /\ d v <= d b).
+-- x /\ (f_1 \/ .. \/ f_n) <= w when each x /\ f_i <= w, since
+-- x /\ (y \/ y') = (x /\ y) \/ (x /\ y'); a lattice map preserves finite
+-- joins (induction on n).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+
+record DLat {
+ L : U l ;
+ setL : Pr.isSet L ;
+ bot : L ;
+ top : L ;
+ join : L -> L -> L ;
+ meet : L -> L -> L ;
+ joinA (x y w : L) : Id L (join x (join y w)) (join (join x y) w) ;
+ joinC (x y : L) : Id L (join x y) (join y x) ;
+ joinB (x : L) : Id L (join x bot) x ;
+ meetA (x y w : L) : Id L (meet x (meet y w)) (meet (meet x y) w) ;
+ meetC (x y : L) : Id L (meet x y) (meet y x) ;
+ meetT (x : L) : Id L (meet x top) x ;
+ absorb-meet (x y : L) : Id L (meet x (join x y)) x ;
+ absorb-join (x y : L) : Id L (join x (meet x y)) x ;
+ dist (x y w : L) : Id L (meet x (join y w)) (join (meet x y) (meet x w)) ;
+} ;
+
+Hom (D E : DLat) : U l =
+ (h : D.L -> E.L) * Id E.L (h D.bot) E.bot * Id E.L (h D.top) E.top
+ * ((x y : D.L) -> Id E.L (h (D.join x y)) (E.join (h x) (h y)))
+ * ((x y : D.L) -> Id E.L (h (D.meet x y)) (E.meet (h x) (h y))) ;
+
+-- the parts of a lattice map, named once
+hmap {D E : DLat} (h : Hom D E) : D.L -> E.L = h.1 ;
+hmap-bot {D E : DLat} (h : Hom D E) : Id E.L (hmap h D.bot) E.bot = h.2.1 ;
+hmap-top {D E : DLat} (h : Hom D E) : Id E.L (hmap h D.top) E.top = h.2.2.1 ;
+hmap-join {D E : DLat} (h : Hom D E) (x y : D.L) :
+ Id E.L (hmap h (D.join x y)) (E.join (hmap h x) (hmap h y)) = h.2.2.2.1 x y ;
+hmap-meet {D E : DLat} (h : Hom D E) (x y : D.L) :
+ Id E.L (hmap h (D.meet x y)) (E.meet (hmap h x) (hmap h y)) = h.2.2.2.2 x y ;
+
+module Order (D : DLat) {
+ open D ;
+ Le (x y : L) : U l = Id L (meet x y) x ;
+ le-prop (x y : L) : Pr.isProp (Le x y) = setL (meet x y) x ;
+ bot-join (x : L) : Id L (join bot x) x = trans (joinC bot x) (joinB x) ;
+ top-meet (x : L) : Id L (meet top x) x = trans (meetC top x) (meetT x) ;
+ meet-idem (x : L) : Id L (meet x x) x =
+  trans (ap (meet x) (sym (absorb-join x x))) (absorb-meet x (meet x x)) ;
+ le-refl (x : L) : Le x x = meet-idem x ;
+ le-trans (x y w : L) (h : Le x y) (k : Le y w) : Le x w = calc L {
+  meet x w =< ap (\ t -> meet t w) (sym h) > meet (meet x y) w
+   =< sym (meetA x y w) > meet x (meet y w)
+   =< ap (meet x) k > meet x y
+   =< h > x } ;
+ le-antisym (x y : L) (h : Le x y) (k : Le y x) : Id L x y = trans (sym h) (trans (meetC x y) k) ;
+ bot-le (x : L) : Le bot x = trans (ap (meet bot) (sym (bot-join x))) (absorb-meet bot x) ;
+ le-top (x : L) : Le x top = meetT x ;
+ meet-left (x y : L) : Le (meet x y) x = calc L {
+  meet (meet x y) x =< meetC (meet x y) x > meet x (meet x y)
+   =< meetA x x y > meet (meet x x) y
+   =< ap (\ t -> meet t y) (meet-idem x) > meet x y } ;
+ meet-right (x y : L) : Le (meet x y) y = trans (ap (\ t -> meet t y) (meetC x y))
+  (trans (meet-left y x) (meetC y x)) ;
+ meet-glb (x y w : L) (h : Le w x) (k : Le w y) : Le w (meet x y) = calc L {
+  meet w (meet x y) =< meetA w x y > meet (meet w x) y
+   =< ap (\ t -> meet t y) h > meet w y
+   =< k > w } ;
+ join-left (x y : L) : Le x (join x y) = absorb-meet x y ;
+ join-right (x y : L) : Le y (join x y) = trans (ap (meet y) (joinC x y)) (absorb-meet y x) ;
+ join-lub (x y w : L) (h : Le x w) (k : Le y w) : Le (join x y) w = calc L {
+  meet (join x y) w =< meetC (join x y) w > meet w (join x y)
+   =< dist w x y > join (meet w x) (meet w y)
+   =< cong2 L join _ _ _ _ (trans (meetC w x) h) (trans (meetC w y) k) > join x y } ;
+ join-mono (x y x' y' : L) (h : Le x x') (k : Le y y') : Le (join x y) (join x' y') =
+  join-lub x y (join x' y')
+   (le-trans x x' (join x' y') h (join-left x' y'))
+   (le-trans y y' (join x' y') k (join-right x' y')) ;
+ meet-mono (x y x' y' : L) (h : Le x x') (k : Le y y') : Le (meet x y) (meet x' y') =
+  meet-glb x' y' (meet x y)
+   (le-trans (meet x y) x x' (meet-left x y) h)
+   (le-trans (meet x y) y y' (meet-right x y) k) ;
+}
+;
+
+module Joins (D : DLat) {
+ open D ; module O = Order[D] ;
+ bigJ : (n : Nat) -> (Fin n -> L) -> L = split {
+  zero -> \ f -> bot ;
+  suc n | r -> \ f -> join (f (inr tt)) (r (\ i -> f (inl i))) } ;
+ below : (n : Nat) (f : Fin n -> L) (i : Fin n) -> O.Le (f i) (bigJ n f) = split {
+  zero -> \ f -> AffineFinite[l].empty-section (\ i -> O.Le (f i) (bigJ zero f)) ;
+  suc n | r -> \ f -> AffineFinite[l].section n (\ i -> O.Le (f i) (bigJ (suc n) f))
+   (\ i -> O.le-trans (f (inl i)) (bigJ n (\ j -> f (inl j))) (bigJ (suc n) f)
+     (r (\ j -> f (inl j)) i) (O.join-right (f (inr tt)) (bigJ n (\ j -> f (inl j)))))
+   (O.join-left (f (inr tt)) (bigJ n (\ j -> f (inl j)))) } ;
+ least : (n : Nat) (f : Fin n -> L) (w : L) -> ((i : Fin n) -> O.Le (f i) w) -> O.Le (bigJ n f) w = split {
+  zero -> \ f w h -> O.bot-le w ;
+  suc n | r -> \ f w h -> O.join-lub (f (inr tt)) (bigJ n (\ i -> f (inl i))) w
+   (h (inr tt)) (r (\ i -> f (inl i)) w (\ i -> h (inl i))) } ;
+ -- x /\ (f_1 \/ .. \/ f_n) <= w when every x /\ f_i <= w (distributivity)
+ meet-below (x : L) : (n : Nat) (f : Fin n -> L) (w : L) ->
+  ((i : Fin n) -> O.Le (meet x (f i)) w) -> O.Le (meet x (bigJ n f)) w = split {
+  zero -> \ f w h -> O.le-trans (meet x bot) bot w (O.meet-right x bot) (O.bot-le w) ;
+  suc n | r -> \ f w h -> Pr.subst L (\ t -> O.Le t w)
+    (join (meet x (f (inr tt))) (meet x (bigJ n (\ i -> f (inl i))))) (meet x (bigJ (suc n) f))
+    (sym (dist x (f (inr tt)) (bigJ n (\ i -> f (inl i)))))
+    (O.join-lub (meet x (f (inr tt))) (meet x (bigJ n (\ i -> f (inl i)))) w
+      (h (inr tt)) (r (\ i -> f (inl i)) w (\ i -> h (inl i)))) } ;
+ -- (f_1 \/ .. \/ f_n) /\ (g_1 \/ .. \/ g_m) <= w when every f_i /\ g_j <= w
+ meet-joins (n : Nat) (f : Fin n -> L) (m : Nat) (g : Fin m -> L) (w : L)
+  (h : (i : Fin n) (j : Fin m) -> O.Le (meet (f i) (g j)) w) : O.Le (meet (bigJ n f) (bigJ m g)) w =
+  meet-below (bigJ n f) m g w (\ j ->
+   Pr.subst L (\ t -> O.Le t w) (meet (g j) (bigJ n f)) (meet (bigJ n f) (g j)) (meetC (g j) (bigJ n f))
+    (meet-below (g j) n f w (\ i ->
+      Pr.subst L (\ t -> O.Le t w) (meet (f i) (g j)) (meet (g j) (f i)) (meetC (f i) (g j)) (h i j)))) ;
+}
+;
+
+-- a lattice map preserves finite joins
+module JoinMaps (D E : DLat) (h : Hom D E) {
+ module JD = Joins[D] ; module JE = Joins[E] ;
+ preserves : (n : Nat) (f : Fin n -> D.L) -> Id E.L (hmap h (JD.bigJ n f)) (JE.bigJ n (\ i -> hmap h (f i))) = split {
+  zero -> \ f -> hmap-bot h ;
+  suc n | r -> \ f -> trans (hmap-join h (f (inr tt)) (JD.bigJ n (\ i -> f (inl i))))
+    (ap (E.join (hmap h (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+}
+;
+
+module Supports (A : CRing) (D : DLat) {
+ open D ; module O = Order[D] ; module J = Joins[D] ;
+ module P = AffinePowers[l].Over[A] ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ Support (d : A.R -> L) : U l =
+  Id L (d A.o) top * Id L (d A.z) bot
+  * ((x y : A.R) -> Id L (d (A.mul x y)) (meet (d x) (d y)))
+  * ((x y : A.R) -> O.Le (d (A.add x y)) (join (d x) (d y))) ;
+ module Of (d : A.R -> L) (sd : Support d) {
+  at-one : Id L (d A.o) top = sd.1 ;
+  at-zero : Id L (d A.z) bot = sd.2.1 ;
+  at-mul (x y : A.R) : Id L (d (A.mul x y)) (meet (d x) (d y)) = sd.2.2.1 x y ;
+  at-add (x y : A.R) : O.Le (d (A.add x y)) (join (d x) (d y)) = sd.2.2.2 x y ;
+  scaled (b v : A.R) : O.Le (d (A.mul b v)) (d b) =
+   trans (ap (\ t -> meet t (d b)) (at-mul b v))
+    (trans (O.meet-left (d b) (d v)) (sym (at-mul b v))) ;
+  -- d x <= d (x^k)
+  power-above (x : A.R) : (k : Nat) -> O.Le (d x) (d (P.power x k)) = split {
+   zero -> Pr.subst L (\ t -> O.Le (d x) t) top (d A.o) (sym at-one) (O.le-top (d x)) ;
+   suc k | ih -> Pr.subst L (\ t -> O.Le (d x) t) (meet (d x) (d (P.power x k))) (d (P.power x (suc k)))
+     (sym (at-mul x (P.power x k))) (O.meet-glb (d x) (d (P.power x k)) (d x) (O.le-refl (d x)) ih) } ;
+  -- d (sum fs_i v_i) <= join of the d (fs_i)
+  lin-below : (n : Nat) (fs v : Fin n -> A.R) -> O.Le (d (S.lin n fs v)) (J.bigJ n (\ i -> d (fs i))) = split {
+   zero -> \ fs v -> Pr.subst L (\ t -> O.Le t (J.bigJ zero (\ i -> d (fs i)))) bot (d A.z) (sym at-zero)
+     (O.bot-le (J.bigJ zero (\ i -> d (fs i)))) ;
+   suc n | r -> \ fs v -> O.le-trans _ _ _
+     (at-add (A.mul (fs (inr tt)) (v (inr tt))) (S.lin n (\ i -> fs (inl i)) (\ i -> v (inl i))))
+     (O.join-mono _ _ _ _ (scaled (fs (inr tt)) (v (inr tt))) (r (\ i -> fs (inl i)) (\ i -> v (inl i)))) } ;
+ } ;
+}
+;

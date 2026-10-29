@@ -1,0 +1,216 @@
+-- The Zariski lattice L_A (DESIGN.md, step 2): finite families of elements
+-- of A, identified when a <= b and b <= a (Radical).  Join, meet, top and
+-- bottom are ++, *, (1), () (FamilyLattice).
+--
+-- The operations respect the identification: a <= a', b <= b' give
+-- a ++ b <= a' ++ b' (least upper bound) and a * b <= a' * b' (greatest
+-- lower bound).  Each lattice law holds up to the identification, by the
+-- order facts of FamilyLattice; e.g. a * (a ++ b) <= a, and a <= a * (a ++ b)
+-- since a <= a and a <= a ++ b.
+-- D(x) is the class of the one-element family (x).  It is a support:
+-- D 1 = top by definition; (0) and () are identified (0 = 0 . 1 lies in
+-- every ideal); (x y) and (x) * (y) = (y x) are identified ((x y) <= (x),
+-- (y)); x + y is in the radical of (x, y).
+-- Formal Nullstellensatz: [a] <= [b] in L_A iff a <= b, that is, every
+-- a_i has a power in (b).  If a <= b then a and a * b are identified, so
+-- [a] /\ [b] = [a]; conversely [a * b] = [a] gives a <= a * b <= b.
+-- Every class is the join of its generators: [a] = D(a_n) \/ .. \/ D(a_1),
+-- by induction on n, since (a_1..a_n,x) and (x) ++ (a_1..a_n) generate each
+-- other.  After the lattice is built its operations are used only through
+-- join-cls and meet-cls, and the descended maps are locked.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module DL = DistLattice[l] ;
+module AF = AffineFinite[l] ;
+module Over (A : CRing) {
+ open A ; open RL[A] ;
+ open Radical[l].Over[A] ;
+ open FamilyLattice[l].Over[A] ;
+
+ Eqv (a b : Fam) : U l = Le a b * Le b a ;
+ eqv (a b : Fam) (h : Le a b) (k : Le b a) : Eqv a b = (h,k) ;
+ eqv-prop (a b : Fam) : Pr.isProp (Eqv a b) =
+  Pr.isProp-Sigma (Le a b) (\ h -> Le b a) (le-prop a b) (\ h -> le-prop b a) ;
+ eqv-refl (a : Fam) : Eqv a a = (le-refl a,le-refl a) ;
+ eqv-sym (a b : Fam) (h : Eqv a b) : Eqv b a = (h.2,h.1) ;
+ eqv-trans (a b c : Fam) (h : Eqv a b) (k : Eqv b c) : Eqv a c =
+  (le-trans a b c h.1 k.1,le-trans c b a k.2 h.2) ;
+ module Q = Quotient[l].Quot[Fam,Eqv,eqv-prop,eqv-refl,eqv-sym,eqv-trans] ;
+ cls (a : Fam) : Q.Q = Q.inc a ;
+
+ -- the operations respect the order
+ cat-mono (a a' b b' : Fam) (h : Le a a') (k : Le b b') : Le (cat a b) (cat a' b') =
+  le-cat-lub a b (cat a' b') (le-trans a a' (cat a' b') h (le-cat-left a' b'))
+   (le-trans b b' (cat a' b') k (le-cat-right a' b')) ;
+ prod-mono (a a' b b' : Fam) (h : Le a a') (k : Le b b') : Le (prod a b) (prod a' b') =
+  le-prod-glb a' b' (prod a b) (le-trans (prod a b) a a' (le-prod-left a b) h)
+   (le-trans (prod a b) b b' (le-prod-right a b) k) ;
+ module Binary (op : Fam -> Fam -> Fam)
+  (mono : (a a' b b' : Fam) -> Le a a' -> Le b b' -> Le (op a b) (op a' b')) {
+  respects (a a' b b' : Fam) (h : Eqv a a') (k : Eqv b b') : Eqv (op a b) (op a' b') =
+   (mono a a' b b' h.1 k.1,mono a' a b' b h.2 k.2) ;
+  module Right (a : Fam) {
+   module D = Q.Descend[Q.Q,Q.set,\ b -> cls (op a b),\ b b' k -> Q.relates _ _ (respects a a b b' (eqv-refl a) k)] ;
+  } ;
+  left-respects (a a' : Fam) (h : Eqv a a') : Id (Q.Q -> Q.Q) Right[a].D.map Right[a'].D.map =
+   F.funext Q.Q (\ q -> Q.Q) _ _
+    (Q.induction @l (\ q -> Id Q.Q (Right[a].D.map q) (Right[a'].D.map q)) (\ q -> Q.set _ _)
+     (\ b -> trans (Right[a].D.beta b)
+       (trans (Q.relates _ _ (respects a a' b b h (eqv-refl b))) (sym (Right[a'].D.beta b))))) ;
+  module Left = Q.Descend[Q.Q -> Q.Q,F.isSet-Pi Q.Q (\ q -> Q.Q) (\ q -> Q.set),
+    \ a -> Right[a].D.map,left-respects] ;
+  operation : Q.Q -> Q.Q -> Q.Q = Left.map ;
+  beta (a b : Fam) : Id Q.Q (operation (cls a) (cls b)) (cls (op a b)) =
+   trans (Pr.happly Q.Q (\ q -> Q.Q) _ _ (Left.beta a) (cls b)) (Right[a].D.beta b) ;
+ } ;
+ module Join = Binary[cat,cat-mono] ;
+ module Meet = Binary[prod,prod-mono] ;
+
+ -- lattice terms, to apply the descended operations to classes
+ data Term : U l = atom (a : Fam) | joinT (x y : Term) | meetT (x y : Term) ;
+ raw : Term -> Fam = split {
+  atom a -> a ; joinT x y | rx ry -> cat rx ry ; meetT x y | rx ry -> prod rx ry } ;
+ value : Term -> Q.Q = split {
+  atom a -> cls a ;
+  joinT x y | vx vy -> Join.operation vx vy ;
+  meetT x y | vx vy -> Meet.operation vx vy } ;
+ sound : (t : Term) -> Id Q.Q (value t) (cls (raw t)) = split {
+  atom a -> refl (cls a) ;
+  joinT x y | hx hy -> trans (ap (\ q -> Join.operation q (value y)) hx)
+   (trans (ap (Join.operation (cls (raw x))) hy) (Join.beta (raw x) (raw y))) ;
+  meetT x y | hx hy -> trans (ap (\ q -> Meet.operation q (value y)) hx)
+   (trans (ap (Meet.operation (cls (raw x))) hy) (Meet.beta (raw x) (raw y))) } ;
+ lift (t t' : Term) (h : Le (raw t) (raw t')) (k : Le (raw t') (raw t)) : Id Q.Q (value t) (value t') =
+  trans (sound t) (trans (Q.relates (raw t) (raw t') (h,k)) (sym (sound t'))) ;
+ forall1 (B : Q.Q -> U l) (prop : (x : Q.Q) -> Pr.isProp (B x)) (b : (a : Fam) -> B (cls a)) : (x : Q.Q) -> B x =
+  Q.induction @l B prop b ;
+ forall2 (B : Q.Q -> Q.Q -> U l) (prop : (x y : Q.Q) -> Pr.isProp (B x y))
+  (b : (a c : Fam) -> B (cls a) (cls c)) : (x y : Q.Q) -> B x y =
+  Q.induction @l (\ x -> (y : Q.Q) -> B x y) (\ x -> F.isProp-Pi Q.Q (B x) (prop x))
+   (\ a -> Q.induction @l (B (cls a)) (prop (cls a)) (b a)) ;
+ forall3 (B : Q.Q -> Q.Q -> Q.Q -> U l) (prop : (x y w : Q.Q) -> Pr.isProp (B x y w))
+  (b : (a c e : Fam) -> B (cls a) (cls c) (cls e)) : (x y w : Q.Q) -> B x y w =
+  forall2 (\ x y -> (w : Q.Q) -> B x y w) (\ x y -> F.isProp-Pi Q.Q (B x y) (prop x y))
+   (\ a c -> Q.induction @l (B (cls a) (cls c)) (prop (cls a) (cls c)) (b a c)) ;
+
+ -- the laws, from the order facts
+ cat-assoc (a b c : Fam) : Eqv (cat a (cat b c)) (cat (cat a b) c) =
+  (le-cat-lub a (cat b c) (cat (cat a b) c)
+    (le-trans a (cat a b) (cat (cat a b) c) (le-cat-left a b) (le-cat-left (cat a b) c))
+    (le-cat-lub b c (cat (cat a b) c)
+      (le-trans b (cat a b) (cat (cat a b) c) (le-cat-right a b) (le-cat-left (cat a b) c))
+      (le-cat-right (cat a b) c)),
+   le-cat-lub (cat a b) c (cat a (cat b c))
+    (le-cat-lub a b (cat a (cat b c)) (le-cat-left a (cat b c))
+      (le-trans b (cat b c) (cat a (cat b c)) (le-cat-left b c) (le-cat-right a (cat b c))))
+    (le-trans c (cat b c) (cat a (cat b c)) (le-cat-right b c) (le-cat-right a (cat b c)))) ;
+ cat-comm (a b : Fam) : Le (cat a b) (cat b a) = le-cat-lub a b (cat b a) (le-cat-right b a) (le-cat-left b a) ;
+ prod-assoc (a b c : Fam) : Eqv (prod a (prod b c)) (prod (prod a b) c) =
+  (le-prod-glb (prod a b) c (prod a (prod b c))
+    (le-prod-glb a b (prod a (prod b c)) (le-prod-left a (prod b c))
+      (le-trans (prod a (prod b c)) (prod b c) b (le-prod-right a (prod b c)) (le-prod-left b c)))
+    (le-trans (prod a (prod b c)) (prod b c) c (le-prod-right a (prod b c)) (le-prod-right b c)),
+   le-prod-glb a (prod b c) (prod (prod a b) c)
+    (le-trans (prod (prod a b) c) (prod a b) a (le-prod-left (prod a b) c) (le-prod-left a b))
+    (le-prod-glb b c (prod (prod a b) c)
+      (le-trans (prod (prod a b) c) (prod a b) b (le-prod-left (prod a b) c) (le-prod-right a b))
+      (le-prod-right (prod a b) c))) ;
+ prod-comm (a b : Fam) : Le (prod a b) (prod b a) = le-prod-glb b a (prod a b) (le-prod-right a b) (le-prod-left a b) ;
+ dist-back (a b c : Fam) : Le (cat (prod a b) (prod a c)) (prod a (cat b c)) =
+  le-cat-lub (prod a b) (prod a c) (prod a (cat b c))
+   (prod-mono a a b (cat b c) (le-refl a) (le-cat-left b c))
+   (prod-mono a a c (cat b c) (le-refl a) (le-cat-right b c)) ;
+ bot : Q.Q = cls empty ;
+ top : Q.Q = cls unitF ;
+ law-joinA : (x y w : Q.Q) -> Id Q.Q (Join.operation x (Join.operation y w)) (Join.operation (Join.operation x y) w) =
+  forall3 (\ x y w -> Id Q.Q (Join.operation x (Join.operation y w)) (Join.operation (Join.operation x y) w)) (\ x y w -> Q.set _ _)
+   (\ a b c -> lift (joinT (atom a) (joinT (atom b) (atom c))) (joinT (joinT (atom a) (atom b)) (atom c))
+     (cat-assoc a b c).1 (cat-assoc a b c).2) ;
+ law-joinC : (x y : Q.Q) -> Id Q.Q (Join.operation x y) (Join.operation y x) =
+  forall2 (\ x y -> Id Q.Q (Join.operation x y) (Join.operation y x)) (\ x y -> Q.set _ _)
+   (\ a b -> lift (joinT (atom a) (atom b)) (joinT (atom b) (atom a)) (cat-comm a b) (cat-comm b a)) ;
+ law-joinB : (x : Q.Q) -> Id Q.Q (Join.operation x bot) x =
+  forall1 (\ x -> Id Q.Q (Join.operation x bot) x) (\ x -> Q.set _ _)
+   (\ a -> lift (joinT (atom a) (atom empty)) (atom a) (le-cat-lub a empty a (le-refl a) (le-empty a)) (le-cat-left a empty)) ;
+ law-meetA : (x y w : Q.Q) -> Id Q.Q (Meet.operation x (Meet.operation y w)) (Meet.operation (Meet.operation x y) w) =
+  forall3 (\ x y w -> Id Q.Q (Meet.operation x (Meet.operation y w)) (Meet.operation (Meet.operation x y) w)) (\ x y w -> Q.set _ _)
+   (\ a b c -> lift (meetT (atom a) (meetT (atom b) (atom c))) (meetT (meetT (atom a) (atom b)) (atom c))
+     (prod-assoc a b c).1 (prod-assoc a b c).2) ;
+ law-meetC : (x y : Q.Q) -> Id Q.Q (Meet.operation x y) (Meet.operation y x) =
+  forall2 (\ x y -> Id Q.Q (Meet.operation x y) (Meet.operation y x)) (\ x y -> Q.set _ _)
+   (\ a b -> lift (meetT (atom a) (atom b)) (meetT (atom b) (atom a)) (prod-comm a b) (prod-comm b a)) ;
+ law-meetT : (x : Q.Q) -> Id Q.Q (Meet.operation x top) x =
+  forall1 (\ x -> Id Q.Q (Meet.operation x top) x) (\ x -> Q.set _ _)
+   (\ a -> lift (meetT (atom a) (atom unitF)) (atom a) (le-prod-left a unitF) (le-prod-glb a unitF a (le-refl a) (le-unit a))) ;
+ law-absorb-meet : (x y : Q.Q) -> Id Q.Q (Meet.operation x (Join.operation x y)) x =
+  forall2 (\ x y -> Id Q.Q (Meet.operation x (Join.operation x y)) x) (\ x y -> Q.set _ _)
+   (\ a b -> lift (meetT (atom a) (joinT (atom a) (atom b))) (atom a)
+     (le-prod-left a (cat a b)) (le-prod-glb a (cat a b) a (le-refl a) (le-cat-left a b))) ;
+ law-absorb-join : (x y : Q.Q) -> Id Q.Q (Join.operation x (Meet.operation x y)) x =
+  forall2 (\ x y -> Id Q.Q (Join.operation x (Meet.operation x y)) x) (\ x y -> Q.set _ _)
+   (\ a b -> lift (joinT (atom a) (meetT (atom a) (atom b))) (atom a)
+     (le-cat-lub a (prod a b) a (le-refl a) (le-prod-left a b)) (le-cat-left a (prod a b))) ;
+ law-dist : (x y w : Q.Q) -> Id Q.Q (Meet.operation x (Join.operation y w)) (Join.operation (Meet.operation x y) (Meet.operation x w)) =
+  forall3 (\ x y w -> Id Q.Q (Meet.operation x (Join.operation y w)) (Join.operation (Meet.operation x y) (Meet.operation x w))) (\ x y w -> Q.set _ _)
+   (\ a b c -> lift (meetT (atom a) (joinT (atom b) (atom c))) (joinT (meetT (atom a) (atom b)) (meetT (atom a) (atom c)))
+     (le-dist a b c) (dist-back a b c)) ;
+ lattice : DL.DLat = DL.mkDLat Q.Q Q.set bot top Join.operation Meet.operation
+  law-joinA law-joinC law-joinB law-meetA law-meetC law-meetT law-absorb-meet law-absorb-join law-dist ;
+ module O = DL.Order[lattice] ;
+ module J = DL.Joins[lattice] ;
+ -- the operations on classes; the lattice is used through these from now on
+ join-cls (a b : Fam) : Id lattice.L (lattice.join (cls a) (cls b)) (cls (cat a b)) = Join.beta a b ;
+ meet-cls (a b : Fam) : Id lattice.L (lattice.meet (cls a) (cls b)) (cls (prod a b)) = Meet.beta a b ;
+ bot-cls : Id lattice.L lattice.bot (cls empty) = refl (cls empty) ;
+ top-cls : Id lattice.L lattice.top (cls unitF) = refl (cls unitF) ;
+ opaque Join.operation ; opaque Meet.operation ;
+
+ -- formal Nullstellensatz: [a] <= [b] iff a <= b
+ order (a b : Fam) (h : Le a b) : O.Le (cls a) (cls b) =
+  trans (meet-cls a b) (Q.relates (prod a b) a (le-prod-left a b,le-prod-glb a b a (le-refl a) h)) ;
+ reflect (a b : Fam) (h : O.Le (cls a) (cls b)) : Le a b =
+  le-trans a (prod a b) b (Q.effective (prod a b) a (trans (sym (meet-cls a b)) h)).2 (le-prod-right a b) ;
+
+ -- D is a support
+ D (x : R) : Q.Q = cls (single x) ;
+ le-zero : Le (single z) empty = \ i -> inc empty z (rad-zero empty) ;
+ le-mul (x y : R) : Eqv (single (mul x y)) (prod (single x) (single y)) =
+  (le-prod-glb (single x) (single y) (single (mul x y))
+    (\ i -> inc (single x) (mul x y)
+      (rad-eq (single x) (mul y x) (mul x y) (mulC y x) (rad-scale (single x) y x (rad-gen (single x) (inr tt)))))
+    (\ i -> inc (single y) (mul x y) (rad-scale (single y) x y (rad-gen (single y) (inr tt)))),
+   prod-all (single x) (single y) (InRad (single (mul x y)))
+    (\ i j -> inc (single (mul x y)) (mul y x)
+      (rad-eq (single (mul x y)) (mul x y) (mul y x) (mulC x y) (rad-gen (single (mul x y)) (inr tt))))) ;
+ le-add (x y : R) : Le (single (add x y)) (cat (single x) (single y)) = \ i ->
+  inc (cat (single x) (single y)) (add x y)
+   (rad-add (cat (single x) (single y)) x y
+     (cat-left (single x) (single y) (RadData (cat (single x) (single y))) (rad-gen (cat (single x) (single y))) (inr tt))
+     (cat-right (single x) (single y) (RadData (cat (single x) (single y))) (rad-gen (cat (single x) (single y))) (inr tt))) ;
+ module Sup = DL.Supports[A,lattice] ;
+ support : Sup.Support D =
+  (refl top,
+   Q.relates (single z) empty (le-zero,le-empty (single z)),
+   \ x y -> trans (Q.relates _ _ (le-mul x y)) (sym (meet-cls (single x) (single y))),
+   \ x y -> Pr.subst Q.Q (\ t -> O.Le (D (add x y)) t) (cls (cat (single x) (single y)))
+     (lattice.join (D x) (D y)) (sym (join-cls (single x) (single y)))
+     (order (single (add x y)) (cat (single x) (single y)) (le-add x y))) ;
+ -- finite generation: [a] = D(a_n) \/ .. \/ D(a_1)
+ le-last (n : Nat) (w : Fin (suc n) -> R) :
+  Eqv (suc n,w) (cat (single (w (inr tt))) (n,\ i -> w (inl i))) =
+  (AF.section n (\ i -> InRad (cat (single (w (inr tt))) (n,\ j -> w (inl j))) (w i))
+    (le-cat-right (single (w (inr tt))) (n,\ j -> w (inl j)))
+    (le-cat-left (single (w (inr tt))) (n,\ j -> w (inl j)) (inr tt)),
+   le-cat-lub (single (w (inr tt))) (n,\ j -> w (inl j)) (suc n,w)
+    (\ i -> inc (suc n,w) (w (inr tt)) (rad-gen (suc n,w) (inr tt)))
+    (\ i -> inc (suc n,w) (w (inl i)) (rad-gen (suc n,w) (inl i)))) ;
+ generated-at : (n : Nat) (w : Fin n -> R) -> Id lattice.L (cls (n,w)) (J.bigJ n (\ i -> D (w i))) = split {
+  zero -> \ w -> Q.relates (zero,w) empty (AF.empty-section (\ i -> InRad empty (w i)),le-empty (zero,w)) ;
+  suc n | r -> \ w -> trans (Q.relates _ _ (le-last n w))
+    (trans (sym (join-cls (single (w (inr tt))) (n,\ i -> w (inl i))))
+      (ap (lattice.join (cls (single (w (inr tt))))) (r (\ i -> w (inl i))))) } ;
+ generated (a : Fam) : Id lattice.L (cls a) (J.bigJ (size a) (\ i -> D (gen a i))) =
+  generated-at (size a) (gen a) ;
+} ;

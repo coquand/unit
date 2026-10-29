@@ -1,0 +1,107 @@
+-- The bridge between localisation and the Zariski lattice (DESIGN.md,
+-- step 2).  Fix h in A and a localisation f : A -> T at the powers of h,
+-- in the elementary form, with T a set.  For g in A:
+--   f(g) is invertible  <=>  merely h^n = g y for some n, y  <=>  D h <= D g.
+--
+-- Proof.  If h^n = g y then f(g) f(y) = f(h^n), a unit, so f(g) is one,
+--  with inverse f(y) f(h^n)^-1.
+--  Conversely let u be the inverse of f(g).  It merely has a fraction
+--  f(s) u = f(y) with s = h^n, so f(g y) = f(g) f(s) u = f(s); hence some
+--  t = h^m kills g y - s, and h^(m+n) = t s = t g y = g (t y).
+--  By the Nullstellensatz D h <= D g iff h is in the radical of (g), that
+--  is, merely h^n = g y + 0 for some n, y.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module Over (A : CRing) (h : A.R) {
+ open A ; open RL[A] ;
+ open Radical[l].Over[A] ;
+ open FamilyLattice[l].Over[A] ;
+ open ZariskiLattice[l].Over[A] ;
+ module Reg = Regularity[l].Over[A] ;
+
+ -- the powers of h, a multiplicative monoid
+ Powers (s : R) : U l = (n : Nat) * Id R (power h n) s ;
+ index {s : R} (p : Powers s) : Nat = p.1 ;
+ index-eq {s : R} (p : Powers s) : Id R (power h (index p)) s = p.2 ;
+ powers-one : Powers o = (zero,refl o) ;
+ powers-mul (s t : R) (p : Powers s) (q : Powers t) : Powers (mul s t) =
+  (plus (index p) (index q),trans (P.power-add h (index p) (index q)) (cong2 R mul _ _ _ _ (index-eq p) (index-eq q))) ;
+ module LocH = Localisation[l].Over[A,Powers,powers-one,powers-mul] ;
+
+ -- h^n = g y for some n, y
+ Divides (g : R) : U l = (n : Nat) * (y : R) * Id R (power h n) (mul g y) ;
+ exponent {g : R} (dv : Divides g) : Nat = dv.1 ;
+ cofactor {g : R} (dv : Divides g) : R = dv.2.1 ;
+ divides-eq {g : R} (dv : Divides g) : Id R (power h (exponent dv)) (mul g (cofactor dv)) = dv.2.2 ;
+ Below (g : R) : U l = Tr.Trunc[Divides g].carrier ;
+ below-prop (g : R) : Pr.isProp (Below g) = Tr.Trunc[Divides g].proposition ;
+
+ -- Divides g is RadData (g) h: one coordinate, and g y + 0 = g y
+ to-rad (g : R) (dv : Divides g) : RadData (single g) h =
+  (exponent dv,\ i -> cofactor dv,trans (addZ (mul g (cofactor dv))) (sym (divides-eq dv))) ;
+ from-rad (g : R) (r : RadData (single g) h) : Divides g =
+  (r.1,r.2.1 (inr tt),trans (sym r.2.2) (addZ (mul g (r.2.1 (inr tt))))) ;
+ below-le (g : R) (b : Below g) : O.Le (D h) (D g) =
+  order (single h) (single g) (\ i -> Tr.Trunc[Divides g].induction @l (\ t -> InRad (single g) h)
+    (\ t -> rad-prop (single g) h) (\ dv -> inc (single g) h (to-rad g dv)) b) ;
+ le-below (g : R) (k : O.Le (D h) (D g)) : Below g =
+  Tr.Trunc[RadData (single g) h].induction @l (\ t -> Below g) (\ t -> below-prop g)
+   (\ r -> Tr.Trunc[Divides g].inc (from-rad g r)) (reflect (single h) (single g) k (inr tt)) ;
+
+ -- t (a - b) = t a - t b
+ times-difference (t a b : R) : Id R (mul t (add a (neg b))) (add (mul t a) (neg (mul t b))) =
+  trans (dist t a (neg b)) (ap (add (mul t a)) (mul-neg t b)) ;
+ -- a killer t = h^m of g y - s, s = h^n, gives h^(m+n) = g (t y)
+ divides-of (g y s : R) (ps : Powers s) (c : LocH.Killer (add (mul g y) (neg s))) : Divides g =
+  (plus (index (LocH.kill-in c)) (index ps),mul (LocH.kill c) y,calc R {
+   power h (plus (index (LocH.kill-in c)) (index ps))
+    =< P.power-add h (index (LocH.kill-in c)) (index ps)
+     > mul (power h (index (LocH.kill-in c))) (power h (index ps))
+    =< cong2 R mul _ _ _ _ (index-eq (LocH.kill-in c)) (index-eq ps) > mul (LocH.kill c) s
+    =< sym (Reg.difference (mul (LocH.kill c) (mul g y)) (mul (LocH.kill c) s)
+         (trans (sym (times-difference (LocH.kill c) (mul g y) s)) (LocH.kill-eq c))) > mul (LocH.kill c) (mul g y)
+    =< mul-swap (LocH.kill c) g y > mul g (mul (LocH.kill c) y) }) ;
+
+ module At (T : CRing) (setT : Pr.isSet T.R) (f : RH.Hom A T) (el : LocH.Elementary T f) (g : R) {
+  module TL = RL[T] ;
+  module TU = AffineRing[l].Laws[T,setT] ;
+  power-unit (n : Nat) : TL.unit (map f (power h n)) = LocH.inverts el (power h n) (n,refl (power h n)) ;
+  -- h^n = g y: f(g) f(y) = f(h^n)
+  unit-of (dv : Divides g) : TL.unit (map f g) =
+   (T.mul (map f (cofactor dv)) (power-unit (exponent dv)).1,calc T.R {
+    T.mul (map f g) (T.mul (map f (cofactor dv)) (power-unit (exponent dv)).1)
+     =< T.mulA (map f g) (map f (cofactor dv)) (power-unit (exponent dv)).1
+      > T.mul (T.mul (map f g) (map f (cofactor dv))) (power-unit (exponent dv)).1
+     =< ap (\ t -> T.mul t (power-unit (exponent dv)).1)
+          (trans (sym (map-mul f g (cofactor dv))) (ap (map f) (sym (divides-eq dv))))
+      > T.mul (map f (power h (exponent dv))) (power-unit (exponent dv)).1
+     =< (power-unit (exponent dv)).2 > T.o }) ;
+  -- u the inverse of f(g), f(s) u = f(y): f(g y) = f(s)
+  image-eq (u : TL.unit (map f g)) (p : LocH.Fraction T f u.1) :
+   Id T.R (map f (mul g (LocH.num p))) (map f (LocH.den p)) = calc T.R {
+   map f (mul g (LocH.num p)) =< map-mul f g (LocH.num p) > T.mul (map f g) (map f (LocH.num p))
+    =< ap (T.mul (map f g)) (sym (LocH.eqn p)) > T.mul (map f g) (T.mul (map f (LocH.den p)) u.1)
+    =< TL.mul-swap (map f g) (map f (LocH.den p)) u.1 > T.mul (map f (LocH.den p)) (T.mul (map f g) u.1)
+    =< ap (T.mul (map f (LocH.den p))) u.2 > T.mul (map f (LocH.den p)) T.o
+    =< T.mulO (map f (LocH.den p)) > map f (LocH.den p) } ;
+  zero-difference (a b : R) (e : Id T.R (map f a) (map f b)) : Id T.R (map f (add a (neg b))) T.z =
+   trans (map-add f a (neg b)) (trans (ap (T.add (map f a)) (RH.negation A T f b))
+    (trans (ap (\ t -> T.add t (T.neg (map f b))) e) (T.addN (map f b)))) ;
+  below-of (u : TL.unit (map f g)) : Below g =
+   Tr.Trunc[LocH.Fraction T f u.1].induction @l (\ t -> Below g) (\ t -> below-prop g)
+    (\ p -> Tr.Trunc[LocH.Killer (add (mul g (LocH.num p)) (neg (LocH.den p)))].induction @l
+      (\ t -> Below g) (\ t -> below-prop g)
+      (\ c -> Tr.Trunc[Divides g].inc (divides-of g (LocH.num p) (LocH.den p) (LocH.den-in p) c))
+      (LocH.kernel el (add (mul g (LocH.num p)) (neg (LocH.den p)))
+        (zero-difference (mul g (LocH.num p)) (LocH.den p) (image-eq u p))))
+    (LocH.fractions el u.1) ;
+
+  -- the bridge
+  invertible-le (u : TL.unit (map f g)) : O.Le (D h) (D g) = below-le g (below-of u) ;
+  le-invertible (k : O.Le (D h) (D g)) : TL.unit (map f g) =
+   Tr.Trunc[Divides g].induction @l (\ t -> TL.unit (map f g)) (\ t -> TU.unit-prop (map f g))
+    unit-of (le-below g k) ;
+ } ;
+} ;

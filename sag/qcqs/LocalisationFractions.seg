@@ -1,0 +1,79 @@
+-- The ring of fractions A[S^-1] (MonoidLocalization) is a localisation,
+-- and every localisation has the elementary form (DESIGN.md, step 1).
+--
+-- (1) The inclusion i : A -> A[S^-1] has the elementary form: i(s) is a
+--  unit with inverse 1/s; every element merely is a class y/s, and
+--  i(s) (y/s) = i(y); i(y) = 0 merely gives s in S with s y = 0
+--  (effectiveness of the quotient).  So i is a localisation (Localisation).
+-- (2) Let f : A -> T be a localisation.  By the universal properties of i
+--  and of f there are k : A[S^-1] -> T and h : T -> A[S^-1] with k . i = f
+--  and h . f = i.  Both k . h and the identity extend f along f, so
+--  k . h = id by uniqueness.  For x : T, h(x) merely has a fraction (y, s)
+--  for i; applying k gives f(s) x = f(y).  If f(y) = 0, then
+--  i(y) = h(f(y)) = 0, and the kernel condition of i applies.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module Over (A : CRing) (S : A.R -> U l) (one : S A.o)
+ (product : (s t : A.R) -> S s -> S t -> S (A.mul s t)) {
+ module L = Localisation[l].Over[A,S,one,product] ; open L ;
+ module B = MonoidLocalization[l].Over[A,S,one,product] ;
+
+ -- (1)
+ fraction-of (x : B.Carrier) (r : B.Representatives x) : Fraction B.ring B.inclusion x =
+  (r.1.1,r.1.2.1,r.1.2.2,
+   trans (ap (B.mulQ (B.constant r.1.2.1)) (sym r.2)) (B.fraction-equation r.1)) ;
+ elementary-fractions : Elementary B.ring B.inclusion =
+  (\ s hs -> B.inverse s hs,
+   \ x -> Tr.Trunc[B.Representatives x].induction @l
+     (\ r -> Tr.Trunc[Fraction B.ring B.inclusion x].carrier)
+     (\ r -> Tr.Trunc[Fraction B.ring B.inclusion x].proposition)
+     (\ r -> Tr.Trunc[Fraction B.ring B.inclusion x].inc (fraction-of x r))
+     (B.representatives x),
+   \ y e -> B.kernel y e) ;
+ loc-fractions : IsLoc B.ring B.inclusion = is-loc B.ring B.inclusion elementary-fractions ;
+
+ -- (2)
+ module FromLoc (T : CRing) (setT : Pr.isSet T.R) (f : RH.Hom A T) (loc : IsLoc T f) {
+  module E = FromElementary[B.ring,B.inclusion,elementary-fractions,T,setT,f,loc.1] ;
+  back : Extension T B.ring f B.inclusion =
+   (loc.2 B.ring B.set B.inclusion loc-fractions.1).1 ;
+  h : RH.Hom T B.ring = back.1 ;
+  h-on (a : A.R) : Id B.ring.R (map h (map f a)) (map B.inclusion a) =
+   Pr.happly A.R (\ a -> B.ring.R) (\ a -> map h (map f a)) (map B.inclusion)
+    (ap (\ phi -> map phi) back.2) a ;
+  -- k . h and the identity both extend f along f (k is E.h)
+  khf : Id (RH.Hom A T) (RH.compose A T T (RH.compose T B.ring T E.h h) f) f =
+   RH.Properties[A,T,setT].ext (RH.compose A T T (RH.compose T B.ring T E.h h) f) f
+    (\ a -> trans (ap (map E.h) (h-on a)) (E.on-image a)) ;
+  idf : Id (RH.Hom A T) (RH.compose A T T (RH.identity T) f) f =
+   RH.Properties[A,T,setT].ext (RH.compose A T T (RH.identity T) f) f (\ a -> refl (map f a)) ;
+  kh-id : Id (RH.Hom T T) (RH.compose T B.ring T E.h h) (RH.identity T) =
+   ap (\ e -> e.1)
+    (trans (sym ((loc.2 T setT f loc.1).2 (RH.compose T B.ring T E.h h,khf)))
+     ((loc.2 T setT f loc.1).2 (RH.identity T,idf))) ;
+  kh (x : T.R) : Id T.R (map E.h (map h x)) x =
+   Pr.happly T.R (\ x -> T.R) (\ x -> map E.h (map h x)) (\ x -> x) (ap (\ phi -> map phi) kh-id) x ;
+
+  fraction-from (x : T.R) (p : Fraction B.ring B.inclusion (map h x)) : Fraction T f x =
+   (num p,den p,den-in p,calc T.R {
+    T.mul (map f (den p)) x
+     =< ap (\ t -> T.mul t x) (sym (E.on-image (den p))) > T.mul (map E.h (map B.inclusion (den p))) x
+     =< ap (T.mul (map E.h (map B.inclusion (den p)))) (sym (kh x))
+      > T.mul (map E.h (map B.inclusion (den p))) (map E.h (map h x))
+     =< sym (map-mul E.h (map B.inclusion (den p)) (map h x)) > map E.h (B.ring.mul (map B.inclusion (den p)) (map h x))
+     =< ap (map E.h) (eqn p) > map E.h (map B.inclusion (num p))
+     =< E.on-image (num p) > map f (num p) }) ;
+  elementary : Elementary T f =
+   (loc.1,
+    \ x -> Tr.Trunc[Fraction B.ring B.inclusion (map h x)].induction @l
+      (\ p -> Tr.Trunc[Fraction T f x].carrier) (\ p -> Tr.Trunc[Fraction T f x].proposition)
+      (\ p -> Tr.Trunc[Fraction T f x].inc (fraction-from x p))
+      (fractions elementary-fractions (map h x)),
+    \ y e -> kernel elementary-fractions y
+      (trans (sym (h-on y)) (trans (ap (map h) e) (RH.zero T B.ring h)))) ;
+ } ;
+ elementary (T : CRing) (setT : Pr.isSet T.R) (f : RH.Hom A T) (loc : IsLoc T f) : Elementary T f =
+  FromLoc[T,setT,f,loc].elementary ;
+} ;

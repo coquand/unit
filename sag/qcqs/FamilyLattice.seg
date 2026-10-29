@@ -1,0 +1,130 @@
+-- The lattice operations on finite families (DESIGN.md, step 2), up to the
+-- order a <= b of Radical:
+--  join  a ++ b  (concatenation),  meet  a * b = (b_j a_i)_{i,j},
+--  top   (1),  bottom  () (the empty family).
+-- Facts, for every generator:
+--  a <= a ++ b, b <= a ++ b, and a ++ b <= c when a, b <= c (the
+--  generators of a ++ b are those of a and of b);
+--  a * b <= a and a * b <= b (b_j a_i is a multiple of a_i and of b_j);
+--  c <= a * b when c <= a and c <= b: if x^p is in (a) and x^q in (b),
+--  then x^(p+q) = x^p x^q is in (a)(b) = (a * b);
+--  a <= (1) (x^0 = 1) and () <= a;
+--  a * (b ++ c) <= (a * b) ++ (a * c) (a generator b_j a_i or c_j a_i of
+--  the left side is a generator of a * b or of a * c).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module AF = AffineFinite[l] ;
+module Over (A : CRing) {
+ open A ; open RL[A] ;
+ open Radical[l].Over[A] ;
+
+ empty : Fam = (zero,AF.empty-section (\ i -> R)) ;
+ unitF : Fam = (suc zero,\ i -> o) ;
+ single (x : R) : Fam = (suc zero,\ i -> x) ;
+ scale (c : R) (a : Fam) : Fam = (size a,\ i -> mul c (gen a i)) ;
+
+ -- concatenation, by recursion on the second family
+ catR (a : Fam) : (n : Nat) -> (Fin n -> R) -> Fam = split {
+  zero -> \ w -> a ;
+  suc n | r -> \ w -> (suc (size (r (\ i -> w (inl i)))),
+    snoc (Fin (size (r (\ i -> w (inl i))))) R (gen (r (\ i -> w (inl i)))) (w (inr tt))) } ;
+ cat (a b : Fam) : Fam = catR a (size b) (gen b) ;
+ -- a property of all generators of a ++ b is one of all generators of a and of b
+ catR-all (a : Fam) (P : R -> U l) (ha : (i : Fin (size a)) -> P (gen a i)) :
+  (n : Nat) (w : Fin n -> R) -> ((j : Fin n) -> P (w j)) -> (k : Fin (size (catR a n w))) -> P (gen (catR a n w) k) = split {
+  zero -> \ w hw -> ha ;
+  suc n | r -> \ w hw -> AF.section (size (catR a n (\ i -> w (inl i)))) (\ k -> P (gen (catR a (suc n) w) k))
+    (r (\ i -> w (inl i)) (\ j -> hw (inl j))) (hw (inr tt)) } ;
+ catR-left (a : Fam) (P : R -> U l) :
+  (n : Nat) (w : Fin n -> R) -> ((k : Fin (size (catR a n w))) -> P (gen (catR a n w) k)) -> (i : Fin (size a)) -> P (gen a i) = split {
+  zero -> \ w h -> h ;
+  suc n | r -> \ w h -> r (\ i -> w (inl i)) (\ k -> h (inl k)) } ;
+ catR-right (a : Fam) (P : R -> U l) :
+  (n : Nat) (w : Fin n -> R) -> ((k : Fin (size (catR a n w))) -> P (gen (catR a n w) k)) -> (j : Fin n) -> P (w j) = split {
+  zero -> \ w h -> AF.empty-section (\ j -> P (w j)) ;
+  suc n | r -> \ w h -> AF.section n (\ j -> P (w j)) (r (\ i -> w (inl i)) (\ k -> h (inl k))) (h (inr tt)) } ;
+ cat-all (a b : Fam) (P : R -> U l) (ha : (i : Fin (size a)) -> P (gen a i)) (hb : (j : Fin (size b)) -> P (gen b j)) :
+  (k : Fin (size (cat a b))) -> P (gen (cat a b) k) = catR-all a P ha (size b) (gen b) hb ;
+ cat-left (a b : Fam) (P : R -> U l) (h : (k : Fin (size (cat a b))) -> P (gen (cat a b) k)) :
+  (i : Fin (size a)) -> P (gen a i) = catR-left a P (size b) (gen b) h ;
+ cat-right (a b : Fam) (P : R -> U l) (h : (k : Fin (size (cat a b))) -> P (gen (cat a b) k)) :
+  (j : Fin (size b)) -> P (gen b j) = catR-right a P (size b) (gen b) h ;
+
+ -- pairwise products, by recursion on the second family
+ prodR (a : Fam) : (n : Nat) -> (Fin n -> R) -> Fam = split {
+  zero -> \ w -> empty ;
+  suc n | r -> \ w -> cat (r (\ i -> w (inl i))) (scale (w (inr tt)) a) } ;
+ prod (a b : Fam) : Fam = prodR a (size b) (gen b) ;
+ prodR-all (a : Fam) (P : R -> U l) :
+  (n : Nat) (w : Fin n -> R) -> ((i : Fin (size a)) (j : Fin n) -> P (mul (w j) (gen a i))) ->
+  (k : Fin (size (prodR a n w))) -> P (gen (prodR a n w) k) = split {
+  zero -> \ w h -> AF.empty-section (\ k -> P (gen empty k)) ;
+  suc n | r -> \ w h -> cat-all (prodR a n (\ i -> w (inl i))) (scale (w (inr tt)) a) P
+    (r (\ i -> w (inl i)) (\ i j -> h i (inl j))) (\ i -> h i (inr tt)) } ;
+ prodR-has (a : Fam) (P : R -> U l) :
+  (n : Nat) (w : Fin n -> R) -> ((k : Fin (size (prodR a n w))) -> P (gen (prodR a n w) k)) ->
+  (i : Fin (size a)) (j : Fin n) -> P (mul (w j) (gen a i)) = split {
+  zero -> \ w h i -> AF.empty-section (\ j -> P (mul (w j) (gen a i))) ;
+  suc n | r -> \ w h i -> AF.section n (\ j -> P (mul (w j) (gen a i)))
+    (r (\ j -> w (inl j)) (cat-left (prodR a n (\ j -> w (inl j))) (scale (w (inr tt)) a) P h) i)
+    (cat-right (prodR a n (\ j -> w (inl j))) (scale (w (inr tt)) a) P h i) } ;
+ prod-all (a b : Fam) (P : R -> U l) (h : (i : Fin (size a)) (j : Fin (size b)) -> P (mul (gen b j) (gen a i))) :
+  (k : Fin (size (prod a b))) -> P (gen (prod a b) k) = prodR-all a P (size b) (gen b) h ;
+ prod-has (a b : Fam) (P : R -> U l) (h : (k : Fin (size (prod a b))) -> P (gen (prod a b) k)) :
+  (i : Fin (size a)) (j : Fin (size b)) -> P (mul (gen b j) (gen a i)) = prodR-has a P (size b) (gen b) h ;
+
+ -- ideals: closed under linear combinations; (a)(b) is contained in (a * b)
+ ideal-sum (c : Fam) : (n : Nat) (w : Fin n -> R) -> ((i : Fin n) -> InIdeal c (w i)) -> InIdeal c (S.sum n w) = split {
+  zero -> \ w h -> ideal-zero c ;
+  suc n | r -> \ w h -> ideal-add c (w (inr tt)) (S.sum n (\ i -> w (inl i))) (h (inr tt)) (r (\ i -> w (inl i)) (\ i -> h (inl i))) } ;
+ ideal-lin (c : Fam) (n : Nat) (fs v : Fin n -> R) (h : (i : Fin n) -> InIdeal c (fs i)) : InIdeal c (S.lin n fs v) =
+  ideal-sum c n (\ i -> mul (fs i) (v i))
+   (\ i -> ideal-eq c (mul (v i) (fs i)) (mul (fs i) (v i)) (mulC (v i) (fs i)) (ideal-scale c (v i) (fs i) (h i))) ;
+ lin-scale-gen (x : R) (n : Nat) (fs v : Fin n -> R) :
+  Id R (S.lin n (\ i -> mul x (fs i)) v) (mul x (S.lin n fs v)) =
+  trans (S.sum-cong n (\ i -> mul (mul x (fs i)) (v i)) (\ i -> mul x (mul (fs i) (v i))) (\ i -> sym (mulA x (fs i) (v i))))
+   (S.sum-scale x n (\ i -> mul (fs i) (v i))) ;
+ -- y in (a) gives x y in (scale x a) style: c y in an ideal containing all c a_i
+ ideal-times (a c : Fam) (x y : R) (gens : (i : Fin (size a)) -> InIdeal c (mul x (gen a i))) (h : InIdeal a y) :
+  InIdeal c (mul x y) =
+  ideal-eq c (S.lin (size a) (\ i -> mul x (gen a i)) h.1) (mul x y)
+   (trans (lin-scale-gen x (size a) (gen a) h.1) (ap (mul x) h.2))
+   (ideal-lin c (size a) (\ i -> mul x (gen a i)) h.1 gens) ;
+ prod-gen (a b : Fam) (i : Fin (size a)) (j : Fin (size b)) : InIdeal (prod a b) (mul (gen b j) (gen a i)) =
+  prod-has a b (InIdeal (prod a b)) (ideal-gen (prod a b)) i j ;
+ ideal-product (a b : Fam) (x y : R) (h : InIdeal a x) (k : InIdeal b y) : InIdeal (prod a b) (mul x y) =
+  ideal-times b (prod a b) x y
+   (\ j -> ideal-eq (prod a b) (mul (gen b j) x) (mul x (gen b j)) (mulC (gen b j) x)
+     (ideal-times a (prod a b) (gen b j) x (\ i -> prod-gen a b i j) h)) k ;
+ rad-meet (a b : Fam) (x : R) (h : RadData a x) (k : RadData b x) : RadData (prod a b) x =
+  (plus h.1 k.1,ideal-eq (prod a b) (mul (power x h.1) (power x k.1)) (power x (plus h.1 k.1))
+    (sym (P.power-add x h.1 k.1)) (ideal-product a b (power x h.1) (power x k.1) h.2 k.2)) ;
+
+ -- the order facts
+ inc (b : Fam) (x : R) (h : RadData b x) : InRad b x = Tr.Trunc[RadData b x].inc h ;
+ le-cat-left (a b : Fam) : Le a (cat a b) = cat-left a b (InRad (cat a b)) (le-refl (cat a b)) ;
+ le-cat-right (a b : Fam) : Le b (cat a b) = cat-right a b (InRad (cat a b)) (le-refl (cat a b)) ;
+ le-cat-lub (a b c : Fam) (h : Le a c) (k : Le b c) : Le (cat a b) c = cat-all a b (InRad c) h k ;
+ le-prod-left (a b : Fam) : Le (prod a b) a =
+  prod-all a b (InRad a) (\ i j -> inc a (mul (gen b j) (gen a i)) (rad-scale a (gen b j) (gen a i) (rad-gen a i))) ;
+ le-prod-right (a b : Fam) : Le (prod a b) b =
+  prod-all a b (InRad b) (\ i j -> inc b (mul (gen b j) (gen a i))
+    (rad-eq b (mul (gen a i) (gen b j)) (mul (gen b j) (gen a i)) (mulC (gen a i) (gen b j))
+      (rad-scale b (gen a i) (gen b j) (rad-gen b j)))) ;
+ in-rad-meet (a b : Fam) (x : R) (h : InRad a x) (k : InRad b x) : InRad (prod a b) x =
+  Tr.Trunc[RadData a x].induction @l (\ t -> InRad (prod a b) x) (\ t -> rad-prop (prod a b) x)
+   (\ hh -> Tr.Trunc[RadData b x].induction @l (\ t -> InRad (prod a b) x) (\ t -> rad-prop (prod a b) x)
+     (\ kk -> inc (prod a b) x (rad-meet a b x hh kk)) k) h ;
+ le-prod-glb (a b c : Fam) (h : Le c a) (k : Le c b) : Le c (prod a b) =
+  \ i -> in-rad-meet a b (gen c i) (h i) (k i) ;
+ le-unit (a : Fam) : Le a unitF = \ i -> inc unitF (gen a i) (zero,ideal-gen unitF (inr tt)) ;
+ le-empty (a : Fam) : Le empty a = AF.empty-section (\ i -> InRad a (gen empty i)) ;
+ le-dist (a b c : Fam) : Le (prod a (cat b c)) (cat (prod a b) (prod a c)) =
+  prod-all a (cat b c) (InRad (cat (prod a b) (prod a c)))
+   (\ i -> cat-all b c (\ y -> InRad (cat (prod a b) (prod a c)) (mul y (gen a i)))
+     (\ j -> in-rad-trans (prod a b) (cat (prod a b) (prod a c)) (mul (gen b j) (gen a i))
+       (prod-has a b (InRad (prod a b)) (le-refl (prod a b)) i j) (le-cat-left (prod a b) (prod a c)))
+     (\ j -> in-rad-trans (prod a c) (cat (prod a b) (prod a c)) (mul (gen c j) (gen a i))
+       (prod-has a c (InRad (prod a c)) (le-refl (prod a c)) i j) (le-cat-right (prod a b) (prod a c)))) ;
+} ;
