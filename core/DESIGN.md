@@ -21,6 +21,58 @@ V, never up to iso), funext and univalence as parameters of one segment,
 `lem` only in a Classical segment (Δ).  Presheaves on a small category:
 `PCtx`, `PTy`, `PSub`, `subTy`, `mkTy`, `extP`, `ty-ext`.
 
+### Interfaces of the encoding (core-abstraction, 2026-10-29)
+
+A text about presheaves never looks at how a set is coded in V; it uses
+pairs, their projections and the action on them.  The formal proof should
+do the same: the codes are locked, and what the text uses is stated once,
+by refl, next to the definition.  (Measured before: V.Idx/Ix/mkV/SigV,
+TyL.E/EI and extP were 38% of all definitions opened in core, because a
+point written as a raw pair (x , a) is typed by unfolding the code of the
+fibre down to a Sigma type.)
+
+*Points of a comprehension.*  For a context G and a type A over G, a point
+of G.A at stage I is a pair (x , a) with x in G(I) and a in A(I, x); its
+restriction along f : J -> I is (f^* x , f^* a).  Everything the text says
+about these points is
+
+- pairing and the two projections: `pairE x a`, `fstE w`, `sndE w`;
+- by definition: fst (x , a) = x, snd (x , a) = a, (fst w , snd w) = w
+  (`fstE-pair`, `sndE-pair`, `pairE-eta`);
+- by definition of the action: f^*(x , a) = (f^* x , f^* a), the action of
+  A taken at the equation refl (`act-pair`; `pair-act` is the same at any
+  equation e : f^* x = y);
+- equality of two points over a common first component is equality in
+  the fibre (TyL.pr-inj, pr-eq, already stated in this form).
+
+The fibre of G.A at I is coded by the opaque Sigma code of VCode (`SigO`),
+so a point can only be made and read through this interface.  Pairing and
+the projections stay transparent: after the code is locked, the three
+equations above still hold by refl and open only pairE/fstE/sndE (checked
+on a scratch file: no V definition opened).  Types over G.A see the
+points only through `fstE`/`sndE` (p = fstE, q = sndE, <s , a> =
+pairE (s x) (a x)).  TyL[G, B] reads its total space E through the same
+interface: EI I is the type of points, built by `pairE`.
+
+*Fibres of Sigma types.*  The fibre of Sigma(A, B) at (I , x) is the Sigma
+code of A(I, x) and v |-> B(I, (x , v)) (SigAB.o); its elements are made
+by `pairO` and read by `fstO`/`sndO` (VCode), the same interface one level
+down; SigAB.h, snd', pair' are written with it.  Likewise IdAB.o is
+`IdO` with `idO-in`/`idO-out`.
+
+*Elements of [n].*  The linear poset [n] = {0 < .. < n} has elements
+`elLin n i h` (h : i <= n); by definition its carrier and order are
+`car-lin : car [n] (leaf i) = leb i n` and `le-lin : le [n] (leaf i)
+(leaf j) = leb i j`.  After these lemmas `lin` and `mkOb` are locked:
+objects are read by car/le/enum/pt, never by unfolding the record they
+were made from.
+
+*One name for the category.*  The presheaf layer is instantiated at the
+small category BC built from idH/compH; the base and its users name the
+identity and the composite idH/compH only, and the presheaf laws are read
+over the base in that form (GPre.PshL), so that comparing a presheaf law
+with a use never goes through BC's fields.
+
 ## L1  Base: a category with an interval and canonical sieves (model.tex §2) (quarry: IvBase, CSieve, PosS, DeltaBase)
 
 Parameters: a small category, an object [1] with points e0, e1 (I = y[1]),
