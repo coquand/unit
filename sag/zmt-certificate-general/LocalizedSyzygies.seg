@@ -1,0 +1,128 @@
+-- Homogeneous polynomial kernel generation localises to EVERY chart
+-- intersection. A common denominator is supported on that subset, clears
+-- all entries simultaneously, and shifts their common degree by deg L.
+-- Polynomial extraction gives z. Translating z back preserves chart
+-- support, degree and finite support, and its action equation is proved.
+-- No local syzygy theorem or desired lifting equation is a hypothesis.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module E = FiniteExponents[l] ; module L = GenericLaurent[l] ; module B = GenericSupport[l] ;
+module X = LaurentExponentBridge[l] ; module PA = PolynomialAction4[l] ; module CD = ChartDenominators[l] ;
+module CP = ChartPolynomialization[l] ;
+module MapLaurentMembers (n : Nat) (f : L.Exp n -> L.Exp n) {
+ step (u : L.Exp n) (us : List (L.Exp n)) (m : L.Exp n)
+  (rec : L.Mem (L.Exp n) m us -> L.Mem (L.Exp n) (f m) (CP.mapL (L.Exp n) (L.Exp n) f us)) :
+  L.Mem (L.Exp n) m (cons u us) -> L.Mem (L.Exp n) (f m) (CP.mapL (L.Exp n) (L.Exp n) f (cons u us)) = split {
+  inl eq -> inl (ap f eq) ; inr h -> inr (rec h) } ;
+ member : (us : List (L.Exp n)) (m : L.Exp n) -> L.Mem (L.Exp n) m us -> L.Mem (L.Exp n) (f m) (CP.mapL (L.Exp n) (L.Exp n) f us) = split {
+  nil -> \ m h -> absurd (L.Mem (L.Exp n) (f m) nil) h ; cons u us | rec -> \ m -> step u us m (rec m) } ;
+} ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
+ module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+ module P = PolynomialTowerBridge[l].Over[A,setA] ;
+ module H = HomogeneousKernel[l].Over[A,n,T.D n,T.setD n,T.grD n] ;
+ module LC = LaurentPolynomialCoefficients[l].Over[A,setA].At[n] ;
+ module TA = TowerLaurentAction[l].Over[A,setA].At[n] ; module FA = TA.FA ;
+ module PC = CP.Over[A,setA] ; module CB = ClearingCoefficientBridge[l].Over[A,setA] ;
+ module RS = Comb[l].Sums[A,IP.regular A] ; module SS = Comb[l].Sums[T.D n,IP.regular (T.D n)] ;
+ module AL = IP.ModL[A,IP.regular A] ;
+ coeff-sum (m : L.Exp n) : (a : Nat) (f : Ps.Fin a -> (T.D n).R) ->
+  Id A.R (LC.coeff (SS.sum a f) m) (RS.sum a (\ i -> LC.coeff (f i) m)) = split {
+  zero -> \ f -> LC.coeff-zero m ;
+  suc a | rec -> \ f -> trans (LC.coeff-add (f (inr tt)) (SS.sum a (\ i -> f (inl i))) m)
+    (ap (A.add (LC.coeff (f (inr tt)) m)) (rec (\ i -> f (inl i)))) } ;
+ module Input (a r : Nat) (d : Ps.Fin a -> Base.Nat) (c : Ps.Fin r -> Base.Nat)
+  (g : Ps.Fin a -> Ps.Fin r -> List (P.Term n))
+  (hg : (i : Ps.Fin a) (j : Ps.Fin r) -> H.L.Hom (PA.minus (pos (d i)) (c j)) (P.phi n (g i j))) {
+  ring-matrix (i : Ps.Fin a) (j : Ps.Fin r) : (T.D n).R = P.phi n (g i j) ;
+  module M = H.Matrix[a,r,d,c,ring-matrix,hg] ;
+  module Chosen (w : M.Data) (hp : Ps.Fin w.1 -> Ps.Fin a -> List (P.Term n))
+   (hrep : (j : Ps.Fin w.1) (i : Ps.Fin a) -> Id (T.D n).R (P.phi n (hp j i)) (w.2.2.1 j i)) {
+   module W = M.Witness[w] ;
+   module Chart (s : Sub n) (k : Int) (support : List (L.Exp n))
+    (y : Ps.Fin a -> L.Exp n -> A.R)
+    (supp : (i : Ps.Fin a) (m : L.Exp n) -> (L.Mem (L.Exp n) m support -> Empty) -> Id A.R (y i m) A.z)
+    (van : (i : Ps.Fin a) (m : L.Exp n) -> B.bad n (L.mask n m) s -> Id A.R (y i m) A.z)
+    (hom : (i : Ps.Fin a) (m : L.Exp n) -> Not (Id Int (L.total n m) (PA.minus k (d i))) -> Id A.R (y i m) A.z)
+    (kernel : (j : Ps.Fin r) (m : L.Exp n) -> Id A.R (RS.sum a (\ i -> FA.mulP (g i j) (y i) m)) A.z) {
+    module C = CD.Clear[n,s,support] ;
+    module Entry (i : Ps.Fin a) {
+     module F = PC.Clear[n,s,support,y i,supp i,van i] ;
+     module CF = CB.Clear[n,s,support,y i,supp i,van i] ;
+     module D = F.Degree[PA.minus k (d i),hom i] ;
+    } ;
+    raised-degree : Int = addP k (E.degree n C.u) ;
+    cleared (i : Ps.Fin a) : (T.D n).R = Entry[i].F.cleared ;
+    homogeneous : H.HomV a d raised-degree cleared = \ i ->
+     subst (\ e -> H.L.Hom e (cleared i)) (PA.addP-minus k (d i) (E.degree n C.u)) Entry[i].D.homogeneous ;
+    row (j : Ps.Fin r) (v : E.Exp n) : Id A.R (P.Coeff n (M.act cleared j) v) (P.Coeff n (T.D n).z v) = calc A.R {
+     P.Coeff n (M.act cleared j) v
+      =< sym (LC.coeff-emb (M.act cleared j) v) > LC.coeff (M.act cleared j) (X.At[n].emb v)
+      =< ap (\ x -> LC.coeff x (X.At[n].emb v)) (H.F[r].V.comb-at a cleared ring-matrix j)
+      > LC.coeff (SS.sum a (\ i -> (T.D n).mul (cleared i) (ring-matrix i j))) (X.At[n].emb v)
+      =< coeff-sum (X.At[n].emb v) a (\ i -> (T.D n).mul (cleared i) (ring-matrix i j))
+      > RS.sum a (\ i -> LC.coeff ((T.D n).mul (cleared i) (ring-matrix i j)) (X.At[n].emb v))
+      =< RS.sum-cong a _ _ (\ i -> trans (ap (\ x -> LC.coeff x (X.At[n].emb v)) ((T.D n).mulC (cleared i) (ring-matrix i j)))
+        (sym (TA.action (g i j) (cleared i) (X.At[n].emb v))))
+      > RS.sum a (\ i -> FA.mulP (g i j) (LC.coeff (cleared i)) (X.At[n].emb v))
+      =< RS.sum-cong a _ _ (\ i -> FA.mulP-cong (g i j) (LC.coeff (cleared i)) (\ m -> y i (CD.down n m C.u)) Entry[i].CF.equation (X.At[n].emb v))
+      > RS.sum a (\ i -> FA.mulP (g i j) (\ m -> y i (CD.down n m C.u)) (X.At[n].emb v))
+      =< RS.sum-cong a _ _ (\ i -> FA.mulP-shift (\ m -> CD.down n m C.u) (\ m u -> X.At[n].sub-comm m C.u u) (g i j) (y i) (X.At[n].emb v))
+      > RS.sum a (\ i -> FA.mulP (g i j) (y i) (CD.down n (X.At[n].emb v) C.u))
+      =< kernel j (CD.down n (X.At[n].emb v) C.u) > A.z
+      =< sym (P.coeff-zero n v) > P.Coeff n (T.D n).z v } ;
+    syzygy : M.Syz cleared = H.F[r].V.ext _ _ (\ j -> P.ext n _ _ (row j)) ;
+    module Inverse (z : H.Vec W.rank) {
+     value (j : Ps.Fin W.rank) (m : L.Exp n) : A.R = LC.coeff (z j) (CD.up n m C.u) ;
+     chart (j : Ps.Fin W.rank) (m : L.Exp n) (b : B.bad n (L.mask n m) s) : Id A.R (value j m) A.z =
+      LC.coeff-neg (z j) (CD.up n m C.u) (CD.bad-witness n s (CD.up n m C.u) (C.bad-up m b)).1
+       (CD.bad-witness n s (CD.up n m C.u) (C.bad-up m b)).2.1 ;
+     module Degree (hz : H.HomV W.rank W.shifts raised-degree z) (j : Ps.Fin W.rank) {
+      module D = LC.Degree[PA.minus raised-degree (W.shifts j),z j,hz j] ;
+      degree-preserved (m : L.Exp n) (ne : Not (Id Int (L.total n m) (PA.minus k (W.shifts j)))) : Id A.R (value j m) A.z =
+       D.homogeneous (CD.up n m C.u) (\ eq -> ne
+        (PA.addP-inj (L.total n m) (PA.minus k (W.shifts j)) (E.degree n C.u)
+          (trans (sym (X.deg-add n m C.u)) (trans eq (sym (PA.addP-minus k (W.shifts j) (E.degree n C.u))))))) ;
+     } ;
+     SupportData (j : Ps.Fin W.rank) : U l = (ms : List (L.Exp n)) *
+      ((m : L.Exp n) -> (L.Mem (L.Exp n) m ms -> Empty) -> Id A.R (value j m) A.z) ;
+     module Support (j : Ps.Fin W.rank) (sw : LC.Support (z j)) {
+      ms : List (L.Exp n) = CP.mapL (L.Exp n) (L.Exp n) (\ m -> CD.down n m C.u) sw.1 ;
+      module MM = MapLaurentMembers[n,\ m -> CD.down n m C.u] ;
+      vanish (m : L.Exp n) (out : L.Mem (L.Exp n) m ms -> Empty) : Id A.R (value j m) A.z =
+       sw.2 (CD.up n m C.u) (\ hm -> out (subst (\ t -> L.Mem (L.Exp n) t ms) (CD.down-up n m C.u)
+         (MM.member sw.1 (CD.up n m C.u) hm))) ;
+      witness : SupportData j = (ms,vanish) ;
+     } ;
+     finite (j : Ps.Fin W.rank) : Tr.Trunc[SupportData j].carrier =
+      TC.map (LC.Support (z j)) (SupportData j) (\ sw -> Support[j,sw].witness) (LC.finite (z j)) ;
+    } ;
+    RingSolution : U l = (z : H.Vec W.rank) * (H.HomV W.rank W.shifts raised-degree z * Id (H.Vec a) (H.F[a].V.VS.comb W.rank z W.columns) cleared) ;
+    module Equation (sol : RingSolution) {
+     z : H.Vec W.rank = sol.1 ; module Z = Inverse[z] ;
+     at (i : Ps.Fin a) (m : L.Exp n) : Id A.R (RS.sum W.rank (\ j -> FA.mulP (hp j i) (Z.value j) m)) (y i m) = calc A.R {
+      RS.sum W.rank (\ j -> FA.mulP (hp j i) (Z.value j) m)
+       =< RS.sum-cong W.rank _ _ (\ j -> FA.mulP-shift (\ m -> CD.up n m C.u) (\ m u -> X.At[n].sub-add-comm m u C.u) (hp j i) (LC.coeff (z j)) m)
+       > RS.sum W.rank (\ j -> FA.mulP (hp j i) (LC.coeff (z j)) (CD.up n m C.u))
+       =< RS.sum-cong W.rank _ _ (\ j -> trans (TA.action (hp j i) (z j) (CD.up n m C.u))
+         (trans (ap (\ x -> LC.coeff ((T.D n).mul x (z j)) (CD.up n m C.u)) (hrep j i))
+          (ap (\ x -> LC.coeff x (CD.up n m C.u)) ((T.D n).mulC (W.columns j i) (z j)))))
+       > RS.sum W.rank (\ j -> LC.coeff ((T.D n).mul (z j) (W.columns j i)) (CD.up n m C.u))
+       =< sym (coeff-sum (CD.up n m C.u) W.rank (\ j -> (T.D n).mul (z j) (W.columns j i)))
+       > LC.coeff (SS.sum W.rank (\ j -> (T.D n).mul (z j) (W.columns j i))) (CD.up n m C.u)
+       =< ap (\ x -> LC.coeff x (CD.up n m C.u)) (sym (H.F[a].V.comb-at W.rank z W.columns i))
+       > LC.coeff (H.F[a].V.VS.comb W.rank z W.columns i) (CD.up n m C.u)
+       =< ap (\ x -> LC.coeff (x i) (CD.up n m C.u)) sol.2.2
+       > LC.coeff (cleared i) (CD.up n m C.u)
+       =< Entry[i].CF.equation (CD.up n m C.u) > y i (CD.down n (CD.up n m C.u) C.u)
+       =< ap (y i) (CD.down-up n m C.u) > y i m } ;
+    } ;
+    Solution : U l = (sol : RingSolution) * ((i : Ps.Fin a) (m : L.Exp n) -> Id A.R
+     (RS.sum W.rank (\ j -> FA.mulP (hp j i) (Inverse[sol.1].value j) m)) (y i m)) ;
+    lift : Tr.Trunc[Solution].carrier = TC.map RingSolution Solution (\ sol -> (sol,Equation[sol].at))
+     (W.lift raised-degree cleared homogeneous syzygy) ;
+   } ;
+  } ;
+ } ;
+} ;

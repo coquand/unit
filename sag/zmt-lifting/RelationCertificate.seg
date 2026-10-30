@@ -1,0 +1,133 @@
+-- RelationCertificate.seg: relation certificates (zmt-formal-cohomology.tex,
+-- « The minimal relation-certificate interface »), and the step from a
+-- dependence of chosen partners to a certificate (RC).
+--
+-- Data (Rel).  D a commutative ring, Z and V two D-modules, a predicate B
+-- on Z and a relation Gam between Z and V with
+--   Gam(0,0),  Gam(z,p), Gam(z',p') => Gam(z+z',p+p'),
+--   Gam(z,p) => Gam(c z, c p),  and zero-reflection Gam(z,0) => B(z).
+-- B needs no submodule structure, and neither B nor Gam need to be
+-- proposition-valued or decidable: the proofs below never use it.  (In the
+-- applications both are propositions.)
+--
+-- Sequences and sums.  For b : Nat -> Z and a list qs = [q_(N-1),..,q_0]
+-- (head last added) put
+--   sumL [] = 0,   sumL (q :: qs) = q b(len qs) + sumL qs,
+-- so sumL qs = sum_{i<N} q_i b_i with N = len qs.  A certificate is
+--   Cert = (qs : List D) * B(b(len qs) - sumL qs)                  (RC)
+-- with N = len qs; N = 0 is the empty sum.
+--
+-- Prefixes.  A prefix of length n is a list of chosen partners with their
+-- certificates, (p_0, g_0), .., (p_(n-1), g_(n-1)), g_i : Gam(b_i, p_i);
+-- partners lists p_(n-1), .., p_0 (head last).  Only finitely many partners
+-- are ever chosen.
+--
+-- Lemma (reduce).  Let c be a prefix of length n, Gam(z,y), and y in the span
+-- of partners c.  Then there is qs of length n with B(z - sumL qs).
+-- Proof by induction on n.  n = 0: y = 0, so Gam(z,0) and B(z) by
+-- zero-reflection; qs = [], and z - 0 = z.  n+1, with last partner
+-- (p, g : Gam(b_n,p)): y in span (p :: ps) gives k with y - k p in span ps.
+-- By closure Gam(z - k b_n, y - k p) (gam-sub).  By induction qs' of length
+-- n with B((z - k b_n) - sumL qs').  Take qs = k :: qs', of length n+1:
+--   (z - k b_n) - sumL qs' = z - (k b_n + sumL qs') = z - sumL qs,
+-- the last step since len qs' = n.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ;
+
+record Rel (D : CRing) (Zm : IP.Mod[D]) (Vm : IP.Mod[D]) {
+  B : Zm.M -> U l ;
+  Gam : Zm.M -> Vm.M -> U l ;
+  gam-zero : Gam Zm.mz Vm.mz ;
+  gam-add (z z' : Zm.M) (p p' : Vm.M) (g : Gam z p) (g' : Gam z' p') : Gam (Zm.madd z z') (Vm.madd p p') ;
+  gam-sm (c : D.R) (z : Zm.M) (p : Vm.M) (g : Gam z p) : Gam (Zm.sm c z) (Vm.sm c p) ;
+  reflect (z : Zm.M) (g : Gam z Vm.mz) : B z ;
+} ;
+
+-- a linear map preserves 0, negation and subtraction:
+-- F(0) = F(0 . 0) = 0 . F(0) = 0;  F(x) + F(-x) = F(x - x) = 0
+module LinL (A : CRing) (Pm Qm : IP.Mod[A]) (F : IP.Lin[A,Pm,Qm]) {
+  module PL = IP.ModL[A,Pm] ; module QL = IP.ModL[A,Qm] ;
+  f-zero : Id Qm.M (F.f Pm.mz) Qm.mz =
+    calc Qm.M { F.f Pm.mz =< ap F.f (sym (PL.zero-sm Pm.mz)) > F.f (Pm.sm A.z Pm.mz)
+                  =< F.f-sm A.z Pm.mz > Qm.sm A.z (F.f Pm.mz)
+                  =< QL.zero-sm (F.f Pm.mz) > Qm.mz } ;
+  f-neg (x : Pm.M) : Id Qm.M (F.f (Pm.mneg x)) (Qm.mneg (F.f x)) =
+    QL.G.neg-uniq (F.f x) (F.f (Pm.mneg x)) (trans (sym (F.f-add x (Pm.mneg x))) (trans (ap F.f (Pm.maddN x)) f-zero)) ;
+  f-sub (x y : Pm.M) : Id Qm.M (F.f (PL.msub x y)) (QL.msub (F.f x) (F.f y)) =
+    trans (F.f-add x (Pm.mneg y)) (ap (Qm.madd (F.f x)) (f-neg y)) ;
+} ;
+
+module Over (D : CRing) (Zm : IP.Mod[D]) (Vm : IP.Mod[D]) (R : Rel[D,Zm,Vm]) {
+  module ZL = IP.ModL[D,Zm] ; module VL = IP.ModL[D,Vm] ;
+  module ZS = Comb[l].Sums[D,Zm] ; module VS = Comb[l].Sums[D,Vm] ;
+  module SP = ModSpan[l].Over[D,Vm] ;
+
+  -- x - 0 = x
+  sub-zero-right (x : Zm.M) : Id Zm.M (ZL.msub x Zm.mz) x =
+    trans (ap (Zm.madd x) ZL.G.neg-zero) (Zm.maddZ x) ;
+
+  -- Gam(z,y), Gam(w,p) => Gam(z - k w, y - k p)
+  module GamSub (z w : Zm.M) (y p : Vm.M) (k : D.R) (g : R.Gam z y) (h : R.Gam w p) {
+    -- the combination with -k
+    plus : R.Gam (Zm.madd z (Zm.sm (D.neg k) w)) (Vm.madd y (Vm.sm (D.neg k) p)) =
+      R.gam-add z (Zm.sm (D.neg k) w) y (Vm.sm (D.neg k) p) g (R.gam-sm (D.neg k) w p h) ;
+    -- (-k) w = -(k w) in Z, then (-k) p = -(k p) in V
+    left : R.Gam (ZL.msub z (Zm.sm k w)) (Vm.madd y (Vm.sm (D.neg k) p)) =
+      subst (\ x -> R.Gam (Zm.madd z x) (Vm.madd y (Vm.sm (D.neg k) p))) (ZS.neg-sm k w) plus ;
+    res : R.Gam (ZL.msub z (Zm.sm k w)) (VL.msub y (Vm.sm k p)) =
+      subst (\ x -> R.Gam (ZL.msub z (Zm.sm k w)) (Vm.madd y x)) (VS.neg-sm k p) left ;
+  } ;
+  gam-sub (z w : Zm.M) (y p : Vm.M) (k : D.R) (g : R.Gam z y) (h : R.Gam w p) :
+    R.Gam (ZL.msub z (Zm.sm k w)) (VL.msub y (Vm.sm k p)) = GamSub[z,w,y,p,k,g,h].res ;
+
+  module Seq (b : Nat -> Zm.M) {
+    sumL : List D.R -> Zm.M = split {
+      nil -> Zm.mz ;
+      cons x xs | r -> Zm.madd (Zm.sm x (b (len xs))) r } ;
+    -- by definition of sumL
+    sumL-cons (x : D.R) (xs : List D.R) : Id Zm.M (sumL (cons x xs)) (Zm.madd (Zm.sm x (b (len xs))) (sumL xs)) =
+      refl (sumL (cons x xs)) ;
+
+    -- (RC), with N = len qs
+    Cert : U l = (qs : List D.R) * R.B (ZL.msub (b (len qs)) (sumL qs)) ;
+
+    -- chosen partners with their certificates
+    Prefix : Nat -> U l = split {
+      zero -> Top ;
+      suc n | r -> r * ((p : Vm.M) * R.Gam (b n) p) } ;
+    partners : (n : Nat) -> Prefix n -> List Vm.M = split {
+      zero -> \ c -> nil ;
+      suc n | r -> \ c -> cons c.2.1 (r c.1) } ;
+
+    Rest (n : Nat) (z : Zm.M) : U l = (qs : List D.R) * (Id Nat (len qs) n * R.B (ZL.msub z (sumL qs))) ;
+
+    -- (z - k b_n) - sumL qs' = z - sumL (k :: qs')   when len qs' = n
+    module Peel (n : Nat) (z : Zm.M) (k : D.R) (qs : List D.R) (ln : Id Nat (len qs) n) {
+      eq : Id Zm.M (ZL.msub (ZL.msub z (Zm.sm k (b n))) (sumL qs)) (ZL.msub z (sumL (cons k qs))) =
+        calc Zm.M {
+          ZL.msub (ZL.msub z (Zm.sm k (b n))) (sumL qs)
+            =< ZL.sub-sub z (Zm.sm k (b n)) (sumL qs) > ZL.msub z (Zm.madd (Zm.sm k (b n)) (sumL qs))
+            =< ap (\ m -> ZL.msub z (Zm.madd (Zm.sm k (b m)) (sumL qs))) (sym ln)
+            > ZL.msub z (Zm.madd (Zm.sm k (b (len qs))) (sumL qs))
+            =< ap (ZL.msub z) (sym (sumL-cons k qs)) > ZL.msub z (sumL (cons k qs)) } ;
+      step (h : R.B (ZL.msub (ZL.msub z (Zm.sm k (b n))) (sumL qs))) : Rest (suc n) z =
+        (cons k qs, (ap (\ m -> suc m) ln, subst R.B eq h)) ;
+    } ;
+    peel (n : Nat) (z : Zm.M) (k : D.R) (rest : Rest n (ZL.msub z (Zm.sm k (b n)))) : Rest (suc n) z =
+      Peel[n,z,k,rest.1,rest.2.1].step rest.2.2 ;
+
+    reduce : (n : Nat) (c : Prefix n) (z : Zm.M) (y : Vm.M) -> R.Gam z y -> SP.In (partners n c) y -> Rest n z = split {
+      zero -> \ c z y g h ->
+        (nil, (refl zero, subst R.B (sym (sub-zero-right z)) (R.reflect z (subst (R.Gam z) h g)))) ;
+      suc n | r -> \ c z y g h ->
+        peel n z h.1 (r c.1 (ZL.msub z (Zm.sm h.1 (b n))) (VL.msub y (Vm.sm h.1 c.2.1))
+          (gam-sub z (b n) y c.2.1 h.1 g c.2.2) h.2) } ;
+
+    -- a partner of b_n in the span of the earlier chosen partners gives (RC) at N = n
+    module AtN (n : Nat) (rest : Rest n (b n)) {
+      cert : Cert = (rest.1, subst (\ m -> R.B (ZL.msub (b m) (sumL rest.1))) (sym rest.2.1) rest.2.2) ;
+    } ;
+    dependent (n : Nat) (c : Prefix n) (p : Vm.M) (g : R.Gam (b n) p) (h : SP.In (partners n c) p) : Cert =
+      AtN[n, reduce n c (b n) p g h].cert ;
+  } ;
+} ;

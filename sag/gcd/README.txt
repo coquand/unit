@@ -9,12 +9,28 @@ Contrôle (depuis unit/) :
 
     ./segc sag/gcd all
 
+Révision du 30 octobre 2026 (preuve directe de MRR IV.4.3) :
+Gauss.seg conserve gauss-list, GaussAt.gauss et DivPrim.result ; seul le
+mécanisme de preuve change. Gauss.Direct prouve le lemme des contenus par
+récurrence sur la somme des longueurs (terme constant retiré), puis la
+multiplicativité à un inversible près. PolyGcd.integralP utilise le même
+lemme avec d = 0. All.seg n'importe plus AdditiveSpan, CoefficientProducts,
+DedekindMertens ni ZeroProduct. Aucun module aval n'a besoin de changer.
+Contrôle frais : 3975 déclarations, 0 échec, 1,71 s ; contrôle serveur :
+89 modules, 0 échec, 1,45 s. Audit --opened : chaque nouvelle déclaration
+< 0,01 s ; au plus 8 définitions ouvertes dans Gauss.Direct et 5 dans les
+deux nouvelles preuves de PolyGcd. Spécifications : gcd-direct.opens.
+Audit --opens : 120 déclarations, « nothing else opened » pour chacune.
+Contrôles frais des dépendants : sag/artin-rees, 10622 déclarations,
+0 échec (4,74 s) ; sag/acl-zmt, 7274 déclarations, 0 échec (5,90 s).
+Les mesures du 26 octobre ci-dessous sont historiques.
+
 Résultat (26 octobre 2026) : 90 modules, 0 échec, 1,5 s (aucun fichier
 au-delà de 0,15 s).  Les 20 fichiers .seg de ce développement (plus
 All.seg) sont listés au §3 ; les autres sont des liens relatifs vers les
 bibliothèques inchangées (pn : anneaux, polynômes, A[X] quotient ;
 exterior : CharPoly pour les coefficients et la chaîne qu'il importe ;
-mertens : Dedekind–Mertens ; jacobian/FiniteJets ; noetherian/NatOrder,
+jacobian/FiniteJets ; noetherian/NatOrder,
 Bar ; stone/Logic ; stoneseq/NatArith, Integers (ZInt) ; acl-zmt :
 Laurent3, LaurentList, Cech3, CechContraction, CechMonomials, IdealPowers,
 CechModules, FixedCochain).
@@ -74,9 +90,10 @@ divisibilité n'est pas supposée décidable ; seul le test x = 0 sert.
                   par un scalaire non nul : PolyBase.Scalar (le quotient est
                   unique, donc obtenu sur le quotient depuis les listes).
   Lemme 7 Gauss   Gauss.gauss-list (listes), Gauss.GaussAt.gauss (A[X],
-                  d /= 0) : par DedekindMertens.theorem envoyé dans le
-                  sous-groupe des multiples de d (Words), puis épluchage des
-                  mots (Peel) par le corollaire 5.
+                  d /= 0) : induction directe de MRR sur la somme des
+                  longueurs, en enlevant le coefficient constant (Gauss.Direct).
+                  Product : d | coefficients(p q) => d | c(p)c(q).
+                  content-mul-left/right : c(p q) et c(p)c(q) sont associés.
   Lemme 8         Gauss.DivPrim : E primitif, lambda /= 0, lambda f = E q
                   => E | f.
   Lemme 10        Elimination.elimination : record Elim (gd, lam, lam-nz,
@@ -85,8 +102,8 @@ divisibilité n'est pas supposée décidable ; seul le test x = 0 sert.
                   pas de corps des fractions, pas de division euclidienne.
   Degré           Degree.deg : le plus petit majorant strict (DegF), une
                   proposition (deg-prop), donc obtenu sur le quotient.
-  Intégrité       PolyGcd.integralP : Dedekind–Mertens (ZeroProduct) avec le
-                  mot (i,..,i), f_i /= 0.
+  Intégrité       PolyGcd.integralP : Gauss.Direct.product avec d = 0 ;
+                  c(p)c(q) = 0 contredit les deux contenus non nuls.
 
 
 (d) Le pont vers Lambda_XYZ (Laurent3) : (S0)/(S1) pour P, Q quelconques.

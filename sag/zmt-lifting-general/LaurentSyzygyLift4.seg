@@ -1,0 +1,248 @@
+-- LaurentSyzygyLift4.seg: the supplied polynomial syzygy generation, and
+-- the top-chart lifting theorem derived from it (handoff §5).
+--
+-- Hypothesis (SyzGen, the homogeneous form of (ii)).  Pol[M,n] is the
+-- family of the polynomial chart (ShiftedCech4.setPol) with base twist n:
+-- y in Pol[M,n].E1 is a vector of finitely supported coefficient functions
+-- y_i : Z^4 -> D, vanishing at every exponent with a negative coordinate
+-- and homogeneous of degree n - d_i, i.e. a homogeneous polynomial vector
+-- of degree n in F1 = sum_i S(-d_i).  For EVERY integer n:
+--   if  sum_i g_i y_i = 0  then merely there is z in Pol[M,n].E2 with H z = y.
+-- No function choosing z is assumed.  Polynomials of negative degree are 0,
+-- so the cases n < d_i need no separate treatment.
+--
+-- Theorem (Lift.lift).  Let y in E1^3 = prod_i C^3(-1 - d_i) with A y = 0
+-- (C^3: the fully inverted chart).  Then merely w in E2^3 with H w = y.
+-- Proof.
+--   * Each y_i merely vanishes outside a finite list S_i (its support
+--     witness).  Finitely many truncations are eliminated into the
+--     truncated goal at once (fin-choice, by induction on the rank): no
+--     infinite family of representatives is chosen.
+--   * S = S_0 ++ .. (catL).  L = sum_{s in S} negPart(s), coordinatewise
+--     (bound), so for s in S every coordinate of s + L is >= 0
+--     (bound-le, fits).
+--   * y'_i = X^L y_i, y'_i(m) = y_i(m - L) (Xmul): if m has a negative
+--     coordinate then m - L is not in S (otherwise m = (m - L) + L would
+--     have none), so y'_i(m) = 0; y'_i vanishes outside S + L; its degree
+--     is (-1 - d_i) + size L = n' - d_i with n' = -1 + size L.  So y' is a
+--     polynomial vector of degree n'.
+--   * A y' = X^L (A y) = 0: the action commutes with m |-> m - L
+--     (mulP-shift).  By SyzGen at n', merely z with H z = y', z_j
+--     homogeneous of degree n' - e_j (0 when negative).
+--   * w_j = X^(-L) z_j (Xinv), w_j(m) = z_j(m + L), of degree -1 - e_j, in
+--     C^3(-1 - e_j) (the full chart has no sign condition), and
+--     (H w)_i (m) = (H z)_i (m + L) = y_i((m + L) - L) = y_i(m).
+-- All support, degree and equality witnesses are constructed; the
+-- truncations of the supports and of z are eliminated into the truncated
+-- conclusion.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ;
+open ShiftedCech4[l] ; open HomogeneousMatrices4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Ps = Presentations[l] ; module NA = NatArith[l] ;
+
+------------------------------------------------------------------------
+-- finitely many truncations at once
+
+joinT (P : Top -> U l) (x : P tt) : (u : Top) -> P u = split { tt -> x } ;
+join (n : Nat) (P : Ps.Fin (suc n) -> U l) (x : P (inr tt)) (f : (i : Ps.Fin n) -> P (inl i)) :
+  (i : Ps.Fin (suc n)) -> P i = split {
+  inl i -> f i ;
+  inr u -> joinT (\ v -> P (inr v)) x u } ;
+fin-choice : (n : Nat) (P : Ps.Fin n -> U l) -> ((i : Ps.Fin n) -> Tr.Trunc[P i].carrier) ->
+  Tr.Trunc[(i : Ps.Fin n) -> P i].carrier = split {
+  zero -> \ P h -> Tr.Trunc[(i : Ps.Fin zero) -> P i].inc (\ i -> absurd (P i) i) ;
+  suc n | r -> \ P h ->
+    TC.map2 (P (inr tt)) ((i : Ps.Fin n) -> P (inl i)) ((i : Ps.Fin (suc n)) -> P i) (\ x f -> join n P x f)
+      (h (inr tt)) (r (\ i -> P (inl i)) (\ i -> h (inl i))) } ;
+
+------------------------------------------------------------------------
+-- a common denominator X^L
+
+-- the size of the negative part of an integer
+negPart : Int -> Base.Nat = split { pos n -> zero ; negsuc n -> suc n } ;
+base-nonneg : (x : Int) -> (j : Base.Nat) * Id Int (addP x (negPart x)) (pos j) = split {
+  pos k -> (k, refl (pos k)) ;
+  negsuc k -> (zero, invr-neg k) } ;
+addP-pos (j : Base.Nat) : (a : Base.Nat) -> Id Int (addP (pos j) a) (pos (NA.plus a j)) = split {
+  zero -> refl (pos j) ;
+  suc a | r -> ap sucZ r } ;
+-- negPart x <= n gives x + n >= 0
+module NonNeg (x : Int) (n : Base.Nat) (le : NA.Le (negPart x) n) {
+  j : Base.Nat = (base-nonneg x).1 ;
+  eq : Id Int (addP x n) (pos (NA.plus le.1 j)) =
+    calc Int { addP x n =< ap (addP x) (sym le.2) > addP x (NA.plus le.1 (negPart x))
+                 =< sym (addP-addP x (negPart x) le.1) > addP (addP x (negPart x)) le.1
+                 =< ap (\ z -> addP z le.1) (base-nonneg x).2 > addP (pos j) le.1
+                 =< addP-pos j le.1 > pos (NA.plus le.1 j) } ;
+  res (h : Neg (addP x n)) : Empty = subst Neg eq h ;
+} ;
+nonneg-shift (x : Int) (n : Base.Nat) (le : NA.Le (negPart x) n) (h : Neg (addP x n)) : Empty = NonNeg[x,n,le].res h ;
+
+negN4 : E4 -> N4 = split { ex a b c d -> nx (negPart a) (negPart b) (negPart c) (negPart d) } ;
+zeroN4 : N4 = nx zero zero zero zero ;
+-- L = sum_{s in S} negPart(s), coordinatewise
+bound : List E4 -> N4 = split {
+  nil -> zeroN4 ;
+  cons s ss | r -> addN4 (negN4 s) r } ;
+LeN4 : N4 -> N4 -> U l = split {
+  nx a b c d -> split { nx a' b' c' d' -> NA.Le a a' * (NA.Le b b' * (NA.Le c c' * NA.Le d d')) } } ;
+le-add-l : (v w : N4) -> LeN4 v (addN4 v w) = split {
+  nx v0 v1 v2 v3 -> split { nx w0 w1 w2 w3 ->
+    (NA.le-sum-l w0 v0, (NA.le-sum-l w1 v1, (NA.le-sum-l w2 v2, NA.le-sum-l w3 v3))) } } ;
+le-add-r : (v w x : N4) -> LeN4 x w -> LeN4 x (addN4 v w) = split {
+  nx v0 v1 v2 v3 -> split { nx w0 w1 w2 w3 -> split { nx x0 x1 x2 x3 -> \ h ->
+    (NA.le-trans x0 w0 (NA.plus v0 w0) h.1 (NA.le-sum-r w0 v0),
+     (NA.le-trans x1 w1 (NA.plus v1 w1) h.2.1 (NA.le-sum-r w1 v1),
+      (NA.le-trans x2 w2 (NA.plus v2 w2) h.2.2.1 (NA.le-sum-r w2 v2),
+       NA.le-trans x3 w3 (NA.plus v3 w3) h.2.2.2 (NA.le-sum-r w3 v3)))) } } } ;
+bound-le : (S : List E4) (s : E4) -> Mem s S -> LeN4 (negN4 s) (bound S) = split {
+  nil -> \ s h -> absurd (LeN4 (negN4 s) zeroN4) h ;
+  cons x xs | r -> \ s -> split {
+    inl e -> subst (\ y -> LeN4 (negN4 y) (bound (cons x xs))) e (le-add-l (negN4 x) (bound xs)) ;
+    inr h -> le-add-r (negN4 x) (bound xs) (negN4 s) (r s h) } } ;
+-- s + L has no negative coordinate
+fits : (s : E4) (L : N4) -> LeN4 (negN4 s) L -> Out none (addE s L) -> Empty = split {
+  ex a b c d -> split { nx L0 L1 L2 L3 -> \ le -> split {
+    o0 h -> nonneg-shift a L0 le.1 h ;
+    o1 h -> nonneg-shift b L1 le.2.1 h ;
+    o2 h -> nonneg-shift c L2 le.2.2.1 h ;
+    o3 h -> nonneg-shift d L3 le.2.2.2 h } } } ;
+
+-- the concatenation of finitely many lists
+catL : (n : Nat) -> (Ps.Fin n -> List E4) -> List E4 = split {
+  zero -> \ f -> nil ;
+  suc n | r -> \ f -> appL (f (inr tt)) (r (\ i -> f (inl i))) } ;
+mem-cat-top (n : Nat) (f : Ps.Fin (suc n) -> List E4) (s : E4) : (u : Top) -> Mem s (f (inr u)) -> Mem s (catL (suc n) f) = split {
+  tt -> \ h -> mem-appl s (f (inr tt)) (catL n (\ k -> f (inl k))) h } ;
+mem-cat : (n : Nat) (f : Ps.Fin n -> List E4) (i : Ps.Fin n) (s : E4) -> Mem s (f i) -> Mem s (catL n f) = split {
+  zero -> \ f i -> absurd ((s : E4) -> Mem s (f i) -> Mem s (catL zero f)) i ;
+  suc n | r -> \ f -> split {
+    inl i -> \ s h -> mem-appr s (f (inr tt)) (catL n (\ k -> f (inl k))) (r (\ k -> f (inl k)) i s h) ;
+    inr u -> \ s -> mem-cat-top n f s u } } ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module SC = ShiftedCech4[l].Over[D,setD] ;
+  module HM = HomogeneousMatrices4[l].Over[D,setD] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+
+  ------------------------------------------------------------------------
+  -- the supplied syzygy generation, homogeneous, at every degree
+
+  module Pol (M : Matrices[D]) (n : Int) {
+    module F = HM.Fam[M,Sq,setPol,n] ;
+    -- y is a polynomial syzygy of (g_i) of degree n
+    Syz (y : F.E1.El) : U l = Id F.E0.El (F.A.f y) F.E0.mod.mz ;
+    -- merely y = H z
+    Lifts (y : F.E1.El) : U l = Tr.Trunc[(z : F.E2.El) * Id F.E1.El (F.H.f z) y].carrier ;
+  } ;
+  SyzGen (M : Matrices[D]) : U l = (n : Int) (y : Pol[M,n].F.E1.El) -> Pol[M,n].Syz y -> Pol[M,n].Lifts y ;
+
+  ------------------------------------------------------------------------
+  -- multiplication by X^(-L) and X^L
+
+  -- X^(-L) : Pol(k'') -> C^3(k), (X^(-L) z)(m) = z(m + L), when k + size L = k''
+  module Xinv (L : N4) (k k'' : Int) (e : Id Int (addP k (size L)) k'') {
+    module CA = LO.Chart[Sq, BadI Sq setPol k''] ; module CB = LO.Chart[Sq, BadI Sq setSq k] ;
+    bad-addE (m : E4) : Bad k full m -> Bad k'' none (addE m L) = split {
+      inl h -> inl (not-deg-addE k k'' m L e h) ;
+      inr h -> absurd (Bad k'' none (addE m L)) (out-full m h) } ;
+    van (c : Sq -> E4 -> D.R) (v : CA.Van c) : CB.Van (\ i m -> c i (addE m L)) = split {
+      s0123 -> \ m b -> v s0123 (addE m L) (bad-addE m b) } ;
+    module R = LO.Restrict[Sq,Sq,BadI Sq setPol k'',BadI Sq setSq k,C.rsh Sq (\ m -> addE m L),mapL (\ x -> subE x L),
+      \ s c h -> LO.vanish-shift Sq (\ m -> addE m L) (\ x -> subE x L) (\ m -> subE-addE m L) c s h, van] ;
+    lin : IP.Lin[D,CA.mod,CB.mod] = R.lin ;
+  } ;
+
+  -- X^L y in Pol(k''), for y in C^3(k) vanishing outside a list fitted by L, when k'' - size L = k
+  module Xmul (L : N4) (k k'' : Int) (e : Id Int (minus k'' (size L)) k)
+    (y : LO.Chart[Sq, BadI Sq setSq k].El) (sw : LO.Chart[Sq, BadI Sq setSq k].SuppW (LO.Chart[Sq, BadI Sq setSq k].val y))
+    (fit : (s : E4) -> Mem s sw.1 -> LeN4 (negN4 s) L) {
+    module CA = LO.Chart[Sq, BadI Sq setSq k] ; module CB = LO.Chart[Sq, BadI Sq setPol k''] ;
+    raw : Sq -> E4 -> D.R = \ i m -> CA.val y i (subE m L) ;
+    -- m with a negative coordinate: m - L is not in the list
+    off (m : E4) (o : Out none m) : Not (Mem (subE m L) sw.1) =
+      \ h -> fits (subE m L) L (fit (subE m L) h) (subst (Out none) (sym (addE-subE m L)) o) ;
+    van-at (m : E4) : Bad k'' none m -> Id D.R (CA.val y s0123 (subE m L)) D.z = split {
+      inl h -> CA.van y s0123 (subE m L) (inl (not-deg-subE k k'' m L e h)) ;
+      inr o -> sw.2 s0123 (subE m L) (off m o) } ;
+    van : CB.Van raw = split { s0123 -> \ m b -> van-at m b } ;
+    vanish : CB.Vanish (mapL (\ x -> addE x L) sw.1) raw =
+      \ i m nm -> sw.2 i (subE m L) (\ h -> nm (mem-tr (mapL (\ x -> addE x L) sw.1) (addE (subE m L) L) m (addE-subE m L)
+                                                   (mem-map (\ x -> addE x L) (subE m L) sw.1 h))) ;
+    el : CB.El = CB.mk raw (Tr.Trunc[CB.SuppW raw].inc (mapL (\ x -> addE x L) sw.1, vanish)) van ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the top-chart lifting theorem
+
+  module Lift (M : Matrices[D]) (syz : SyzGen M) {
+    module F = HM.Fam[M,Sq,setSq,TopList4[l].mOne] ;
+    -- the component charts of E1^3 and E2^3
+    module Y (i : Ps.Fin M.a) { module CH = LO.Chart[Sq, BadI Sq setSq (F.k1 i)] ; } ;
+    Sol : F.E1.El -> U l = \ y -> (w : F.E2.El) * Id F.E1.El (F.H.f w) y ;
+
+    module At (y : F.E1.El) (hy : Id F.E0.El (F.A.f y) F.E0.mod.mz)
+      (sw : (i : Ps.Fin M.a) -> Y[i].CH.SuppW (Y[i].CH.val (y i))) {
+      S : List E4 = catL M.a (\ i -> (sw i).1) ;
+      L : N4 = bound S ;
+      n' : Int = addP TopList4[l].mOne (size L) ;
+      module P = HM.Fam[M,Sq,setPol,n'] ;
+      -- (n' - d_i) - size L = -1 - d_i
+      e1 (i : Ps.Fin M.a) : Id Int (minus (P.k1 i) (size L)) (F.k1 i) =
+        trans (minus-comm (addP TopList4[l].mOne (size L)) (M.d i) (size L))
+              (ap (\ z -> minus z (M.d i)) (minus-addP TopList4[l].mOne (size L))) ;
+      fit (i : Ps.Fin M.a) (s : E4) (h : Mem s (sw i).1) : LeN4 (negN4 s) L =
+        bound-le S s (mem-cat M.a (\ k -> (sw k).1) i s h) ;
+      -- y' = X^L y, a polynomial vector of degree n'
+      y' : P.E1.El = \ i -> Xmul[L,F.k1 i,P.k1 i,e1 i,y i,sw i,fit i].el ;
+      -- A y' = X^L (A y) = 0
+      syz' : Pol[M,n'].Syz y' = P.E0.eq (P.A.f y') P.E0.mod.mz (\ j m -> calc D.R {
+        P.E0.val (P.A.f y') j m
+          =< SC.ChartSums[Sq,BadI Sq setPol n'].val-sum M.a (\ i -> (P.gi i).f (y' i)) j m
+          > RS.sum M.a (\ i -> PA.mulP (M.g i) (\ m' -> Y[i].CH.val (y i) j (subE m' L)) m)
+          =< RS.sum-cong M.a (\ i -> PA.mulP (M.g i) (\ m' -> Y[i].CH.val (y i) j (subE m' L)) m)
+               (\ i -> PA.mulP (M.g i) (Y[i].CH.val (y i) j) (subE m L))
+               (\ i -> PA.mulP-shift (\ x -> subE x L) (\ x u -> subE-comm x L u) (M.g i) (Y[i].CH.val (y i) j) m)
+          > RS.sum M.a (\ i -> PA.mulP (M.g i) (Y[i].CH.val (y i) j) (subE m L))
+          =< sym (SC.ChartSums[Sq,BadI Sq setSq TopList4[l].mOne].val-sum M.a (\ i -> (F.gi i).f (y i)) j (subE m L))
+          > F.E0.val (F.A.f y) j (subE m L)
+          =< ap (\ x -> F.E0.val x j (subE m L)) hy > D.z }) ;
+
+      -- w = X^(-L) z
+      module W (z : P.E2.El) (hz : Id P.E1.El (P.H.f z) y') {
+        -- (-1 - e_j) + size L = n' - e_j
+        e2 (j : Ps.Fin M.b) : Id Int (addP (F.k2 j) (size L)) (P.k2 j) = addP-minus TopList4[l].mOne (M.e j) (size L) ;
+        w : F.E2.El = \ j -> Xinv[L,F.k2 j,P.k2 j,e2 j].lin.f (z j) ;
+        -- (H w)_i (m) = (H z)_i (m + L) = y_i(m)
+        module Row (i : Ps.Fin M.a) {
+          module PC = LO.Chart[Sq, BadI Sq setPol (P.k1 i)] ;
+          Zv (j : Ps.Fin M.b) : Sq -> E4 -> D.R = LO.Chart[Sq, BadI Sq setPol (P.k2 j)].val (z j) ;
+          pt (j' : Sq) (m : E4) : Id D.R (Y[i].CH.val (F.H.f w i) j' m) (Y[i].CH.val (y i) j' m) = calc D.R {
+            Y[i].CH.val (F.H.f w i) j' m
+              =< SC.ChartSums[Sq,BadI Sq setSq (F.k1 i)].val-sum M.b (\ j -> (F.hij i j).f (w j)) j' m
+              > RS.sum M.b (\ j -> PA.mulP (M.H i j) (\ m' -> Zv j j' (addE m' L)) m)
+              =< RS.sum-cong M.b (\ j -> PA.mulP (M.H i j) (\ m' -> Zv j j' (addE m' L)) m)
+                   (\ j -> PA.mulP (M.H i j) (Zv j j') (addE m L))
+                   (\ j -> PA.mulP-shift (\ x -> addE x L) (\ x u -> subE-addE-comm x L u) (M.H i j) (Zv j j') m)
+              > RS.sum M.b (\ j -> PA.mulP (M.H i j) (Zv j j') (addE m L))
+              =< sym (SC.ChartSums[Sq,BadI Sq setPol (P.k1 i)].val-sum M.b (\ j -> (P.hij i j).f (z j)) j' (addE m L))
+              > PC.val (P.H.f z i) j' (addE m L)
+              =< ap (\ x -> PC.val (x i) j' (addE m L)) hz > Y[i].CH.val (y i) j' (subE (addE m L) L)
+              =< ap (Y[i].CH.val (y i) j') (subE-addE m L) > Y[i].CH.val (y i) j' m } ;
+          eq : Id Y[i].CH.El (F.H.f w i) (y i) = Y[i].CH.eq (F.H.f w i) (y i) pt ;
+        } ;
+        eq : Id F.E1.El (F.H.f w) y = F.E1.ext (F.H.f w) y (\ i -> Row[i].eq) ;
+        sol : Sol y = (w, eq) ;
+      } ;
+      lifted : Tr.Trunc[Sol y].carrier =
+        TC.map ((z : P.E2.El) * Id P.E1.El (P.H.f z) y') (Sol y) (\ zz -> W[zz.1,zz.2].sol) (syz n' y' syz') ;
+    } ;
+
+    -- every y in E1^3 with A y = 0 merely lifts through H
+    lift (y : F.E1.El) (hy : Id F.E0.El (F.A.f y) F.E0.mod.mz) : Tr.Trunc[Sol y].carrier =
+      TC.bind ((i : Ps.Fin M.a) -> Y[i].CH.SuppW (Y[i].CH.val (y i))) (Sol y) (\ sw -> At[y,hy,sw].lifted)
+        (fin-choice M.a (\ i -> Y[i].CH.SuppW (Y[i].CH.val (y i))) (\ i -> Y[i].CH.supp (y i))) ;
+  } ;
+} ;

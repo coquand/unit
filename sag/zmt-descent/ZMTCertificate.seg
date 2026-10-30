@@ -1,0 +1,118 @@
+-- ZMTCertificate.seg: monic polynomials, their evaluation, and the truncated
+-- finite certificate of ZMT (doc/zmt-arbitrary-base-handoff.txt §2, §3).
+--
+-- A monic polynomial of degree d over A is given by its lower coefficients
+-- c : Fin d -> A:
+--     P(T) = T^d + sum_k c_k T^k ,
+-- where the index k of Fin d stands for the exponent k: Fin (d+1) =
+-- Fin d + 1, and its new element inr tt is the exponent d (pw below).  The
+-- leading coefficient is the literal 1, so monicity is part of the data:
+-- mapping the coefficients along a ring map gives a monic polynomial again,
+-- of the same degree.
+--
+-- For iota : A -> F and z in F, P(z) = z^d + sum_k z^k iota(c_k) (mev).
+-- Naturality (mev-natural): for ring maps h : A -> R, phi : F -> E,
+-- iota_E : R -> E with phi o iota_F = iota_E o h,
+--     phi (P(z)) = (h P)(phi z) ,
+-- because phi preserves powers (pow-natural), the family of powers
+-- (pw-natural) and finite sums of products (lin-natural).
+--
+-- The certificate (ZMTCert) for an A-algebra F with elements y_1 .. y_n and
+-- a family b_1 .. b_t in A: s in F with s = 1 + sum_j iota(b_j) v_j (a
+-- FiniteIdeal certificate of s = 1 modulo (iota b)), monic Q_0, Q_i over A
+-- with Q_0(s) = 0 and Q_i(s y_i) = 0.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module H = RingHom[l] ;
+
+------------------------------------------------------------------------
+-- powers
+
+module Powers (F : CRing) {
+  -- z^d
+  pow (z : F.R) : Nat -> F.R = split { zero -> F.o ; suc d | r -> F.mul z r } ;
+  -- the family 1, z, .., z^(d-1); the last index of Fin (d+1) is z^d
+  pw (z : F.R) : (d : Nat) -> Ps.Fin d -> F.R = split {
+    zero -> \ k -> absurd F.R k ;
+    suc d | r -> Ps.snoc (Ps.Fin d) F.R r (pow z d) } ;
+  -- by definition of pw
+  pw-last (z : F.R) (d : Nat) : Id F.R (pw z (suc d) (inr tt)) (pow z d) = refl (pow z d) ;
+  pw-old (z : F.R) (d : Nat) (k : Ps.Fin d) : Id F.R (pw z (suc d) (inl k)) (pw z d k) = refl (pw z d k) ;
+} ;
+
+------------------------------------------------------------------------
+-- a ring map commutes with finite sums and combinations
+
+module HomSums (S T : CRing) (f : H.Hom S T) {
+  module SS = FiniteIdeal[l].Sums[S] ; module ST = FiniteIdeal[l].Sums[T] ;
+  sum-natural : (n : Nat) (v : Ps.Fin n -> S.R) -> Id T.R (f.1 (SS.sum n v)) (ST.sum n (\ i -> f.1 (v i))) = split {
+    zero -> \ v -> H.zero S T f ;
+    suc n | r -> \ v -> trans (f.2.2.1 (v (inr tt)) (SS.sum n (\ i -> v (inl i))))
+                          (ap (T.add (f.1 (v (inr tt)))) (r (\ i -> v (inl i)))) } ;
+  lin-natural (n : Nat) (g v : Ps.Fin n -> S.R) :
+    Id T.R (f.1 (SS.lin n g v)) (ST.lin n (\ i -> f.1 (g i)) (\ i -> f.1 (v i))) =
+    trans (sum-natural n (\ i -> S.mul (g i) (v i)))
+      (ST.sum-cong n (\ i -> f.1 (S.mul (g i) (v i))) (\ i -> T.mul (f.1 (g i)) (f.1 (v i))) (\ i -> f.2.2.2 (g i) (v i))) ;
+  module PS = Powers[S] ; module PT = Powers[T] ;
+  pow-natural (z : S.R) : (d : Nat) -> Id T.R (f.1 (PS.pow z d)) (PT.pow (f.1 z) d) = split {
+    zero -> f.2.1 ;
+    suc d | r -> trans (f.2.2.2 z (PS.pow z d)) (ap (T.mul (f.1 z)) r) } ;
+  pw-natural (z : S.R) : (d : Nat) (k : Ps.Fin d) -> Id T.R (f.1 (PS.pw z d k)) (PT.pw (f.1 z) d k) = split {
+    zero -> \ k -> absurd (Id T.R (f.1 (PS.pw z zero k)) (PT.pw (f.1 z) zero k)) k ;
+    suc d | r -> split {
+      inl k -> r k ;
+      inr u -> pow-natural z d } } ;
+} ;
+
+------------------------------------------------------------------------
+-- monic polynomials
+
+record Monic (A : CRing) {
+  deg : Nat ;
+  low : Ps.Fin deg -> A.R ;
+} ;
+
+-- the coefficients mapped along h : A -> R
+mapM (A R : CRing) (h : H.Hom A R) (P : Monic[A]) : Monic[R] = mkMonic R P.deg (\ k -> h.1 (P.low k)) ;
+-- by definition of mapM: the degree is kept
+mapM-deg (A R : CRing) (h : H.Hom A R) (P : Monic[A]) : Id Nat (mapM A R h P).deg P.deg = refl P.deg ;
+
+-- P(z) for iota : A -> F
+module Eval (A F : CRing) (iota : H.Hom A F) {
+  module PF = Powers[F] ; module SF = FiniteIdeal[l].Sums[F] ;
+  -- sum_k z^k iota(c_k)
+  lower (P : Monic[A]) (z : F.R) : F.R = SF.lin P.deg (PF.pw z P.deg) (\ k -> iota.1 (P.low k)) ;
+  mev (P : Monic[A]) (z : F.R) : F.R = F.add (PF.pow z P.deg) (lower P z) ;
+  -- P(z) depends on the coefficients only through their values
+  mev-cong (P : Monic[A]) (c : Ps.Fin P.deg -> A.R) (hc : (k : Ps.Fin P.deg) -> Id A.R (P.low k) (c k)) (z : F.R) :
+    Id F.R (mev P z) (mev (mkMonic A P.deg c) z) =
+    ap (F.add (PF.pow z P.deg)) (SF.sum-cong P.deg (\ k -> F.mul (PF.pw z P.deg k) (iota.1 (P.low k)))
+      (\ k -> F.mul (PF.pw z P.deg k) (iota.1 (c k))) (\ k -> ap (\ w -> F.mul (PF.pw z P.deg k) (iota.1 w)) (hc k))) ;
+} ;
+
+-- phi (P(z)) = (h P)(phi z)
+module Natural (A R : CRing) (h : H.Hom A R) (F E : CRing) (iF : H.Hom A F) (iE : H.Hom R E) (phi : H.Hom F E)
+  (compat : (a : A.R) -> Id E.R (phi.1 (iF.1 a)) (iE.1 (h.1 a))) {
+  module EF = Eval[A,F,iF] ; module EE = Eval[R,E,iE] ;
+  module HS = HomSums[F,E,phi] ;
+  lower-natural (P : Monic[A]) (z : F.R) : Id E.R (phi.1 (EF.lower P z)) (EE.lower (mapM A R h P) (phi.1 z)) =
+    trans (HS.lin-natural P.deg (EF.PF.pw z P.deg) (\ k -> iF.1 (P.low k)))
+      (EE.SF.sum-cong P.deg (\ k -> E.mul (phi.1 (EF.PF.pw z P.deg k)) (phi.1 (iF.1 (P.low k))))
+         (\ k -> E.mul (EE.PF.pw (phi.1 z) P.deg k) (iE.1 (h.1 (P.low k))))
+         (\ k -> Ps.cong2 E.R E.mul _ _ _ _ (HS.pw-natural z P.deg k) (compat (P.low k)))) ;
+  mev-natural (P : Monic[A]) (z : F.R) : Id E.R (phi.1 (EF.mev P z)) (EE.mev (mapM A R h P) (phi.1 z)) =
+    trans (phi.2.2.1 (EF.PF.pow z P.deg) (EF.lower P z))
+      (Ps.cong2 E.R E.add _ _ _ _ (HS.pow-natural z P.deg) (lower-natural P z)) ;
+} ;
+
+------------------------------------------------------------------------
+-- the certificate
+
+record ZMTCert (A F : CRing) (iota : H.Hom A F) (n : Nat) (y : Ps.Fin n -> F.R) (t : Nat) (b : Ps.Fin t -> A.R) {
+  s : F.R ;
+  -- s = 1 + sum_j iota(b_j) v_j
+  cong : FiniteIdeal[l].Over[F,t,\ j -> iota.1 (b j)].Certificate s F.o ;
+  q0 : Monic[A] ;
+  ann0 : Id F.R (Eval[A,F,iota].mev q0 s) F.z ;
+  q : Ps.Fin n -> Monic[A] ;
+  ann (i : Ps.Fin n) : Id F.R (Eval[A,F,iota].mev (q i) (F.mul s (y i))) F.z ;
+} ;

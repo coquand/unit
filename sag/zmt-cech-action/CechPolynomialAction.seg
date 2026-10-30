@@ -1,0 +1,101 @@
+-- Polynomial multiplication on actual generic Laurent cochains.
+-- A term reads c(s,m-u); its support is translated by +u. The chart
+-- condition is preserved because subtracting u preserves negativity.
+-- The rank condition is unchanged. Differential commutation follows
+-- structurally from d(a,b)=(da,a-db), not dimension-specific signs.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module N = FiniteExponents[l] ; module L = GenericLaurent[l] ;
+module X = LaurentExponentBridge[l] ; module E = GenericCech[l] ;
+module PA = PolynomialAction4[l] ; module IP = IdealPowers[l] ;
+module TC = TruncationCombinators[l] ; module Pr = Prelude[l] ;
+module Over (D : CRing) (setD : Pr.isSet D.R) (nvar : Nat) {
+ module A = FiniteLaurentAction[l].Over[D,setD,nvar] ;
+ module V = X.At[nvar] ; module C = GenericCube[l].Over[D,setD] ;
+ module CE = E.Over[D,setD] ; module F = L.Over[D,setD] ;
+ module DL = IP.ModL[D,IP.regular D] ; module R = RL[D] ;
+ mem-tr (s : List (L.Exp nvar)) (x y : L.Exp nvar) (e : Id (L.Exp nvar) x y) (h : L.Mem (L.Exp nvar) x s) : L.Mem (L.Exp nvar) y s = subst (\ m -> L.Mem (L.Exp nvar) m s) e h ;
+ mem-appl (m : L.Exp nvar) : (s t : List (L.Exp nvar)) -> L.Mem (L.Exp nvar) m s -> L.Mem (L.Exp nvar) m (Bar[l].app s t) = split {
+   nil -> \ t h -> absurd (L.Mem (L.Exp nvar) m t) h ; cons x xs | r -> \ t -> split { inl e -> inl e ; inr h -> inr (r t h) } } ;
+ mem-appr (m : L.Exp nvar) : (s t : List (L.Exp nvar)) -> L.Mem (L.Exp nvar) m t -> L.Mem (L.Exp nvar) m (Bar[l].app s t) = split {
+   nil -> \ t h -> h ; cons x xs | r -> \ t h -> inr (r t h) } ;
+ Shifts (k k' : Int) : A.Polys -> U l = split {
+   nil -> Top ; cons t p | r -> Id Int (PA.minus k' (N.degree nvar t.2)) k * r } ;
+ Hom (e : Int) : A.Polys -> U l = split {
+   nil -> Top ; cons t p | r -> Id Int (pos (N.degree nvar t.2)) e * r } ;
+ hom-shifts (k e : Int) : (p : A.Polys) -> Hom e p -> Shifts k (add k e) p = split {
+   nil -> \ hp -> tt ; cons t p | r -> \ hp ->
+     (trans (ap (\ z -> PA.minus (add k z) (N.degree nvar t.2)) (sym hp.1))
+       (PA.minus-addP k (N.degree nvar t.2)),r hp.2) } ;
+ mapE (f : L.Exp nvar -> L.Exp nvar) : List (L.Exp nvar) -> List (L.Exp nvar) = split {
+   nil -> nil ; cons m ms | r -> cons (f m) r } ;
+ mem-map (f : L.Exp nvar -> L.Exp nvar) (m : L.Exp nvar) : (ms : List (L.Exp nvar)) ->
+   L.Mem (L.Exp nvar) m ms -> L.Mem (L.Exp nvar) (f m) (mapE f ms) = split {
+     nil -> \ h -> absurd (L.Mem (L.Exp nvar) (f m) nil) h ;
+     cons x xs | r -> split { inl e -> inl (ap f e) ; inr h -> inr (r h) } } ;
+ suppL (s : List (L.Exp nvar)) : A.Polys -> List (L.Exp nvar) = split {
+   nil -> nil ; cons t p | r -> Bar[l].app (mapE (\ m -> V.addE m t.2) s) r } ;
+ vanish-mulP (s : List (L.Exp nvar)) (f : L.Exp nvar -> D.R)
+   (h : (m : L.Exp nvar) -> Not (L.Mem (L.Exp nvar) m s) -> Id D.R (f m) D.z) :
+   (p : A.Polys) (m : L.Exp nvar) -> Not (L.Mem (L.Exp nvar) m (suppL s p)) -> Id D.R (A.mulP p f m) D.z = split {
+   nil -> \ m nm -> refl D.z ;
+   cons t p | r -> \ m nm -> trans (DL.G.cong-add
+     (trans (ap (D.mul t.1) (h (V.subE m t.2) (\ hm -> nm
+       (mem-appl m (mapE (\ x -> V.addE x t.2) s) (suppL s p)
+         (mem-tr _ _ m (V.add-sub m t.2) (mem-map (\ x -> V.addE x t.2) (V.subE m t.2) s hm)))))) (R.mul-zero t.1))
+     (r m (\ hm -> nm (mem-appr m (mapE (\ x -> V.addE x t.2) s) (suppL s p) hm)))) (D.addZ D.z) } ;
+ not-degree (k k' : Int) (m : L.Exp nvar) (u : N.Exp nvar)
+   (e : Id Int (PA.minus k' (N.degree nvar u)) k) (ne : Not (Id Int (L.total nvar m) k')) :
+   Not (Id Int (L.total nvar (V.subE m u)) k) = \ h -> ne
+     (PA.minus-inj (L.total nvar m) k' (N.degree nvar u)
+       (trans (sym (X.deg-sub nvar m u)) (trans h (sym e)))) ;
+ bad-sub (k k' r : Int) (s : Sub nvar) (m : L.Exp nvar) (u : N.Exp nvar)
+   (e : Id Int (PA.minus k' (N.degree nvar u)) k) : E.Bad nvar k' r s m -> E.Bad nvar k r s (V.subE m u) = split {
+   inl ne -> inl (not-degree k k' m u e ne) ;
+   inr b -> other k k' r s m u e b }
+ where { other (k k' r : Int) (s : Sub nvar) (m : L.Exp nvar) (u : N.Exp nvar)
+   (e : Id Int (PA.minus k' (N.degree nvar u)) k) :
+   Plus (GenericSupport[l].bad nvar (L.mask nvar m) s) (Not (Id Int (GenericDegree[l].card nvar s) r)) ->
+   E.Bad nvar k r s (V.subE m u) = split {
+     inl b -> inr (inl (X.bad-sub nvar s m u b)) ; inr ne -> inr (inr ne) } } ;
+ van-mulP (k k' r : Int) (s : Sub nvar) (f : L.Exp nvar -> D.R)
+   (v : (m : L.Exp nvar) -> E.Bad nvar k r s m -> Id D.R (f m) D.z) :
+   (p : A.Polys) -> Shifts k k' p -> (m : L.Exp nvar) -> E.Bad nvar k' r s m -> Id D.R (A.mulP p f m) D.z = split {
+   nil -> \ hp m b -> refl D.z ;
+   cons t p | rec -> \ hp m b -> trans (DL.G.cong-add
+     (trans (ap (D.mul t.1) (v (V.subE m t.2) (bad-sub k k' r s m t.2 hp.1 b))) (R.mul-zero t.1))
+     (rec hp.2 m b)) (D.addZ D.z) } ;
+ module Act (k k' r : Int) (p : A.Polys) (hp : Shifts k k' p) {
+   module CA = CE.Cochains[nvar,k,r] ; module CB = CE.Cochains[nvar,k',r] ;
+   raw (c : CA.El) : CB.M.Raw = \ s m -> A.mulP p (CA.val c s) m ;
+   support (c : CA.El) : CB.M.Supp (raw c) = TC.map (CA.M.SuppW (CA.val c)) (CB.M.SuppW (raw c))
+     (\ w -> (suppL w.1 p,\ s m nm -> vanish-mulP w.1 (CA.val c s) (w.2 s) p m nm)) (CA.M.supp c) ;
+   van (c : CA.El) : CB.M.Van (raw c) = \ s -> van-mulP k k' r s (CA.val c s) (CA.M.van c s) p hp ;
+   act (c : CA.El) : CB.El = CB.M.mk (raw c) (support c) (van c) ;
+   lin : IP.Lin[D,CA.mod,CB.mod] = IP.mkLin D CA.mod CB.mod act
+     (\ c c' -> CB.M.eq _ _ (\ s m -> A.mulP-add p (CA.val c s) (CA.val c' s) m))
+     (\ a c -> CB.M.eq _ _ (\ s m -> A.mulP-sm p a (CA.val c s) m)) ;
+   val (c : CA.El) (s : Sub nvar) (m : L.Exp nvar) : Id D.R (CB.val (lin.f c) s m) (A.mulP p (CA.val c s) m) =
+     refl (A.mulP p (CA.val c s) m) ;
+ } ;
+ -- Ambient exponent dimension nvar is fixed, while induction follows
+ -- the independently varying structural subset dimension j.
+ d-comm : (j : Nat) (p : A.Polys) (c : Sub j -> L.Exp nvar -> D.R) (s : Sub j) (m : L.Exp nvar) ->
+   Id D.R (C.diff j (\ t -> A.mulP p (c t) m) s) (A.mulP p (\ m' -> C.diff j (\ t -> c t m') s) m) = split {
+   zero -> \ p c s m -> sym (A.mulP-zero p m) ;
+   suc j | rec -> \ p c s m -> ds j rec p c s.1 s.2 m }
+ where {
+   ds (j : Nat) (rec : (p : A.Polys) (c : Sub j -> L.Exp nvar -> D.R) (s : Sub j) (m : L.Exp nvar) ->
+     Id D.R (C.diff j (\ t -> A.mulP p (c t) m) s) (A.mulP p (\ m' -> C.diff j (\ t -> c t m') s) m))
+     (p : A.Polys) (c : Sub (suc j) -> L.Exp nvar -> D.R) : (b : Flag) (s : Sub j) (m : L.Exp nvar) ->
+     Id D.R (C.diff (suc j) (\ t -> A.mulP p (c t) m) (b,s))
+       (A.mulP p (\ m' -> C.diff (suc j) (\ t -> c t m') (b,s)) m) = split {
+       absent -> rec p (\ s -> c (absent,s)) ;
+       present -> \ s m -> trans (ap (DL.msub (A.mulP p (c (absent,s)) m)) (rec p (\ t -> c (present,t)) s m))
+         (sym (A.mulP-sub p (c (absent,s)) (\ m' -> C.diff j (\ t -> c (present,t) m') s) m)) } } ;
+ module Comm (k k' r : Int) (p : A.Polys) (hp : Shifts k k' p) {
+   module B = Act[k,k',r,p,hp] ; module Up = Act[k,k',sucZ r,p,hp] ;
+   module O = CE.Operations[nvar,k,r] ; module P = CE.Operations[nvar,k',r] ;
+   equation (c : B.CA.El) : Id Up.CB.El (P.d (B.act c)) (Up.act (O.d c)) =
+     Up.CB.M.eq _ _ (d-comm nvar p (B.CA.val c)) ;
+ } ;
+} ;

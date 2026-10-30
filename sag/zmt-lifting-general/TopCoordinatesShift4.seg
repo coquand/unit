@@ -1,0 +1,342 @@
+-- TopCoordinatesShift4.seg: the top coordinates of E2^3 for arbitrary
+-- shifts (handoff §6).
+--
+-- Compositions.  Tup k: k-tuples of natural numbers; comps k N lists the
+-- k-tuples with sum N, by recursion on k and then on N:
+--   comps 0 N       = [()] if N = 0, [] otherwise,
+--   comps (k+1) 0   = 0 :: comps k 0,
+--   comps (k+1) (N+1) = (0 :: comps k (N+1)) ++ (suc-head (comps (k+1) N)),
+-- (0 :: l: put 0 in front of each tuple; suc-head: add 1 to the first entry).
+--   * no duplicates (nodup-comps): the two parts are lists without
+--     duplicates (0 :: and suc-head are injective) and are disjoint (first
+--     entries 0, resp. >= 1);
+--   * complete (complete): every tuple t is in comps k (sum t), by
+--     induction on k and on the first entry.
+-- The top list of a shift e (topList): the quadruples (n_0,..,n_3) with sum
+-- e - 3, i.e. the all-negative exponents topE n = (-1-n_0,..,-1-n_3) of
+-- degree -e-1 (positive t_i = n_i + 1 with sum e + 1); empty for e < 3.
+-- Every all-negative exponent of degree -e-1 is topE of a member
+-- (top-mem, by TopList4.deg-allneg).  For e = 6 the list is the twenty
+-- quadruples of TopList4.T20, in the same order (recover-T20, by
+-- computation).
+--
+-- The tagged list of a family (tagged b e): the pairs (j, n), j < b, n in
+-- topList(e_j), concatenated over j; m = its length (any m >= 0; b = 0 and
+-- empty lists are allowed).  For w in E2^3 = prod_j C^3(-1-e_j),
+--   top(w)_k = w_j(topE n)   where (j, n) is the k-th entry      (top)
+-- a D-linear map E2^3 -> D^m (by definition: the operations are pointwise).
+-- Theorem (pi-zero): top(w) = 0 implies pi(w_j) = 0 for every j.  At an
+-- exponent with a coordinate >= 0, pi(w_j) = 0 by definition; at an
+-- all-negative exponent of degree -1-e_j it is topE n with (j, n) at some
+-- position k, so pi(w_j)(m) = w_j(m) = top(w)_k = 0; at an all-negative
+-- exponent of another degree w_j vanishes by homogeneity.
+-- Reconstruction (pi-expand): pi(w_j) = sum_{n in topList(e_j)} w_j(topE n) X^(topE n)
+-- (topList has no duplicates and topE is injective, so one term survives).
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ;
+open ShiftedCech4[l] ; open HomogeneousMatrices4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module LG = Logic[l] ; module Ps = Presentations[l] ;
+module NA = NatArith[l] ; module TL4 = TopList4[l] ; module TC4 = TopCoordinates4[l] ;
+
+------------------------------------------------------------------------
+-- lists: images, concatenation, positions
+
+lmap (X Y : U l) (f : X -> Y) : List X -> List Y = split {
+  nil -> nil ;
+  cons x xs | r -> cons (f x) r } ;
+
+module ListMap (X Y : U l) (f : X -> Y) {
+  module LX = Lists[X] ; module LY = Lists[Y] ;
+  mem-map (x : X) : (xs : List X) -> LX.Mem x xs -> LY.Mem (f x) (lmap X Y f xs) = split {
+    nil -> \ h -> h ;
+    cons y ys | r -> split { inl e -> inl (ap f e) ; inr h -> inr (r h) } } ;
+  -- a member of the image is the image of a member
+  Pre (y : Y) (xs : List X) : U l = (x : X) * (LX.Mem x xs * Id Y (f x) y) ;
+  mem-pre (y : Y) : (xs : List X) -> LY.Mem y (lmap X Y f xs) -> Pre y xs = split {
+    nil -> \ h -> absurd (Pre y nil) h ;
+    cons x xs | r -> split {
+      inl e -> (x, (inl (refl x), e)) ;
+      inr h -> ((r h).1, (inr (r h).2.1, (r h).2.2)) } } ;
+  nodup-map (inj : (x x' : X) -> Id Y (f x) (f x') -> Id X x x') :
+    (xs : List X) -> LX.NoDup xs -> LY.NoDup (lmap X Y f xs) = split {
+    nil -> \ nd -> tt ;
+    cons x xs | r -> \ nd ->
+      (\ h -> nd.1 (LX.mem-tr xs (mem-pre (f x) xs h).1 x (inj (mem-pre (f x) xs h).1 x (mem-pre (f x) xs h).2.2)
+                     (mem-pre (f x) xs h).2.1),
+       r nd.2) } ;
+} ;
+
+module App (X : U l) {
+  module LX = Lists[X] ;
+  head-out (y : X) (ys t : List X) (n1 : Not (LX.Mem y ys)) (n2 : Not (LX.Mem y t)) :
+    Plus (LX.Mem y ys) (LX.Mem y t) -> Empty = split { inl k -> n1 k ; inr k -> n2 k } ;
+  -- s ++ t has no duplicates when s, t have none and are disjoint
+  nodup-app : (s t : List X) -> LX.NoDup s -> LX.NoDup t -> ((x : X) -> LX.Mem x s -> LX.Mem x t -> Empty) ->
+    LX.NoDup (Bar[l].app s t) = split {
+    nil -> \ t ns nt dj -> nt ;
+    cons y ys | r -> \ t ns nt dj ->
+      (\ h -> head-out y ys t ns.1 (dj y (inl (refl y))) (LX.mem-app y ys t h),
+       r t ns.2 nt (\ x hx ht -> dj x (inr hx) ht)) } ;
+} ;
+
+elemAt (X : U l) : (xs : List X) -> Ps.Fin (len xs) -> X = split {
+  nil -> \ k -> absurd X k ;
+  cons x xs | r -> Ps.snoc (Ps.Fin (len xs)) X r x } ;
+Position (X : U l) (x : X) (xs : List X) : U l = (k : Ps.Fin (len xs)) * Id X (elemAt X xs k) x ;
+position (X : U l) (x : X) : (xs : List X) -> Lists[X].Mem x xs -> Position X x xs = split {
+  nil -> \ h -> absurd (Position X x nil) h ;
+  cons y ys | r -> split {
+    inl e -> (inr tt, e) ;
+    inr h -> (inl (r h).1, (r h).2) } } ;
+
+pair-eq (A B : U l) (x y : A * B) (p : Id A x.1 y.1) (q : Id B x.2 y.2) : Id (A * B) x y =
+  trans {A * B} {x} {(y.1, x.2)} {y} (ap (\ a -> (a, x.2)) p) (ap (\ b -> (y.1, b)) q) ;
+top-eq : (u v : Top) -> Id Top u v = split { tt -> split { tt -> refl tt } } ;
+
+------------------------------------------------------------------------
+-- compositions
+
+Tup : Nat -> U l = split {
+  zero -> Top ;
+  suc k | r -> Base.Nat * r } ;
+sumT : (k : Nat) -> Tup k -> Base.Nat = split {
+  zero -> \ t -> zero ;
+  suc k | r -> \ t -> NA.plus t.1 (r t.2) } ;
+
+cons0 (k : Nat) (t : Tup k) : Tup (suc k) = (zero, t) ;
+sucH (k : Nat) (t : Tup (suc k)) : Tup (suc k) = (suc t.1, t.2) ;
+
+comps0 : Base.Nat -> List (Tup zero) = split {
+  zero -> cons tt nil ;
+  suc N -> nil } ;
+compsS (k : Nat) (c : Base.Nat -> List (Tup k)) : Base.Nat -> List (Tup (suc k)) = split {
+  zero -> lmap (Tup k) (Tup (suc k)) (cons0 k) (c zero) ;
+  suc N | s -> Bar[l].app (lmap (Tup k) (Tup (suc k)) (cons0 k) (c (suc N))) (lmap (Tup (suc k)) (Tup (suc k)) (sucH k) s) } ;
+comps : (k : Nat) -> Base.Nat -> List (Tup k) = split {
+  zero -> comps0 ;
+  suc k | r -> compsS k r } ;
+
+-- 0 /= n + 1
+isZeroB : Base.Nat -> U l = split { zero -> Top ; suc n -> Empty } ;
+zero-not-suc (n : Base.Nat) (e : Id Base.Nat zero (suc n)) : Empty = subst isZeroB e tt ;
+
+module Comps (k : Nat) {
+  module L0 = Lists[Tup k] ; module L1 = Lists[Tup (suc k)] ;
+  module M0 = ListMap[Tup k,Tup (suc k),cons0 k] ; module MS = ListMap[Tup (suc k),Tup (suc k),sucH k] ;
+  inj0 (t t' : Tup k) (e : Id (Tup (suc k)) (cons0 k t) (cons0 k t')) : Id (Tup k) t t' = ap (\ x -> x.2) e ;
+  injS (t t' : Tup (suc k)) (e : Id (Tup (suc k)) (sucH k t) (sucH k t')) : Id (Tup (suc k)) t t' =
+    pair-eq Base.Nat (Tup k) t t' (ap (\ x -> NA.pred x.1) e) (ap (\ x -> x.2) e) ;
+  -- the two parts are disjoint: first entries 0 and >= 1
+  disjoint (A : List (Tup k)) (B : List (Tup (suc k))) (x : Tup (suc k))
+    (h0 : L1.Mem x (lmap (Tup k) (Tup (suc k)) (cons0 k) A)) (h1 : L1.Mem x (lmap (Tup (suc k)) (Tup (suc k)) (sucH k) B)) : Empty =
+    zero-not-suc (MS.mem-pre x B h1).1.1
+      (trans (ap (\ y -> y.1) (M0.mem-pre x A h0).2.2) (sym (ap (\ y -> y.1) (MS.mem-pre x B h1).2.2))) ;
+  nodupS (c : Base.Nat -> List (Tup k)) (nd : (N : Base.Nat) -> L0.NoDup (c N)) : (N : Base.Nat) -> L1.NoDup (compsS k c N) = split {
+    zero -> M0.nodup-map inj0 (c zero) (nd zero) ;
+    suc N | s -> App[Tup (suc k)].nodup-app (lmap (Tup k) (Tup (suc k)) (cons0 k) (c (suc N)))
+      (lmap (Tup (suc k)) (Tup (suc k)) (sucH k) (compsS k c N))
+      (M0.nodup-map inj0 (c (suc N)) (nd (suc N))) (MS.nodup-map injS (compsS k c N) s)
+      (\ x h0 h1 -> disjoint (c (suc N)) (compsS k c N) x h0 h1) } ;
+  -- a tuple with first entry 0
+  first-part (c : Base.Nat -> List (Tup k)) (t : Tup k) : (N : Base.Nat) -> L0.Mem t (c N) -> L1.Mem (cons0 k t) (compsS k c N) = split {
+    zero -> \ h -> M0.mem-map t (c zero) h ;
+    suc N -> \ h -> L1.mem-appl (cons0 k t) (lmap (Tup k) (Tup (suc k)) (cons0 k) (c (suc N)))
+                     (lmap (Tup (suc k)) (Tup (suc k)) (sucH k) (compsS k c N)) (M0.mem-map t (c (suc N)) h) } ;
+  completeS (c : Base.Nat -> List (Tup k)) (hc : (t : Tup k) -> L0.Mem t (c (sumT k t))) :
+    (a : Base.Nat) (t : Tup k) -> L1.Mem (a, t) (compsS k c (NA.plus a (sumT k t))) = split {
+    zero -> \ t -> first-part c t (sumT k t) (hc t) ;
+    suc a | s -> \ t -> L1.mem-appr (suc a, t) (lmap (Tup k) (Tup (suc k)) (cons0 k) (c (suc (NA.plus a (sumT k t)))))
+                          (lmap (Tup (suc k)) (Tup (suc k)) (sucH k) (compsS k c (NA.plus a (sumT k t))))
+                          (MS.mem-map (a, t) (compsS k c (NA.plus a (sumT k t))) (s t)) } ;
+} ;
+nodup-comps : (k : Nat) (N : Base.Nat) -> Lists[Tup k].NoDup (comps k N) = split {
+  zero -> split { zero -> (\ h -> h, tt) ; suc N -> tt } ;
+  suc k | r -> Comps[k].nodupS (comps k) r } ;
+complete : (k : Nat) (t : Tup k) -> Lists[Tup k].Mem t (comps k (sumT k t)) = split {
+  zero -> \ t -> inl (top-eq tt t) ;
+  suc k | r -> \ t -> Comps[k].completeS (comps k) r t.1 t.2 } ;
+
+------------------------------------------------------------------------
+-- the top list of a shift
+
+four : Nat = suc (suc (suc (suc zero))) ;
+T4 : U l = Tup four ;
+module LT = Lists[T4] ;
+q4of (n0 n1 n2 n3 : Base.Nat) : T4 = (n0, (n1, (n2, (n3, tt)))) ;
+topE (t : T4) : E4 = ex (negsuc t.1) (negsuc t.2.1) (negsuc t.2.2.1) (negsuc t.2.2.2.1) ;
+toQ4 (t : T4) : TL4.Q4 = q4 t.1 t.2.1 t.2.2.1 t.2.2.2.1 ;
+
+topList3 : Base.Nat -> List T4 = split { zero -> nil ; suc N -> comps four N } ;
+topList2 : Base.Nat -> List T4 = split { zero -> nil ; suc N -> topList3 N } ;
+-- the quadruples with sum e - 3 (none for e < 3)
+topList : Base.Nat -> List T4 = split { zero -> nil ; suc N -> topList2 N } ;
+
+nodup3 : (e : Base.Nat) -> LT.NoDup (topList3 e) = split { zero -> tt ; suc N -> nodup-comps four N } ;
+nodup2 : (e : Base.Nat) -> LT.NoDup (topList2 e) = split { zero -> tt ; suc N -> nodup3 N } ;
+nodup-top : (e : Base.Nat) -> LT.NoDup (topList e) = split { zero -> tt ; suc N -> nodup2 N } ;
+
+-- recovering the twenty quadruples of Stage 2
+recover-T20 : Id (List TL4.Q4) (lmap T4 TL4.Q4 toQ4 (topList TL4.six)) TL4.T20 = refl TL4.T20 ;
+
+-- topE is injective
+topE-inj (t t' : T4) (e : Id E4 (topE t) (topE t')) : Id T4 t t' =
+  pair-eq Base.Nat (Tup (suc (suc (suc zero)))) t t' (TC4.negsuc-inj t.1 t'.1 (ap e0 e))
+    (pair-eq Base.Nat (Tup (suc (suc zero))) t.2 t'.2 (TC4.negsuc-inj t.2.1 t'.2.1 (ap e1 e))
+      (pair-eq Base.Nat (Tup (suc zero)) t.2.2 t'.2.2 (TC4.negsuc-inj t.2.2.1 t'.2.2.1 (ap e2 e))
+        (pair-eq Base.Nat Top t.2.2.2 t'.2.2.2 (TC4.negsuc-inj t.2.2.2.1 t'.2.2.2.1 (ap e3 e)) (top-eq t.2.2.2.2 t'.2.2.2.2)))) ;
+
+-- an all-negative exponent of degree -e-1 is topE of a member of topList e
+module TopMem (e : Base.Nat) (n0 n1 n2 n3 : Base.Nat) (h : Id Int (deg (ex (negsuc n0) (negsuc n1) (negsuc n2) (negsuc n3))) (negsuc e)) {
+  s : Base.Nat = NA.plus n0 (NA.plus n1 (NA.plus n2 n3)) ;
+  t : T4 = q4of n0 n1 n2 n3 ;
+  -- e = s + 3
+  es : Id Base.Nat (suc (suc (suc s))) e = TC4.negsuc-inj (suc (suc (suc s))) e (trans (sym (TL4.deg-allneg n0 n1 n2 n3)) h) ;
+  sum-t : Id Base.Nat (sumT four t) s = ap (\ x -> NA.plus n0 (NA.plus n1 (NA.plus n2 x))) (NA.plus-zero n3) ;
+  in-comps : LT.Mem t (comps four s) = subst (\ x -> LT.Mem t (comps four x)) sum-t (complete four t) ;
+  mem : LT.Mem t (topList e) = subst (\ x -> LT.Mem t (topList x)) es in-comps ;
+} ;
+
+------------------------------------------------------------------------
+-- the tagged list of a family
+
+tagged : (b : Nat) -> (Ps.Fin b -> Base.Nat) -> List (Ps.Fin b * T4) = split {
+  zero -> \ e -> nil ;
+  suc b | r -> \ e -> Bar[l].app (lmap T4 (Ps.Fin (suc b) * T4) (\ q -> (inr tt, q)) (topList (e (inr tt))))
+                                 (lmap (Ps.Fin b * T4) (Ps.Fin (suc b) * T4) (\ x -> (inl x.1, x.2)) (r (\ j -> e (inl j)))) } ;
+mem-tagged-top (b : Nat) (e : Ps.Fin (suc b) -> Base.Nat) (q : T4) : (u : Top) ->
+  LT.Mem q (topList (e (inr u))) -> Lists[Ps.Fin (suc b) * T4].Mem (inr u, q) (tagged (suc b) e) = split {
+  tt -> \ h -> Lists[Ps.Fin (suc b) * T4].mem-appl (inr tt, q)
+                 (lmap T4 (Ps.Fin (suc b) * T4) (\ q' -> (inr tt, q')) (topList (e (inr tt))))
+                 (lmap (Ps.Fin b * T4) (Ps.Fin (suc b) * T4) (\ x -> (inl x.1, x.2)) (tagged b (\ j -> e (inl j))))
+                 (ListMap[T4,Ps.Fin (suc b) * T4,\ q' -> (inr tt, q')].mem-map q (topList (e (inr tt))) h) } ;
+mem-tagged : (b : Nat) (e : Ps.Fin b -> Base.Nat) (j : Ps.Fin b) (q : T4) ->
+  LT.Mem q (topList (e j)) -> Lists[Ps.Fin b * T4].Mem (j, q) (tagged b e) = split {
+  zero -> \ e j -> absurd ((q : T4) -> LT.Mem q (topList (e j)) -> Lists[Ps.Fin zero * T4].Mem (j, q) (tagged zero e)) j ;
+  suc b | r -> \ e -> split {
+    inl j -> \ q h -> Lists[Ps.Fin (suc b) * T4].mem-appr (inl j, q)
+                (lmap T4 (Ps.Fin (suc b) * T4) (\ q' -> (inr tt, q')) (topList (e (inr tt))))
+                (lmap (Ps.Fin b * T4) (Ps.Fin (suc b) * T4) (\ x -> (inl x.1, x.2)) (tagged b (\ j' -> e (inl j'))))
+                (ListMap[Ps.Fin b * T4,Ps.Fin (suc b) * T4,\ x -> (inl x.1, x.2)].mem-map (j, q) (tagged b (\ j' -> e (inl j')))
+                  (r (\ j' -> e (inl j')) j q h)) ;
+    inr u -> \ q h -> mem-tagged-top b e q u h } } ;
+
+-- -1 - e
+minus-mOne : (e : Base.Nat) -> Id Int (minus TL4.mOne e) (negsuc e) = split {
+  zero -> refl (negsuc zero) ;
+  suc e | r -> ap predZ r } ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module CC = Cech4Contraction[l].Over[D,setD] ;
+  module TP = TC4.Over[D,setD] ; module DL = IP.ModL[D,IP.regular D] ;
+  module HM = HomogeneousMatrices4[l].Over[D,setD] ;
+
+  module Top (M : Matrices[D]) {
+    module F = HM.Fam[M,Sq,setSq,TL4.mOne] ;
+    module W (j : Ps.Fin M.b) { module CH = LO.Chart[Sq, BadI Sq setSq (F.k2 j)] ; } ;
+    TL : List (Ps.Fin M.b * T4) = tagged M.b M.e ;
+    module V = Comb[l].Free[D,len TL] ;
+
+    -- the coordinate of w at an entry (j, n)
+    coordAt (w : F.E2.El) (x : Ps.Fin M.b * T4) : D.R = W[x.1].CH.val (w x.1) s0123 (topE x.2) ;
+    topv (w : F.E2.El) : V.Vec = \ k -> coordAt w (elemAt (Ps.Fin M.b * T4) TL k) ;
+    top : IP.Lin[D,F.E2.mod,V.mod] = IP.mkLin D F.E2.mod V.mod topv
+      (\ w w' -> refl (topv (F.E2.mod.madd w w'))) (\ r w -> refl (topv (F.E2.mod.sm r w))) ;
+
+    -- top(w) = 0 gives pi(w_j) = 0
+    module PiZero (w : F.E2.El) (h : Id V.Vec (top.f w) V.mod.mz) (j : Ps.Fin M.b) {
+      module CH = W[j].CH ;
+      c : Sq -> E4 -> D.R = CH.val (w j) ;
+      Phi (m : E4) : U l = Id D.R (CC.pi c s0123 m) D.z ;
+      module Neg4 (n0 n1 n2 n3 : Base.Nat) {
+        m : E4 = ex (negsuc n0) (negsuc n1) (negsuc n2) (negsuc n3) ;
+        top-case (e : Id Int (deg m) (F.k2 j)) : Phi m =
+          trans (sym (ap (coordAt w) (position (Ps.Fin M.b * T4) (j, q4of n0 n1 n2 n3) TL
+                   (mem-tagged M.b M.e j (q4of n0 n1 n2 n3) TopMem[M.e j,n0,n1,n2,n3,trans e (minus-mOne (M.e j))].mem)).2))
+                (ap (\ p -> p (position (Ps.Fin M.b * T4) (j, q4of n0 n1 n2 n3) TL
+                   (mem-tagged M.b M.e j (q4of n0 n1 n2 n3) TopMem[M.e j,n0,n1,n2,n3,trans e (minus-mOne (M.e j))].mem)).1) h) ;
+        other-case (ne : LG.Not (Id Int (deg m) (F.k2 j))) : Phi m = CH.van (w j) s0123 m (inl (\ x -> Pr.absurd Empty (ne x))) ;
+        by-degree : LG.Dec (Id Int (deg m) (F.k2 j)) -> Phi m = split {
+          yes e -> top-case e ;
+          no ne -> other-case ne } ;
+        res : Phi m = by-degree (int-dec (deg m) (F.k2 j)) ;
+      } ;
+      at : (m : E4) -> Phi m = Cech4Contraction[l].Signs[Phi,
+        \ n x1 x2 x3 -> refl D.z, \ n0 n x2 x3 -> refl D.z, \ n0 n1 n x3 -> refl D.z, \ n0 n1 n2 n -> refl D.z,
+        \ n0 n1 n2 n3 -> Neg4[n0,n1,n2,n3].res].elim ;
+      pt : (i : Sq) (m : E4) -> Id D.R (CC.pi c i m) D.z = split { s0123 -> at } ;
+      zero : Id CH.El (CC.Contr[F.k2 j].piE (w j)) CH.mod.mz = CH.eq (CC.Contr[F.k2 j].piE (w j)) CH.mod.mz pt ;
+    } ;
+    pi-zero (w : F.E2.El) (h : Id V.Vec (top.f w) V.mod.mz) (j : Ps.Fin M.b) :
+      Id W[j].CH.El (CC.Contr[F.k2 j].piE (w j)) W[j].CH.mod.mz = PiZero[w,h,j].zero ;
+
+    ------------------------------------------------------------------------
+    -- reconstruction: pi(w_j) = sum_{n in topList(e_j)} w_j(topE n) X^(topE n)
+
+    sumT4 (f : T4 -> D.R) (m : E4) : List T4 -> D.R = split {
+      nil -> D.z ;
+      cons q qs | r -> D.add (TP.mono (topE q) (f q) m) r } ;
+    sum-vanish (f : T4 -> D.R) (m : E4) : (qs : List T4) -> ((q : T4) -> LT.Mem q qs -> Id E4 m (topE q) -> Id D.R (f q) D.z) ->
+      Id D.R (sumT4 f m qs) D.z = split {
+      nil -> \ hz -> refl D.z ;
+      cons q qs | r -> \ hz -> trans (DL.G.cong-add
+          (TP.monoD-zero (f q) (Id E4 m (topE q)) (hz q (inl (refl q))) (dec-e4 m (topE q))) (r (\ q' k -> hz q' (inr k))))
+        (D.addZ D.z) } ;
+    module Single (f : T4 -> D.R) (t : T4) (q : T4) (qs : List T4) (nd : LT.NoDup (cons q qs)) {
+      head (e : Id T4 q t) : Id D.R (sumT4 f (topE t) (cons q qs)) (f t) =
+        calc D.R { D.add (TP.mono (topE q) (f q) (topE t)) (sumT4 f (topE t) qs)
+                     =< DL.G.cong-add (TP.monoD-at (f q) (Id E4 (topE t) (topE q)) (ap topE (sym e)) (dec-e4 (topE t) (topE q)))
+                          (sum-vanish f (topE t) qs (\ q' k e' -> absurd (Id D.R (f q') D.z)
+                             (nd.1 (LT.mem-tr qs q' q (trans (sym (topE-inj t q' e')) (sym e)) k))))
+                     > D.add (f q) D.z
+                     =< trans (D.addZ (f q)) (ap f e) > f t } ;
+      tail (k : LT.Mem t qs) (ih : Id D.R (sumT4 f (topE t) qs) (f t)) : Id D.R (sumT4 f (topE t) (cons q qs)) (f t) =
+        trans (DL.G.cong-add
+                 (TP.monoD-zero (f q) (Id E4 (topE t) (topE q))
+                    (\ e' -> absurd (Id D.R (f q) D.z) (nd.1 (LT.mem-tr qs t q (topE-inj t q e') k)))
+                    (dec-e4 (topE t) (topE q)))
+                 ih)
+              (DL.G.zl (f t)) ;
+    } ;
+    sum-single (f : T4 -> D.R) (t : T4) : (qs : List T4) -> LT.NoDup qs -> LT.Mem t qs -> Id D.R (sumT4 f (topE t) qs) (f t) = split {
+      nil -> \ nd h -> absurd (Id D.R D.z (f t)) h ;
+      cons q qs | r -> \ nd -> split {
+        inl e -> Single[f,t,q,qs,nd].head e ;
+        inr k -> Single[f,t,q,qs,nd].tail k (r nd.2 k) } } ;
+
+    module Expand (w : F.E2.El) (j : Ps.Fin M.b) {
+      module CH = W[j].CH ;
+      c : Sq -> E4 -> D.R = CH.val (w j) ;
+      f (q : T4) : D.R = c s0123 (topE q) ;
+      ls : List T4 = topList (M.e j) ;
+      PhiE (m : E4) : U l = Id D.R (CC.pi c s0123 m) (sumT4 f m ls) ;
+      -- an exponent with a coordinate >= 0 is no top exponent: both sides are 0
+      pos0 (n : Base.Nat) (x1 x2 x3 : Int) : PhiE (ex (pos n) x1 x2 x3) =
+        sym (sum-vanish f (ex (pos n) x1 x2 x3) ls (\ q k e -> Pr.absurd (Id D.R (f q) D.z) (encode (pos n) (negsuc q.1) (ap e0 e)))) ;
+      pos1 (n0 n : Base.Nat) (x2 x3 : Int) : PhiE (ex (negsuc n0) (pos n) x2 x3) =
+        sym (sum-vanish f (ex (negsuc n0) (pos n) x2 x3) ls (\ q k e -> Pr.absurd (Id D.R (f q) D.z) (encode (pos n) (negsuc q.2.1) (ap e1 e)))) ;
+      pos2 (n0 n1 n : Base.Nat) (x3 : Int) : PhiE (ex (negsuc n0) (negsuc n1) (pos n) x3) =
+        sym (sum-vanish f (ex (negsuc n0) (negsuc n1) (pos n) x3) ls (\ q k e -> Pr.absurd (Id D.R (f q) D.z) (encode (pos n) (negsuc q.2.2.1) (ap e2 e)))) ;
+      pos3 (n0 n1 n2 n : Base.Nat) : PhiE (ex (negsuc n0) (negsuc n1) (negsuc n2) (pos n)) =
+        sym (sum-vanish f (ex (negsuc n0) (negsuc n1) (negsuc n2) (pos n)) ls (\ q k e -> Pr.absurd (Id D.R (f q) D.z) (encode (pos n) (negsuc q.2.2.2.1) (ap e3 e)))) ;
+      module Neg4 (n0 n1 n2 n3 : Base.Nat) {
+        m : E4 = ex (negsuc n0) (negsuc n1) (negsuc n2) (negsuc n3) ;
+        top-case (e : Id Int (deg m) (F.k2 j)) : PhiE m =
+          sym (sum-single f (q4of n0 n1 n2 n3) ls (nodup-top (M.e j)) TopMem[M.e j,n0,n1,n2,n3,trans e (minus-mOne (M.e j))].mem) ;
+        w-zero (ne : LG.Not (Id Int (deg m) (F.k2 j))) : Id D.R (c s0123 m) D.z = CH.van (w j) s0123 m (inl (\ x -> Pr.absurd Empty (ne x))) ;
+        other-case (ne : LG.Not (Id Int (deg m) (F.k2 j))) : PhiE m =
+          trans (w-zero ne) (sym (sum-vanish f m ls (\ q k e -> trans (ap (c s0123) (sym e)) (w-zero ne)))) ;
+        by-degree : LG.Dec (Id Int (deg m) (F.k2 j)) -> PhiE m = split {
+          yes e -> top-case e ;
+          no ne -> other-case ne } ;
+        res : PhiE m = by-degree (int-dec (deg m) (F.k2 j)) ;
+      } ;
+      at : (m : E4) -> PhiE m = Cech4Contraction[l].Signs[PhiE, pos0, pos1, pos2, pos3, \ n0 n1 n2 n3 -> Neg4[n0,n1,n2,n3].res].elim ;
+    } ;
+    pi-expand (w : F.E2.El) (j : Ps.Fin M.b) (m : E4) :
+      Id D.R (CC.pi (W[j].CH.val (w j)) s0123 m) (sumT4 (\ q -> W[j].CH.val (w j) s0123 (topE q)) m (topList (M.e j))) =
+      Expand[w,j].at m ;
+    -- the coefficients in the reconstruction are coordinates of top(w)
+    coord-at (w : F.E2.El) (k : Ps.Fin (len TL)) : Id D.R (top.f w k) (coordAt w (elemAt (Ps.Fin M.b * T4) TL k)) =
+      refl (top.f w k) ;
+  } ;
+} ;

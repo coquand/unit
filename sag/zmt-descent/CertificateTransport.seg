@@ -1,0 +1,75 @@
+-- CertificateTransport.seg: Gate A, transport of a ZMT certificate along a
+-- compatible pair of ring maps (handoff §3).
+--
+-- Data: ring maps h : A -> R and phi : F -> E, structure maps iota_F : A -> F
+-- and iota_E : R -> E with phi o iota_F = iota_E o h, phi(y_i) = x_i and
+-- h(b_j) = a_j.  Neither h nor phi needs to be injective or surjective.
+--
+-- Informal proof.  Let (s0, v, Q0, Q_i) be a certificate for (F, y, b):
+-- s0 = 1 + sum_j iota_F(b_j) v_j, Q0(s0) = 0, Q_i(s0 y_i) = 0.  Put
+--   s = phi(s0),  v'_j = phi(v_j),  Q'0 = h Q0,  Q'_i = h Q_i
+-- (coefficients mapped; monic of the same degree, ZMTCertificate.mapM).
+--   (cong) phi(s0) = phi(1) + sum_j phi(iota_F b_j) phi(v_j)
+--                  = 1 + sum_j iota_E(a_j) phi(v_j)     (phi a ring map, compat, hb);
+--   (ann0) (h Q0)(phi s0) = phi(Q0(s0)) = phi(0) = 0     (mev-natural);
+--   (ann)  (h Q_i)(s x_i) = (h Q_i)(phi(s0 y_i)) = phi(Q_i(s0 y_i)) = 0,
+--          since phi(s0 y_i) = phi(s0) phi(y_i) = s x_i.
+-- Only the finitely many elements and coefficients of the certificate are
+-- moved; the truncated form (transport) maps a merely given certificate.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ;
+module ZC = ZMTCertificate[l] ;
+
+module Over (A R : CRing) (h : H.Hom A R) (F E : CRing) (iF : H.Hom A F) (iE : H.Hom R E) (phi : H.Hom F E)
+  (compat : (a : A.R) -> Id E.R (phi.1 (iF.1 a)) (iE.1 (h.1 a)))
+  (n : Nat) (y : Ps.Fin n -> F.R) (x : Ps.Fin n -> E.R) (hy : (i : Ps.Fin n) -> Id E.R (phi.1 (y i)) (x i))
+  (t : Nat) (b : Ps.Fin t -> A.R) (a : Ps.Fin t -> R.R) (hb : (j : Ps.Fin t) -> Id R.R (h.1 (b j)) (a j)) {
+  module NT = ZC.Natural[A,R,h,F,E,iF,iE,phi,compat] ;
+  module HS = NT.HS ;
+  module SE = FiniteIdeal[l].Sums[E] ;
+  module IF = FiniteIdeal[l].Over[F,t,\ j -> iF.1 (b j)] ;
+  module IE = FiniteIdeal[l].Over[E,t,\ j -> iE.1 (a j)] ;
+  Source : U l = ZC.ZMTCert[A,F,iF,n,y,t,b] ;
+  Target : U l = ZC.ZMTCert[R,E,iE,n,x,t,a] ;
+
+  -- iota_F(b_j) goes to iota_E(a_j)
+  gen (j : Ps.Fin t) : Id E.R (phi.1 (iF.1 (b j))) (iE.1 (a j)) = trans (compat (b j)) (ap iE.1 (hb j)) ;
+
+  -- the congruence s = 1 modulo (b), mapped
+  cong-map (s0 : F.R) (c : IF.Certificate s0 F.o) : IE.Certificate (phi.1 s0) E.o =
+    (\ j -> phi.1 (c.1 j), calc E.R {
+      phi.1 s0 =< ap phi.1 c.2 > phi.1 (F.add F.o (IF.comb c.1))
+        =< phi.2.2.1 F.o (IF.comb c.1) > E.add (phi.1 F.o) (phi.1 (IF.comb c.1))
+        =< Ps.cong2 E.R E.add _ _ _ _ phi.2.1 (HS.lin-natural t (\ j -> iF.1 (b j)) c.1)
+        > E.add E.o (SE.lin t (\ j -> phi.1 (iF.1 (b j))) (\ j -> phi.1 (c.1 j)))
+        =< ap (E.add E.o) (SE.sum-cong t (\ j -> E.mul (phi.1 (iF.1 (b j))) (phi.1 (c.1 j)))
+                             (\ j -> E.mul (iE.1 (a j)) (phi.1 (c.1 j)))
+                             (\ j -> ap (\ w -> E.mul w (phi.1 (c.1 j))) (gen j)))
+        > E.add E.o (IE.comb (\ j -> phi.1 (c.1 j))) }) ;
+
+  -- a root goes to a root of the mapped polynomial
+  root-map (P : ZC.Monic[A]) (z : F.R) (hz : Id F.R (NT.EF.mev P z) F.z) :
+    Id E.R (NT.EE.mev (ZC.mapM A R h P) (phi.1 z)) E.z =
+    trans (sym (NT.mev-natural P z)) (trans (ap phi.1 hz) (H.zero F E phi)) ;
+
+  -- phi(s0 y_i) = phi(s0) x_i
+  sy (s0 : F.R) (i : Ps.Fin n) : Id E.R (phi.1 (F.mul s0 (y i))) (E.mul (phi.1 s0) (x i)) =
+    trans (phi.2.2.2 s0 (y i)) (ap (E.mul (phi.1 s0)) (hy i)) ;
+
+  cert (c : Source) : Target =
+    ZC.mkZMTCert R E iE n x t a (phi.1 c.s) (cong-map c.s c.cong)
+      (ZC.mapM A R h c.q0) (root-map c.q0 c.s c.ann0)
+      (\ i -> ZC.mapM A R h (c.q i))
+      (\ i -> trans (ap (NT.EE.mev (ZC.mapM A R h (c.q i))) (sym (sy c.s i)))
+                (root-map (c.q i) (F.mul c.s (y i)) (c.ann i))) ;
+
+  -- the components of the transported certificate
+  cert-s (c : Source) : Id E.R (cert c).s (phi.1 c.s) = refl (phi.1 c.s) ;
+  cert-q0 (c : Source) : Id (ZC.Monic[R]) (cert c).q0 (ZC.mapM A R h c.q0) = refl (ZC.mapM A R h c.q0) ;
+  cert-q (c : Source) (i : Ps.Fin n) : Id (ZC.Monic[R]) ((cert c).q i) (ZC.mapM A R h (c.q i)) = refl (ZC.mapM A R h (c.q i)) ;
+
+  -- the truncated form
+  transport (c : Tr.Trunc[Source].carrier) : Tr.Trunc[Target].carrier =
+    Tr.Trunc[Source].induction @l (\ u -> Tr.Trunc[Target].carrier) (\ u -> Tr.Trunc[Target].proposition)
+      (\ c' -> Tr.Trunc[Target].inc (cert c')) c ;
+} ;

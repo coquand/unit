@@ -1,0 +1,145 @@
+-- Steps 2-4 of HANDOFF-LOOP.md, for a monic relation y^E = V_E a
+-- (E = E' + 1) and a coefficient function c (the remainder of W).
+-- Informal proof.
+--  (2) Scan c_(e-1), .., c_0 (recursion on e, dec on c_e): either every
+--      c_i (i < e) is in m (Below), or there is a top index d < e with c_d
+--      a unit and V_e c = iota(c_d) y^d + V_d c + x with x in m R[y]
+--      (the terms iota(c_i) y^i, c_i in m, d < i < e, added one at a
+--      time with in-power).
+--  (3) If moreover V_E c is in m R[y], then with u c_d = 1,
+--        y^d = V_d(-u c) + iota(u) (V_E c - x),  the last term in m R[y].
+--  (4) Every y^j is V_d(beta) + (m R[y]): j = 0 by (3) if d = 0 and by
+--      V_d(point 1) = 1 otherwise; y (V_d beta + x) =
+--      iota(beta_(d-1)) y^d + V_d(shift beta) + y x, and (3) for y^d.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ;
+-- d <= e
+le-suc (r : Nat -> U l) : Nat -> U l = split { zero -> Empty ; suc n -> r n } ;
+Le : Nat -> Nat -> U l = split { zero -> \ n -> Top ; suc k | r -> le-suc r } ;
+le-refl : (e : Nat) -> Le e e = split { zero -> tt ; suc e | r -> r } ;
+le-trans : (d e f : Nat) -> Le d e -> Le e f -> Le d f = split {
+ zero -> \ e f h k -> tt ;
+ suc d | r -> split {
+  zero -> \ f h k -> efq h ;
+  suc e -> split { zero -> \ h k -> efq k ; suc f -> \ h k -> r e f h k } } } ;
+-- every c_i, i < e, is in m
+Below (A : CRing) (m : A.R -> U l) : Nat -> (Nat -> A.R) -> U l = split {
+ zero -> \ c -> Top ; suc e | r -> \ c -> m (c e) * r c } ;
+le-step : (d : Nat) (e : Nat) -> Le d e -> Le d (suc e) = split {
+ zero -> \ e h -> tt ;
+ suc d | r -> split { zero -> \ h -> efq h ; suc e -> \ h -> r e h } } ;
+
+module Over (A : CRing) (m : A.R -> U l) (m-zero : m A.z)
+ (m-add : (a c : A.R) -> m a -> m c -> m (A.add a c))
+ (m-scale : (a c : A.R) -> m c -> m (A.mul a c))
+ (dec : (a : A.R) -> Plus (m a) (RL[A].unit a))
+ (B : CRing) (iota : H.Hom A B) (y : B.R)
+ (E' : Nat) (a : Nat -> A.R) (rel : Id B.R (AffinePowers[l].Over[B].power y (suc E')) (MPart[l].Over[A,m,m-zero,m-add,m-scale,B,iota,y].V (suc E') a)) {
+ open B ;
+ module L = RL[B] ;
+ module MP = MPart[l].Over[A,m,m-zero,m-add,m-scale,B,iota,y] ;
+ module MM = MP.Monic[E',a,rel] ;
+ module PS = MP.PS ;
+ module CA = MP.CA ; module CB = MP.CB ;
+ E : Nat = suc E' ;
+ V (e : Nat) (c : Nat -> A.R) : R = MP.V e c ;
+ pw (j : Nat) : R = PS.AP.power y j ;
+
+ ---------------------------------------------------------------------
+ -- (2) the scan
+
+ Found (e : Nat) (c : Nat -> A.R) : U l =
+  (d : Nat) * Le (suc d) e * RL[A].unit (c d) * (x : R) * MP.InM E x *
+   Id R (V e c) (add (add (mul (iota.1 (c d)) (pw d)) (V d c)) x) ;
+ Scan (e : Nat) (c : Nat -> A.R) : U l = Plus (Below A m e c) (Found e c) ;
+ -- c_e in m: one more term in the m-part
+ m-step (e : Nat) (c : Nat -> A.R) (hm : m (c e)) : Scan e c -> Scan (suc e) c = split {
+  inl b -> inl (hm,b) ;
+  inr f -> inr (f.1,le-step (suc f.1) e f.2.1,f.2.2.1,
+   add f.2.2.2.1 (mul (iota.1 (c e)) (pw e)),
+   MP.in-add E f.2.2.2.1 (mul (iota.1 (c e)) (pw e)) f.2.2.2.2.1 (MM.in-power (c e) hm e),
+   trans (ap (add (mul (iota.1 (c e)) (pw e))) f.2.2.2.2.2)
+    (trans (addC (mul (iota.1 (c e)) (pw e)) (add (add (mul (iota.1 (c f.1)) (pw f.1)) (V f.1 c)) f.2.2.2.1))
+      (sym (addA (add (mul (iota.1 (c f.1)) (pw f.1)) (V f.1 c)) f.2.2.2.1 (mul (iota.1 (c e)) (pw e)))))) } ;
+ step (e : Nat) (c : Nat -> A.R) (prev : Scan e c) : Plus (m (c e)) (RL[A].unit (c e)) -> Scan (suc e) c = split {
+  inl hm -> m-step e c hm prev ;
+  inr u -> inr (e,le-refl e,u,z,MP.in-zero E,sym (addZ (add (mul (iota.1 (c e)) (pw e)) (V e c)))) } ;
+ scan : (e : Nat) (c : Nat -> A.R) -> Scan e c = split {
+  zero -> \ c -> inl tt ;
+  suc e | r -> \ c -> step e c (r c) (dec (c e)) } ;
+
+ ---------------------------------------------------------------------
+ -- (3) the monic D: y^d = V_d beta + x'
+
+ module Normalise (c : Nat -> A.R) (w : MP.InM E (V E c)) (f : Found E c) {
+  d : Nat = f.1 ;
+  u : A.R = f.2.2.1.1 ;
+  x : R = f.2.2.2.1 ;
+  top : R = mul (iota.1 (c d)) (pw d) ;
+  beta (i : Nat) : A.R = A.mul (A.neg u) (c i) ;
+  x' : R = mul (iota.1 u) (add (V E c) (neg x)) ;
+  x'-in : MP.InM E x' = MP.in-scale E u _ (MP.in-add E _ _ w (MP.in-neg E x f.2.2.2.2.1)) ;
+  -- iota(c_d) y^d = (V_E c - x) - V_d c
+  top-eq : Id R top (add (add (V E c) (neg x)) (neg (V d c))) =
+   sym (trans (ap (\ v -> add (add v (neg x)) (neg (V d c))) f.2.2.2.2.2)
+         (trans (ap (\ v -> add v (neg (V d c))) (L.add-neg-cancel (add top (V d c)) x)) (L.add-neg-cancel top (V d c)))) ;
+  -- y^d = iota(u) (iota(c_d) y^d)
+  unit-eq : Id R (pw d) (mul (iota.1 u) top) =
+   sym (trans (mulA (iota.1 u) (iota.1 (c d)) (pw d))
+         (trans (ap (\ v -> mul v (pw d)) (trans (sym (iota.2.2.2 u (c d))) (trans (ap iota.1 (trans (A.mulC u (c d)) f.2.2.1.2)) iota.2.1)))
+          (L.one-left (pw d)))) ;
+  relation : Id R (pw d) (add (V d beta) x') = calc R {
+   pw d
+    =< trans unit-eq (ap (mul (iota.1 u)) top-eq) > mul (iota.1 u) (add (add (V E c) (neg x)) (neg (V d c)))
+    =< dist (iota.1 u) (add (V E c) (neg x)) (neg (V d c)) > add x' (mul (iota.1 u) (neg (V d c)))
+    =< ap (add x') (trans (L.mul-neg (iota.1 u) (V d c))
+         (sym (trans (MP.V-scale d (A.neg u) c) (trans (ap (\ v -> mul v (V d c)) (H.negation A B iota u)) (L.neg-mul-left (iota.1 u) (V d c))))))
+     > add x' (V d beta)
+    =< addC x' (V d beta) > add (V d beta) x' } ;
+ } ;
+
+ ---------------------------------------------------------------------
+ -- (4) every power of y is V_d beta + (m R[y])
+
+ module PowerSpan (d : Nat) (beta0 : Nat -> A.R) (x0 : R) (x0-in : MP.InM E x0)
+  (h0 : Id R (pw d) (add (V d beta0) x0)) {
+  SpanM (v : R) : U l = (beta : Nat -> A.R) * (x : R) * MP.InM E x * Id R v (add (V d beta) x) ;
+  -- ((p + q) + r) + s = (r + p) + (q + s)
+  regroup (p q r s : R) : Id R (add (add (add p q) r) s) (add (add r p) (add q s)) =
+   trans (ap (\ v -> add v s) (trans (addC (add p q) r) (addA r p q))) (sym (addA (add r p) q s)) ;
+  y-span (v : R) (s : SpanM v) : SpanM (mul y v) =
+   (\ i -> A.add (CA.shift s.1 i) (A.mul (CA.shift s.1 d) (beta0 i)),
+    add (mul (iota.1 (CA.shift s.1 d)) x0) (mul y s.2.1),
+    MP.in-add E _ _ (MP.in-scale E (CA.shift s.1 d) x0 x0-in) (MM.in-y s.2.1 s.2.2.1),
+    calc R {
+     mul y v
+      =< trans (ap (mul y) s.2.2.2) (dist y (V d s.1) s.2.1) > add (mul y (V d s.1)) (mul y s.2.1)
+      =< ap (\ t -> add t (mul y s.2.1))
+          (trans (PS.psum-shift d (\ i -> iota.1 (s.1 i)))
+           (Ps.cong2 R add _ _ _ _
+             (trans (ap (\ t -> mul t (pw d)) (sym (MP.V-shift s.1 d)))
+              (trans (ap (mul (iota.1 (CA.shift s.1 d))) h0)
+               (trans (dist (iota.1 (CA.shift s.1 d)) (V d beta0) x0)
+                (ap (\ t -> add t (mul (iota.1 (CA.shift s.1 d)) x0)) (sym (MP.V-scale d (CA.shift s.1 d) beta0))))))
+             (sym (PS.psum-cong d (\ i -> iota.1 (CA.shift s.1 i)) (CB.shift (\ i -> iota.1 (s.1 i))) (MP.V-shift s.1)))))
+       > add (add (add (V d (\ i -> A.mul (CA.shift s.1 d) (beta0 i))) (mul (iota.1 (CA.shift s.1 d)) x0)) (V d (CA.shift s.1))) (mul y s.2.1)
+      =< regroup (V d (\ i -> A.mul (CA.shift s.1 d) (beta0 i))) (mul (iota.1 (CA.shift s.1 d)) x0) (V d (CA.shift s.1)) (mul y s.2.1)
+       > add (add (V d (CA.shift s.1)) (V d (\ i -> A.mul (CA.shift s.1 d) (beta0 i))))
+             (add (mul (iota.1 (CA.shift s.1 d)) x0) (mul y s.2.1))
+      =< ap (\ t -> add t (add (mul (iota.1 (CA.shift s.1 d)) x0) (mul y s.2.1)))
+          (sym (MP.V-add d (CA.shift s.1) (\ i -> A.mul (CA.shift s.1 d) (beta0 i))))
+       > add (V d (\ i -> A.add (CA.shift s.1 i) (A.mul (CA.shift s.1 d) (beta0 i))))
+             (add (mul (iota.1 (CA.shift s.1 d)) x0) (mul y s.2.1)) }) ;
+ } ;
+ -- y^0 = 1
+ base : (d : Nat) (beta0 : Nat -> A.R) (x0 : R) (x0-in : MP.InM E x0) (h0 : Id R (pw d) (add (V d beta0) x0)) ->
+  PowerSpan[d,beta0,x0,x0-in,h0].SpanM o = split {
+  zero -> \ beta0 x0 x0-in h0 -> (beta0,x0,x0-in,h0) ;
+  suc d -> \ beta0 x0 x0-in h0 ->
+   (CA.point A.o,z,MP.in-zero E,sym (trans (addZ (V (suc d) (CA.point A.o))) (trans (MP.V-point d A.o) iota.2.1))) } ;
+ powers (d : Nat) (beta0 : Nat -> A.R) (x0 : R) (x0-in : MP.InM E x0) (h0 : Id R (pw d) (add (V d beta0) x0)) :
+  (j : Nat) -> PowerSpan[d,beta0,x0,x0-in,h0].SpanM (pw j) = split {
+  zero -> base d beta0 x0 x0-in h0 ;
+  suc j | r -> PowerSpan[d,beta0,x0,x0-in,h0].y-span (pw j) r } ;
+} ;

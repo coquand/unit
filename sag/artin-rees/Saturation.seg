@@ -1,0 +1,292 @@
+-- Saturation.seg: saturation and Ruitenburg's Lemma 2 (artin-rees.tex,
+-- Lemma 7, Prop. 8, Thm. 9).
+--
+-- M a coherent module, n a degree, M[X]_n = B (blocks Fin (suc n) -> M)
+-- with (D) and (FL); f_1..f_s in B and N = NM, the A[X]-span of the
+-- sequences F_i = emb f_i.
+-- Lemma 7 (Step): for a list P of B, with generators sigma^k of the
+--   syzygies of the top coefficients of P, the gens_k = Xn (sum_j sigma^k_j p_j)
+--   span { Xn q | q in span P, topc q = 0 } (complete), and lie in N when
+--   P does (gen-nm).
+-- Prop. 8 (saturate): merely, a list P with every f_i in span P, every
+--   element in N, and Sat P: q in span P with topc q = 0 gives Xn q in
+--   span P.  Free-list induction (FL in B): if every gens_k is in span P
+--   (decided by (D)), P is saturated; otherwise add the first one that is
+--   not, which keeps the list free.
+-- Thm. 9 (lemma2): with such a P, for every e and every g in N vanishing
+--   from e + n + 1 on, g = sum_{i <= e} X^i (combination of P), i.e. XS e g
+--   for the family emb P.  Induction on the X-degree d of the witness of
+--   g in N: g = sum c_i F_i + X g*, X g* vanishes from e + n + 1 on; if e = 0,
+--   g* is in span P with top coefficient 0 and X g* is in span P by Sat;
+--   otherwise g* is handled by induction at e - 1.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+-- all elements of a finite family satisfy a decidable predicate, or one fails
+topP (P : Top -> U l) (p : P tt) : (t : Top) -> P t = split { tt -> p } ;
+allS (h : Nat) (Q : Fin (suc h) -> U l) (all : (i : Fin h) -> Q (inl i)) (q : Q (inr tt)) : (k : Fin (suc h)) -> Q k = split {
+  inl i -> all i ;
+  inr t -> topP (\ t' -> Q (inr t')) q t } ;
+AllOr (h : Nat) (Q : Fin h -> U l) : U l = Plus ((k : Fin h) -> Q k) ((k : Fin h) * Not (Q k)) ;
+all-orS (h : Nat) (Q : Fin (suc h) -> U l) (q : Q (inr tt)) :
+  AllOr h (\ i -> Q (inl i)) -> AllOr (suc h) Q = split {
+  inl all -> inl (allS h Q all q) ;
+  inr kn -> inr (inl kn.1, kn.2) } ;
+all-or-top (h : Nat) (Q : Fin (suc h) -> U l) (ih : AllOr h (\ i -> Q (inl i))) :
+  Plus (Q (inr tt)) (Not (Q (inr tt))) -> AllOr (suc h) Q = split {
+  inl q -> all-orS h Q q ih ;
+  inr nq -> inr (inr tt, nq) } ;
+all-or : (h : Nat) (Q : Fin h -> U l) -> ((k : Fin h) -> Plus (Q k) (Not (Q k))) -> AllOr h Q = split {
+  zero -> \ Q d -> inl (\ k -> absurd (Q k) k) ;
+  suc h | r -> \ Q d -> all-or-top h Q (r (\ i -> Q (inl i)) (\ i -> d (inl i))) (d (inr tt)) } ;
+
+-- spans of lists: combinations, and sublists of spans
+module SpanOps (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ;
+  module SP = ModSpan[l].Over[A,Md] ; module MS = Spans[l].Over[A,Md] ; module S = Comb[l].Sums[A,Md] ;
+  mm-zero (P : List M) : MS.Mm P mz = MS.mm P mz (SP.in-zero P) ;
+  mm-add (P : List M) (y y' : M) (h : MS.Mm P y) (h' : MS.Mm P y') : MS.Mm P (madd y y') =
+    MS.mm-rec P y (MS.Mm P (madd y y')) (MS.mm-prop P (madd y y'))
+      (\ g -> MS.mm-rec P y' (MS.Mm P (madd y y')) (MS.mm-prop P (madd y y')) (\ g' -> MS.mm P (madd y y') (SP.in-add P y y' g g')) h') h ;
+  mm-sm (P : List M) (c : A.R) (y : M) (h : MS.Mm P y) : MS.Mm P (sm c y) =
+    MS.mm-rec P y (MS.Mm P (sm c y)) (MS.mm-prop P (sm c y)) (\ g -> MS.mm P (sm c y) (SP.in-scale P c y g)) h ;
+  mm-sum (P : List M) : (k : Nat) (u : Fin k -> M) -> ((j : Fin k) -> MS.Mm P (u j)) -> MS.Mm P (S.sum k u) = split {
+    zero -> \ u h -> mm-zero P ;
+    suc k | r -> \ u h -> mm-add P (u (inr tt)) (S.sum k (\ i -> u (inl i))) (h (inr tt)) (r (\ i -> u (inl i)) (\ i -> h (inl i))) } ;
+  mm-comb (P : List M) (k : Nat) (c : Fin k -> A.R) (u : Fin k -> M) (h : (j : Fin k) -> MS.Mm P (u j)) : MS.Mm P (S.comb k c u) =
+    mm-sum P k (\ j -> sm (c j) (u j)) (\ j -> mm-sm P (c j) (u j) (h j)) ;
+  mm-cong (P : List M) (y y' : M) (e : Id M y y') (h : MS.Mm P y) : MS.Mm P y' = subst (MS.Mm P) e h ;
+
+  -- the elements of s' in span P give span s' in span P
+  AllIn (P : List M) : List M -> U l = split {
+    nil -> Top ;
+    cons t s | r -> MS.Mm P t * r } ;
+  sub-of (P : List M) : (s : List M) -> AllIn P s -> MS.Sub s P = split {
+    nil -> \ a y h -> MS.mm-rec nil y (MS.Mm P y) (MS.mm-prop P y) (\ e -> mm-cong P mz y (sym e) (mm-zero P)) h ;
+    cons t s | r -> \ a y h -> MS.mm-rec (cons t s) y (MS.Mm P y) (MS.mm-prop P y)
+      (\ g -> mm-cong P (madd (ML.msub y (sm g.1 t)) (sm g.1 t)) y (MS.sub-add y (sm g.1 t))
+                (mm-add P (ML.msub y (sm g.1 t)) (sm g.1 t) (r a.2 (ML.msub y (sm g.1 t)) (MS.mm s (ML.msub y (sm g.1 t)) g.2))
+                   (mm-sm P g.1 t a.1))) h } ;
+  allin-of (P : List M) : (k : Nat) (u : Fin k -> M) -> ((j : Fin k) -> MS.Mm P (u j)) -> AllIn P (MS.list-of k u) = split {
+    zero -> \ u h -> tt ;
+    suc k | r -> \ u h -> (h (inr tt), r (\ i -> u (inl i)) (\ i -> h (inl i))) } ;
+} ;
+
+module Over (A : CRing) (Md : IP.Mod[A]) (cohM : Coherent[l].Over[A,Md].Coh) (n : Nat)
+  (discB : Coherent[l].Over[A,SeqPoly[l].Over[A,Md].blk (suc n)].Disc)
+  (flB : Coherent[l].Over[A,SeqPoly[l].Over[A,Md].blk (suc n)].FL)
+  (s : Nat) (f : Fin s -> SeqPoly[l].Over[A,Md].Blk (suc n)) {
+  module SQ = SeqPoly[l].Over[A,Md] ;
+  B : IP.Mod[A] = SQ.blk (suc n) ;
+  BM : U l = SQ.Blk (suc n) ;
+  Seq : U l = SQ.Seq ;
+  Sq : IP.Mod[A] = SQ.seq ;
+  module LQ = IP.ModL[A,Sq] ; module CS = Comb[l].Sums[A,Sq] ;
+  module CM = Coherent[l].Over[A,Md] ;
+  module SB = ModSpan[l].Over[A,B] ; module MB = Spans[l].Over[A,B] ; module LB = Comb[l].Lists[A,B] ;
+  module OB = SpanOps[A,B] ; module CB = Comb[l].Sums[A,B] ;
+  module EM = LinIso[l].Map[A,B,Sq,SQ.emb (suc n),SQ.emb-add' (suc n),SQ.emb-sm' (suc n)] ;
+  module TM = LinIso[l].Map[A,B,Md,SQ.topc n,SQ.topc-add n,SQ.topc-sm n] ;
+  module XM = LinIso[l].Map[A,B,B,SQ.Xn n,SQ.xn-add n,SQ.xn-sm n] ;
+  emb (x : BM) : Seq = SQ.emb (suc n) x ;
+  F (i : Fin s) : Seq = emb (f i) ;
+  module XN = XSpan[l].Over[A,Md,s,F] ;
+
+  InN (x : BM) : U l = XN.NM (emb x) ;
+  AllN : List BM -> U l = split {
+    nil -> Top ;
+    cons t q | r -> InN t * r } ;
+  elemS (t : BM) (q : List BM) (r : AllN q -> (j : Fin (len q)) -> InN (LB.elem q j)) (a : AllN (cons t q)) :
+    (j : Fin (suc (len q))) -> InN (LB.elem (cons t q) j) = split {
+    inl i -> r a.2 i ;
+    inr u -> topP (\ u' -> InN (LB.elem (cons t q) (inr u'))) a.1 u } ;
+  elem-n : (q : List BM) -> AllN q -> (j : Fin (len q)) -> InN (LB.elem q j) = split {
+    nil -> \ a j -> absurd (InN (LB.elem nil j)) j ;
+    cons t q | r -> elemS t q r } ;
+  Sat (P : List BM) : U l = (q : BM) -> MB.Mm P q -> Id Md.M (SQ.topc n q) Md.mz -> MB.Mm P (SQ.Xn n q) ;
+
+  ------------------------------------------------------------------------
+  -- Lemma 7
+
+  module Step (P : List BM) (h : Nat) (sg : Fin h -> Comb[l].Free[A,len P].Vec)
+    (ssyz : CM.SyzAll (len P) (\ j -> SQ.topc n (LB.elem P j)) h sg)
+    (suniv : CM.Univ (len P) (\ j -> SQ.topc n (LB.elem P j)) h sg) {
+    pe (j : Fin (len P)) : BM = LB.elem P j ;
+    tp (j : Fin (len P)) : Md.M = SQ.topc n (pe j) ;
+    w (k : Fin h) : BM = CB.comb (len P) (sg k) pe ;
+    top-w (k : Fin h) : Id Md.M (SQ.topc n (w k)) Md.mz = trans (TM.comb-map (len P) (sg k) pe) (ssyz k) ;
+    gens (k : Fin h) : BM = SQ.Xn n (w k) ;
+    GL : List BM = MB.list-of h gens ;
+    module VS = Comb[l].Free[A,len P].VS ;
+
+    module Compl (q : BM) (z : Id Md.M (SQ.topc n q) Md.mz) (lam : Comb[l].Free[A,len P].Vec) (e : Id BM (CB.comb (len P) lam pe) q) {
+      syz : CM.Syz (len P) tp lam = trans (sym (TM.comb-map (len P) lam pe)) (trans (ap (SQ.topc n) e) z) ;
+      path (mu : Fin h -> A.R) (emu : Id Comb[l].Free[A,len P].Vec (VS.comb h mu sg) lam) : Id BM (CB.comb h mu gens) (SQ.Xn n q) =
+        trans (sym (XM.comb-map h mu w))
+          (trans (ap (SQ.Xn n) (sym (Comb[l].Bilinear[A,B].comb-comb (len P) h mu sg pe)))
+            (trans (ap (\ t -> SQ.Xn n (CB.comb (len P) t pe)) emu) (ap (SQ.Xn n) e))) ;
+      result : MB.Mm GL (SQ.Xn n q) =
+        Tr.Trunc[CM.InFV (len P) h sg lam].induction @l (\ t -> MB.Mm GL (SQ.Xn n q)) (\ t -> MB.mm-prop GL (SQ.Xn n q))
+          (\ me -> MB.mm GL (SQ.Xn n q) (MB.in-lf h gens (SQ.Xn n q) (me.1, path me.1 me.2)))
+          (suniv lam syz) ;
+    } ;
+    complete (q : BM) (m : MB.Mm P q) (z : Id Md.M (SQ.topc n q) Md.mz) : MB.Mm GL (SQ.Xn n q) =
+      MB.mm-rec P q (MB.Mm GL (SQ.Xn n q)) (MB.mm-prop GL (SQ.Xn n q))
+        (\ i -> Compl[q, z, (LB.in-fam P q i).1, (LB.in-fam P q i).2].result) m ;
+
+    emb-w (k : Fin h) : Id Seq (SQ.Xs (CS.comb (len P) (sg k) (\ j -> emb (pe j)))) (emb (gens k)) =
+      sym (trans (SQ.sext _ _ (SQ.emb-Xn n (w k) (top-w k))) (ap SQ.Xs (EM.comb-map (len P) (sg k) pe))) ;
+    gen-nm (a : AllN P) (k : Fin h) : InN (gens k) =
+      XN.nm-cong (SQ.Xs (CS.comb (len P) (sg k) (\ j -> emb (pe j)))) (emb (gens k)) (emb-w k)
+        (XN.nm-X (CS.comb (len P) (sg k) (\ j -> emb (pe j)))
+          (XN.nm-comb (len P) (sg k) (\ j -> emb (pe j)) (elem-n P a))) ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- Prop. 8
+
+  Res (q : List BM) : U l = (P : List BM) * (MB.Sub q P * (AllN P * Sat P)) ;
+  Phi (q : List BM) : U l = AllN q -> Tr.Trunc[Res q].carrier ;
+  phi-prop (q : List BM) : Pr.isProp (Phi q) =
+    FE.isProp-Pi (AllN q) (\ a -> Tr.Trunc[Res q].carrier) (\ a -> Tr.Trunc[Res q].proposition) ;
+
+  module Iter (q : List BM) (fq : SB.Free q) (ih : (x : BM) -> Not (SB.In q x) -> Phi (cons x q)) (a : AllN q) {
+    Goal : U l = Tr.Trunc[Res q].carrier ;
+    extend (x : BM) (r : Tr.Trunc[Res (cons x q)].carrier) : Goal =
+      Tr.Trunc[Res (cons x q)].induction @l (\ t -> Goal) (\ t -> Tr.Trunc[Res q].proposition)
+        (\ p -> Tr.Trunc[Res q].inc (p.1, (MB.sub-trans q (cons x q) p.1 (MB.weak-sub x q) p.2.1, p.2.2))) r ;
+    module WithGens (h : Nat) (sg : Fin h -> Comb[l].Free[A,len q].Vec)
+      (ssyz : CM.SyzAll (len q) (\ j -> SQ.topc n (LB.elem q j)) h sg)
+      (suniv : CM.Univ (len q) (\ j -> SQ.topc n (LB.elem q j)) h sg) {
+      module St = Step[q, h, sg, ssyz, suniv] ;
+      In-q (k : Fin h) : U l = MB.Mm q (St.gens k) ;
+      sat-of (all : (k : Fin h) -> In-q k) : Sat q = \ x m z ->
+        OB.sub-of q St.GL (OB.allin-of q h St.gens all) (SQ.Xn n x) (St.complete x m z) ;
+      decide : AllOr h In-q -> Goal = split {
+        inl all -> Tr.Trunc[Res q].inc (q, ((\ y m -> m), (a, sat-of all))) ;
+        inr kn -> extend (St.gens kn.1)
+          (ih (St.gens kn.1) (\ i -> kn.2 (MB.mm q (St.gens kn.1) i)) (St.gen-nm a kn.1, a)) } ;
+      result : Goal = decide (all-or h In-q (\ k -> MB.dec-list discB q (St.gens k))) ;
+    } ;
+    result : Goal =
+      Tr.Trunc[CM.CohW (len q) (\ j -> SQ.topc n (LB.elem q j))].induction @l (\ t -> Goal) (\ t -> Tr.Trunc[Res q].proposition)
+        (\ x -> WithGens[x.1, x.2.1, x.2.2.1, x.2.2.2].result) (cohM (len q) (\ j -> SQ.topc n (LB.elem q j))) ;
+  } ;
+  sat-free (q : List BM) (fq : SB.Free q) : Phi q =
+    flB Phi phi-prop (\ q' fq' ih a -> Iter[q', fq', ih, a].result) q fq ;
+
+  Saturated : U l = (P : List BM) * (((i : Fin s) -> MB.Mm P (f i)) * (AllN P * Sat P)) ;
+  FL0 : List BM = MB.list-of s f ;
+  inN-of-span (x : BM) (m : MB.Mm FL0 x) : InN x =
+    MB.mm-rec FL0 x (InN x) (XN.nm-prop (emb x))
+      (\ i -> XN.nm zero (emb x) ((MB.lf-in s f x i).1,
+         trans (sym (EM.comb-map s (MB.lf-in s f x i).1 f)) (ap emb (MB.lf-in s f x i).2))) m ;
+  alln-of : (q : List BM) -> MB.Sub q FL0 -> AllN q = split {
+    nil -> \ sub -> tt ;
+    cons t q | r -> \ sub -> (inN-of-span t (sub t (MB.mm (cons t q) t (SB.in-gen t q))),
+                             r (MB.sub-trans q (cons t q) FL0 (MB.weak-sub t q) sub)) } ;
+  f-in (i : Fin s) : MB.Mm FL0 (f i) =
+    MB.mm FL0 (f i) (MB.in-lf s f (f i) (XSpan[l].Delta[A,B].delta s i, XSpan[l].Delta[A,B].comb-delta s f i)) ;
+  finish (q : List BM) (sub0 : MB.Sub FL0 q) (r : Res q) : Saturated =
+    (r.1, ((\ i -> r.2.1 (f i) (sub0 (f i) (f-in i))), r.2.2)) ;
+  saturate : Tr.Trunc[Saturated].carrier =
+    Tr.Trunc[MB.Extract FL0].induction @l (\ t -> Tr.Trunc[Saturated].carrier) (\ t -> Tr.Trunc[Saturated].proposition)
+      (\ x -> Tr.Trunc[Res x.1].induction @l (\ t -> Tr.Trunc[Saturated].carrier) (\ t -> Tr.Trunc[Saturated].proposition)
+         (\ r -> Tr.Trunc[Saturated].inc (finish x.1 x.2.2.2 r))
+         (sat-free x.1 x.2.1 (alln-of x.1 x.2.2.1)))
+      (MB.Ext[discB].extract FL0) ;
+
+  ------------------------------------------------------------------------
+  -- Thm. 9 (Ruitenburg's Lemma 2)
+
+  van-rest (K : Nat) (a b g : Seq) (e : Id Seq g (Sq.madd a b)) (vg : SQ.Van K g) (va : SQ.Van K a) : SQ.Van K b =
+    \ j -> sym (trans (sym (vg j))
+      (trans (Pr.happly Nat (\ i -> Md.M) g (Sq.madd a b) e (plus K j))
+        (trans (ap (\ t -> Md.madd t (b (plus K j))) (va j)) (IP.ModL[A,Md].G.zl (b (plus K j)))))) ;
+
+  module Lemma2 (P : List BM) (hf : (i : Fin s) -> MB.Mm P (f i)) (sat : Sat P) {
+    pe (j : Fin (len P)) : BM = LB.elem P j ;
+    G (j : Fin (len P)) : Seq = emb (pe j) ;
+    module XP = XSpan[l].Over[A,Md,len P,G] ;
+    Goal (e : Nat) (g : Seq) : U l = Tr.Trunc[XP.XS e g].carrier ;
+    goal-prop (e : Nat) (g : Seq) : Pr.isProp (Goal e g) = Tr.Trunc[XP.XS e g].proposition ;
+    goal-cong (e : Nat) (g g' : Seq) (p : Id Seq g g') (h : Goal e g) : Goal e g' = subst (Goal e) p h ;
+
+    mm-xp (x : BM) (m : MB.Mm P x) : Goal zero (emb x) =
+      MB.mm-rec P x (Goal zero (emb x)) (goal-prop zero (emb x))
+        (\ i -> Tr.Trunc[XP.XS zero (emb x)].inc ((LB.in-fam P x i).1,
+           trans (sym (EM.comb-map (len P) (LB.in-fam P x i).1 pe)) (ap emb (LB.in-fam P x i).2))) m ;
+    cf (c : Fin s -> A.R) : BM = CB.comb s c f ;
+    cf-eq (c : Fin s -> A.R) : Id Seq (emb (cf c)) (XN.cF c) = EM.comb-map s c f ;
+    cf-xp (c : Fin s -> A.R) : Goal zero (XN.cF c) =
+      goal-cong zero (emb (cf c)) (XN.cF c) (cf-eq c) (mm-xp (cf c) (OB.mm-comb P s c f hf)) ;
+    van-cf (c : Fin s -> A.R) : SQ.Van (suc n) (XN.cF c) =
+      SQ.van-cong (suc n) (emb (cf c)) (XN.cF c) (cf-eq c) (SQ.van-emb (suc n) (cf c)) ;
+
+    -- e = 0: g = cF c + X g1, g1 in span P with top coefficient 0
+    module E0 (c : Fin s -> A.R) (g1 : Seq) (vX : SQ.Van n g1) (lam : Fin (len P) -> A.R) (el : Id Seq (CS.comb (len P) lam G) g1) {
+      q : BM = CB.comb (len P) lam pe ;
+      eq1 : Id Seq (emb q) g1 = trans (EM.comb-map (len P) lam pe) el ;
+      mq : MB.Mm P q = MB.mm P q (LB.fam-in P q (lam, refl q)) ;
+      z : Id Md.M (SQ.topc n q) Md.mz = trans (Pr.happly Nat (\ i -> Md.M) (emb q) g1 eq1 (plus n zero)) (vX zero) ;
+      xq : Id Seq (emb (SQ.Xn n q)) (SQ.Xs g1) = trans (SQ.sext _ _ (SQ.emb-Xn n q z)) (ap SQ.Xs eq1) ;
+      result : Goal zero (SQ.Xs g1) = goal-cong zero (emb (SQ.Xn n q)) (SQ.Xs g1) xq (mm-xp (SQ.Xn n q) (sat q mq z)) ;
+    } ;
+    add0 (a b : Seq) (ha : Goal zero a) (hb : Goal zero b) : Goal zero (Sq.madd a b) =
+      Tr.Trunc[XP.XS zero a].induction @l (\ t -> Goal zero (Sq.madd a b)) (\ t -> goal-prop zero (Sq.madd a b))
+        (\ x -> Tr.Trunc[XP.XS zero b].induction @l (\ t -> Goal zero (Sq.madd a b)) (\ t -> goal-prop zero (Sq.madd a b))
+           (\ y -> Tr.Trunc[XP.XS zero (Sq.madd a b)].inc (XP.xs-add zero a b x y)) hb) ha ;
+    -- e = e' + 1: g = cF c + X g1, g1 handled at e'
+    E1 (e' : Nat) (g : Seq) (c : Fin s -> A.R) (g1 : Seq) (eq : Id Seq g (Sq.madd (XN.cF c) (SQ.Xs g1)))
+      (h1 : Goal e' g1) : Goal (suc e') g =
+      Tr.Trunc[XP.XS zero (XN.cF c)].induction @l (\ t -> Goal (suc e') g) (\ t -> goal-prop (suc e') g)
+        (\ x -> Tr.Trunc[XP.XS e' g1].induction @l (\ t -> Goal (suc e') g) (\ t -> goal-prop (suc e') g)
+           (\ y -> Tr.Trunc[XP.XS (suc e') g].inc (x.1, (g1, (y,
+              trans eq (ap (\ t -> Sq.madd t (SQ.Xs g1)) (sym x.2))))))
+           h1)
+        (cf-xp c) ;
+
+    stepE (d : Nat) (ih : (e : Nat) (g : Seq) -> SQ.Van (plus e (suc n)) g -> XN.XS d g -> Goal e g) :
+      (e : Nat) (g : Seq) -> SQ.Van (plus e (suc n)) g -> (c : Fin s -> A.R) -> (g1 : Seq) -> XN.XS d g1 ->
+      Id Seq g (Sq.madd (XN.cF c) (SQ.Xs g1)) -> Goal e g = split {
+      zero -> \ g v c g1 h1 eq ->
+        goal-cong zero (Sq.madd (XN.cF c) (SQ.Xs g1)) g (sym eq)
+          (add0 (XN.cF c) (SQ.Xs g1) (cf-xp c)
+            (Tr.Trunc[XP.XS zero g1].induction @l (\ t -> Goal zero (SQ.Xs g1)) (\ t -> goal-prop zero (SQ.Xs g1))
+               (\ x -> E0[c, g1, van-rest (suc n) (XN.cF c) (SQ.Xs g1) g eq v (van-cf c), x.1, x.2].result)
+               (ih zero g1 (SQ.van-up n g1 (van-rest (suc n) (XN.cF c) (SQ.Xs g1) g eq v (van-cf c))) h1))) ;
+      suc e' -> \ g v c g1 h1 eq ->
+        E1 e' g c g1 eq (ih e' g1
+          (van-rest (plus (suc e') (suc n)) (XN.cF c) (SQ.Xs g1) g eq v (SQ.van-lift (suc e') (suc n) (XN.cF c) (van-cf c))) h1) } ;
+    thm : (d : Nat) (e : Nat) (g : Seq) -> SQ.Van (plus e (suc n)) g -> XN.XS d g -> Goal e g = split {
+      zero -> \ e g v h -> goal-cong e (XN.cF h.1) g h.2
+        (Tr.Trunc[XP.XS zero (XN.cF h.1)].induction @l (\ t -> Goal e (XN.cF h.1)) (\ t -> goal-prop e (XN.cF h.1))
+           (\ x -> Tr.Trunc[XP.XS e (XN.cF h.1)].inc (XP.xs-lift e (XN.cF h.1) x)) (cf-xp h.1)) ;
+      suc d | ih -> \ e g v h -> stepE d ih e g v h.1 h.2.1 h.2.2.1 h.2.2.2 } ;
+
+    -- N cap M[X]_(e+n) = sum_{i <= e} X^i P
+    lemma2 (e : Nat) (g : Seq) (v : SQ.Van (plus e (suc n)) g) (h : XN.NM g) : Goal e g =
+      XN.nm-rec g (Goal e g) (goal-prop e g) (\ w -> thm w.1 e g v w.2) h ;
+  } ;
+
+  -- the easy inclusion: sum_i X^i P is in N when P is
+  module Easy (P : List BM) (an : AllN P) {
+    G (j : Fin (len P)) : Seq = emb (LB.elem P j) ;
+    module XP = XSpan[l].Over[A,Md,len P,G] ;
+    back : (e : Nat) (g : Seq) -> XP.XS e g -> XN.NM g = split {
+      zero -> \ g h -> XN.nm-cong (XP.cF h.1) g h.2 (XN.nm-comb (len P) h.1 G (elem-n P an)) ;
+      suc e | r -> \ g h -> XN.nm-cong (Sq.madd (XP.cF h.1) (SQ.Xs h.2.1)) g (sym h.2.2.2)
+        (XN.nm-add (XP.cF h.1) (SQ.Xs h.2.1) (XN.nm-comb (len P) h.1 G (elem-n P an)) (XN.nm-X h.2.1 (r h.2.1 h.2.2.1))) } ;
+  } ;
+} ;
+
+-- the instance M = A^r over a CFN ring: (D) and (FL) for M[X]_n from Blocks
+module Free (A : CRing) (disc : Coherent[l].Over[A,IP.regular A].Disc) (coh : Coherent[l].Over[A,IP.regular A].Coh)
+  (flA : Coherent[l].Over[A,IP.regular A].FL) (r n s : Nat)
+  (f : Fin s -> SeqPoly[l].Over[A,Comb[l].Free[A,r].mod].Blk (suc n)) {
+  module BL = Blocks[l].Over[A,disc,coh,flA,r,suc n] ;
+  module FC = FreeCoherent[l].Over[A,coh] ;
+  module S = Over[A,Comb[l].Free[A,r].mod,FC.coh-vec r,n,BL.disc-pow,BL.fl-pow,s,f] ;
+  saturate : Tr.Trunc[S.Saturated].carrier = S.saturate ;
+} ;

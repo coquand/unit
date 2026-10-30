@@ -1,0 +1,115 @@
+-- ModSpan.seg: linear combinations in a module, good and free lists,
+-- noetherianity, and the principle of free lists (artin-rees.tex, §2).
+--
+-- In s y: y is an A-combination of the elements of s.  Lists grow at the
+-- head (cons x s is s extended by x).  Good s (Coquand-Persson): some
+-- element is a combination of the elements before it.  Free s: no element
+-- is.  Noeth: Good bars the empty list (Bar.Over).
+--
+-- Lemma 2 (free lists).  A tree valid at nil is valid at every list after
+-- descending along it (at).  Recursion on the tree, with the predicate
+-- "s free -> Phi s": a leaf gives a good free list, which is absurd; a node
+-- gives Phi (x::s) for every x not in the span of s, since x::s is then
+-- free.  This is the only use of noetherianity: with a decision of
+-- membership one only ever adds non-members.
+level l ; open Ring[l] ; open Bar[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ;
+module Over (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+
+  In : List M -> M -> U l = split {
+    nil -> \ y -> Id M y mz ;
+    cons t s | r -> \ y -> (c : A.R) * r (msub y (sm c t)) } ;
+
+  in-tr (s : List M) (y y' : M) (e : Id M y y') (h : In s y) : In s y' = subst (In s) e h ;
+
+  -- y - 0 t = y
+  drop-zero (y t : M) : Id M (msub y (sm A.z t)) y =
+    trans (ap (\ u -> madd y (mneg u)) (zero-sm t)) (trans (ap (madd y) (G.neg-zero)) (maddZ y)) ;
+
+  in-zero : (s : List M) -> In s mz = split {
+    nil -> refl mz ;
+    cons t s | r -> (A.z, in-tr s mz (msub mz (sm A.z t)) (sym (drop-zero mz t)) r) } ;
+
+  -- (y - c t) + (y' - c' t) = (y + y') - (c + c') t
+  add-step (y y' t : M) (c c' : A.R) :
+    Id M (madd (msub y (sm c t)) (msub y' (sm c' t))) (msub (madd y y') (sm (A.add c c') t)) =
+    trans (sym (sub-swap y y' (sm c t) (sm c' t))) (ap (msub (madd y y')) (sym (smE c c' t))) ;
+
+  in-add : (s : List M) (y y' : M) -> In s y -> In s y' -> In s (madd y y') = split {
+    nil -> \ y y' h h' -> trans (G.cong-add h h') (maddZ mz) ;
+    cons t s | r -> \ y y' h h' -> (A.add h.1 h'.1,
+      in-tr s _ _ (add-step y y' t h.1 h'.1) (r (msub y (sm h.1 t)) (msub y' (sm h'.1 t)) h.2 h'.2)) } ;
+
+  -- d (y - c t) = d y - (d c) t
+  scale-step (d c : A.R) (y t : M) : Id M (sm d (msub y (sm c t))) (msub (sm d y) (sm (A.mul d c) t)) =
+    trans (sm-sub d y (sm c t)) (ap (msub (sm d y)) (smA d c t)) ;
+
+  in-scale : (s : List M) (d : A.R) (y : M) -> In s y -> In s (sm d y) = split {
+    nil -> \ d y h -> trans (ap (sm d) h) (sm-zero d) ;
+    cons t s | r -> \ d y h -> (A.mul d h.1,
+      in-tr s _ _ (scale-step d h.1 y t) (r d (msub y (sm h.1 t)) h.2)) } ;
+
+  in-neg (s : List M) (y : M) (h : In s y) : In s (mneg y) =
+    in-tr s (sm (A.neg A.o) y) (mneg y)
+      (trans (G.neg-uniq (sm A.o y) (sm (A.neg A.o) y)
+         (trans (sym (smE A.o (A.neg A.o) y)) (trans (ap (\ u -> sm u y) (A.addN A.o)) (zero-sm y))))
+        (ap mneg (smO y)))
+      (in-scale s (A.neg A.o) y h) ;
+
+  in-sub (s : List M) (y y' : M) (h : In s y) (h' : In s y') : In s (msub y y') =
+    in-add s y (mneg y') h (in-neg s y' h') ;
+
+  in-weak (t : M) (s : List M) (y : M) (h : In s y) : In (cons t s) y =
+    (A.z, in-tr s y (msub y (sm A.z t)) (sym (drop-zero y t)) h) ;
+
+  in-gen (t : M) (s : List M) : In (cons t s) t =
+    (A.o, in-tr s mz (msub t (sm A.o t)) (trans (sym (maddN t)) (ap (msub t) (sym (smO t)))) (in-zero s)) ;
+
+  -- a combination of a span is in the span
+  in-cons (t : M) (s : List M) (y : M) (c : A.R) (h : In s (msub y (sm c t))) : In (cons t s) y = (c, h) ;
+
+  ------------------------------------------------------------------------
+  -- good and free lists
+
+  Good : List M -> U l = split {
+    nil -> Empty ;
+    cons t s | r -> Plus (In s t) r } ;
+
+  Free : List M -> U l = split {
+    nil -> Top ;
+    cons t s | r -> Not (In s t) * r } ;
+
+  good-free-cons (t : M) (s : List M) (f : Not (In s t) * Free s)
+    (ih : Good s -> Free s -> Empty) : Plus (In s t) (Good s) -> Empty = split {
+    inl i -> f.1 i ;
+    inr g -> ih g f.2 } ;
+  good-free : (s : List M) -> Good s -> Free s -> Empty = split {
+    nil -> \ g f -> g ;
+    cons t s | r -> \ g f -> good-free-cons t s f r g } ;
+
+  ------------------------------------------------------------------------
+  -- noetherianity and the principle of free lists
+
+  module B = Bar[l].Over[M,Good] ;
+  Noeth : U l = B.Bars nil ;
+
+  down-valid : (t : Tree M) (s : List M) -> B.Valid t s -> (x : M) -> B.Bars (cons x s) = split {
+    leaf -> \ s q x -> (leaf, inr q) ;
+    node f | r -> \ s v x -> (f x, v x) } ;
+  down (s : List M) (b : B.Bars s) (x : M) : B.Bars (cons x s) = down-valid b.1 s b.2 x ;
+
+  at : (s : List M) -> Noeth -> B.Bars s = split {
+    nil -> \ b -> b ;
+    cons x s | r -> \ b -> down s (r b) x } ;
+
+  module FreeInd (Phi : List M -> U l)
+    (step : (s : List M) -> Free s -> ((x : M) -> Not (In s x) -> Phi (cons x s)) -> Phi s) {
+    base (s : List M) (g : Good s) (f : Free s) : Phi s = absurd (Phi s) (good-free s g f) ;
+    ind (s : List M) (h : (x : M) -> Free (cons x s) -> Phi (cons x s)) (f : Free s) : Phi s =
+      step s f (\ x nx -> h x (nx, f)) ;
+    module I = B.Ind[\ s -> Free s -> Phi s, base, ind] ;
+    result (s : List M) (b : B.Bars s) (f : Free s) : Phi s = I.bars s b f ;
+    from-noeth (n : Noeth) (s : List M) (f : Free s) : Phi s = result s (at s n) f ;
+  } ;
+} ;

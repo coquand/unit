@@ -1,0 +1,103 @@
+-- Common monomial denominators on ANY chart subset. The exponent L is
+-- bounded from finite support only on inverted coordinates, and is zero
+-- elsewhere. A cleared coefficient function vanishes at every negative
+-- exponent, using either the finite bound (inverted coordinate) or the
+-- original chart vanishing (noninverted coordinate). Support lists are
+-- allowed to contain forbidden exponents with zero coefficient.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ; module L = GenericLaurent[l] ;
+module B = GenericSupport[l] ; module E = FiniteExponents[l] ;
+module PA = PolynomialAction4[l] ; module N = LaurentSyzygyLift4[l] ;
+module LV = Laurent4[l] ;
+flagStep (n : Nat) (f : Flag) (s : Sub n) (old : Ps.Fin n -> Flag) : Ps.Fin (suc n) -> Flag = split {
+ inl i -> old i ; inr t -> f } ;
+flag : (n : Nat) -> Sub n -> Ps.Fin n -> Flag = split {
+ zero -> \ s i -> absurd Flag i ; suc n | rec -> \ s -> flagStep n s.1 s.2 (rec s.2) } ;
+choose : Flag -> Base.Nat -> Base.Nat = split { absent -> \ k -> zero ; present -> \ k -> k } ;
+amount (n : Nat) (i : Ps.Fin n) : List (L.Exp n) -> Base.Nat = split {
+ nil -> zero ; cons m ms | rec -> NA.plus (N.negPart (m i)) rec } ;
+bound (n : Nat) (s : Sub n) (ms : List (L.Exp n)) : E.Exp n = \ i -> choose (flag n s i) (amount n i ms) ;
+off (n : Nat) (s : Sub n) (ms : List (L.Exp n)) (i : Ps.Fin n) (h : Id Flag (flag n s i) absent) :
+ Id Base.Nat (bound n s ms i) zero = ap (\ f -> choose f (amount n i ms)) h ;
+on (n : Nat) (s : Sub n) (ms : List (L.Exp n)) (i : Ps.Fin n) (h : Id Flag (flag n s i) present) :
+ Id Base.Nat (bound n s ms i) (amount n i ms) = ap (\ f -> choose f (amount n i ms)) h ;
+amount-le (n : Nat) (i : Ps.Fin n) : (ms : List (L.Exp n)) (m : L.Exp n) -> L.Mem (L.Exp n) m ms -> NA.Le (N.negPart (m i)) (amount n i ms) = split {
+ nil -> \ m h -> absurd (NA.Le (N.negPart (m i)) zero) h ;
+ cons u us | rec -> \ m -> amountLeS n i u us m (rec m) }
+where {
+ amountLeS (n : Nat) (i : Ps.Fin n) (u : L.Exp n) (us : List (L.Exp n))
+  (m : L.Exp n) (rec : L.Mem (L.Exp n) m us -> NA.Le (N.negPart (m i)) (amount n i us)) : L.Mem (L.Exp n) m (cons u us) -> NA.Le (N.negPart (m i)) (amount n i (cons u us)) = split {
+  inl e -> subst (\ x -> NA.Le (N.negPart (x i)) (amount n i (cons u us))) e (NA.le-sum-l (amount n i us) (N.negPart (u i))) ;
+  inr h -> NA.le-trans _ _ _ (rec h) (NA.le-sum-r (amount n i us) (N.negPart (u i))) } } ;
+
+-- The chart support predicate has its expected coordinatewise meaning.
+bad-lift (n : Nat) : (b : Flag) (mask : Sub n) (f : Flag) (s : Sub n) -> B.bad n mask s -> B.bad (suc n) (b,mask) (f,s) = split {
+ absent -> \ mask f s h -> h ;
+ present -> \ mask -> split { absent -> \ s h -> tt ; present -> \ s h -> h } } ;
+bad-head (n : Nat) : (x : Int) (mask : Sub n) (f : Flag) (s : Sub n) -> LV.Neg x -> Id Flag f absent -> B.bad (suc n) (L.IntFlags.flag x,mask) (f,s) = split {
+ pos k -> \ mask f s neg h -> absurd (B.bad (suc n) (L.IntFlags.flag (pos k),mask) (f,s)) neg ;
+ negsuc k -> \ mask f s neg h -> subst (\ f -> B.bad (suc n) (present,mask) (f,s)) (sym h) tt } ;
+BadWitness (n : Nat) (s : Sub n) (m : L.Exp n) : U l =
+ (i : Ps.Fin n) * (LV.Neg (m i) * Id Flag (flag n s i) absent) ;
+module WitnessStep (n : Nat)
+ (ih : (s : Sub n) (m : L.Exp n) -> B.bad n (L.mask n m) s -> BadWitness n s m)
+ (m : L.Exp (suc n)) {
+ lower (f : Flag) (s : Sub n) (h : B.bad n (L.mask n (tail n m)) s) : BadWitness (suc n) (f,s) m =
+  (inl (ih s (tail n m) h).1, (ih s (tail n m) h).2) ;
+ neg (k : Base.Nat) (eq : Id Int (head n m) (negsuc k)) :
+  (f : Flag) (s : Sub n) -> B.bad (suc n) (present,L.mask n (tail n m)) (f,s) -> BadWitness (suc n) (f,s) m = split {
+  absent -> \ s h -> (inr tt,(subst LV.Neg (sym eq) tt,refl absent)) ;
+  present -> \ s h -> lower present s h } ;
+ result : (x : Int) -> Id Int (head n m) x -> (f : Flag) (s : Sub n) -> B.bad (suc n) (L.IntFlags.flag x,L.mask n (tail n m)) (f,s) -> BadWitness (suc n) (f,s) m = split {
+  pos k -> \ eq f s h -> lower f s h ;
+  negsuc k -> neg k } ;
+} ;
+bad-witness : (n : Nat) (s : Sub n) (m : L.Exp n) -> B.bad n (L.mask n m) s -> BadWitness n s m = split {
+ zero -> \ s m h -> absurd (BadWitness zero s m) h ;
+ suc n | rec -> \ s m h -> WitnessStep[n,rec,m].result (head n m) (refl (head n m)) s.1 s.2 h } ;
+module BadAtStep (n : Nat)
+ (ih : (s : Sub n) (m : L.Exp n) (i : Ps.Fin n) -> LV.Neg (m i) -> Id Flag (flag n s i) absent -> B.bad n (L.mask n m) s)
+ (s : Sub (suc n)) (m : L.Exp (suc n)) {
+ at : (i : Ps.Fin (suc n)) -> LV.Neg (m i) -> Id Flag (flag (suc n) s i) absent -> B.bad (suc n) (L.mask (suc n) m) s = split {
+  inl i -> \ neg e -> bad-lift n (L.IntFlags.flag (head n m)) (L.mask n (tail n m)) s.1 s.2 (ih s.2 (tail n m) i neg e) ;
+  inr t -> bad-top t }
+ where { bad-top : (t : Top) -> LV.Neg (m (inr t)) -> Id Flag (flag (suc n) s (inr t)) absent -> B.bad (suc n) (L.mask (suc n) m) s = split {
+  tt -> \ neg e -> bad-head n (head n m) (L.mask n (tail n m)) s.1 s.2 neg e } } ;
+} ;
+bad-at : (n : Nat) (s : Sub n) (m : L.Exp n) (i : Ps.Fin n) -> LV.Neg (m i) -> Id Flag (flag n s i) absent -> B.bad n (L.mask n m) s = split {
+ zero -> \ s m i -> absurd (LV.Neg (m i) -> Id Flag (flag zero s i) absent -> B.bad zero (L.mask zero m) s) i ;
+ suc n | rec -> \ s m -> BadAtStep[n,rec,s,m].at } ;
+
+-- Natural monomial translations and their inverse equalities.
+up (n : Nat) (m : L.Exp n) (u : E.Exp n) : L.Exp n = \ i -> addP (m i) (u i) ;
+down (n : Nat) (m : L.Exp n) (u : E.Exp n) : L.Exp n = \ i -> PA.minus (m i) (u i) ;
+exp-ext (n : Nat) (m m' : L.Exp n) (h : (i : Ps.Fin n) -> Id Int (m i) (m' i)) : Id (L.Exp n) m m' =
+ FE.funext (Ps.Fin n) (\ i -> Int) m m' h ;
+down-up (n : Nat) (m : L.Exp n) (u : E.Exp n) : Id (L.Exp n) (down n (up n m u) u) m =
+ exp-ext n _ _ (\ i -> PA.minus-addP (m i) (u i)) ;
+up-down (n : Nat) (m : L.Exp n) (u : E.Exp n) : Id (L.Exp n) (up n (down n m u) u) m =
+ exp-ext n _ _ (\ i -> PA.addP-minus-cancel (m i) (u i)) ;
+
+module Clear (n : Nat) (s : Sub n) (ms : List (L.Exp n)) {
+ u : E.Exp n = bound n s ms ;
+ le (m : L.Exp n) (hm : L.Mem (L.Exp n) m ms) (i : Ps.Fin n) (hi : Id Flag (flag n s i) present) : NA.Le (N.negPart (m i)) (u i) =
+  subst (NA.Le (N.negPart (m i))) (sym (on n s ms i hi)) (amount-le n i ms m hm) ;
+ inverted-fit (m : L.Exp n) (hm : L.Mem (L.Exp n) m ms) (i : Ps.Fin n) (hi : Id Flag (flag n s i) present) : LV.Neg (up n m u i) -> Empty =
+  N.nonneg-shift (m i) (u i) (le m hm i hi) ;
+ outside-up (m : L.Exp n) (i : Ps.Fin n) (hi : Id Flag (flag n s i) absent) : Id Int (up n m u i) (m i) =
+  ap (addP (m i)) (off n s ms i hi) ;
+ outside-down (m : L.Exp n) (i : Ps.Fin n) (hi : Id Flag (flag n s i) absent) : Id Int (down n m u i) (m i) =
+  ap (PA.minus (m i)) (off n s ms i hi) ;
+ -- A chart-forbidden exponent stays chart-forbidden after clearing or
+ -- unshifting: only inverted coordinates can change.
+ bad-up (m : L.Exp n) (b : B.bad n (L.mask n m) s) : B.bad n (L.mask n (up n m u)) s =
+  bad-at n s (up n m u) (bad-witness n s m b).1
+   (subst LV.Neg (sym (outside-up m (bad-witness n s m b).1 (bad-witness n s m b).2.2)) (bad-witness n s m b).2.1)
+   (bad-witness n s m b).2.2 ;
+ bad-down (m : L.Exp n) (b : B.bad n (L.mask n m) s) : B.bad n (L.mask n (down n m u)) s =
+  bad-at n s (down n m u) (bad-witness n s m b).1
+   (subst LV.Neg (sym (outside-down m (bad-witness n s m b).1 (bad-witness n s m b).2.2)) (bad-witness n s m b).2.1)
+   (bad-witness n s m b).2.2 ;
+}
+;

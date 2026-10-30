@@ -1,0 +1,159 @@
+-- Items 1-3: the inputs of the loop in the form the note gives them.
+--  (1) Q_0 from integrality.  If y b_i = sum_j b_j a_ji and 1 = sum_k c_k b_k
+--      (b_1 .. b_n generate B, n = n' + 1), the characteristic polynomial
+--      chi = det(X I - a) is monic of degree n with chi(y) = 0
+--      (DeterminantTrick.Integral); by Expansion chi = X^n + [coef chi]_n,
+--      so y^n = V_n(-coef chi): the loop's monic relation.
+--  (2) W = G^n H as a coefficient list: Horner(l) is the class of l in A[X]
+--      (PolynomialRing.horner), and the class of a product of lists is the
+--      product (Multiply.beta), so Horner(g^n h) = Horner(g)^n Horner(h).
+--  (3) W(y) = sum_j iota(mu_j) R_j(y) with mu_j in m gives W(y) in m R[y]
+--      in basis form: iota(mu) R(y) is in InM by induction on R (Horner),
+--      using in-power and in-y of MPart, and InM is closed under sums.
+-- Section1 combines (1)-(3) with LoopQprime.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
+ (m-add : (a c : A.R) -> m a -> m c -> m (A.add a c))
+ (m-scale : (a c : A.R) -> m c -> m (A.mul a c))
+ (dec : (a : A.R) -> Plus (m a) (RL[A].unit a))
+ (rad : (a : A.R) -> m a -> RL[A].unit (A.add A.o (A.neg a)))
+ (B : CRing) (setB : Pr.isSet B.R) (iota : H.Hom A B) (y : B.R) {
+ open B ;
+ module L = RL[B] ;
+ module S = FiniteIdeal[l].Sums[B] ;
+ module RX = PolynomialRing[l].Extension[A,setA] ;
+ module MP = MPart[l].Over[A,m,m-zero,m-add,m-scale,B,iota,y] ;
+ module EX = Expansion[l].Over[A,setA] ;
+ module Ho = MonicReduce[l].Horner[A,RX.ring,RX.inclusion,RX.variable] ;
+ module Hb = MonicReduce[l].Horner[A,B,iota,y] ;
+ module UP = Universal[l].Property[A,B,setA,setB].Given[iota,y] ;
+ ev : H.Hom RX.ring B = UP.extend ;
+ pw (j : Nat) : R = MP.PS.AP.power y j ;
+ -- u + v = 0 gives u = -v
+ eq-neg (u v : R) (h : Id R (add u v) z) : Id R u (neg v) = sym (trans (ap neg (L.neg-uniq u v h)) (L.neg-neg u)) ;
+
+ ---------------------------------------------------------------------
+ -- evaluation at y of the A[X] side (as in Loop, without the list W)
+
+ ev-variable : Id R (ev.1 RX.variable) y = UP.on-variable ;
+ inclusion-constant (c : A.R) : Id RX.Carrier (RX.inclusion.1 c) (RX.constant c) = refl (RX.constant c) ;
+ ev-constant (c : A.R) : Id R (ev.1 (RX.inclusion.1 c)) (iota.1 c) = trans (ap ev.1 (inclusion-constant c)) (UP.on-constants c) ;
+ ev-power (e : Nat) : Id R (ev.1 (EX.pwX e)) (pw e) =
+  trans (AffinePowers[l].power-map RX.ring B ev RX.variable e) (ap (\ t -> MP.PS.AP.power t e) ev-variable) ;
+ ev-P (e : Nat) (c : Nat -> A.R) : Id R (ev.1 (EX.Px e c)) (MP.V e c) =
+  trans (PowerSums[l].Map[RX.ring,B,ev,RX.variable].psum-map e (\ i -> RX.inclusion.1 (c i)))
+   (trans (ap (\ t -> PowerSums[l].Over[B,t].psum e (\ i -> ev.1 (RX.inclusion.1 (c i)))) ev-variable)
+     (MP.PS.psum-cong e (\ i -> ev.1 (RX.inclusion.1 (c i))) (\ i -> iota.1 (c i)) (\ i -> ev-constant (c i)))) ;
+ ev-horner : (fs : List A.R) -> Id R (ev.1 (Ho.horner fs)) (Hb.horner fs) = split {
+  nil -> RingHom[l].zero RX.ring B ev ;
+  cons f fs | r -> trans (ev.2.2.1 (RX.inclusion.1 f) (RX.ring.mul RX.variable (Ho.horner fs)))
+   (Ps.cong2 R add _ _ _ _ (ev-constant f) (trans (ev.2.2.2 RX.variable (Ho.horner fs)) (Ps.cong2 R mul _ _ _ _ ev-variable r))) } ;
+
+ ---------------------------------------------------------------------
+ -- (1) Q_0 from integrality
+
+ module Integral (n' : Nat) (a : Determinant[l].Over[A,setA].Mat (suc n')) (bs : Ps.Fin (suc n') -> R)
+  (eq : (i : Ps.Fin (suc n')) -> Id R (mul y (bs i)) (Determinant[l].Over[B,setB].act (suc n') (\ j i1 -> iota.1 (a j i1)) bs i))
+  (c : Ps.Fin (suc n') -> R) (one : Id R (FiniteIdeal[l].Sums[B].lin (suc n') c bs) o) {
+  n : Nat = suc n' ;
+  module IT0 = DeterminantTrick[l].Integral[A,setA,B,setB,iota,y,n,a,bs,eq] ;
+  module IT = IT0.Faithful[c,one] ;
+  chi : RX.Carrier = IT0.chi ;
+  cf (i : Nat) : A.R = EX.CP.coef chi i ;
+  -- chi = X^n + [coef chi]_n
+  expansion : Id RX.Carrier chi (RX.ring.add (RX.ring.mul (RX.inclusion.1 (cf n)) (EX.pwX n)) (EX.Px n cf)) =
+   EX.expand (suc n) chi IT.integral.1 ;
+  a0 (i : Nat) : A.R = A.mul (A.neg A.o) (cf i) ;
+  -- y^n + V_n(coef chi) = chi(y) = 0
+  root : Id R (add (pw n) (MP.V n cf)) z = calc R {
+   add (pw n) (MP.V n cf)
+    =< sym (Ps.cong2 R add _ _ _ _
+         (trans (ev.2.2.2 (RX.inclusion.1 (cf n)) (EX.pwX n))
+           (trans (Ps.cong2 R mul _ _ _ _ (trans (ev-constant (cf n)) (trans (ap iota.1 IT.integral.2.1) iota.2.1)) (ev-power n))
+                  (L.one-left (pw n))))
+         (ev-P n cf))
+     > add (ev.1 (RX.ring.mul (RX.inclusion.1 (cf n)) (EX.pwX n))) (ev.1 (EX.Px n cf))
+    =< sym (ev.2.2.1 (RX.ring.mul (RX.inclusion.1 (cf n)) (EX.pwX n)) (EX.Px n cf)) > ev.1 (RX.ring.add (RX.ring.mul (RX.inclusion.1 (cf n)) (EX.pwX n)) (EX.Px n cf))
+    =< ap ev.1 (sym expansion) > ev.1 chi
+    =< IT.integral.2.2 > z } ;
+  -- the monic relation y^n = V_n a0
+  relation : Id R (pw n) (MP.V n a0) =
+   trans (eq-neg (pw n) (MP.V n cf) root)
+    (sym (trans (MP.V-scale n (A.neg A.o) cf)
+          (trans (ap (\ t -> mul t (MP.V n cf)) (trans (H.negation A B iota A.o) (ap neg iota.2.1)))
+           (trans (L.neg-mul-left o (MP.V n cf)) (ap neg (L.one-left (MP.V n cf))))))) ;
+ } ;
+
+ ---------------------------------------------------------------------
+ -- (2) W = g^n h as a coefficient list
+
+ module MR = Mul[l].MulR[A] ;
+ horner-include : (fs : List A.R) -> Id RX.Carrier (Ho.horner fs) (RX.include fs) = split {
+  nil -> refl (RX.include nil) ;
+  cons f fs | r -> trans (ap (\ v -> RX.ring.add (RX.inclusion.1 f) (RX.ring.mul RX.variable v)) r) (sym (RX.horner f fs)) } ;
+ lpow (g : List A.R) : Nat -> List A.R = split { zero -> RX.L.constantP A.o ; suc n | r -> MR.pmul g r } ;
+ include-pow (g : List A.R) : (n : Nat) -> Id RX.Carrier (RX.include (lpow g n)) (AffinePowers[l].Over[RX.ring].power (RX.include g) n) = split {
+  zero -> refl RX.oneQ ;
+  suc n | r -> trans (sym (RX.Multiply.beta g (lpow g n))) (ap (RX.ring.mul (RX.include g)) r) } ;
+ product (g h : List A.R) (n : Nat) : List A.R = MR.pmul (lpow g n) h ;
+ product-horner (g h : List A.R) (n : Nat) :
+  Id RX.Carrier (Ho.horner (product g h n)) (RX.ring.mul (AffinePowers[l].Over[RX.ring].power (Ho.horner g) n) (Ho.horner h)) =
+  trans (horner-include (product g h n))
+   (trans (sym (RX.Multiply.beta (lpow g n) h))
+    (Ps.cong2 RX.Carrier RX.ring.mul _ _ _ _
+      (trans (include-pow g n) (ap (\ v -> AffinePowers[l].Over[RX.ring].power v n) (sym (horner-include g))))
+      (sym (horner-include h)))) ;
+
+ ---------------------------------------------------------------------
+ -- (3) a certificate W(y) = sum_j iota(mu_j) R_j(y) in basis form
+
+ module Certificate (e' : Nat) (a0 : Nat -> A.R) (rel : Id R (pw (suc e')) (MP.V (suc e') a0)) {
+  module MM = MP.Monic[e',a0,rel] ;
+  in-horner (c : A.R) (hc : m c) : (fs : List A.R) -> MP.InM (suc e') (mul (iota.1 c) (Hb.horner fs)) = split {
+   nil -> subst (MP.InM (suc e')) (sym (L.mul-zero (iota.1 c))) (MP.in-zero (suc e')) ;
+   cons f fs | r -> subst (MP.InM (suc e'))
+     (sym (trans (dist (iota.1 c) (iota.1 f) (mul y (Hb.horner fs)))
+            (Ps.cong2 R add _ _ _ _ (trans (sym (iota.2.2.2 c f)) (sym (mulO (iota.1 (A.mul c f)))))
+              (L.mul-swap (iota.1 c) y (Hb.horner fs)))))
+     (MP.in-add (suc e') _ _ (MM.in-power (A.mul c f) (subst m (A.mulC f c) (m-scale f c hc)) zero) (MM.in-y _ r)) } ;
+  in-sum : (k : Nat) (mu : Ps.Fin k -> A.R) (mu-m : (j : Ps.Fin k) -> m (mu j)) (Rs : Ps.Fin k -> List A.R) ->
+   MP.InM (suc e') (S.sum k (\ j -> mul (iota.1 (mu j)) (Hb.horner (Rs j)))) = split {
+   zero -> \ mu mu-m Rs -> MP.in-zero (suc e') ;
+   suc k | r -> \ mu mu-m Rs -> MP.in-add (suc e') _ _ (in-horner (mu (inr tt)) (mu-m (inr tt)) (Rs (inr tt)))
+                  (r (\ j -> mu (inl j)) (\ j -> mu-m (inl j)) (\ j -> Rs (inl j))) } ;
+ } ;
+
+ ---------------------------------------------------------------------
+ -- Section 1 from the note's data
+
+ module Section1 (J : R -> U l) (J-zero : J z) (J-add : (a c : R) -> J a -> J c -> J (add a c))
+  (J-scale : (a c : R) -> J c -> J (mul a c)) (J-m : (a : A.R) -> m a -> J (iota.1 a))
+  -- B generated by b_1 .. b_n with y b = a b, 1 = sum c_k b_k
+  (n' : Nat) (a : Determinant[l].Over[A,setA].Mat (suc n')) (bs : Ps.Fin (suc n') -> R)
+  (eq : (i : Ps.Fin (suc n')) -> Id R (mul y (bs i)) (Determinant[l].Over[B,setB].act (suc n') (\ j i1 -> iota.1 (a j i1)) bs i))
+  (c : Ps.Fin (suc n') -> R) (one : Id R (FiniteIdeal[l].Sums[B].lin (suc n') c bs) o)
+  -- G, H and the exponent n, as coefficient lists
+  (g h : List A.R) (n : Nat)
+  -- the certificate (G^n H)(y) = sum_j iota(mu_j) R_j(y), mu_j in m
+  (k : Nat) (mu : Ps.Fin k -> A.R) (mu-m : (j : Ps.Fin k) -> m (mu j)) (Rs : Ps.Fin k -> List A.R)
+  (cert : Id R (Hb.horner (product g h n)) (S.sum k (\ j -> mul (iota.1 (mu j)) (Hb.horner (Rs j)))))
+  -- special-fibre data
+  (hH : J (Hb.horner h))
+  (hH' : DerivativeStep[l].Over[A,setA,m,B,setB,iota,y,J,J-zero,J-add,J-scale,J-m].UnitMod
+          (DerivativeStep[l].Over[A,setA,m,B,setB,iota,y,J,J-zero,J-add,J-scale,J-m].der (Ho.horner h)))
+  (hG : DerivativeStep[l].Over[A,setA,m,B,setB,iota,y,J,J-zero,J-add,J-scale,J-m].UnitMod (Hb.horner g)) {
+  module I = Integral[n',a,bs,eq,c,one] ;
+  module CE = Certificate[n',I.a0,I.relation] ;
+  W : List A.R = product g h n ;
+  module LQ = LoopQprime[l].Over[A,setA,m,m-zero,m-add,m-scale,dec,rad,B,setB,iota,y,W,J,J-zero,J-add,J-scale,J-m] ;
+  w0 : MP.InM (suc n') (ev.1 (Ho.horner W)) =
+   subst (MP.InM (suc n')) (sym (trans (ev-horner W) cert)) (CE.in-sum k mu mu-m Rs) ;
+  module S1 = LQ.Section1[Ho.horner g,Ho.horner h,n,product-horner g h n,suc n',I.a0,I.relation,w0,
+   subst J (sym (ev-horner h)) hH,hH',subst LQ.DS.UnitMod (sym (ev-horner g)) hG] ;
+  -- the conclusions: Q(y) = 0, G^n H = U Q + [c]_e, Q'(y) a unit mod J
+  root : Id R (pw S1.e) (MP.V S1.e S1.a) = S1.root ;
+  q-prime : LQ.DS.UnitMod (LQ.DS.der S1.Q) = S1.q-prime ;
+ } ;
+} ;

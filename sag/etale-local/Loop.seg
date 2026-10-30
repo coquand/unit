@@ -1,0 +1,110 @@
+-- The loop Q_0, Q_1, .. of zmt2-revised.tex Section 1, remainder version
+-- (HANDOFF-LOOP.md).  A local ring with residually discrete maximal ideal
+-- m (dec, rad), B an A-algebra, y in B, W in A[X] (a coefficient list)
+-- with W(y) in m R[y], and a monic relation y^e0 = V_e0 a0.
+-- Theorem: there are a monic relation y^e = V_e a (e <= e0), U in A[X]
+-- and c with c_i in m for i < e such that, in A[X],
+--     W = U (X^e - [a]_e) + [c]_e ,
+-- i.e. Q = X^e - [a]_e has Q(y) = 0 and Q-bar divides W-bar in k[X].
+-- Informal proof: recursion on a fuel e0 with e <= fuel.  e = 0: Q = 1.
+-- e >= 1: reduce W modulo Q in A[X] (MonicReduce); evaluating at y,
+-- V_e c = W(y) is in m R[y].  Scan c (LoopStep): if every c_i is in m,
+-- stop.  Otherwise LoopStep.Normalise and LoopNakayama give a monic
+-- relation of degree d < e and W(y) in m R[y] at degree d; recurse.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
+ (m-add : (a c : A.R) -> m a -> m c -> m (A.add a c))
+ (m-scale : (a c : A.R) -> m c -> m (A.mul a c))
+ (dec : (a : A.R) -> Plus (m a) (RL[A].unit a))
+ (rad : (a : A.R) -> m a -> RL[A].unit (A.add A.o (A.neg a)))
+ (B : CRing) (setB : Pr.isSet B.R) (iota : H.Hom A B) (y : B.R) (W : List A.R) {
+ open B ;
+ module L = RL[B] ;
+ module RX = PolynomialRing[l].Extension[A,setA] ;
+ module LX = RL[RX.ring] ;
+ module UP = Universal[l].Property[A,B,setA,setB].Given[iota,y] ;
+ module MP = MPart[l].Over[A,m,m-zero,m-add,m-scale,B,iota,y] ;
+ module PSX = PowerSums[l].Over[RX.ring,RX.variable] ;
+ ev : H.Hom RX.ring B = UP.extend ;
+ module EvP = PowerSums[l].Map[RX.ring,B,ev,RX.variable] ;
+ pw (j : Nat) : R = MP.PS.AP.power y j ;
+ -- W in A[X] and W(y)
+ Wx : RX.Carrier = MonicReduce[l].Horner[A,RX.ring,RX.inclusion,RX.variable].horner W ;
+ Wy : R = ev.1 Wx ;
+ -- [c]_e and X^e - [a]_e in A[X]
+ Px (e : Nat) (c : Nat -> A.R) : RX.Carrier = PSX.psum e (\ i -> RX.inclusion.1 (c i)) ;
+ Qx (e : Nat) (a : Nat -> A.R) : RX.Carrier = RX.ring.add (PSX.AP.power RX.variable e) (RX.ring.neg (Px e a)) ;
+
+ Result : U l = (e : Nat) * (a : Nat -> A.R) * Id R (pw e) (MP.V e a) *
+  (u : RX.Carrier) * (c : Nat -> A.R) * LoopStep[l].Below A m e c *
+  Id RX.Carrier Wx (RX.ring.add (RX.ring.mul u (Qx e a)) (Px e c)) ;
+
+ -- evaluation at y
+ ev-variable : Id R (ev.1 RX.variable) y = UP.on-variable ;
+ -- by definition the inclusion of constants is RX.constant
+ inclusion-constant (c : A.R) : Id RX.Carrier (RX.inclusion.1 c) (RX.constant c) = refl (RX.constant c) ;
+ ev-constant (c : A.R) : Id R (ev.1 (RX.inclusion.1 c)) (iota.1 c) = trans (ap ev.1 (inclusion-constant c)) (UP.on-constants c) ;
+ eval-P (e : Nat) (c : Nat -> A.R) : Id R (ev.1 (Px e c)) (MP.V e c) =
+  trans (EvP.psum-map e (\ i -> RX.inclusion.1 (c i)))
+   (trans (ap (\ t -> PowerSums[l].Over[B,t].psum e (\ i -> ev.1 (RX.inclusion.1 (c i)))) ev-variable)
+     (MP.PS.psum-cong e (\ i -> ev.1 (RX.inclusion.1 (c i))) (\ i -> iota.1 (c i)) (\ i -> ev-constant (c i)))) ;
+ eval-Q (e : Nat) (a : Nat -> A.R) (rel : Id R (pw e) (MP.V e a)) : Id R (ev.1 (Qx e a)) z =
+  trans (ev.2.2.1 (PSX.AP.power RX.variable e) (RX.ring.neg (Px e a)))
+   (trans (Ps.cong2 R add _ _ _ _
+            (trans (AffinePowers[l].power-map RX.ring B ev RX.variable e)
+             (trans (ap (\ t -> MP.PS.AP.power t e) ev-variable) rel))
+            (trans (H.negation RX.ring B ev (Px e a)) (ap neg (eval-P e a))))
+     (addN (MP.V e a))) ;
+
+ -- e = 0: Q = 1; in any commutative ring, x = x (1 - 0) + 0
+ times-one (T : CRing) (x : T.R) : Id T.R x (T.add (T.mul x (T.add T.o (T.neg T.z))) T.z) =
+  sym (trans (T.addZ (T.mul x (T.add T.o (T.neg T.z))))
+        (trans (ap (T.mul x) (trans (ap (T.add T.o) (RL[T].neg-zero)) (T.addZ T.o))) (T.mulO x))) ;
+ stop0 (a : Nat -> A.R) (rel : Id R (pw zero) (MP.V zero a)) : Result =
+  (zero,a,rel,Wx,\ i -> A.z,tt,times-one RX.ring Wx) ;
+
+ Statement (f : Nat) : U l = (e : Nat) (a : Nat -> A.R) -> Id R (pw e) (MP.V e a) -> MP.InM e Wy -> LoopStep[l].Le e f -> Result ;
+
+ module Step (f : Nat) (r : Statement f) (e' : Nat) (a : Nat -> A.R) (rel : Id R (pw (suc e')) (MP.V (suc e') a))
+  (w : MP.InM (suc e') Wy) (le : LoopStep[l].Le (suc e') (suc f)) {
+  module MR = MonicReduce[l].Over[A,RX.ring,RX.inclusion,RX.variable,e',a] ;
+  module LS = LoopStep[l].Over[A,m,m-zero,m-add,m-scale,dec,B,iota,y,e',a,rel] ;
+  module LN = LoopNakayama[l].Over[A,setA,m,m-zero,m-add,m-scale,dec,rad,B,setB,iota,y,e',a,rel] ;
+  red : MR.Reduction Wx = MR.reduce W ;
+  u : RX.Carrier = red.1 ;
+  c : Nat -> A.R = red.2.1 ;
+  -- V_e c = W(y)
+  value : Id R Wy (MP.V (suc e') c) = calc R {
+   ev.1 Wx
+    =< ap ev.1 red.2.2 > ev.1 (RX.ring.add (RX.ring.mul u (Qx (suc e') a)) (Px (suc e') c))
+    =< trans (ev.2.2.1 (RX.ring.mul u (Qx (suc e') a)) (Px (suc e') c))
+        (Ps.cong2 R add _ _ _ _ (trans (ev.2.2.2 u (Qx (suc e') a)) (trans (ap (mul (ev.1 u)) (eval-Q (suc e') a rel)) (L.mul-zero (ev.1 u))))
+          (eval-P (suc e') c))
+     > add z (MP.V (suc e') c)
+    =< L.zl (MP.V (suc e') c) > MP.V (suc e') c } ;
+  w' : MP.InM (suc e') (MP.V (suc e') c) = subst (MP.InM (suc e')) value w ;
+  module Continue (fd : LS.Found (suc e') c) {
+   module N = LS.Normalise[c,w',fd] ;
+   module LNA = LN.At[N.d,N.beta,N.x',N.x'-in,N.relation] ;
+   result : Result = r N.d LNA.new-a LNA.new-rel (LNA.transfer-in Wy w) (LoopStep[l].le-trans N.d e' f fd.2.1 le) ;
+  } ;
+  dispatch : LS.Scan (suc e') c -> Result = split {
+   inl b -> (suc e',a,rel,u,c,b,red.2.2) ;
+   inr fd -> Continue[fd].result } ;
+  result : Result = dispatch (LS.scan (suc e') c) ;
+ } ;
+
+ at-zero : Statement zero = split {
+  zero -> \ a rel w le -> stop0 a rel ;
+  suc e' -> \ a rel w le -> efq le } ;
+ at-suc (f : Nat) (r : Statement f) : Statement (suc f) = split {
+  zero -> \ a rel w le -> stop0 a rel ;
+  suc e' -> \ a rel w le -> Step[f,r,e',a,rel,w,le].result } ;
+ loop : (f : Nat) -> Statement f = split { zero -> at-zero ; suc f | r -> at-suc f r } ;
+
+ -- the theorem
+ theorem (e0 : Nat) (a0 : Nat -> A.R) (rel0 : Id R (pw e0) (MP.V e0 a0)) (w0 : MP.InM e0 Wy) : Result =
+  loop e0 e0 a0 rel0 w0 (LoopStep[l].le-refl e0) ;
+} ;

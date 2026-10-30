@@ -1,0 +1,111 @@
+-- Explicit membership in I^p+J in a commutative ring.  Keep the I^p
+-- witness tree and the coefficients of the J remainder, so both can later
+-- be evaluated in actual chart cochains.  Powers use a telescoping
+-- difference, not a binomial expansion.  Overlaps are packaged from exact
+-- denominator clearing and z-w=z(1-Zw)-w(1-Zz).
+level l ; open Ring[l] ;
+module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module Pr = Prelude[l] ;
+
+-- The separator expressed with the same Base.Nat powers as the section
+-- denominator algebra.  Only the natural-number representation changes.
+module PowerConversion (R : CRing) {
+  module AP = AffinePowers[l].Over[R] ;
+  module P = SectionsPowerAlgebra[l].Over[R] ;
+  power (x : R.R) : (n : Base.Nat) ->
+    Id R.R (AP.power x (PolynomialRing4Bridge[l].toR n)) (P.power x n) = split {
+    zero -> refl R.o ; suc n | r -> ap (R.mul x) r } ;
+} ;
+module Separator (R : CRing) (u Q H : R.R)
+  (hH : Id R.R H (R.add R.o (R.mul u Q))) (M : Base.Nat) {
+  module P = SectionsPowerAlgebra[l].Over[R] ;
+  module SG = GeometricSectionsAlgebra[l].Over[R].Separator[u,Q,H,hH,PolynomialRing4Bridge[l].toR M] ;
+  module PC = PowerConversion[R] ;
+  module ML = IP.ModL[R,IP.regular R] ;
+  a : R.R = SG.a ;
+  b : R.R = P.power (R.neg Q) (suc M) ;
+  t : R.R = R.mul b (P.power u M) ;
+  t-agree : Id R.R SG.t t = Ps.cong2 R.R R.mul _ _ _ _ (PC.power (R.neg Q) (suc M)) (PC.power u M) ;
+  identity : Id R.R (R.add (R.mul a H) (R.mul u t)) R.o =
+    trans (ap (\ x -> R.add (R.mul a H) (R.mul u x)) (sym t-agree)) SG.identity ;
+  error : Id R.R (ML.msub R.o (R.mul u t)) (R.mul a H) =
+    trans (ap (\ x -> ML.msub R.o (R.mul u x)) (sym t-agree)) SG.error ;
+} ;
+
+module Over (R : CRing) (t : Nat) (b : Ps.Fin t -> R.R) (s : Nat) (J : Ps.Fin s -> R.R) {
+  module SP = SectionsIdealPowers[l].Over[R,t,b] ;
+  module F = SP.F ; module C = SP.Congruence[s,J] ;
+  module ML = IP.ModL[R,IP.regular R] ; module L = RL[R] ; module P = SP.P ;
+  Witness (p : Base.Nat) (x : R.R) : U l =
+    (w : R.R) * (F.Wit p w * ((ys : Ps.Fin s -> R.R) * Id R.R (ML.msub x w) (C.value ys))) ;
+  part (p : Base.Nat) (x : R.R) (w : Witness p x) : R.R = w.1 ;
+  ideal (p : Base.Nat) (x : R.R) (w : Witness p x) : F.Wit p (part p x w) = w.2.1 ;
+  coeff (p : Base.Nat) (x : R.R) (w : Witness p x) : Ps.Fin s -> R.R = w.2.2.1 ;
+  equation (p : Base.Nat) (x : R.R) (w : Witness p x) : Id R.R (ML.msub x (part p x w)) (C.value (coeff p x w)) = w.2.2.2 ;
+  transport (p : Base.Nat) (x y : R.R) (e : Id R.R x y) (w : Witness p x) : Witness p y = subst (Witness p) e w ;
+  value-zero : Id R.R (C.value (\ j -> R.z)) R.z = C.JS.comb-vanish s J (\ j -> R.z) (\ j -> refl R.z) ;
+  of-ideal (p : Base.Nat) (x : R.R) (w : F.Wit p x) : Witness p x =
+    (x, (w, (\ j -> R.z, trans (R.addN x) (sym value-zero)))) ;
+  zero-witness (p : Base.Nat) : Witness p R.z = of-ideal p R.z (F.wit-zero p) ;
+  sub-zero (x : R.R) : Id R.R (ML.msub x R.z) x = trans (ap (R.add x) L.neg-zero) (R.addZ x) ;
+  of-J (p : Base.Nat) (x : R.R) (ys : Ps.Fin s -> R.R) (e : Id R.R x (C.value ys)) : Witness p x =
+    (R.z, (F.wit-zero p, (ys, trans (sub-zero x) e))) ;
+  scale (p : Base.Nat) (c x : R.R) (w : Witness p x) : Witness p (R.mul c x) =
+    (R.mul c (part p x w), (SP.scale c p (part p x w) (ideal p x w),
+      (\ j -> R.mul c (coeff p x w j),
+        trans (sym (ML.sm-sub c x (part p x w)))
+          (trans (ap (R.mul c) (equation p x w)) (C.scale-value c (coeff p x w)))))) ;
+  add (p : Base.Nat) (x y : R.R) (wx : Witness p x) (wy : Witness p y) : Witness p (R.add x y) =
+    (R.add (part p x wx) (part p y wy),
+      (SP.add p (part p x wx) (part p y wy) (ideal p x wx) (ideal p y wy),
+        (\ j -> R.add (coeff p x wx j) (coeff p y wy j),
+          trans (ML.sub-swap x y (part p x wx) (part p y wy))
+            (trans (Ps.cong2 R.R R.add _ _ _ _ (equation p x wx) (equation p y wy))
+              (C.add-value (coeff p x wx) (coeff p y wy)))))) ;
+  neg (p : Base.Nat) (x : R.R) (w : Witness p x) : Witness p (R.neg x) =
+    transport p (R.mul (R.neg R.o) x) (R.neg x)
+      (trans (L.neg-mul-left R.o x) (ap R.neg (L.one-left x))) (scale p (R.neg R.o) x w) ;
+  sub (p : Base.Nat) (x y : R.R) (wx : Witness p x) (wy : Witness p y) : Witness p (ML.msub x y) = add p x (R.neg y) wx (neg p y wy) ;
+  to-one (p : Base.Nat) (x : R.R) (w : Witness (suc p) x) : Witness (suc zero) x =
+    (part (suc p) x w,
+      (((ideal (suc p) x w).1, (\ j -> tt, (ideal (suc p) x w).2.2)),
+        (coeff (suc p) x w, equation (suc p) x w))) ;
+  module Power (x : R.R) (xs : Ps.Fin t -> R.R) (ys : Ps.Fin s -> R.R)
+    (e : Id R.R x (R.add (F.gen xs) (C.value ys))) {
+    difference : Id R.R (ML.msub x (F.gen xs)) (C.value ys) =
+      trans (ap (\ v -> ML.msub v (F.gen xs)) e)
+        (trans (ap (\ v -> ML.msub v (F.gen xs)) (R.addC (F.gen xs) (C.value ys)))
+          (L.add-neg-cancel (C.value ys) (F.gen xs))) ;
+    module PD = C.PowerDifference[x,F.gen xs,ys,difference] ;
+    witness (p : Base.Nat) : Witness p (P.power x p) =
+      (P.power (F.gen xs) p, (SP.Power[xs].witness p, (PD.coeff p, PD.equation p))) ;
+  } ;
+
+  -- Cross errors on a chart overlap.  z contains u^M, the complementary
+  -- error of w contains H^p, and u=ratio*v, G=v^delta H.  The named Clear
+  -- equation turns this into one multiple of the already witnessed G^p.
+  module Cross (p delta M : Base.Nat) (Z z w u v ratio H G B a0 : R.R)
+    (ez : Id R.R z (R.mul B (P.power u M)))
+    (ew : Id R.R (ML.msub R.o (R.mul Z w)) (R.mul a0 (P.power H p)))
+    (eu : Id R.R u (R.mul ratio v))
+    (eG : Id R.R G (R.mul (P.power v delta) H))
+    (le : NatArith[l].Le (SectionsDenominatorAlgebra[l].times delta p) M)
+    (gp : Witness p (P.power G p)) {
+    module CL = SectionsDenominatorAlgebra[l].Over[R].Clear[u,v,ratio,H,G,eu,delta,p,M,eG,le] ;
+    multiplier : R.R = R.mul (R.mul B a0) CL.multiplier ;
+    cross-equation : Id R.R (R.mul z (ML.msub R.o (R.mul Z w))) (R.mul multiplier (P.power G p)) =
+      trans (Ps.cong2 R.R R.mul _ _ _ _ ez ew)
+        (trans (L.mul-four B (P.power u M) a0 (P.power H p))
+          (trans (ap (R.mul (R.mul B a0)) CL.equation)
+            (R.mulA (R.mul B a0) CL.multiplier (P.power G p)))) ;
+    witness : Witness p (R.mul z (ML.msub R.o (R.mul Z w))) =
+      transport p (R.mul multiplier (P.power G p)) (R.mul z (ML.msub R.o (R.mul Z w))) (sym cross-equation)
+        (scale p multiplier (P.power G p) gp) ;
+  } ;
+  overlap (p : Base.Nat) (Z z w : R.R)
+    (hz : Witness p (R.mul z (ML.msub R.o (R.mul Z w))))
+    (hw : Witness p (R.mul w (ML.msub R.o (R.mul Z z)))) : Witness p (ML.msub z w) =
+    transport p
+      (ML.msub (R.mul z (ML.msub R.o (R.mul Z w))) (R.mul w (ML.msub R.o (R.mul Z z)))) (ML.msub z w)
+      (sym (GeometricSectionsAlgebra[l].Over[R].difference Z z w))
+      (sub p (R.mul z (ML.msub R.o (R.mul Z w))) (R.mul w (ML.msub R.o (R.mul Z z))) hz hw) ;
+} ;

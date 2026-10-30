@@ -1,0 +1,195 @@
+-- CharacteristicMonic.seg: a monic equation modulo IE from a finite family
+-- spanning E modulo IE, by the determinant trick, Gate D (handoff §6).
+--
+-- Expansion (for iota : A -> L and z in L, ev the evaluation A[X] -> L at
+-- z): if p has degree bound B then
+--     ev(p) = sum_(j < B) iota(p_j) z^j                         (expand)
+-- by induction on B, from p = p_0 + X tail(p) (PolyCoef.horner) and
+-- tail(p)_j = p_(j+1); Nat-indexed sums sN peel off the bottom term, and
+-- sN (B+1) f = sN B f + f(B) (top-peel) connects them with the sums over
+-- Fin B (fin-sum, idx k = the exponent of k).  For the characteristic
+-- polynomial chi of a matrix a (bound N+1, coefficient 1 at N, CharPoly):
+--     ev(chi) = z^N + sum_(k < N) iota(chi_k) z^k = mev P z      (ev-chi)
+-- for the monic P with lower coefficients chi_k (CharMonic.P).
+--
+-- The trick modulo IE (Trick).  g_1 .. g_N in E, z in E, and
+--     z g_i = sum_j g_j iota(a_ji) + r_i ,   r_i in IE.
+-- With M = z I - iota(a) (Mx, entries ev(charmat), entry),
+-- sum_j g_j M_ji = r_i (kernel-rel), so by adj(M) M = det(M) I
+-- (trick-rel, the first steps of DeterminantTrick.trick) and naturality of
+-- det, chi(z) g_k = sum_i r_i adj(M)_ik is in IE (annih).  If moreover
+-- 1 = sum_k g_k iota(beta_k) + r', r' in IE, then
+-- chi(z) = sum_k (chi(z) g_k) iota(beta_k) + chi(z) r' is in IE (wit).
+-- This is DeterminantTrick.Integral with its exact relation replaced by a
+-- relation modulo IE.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module ZC = ZMTCertificate[l] ; module IW = IdealWitnesses[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Expansion (A : CRing) (setA : Pr.isSet A.R) (Lg : CRing) (setL : Pr.isSet Lg.R) (iota : RH.Hom A Lg) (z : Lg.R) {
+  module CP = CharPoly[l].Over[A,setA] ; module B = CP.B ;
+  module PC = PolynomialCoefficients[l].Over[A,setA] ; module PCo = PolyCoef[l].Over[A,setA] ;
+  module UP = Universal[l].Property[A,Lg,setA,setL].Given[iota,z] ;
+  module PL = ZC.Powers[Lg] ; module S = FiniteIdeal[l].Sums[Lg] ; module L = RL[Lg] ;
+  module EV = ZC.Eval[A,Lg,iota] ;
+  ev : RH.Hom B.ring Lg = UP.extend ;
+
+  -- the two coefficient maps of A[X] agree
+  coef-agree : (x : B.Carrier) (k : Nat) -> Id A.R (CP.coef x k) (PC.coef x k) =
+    B.Q.induction @l (\ x -> (k : Nat) -> Id A.R (CP.coef x k) (PC.coef x k))
+      (\ x -> FE.isProp-Pi Nat (\ k -> Id A.R (CP.coef x k) (PC.coef x k)) (\ k -> setA _ _))
+      (\ p k -> trans (CP.coef-include p k) (sym (PC.coef-include p k))) ;
+  coef-tail (p : B.Carrier) (k : Nat) : Id A.R (CP.coef (PC.tail p) k) (CP.coef p (suc k)) =
+    trans (coef-agree (PC.tail p) k) (trans (PC.tail-coef p k) (sym (coef-agree p (suc k)))) ;
+
+  -- ev(p) = iota(p_0) + z ev(tail p)
+  ev-hor (p : B.Carrier) : Id Lg.R (ev.1 p) (Lg.add (iota.1 (PCo.c0 p)) (Lg.mul z (ev.1 (PC.tail p)))) = calc Lg.R {
+    ev.1 p =< ap ev.1 (PCo.horner p) > ev.1 (PCo.hor p)
+      =< ev.2.2.1 (B.constant (PCo.c0 p)) (B.mulQ B.variable (PC.tail p))
+      > Lg.add (ev.1 (B.constant (PCo.c0 p))) (ev.1 (B.mulQ B.variable (PC.tail p)))
+      =< Ps.cong2 Lg.R Lg.add _ _ _ _ (UP.on-constants (PCo.c0 p))
+           (trans (ev.2.2.2 B.variable (PC.tail p)) (ap (\ w -> Lg.mul w (ev.1 (PC.tail p))) UP.on-variable))
+      > Lg.add (iota.1 (PCo.c0 p)) (Lg.mul z (ev.1 (PC.tail p))) } ;
+
+  -- sums over 0 .. B-1, bottom first
+  sN : Nat -> (Nat -> Lg.R) -> Lg.R = split {
+    zero -> \ f -> Lg.z ;
+    suc b | r -> \ f -> Lg.add (f zero) (r (\ j -> f (suc j))) } ;
+  sN-cong : (b : Nat) (f f' : Nat -> Lg.R) -> ((j : Nat) -> Id Lg.R (f j) (f' j)) -> Id Lg.R (sN b f) (sN b f') = split {
+    zero -> \ f f' h -> refl Lg.z ;
+    suc b | r -> \ f f' h -> Ps.cong2 Lg.R Lg.add _ _ _ _ (h zero) (r (\ j -> f (suc j)) (\ j -> f' (suc j)) (\ j -> h (suc j))) } ;
+  sN-scale (x : Lg.R) : (b : Nat) (f : Nat -> Lg.R) -> Id Lg.R (Lg.mul x (sN b f)) (sN b (\ j -> Lg.mul x (f j))) = split {
+    zero -> \ f -> L.mul-zero x ;
+    suc b | r -> \ f -> trans (Lg.dist x (f zero) (sN b (\ j -> f (suc j)))) (ap (Lg.add (Lg.mul x (f zero))) (r (\ j -> f (suc j)))) } ;
+  top-peel : (b : Nat) (f : Nat -> Lg.R) -> Id Lg.R (sN (suc b) f) (Lg.add (sN b f) (f b)) = split {
+    zero -> \ f -> trans (Lg.addZ (f zero)) (sym (L.zl (f zero))) ;
+    suc b | r -> \ f -> trans (ap (Lg.add (f zero)) (r (\ j -> f (suc j))))
+                         (Lg.addA (f zero) (sN b (\ j -> f (suc j))) (f (suc b))) } ;
+  -- the exponent of an index
+  idx : (N : Nat) -> Ps.Fin N -> Nat = split {
+    zero -> \ k -> absurd Nat k ;
+    suc N | r -> split { inl k -> r k ; inr u -> N } } ;
+  fin-sum : (N : Nat) (f : Nat -> Lg.R) -> Id Lg.R (sN N f) (S.sum N (\ k -> f (idx N k))) = split {
+    zero -> \ f -> refl Lg.z ;
+    suc N | r -> \ f -> trans (top-peel N f) (trans (ap (\ w -> Lg.add w (f N)) (r f)) (Lg.addC (S.sum N (\ k -> f (idx N k))) (f N))) } ;
+  pw-idx : (N : Nat) (k : Ps.Fin N) -> Id Lg.R (PL.pw z N k) (PL.pow z (idx N k)) = split {
+    zero -> \ k -> absurd (Id Lg.R (PL.pw z zero k) (PL.pow z (idx zero k))) k ;
+    suc N | r -> split { inl k -> r k ; inr u -> refl (PL.pow z N) } } ;
+
+  term (p : B.Carrier) (j : Nat) : Lg.R = Lg.mul (iota.1 (CP.coef p j)) (PL.pow z j) ;
+  -- z term(tail p, j) = term(p, j+1)
+  term-tail (p : B.Carrier) (j : Nat) : Id Lg.R (Lg.mul z (term (PC.tail p) j)) (term p (suc j)) =
+    trans (L.mul-swap z (iota.1 (CP.coef (PC.tail p) j)) (PL.pow z j))
+      (ap (\ c -> Lg.mul (iota.1 c) (PL.pow z (suc j))) (coef-tail p j)) ;
+  term-zero (p : B.Carrier) : Id Lg.R (iota.1 (PCo.c0 p)) (term p zero) =
+    sym (trans (Lg.mulO (iota.1 (CP.coef p zero))) (ap iota.1 (coef-agree p zero))) ;
+  expand : (b : Nat) (p : B.Carrier) -> CP.Bounded b p -> Id Lg.R (ev.1 p) (sN b (term p)) = split {
+    zero -> \ p bd -> trans (ap ev.1 (CP.coef-ext p B.zeroQ (\ k -> trans (bd k) (sym (CP.coef-zero k))))) (RH.zero B.ring Lg ev) ;
+    suc b | r -> \ p bd -> calc Lg.R {
+      ev.1 p =< ev-hor p > Lg.add (iota.1 (PCo.c0 p)) (Lg.mul z (ev.1 (PC.tail p)))
+        =< ap (\ w -> Lg.add (iota.1 (PCo.c0 p)) (Lg.mul z w)) (r (PC.tail p) (\ i -> trans (coef-tail p (plus b i)) (bd i)))
+        > Lg.add (iota.1 (PCo.c0 p)) (Lg.mul z (sN b (term (PC.tail p))))
+        =< Ps.cong2 Lg.R Lg.add _ _ _ _ (term-zero p)
+             (trans (sN-scale z b (term (PC.tail p))) (sN-cong b (\ j -> Lg.mul z (term (PC.tail p) j)) (\ j -> term p (suc j)) (term-tail p)))
+        > sN (suc b) (term p) } } ;
+
+  -- the characteristic polynomial as a monic polynomial
+  module CharMonic (N : Nat) (a : Determinant[l].Over[A,setA].Mat N) {
+    chi : B.Carrier = CP.char N a ;
+    P : ZC.Monic[A] = ZC.mkMonic A N (\ k -> CP.coef chi (idx N k)) ;
+    lead : Id Lg.R (term chi N) (PL.pow z N) =
+      trans (ap (\ c -> Lg.mul (iota.1 c) (PL.pow z N)) (CP.char-monic N a))
+        (trans (ap (\ w -> Lg.mul w (PL.pow z N)) iota.2.1) (L.one-left (PL.pow z N))) ;
+    lower-eq : Id Lg.R (S.sum N (\ k -> term chi (idx N k))) (EV.lower P z) =
+      S.sum-cong N (\ k -> term chi (idx N k)) (\ k -> Lg.mul (PL.pw z N k) (iota.1 (P.low k)))
+        (\ k -> trans (Lg.mulC (iota.1 (CP.coef chi (idx N k))) (PL.pow z (idx N k)))
+                  (ap (\ w -> Lg.mul w (iota.1 (P.low k))) (sym (pw-idx N k)))) ;
+    ev-chi : Id Lg.R (ev.1 chi) (EV.mev P z) = calc Lg.R {
+      ev.1 chi =< expand (suc N) chi (CP.char-bounded N a) > sN (suc N) (term chi)
+        =< top-peel N (term chi) > Lg.add (sN N (term chi)) (term chi N)
+        =< Ps.cong2 Lg.R Lg.add _ _ _ _ (trans (fin-sum N (term chi)) lower-eq) lead > Lg.add (EV.lower P z) (PL.pow z N)
+        =< Lg.addC (EV.lower P z) (PL.pow z N) > EV.mev P z } ;
+  } ;
+} ;
+
+------------------------------------------------------------------------
+-- the trick modulo IE
+
+module Trick (R : CRing) (setR : Pr.isSet R.R) (I : R.R -> U l) (E : CRing) (setE : Pr.isSet E.R) (iota : RH.Hom R E)
+  (z : E.R) (N : Nat) (g : Ps.Fin N -> E.R) (a : Determinant[l].Over[R,setR].Mat N) (r : Ps.Fin N -> E.R)
+  (hr : (i : Ps.Fin N) -> IW.IEWit[R,I,E,iota,r i])
+  (eq : (i : Ps.Fin N) -> Id E.R (E.mul z (g i)) (E.add (Determinant[l].Over[E,setE].act N (\ j i' -> iota.1 (a j i')) g i) (r i)))
+  (beta : Ps.Fin N -> R.R) (r1 : E.R) (hr1 : IW.IEWit[R,I,E,iota,r1])
+  (one : Id E.R E.o (E.add (FiniteIdeal[l].Sums[E].lin N g (\ k -> iota.1 (beta k))) r1)) {
+  module X = Expansion[R,setR,E,setE,iota,z] ; module CM = X.CharMonic[N,a] ;
+  module CP = X.CP ; module UP = X.UP ;
+  module S = FiniteIdeal[l].Sums[E] ; module L = RL[E] ;
+  module DA = MnSums[l].Over[R] ; module DL = MnSums[l].Over[E] ;
+  module TR = DeterminantTrick[l].Over[E,setE] ;
+  module NT = Naturality[l].Over[CP.B.ring,E,X.ev] ;
+  module W = IW.Over[R,I,E,iota] ;
+  ev : RH.Hom CP.B.ring E = X.ev ;
+
+  -- as in DeterminantTrick.Integral
+  hom-delta : (k : Nat) (j i : Ps.Fin k) -> Id E.R (iota.1 (DA.delta k j i)) (DL.delta k j i) = split {
+    zero -> \ j i -> RH.zero R E iota ;
+    suc k | r0 -> split {
+      inl b -> split { inl c -> r0 b c ; inr t -> RH.zero R E iota } ;
+      inr s -> split { inl c -> RH.zero R E iota ; inr t -> iota.2.1 } } } ;
+  Mx (j i : Ps.Fin N) : E.R = ev.1 (CP.charmat N a j i) ;
+  entry (j i : Ps.Fin N) : Id E.R (Mx j i) (E.add (E.mul z (DL.delta N j i)) (E.neg (iota.1 (a j i)))) =
+    trans (ev.2.2.1 (CP.B.mulQ CP.B.variable (CP.B.constant (DA.delta N j i))) (CP.B.constant (R.neg (a j i))))
+      (Ps.cong2 E.R E.add _ _ _ _
+        (trans (ev.2.2.2 CP.B.variable (CP.B.constant (DA.delta N j i)))
+               (Ps.cong2 E.R E.mul _ _ _ _ UP.on-variable (trans (UP.on-constants (DA.delta N j i)) (hom-delta N j i))))
+        (trans (UP.on-constants (R.neg (a j i))) (RH.negation R E iota (a j i)))) ;
+  -- (z I - iota a) g = r
+  kernel-rel (i : Ps.Fin N) : Id E.R (TR.DT.act N Mx g i) (r i) = calc E.R {
+    S.sum N (\ j -> E.mul (g j) (Mx j i))
+      =< S.sum-cong N (\ j -> E.mul (g j) (Mx j i)) (\ j -> E.mul (g j) (E.add (E.mul z (DL.delta N j i)) (E.neg (iota.1 (a j i)))))
+           (\ j -> ap (E.mul (g j)) (entry j i))
+      > S.lin N g (\ j -> E.add (E.mul z (DL.delta N j i)) (E.neg (iota.1 (a j i))))
+      =< S.lin-add N g (\ j -> E.mul z (DL.delta N j i)) (\ j -> E.neg (iota.1 (a j i)))
+      > E.add (S.lin N g (\ j -> E.mul z (DL.delta N j i))) (S.lin N g (\ j -> E.neg (iota.1 (a j i))))
+      =< Ps.cong2 E.R E.add _ _ _ _
+           (trans (S.lin-scale N g (\ j -> DL.delta N j i) z) (ap (E.mul z) (DL.sum-delta-right N i g)))
+           (S.lin-neg N g (\ j -> iota.1 (a j i)))
+      > E.add (E.mul z (g i)) (E.neg (S.lin N g (\ j -> iota.1 (a j i))))
+      =< ap (\ w -> E.add w (E.neg (S.lin N g (\ j -> iota.1 (a j i))))) (trans (eq i) (E.addC (S.lin N g (\ j -> iota.1 (a j i))) (r i)))
+      > E.add (E.add (r i) (S.lin N g (\ j -> iota.1 (a j i)))) (E.neg (S.lin N g (\ j -> iota.1 (a j i))))
+      =< L.add-neg-cancel (r i) (S.lin N g (\ j -> iota.1 (a j i))) > r i } ;
+  -- det M m_k = (adj M (M m))_k: the first steps of DeterminantTrick.trick
+  trick-rel (M : TR.DT.Mat N) (m : Ps.Fin N -> E.R) (k : Ps.Fin N) :
+    Id E.R (E.mul (ExteriorModel[l].Over[E].det N M) (m k)) (TR.DT.act N (TR.ADJ.adj N M) (TR.DT.act N M m) k) = calc E.R {
+    E.mul (ExteriorModel[l].Over[E].det N M) (m k)
+      =< sym (TR.act-scalar N (ExteriorModel[l].Over[E].det N M) m k)
+      > TR.DT.act N (\ j i -> E.mul (ExteriorModel[l].Over[E].det N M) (DL.delta N j i)) m k
+      =< ap (\ M' -> TR.DT.act N M' m k) (sym (TR.ADJ.adj-mul-mat N M)) > TR.DT.act N (TR.DT.mmul N (TR.ADJ.adj N M) M) m k
+      =< TR.act-mmul N (TR.ADJ.adj N M) M m k > TR.DT.act N (TR.ADJ.adj N M) (TR.DT.act N M m) k } ;
+  -- chi(z) g_k = sum_i r_i adj(M)_ik
+  annih (k : Ps.Fin N) : Id E.R (E.mul (ev.1 CM.chi) (g k)) (S.lin N r (\ i -> TR.ADJ.adj N Mx i k)) =
+    trans (ap (\ w -> E.mul w (g k)) (NT.det-nat N (CP.charmat N a)))
+      (trans (trick-rel Mx g k)
+        (ap (\ w -> TR.DT.act N (TR.ADJ.adj N Mx) w k) (FE.funext (Ps.Fin N) (\ i -> E.R) (TR.DT.act N Mx g) r kernel-rel))) ;
+  annih-wit (k : Ps.Fin N) : W.Wit (E.mul (ev.1 CM.chi) (g k)) =
+    W.ie-eq _ _ (sym (annih k)) (W.ie-act N r (\ i -> TR.ADJ.adj N Mx i k) hr) ;
+  -- chi(z) = sum_k (chi(z) g_k) iota(beta_k) + chi(z) r'
+  chi-eq : Id E.R (ev.1 CM.chi) (E.add (S.lin N (\ k -> E.mul (ev.1 CM.chi) (g k)) (\ k -> iota.1 (beta k))) (E.mul (ev.1 CM.chi) r1)) = calc E.R {
+    ev.1 CM.chi =< sym (E.mulO (ev.1 CM.chi)) > E.mul (ev.1 CM.chi) E.o
+      =< ap (E.mul (ev.1 CM.chi)) one > E.mul (ev.1 CM.chi) (E.add (S.lin N g (\ k -> iota.1 (beta k))) r1)
+      =< E.dist (ev.1 CM.chi) (S.lin N g (\ k -> iota.1 (beta k))) r1
+      > E.add (E.mul (ev.1 CM.chi) (S.lin N g (\ k -> iota.1 (beta k)))) (E.mul (ev.1 CM.chi) r1)
+      =< ap (\ w -> E.add w (E.mul (ev.1 CM.chi) r1))
+           (sym (trans (S.sum-cong N (\ k -> E.mul (E.mul (ev.1 CM.chi) (g k)) (iota.1 (beta k)))
+                          (\ k -> E.mul (ev.1 CM.chi) (E.mul (g k) (iota.1 (beta k))))
+                          (\ k -> sym (E.mulA (ev.1 CM.chi) (g k) (iota.1 (beta k)))))
+                  (S.sum-scale (ev.1 CM.chi) N (\ k -> E.mul (g k) (iota.1 (beta k))))))
+      > E.add (S.lin N (\ k -> E.mul (ev.1 CM.chi) (g k)) (\ k -> iota.1 (beta k))) (E.mul (ev.1 CM.chi) r1) } ;
+  P : ZC.Monic[R] = CM.P ;
+  wit : W.Wit (X.EV.mev P z) =
+    W.ie-eq (ev.1 CM.chi) (X.EV.mev P z) CM.ev-chi
+      (W.ie-eq _ _ (sym chi-eq)
+        (W.ie-add _ _ (W.ie-act N (\ k -> E.mul (ev.1 CM.chi) (g k)) (\ k -> iota.1 (beta k)) annih-wit)
+                      (W.ie-mul (ev.1 CM.chi) r1 hr1))) ;
+} ;

@@ -1,0 +1,250 @@
+-- ZArith.seg: the arithmetic of Z needed for Prop. 13 (artin-rees.tex):
+-- natural numbers in Z, absolute values, cancellation, division by a
+-- positive number, and Euclid's algorithm with Bezout coefficients.
+--
+-- Magnitudes are the natural numbers of Ring (those of NatOrder and of
+-- Integers.divide), mapped into Z by iota = Integers.Over[Z].iota
+-- (iota (n+1) = 1 + iota n).  All identities between integers are proved
+-- in the ring Z; only order facts are proved on Nat.
+--
+-- Informal proofs.
+--   iota n = pos n (iota-pos), so iota is injective, and iota a = -iota c
+--   forces c = 0 (and then a = 0): pos and negsuc are distinct.
+--   (abs) every x is iota n or -(iota n).
+--   (cancel) d iota(k+1) = 0 gives d = 0: d = +-iota n, so
+--   iota (n (k+1)) = 0, n (k+1) = 0 and n = 0.
+--   (rem) q (k+1) + r = m (k+1) with r <= k gives r = 0: induction on q,
+--   cancelling k + 1; if q = 0 and m > 0 then r >= k + 1.
+--   (euclid) for m, n merely nothing: by recursion with fuel f >= n,
+--   gcd(m, 0) = m = 1 m + 0 0;  gcd(m, n+1) = gcd(n+1, r) for
+--   m = q (n+1) + r, r <= n:  if g = s (n+1) + t r then
+--   g = t m + (s - t q) (n+1), and n+1 = a g, r = b g give
+--   m = (q a + b) g.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module NO = NatOrder[l] ; module NA = NatArith[l] ;
+module ZR = ZRing[l] ; module RZ = RL[ZR.ring] ; module J = Integers[l].Over[ZR.ring] ;
+
+------------------------------------------------------------------------
+-- natural numbers in Z
+
+toB : Nat -> Base.Nat = split { zero -> zero ; suc n | r -> suc r } ;
+-- iota n = pos n
+iota-pos : (n : Nat) -> Id Int (J.iota n) (pos (toB n)) = split {
+  zero -> refl zeroZ ;
+  suc n | r -> trans (ap (add ZR.one) r) (comm ZR.one (pos (toB n))) } ;
+
+toB-inj-zero : (b : Nat) -> NA.code zero (toB b) -> Id Nat zero b = split {
+  zero -> \ c -> refl zero ;
+  suc b -> \ c -> Pr.absurd (Id Nat zero (suc b)) c } ;
+toB-inj-suc (a : Nat) (r : (b : Nat) -> NA.code (toB a) (toB b) -> Id Nat a b) :
+  (b : Nat) -> NA.code (suc (toB a)) (toB b) -> Id Nat (suc a) b = split {
+  zero -> \ c -> Pr.absurd (Id Nat (suc a) zero) c ;
+  suc b -> \ c -> ap (\ k -> suc k) (r b c) } ;
+toB-inj : (a b : Nat) -> NA.code (toB a) (toB b) -> Id Nat a b = split {
+  zero -> toB-inj-zero ;
+  suc a | r -> toB-inj-suc a r } ;
+iota-inj (a b : Nat) (p : Id Int (J.iota a) (J.iota b)) : Id Nat a b =
+  toB-inj a b (encode (pos (toB a)) (pos (toB b)) (trans (sym (iota-pos a)) (trans p (iota-pos b)))) ;
+
+-- iota a = -(iota c) gives c = 0
+neg-pos : (c : Nat) (x : Base.Nat) -> Id Int (pos x) (neg (pos (toB c))) -> Id Nat c zero = split {
+  zero -> \ x h -> refl zero ;
+  suc c -> \ x h -> Pr.absurd (Id Nat (suc c) zero) (encode (pos x) (negsuc (toB c)) h) } ;
+iota-neg-c (a c : Nat) (p : Id Int (J.iota a) (neg (J.iota c))) : Id Nat c zero =
+  neg-pos c (toB a) (trans (sym (iota-pos a)) (trans p (ap neg (iota-pos c)))) ;
+iota-neg-a (a c : Nat) (p : Id Int (J.iota a) (neg (J.iota c))) : Id Nat a zero =
+  iota-inj a zero (trans p (ap (\ k -> neg (J.iota k)) (iota-neg-c a c p))) ;
+
+------------------------------------------------------------------------
+-- absolute values
+
+Sign (x : Int) (n : Nat) : U l = Plus (Id Int x (J.iota n)) (Id Int x (neg (J.iota n))) ;
+Abs (x : Int) : U l = (n : Nat) * Sign x n ;
+abs-pos : (m : Base.Nat) -> (n : Nat) * Id Int (J.iota n) (pos m) = split {
+  zero -> (zero, refl zeroZ) ;
+  suc m | r -> (suc r.1, trans (ap (add ZR.one) r.2) (comm ZR.one (pos m))) } ;
+abs : (x : Int) -> Abs x = split {
+  pos m -> ((abs-pos m).1, inl (sym (abs-pos m).2)) ;
+  negsuc m -> ((abs-pos (suc m)).1, inr (sym (ap neg (abs-pos (suc m)).2))) } ;
+-- by definition of iota: iota 0 = 0
+iota-zero : Id Int (J.iota zero) zeroZ = refl zeroZ ;
+cmul {x x' y y' : Int} (p : Id Int x x') (q : Id Int y y') : Id Int (ZR.mul x y) (ZR.mul x' y') =
+  Ps.cong2 Int ZR.mul x x' y y' p q ;
+
+------------------------------------------------------------------------
+-- signs
+
+-- (+-a)(+-b) = +-(a b)
+sign-mul-l (x y : Int) (a b : Nat) (ex : Id Int x (J.iota a)) : Sign y b -> Sign (ZR.mul x y) (Integers[l].times a b) = split {
+  inl ey -> inl (trans (cmul ex ey) (sym (J.iota-mul a b))) ;
+  inr ey -> inr (trans (cmul ex ey) (trans (RZ.mul-neg (J.iota a) (J.iota b)) (ap neg (sym (J.iota-mul a b))))) } ;
+sign-mul-r (x y : Int) (a b : Nat) (ex : Id Int x (neg (J.iota a))) : Sign y b -> Sign (ZR.mul x y) (Integers[l].times a b) = split {
+  inl ey -> inr (trans (cmul ex ey) (trans (RZ.neg-mul-left (J.iota a) (J.iota b)) (ap neg (sym (J.iota-mul a b))))) ;
+  inr ey -> inl (calc Int {
+    ZR.mul x y =< cmul ex ey > ZR.mul (neg (J.iota a)) (neg (J.iota b))
+      =< RZ.neg-mul-left (J.iota a) (neg (J.iota b)) > neg (ZR.mul (J.iota a) (neg (J.iota b)))
+      =< ap neg (RZ.mul-neg (J.iota a) (J.iota b)) > neg (neg (ZR.mul (J.iota a) (J.iota b)))
+      =< RZ.neg-neg (ZR.mul (J.iota a) (J.iota b)) > ZR.mul (J.iota a) (J.iota b)
+      =< sym (J.iota-mul a b) > J.iota (Integers[l].times a b) }) } ;
+sign-mul (x y : Int) (a b : Nat) : Sign x a -> Sign y b -> Sign (ZR.mul x y) (Integers[l].times a b) = split {
+  inl ex -> sign-mul-l x y a b ex ;
+  inr ex -> sign-mul-r x y a b ex } ;
+
+-- the magnitude is unique
+neg-inj (x y : Int) (p : Id Int (neg x) (neg y)) : Id Int x y =
+  trans (sym (RZ.neg-neg x)) (trans (ap neg p) (RZ.neg-neg y)) ;
+sign-unique-l (x : Int) (a b : Nat) (ea : Id Int x (J.iota a)) : Sign x b -> Id Nat a b = split {
+  inl eb -> iota-inj a b (trans (sym ea) eb) ;
+  inr eb -> trans (iota-neg-a a b (trans (sym ea) eb)) (sym (iota-neg-c a b (trans (sym ea) eb))) } ;
+sign-unique-r (x : Int) (a b : Nat) (ea : Id Int x (neg (J.iota a))) : Sign x b -> Id Nat a b = split {
+  inl eb -> trans (iota-neg-c b a (trans (sym eb) ea)) (sym (iota-neg-a b a (trans (sym eb) ea))) ;
+  inr eb -> iota-inj a b (neg-inj (J.iota a) (J.iota b) (trans (sym ea) eb)) } ;
+sign-unique (x : Int) (a b : Nat) : Sign x a -> Sign x b -> Id Nat a b = split {
+  inl ea -> sign-unique-l x a b ea ;
+  inr ea -> sign-unique-r x a b ea } ;
+-- magnitude 0
+sign-at-zero (x : Int) : Sign x zero -> Id Int x zeroZ = split {
+  inl e -> e ;
+  inr e -> e } ;
+
+------------------------------------------------------------------------
+-- (cancel)
+
+times-suc-zero : (n k : Nat) -> Id Nat (Integers[l].times n (suc k)) zero -> Id Nat n zero = split {
+  zero -> \ k h -> refl zero ;
+  suc n -> \ k h -> absurd (Id Nat (suc n) zero) (suc-zero (plus k (Integers[l].times n (suc k))) h) } ;
+module Cancel (k : Nat) (d : Int) (h : Id Int (ZR.mul d (J.iota (suc k))) zeroZ) (n : Nat) (s : Sign d n) {
+  prod : Sign (ZR.mul d (J.iota (suc k))) (Integers[l].times n (suc k)) =
+    sign-mul d (J.iota (suc k)) n (suc k) s (inl (refl (J.iota (suc k)))) ;
+  nz : Id Nat n zero = times-suc-zero n k (sign-unique (ZR.mul d (J.iota (suc k))) (Integers[l].times n (suc k)) zero prod (inl h)) ;
+  res : Id Int d zeroZ = sign-at-zero d (subst (Sign d) nz s) ;
+} ;
+cancel (k : Nat) (d : Int) (h : Id Int (ZR.mul d (J.iota (suc k))) zeroZ) : Id Int d zeroZ =
+  Cancel[k,d,h,(abs d).1,(abs d).2].res ;
+
+------------------------------------------------------------------------
+-- (rem)
+
+plusA : (a b c : Nat) -> Id Nat (plus (plus a b) c) (plus a (plus b c)) = split {
+  zero -> \ b c -> refl (plus b c) ;
+  suc a | r -> \ b c -> ap (\ k -> suc k) (r b c) } ;
+plus-cancel : (a x y : Nat) -> Id Nat (plus a x) (plus a y) -> Id Nat x y = split {
+  zero -> \ x y h -> h ;
+  suc a | r -> \ x y h -> r x y (suc-inj h) } ;
+-- (k + x) + 1 <= k is impossible
+not-le : (k x : Nat) -> NO.Le (suc (plus k x)) k -> Empty = split {
+  zero -> \ x h -> h ;
+  suc k | r -> \ x h -> r x h } ;
+rem-q0 : (m k r : Nat) -> NO.Le r k -> Id Nat r (Integers[l].times m (suc k)) -> Id Nat r zero = split {
+  zero -> \ k r lr h -> h ;
+  suc m -> \ k r lr h -> absurd (Id Nat r zero) (not-le k (Integers[l].times m (suc k)) (subst (\ t -> NO.Le t k) h lr)) } ;
+rem-qs (q : Nat)
+  (ih : (m k r : Nat) -> NO.Le r k -> Id Nat (plus (Integers[l].times q (suc k)) r) (Integers[l].times m (suc k)) -> Id Nat r zero) :
+  (m k r : Nat) -> NO.Le r k -> Id Nat (plus (Integers[l].times (suc q) (suc k)) r) (Integers[l].times m (suc k)) -> Id Nat r zero = split {
+  zero -> \ k r lr h -> absurd (Id Nat r zero) (suc-zero (plus (plus k (Integers[l].times q (suc k))) r) h) ;
+  suc m -> \ k r lr h -> ih m k r lr
+    (plus-cancel (suc k) (plus (Integers[l].times q (suc k)) r) (Integers[l].times m (suc k))
+       (trans (sym (plusA (suc k) (Integers[l].times q (suc k)) r)) h)) } ;
+-- q (k+1) + r = m (k+1) with r <= k gives r = 0
+rem-zero : (q m k r : Nat) -> NO.Le r k -> Id Nat (plus (Integers[l].times q (suc k)) r) (Integers[l].times m (suc k)) -> Id Nat r zero = split {
+  zero -> rem-q0 ;
+  suc q | ih -> rem-qs q ih } ;
+
+------------------------------------------------------------------------
+-- divisibility by k + 1 is decidable
+
+DivBy (k : Nat) (y : Int) : U l = (d : Int) * Id Int y (ZR.mul d (J.iota (suc k))) ;
+module Divide (k : Nat) (y : Int) (ny : Nat) (sy : Sign y ny) {
+  q : Nat = (Integers[l].divide k ny).1 ;
+  r : Nat = (Integers[l].divide k ny).2.1 ;
+  e : Id Nat ny (plus (Integers[l].times q (suc k)) r) = (Integers[l].divide k ny).2.2.1 ;
+  lr : NO.Le r k = (Integers[l].divide k ny).2.2.2 ;
+  -- r = 0: y = +-q (k+1)
+  exact-pos (e0 : Id Nat r zero) : Id Int (J.iota ny) (ZR.mul (J.iota q) (J.iota (suc k))) =
+    trans (ap J.iota (trans e (ap (plus (Integers[l].times q (suc k))) e0))) (J.iota-split q (suc k) zero) ;
+  yes-of (e0 : Id Nat r zero) : Sign y ny -> DivBy k y = split {
+    inl ey -> (J.iota q, trans ey (exact-pos e0)) ;
+    inr ey -> (neg (J.iota q), trans ey (trans (ap neg (exact-pos e0)) (sym (RZ.neg-mul-left (J.iota q) (J.iota (suc k)))))) } ;
+  -- r /= 0: y = d (k+1) gives ny = |d| (k+1), so r = 0
+  no-of (rn : Not (Id Nat r zero)) (dv : DivBy k y) : Empty =
+    rn (rem-zero q (abs dv.1).1 k r lr
+          (trans (sym e) (sign-unique y ny (Integers[l].times (abs dv.1).1 (suc k)) sy
+             (subst (\ w -> Sign w (Integers[l].times (abs dv.1).1 (suc k))) (sym dv.2)
+                (sign-mul dv.1 (J.iota (suc k)) (abs dv.1).1 (suc k) (abs dv.1).2 (inl (refl (J.iota (suc k))))))))) ;
+  decide-r : (r' : Nat) -> Id Nat r r' -> Plus (DivBy k y) (Not (DivBy k y)) = split {
+    zero -> \ h -> inl (yes-of h sy) ;
+    suc r' -> \ h -> inr (no-of (\ h0 -> suc-zero r' (trans (sym h) h0))) } ;
+  decide : Plus (DivBy k y) (Not (DivBy k y)) = decide-r r (refl r) ;
+} ;
+div-dec (k : Nat) (y : Int) : Plus (DivBy k y) (Not (DivBy k y)) = Divide[k,y,(abs y).1,(abs y).2].decide ;
+
+------------------------------------------------------------------------
+-- (euclid)
+
+-- g = s m + t n,  m = a g,  n = b g
+record Gcd2 (m n : Nat) {
+  g : Nat ;
+  s : Int ;
+  t : Int ;
+  bez : Id Int (J.iota g) (add (ZR.mul s (J.iota m)) (ZR.mul t (J.iota n))) ;
+  a : Int ;
+  ea : Id Int (J.iota m) (ZR.mul a (J.iota g)) ;
+  b : Int ;
+  eb : Id Int (J.iota n) (ZR.mul b (J.iota g)) ;
+} ;
+
+-- the two ring identities of the step
+module Idents (A : CRing) {
+  module LA = RL[A] ;
+  -- t (q N + r) + (s - t q) N = s N + t r
+  bez-step (s t q N r : A.R) :
+    Id A.R (A.add (A.mul t (A.add (A.mul q N) r)) (A.mul (A.add s (A.neg (A.mul t q))) N)) (A.add (A.mul s N) (A.mul t r)) =
+    calc A.R {
+      A.add (A.mul t (A.add (A.mul q N) r)) (A.mul (A.add s (A.neg (A.mul t q))) N)
+        =< Ps.cong2 A.R A.add _ _ _ _ (A.dist t (A.mul q N) r) (LA.dist-left s (A.neg (A.mul t q)) N)
+        > A.add (A.add (A.mul t (A.mul q N)) (A.mul t r)) (A.add (A.mul s N) (A.mul (A.neg (A.mul t q)) N))
+        =< Ps.cong2 A.R A.add _ _ _ _ (ap (\ w -> A.add w (A.mul t r)) (A.mulA t q N))
+             (trans (A.addC (A.mul s N) (A.mul (A.neg (A.mul t q)) N)) (ap (\ w -> A.add w (A.mul s N)) (LA.neg-mul-left (A.mul t q) N)))
+        > A.add (A.add (A.mul (A.mul t q) N) (A.mul t r)) (A.add (A.neg (A.mul (A.mul t q) N)) (A.mul s N))
+        =< LA.swap (A.mul (A.mul t q) N) (A.mul t r) (A.neg (A.mul (A.mul t q) N)) (A.mul s N)
+        > A.add (A.add (A.mul (A.mul t q) N) (A.neg (A.mul (A.mul t q) N))) (A.add (A.mul t r) (A.mul s N))
+        =< ap (\ w -> A.add w (A.add (A.mul t r) (A.mul s N))) (A.addN (A.mul (A.mul t q) N))
+        > A.add A.z (A.add (A.mul t r) (A.mul s N))
+        =< trans (LA.zl (A.add (A.mul t r) (A.mul s N))) (A.addC (A.mul t r) (A.mul s N)) > A.add (A.mul s N) (A.mul t r) } ;
+  -- q (a g) + b g = (q a + b) g
+  div-step (q a b g : A.R) : Id A.R (A.add (A.mul q (A.mul a g)) (A.mul b g)) (A.mul (A.add (A.mul q a) b) g) =
+    trans (ap (\ w -> A.add w (A.mul b g)) (A.mulA q a g)) (sym (LA.dist-left (A.mul q a) b g)) ;
+} ;
+module IZ = Idents[ZR.ring] ;
+
+-- gcd(m, 0) = m
+gcd-zero (m : Nat) : Gcd2[m,zero] =
+  mkGcd2 m zero m ZR.one zeroZ (sym (ZR.mul-one-l (J.iota m))) ZR.one (sym (ZR.mul-one-l (J.iota m)))
+    zeroZ (sym (ZR.mul-zero-l (J.iota m))) ;
+
+-- gcd(m, n+1) from gcd(n+1, r), m = q (n+1) + r
+module Step (m n q r : Nat) (e : Id Nat m (plus (Integers[l].times q (suc n)) r)) (G : Gcd2[suc n,r]) {
+  em : Id Int (J.iota m) (add (ZR.mul (J.iota q) (J.iota (suc n))) (J.iota r)) =
+    trans (ap J.iota e) (J.iota-split q (suc n) r) ;
+  t' : Int = add G.s (neg (ZR.mul G.t (J.iota q))) ;
+  bez : Id Int (J.iota G.g) (add (ZR.mul G.t (J.iota m)) (ZR.mul t' (J.iota (suc n)))) =
+    trans G.bez (sym (trans (ap (\ w -> add (ZR.mul G.t w) (ZR.mul t' (J.iota (suc n)))) em)
+                            (IZ.bez-step G.s G.t (J.iota q) (J.iota (suc n)) (J.iota r)))) ;
+  a' : Int = add (ZR.mul (J.iota q) G.a) G.b ;
+  ea : Id Int (J.iota m) (ZR.mul a' (J.iota G.g)) =
+    trans em (trans (Ps.cong2 Int add _ _ _ _ (ap (ZR.mul (J.iota q)) G.ea) G.eb) (IZ.div-step (J.iota q) G.a G.b (J.iota G.g))) ;
+  res : Gcd2[m,suc n] = mkGcd2 m (suc n) G.g G.t t' bez a' ea G.a G.ea ;
+} ;
+
+-- by recursion on a fuel f >= n
+euclid0 (m : Nat) : (n : Nat) -> NO.Le n zero -> Gcd2[m,n] = split {
+  zero -> \ h -> gcd-zero m ;
+  suc n -> \ h -> absurd (Gcd2[m,suc n]) h } ;
+euclidS (f : Nat) (rec : (m n : Nat) -> NO.Le n f -> Gcd2[m,n]) (m : Nat) : (n : Nat) -> NO.Le n (suc f) -> Gcd2[m,n] = split {
+  zero -> \ h -> gcd-zero m ;
+  suc n -> \ h -> Step[m,n,(Integers[l].divide n m).1,(Integers[l].divide n m).2.1,(Integers[l].divide n m).2.2.1,
+                       rec (suc n) (Integers[l].divide n m).2.1 (NO.le-trans (Integers[l].divide n m).2.1 n f (Integers[l].divide n m).2.2.2 h)].res } ;
+euclidF : (f m n : Nat) -> NO.Le n f -> Gcd2[m,n] = split {
+  zero -> euclid0 ;
+  suc f | rec -> euclidS f rec } ;
+euclid (m n : Nat) : Gcd2[m,n] = euclidF n m n (NO.le-refl n) ;

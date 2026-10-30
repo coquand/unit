@@ -1,0 +1,68 @@
+-- Adding a zero algebra generator does not strengthen the residual ZMT
+-- problem.  Rename the old residual expressions, add the equation T=0,
+-- map the resulting residual algebra to the original one, transport a
+-- certificate and forget its last annihilating polynomial.  Thus a proved
+-- UniversalZMT (n+1) supplies UniversalZMT n, including n=0.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module RA = ResidualAlgebra[l] ; module ZC = ZMTCertificate[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) (D0 : RA.Residual[A,setA,n]) {
+  module PA = Presentations[l].Over[A,setA] ;
+  module FD = RA.Algebra[A,setA,n,D0] ;
+  E : CRing = FD.ring ;
+  module LE = RL[E] ;
+  module EV = ZC.Eval[A,E,FD.algebra.iota] ;
+  module SB = FiniteIdeal[l].Sums[E] ;
+  linear : ZC.Monic[A] = ZC.mkMonic A (suc zero) (\ j -> A.z) ;
+  polynomials : Ps.Fin (suc n) -> ZC.Monic[A] = split {
+    inl i -> D0.P i ; inr u -> linear } ;
+  expressions : Ps.Fin (suc n) -> Ps.Fin D0.t -> PA.Expr (Ps.Fin (suc n)) = split {
+    inl i -> \ j -> PA.rename (Ps.Fin n) (Ps.Fin (suc n)) (\ k -> inl k) (D0.H i j) ;
+    inr u -> \ j -> cst A.z } ;
+  padded : RA.Residual[A,setA,suc n] = RA.mkResidual A setA (suc n) D0.t D0.b polynomials expressions ;
+  point : Ps.Fin (suc n) -> E.R = Ps.snoc (Ps.Fin n) E.R FD.y E.z ;
+  module EQ = RA.Equations[A,setA,suc n,padded] ;
+  module AT = EQ.At[FD.algebra,point] ;
+  rename-eval (i : Ps.Fin n) (j : Ps.Fin D0.t) :
+    Id E.R (AT.I.ev (expressions (inl i) j)) (FD.EQ.At[FD.algebra,FD.y].I.ev (D0.H i j)) =
+    PA.eval-rename (Ps.Fin n) (Ps.Fin (suc n)) (\ k -> inl k) FD.algebra point (D0.H i j) ;
+  old-holds (i : Ps.Fin n) :
+    Id E.R (EV.mev (polynomials (inl i)) (point (inl i)))
+      (SB.lin D0.t (\ j -> FD.algebra.iota.1 (D0.b j)) (\ j -> AT.I.ev (expressions (inl i) j))) =
+    trans (FD.y-holds i)
+      (sym (SB.sum-cong D0.t
+        (\ j -> E.mul (FD.algebra.iota.1 (D0.b j)) (AT.I.ev (expressions (inl i) j)))
+        (\ j -> E.mul (FD.algebra.iota.1 (D0.b j)) (FD.EQ.At[FD.algebra,FD.y].I.ev (D0.H i j)))
+        (\ j -> ap (E.mul (FD.algebra.iota.1 (D0.b j))) (rename-eval i j)))) ;
+  linear-zero : Id E.R (EV.mev linear E.z) E.z =
+    trans (ap (E.add (E.mul E.z E.o))
+      (trans (E.addZ (E.mul E.o (FD.algebra.iota.1 A.z)))
+        (trans (LE.one-left (FD.algebra.iota.1 A.z)) (RH.zero A E FD.algebra.iota))))
+      (trans (E.addZ (E.mul E.z E.o)) (E.mulO E.z)) ;
+  new-right : Id E.R (SB.lin D0.t (\ j -> FD.algebra.iota.1 (D0.b j)) (\ j -> FD.algebra.iota.1 A.z)) E.z =
+    trans (SB.sum-cong D0.t
+      (\ j -> E.mul (FD.algebra.iota.1 (D0.b j)) (FD.algebra.iota.1 A.z))
+      (\ j -> E.mul (FD.algebra.iota.1 (D0.b j)) E.z)
+      (\ j -> ap (E.mul (FD.algebra.iota.1 (D0.b j))) (RH.zero A E FD.algebra.iota)))
+      (SB.lin-zero D0.t (\ j -> FD.algebra.iota.1 (D0.b j))) ;
+  holds : AT.Holds = split {
+    inl i -> old-holds i ;
+    inr u -> trans linear-zero (sym new-right) } ;
+  module FP = RA.Algebra[A,setA,suc n,padded] ;
+  module TO = FP.To[FD.algebra,point,holds] ;
+  module CT = CertificateTransport[l].Over[A,A,RH.identity A,FP.ring,E,FP.algebra.iota,FD.algebra.iota,
+    TO.phi.1,TO.phi-iota,suc n,FP.y,point,TO.phi-y,D0.t,D0.b,D0.b,\ j -> refl (D0.b j)] ;
+  Source : U l = ZC.ZMTCert[A,FP.ring,FP.algebra.iota,suc n,FP.y,D0.t,D0.b] ;
+  Target : U l = ZC.ZMTCert[A,E,FD.algebra.iota,n,FD.y,D0.t,D0.b] ;
+  restrict (c : CT.Target) : Target =
+    ZC.mkZMTCert A E FD.algebra.iota n FD.y D0.t D0.b c.s c.cong c.q0 c.ann0
+      (\ i -> c.q (inl i)) (\ i -> c.ann (inl i)) ;
+  certificate (c : Tr.Trunc[Source].carrier) : Tr.Trunc[Target].carrier =
+    TC.map CT.Target Target restrict (CT.transport c) ;
+} ;
+
+lower (n : Nat) (next : CFNDescent[l].UniversalZMT (suc n)) : CFNDescent[l].UniversalZMT n =
+  \ m D0 -> Over[CoefficientBase[l].ring m,CoefficientBase[l].set m,n,D0].certificate
+    (next m Over[CoefficientBase[l].ring m,CoefficientBase[l].set m,n,D0].padded) ;

@@ -1,0 +1,71 @@
+-- The top residual is determined by a static finite list of coefficients.
+-- The list depends only on n and twist k. Coordinates are indexed by
+-- Fin(length list), including possible repetitions, and a first-match
+-- lookup reconstructs pi. In particular zero coordinates imply pi=0.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module N = FiniteExponents[l] ; module L = GenericLaurent[l] ;
+module F = FiniteTopExponents[l] ; module K = GenericDegree[l] ;
+module J = FiniteLookup[l] ; module Q = NegativeClassification[l] ;
+module LG = Logic[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ;
+module Over (D : CRing) (setD : Prelude[l].isSet D.R) (nvar : Nat) (k : Int) {
+ module E = GenericCech[l].Over[D,setD] ; module O = E.Operations[nvar,k,K.topRank nvar] ;
+ module H = GenericContraction[l].Over[D,setD] ; module T = GenericTop[l].Over[D,setD] ;
+ module S = GenericSupport[l].Over[D,setD] ; module C = GenericCube[l].Over[D,setD] ;
+ module CQ = Q.Over[D,setD] ; module Enum = F.At[nvar,k] ;
+ module Look = J.Over[D,N.Exp nvar,N.dec nvar] ;
+ rank : Nat = J.length (N.Exp nvar) Enum.naturals ;
+ Coords : U l = Ps.Fin rank -> D.R ;
+ free : IP.Mod[D] = Laurent4[l].Over[D,setD].powM (Ps.Fin rank) (IP.regular D) ;
+ top (c : O.A.El) (u : N.Exp nvar) : D.R = O.pRaw c (full nvar) (F.negative nvar u) ;
+ extract (c : O.A.El) : Coords = Look.extract Enum.naturals (top c) ;
+ extractlin : IP.Lin[D,O.A.mod,free] = IP.mkLin D O.A.mod free extract
+   (\ c c' -> Axioms[l].FunExtLemmas[fe @l].funext (Ps.Fin rank) (\ i -> D.R) _ _
+     (\ i -> T.p-add nvar (L.mask nvar (F.negative nvar (J.at (N.Exp nvar) Enum.naturals i)))
+       (O.A.fibre c (F.negative nvar (J.at (N.Exp nvar) Enum.naturals i)))
+       (O.A.fibre c' (F.negative nvar (J.at (N.Exp nvar) Enum.naturals i))) (full nvar)))
+   (\ a c -> Axioms[l].FunExtLemmas[fe @l].funext (Ps.Fin rank) (\ i -> D.R) _ _
+     (\ i -> T.p-sm nvar (L.mask nvar (F.negative nvar (J.at (N.Exp nvar) Enum.naturals i))) a
+       (O.A.fibre c (F.negative nvar (J.at (N.Exp nvar) Enum.naturals i))) (full nvar))) ;
+ cover (u : N.Exp nvar) (e : Id Int (L.total nvar (F.negative nvar u)) k) : L.Mem (N.Exp nvar) u Enum.naturals =
+   Enum.filter-cover u e (FiniteExponentBoxes[l].boxes nvar (F.magnitude k))
+     (FiniteExponentBoxes[l].box-cover nvar (F.magnitude k) u (F.count nvar) (F.mass-degree nvar u k e)) ;
+ negative-reconstruct (v : Coords) (m : L.Exp nvar) : Q.Case nvar m -> D.R = split {
+   inl w -> Look.lookup Enum.naturals v w.1 ; inr some -> D.z } ;
+ degree-reconstruct (v : Coords) (m : L.Exp nvar) : LG.Dec (Id Int (L.total nvar m) k) -> D.R = split {
+   yes e -> negative-reconstruct v m (Q.classify nvar m) ; no ne -> D.z } ;
+ subset-reconstruct (v : Coords) (s : Sub nvar) (m : L.Exp nvar) :
+   Plus (Id (Sub nvar) s (full nvar)) (GenericSupport[l].missing nvar s) -> D.R = split {
+     inl e -> degree-reconstruct v m (int-dec (L.total nvar m) k) ; inr proper -> D.z } ;
+ reconstruct (v : Coords) (s : Sub nvar) (m : L.Exp nvar) : D.R =
+   subset-reconstruct v s m (GenericSupport[l].full-or-missing nvar s) ;
+ negative-equation (c : O.A.El) (m : L.Exp nvar) (e : Id Int (L.total nvar m) k) :
+   (w : Q.Case nvar m) -> Id D.R (negative-reconstruct (extract c) m w) (O.pRaw c (full nvar) m) = split {
+   inl w -> trans (Look.read-inside Enum.naturals (top c) w.1 (cover w.1 (trans (ap (L.total nvar) w.2) e)))
+     (ap (O.pRaw c (full nvar)) w.2) ;
+   inr some -> sym (CQ.zero-some nvar (L.mask nvar m) some (O.A.fibre c m) (full nvar)) } ;
+ degree-equation (c : O.A.El) (m : L.Exp nvar) : (d : LG.Dec (Id Int (L.total nvar m) k)) ->
+   Id D.R (degree-reconstruct (extract c) m d) (O.pRaw c (full nvar) m) = split {
+   yes e -> negative-equation c m e (Q.classify nvar m) ;
+   no ne -> sym (S.p-zero-at nvar (L.mask nvar m) (O.A.fibre c m) (full nvar)
+     (O.A.projective c m (\ e -> Prelude[l].absurd Empty (ne e)) (full nvar))) } ;
+ subset-equation (c : O.A.El) (s : Sub nvar) (m : L.Exp nvar) :
+   (d : Plus (Id (Sub nvar) s (full nvar)) (GenericSupport[l].missing nvar s)) ->
+   Id D.R (subset-reconstruct (extract c) s m d) (O.pRaw c s m) = split {
+   inl e -> trans (degree-equation c m (int-dec (L.total nvar m) k)) (ap (\ t -> O.pRaw c t m) (sym e)) ;
+   inr proper -> sym (T.p-top nvar (L.mask nvar m) (O.A.fibre c m) (O.A.support c m) s proper) } ;
+ equation (c : O.A.El) (s : Sub nvar) (m : L.Exp nvar) : Id D.R (reconstruct (extract c) s m) (O.pRaw c s m) =
+   subset-equation c s m (GenericSupport[l].full-or-missing nvar s) ;
+ negative-zero (v : Coords) (hz : (i : Ps.Fin rank) -> Id D.R (v i) D.z) (m : L.Exp nvar) :
+   (w : Q.Case nvar m) -> Id D.R (negative-reconstruct v m w) D.z = split {
+   inl w -> Look.zero Enum.naturals v hz w.1 ; inr some -> refl D.z } ;
+ degree-zero (v : Coords) (hz : (i : Ps.Fin rank) -> Id D.R (v i) D.z) (m : L.Exp nvar) :
+   (d : LG.Dec (Id Int (L.total nvar m) k)) -> Id D.R (degree-reconstruct v m d) D.z = split {
+   yes e -> negative-zero v hz m (Q.classify nvar m) ; no ne -> refl D.z } ;
+ subset-zero (v : Coords) (hz : (i : Ps.Fin rank) -> Id D.R (v i) D.z) (s : Sub nvar) (m : L.Exp nvar) :
+   (d : Plus (Id (Sub nvar) s (full nvar)) (GenericSupport[l].missing nvar s)) ->
+   Id D.R (subset-reconstruct v s m d) D.z = split {
+   inl e -> degree-zero v hz m (int-dec (L.total nvar m) k) ; inr proper -> refl D.z } ;
+ top-zero (c : O.A.El) (hz : (i : Ps.Fin rank) -> Id D.R (extract c i) D.z) (s : Sub nvar) (m : L.Exp nvar) :
+   Id D.R (O.pRaw c s m) D.z = trans (sym (equation c s m))
+     (subset-zero (extract c) hz s m (GenericSupport[l].full-or-missing nvar s)) ;
+} ;

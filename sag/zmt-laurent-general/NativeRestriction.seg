@@ -1,0 +1,59 @@
+-- Constructed coefficient-preserving restriction between arbitrary
+-- finite native charts. The source denominator times its complementary
+-- monomial is the target denominator, hence becomes a unit there.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module CL = NativeChartRing[l] ; module CC = ChartContainment[l] ;
+module N = FiniteExponents[l] ; module EX = GenericLaurent[l] ; module NA = NatArith[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (nvar : Nat) (E F : Sub nvar) (le : CC.Le nvar E F) {
+ module Source = CL.Over[A,setA,nvar,E] ; module Target = CL.Over[A,setA,nvar,F] ;
+ module B = Source.B ; S : CRing = Source.S ; module P = Source.PW ;
+ R : CRing = Target.ring ; module RL = Ring[l].RL[Target.ring] ;
+ module GP = GenericPolynomialRingLaws[l].Over[A,setA].At[nvar] ;
+ module D = CC.At[nvar,E,F,le] ; module V = LaurentExponentBridge[l].At[nvar] ; open V ;
+ C : S.R = B.term nvar (A.o,D.complement) ;
+ exponent : Id (N.Exp nvar) (V.addN D.complement Source.Dir.oneN) Target.Dir.oneN =
+   trans (N.ext nvar _ _ (\ i -> NA.plus-comm (D.complement i) (Source.Dir.oneN i))) D.sum ;
+ factor : Id S.R (S.mul Source.J C) Target.J =
+   trans (GP.term-product (A.o,Source.Dir.oneN) (A.o,D.complement))
+     (trans (ap (\ c -> B.term nvar (c,V.addN D.complement Source.Dir.oneN)) (A.mulO A.o))
+       (ap (\ u -> B.term nvar (A.o,u)) exponent)) ;
+ image-factor : Id R.R (R.mul (Target.inclusion.1 Source.J) (Target.inclusion.1 C)) (Target.inclusion.1 Target.J) =
+   trans (sym (Target.inclusion.2.2.2 Source.J C)) (ap Target.inclusion.1 factor) ;
+ invertible : RL.unit (Target.inclusion.1 Source.J) =
+   (R.mul (Target.inclusion.1 C) Target.Loc.invertible.1,
+    trans (R.mulA (Target.inclusion.1 Source.J) (Target.inclusion.1 C) Target.Loc.invertible.1)
+      (trans (ap (\ x -> R.mul x Target.Loc.invertible.1) image-factor) Target.Loc.invertible.2)) ;
+ module Map = PowerLocalizationToUnit[l].Over[S,Target.ring,Target.set,Target.inclusion,Source.J,invertible] ;
+ hom : RH.Hom Source.ring Target.ring = Map.hom ;
+ constant (x : S.R) : Id R.R (hom.1 (Source.inclusion.1 x)) (Target.inclusion.1 x) = Map.constant x ;
+ coeff-term (c : A.R) (u : (N.Exp nvar)) (x : R.R) (m : (EX.Exp nvar)) :
+   Id A.R (Target.coeff (R.mul (Target.inclusion.1 (B.term nvar (c,u))) x) m) (A.mul c (Target.coeff x (subE m u))) =
+   trans (ap (\ s -> Target.coeff (R.mul (Target.inclusion.1 s) x) m) (sym (S.addZ (B.term nvar (c,u)))))
+     (trans (Target.coeff-mul-polynomial (cons (c,u) nil) x m) (A.addZ (A.mul c (Target.coeff x (subE m u))))) ;
+ coeff-J (x : R.R) (m : (EX.Exp nvar)) : Id A.R (Target.coeff (R.mul (Target.inclusion.1 Source.J) x) m) (Target.coeff x (subE m Source.Dir.oneN)) =
+   trans (coeff-term A.o Source.Dir.oneN x m) (Ring[l].RL[A].one-left (Target.coeff x (subE m Source.Dir.oneN))) ;
+ coeff-power : (n : Nat) (x : R.R) (m : (EX.Exp nvar)) ->
+   Id A.R (Target.coeff (R.mul (Target.inclusion.1 (P.power Source.J n)) x) m) (Target.coeff x (subE m (Source.Dir.direction n))) = split {
+   zero -> \ x m -> trans (ap (\ c -> Target.coeff (R.mul c x) m) Target.inclusion.2.1)
+     (trans (ap (\ c -> Target.coeff c m) (RL.one-left x)) (ap (Target.coeff x) (sym (Source.Dir.sub-zero m)))) ;
+   suc n | rec -> \ x m -> trans (ap (\ c -> Target.coeff (R.mul c x) m) (Target.inclusion.2.2.2 Source.J (P.power Source.J n)))
+     (trans (ap (\ c -> Target.coeff c m) (sym (R.mulA (Target.inclusion.1 Source.J) (Target.inclusion.1 (P.power Source.J n)) x)))
+       (trans (coeff-J (R.mul (Target.inclusion.1 (P.power Source.J n)) x) m)
+         (trans (rec x (subE m Source.Dir.oneN))
+           (ap (Target.coeff x) (trans (V.sub-sub m Source.Dir.oneN (Source.Dir.direction n))
+             (ap (subE m) (Source.Dir.step n))))))) } ;
+ module Fraction (q : Source.Raw.Fraction) (m : (EX.Exp nvar)) {
+   n : Nat = q.2.2.1 ; at : (EX.Exp nvar) = addE m (Source.Dir.direction n) ;
+   equation : Id R.R (R.mul (Target.inclusion.1 (P.power Source.J n)) (Map.mapF q)) (Target.inclusion.1 q.1) =
+     trans (ap (\ d -> R.mul (Target.inclusion.1 d) (Map.mapF q)) (sym q.2.2.2)) (Map.fraction q) ;
+   result : Id A.R (Target.coeff (hom.1 (Source.Loc.L.include q)) m) (Source.raw-coeff q m) =
+     trans (ap (\ x -> Target.coeff x m) (Map.beta q))
+       (trans (ap (Target.coeff (Map.mapF q)) (sym (V.sub-add m (Source.Dir.direction n))))
+         (trans (sym (coeff-power n (Map.mapF q) at))
+           (trans (ap (\ x -> Target.coeff x at) equation) (Target.coeff-inclusion q.1 at)))) ;
+ } ;
+ coefficient (x : Source.ring.R) (m : (EX.Exp nvar)) : Id A.R (Target.coeff (hom.1 x) m) (Source.coeff x m) =
+   Source.Q.induction @l (\ x -> Id A.R (Target.coeff (hom.1 x) m) (Source.coeff x m)) (\ x -> setA _ _)
+     (\ q -> trans (Fraction[q,m].result) (sym (Source.coeff-fraction q m))) x ;
+} ;

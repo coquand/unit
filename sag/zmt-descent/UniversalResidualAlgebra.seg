@@ -1,0 +1,120 @@
+-- UniversalResidualAlgebra.seg: the universal residual data over a
+-- polynomial ring over Z and its compatible map, Gate B (handoff §4).
+--
+-- Given residual data D over an arbitrary commutative set-ring R (b_j in R,
+-- monic P_i, polynomials H_ij):
+--   (1) record all coefficients in one finite family c : Fin m -> R: the
+--       b_j, then the lower coefficients of the P_i (block by block), then
+--       the constants of the H_ij (FiniteCoefficientData.leaf), each at its
+--       own index (ib, iP, iH; c-b, c-P, c-H).  Repetitions are harmless.
+--   (2) A0 = Z[C_1 .. C_m] (CoefficientBase.ring m) and h : A0 -> R the ring
+--       map with h(C_k) = c_k (h-C).  h is not assumed injective; no
+--       equality between coefficients is imposed on A0.
+--   (3) the lifted data D0 over A0: b0_j = C_(ib j); P0_i monic with leading
+--       coefficient literally 1 and lower coefficients C_(iP i k); H0_ij the
+--       expression H_ij with its k-th constant replaced by C_(iH i j k).
+--       Their images are the original data, by coefficient equality
+--       (image-b, image-P, image-H).
+--   (4) for an R-algebra E and x : Fin n -> E with the identities (R)
+--           P_i(x_i) = sum_j iota(b_j) H_ij(x)          (hold)
+--       the same identities hold for D0 in E as an A0-algebra through h
+--       (hold0): P0_i(x_i) = (h P0_i)(x_i) = P_i(x_i), and
+--       H0_ij(x) = (h H0_ij)(x) = H_ij(x) (eval-map).  The algebra F0 =
+--       F(D0) of ResidualAlgebra (only the equations (U) imposed) then has
+--       the A0-algebra map phi : F0 -> E with phi(y_i) = x_i (phi-y) and
+--       phi o iota_F0 = iota_E o h (phi-iota).  F0 tensor R = E is neither
+--       claimed nor needed.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module ZC = ZMTCertificate[l] ; module FF = FiniteFamilies[l] ; module CB = CoefficientBase[l] ;
+module FCD = FiniteCoefficientData[l] ; module RA = ResidualAlgebra[l] ;
+
+module Over (R : CRing) (setR : Pr.isSet R.R) (n : Nat) (D : RA.Residual[R,setR,n]) {
+  module LV = FCD.Leaves[R,setR] ;
+  module PR = Presentations[l].Over[R,setR] ; module CR = Algebras[l].Over[R,setR] ;
+  Vn : U l = Ps.Fin n ;
+
+  ------------------------------------------------------------------------
+  -- (1) the coefficient family
+
+  degs (i : Vn) : Nat = (D.P i).deg ;
+  ncs (i : Vn) (j : Ps.Fin D.t) : Nat = LV.nc Vn (D.H i j) ;
+  rowN (i : Vn) : Nat = FF.catN D.t (ncs i) ;
+  mP : Nat = FF.catN n degs ;
+  mH : Nat = FF.catN n rowN ;
+  m : Nat = plus D.t (plus mP mH) ;
+  cP : Ps.Fin mP -> R.R = FF.cat R.R n degs (\ i -> (D.P i).low) ;
+  row (i : Vn) : Ps.Fin (rowN i) -> R.R = FF.cat R.R D.t (ncs i) (\ j -> LV.leaf Vn (D.H i j)) ;
+  cH : Ps.Fin mH -> R.R = FF.cat R.R n rowN row ;
+  cPH : Ps.Fin (plus mP mH) -> R.R = FF.app R.R mP mH cP cH ;
+  c : Ps.Fin m -> R.R = FF.app R.R D.t (plus mP mH) D.b cPH ;
+
+  ib (j : Ps.Fin D.t) : Ps.Fin m = FF.injL D.t (plus mP mH) j ;
+  iP (i : Vn) (k : Ps.Fin (degs i)) : Ps.Fin m = FF.injR D.t (plus mP mH) (FF.injL mP mH (FF.injC n degs i k)) ;
+  iH (i : Vn) (j : Ps.Fin D.t) (k : Ps.Fin (ncs i j)) : Ps.Fin m =
+    FF.injR D.t (plus mP mH) (FF.injR mP mH (FF.injC n rowN i (FF.injC D.t (ncs i) j k))) ;
+
+  c-b (j : Ps.Fin D.t) : Id R.R (c (ib j)) (D.b j) = FF.app-injL R.R D.t (plus mP mH) D.b cPH j ;
+  c-P (i : Vn) (k : Ps.Fin (degs i)) : Id R.R (c (iP i k)) ((D.P i).low k) = calc R.R {
+    c (iP i k) =< FF.app-injR R.R D.t (plus mP mH) D.b cPH (FF.injL mP mH (FF.injC n degs i k))
+      > cPH (FF.injL mP mH (FF.injC n degs i k))
+      =< FF.app-injL R.R mP mH cP cH (FF.injC n degs i k) > cP (FF.injC n degs i k)
+      =< FF.cat-injC R.R n degs (\ i' -> (D.P i').low) i k > (D.P i).low k } ;
+  c-H (i : Vn) (j : Ps.Fin D.t) (k : Ps.Fin (ncs i j)) : Id R.R (c (iH i j k)) (LV.leaf Vn (D.H i j) k) = calc R.R {
+    c (iH i j k) =< FF.app-injR R.R D.t (plus mP mH) D.b cPH (FF.injR mP mH (FF.injC n rowN i (FF.injC D.t (ncs i) j k)))
+      > cPH (FF.injR mP mH (FF.injC n rowN i (FF.injC D.t (ncs i) j k)))
+      =< FF.app-injR R.R mP mH cP cH (FF.injC n rowN i (FF.injC D.t (ncs i) j k)) > cH (FF.injC n rowN i (FF.injC D.t (ncs i) j k))
+      =< FF.cat-injC R.R n rowN row i (FF.injC D.t (ncs i) j k) > row i (FF.injC D.t (ncs i) j k)
+      =< FF.cat-injC R.R D.t (ncs i) (\ j' -> LV.leaf Vn (D.H i j')) j k > LV.leaf Vn (D.H i j) k } ;
+
+  ------------------------------------------------------------------------
+  -- (2) the base A0 = Z[C_1 .. C_m] and h
+
+  A0 : CRing = CB.ring m ;
+  setA0 : Pr.isSet A0.R = CB.set m ;
+  module EvR = CB.Eval[R,setR] ;
+  h : RH.Hom A0 R = EvR.ev m c ;
+  C (k : Ps.Fin m) : A0.R = CB.var m k ;
+  h-C (k : Ps.Fin m) : Id R.R (h.1 (C k)) (c k) = EvR.ev-var m c k ;
+  cfnA0 : CFN[l].CFN[CB.Codes,A0] = CB.cfn m ;
+
+  ------------------------------------------------------------------------
+  -- (3) the lifted data and their images
+
+  module LF = LV.Lift[A0,setA0,h] ;
+  b0 (j : Ps.Fin D.t) : A0.R = C (ib j) ;
+  P0 (i : Vn) : ZC.Monic[A0] = ZC.mkMonic A0 (degs i) (\ k -> C (iP i k)) ;
+  H0 (i : Vn) (j : Ps.Fin D.t) : LF.PA.Expr Vn = LF.lift Vn (D.H i j) (\ k -> C (iH i j k)) ;
+  D0 : RA.Residual[A0,setA0,n] = RA.mkResidual A0 setA0 n D.t b0 P0 H0 ;
+
+  image-b (j : Ps.Fin D.t) : Id R.R (h.1 (b0 j)) (D.b j) = trans (h-C (ib j)) (c-b j) ;
+  image-P (i : Vn) (k : Ps.Fin (degs i)) : Id R.R (h.1 ((P0 i).low k)) ((D.P i).low k) = trans (h-C (iP i k)) (c-P i k) ;
+  image-H (i : Vn) (j : Ps.Fin D.t) : Id (PR.Expr Vn) (LF.M.mapE Vn (H0 i j)) (D.H i j) =
+    LF.lift-image Vn (D.H i j) (\ k -> C (iH i j k)) (\ k -> trans (h-C (iH i j k)) (c-H i j k)) ;
+
+  ------------------------------------------------------------------------
+  -- (4) the universal algebra F0 and the compatible map
+
+  module F0 = RA.Algebra[A0,setA0,n,D0] ;
+
+  module ToE (E : CR.Algebra) (x : Vn -> E.ring.R) (hold : RA.Equations[R,setR,n,D].At[E,x].Holds) {
+    EA : LF.M.CA.Algebra = LF.M.along E ;
+    module EQ = RA.Equations[R,setR,n,D].At[E,x] ;
+    module EQ0 = RA.Equations[A0,setA0,n,D0].At[EA,x] ;
+    term (i : Vn) (j : Ps.Fin D.t) : Id E.ring.R (E.ring.mul (E.iota.1 (D.b j)) (EQ.I.ev (D.H i j)))
+                                              (E.ring.mul (EA.iota.1 (b0 j)) (EQ0.I.ev (H0 i j))) =
+      Ps.cong2 E.ring.R E.ring.mul _ _ _ _ (ap E.iota.1 (sym (image-b j)))
+        (trans (ap (\ e -> EQ.I.ev e) (sym (image-H i j))) (sym (LF.M.eval-map Vn E x (H0 i j)))) ;
+    hold0 : EQ0.Holds = \ i -> calc E.ring.R {
+      EQ.I.EB.mev (ZC.mapM A0 R h (P0 i)) (x i)
+        =< sym (EQ.I.EB.mev-cong (D.P i) (\ k -> h.1 ((P0 i).low k)) (\ k -> sym (image-P i k)) (x i)) > EQ.I.EB.mev (D.P i) (x i)
+        =< hold i > EQ.I.SB.lin D.t (\ j -> E.iota.1 (D.b j)) (\ j -> EQ.I.ev (D.H i j))
+        =< EQ.I.SB.sum-cong D.t (\ j -> E.ring.mul (E.iota.1 (D.b j)) (EQ.I.ev (D.H i j)))
+             (\ j -> E.ring.mul (EA.iota.1 (b0 j)) (EQ0.I.ev (H0 i j))) (term i)
+        > EQ0.I.SB.lin D.t (\ j -> EA.iota.1 (b0 j)) (\ j -> EQ0.I.ev (H0 i j)) } ;
+    module TF = F0.To[EA,x,hold0] ;
+    phi : RH.Hom F0.ring E.ring = TF.phi.1 ;
+    phi-y (i : Vn) : Id E.ring.R (phi.1 (F0.y i)) (x i) = TF.phi-y i ;
+    phi-iota (a : A0.R) : Id E.ring.R (phi.1 (F0.algebra.iota.1 a)) (E.iota.1 (h.1 a)) = TF.phi-iota a ;
+  } ;
+} ;

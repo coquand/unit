@@ -1,0 +1,440 @@
+-- ZMT4Certificate.seg: monic equations for s and every s y_k from
+-- degree-lowering relations, by one finite stable module and the
+-- determinant trick (doc/zmt-formal-cohomology.tex, Lemmas "one finite
+-- stable module" and "degree-lowering certificate"), for three affine
+-- generators y_1, y_2, y_3 (four homogeneous coordinates Z, X_1, X_2, X_3).
+--
+-- Data.  iota : R -> E a ring map, y_1, y_2, y_3 in E.  A term list p over
+-- R with exponents u = (u_0, u_1, u_2, u_3) in N^4 is read at Z = 1,
+-- X_k = y_k: deh p = sum_{c X^u in p} iota(c) y^u, y^u = y_1^u_1 y_2^u_2
+-- y_3^u_3 (mon; the exponent u_0 of Z is ignored).  HomDeg d p: every term
+-- has total degree d; then deh p lies in F_d E (polynomials of degree <= d
+-- in y), and every element of F_d E is such a deh p (pad with Z).
+-- Input (Data):
+--   s in E with s = deh sT, sT of degree D                      (s polynomial)
+--   for k = 1, 2, 3:  s y_k^(m_k + 1) = deh q_k, q_k of degree m_k     (DL)
+--   s = 1 + sum_j iota(b_j) v_j                                (cong)
+-- Put d = D + m_1 + m_2 + m_3.
+-- Reduction (Red).  For beta of total degree d + 1:  s y^beta = deh w with
+-- w of degree d.  If some beta_k >= m_k + 1, beta = beta' + (m_k+1) e_k and
+-- s y^beta = y^beta' (s y_k^(m_k+1)) = deh (X^beta' q_k), of degree
+-- (d + 1 - (m_k + 1)) + m_k = d (big1, big2, big3).  Otherwise beta_k <= m_k
+-- for all k (beta_k + k_k = m_k) and s y^beta = deh (X^beta'' sT) with
+-- beta'' = (k_1 + k_2 + k_3, beta_1, beta_2, beta_3) of size m_1 + m_2 + m_3,
+-- of degree D + m_1 + m_2 + m_3 = d (small).  The test beta_k >= m_k + 1
+-- is the dichotomy on naturals ReesBridge4.dich; nothing about R or E is
+-- decided.
+-- The module V.  Generators g_j for j in the box {0..d}^3 (an index of
+-- Fin N, N = (d+1)^3, by WeightedParts4.decode twice): g_j = y^a for
+-- a = (a_1, a_2, a_3) with a_1 + a_2 + a_3 <= d, and 0 otherwise
+-- (genX; zero generators are harmless: no independence is used).  For w of
+-- degree d (expand):  deh w = sum_j g_j iota(cf_j w),  cf_j w = the sum
+-- of the c with c X^u in w and (u_1, u_2, u_3) = a_j (three selections; by
+-- WeightedParts4.range-single in each coordinate, u_k <= d).  So
+--     1 = deh [1 . Z^d] is in V,  and for z in {s, s y_1, s y_2, s y_3}:
+--     z g_j = deh w_z,j  (s y^a = s y^(a + e_0), s y_k y^a = s y^(a + e_k),
+--     both of degree d + 1, by Red; 0 for the zero generators),
+-- i.e. z g_j = sum_j' g_j' iota(A_z(j', j)).  DeterminantTrick.Integral
+-- (Cayley-Hamilton, adjugate) with Faithful (1 in V) gives chi(z) = 0 for
+-- the characteristic polynomial chi of A_z, monic of degree N, and
+-- CharacteristicMonic.CharMonic writes chi(z) as the Monic evaluation.
+-- THEOREM (Data.certificate) : ZMTCert[R, E, iota, 3, y, t, b].
+level l ; open Ring[l] ; open ZInt[l] ; open PolynomialAction4[l] ; open HomogeneousMatrices4[l] ; open FinitePolynomial4[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ; module NA = NatArith[l] ; module LG = Logic[l] ;
+module ZC = ZMTCertificate[l] ; module WP = WeightedParts4[l] ; module BRt = PolynomialRing4Bridge[l] ; module RB = ReesBridge4[l] ;
+
+three : Nat = suc (suc (suc zero)) ;
+-- y_1, y_2, y_3 are y i1, y i2, y i3
+i1 : Ps.Fin three = inl (inl (inr tt)) ;
+i2 : Ps.Fin three = inl (inr tt) ;
+i3 : Ps.Fin three = inr tt ;
+
+------------------------------------------------------------------------
+-- arithmetic of total degrees
+
+-- (a + a') + (b + b') = (a + b) + (a' + b')
+swap4 (a a' b b' : Base.Nat) : Id Base.Nat (NA.plus (NA.plus a a') (NA.plus b b')) (NA.plus (NA.plus a b) (NA.plus a' b')) = calc Base.Nat {
+  NA.plus (NA.plus a a') (NA.plus b b')
+    =< NA.plus-assoc a a' (NA.plus b b') > NA.plus a (NA.plus a' (NA.plus b b'))
+    =< ap (NA.plus a) (sym (NA.plus-assoc a' b b')) > NA.plus a (NA.plus (NA.plus a' b) b')
+    =< ap (\ x -> NA.plus a (NA.plus x b')) (NA.plus-comm a' b) > NA.plus a (NA.plus (NA.plus b a') b')
+    =< ap (NA.plus a) (NA.plus-assoc b a' b') > NA.plus a (NA.plus b (NA.plus a' b'))
+    =< sym (NA.plus-assoc a b (NA.plus a' b')) > NA.plus (NA.plus a b) (NA.plus a' b') } ;
+-- (x + k) + b = (x + b) + k
+pull (x b k : Base.Nat) : Id Base.Nat (NA.plus (NA.plus x k) b) (NA.plus (NA.plus x b) k) =
+  trans (NA.plus-assoc x k b) (trans (ap (NA.plus x) (NA.plus-comm k b)) (sym (NA.plus-assoc x b k))) ;
+-- the size of a sum of exponents
+size-addH (a b c d : Base.Nat) : (v : N4) -> Id Base.Nat (size (addN4 (nx a b c d) v)) (NA.plus (size (nx a b c d)) (size v)) = split {
+  nx a' b' c' d' -> calc Base.Nat {
+    NA.plus (NA.plus (NA.plus (NA.plus a a') (NA.plus b b')) (NA.plus c c')) (NA.plus d d')
+      =< ap (\ x -> NA.plus (NA.plus x (NA.plus c c')) (NA.plus d d')) (swap4 a a' b b')
+      > NA.plus (NA.plus (NA.plus (NA.plus a b) (NA.plus a' b')) (NA.plus c c')) (NA.plus d d')
+      =< ap (\ x -> NA.plus x (NA.plus d d')) (swap4 (NA.plus a b) (NA.plus a' b') c c')
+      > NA.plus (NA.plus (NA.plus (NA.plus a b) c) (NA.plus (NA.plus a' b') c')) (NA.plus d d')
+      =< swap4 (NA.plus (NA.plus a b) c) (NA.plus (NA.plus a' b') c') d d'
+      > NA.plus (size (nx a b c d)) (size (nx a' b' c' d')) } } ;
+size-add : (u v : N4) -> Id Base.Nat (size (addN4 u v)) (NA.plus (size u) (size v)) = split {
+  nx a b c d -> size-addH a b c d } ;
+-- moving one summand out of a size
+size-big1 (c r b2 b3 k : Base.Nat) : Id Base.Nat (size (nx c (NA.plus r k) b2 b3)) (NA.plus (size (nx c r b2 b3)) k) =
+  trans (ap (\ z -> NA.plus (NA.plus z b2) b3) (sym (NA.plus-assoc c r k)))
+    (trans (ap (\ z -> NA.plus z b3) (pull (NA.plus c r) b2 k)) (pull (NA.plus (NA.plus c r) b2) b3 k)) ;
+size-big2 (c b1 r b3 k : Base.Nat) : Id Base.Nat (size (nx c b1 (NA.plus r k) b3)) (NA.plus (size (nx c b1 r b3)) k) =
+  trans (ap (\ z -> NA.plus z b3) (sym (NA.plus-assoc (NA.plus c b1) r k))) (pull (NA.plus (NA.plus c b1) r) b3 k) ;
+size-big3 (c b1 b2 r k : Base.Nat) : Id Base.Nat (size (nx c b1 b2 (NA.plus r k))) (NA.plus (size (nx c b1 b2 r)) k) =
+  sym (NA.plus-assoc (NA.plus (NA.plus c b1) b2) r k) ;
+-- (((k1 + k2) + k3) + b1) + b2) + b3 = ((b1 + k1) + (b2 + k2)) + (b3 + k3)
+size-small (k1 k2 k3 b1 b2 b3 : Base.Nat) :
+  Id Base.Nat (size (nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3)) (NA.plus (NA.plus (NA.plus b1 k1) (NA.plus b2 k2)) (NA.plus b3 k3)) =
+  trans (trans (ap (\ z -> NA.plus z b3) (NA.plus-assoc (NA.plus (NA.plus k1 k2) k3) b1 b2))
+               (trans (NA.plus-assoc (NA.plus (NA.plus k1 k2) k3) (NA.plus b1 b2) b3)
+                      (NA.plus-comm (NA.plus (NA.plus k1 k2) k3) (NA.plus (NA.plus b1 b2) b3))))
+    (sym (trans (ap (\ z -> NA.plus z (NA.plus b3 k3)) (swap4 b1 k1 b2 k2)) (swap4 (NA.plus b1 b2) (NA.plus k1 k2) b3 k3))) ;
+-- ((k + a1) + a2) + a3 = ((a1 + a2) + a3) + k
+size-slack (k a1 a2 a3 : Base.Nat) : Id Base.Nat (size (nx k a1 a2 a3)) (NA.plus (NA.plus (NA.plus a1 a2) a3) k) =
+  trans (ap (\ z -> NA.plus (NA.plus z a2) a3) (NA.plus-comm k a1))
+    (trans (ap (\ z -> NA.plus z a3) (pull a1 a2 k)) (pull (NA.plus a1 a2) a3 k)) ;
+-- Z^d has size d
+sizeZ (d : Base.Nat) : Id Base.Nat (size (nx d zero zero zero)) d =
+  trans (NA.plus-zero (NA.plus (NA.plus d zero) zero)) (trans (NA.plus-zero (NA.plus d zero)) (NA.plus-zero d)) ;
+-- each exponent of u is at most size u
+le1 (u0 u1 u2 u3 : Base.Nat) : NA.Le u1 (size (nx u0 u1 u2 u3)) =
+  (NA.plus (NA.plus u0 u2) u3, sym (trans (ap (\ z -> NA.plus z u3) (pull u0 u2 u1)) (pull (NA.plus u0 u2) u3 u1))) ;
+le2 (u0 u1 u2 u3 : Base.Nat) : NA.Le u2 (size (nx u0 u1 u2 u3)) = (NA.plus (NA.plus u0 u1) u3, sym (pull (NA.plus u0 u1) u3 u2)) ;
+le3 (u0 u1 u2 u3 : Base.Nat) : NA.Le u3 (size (nx u0 u1 u2 u3)) = (NA.plus (NA.plus u0 u1) u2, refl (size (nx u0 u1 u2 u3))) ;
+le-tr (x a b : Base.Nat) (h : NA.Le x a) (e : Id Base.Nat a b) : NA.Le x b = (h.1, trans h.2 e) ;
+-- a + (s + d) with s = (m + 1) + d is not d
+not-over (u0 m d : Base.Nat) (e : Id Base.Nat (NA.plus u0 (NA.plus (suc m) d)) d) : Empty =
+  WP.not-le-suc d (NA.plus u0 m)
+    (trans (NA.plus-suc (NA.plus u0 m) d) (trans (ap (\ z -> suc z) (NA.plus-assoc u0 m d)) (trans (sym (NA.plus-suc u0 (NA.plus m d))) e))) ;
+
+------------------------------------------------------------------------
+
+module Over (R : CRing) (setR : Pr.isSet R.R) (E : CRing) (setE : Pr.isSet E.R) (iota : RH.Hom R E) (y : Ps.Fin three -> E.R) {
+  module LE = RL[E] ;
+  module FS = FiniteIdeal[l].Sums[E] ;
+  module CS = Comb[l].Sums[E,IdealPowers[l].regular E] ;
+  module WE = WP.Over[E,setE] ;
+  module PR = PolynomialAction4[l].Over[R,setR] ;
+
+  -- powers with natural exponents, monomials at Z = 1
+  bpow (x : E.R) : Base.Nat -> E.R = split { zero -> E.o ; suc a | r -> E.mul x r } ;
+  bpow-add (x : E.R) : (a b : Base.Nat) -> Id E.R (bpow x (NA.plus a b)) (E.mul (bpow x a) (bpow x b)) = split {
+    zero -> \ b -> sym (LE.one-left (bpow x b)) ;
+    suc a | r -> \ b -> trans (ap (E.mul x) (r b)) (E.mulA x (bpow x a) (bpow x b)) } ;
+  mon3 (a1 a2 a3 : Base.Nat) : E.R = E.mul (bpow (y i1) a1) (E.mul (bpow (y i2) a2) (bpow (y i3) a3)) ;
+  mon : N4 -> E.R = split { nx u0 u1 u2 u3 -> mon3 u1 u2 u3 } ;
+  -- p at Z = 1, X_k = y_k
+  deh : TPoly R.R -> E.R = split {
+    nil -> E.z ;
+    cons t p | r -> E.add (E.mul (iota.1 t.1) (mon t.2)) r } ;
+
+  mon-addH (a b c d : Base.Nat) : (v : N4) -> Id E.R (mon (addN4 (nx a b c d) v)) (E.mul (mon (nx a b c d)) (mon v)) = split {
+    nx a' b' c' d' -> calc E.R {
+      mon3 (NA.plus b b') (NA.plus c c') (NA.plus d d')
+        =< Ps.cong2 E.R E.mul _ _ _ _ (bpow-add (y i1) b b') (Ps.cong2 E.R E.mul _ _ _ _ (bpow-add (y i2) c c') (bpow-add (y i3) d d'))
+        > E.mul (E.mul (bpow (y i1) b) (bpow (y i1) b')) (E.mul (E.mul (bpow (y i2) c) (bpow (y i2) c')) (E.mul (bpow (y i3) d) (bpow (y i3) d')))
+        =< ap (E.mul (E.mul (bpow (y i1) b) (bpow (y i1) b'))) (LE.mul-four (bpow (y i2) c) (bpow (y i2) c') (bpow (y i3) d) (bpow (y i3) d'))
+        > E.mul (E.mul (bpow (y i1) b) (bpow (y i1) b')) (E.mul (E.mul (bpow (y i2) c) (bpow (y i3) d)) (E.mul (bpow (y i2) c') (bpow (y i3) d')))
+        =< LE.mul-four (bpow (y i1) b) (bpow (y i1) b') (E.mul (bpow (y i2) c) (bpow (y i3) d)) (E.mul (bpow (y i2) c') (bpow (y i3) d'))
+        > E.mul (mon3 b c d) (mon3 b' c' d') } } ;
+  mon-add : (u v : N4) -> Id E.R (mon (addN4 u v)) (E.mul (mon u) (mon v)) = split { nx a b c d -> mon-addH a b c d } ;
+  deh-scale (c : R.R) (u : N4) : (q : TPoly R.R) -> Id E.R (deh (PR.scaleT (c, u) q)) (E.mul (E.mul (iota.1 c) (mon u)) (deh q)) = split {
+    nil -> sym (LE.mul-zero (E.mul (iota.1 c) (mon u))) ;
+    cons t q | r -> calc E.R {
+      E.add (E.mul (iota.1 (R.mul c t.1)) (mon (addN4 t.2 u))) (deh (PR.scaleT (c, u) q))
+        =< Ps.cong2 E.R E.add _ _ _ _
+             (Ps.cong2 E.R E.mul _ _ _ _ (iota.2.2.2 c t.1) (trans (mon-add t.2 u) (E.mulC (mon t.2) (mon u)))) r
+        > E.add (E.mul (E.mul (iota.1 c) (iota.1 t.1)) (E.mul (mon u) (mon t.2))) (E.mul (E.mul (iota.1 c) (mon u)) (deh q))
+        =< ap (\ z -> E.add z (E.mul (E.mul (iota.1 c) (mon u)) (deh q))) (LE.mul-four (iota.1 c) (iota.1 t.1) (mon u) (mon t.2))
+        > E.add (E.mul (E.mul (iota.1 c) (mon u)) (E.mul (iota.1 t.1) (mon t.2))) (E.mul (E.mul (iota.1 c) (mon u)) (deh q))
+        =< sym (E.dist (E.mul (iota.1 c) (mon u)) (E.mul (iota.1 t.1) (mon t.2)) (deh q))
+        > E.mul (E.mul (iota.1 c) (mon u)) (deh (cons t q)) } } ;
+  hom-scaleT (c : R.R) (u : N4) (m : Base.Nat) : (q : TPoly R.R) -> HomDeg R.R m q -> HomDeg R.R (NA.plus m (size u)) (PR.scaleT (c, u) q) = split {
+    nil -> \ h -> tt ;
+    cons t q | r -> \ h -> (trans (size-add t.2 u) (ap (\ z -> NA.plus z (size u)) h.1), r h.2) } ;
+  -- moving powers out of a monomial
+  mon-big1 (c r b2 b3 k : Base.Nat) : Id E.R (mon (nx c (NA.plus r k) b2 b3)) (E.mul (mon (nx c r b2 b3)) (bpow (y i1) k)) =
+    trans (ap (\ z -> E.mul z (E.mul (bpow (y i2) b2) (bpow (y i3) b3))) (bpow-add (y i1) r k))
+      (trans (sym (E.mulA (bpow (y i1) r) (bpow (y i1) k) (E.mul (bpow (y i2) b2) (bpow (y i3) b3))))
+        (trans (ap (E.mul (bpow (y i1) r)) (E.mulC (bpow (y i1) k) (E.mul (bpow (y i2) b2) (bpow (y i3) b3))))
+          (E.mulA (bpow (y i1) r) (E.mul (bpow (y i2) b2) (bpow (y i3) b3)) (bpow (y i1) k)))) ;
+  mon-big2 (c b1 r b3 k : Base.Nat) : Id E.R (mon (nx c b1 (NA.plus r k) b3)) (E.mul (mon (nx c b1 r b3)) (bpow (y i2) k)) =
+    trans (ap (\ z -> E.mul (bpow (y i1) b1) (E.mul z (bpow (y i3) b3))) (bpow-add (y i2) r k))
+      (trans (ap (E.mul (bpow (y i1) b1))
+                (trans (sym (E.mulA (bpow (y i2) r) (bpow (y i2) k) (bpow (y i3) b3)))
+                  (trans (ap (E.mul (bpow (y i2) r)) (E.mulC (bpow (y i2) k) (bpow (y i3) b3)))
+                    (E.mulA (bpow (y i2) r) (bpow (y i3) b3) (bpow (y i2) k)))))
+        (E.mulA (bpow (y i1) b1) (E.mul (bpow (y i2) r) (bpow (y i3) b3)) (bpow (y i2) k))) ;
+  mon-big3 (c b1 b2 r k : Base.Nat) : Id E.R (mon (nx c b1 b2 (NA.plus r k))) (E.mul (mon (nx c b1 b2 r)) (bpow (y i3) k)) =
+    trans (ap (\ z -> E.mul (bpow (y i1) b1) (E.mul (bpow (y i2) b2) z)) (bpow-add (y i3) r k))
+      (trans (ap (E.mul (bpow (y i1) b1)) (E.mulA (bpow (y i2) b2) (bpow (y i3) r) (bpow (y i3) k)))
+        (E.mulA (bpow (y i1) b1) (E.mul (bpow (y i2) b2) (bpow (y i3) r)) (bpow (y i3) k))) ;
+
+  ------------------------------------------------------------------------
+  -- the stable module V and its generators
+
+  module V (d : Base.Nat) {
+    B' : Nat = BRt.toR (suc d) ;
+    rng (j : Ps.Fin B') : Base.Nat = WP.rangeN d j ;
+    N : Nat = WP.mulF B' (WP.mulF B' B') ;
+    -- the box index of a generator
+    ex1 (j : Ps.Fin N) : Base.Nat = rng (WP.decode B' B' (WP.decode B' (WP.mulF B' B') j).1).1 ;
+    ex2 (j : Ps.Fin N) : Base.Nat = rng (WP.decode B' B' (WP.decode B' (WP.mulF B' B') j).1).2 ;
+    ex3 (j : Ps.Fin N) : Base.Nat = rng (WP.decode B' (WP.mulF B' B') j).2 ;
+    -- y^a if a_1 + a_2 + a_3 <= d, else 0
+    genT (a1 a2 a3 : Base.Nat) : RB.Dich (NA.plus (NA.plus a1 a2) a3) d -> E.R = split {
+      inl w -> mon3 a1 a2 a3 ;
+      inr w -> E.z } ;
+    genX (a1 a2 a3 : Base.Nat) : E.R = genT a1 a2 a3 (RB.dich (NA.plus (NA.plus a1 a2) a3) d) ;
+    g (j : Ps.Fin N) : E.R = genX (ex1 j) (ex2 j) (ex3 j) ;
+    -- at a vector of size d the generator is the monomial
+    gen-atT (u0 u1 u2 u3 : Base.Nat) (hu : Id Base.Nat (size (nx u0 u1 u2 u3)) d) :
+      (w : RB.Dich (NA.plus (NA.plus u1 u2) u3) d) -> Id E.R (genT u1 u2 u3 w) (mon3 u1 u2 u3) = split {
+      inl w -> refl (mon3 u1 u2 u3) ;
+      inr w -> absurd (Id E.R E.z (mon3 u1 u2 u3))
+        (not-over u0 w.1 d (trans (ap (NA.plus u0) (sym w.2))
+          (trans (sym (NA.plus-assoc u0 (NA.plus u1 u2) u3)) (trans (ap (\ z -> NA.plus z u3) (sym (NA.plus-assoc u0 u1 u2))) hu)))) } ;
+    gen-at : (u : N4) -> Id Base.Nat (size u) d -> Id E.R (genX (n1 u) (n2 u) (n3 u)) (mon u) = split {
+      nx u0 u1 u2 u3 -> \ hu -> gen-atT u0 u1 u2 u3 hu (RB.dich (NA.plus (NA.plus u1 u2) u3) d) } ;
+
+    -- the coefficient of a term at a generator: c if (u_1, u_2, u_3) = a_j
+    selR (c : R.R) (x z : Base.Nat) : R.R = sel R c (Id Base.Nat x z) (nat-dec x z) ;
+    sel3 (c : R.R) (u : N4) (j : Ps.Fin N) : R.R = selR (selR (selR c (n1 u) (ex1 j)) (n2 u) (ex2 j)) (n3 u) (ex3 j) ;
+    cfj (j : Ps.Fin N) : TPoly R.R -> R.R = split {
+      nil -> R.z ;
+      cons t p | r -> R.add (sel3 t.1 t.2 j) r } ;
+    -- the two sums of E agree
+    sums-agree : (n : Nat) (f : Ps.Fin n -> E.R) -> Id E.R (FS.sum n f) (CS.sum n f) = split {
+      zero -> \ f -> refl E.z ;
+      suc n | r -> \ f -> ap (E.add (f (inr tt))) (r (\ i -> f (inl i))) } ;
+    -- one coordinate: sum_e G(e) iota([x = e] c) = G(x) iota(c)
+    sel-move (G : Base.Nat -> E.R) (c : R.R) (x z : Base.Nat) : (dd : LG.Dec (Id Base.Nat x z)) ->
+      Id E.R (E.mul (G z) (iota.1 (sel R c (Id Base.Nat x z) dd))) (sel E (E.mul (G x) (iota.1 c)) (Id Base.Nat x z) dd) = split {
+      yes e -> ap (\ v -> E.mul (G v) (iota.1 c)) (sym e) ;
+      no n -> trans (ap (E.mul (G z)) (RH.zero R E iota)) (LE.mul-zero (G z)) } ;
+    pick-sum (G : Base.Nat -> E.R) (c : R.R) (x : Base.Nat) (hx : NA.Le x d) :
+      Id E.R (CS.sum B' (\ e -> E.mul (G (rng e)) (iota.1 (selR c x (rng e))))) (E.mul (G x) (iota.1 c)) =
+      trans (CS.sum-cong B' (\ e -> E.mul (G (rng e)) (iota.1 (selR c x (rng e))))
+               (\ e -> sel E (E.mul (G x) (iota.1 c)) (Id Base.Nat x (rng e)) (nat-dec x (rng e)))
+               (\ e -> sel-move G c x (rng e) (nat-dec x (rng e))))
+        (WE.range-single (E.mul (G x) (iota.1 c)) d x hx) ;
+    -- the three coordinates
+    pick3H (c : R.R) (u0 u1 u2 u3 : Base.Nat) (hu : Id Base.Nat (size (nx u0 u1 u2 u3)) d) :
+      Id E.R (FS.sum N (\ j -> E.mul (g j) (iota.1 (sel3 c (nx u0 u1 u2 u3) j)))) (E.mul (mon3 u1 u2 u3) (iota.1 c)) = calc E.R {
+      FS.sum N (\ j -> E.mul (g j) (iota.1 (sel3 c (nx u0 u1 u2 u3) j)))
+        =< sums-agree N (\ j -> E.mul (g j) (iota.1 (sel3 c (nx u0 u1 u2 u3) j)))
+        > CS.sum N (\ j -> E.mul (g j) (iota.1 (sel3 c (nx u0 u1 u2 u3) j)))
+        =< WE.sum-pair B' (WP.mulF B' B') (\ ke -> E.mul (genX (rng (WP.decode B' B' ke.1).1) (rng (WP.decode B' B' ke.1).2) (rng ke.2))
+              (iota.1 (selR (selR (selR c u1 (rng (WP.decode B' B' ke.1).1)) u2 (rng (WP.decode B' B' ke.1).2)) u3 (rng ke.2))))
+        > CS.sum (WP.mulF B' B') (\ k -> CS.sum B' (\ e -> E.mul (genX (rng (WP.decode B' B' k).1) (rng (WP.decode B' B' k).2) (rng e))
+              (iota.1 (selR (selR (selR c u1 (rng (WP.decode B' B' k).1)) u2 (rng (WP.decode B' B' k).2)) u3 (rng e)))))
+        =< CS.sum-cong (WP.mulF B' B')
+             (\ k -> CS.sum B' (\ e -> E.mul (genX (rng (WP.decode B' B' k).1) (rng (WP.decode B' B' k).2) (rng e))
+                (iota.1 (selR (selR (selR c u1 (rng (WP.decode B' B' k).1)) u2 (rng (WP.decode B' B' k).2)) u3 (rng e)))))
+             (\ k -> E.mul (genX (rng (WP.decode B' B' k).1) (rng (WP.decode B' B' k).2) u3)
+                (iota.1 (selR (selR c u1 (rng (WP.decode B' B' k).1)) u2 (rng (WP.decode B' B' k).2))))
+             (\ k -> pick-sum (\ x -> genX (rng (WP.decode B' B' k).1) (rng (WP.decode B' B' k).2) x)
+                       (selR (selR c u1 (rng (WP.decode B' B' k).1)) u2 (rng (WP.decode B' B' k).2)) u3
+                       (le-tr u3 (size (nx u0 u1 u2 u3)) d (le3 u0 u1 u2 u3) hu))
+        > CS.sum (WP.mulF B' B') (\ k -> E.mul (genX (rng (WP.decode B' B' k).1) (rng (WP.decode B' B' k).2) u3)
+              (iota.1 (selR (selR c u1 (rng (WP.decode B' B' k).1)) u2 (rng (WP.decode B' B' k).2))))
+        =< WE.sum-pair B' B' (\ ke -> E.mul (genX (rng ke.1) (rng ke.2) u3) (iota.1 (selR (selR c u1 (rng ke.1)) u2 (rng ke.2))))
+        > CS.sum B' (\ k -> CS.sum B' (\ e -> E.mul (genX (rng k) (rng e) u3) (iota.1 (selR (selR c u1 (rng k)) u2 (rng e)))))
+        =< CS.sum-cong B' (\ k -> CS.sum B' (\ e -> E.mul (genX (rng k) (rng e) u3) (iota.1 (selR (selR c u1 (rng k)) u2 (rng e)))))
+             (\ k -> E.mul (genX (rng k) u2 u3) (iota.1 (selR c u1 (rng k))))
+             (\ k -> pick-sum (\ x -> genX (rng k) x u3) (selR c u1 (rng k)) u2 (le-tr u2 (size (nx u0 u1 u2 u3)) d (le2 u0 u1 u2 u3) hu))
+        > CS.sum B' (\ k -> E.mul (genX (rng k) u2 u3) (iota.1 (selR c u1 (rng k))))
+        =< pick-sum (\ x -> genX x u2 u3) c u1 (le-tr u1 (size (nx u0 u1 u2 u3)) d (le1 u0 u1 u2 u3) hu)
+        > E.mul (genX u1 u2 u3) (iota.1 c)
+        =< ap (\ v -> E.mul v (iota.1 c)) (gen-at (nx u0 u1 u2 u3) hu) > E.mul (mon3 u1 u2 u3) (iota.1 c) } ;
+    pick3 (c : R.R) : (u : N4) -> Id Base.Nat (size u) d -> Id E.R (FS.sum N (\ j -> E.mul (g j) (iota.1 (sel3 c u j)))) (E.mul (mon u) (iota.1 c)) = split {
+      nx u0 u1 u2 u3 -> pick3H c u0 u1 u2 u3 } ;
+    -- deh w = sum_j g_j iota(cf_j w) for w of degree d
+    expand : (w : TPoly R.R) -> HomDeg R.R d w -> Id E.R (deh w) (FS.sum N (\ j -> E.mul (g j) (iota.1 (cfj j w)))) = split {
+      nil -> \ h -> sym (trans (FS.sum-cong N (\ j -> E.mul (g j) (iota.1 R.z)) (\ j -> E.z)
+                                (\ j -> trans (ap (E.mul (g j)) (RH.zero R E iota)) (LE.mul-zero (g j)))) (FS.sum-zero N)) ;
+      cons t p | r -> \ h -> calc E.R {
+        E.add (E.mul (iota.1 t.1) (mon t.2)) (deh p)
+          =< Ps.cong2 E.R E.add _ _ _ _ (trans (E.mulC (iota.1 t.1) (mon t.2)) (sym (pick3 t.1 t.2 h.1))) (r h.2)
+          > E.add (FS.sum N (\ j -> E.mul (g j) (iota.1 (sel3 t.1 t.2 j)))) (FS.sum N (\ j -> E.mul (g j) (iota.1 (cfj j p))))
+          =< sym (FS.sum-add N (\ j -> E.mul (g j) (iota.1 (sel3 t.1 t.2 j))) (\ j -> E.mul (g j) (iota.1 (cfj j p))))
+          > FS.sum N (\ j -> E.add (E.mul (g j) (iota.1 (sel3 t.1 t.2 j))) (E.mul (g j) (iota.1 (cfj j p))))
+          =< FS.sum-cong N (\ j -> E.add (E.mul (g j) (iota.1 (sel3 t.1 t.2 j))) (E.mul (g j) (iota.1 (cfj j p))))
+               (\ j -> E.mul (g j) (iota.1 (cfj j (cons t p))))
+               (\ j -> sym (trans (ap (E.mul (g j)) (iota.2.2.1 (sel3 t.1 t.2 j) (cfj j p)))
+                                  (E.dist (g j) (iota.1 (sel3 t.1 t.2 j)) (iota.1 (cfj j p)))))
+          > FS.sum N (\ j -> E.mul (g j) (iota.1 (cfj j (cons t p)))) } } ;
+    -- 1 = deh [1 . Z^d] is in V
+    oneT : TPoly R.R = cons (R.o, nx d zero zero zero) nil ;
+    deh-one : Id E.R (deh oneT) E.o =
+      trans (E.addZ (E.mul (iota.1 R.o) (mon (nx d zero zero zero))))
+        (trans (ap (\ v -> E.mul v (mon3 zero zero zero)) iota.2.1)
+          (trans (LE.one-left (mon3 zero zero zero)) (trans (LE.one-left (E.mul E.o E.o)) (LE.one-left E.o)))) ;
+    one : Id E.R (FS.lin N (\ j -> iota.1 (cfj j oneT)) g) E.o =
+      trans (FS.sum-cong N (\ j -> E.mul (iota.1 (cfj j oneT)) (g j)) (\ j -> E.mul (g j) (iota.1 (cfj j oneT))) (\ j -> E.mulC (iota.1 (cfj j oneT)) (g j)))
+        (trans (sym (expand oneT (sizeZ d, tt))) deh-one) ;
+
+    -- a multiplier z with z g_j = deh w_j, w_j of degree d, is integral
+    Acts (z : E.R) : U l = (j : Ps.Fin N) -> (w : TPoly R.R) * (HomDeg R.R d w * Id E.R (E.mul z (g j)) (deh w)) ;
+    module Integral (z : E.R) (act : Acts z) {
+      A (j' j : Ps.Fin N) : R.R = cfj j' (act j).1 ;
+      eq (j : Ps.Fin N) : Id E.R (E.mul z (g j)) (Determinant[l].Over[E,setE].act N (\ j' j0 -> iota.1 (A j' j0)) g j) =
+        trans (act j).2.2 (expand (act j).1 (act j).2.1) ;
+      module DI = DeterminantTrick[l].Integral[R,setR,E,setE,iota,z,N,A,g,eq] ;
+      module FI = DI.Faithful[\ j -> iota.1 (cfj j oneT),one] ;
+      module CM = CharacteristicMonic[l].Expansion[R,setR,E,setE,iota,z].CharMonic[N,A] ;
+      P : ZC.Monic[R] = CM.P ;
+      root : Id E.R (ZC.Eval[R,E,iota].mev P z) E.z = trans (sym CM.ev-chi) FI.root ;
+    } ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the certificate from (DL)
+
+  module Data (s : E.R) (D : Base.Nat) (sT : TPoly R.R) (hsT : HomDeg R.R D sT) (esT : Id E.R (deh sT) s)
+    (m : Ps.Fin three -> Base.Nat) (q : Ps.Fin three -> TPoly R.R) (hq : (k : Ps.Fin three) -> HomDeg R.R (m k) (q k))
+    (dl : (k : Ps.Fin three) -> Id E.R (E.mul s (bpow (y k) (suc (m k)))) (deh (q k)))
+    (t : Nat) (b : Ps.Fin t -> R.R) (cong : FiniteIdeal[l].Over[E,t,\ j -> iota.1 (b j)].Certificate s E.o) {
+    d : Base.Nat = NA.plus (NA.plus (NA.plus D (m i1)) (m i2)) (m i3) ;
+    RedW (beta : N4) : U l = (w : TPoly R.R) * (HomDeg R.R d w * Id E.R (E.mul s (mon beta)) (deh w)) ;
+    -- s y^beta reduced to degree d
+    module Red (c b1 b2 b3 : Base.Nat) (h : Id Base.Nat (size (nx c b1 b2 b3)) (suc d)) {
+      -- one big exponent: s y^beta = y^beta' (s y_k^(m_k + 1))
+      deg-big (sb mk : Base.Nat) (e : Id Base.Nat (NA.plus sb (suc mk)) (suc d)) : Id Base.Nat (NA.plus mk sb) d =
+        trans (NA.plus-comm mk sb) (NA.suc-inj (trans (sym (NA.plus-suc sb mk)) e)) ;
+      val-big (v : N4) (k : Ps.Fin three) (em : Id E.R (mon (nx c b1 b2 b3)) (E.mul (mon v) (bpow (y k) (suc (m k))))) :
+        Id E.R (E.mul s (mon (nx c b1 b2 b3))) (deh (PR.scaleT (R.o, v) (q k))) = calc E.R {
+        E.mul s (mon (nx c b1 b2 b3))
+          =< ap (E.mul s) em > E.mul s (E.mul (mon v) (bpow (y k) (suc (m k))))
+          =< LE.mul-swap s (mon v) (bpow (y k) (suc (m k))) > E.mul (mon v) (E.mul s (bpow (y k) (suc (m k))))
+          =< ap (E.mul (mon v)) (dl k) > E.mul (mon v) (deh (q k))
+          =< ap (\ z -> E.mul z (deh (q k))) (sym (trans (ap (\ z -> E.mul z (mon v)) iota.2.1) (LE.one-left (mon v))))
+          > E.mul (E.mul (iota.1 R.o) (mon v)) (deh (q k))
+          =< sym (deh-scale R.o v (q k)) > deh (PR.scaleT (R.o, v) (q k)) } ;
+      big1 (r : Base.Nat) (hb : Id Base.Nat b1 (NA.plus (suc r) (m i1))) : RedW (nx c b1 b2 b3) =
+        (PR.scaleT (R.o, nx c r b2 b3) (q i1),
+         (subst (\ e -> HomDeg R.R e (PR.scaleT (R.o, nx c r b2 b3) (q i1)))
+            (deg-big (size (nx c r b2 b3)) (m i1)
+              (trans (sym (size-big1 c r b2 b3 (suc (m i1))))
+                (trans (ap (\ x -> size (nx c x b2 b3)) (sym (trans hb (sym (NA.plus-suc r (m i1)))))) h)))
+            (hom-scaleT R.o (nx c r b2 b3) (m i1) (q i1) (hq i1)),
+          val-big (nx c r b2 b3) i1
+            (trans (ap (\ x -> mon (nx c x b2 b3)) (trans hb (sym (NA.plus-suc r (m i1))))) (mon-big1 c r b2 b3 (suc (m i1)))))) ;
+      big2 (r : Base.Nat) (hb : Id Base.Nat b2 (NA.plus (suc r) (m i2))) : RedW (nx c b1 b2 b3) =
+        (PR.scaleT (R.o, nx c b1 r b3) (q i2),
+         (subst (\ e -> HomDeg R.R e (PR.scaleT (R.o, nx c b1 r b3) (q i2)))
+            (deg-big (size (nx c b1 r b3)) (m i2)
+              (trans (sym (size-big2 c b1 r b3 (suc (m i2))))
+                (trans (ap (\ x -> size (nx c b1 x b3)) (sym (trans hb (sym (NA.plus-suc r (m i2)))))) h)))
+            (hom-scaleT R.o (nx c b1 r b3) (m i2) (q i2) (hq i2)),
+          val-big (nx c b1 r b3) i2
+            (trans (ap (\ x -> mon (nx c b1 x b3)) (trans hb (sym (NA.plus-suc r (m i2))))) (mon-big2 c b1 r b3 (suc (m i2)))))) ;
+      big3 (r : Base.Nat) (hb : Id Base.Nat b3 (NA.plus (suc r) (m i3))) : RedW (nx c b1 b2 b3) =
+        (PR.scaleT (R.o, nx c b1 b2 r) (q i3),
+         (subst (\ e -> HomDeg R.R e (PR.scaleT (R.o, nx c b1 b2 r) (q i3)))
+            (deg-big (size (nx c b1 b2 r)) (m i3)
+              (trans (sym (size-big3 c b1 b2 r (suc (m i3))))
+                (trans (ap (\ x -> size (nx c b1 b2 x)) (sym (trans hb (sym (NA.plus-suc r (m i3)))))) h)))
+            (hom-scaleT R.o (nx c b1 b2 r) (m i3) (q i3) (hq i3)),
+          val-big (nx c b1 b2 r) i3
+            (trans (ap (\ x -> mon (nx c b1 b2 x)) (trans hb (sym (NA.plus-suc r (m i3))))) (mon-big3 c b1 b2 r (suc (m i3)))))) ;
+      -- all exponents small: s y^beta = deh (X^beta'' sT)
+      small (k1 k2 k3 : Base.Nat) (h1 : Id Base.Nat (NA.plus b1 k1) (m i1)) (h2 : Id Base.Nat (NA.plus b2 k2) (m i2))
+        (h3 : Id Base.Nat (NA.plus b3 k3) (m i3)) : RedW (nx c b1 b2 b3) =
+        (PR.scaleT (R.o, nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3) sT,
+         (subst (\ e -> HomDeg R.R e (PR.scaleT (R.o, nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3) sT))
+            (calc Base.Nat {
+              NA.plus D (size (nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3))
+                =< ap (NA.plus D) (trans (size-small k1 k2 k3 b1 b2 b3)
+                     (Ps.cong2 Base.Nat NA.plus _ _ _ _ (Ps.cong2 Base.Nat NA.plus _ _ _ _ h1 h2) h3))
+                > NA.plus D (NA.plus (NA.plus (m i1) (m i2)) (m i3))
+                =< ap (NA.plus D) (NA.plus-assoc (m i1) (m i2) (m i3)) > NA.plus D (NA.plus (m i1) (NA.plus (m i2) (m i3)))
+                =< sym (trans (NA.plus-assoc (NA.plus D (m i1)) (m i2) (m i3)) (NA.plus-assoc D (m i1) (NA.plus (m i2) (m i3)))) > d })
+            (hom-scaleT R.o (nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3) D sT hsT),
+          calc E.R {
+            E.mul s (mon3 b1 b2 b3)
+              =< ap (\ z -> E.mul z (mon3 b1 b2 b3)) (sym esT) > E.mul (deh sT) (mon3 b1 b2 b3)
+              =< E.mulC (deh sT) (mon3 b1 b2 b3) > E.mul (mon3 b1 b2 b3) (deh sT)
+              =< ap (\ z -> E.mul z (deh sT)) (sym (trans (ap (\ z -> E.mul z (mon3 b1 b2 b3)) iota.2.1) (LE.one-left (mon3 b1 b2 b3))))
+              > E.mul (E.mul (iota.1 R.o) (mon (nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3))) (deh sT)
+              =< sym (deh-scale R.o (nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3) sT)
+              > deh (PR.scaleT (R.o, nx (NA.plus (NA.plus k1 k2) k3) b1 b2 b3) sT) })) ;
+      c3 (k1 k2 : Base.Nat) (h1 : Id Base.Nat (NA.plus b1 k1) (m i1)) (h2 : Id Base.Nat (NA.plus b2 k2) (m i2)) :
+        RB.Dich b3 (m i3) -> RedW (nx c b1 b2 b3) = split {
+        inl w -> small k1 k2 w.1 h1 h2 w.2 ;
+        inr w -> big3 w.1 w.2 } ;
+      c2 (k1 : Base.Nat) (h1 : Id Base.Nat (NA.plus b1 k1) (m i1)) : RB.Dich b2 (m i2) -> RedW (nx c b1 b2 b3) = split {
+        inl w -> c3 k1 w.1 h1 w.2 (RB.dich b3 (m i3)) ;
+        inr w -> big2 w.1 w.2 } ;
+      c1 : RB.Dich b1 (m i1) -> RedW (nx c b1 b2 b3) = split {
+        inl w -> c2 w.1 w.2 (RB.dich b2 (m i2)) ;
+        inr w -> big1 w.1 w.2 } ;
+      res : RedW (nx c b1 b2 b3) = c1 (RB.dich b1 (m i1)) ;
+    } ;
+
+    module VD = V[d] ;
+    -- the actions of s and of s y_k on the generators
+    zero-act (z : E.R) : (w : TPoly R.R) * (HomDeg R.R d w * Id E.R (E.mul z E.z) (deh w)) = (nil, (tt, LE.mul-zero z)) ;
+    actS (a1 a2 a3 : Base.Nat) : (w : RB.Dich (NA.plus (NA.plus a1 a2) a3) d) ->
+      (p : TPoly R.R) * (HomDeg R.R d p * Id E.R (E.mul s (VD.genT a1 a2 a3 w)) (deh p)) = split {
+      inl w -> Red[suc w.1,a1,a2,a3,ap (\ k -> suc k) (trans (size-slack w.1 a1 a2 a3) w.2)].res ;
+      inr w -> zero-act s } ;
+    act1 (a1 a2 a3 : Base.Nat) : (w : RB.Dich (NA.plus (NA.plus a1 a2) a3) d) ->
+      (p : TPoly R.R) * (HomDeg R.R d p * Id E.R (E.mul (E.mul s (y i1)) (VD.genT a1 a2 a3 w)) (deh p)) = split {
+      inl w -> (Red[w.1,suc a1,a2,a3,
+                  trans (ap (\ z -> NA.plus (NA.plus z a2) a3) (NA.plus-suc w.1 a1)) (ap (\ k -> suc k) (trans (size-slack w.1 a1 a2 a3) w.2))].res.1,
+                (Red[w.1,suc a1,a2,a3,
+                  trans (ap (\ z -> NA.plus (NA.plus z a2) a3) (NA.plus-suc w.1 a1)) (ap (\ k -> suc k) (trans (size-slack w.1 a1 a2 a3) w.2))].res.2.1,
+                 trans (trans (sym (E.mulA s (y i1) (mon3 a1 a2 a3))) (ap (E.mul s) (E.mulA (y i1) (bpow (y i1) a1) (E.mul (bpow (y i2) a2) (bpow (y i3) a3)))))
+                   Red[w.1,suc a1,a2,a3,
+                     trans (ap (\ z -> NA.plus (NA.plus z a2) a3) (NA.plus-suc w.1 a1)) (ap (\ k -> suc k) (trans (size-slack w.1 a1 a2 a3) w.2))].res.2.2)) ;
+      inr w -> zero-act (E.mul s (y i1)) } ;
+    -- (k + a1) + (a2 + 1) etc.
+    sz2 (k a1 a2 a3 : Base.Nat) (e : Id Base.Nat (NA.plus (NA.plus (NA.plus a1 a2) a3) k) d) : Id Base.Nat (size (nx k a1 (suc a2) a3)) (suc d) =
+      trans (ap (\ z -> NA.plus z a3) (NA.plus-suc (NA.plus k a1) a2)) (ap (\ x -> suc x) (trans (size-slack k a1 a2 a3) e)) ;
+    sz3 (k a1 a2 a3 : Base.Nat) (e : Id Base.Nat (NA.plus (NA.plus (NA.plus a1 a2) a3) k) d) : Id Base.Nat (size (nx k a1 a2 (suc a3))) (suc d) =
+      trans (NA.plus-suc (NA.plus (NA.plus k a1) a2) a3) (ap (\ x -> suc x) (trans (size-slack k a1 a2 a3) e)) ;
+    act2 (a1 a2 a3 : Base.Nat) : (w : RB.Dich (NA.plus (NA.plus a1 a2) a3) d) ->
+      (p : TPoly R.R) * (HomDeg R.R d p * Id E.R (E.mul (E.mul s (y i2)) (VD.genT a1 a2 a3 w)) (deh p)) = split {
+      inl w -> (Red[w.1,a1,suc a2,a3,sz2 w.1 a1 a2 a3 w.2].res.1,
+                (Red[w.1,a1,suc a2,a3,sz2 w.1 a1 a2 a3 w.2].res.2.1,
+                 trans (trans (sym (E.mulA s (y i2) (mon3 a1 a2 a3)))
+                         (ap (E.mul s) (trans (LE.mul-swap (y i2) (bpow (y i1) a1) (E.mul (bpow (y i2) a2) (bpow (y i3) a3)))
+                                              (ap (E.mul (bpow (y i1) a1)) (E.mulA (y i2) (bpow (y i2) a2) (bpow (y i3) a3))))))
+                   Red[w.1,a1,suc a2,a3,sz2 w.1 a1 a2 a3 w.2].res.2.2)) ;
+      inr w -> zero-act (E.mul s (y i2)) } ;
+    act3 (a1 a2 a3 : Base.Nat) : (w : RB.Dich (NA.plus (NA.plus a1 a2) a3) d) ->
+      (p : TPoly R.R) * (HomDeg R.R d p * Id E.R (E.mul (E.mul s (y i3)) (VD.genT a1 a2 a3 w)) (deh p)) = split {
+      inl w -> (Red[w.1,a1,a2,suc a3,sz3 w.1 a1 a2 a3 w.2].res.1,
+                (Red[w.1,a1,a2,suc a3,sz3 w.1 a1 a2 a3 w.2].res.2.1,
+                 trans (trans (sym (E.mulA s (y i3) (mon3 a1 a2 a3)))
+                         (ap (E.mul s) (trans (LE.mul-swap (y i3) (bpow (y i1) a1) (E.mul (bpow (y i2) a2) (bpow (y i3) a3)))
+                                              (ap (E.mul (bpow (y i1) a1)) (LE.mul-swap (y i3) (bpow (y i2) a2) (bpow (y i3) a3))))))
+                   Red[w.1,a1,a2,suc a3,sz3 w.1 a1 a2 a3 w.2].res.2.2)) ;
+      inr w -> zero-act (E.mul s (y i3)) } ;
+    -- the four multipliers act on V
+    actsS : VD.Acts s = \ j -> actS (VD.ex1 j) (VD.ex2 j) (VD.ex3 j) (RB.dich (NA.plus (NA.plus (VD.ex1 j) (VD.ex2 j)) (VD.ex3 j)) d) ;
+    actT1 : (u : Top) -> VD.Acts (E.mul s (y (inl (inl (inr u))))) = split {
+      tt -> \ j -> act1 (VD.ex1 j) (VD.ex2 j) (VD.ex3 j) (RB.dich (NA.plus (NA.plus (VD.ex1 j) (VD.ex2 j)) (VD.ex3 j)) d) } ;
+    actT2 : (u : Top) -> VD.Acts (E.mul s (y (inl (inr u)))) = split {
+      tt -> \ j -> act2 (VD.ex1 j) (VD.ex2 j) (VD.ex3 j) (RB.dich (NA.plus (NA.plus (VD.ex1 j) (VD.ex2 j)) (VD.ex3 j)) d) } ;
+    actT3 : (u : Top) -> VD.Acts (E.mul s (y (inr u))) = split {
+      tt -> \ j -> act3 (VD.ex1 j) (VD.ex2 j) (VD.ex3 j) (RB.dich (NA.plus (NA.plus (VD.ex1 j) (VD.ex2 j)) (VD.ex3 j)) d) } ;
+    actsY1 : (k : Ps.Fin (suc zero)) -> VD.Acts (E.mul s (y (inl (inl k)))) = split {
+      inl k -> absurd (VD.Acts (E.mul s (y (inl (inl (inl k)))))) k ;
+      inr u -> actT1 u } ;
+
+    actsY2 : (k : Ps.Fin (suc (suc zero))) -> VD.Acts (E.mul s (y (inl k))) = split {
+      inl k -> actsY1 k ;
+      inr u -> actT2 u } ;
+    actsYS : (k : Ps.Fin three) -> VD.Acts (E.mul s (y k)) = split {
+      inl k -> actsY2 k ;
+      inr u -> actT3 u } ;
+    module IS = VD.Integral[s,actsS] ;
+    module IY (k : Ps.Fin three) { module I = VD.Integral[E.mul s (y k),actsYS k] ; } ;
+    -- THEOREM: the certificate
+    certificate : ZC.ZMTCert[R,E,iota,three,y,t,b] =
+      ZC.mkZMTCert R E iota three y t b s cong IS.P IS.root (\ k -> IY[k].I.P) (\ k -> IY[k].I.root) ;
+  } ;
+} ;

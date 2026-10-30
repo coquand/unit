@@ -1,0 +1,48 @@
+-- A single coefficient at a permitted chart/exponent. This constructs
+-- actual finite cochains for regressions, rather than assumed examples.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module LG = Logic[l] ; module L = GenericLaurent[l] ; module Tr = Truncation[l] ;
+top-eq : (x y : Top) -> Id Top x y = split { tt -> split { tt -> refl tt } } ;
+flagCode : Flag -> U l = split { absent -> Top ; present -> Base.Empty } ;
+flag-dec : (a b : Flag) -> LG.Dec (Id Flag a b) = split {
+ absent -> split { absent -> yes (refl absent) ; present -> no (\ e -> subst flagCode e tt) } ;
+ present -> split { absent -> no (\ e -> subst flagCode (sym e) tt) ; present -> yes (refl present) } } ;
+module SubStep (n : Nat) (rec : (s t : Sub n) -> LG.Dec (Id (Sub n) s t)) (s t : Sub (suc n)) {
+ tails (h : Id Flag s.1 t.1) : LG.Dec (Id (Sub n) s.2 t.2) -> LG.Dec (Id (Sub (suc n)) s t) = split {
+  yes q -> yes (trans {Sub (suc n)} {s} {(t.1,s.2)} {t} (ap (\ f -> (f,s.2)) h) (ap (\ u -> (t.1,u)) q)) ;
+  no ne -> no (\ e -> ne (ap (\ x -> x.2) e)) } ;
+ heads : LG.Dec (Id Flag s.1 t.1) -> LG.Dec (Id (Sub (suc n)) s t) = split {
+  yes h -> tails h (rec s.2 t.2) ; no ne -> no (\ e -> ne (ap (\ x -> x.1) e)) } ;
+} ;
+sub-dec : (n : Nat) (s t : Sub n) -> LG.Dec (Id (Sub n) s t) = split {
+ zero -> \ s t -> yes (top-eq s t) ;
+ suc n | rec -> \ s t -> SubStep[n,rec,s,t].heads (flag-dec s.1 t.1) } ;
+module Over (D : CRing) (setD : Pr.isSet D.R) (Ex I : U l) (Bad : I -> Ex -> U l)
+ (decE : (x y : Ex) -> LG.Dec (Id Ex x y)) (decI : (x y : I) -> LG.Dec (Id I x y))
+ (i0 : I) (m0 : Ex) (good : Bad i0 m0 -> Empty) (a : D.R) {
+ module C = L.Over[D,setD].Chart[Ex,I,Bad] ;
+ pick (y : D.R) (P : U l) : LG.Dec P -> D.R = split { yes h -> y ; no ne -> D.z } ;
+ row (i : I) : D.R = pick a (Id I i0 i) (decI i0 i) ;
+ raw (i : I) (m : Ex) : D.R = pick (row i) (Id Ex m0 m) (decE m0 m) ;
+ vanish (i : I) (m : Ex) (nm : Not (L.Mem Ex m (cons m0 nil))) : (q : LG.Dec (Id Ex m0 m)) -> Id D.R (pick (row i) (Id Ex m0 m) q) D.z = split {
+  yes e -> absurd (Id D.R (row i) D.z) (nm (inl e)) ; no ne -> refl D.z } ;
+ row-van (i : I) (b : Bad i m0) : (q : LG.Dec (Id I i0 i)) -> Id D.R (pick a (Id I i0 i) q) D.z = split {
+  yes e -> absurd (Id D.R a D.z) (good (subst (\ i -> Bad i m0) (sym e) b)) ; no ne -> refl D.z } ;
+ van (i : I) (m : Ex) (b : Bad i m) : (q : LG.Dec (Id Ex m0 m)) -> Id D.R (pick (row i) (Id Ex m0 m) q) D.z = split {
+  yes e -> row-van i (subst (Bad i) (sym e) b) (decI i0 i) ; no ne -> refl D.z } ;
+ element : C.El = C.mk raw
+  (Tr.Trunc[C.SuppW raw].inc (cons m0 nil,\ i m nm -> vanish i m nm (decE m0 m)))
+  (\ i m b -> van i m b (decE m0 m)) ;
+ pick-at (y : D.R) (P : U l) (h : P) : (q : LG.Dec P) -> Id D.R (pick y P q) y = split {
+  yes e -> refl y ; no ne -> Pr.absurd (Id D.R D.z y) (ne h) } ;
+ at : Id D.R (C.val element i0 m0) a = trans (pick-at (row i0) (Id Ex m0 m0) (refl m0) (decE m0 m0))
+  (pick-at a (Id I i0 i0) (refl i0) (decI i0 i0)) ;
+
+ module Property (P : D.R -> U l) (pz : P D.z) (pa : P a) {
+  pick-property (y : D.R) (hy : P y) (Q : U l) : (q : LG.Dec Q) -> P (pick y Q q) = split {
+   yes e -> hy ; no ne -> pz } ;
+  row-property (i : I) : P (row i) = pick-property a pa (Id I i0 i) (decI i0 i) ;
+  point-property (i : I) (m : Ex) : P (C.val element i m) =
+   pick-property (row i) (row-property i) (Id Ex m0 m) (decE m0 m) ;
+ } ;
+} ;

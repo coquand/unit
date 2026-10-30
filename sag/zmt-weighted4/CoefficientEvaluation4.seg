@@ -1,0 +1,238 @@
+-- CoefficientEvaluation4.seg: evaluation U_j |-> a_j, finite ideal-power
+-- witnesses, and the evaluated weighted identity (handoff §7, Gate D).
+--
+-- ev = G.ev a : D -> A, the ring map with ev (iota x) = x, ev (var j) = a_j
+-- (for D = A[U_1..U_t] it is built from the universal property of each
+-- polynomial extension, CoefficientPolynomial).  I = (a_1, .., a_t).
+--
+-- Scalars.  For x of coefficient degree k >= 0, ev x is in I^k with an
+-- explicit witness (wit-scalar): x is the value of its expression of
+-- degree k (CoefficientParts.expr), and the evaluated expression is the
+-- witness tree:  ev (sum_j var j . y_j) = sum_j a_j ev y_j  (ev-comb).
+-- For k < 0, x = 0 so ev x = 0 (witZ-scalar).  t = 0 and k = 0 included.
+--
+-- Cochains (EvChart).  ev and every low j act pointwise on chart cochains
+-- (Pointwise: a map sending 0 to 0 keeps the support list and the chart
+-- vanishing set); evc is additive and maps q . x to ev(q) . evc x.  If
+-- every coefficient of a finitely supported cochain x has degree k+1, then
+--     evc x = sum_j a_j evc (low_j x)                     (in the A-chart module)
+-- pointwise by (low), with low_j x again a chart cochain of degree k; this
+-- gives a witness of evc x in I^k of the ACTUAL chart module over A (wit),
+-- by induction on k, with no choice (the decomposition is canonical).
+--
+-- Evaluated weighted theorem (EvDependence .. Seq[c,hc,lift].evaluated).
+-- Under the truncation of WeightedDependence4: the weighted result w
+-- together with
+--   ev c_N - sum_{i<N} ev(r_i) ev c_i = delta (ev v) + sum_j ev(g_j) ev(a'_j)
+-- in the cochain modules of CoherentDependence4 over A for the evaluated
+-- polynomials ev(g_j) (same projective degrees d_j), and the witnesses
+--   ev(r_i) in I^(N-i),  ev v in I^(N+1) C_A^0(-1),  ev(a'_j) in I^(N+1-f_j).
+-- The terms ev(g_j) ev(a'_j) are KEPT: they lie in the evaluated equation
+-- ideal; their vanishing (Rees presentation) is outside this task.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ;
+open HomogeneousMatrices4[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module TL4 = TopList4[l] ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (t : Nat) (D : CRing) (setD : Pr.isSet D.R) (G : Graded[A,t,D]) (a : Ps.Fin t -> A.R) {
+  module GL = Laws[A,t,D,setD,G] ;
+  module CC = CoefficientCech4[l].Over[A,t,D,setD,G] ;
+  module RSA = Comb[l].Sums[A,IP.regular A] ;
+  module DLA = IP.ModL[A,IP.regular A] ;
+  module FR = FiniteIdealPowers[l].Over[A,IP.regular A,t,a] ;
+  module PAD = PolynomialAction4[l].Over[D,setD] ; module PAA = PolynomialAction4[l].Over[A,setA] ;
+  module CD = Cech4[l].Over[D,setD] ; module CA = Cech4[l].Over[A,setA] ;
+
+  ev : RH.Hom D A = G.ev a ;
+  module HS = HomSum[D,A,ev] ;
+  ev-zero : Id A.R (ev.1 D.z) A.z = RH.zero D A ev ;
+  ev-sub (x y : D.R) : Id A.R (ev.1 (CD.DL.msub x y)) (DLA.msub (ev.1 x) (ev.1 y)) =
+    trans (ev.2.2.1 x (D.neg y)) (ap (A.add (ev.1 x)) (RH.negation D A ev y)) ;
+  -- ev (sum_j var j . y_j) = sum_j a_j ev y_j
+  ev-comb (ys : Ps.Fin t -> D.R) :
+    Id A.R (ev.1 (GL.RS.sum t (\ j -> D.mul (G.var j) (ys j)))) (RSA.sum t (\ j -> A.mul (a j) (ev.1 (ys j)))) =
+    trans (HS.map-sum t (\ j -> D.mul (G.var j) (ys j)))
+      (RSA.sum-cong t (\ j -> ev.1 (D.mul (G.var j) (ys j))) (\ j -> A.mul (a j) (ev.1 (ys j)))
+        (\ j -> trans (ev.2.2.2 (G.var j) (ys j)) (ap (\ w -> A.mul w (ev.1 (ys j))) (G.ev-var a j)))) ;
+  -- ev x = sum_j a_j ev (low_j x) for x of degree k+1
+  ev-low (k : Base.Nat) (x : D.R) (h : GL.Hom (pos (suc k)) x) :
+    Id A.R (ev.1 x) (RSA.sum t (\ j -> A.mul (a j) (ev.1 (G.low j x)))) =
+    trans (ap ev.1 (G.low-eq k x h)) (ev-comb (\ j -> G.low j x)) ;
+
+  ------------------------------------------------------------------------
+  -- scalars: the evaluated expression is the witness
+
+  wit-value : (k : Base.Nat) (e : GL.Expr k) -> FR.Wit k (ev.1 (GL.value k e)) = split {
+    zero -> \ e -> tt ;
+    suc k | r -> \ e -> ((\ j -> ev.1 (GL.value k (e j))), ((\ j -> r (e j)), ev-comb (\ j -> GL.value k (e j)))) } ;
+  wit-scalar (k : Base.Nat) (x : D.R) (h : GL.Hom (pos k) x) : FR.Wit k (ev.1 x) =
+    FR.wit-tr k (ev.1 (GL.value k (GL.expr k x h))) (ev.1 x) (ap ev.1 (GL.expr-value k x h)) (wit-value k (GL.expr k x h)) ;
+  witZ-scalar : (k : Int) (x : D.R) -> GL.Hom k x -> FR.WitZ k (ev.1 x) = split {
+    pos n -> wit-scalar n ;
+    negsuc n -> \ x h -> trans (ap ev.1 (GL.hom-negdeg n x h)) ev-zero } ;
+
+  ------------------------------------------------------------------------
+  -- chart cochains
+
+  module EvChart (I : U l) (Bad : I -> E4 -> U l) {
+    module P = CC.ChartPr[I,Bad] ;
+    module CHD = P.CH ;
+    module CHA = Laurent4[l].Over[A,setA].Chart[I,Bad] ;
+    -- a pointwise map sending 0 to 0
+    module Pointwise (B : CRing) (setB : Pr.isSet B.R) (phi : D.R -> B.R) (phi0 : Id B.R (phi D.z) B.z) {
+      module CB = Laurent4[l].Over[B,setB].Chart[I,Bad] ;
+      raw (x : CHD.El) : CB.Raw = \ i m -> phi (CHD.val x i m) ;
+      map (x : CHD.El) : CB.El =
+        CB.mk (raw x)
+          (TC.map (CHD.SuppW (CHD.val x)) (CB.SuppW (raw x)) (\ w -> (w.1, \ i m n -> trans (ap phi (w.2 i m n)) phi0)) (CHD.supp x))
+          (\ i m b -> trans (ap phi (CHD.van x i m b)) phi0) ;
+    } ;
+    module EV = Pointwise[A,setA,ev.1,ev-zero] ;
+    evc (x : CHD.El) : CHA.El = EV.map x ;
+    module LW (j : Ps.Fin t) { module M = Pointwise[D,setD,G.low j,G.low-zero j] ; } ;
+    lowc (j : Ps.Fin t) (x : CHD.El) : CHD.El = LW[j].M.map x ;
+
+    -- evc is additive and maps q . x to ev(q) . evc x
+    evc-add (x y : CHD.El) : Id CHA.El (evc (CHD.mod.madd x y)) (CHA.mod.madd (evc x) (evc y)) =
+      CHA.eq _ _ (\ i m -> ev.2.2.1 (CHD.val x i m) (CHD.val y i m)) ;
+    evc-zero : Id CHA.El (evc CHD.mod.mz) CHA.mod.mz = CHA.eq _ _ (\ i m -> ev-zero) ;
+    evc-sub (x y : CHD.El) : Id CHA.El (evc (IP.ModL[D,CHD.mod].msub x y)) (IP.ModL[A,CHA.mod].msub (evc x) (evc y)) =
+      CHA.eq _ _ (\ i m -> ev-sub (CHD.val x i m) (CHD.val y i m)) ;
+    evc-sm (q : D.R) (x : CHD.El) : Id CHA.El (evc (CHD.mod.sm q x)) (CHA.mod.sm (ev.1 q) (evc x)) =
+      CHA.eq _ _ (\ i m -> ev.2.2.2 q (CHD.val x i m)) ;
+
+    -- I^k of the chart module over A
+    module FC = FiniteIdealPowers[l].Over[A,CHA.mod,t,a] ;
+    module SCA = ShiftedCech4[l].Over[A,setA].ChartSums[I,Bad] ;
+    gen-val (xs : Ps.Fin t -> CHA.El) (i : I) (m : E4) :
+      Id A.R (CHA.val (FC.gen xs) i m) (RSA.sum t (\ j -> A.mul (a j) (CHA.val (xs j) i m))) =
+      SCA.val-sum t (\ j -> CHA.mod.sm (a j) (xs j)) i m ;
+    -- evc x = sum_j a_j evc (low_j x) for x of degree k+1
+    evc-low (k : Base.Nat) (x : CHD.El) (h : P.Hom (pos (suc k)) x) : Id CHA.El (evc x) (FC.gen (\ j -> evc (lowc j x))) =
+      CHA.eq _ _ (\ i m -> trans (ev-low k (CHD.val x i m) (h i m)) (sym (gen-val (\ j -> evc (lowc j x)) i m))) ;
+    wit : (k : Base.Nat) (x : CHD.El) -> P.Hom (pos k) x -> FC.Wit k (evc x) = split {
+      zero -> \ x h -> tt ;
+      suc k | r -> \ x h -> ((\ j -> evc (lowc j x)),
+        ((\ j -> r (lowc j x) (\ i m -> G.low-hom k j (CHD.val x i m) (h i m))), evc-low k x h)) } ;
+    witZ : (k : Int) (x : CHD.El) -> P.Hom k x -> FC.WitZ k (evc x) = split {
+      pos n -> wit n ;
+      negsuc n -> \ x h -> CHA.eq _ _ (\ i m -> trans (ap ev.1 (GL.hom-negdeg n (CHD.val x i m) (h i m))) ev-zero) } ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- polynomials in X_0..X_3 with evaluated coefficients
+
+  evT : TPoly D.R -> TPoly A.R = split {
+    nil -> nil ;
+    cons u p | r -> cons (ev.1 u.1, u.2) r } ;
+  hom-evT (dd : Base.Nat) : (p : TPoly D.R) -> HomDeg D.R dd p -> HomDeg A.R dd (evT p) = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (h.1, r h.2) } ;
+  ev-mulP : (p : TPoly D.R) (F : E4 -> D.R) (m : E4) ->
+    Id A.R (ev.1 (PAD.mulP p F m)) (PAA.mulP (evT p) (\ m' -> ev.1 (F m')) m) = split {
+    nil -> \ F m -> ev-zero ;
+    cons u p | r -> \ F m -> trans (ev.2.2.1 (D.mul u.1 (F (subE m u.2))) (PAD.mulP p F m))
+                              (DLA.G.cong-add (ev.2.2.2 u.1 (F (subE m u.2))) (r F m)) } ;
+
+  -- the Cech differential commutes with ev
+  ev-d0 (c : Pt -> E4 -> D.R) : (j : Ed) (m : E4) -> Id A.R (ev.1 (CD.d0 c j m)) (CA.d0 (\ i m' -> ev.1 (c i m')) j m) = split {
+    e01 -> \ m -> ev-sub (c p1 m) (c p0 m) ;
+    e02 -> \ m -> ev-sub (c p2 m) (c p0 m) ;
+    e03 -> \ m -> ev-sub (c p3 m) (c p0 m) ;
+    e12 -> \ m -> ev-sub (c p2 m) (c p1 m) ;
+    e13 -> \ m -> ev-sub (c p3 m) (c p1 m) ;
+    e23 -> \ m -> ev-sub (c p3 m) (c p2 m) } ;
+
+  ------------------------------------------------------------------------
+  -- the evaluated weighted theorem
+
+  module EvDependence (K0 : U l) (cfnA : CFN[l].CFN[K0,A]) (cfn : CFN[l].CFN[K0,D]) {
+   module Input (na : Nat) (d : Ps.Fin na -> Base.Nat) (f : Ps.Fin na -> Base.Nat) (g : Ps.Fin na -> TPoly D.R)
+    (hg : (i : Ps.Fin na) -> HomDeg D.R (d i) (g i))
+    (hf : (i : Ps.Fin na) -> BihomogeneousAction4[l].Over[A,t,D,setD,G].CoefHom (f i) (g i)) {
+    module WD = WeightedDependence4[l].Over[K0,A,t,D,setD,G,cfn].Input[na,d,f,g,hg,hf] ;
+    -- the families of CoherentDependence4 over A, for the evaluated g_j
+    module CIA = CoherentDependence4[l].Over[K0,A,setA,cfnA].Input[na,d,\ i -> evT (g i),\ i -> hom-evT (d i) (g i) (hg i)] ;
+    module EC0 = EvChart[Pt,BadI Pt setPt TL4.mOne] ;
+    module EC1 = EvChart[Ed,BadI Ed setEd TL4.mOne] ;
+    module EC1i (i : Ps.Fin na) { module E = EvChart[Ed,BadI Ed setEd (WD.CI.F1.k1 i)] ; } ;
+    module SCD = ShiftedCech4[l].Over[D,setD].ChartSums[Ed,BadI Ed setEd TL4.mOne] ;
+    module SCA = ShiftedCech4[l].Over[A,setA].ChartSums[Ed,BadI Ed setEd TL4.mOne] ;
+
+    evE1 (y : WD.CI.F1.E1.El) : CIA.F1.E1.El = \ i -> EC1i[i].E.evc (y i) ;
+    ev-D0 (x : WD.CI.F0.E0.El) : Id CIA.F1.E0.El (EC1.evc (WD.CI.D0.d0.f x)) (CIA.D0.d0.f (EC0.evc x)) =
+      EC1.CHA.eq _ _ (ev-d0 (EC0.CHD.val x)) ;
+    ev-A (y : WD.CI.F1.E1.El) : Id CIA.F1.E0.El (EC1.evc (WD.CI.F1.A.f y)) (CIA.F1.A.f (evE1 y)) =
+      EC1.CHA.eq _ _ (\ i m -> calc A.R {
+        ev.1 (EC1.CHD.val (WD.CI.F1.A.f y) i m)
+          =< ap ev.1 (SCD.val-sum na (\ j -> (WD.CI.F1.gi j).f (y j)) i m)
+          > ev.1 (GL.RS.sum na (\ j -> PAD.mulP (g j) (EC1i[j].E.CHD.val (y j) i) m))
+          =< HS.map-sum na (\ j -> PAD.mulP (g j) (EC1i[j].E.CHD.val (y j) i) m)
+          > RSA.sum na (\ j -> ev.1 (PAD.mulP (g j) (EC1i[j].E.CHD.val (y j) i) m))
+          =< RSA.sum-cong na (\ j -> ev.1 (PAD.mulP (g j) (EC1i[j].E.CHD.val (y j) i) m))
+               (\ j -> PAA.mulP (evT (g j)) (\ m' -> ev.1 (EC1i[j].E.CHD.val (y j) i m')) m)
+               (\ j -> ev-mulP (g j) (EC1i[j].E.CHD.val (y j) i) m)
+          > RSA.sum na (\ j -> PAA.mulP (evT (g j)) (\ m' -> ev.1 (EC1i[j].E.CHD.val (y j) i m')) m)
+          =< sym (SCA.val-sum na (\ j -> (CIA.F1.gi j).f (evE1 y j)) i m)
+          > EC1.CHA.val (CIA.F1.A.f (evE1 y)) i m }) ;
+
+    module Seq (c : Nat -> WD.E1.El) (hc : (n : Nat) -> WD.DF.P1.Hom (cdeg (suc n)) (c n))
+      (lift : (n : Nat) -> Tr.Trunc[WD.CI.Lifted (c n)].carrier) {
+      module WS = WD.Seq[c,hc,lift] ;
+      cA (n : Nat) : CIA.F1.E0.El = EC1.evc (c n) ;
+      -- sum_{i<N} ev(r_i) ev(c_i)
+      sumA : List D.R -> CIA.F1.E0.El = split {
+        nil -> CIA.F1.E0.mod.mz ;
+        cons x xs | r -> CIA.F1.E0.mod.madd (CIA.F1.E0.mod.sm (ev.1 x) (cA (len xs))) r } ;
+      ev-sumL : (rs : List D.R) -> Id CIA.F1.E0.El (EC1.evc (WS.CS.sumL rs)) (sumA rs) = split {
+        nil -> EC1.evc-zero ;
+        cons x xs | r -> trans (EC1.evc-add (WD.E1.mod.sm x (c (len xs))) (WS.CS.sumL xs))
+                               (CIA.MZ.G.cong-add (EC1.evc-sm x (c (len xs))) r) } ;
+      -- ev(r_i) in I^(N-i)
+      PowL (N : Nat) : List D.R -> U l = split {
+        nil -> Top ;
+        cons x xs | r -> FR.WitZ (lowerZ (cdeg N) (len xs)) (ev.1 x) * r } ;
+      powL (N : Nat) : (rs : List D.R) -> WS.HomL N rs -> PowL N rs = split {
+        nil -> \ h -> tt ;
+        cons x xs | r -> \ h -> (witZ-scalar (lowerZ (cdeg N) (len xs)) x h.1, r h.2) } ;
+
+      module Ev (w : WS.WResult) {
+        module R = WS.WR[w] ;
+        -- the evaluated identity
+        eq : Id CIA.F1.E0.El (CIA.MZ.msub (cA R.N) (sumA R.rs)) (CIA.F1.E0.mod.madd (CIA.D0.d0.f (EC0.evc R.v)) (CIA.F1.A.f (evE1 R.a'))) =
+          calc CIA.F1.E0.El {
+            CIA.MZ.msub (cA R.N) (sumA R.rs)
+              =< ap (CIA.MZ.msub (cA R.N)) (sym (ev-sumL R.rs)) > CIA.MZ.msub (cA R.N) (EC1.evc (WS.CS.sumL R.rs))
+              =< sym (EC1.evc-sub (c R.N) (WS.CS.sumL R.rs)) > EC1.evc (WD.CI.MZ.msub (c R.N) (WS.CS.sumL R.rs))
+              =< ap EC1.evc R.eq > EC1.evc (WD.E1.mod.madd (WD.CI.D0.d0.f R.v) (WD.CI.F1.A.f R.a'))
+              =< EC1.evc-add (WD.CI.D0.d0.f R.v) (WD.CI.F1.A.f R.a')
+              > CIA.F1.E0.mod.madd (EC1.evc (WD.CI.D0.d0.f R.v)) (EC1.evc (WD.CI.F1.A.f R.a'))
+              =< CIA.MZ.G.cong-add (ev-D0 R.v) (ev-A R.a')
+              > CIA.F1.E0.mod.madd (CIA.D0.d0.f (EC0.evc R.v)) (CIA.F1.A.f (evE1 R.a')) } ;
+        pow-r : PowL R.N R.rs = powL R.N R.rs R.hom-r ;
+        pow-v : EC0.FC.Wit (suc (toB R.N)) (EC0.evc R.v) = EC0.wit (suc (toB R.N)) R.v R.hom-v ;
+        pow-a (i : Ps.Fin na) : EC1i[i].E.FC.WitZ (minus (cdeg (suc R.N)) (f i)) (EC1i[i].E.evc (R.a' i)) =
+          EC1i[i].E.witZ (minus (cdeg (suc R.N)) (f i)) (R.a' i) (R.hom-a i) ;
+      } ;
+      -- the evaluated conclusion of one weighted result
+      EvBdry (w : WS.WResult) : U l =
+        Id CIA.F1.E0.El (CIA.MZ.msub (cA WS.WR[w].N) (sumA WS.WR[w].rs))
+                        (CIA.F1.E0.mod.madd (CIA.D0.d0.f (EC0.evc WS.WR[w].v)) (CIA.F1.A.f (evE1 WS.WR[w].a')))
+        * (PowL WS.WR[w].N WS.WR[w].rs
+        * (EC0.FC.Wit (suc (toB WS.WR[w].N)) (EC0.evc WS.WR[w].v)
+        * ((i : Ps.Fin na) -> EC1i[i].E.FC.WitZ (minus (cdeg (suc WS.WR[w].N)) (f i)) (EC1i[i].E.evc (WS.WR[w].a' i))))) ;
+      EvResult : U l = (w : WS.WResult) * EvBdry w ;
+      -- THEOREM (Gate D)
+      evaluated : Tr.Trunc[EvResult].carrier =
+        TC.map WS.WResult EvResult (\ w -> (w, (Ev[w].eq, (Ev[w].pow-r, (Ev[w].pow-v, Ev[w].pow-a))))) WS.dependence ;
+    } ;
+   } ;
+  } ;
+} ;
+
+-- the concrete evaluated theorem over D = A[U_1, .., U_t]
+module Concrete (K0 : U l) (A : CRing) (setA : Pr.isSet A.R) (cfnA : CFN[l].CFN[K0,A]) (t : Nat) (a : Ps.Fin t -> A.R) {
+  module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+  module EV = Over[A,setA,t,T.D t,T.setD t,T.grD t,a] ;
+  module ED = EV.EvDependence[K0,cfnA,T.cfnD K0 cfnA t] ;
+} ;

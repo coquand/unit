@@ -1,0 +1,151 @@
+-- HomogeneousMatrices4.seg: the supplied homogeneous polynomial data and
+-- the shifted cochain families (handoff §3, §4).
+--
+-- Data (Matrices D): ranks a, b; shifts d_i (i < a), e_j (j < b), natural
+-- numbers; polynomials g_i (term lists), every term of total degree d_i
+-- (HomDeg); a matrix H_ij of term lists, every term X^u with
+-- d_i + size u = e_j (HomShift).  A zero entry is the empty list, with no
+-- condition, so e_j < d_i is allowed.  The relation A H = 0 is a separate
+-- hypothesis, stated by coefficients (Identity):
+--     for every j, every coefficient of  sum_i g_i H_ij  is 0
+-- (PolynomialAction4.psum, pmul, coef).
+--
+-- Families (Fam M I set n), for the components (I, set) of one Cech
+-- degree and a base twist n (n = -1 for the cochains; any n for the
+-- polynomial chart):
+--   E0 = C(n),  E1 = prod_i C(n - d_i),  E2 = prod_j C(n - e_j),
+--   A y = sum_i g_i y_i : E1 -> E0,   (H z)_i = sum_j H_ij z_j : E2 -> E1.
+-- g_i maps C(n - d_i) to C(n) since n - size u = n - d_i (hg-shifts);
+-- H_ij maps C(n - e_j) to C(n - d_i) since
+--   (n - d_i) - size u = n - (size u + d_i) = n - e_j     (hH-shifts).
+-- Theorem (AH, given the Identity ah): A (H z) = 0.  Proof: A (H z) = sum_i g_i (sum_j H_ij z_j)
+-- = sum_i sum_j g_i (H_ij z_j) (lin-sum) = sum_j sum_i g_i (H_ij z_j)
+-- (sum-swap), and for each j and exponent (col)
+--   sum_i g_i (H_ij z_j) = sum_i (g_i H_ij) z_j = (sum_i g_i H_ij) z_j = 0
+-- (mulP-pmul, mulP-psum, and act-zero on the Identity).
+--
+-- Differentials on families (DiffFam): from a differential Dq of the
+-- chart modules at every twist commuting with every polynomial (as
+-- ShiftedCech4.Comm proves for d0, d1, d2), the differentials of E0, E1,
+-- E2 (componentwise: twist n, n - d_i, n - e_j) and
+--   d (A y) = A (d y),   d (H z) = H (d z)     (dA, dH).
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open ShiftedCech4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+
+-- every term has total degree dd
+HomDeg (R : U l) (dd : Base.Nat) : TPoly R -> U l = split {
+  nil -> Top ;
+  cons t p | r -> Id Base.Nat (size t.2) dd * r } ;
+-- every term X^u has dd + size u = ee
+HomShift (R : U l) (dd ee : Base.Nat) : TPoly R -> U l = split {
+  nil -> Top ;
+  cons t p | r -> Id Base.Nat (NA.plus dd (size t.2)) ee * r } ;
+
+record Matrices (D : CRing) {
+  a : Nat ;
+  b : Nat ;
+  d : Ps.Fin a -> Base.Nat ;
+  e : Ps.Fin b -> Base.Nat ;
+  g : Ps.Fin a -> TPoly D.R ;
+  H : Ps.Fin a -> Ps.Fin b -> TPoly D.R ;
+  hg (i : Ps.Fin a) : HomDeg D.R (d i) (g i) ;
+  hH (i : Ps.Fin a) (j : Ps.Fin b) : HomShift D.R (d i) (e j) (H i j) ;
+} ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module SC = ShiftedCech4[l].Over[D,setD] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+
+  -- (i): every coefficient of sum_i g_i H_ij is 0, for every j
+  Identity (M : Matrices[D]) : U l = (j : Ps.Fin M.b) -> PA.CoefZero (PA.psum M.a (\ i -> PA.pmul (M.g i) (M.H i j))) ;
+
+  hg-shifts (n : Int) (dd : Base.Nat) : (p : TPoly D.R) -> HomDeg D.R dd p -> SC.Shifts (minus n dd) n p = split {
+    nil -> \ h -> tt ;
+    cons t p | r -> \ h -> (ap (minus n) h.1, r h.2) } ;
+  hH-shifts (n : Int) (dd ee : Base.Nat) : (p : TPoly D.R) -> HomShift D.R dd ee p -> SC.Shifts (minus n ee) (minus n dd) p = split {
+    nil -> \ h -> tt ;
+    cons t p | r -> \ h ->
+      (trans (minus-minus n dd (size t.2)) (ap (minus n) (trans (NA.plus-comm (size t.2) dd) h.1)), r h.2) } ;
+
+  module Fam (M : Matrices[D]) (I : U l) (set : I -> Sub4) (n : Int) {
+    k1 (i : Ps.Fin M.a) : Int = minus n (M.d i) ;
+    k2 (j : Ps.Fin M.b) : Int = minus n (M.e j) ;
+    module E0 = LO.Chart[I, BadI I set n] ;
+    C1 (i : Ps.Fin M.a) : IP.Mod[D] = LO.Chart[I, BadI I set (k1 i)].mod ;
+    C2 (j : Ps.Fin M.b) : IP.Mod[D] = LO.Chart[I, BadI I set (k2 j)].mod ;
+    module E1 = SC.Prod[M.a, C1] ;
+    module E2 = SC.Prod[M.b, C2] ;
+    module S0 = Comb[l].Sums[D,E0.mod] ;
+
+    -- g_i : C(n - d_i) -> C(n),  H_ij : C(n - e_j) -> C(n - d_i)
+    gi (i : Ps.Fin M.a) : IP.Lin[D,C1 i,E0.mod] =
+      SC.Act[I,set,k1 i,n,M.g i,hg-shifts n (M.d i) (M.g i) (M.hg i)].lin ;
+    hij (i : Ps.Fin M.a) (j : Ps.Fin M.b) : IP.Lin[D,C2 j,C1 i] =
+      SC.Act[I,set,k2 j,k1 i,M.H i j,hH-shifts n (M.d i) (M.e j) (M.H i j) (M.hH i j)].lin ;
+    A : IP.Lin[D,E1.mod,E0.mod] = E1.SumMap[E0.mod,gi].lin ;
+    Hrow (i : Ps.Fin M.a) : IP.Lin[D,E2.mod,C1 i] = E2.SumMap[C1 i,\ j -> hij i j].lin ;
+    H : IP.Lin[D,E2.mod,E1.mod] = E1.Into[E2.mod,Hrow].lin ;
+
+    -- by definition of A and H
+    A-val (y : E1.El) : Id E0.El (A.f y) (S0.sum M.a (\ i -> (gi i).f (y i))) = refl (A.f y) ;
+    H-val (z : E2.El) (i : Ps.Fin M.a) : Id (C1 i).M (H.f z i) (Comb[l].Sums[D,C1 i].sum M.b (\ j -> (hij i j).f (z j))) =
+      refl (H.f z i) ;
+
+    -- column j: sum_i g_i (H_ij z_j) = 0
+    module Col (ah : Identity M) (z : E2.El) (j : Ps.Fin M.b) {
+      Z : I -> E4 -> D.R = LO.Chart[I, BadI I set (k2 j)].val (z j) ;
+      pq : TPoly D.R = PA.psum M.a (\ i -> PA.pmul (M.g i) (M.H i j)) ;
+      zero : Id E0.El (S0.sum M.a (\ i -> (gi i).f ((hij i j).f (z j)))) E0.mod.mz =
+        E0.eq (S0.sum M.a (\ i -> (gi i).f ((hij i j).f (z j)))) E0.mod.mz (\ i' m -> calc D.R {
+          E0.val (S0.sum M.a (\ i -> (gi i).f ((hij i j).f (z j)))) i' m
+            =< SC.ChartSums[I, BadI I set n].val-sum M.a (\ i -> (gi i).f ((hij i j).f (z j))) i' m
+            > RS.sum M.a (\ i -> PA.mulP (M.g i) (\ m' -> PA.mulP (M.H i j) (Z i') m') m)
+            =< RS.sum-cong M.a (\ i -> PA.mulP (M.g i) (\ m' -> PA.mulP (M.H i j) (Z i') m') m)
+                 (\ i -> PA.mulP (PA.pmul (M.g i) (M.H i j)) (Z i') m)
+                 (\ i -> sym (PA.mulP-pmul (M.g i) (M.H i j) (Z i') m))
+            > RS.sum M.a (\ i -> PA.mulP (PA.pmul (M.g i) (M.H i j)) (Z i') m)
+            =< sym (PA.mulP-psum M.a (\ i -> PA.pmul (M.g i) (M.H i j)) (Z i') m) > PA.mulP pq (Z i') m
+            =< PA.act-zero pq (ah j) (Z i') m > D.z }) ;
+    } ;
+    AH (ah : Identity M) (z : E2.El) : Id E0.El (A.f (H.f z)) E0.mod.mz = calc E0.El {
+      A.f (H.f z)
+        =< S0.sum-cong M.a (\ i -> (gi i).f (H.f z i)) (\ i -> S0.sum M.b (\ j -> (gi i).f ((hij i j).f (z j))))
+             (\ i -> SC.LinSum[C1 i,E0.mod,gi i].lin-sum M.b (\ j -> (hij i j).f (z j)))
+        > S0.sum M.a (\ i -> S0.sum M.b (\ j -> (gi i).f ((hij i j).f (z j))))
+        =< S0.sum-swap M.a M.b (\ i j -> (gi i).f ((hij i j).f (z j)))
+        > S0.sum M.b (\ j -> S0.sum M.a (\ i -> (gi i).f ((hij i j).f (z j))))
+        =< S0.sum-cong M.b (\ j -> S0.sum M.a (\ i -> (gi i).f ((hij i j).f (z j)))) (\ j -> E0.mod.mz) (\ j -> Col[ah,z,j].zero)
+        > S0.sum M.b (\ j -> E0.mod.mz)
+        =< S0.sum-zero M.b > E0.mod.mz } ;
+  } ;
+
+  -- a differential of the chart modules commuting with every polynomial,
+  -- on the families
+  module DiffFam (M : Matrices[D]) (I : U l) (setI : I -> Sub4) (J : U l) (setJ : J -> Sub4)
+    (Dq : (k : Int) -> IP.Lin[D,LO.Chart[I,BadI I setI k].mod,LO.Chart[J,BadI J setJ k].mod])
+    (comm : (k k' : Int) (p : TPoly D.R) (hp : SC.Shifts k k' p) (x : LO.Chart[I,BadI I setI k].El) ->
+       Id LO.Chart[J,BadI J setJ k'].El ((Dq k').f (SC.Act[I,setI,k,k',p,hp].lin.f x))
+                                        (SC.Act[J,setJ,k,k',p,hp].lin.f ((Dq k).f x)))
+    (n : Int) {
+    module FI = Fam[M,I,setI,n] ; module FJ = Fam[M,J,setJ,n] ;
+    d0 : IP.Lin[D,FI.E0.mod,FJ.E0.mod] = Dq n ;
+    d1 : IP.Lin[D,FI.E1.mod,FJ.E1.mod] = SC.Each[M.a,FI.C1,FJ.C1,\ i -> Dq (FI.k1 i)].lin ;
+    d2 : IP.Lin[D,FI.E2.mod,FJ.E2.mod] = SC.Each[M.b,FI.C2,FJ.C2,\ j -> Dq (FI.k2 j)].lin ;
+    -- by definition of d1 and d2
+    d1-at (y : FI.E1.El) (i : Ps.Fin M.a) : Id (FJ.C1 i).M (d1.f y i) ((Dq (FI.k1 i)).f (y i)) = refl (d1.f y i) ;
+    d2-at (z : FI.E2.El) (j : Ps.Fin M.b) : Id (FJ.C2 j).M (d2.f z j) ((Dq (FI.k2 j)).f (z j)) = refl (d2.f z j) ;
+
+    dA (y : FI.E1.El) : Id FJ.E0.El (d0.f (FI.A.f y)) (FJ.A.f (d1.f y)) =
+      trans (SC.LinSum[FI.E0.mod,FJ.E0.mod,Dq n].lin-sum M.a (\ i -> (FI.gi i).f (y i)))
+            (FJ.S0.sum-cong M.a (\ i -> (Dq n).f ((FI.gi i).f (y i))) (\ i -> (FJ.gi i).f ((Dq (FI.k1 i)).f (y i)))
+              (\ i -> comm (FI.k1 i) n (M.g i) (hg-shifts n (M.d i) (M.g i) (M.hg i)) (y i))) ;
+    dH (z : FI.E2.El) : Id FJ.E1.El (d1.f (FI.H.f z)) (FJ.H.f (d2.f z)) =
+      FJ.E1.ext (d1.f (FI.H.f z)) (FJ.H.f (d2.f z)) (\ i ->
+        trans (SC.LinSum[FI.C1 i,FJ.C1 i,Dq (FI.k1 i)].lin-sum M.b (\ j -> (FI.hij i j).f (z j)))
+              (Comb[l].Sums[D,FJ.C1 i].sum-cong M.b (\ j -> (Dq (FI.k1 i)).f ((FI.hij i j).f (z j)))
+                (\ j -> (FJ.hij i j).f ((Dq (FI.k2 j)).f (z j)))
+                (\ j -> comm (FI.k2 j) (FI.k1 i) (M.H i j) (hH-shifts n (M.d i) (M.e j) (M.H i j) (M.hH i j)) (z j)))) ;
+  } ;
+} ;

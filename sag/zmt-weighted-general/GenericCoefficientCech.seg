@@ -1,0 +1,87 @@
+-- Coefficient projection on actual finitely supported generic charts.
+-- The support and all vanishing conditions are preserved pointwise.
+-- The structural differential commutes because projection preserves
+-- zero and subtraction, with newest coordinate first.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module PA4 = PolynomialAction4[l] ;
+
+module Over (A : CRing) (t : Nat) (D : CRing) (setD : Pr.isSet D.R) (G : Graded[A,t,D]) {
+  module GL = Laws[A,t,D,setD,G] ;
+  module LO = GenericLaurent[l].Over[D,setD] ;
+  module C = GenericCube[l].Over[D,setD] ;
+  module DL = IP.ModL[D,IP.regular D] ;
+
+  ------------------------------------------------------------------------
+  -- one chart module
+
+  module ChartPr (Ex I : U l) (Bad : I -> Ex -> U l) {
+    module CH = LO.Chart[Ex,I,Bad] ;
+    module SM = Comb[l].Sums[D,CH.mod] ;
+    raw (k : Int) (c : CH.Raw) : CH.Raw = \ i m -> G.pr k (c i m) ;
+    vanish (k : Int) (s : List Ex) (c : CH.Raw) (h : CH.Vanish s c) : CH.Vanish s (raw k c) =
+      \ i m n -> trans (ap (G.pr k) (h i m n)) (GL.pr-zero k) ;
+    van (k : Int) (c : CH.Raw) (v : CH.Van c) : CH.Van (raw k c) =
+      \ i m b -> trans (ap (G.pr k) (v i m b)) (GL.pr-zero k) ;
+    -- Pr k, with the same support list
+    proj (k : Int) (x : CH.El) : CH.El =
+      CH.mk (raw k (CH.val x))
+        (TC.map (CH.SuppW (CH.val x)) (CH.SuppW (raw k (CH.val x))) (\ w -> (w.1, vanish k w.1 (CH.val x) w.2)) (CH.supp x))
+        (van k (CH.val x) (CH.van x)) ;
+    -- by definition of proj
+    proj-val (k : Int) (x : CH.El) (i : I) (m : Ex) : Id D.R (CH.val (proj k x) i m) (G.pr k (CH.val x i m)) =
+      refl (G.pr k (CH.val x i m)) ;
+
+    -- coefficient homogeneity
+    Hom (k : Int) (x : CH.El) : U l = (i : I) (m : Ex) -> GL.Hom k (CH.val x i m) ;
+    hom-proj (k : Int) (x : CH.El) : Hom k (proj k x) = \ i m -> GL.hom-pr k (CH.val x i m) ;
+    proj-hom (k : Int) (x : CH.El) (h : Hom k x) : Id CH.El (proj k x) x = CH.eq (proj k x) x h ;
+    hom-zero (k : Int) : Hom k CH.mod.mz = \ i m -> GL.hom-zero k ;
+
+    -- additivity and A-linearity
+    proj-add (k : Int) (x y : CH.El) : Id CH.El (proj k (CH.mod.madd x y)) (CH.mod.madd (proj k x) (proj k y)) =
+      CH.eq _ _ (\ i m -> G.pr-add k (CH.val x i m) (CH.val y i m)) ;
+    proj-zero (k : Int) : Id CH.El (proj k CH.mod.mz) CH.mod.mz = CH.eq _ _ (\ i m -> GL.pr-zero k) ;
+    proj-neg (k : Int) (x : CH.El) : Id CH.El (proj k (CH.mod.mneg x)) (CH.mod.mneg (proj k x)) =
+      CH.eq _ _ (\ i m -> GL.pr-neg k (CH.val x i m)) ;
+    proj-sub (k : Int) (x y : CH.El) : Id CH.El (proj k (IP.ModL[D,CH.mod].msub x y)) (IP.ModL[D,CH.mod].msub (proj k x) (proj k y)) =
+      CH.eq _ _ (\ i m -> GL.pr-sub k (CH.val x i m) (CH.val y i m)) ;
+    proj-sum (k : Int) : (n : Nat) (f : Ps.Fin n -> CH.El) -> Id CH.El (proj k (SM.sum n f)) (SM.sum n (\ j -> proj k (f j))) = split {
+      zero -> \ f -> proj-zero k ;
+      suc n | r -> \ f -> trans (proj-add k (f (inr tt)) (SM.sum n (\ j -> f (inl j))))
+                                (ap (CH.mod.madd (proj k (f (inr tt)))) (r (\ j -> f (inl j)))) } ;
+    proj-iota (k : Int) (a : A.R) (x : CH.El) : Id CH.El (proj k (CH.mod.sm (G.iota.1 a) x)) (CH.mod.sm (G.iota.1 a) (proj k x)) =
+      CH.eq _ _ (\ i m -> GL.pr-iota k a (CH.val x i m)) ;
+
+    -- the scalar action: Pr k (q x) = pr (k - e)(q) x for x of degree e
+    proj-scalar (k e : Int) (q : D.R) (x : CH.El) (h : Hom e x) :
+      Id CH.El (proj k (CH.mod.sm q x)) (CH.mod.sm (G.pr (subZ k e) q) x) =
+      CH.eq _ _ (\ i m -> G.pr-mul k e q (CH.val x i m) (h i m)) ;
+    proj-scalar-pos (k : Int) (n : Base.Nat) (q : D.R) (x : CH.El) (h : Hom (pos n) x) :
+      Id CH.El (proj k (CH.mod.sm q x)) (CH.mod.sm (G.pr (PA4.minus k n) q) x) =
+      CH.eq _ _ (\ i m -> GL.pr-mul-pos k n q (CH.val x i m) (h i m)) ;
+  } ;
+
+
+  module CochainPr (n : Nat) (k r : Int) {
+    module P = ChartPr[GenericLaurent[l].Exp n,Sub n,GenericCech[l].Bad n k r] ;
+  } ;
+  d-proj (k : Int) : (n : Nat) (c : C.Raw n) (s : Sub n) ->
+    Id D.R (G.pr k (C.diff n c s)) (C.diff n (\ t -> G.pr k (c t)) s) = split {
+    zero -> \ c s -> GL.pr-zero k ;
+    suc n | rec -> \ c s -> d-case k n rec c s.1 s.2 }
+  where {
+    d-case (k : Int) (n : Nat)
+      (rec : (c : C.Raw n) (s : Sub n) -> Id D.R (G.pr k (C.diff n c s)) (C.diff n (\ t -> G.pr k (c t)) s))
+      (c : C.Raw (suc n)) : (b : Flag) (s : Sub n) ->
+      Id D.R (G.pr k (C.diff (suc n) c (b,s))) (C.diff (suc n) (\ t -> G.pr k (c t)) (b,s)) = split {
+      absent -> rec (C.left n c) ;
+      present -> \ s -> trans (GL.pr-sub k (c (absent,s)) (C.diff n (C.right n c) s))
+        (ap (DL.msub (G.pr k (c (absent,s)))) (rec (C.right n c) s)) } } ;
+  module Diff (n : Nat) (k r : Int) {
+    module P0 = CochainPr[n,k,r].P ; module P1 = CochainPr[n,k,sucZ r].P ;
+    module CT = GenericCechTheorems[l].Over[D,setD].Linear[n,k,r] ;
+    equation (e : Int) (x : P0.CH.El) : Id P1.CH.El (P1.proj e (CT.d.f x)) (CT.d.f (P0.proj e x)) =
+      P1.CH.eq _ _ (\ s m -> d-proj e n (\ u -> P0.CH.val x u m) s) ;
+  } ;
+} ;

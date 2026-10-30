@@ -1,0 +1,295 @@
+-- ReesBridge4.seg: the bridge between A[X_0..X_3][U_1..U_t] (zmt-rees4) and
+-- term lists over D = A[U_1..U_t] (zmt-weighted4), keeping both degrees and
+-- the evaluation certificates (handoff §2 (2)).
+--
+-- Rings (ReesRings4).  S = A[X_0..X_3] is the ring of PolynomialRing4Bridge
+-- (phi : TPoly A -> S, psi : S -> (Z^4 -> A), psi-phi, phi-psum, phi-bump,
+-- phi-scale, phi-pmul, coef-eq-of-phi), with the X-degree GX of the tower;
+-- R = S[U_1..U_t]; D = A[U_1..U_t] with ev (U_j |-> a_j) of
+-- CoefficientEvaluation4.
+--
+-- X-direction (canonical, no choice).  An element h of S of X-degree k is
+-- the value of its canonical expression (CoefficientParts.expr: words of
+-- length k in X_0..X_3 with coefficients in A).  Flattening a word gives one
+-- term: flatX 0 c = [c X^0], flatX (k+1) e = sum_j X_j . flatX k (e_j)
+-- (the j-th exponent bumped: bmp; term c (bmp_j u) = X_j term c u: term-bmp,
+-- from PolynomialRing4Bridge.term-bump and var-x_j of ReesRings4).  So
+--     phi (flatX k e) = value e        (phi-flatX: phi-psum, phi-bump)
+-- every term has total degree k (hom-flatX: size (bmp_j u) = size u + 1),
+-- and tlX k h = flatX k (expr h) has phi (tlX k h) = h, HomDeg k (tlX).
+--
+-- U-direction.  An element y of R with BiHom n d y is the value of an
+-- expression of U-degree n whose coefficients h_w have X-degree d.  The
+-- term list over D is
+--     tlU 0 h = tlX d h with every coefficient c sent to iota c in D   (liftC)
+--     tlU (n+1) e = sum_j U_j . tlU n (e_j)        (U_j scaling the coefficients)
+-- Every coefficient has U-degree n (coef-tlU: iota c of degree 0, U_j of
+-- degree 1, degrees add), every term X-degree d (hom-tlU), and
+--     phi (evT (tlU n e)) = ev_a (value e)                          (ev-tlU)
+-- where ev_a is ReesGenerators4's ev (U_j |-> b_j = a_j): at 0,
+-- evT (liftC p) = p (ev-iota) and ev_a (iota h) = h; at n+1,
+-- evT (U_j . p) = a_j . evT p (evT-scale), phi (a_j . q) = a_j phi q
+-- (phi-scale), and ev_a (sum_j U_j y_j) = sum_j b_j ev_a y_j (ev-comb).
+-- For a BiHom element y (bh), biT y bh = tlU (the expression of bh):
+--     HomDeg d, CoefHom n, phi (evT (biT y)) = ev_a y               (ev-biT)
+-- and in coefficient functions Z^4 -> A:  cf (evT (biT y)) = psi (ev_a y)
+-- (cf-biT, by psi-phi);  over D, ev (cf g m) = cf (evT g) m for every term
+-- list g (cf-ev: ev-mulP, ev 1 = 1).  The components comp n d x of
+-- zmt-rees4 are BiHom (comp-bihom), so they are bridged by biT.
+--
+-- Coefficients H' of (certX) as term lists.  For h in S of X-degree d - e
+-- (an integer), either d = e + k (k natural; then d - e = k: sub-eq) and
+-- tlX k h is a term list with every term X^u of e + size u = d (HomShift
+-- e d), or e = (m+1) + d, and then h = 0 (Pr of negative degree) and the
+-- empty list serves (hterm; the dichotomy dich decides only on naturals).
+-- No map from term lists over D back to R is built (not needed).
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ; open Laurent4[l] ; open PolynomialAction4[l] ; open HomogeneousMatrices4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module FP4 = FinitePolynomial4[l] ;
+
+-- d = e + k, or e = (m + 1) + d
+Dich (e d : Base.Nat) : U l = Plus ((k : Base.Nat) * Id Base.Nat (NA.plus e k) d) ((m : Base.Nat) * Id Base.Nat e (NA.plus (suc m) d)) ;
+dichSS (e d : Base.Nat) : Dich e d -> Dich (suc e) (suc d) = split {
+  inl w -> inl (w.1, ap (\ k -> suc k) w.2) ;
+  inr w -> inr (w.1, calc Base.Nat {
+    suc e =< ap (\ k -> suc k) w.2 > suc (suc (NA.plus w.1 d))
+          =< ap (\ k -> suc k) (sym (NA.plus-suc w.1 d)) > suc (NA.plus w.1 (suc d)) }) } ;
+dichS (e : Base.Nat) (r : (d : Base.Nat) -> Dich e d) : (d : Base.Nat) -> Dich (suc e) d = split {
+  zero -> inr (e, sym (NA.plus-zero (suc e))) ;
+  suc d -> dichSS e d (r d) } ;
+dich : (e d : Base.Nat) -> Dich e d = split {
+  zero -> \ d -> inl (d, refl d) ;
+  suc e | r -> dichS e r } ;
+
+-- (e + k) - e = k
+sub-eq (e k d : Base.Nat) (pk : Id Base.Nat (NA.plus e k) d) : Id Int (subZ (pos d) (pos e)) (pos k) =
+  trans (ap (\ z -> subZ (pos z) (pos e)) (sym pk))
+    (trans (sub-pos (pos (NA.plus e k)) e)
+      (trans (ap (\ z -> minus (pos z) e) (NA.plus-comm e k))
+        (trans (ap (\ z -> minus z e) (sym (ReesPresentation4[l].addP-pos k e))) (minus-addP (pos k) e)))) ;
+
+-- u + 0 = u
+add-zeroN : (u : N4) -> Id N4 (addN4 u (nx zero zero zero zero)) u = split {
+  nx a b c d -> nx-eq (NA.plus a zero) (NA.plus b zero) (NA.plus c zero) (NA.plus d zero) a b c d
+                  (NA.plus-zero a) (NA.plus-zero b) (NA.plus-zero c) (NA.plus-zero d) } ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (t : Nat) (a : Ps.Fin t -> A.R)
+  (s : Nat) (p : Ps.Fin s -> TPoly A.R) (e : Ps.Fin s -> Base.Nat) (hp : (q : Ps.Fin s) -> HomDeg A.R (e q) (p q)) {
+  module RR = ReesRings4[l].Rings[A,setA,t,a,s,p,e,hp] ;
+  module BR = RR.BR ; module GXL = RR.GXL ; module RC = RR.RC ; module RG = RC.RK.RG ;
+  module PAA = PolynomialAction4[l].Over[A,setA] ;
+  module FPA = FinitePolynomial4[l].Over[A,setA] ;
+  -- D = A[U_1..U_t] as in CoefficientEvaluation4.Concrete
+  module DT = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+  D : CRing = DT.D t ;
+  setD : Pr.isSet D.R = DT.setD t ;
+  GD : Graded[A,t,D] = DT.grD t ;
+  module GDL = Laws[A,t,D,setD,GD] ;
+  module PAD = PolynomialAction4[l].Over[D,setD] ;
+  module FPD = FinitePolynomial4[l].Over[D,setD] ;
+  module BA = BihomogeneousAction4[l].Over[A,t,D,setD,GD] ;
+  module EV = CoefficientEvaluation4[l].Over[A,setA,t,D,setD,GD,a] ;
+
+  ------------------------------------------------------------------------
+  -- degrees of term lists
+
+  hom-app (R0 : U l) (dd : Base.Nat) : (p q : TPoly R0) -> HomDeg R0 dd p -> HomDeg R0 dd q -> HomDeg R0 dd (Bar[l].app p q) = split {
+    nil -> \ q hp hq -> hq ;
+    cons u p | r -> \ q hp hq -> (hp.1, r q hp.2 hq) } ;
+  hom-psum (R0 : CRing) (setR0 : Pr.isSet R0.R) (dd : Base.Nat) : (n : Nat) (f : Ps.Fin n -> TPoly R0.R) ->
+    ((i : Ps.Fin n) -> HomDeg R0.R dd (f i)) -> HomDeg R0.R dd (PolynomialAction4[l].Over[R0,setR0].psum n f) = split {
+    zero -> \ f h -> tt ;
+    suc n | r -> \ f h -> hom-app R0.R dd (f (inr tt)) (PolynomialAction4[l].Over[R0,setR0].psum n (\ i -> f (inl i)))
+                            (h (inr tt)) (r (\ i -> f (inl i)) (\ i -> h (inl i))) } ;
+  coef-app (f : Base.Nat) : (p q : TPoly D.R) -> BA.CoefHom f p -> BA.CoefHom f q -> BA.CoefHom f (Bar[l].app p q) = split {
+    nil -> \ q hp hq -> hq ;
+    cons u p | r -> \ q hp hq -> (hp.1, r q hp.2 hq) } ;
+  coef-psum (f : Base.Nat) : (n : Nat) (g : Ps.Fin n -> TPoly D.R) -> ((i : Ps.Fin n) -> BA.CoefHom f (g i)) -> BA.CoefHom f (PAD.psum n g) = split {
+    zero -> \ g h -> tt ;
+    suc n | r -> \ g h -> coef-app f (g (inr tt)) (PAD.psum n (\ i -> g (inl i))) (h (inr tt)) (r (\ i -> g (inl i)) (\ i -> h (inl i))) } ;
+
+  ------------------------------------------------------------------------
+  -- X-direction: homogeneous elements of B as term lists
+
+  -- the exponent of X_j bumped
+  bmp1 : Ps.Fin (suc zero) -> N4 -> N4 = split { inl j -> absurd (N4 -> N4) j ; inr u -> BR.bump0 } ;
+  bmp2 : Ps.Fin (suc (suc zero)) -> N4 -> N4 = split { inl j -> bmp1 j ; inr u -> BR.bump1 } ;
+  bmp3 : Ps.Fin (suc (suc (suc zero))) -> N4 -> N4 = split { inl j -> bmp2 j ; inr u -> BR.bump2 } ;
+  bmp : Ps.Fin ReesPresentation4[l].four -> N4 -> N4 = split { inl j -> bmp3 j ; inr u -> BR.bump3 } ;
+  -- term c (bmp_j u) = X_j term c u
+  tb0 (c : A.R) (u : N4) : (v : Top) -> Id BR.S.R (BR.term c (BR.bump0 u)) (BR.S.mul (RR.GX.var (inl (inl (inl (inr v))))) (BR.term c u)) = split {
+    tt -> trans (BR.term-bump0 c u) (ap (\ x -> BR.S.mul x (BR.term c u)) (sym RR.var-x0)) } ;
+  tb1 (c : A.R) (u : N4) : (v : Top) -> Id BR.S.R (BR.term c (BR.bump1 u)) (BR.S.mul (RR.GX.var (inl (inl (inr v)))) (BR.term c u)) = split {
+    tt -> trans (BR.term-bump1 c u) (ap (\ x -> BR.S.mul x (BR.term c u)) (sym RR.var-x1)) } ;
+  tb2 (c : A.R) (u : N4) : (v : Top) -> Id BR.S.R (BR.term c (BR.bump2 u)) (BR.S.mul (RR.GX.var (inl (inr v))) (BR.term c u)) = split {
+    tt -> trans (BR.term-bump2 c u) (ap (\ x -> BR.S.mul x (BR.term c u)) (sym RR.var-x2)) } ;
+  tb3 (c : A.R) (u : N4) : (v : Top) -> Id BR.S.R (BR.term c (BR.bump3 u)) (BR.S.mul (RR.GX.var (inr v)) (BR.term c u)) = split {
+    tt -> trans (BR.term-bump3 c u) (ap (\ x -> BR.S.mul x (BR.term c u)) (sym RR.var-x3)) } ;
+  term-bmp1 (c : A.R) (u : N4) : (j : Ps.Fin (suc zero)) -> Id BR.S.R (BR.term c (bmp1 j u)) (BR.S.mul (RR.GX.var (inl (inl (inl j)))) (BR.term c u)) = split {
+    inl j -> absurd (Id BR.S.R (BR.term c (bmp1 (inl j) u)) (BR.S.mul (RR.GX.var (inl (inl (inl (inl j))))) (BR.term c u))) j ;
+    inr v -> tb0 c u v } ;
+  term-bmp2 (c : A.R) (u : N4) : (j : Ps.Fin (suc (suc zero))) -> Id BR.S.R (BR.term c (bmp2 j u)) (BR.S.mul (RR.GX.var (inl (inl j))) (BR.term c u)) = split {
+    inl j -> term-bmp1 c u j ;
+    inr v -> tb1 c u v } ;
+  term-bmp3 (c : A.R) (u : N4) : (j : Ps.Fin (suc (suc (suc zero)))) -> Id BR.S.R (BR.term c (bmp3 j u)) (BR.S.mul (RR.GX.var (inl j)) (BR.term c u)) = split {
+    inl j -> term-bmp2 c u j ;
+    inr v -> tb2 c u v } ;
+  term-bmp (c : A.R) (u : N4) : (j : Ps.Fin ReesPresentation4[l].four) -> Id BR.S.R (BR.term c (bmp j u)) (BR.S.mul (RR.GX.var j) (BR.term c u)) = split {
+    inl j -> term-bmp3 c u j ;
+    inr v -> tb3 c u v } ;
+  -- size (bmp_j u) = size u + 1
+  size-bump0 : (u : N4) -> Id Base.Nat (size (BR.bump0 u)) (suc (size u)) = split {
+    nx a b c d -> refl (suc (size (nx a b c d))) } ;
+  size-bump1 : (u : N4) -> Id Base.Nat (size (BR.bump1 u)) (suc (size u)) = split {
+    nx a b c d -> ap (\ k -> NA.plus (NA.plus k c) d) (NA.plus-suc a b) } ;
+  size-bump2 : (u : N4) -> Id Base.Nat (size (BR.bump2 u)) (suc (size u)) = split {
+    nx a b c d -> ap (\ k -> NA.plus k d) (NA.plus-suc (NA.plus a b) c) } ;
+  size-bump3 : (u : N4) -> Id Base.Nat (size (BR.bump3 u)) (suc (size u)) = split {
+    nx a b c d -> NA.plus-suc (NA.plus (NA.plus a b) c) d } ;
+  size-bmp1 (u : N4) : (j : Ps.Fin (suc zero)) -> Id Base.Nat (size (bmp1 j u)) (suc (size u)) = split {
+    inl j -> absurd (Id Base.Nat (size (bmp1 (inl j) u)) (suc (size u))) j ;
+    inr v -> size-bump0 u } ;
+  size-bmp2 (u : N4) : (j : Ps.Fin (suc (suc zero))) -> Id Base.Nat (size (bmp2 j u)) (suc (size u)) = split {
+    inl j -> size-bmp1 u j ;
+    inr v -> size-bump1 u } ;
+  size-bmp3 (u : N4) : (j : Ps.Fin (suc (suc (suc zero)))) -> Id Base.Nat (size (bmp3 j u)) (suc (size u)) = split {
+    inl j -> size-bmp2 u j ;
+    inr v -> size-bump2 u } ;
+  size-bmp (u : N4) : (j : Ps.Fin ReesPresentation4[l].four) -> Id Base.Nat (size (bmp j u)) (suc (size u)) = split {
+    inl j -> size-bmp3 u j ;
+    inr v -> size-bump3 u } ;
+  hom-bumpT (f : N4 -> N4) (hf : (u : N4) -> Id Base.Nat (size (f u)) (suc (size u))) (dd : Base.Nat) :
+    (p : TPoly A.R) -> HomDeg A.R dd p -> HomDeg A.R (suc dd) (BR.bumpT f p) = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (trans (hf u.2) (ap (\ k -> suc k) h.1), r h.2) } ;
+
+  -- the words of an expression as terms
+  flatX : (k : Base.Nat) -> GXL.Expr k -> TPoly A.R = split {
+    zero -> \ c -> cons (c, BR.zeroN) nil ;
+    suc k | r -> \ ex -> PAA.psum ReesPresentation4[l].four (\ j -> BR.bumpT (bmp j) (r (ex j))) } ;
+  hom-flatX : (k : Base.Nat) (ex : GXL.Expr k) -> HomDeg A.R k (flatX k ex) = split {
+    zero -> \ c -> (refl zero, tt) ;
+    suc k | r -> \ ex -> hom-psum A setA (suc k) ReesPresentation4[l].four (\ j -> BR.bumpT (bmp j) (flatX k (ex j)))
+                           (\ j -> hom-bumpT (bmp j) (\ u -> size-bmp u j) k (flatX k (ex j)) (r (ex j))) } ;
+  phi-flatX : (k : Base.Nat) (ex : GXL.Expr k) -> Id BR.S.R (BR.phi (flatX k ex)) (GXL.value k ex) = split {
+    zero -> \ c -> trans (BR.S.addZ (BR.term c BR.zeroN)) (trans (BR.term-zero c) (sym (RR.iota-cst c))) ;
+    suc k | r -> \ ex -> trans (BR.phi-psum ReesPresentation4[l].four (\ j -> BR.bumpT (bmp j) (flatX k (ex j))))
+      (BR.SS.sum-cong ReesPresentation4[l].four (\ j -> BR.phi (BR.bumpT (bmp j) (flatX k (ex j)))) (\ j -> BR.S.mul (RR.GX.var j) (GXL.value k (ex j)))
+         (\ j -> trans (BR.phi-bump (bmp j) (RR.GX.var j) (\ c u -> term-bmp c u j) (flatX k (ex j)))
+                   (ap (BR.S.mul (RR.GX.var j)) (r (ex j))))) } ;
+  -- an element of B of X-degree k as a term list of degree k
+  tlX (k : Base.Nat) (h : BR.S.R) (hh : GXL.Hom (pos k) h) : TPoly A.R = flatX k (GXL.expr k h hh) ;
+  hom-tlX (k : Base.Nat) (h : BR.S.R) (hh : GXL.Hom (pos k) h) : HomDeg A.R k (tlX k h hh) = hom-flatX k (GXL.expr k h hh) ;
+  phi-tlX (k : Base.Nat) (h : BR.S.R) (hh : GXL.Hom (pos k) h) : Id BR.S.R (BR.phi (tlX k h hh)) h =
+    trans (phi-flatX k (GXL.expr k h hh)) (GXL.expr-value k h hh) ;
+
+  ------------------------------------------------------------------------
+  -- U-direction: bihomogeneous elements of R as term lists over D
+
+  -- the coefficients c sent to iota c
+  liftC : TPoly A.R -> TPoly D.R = split {
+    nil -> nil ;
+    cons u p | r -> cons (GD.iota.1 u.1, u.2) r } ;
+  hom-liftC (dd : Base.Nat) : (p : TPoly A.R) -> HomDeg A.R dd p -> HomDeg D.R dd (liftC p) = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (h.1, r h.2) } ;
+  coef-liftC : (p : TPoly A.R) -> BA.CoefHom zero (liftC p) = split {
+    nil -> tt ;
+    cons u p | r -> (GDL.hom-iota u.1, r) } ;
+  hom-scale (c : D.R) (dd : Base.Nat) : (p : TPoly D.R) -> HomDeg D.R dd p -> HomDeg D.R dd (PAD.scaleT (c, BR.zeroN) p) = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (trans (ap size (add-zeroN u.2)) h.1, r h.2) } ;
+  coef-scale (j : Ps.Fin t) (n : Base.Nat) : (p : TPoly D.R) -> BA.CoefHom n p -> BA.CoefHom (suc n) (PAD.scaleT (GD.var j, BR.zeroN) p) = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (subst (GDL.Hom (pos (suc n))) (D.mulC u.1 (GD.var j))
+                              (GDL.hom-mul (pos n) (pos (suc zero)) u.1 (GD.var j) h.1 (GD.var-hom j)), r h.2) } ;
+  -- evaluation of the coefficients
+  evT-lift : (p : TPoly A.R) -> Id (TPoly A.R) (EV.evT (liftC p)) p = split {
+    nil -> refl nil ;
+    cons u p | r -> calc (TPoly A.R) {
+      cons (EV.ev.1 (GD.iota.1 u.1), u.2) (EV.evT (liftC p))
+        =< ap (\ c -> cons (c, u.2) (EV.evT (liftC p))) (GD.ev-iota a u.1) > cons (u.1, u.2) (EV.evT (liftC p))
+        =< ap (\ q -> cons (u.1, u.2) q) r > cons (u.1, u.2) p } } ;
+  evT-app : (p q : TPoly D.R) -> Id (TPoly A.R) (EV.evT (Bar[l].app p q)) (Bar[l].app (EV.evT p) (EV.evT q)) = split {
+    nil -> \ q -> refl (EV.evT q) ;
+    cons u p | r -> \ q -> ap (\ z -> cons (EV.ev.1 u.1, u.2) z) (r q) } ;
+  evT-psum : (n : Nat) (g : Ps.Fin n -> TPoly D.R) -> Id (TPoly A.R) (EV.evT (PAD.psum n g)) (PAA.psum n (\ i -> EV.evT (g i))) = split {
+    zero -> \ g -> refl nil ;
+    suc n | r -> \ g -> trans (evT-app (g (inr tt)) (PAD.psum n (\ i -> g (inl i))))
+                          (ap (Bar[l].app {A.R * N4} (EV.evT (g (inr tt)))) (r (\ i -> g (inl i)))) } ;
+  evT-scale (c : D.R) : (p : TPoly D.R) -> Id (TPoly A.R) (EV.evT (PAD.scaleT (c, BR.zeroN) p)) (PAA.scaleT (EV.ev.1 c, BR.zeroN) (EV.evT p)) = split {
+    nil -> refl nil ;
+    cons u p | r -> calc (TPoly A.R) {
+      cons (EV.ev.1 (D.mul c u.1), addN4 u.2 BR.zeroN) (EV.evT (PAD.scaleT (c, BR.zeroN) p))
+        =< ap (\ x -> cons (x, addN4 u.2 BR.zeroN) (EV.evT (PAD.scaleT (c, BR.zeroN) p))) (EV.ev.2.2.2 c u.1)
+        > cons (A.mul (EV.ev.1 c) (EV.ev.1 u.1), addN4 u.2 BR.zeroN) (EV.evT (PAD.scaleT (c, BR.zeroN) p))
+        =< ap (\ z -> cons (A.mul (EV.ev.1 c) (EV.ev.1 u.1), addN4 u.2 BR.zeroN) z) r
+        > cons (A.mul (EV.ev.1 c) (EV.ev.1 u.1), addN4 u.2 BR.zeroN) (PAA.scaleT (EV.ev.1 c, BR.zeroN) (EV.evT p)) } } ;
+
+  -- an expression of U-degree n with coefficients of X-degree d as a term list
+  tlU (d : Base.Nat) : (n : Base.Nat) (ex : RC.GL.Expr n) -> RC.AllE n (GXL.Hom (pos d)) ex -> TPoly D.R = split {
+    zero -> \ h hh -> liftC (tlX d h hh) ;
+    suc n | r -> \ ex hh -> PAD.psum t (\ j -> PAD.scaleT (GD.var j, BR.zeroN) (r (ex j) (hh j))) } ;
+  hom-tlU (d : Base.Nat) : (n : Base.Nat) (ex : RC.GL.Expr n) (hh : RC.AllE n (GXL.Hom (pos d)) ex) -> HomDeg D.R d (tlU d n ex hh) = split {
+    zero -> \ h hh -> hom-liftC d (tlX d h hh) (hom-tlX d h hh) ;
+    suc n | r -> \ ex hh -> hom-psum D setD d t (\ j -> PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))
+                              (\ j -> hom-scale (GD.var j) d (tlU d n (ex j) (hh j)) (r (ex j) (hh j))) } ;
+  coef-tlU (d : Base.Nat) : (n : Base.Nat) (ex : RC.GL.Expr n) (hh : RC.AllE n (GXL.Hom (pos d)) ex) -> BA.CoefHom n (tlU d n ex hh) = split {
+    zero -> \ h hh -> coef-liftC (tlX d h hh) ;
+    suc n | r -> \ ex hh -> coef-psum (suc n) t (\ j -> PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))
+                              (\ j -> coef-scale j n (tlU d n (ex j) (hh j)) (r (ex j) (hh j))) } ;
+  ev-tlU (d : Base.Nat) : (n : Base.Nat) (ex : RC.GL.Expr n) (hh : RC.AllE n (GXL.Hom (pos d)) ex) ->
+    Id BR.S.R (BR.phi (EV.evT (tlU d n ex hh))) (RG.ev (RC.GL.value n ex)) = split {
+    zero -> \ h hh -> trans (ap BR.phi (evT-lift (tlX d h hh))) (trans (phi-tlX d h hh) (sym (RR.GU.ev-iota RR.b h))) ;
+    suc n | r -> \ ex hh -> calc BR.S.R {
+      BR.phi (EV.evT (PAD.psum t (\ j -> PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))))
+        =< ap BR.phi (evT-psum t (\ j -> PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j))))
+        > BR.phi (PAA.psum t (\ j -> EV.evT (PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))))
+        =< BR.phi-psum t (\ j -> EV.evT (PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j))))
+        > BR.SS.sum t (\ j -> BR.phi (EV.evT (PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))))
+        =< BR.SS.sum-cong t (\ j -> BR.phi (EV.evT (PAD.scaleT (GD.var j, BR.zeroN) (tlU d n (ex j) (hh j)))))
+             (\ j -> BR.S.mul (RR.b j) (RG.ev (RC.GL.value n (ex j))))
+             (\ j -> trans (ap BR.phi (evT-scale (GD.var j) (tlU d n (ex j) (hh j))))
+                       (trans (BR.phi-scale (EV.ev.1 (GD.var j)) (EV.evT (tlU d n (ex j) (hh j))))
+                         (trans (ap (\ c -> BR.S.mul (BR.cst c) (BR.phi (EV.evT (tlU d n (ex j) (hh j))))) (GD.ev-var a j))
+                           (trans (ap (\ c -> BR.S.mul c (BR.phi (EV.evT (tlU d n (ex j) (hh j))))) (sym (RR.iota-cst (a j))))
+                            (ap (BR.S.mul (RR.b j)) (r (ex j) (hh j)))))))
+        > BR.SS.sum t (\ j -> BR.S.mul (RR.b j) (RG.ev (RC.GL.value n (ex j))))
+        =< sym (RG.EV.ev-comb (\ j -> RC.GL.value n (ex j)))
+        > RG.ev (RC.GL.value (suc n) ex) } } ;
+
+  -- THE BRIDGE for a bihomogeneous element y of bidegree (n, d)
+  biT (n : Nat) (d : Base.Nat) (y : RR.R.R) (bh : RC.BiHom n d y) : TPoly D.R = tlU d (toB n) bh.1 bh.2.1 ;
+  hom-biT (n : Nat) (d : Base.Nat) (y : RR.R.R) (bh : RC.BiHom n d y) : HomDeg D.R d (biT n d y bh) = hom-tlU d (toB n) bh.1 bh.2.1 ;
+  coef-biT (n : Nat) (d : Base.Nat) (y : RR.R.R) (bh : RC.BiHom n d y) : BA.CoefHom (toB n) (biT n d y bh) = coef-tlU d (toB n) bh.1 bh.2.1 ;
+  ev-biT (n : Nat) (d : Base.Nat) (y : RR.R.R) (bh : RC.BiHom n d y) : Id BR.S.R (BR.phi (EV.evT (biT n d y bh))) (RG.ev y) =
+    trans (ev-tlU d (toB n) bh.1 bh.2.1) (ap RG.ev bh.2.2) ;
+  -- in coefficient functions Z^4 -> A
+  cf-biT (n : Nat) (d : Base.Nat) (y : RR.R.R) (bh : RC.BiHom n d y) (m : E4) :
+    Id A.R (FPA.cf (EV.evT (biT n d y bh)) m) (BR.psi (RG.ev y) m) =
+    trans (sym (BR.psi-phi m (EV.evT (biT n d y bh)))) (ap (\ z -> BR.psi z m) (ev-biT n d y bh)) ;
+  -- ev of the coefficient function over D is the coefficient function of evT
+  delta-ev (m : E4) : Id A.R (EV.ev.1 (FPD.delta0 m)) (FPA.delta0 m) =
+    trans (FP4.sel-map D A EV.ev.1 EV.ev-zero D.o (Id E4 m FP4.zeroE) (dec-e4 m FP4.zeroE))
+      (ap (\ c -> FP4.sel A c (Id E4 m FP4.zeroE) (dec-e4 m FP4.zeroE)) EV.ev.2.1) ;
+  cf-ev (g : TPoly D.R) (m : E4) : Id A.R (EV.ev.1 (FPD.cf g m)) (FPA.cf (EV.evT g) m) =
+    trans (EV.ev-mulP g FPD.delta0 m) (PAA.mulP-cong (EV.evT g) (\ m' -> EV.ev.1 (FPD.delta0 m')) FPA.delta0 delta-ev m) ;
+
+  ------------------------------------------------------------------------
+  -- the coefficients H' of (certX) as term lists
+
+  HTerm (ee dd : Base.Nat) (h : BR.S.R) : U l = (p : TPoly A.R) * (HomShift A.R ee dd p * Id BR.S.R (BR.phi p) h) ;
+  shift-of-deg (ee k dd : Base.Nat) (pk : Id Base.Nat (NA.plus ee k) dd) : (p : TPoly A.R) -> HomDeg A.R k p -> HomShift A.R ee dd p = split {
+    nil -> \ h -> tt ;
+    cons u p | r -> \ h -> (trans (ap (NA.plus ee) h.1) pk, r h.2) } ;
+  htermD (ee dd : Base.Nat) (h : BR.S.R) (hh : GXL.Hom (subZ (pos dd) (pos ee)) h) : Dich ee dd -> HTerm ee dd h = split {
+    inl w -> (tlX w.1 h (subst (\ z -> GXL.Hom z h) (sub-eq ee w.1 dd w.2) hh),
+              (shift-of-deg ee w.1 dd w.2 (tlX w.1 h (subst (\ z -> GXL.Hom z h) (sub-eq ee w.1 dd w.2) hh))
+                 (hom-tlX w.1 h (subst (\ z -> GXL.Hom z h) (sub-eq ee w.1 dd w.2) hh)),
+               phi-tlX w.1 h (subst (\ z -> GXL.Hom z h) (sub-eq ee w.1 dd w.2) hh))) ;
+    inr w -> (nil, (tt, sym (trans (sym hh)
+                (trans (ap (\ k -> RR.GX.pr k h) (trans (ap (\ z -> subZ (pos dd) (pos z)) w.2) (RC.below dd w.1)))
+                       (RR.GX.pr-negdeg w.1 h))))) } ;
+  -- an element of X-degree d - e as a term list with every term of e + size u = d
+  hterm (ee dd : Base.Nat) (h : BR.S.R) (hh : GXL.Hom (subZ (pos dd) (pos ee)) h) : HTerm ee dd h = htermD ee dd h hh (dich ee dd) ;
+} ;

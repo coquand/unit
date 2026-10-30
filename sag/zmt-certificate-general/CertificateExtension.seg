@@ -1,0 +1,69 @@
+-- One step of finite zigzag descent for relation certificates. A witness
+-- d c=A u carries a deeper certificate for u. At zero top coordinates the
+-- deeper relation supplies u=b p+H t; A H=0 and d a=A b make c-a p closed.
+-- Contract that closed cochain, obtaining c=q h+a p. Repeating this step
+-- gives the alternating corrections without ever commuting a contraction
+-- with polynomial multiplication. All witnesses remain under truncation.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module RC = RelationCertificate[l] ;
+module Extend (D : CRing) (P0 Z T P Um Q V : IP.Mod[D])
+ (q : IP.Lin[D,P0,Z]) (d : IP.Lin[D,Z,T]) (a : IP.Lin[D,P,Z])
+ (b : IP.Lin[D,P,Um]) (A : IP.Lin[D,Um,T]) (H : IP.Lin[D,Q,Um])
+ (comm : (p : P.M) -> Id T.M (d.f (a.f p)) (A.f (b.f p)))
+ (kill : (t : Q.M) -> Id T.M (A.f (H.f t)) T.mz)
+ (contract : (c : Z.M) -> Id T.M (d.f c) T.mz -> Tr.Trunc[(h : P0.M) * Id Z.M (q.f h) c].carrier)
+ (R : RC.Rel[D,Um,V])
+ (decompose : (u : Um.M) -> R.B u -> Tr.Trunc[(p : P.M) * ((t : Q.M) * Id Um.M u (Um.madd (b.f p) (H.f t)))].carrier) {
+ module ZL = IP.ModL[D,Z] ; module TL = IP.ModL[D,T] ; module UL = IP.ModL[D,Um] ; module VL = IP.ModL[D,V] ;
+ module LD = RC.LinL[D,Z,T,d] ; module LA = RC.LinL[D,Um,T,A] ;
+ module Lq = RC.LinL[D,P0,Z,q] ; module La = RC.LinL[D,P,Z,a] ;
+ -- The group identities below only need module laws, not setness.
+ Bdry (c : Z.M) : U l = (h : P0.M) * ((p : P.M) * Id Z.M c (Z.madd (q.f h) (a.f p))) ;
+ Removable (c : Z.M) : U l = Tr.Trunc[Bdry c].carrier ;
+ Witness (c : Z.M) (v : V.M) : U l = (u : Um.M) * (Id T.M (d.f c) (A.f u) * R.Gam u v) ;
+ Gam (c : Z.M) (v : V.M) : U l = Tr.Trunc[Witness c v].carrier ;
+ gam-zero : Gam Z.mz V.mz = Tr.Trunc[Witness Z.mz V.mz].inc (Um.mz,(trans LD.f-zero (sym LA.f-zero),R.gam-zero)) ;
+ module Add (c c' : Z.M) (v v' : V.M) (x : Witness c v) (y : Witness c' v') {
+  equation : Id T.M (d.f (Z.madd c c')) (A.f (Um.madd x.1 y.1)) =
+   trans (d.f-add c c') (trans (TL.G.cong-add x.2.1 y.2.1) (sym (A.f-add x.1 y.1))) ;
+  witness : Witness (Z.madd c c') (V.madd v v') = (Um.madd x.1 y.1,(equation,R.gam-add x.1 y.1 v v' x.2.2 y.2.2)) ;
+ } ;
+ gam-add (c c' : Z.M) (v v' : V.M) : Gam c v -> Gam c' v' -> Gam (Z.madd c c') (V.madd v v') =
+  TC.map2 (Witness c v) (Witness c' v') (Witness (Z.madd c c') (V.madd v v')) (\ x y -> Add[c,c',v,v',x,y].witness) ;
+ module Scale (s : D.R) (c : Z.M) (v : V.M) (x : Witness c v) {
+  equation : Id T.M (d.f (Z.sm s c)) (A.f (Um.sm s x.1)) =
+   trans (d.f-sm s c) (trans (ap (T.sm s) x.2.1) (sym (A.f-sm s x.1))) ;
+  witness : Witness (Z.sm s c) (V.sm s v) = (Um.sm s x.1,(equation,R.gam-sm s x.1 v x.2.2)) ;
+ } ;
+ gam-sm (s : D.R) (c : Z.M) (v : V.M) : Gam c v -> Gam (Z.sm s c) (V.sm s v) =
+  TC.map (Witness c v) (Witness (Z.sm s c) (V.sm s v)) (\ x -> Scale[s,c,v,x].witness) ;
+ module Reflect (c : Z.M) (w : Witness c V.mz) (p : P.M) (t : Q.M)
+  (eu : Id Um.M w.1 (Um.madd (b.f p) (H.f t))) {
+  correction : Z.M = ZL.msub c (a.f p) ;
+  au : Id T.M (A.f w.1) (A.f (b.f p)) =
+   trans (ap A.f eu) (trans (A.f-add (b.f p) (H.f t))
+    (trans (ap (T.madd (A.f (b.f p))) (kill t)) (T.maddZ (A.f (b.f p))))) ;
+  closed : Id T.M (d.f correction) T.mz =
+   trans (LD.f-sub c (a.f p))
+    (trans (TL.G.cong-add (trans w.2.1 au) (ap T.mneg (comm p))) (T.maddN (A.f (b.f p)))) ;
+  back : Id Z.M (Z.madd correction (a.f p)) c =
+   trans (sym (Z.maddA c (Z.mneg (a.f p)) (a.f p)))
+    (trans (ap (Z.madd c) (trans (Z.maddC (Z.mneg (a.f p)) (a.f p)) (Z.maddN (a.f p)))) (Z.maddZ c)) ;
+  found (h : (z : P0.M) * Id Z.M (q.f z) correction) : Bdry c =
+   (h.1,(p,sym (trans (ap (\ z -> Z.madd z (a.f p)) h.2) back))) ;
+  removable : Removable c = TC.map ((z : P0.M) * Id Z.M (q.f z) correction) (Bdry c) found (contract correction closed) ;
+ } ;
+ reflect-witness (c : Z.M) (w : Witness c V.mz) : Removable c =
+  TC.bind ((p : P.M) * ((t : Q.M) * Id Um.M w.1 (Um.madd (b.f p) (H.f t)))) (Bdry c)
+   (\ pt -> Reflect[c,w,pt.1,pt.2.1,pt.2.2].removable) (decompose w.1 (R.reflect w.1 w.2.2)) ;
+ reflect (c : Z.M) : Gam c V.mz -> Removable c = TC.bind (Witness c V.mz) (Bdry c) (reflect-witness c) ;
+ rel : RC.Rel[D,Z,V] = RC.mkRel D Z V Removable Gam gam-zero gam-add gam-sm reflect ;
+ Partner (c : Z.M) : U l = (v : V.M) * Gam c v ;
+ from-partner (c : Z.M) (u : Um.M) (eq : Id T.M (d.f c) (A.f u))
+  (p : (v : V.M) * R.Gam u v) : Partner c =
+  (p.1,Tr.Trunc[Witness c p.1].inc (u,(eq,p.2))) ;
+ partner (c : Z.M) (u : Um.M) (eq : Id T.M (d.f c) (A.f u)) :
+  Tr.Trunc[(v : V.M) * R.Gam u v].carrier -> Tr.Trunc[Partner c].carrier =
+  TC.map ((v : V.M) * R.Gam u v) (Partner c) (from-partner c u eq) ;
+} ;

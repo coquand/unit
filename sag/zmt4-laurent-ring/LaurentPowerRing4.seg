@@ -1,0 +1,220 @@
+-- The Laurent ring is the EXISTING power localisation of the ordinary
+-- four-variable polynomial ring at X0 X1 X2 X3. Multiplication by this
+-- monomial translates coefficients, so its powers are coefficientwise
+-- injective. A fraction p/J^n has coefficient psi(p)(m+n*(1,1,1,1)).
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open PolynomialAction4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ; module BR = PolynomialRing4Bridge[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module NA = NatArith[l] ;
+oneN : N4 = nx (suc zero) (suc zero) (suc zero) (suc zero) ;
+zeroN : N4 = nx zero zero zero zero ;
+diag (n : Nat) : N4 = nx (BR.toB n) (BR.toB n) (BR.toB n) (BR.toB n) ;
+stepB (n : Base.Nat) : Id Base.Nat (NA.plus n (suc zero)) (suc n) =
+ trans (NA.plus-suc n zero) (ap (\ k -> suc k) (NA.plus-zero n)) ;
+diag-step (n : Nat) : Id N4 (addN4 (diag n) oneN) (diag (suc n)) =
+ nx-eq _ _ _ _ _ _ _ _ (stepB (BR.toB n)) (stepB (BR.toB n)) (stepB (BR.toB n)) (stepB (BR.toB n)) ;
+plusB : (n m : Nat) -> Id Base.Nat (BR.toB (plus n m)) (NA.plus (BR.toB n) (BR.toB m)) = split {
+ zero -> \ m -> refl (BR.toB m) ; suc n | rec -> \ m -> ap (\ k -> suc k) (rec m) } ;
+plusB-flip (n m : Nat) : Id Base.Nat (BR.toB (plus n m)) (NA.plus (BR.toB m) (BR.toB n)) =
+ trans (plusB n m) (NA.plus-comm (BR.toB n) (BR.toB m)) ;
+up-plus (n m : Nat) : (u : E4) -> Id E4 (addE u (diag (plus n m))) (addE (addE u (diag n)) (diag m)) = split {
+ ex a b c d -> ex-eq _ _ _ _ _ _ _ _
+   (trans (ap (addP a) (plusB-flip n m)) (sym (addP-addP a (BR.toB n) (BR.toB m))))
+   (trans (ap (addP b) (plusB-flip n m)) (sym (addP-addP b (BR.toB n) (BR.toB m))))
+   (trans (ap (addP c) (plusB-flip n m)) (sym (addP-addP c (BR.toB n) (BR.toB m))))
+   (trans (ap (addP d) (plusB-flip n m)) (sym (addP-addP d (BR.toB n) (BR.toB m)))) } ;
+sub-zero : (m : E4) -> Id E4 (subE m zeroN) m = split { ex a b c d -> refl (ex a b c d) } ;
+add-zero : (m : E4) -> Id E4 (addE m zeroN) m = split { ex a b c d -> refl (ex a b c d) } ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module B = BR.Over[A,setA] ; S : CRing = B.S ; module SL = RL[S] ;
+ module PW = AffinePowers[l].Over[S] ; module PA = B.PA ; module FP = B.FP ;
+ module AL = IP.ModL[A,IP.regular A] ;
+ -- Four named multiplication reassociations avoid repeatedly expanding
+ -- the iterated quotient-ring term representation.
+ module Term (c : A.R) (u0 u1 u2 u3 : Base.Nat) (x : S.R) {
+   p0 : S.R = B.pw B.X0 u0 ; p1 : S.R = B.pw B.X1 u1 ;
+   p2 : S.R = B.pw B.X2 u2 ; p3 : S.R = B.pw B.X3 u3 ;
+   v3 : S.R = S.mul p3 x ; v2 : S.R = S.mul p2 v3 ;
+   v1 : S.R = S.mul p1 v2 ; v0 : S.R = S.mul p0 v1 ;
+   reassoc2 : Id S.R (S.mul (S.mul p2 p3) x) v2 = sym (S.mulA p2 p3 x) ;
+   reassoc1 : Id S.R (S.mul (S.mul p1 (S.mul p2 p3)) x) v1 =
+     trans (sym (S.mulA p1 (S.mul p2 p3) x)) (ap (S.mul p1) reassoc2) ;
+   reassoc0 : Id S.R (S.mul (S.mul p0 (S.mul p1 (S.mul p2 p3))) x) v0 =
+     trans (sym (S.mulA p0 (S.mul p1 (S.mul p2 p3)) x)) (ap (S.mul p0) reassoc1) ;
+   reassoc : Id S.R (S.mul (B.term c (nx u0 u1 u2 u3)) x) (S.mul (B.cst c) v0) =
+     trans (sym (S.mulA (B.cst c) (S.mul p0 (S.mul p1 (S.mul p2 p3))) x)) (ap (S.mul (B.cst c)) reassoc0) ;
+   read : (m : E4) -> Id A.R (B.psi v0 m) (B.psi x (subE m (nx u0 u1 u2 u3))) = split {
+     ex a b c' d -> trans (B.psi-pw0 a b c' d u0 v1)
+       (trans (B.psi-pw1 (minus a u0) b c' d u1 v2)
+         (trans (B.psi-pw2 (minus a u0) (minus b u1) c' d u2 v3)
+           (B.psi-pw3 (minus a u0) (minus b u1) (minus c' u2) d u3 x))) } ;
+   result (m : E4) : Id A.R (B.psi (S.mul (B.term c (nx u0 u1 u2 u3)) x) m)
+     (A.mul c (B.psi x (subE m (nx u0 u1 u2 u3)))) =
+     trans (ap (\ z -> B.psi z m) reassoc)
+       (trans (B.psi-scale c v0 m) (ap (A.mul c) (read m))) ;
+ } ;
+ term-action (c : A.R) : (u : N4) (x : S.R) (m : E4) ->
+   Id A.R (B.psi (S.mul (B.term c u) x) m) (A.mul c (B.psi x (subE m u))) = split {
+   nx a b c' d -> \ x -> Term[c,a,b,c',d,x].result } ;
+ phi-action : (p : TPoly A.R) (x : S.R) (m : E4) ->
+   Id A.R (B.psi (S.mul (B.phi p) x) m) (PA.mulP p (B.psi x) m) = split {
+   nil -> \ x m -> trans (ap (\ z -> B.psi z m) (SL.zero-mul x)) (B.psi-zero m) ;
+   cons t p | rec -> \ x m -> trans (ap (\ z -> B.psi z m) (SL.dist-left (B.term t.1 t.2) (B.phi p) x))
+     (trans (B.psi-add (S.mul (B.term t.1 t.2) x) (S.mul (B.phi p) x) m)
+       (AL.G.cong-add (term-action t.1 t.2 x m) (rec x m))) } ;
+ J : S.R = B.term A.o oneN ;
+ psi-J (x : S.R) (m : E4) : Id A.R (B.psi (S.mul J x) m) (B.psi x (subE m oneN)) =
+   trans (term-action A.o oneN x m) (RL[A].one-left (B.psi x (subE m oneN))) ;
+ psi-power : (n : Nat) (x : S.R) (m : E4) ->
+   Id A.R (B.psi (S.mul (PW.power J n) x) m) (B.psi x (subE m (diag n))) = split {
+   zero -> \ x m -> trans (ap (\ z -> B.psi z m) (SL.one-left x)) (ap (B.psi x) (sym (sub-zero m))) ;
+   suc n | rec -> \ x m -> trans (ap (\ z -> B.psi z m) (sym (S.mulA J (PW.power J n) x)))
+     (trans (psi-J (S.mul (PW.power J n) x) m)
+       (trans (rec x (subE m oneN)) (ap (B.psi x) (trans (subE-subE m oneN (diag n)) (ap (subE m) (diag-step n)))))) } ;
+ power-inj (n : Nat) (x y : S.R) (e : Id S.R (S.mul (PW.power J n) x) (S.mul (PW.power J n) y)) : Id S.R x y =
+   B.ext4 x y (\ m -> trans (ap (B.psi x) (sym (subE-addE m (diag n))))
+     (trans (sym (psi-power n x (addE m (diag n))))
+       (trans (ap (\ z -> B.psi z (addE m (diag n))) e)
+         (trans (psi-power n y (addE m (diag n))) (ap (B.psi y) (subE-addE m (diag n))))))) ;
+ module Loc = PowerLocalization[l].Over[S,J] ; module Q = Loc.L.Q ; module Raw = Loc.L.Raw ;
+ ring : CRing = Loc.ring ; set : Pr.isSet ring.R = Loc.set ;
+ inclusion : RingHom[l].Hom S ring = Loc.inclusion ;
+ raw-coeff (q : Raw.Fraction) (m : E4) : A.R = B.psi q.1 (addE m (diag q.2.2.1)) ;
+ -- Cancellation removes the auxiliary annihilator in the fraction relation.
+ exact (q r : Raw.Fraction) (w : Raw.Witness q r) : Raw.Exact q r =
+   power-inj w.2.1.1 (S.mul q.1 r.2.1) (S.mul r.1 q.2.1)
+     (trans (ap (\ z -> S.mul z (S.mul q.1 r.2.1)) (sym w.2.1.2))
+       (trans w.2.2 (ap (\ z -> S.mul z (S.mul r.1 q.2.1)) w.2.1.2))) ;
+ module Compare (q r : Raw.Fraction) (e : Raw.Exact q r) (m : E4) {
+   nq : Nat = q.2.2.1 ; nr : Nat = r.2.2.1 ;
+   at : E4 = addE (addE m (diag nq)) (diag nr) ;
+   result : Id A.R (raw-coeff q m) (raw-coeff r m) = calc A.R {
+     B.psi q.1 (addE m (diag nq))
+       =< ap (B.psi q.1) (sym (subE-addE (addE m (diag nq)) (diag nr)))
+       > B.psi q.1 (subE at (diag nr))
+       =< sym (psi-power nr q.1 at) > B.psi (S.mul (PW.power J nr) q.1) at
+       =< ap (\ x -> B.psi x at) (S.mulC (PW.power J nr) q.1) > B.psi (S.mul q.1 (PW.power J nr)) at
+       =< ap (\ x -> B.psi x at) (ap (S.mul q.1) (sym r.2.2.2)) > B.psi (S.mul q.1 r.2.1) at
+       =< ap (\ x -> B.psi x at) e > B.psi (S.mul r.1 q.2.1) at
+       =< ap (\ x -> B.psi x at) (ap (S.mul r.1) q.2.2.2) > B.psi (S.mul r.1 (PW.power J nq)) at
+       =< ap (\ x -> B.psi x at) (S.mulC r.1 (PW.power J nq)) > B.psi (S.mul (PW.power J nq) r.1) at
+       =< psi-power nq r.1 at > B.psi r.1 (subE at (diag nq))
+       =< ap (B.psi r.1) (subE-addE-comm (addE m (diag nq)) (diag nr) (diag nq))
+       > B.psi r.1 (addE (subE (addE m (diag nq)) (diag nq)) (diag nr))
+       =< ap (B.psi r.1) (ap (\ x -> addE x (diag nr)) (subE-addE m (diag nq)))
+       > B.psi r.1 (addE m (diag nr)) } ;
+ } ;
+ raw-respects-exact (q r : Raw.Fraction) (e : Raw.Exact q r) (m : E4) : Id A.R (raw-coeff q m) (raw-coeff r m) = Compare[q,r,e,m].result ;
+ raw-respects (q r : Raw.Fraction) (e : Raw.Relation q r) : Id (E4 -> A.R) (raw-coeff q) (raw-coeff r) =
+   FE.funext E4 (\ m -> A.R) _ _ (\ m -> TC.rec (Raw.Witness q r) @l
+     (Id A.R (raw-coeff q m) (raw-coeff r m)) (setA _ _)
+       (\ w -> raw-respects-exact q r (exact q r w) m) e) ;
+ module Coeff = Q.Descend[E4 -> A.R,FE.isSet-Pi E4 (\ m -> A.R) (\ m -> setA),raw-coeff,raw-respects] ;
+ coeff (x : ring.R) : E4 -> A.R = Coeff.map x ;
+ coeff-fraction (q : Raw.Fraction) (m : E4) : Id A.R (coeff (Loc.L.include q) m) (raw-coeff q m) =
+   ap (\ f -> f m) (Coeff.beta q) ;
+ coeff-inclusion (x : S.R) (m : E4) : Id A.R (coeff (inclusion.1 x) m) (B.psi x m) =
+   trans (coeff-fraction (Raw.constantF x) m) (ap (B.psi x) (add-zero m)) ;
+ psi-neg (x : S.R) (m : E4) : Id A.R (B.psi (S.neg x) m) (A.neg (B.psi x m)) =
+   RL[A].neg-uniq (B.psi x m) (B.psi (S.neg x) m)
+     (trans (sym (B.psi-add x (S.neg x) m))
+       (trans (ap (\ z -> B.psi z m) (S.addN x)) (B.psi-zero m))) ;
+ module AddRaw (q r : Raw.Fraction) (m : E4) {
+   nq : Nat = q.2.2.1 ; nr : Nat = r.2.2.1 ;
+   at : E4 = addE m (diag (plus nq nr)) ;
+   left-shift : Id E4 (subE at (diag nr)) (addE m (diag nq)) =
+     trans (ap (\ t -> subE t (diag nr)) (up-plus nq nr m)) (subE-addE (addE m (diag nq)) (diag nr)) ;
+   right-shift : Id E4 (subE at (diag nq)) (addE m (diag nr)) =
+     trans (ap (\ t -> subE t (diag nq)) (up-plus nq nr m))
+       (trans (subE-addE-comm (addE m (diag nq)) (diag nr) (diag nq))
+         (ap (\ t -> addE t (diag nr)) (subE-addE m (diag nq)))) ;
+   read-left : Id A.R (B.psi (S.mul q.1 r.2.1) at) (raw-coeff q m) =
+     trans (ap (\ z -> B.psi z at) (ap (S.mul q.1) r.2.2.2))
+       (trans (ap (\ z -> B.psi z at) (S.mulC q.1 (PW.power J nr)))
+         (trans (psi-power nr q.1 at) (ap (B.psi q.1) left-shift))) ;
+   read-right : Id A.R (B.psi (S.mul r.1 q.2.1) at) (raw-coeff r m) =
+     trans (ap (\ z -> B.psi z at) (ap (S.mul r.1) q.2.2.2))
+       (trans (ap (\ z -> B.psi z at) (S.mulC r.1 (PW.power J nq)))
+         (trans (psi-power nq r.1 at) (ap (B.psi r.1) right-shift))) ;
+   result : Id A.R (raw-coeff (Raw.addF q r) m) (A.add (raw-coeff q m) (raw-coeff r m)) =
+     trans (B.psi-add (S.mul q.1 r.2.1) (S.mul r.1 q.2.1) at) (AL.G.cong-add read-left read-right) ;
+ } ;
+ coeff-add-raw (q r : Raw.Fraction) (m : E4) :
+   Id A.R (coeff (ring.add (Loc.L.include q) (Loc.L.include r)) m)
+     (A.add (coeff (Loc.L.include q) m) (coeff (Loc.L.include r) m)) =
+   trans (ap (\ z -> coeff z m) (Loc.L.Add.beta q r))
+     (trans (coeff-fraction (Raw.addF q r) m)
+       (trans (AddRaw[q,r,m].result) (AL.G.cong-add (sym (coeff-fraction q m)) (sym (coeff-fraction r m))))) ;
+ coeff-add (x y : ring.R) (m : E4) : Id A.R (coeff (ring.add x y) m) (A.add (coeff x m) (coeff y m)) =
+   Loc.L.forall2 (\ x y -> Id A.R (coeff (ring.add x y) m) (A.add (coeff x m) (coeff y m)))
+     (\ x y -> setA _ _) (\ q r -> coeff-add-raw q r m) x y ;
+ coeff-neg (x : ring.R) (m : E4) : Id A.R (coeff (ring.neg x) m) (A.neg (coeff x m)) =
+   Q.induction @l (\ x -> Id A.R (coeff (ring.neg x) m) (A.neg (coeff x m))) (\ x -> setA _ _)
+     (\ q -> trans (ap (\ z -> coeff z m) (Loc.L.Negate.beta q))
+       (trans (coeff-fraction (Raw.negF q) m)
+         (trans (psi-neg q.1 (addE m (diag q.2.2.1))) (ap A.neg (sym (coeff-fraction q m)))))) x ;
+ coeff-zero (m : E4) : Id A.R (coeff ring.z m) A.z = trans (coeff-inclusion S.z m) (B.psi-zero m) ;
+ coeff-one (m : E4) : Id A.R (coeff ring.o m) (FP.delta0 m) = trans (coeff-inclusion S.o m) (B.psi-one m) ;
+ coeff-polynomial (p : TPoly A.R) (m : E4) : Id A.R (coeff (inclusion.1 (B.phi p)) m) (FP.cf p m) =
+   trans (coeff-inclusion (B.phi p) m) (B.psi-phi m p) ;
+ module PolynomialRaw (p : TPoly A.R) (q : Raw.Fraction) (m : E4) {
+   at : E4 = addE m (diag q.2.2.1) ;
+   result : Id A.R (coeff (ring.mul (inclusion.1 (B.phi p)) (Loc.L.include q)) m)
+     (PA.mulP p (coeff (Loc.L.include q)) m) =
+     trans (ap (\ z -> coeff z m) (Loc.L.Multiply.beta (Raw.constantF (B.phi p)) q))
+       (trans (coeff-fraction (Raw.mulF (Raw.constantF (B.phi p)) q) m)
+         (trans (phi-action p q.1 at)
+           (trans (sym (PA.mulP-shift (\ m -> addE m (diag q.2.2.1))
+             (\ m u -> subE-addE-comm m (diag q.2.2.1) u) p (B.psi q.1) m))
+             (PA.mulP-cong p (raw-coeff q) (coeff (Loc.L.include q)) (\ m -> sym (coeff-fraction q m)) m)))) ;
+ } ;
+ coeff-mul-polynomial (p : TPoly A.R) (x : ring.R) (m : E4) :
+   Id A.R (coeff (ring.mul (inclusion.1 (B.phi p)) x) m) (PA.mulP p (coeff x) m) =
+   Q.induction @l (\ x -> Id A.R (coeff (ring.mul (inclusion.1 (B.phi p)) x) m) (PA.mulP p (coeff x) m))
+     (\ x -> setA _ _) (\ q -> PolynomialRaw[p,q,m].result) x ;
+ module RawExt (q r : Raw.Fraction) (h : (m : E4) -> Id A.R (raw-coeff q m) (raw-coeff r m)) {
+   nq : Nat = q.2.2.1 ; nr : Nat = r.2.2.1 ;
+   down (m : E4) : E4 = subE (subE m (diag nr)) (diag nq) ;
+   recover-q (m : E4) : Id E4 (addE (down m) (diag nq)) (subE m (diag nr)) = addE-subE (subE m (diag nr)) (diag nq) ;
+   recover-r (m : E4) : Id E4 (addE (down m) (diag nr)) (subE m (diag nq)) =
+     trans (ap (\ t -> addE t (diag nr)) (subE-comm m (diag nr) (diag nq))) (addE-subE (subE m (diag nq)) (diag nr)) ;
+   cross-left (m : E4) : Id A.R (B.psi (S.mul q.1 r.2.1) m) (raw-coeff q (down m)) =
+     trans (ap (\ z -> B.psi z m) (ap (S.mul q.1) r.2.2.2))
+       (trans (ap (\ z -> B.psi z m) (S.mulC q.1 (PW.power J nr)))
+         (trans (psi-power nr q.1 m) (ap (B.psi q.1) (sym (recover-q m))))) ;
+   cross-right (m : E4) : Id A.R (raw-coeff r (down m)) (B.psi (S.mul r.1 q.2.1) m) =
+     trans (ap (B.psi r.1) (recover-r m))
+       (trans (sym (psi-power nq r.1 m))
+         (trans (ap (\ z -> B.psi z m) (S.mulC (PW.power J nq) r.1))
+           (ap (\ z -> B.psi z m) (ap (S.mul r.1) (sym q.2.2.2))))) ;
+   cross-exact : Raw.Exact q r = B.ext4 _ _ (\ m -> trans (cross-left m) (trans (h (down m)) (cross-right m))) ;
+   equal : Id ring.R (Loc.L.include q) (Loc.L.include r) = Q.relates q r (Raw.exact q r cross-exact) ;
+ } ;
+ CoeffEq (x y : ring.R) : U l = (m : E4) -> Id A.R (coeff x m) (coeff y m) ;
+ ext (x y : ring.R) (h : CoeffEq x y) : Id ring.R x y =
+   Loc.L.forall2 (\ x y -> CoeffEq x y -> Id ring.R x y)
+     (\ x y -> FE.isProp-Pi (CoeffEq x y) (\ h -> Id ring.R x y) (\ h -> set x y))
+     (\ q r h -> RawExt[q,r,\ m -> trans (sym (coeff-fraction q m)) (trans (h m) (coeff-fraction r m))].equal) x y h ;
+ Support (f : E4 -> A.R) : U l = (ms : List E4) * ((m : E4) -> Not (Mem m ms) -> Id A.R (f m) A.z) ;
+ Finite (f : E4 -> A.R) : U l = Tr.Trunc[Support f].carrier ;
+ module FractionSupport (q : Raw.Fraction) (rep : B.RepW q.1) {
+   source : List E4 = ShiftedCech4[l].Over[A,setA].suppL (cons FinitePolynomial4[l].zeroE nil) rep.1 ;
+   list : List E4 = mapL (\ m -> subE m (diag q.2.2.1)) source ;
+   vanish (m : E4) (nm : Not (Mem m list)) : Id A.R (raw-coeff q m) A.z =
+     trans (ap (\ x -> B.psi x (addE m (diag q.2.2.1))) (sym rep.2))
+       (trans (B.psi-phi (addE m (diag q.2.2.1)) rep.1)
+         (FP.cf-supp rep.1 (addE m (diag q.2.2.1))
+           (\ hm -> nm (mem-tr list (subE (addE m (diag q.2.2.1)) (diag q.2.2.1)) m
+             (subE-addE m (diag q.2.2.1))
+             (mem-map (\ u -> subE u (diag q.2.2.1)) (addE m (diag q.2.2.1)) source hm))))) ;
+   witness : Support (raw-coeff q) = (list,vanish) ;
+ } ;
+ raw-finite (q : Raw.Fraction) : Finite (raw-coeff q) =
+   TC.map (B.RepW q.1) (Support (raw-coeff q)) (\ rep -> FractionSupport[q,rep].witness) (B.rep q.1) ;
+ finite (x : ring.R) : Finite (coeff x) = Q.induction @l (\ x -> Finite (coeff x))
+   (\ x -> Tr.Trunc[Support (coeff x)].proposition)
+   (\ q -> TC.map (Support (raw-coeff q)) (Support (coeff (Loc.L.include q)))
+     (\ w -> (w.1,\ m nm -> trans (coeff-fraction q m) (w.2 m nm))) (raw-finite q)) x ;
+} ;

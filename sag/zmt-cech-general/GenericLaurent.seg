@@ -1,0 +1,76 @@
+-- Finite coefficient families over a generic exponent type. Finite support
+-- is a truncated list outside which every component vanishes, so no
+-- decidable equality of ring coefficients or choice is used. Actual
+-- Laurent chart modules are the submodules cut out by these conditions.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ; module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Ps = Presentations[l] ; module Z = ZInt[l] ;
+
+Exp (n : Nat) : U l = Ps.Fin n -> Z.Int ;
+module IntFlags {
+ open ZInt[l] ;
+ flag : Int -> GenericCube[l].Flag = split { pos n -> absent ; negsuc n -> present } ;
+} ;
+mask : (n : Nat) -> Exp n -> Sub n = split {
+ zero -> \ m -> tt ; suc n | r -> \ m -> (IntFlags.flag (head n m), r (tail n m)) } ;
+total : (n : Nat) -> Exp n -> Z.Int = split {
+ zero -> \ m -> Z.zeroZ ; suc n | r -> \ m -> Z.add (head n m) (r (tail n m)) } ;
+
+Mem (E : U l) (m : E) : List E -> U l = split {
+ nil -> Empty ; cons x xs | r -> Plus (Id E x m) r } ;
+append (E : U l) : List E -> List E -> List E = split {
+ nil -> \ ys -> ys ; cons x xs | r -> \ ys -> cons x (r ys) } ;
+mem-left (E : U l) (m : E) : (xs ys : List E) -> Mem E m xs -> Mem E m (append E xs ys) = split {
+ nil -> \ ys h -> absurd (Mem E m ys) h ;
+ cons x xs | r -> \ ys h -> memLeftS E m x xs ys (r ys) h }
+where { memLeftS (E : U l) (m x : E) (xs ys : List E) (r : Mem E m xs -> Mem E m (append E xs ys)) :
+ Plus (Id E x m) (Mem E m xs) -> Plus (Id E x m) (Mem E m (append E xs ys)) = split {
+ inl e -> inl e ; inr h -> inr (r h) } } ;
+mem-right (E : U l) (m : E) : (xs ys : List E) -> Mem E m ys -> Mem E m (append E xs ys) = split {
+ nil -> \ ys h -> h ; cons x xs | r -> \ ys h -> inr (r ys h) } ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+ module LO = Laurent4[l].Over[D,setD] ; module G = IP.ModL[D,IP.regular D] ;
+ module Chart (E I : U l) (Bad : I -> E -> U l) {
+   Raw : U l = I -> E -> D.R ;
+   rawM : IP.Mod[D] = LO.powM I (LO.powM E (IP.regular D)) ;
+   Vanish (s : List E) (c : Raw) : U l = (i : I) (m : E) -> Not (Mem E m s) -> Id D.R (c i m) D.z ;
+   SuppW (c : Raw) : U l = (s : List E) * Vanish s c ;
+   Supp (c : Raw) : U l = Tr.Trunc[SuppW c].carrier ;
+   Van (c : Raw) : U l = (i : I) (m : E) -> Bad i m -> Id D.R (c i m) D.z ;
+   Cond (c : Raw) : U l = Supp c * Van c ;
+   van-prop (c : Raw) : Pr.isProp (Van c) =
+     FE.isProp-Pi I (\ i -> (m : E) -> Bad i m -> Id D.R (c i m) D.z)
+       (\ i -> FE.isProp-Pi E (\ m -> Bad i m -> Id D.R (c i m) D.z)
+         (\ m -> FE.isProp-Pi (Bad i m) (\ b -> Id D.R (c i m) D.z) (\ b -> setD (c i m) D.z))) ;
+   cond-prop (c : Raw) : Pr.isProp (Cond c) =
+     Pr.isProp-Sigma (Supp c) (\ s -> Van c) Tr.Trunc[SuppW c].proposition (\ s -> van-prop c) ;
+   supp-zero : Supp rawM.mz = Tr.Trunc[SuppW rawM.mz].inc (nil, \ i m nm -> refl D.z) ;
+   supp-add (c c' : Raw) (s : Supp c) (s' : Supp c') : Supp (rawM.madd c c') =
+     TC.map2 (SuppW c) (SuppW c') (SuppW (rawM.madd c c'))
+       (\ w w' -> (append E w.1 w'.1, \ i m nm -> LO.zero-add (c i m) (c' i m)
+         (w.2 i m (\ h -> nm (mem-left E m w.1 w'.1 h)))
+         (w'.2 i m (\ h -> nm (mem-right E m w.1 w'.1 h))))) s s' ;
+   supp-neg (c : Raw) (s : Supp c) : Supp (rawM.mneg c) =
+     TC.map (SuppW c) (SuppW (rawM.mneg c)) (\ w -> (w.1, \ i m nm -> LO.zero-neg (c i m) (w.2 i m nm))) s ;
+   supp-sm (a : D.R) (c : Raw) (s : Supp c) : Supp (rawM.sm a c) =
+     TC.map (SuppW c) (SuppW (rawM.sm a c)) (\ w -> (w.1, \ i m nm -> LO.zero-mul a (c i m) (w.2 i m nm))) s ;
+   cond-zero : Cond rawM.mz = (supp-zero, \ i m b -> refl D.z) ;
+   cond-add (c c' : Raw) (v : Cond c) (v' : Cond c') : Cond (rawM.madd c c') =
+     (supp-add c c' v.1 v'.1, \ i m b -> LO.zero-add (c i m) (c' i m) (v.2 i m b) (v'.2 i m b)) ;
+   cond-neg (c : Raw) (v : Cond c) : Cond (rawM.mneg c) =
+     (supp-neg c v.1, \ i m b -> LO.zero-neg (c i m) (v.2 i m b)) ;
+   cond-sm (a : D.R) (c : Raw) (v : Cond c) : Cond (rawM.sm a c) =
+     (supp-sm a c v.1, \ i m b -> LO.zero-mul a (c i m) (v.2 i m b)) ;
+   module SM = CechModules[l].SubMod[D,rawM,Cond,cond-prop,cond-zero,cond-add,cond-neg,cond-sm] ;
+   mod : IP.Mod[D] = SM.mod ;
+   El : U l = SM.E ;
+   val (c : El) : Raw = c.1 ;
+   supp (c : El) : Supp (val c) = c.2.1 ;
+   van (c : El) : Van (val c) = c.2.2 ;
+   mk (c : Raw) (s : Supp c) (v : Van c) : El = (c,(s,v)) ;
+   eq (c c' : El) (e : (i : I) (m : E) -> Id D.R (val c i m) (val c' i m)) : Id El c c' =
+     SM.eq c c' (FE.funext I (\ i -> E -> D.R) _ _ (\ i -> FE.funext E (\ m -> D.R) _ _ (e i))) ;
+ } ;
+} ;

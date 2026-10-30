@@ -1,0 +1,101 @@
+-- Lemma A of HANDOFF-LOOP.md: reduction modulo a monic polynomial.
+-- T an A-algebra (kappa : A -> T; A is the note's R), t in T, e = e' + 1, a : Nat -> A and
+--   Q = t^e - [a]_e ,   [c]_e = sum_(i<e) kappa(c_i) t^i .
+-- For every coefficient list fs, its Horner value F = f_0 + t (f_1 + ..)
+-- is  U Q + [c]_e  for some U in T and c : Nat -> A.
+-- Informal proof, by induction on fs.  nil: 0 = 0 Q + [0]_e.  f :: fs:
+-- with F1 = U1 Q + [c1]_e and top = c1_(e-1),
+--   t [c1]_e = [shift c1]_(e+1) = kappa(top) t^e + [shift c1]_e
+--            = kappa(top) Q + [top a]_e + [shift c1]_e ,
+-- and kappa(f) = [point f]_e, so
+--   F = (t U1 + kappa(top)) Q + [point f + shift c1 + top a]_e .
+-- Used with T = R[X], t = X (the identity in R[X]) and T = B, t = y.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ;
+-- the Horner value f_0 + t (f_1 + t (..)) of a coefficient list
+module Horner (A : CRing) (T : CRing) (kappa : H.Hom A T) (t : T.R) {
+ horner : List A.R -> T.R = split { nil -> T.z ; cons f fs | r -> T.add (kappa.1 f) (T.mul t r) } ;
+} ;
+module Over (A : CRing) (T : CRing) (kappa : H.Hom A T) (t : T.R) (e' : Nat) (a : Nat -> A.R) {
+ open T ;
+ module L = RL[T] ;
+ module PS = PowerSums[l].Over[T,t] ;
+ module CR = PowerSums[l].Coef[A] ;
+ module CT = PowerSums[l].Coef[T] ;
+ e : Nat = suc e' ;
+ -- [c]_e with coefficients in R
+ P (c : Nat -> A.R) : R = PS.psum e (\ i -> kappa.1 (c i)) ;
+ Q : R = add (PS.AP.power t e) (neg (P a)) ;
+ module Ho = Horner[A,T,kappa,t] ;
+ Reduction (F : R) : U l = (u : R) * (c : Nat -> A.R) * Id R F (add (mul u Q) (P c)) ;
+
+ -- t^e = Q + [a]_e
+ power-split : Id R (PS.AP.power t e) (add Q (P a)) =
+  sym (trans (sym (addA (PS.AP.power t e) (neg (P a)) (P a))) (trans (ap (add (PS.AP.power t e)) (L.neg-cancel (P a))) (addZ (PS.AP.power t e)))) ;
+ kappa-shift (c : Nat -> A.R) : (i : Nat) -> Id R (kappa.1 (CR.shift c i)) (CT.shift (\ j -> kappa.1 (c j)) i) = split {
+  zero -> H.zero A T kappa ; suc i -> refl (kappa.1 (c i)) } ;
+ kappa-point (f : A.R) : (i : Nat) -> Id R (kappa.1 (CR.point f i)) (CT.point (kappa.1 f) i) = split {
+  zero -> refl (kappa.1 f) ; suc i -> H.zero A T kappa } ;
+ -- p + (u + ((v + w) + s)) = (u + v) + (p + (s + w))
+ rearrange (p u v w s : R) : Id R (add p (add u (add (add v w) s))) (add (add u v) (add p (add s w))) = calc R {
+  add p (add u (add (add v w) s))
+   =< ap (add p) (trans (addA u (add v w) s) (ap (\ x -> add x s) (addA u v w))) > add p (add (add (add u v) w) s)
+   =< ap (add p) (sym (addA (add u v) w s)) > add p (add (add u v) (add w s))
+   =< L.add-swap p (add u v) (add w s) > add (add u v) (add p (add w s))
+   =< ap (\ x -> add (add u v) (add p x)) (addC w s) > add (add u v) (add p (add s w)) } ;
+
+ module Step (f : A.R) (fs : List A.R) (prev : Reduction (Ho.horner fs)) {
+  u1 : R = prev.1 ;
+  c1 : Nat -> A.R = prev.2.1 ;
+  top : A.R = c1 e' ;
+  u : R = add (mul t u1) (kappa.1 top) ;
+  c (i : Nat) : A.R = A.add (CR.point f i) (A.add (CR.shift c1 i) (A.mul top (a i))) ;
+  -- t [c1]_e = (kappa(top) Q + [top a]_e) + [shift c1]_e
+  shifted : Id R (mul t (P c1)) (add (add (mul (kappa.1 top) Q) (P (\ i -> A.mul top (a i)))) (P (CR.shift c1))) = calc R {
+   mul t (P c1)
+    =< PS.psum-shift e (\ i -> kappa.1 (c1 i)) > PS.psum (suc e) (CT.shift (\ i -> kappa.1 (c1 i)))
+    =< ap (add (mul (kappa.1 top) (PS.AP.power t e)))
+         (sym (PS.psum-cong e (\ i -> kappa.1 (CR.shift c1 i)) (CT.shift (\ i -> kappa.1 (c1 i))) (kappa-shift c1)))
+     > add (mul (kappa.1 top) (PS.AP.power t e)) (P (CR.shift c1))
+    =< ap (\ x -> add x (P (CR.shift c1)))
+         (trans (ap (mul (kappa.1 top)) power-split)
+          (trans (dist (kappa.1 top) Q (P a))
+           (ap (add (mul (kappa.1 top) Q))
+             (trans (sym (PS.psum-scale (kappa.1 top) e (\ i -> kappa.1 (a i))))
+              (PS.psum-cong e (\ i -> mul (kappa.1 top) (kappa.1 (a i))) (\ i -> kappa.1 (A.mul top (a i)))
+                (\ i -> sym (kappa.2.2.2 top (a i))))))))
+     > add (add (mul (kappa.1 top) Q) (P (\ i -> A.mul top (a i)))) (P (CR.shift c1)) } ;
+  -- [c]_e splits
+  split-c : Id R (P c) (add (P (CR.point f)) (add (P (CR.shift c1)) (P (\ i -> A.mul top (a i))))) =
+   trans (PS.psum-cong e (\ i -> kappa.1 (c i))
+           (\ i -> add (kappa.1 (CR.point f i)) (add (kappa.1 (CR.shift c1 i)) (kappa.1 (A.mul top (a i)))))
+           (\ i -> trans (kappa.2.2.1 (CR.point f i) (A.add (CR.shift c1 i) (A.mul top (a i))))
+                    (ap (add (kappa.1 (CR.point f i))) (kappa.2.2.1 (CR.shift c1 i) (A.mul top (a i))))))
+    (trans (PS.psum-add e (\ i -> kappa.1 (CR.point f i)) (\ i -> add (kappa.1 (CR.shift c1 i)) (kappa.1 (A.mul top (a i)))))
+      (ap (add (P (CR.point f))) (PS.psum-add e (\ i -> kappa.1 (CR.shift c1 i)) (\ i -> kappa.1 (A.mul top (a i)))))) ;
+  -- kappa(f) = [point f]_e
+  point-value : Id R (kappa.1 f) (P (CR.point f)) =
+   sym (trans (PS.psum-cong e (\ i -> kappa.1 (CR.point f i)) (CT.point (kappa.1 f)) (kappa-point f))
+         (PS.psum-point (kappa.1 f) e')) ;
+  identity : Id R (Ho.horner (cons f fs)) (add (mul u Q) (P c)) = calc R {
+   add (kappa.1 f) (mul t (Ho.horner fs))
+    =< ap (\ x -> add (kappa.1 f) (mul t x)) prev.2.2 > add (kappa.1 f) (mul t (add (mul u1 Q) (P c1)))
+    =< Ps.cong2 R add _ _ _ _ point-value (trans (dist t (mul u1 Q) (P c1)) (ap (add (mul t (mul u1 Q))) shifted))
+     > add (P (CR.point f)) (add (mul t (mul u1 Q)) (add (add (mul (kappa.1 top) Q) (P (\ i -> A.mul top (a i)))) (P (CR.shift c1))))
+    =< rearrange (P (CR.point f)) (mul t (mul u1 Q)) (mul (kappa.1 top) Q) (P (\ i -> A.mul top (a i))) (P (CR.shift c1))
+     > add (add (mul t (mul u1 Q)) (mul (kappa.1 top) Q)) (add (P (CR.point f)) (add (P (CR.shift c1)) (P (\ i -> A.mul top (a i)))))
+    =< Ps.cong2 R add _ _ _ _
+         (trans (ap (\ x -> add x (mul (kappa.1 top) Q)) (mulA t u1 Q)) (sym (L.dist-left (mul t u1) (kappa.1 top) Q)))
+         (sym split-c)
+     > add (mul u Q) (P c) } ;
+  result : Reduction (Ho.horner (cons f fs)) = (u,c,identity) ;
+ } ;
+ nil-case : Reduction z =
+  (z,\ i -> A.z,sym (trans (Ps.cong2 R add _ _ _ _ (L.zero-mul Q)
+                            (trans (PS.psum-cong e (\ i -> kappa.1 A.z) (\ i -> z) (\ i -> H.zero A T kappa)) (PS.psum-zero e)))
+                     (addZ z))) ;
+ reduce : (fs : List A.R) -> Reduction (Ho.horner fs) = split {
+  nil -> nil-case ;
+  cons f fs | r -> Step[f,fs,r].result } ;
+} ;

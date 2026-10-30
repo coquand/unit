@@ -1,0 +1,87 @@
+-- Spans.seg: spans of lists as propositions, the decision of membership
+-- for lists, and extraction of a free list with a given span.
+--
+-- Mm s y: y is merely in the span of the list s.  SpanEq s s': same spans.
+-- dec-list: (D) for families gives (D) for lists (Comb.Lists bridge).
+-- extract: every finite list g has, merely, a free list q with the same
+-- span: add the elements of g one by one, skipping the members (decided by
+-- (D)).  No noetherianity is used.
+-- list-of: a family as a list, with the same span (lf-in, in-lf).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+  module SP = ModSpan[l].Over[A,Md] ; module LS = Comb[l].Lists[A,Md] ; module S = Comb[l].Sums[A,Md] ;
+  module CO = Coherent[l].Over[A,Md] ;
+
+  Mm (s : List M) (y : M) : U l = Tr.Trunc[SP.In s y].carrier ;
+  mm-prop (s : List M) (y : M) : Pr.isProp (Mm s y) = Tr.Trunc[SP.In s y].proposition ;
+  mm (s : List M) (y : M) (h : SP.In s y) : Mm s y = Tr.Trunc[SP.In s y].inc h ;
+  -- map a mere membership to another proposition
+  mm-rec (s : List M) (y : M) (P : U l) (pP : Pr.isProp P) (f : SP.In s y -> P) (h : Mm s y) : P =
+    Tr.Trunc[SP.In s y].induction @l (\ t -> P) (\ t -> pP) f h ;
+
+  Sub (s s' : List M) : U l = (y : M) -> Mm s y -> Mm s' y ;
+  SpanEq (s s' : List M) : U l = Sub s s' * Sub s' s ;
+
+  dec-step (s : List M) (y : M) : Plus (CO.Mem (len s) (LS.elem s) y) (Not (CO.Mem (len s) (LS.elem s) y)) ->
+    Plus (Mm s y) (Not (Mm s y)) = split {
+    inl m -> inl (Tr.Trunc[CO.InFM (len s) (LS.elem s) y].induction @l (\ t -> Mm s y) (\ t -> mm-prop s y)
+                   (\ h -> mm s y (LS.fam-in s y h)) m) ;
+    inr n -> inr (\ m -> n (mm-rec s y (CO.Mem (len s) (LS.elem s) y) Tr.Trunc[CO.InFM (len s) (LS.elem s) y].proposition
+                   (\ h -> Tr.Trunc[CO.InFM (len s) (LS.elem s) y].inc (LS.in-fam s y h)) m)) } ;
+
+  dec-list (d : CO.Disc) (s : List M) (y : M) : Plus (Mm s y) (Not (Mm s y)) = dec-step s y (d (len s) (LS.elem s) y) ;
+
+  -- spans and cons
+  cons-mono (t : M) (s s' : List M) (f : Sub s s') : Sub (cons t s) (cons t s') = \ y h ->
+    mm-rec (cons t s) y (Mm (cons t s') y) (mm-prop (cons t s') y)
+      (\ g -> mm-rec s' (msub y (sm g.1 t)) (Mm (cons t s') y) (mm-prop (cons t s') y)
+         (\ g' -> mm (cons t s') y (g.1, g'))
+         (f (msub y (sm g.1 t)) (mm s (msub y (sm g.1 t)) g.2))) h ;
+  weak-sub (t : M) (s : List M) : Sub s (cons t s) = \ y h ->
+    mm-rec s y (Mm (cons t s) y) (mm-prop (cons t s) y) (\ g -> mm (cons t s) y (SP.in-weak t s y g)) h ;
+  sub-trans (s s' s'' : List M) (f : Sub s s') (g : Sub s' s'') : Sub s s'' = \ y h -> g y (f y h) ;
+
+  -- (y - c t) + c t = y
+  sub-add (y w : M) : Id M (madd (msub y w) w) y =
+    trans (sym (maddA y (mneg w) w)) (trans (ap (madd y) (trans (maddC (mneg w) w) (maddN w))) (maddZ y)) ;
+  absorb (t : M) (s : List M) (ht : SP.In s t) (y : M) (h : SP.In (cons t s) y) : SP.In s y =
+    SP.in-tr s (madd (msub y (sm h.1 t)) (sm h.1 t)) y (sub-add y (sm h.1 t))
+      (SP.in-add s (msub y (sm h.1 t)) (sm h.1 t) h.2 (SP.in-scale s h.1 t ht)) ;
+  absorb-sub (t : M) (s : List M) (ht : Mm s t) : Sub (cons t s) s = \ y h ->
+    mm-rec s t (Mm s y) (mm-prop s y)
+      (\ g -> mm-rec (cons t s) y (Mm s y) (mm-prop s y) (\ g' -> mm s y (absorb t s g y g')) h) ht ;
+
+  -- extraction of a free list
+  Extract (g : List M) : U l = (q : List M) * (SP.Free q * SpanEq q g) ;
+  module Ext (d : CO.Disc) {
+    step (t : M) (g : List M) (q : List M) (fq : SP.Free q) (e : SpanEq q g) :
+      Plus (Mm q t) (Not (Mm q t)) -> Extract (cons t g) = split {
+      inl m -> (q, (fq, (sub-trans q g (cons t g) e.1 (weak-sub t g),
+                         sub-trans (cons t g) (cons t q) q (cons-mono t g q e.2) (absorb-sub t q m)))) ;
+      inr n -> (cons t q, ((\ h -> n (mm q t h), fq), (cons-mono t q g e.1, cons-mono t g q e.2))) } ;
+    extract : (g : List M) -> Tr.Trunc[Extract g].carrier = split {
+      nil -> Tr.Trunc[Extract nil].inc (nil, (tt, ((\ y h -> h), (\ y h -> h)))) ;
+      cons t g | r -> Tr.Trunc[Extract g].induction @l (\ x -> Tr.Trunc[Extract (cons t g)].carrier)
+        (\ x -> Tr.Trunc[Extract (cons t g)].proposition)
+        (\ x -> Tr.Trunc[Extract (cons t g)].inc (step t g x.1 x.2.1 x.2.2 (dec-list d x.1 t))) r } ;
+  } ;
+
+  -- families as lists
+  list-of : (n : Nat) -> (Fin n -> M) -> List M = split {
+    zero -> \ f -> nil ;
+    suc n | r -> \ f -> cons (f (inr tt)) (r (\ i -> f (inl i))) } ;
+  Ps-snoc (n : Nat) (c : Fin n -> A.R) (c0 : A.R) : Fin (suc n) -> A.R = snoc (Fin n) A.R c c0 ;
+  lf-in : (n : Nat) (f : Fin n -> M) (y : M) -> SP.In (list-of n f) y -> LS.InF n f y = split {
+    zero -> \ f y h -> (\ i -> absurd A.R i, sym h) ;
+    suc n | r -> \ f y h -> (Ps-snoc n (r (\ i -> f (inl i)) (msub y (sm h.1 (f (inr tt)))) h.2).1 h.1,
+      trans (ap (madd (sm h.1 (f (inr tt)))) (r (\ i -> f (inl i)) (msub y (sm h.1 (f (inr tt)))) h.2).2)
+        (LS.join-sub y (f (inr tt)) h.1)) } ;
+  in-lf : (n : Nat) (f : Fin n -> M) (y : M) -> LS.InF n f y -> SP.In (list-of n f) y = split {
+    zero -> \ f y h -> sym h.2 ;
+    suc n | r -> \ f y h -> (h.1 (inr tt),
+      r (\ i -> f (inl i)) (msub y (sm (h.1 (inr tt)) (f (inr tt))))
+        (\ i -> h.1 (inl i), LS.split-sub y (f (inr tt)) (S.comb n (\ i -> h.1 (inl i)) (\ i -> f (inl i))) (h.1 (inr tt)) h.2)) } ;
+} ;

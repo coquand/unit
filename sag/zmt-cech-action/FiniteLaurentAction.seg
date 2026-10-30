@@ -1,0 +1,211 @@
+-- Finite polynomial action, uniformly in the number of coordinates.
+-- The finite-sum algebra and coefficient expansion argument of
+-- PolynomialAction4 are reused with generic exponent vectors: integer
+-- translations are now justified by LaurentExponentBridge. Polynomial
+-- equality is coefficient equality; nub expansion proves action invariance.
+level l ; open Ring[l] ; open ZInt[l] ;
+module N = FiniteExponents[l] ; module LE = GenericLaurent[l] ;
+module PA = PolynomialAction4[l] ; module Pr = Prelude[l] ;
+module IP = IdealPowers[l] ; module LG = Logic[l] ; module Ps = Presentations[l] ;
+module Over (D : CRing) (setD : Pr.isSet D.R) (nvar : Nat) {
+  module X = LaurentExponentBridge[l].At[nvar] ; open X ;
+  Polys : U l = List (D.R * N.Exp nvar) ;
+  module L = RL[D] ;
+  module L3 = Laurent3[l].Over[D] ;
+  module DL = IP.ModL[D,IP.regular D] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+  module TP = TopCoordinates4[l].Over[D,setD] ;
+  module LN = PA.Lists[(N.Exp nvar)] ; module NN = PA.Nub[(N.Exp nvar),(N.dec nvar)] ;
+
+
+  -- (p f)(m) = sum_{c X^u in p} c f(m - u)
+  mulP : Polys -> ((LE.Exp nvar) -> D.R) -> (LE.Exp nvar) -> D.R = split {
+    nil -> \ f m -> D.z ;
+    cons t p | r -> \ f m -> D.add (D.mul t.1 (f (subE m t.2))) (r f m) } ;
+
+  mulP-cong : (p : Polys) (f f' : (LE.Exp nvar) -> D.R) -> ((m : (LE.Exp nvar)) -> Id D.R (f m) (f' m)) -> (m : (LE.Exp nvar)) -> Id D.R (mulP p f m) (mulP p f' m) = split {
+    nil -> \ f f' h m -> refl D.z ;
+    cons t p | r -> \ f f' h m -> DL.G.cong-add (ap (D.mul t.1) (h (subE m t.2))) (r f f' h m) } ;
+  mulP-zero : (p : Polys) (m : (LE.Exp nvar)) -> Id D.R (mulP p (\ m' -> D.z) m) D.z = split {
+    nil -> \ m -> refl D.z ;
+    cons t p | r -> \ m -> trans (DL.G.cong-add (L.mul-zero t.1) (r m)) (D.addZ D.z) } ;
+  mulP-add : (p : Polys) (f f' : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) ->
+    Id D.R (mulP p (\ m' -> D.add (f m') (f' m')) m) (D.add (mulP p f m) (mulP p f' m)) = split {
+    nil -> \ f f' m -> sym (D.addZ D.z) ;
+    cons t p | r -> \ f f' m ->
+      trans (ap (D.add (D.mul t.1 (D.add (f (subE m t.2)) (f' (subE m t.2))))) (r f f' m))
+            (L3.lin-add t.1 (f (subE m t.2)) (f' (subE m t.2)) (mulP p f m) (mulP p f' m)) } ;
+  mulP-neg : (p : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP p (\ m' -> D.neg (f m')) m) (D.neg (mulP p f m)) = split {
+    nil -> \ f m -> sym L.neg-zero ;
+    cons t p | r -> \ f m ->
+      trans (ap (D.add (D.mul t.1 (D.neg (f (subE m t.2))))) (r f m)) (L3.lin-neg t.1 (f (subE m t.2)) (mulP p f m)) } ;
+  mulP-sm : (p : Polys) (a : D.R) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP p (\ m' -> D.mul a (f m')) m) (D.mul a (mulP p f m)) = split {
+    nil -> \ a f m -> sym (L.mul-zero a) ;
+    cons t p | r -> \ a f m ->
+      trans (ap (D.add (D.mul t.1 (D.mul a (f (subE m t.2))))) (r a f m)) (L3.lin-scale t.1 a (f (subE m t.2)) (mulP p f m)) } ;
+  mulP-sub (p : Polys) (f f' : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) :
+    Id D.R (mulP p (\ m' -> DL.msub (f m') (f' m')) m) (DL.msub (mulP p f m) (mulP p f' m)) =
+    trans (mulP-add p f (\ m' -> D.neg (f' m')) m) (ap (D.add (mulP p f m)) (mulP-neg p f' m)) ;
+
+  -- the three shapes of the differential
+  mulP-T (p : Polys) (f f' f'' : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) :
+    Id D.R (mulP p (\ m' -> D.add (DL.msub (f m') (f' m')) (f'' m')) m) (D.add (DL.msub (mulP p f m) (mulP p f' m)) (mulP p f'' m)) =
+    trans (mulP-add p (\ m' -> DL.msub (f m') (f' m')) f'' m) (ap (\ x -> D.add x (mulP p f'' m)) (mulP-sub p f f' m)) ;
+  mulP-Q (p : Polys) (f f' f'' f3 : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) :
+    Id D.R (mulP p (\ m' -> DL.msub (D.add (DL.msub (f m') (f' m')) (f'' m')) (f3 m')) m)
+           (DL.msub (D.add (DL.msub (mulP p f m) (mulP p f' m)) (mulP p f'' m)) (mulP p f3 m)) =
+    trans (mulP-sub p (\ m' -> D.add (DL.msub (f m') (f' m')) (f'' m')) f3 m)
+          (ap (\ x -> DL.msub x (mulP p f3 m)) (mulP-T p f f' f'' m)) ;
+
+  -- concatenation is the sum
+  mulP-app : (p q : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP (Bar[l].app p q) f m) (D.add (mulP p f m) (mulP q f m)) = split {
+    nil -> \ q f m -> sym (L.zl (mulP q f m)) ;
+    cons t p | r -> \ q f m ->
+      trans (ap (D.add (D.mul t.1 (f (subE m t.2)))) (r q f m)) (D.addA (D.mul t.1 (f (subE m t.2))) (mulP p f m) (mulP q f m)) } ;
+
+  -- the product: all products of terms
+  scaleT (t : D.R * (N.Exp nvar)) : Polys -> Polys = split {
+    nil -> nil ;
+    cons t' q | r -> cons (D.mul t.1 t'.1, X.addN t'.2 t.2) r } ;
+  pmul : Polys -> Polys -> Polys = split {
+    nil -> \ q -> nil ;
+    cons t p | r -> \ q -> Bar[l].app (scaleT t q) (r q) } ;
+  -- (c X^u q) f (m) = c (q f)(m - u)
+  mulP-scaleT (t : D.R * (N.Exp nvar)) : (q : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP (scaleT t q) f m) (D.mul t.1 (mulP q f (subE m t.2))) = split {
+    nil -> \ f m -> sym (L.mul-zero t.1) ;
+    cons t' q | r -> \ f m -> calc D.R {
+      D.add (D.mul (D.mul t.1 t'.1) (f (subE m (X.addN t'.2 t.2)))) (mulP (scaleT t q) f m)
+        =< DL.G.cong-add (trans (sym (D.mulA t.1 t'.1 (f (subE m (X.addN t'.2 t.2)))))
+                                (ap (\ y -> D.mul t.1 (D.mul t'.1 (f y))) (sym (sub-sub m t.2 t'.2))))
+                         (r f m)
+        > D.add (D.mul t.1 (D.mul t'.1 (f (subE (subE m t.2) t'.2)))) (D.mul t.1 (mulP q f (subE m t.2)))
+        =< sym (D.dist t.1 (D.mul t'.1 (f (subE (subE m t.2) t'.2))) (mulP q f (subE m t.2)))
+        > D.mul t.1 (mulP (cons t' q) f (subE m t.2)) } } ;
+  -- (p q) f = p (q f)
+  mulP-pmul : (p q : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP (pmul p q) f m) (mulP p (\ m' -> mulP q f m') m) = split {
+    nil -> \ q f m -> refl D.z ;
+    cons t p | r -> \ q f m ->
+      trans (mulP-app (scaleT t q) (pmul p q) f m) (DL.G.cong-add (mulP-scaleT t q f m) (r q f m)) } ;
+
+  -- a finite sum of polynomials over Fin n
+  psum : (n : Nat) -> (Ps.Fin n -> Polys) -> Polys = split {
+    zero -> \ f -> nil ;
+    suc n | r -> \ f -> Bar[l].app (f (inr tt)) (r (\ i -> f (inl i))) } ;
+  mulP-psum : (n : Nat) (f : Ps.Fin n -> Polys) (h : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) ->
+    Id D.R (mulP (psum n f) h m) (RS.sum n (\ i -> mulP (f i) h m)) = split {
+    zero -> \ f h m -> refl D.z ;
+    suc n | r -> \ f h m ->
+      trans (mulP-app (f (inr tt)) (psum n (\ i -> f (inl i))) h m) (ap (D.add (mulP (f (inr tt)) h m)) (r (\ i -> f (inl i)) h m)) } ;
+
+  -- commutation with an exponent map s commuting with every m - u: p (f o s) = (p f) o s
+  mulP-shift (s : (LE.Exp nvar) -> (LE.Exp nvar)) (cs : (m : (LE.Exp nvar)) (u : (N.Exp nvar)) -> Id (LE.Exp nvar) (subE (s m) u) (s (subE m u))) :
+    (p : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP p (\ m' -> f (s m')) m) (mulP p f (s m)) = split {
+    nil -> \ f m -> refl D.z ;
+    cons t p | r -> \ f m -> DL.G.cong-add (ap (\ y -> D.mul t.1 (f y)) (sym (cs m t.2))) (r f m) } ;
+
+  ------------------------------------------------------------------------
+  -- coefficients
+
+  -- [u = v] c
+  pick (v u : (N.Exp nvar)) (c : D.R) : D.R = TP.monoD c (Id (N.Exp nvar) u v) ((N.dec nvar) u v) ;
+  coef : Polys -> (N.Exp nvar) -> D.R = split {
+    nil -> \ v -> D.z ;
+    cons t p | r -> \ v -> D.add (pick v t.2 t.1) (r v) } ;
+  -- every coefficient is 0
+  CoefZero (p : Polys) : U l = (v : (N.Exp nvar)) -> Id D.R (coef p v) D.z ;
+
+  exps : Polys -> List (N.Exp nvar) = split { nil -> nil ; cons t p | r -> cons t.2 r } ;
+
+  -- sum_{v in xs} h v
+  lsum (h : (N.Exp nvar) -> D.R) : List (N.Exp nvar) -> D.R = split {
+    nil -> D.z ;
+    cons x xs | r -> D.add (h x) r } ;
+  lsum-cong (h h' : (N.Exp nvar) -> D.R) (e : (v : (N.Exp nvar)) -> Id D.R (h v) (h' v)) : (xs : List (N.Exp nvar)) -> Id D.R (lsum h xs) (lsum h' xs) = split {
+    nil -> refl D.z ;
+    cons x xs | r -> DL.G.cong-add (e x) r } ;
+  lsum-add (h h' : (N.Exp nvar) -> D.R) : (xs : List (N.Exp nvar)) -> Id D.R (lsum (\ v -> D.add (h v) (h' v)) xs) (D.add (lsum h xs) (lsum h' xs)) = split {
+    nil -> sym (D.addZ D.z) ;
+    cons x xs | r -> trans (ap (D.add (D.add (h x) (h' x))) r) (L.swap (h x) (h' x) (lsum h xs) (lsum h' xs)) } ;
+  lsum-vanish (h : (N.Exp nvar) -> D.R) : (xs : List (N.Exp nvar)) -> ((v : (N.Exp nvar)) -> LN.Mem v xs -> Id D.R (h v) D.z) -> Id D.R (lsum h xs) D.z = split {
+    nil -> \ hz -> refl D.z ;
+    cons x xs | r -> \ hz -> trans (DL.G.cong-add (hz x (inl (refl x))) (r (\ v k -> hz v (inr k)))) (D.addZ D.z) } ;
+
+  -- a term [u = v] c F(v) summed over a list without repetitions containing u
+  module Single (u : (N.Exp nvar)) (c : D.R) (F : (N.Exp nvar) -> D.R) (x : (N.Exp nvar)) (xs : List (N.Exp nvar)) (nd : LN.NoDup (cons x xs)) {
+    G (v : (N.Exp nvar)) : D.R = D.mul (pick v u c) (F v) ;
+    -- an exponent different from u contributes 0
+    away (v : (N.Exp nvar)) (ne : Id (N.Exp nvar) u v -> Empty) : Id D.R (G v) D.z =
+      trans (ap (\ y -> D.mul y (F v)) (TP.monoD-zero c (Id (N.Exp nvar) u v) (\ q -> absurd (Id D.R c D.z) (ne q)) ((N.dec nvar) u v)))
+            (L.zero-mul (F v)) ;
+    head (e : Id (N.Exp nvar) x u) : Id D.R (lsum G (cons x xs)) (D.mul c (F u)) =
+      calc D.R { D.add (G x) (lsum G xs)
+                   =< DL.G.cong-add (ap (\ y -> D.mul y (F x)) (TP.monoD-at c (Id (N.Exp nvar) u x) (sym e) ((N.dec nvar) u x)))
+                        (lsum-vanish G xs (\ v k -> away v (\ q -> nd.1 (LN.mem-tr xs v x (sym (trans e q)) k))))
+                   > D.add (D.mul c (F x)) D.z
+                   =< trans (D.addZ (D.mul c (F x))) (ap (\ y -> D.mul c (F y)) e) > D.mul c (F u) } ;
+    tail (k : LN.Mem u xs) (ih : Id D.R (lsum G xs) (D.mul c (F u))) : Id D.R (lsum G (cons x xs)) (D.mul c (F u)) =
+      trans (DL.G.cong-add (away x (\ q -> nd.1 (LN.mem-tr xs u x q k))) ih) (L.zl (D.mul c (F u))) ;
+  } ;
+  lsum-single (u : (N.Exp nvar)) (c : D.R) (F : (N.Exp nvar) -> D.R) : (xs : List (N.Exp nvar)) -> LN.NoDup xs -> LN.Mem u xs ->
+    Id D.R (lsum (\ v -> D.mul (pick v u c) (F v)) xs) (D.mul c (F u)) = split {
+    nil -> \ nd h -> absurd (Id D.R D.z (D.mul c (F u))) h ;
+    cons x xs | r -> \ nd -> split {
+      inl e -> Single[u,c,F,x,xs,nd].head e ;
+      inr k -> Single[u,c,F,x,xs,nd].tail k (r nd.2 k) } } ;
+
+  -- (p f)(m) = sum_{v in L} coef p v f(m - v), L without repetitions containing the exponents of p
+  expand (L0 : List (N.Exp nvar)) (nd : LN.NoDup L0) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) :
+    (p : Polys) -> ((v : (N.Exp nvar)) -> LN.Mem v (exps p) -> LN.Mem v L0) ->
+    Id D.R (mulP p f m) (lsum (\ v -> D.mul (coef p v) (f (subE m v))) L0) = split {
+    nil -> \ cov -> sym (lsum-vanish (\ v -> D.mul D.z (f (subE m v))) L0 (\ v k -> L.zero-mul (f (subE m v)))) ;
+    cons t p | r -> \ cov -> calc D.R {
+      D.add (D.mul t.1 (f (subE m t.2))) (mulP p f m)
+        =< DL.G.cong-add (sym (lsum-single t.2 t.1 (\ v -> f (subE m v)) L0 nd (cov t.2 (inl (refl t.2)))))
+                         (r (\ v k -> cov v (inr k)))
+        > D.add (lsum (\ v -> D.mul (pick v t.2 t.1) (f (subE m v))) L0) (lsum (\ v -> D.mul (coef p v) (f (subE m v))) L0)
+        =< sym (lsum-add (\ v -> D.mul (pick v t.2 t.1) (f (subE m v))) (\ v -> D.mul (coef p v) (f (subE m v))) L0)
+        > lsum (\ v -> D.add (D.mul (pick v t.2 t.1) (f (subE m v))) (D.mul (coef p v) (f (subE m v)))) L0
+        =< lsum-cong _ _ (\ v -> sym (L.dist-left (pick v t.2 t.1) (coef p v) (f (subE m v)))) L0
+        > lsum (\ v -> D.mul (coef (cons t p) v) (f (subE m v))) L0 } } ;
+
+  -- a polynomial with all coefficients 0 acts by 0
+  act-zero (p : Polys) (cz : CoefZero p) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) : Id D.R (mulP p f m) D.z =
+    trans (expand (NN.nub (exps p)) (NN.nub-nodup (exps p)) f m p (NN.nub-mem (exps p)))
+          (lsum-vanish (\ v -> D.mul (coef p v) (f (subE m v))) (NN.nub (exps p))
+            (\ v k -> trans (ap (\ y -> D.mul y (f (subE m v))) (cz v)) (L.zero-mul (f (subE m v))))) ;
+
+  module PickNeg (v u : (N.Exp nvar)) (c : D.R) {
+    res : (d : LG.Dec (Id (N.Exp nvar) u v)) -> Id D.R (TP.monoD (D.neg c) (Id (N.Exp nvar) u v) d) (D.neg (TP.monoD c (Id (N.Exp nvar) u v) d)) = split {
+      yes e -> refl (D.neg c) ;
+      no n -> sym L.neg-zero } ;
+  } ;
+
+  -- invariance: polynomials with the same coefficients act in the same way.
+  -- p - q (the list p followed by the negated terms of q) has coefficients
+  -- coef p - coef q = 0, so (p f)(m) - (q f)(m) = ((p - q) f)(m) = 0.
+  negT : Polys -> Polys = split {
+    nil -> nil ;
+    cons t p | r -> cons (D.neg t.1, t.2) r } ;
+  pick-neg (v u : (N.Exp nvar)) (c : D.R) : Id D.R (pick v u (D.neg c)) (D.neg (pick v u c)) = PickNeg[v,u,c].res ((N.dec nvar) u v) ;
+  coef-app : (p q : Polys) (v : (N.Exp nvar)) -> Id D.R (coef (Bar[l].app p q) v) (D.add (coef p v) (coef q v)) = split {
+    nil -> \ q v -> sym (L.zl (coef q v)) ;
+    cons t p | r -> \ q v -> trans (ap (D.add (pick v t.2 t.1)) (r q v)) (D.addA (pick v t.2 t.1) (coef p v) (coef q v)) } ;
+  coef-negT : (p : Polys) (v : (N.Exp nvar)) -> Id D.R (coef (negT p) v) (D.neg (coef p v)) = split {
+    nil -> \ v -> sym L.neg-zero ;
+    cons t p | r -> \ v -> trans (DL.G.cong-add (pick-neg v t.2 t.1) (r v)) (sym (L.neg-add (pick v t.2 t.1) (coef p v))) } ;
+  mulP-negT : (p : Polys) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) -> Id D.R (mulP (negT p) f m) (D.neg (mulP p f m)) = split {
+    nil -> \ f m -> sym L.neg-zero ;
+    cons t p | r -> \ f m -> trans (DL.G.cong-add (L.neg-mul-left t.1 (f (subE m t.2))) (r f m))
+                                   (sym (L.neg-add (D.mul t.1 (f (subE m t.2))) (mulP p f m))) } ;
+  act-coef (p q : Polys) (h : (v : (N.Exp nvar)) -> Id D.R (coef p v) (coef q v)) (f : (LE.Exp nvar) -> D.R) (m : (LE.Exp nvar)) :
+    Id D.R (mulP p f m) (mulP q f m) =
+    DL.sub-zero (mulP p f m) (mulP q f m)
+      (calc D.R { DL.msub (mulP p f m) (mulP q f m)
+                    =< ap (D.add (mulP p f m)) (sym (mulP-negT q f m)) > D.add (mulP p f m) (mulP (negT q) f m)
+                    =< sym (mulP-app p (negT q) f m) > mulP (Bar[l].app p (negT q)) f m
+                    =< act-zero (Bar[l].app p (negT q))
+                         (\ v -> trans (coef-app p (negT q) v)
+                                   (trans (ap (D.add (coef p v)) (coef-negT q v))
+                                     (trans (ap (\ x -> DL.msub x (coef q v)) (h v)) (D.addN (coef q v)))))
+                         f m > D.z }) ;
+} ;

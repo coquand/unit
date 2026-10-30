@@ -1,0 +1,54 @@
+-- ShiftedParts: finite homogeneous decompositions reconstruct every shifted
+-- vector from its parts in a finite interval. The interval contains each
+-- degree once; no decidable equality or zero test on ring coefficients.
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module PA = PolynomialAction4[l] ; module WP = WeightedParts4[l] ;
+module BR = PolynomialRing4Bridge[l] ; module LG = Logic[l] ; module FP = FinitePolynomial4[l] ;
+
+addP-pos (k : Base.Nat) : (d : Base.Nat) -> Id Int (addP (pos k) d) (pos (NA.plus d k)) = split {
+ zero -> refl (pos k) ; suc d | r -> ap sucZ r } ;
+shift-cancel (k d : Base.Nat) : Id Int (PA.minus (pos (NA.plus d k)) d) (pos k) =
+ trans (ap (\ z -> PA.minus z d) (sym (addP-pos k d))) (PA.minus-addP (pos k) d) ;
+shift-inj (e d k : Base.Nat) (h : Id Int (PA.minus (pos e) d) (pos k)) : Id Base.Nat e (NA.plus d k) =
+ ap FP.posN (PA.minus-inj (pos e) (pos (NA.plus d k)) d (trans h (sym (shift-cancel k d)))) ;
+-- Cancellation of a common (natural) shift, for matrix multiplication.
+sub-shift (k e : Int) (d : Base.Nat) : Id Int (subZ (PA.minus k d) (PA.minus e d)) (subZ k e) = calc Int {
+ add (PA.minus k d) (neg (PA.minus e d))
+ =< ap (add (PA.minus k d)) (neg-minus e d) > add (PA.minus k d) (addP (neg e) d)
+ =< PA.add-minusL k (addP (neg e) d) d > PA.minus (add k (addP (neg e) d)) d
+ =< ap (\ z -> PA.minus z d) (PA.add-addPR k (neg e) d) > PA.minus (addP (add k (neg e)) d) d
+ =< PA.minus-addP (add k (neg e)) d > add k (neg e) } ;
+
+module Over (A : CRing) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+ module L = Laws[A,t,R,setR,G] ; module P = FiniteHomogeneousPieces[l].Over[A,t,R,setR,G] ;
+ module RS = Comb[l].Sums[R,IdealPowers[l].regular R] ; module W = WP.Over[R,setR] ;
+ bnd (d : Base.Nat) : List P.Term -> Base.Nat = split {
+ nil -> zero ; cons p ps | r -> NA.plus (NA.plus d p.1) r } ;
+ Bound (d B : Base.Nat) : List P.Term -> U l = split {
+ nil -> Top ; cons p ps | r -> NA.Le (NA.plus d p.1) B * r } ;
+ bound-of (d B : Base.Nat) : (ps : List P.Term) -> NA.Le (bnd d ps) B -> Bound d B ps = split {
+ nil -> \ h -> tt ;
+ cons p ps | r -> \ h ->
+  (NA.le-trans (NA.plus d p.1) (bnd d (cons p ps)) B (NA.le-sum-l (bnd d ps) (NA.plus d p.1)) h,
+   r (NA.le-trans (bnd d ps) (bnd d (cons p ps)) B (NA.le-sum-r (bnd d ps) (NA.plus d p.1)) h)) } ;
+ -- A homogeneous summand contributes at exactly its shifted degree.
+ selected (d e k : Base.Nat) (x : R.R) (hx : L.Hom (pos k) x) : (dec : LG.Dec (Id Base.Nat (NA.plus d k) e)) ->
+  Id R.R (G.pr (PA.minus (pos e) d) x) (FP.sel R x (Id Base.Nat (NA.plus d k) e) dec) = split {
+ yes h -> trans (ap (\ z -> G.pr z x) (trans (ap (\ z -> PA.minus (pos z) d) (sym h)) (shift-cancel k d))) hx ;
+ no nh -> L.hom-other (PA.minus (pos e) d) (pos k) x hx (\ h -> Pr.absurd Empty (nh (sym (shift-inj e d k h)))) } ;
+ one (d B k : Base.Nat) (x : R.R) (hx : L.Hom (pos k) x) (hb : NA.Le (NA.plus d k) B) :
+  Id R.R (RS.sum (BR.toR (suc B)) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) x)) x =
+  trans (RS.sum-cong (BR.toR (suc B)) _ _ (\ j -> selected d (WP.rangeN B j) k x hx (nat-dec (NA.plus d k) (WP.rangeN B j))))
+    (W.range-single x B (NA.plus d k) hb) ;
+ decomp-list (d B : Base.Nat) : (ps : List P.Term) -> P.Good ps -> Bound d B ps ->
+  Id R.R (RS.sum (BR.toR (suc B)) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) (P.value ps))) (P.value ps) = split {
+ nil -> \ hp hb -> trans (RS.sum-cong (BR.toR (suc B)) _ _ (\ j -> L.pr-zero (PA.minus (pos (WP.rangeN B j)) d))) (RS.sum-zero (BR.toR (suc B))) ;
+ cons p ps | r -> \ hp hb ->
+  trans (RS.sum-cong (BR.toR (suc B)) _ _ (\ j -> G.pr-add (PA.minus (pos (WP.rangeN B j)) d) p.2 (P.value ps)))
+   (trans (RS.sum-add (BR.toR (suc B)) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) p.2) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) (P.value ps))) (L.DL.G.cong-add (one d B p.1 p.2 hp.1 hb.1) (r hp.2 hb.2))) } ;
+ decomp (d B : Base.Nat) (x : R.R) (p : P.Rep x) (hb : NA.Le (bnd d p.1) B) :
+  Id R.R (RS.sum (BR.toR (suc B)) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) x)) x =
+  subst (\ y -> Id R.R (RS.sum (BR.toR (suc B)) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) d) y)) y) p.2.2
+    (decomp-list d B p.1 p.2.1 (bound-of d B p.1 hb)) ;
+} ;

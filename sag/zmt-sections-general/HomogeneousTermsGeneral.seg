@@ -1,0 +1,62 @@
+-- Finite homogeneous term lists with the NEWEST coordinate Z. All
+-- homogenisation proofs are dimension independent; only total natural
+-- exponent degree is compared. Dehomogenisation sets precisely Z=1.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module N = FiniteExponents[l] ; module NA = NatArith[l] ;
+module RB = ReesBridge4[l] ; module CE = CoordinateExponents[l] ; module BR = PolynomialRing4Bridge[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (m : Nat) {
+ n : Nat = suc m ; module FA = FiniteLaurentAction[l].Over[A,setA,n] ; module V = FA.X ;
+ module M = ShiftedMatrixAction[l].Over[A,setA,n] ;
+ Polys : U l = FA.Polys ;
+ Hom (d : Base.Nat) (p : Polys) : U l = M.HomShift zero d p ;
+ zexp (b : Base.Nat) : N.Exp n = N.join m (N.zeroE m) b ;
+ zdegree (b : Base.Nat) : Id Base.Nat (N.degree n (zexp b)) b =
+   trans (ap (NA.plus b) (CE.zero-degree m)) (NA.plus-zero b) ;
+ hom-app (d : Base.Nat) : (p q : Polys) -> Hom d p -> Hom d q -> Hom d (Bar[l].app p q) = split {
+   nil -> \ q hp hq -> hq ; cons t p | rec -> \ q hp hq -> (hp.1,rec q hp.2 hq) } ;
+ hom-scale (c : A.R) (u : N.Exp n) (d : Base.Nat) : (p : Polys) -> Hom d p -> Hom (NA.plus d (N.degree n u)) (FA.scaleT (c,u) p) = split {
+   nil -> \ hp -> tt ; cons t p | rec -> \ hp ->
+     (trans (ActionComposition[l].degree-add n t.2 u) (ap (\ a -> NA.plus a (N.degree n u)) hp.1),rec hp.2) } ;
+ hom-sum (d : Base.Nat) : (r : Nat) (p : Ps.Fin r -> Polys) -> ((i : Ps.Fin r) -> Hom d (p i)) -> Hom d (FA.psum r p) = split {
+   zero -> \ p hp -> tt ; suc r | rec -> \ p hp -> hom-app d (p (inr tt)) (FA.psum r (\ i -> p (inl i)))
+     (hp (inr tt)) (rec (\ i -> p (inl i)) (\ i -> hp (inl i))) } ;
+ AllLe (d : Base.Nat) : Polys -> U l = split {
+   nil -> Top ; cons t p | rec -> NA.Le (N.degree n t.2) d * rec } ;
+ bnd : Polys -> Base.Nat = split { nil -> zero ; cons t p | rec -> NA.plus (N.degree n t.2) rec } ;
+ all-mono (a b : Base.Nat) (le : NA.Le a b) : (p : Polys) -> AllLe a p -> AllLe b p = split {
+   nil -> \ hp -> tt ; cons t p | rec -> \ hp -> (NA.le-trans _ _ _ hp.1 le,rec hp.2) } ;
+ bounded : (p : Polys) -> AllLe (bnd p) p = split {
+   nil -> tt ; cons t p | rec -> (NA.le-sum-l (bnd p) (N.degree n t.2),
+     all-mono (bnd p) (bnd (cons t p)) (NA.le-sum-r (bnd p) (N.degree n t.2)) p rec) } ;
+ homTerm (d : Base.Nat) (t : A.R * N.Exp n) : RB.Dich (N.degree n t.2) d -> Polys = split {
+   inl w -> cons (t.1,V.addN t.2 (zexp w.1)) nil ; inr w -> nil } ;
+ homT (d : Base.Nat) : Polys -> Polys = split {
+   nil -> nil ; cons t p | rec -> Bar[l].app (homTerm d t (RB.dich (N.degree n t.2) d)) rec } ;
+ hom-term (d : Base.Nat) (t : A.R * N.Exp n) : (w : RB.Dich (N.degree n t.2) d) -> Hom d (homTerm d t w) = split {
+   inl w -> (trans (ActionComposition[l].degree-add n t.2 (zexp w.1))
+     (trans (ap (NA.plus (N.degree n t.2)) (zdegree w.1)) w.2),tt) ;
+   inr w -> tt } ;
+ hom-homT (d : Base.Nat) : (p : Polys) -> Hom d (homT d p) = split {
+   nil -> tt ; cons t p | rec -> hom-app d _ _ (hom-term d t (RB.dich (N.degree n t.2) d)) rec } ;
+ module Dehom (E : CRing) (iota : RingHom[l].Hom A E) (y : Ps.Fin m -> E.R) {
+   module CO = GenericDehomogenisation[l].Over[A,E,setA,iota,m,y] ;
+   module L = RL[E] ; module Mon = CE.Monomials[E] ;
+   deh-term (c : A.R) (u : N.Exp n) : Id E.R (CO.deh (cons (c,u) nil)) (E.mul (iota.1 c) (CO.mon u)) = E.addZ (E.mul (iota.1 c) (CO.mon u)) ;
+   mon-z (b : Base.Nat) : Id E.R (CO.mon (zexp b)) E.o = Mon.zero-value m y ;
+   mon-add (u v : N.Exp n) : Id E.R (CO.mon (V.addN u v)) (E.mul (CO.mon u) (CO.mon v)) = CO.M.add m y (N.old m u) (N.old m v) ;
+   deh-hom-term (d : Base.Nat) (t : A.R * N.Exp n) (le : NA.Le (N.degree n t.2) d) :
+     (w : RB.Dich (N.degree n t.2) d) -> Id E.R (CO.deh (homTerm d t w)) (CO.deh (cons t nil)) = split {
+     inl w -> trans (deh-term t.1 (V.addN t.2 (zexp w.1)))
+       (trans (ap (E.mul (iota.1 t.1)) (trans (mon-add t.2 (zexp w.1)) (trans (ap (E.mul (CO.mon t.2)) (mon-z w.1)) (E.mulO (CO.mon t.2)))))
+         (sym (deh-term t.1 t.2))) ;
+     inr w -> absurd (Id E.R E.z (CO.deh (cons t nil)))
+       (ZMT4Certificate[l].not-over le.1 w.1 d (trans (ap (NA.plus le.1) (sym w.2)) le.2)) } ;
+   deh-homT (d : Base.Nat) : (p : Polys) -> AllLe d p -> Id E.R (CO.deh (homT d p)) (CO.deh p) = split {
+     nil -> \ hp -> refl E.z ; cons t p | rec -> \ hp -> trans (CO.deh-app _ _)
+       (Ps.cong2 E.R E.add _ _ _ _ (trans (deh-hom-term d t hp.1 (RB.dich (N.degree n t.2) d)) (deh-term t.1 t.2)) (rec hp.2)) } ;
+   deh-sum : (r : Nat) (p : Ps.Fin r -> Polys) ->
+     Id E.R (CO.deh (FA.psum r p)) (FiniteIdeal[l].Sums[E].sum r (\ i -> CO.deh (p i))) = split {
+     zero -> \ p -> refl E.z ; suc r | rec -> \ p -> trans (CO.deh-app _ _)
+       (ap (E.add (CO.deh (p (inr tt)))) (rec (\ i -> p (inl i)))) } ;
+ } ;
+} ;

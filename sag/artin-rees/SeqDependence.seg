@@ -1,0 +1,101 @@
+-- SeqDependence.seg: in a module with (D) and the principle of free lists,
+-- every sequence merely has a term in the span of the earlier ones
+-- (artin-rees.tex §8, « Le certificat »).  For A CFN and M = A^s this
+-- replaces GradedDependence at the ideal (1, 0) (ACLZMTCong, GD1), which
+-- needs a coded noetherian presentation of A.
+--
+-- Informal proof.  Let f_0, f_1, .. be elements of M and
+-- init n = [f_(n-1), .., f_0] (head last added).  Let
+--   Chi s = for every n with span s included in span (init n),
+--           merely some N with f_N in span (init N)   (a proposition).
+-- Step: s free, Chi (x :: s) for every x outside span s, and n with
+-- span s in span (init n).  Decide f_n in span s by (D).  If yes, f_n is in
+-- span (init n): N = n.  If no, Chi (f_n :: s) holds, and
+-- span (f_n :: s) is in span (f_n :: init n) = span (init (n+1)): apply it
+-- at n + 1.  (FL) gives Chi nil, and nil is in span (init 0).
+-- Coefficients (coefs).  f_N in span (init N) gives a list
+-- rs = [x_(N-1), .., x_0] of length N with
+--   f_N = sum_{x :: xs in rs} x f_(len xs)                        (sumL)
+-- by induction on N, peeling the head of init N.  This is the form used
+-- for the monic equations (ACLZMTCong.MonicRel).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ; module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Over (A : CRing) (Md : IP.Mod[A]) (disc : Coherent[l].Over[A,Md].Disc) (fl : Coherent[l].Over[A,Md].FL)
+  (f : Nat -> Md.M) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+  module SP = ModSpan[l].Over[A,Md] ; module MS = Spans[l].Over[A,Md] ;
+
+  init : Nat -> List M = split { zero -> nil ; suc n | r -> cons (f n) r } ;
+  Dep : U l = (n : Nat) * SP.In (init n) (f n) ;
+  module TD = Tr.Trunc[Dep] ;
+
+  ------------------------------------------------------------------------
+  -- the dependence, by the principle of free lists
+
+  Chi (s : List M) : U l = (n : Nat) -> MS.Sub s (init n) -> TD.carrier ;
+  chi-prop (s : List M) : Pr.isProp (Chi s) =
+    FE.isProp-Pi Nat (\ n -> MS.Sub s (init n) -> TD.carrier)
+      (\ n -> FE.isProp-Pi (MS.Sub s (init n)) (\ h -> TD.carrier) (\ h -> TD.proposition)) ;
+
+  module Step (s : List M) (hyp : (x : M) -> Not (SP.In s x) -> Chi (cons x s)) (n : Nat) (sub : MS.Sub s (init n)) {
+    -- f_n in span s, so in span (init n)
+    yes (h : MS.Mm s (f n)) : TD.carrier =
+      MS.mm-rec (init n) (f n) TD.carrier TD.proposition (\ i -> TD.inc (n, i)) (sub (f n) h) ;
+    -- f_n outside span s: Chi (f_n :: s) at n + 1
+    no (h : Not (MS.Mm s (f n))) : TD.carrier =
+      hyp (f n) (\ i -> h (MS.mm s (f n) i)) (suc n) (MS.cons-mono (f n) s (init n) sub) ;
+    result : Plus (MS.Mm s (f n)) (Not (MS.Mm s (f n))) -> TD.carrier = split {
+      inl h -> yes h ;
+      inr h -> no h } ;
+    dep : TD.carrier = result (MS.dec-list disc s (f n)) ;
+  } ;
+  dependence : TD.carrier =
+    fl Chi chi-prop (\ s fs hyp n sub -> Step[s,hyp,n,sub].dep) nil tt zero (\ y h -> h) ;
+
+  ------------------------------------------------------------------------
+  -- the coefficients
+
+  sumL : List A.R -> M = split {
+    nil -> mz ;
+    cons x xs | r -> madd (sm x (f (len xs))) r } ;
+  -- by definition of sumL
+  sumL-cons (x : A.R) (xs : List A.R) : Id M (sumL (cons x xs)) (madd (sm x (f (len xs))) (sumL xs)) =
+    refl (sumL (cons x xs)) ;
+
+  Coefs (n : Nat) (y : M) : U l = (rs : List A.R) * (Id Nat (len rs) n * Id M y (sumL rs)) ;
+  -- y = c f_n + (y - c f_n), the rest having coefficients rs0
+  module Cons (n : Nat) (y : M) (c : A.R) (rs0 : List A.R) (l0 : Id Nat (len rs0) n)
+    (e0 : Id M (msub y (sm c (f n))) (sumL rs0)) {
+    rs : List A.R = cons c rs0 ;
+    eq : Id M y (sumL rs) =
+      calc M {
+        y =< sym (MS.sub-add y (sm c (f n))) > madd (msub y (sm c (f n))) (sm c (f n))
+          =< maddC (msub y (sm c (f n))) (sm c (f n)) > madd (sm c (f n)) (msub y (sm c (f n)))
+          =< G.cong-add (ap (\ k -> sm c (f k)) (sym l0)) e0 > madd (sm c (f (len rs0))) (sumL rs0)
+          =< sym (sumL-cons c rs0) > sumL rs } ;
+    res : Coefs (suc n) y = (rs, (ap (\ k -> suc k) l0, eq)) ;
+  } ;
+  Cons-of (n : Nat) (y : M) (c : A.R) (rest : Coefs n (msub y (sm c (f n)))) : Coefs (suc n) y =
+    Cons[n,y,c,rest.1,rest.2.1,rest.2.2].res ;
+  coefs : (n : Nat) (y : M) -> SP.In (init n) y -> Coefs n y = split {
+    zero -> \ y h -> (nil, (refl zero, h)) ;
+    suc n | r -> \ y h -> Cons-of n y h.1 (r (msub y (sm h.1 (f n))) h.2) } ;
+
+  -- f_(len rs) = sum_{x :: xs in rs} x f_(len xs), merely
+  Relation : U l = (rs : List A.R) * Id M (f (len rs)) (sumL rs) ;
+  module At (n : Nat) (rs : List A.R) (ln : Id Nat (len rs) n) (e : Id M (f n) (sumL rs)) {
+    rel : Relation = (rs, trans (ap f ln) e) ;
+  } ;
+  relation-at (n : Nat) (cs : Coefs n (f n)) : Relation = At[n,cs.1,cs.2.1,cs.2.2].rel ;
+  relation-of (d : Dep) : Relation = relation-at d.1 (coefs d.1 (f d.1) d.2) ;
+  relation : Tr.Trunc[Relation].carrier = TC.map Dep Relation relation-of dependence ;
+} ;
+
+-- A CFN, M = A^s
+module CFNFree (K0 : U l) (A : CRing) (cfn : CFN[l].CFN[K0,A]) (s : Nat) (f : Nat -> Comb[l].Free[A,s].Vec) {
+  module FD = FreeDisc[l].Over[A,cfn.disc,cfn.coh] ;
+  module FN = FreeNoeth[l].Over[A,cfn.disc,cfn.coh,CFN[l].fl K0 A cfn] ;
+  module D = Over[A,Comb[l].Free[A,s].mod,FD.disc-vec s,FN.fl-vec s,f] ;
+} ;

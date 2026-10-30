@@ -1,0 +1,161 @@
+-- PolyCoef.seg: R[X] (PolynomialRing.Extension) through its coefficients,
+-- and the bridge between R[X]-spans and the A[X]-spans of sequences
+-- (artin-rees.tex, §4, "Pont").
+--
+-- kap g: the coefficients of g, a sequence.  kap is additive, kap (a g) =
+-- a kap g for a constant a, kap (X g) = X kap g, and kap determines g
+-- (PolynomialCoefficients.ext).  horner: g = g(0) + X tail g, hence
+-- kap-mul: kap (x v) = x(0) kap v + X kap (tail x . v).  Every g merely
+-- has a degree bound (bound); g vanishing from 0 on is 0, and tail lowers
+-- the bound.
+-- SpanOf u: for u_1..u_k in R[X], N is the A[X]-span (XSpan) of the
+-- sequences kap u_i.  y is in the R[X]-span of u iff kap y is in N:
+--   comb-nm: kap (sum c_i u_i) is in N, by induction on a degree bound of c_i;
+--   from-xs: XS d g gives c with kap (sum c_i u_i) = g, by induction on d
+--   (c_i = a_i + X c'_i).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+  module E = PolynomialRing[l].Extension[A,setA] ;
+  module PC = PolynomialCoefficients[l].Over[A,setA] ;
+  module PR = Poly[l].PolyR[A] ; module MR = Mul[l].MulR[A] ;
+  S : CRing = E.ring ;
+  K : U l = E.Carrier ;
+  module RS = RL[S] ; module RA = RL[A] ;
+  module SQ = SeqPoly[l].Over[A,IP.regular A] ;
+  Seq : U l = SQ.Seq ;
+  Sq : IP.Mod[A] = SQ.seq ;
+  module LQ = IP.ModL[A,Sq] ; module CQ = Comb[l].Sums[A,Sq] ;
+  module CS = Comb[l].Sums[S,IP.regular S] ;
+  seq-set : Pr.isSet Seq = FE.isSet-Pi Nat (\ k -> A.R) (\ k -> setA) ;
+
+  kap (g : K) : Seq = PC.coef g ;
+
+  ------------------------------------------------------------------------
+  -- kap is additive, A-linear, and commutes with X
+
+  add-inc (p q : PR.P) (k : Nat) :
+    Id A.R (PC.coef (E.addQ (E.include p) (E.include q)) k) (A.add (PC.coef (E.include p) k) (PC.coef (E.include q) k)) =
+    trans (ap (\ t -> PC.coef t k) (E.Add.beta p q))
+      (trans (PC.coef-include (MR.addP p q) k)
+        (trans (MR.coef-addP p q k)
+          (trans (ap (\ t -> A.add t (PR.coef q k)) (sym (PC.coef-include p k)))
+            (ap (A.add (PC.coef (E.include p) k)) (sym (PC.coef-include q k)))))) ;
+  kap-add (g h : K) : Id Seq (kap (E.addQ g h)) (Sq.madd (kap g) (kap h)) =
+    E.forall2 (\ g h -> Id Seq (kap (E.addQ g h)) (Sq.madd (kap g) (kap h))) (\ g h -> seq-set _ _)
+      (\ p q -> SQ.sext _ _ (add-inc p q)) g h ;
+  kap-zero : Id Seq (kap E.zeroQ) Sq.mz = SQ.sext _ _ PC.coef-zero ;
+  kap-cmul (a : A.R) (g : K) : Id Seq (kap (E.mulQ (E.constant a) g)) (Sq.sm a (kap g)) =
+    SQ.sext _ _ (PC.scale-coef a g) ;
+  kap-X-at (g : K) : (k : Nat) -> Id A.R (kap (E.mulQ E.variable g) k) (SQ.Xs (kap g) k) = split {
+    zero -> (PC.shift-coef g).1 ;
+    suc k -> (PC.shift-coef g).2 k } ;
+  kap-X (g : K) : Id Seq (kap (E.mulQ E.variable g)) (SQ.Xs (kap g)) = SQ.sext _ _ (kap-X-at g) ;
+
+  -- the constant a: a, 0, 0, ...
+  cseq (a : A.R) : Seq = split { zero -> a ; suc k -> A.z } ;
+  cseq-at (a : A.R) : (k : Nat) -> Id A.R (PR.coef (cons a nil) k) (cseq a k) = split {
+    zero -> refl a ;
+    suc k -> refl A.z } ;
+  kap-const (a : A.R) : Id Seq (kap (E.constant a)) (cseq a) =
+    SQ.sext _ _ (\ k -> trans (PC.coef-include (cons a nil) k) (cseq-at a k)) ;
+
+  kap-sum : (n : Nat) (f : Fin n -> K) -> Id Seq (kap (CS.sum n f)) (CQ.sum n (\ i -> kap (f i))) = split {
+    zero -> \ f -> kap-zero ;
+    suc n | r -> \ f -> trans (kap-add (f (inr tt)) (CS.sum n (\ i -> f (inl i))))
+                              (ap (Sq.madd (kap (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+
+  ------------------------------------------------------------------------
+  -- g = g(0) + X tail g
+
+  c0 (g : K) : A.R = PC.coef g zero ;
+  hor (g : K) : K = E.addQ (E.constant (c0 g)) (E.mulQ E.variable (PC.tail g)) ;
+  hor-at (g : K) : (k : Nat) -> Id A.R (PC.coef g k) (A.add (cseq (c0 g) k) (SQ.Xs (kap (PC.tail g)) k)) = split {
+    zero -> sym (A.addZ (c0 g)) ;
+    suc k -> sym (trans (RA.zl (PC.coef (PC.tail g) k)) (PC.tail-coef g k)) } ;
+  kap-hor (g : K) : Id Seq (kap (hor g)) (Sq.madd (cseq (c0 g)) (SQ.Xs (kap (PC.tail g)))) =
+    trans (kap-add (E.constant (c0 g)) (E.mulQ E.variable (PC.tail g)))
+      (LQ.G.cong-add (kap-const (c0 g)) (kap-X (PC.tail g))) ;
+  horner (g : K) : Id K g (hor g) =
+    PC.ext g (hor g) (\ k -> trans (hor-at g k) (sym (Pr.happly Nat (\ i -> A.R) _ _ (kap-hor g) k))) ;
+
+  -- x v = x(0) v + X (tail x . v)
+  mul-hor (x v : K) : Id K (E.mulQ x v)
+    (E.addQ (E.mulQ (E.constant (c0 x)) v) (E.mulQ E.variable (E.mulQ (PC.tail x) v))) =
+    trans (ap (\ t -> E.mulQ t v) (horner x))
+      (trans (RS.dist-left (E.constant (c0 x)) (E.mulQ E.variable (PC.tail x)) v)
+        (ap (E.addQ (E.mulQ (E.constant (c0 x)) v)) (sym (S.mulA E.variable (PC.tail x) v)))) ;
+  kap-mul (x v : K) : Id Seq (kap (E.mulQ x v)) (Sq.madd (Sq.sm (c0 x) (kap v)) (SQ.Xs (kap (E.mulQ (PC.tail x) v)))) =
+    trans (ap kap (mul-hor x v))
+      (trans (kap-add (E.mulQ (E.constant (c0 x)) v) (E.mulQ E.variable (E.mulQ (PC.tail x) v)))
+        (LQ.G.cong-add (kap-cmul (c0 x) v) (kap-X (E.mulQ (PC.tail x) v)))) ;
+
+  ------------------------------------------------------------------------
+  -- degree bounds
+
+  Bound (g : K) : U l = (d : Nat) * SQ.Van d (kap g) ;
+  bound (g : K) : Tr.Trunc[Bound g].carrier =
+    E.Q.induction @l (\ g -> Tr.Trunc[Bound g].carrier) (\ g -> Tr.Trunc[Bound g].proposition)
+      (\ p -> Tr.Trunc[Bound (E.include p)].inc (PR.plen p,
+         \ j -> trans (PC.coef-include p (plus (PR.plen p) j)) (MR.coef-beyond p j))) g ;
+  van-zero-eq (g : K) (v : SQ.Van zero (kap g)) : Id K g E.zeroQ =
+    PC.ext g E.zeroQ (\ k -> trans (v k) (sym (PC.coef-zero k))) ;
+  tail-van (g : K) (d : Nat) (v : SQ.Van (suc d) (kap g)) : SQ.Van d (kap (PC.tail g)) =
+    \ j -> trans (PC.tail-coef g (plus d j)) (v j) ;
+
+  ------------------------------------------------------------------------
+  -- the bridge
+
+  module SpanOf (k : Nat) (u : Fin k -> K) {
+    F (i : Fin k) : Seq = kap (u i) ;
+    module XN = XSpan[l].Over[A,IP.regular A,k,F] ;
+    module CO = Coherent[l].Over[S,IP.regular S] ;
+    comb (c : Fin k -> K) : K = CS.comb k c u ;
+
+    mul-nm (i : Fin k) : (d : Nat) (c : K) -> SQ.Van d (kap c) -> XN.NM (kap (E.mulQ c (u i))) = split {
+      zero -> \ c v -> XN.nm-cong Sq.mz (kap (E.mulQ c (u i)))
+        (sym (trans (ap (\ t -> kap (E.mulQ t (u i))) (van-zero-eq c v)) (trans (ap kap (RS.zero-mul (u i))) kap-zero)))
+        XN.nm-zero ;
+      suc d | r -> \ c v -> XN.nm-cong (Sq.madd (Sq.sm (c0 c) (F i)) (SQ.Xs (kap (E.mulQ (PC.tail c) (u i)))))
+        (kap (E.mulQ c (u i))) (sym (kap-mul c (u i)))
+        (XN.nm-add (Sq.sm (c0 c) (F i)) (SQ.Xs (kap (E.mulQ (PC.tail c) (u i))))
+          (XN.nm-sm (c0 c) (F i) (XN.nm-gen i))
+          (XN.nm-X (kap (E.mulQ (PC.tail c) (u i))) (r (PC.tail c) (tail-van c d v)))) } ;
+    mul-in (i : Fin k) (c : K) : XN.NM (kap (E.mulQ c (u i))) =
+      Tr.Trunc[Bound c].induction @l (\ t -> XN.NM (kap (E.mulQ c (u i)))) (\ t -> XN.nm-prop (kap (E.mulQ c (u i))))
+        (\ b -> mul-nm i b.1 c b.2) (bound c) ;
+    comb-nm (c : Fin k -> K) : XN.NM (kap (comb c)) =
+      XN.nm-cong (CQ.sum k (\ i -> kap (E.mulQ (c i) (u i)))) (kap (comb c)) (sym (kap-sum k (\ i -> E.mulQ (c i) (u i))))
+        (XN.nm-sum k (\ i -> kap (E.mulQ (c i) (u i))) (\ i -> mul-in i (c i))) ;
+
+    Rep (g : Seq) : U l = (c : Fin k -> K) * Id Seq (kap (comb c)) g ;
+    const-comb (a : Fin k -> A.R) : Id Seq (kap (comb (\ i -> E.constant (a i)))) (XN.cF a) =
+      trans (kap-sum k (\ i -> E.mulQ (E.constant (a i)) (u i)))
+        (CQ.sum-cong k (\ i -> kap (E.mulQ (E.constant (a i)) (u i))) (\ i -> Sq.sm (a i) (F i)) (\ i -> kap-cmul (a i) (u i))) ;
+    comb-split (a : Fin k -> A.R) (c : Fin k -> K) :
+      Id K (comb (\ i -> E.addQ (E.constant (a i)) (E.mulQ E.variable (c i))))
+           (E.addQ (comb (\ i -> E.constant (a i))) (E.mulQ E.variable (comb c))) =
+      trans (CS.comb-add k (\ i -> E.constant (a i)) (\ i -> E.mulQ E.variable (c i)) u)
+        (ap (E.addQ (comb (\ i -> E.constant (a i)))) (CS.comb-sm k E.variable c u)) ;
+    step (a : Fin k -> A.R) (g1 : Seq) (rp : Rep g1) (g : Seq) (eq : Id Seq g (Sq.madd (XN.cF a) (SQ.Xs g1))) : Rep g =
+      ((\ i -> E.addQ (E.constant (a i)) (E.mulQ E.variable (rp.1 i))),
+       trans (ap kap (comb-split a rp.1))
+         (trans (kap-add (comb (\ i -> E.constant (a i))) (E.mulQ E.variable (comb rp.1)))
+           (trans (LQ.G.cong-add (const-comb a) (trans (kap-X (comb rp.1)) (ap SQ.Xs rp.2))) (sym eq)))) ;
+    from-xs : (d : Nat) (g : Seq) -> XN.XS d g -> Rep g = split {
+      zero -> \ g h -> ((\ i -> E.constant (h.1 i)), trans (const-comb h.1) h.2) ;
+      suc d | r -> \ g h -> step h.1 h.2.1 (r h.2.1 h.2.2.1) g h.2.2.2 } ;
+
+    -- y is in the R[X]-span of u iff kap y is in N
+    to-span (y : K) (h : XN.NM (kap y)) : CO.Mem k u y =
+      XN.nm-rec (kap y) (CO.Mem k u y) Tr.Trunc[CO.InFM k u y].proposition
+        (\ w -> Tr.Trunc[CO.InFM k u y].inc ((from-xs w.1 (kap y) w.2).1,
+           PC.ext (comb (from-xs w.1 (kap y) w.2).1) y
+             (\ j -> Pr.happly Nat (\ i -> A.R) _ _ (from-xs w.1 (kap y) w.2).2 j))) h ;
+    from-span (y : K) (m : CO.Mem k u y) : XN.NM (kap y) =
+      Tr.Trunc[CO.InFM k u y].induction @l (\ t -> XN.NM (kap y)) (\ t -> XN.nm-prop (kap y))
+        (\ ce -> XN.nm-cong (kap (comb ce.1)) (kap y) (ap kap ce.2) (comb-nm ce.1)) m ;
+  } ;
+} ;

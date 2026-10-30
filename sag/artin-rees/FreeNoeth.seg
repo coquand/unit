@@ -1,0 +1,222 @@
+-- FreeNoeth.seg: the principle of free lists (FL) for the free modules
+-- A^r over a coherent, discrete A with FL (artin-rees.tex, Prop. 3, last
+-- part).
+--
+-- r = 0: the only free list is nil.
+-- r + 1: lexicographic induction.  For a list s of A^(r+1), Cond p q s says
+-- that the free list p of A spans the last coordinates of span(s), and the
+-- free list q of A^r spans  { v | iota v in span(s) }  (iota v = (v,0)).
+-- Let x not be in span(s).  If last x is in span(last s), then x - y = iota v
+-- for some y in span(s), v is not in span(q), and Cond p (v::q) (x::s): the
+-- inner induction (on q) applies.  Otherwise last x is not in span(p), and
+-- Cond (last x :: p) q' (x::s) for a free q' spanning the new kernel part
+-- (coherence, n0-gens, then Spans.extract): the outer induction (on p)
+-- applies.  Every predicate is a proposition, so truncated data are used
+-- freely.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (disc : Coherent[l].Over[A,IP.regular A].Disc) (coh : Coherent[l].Over[A,IP.regular A].Coh)
+  (flA : Coherent[l].Over[A,IP.regular A].FL) {
+  module FC = FreeCoherent[l].Over[A,coh] ; open FC ;
+  module FD = FreeDisc[l].Over[A,disc,coh] ;
+  module SA = Spans[l].Over[A,IP.regular A] ; module PA = ModSpan[l].Over[A,IP.regular A] ;
+  module CR = Coherent[l].Over[A,IP.regular A] ;
+
+  ------------------------------------------------------------------------
+  -- r = 0
+
+  module Zero (Phi : List (Vec zero) -> U l)
+    (step : (s : List (Vec zero)) -> ModSpan[l].Over[A,V zero].Free s ->
+       ((x : Vec zero) -> Not (ModSpan[l].Over[A,V zero].In s x) -> Phi (cons x s)) -> Phi s) {
+    module S0 = ModSpan[l].Over[A,V zero] ;
+    zero-in (s : List (Vec zero)) (x : Vec zero) : S0.In s x =
+      S0.in-tr s (\ k -> A.z) x (vec0-eq (\ k -> A.z) x) (S0.in-zero s) ;
+    run : (s : List (Vec zero)) -> S0.Free s -> Phi s = split {
+      nil -> \ f -> step nil tt (\ x nx -> absurd (Phi (cons x nil)) (nx (zero-in nil x))) ;
+      cons x s | rr -> \ f -> absurd (Phi (cons x s)) (f.1 (zero-in s x)) } ;
+  } ;
+  fl-zero : Coherent[l].Over[A,V zero].FL = \ Phi pPhi step -> Zero[Phi,step].run ;
+
+  ------------------------------------------------------------------------
+  -- r + 1
+
+  module Step (r : Nat) (ihFL : Coherent[l].Over[A,V r].FL) {
+    module SS = ModSpan[l].Over[A,V (suc r)] ; module SR = ModSpan[l].Over[A,V r] ;
+    module MS = Spans[l].Over[A,V (suc r)] ; module MR = Spans[l].Over[A,V r] ;
+    module ML1 = IP.ModL[A,V (suc r)] ; module MLr = IP.ModL[A,V r] ;
+    module VS1 = Comb[l].Free[A,suc r].VS ; module VSr = Comb[l].Free[A,r].VS ;
+    module L1 = Comb[l].Lists[A,V (suc r)] ;
+    module C1 = Coherent[l].Over[A,V (suc r)] ;
+
+    iota (v : Vec r) : Vec (suc r) = snoc (Fin r) A.R v A.z ;
+    lastL : List (Vec (suc r)) -> List A.R = split {
+      nil -> nil ;
+      cons t s | rr -> cons (last r t) rr } ;
+    Both (P Q : U l) : U l = (P -> Q) * (Q -> P) ;
+    Kern (q : List (Vec r)) (s : List (Vec (suc r))) : U l = (v : Vec r) -> Both (MR.Mm q v) (MS.Mm s (iota v)) ;
+    Cond (p : List A.R) (q : List (Vec r)) (s : List (Vec (suc r))) : U l = SA.SpanEq p (lastL s) * Kern q s ;
+
+    -- last coordinates of a span
+    in-last : (s : List (Vec (suc r))) (y : Vec (suc r)) -> SS.In s y -> PA.In (lastL s) (last r y) = split {
+      nil -> \ y h -> ap (last r) h ;
+      cons t s | rr -> \ y h -> (h.1, rr (ML1.msub y ((V (suc r)).sm h.1 t)) h.2) } ;
+    cancel1 (y w : Vec (suc r)) : Id (Vec (suc r)) (ML1.msub ((V (suc r)).madd y w) w) y =
+      trans (sym ((V (suc r)).maddA y w ((V (suc r)).mneg w))) (trans (ap ((V (suc r)).madd y) ((V (suc r)).maddN w)) ((V (suc r)).maddZ y)) ;
+    Lift (s : List (Vec (suc r))) (a : A.R) : U l = (y : Vec (suc r)) * (SS.In s y * Id A.R (last r y) a) ;
+    lift-cons (t : Vec (suc r)) (s : List (Vec (suc r))) (a c : A.R)
+      (l : Lift s (A.add a (A.neg (A.mul c (last r t))))) : Lift (cons t s) a =
+      ((V (suc r)).madd l.1 ((V (suc r)).sm c t),
+       ((c, SS.in-tr s l.1 (ML1.msub ((V (suc r)).madd l.1 ((V (suc r)).sm c t)) ((V (suc r)).sm c t))
+              (sym (cancel1 l.1 ((V (suc r)).sm c t))) l.2.1),
+        trans (ap (\ b -> A.add b (A.mul c (last r t))) l.2.2) (SA.sub-add a (A.mul c (last r t))))) ;
+    lift-last : (s : List (Vec (suc r))) (a : A.R) -> PA.In (lastL s) a -> Lift s a = split {
+      nil -> \ a h -> (\ k -> A.z, (refl (\ k -> A.z), sym h)) ;
+      cons t s | rr -> \ a h -> lift-cons t s a h.1 (rr (A.add a (A.neg (A.mul h.1 (last r t)))) h.2) } ;
+
+    -- generators of the kernel part, as a free list
+    module Gens (s : List (Vec (suc r))) (p : Nat) (tau : Fin p -> Vec (len s))
+      (tsyz : CR.SyzAll (len s) (\ j -> last r (L1.elem s j)) p tau)
+      (tuniv : CR.Univ (len s) (\ j -> last r (L1.elem s j)) p tau) {
+      u (j : Fin (len s)) : Vec (suc r) = L1.elem s j ;
+      w (j : Fin p) : Vec (suc r) = VS1.comb (len s) (tau j) u ;
+      rw (j : Fin p) : Vec r = rest r (w j) ;
+      pw-zero (j : Fin p) : Id A.R (last r (w j)) A.z = trans (pi-comb r (len s) (tau j) u) (tsyz j) ;
+      gl : List (Vec r) = MR.list-of p rw ;
+      to-s (v : Vec r) (h : SR.In gl v) : MS.Mm s (iota v) =
+        MS.mm s (iota v) (L1.fam-in s (iota v)
+          (Comb[l].Free[A,len s].VS.comb p (MR.lf-in p rw v h).1 tau,
+           trans (Comb[l].Bilinear[A,V (suc r)].comb-comb (len s) p (MR.lf-in p rw v h).1 tau u)
+             (parts-eq r (VS1.comb p (MR.lf-in p rw v h).1 w) (iota v)
+               (trans (pi-comb r p (MR.lf-in p rw v h).1 w) (RS.comb-vanish p (MR.lf-in p rw v h).1 (\ j -> last r (w j)) pw-zero))
+               (trans (rho-comb r p (MR.lf-in p rw v h).1 w) (MR.lf-in p rw v h).2)))) ;
+      from-s (v : Vec r) (h : SS.In s (iota v)) : MR.Mm gl v =
+        Tr.Trunc[CR.InFV (len s) p tau (L1.in-fam s (iota v) h).1].induction @l (\ t -> MR.Mm gl v) (\ t -> MR.mm-prop gl v)
+          (\ me -> MR.mm gl v (MR.in-lf p rw v (me.1,
+             trans (sym (rho-comb r p me.1 w))
+               (trans (ap (rest r) (sym (Comb[l].Bilinear[A,V (suc r)].comb-comb (len s) p me.1 tau u)))
+                 (trans (ap (\ t -> rest r (VS1.comb (len s) t u)) me.2) (ap (rest r) (L1.in-fam s (iota v) h).2))))))
+          (tuniv (L1.in-fam s (iota v) h).1
+            (trans (sym (pi-comb r (len s) (L1.in-fam s (iota v) h).1 u)) (ap (last r) (L1.in-fam s (iota v) h).2))) ;
+      module WithFree (q : List (Vec r)) (fq : SR.Free q) (e : MR.SpanEq q gl) {
+        kern : Kern q s = \ v ->
+          (\ m -> MR.mm-rec gl v (MS.Mm s (iota v)) (MS.mm-prop s (iota v)) (to-s v) (e.1 v m),
+           \ m -> e.2 v (MS.mm-rec s (iota v) (MR.Mm gl v) (MR.mm-prop gl v) (from-s v) m)) ;
+      } ;
+    } ;
+    KernFree (s : List (Vec (suc r))) : U l = (q : List (Vec r)) * (SR.Free q * Kern q s) ;
+    n0-gens (s : List (Vec (suc r))) : Tr.Trunc[KernFree s].carrier =
+      Tr.Trunc[CR.CohW (len s) (\ j -> last r (L1.elem s j))].induction @l (\ t -> Tr.Trunc[KernFree s].carrier)
+        (\ t -> Tr.Trunc[KernFree s].proposition)
+        (\ x -> Tr.Trunc[MR.Extract (Gens[s, x.1, x.2.1, x.2.2.1, x.2.2.2].gl)].induction @l
+           (\ t -> Tr.Trunc[KernFree s].carrier) (\ t -> Tr.Trunc[KernFree s].proposition)
+           (\ y -> Tr.Trunc[KernFree s].inc (y.1, (y.2.1, Gens[s, x.1, x.2.1, x.2.2.1, x.2.2.2].WithFree[y.1, y.2.1, y.2.2].kern)))
+           (MR.Ext[FD.disc-vec r].extract (Gens[s, x.1, x.2.1, x.2.2.1, x.2.2.2].gl)))
+        (coh (len s) (\ j -> last r (L1.elem s j))) ;
+
+    ------------------------------------------------------------------------
+    -- the lexicographic induction
+
+    module Main (Phi : List (Vec (suc r)) -> U l) (pPhi : (s : List (Vec (suc r))) -> Pr.isProp (Phi s))
+      (step : (s : List (Vec (suc r))) -> SS.Free s -> ((x : Vec (suc r)) -> Not (SS.In s x) -> Phi (cons x s)) -> Phi s) {
+      Chi (p : List A.R) (q : List (Vec r)) : U l = (s : List (Vec (suc r))) -> SS.Free s -> Cond p q s -> Phi s ;
+      Psi (p : List A.R) : U l = (q : List (Vec r)) -> SR.Free q -> Chi p q ;
+      chi-prop (p : List A.R) (q : List (Vec r)) : Pr.isProp (Chi p q) =
+        FE.isProp-Pi (List (Vec (suc r))) (\ s -> SS.Free s -> Cond p q s -> Phi s) (\ s ->
+          FE.isProp-Pi (SS.Free s) (\ f -> Cond p q s -> Phi s) (\ f ->
+            FE.isProp-Pi (Cond p q s) (\ c -> Phi s) (\ c -> pPhi s))) ;
+      psi-prop (p : List A.R) : Pr.isProp (Psi p) =
+        FE.isProp-Pi (List (Vec r)) (\ q -> SR.Free q -> Chi p q) (\ q ->
+          FE.isProp-Pi (SR.Free q) (\ f -> Chi p q) (\ f -> chi-prop p q)) ;
+
+      module AtP (p : List A.R) (fp : PA.Free p) (ihp : (a : A.R) -> Not (PA.In p a) -> Psi (cons a p)) {
+        module AtQ (q : List (Vec r)) (fq : SR.Free q) (ihq : (v : Vec r) -> Not (SR.In q v) -> Chi p (cons v q)) {
+          module AtS (s : List (Vec (suc r))) (fs : SS.Free s) (cond : Cond p q s) {
+            module AtX (x : Vec (suc r)) (nx : Not (SS.In s x)) {
+
+              module Yes (y : Vec (suc r)) (iy : SS.In s y) (ey : Id A.R (last r y) (last r x)) {
+                v : Vec r = MLr.msub (rest r x) (rest r y) ;
+                iv : Id (Vec (suc r)) (iota v) (ML1.msub x y) =
+                  parts-eq r (iota v) (ML1.msub x y)
+                    (sym (trans (ap (\ b -> A.add (last r x) (A.neg b)) ey) (A.addN (last r x))))
+                    (refl v) ;
+                sub-add1 (a b : Vec (suc r)) : Id (Vec (suc r)) ((V (suc r)).madd (ML1.msub a b) b) a = MS.sub-add a b ;
+                nv-in (h : SS.In s (iota v)) : Empty =
+                  nx (SS.in-tr s ((V (suc r)).madd (ML1.msub x y) y) x (sub-add1 x y)
+                        (SS.in-add s (ML1.msub x y) y (SS.in-tr s (iota v) (ML1.msub x y) iv h) iy)) ;
+                nv (h : SR.In q v) : Empty =
+                  MS.mm-rec s (iota v) Empty Coherent[l].empty-prop nv-in ((cond.2 v).1 (MR.mm q v h)) ;
+
+                -- the two vector identities, coordinatewise
+                id1 (v' : Vec r) (c : A.R) :
+                  Id (Vec (suc r)) (ML1.msub (iota (MLr.msub v' ((V r).sm c v))) ((V (suc r)).sm c y))
+                                   (ML1.msub (iota v') ((V (suc r)).sm c x)) =
+                  parts-eq r (ML1.msub (iota (MLr.msub v' ((V r).sm c v))) ((V (suc r)).sm c y)) (ML1.msub (iota v') ((V (suc r)).sm c x))
+                    (ap (\ b -> A.add A.z (A.neg (A.mul c b))) ey)
+                    (trans (ap (\ t -> MLr.msub (MLr.msub v' t) ((V r).sm c (rest r y))) (MLr.sm-sub c (rest r x) (rest r y)))
+                      (trans (MLr.sub-sub v' (MLr.msub ((V r).sm c (rest r x)) ((V r).sm c (rest r y))) ((V r).sm c (rest r y)))
+                        (ap (MLr.msub v') (MR.sub-add ((V r).sm c (rest r x)) ((V r).sm c (rest r y)))))) ;
+                id2 (v' : Vec r) (c : A.R) :
+                  Id (Vec (suc r)) ((V (suc r)).madd (ML1.msub (iota v') ((V (suc r)).sm c x)) ((V (suc r)).sm c y))
+                                   (iota (MLr.msub v' ((V r).sm c v))) =
+                  trans (ap (\ t -> (V (suc r)).madd t ((V (suc r)).sm c y)) (sym (id1 v' c)))
+                    (MS.sub-add (iota (MLr.msub v' ((V r).sm c v))) ((V (suc r)).sm c y)) ;
+
+                fwd (v' : Vec r) (m : MR.Mm (cons v q) v') : MS.Mm (cons x s) (iota v') =
+                  MR.mm-rec (cons v q) v' (MS.Mm (cons x s) (iota v')) (MS.mm-prop (cons x s) (iota v'))
+                    (\ h -> MS.mm-rec s (iota (MLr.msub v' ((V r).sm h.1 v))) (MS.Mm (cons x s) (iota v')) (MS.mm-prop (cons x s) (iota v'))
+                       (\ g -> MS.mm (cons x s) (iota v') (h.1,
+                          SS.in-tr s _ _ (id1 v' h.1) (SS.in-sub s (iota (MLr.msub v' ((V r).sm h.1 v))) ((V (suc r)).sm h.1 y) g (SS.in-scale s h.1 y iy))))
+                       ((cond.2 (MLr.msub v' ((V r).sm h.1 v))).1 (MR.mm q (MLr.msub v' ((V r).sm h.1 v)) h.2))) m ;
+                bwd (v' : Vec r) (m : MS.Mm (cons x s) (iota v')) : MR.Mm (cons v q) v' =
+                  MS.mm-rec (cons x s) (iota v') (MR.Mm (cons v q) v') (MR.mm-prop (cons v q) v')
+                    (\ g -> MR.mm-rec q (MLr.msub v' ((V r).sm g.1 v)) (MR.Mm (cons v q) v') (MR.mm-prop (cons v q) v')
+                       (\ h -> MR.mm (cons v q) v' (g.1, h))
+                       ((cond.2 (MLr.msub v' ((V r).sm g.1 v))).2
+                         (MS.mm s (iota (MLr.msub v' ((V r).sm g.1 v)))
+                           (SS.in-tr s _ _ (id2 v' g.1) (SS.in-add s (ML1.msub (iota v') ((V (suc r)).sm g.1 x)) ((V (suc r)).sm g.1 y) g.2 (SS.in-scale s g.1 y iy)))))) m ;
+
+                last-in : SA.Mm (lastL s) (last r x) = SA.mm (lastL s) (last r x) (PA.in-tr (lastL s) (last r y) (last r x) ey (in-last s y iy)) ;
+                cond' : Cond p (cons v q) (cons x s) =
+                  ((SA.sub-trans p (lastL s) (cons (last r x) (lastL s)) cond.1.1 (SA.weak-sub (last r x) (lastL s)),
+                    SA.sub-trans (cons (last r x) (lastL s)) (lastL s) p (SA.absorb-sub (last r x) (lastL s) last-in) cond.1.2),
+                   \ v' -> (fwd v', bwd v')) ;
+                result : Phi (cons x s) = ihq v nv (cons x s) (nx, fs) cond' ;
+              } ;
+
+              module No (na : Not (SA.Mm (lastL s) (last r x))) {
+                np (h : PA.In p (last r x)) : Empty = na (cond.1.1 (last r x) (SA.mm p (last r x) h)) ;
+                with (k : KernFree (cons x s)) : Phi (cons x s) =
+                  ihp (last r x) np k.1 k.2.1 (cons x s) (nx, fs)
+                    ((SA.cons-mono (last r x) p (lastL s) cond.1.1, SA.cons-mono (last r x) (lastL s) p cond.1.2), k.2.2) ;
+                result : Phi (cons x s) =
+                  Tr.Trunc[KernFree (cons x s)].induction @l (\ t -> Phi (cons x s)) (\ t -> pPhi (cons x s)) with (n0-gens (cons x s)) ;
+              } ;
+
+              decide : Plus (SA.Mm (lastL s) (last r x)) (Not (SA.Mm (lastL s) (last r x))) -> Phi (cons x s) = split {
+                inl m -> SA.mm-rec (lastL s) (last r x) (Phi (cons x s)) (pPhi (cons x s))
+                  (\ h -> Yes[(lift-last s (last r x) h).1, (lift-last s (last r x) h).2.1, (lift-last s (last r x) h).2.2].result) m ;
+                inr na -> No[na].result } ;
+              result : Phi (cons x s) = decide (SA.dec-list disc (lastL s) (last r x)) ;
+            } ;
+            result : Phi s = step s fs (\ x nx -> AtX[x, nx].result) ;
+          } ;
+          result : Chi p q = \ s fs cond -> AtS[s, fs, cond].result ;
+        } ;
+        result : Psi p = ihFL (Chi p) (chi-prop p) (\ q fq ihq -> AtQ[q, fq, ihq].result) ;
+      } ;
+      psi-all : (p : List A.R) -> PA.Free p -> Psi p = flA Psi psi-prop (\ p fp ihp -> AtP[p, fp, ihp].result) ;
+
+      final (s : List (Vec (suc r))) (fs : SS.Free s) : Phi s =
+        Tr.Trunc[SA.Extract (lastL s)].induction @l (\ t -> Phi s) (\ t -> pPhi s)
+          (\ pe -> Tr.Trunc[KernFree s].induction @l (\ t -> Phi s) (\ t -> pPhi s)
+             (\ k -> psi-all pe.1 pe.2.1 k.1 k.2.1 s fs (pe.2.2, k.2.2)) (n0-gens s))
+          (SA.Ext[disc].extract (lastL s)) ;
+    } ;
+    fl : Coherent[l].Over[A,V (suc r)].FL = \ Phi pPhi step -> Main[Phi, pPhi, step].final ;
+  } ;
+
+  fl-vec : (r : Nat) -> Coherent[l].Over[A,V r].FL = split {
+    zero -> fl-zero ;
+    suc r | ih -> Step[r, ih].fl } ;
+} ;

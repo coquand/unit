@@ -1,0 +1,430 @@
+-- PolynomialRing4Bridge.seg: the iterated polynomial ring
+-- S = D[X_0][X_1][X_2][X_3] and the term-list polynomials (handoff §4,
+-- Gate A).
+--
+-- Iteration order.  S1 = D[X_0], S2 = S1[X_1], S3 = S2[X_2], S = S3[X_3],
+-- each the quotient ring PolynomialRing.Extension (the ring of
+-- PolyCoef/HilbertCFN).  The coordinate u_k of an exponent u = (u_0,..,u_3)
+-- of N4 (and of Z^4) is the exponent of X_k; X_0 is the variable of the
+-- innermost ring and enters S through three constant maps.
+--
+-- One variable (Level, B[T]).  at x i = the coefficient of T^i in x, 0 for
+-- i < 0.  It is additive (PolyCoef.kap-add), sends 0 to 0, a constant
+-- multiple c x to c (at x), T x to i |-> at x (i - 1) (shift-coef), a
+-- constant c to [i = 0] c; and the coefficients determine x
+-- (PolynomialCoefficients.ext).  Every element of B[T] is generated from 0
+-- and the constants by + and T . (gen; Horner's form of a representative).
+--
+-- Four variables.  psi s m = the coefficient of X^m in s (0 if some m_k <
+-- 0), the four at's composed.  Then psi is additive, psi (c s) = c psi s
+-- for c in D, psi (X_k s)(m) = psi s (m - e_k), psi 1 = delta0 (the
+-- composite of four selections [m_k = 0] is the selection [m = 0]:
+-- one-sel), and s is determined by psi s (ext4).
+--
+-- Term lists.  phi p = sum_{c X^u in p} c X_0^u_0 X_1^u_1 X_2^u_2 X_3^u_3.
+-- phi (p ++ q) = phi p + phi q, phi (p q) = phi p phi q (term-mul: the
+-- product of two terms is the term of the products), phi of a finite sum
+-- is the sum, phi (c p) = cst c phi p.  The bridge:
+--     psi (phi p) = cf p                                       (psi-phi)
+-- (psi of a term c X^u at m is c psi 1 (m - u) = c delta0(m - u)), so
+--     cf p = cf q  iff  phi p = phi q       (phi-eq-of-cf, cf-eq-of-phi)
+-- and with FinitePolynomial4: equal coefficients iff equal images in S.
+-- A finitely supported coefficient function f vanishing at the negative
+-- exponents is cf p for a term list p, and psi (phi p) = f (coefficient-rep).
+-- Representation (rep): every s in S merely is phi p.  The property
+-- "merely of the form phi p" contains 0 and the constants, is closed under +
+-- (concatenation) and under X_k . (bumping the k-th exponent of every
+-- term); by gen at the four levels (each time for the property of the
+-- constant image, using that the constant maps preserve 0, + and .) it
+-- holds everywhere.  Only the finitely many representatives asked for are
+-- ever chosen, under truncation.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open PolynomialAction4[l] ; open FinitePolynomial4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module LG = Logic[l] ; module NA = NatArith[l] ; module Ps = Presentations[l] ;
+
+-- the natural numbers of Base and of Ring
+toR : Base.Nat -> Nat = split { zero -> zero ; suc n | r -> suc r } ;
+toB : Nat -> Base.Nat = split { zero -> zero ; suc n | r -> suc r } ;
+toR-toB : (k : Nat) -> Id Nat (toR (toB k)) k = split {
+  zero -> refl zero ;
+  suc k | r -> ap (\ n -> suc n) r } ;
+
+------------------------------------------------------------------------
+-- one variable: B[T]
+
+module Level (B : CRing) (setB : Pr.isSet B.R) {
+  module X = PolynomialRing[l].Extension[B,setB] ;
+  module PC = PolynomialCoefficients[l].Over[B,setB] ;
+  module PK = PolyCoef[l].Over[B,setB] ;
+  module LB = RL[B] ;
+  T : CRing = X.ring ;
+
+  -- the coefficient of T^i, 0 for i < 0
+  at (x : T.R) : Int -> B.R = split { pos n -> PC.coef x (toR n) ; negsuc n -> B.z } ;
+  at-add (x y : T.R) : (i : Int) -> Id B.R (at (T.add x y) i) (B.add (at x i) (at y i)) = split {
+    pos n -> Pr.happly Nat (\ k -> B.R) _ _ (PK.kap-add x y) (toR n) ;
+    negsuc n -> sym (B.addZ B.z) } ;
+  at-zero : (i : Int) -> Id B.R (at T.z i) B.z = split {
+    pos n -> PC.coef-zero (toR n) ;
+    negsuc n -> refl B.z } ;
+  at-scale (c : B.R) (x : T.R) : (i : Int) -> Id B.R (at (T.mul (X.constant c) x) i) (B.mul c (at x i)) = split {
+    pos n -> PC.scale-coef c x (toR n) ;
+    negsuc n -> sym (LB.mul-zero c) } ;
+  -- T x has the coefficients of x moved by one
+  at-var-pos (x : T.R) : (n : Base.Nat) -> Id B.R (PC.coef (T.mul X.variable x) (toR n)) (at x (predPos n)) = split {
+    zero -> (PC.shift-coef x).1 ;
+    suc n -> (PC.shift-coef x).2 (toR n) } ;
+  at-var (x : T.R) : (i : Int) -> Id B.R (at (T.mul X.variable x) i) (at x (predZ i)) = split {
+    pos n -> at-var-pos x n ;
+    negsuc n -> refl B.z } ;
+  -- a constant c has the coefficients [i = 0] c
+  at-const-pos (c : B.R) : (n : Base.Nat) ->
+    Id B.R (at (X.constant c) (pos n)) (sel B c (Id Int (pos n) zeroZ) (int-dec (pos n) zeroZ)) = split {
+    zero -> PC.coef-include (cons c nil) zero ;
+    suc n -> PC.coef-include (cons c nil) (suc (toR n)) } ;
+  at-const (c : B.R) : (i : Int) -> Id B.R (at (X.constant c) i) (sel B c (Id Int i zeroZ) (int-dec i zeroZ)) = split {
+    pos n -> at-const-pos c n ;
+    negsuc n -> refl B.z } ;
+  -- the same, read through a map G preserving 0
+  module AtConst (R : CRing) (G : B.R -> R.R) (gz : Id R.R (G B.z) R.z) {
+    res (c : B.R) (i : Int) : Id R.R (G (at (X.constant c) i)) (sel R (G c) (Id Int i zeroZ) (int-dec i zeroZ)) =
+      trans (ap G (at-const c i)) (sel-map B R G gz c (Id Int i zeroZ) (int-dec i zeroZ)) ;
+  } ;
+  -- the coefficients determine the polynomial
+  ext (x y : T.R) (h : (i : Int) -> Id B.R (at x i) (at y i)) : Id T.R x y =
+    PC.ext x y (\ k -> trans (ap (PC.coef x) (sym (toR-toB k))) (trans (h (pos (toB k))) (ap (PC.coef y) (toR-toB k)))) ;
+  constant-zero : Id T.R (X.constant B.z) T.z = X.Q.relates (cons B.z nil) nil PC.zero-tail ;
+
+  -- B[T] is generated from 0 and the constants by + and T .
+  gen-raw (Q : T.R -> U l) (q0 : Q T.z) (qadd : (x y : T.R) -> Q x -> Q y -> Q (T.add x y))
+    (qc : (c : B.R) -> Q (X.constant c)) (qX : (x : T.R) -> Q x -> Q (T.mul X.variable x)) :
+    (p : List B.R) -> Q (X.include p) = split {
+    nil -> q0 ;
+    cons c p | r -> subst Q (sym (X.horner c p)) (qadd (X.constant c) (T.mul X.variable (X.include p)) (qc c) (qX (X.include p) r)) } ;
+  gen (Q : T.R -> U l) (pQ : (x : T.R) -> Pr.isProp (Q x)) (q0 : Q T.z) (qadd : (x y : T.R) -> Q x -> Q y -> Q (T.add x y))
+    (qc : (c : B.R) -> Q (X.constant c)) (qX : (x : T.R) -> Q x -> Q (T.mul X.variable x)) : (x : T.R) -> Q x =
+    X.Q.induction @l Q pQ (gen-raw Q q0 qadd qc qX) ;
+} ;
+
+------------------------------------------------------------------------
+-- four variables
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module L1 = Level[D,setD] ;
+  module L2 = Level[L1.T,L1.X.set] ;
+  module L3 = Level[L2.T,L2.X.set] ;
+  module L4 = Level[L3.T,L3.X.set] ;
+  -- S = D[X_0][X_1][X_2][X_3]
+  S : CRing = L4.T ;
+  setS : Pr.isSet S.R = L4.X.set ;
+  module LS = RL[S] ;
+  module SS = Comb[l].Sums[S,IP.regular S] ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module FP = FinitePolynomial4[l].Over[D,setD] ;
+  module DL = IP.ModL[D,IP.regular D] ;
+
+  -- the variables, the constants, the powers
+  X0 : S.R = L4.X.constant (L3.X.constant (L2.X.constant L1.X.variable)) ;
+  X1 : S.R = L4.X.constant (L3.X.constant L2.X.variable) ;
+  X2 : S.R = L4.X.constant L3.X.variable ;
+  X3 : S.R = L4.X.variable ;
+  cst (c : D.R) : S.R = L4.X.constant (L3.X.constant (L2.X.constant (L1.X.constant c))) ;
+  pw (x : S.R) : Base.Nat -> S.R = split { zero -> S.o ; suc k | r -> S.mul r x } ;
+
+  ------------------------------------------------------------------------
+  -- coefficients
+
+  psi (s : S.R) (m : E4) : D.R = L1.at (L2.at (L3.at (L4.at s (e3 m)) (e2 m)) (e1 m)) (e0 m) ;
+
+  psi-add (s s' : S.R) (m : E4) : Id D.R (psi (S.add s s') m) (D.add (psi s m) (psi s' m)) =
+    trans (ap (\ t -> L1.at (L2.at (L3.at t (e2 m)) (e1 m)) (e0 m)) (L4.at-add s s' (e3 m)))
+     (trans (ap (\ t -> L1.at (L2.at t (e1 m)) (e0 m)) (L3.at-add (L4.at s (e3 m)) (L4.at s' (e3 m)) (e2 m)))
+      (trans (ap (\ t -> L1.at t (e0 m)) (L2.at-add (L3.at (L4.at s (e3 m)) (e2 m)) (L3.at (L4.at s' (e3 m)) (e2 m)) (e1 m)))
+        (L1.at-add (L2.at (L3.at (L4.at s (e3 m)) (e2 m)) (e1 m)) (L2.at (L3.at (L4.at s' (e3 m)) (e2 m)) (e1 m)) (e0 m)))) ;
+  psi-zero (m : E4) : Id D.R (psi S.z m) D.z =
+    trans (ap (\ t -> L1.at (L2.at (L3.at t (e2 m)) (e1 m)) (e0 m)) (L4.at-zero (e3 m)))
+     (trans (ap (\ t -> L1.at (L2.at t (e1 m)) (e0 m)) (L3.at-zero (e2 m)))
+      (trans (ap (\ t -> L1.at t (e0 m)) (L2.at-zero (e1 m))) (L1.at-zero (e0 m)))) ;
+  psi-scale (c : D.R) (s : S.R) (m : E4) : Id D.R (psi (S.mul (cst c) s) m) (D.mul c (psi s m)) =
+    trans (ap (\ t -> L1.at (L2.at (L3.at t (e2 m)) (e1 m)) (e0 m))
+                (L4.at-scale (L3.X.constant (L2.X.constant (L1.X.constant c))) s (e3 m)))
+     (trans (ap (\ t -> L1.at (L2.at t (e1 m)) (e0 m)) (L3.at-scale (L2.X.constant (L1.X.constant c)) (L4.at s (e3 m)) (e2 m)))
+      (trans (ap (\ t -> L1.at t (e0 m)) (L2.at-scale (L1.X.constant c) (L3.at (L4.at s (e3 m)) (e2 m)) (e1 m)))
+        (L1.at-scale c (L2.at (L3.at (L4.at s (e3 m)) (e2 m)) (e1 m)) (e0 m)))) ;
+
+  -- psi (X_k s)(m) = psi s (m - e_k)
+  psi-X3 (s : S.R) : (m : E4) -> Id D.R (psi (S.mul X3 s) m) (psi s (ex (e0 m) (e1 m) (e2 m) (predZ (e3 m)))) = split {
+    ex a b c d -> ap (\ t -> L1.at (L2.at (L3.at t c) b) a) (L4.at-var s d) } ;
+  psi-X2 (s : S.R) : (m : E4) -> Id D.R (psi (S.mul X2 s) m) (psi s (ex (e0 m) (e1 m) (predZ (e2 m)) (e3 m))) = split {
+    ex a b c d -> trans (ap (\ t -> L1.at (L2.at (L3.at t c) b) a) (L4.at-scale L3.X.variable s d))
+                        (ap (\ t -> L1.at (L2.at t b) a) (L3.at-var (L4.at s d) c)) } ;
+  psi-X1 (s : S.R) : (m : E4) -> Id D.R (psi (S.mul X1 s) m) (psi s (ex (e0 m) (predZ (e1 m)) (e2 m) (e3 m))) = split {
+    ex a b c d -> trans (ap (\ t -> L1.at (L2.at (L3.at t c) b) a) (L4.at-scale (L3.X.constant L2.X.variable) s d))
+                   (trans (ap (\ t -> L1.at (L2.at t b) a) (L3.at-scale L2.X.variable (L4.at s d) c))
+                          (ap (\ t -> L1.at t a) (L2.at-var (L3.at (L4.at s d) c) b))) } ;
+  psi-X0 (s : S.R) : (m : E4) -> Id D.R (psi (S.mul X0 s) m) (psi s (ex (predZ (e0 m)) (e1 m) (e2 m) (e3 m))) = split {
+    ex a b c d -> trans (ap (\ t -> L1.at (L2.at (L3.at t c) b) a) (L4.at-scale (L3.X.constant (L2.X.constant L1.X.variable)) s d))
+                   (trans (ap (\ t -> L1.at (L2.at t b) a) (L3.at-scale (L2.X.constant L1.X.variable) (L4.at s d) c))
+                     (trans (ap (\ t -> L1.at t a) (L2.at-scale L1.X.variable (L3.at (L4.at s d) c) b))
+                            (L1.at-var (L2.at (L3.at (L4.at s d) c) b) a))) } ;
+
+  -- psi (X_k^n s)(m) = psi s (m - n e_k)
+  psi-pw0 (a b c d : Int) : (k : Base.Nat) (s : S.R) -> Id D.R (psi (S.mul (pw X0 k) s) (ex a b c d)) (psi s (ex (minus a k) b c d)) = split {
+    zero -> \ s -> ap (\ t -> psi t (ex a b c d)) (LS.one-left s) ;
+    suc k | r -> \ s -> trans (ap (\ t -> psi t (ex a b c d)) (sym (S.mulA (pw X0 k) X0 s)))
+                              (trans (r (S.mul X0 s)) (psi-X0 s (ex (minus a k) b c d))) } ;
+  psi-pw1 (a b c d : Int) : (k : Base.Nat) (s : S.R) -> Id D.R (psi (S.mul (pw X1 k) s) (ex a b c d)) (psi s (ex a (minus b k) c d)) = split {
+    zero -> \ s -> ap (\ t -> psi t (ex a b c d)) (LS.one-left s) ;
+    suc k | r -> \ s -> trans (ap (\ t -> psi t (ex a b c d)) (sym (S.mulA (pw X1 k) X1 s)))
+                              (trans (r (S.mul X1 s)) (psi-X1 s (ex a (minus b k) c d))) } ;
+  psi-pw2 (a b c d : Int) : (k : Base.Nat) (s : S.R) -> Id D.R (psi (S.mul (pw X2 k) s) (ex a b c d)) (psi s (ex a b (minus c k) d)) = split {
+    zero -> \ s -> ap (\ t -> psi t (ex a b c d)) (LS.one-left s) ;
+    suc k | r -> \ s -> trans (ap (\ t -> psi t (ex a b c d)) (sym (S.mulA (pw X2 k) X2 s)))
+                              (trans (r (S.mul X2 s)) (psi-X2 s (ex a b (minus c k) d))) } ;
+  psi-pw3 (a b c d : Int) : (k : Base.Nat) (s : S.R) -> Id D.R (psi (S.mul (pw X3 k) s) (ex a b c d)) (psi s (ex a b c (minus d k))) = split {
+    zero -> \ s -> ap (\ t -> psi t (ex a b c d)) (LS.one-left s) ;
+    suc k | r -> \ s -> trans (ap (\ t -> psi t (ex a b c d)) (sym (S.mulA (pw X3 k) X3 s)))
+                              (trans (r (S.mul X3 s)) (psi-X3 s (ex a b c (minus d k)))) } ;
+
+  -- psi 1 = delta0
+  one-sel (a b c d : Int) : (da : LG.Dec (Id Int a zeroZ)) (db : LG.Dec (Id Int b zeroZ)) (dc : LG.Dec (Id Int c zeroZ))
+    (dd : LG.Dec (Id Int d zeroZ)) ->
+    Id D.R (sel D (sel D (sel D (sel D D.o (Id Int a zeroZ) da) (Id Int b zeroZ) db) (Id Int c zeroZ) dc) (Id Int d zeroZ) dd)
+           (sel D D.o (Id E4 (ex a b c d) zeroE) (dec-e4-from a b c d zeroZ zeroZ zeroZ zeroZ da db dc dd)) = split {
+    yes p -> split {
+      yes q -> split {
+        yes r -> split {
+          yes s -> refl D.o ;
+          no n -> refl D.z } ;
+        no n -> \ s -> sel-zero D (Id Int d zeroZ) s } ;
+      no n -> \ r s -> trans (ap (\ t -> sel D t (Id Int d zeroZ) s) (sel-zero D (Id Int c zeroZ) r)) (sel-zero D (Id Int d zeroZ) s) } ;
+    no n -> \ q r s -> trans (ap (\ t -> sel D (sel D t (Id Int c zeroZ) r) (Id Int d zeroZ) s) (sel-zero D (Id Int b zeroZ) q))
+                       (trans (ap (\ t -> sel D t (Id Int d zeroZ) s) (sel-zero D (Id Int c zeroZ) r)) (sel-zero D (Id Int d zeroZ) s)) } ;
+  module One (a b c d : Int) {
+    G3 (t : L3.T.R) : D.R = L1.at (L2.at (L3.at t c) b) a ;
+    G2 (t : L2.T.R) : D.R = L1.at (L2.at t b) a ;
+    G1 (t : L1.T.R) : D.R = L1.at t a ;
+    z1 : Id D.R (G1 L1.T.z) D.z = L1.at-zero a ;
+    z2 : Id D.R (G2 L2.T.z) D.z = trans (ap G1 (L2.at-zero b)) z1 ;
+    z3 : Id D.R (G3 L3.T.z) D.z = trans (ap G2 (L3.at-zero c)) z2 ;
+    s1 : Id D.R (G1 (L1.X.constant D.o)) (sel D D.o (Id Int a zeroZ) (int-dec a zeroZ)) = L1.at-const D.o a ;
+    s2 : Id D.R (G2 (L2.X.constant L1.T.o)) (sel D (G1 L1.T.o) (Id Int b zeroZ) (int-dec b zeroZ)) = L2.AtConst[D,G1,z1].res L1.T.o b ;
+    s3 : Id D.R (G3 (L3.X.constant L2.T.o)) (sel D (G2 L2.T.o) (Id Int c zeroZ) (int-dec c zeroZ)) = L3.AtConst[D,G2,z2].res L2.T.o c ;
+    s4 : Id D.R (psi S.o (ex a b c d)) (sel D (G3 L3.T.o) (Id Int d zeroZ) (int-dec d zeroZ)) = L4.AtConst[D,G3,z3].res L3.T.o d ;
+    res : Id D.R (psi S.o (ex a b c d)) (FP.delta0 (ex a b c d)) =
+      trans s4 (trans (ap (\ t -> sel D t (Id Int d zeroZ) (int-dec d zeroZ))
+                  (trans s3 (ap (\ t -> sel D t (Id Int c zeroZ) (int-dec c zeroZ))
+                    (trans s2 (ap (\ t -> sel D t (Id Int b zeroZ) (int-dec b zeroZ)) s1)))))
+                (one-sel a b c d (int-dec a zeroZ) (int-dec b zeroZ) (int-dec c zeroZ) (int-dec d zeroZ))) ;
+  } ;
+  psi-one : (m : E4) -> Id D.R (psi S.o m) (FP.delta0 m) = split { ex a b c d -> One[a,b,c,d].res } ;
+
+  -- the coefficients determine the element
+  ext4 (s s' : S.R) (h : (m : E4) -> Id D.R (psi s m) (psi s' m)) : Id S.R s s' =
+    L4.ext s s' (\ i3 -> L3.ext (L4.at s i3) (L4.at s' i3) (\ i2 ->
+      L2.ext (L3.at (L4.at s i3) i2) (L3.at (L4.at s' i3) i2) (\ i1 ->
+        L1.ext (L2.at (L3.at (L4.at s i3) i2) i1) (L2.at (L3.at (L4.at s' i3) i2) i1) (\ i0 -> h (ex i0 i1 i2 i3))))) ;
+
+  ------------------------------------------------------------------------
+  -- term lists in S
+
+  -- c X^u = c X_0^u_0 X_1^u_1 X_2^u_2 X_3^u_3
+  term (c : D.R) : N4 -> S.R = split {
+    nx u0 u1 u2 u3 -> S.mul (cst c) (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))) } ;
+  phi : TPoly D.R -> S.R = split {
+    nil -> S.z ;
+    cons t p | r -> S.add (term t.1 t.2) r } ;
+
+  -- psi (c X^u)(m) = c delta0(m - u)
+  psi-term (c : D.R) : (u : N4) (m : E4) -> Id D.R (psi (term c u) m) (D.mul c (FP.delta0 (subE m u))) = split {
+    nx u0 u1 u2 u3 -> split {
+      ex a b c' d -> trans (psi-scale c (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))) (ex a b c' d))
+        (ap (D.mul c)
+          (trans (psi-pw0 a b c' d u0 (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3))))
+           (trans (psi-pw1 (minus a u0) b c' d u1 (S.mul (pw X2 u2) (pw X3 u3)))
+            (trans (psi-pw2 (minus a u0) (minus b u1) c' d u2 (pw X3 u3))
+             (trans (ap (\ t -> psi t (ex (minus a u0) (minus b u1) (minus c' u2) d)) (sym (S.mulO (pw X3 u3))))
+              (trans (psi-pw3 (minus a u0) (minus b u1) (minus c' u2) d u3 S.o)
+                     (psi-one (ex (minus a u0) (minus b u1) (minus c' u2) (minus d u3))))))))) } } ;
+  -- THE BRIDGE: psi (phi p) = cf p
+  psi-phi (m : E4) : (p : TPoly D.R) -> Id D.R (psi (phi p) m) (FP.cf p m) = split {
+    nil -> psi-zero m ;
+    cons t p | r -> trans (psi-add (term t.1 t.2) (phi p) m) (DL.G.cong-add (psi-term t.1 t.2 m) r) } ;
+
+  -- coefficient extensionality, both ways
+  phi-eq-of-cf (p q : TPoly D.R) (h : (m : E4) -> Id D.R (FP.cf p m) (FP.cf q m)) : Id S.R (phi p) (phi q) =
+    ext4 (phi p) (phi q) (\ m -> trans (psi-phi m p) (trans (h m) (sym (psi-phi m q)))) ;
+  cf-eq-of-phi (p q : TPoly D.R) (h : Id S.R (phi p) (phi q)) (m : E4) : Id D.R (FP.cf p m) (FP.cf q m) =
+    trans (sym (psi-phi m p)) (trans (ap (\ s -> psi s m) h) (psi-phi m q)) ;
+  phi-zero-of-cf (p : TPoly D.R) (h : (m : E4) -> Id D.R (FP.cf p m) D.z) : Id S.R (phi p) S.z =
+    ext4 (phi p) S.z (\ m -> trans (psi-phi m p) (trans (h m) (sym (psi-zero m)))) ;
+  cf-zero-of-phi (p : TPoly D.R) (h : Id S.R (phi p) S.z) (m : E4) : Id D.R (FP.cf p m) D.z =
+    trans (sym (psi-phi m p)) (trans (ap (\ s -> psi s m) h) (psi-zero m)) ;
+  -- with coefficients: equal coefficients iff equal images; all 0 iff image 0
+  phi-eq-of-coef (p q : TPoly D.R) (h : (v : N4) -> Id D.R (PA.coef p v) (PA.coef q v)) : Id S.R (phi p) (phi q) =
+    phi-eq-of-cf p q (\ m -> PA.act-coef p q h FP.delta0 m) ;
+  coef-eq-of-phi (p q : TPoly D.R) (h : Id S.R (phi p) (phi q)) (v : N4) : Id D.R (PA.coef p v) (PA.coef q v) =
+    trans (FP.coef-cf v p) (trans (cf-eq-of-phi p q h (emb v)) (sym (FP.coef-cf v q))) ;
+  phi-zero-of-cz (p : TPoly D.R) (cz : PA.CoefZero p) : Id S.R (phi p) S.z = phi-zero-of-cf p (FP.cf-of-cz p cz) ;
+  cz-of-phi (p : TPoly D.R) (h : Id S.R (phi p) S.z) : PA.CoefZero p = FP.cz-of-cf p (cf-zero-of-phi p h) ;
+  -- a finitely supported coefficient function f is cf p, and the S-image of p has the coefficients f
+  coefficient-rep (f : E4 -> D.R) (neg : (m : E4) -> Out ShiftedCech4[l].none m -> Id D.R (f m) D.z)
+    (s : List E4) (out : (m : E4) -> Not (Mem m s) -> Id D.R (f m) D.z) :
+    (p : TPoly D.R) * ((m : E4) -> Id D.R (psi (phi p) m) (f m)) =
+    ((FP.cf-rep f neg s out).1, \ m -> trans (psi-phi m (FP.cf-rep f neg s out).1) ((FP.cf-rep f neg s out).2 m)) ;
+
+  ------------------------------------------------------------------------
+  -- phi preserves the operations
+
+  phi-app : (p q : TPoly D.R) -> Id S.R (phi (Bar[l].app p q)) (S.add (phi p) (phi q)) = split {
+    nil -> \ q -> sym (LS.zl (phi q)) ;
+    cons t p | r -> \ q -> trans (ap (S.add (term t.1 t.2)) (r q)) (S.addA (term t.1 t.2) (phi p) (phi q)) } ;
+  phi-psum : (n : Nat) (f : Ps.Fin n -> TPoly D.R) -> Id S.R (phi (PA.psum n f)) (SS.sum n (\ i -> phi (f i))) = split {
+    zero -> \ f -> refl S.z ;
+    suc n | r -> \ f -> trans (phi-app (f (inr tt)) (PA.psum n (\ i -> f (inl i)))) (ap (S.add (phi (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+
+  cst-mul (c c' : D.R) : Id S.R (cst (D.mul c c')) (S.mul (cst c) (cst c')) =
+    trans (ap (\ t -> L4.X.constant (L3.X.constant (L2.X.constant t))) (L1.X.constant-mul c c'))
+     (trans (ap (\ t -> L4.X.constant (L3.X.constant t)) (L2.X.constant-mul (L1.X.constant c) (L1.X.constant c')))
+      (trans (ap L4.X.constant (L3.X.constant-mul (L2.X.constant (L1.X.constant c)) (L2.X.constant (L1.X.constant c'))))
+             (L4.X.constant-mul (L3.X.constant (L2.X.constant (L1.X.constant c))) (L3.X.constant (L2.X.constant (L1.X.constant c')))))) ;
+  pw-add (x : S.R) : (j k : Base.Nat) -> Id S.R (pw x (NA.plus j k)) (S.mul (pw x j) (pw x k)) = split {
+    zero -> \ k -> sym (LS.one-left (pw x k)) ;
+    suc j | r -> \ k -> calc S.R {
+      S.mul (pw x (NA.plus j k)) x =< ap (\ t -> S.mul t x) (r k) > S.mul (S.mul (pw x j) (pw x k)) x
+        =< sym (S.mulA (pw x j) (pw x k) x) > S.mul (pw x j) (S.mul (pw x k) x)
+        =< ap (S.mul (pw x j)) (S.mulC (pw x k) x) > S.mul (pw x j) (S.mul x (pw x k))
+        =< S.mulA (pw x j) x (pw x k) > S.mul (S.mul (pw x j) x) (pw x k) } } ;
+  -- (a b)(a' b') = x y  from  a a' = x,  b b' = y
+  four (a b a' b' x y : S.R) (e1 : Id S.R (S.mul a a') x) (e2 : Id S.R (S.mul b b') y) :
+    Id S.R (S.mul (S.mul a b) (S.mul a' b')) (S.mul x y) =
+    trans (LS.mul-four a b a' b') (trans (ap (\ t -> S.mul t (S.mul b b')) e1) (ap (S.mul x) e2)) ;
+  -- the product of two terms
+  term-mul (c c' : D.R) : (u v : N4) -> Id S.R (S.mul (term c u) (term c' v)) (term (D.mul c c') (addN4 u v)) = split {
+    nx u0 u1 u2 u3 -> split {
+      nx v0 v1 v2 v3 ->
+        four (cst c) (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3))))
+             (cst c') (S.mul (pw X0 v0) (S.mul (pw X1 v1) (S.mul (pw X2 v2) (pw X3 v3))))
+             (cst (D.mul c c')) (S.mul (pw X0 (NA.plus u0 v0)) (S.mul (pw X1 (NA.plus u1 v1)) (S.mul (pw X2 (NA.plus u2 v2)) (pw X3 (NA.plus u3 v3)))))
+             (sym (cst-mul c c'))
+          (four (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))
+                (pw X0 v0) (S.mul (pw X1 v1) (S.mul (pw X2 v2) (pw X3 v3)))
+                (pw X0 (NA.plus u0 v0)) (S.mul (pw X1 (NA.plus u1 v1)) (S.mul (pw X2 (NA.plus u2 v2)) (pw X3 (NA.plus u3 v3))))
+                (sym (pw-add X0 u0 v0))
+            (four (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)) (pw X1 v1) (S.mul (pw X2 v2) (pw X3 v3))
+                  (pw X1 (NA.plus u1 v1)) (S.mul (pw X2 (NA.plus u2 v2)) (pw X3 (NA.plus u3 v3)))
+                  (sym (pw-add X1 u1 v1))
+              (four (pw X2 u2) (pw X3 u3) (pw X2 v2) (pw X3 v3) (pw X2 (NA.plus u2 v2)) (pw X3 (NA.plus u3 v3))
+                    (sym (pw-add X2 u2 v2)) (sym (pw-add X3 u3 v3))))) } } ;
+  -- (c X^u) q, as a list of products of terms
+  phi-scaleT (t : D.R * N4) : (q : TPoly D.R) -> Id S.R (phi (PA.scaleT t q)) (S.mul (term t.1 t.2) (phi q)) = split {
+    nil -> sym (LS.mul-zero (term t.1 t.2)) ;
+    cons t' q | r -> calc S.R {
+      S.add (term (D.mul t.1 t'.1) (addN4 t'.2 t.2)) (phi (PA.scaleT t q))
+        =< ap (\ x -> S.add x (phi (PA.scaleT t q)))
+              (trans (ap (\ x -> term x (addN4 t'.2 t.2)) (D.mulC t.1 t'.1))
+                     (trans (sym (term-mul t'.1 t.1 t'.2 t.2)) (S.mulC (term t'.1 t'.2) (term t.1 t.2))))
+        > S.add (S.mul (term t.1 t.2) (term t'.1 t'.2)) (phi (PA.scaleT t q))
+        =< ap (S.add (S.mul (term t.1 t.2) (term t'.1 t'.2))) r
+        > S.add (S.mul (term t.1 t.2) (term t'.1 t'.2)) (S.mul (term t.1 t.2) (phi q))
+        =< sym (S.dist (term t.1 t.2) (term t'.1 t'.2) (phi q)) > S.mul (term t.1 t.2) (phi (cons t' q)) } } ;
+  phi-pmul : (p q : TPoly D.R) -> Id S.R (phi (PA.pmul p q)) (S.mul (phi p) (phi q)) = split {
+    nil -> \ q -> sym (LS.zero-mul (phi q)) ;
+    cons t p | r -> \ q -> calc S.R {
+      phi (Bar[l].app (PA.scaleT t q) (PA.pmul p q))
+        =< phi-app (PA.scaleT t q) (PA.pmul p q) > S.add (phi (PA.scaleT t q)) (phi (PA.pmul p q))
+        =< trans (ap (\ x -> S.add x (phi (PA.pmul p q))) (phi-scaleT t q)) (ap (S.add (S.mul (term t.1 t.2) (phi q))) (r q))
+        > S.add (S.mul (term t.1 t.2) (phi q)) (S.mul (phi p) (phi q))
+        =< sym (LS.dist-left (term t.1 t.2) (phi p) (phi q)) > S.mul (phi (cons t p)) (phi q) } } ;
+  -- D-scalars: c p is the product with the constant term c X^0
+  zeroN : N4 = nx zero zero zero zero ;
+  term-zero (c : D.R) : Id S.R (term c zeroN) (cst c) =
+    trans (ap (S.mul (cst c)) (trans (LS.one-left (S.mul S.o (S.mul S.o S.o))) (trans (LS.one-left (S.mul S.o S.o)) (LS.one-left S.o))))
+          (S.mulO (cst c)) ;
+  phi-scale (c : D.R) (p : TPoly D.R) : Id S.R (phi (PA.scaleT (c, zeroN) p)) (S.mul (cst c) (phi p)) =
+    trans (phi-scaleT (c, zeroN) p) (ap (\ x -> S.mul x (phi p)) (term-zero c)) ;
+
+  ------------------------------------------------------------------------
+  -- every element of S is merely phi p
+
+  -- multiplication by X_k: the k-th exponent of every term goes up by one
+  bump0 : N4 -> N4 = split { nx a b c d -> nx (suc a) b c d } ;
+  bump1 : N4 -> N4 = split { nx a b c d -> nx a (suc b) c d } ;
+  bump2 : N4 -> N4 = split { nx a b c d -> nx a b (suc c) d } ;
+  bump3 : N4 -> N4 = split { nx a b c d -> nx a b c (suc d) } ;
+  bumpT (f : N4 -> N4) : TPoly D.R -> TPoly D.R = split {
+    nil -> nil ;
+    cons t p | r -> cons (t.1, f t.2) r } ;
+  phi-bump (f : N4 -> N4) (x : S.R) (hf : (c : D.R) (u : N4) -> Id S.R (term c (f u)) (S.mul x (term c u))) :
+    (p : TPoly D.R) -> Id S.R (phi (bumpT f p)) (S.mul x (phi p)) = split {
+    nil -> sym (LS.mul-zero x) ;
+    cons t p | r -> trans (trans (ap (\ y -> S.add y (phi (bumpT f p))) (hf t.1 t.2)) (ap (S.add (S.mul x (term t.1 t.2))) r))
+                          (sym (S.dist x (term t.1 t.2) (phi p))) } ;
+  -- (P x) R = x (P R)
+  pull (P x R : S.R) : Id S.R (S.mul (S.mul P x) R) (S.mul x (S.mul P R)) = trans (sym (S.mulA P x R)) (LS.mul-swap P x R) ;
+  term-bump0 (c : D.R) : (u : N4) -> Id S.R (term c (bump0 u)) (S.mul X0 (term c u)) = split {
+    nx u0 u1 u2 u3 -> trans (ap (S.mul (cst c)) (pull (pw X0 u0) X0 (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))
+      (LS.mul-swap (cst c) X0 (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3))))) } ;
+  term-bump1 (c : D.R) : (u : N4) -> Id S.R (term c (bump1 u)) (S.mul X1 (term c u)) = split {
+    nx u0 u1 u2 u3 -> trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) t)) (pull (pw X1 u1) X1 (S.mul (pw X2 u2) (pw X3 u3))))
+      (trans (ap (S.mul (cst c)) (LS.mul-swap (pw X0 u0) X1 (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))
+        (LS.mul-swap (cst c) X1 (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))) } ;
+  term-bump2 (c : D.R) : (u : N4) -> Id S.R (term c (bump2 u)) (S.mul X2 (term c u)) = split {
+    nx u0 u1 u2 u3 -> trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) (S.mul (pw X1 u1) t))) (pull (pw X2 u2) X2 (pw X3 u3)))
+      (trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) t)) (LS.mul-swap (pw X1 u1) X2 (S.mul (pw X2 u2) (pw X3 u3))))
+        (trans (ap (S.mul (cst c)) (LS.mul-swap (pw X0 u0) X2 (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))
+          (LS.mul-swap (cst c) X2 (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3))))))) } ;
+  term-bump3 (c : D.R) : (u : N4) -> Id S.R (term c (bump3 u)) (S.mul X3 (term c u)) = split {
+    nx u0 u1 u2 u3 -> trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) t)))) (S.mulC (pw X3 u3) X3))
+     (trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) (S.mul (pw X1 u1) t))) (LS.mul-swap (pw X2 u2) X3 (pw X3 u3)))
+      (trans (ap (\ t -> S.mul (cst c) (S.mul (pw X0 u0) t)) (LS.mul-swap (pw X1 u1) X3 (S.mul (pw X2 u2) (pw X3 u3))))
+        (trans (ap (S.mul (cst c)) (LS.mul-swap (pw X0 u0) X3 (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))
+          (LS.mul-swap (cst c) X3 (S.mul (pw X0 u0) (S.mul (pw X1 u1) (S.mul (pw X2 u2) (pw X3 u3)))))))) } ;
+
+  -- merely of the form phi p
+  RepW (s : S.R) : U l = (p : TPoly D.R) * Id S.R (phi p) s ;
+  Rep (s : S.R) : U l = Tr.Trunc[RepW s].carrier ;
+  rep-prop (s : S.R) : Pr.isProp (Rep s) = Tr.Trunc[RepW s].proposition ;
+  rep-zero : Rep S.z = Tr.Trunc[RepW S.z].inc (nil, refl S.z) ;
+  rep-add (x y : S.R) (qx : Rep x) (qy : Rep y) : Rep (S.add x y) =
+    TC.map2 (RepW x) (RepW y) (RepW (S.add x y))
+      (\ a b -> (Bar[l].app a.1 b.1, trans (phi-app a.1 b.1) (trans (ap (\ t -> S.add t (phi b.1)) a.2) (ap (S.add x) b.2)))) qx qy ;
+  rep-mul (f : N4 -> N4) (x : S.R) (hf : (c : D.R) (u : N4) -> Id S.R (term c (f u)) (S.mul x (term c u))) (y : S.R) (qy : Rep y) :
+    Rep (S.mul x y) =
+    TC.map (RepW y) (RepW (S.mul x y)) (\ a -> (bumpT f a.1, trans (phi-bump f x hf a.1) (ap (S.mul x) a.2))) qy ;
+  rep-cst (c : D.R) : Rep (cst c) = Tr.Trunc[RepW (cst c)].inc (cons (c, zeroN) nil, trans (S.addZ (term c zeroN)) (term-zero c)) ;
+
+  -- the constant maps into S preserve 0, + and .
+  c43 (b : L2.T.R) : S.R = L4.X.constant (L3.X.constant b) ;
+  c432 (b : L1.T.R) : S.R = c43 (L2.X.constant b) ;
+  z4 : Id S.R (L4.X.constant L3.T.z) S.z = L4.constant-zero ;
+  z43 : Id S.R (c43 L2.T.z) S.z = trans (ap L4.X.constant L3.constant-zero) z4 ;
+  z432 : Id S.R (c432 L1.T.z) S.z = trans (ap c43 L2.constant-zero) z43 ;
+  a43 (x y : L2.T.R) : Id S.R (c43 (L2.T.add x y)) (S.add (c43 x) (c43 y)) =
+    trans (ap L4.X.constant (L3.X.constant-add x y)) (L4.X.constant-add (L3.X.constant x) (L3.X.constant y)) ;
+  a432 (x y : L1.T.R) : Id S.R (c432 (L1.T.add x y)) (S.add (c432 x) (c432 y)) =
+    trans (ap c43 (L2.X.constant-add x y)) (a43 (L2.X.constant x) (L2.X.constant y)) ;
+  m43 (x y : L2.T.R) : Id S.R (c43 (L2.T.mul x y)) (S.mul (c43 x) (c43 y)) =
+    trans (ap L4.X.constant (L3.X.constant-mul x y)) (L4.X.constant-mul (L3.X.constant x) (L3.X.constant y)) ;
+  m432 (x y : L1.T.R) : Id S.R (c432 (L1.T.mul x y)) (S.mul (c432 x) (c432 y)) =
+    trans (ap c43 (L2.X.constant-mul x y)) (m43 (L2.X.constant x) (L2.X.constant y)) ;
+
+  rep1 : (b : L1.T.R) -> Rep (c432 b) =
+    L1.gen (\ b -> Rep (c432 b)) (\ b -> rep-prop (c432 b)) (subst Rep (sym z432) rep-zero)
+      (\ x y qx qy -> subst Rep (sym (a432 x y)) (rep-add (c432 x) (c432 y) qx qy))
+      rep-cst
+      (\ x qx -> subst Rep (sym (m432 L1.X.variable x)) (rep-mul bump0 X0 term-bump0 (c432 x) qx)) ;
+  rep2 : (b : L2.T.R) -> Rep (c43 b) =
+    L2.gen (\ b -> Rep (c43 b)) (\ b -> rep-prop (c43 b)) (subst Rep (sym z43) rep-zero)
+      (\ x y qx qy -> subst Rep (sym (a43 x y)) (rep-add (c43 x) (c43 y) qx qy))
+      rep1
+      (\ x qx -> subst Rep (sym (m43 L2.X.variable x)) (rep-mul bump1 X1 term-bump1 (c43 x) qx)) ;
+  rep3 : (b : L3.T.R) -> Rep (L4.X.constant b) =
+    L3.gen (\ b -> Rep (L4.X.constant b)) (\ b -> rep-prop (L4.X.constant b)) (subst Rep (sym z4) rep-zero)
+      (\ x y qx qy -> subst Rep (sym (L4.X.constant-add x y)) (rep-add (L4.X.constant x) (L4.X.constant y) qx qy))
+      rep2
+      (\ x qx -> subst Rep (sym (L4.X.constant-mul L3.X.variable x)) (rep-mul bump2 X2 term-bump2 (L4.X.constant x) qx)) ;
+  -- every element of S merely has a term-list representative
+  rep : (s : S.R) -> Rep s =
+    L4.gen Rep rep-prop rep-zero rep-add rep3 (\ x qx -> rep-mul bump3 X3 term-bump3 x qx) ;
+} ;

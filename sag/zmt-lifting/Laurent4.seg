@@ -1,0 +1,347 @@
+-- Laurent4.seg: finite Laurent elements in four variables X_0, .., X_3
+-- (handoff §5), as coefficient functions with a finite-support witness.
+--
+-- Exponents m = (a,b,c,d) in Z^4 (E4), total degree deg m = a+b+c+d.  A
+-- family of Laurent elements indexed by a type I is a function
+-- c : I -> Z^4 -> D; equality is equality of coefficients (funext).
+-- Finite support (Supp): merely a list S of exponents outside which every
+-- component vanishes; then c_i = sum_{m in S} c_i(m) X^m is an actual
+-- Laurent polynomial (S may have repetitions; deduplication is not needed).
+-- Chart conditions are vanishing conditions c_i(m) = 0 for m in a set Bad i
+-- (Van).  Both are propositions closed under the module operations, so the
+-- conditions cut out a D-module (Chart, by CechModules.SubMod).
+--
+-- Multiplication by X_0^3 is the shift (X_0^3 f)(m) = f(m - 3 e_0) (sh0),
+-- by X_1^3 the shift sh1, and X_0^(-3) is up0, (X_0^(-3) f)(m) = f(m + 3 e_0).
+-- They are D-linear by definition (the module operations are pointwise),
+-- and sh0, sh1 commute definitionally at every (a,b,c,d) (sh-comm).
+-- Finite support is preserved: if c vanishes outside S then c o s vanishes
+-- outside t(S) whenever t (s m) = m (vanish-shift).
+--
+-- Charts.  A subset E of {0,1,2,3} is a quadruple of membership flags
+-- (Sub4).  Out E m: some coordinate outside E has a negative exponent; a
+-- chart element of L_E vanishes on Out E.  Out is antitone in E
+-- (out-face), stable under the shifts by -3 e_0, -3 e_1 (out-sh0, out-sh1),
+-- and insensitive to the flag of a coordinate whose exponent is >= 0
+-- (out-swap0 .. out-swap3: used by the contraction of Cech4Contraction).
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ; module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- exponents, degree, shifts
+
+data E4 = ex (a : Int) (b : Int) (c : Int) (d : Int) ;
+
+deg : E4 -> Int = split { ex a b c d -> add (add (add a b) c) d } ;
+
+-- a negative exponent
+Neg : Int -> U l = split { pos n -> Empty ; negsuc n -> Top } ;
+
+pred3 (x : Int) : Int = predZ (predZ (predZ x)) ;
+suc3 (x : Int) : Int = sucZ (sucZ (sucZ x)) ;
+
+sh0 : E4 -> E4 = split { ex a b c d -> ex (pred3 a) b c d } ;
+sh1 : E4 -> E4 = split { ex a b c d -> ex a (pred3 b) c d } ;
+up0 : E4 -> E4 = split { ex a b c d -> ex (suc3 a) b c d } ;
+up1 : E4 -> E4 = split { ex a b c d -> ex a (suc3 b) c d } ;
+
+suc3-pred3 (x : Int) : Id Int (suc3 (pred3 x)) x =
+  trans (ap (\ y -> sucZ (sucZ y)) (suc-pred (predZ (predZ x))))
+    (trans (ap sucZ (suc-pred (predZ x))) (suc-pred x)) ;
+pred3-suc3 (x : Int) : Id Int (pred3 (suc3 x)) x =
+  trans (ap (\ y -> predZ (predZ y)) (pred-suc (sucZ (sucZ x))))
+    (trans (ap predZ (pred-suc (sucZ x))) (pred-suc x)) ;
+
+up0-sh0 : (m : E4) -> Id E4 (up0 (sh0 m)) m = split {
+  ex a b c d -> ap (\ x -> ex x b c d) (suc3-pred3 a) } ;
+up1-sh1 : (m : E4) -> Id E4 (up1 (sh1 m)) m = split {
+  ex a b c d -> ap (\ x -> ex a x c d) (suc3-pred3 b) } ;
+sh0-up0 : (m : E4) -> Id E4 (sh0 (up0 m)) m = split {
+  ex a b c d -> ap (\ x -> ex x b c d) (pred3-suc3 a) } ;
+-- X_0^3 X_1^3 = X_1^3 X_0^3
+sh-comm : (m : E4) -> Id E4 (sh0 (sh1 m)) (sh1 (sh0 m)) = split {
+  ex a b c d -> refl (ex (pred3 a) (pred3 b) c d) } ;
+
+-- (x - 3) + y = (x + y) - 3, and the mirror and successor forms
+predL3 (x y : Int) : Id Int (add (pred3 x) y) (pred3 (add x y)) =
+  trans (add-predL (predZ (predZ x)) y)
+    (trans (ap predZ (add-predL (predZ x) y)) (ap (\ z -> predZ (predZ z)) (add-predL x y))) ;
+predR3 (x y : Int) : Id Int (add x (pred3 y)) (pred3 (add x y)) =
+  trans (add-predR x (predZ (predZ y)))
+    (trans (ap predZ (add-predR x (predZ y))) (ap (\ z -> predZ (predZ z)) (add-predR x y))) ;
+sucL3 (x y : Int) : Id Int (add (suc3 x) y) (suc3 (add x y)) =
+  trans (add-sucL (sucZ (sucZ x)) y)
+    (trans (ap sucZ (add-sucL (sucZ x) y)) (ap (\ z -> sucZ (sucZ z)) (add-sucL x y))) ;
+
+deg-sh0 : (m : E4) -> Id Int (deg (sh0 m)) (pred3 (deg m)) = split {
+  ex a b c d -> calc Int {
+    add (add (add (pred3 a) b) c) d
+      =< ap (\ z -> add (add z c) d) (predL3 a b) > add (add (pred3 (add a b)) c) d
+      =< ap (\ z -> add z d) (predL3 (add a b) c) > add (pred3 (add (add a b) c)) d
+      =< predL3 (add (add a b) c) d > pred3 (add (add (add a b) c) d) } } ;
+deg-sh1 : (m : E4) -> Id Int (deg (sh1 m)) (pred3 (deg m)) = split {
+  ex a b c d -> calc Int {
+    add (add (add a (pred3 b)) c) d
+      =< ap (\ z -> add (add z c) d) (predR3 a b) > add (add (pred3 (add a b)) c) d
+      =< ap (\ z -> add z d) (predL3 (add a b) c) > add (pred3 (add (add a b) c)) d
+      =< predL3 (add (add a b) c) d > pred3 (add (add (add a b) c) d) } } ;
+deg-up0 : (m : E4) -> Id Int (deg (up0 m)) (suc3 (deg m)) = split {
+  ex a b c d -> calc Int {
+    add (add (add (suc3 a) b) c) d
+      =< ap (\ z -> add (add z c) d) (sucL3 a b) > add (add (suc3 (add a b)) c) d
+      =< ap (\ z -> add z d) (sucL3 (add a b) c) > add (suc3 (add (add a b) c)) d
+      =< sucL3 (add (add a b) c) d > suc3 (add (add (add a b) c) d) } } ;
+
+-- the degree condition along a shift: y = x - 3 and x /= k + 3 give y /= k
+not-deg-pred (k x y : Int) (e : Id Int y (pred3 x)) (h : Not (Id Int x (suc3 k))) : Not (Id Int y k) =
+  \ p -> h (trans (sym (suc3-pred3 x)) (ap suc3 (trans (sym e) p))) ;
+-- y = x + 3 and x /= k - 3 give y /= k
+not-deg-suc (k x y : Int) (e : Id Int y (suc3 x)) (h : Not (Id Int x (pred3 k))) : Not (Id Int y k) =
+  \ p -> h (trans (sym (pred3-suc3 x)) (ap pred3 (trans (sym e) p))) ;
+
+neg-pred3 : (x : Int) -> Neg x -> Neg (pred3 x) = split {
+  pos n -> \ h -> absurd (Neg (pred3 (pos n))) h ;
+  negsuc n -> \ h -> tt } ;
+
+-- equality of exponents is decidable (sign and value decisions on Z)
+e0 : E4 -> Int = split { ex a b c d -> a } ;
+e1 : E4 -> Int = split { ex a b c d -> b } ;
+e2 : E4 -> Int = split { ex a b c d -> c } ;
+e3 : E4 -> Int = split { ex a b c d -> d } ;
+ex-eq (a b c d a' b' c' d' : Int) (p : Id Int a a') (q : Id Int b b') (r : Id Int c c') (s : Id Int d d') :
+  Id E4 (ex a b c d) (ex a' b' c' d') =
+  calc E4 { ex a b c d =< ap (\ x -> ex x b c d) p > ex a' b c d =< ap (\ x -> ex a' x c d) q > ex a' b' c d
+              =< ap (\ x -> ex a' b' x d) r > ex a' b' c' d =< ap (\ x -> ex a' b' c' x) s > ex a' b' c' d' } ;
+dec-e4-from (a b c d a' b' c' d' : Int) : Logic[l].Dec (Id Int a a') -> Logic[l].Dec (Id Int b b') ->
+  Logic[l].Dec (Id Int c c') -> Logic[l].Dec (Id Int d d') -> Logic[l].Dec (Id E4 (ex a b c d) (ex a' b' c' d')) = split {
+  yes p -> split {
+    yes q -> split {
+      yes r -> split {
+        yes s -> yes (ex-eq a b c d a' b' c' d' p q r s) ;
+        no n -> no (\ e -> n (ap e3 e)) } ;
+      no n -> \ s -> no (\ e -> n (ap e2 e)) } ;
+    no n -> \ r s -> no (\ e -> n (ap e1 e)) } ;
+  no n -> \ q r s -> no (\ e -> n (ap e0 e)) } ;
+dec-e4 : (m m' : E4) -> Logic[l].Dec (Id E4 m m') = split {
+  ex a b c d -> split {
+    ex a' b' c' d' -> dec-e4-from a b c d a' b' c' d' (int-dec a a') (int-dec b b') (int-dec c c') (int-dec d d') } } ;
+
+------------------------------------------------------------------------
+-- finite lists of exponents
+
+Mem (m : E4) : List E4 -> U l = split {
+  nil -> Empty ;
+  cons x xs | r -> Plus (Id E4 x m) r } ;
+
+appL : List E4 -> List E4 -> List E4 = split {
+  nil -> \ t -> t ;
+  cons x xs | r -> \ t -> cons x (r t) } ;
+mapL (g : E4 -> E4) : List E4 -> List E4 = split {
+  nil -> nil ;
+  cons x xs | r -> cons (g x) r } ;
+
+mem-appl (m : E4) : (s t : List E4) -> Mem m s -> Mem m (appL s t) = split {
+  nil -> \ t h -> absurd (Mem m t) h ;
+  cons x xs | r -> \ t -> split { inl e -> inl e ; inr h -> inr (r t h) } } ;
+mem-appr (m : E4) : (s t : List E4) -> Mem m t -> Mem m (appL s t) = split {
+  nil -> \ t h -> h ;
+  cons x xs | r -> \ t h -> inr (r t h) } ;
+mem-map (g : E4 -> E4) (m : E4) : (s : List E4) -> Mem m s -> Mem (g m) (mapL g s) = split {
+  nil -> \ h -> h ;
+  cons x xs | r -> split { inl e -> inl (ap g e) ; inr h -> inr (r h) } } ;
+mem-tr (s : List E4) (m m' : E4) (e : Id E4 m m') (h : Mem m s) : Mem m' s = subst (\ x -> Mem x s) e h ;
+
+------------------------------------------------------------------------
+-- subsets of {0,1,2,3} and the chart conditions
+
+-- membership flag of a coordinate
+data Fl = inside | outside ;
+
+data Sub4 = sub (s0 : Fl) (s1 : Fl) (s2 : Fl) (s3 : Fl) ;
+
+-- gate s X: X when the coordinate is outside the subset (s = outside)
+gate : Fl -> U l -> U l = split { inside -> \ X -> Empty ; outside -> \ X -> X } ;
+
+-- one of four alternatives
+data Or4 (A B C E : U l) : U l = o0 (x : A) | o1 (x : B) | o2 (x : C) | o3 (x : E) ;
+
+Out : Sub4 -> E4 -> U l = split {
+  sub s0 s1 s2 s3 -> split {
+    ex a b c d -> Or4 (gate s0 (Neg a)) (gate s1 (Neg b)) (gate s2 (Neg c)) (gate s3 (Neg d)) } } ;
+
+gate-map (X Y : U l) (f : X -> Y) : (s : Fl) -> gate s X -> gate s Y = split {
+  inside -> \ h -> h ;
+  outside -> \ h -> f h } ;
+-- an empty gate
+gate-empty : (s : Fl) -> gate s Empty -> Empty = split {
+  inside -> \ h -> h ;
+  outside -> \ h -> h } ;
+
+-- s' <= s
+Le : Fl -> Fl -> U l = split {
+  outside -> \ t -> Top ;
+  inside -> split { inside -> Top ; outside -> Empty } } ;
+gate-le (X : U l) : (s' s : Fl) -> Le s' s -> gate s X -> gate s' X = split {
+  outside -> split { inside -> \ le h -> absurd X h ; outside -> \ le h -> h } ;
+  inside -> split { inside -> \ le h -> h ; outside -> \ le h -> absurd (gate inside X) le } } ;
+
+Le4 : Sub4 -> Sub4 -> U l = split {
+  sub s0 s1 s2 s3 -> split { sub t0 t1 t2 t3 -> Le s0 t0 * (Le s1 t1 * (Le s2 t2 * Le s3 t3)) } } ;
+
+-- E' contained in E: Out E m gives Out E' m
+module Face (s0 s1 s2 s3 t0 t1 t2 t3 : Fl) (le : Le4 (sub s0 s1 s2 s3) (sub t0 t1 t2 t3)) {
+  map4 (a b c d : Int) : Out (sub t0 t1 t2 t3) (ex a b c d) -> Out (sub s0 s1 s2 s3) (ex a b c d) = split {
+    o0 h -> o0 (gate-le (Neg a) s0 t0 le.1 h) ;
+    o1 h -> o1 (gate-le (Neg b) s1 t1 le.2.1 h) ;
+    o2 h -> o2 (gate-le (Neg c) s2 t2 le.2.2.1 h) ;
+    o3 h -> o3 (gate-le (Neg d) s3 t3 le.2.2.2 h) } ;
+} ;
+out-face : (E' E : Sub4) -> Le4 E' E -> (m : E4) -> Out E m -> Out E' m = split {
+  sub s0 s1 s2 s3 -> split {
+    sub t0 t1 t2 t3 -> \ le -> split {
+      ex a b c d -> Face[s0,s1,s2,s3,t0,t1,t2,t3,le].map4 a b c d } } } ;
+
+-- the shifts by -3 e_0 and -3 e_1 keep a negative exponent negative
+out-sh0 : (E : Sub4) (m : E4) -> Out E m -> Out E (sh0 m) = split {
+  sub s0 s1 s2 s3 -> split {
+    ex a b c d -> split {
+      o0 h -> o0 (gate-map (Neg a) (Neg (pred3 a)) (neg-pred3 a) s0 h) ;
+      o1 h -> o1 h ; o2 h -> o2 h ; o3 h -> o3 h } } } ;
+out-sh1 : (E : Sub4) (m : E4) -> Out E m -> Out E (sh1 m) = split {
+  sub s0 s1 s2 s3 -> split {
+    ex a b c d -> split {
+      o0 h -> o0 h ;
+      o1 h -> o1 (gate-map (Neg b) (Neg (pred3 b)) (neg-pred3 b) s1 h) ;
+      o2 h -> o2 h ; o3 h -> o3 h } } } ;
+
+-- the flag of a coordinate with exponent >= 0 does not matter
+out-swap0 (s0 s1 s2 s3 t : Fl) (n : Base.Nat) (b c d : Int) :
+  Out (sub s0 s1 s2 s3) (ex (pos n) b c d) -> Out (sub t s1 s2 s3) (ex (pos n) b c d) = split {
+  o0 h -> absurd (Out (sub t s1 s2 s3) (ex (pos n) b c d)) (gate-empty s0 h) ;
+  o1 h -> o1 h ; o2 h -> o2 h ; o3 h -> o3 h } ;
+out-swap1 (s0 s1 s2 s3 t : Fl) (a : Int) (n : Base.Nat) (c d : Int) :
+  Out (sub s0 s1 s2 s3) (ex a (pos n) c d) -> Out (sub s0 t s2 s3) (ex a (pos n) c d) = split {
+  o1 h -> absurd (Out (sub s0 t s2 s3) (ex a (pos n) c d)) (gate-empty s1 h) ;
+  o0 h -> o0 h ; o2 h -> o2 h ; o3 h -> o3 h } ;
+out-swap2 (s0 s1 s2 s3 t : Fl) (a b : Int) (n : Base.Nat) (d : Int) :
+  Out (sub s0 s1 s2 s3) (ex a b (pos n) d) -> Out (sub s0 s1 t s3) (ex a b (pos n) d) = split {
+  o2 h -> absurd (Out (sub s0 s1 t s3) (ex a b (pos n) d)) (gate-empty s2 h) ;
+  o0 h -> o0 h ; o1 h -> o1 h ; o3 h -> o3 h } ;
+out-swap3 (s0 s1 s2 s3 t : Fl) (a b c : Int) (n : Base.Nat) :
+  Out (sub s0 s1 s2 s3) (ex a b c (pos n)) -> Out (sub s0 s1 s2 t) (ex a b c (pos n)) = split {
+  o3 h -> absurd (Out (sub s0 s1 s2 t) (ex a b c (pos n))) (gate-empty s3 h) ;
+  o0 h -> o0 h ; o1 h -> o1 h ; o2 h -> o2 h } ;
+
+-- the full subset: Out is empty
+full : Sub4 = sub inside inside inside inside ;
+out-full : (m : E4) -> Out full m -> Empty = split {
+  ex a b c d -> split { o0 h -> h ; o1 h -> h ; o2 h -> h ; o3 h -> h } } ;
+
+------------------------------------------------------------------------
+-- function modules and chart modules
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module DL = IP.ModL[D,IP.regular D] ;
+
+  -- Md^X, pointwise
+  powM (X : U l) (Md : IP.Mod[D]) : IP.Mod[D] =
+    IP.mkMod D (X -> Md.M) (\ x -> Md.mz) (\ f g x -> Md.madd (f x) (g x)) (\ f x -> Md.mneg (f x))
+      (\ f g h -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.maddA (f x) (g x) (h x)))
+      (\ f g -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.maddC (f x) (g x)))
+      (\ f -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.maddZ (f x)))
+      (\ f -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.maddN (f x)))
+      (\ c f x -> Md.sm c (f x))
+      (\ c c' f -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.smA c c' (f x)))
+      (\ f -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.smO (f x)))
+      (\ c f g -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.smD c (f x) (g x)))
+      (\ c c' f -> FE.funext X (\ x -> Md.M) _ _ (\ x -> Md.smE c c' (f x))) ;
+
+  -- vanishing is closed under the operations of D
+  zero-add (x y : D.R) (hx : Id D.R x D.z) (hy : Id D.R y D.z) : Id D.R (D.add x y) D.z =
+    trans (DL.G.cong-add hx hy) (D.addZ D.z) ;
+  zero-neg (x : D.R) (hx : Id D.R x D.z) : Id D.R (D.neg x) D.z = trans (ap D.neg hx) DL.G.neg-zero ;
+  zero-mul (c x : D.R) (hx : Id D.R x D.z) : Id D.R (D.mul c x) D.z = trans (ap (D.mul c) hx) (DL.sm-zero c) ;
+
+  ext (I : U l) (c c' : I -> E4 -> D.R) (h : (i : I) (m : E4) -> Id D.R (c i m) (c' i m)) : Id (I -> E4 -> D.R) c c' =
+    FE.funext I (\ i -> E4 -> D.R) c c' (\ i -> FE.funext E4 (\ m -> D.R) (c i) (c' i) (h i)) ;
+
+  -- I-indexed families of Laurent elements vanishing on Bad, finitely supported
+  module Chart (I : U l) (Bad : I -> E4 -> U l) {
+    Raw : U l = I -> E4 -> D.R ;
+    RawM : IP.Mod[D] = powM I (powM E4 (IP.regular D)) ;
+
+    Vanish (s : List E4) (c : Raw) : U l = (i : I) (m : E4) -> Not (Mem m s) -> Id D.R (c i m) D.z ;
+    SuppW (c : Raw) : U l = (s : List E4) * Vanish s c ;
+    Supp (c : Raw) : U l = Tr.Trunc[SuppW c].carrier ;
+    Van (c : Raw) : U l = (i : I) (m : E4) -> Bad i m -> Id D.R (c i m) D.z ;
+    Cond (c : Raw) : U l = Supp c * Van c ;
+
+    van-prop (c : Raw) : Pr.isProp (Van c) =
+      FE.isProp-Pi I (\ i -> (m : E4) -> Bad i m -> Id D.R (c i m) D.z)
+        (\ i -> FE.isProp-Pi E4 (\ m -> Bad i m -> Id D.R (c i m) D.z)
+          (\ m -> FE.isProp-Pi (Bad i m) (\ h -> Id D.R (c i m) D.z) (\ h -> setD (c i m) D.z))) ;
+    cond-prop (c : Raw) : Pr.isProp (Cond c) =
+      Pr.isProp-Sigma (Supp c) (\ s -> Van c) Tr.Trunc[SuppW c].proposition (\ s -> van-prop c) ;
+
+    -- closure
+    supp-zero : Supp RawM.mz = Tr.Trunc[SuppW RawM.mz].inc (nil, \ i m h -> refl D.z) ;
+    module SuppAdd (c c' : Raw) (w : SuppW c) (w' : SuppW c') {
+      res : SuppW (RawM.madd c c') =
+        (appL w.1 w'.1, \ i m h -> zero-add (c i m) (c' i m)
+          (w.2 i m (\ k -> h (mem-appl m w.1 w'.1 k))) (w'.2 i m (\ k -> h (mem-appr m w.1 w'.1 k)))) ;
+    } ;
+    supp-add (c c' : Raw) (s : Supp c) (s' : Supp c') : Supp (RawM.madd c c') =
+      TC.map2 (SuppW c) (SuppW c') (SuppW (RawM.madd c c')) (\ w w' -> SuppAdd[c,c',w,w'].res) s s' ;
+    supp-neg (c : Raw) (s : Supp c) : Supp (RawM.mneg c) =
+      TC.map (SuppW c) (SuppW (RawM.mneg c)) (\ w -> (w.1, \ i m h -> zero-neg (c i m) (w.2 i m h))) s ;
+    supp-sm (a : D.R) (c : Raw) (s : Supp c) : Supp (RawM.sm a c) =
+      TC.map (SuppW c) (SuppW (RawM.sm a c)) (\ w -> (w.1, \ i m h -> zero-mul a (c i m) (w.2 i m h))) s ;
+
+    cond-zero : Cond RawM.mz = (supp-zero, \ i m h -> refl D.z) ;
+    cond-add (c c' : Raw) (h : Cond c) (h' : Cond c') : Cond (RawM.madd c c') =
+      (supp-add c c' h.1 h'.1, \ i m b -> zero-add (c i m) (c' i m) (h.2 i m b) (h'.2 i m b)) ;
+    cond-neg (c : Raw) (h : Cond c) : Cond (RawM.mneg c) =
+      (supp-neg c h.1, \ i m b -> zero-neg (c i m) (h.2 i m b)) ;
+    cond-sm (a : D.R) (c : Raw) (h : Cond c) : Cond (RawM.sm a c) =
+      (supp-sm a c h.1, \ i m b -> zero-mul a (c i m) (h.2 i m b)) ;
+
+    module SM = CechModules[l].SubMod[D,RawM,Cond,cond-prop,cond-zero,cond-add,cond-neg,cond-sm] ;
+    mod : IP.Mod[D] = SM.mod ;
+    El : U l = SM.E ;
+
+    -- accessors
+    val (u : El) : Raw = u.1 ;
+    supp (u : El) : Supp (val u) = u.2.1 ;
+    van (u : El) : Van (val u) = u.2.2 ;
+    mk (c : Raw) (s : Supp c) (v : Van c) : El = (c, (s, v)) ;
+
+    -- elements are equal when their coefficients are
+    eq (u v : El) (h : (i : I) (m : E4) -> Id D.R (val u i m) (val v i m)) : Id El u v =
+      SM.eq u v (ext I (val u) (val v) h) ;
+  } ;
+
+  -- a linear map of raw families preserving finite support (through a
+  -- transformation tl of the support lists) and the vanishing conditions
+  -- restricts to the chart modules
+  module Restrict (I J : U l) (BI : I -> E4 -> U l) (BJ : J -> E4 -> U l)
+    (F : IP.Lin[D,powM I (powM E4 (IP.regular D)),powM J (powM E4 (IP.regular D))])
+    (tl : List E4 -> List E4)
+    (vanish-pres : (s : List E4) (c : I -> E4 -> D.R) -> Chart[I,BI].Vanish s c -> Chart[J,BJ].Vanish (tl s) (F.f c))
+    (van-pres : (c : I -> E4 -> D.R) -> Chart[I,BI].Van c -> Chart[J,BJ].Van (F.f c)) {
+    module CI = Chart[I,BI] ; module CJ = Chart[J,BJ] ;
+    pres (u : CI.El) : CJ.Cond (F.f (CI.val u)) =
+      (TC.map (CI.SuppW (CI.val u)) (CJ.SuppW (F.f (CI.val u))) (\ w -> (tl w.1, vanish-pres w.1 (CI.val u) w.2)) (CI.supp u),
+       van-pres (CI.val u) (CI.van u)) ;
+    lin : IP.Lin[D,CI.mod,CJ.mod] =
+      CJ.SM.into CI.mod (CechModules[l].comp D CI.mod CI.RawM CJ.RawM CI.SM.incl F) pres ;
+    -- by definition of lin
+    lin-val (u : CI.El) : Id (J -> E4 -> D.R) (CJ.val (lin.f u)) (F.f (CI.val u)) = refl (F.f (CI.val u)) ;
+  } ;
+
+  -- a shift s with t (s m) = m preserves finite support
+  vanish-shift (I : U l) (s t : E4 -> E4) (ts : (m : E4) -> Id E4 (t (s m)) m) (c : I -> E4 -> D.R)
+    (l0 : List E4) (h : (i : I) (m : E4) -> Not (Mem m l0) -> Id D.R (c i m) D.z) :
+    (i : I) (m : E4) -> Not (Mem m (mapL t l0)) -> Id D.R (c i (s m)) D.z =
+    \ i m nm -> h i (s m) (\ k -> nm (mem-tr (mapL t l0) (t (s m)) m (ts m) (mem-map t (s m) l0 k))) ;
+} ;

@@ -1,0 +1,108 @@
+-- FiniteFamilies.seg: concatenation of finite families (handoff §4, §6).
+--
+-- Fin (a + b) holds a family f : Fin a -> X followed by g : Fin b -> X
+-- (app): by recursion on a, the new last element of Fin (a+1) + b =
+-- Fin (a + b) + 1 is the last element of f.  The injections injL, injR
+-- pick the two blocks (app-injL, app-injR), a property of all elements of
+-- f and of g is a property of all elements of app f g (app-ind), and a
+-- pointwise operation commutes with app (app-zip).  In a ring, the sum
+-- over app f g is the sum over f plus the sum over g (sum-app), hence the
+-- same for linear combinations (lin-app); extending coefficients by zeros
+-- does not change a combination (lin-appL, lin-appR).
+--
+-- A family of families u_i (i : Fin n) is concatenated block by block
+-- (cat, of length catN), with the injection injC of the block i (cat-injC).
+-- Repetitions are allowed: nothing is identified.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+
+top-eta : (u : Top) -> Id Top tt u = split { tt -> refl tt } ;
+
+app (X : U l) : (a b : Nat) -> (Ps.Fin a -> X) -> (Ps.Fin b -> X) -> Ps.Fin (plus a b) -> X = split {
+  zero -> \ b f g -> g ;
+  suc a | r -> \ b f g -> Ps.snoc (Ps.Fin (plus a b)) X (r b (\ i -> f (inl i)) g) (f (inr tt)) } ;
+
+injL : (a b : Nat) -> Ps.Fin a -> Ps.Fin (plus a b) = split {
+  zero -> \ b i -> absurd (Ps.Fin b) i ;
+  suc a | r -> \ b -> split { inl i -> inl (r b i) ; inr u -> inr tt } } ;
+injR : (a b : Nat) -> Ps.Fin b -> Ps.Fin (plus a b) = split {
+  zero -> \ b j -> j ;
+  suc a | r -> \ b j -> inl (r b j) } ;
+
+app-injL (X : U l) : (a b : Nat) (f : Ps.Fin a -> X) (g : Ps.Fin b -> X) (i : Ps.Fin a) -> Id X (app X a b f g (injL a b i)) (f i) = split {
+  zero -> \ b f g i -> absurd (Id X (app X zero b f g (injL zero b i)) (f i)) i ;
+  suc a | r -> \ b f g -> split {
+    inl i -> r b (\ i' -> f (inl i')) g i ;
+    inr u -> ap (\ w -> f (inr w)) (top-eta u) } } ;
+app-injR (X : U l) : (a b : Nat) (f : Ps.Fin a -> X) (g : Ps.Fin b -> X) (j : Ps.Fin b) -> Id X (app X a b f g (injR a b j)) (g j) = split {
+  zero -> \ b f g j -> refl (g j) ;
+  suc a | r -> \ b f g j -> r b (\ i' -> f (inl i')) g j } ;
+
+app-ind (X : U l) (Q : X -> U l) : (a b : Nat) (f : Ps.Fin a -> X) (g : Ps.Fin b -> X) ->
+  ((i : Ps.Fin a) -> Q (f i)) -> ((j : Ps.Fin b) -> Q (g j)) -> (k : Ps.Fin (plus a b)) -> Q (app X a b f g k) = split {
+  zero -> \ b f g qf qg -> qg ;
+  suc a | r -> \ b f g qf qg -> split {
+    inl k -> r b (\ i -> f (inl i)) g (\ i -> qf (inl i)) qg k ;
+    inr u -> qf (inr tt) } } ;
+
+app-zip (X Y Z : U l) (op : X -> Y -> Z) : (a b : Nat) (f : Ps.Fin a -> X) (g : Ps.Fin b -> X) (f' : Ps.Fin a -> Y) (g' : Ps.Fin b -> Y)
+  (k : Ps.Fin (plus a b)) -> Id Z (op (app X a b f g k) (app Y a b f' g' k)) (app Z a b (\ i -> op (f i) (f' i)) (\ j -> op (g j) (g' j)) k) = split {
+  zero -> \ b f g f' g' k -> refl (op (g k) (g' k)) ;
+  suc a | r -> \ b f g f' g' -> split {
+    inl k -> r b (\ i -> f (inl i)) g (\ i -> f' (inl i)) g' k ;
+    inr u -> refl (op (f (inr tt)) (f' (inr tt))) } } ;
+
+------------------------------------------------------------------------
+-- sums over a concatenation
+
+module Sums (F : CRing) {
+  module S = FiniteIdeal[l].Sums[F] ; module L = RL[F] ;
+  sum-app : (a b : Nat) (f : Ps.Fin a -> F.R) (g : Ps.Fin b -> F.R) ->
+    Id F.R (S.sum (plus a b) (app F.R a b f g)) (F.add (S.sum a f) (S.sum b g)) = split {
+    zero -> \ b f g -> sym (L.zl (S.sum b g)) ;
+    suc a | r -> \ b f g -> trans (ap (F.add (f (inr tt))) (r b (\ i -> f (inl i)) g))
+                              (F.addA (f (inr tt)) (S.sum a (\ i -> f (inl i))) (S.sum b g)) } ;
+  lin-app (a b : Nat) (f g : Ps.Fin a -> F.R) (f' g' : Ps.Fin b -> F.R) :
+    Id F.R (S.lin (plus a b) (app F.R a b f f') (app F.R a b g g')) (F.add (S.lin a f g) (S.lin b f' g')) =
+    trans (S.sum-cong (plus a b) (\ k -> F.mul (app F.R a b f f' k) (app F.R a b g g' k))
+             (app F.R a b (\ i -> F.mul (f i) (g i)) (\ j -> F.mul (f' j) (g' j)))
+             (app-zip F.R F.R F.R F.mul a b f f' g g'))
+      (sum-app a b (\ i -> F.mul (f i) (g i)) (\ j -> F.mul (f' j) (g' j))) ;
+  -- coefficients extended by zeros
+  lin-appL (a b : Nat) (f g : Ps.Fin a -> F.R) (f' : Ps.Fin b -> F.R) :
+    Id F.R (S.lin (plus a b) (app F.R a b f f') (app F.R a b g (\ j -> F.z))) (S.lin a f g) =
+    trans (lin-app a b f g f' (\ j -> F.z)) (trans (ap (F.add (S.lin a f g)) (S.lin-zero b f')) (F.addZ (S.lin a f g))) ;
+  lin-appR (a b : Nat) (f : Ps.Fin a -> F.R) (f' g' : Ps.Fin b -> F.R) :
+    Id F.R (S.lin (plus a b) (app F.R a b f f') (app F.R a b (\ i -> F.z) g')) (S.lin b f' g') =
+    trans (lin-app a b f (\ i -> F.z) f' g') (trans (ap (\ w -> F.add w (S.lin b f' g')) (S.lin-zero a f)) (L.zl (S.lin b f' g'))) ;
+} ;
+
+------------------------------------------------------------------------
+-- a family of families, block by block
+
+catN : (n : Nat) -> (Ps.Fin n -> Nat) -> Nat = split {
+  zero -> \ u -> zero ;
+  suc n | r -> \ u -> plus (u (inr tt)) (r (\ i -> u (inl i))) } ;
+cat (X : U l) : (n : Nat) (u : Ps.Fin n -> Nat) -> ((i : Ps.Fin n) -> Ps.Fin (u i) -> X) -> Ps.Fin (catN n u) -> X = split {
+  zero -> \ u f k -> absurd X k ;
+  suc n | r -> \ u f -> app X (u (inr tt)) (catN n (\ i -> u (inl i))) (f (inr tt)) (r (\ i -> u (inl i)) (\ i -> f (inl i))) } ;
+-- the last block (split on the point of Top first)
+injC-last (n : Nat) (u : Ps.Fin (suc n) -> Nat) : (w : Top) -> Ps.Fin (u (inr w)) -> Ps.Fin (catN (suc n) u) = split {
+  tt -> \ k -> injL (u (inr tt)) (catN n (\ i' -> u (inl i'))) k } ;
+injC : (n : Nat) (u : Ps.Fin n -> Nat) (i : Ps.Fin n) -> Ps.Fin (u i) -> Ps.Fin (catN n u) = split {
+  zero -> \ u i -> absurd (Ps.Fin (u i) -> Ps.Fin (catN zero u)) i ;
+  suc n | r -> \ u -> split {
+    inl i -> \ k -> injR (u (inr tt)) (catN n (\ i' -> u (inl i'))) (r (\ i' -> u (inl i')) i k) ;
+    inr w -> injC-last n u w } } ;
+cat-injC-last (X : U l) (n : Nat) (u : Ps.Fin (suc n) -> Nat) (f : (i : Ps.Fin (suc n)) -> Ps.Fin (u i) -> X) :
+  (w : Top) (k : Ps.Fin (u (inr w))) -> Id X (cat X (suc n) u f (injC-last n u w k)) (f (inr w) k) = split {
+  tt -> \ k -> app-injL X (u (inr tt)) (catN n (\ i' -> u (inl i'))) (f (inr tt))
+                  (cat X n (\ i' -> u (inl i')) (\ i' -> f (inl i'))) k } ;
+cat-injC (X : U l) : (n : Nat) (u : Ps.Fin n -> Nat) (f : (i : Ps.Fin n) -> Ps.Fin (u i) -> X) (i : Ps.Fin n) (k : Ps.Fin (u i)) ->
+  Id X (cat X n u f (injC n u i k)) (f i k) = split {
+  zero -> \ u f i -> absurd ((k : Ps.Fin (u i)) -> Id X (cat X zero u f (injC zero u i k)) (f i k)) i ;
+  suc n | r -> \ u f -> split {
+    inl i -> \ k -> trans (app-injR X (u (inr tt)) (catN n (\ i' -> u (inl i'))) (f (inr tt))
+                             (cat X n (\ i' -> u (inl i')) (\ i' -> f (inl i'))) (injC n (\ i' -> u (inl i')) i k))
+                      (r (\ i' -> u (inl i')) (\ i' -> f (inl i')) i k) ;
+    inr w -> cat-injC-last X n u f w } } ;

@@ -1,0 +1,220 @@
+-- ReesCorrection4.seg: the weighted-dependence theorem applied to the
+-- fixed Rees kernel list, and the finite correction (handoff §2 (4);
+-- Prop. "finite lifting" of doc/zmt-formal-cohomology.tex).
+--
+-- Data.  A CFN, t values a_j (I = (a_1, .., a_t)), the equations p_q of
+-- degree e_q (J = (P_q), M = S/J); a GenAt list w and fixed bounds fw of
+-- ReesRings4 / ReesFiniteList4: the list KG = (kg_1, .., kg_na) of
+-- bihomogeneous elements of ker phi, kg_j of bidegree (n_j, d_j).
+-- Through the bridge (ReesBridge4.biT) kg_j is a term list g_j over
+-- D = A[U_1..U_t] with every term of X-degree d_j and every coefficient of
+-- U-degree n_j, and phi (ev g_j) = ev_a kg_j.
+--
+-- Input of the correction (Seq): the sequence c_n in C^1(-1) over D, of
+-- coefficient degree n+1, merely lifted along the KG relations
+-- (delta c_n = sum_j g_j u_nj: CoherentDependence4.Lifted) -- the
+-- hypotheses of WeightedDependence4 for the family g; and cochains z_n in
+-- C^0(-1) over A with
+--     ev c_n = delta z_n  modulo J                               (hz)
+--     z_n - z_0 in I C^0(M)  (the image of I C^0(S), modulo J)   (hcompat)
+-- (z_n and c_n come from the finite-fibre sections, which remain).
+--
+-- Proof.  (W) The evaluated weighted theorem (CoefficientEvaluation4,
+-- unchanged) gives merely N, r_i (of degree N - i), v (of degree N + 1) and
+-- a'_j with
+--     ev c_N - sum_{i<N} ev(r_i) ev c_i = delta (ev v) + sum_j ev(g_j) ev(a'_j)
+-- and ev r_i in I^(N-i), ev v in I^(N+1) C^0(S).
+-- (K) For certificates ws of the L generators (merely, by finite choice:
+-- certs), (certX) gives ev_a kg_j = sum_q H'_jq P_q with H'_jq of X-degree
+-- d_j - e_q; as term lists h_qj (ReesBridge4.hterm) with every term of
+-- e_q + size u = d_j,  phi (ev g_j) = phi (sum_q P_q h_qj)  (phi-fac), so
+-- the coefficients agree (fac, PolynomialRing4Bridge.coef-eq-of-phi) and
+--     sum_j ev(g_j) ev(a'_j) = sum_q P_q (sum_j h_qj ev(a'_j))      (kernel-terms)
+-- (ReesChart4.Factor.factor): a multiple of the ORIGINAL equations, in
+-- J C^1(-1), with the explicit witness H (ev a') (kernel-J).
+-- (Z) The correction  z = z_N - sum_{i<N} ev(r_i) z_i - ev v  (zc).
+--   delta z = delta z_N - sum ev(r_i) delta z_i - delta (ev v)    (d-zc: delta linear)
+--           = ev c_N - sum ev(r_i) ev c_i - delta (ev v)  mod J  (hz, cong-sumD)
+--           = sum_j ev(g_j) ev(a'_j) = 0                  mod J  (ident, kernel-J)
+--   so delta z is in J C^1(-1): z is closed in the chart complex of M (closed).
+--   z - z_0 = ((z_N - z_0) - sum ev(r_i) z_i) - ev v              (rearrange)
+--   with z_N - z_0 in I C^0(M) (hcompat), every ev(r_i) z_i in I C^0(S)
+--   (N - i >= 1: lower-pos; wit1-sm) and ev v in I^(N+1) C^0(S) in I C^0(S)
+--   (wit-one): z - z_0 in I C^0(M) (reduces).
+-- THEOREM (correction): merely z with delta z in J C^1(-1) and z - z_0 in
+-- I C^0(M); explicitly, every weighted result and certificate gives it
+-- (Corr: zc, closed, reduces, kernel-terms, and the witnesses wit-r,
+-- wit-v of the degrees).
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open HomogeneousMatrices4[l] ;
+open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module TL4 = TopList4[l] ;
+
+-- toB (k + n) = toB k + toB n
+toB-plus : (k n : Nat) -> Id Base.Nat (toB (plus k n)) (NA.plus (toB k) (toB n)) = split {
+  zero -> \ n -> refl (toB n) ;
+  suc k | r -> \ n -> ap (\ x -> suc x) (r n) } ;
+-- N - i = K + 1 for N = K + (i + 1)
+lower-pos (K i N : Nat) (h : Id Nat (plus K (suc i)) N) : Id Int (lowerZ (cdeg N) i) (pos (suc (toB K))) = calc Int {
+  minus (pos (toB N)) (toB i)
+    =< ap (\ x -> minus (pos (toB x)) (toB i)) (sym h) > minus (pos (toB (plus K (suc i)))) (toB i)
+    =< ap (\ x -> minus (pos x) (toB i)) (trans (toB-plus K (suc i)) (NA.plus-suc (toB K) (toB i))) > minus (pos (NA.plus (suc (toB K)) (toB i))) (toB i)
+    =< ap (\ x -> minus x (toB i)) (sym (ReesPresentation4[l].addP-pos (suc (toB K)) (toB i))) > minus (addP (pos (suc (toB K))) (toB i)) (toB i)
+    =< minus-addP (pos (suc (toB K))) (toB i) > pos (suc (toB K)) } ;
+
+module Over (K0 : U l) (A : CRing) (setA : Pr.isSet A.R) (cfnA : CFN[l].CFN[K0,A]) (t : Nat) (a : Ps.Fin t -> A.R)
+  (s : Nat) (p : Ps.Fin s -> TPoly A.R) (e : Ps.Fin s -> Base.Nat) (hp : (q : Ps.Fin s) -> HomDeg A.R (e q) (p q)) {
+  module RR = ReesRings4[l].Rings[A,setA,t,a,s,p,e,hp] ;
+  module BG = ReesBridge4[l].Over[A,setA,t,a,s,p,e,hp] ;
+  module CH = ReesChart4[l].Over[A,setA,t,a,s,p,e,hp] ;
+  module WC = RR.WithCFN[K0,cfnA] ;
+  module BR = RR.BR ; module RK = RR.RK ;
+  module PAA = PolynomialAction4[l].Over[A,setA] ;
+  module CA = Cech4[l].Over[A,setA] ;
+  -- the chart modules of M: C^0(-1) and C^1(-1) modulo J
+  module CJ0 = CH.JC[Pt,setPt,TL4.mOne] ;
+  module CJ1 = CH.JC[Ed,setEd,TL4.mOne] ;
+  -- the Cech differential on C^0(-1) over A
+  d (x : CJ0.E.El) : CJ1.E.El = (CA.D0 TL4.mOne).f x ;
+  module LD = RelationCertificate[l].LinL[A,CJ0.E.mod,CJ1.E.mod,CA.D0 TL4.mOne] ;
+
+  module List (w : WC.ReesW) (fw : WC.WithGens[w].F.FixedW) {
+    module F = WC.WithGens[w].F ;
+    module K = F.KG[fw] ;
+    -- the members of KG: bidegrees and term lists over D
+    dX (j : Ps.Fin K.na) : Base.Nat = (K.ix j).2.2 ;
+    dU (j : Ps.Fin K.na) : Base.Nat = toB (K.ix j).2.1 ;
+    gD (j : Ps.Fin K.na) : TPoly BG.D.R = BG.biT (K.ix j).2.1 (K.ix j).2.2 (K.kg j) (K.kg-bihom j) ;
+    hgD (j : Ps.Fin K.na) : HomDeg BG.D.R (dX j) (gD j) = BG.hom-biT (K.ix j).2.1 (K.ix j).2.2 (K.kg j) (K.kg-bihom j) ;
+    hfD (j : Ps.Fin K.na) : BG.BA.CoefHom (dU j) (gD j) = BG.coef-biT (K.ix j).2.1 (K.ix j).2.2 (K.kg j) (K.kg-bihom j) ;
+    -- their evaluations
+    gA (j : Ps.Fin K.na) : TPoly A.R = BG.EV.evT (gD j) ;
+    hgA (j : Ps.Fin K.na) : HomDeg A.R (dX j) (gA j) = BG.EV.hom-evT (dX j) (gD j) (hgD j) ;
+
+    -- certificates of the generators, merely (finite choice)
+    Certs : U l = (k : Ps.Fin F.GC.L) -> RK.CertW (F.GC.LG.elem w.1 k) ;
+    certs : Tr.Trunc[Certs].carrier =
+      LaurentSyzygyLift4[l].fin-choice F.GC.L (\ k -> RK.CertW (F.GC.LG.elem w.1 k))
+        (\ k -> RK.cert (F.GC.LG.elem w.1 k) (ReesFiniteList4[l].all-elem RR.R (RK.SQ.blk (suc zero)) RK.Elim w.1 w.2.1 k)) ;
+
+    -- (K): the kernel-generator terms through the equations
+    module Cert (ws : Certs) {
+      HX (j : Ps.Fin K.na) (q : Ps.Fin s) : BR.S.R = RR.RC.HX (K.gen j) (ws (K.ix j).1) (K.ix j).2.1 (K.ix j).2.2 q ;
+      ht (q : Ps.Fin s) (j : Ps.Fin K.na) : BG.HTerm (e q) (dX j) (HX j q) =
+        BG.hterm (e q) (dX j) (HX j q) (K.kg-hom-HX j (ws (K.ix j).1) q) ;
+      h (q : Ps.Fin s) (j : Ps.Fin K.na) : TPoly A.R = (ht q j).1 ;
+      hh (q : Ps.Fin s) (j : Ps.Fin K.na) : HomShift A.R (e q) (dX j) (h q j) = (ht q j).2.1 ;
+      -- phi (ev g_j) = sum_q H'_jq P_q = phi (sum_q P_q h_qj)
+      phi-fac (j : Ps.Fin K.na) : Id BR.S.R (BR.phi (gA j)) (BR.phi (PAA.psum s (\ q -> PAA.pmul (p q) (h q j)))) = calc BR.S.R {
+        BR.phi (gA j)
+          =< BG.ev-biT (K.ix j).2.1 (K.ix j).2.2 (K.kg j) (K.kg-bihom j) > RK.RG.ev (K.kg j)
+          =< K.kg-certX j (ws (K.ix j).1) > RK.RSB.comb s (HX j) RR.P
+          =< BR.SS.sum-cong s (\ q -> BR.S.mul (HX j q) (RR.P q)) (\ q -> BR.S.mul (BR.phi (p q)) (BR.phi (h q j)))
+               (\ q -> trans (BR.S.mulC (HX j q) (RR.P q)) (ap (BR.S.mul (RR.P q)) (sym (ht q j).2.2)))
+          > BR.SS.sum s (\ q -> BR.S.mul (BR.phi (p q)) (BR.phi (h q j)))
+          =< BR.SS.sum-cong s (\ q -> BR.S.mul (BR.phi (p q)) (BR.phi (h q j))) (\ q -> BR.phi (PAA.pmul (p q) (h q j)))
+               (\ q -> sym (BR.phi-pmul (p q) (h q j)))
+          > BR.SS.sum s (\ q -> BR.phi (PAA.pmul (p q) (h q j)))
+          =< sym (BR.phi-psum s (\ q -> PAA.pmul (p q) (h q j))) > BR.phi (PAA.psum s (\ q -> PAA.pmul (p q) (h q j))) } ;
+      fac (j : Ps.Fin K.na) (v : N4) : Id A.R (PAA.coef (gA j) v) (PAA.coef (PAA.psum s (\ q -> PAA.pmul (p q) (h q j))) v) =
+        BR.coef-eq-of-phi (gA j) (PAA.psum s (\ q -> PAA.pmul (p q) (h q j))) (phi-fac j) v ;
+      module FA = CH.Factor[K.na,dX,gA,hgA,h,hh,fac] ;
+      module FS = FA.Fs[Ed,setEd,TL4.mOne] ;
+    } ;
+
+    -- (W): the evaluated weighted theorem for the family g
+    module ED = CoefficientEvaluation4[l].Concrete[K0,A,setA,cfnA,t,a].ED.Input[K.na,dX,dU,gD,hgD,hfD] ;
+
+    module Seq (c : Nat -> ED.WD.E1.El) (hc : (n : Nat) -> ED.WD.DF.P1.Hom (cdeg (suc n)) (c n))
+      (lift : (n : Nat) -> Tr.Trunc[ED.WD.CI.Lifted (c n)].carrier)
+      (z : Nat -> CJ0.E.El) (hz : (n : Nat) -> CJ1.Cong (ED.EC1.evc (c n)) (d (z n)))
+      (hcompat : (n : Nat) -> CJ0.IJ (suc zero) (CJ0.ML.msub (z n) (z zero))) {
+      module ES = ED.Seq[c,hc,lift] ;
+      -- sum_{i<N} r_i z_i and sum_{i<N} r_i delta z_i for rs = [r_(N-1), .., r_0]
+      sumZ : List BG.D.R -> CJ0.E.El = split {
+        nil -> CJ0.E.mod.mz ;
+        cons x xs | r -> CJ0.E.mod.madd (CJ0.E.mod.sm (BG.EV.ev.1 x) (z (len xs))) r } ;
+      sumD : List BG.D.R -> CJ1.E.El = split {
+        nil -> CJ1.E.mod.mz ;
+        cons x xs | r -> CJ1.E.mod.madd (CJ1.E.mod.sm (BG.EV.ev.1 x) (d (z (len xs)))) r } ;
+      d-sumZ : (xs : List BG.D.R) -> Id CJ1.E.El (d (sumZ xs)) (sumD xs) = split {
+        nil -> LD.f-zero ;
+        cons x xs | r -> trans ((CA.D0 TL4.mOne).f-add (CJ0.E.mod.sm (BG.EV.ev.1 x) (z (len xs))) (sumZ xs))
+                          (CJ1.ML.G.cong-add ((CA.D0 TL4.mOne).f-sm (BG.EV.ev.1 x) (z (len xs))) r) } ;
+      -- sum r_i delta z_i = sum r_i ev c_i modulo J
+      cong-sumD : (xs : List BG.D.R) -> CJ1.Cong (sumD xs) (ES.sumA xs) = split {
+        nil -> CJ1.cong-refl CJ1.E.mod.mz ;
+        cons x xs | r -> CJ1.cong-add (CJ1.E.mod.sm (BG.EV.ev.1 x) (d (z (len xs)))) (CJ1.E.mod.sm (BG.EV.ev.1 x) (ES.cA (len xs)))
+          (sumD xs) (ES.sumA xs)
+          (CJ1.cong-sm (BG.EV.ev.1 x) (d (z (len xs))) (ES.cA (len xs)) (CJ1.cong-sym (ES.cA (len xs)) (d (z (len xs))) (hz (len xs)))) r } ;
+      -- every ev(r_i) z_i is in I C^0(S)
+      witS (N : Nat) : (xs : List BG.D.R) (Kx : Nat) -> Id Nat (plus Kx (len xs)) N -> ES.PowL N xs -> CJ0.FC.Wit (suc zero) (sumZ xs) = split {
+        nil -> \ Kx hK pw -> CJ0.FC.wit-zero (suc zero) ;
+        cons x xs | r -> \ Kx hK pw ->
+          CJ0.wit1-add (CJ0.E.mod.sm (BG.EV.ev.1 x) (z (len xs))) (sumZ xs)
+            (CJ0.wit1-sm (BG.EV.ev.1 x)
+               ((subst (\ k -> CJ0.FA.WitZ k (BG.EV.ev.1 x)) (lower-pos Kx (len xs) N hK) pw.1).1,
+                (\ j -> tt, (subst (\ k -> CJ0.FA.WitZ k (BG.EV.ev.1 x)) (lower-pos Kx (len xs) N hK) pw.1).2.2))
+               (z (len xs)))
+            (r (suc Kx) (trans (sym (plus-suc Kx (len xs))) hK) pw.2) } ;
+
+      -- one evaluated weighted result, with certificates
+      module Corr (ws : Certs) (r : ES.EvResult) {
+        module C = Cert[ws] ;
+        module W = ES.WS.WR[r.1] ;
+        vA : CJ0.E.El = ED.EC0.evc W.v ;
+        -- THE CORRECTION  z = z_N - sum_{i<N} ev(r_i) z_i - ev v
+        zc : CJ0.E.El = CJ0.ML.msub (CJ0.ML.msub (z W.N) (sumZ W.rs)) vA ;
+        -- the kernel-generator terms are sum_q P_q (sum_j h_qj ev(a'_j))
+        kernel-terms : Id CJ1.E.El (ED.CIA.F1.A.f (ED.evE1 W.a')) (C.FS.FH.A.f (C.FS.FH.H.f (ED.evE1 W.a'))) = C.FS.factor (ED.evE1 W.a') ;
+        kernel-J : CJ1.JW (ED.CIA.F1.A.f (ED.evE1 W.a')) = (C.FS.FH.H.f (ED.evE1 W.a'), kernel-terms) ;
+        -- delta z, by linearity
+        d-zc : Id CJ1.E.El (d zc) (CJ1.ML.msub (CJ1.ML.msub (d (z W.N)) (sumD W.rs)) (d vA)) =
+          trans (LD.f-sub (CJ0.ML.msub (z W.N) (sumZ W.rs)) vA)
+            (ap (\ u -> CJ1.ML.msub u (d vA)) (trans (LD.f-sub (z W.N) (sumZ W.rs)) (ap (CJ1.ML.msub (d (z W.N))) (d-sumZ W.rs)))) ;
+        -- (x + y) - x = y
+        add-sub (x y : CJ1.E.El) : Id CJ1.E.El (CJ1.ML.msub (CJ1.E.mod.madd x y) x) y = calc CJ1.E.El {
+          CJ1.E.mod.madd (CJ1.E.mod.madd x y) (CJ1.E.mod.mneg x)
+            =< ap (\ u -> CJ1.E.mod.madd u (CJ1.E.mod.mneg x)) (CJ1.E.mod.maddC x y) > CJ1.E.mod.madd (CJ1.E.mod.madd y x) (CJ1.E.mod.mneg x)
+            =< sym (CJ1.E.mod.maddA y x (CJ1.E.mod.mneg x)) > CJ1.E.mod.madd y (CJ1.E.mod.madd x (CJ1.E.mod.mneg x))
+            =< ap (CJ1.E.mod.madd y) (CJ1.E.mod.maddN x) > CJ1.E.mod.madd y CJ1.E.mod.mz
+            =< CJ1.E.mod.maddZ y > y } ;
+        -- the evaluated identity, minus delta (ev v)
+        ident : Id CJ1.E.El (CJ1.ML.msub (CJ1.ML.msub (ES.cA W.N) (ES.sumA W.rs)) (d vA)) (ED.CIA.F1.A.f (ED.evE1 W.a')) =
+          trans (ap (\ u -> CJ1.ML.msub u (d vA)) r.2.1) (add-sub (d vA) (ED.CIA.F1.A.f (ED.evE1 W.a'))) ;
+        -- delta z = sum_j ev(g_j) ev(a'_j) modulo J
+        cong-d : CJ1.Cong (d zc) (ED.CIA.F1.A.f (ED.evE1 W.a')) =
+          CJ1.cong-trans (d zc) (CJ1.ML.msub (CJ1.ML.msub (ES.cA W.N) (ES.sumA W.rs)) (d vA)) (ED.CIA.F1.A.f (ED.evE1 W.a'))
+            (CJ1.cong-trans (d zc) (CJ1.ML.msub (CJ1.ML.msub (d (z W.N)) (sumD W.rs)) (d vA)) (CJ1.ML.msub (CJ1.ML.msub (ES.cA W.N) (ES.sumA W.rs)) (d vA))
+               (CJ1.cong-of-id (d zc) (CJ1.ML.msub (CJ1.ML.msub (d (z W.N)) (sumD W.rs)) (d vA)) d-zc)
+               (CJ1.cong-sub (CJ1.ML.msub (d (z W.N)) (sumD W.rs)) (CJ1.ML.msub (ES.cA W.N) (ES.sumA W.rs)) (d vA) (d vA)
+                  (CJ1.cong-sub (d (z W.N)) (ES.cA W.N) (sumD W.rs) (ES.sumA W.rs) (CJ1.cong-sym (ES.cA W.N) (d (z W.N)) (hz W.N)) (cong-sumD W.rs))
+                  (CJ1.cong-refl (d vA))))
+            (CJ1.cong-of-id (CJ1.ML.msub (CJ1.ML.msub (ES.cA W.N) (ES.sumA W.rs)) (d vA)) (ED.CIA.F1.A.f (ED.evE1 W.a')) ident) ;
+        -- z is closed in the chart complex of M: delta z in J C^1(-1)
+        closed : CJ1.InJ (d zc) =
+          CJ1.zero-cong (d zc) (CJ1.cong-trans (d zc) (ED.CIA.F1.A.f (ED.evE1 W.a')) CJ1.E.mod.mz cong-d
+            (CJ1.cong-zero (ED.CIA.F1.A.f (ED.evE1 W.a')) (CJ1.in-of (ED.CIA.F1.A.f (ED.evE1 W.a')) kernel-J))) ;
+        -- the degrees: ev(r_i) in I^(N-i) (each in I), ev v in I^(N+1) C^0(S)
+        wit-r : CJ0.FC.Wit (suc zero) (sumZ W.rs) = witS W.N W.rs zero (refl W.N) r.2.2.1 ;
+        wit-v : CJ0.FC.Wit (suc (toB W.N)) vA = r.2.2.2.1 ;
+        rearrange : Id CJ0.E.El (CJ0.ML.msub zc (z zero)) (CJ0.ML.msub (CJ0.ML.msub (CJ0.ML.msub (z W.N) (z zero)) (sumZ W.rs)) vA) =
+          trans (CJ0.ML.sub-comm (CJ0.ML.msub (z W.N) (sumZ W.rs)) vA (z zero))
+            (ap (\ u -> CJ0.ML.msub u vA) (CJ0.ML.sub-comm (z W.N) (sumZ W.rs) (z zero))) ;
+        -- z - z_0 in I C^0(M)
+        reduces : CJ0.IJ (suc zero) (CJ0.ML.msub zc (z zero)) =
+          subst (CJ0.IJ (suc zero)) (sym rearrange)
+            (CJ0.ij-sub (CJ0.ML.msub (CJ0.ML.msub (z W.N) (z zero)) (sumZ W.rs)) vA
+              (CJ0.ij-sub (CJ0.ML.msub (z W.N) (z zero)) (sumZ W.rs) (hcompat W.N) wit-r)
+              (CJ0.wit-one (toB W.N) vA wit-v)) ;
+      } ;
+
+      -- THEOREM (handoff (4)): the finite correction
+      Corrected : U l = (zz : CJ0.E.El) * (CJ1.InJ (d zz) * CJ0.IJ (suc zero) (CJ0.ML.msub zz (z zero))) ;
+      correction : Tr.Trunc[Corrected].carrier =
+        TC.bind Certs Corrected
+          (\ ws -> TC.map ES.EvResult Corrected (\ r -> (Corr[ws,r].zc, (Corr[ws,r].closed, Corr[ws,r].reduces))) ES.evaluated)
+          certs ;
+    } ;
+  } ;
+} ;

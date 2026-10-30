@@ -1,0 +1,175 @@
+-- SeqPoly.seg: polynomials over a module as sequences (artin-rees.tex, §3).
+--
+-- Seq: all sequences Nat -> M, a module pointwise; a polynomial is a
+-- sequence that vanishes from some index on.  Van k g: g j = 0 for j >= k
+-- (g has degree < k).  Xs: multiplication by X (shift).
+-- cst m = emb 1 m: the constant polynomial m, linear in m.
+-- emb k: the block (Fin k -> M) of the coefficients of degree < k, with
+-- inr tt the constant term, as a sequence; trunc k: the first k
+-- coefficients.  emb k u vanishes from k on, trunc (emb u) = u, and
+-- emb (trunc g) = g when g vanishes from k on.
+-- On M[X]_n = (Fin (suc n) -> M): topc n q is the coefficient of degree n,
+-- and Xn n q = trunc (X q) is X q when topc q = 0.  emb, trunc, Xs, Xn
+-- are linear.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Over (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ;
+
+  ------------------------------------------------------------------------
+  -- sequences
+
+  Seq : U l = Nat -> M ;
+  sext (u v : Seq) (h : (j : Nat) -> Id M (u j) (v j)) : Id Seq u v = FE.funext Nat (\ j -> M) u v h ;
+  seq : IP.Mod[A] = IP.mkMod A Seq (\ j -> mz) (\ u v j -> madd (u j) (v j)) (\ u j -> mneg (u j))
+    (\ u v w -> sext _ _ (\ j -> maddA (u j) (v j) (w j)))
+    (\ u v -> sext _ _ (\ j -> maddC (u j) (v j)))
+    (\ u -> sext _ _ (\ j -> maddZ (u j)))
+    (\ u -> sext _ _ (\ j -> maddN (u j)))
+    (\ c u j -> sm c (u j))
+    (\ c c' u -> sext _ _ (\ j -> smA c c' (u j)))
+    (\ u -> sext _ _ (\ j -> smO (u j)))
+    (\ c u v -> sext _ _ (\ j -> smD c (u j) (v j)))
+    (\ c c' u -> sext _ _ (\ j -> smE c c' (u j))) ;
+  Blk (k : Nat) : U l = Fin k -> M ;
+  blk (k : Nat) : IP.Mod[A] = Blocks[l].Pow[A,Md,k].mod ;
+
+  -- vanishing from k on
+  Van (k : Nat) (g : Seq) : U l = (j : Nat) -> Id M (g (plus k j)) mz ;
+  van-up (k : Nat) (g : Seq) (h : Van k g) : Van (suc k) g = \ j -> subst (\ i -> Id M (g i) mz) (plus-suc k j) (h (suc j)) ;
+  van-lift : (e : Nat) (k : Nat) (g : Seq) -> Van k g -> Van (plus e k) g = split {
+    zero -> \ k g h -> h ;
+    suc e | r -> \ k g h -> van-up (plus e k) g (r k g h) } ;
+  van-zero (k : Nat) : Van k (\ j -> mz) = \ j -> refl mz ;
+  van-add (k : Nat) (g g' : Seq) (h : Van k g) (h' : Van k g') : Van k (\ j -> madd (g j) (g' j)) =
+    \ j -> trans (ML.G.cong-add (h j) (h' j)) (maddZ mz) ;
+  van-sm (k : Nat) (c : A.R) (g : Seq) (h : Van k g) : Van k (\ j -> sm c (g j)) =
+    \ j -> trans (ap (sm c) (h j)) (ML.sm-zero c) ;
+  van-neg (k : Nat) (g : Seq) (h : Van k g) : Van k (\ j -> mneg (g j)) =
+    \ j -> trans (ap mneg (h j)) ML.G.neg-zero ;
+  van-cong (k : Nat) (g g' : Seq) (e : Id Seq g g') (h : Van k g) : Van k g' = subst (Van k) e h ;
+
+  -- multiplication by X
+  Xs (g : Seq) : Seq = split { zero -> mz ; suc j -> g j } ;
+  xs-add (g g' : Seq) : (j : Nat) -> Id M (Xs (\ i -> madd (g i) (g' i)) j) (madd (Xs g j) (Xs g' j)) = split {
+    zero -> sym (maddZ mz) ;
+    suc j -> refl (madd (g j) (g' j)) } ;
+  xs-sm (c : A.R) (g : Seq) : (j : Nat) -> Id M (Xs (\ i -> sm c (g i)) j) (sm c (Xs g j)) = split {
+    zero -> sym (ML.sm-zero c) ;
+    suc j -> refl (sm c (g j)) } ;
+
+  ------------------------------------------------------------------------
+  -- blocks as sequences
+
+  embS (k : Nat) (ih : Blk k -> Seq) (u : Blk (suc k)) : Seq = split {
+    zero -> u (inr tt) ;
+    suc j -> ih (\ i -> u (inl i)) j } ;
+  emb : (k : Nat) -> Blk k -> Seq = split {
+    zero -> \ u j -> mz ;
+    suc k | ih -> embS k ih } ;
+
+  van-emb : (k : Nat) (u : Blk k) -> Van k (emb k u) = split {
+    zero -> \ u j -> refl mz ;
+    suc k | r -> \ u j -> r (\ i -> u (inl i)) j } ;
+
+  -- the constant polynomial m: m, 0, 0, ...
+  cst (m : M) : Seq = emb (suc zero) (\ t -> m) ;
+  cst-zero : (i : Nat) -> Id M (cst mz i) mz = split {
+    zero -> refl mz ;
+    suc i -> refl mz } ;
+  cst-add (x y : M) : (j : Nat) -> Id M (cst (madd x y) j) (madd (cst x j) (cst y j)) = split {
+    zero -> refl (madd x y) ;
+    suc j -> sym (maddZ mz) } ;
+  cst-sm (c : A.R) (x : M) : (j : Nat) -> Id M (cst (sm c x) j) (sm c (cst x j)) = split {
+    zero -> refl (sm c x) ;
+    suc j -> sym (ML.sm-zero c) } ;
+  cst-add' (x y : M) : Id Seq (cst (madd x y)) (seq.madd (cst x) (cst y)) = sext _ _ (cst-add x y) ;
+  cst-sm' (c : A.R) (x : M) : Id Seq (cst (sm c x)) (seq.sm c (cst x)) = sext _ _ (cst-sm c x) ;
+
+  emb-addS (k : Nat) (ih : (u v : Blk k) (j : Nat) -> Id M (emb k (\ i -> madd (u i) (v i)) j) (madd (emb k u j) (emb k v j)))
+    (u v : Blk (suc k)) : (j : Nat) -> Id M (emb (suc k) (\ i -> madd (u i) (v i)) j) (madd (emb (suc k) u j) (emb (suc k) v j)) = split {
+    zero -> refl (madd (u (inr tt)) (v (inr tt))) ;
+    suc j -> ih (\ i -> u (inl i)) (\ i -> v (inl i)) j } ;
+  emb-add : (k : Nat) (u v : Blk k) (j : Nat) -> Id M (emb k (\ i -> madd (u i) (v i)) j) (madd (emb k u j) (emb k v j)) = split {
+    zero -> \ u v j -> sym (maddZ mz) ;
+    suc k | ih -> emb-addS k ih } ;
+  emb-smS (k : Nat) (ih : (c : A.R) (u : Blk k) (j : Nat) -> Id M (emb k (\ i -> sm c (u i)) j) (sm c (emb k u j)))
+    (c : A.R) (u : Blk (suc k)) : (j : Nat) -> Id M (emb (suc k) (\ i -> sm c (u i)) j) (sm c (emb (suc k) u j)) = split {
+    zero -> refl (sm c (u (inr tt))) ;
+    suc j -> ih c (\ i -> u (inl i)) j } ;
+  emb-sm : (k : Nat) (c : A.R) (u : Blk k) (j : Nat) -> Id M (emb k (\ i -> sm c (u i)) j) (sm c (emb k u j)) = split {
+    zero -> \ c u j -> sym (ML.sm-zero c) ;
+    suc k | ih -> emb-smS k ih } ;
+
+  trunc : (k : Nat) -> Seq -> Blk k = split {
+    zero -> \ g i -> absurd M i ;
+    suc k | ih -> \ g -> snoc (Fin k) M (ih (\ j -> g (suc j))) (g zero) } ;
+
+  emb-truncS (k : Nat) (ih : (g : Seq) -> Van k g -> (j : Nat) -> Id M (emb k (trunc k g) j) (g j))
+    (g : Seq) (h : Van (suc k) g) : (j : Nat) -> Id M (emb (suc k) (trunc (suc k) g) j) (g j) = split {
+    zero -> refl (g zero) ;
+    suc j -> ih (\ i -> g (suc i)) h j } ;
+  emb-trunc : (k : Nat) (g : Seq) -> Van k g -> (j : Nat) -> Id M (emb k (trunc k g) j) (g j) = split {
+    zero -> \ g h j -> sym (h j) ;
+    suc k | ih -> emb-truncS k ih } ;
+
+  trunc-embS (k : Nat) (ih : (u : Blk k) (i : Fin k) -> Id M (trunc k (emb k u) i) (u i)) (u : Blk (suc k)) :
+    (i : Fin (suc k)) -> Id M (trunc (suc k) (emb (suc k) u) i) (u i) = split {
+    inl i -> ih (\ i' -> u (inl i')) i ;
+    inr t -> Blocks[l].top-eq M (\ t' -> u (inr t')) t } ;
+  trunc-emb : (k : Nat) (u : Blk k) (i : Fin k) -> Id M (trunc k (emb k u) i) (u i) = split {
+    zero -> \ u i -> absurd (Id M (trunc zero (emb zero u) i) (u i)) i ;
+    suc k | ih -> trunc-embS k ih } ;
+
+  trunc-addS (k : Nat) (ih : (g g' : Seq) (i : Fin k) -> Id M (trunc k (\ j -> madd (g j) (g' j)) i) (madd (trunc k g i) (trunc k g' i)))
+    (g g' : Seq) : (i : Fin (suc k)) -> Id M (trunc (suc k) (\ j -> madd (g j) (g' j)) i) (madd (trunc (suc k) g i) (trunc (suc k) g' i)) = split {
+    inl i -> ih (\ j -> g (suc j)) (\ j -> g' (suc j)) i ;
+    inr t -> Blocks[l].top-eq M (\ t' -> madd (g zero) (g' zero)) t } ;
+  trunc-add : (k : Nat) (g g' : Seq) (i : Fin k) -> Id M (trunc k (\ j -> madd (g j) (g' j)) i) (madd (trunc k g i) (trunc k g' i)) = split {
+    zero -> \ g g' i -> absurd (Id M (trunc zero (\ j -> madd (g j) (g' j)) i) (madd (trunc zero g i) (trunc zero g' i))) i ;
+    suc k | ih -> trunc-addS k ih } ;
+  trunc-smS (k : Nat) (ih : (c : A.R) (g : Seq) (i : Fin k) -> Id M (trunc k (\ j -> sm c (g j)) i) (sm c (trunc k g i)))
+    (c : A.R) (g : Seq) : (i : Fin (suc k)) -> Id M (trunc (suc k) (\ j -> sm c (g j)) i) (sm c (trunc (suc k) g i)) = split {
+    inl i -> ih c (\ j -> g (suc j)) i ;
+    inr t -> Blocks[l].top-eq M (\ t' -> sm c (g zero)) t } ;
+  trunc-sm : (k : Nat) (c : A.R) (g : Seq) (i : Fin k) -> Id M (trunc k (\ j -> sm c (g j)) i) (sm c (trunc k g i)) = split {
+    zero -> \ c g i -> absurd (Id M (trunc zero (\ j -> sm c (g j)) i) (sm c (trunc zero g i))) i ;
+    suc k | ih -> trunc-smS k ih } ;
+
+  ------------------------------------------------------------------------
+  -- M[X]_n = Blk (suc n): the top coefficient and X
+
+  topc (n : Nat) (q : Blk (suc n)) : M = emb (suc n) q (plus n zero) ;
+  van-top (n : Nat) (q : Blk (suc n)) (h : Id M (topc n q) mz) : Van n (emb (suc n) q) = split {
+    zero -> h ;
+    suc j -> subst (\ i -> Id M (emb (suc n) q i) mz) (sym (plus-suc n j)) (van-emb (suc n) q j) } ;
+  top-van (n : Nat) (q : Blk (suc n)) (h : Van n (emb (suc n) q)) : Id M (topc n q) mz = h zero ;
+
+  Xn (n : Nat) (q : Blk (suc n)) : Blk (suc n) = trunc (suc n) (Xs (emb (suc n) q)) ;
+  emb-Xn (n : Nat) (q : Blk (suc n)) (h : Id M (topc n q) mz) (j : Nat) : Id M (emb (suc n) (Xn n q) j) (Xs (emb (suc n) q) j) =
+    emb-trunc (suc n) (Xs (emb (suc n) q)) (van-top n q h) j ;
+
+  -- linearity, as equalities of blocks and sequences
+  emb-add' (k : Nat) (u v : Blk k) : Id Seq (emb k ((blk k).madd u v)) (seq.madd (emb k u) (emb k v)) = sext _ _ (emb-add k u v) ;
+  emb-sm' (k : Nat) (c : A.R) (u : Blk k) : Id Seq (emb k ((blk k).sm c u)) (seq.sm c (emb k u)) = sext _ _ (emb-sm k c u) ;
+  xs-add' (g g' : Seq) : Id Seq (Xs (seq.madd g g')) (seq.madd (Xs g) (Xs g')) = sext _ _ (xs-add g g') ;
+  xs-sm' (c : A.R) (g : Seq) : Id Seq (Xs (seq.sm c g)) (seq.sm c (Xs g)) = sext _ _ (xs-sm c g) ;
+  trunc-add' (k : Nat) (g g' : Seq) : Id (Blk k) (trunc k (seq.madd g g')) ((blk k).madd (trunc k g) (trunc k g')) =
+    Blocks[l].Pow[A,Md,k].ext _ _ (trunc-add k g g') ;
+  trunc-sm' (k : Nat) (c : A.R) (g : Seq) : Id (Blk k) (trunc k (seq.sm c g)) ((blk k).sm c (trunc k g)) =
+    Blocks[l].Pow[A,Md,k].ext _ _ (trunc-sm k c g) ;
+  xn-add (n : Nat) (q q' : Blk (suc n)) : Id (Blk (suc n)) (Xn n ((blk (suc n)).madd q q')) ((blk (suc n)).madd (Xn n q) (Xn n q')) =
+    trans (ap (\ g -> trunc (suc n) (Xs g)) (emb-add' (suc n) q q'))
+      (trans (ap (trunc (suc n)) (xs-add' (emb (suc n) q) (emb (suc n) q')))
+        (trunc-add' (suc n) (Xs (emb (suc n) q)) (Xs (emb (suc n) q')))) ;
+  xn-sm (n : Nat) (c : A.R) (q : Blk (suc n)) : Id (Blk (suc n)) (Xn n ((blk (suc n)).sm c q)) ((blk (suc n)).sm c (Xn n q)) =
+    trans (ap (\ g -> trunc (suc n) (Xs g)) (emb-sm' (suc n) c q))
+      (trans (ap (trunc (suc n)) (xs-sm' c (emb (suc n) q)))
+        (trunc-sm' (suc n) c (Xs (emb (suc n) q)))) ;
+  topc-add (n : Nat) (q q' : Blk (suc n)) : Id M (topc n ((blk (suc n)).madd q q')) (madd (topc n q) (topc n q')) =
+    emb-add (suc n) q q' (plus n zero) ;
+  topc-sm (n : Nat) (c : A.R) (q : Blk (suc n)) : Id M (topc n ((blk (suc n)).sm c q)) (sm c (topc n q)) =
+    emb-sm (suc n) c q (plus n zero) ;
+} ;

@@ -1,0 +1,334 @@
+-- Schreyer.seg: the syzygies of a saturated list over R[X]
+-- (artin-rees.tex, §4 (C), Lemma "syzygies de Schreyer").
+--
+-- Tools (no hypothesis on A):
+--   blocks as polynomials: toS b, with kap (toS b) = emb b;
+--   kap (X^e y) (e + m) = kap y m (kap-xpow);
+--   top-mul: if x has degree <= e and v degree <= n, the coefficient of
+--     degree e + n of x v is x_e v_n;
+--   constants: E.constant is additive on finite sums (const-comb); an
+--     element of degree 0 is a constant (const-of).
+-- SyzP n P sat: P a list in M[X]_n = Blk (suc n) with X P cap M[X]_n in P
+--   (sat), v_j = toS p_j in R[X].  With generators rho of the syzygies of
+--   P over A (blocks), sigma of the syzygies of the top coefficients of P,
+--   and X w_k = sum_j c^k_j p_j for w_k = sum_j sigma^k_j p_j (Sat):
+--     rhoS = rho as constants, tau^k = X sigma^k - c^k; both are syzygies
+--     of v, and theta = rhoS, tau generate them (claim, by induction on a
+--     degree bound e: the degree-e coefficients of a syzygy g are a
+--     syzygy of the top coefficients; for e = 0, g is constant and a
+--     combination of rhoS; otherwise g - sum_k mu_k X^(e-1) tau^k has
+--     degree < e).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+
+module Tools (A : CRing) (setA : Pr.isSet A.R) {
+  module PCo = PolyCoef[l].Over[A,setA] ;
+  module E = PCo.E ; module PC = PCo.PC ; module PR = PCo.PR ; module SQ = PCo.SQ ;
+  S : CRing = PCo.S ;
+  K : U l = PCo.K ;
+  Seq : U l = PCo.Seq ;
+  Sq : IP.Mod[A] = PCo.Sq ;
+  module RS = RL[S] ; module RA = RL[A] ; module LQ = PCo.LQ ; module CQ = PCo.CQ ; module CS = PCo.CS ;
+  module RAS = Comb[l].Sums[A,IP.regular A] ;
+  kap (g : K) : Seq = PCo.kap g ;
+
+  kap-inj (g h : K) (e : Id Seq (kap g) (kap h)) : Id K g h =
+    PC.ext g h (\ j -> Pr.happly Nat (\ i -> A.R) (kap g) (kap h) e j) ;
+  kap-neg (g : K) : Id Seq (kap (E.negQ g)) (Sq.mneg (kap g)) =
+    LQ.G.neg-uniq (kap g) (kap (E.negQ g)) (trans (sym (PCo.kap-add g (E.negQ g))) (trans (ap kap (S.addN g)) PCo.kap-zero)) ;
+  at (g h : Seq) (e : Id Seq g h) (j : Nat) : Id A.R (g j) (h j) = Pr.happly Nat (\ i -> A.R) g h e j ;
+
+  sum-at : (m : Nat) (f : Fin m -> Seq) (j : Nat) -> Id A.R (CQ.sum m f j) (RAS.sum m (\ i -> f i j)) = split {
+    zero -> \ f j -> refl A.z ;
+    suc m | r -> \ f j -> ap (A.add (f (inr tt) j)) (r (\ i -> f (inl i)) j) } ;
+
+  kap-ccomb (m : Nat) (c : Fin m -> A.R) (F : Fin m -> K) :
+    Id Seq (kap (CS.comb m (\ j -> E.constant (c j)) F)) (CQ.comb m c (\ j -> kap (F j))) =
+    trans (PCo.kap-sum m (\ j -> E.mulQ (E.constant (c j)) (F j)))
+      (CQ.sum-cong m (\ j -> kap (E.mulQ (E.constant (c j)) (F j))) (\ j -> Sq.sm (c j) (kap (F j)))
+        (\ j -> PCo.kap-cmul (c j) (F j))) ;
+
+  ------------------------------------------------------------------------
+  -- blocks as polynomials
+
+  blistS (m : Nat) (r : SQ.Blk m -> List A.R) (b : SQ.Blk (suc m)) : List A.R = cons (b (inr tt)) (r (\ i -> b (inl i))) ;
+  blist : (m : Nat) -> SQ.Blk m -> List A.R = split {
+    zero -> \ b -> nil ;
+    suc m | r -> blistS m r } ;
+  bcoefS (m : Nat) (r : (b : SQ.Blk m) (j : Nat) -> Id A.R (PR.coef (blist m b) j) (SQ.emb m b j)) (b : SQ.Blk (suc m)) :
+    (j : Nat) -> Id A.R (PR.coef (blist (suc m) b) j) (SQ.emb (suc m) b j) = split {
+    zero -> refl (b (inr tt)) ;
+    suc j -> r (\ i -> b (inl i)) j } ;
+  bcoef : (m : Nat) (b : SQ.Blk m) (j : Nat) -> Id A.R (PR.coef (blist m b) j) (SQ.emb m b j) = split {
+    zero -> \ b j -> refl A.z ;
+    suc m | r -> bcoefS m r } ;
+  toS (m : Nat) (b : SQ.Blk m) : K = E.include (blist m b) ;
+  kap-toS (m : Nat) (b : SQ.Blk m) : Id Seq (kap (toS m b)) (SQ.emb m b) =
+    SQ.sext _ _ (\ j -> trans (PC.coef-include (blist m b) j) (bcoef m b j)) ;
+
+  ------------------------------------------------------------------------
+  -- powers of X, and the top coefficient of a product
+
+  module AP = AffinePowers[l].Over[S] ;
+  xpow (e : Nat) : K = AP.power E.variable e ;
+  kap-xpow : (e : Nat) (y : K) (m : Nat) -> Id A.R (kap (E.mulQ (xpow e) y) (plus e m)) (kap y m) = split {
+    zero -> \ y m -> ap (\ t -> kap t m) (RS.one-left y) ;
+    suc e | r -> \ y m -> trans (ap (\ t -> kap t (suc (plus e m))) (sym (S.mulA E.variable (xpow e) y)))
+                             (trans (PCo.kap-X-at (E.mulQ (xpow e) y) (suc (plus e m))) (r y m)) } ;
+
+  xs-zero-at : (j : Nat) -> Id A.R (SQ.Xs Sq.mz j) A.z = split { zero -> refl A.z ; suc j -> refl A.z } ;
+  tail0 (x : K) (vx : SQ.Van (suc zero) (kap x)) (v : K) : Id Seq (kap (E.mulQ (PC.tail x) v)) Sq.mz =
+    trans (ap (\ t -> kap (E.mulQ t v)) (PCo.van-zero-eq (PC.tail x) (PCo.tail-van x zero vx)))
+      (trans (ap kap (RS.zero-mul v)) PCo.kap-zero) ;
+  van-high (n e : Nat) (v : K) (vv : SQ.Van (suc n) (kap v)) : Id A.R (kap v (suc (plus e n))) A.z =
+    subst {Nat} (\ i -> Id A.R (kap v i) A.z) (ap (\ i -> suc i) (plus-comm n e)) (vv e) ;
+  top-mul : (e n : Nat) (x v : K) -> SQ.Van (suc e) (kap x) -> SQ.Van (suc n) (kap v) ->
+    Id A.R (kap (E.mulQ x v) (plus e n)) (A.mul (kap x e) (kap v n)) = split {
+    zero -> \ n x v vx vv -> trans (at _ _ (PCo.kap-mul x v) n)
+      (trans (ap (A.add (A.mul (PCo.c0 x) (kap v n))) (trans (ap (\ g -> SQ.Xs g n) (tail0 x vx v)) (xs-zero-at n)))
+        (A.addZ (A.mul (PCo.c0 x) (kap v n)))) ;
+    suc e | r -> \ n x v vx vv -> trans (at _ _ (PCo.kap-mul x v) (suc (plus e n)))
+      (trans (ap (\ a -> A.add a (kap (E.mulQ (PC.tail x) v) (plus e n)))
+                (trans (ap (A.mul (PCo.c0 x)) (van-high n e v vv)) (RA.mul-zero (PCo.c0 x))))
+        (trans (RA.zl (kap (E.mulQ (PC.tail x) v) (plus e n)))
+          (trans (r n (PC.tail x) v (PCo.tail-van x (suc e) vx) vv)
+            (ap (\ a -> A.mul a (kap v n)) (PC.tail-coef x e))))) } ;
+
+  ------------------------------------------------------------------------
+  -- constants
+
+  cseq-z : (k : Nat) -> Id A.R (PCo.cseq A.z k) A.z = split { zero -> refl A.z ; suc k -> refl A.z } ;
+  const-zero : Id K (E.constant A.z) E.zeroQ =
+    kap-inj (E.constant A.z) E.zeroQ (trans (PCo.kap-const A.z) (trans (SQ.sext _ _ cseq-z) (sym PCo.kap-zero))) ;
+  const-sum : (m : Nat) (f : Fin m -> A.R) -> Id K (E.constant (RAS.sum m f)) (CS.sum m (\ i -> E.constant (f i))) = split {
+    zero -> \ f -> const-zero ;
+    suc m | r -> \ f -> trans (E.constant-add (f (inr tt)) (RAS.sum m (\ i -> f (inl i))))
+                              (ap (E.addQ (E.constant (f (inr tt)))) (r (\ i -> f (inl i)))) } ;
+  const-comb (m : Nat) (c f : Fin m -> A.R) :
+    Id K (E.constant (RAS.comb m c f)) (CS.comb m (\ i -> E.constant (c i)) (\ i -> E.constant (f i))) =
+    trans (const-sum m (\ i -> A.mul (c i) (f i)))
+      (CS.sum-cong m (\ i -> E.constant (A.mul (c i) (f i))) (\ i -> E.mulQ (E.constant (c i)) (E.constant (f i)))
+        (\ i -> E.constant-mul (c i) (f i))) ;
+  c1-at (x : K) (vx : SQ.Van (suc zero) (kap x)) : (k : Nat) -> Id A.R (kap x k) (PCo.cseq (PCo.c0 x) k) = split {
+    zero -> refl (PCo.c0 x) ;
+    suc k -> vx k } ;
+  const-of (x : K) (vx : SQ.Van (suc zero) (kap x)) : Id K x (E.constant (PCo.c0 x)) =
+    kap-inj x (E.constant (PCo.c0 x)) (trans (SQ.sext _ _ (c1-at x vx)) (sym (PCo.kap-const (PCo.c0 x)))) ;
+} ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (disc : Coherent[l].Over[A,IP.regular A].Disc)
+  (coh : Coherent[l].Over[A,IP.regular A].Coh) (flA : Coherent[l].Over[A,IP.regular A].FL) {
+  module T = Tools[A,setA] ;
+  module HD = HilbertD[l].Over[A,setA,disc,coh,flA] ;
+  module PCo = T.PCo ; module E = T.E ; module SQ = T.SQ ;
+  S : CRing = T.S ;
+  K : U l = T.K ;
+  Seq : U l = T.Seq ;
+  Sq : IP.Mod[A] = T.Sq ;
+  module CA = Coherent[l].Over[A,IP.regular A] ;
+  module CSo = Coherent[l].Over[S,IP.regular S] ;
+  module LS = IP.ModL[S,IP.regular S] ;
+
+  module SyzP (n : Nat) (P : List (SQ.Blk (suc n)))
+    (sat : (q : SQ.Blk (suc n)) -> Spans[l].Over[A,SQ.blk (suc n)].Mm P q -> Id A.R (SQ.topc n q) A.z ->
+           Spans[l].Over[A,SQ.blk (suc n)].Mm P (SQ.Xn n q)) {
+    B : IP.Mod[A] = SQ.blk (suc n) ;
+    BM : U l = SQ.Blk (suc n) ;
+    module LB = Comb[l].Lists[A,B] ; module CB = Comb[l].Sums[A,B] ; module MB = Spans[l].Over[A,B] ;
+    module CBo = Coherent[l].Over[A,B] ;
+    module EM = LinIso[l].Map[A,B,Sq,SQ.emb (suc n),SQ.emb-add' (suc n),SQ.emb-sm' (suc n)] ;
+    module TM = LinIso[l].Map[A,B,IP.regular A,SQ.topc n,SQ.topc-add n,SQ.topc-sm n] ;
+    t : Nat = len P ;
+    pe (j : Fin t) : BM = LB.elem P j ;
+    v (j : Fin t) : K = T.toS (suc n) (pe j) ;
+    tp (j : Fin t) : A.R = SQ.topc n (pe j) ;
+    module FS = Comb[l].Free[S,t] ; module FA = Comb[l].Free[A,t] ;
+    module VSv = FinCat[l].Vecs[S,t] ;
+    module LV = IP.ModL[S,FS.mod] ;
+    SyzS (g : FS.Vec) : U l = CSo.Syz t v g ;
+
+    kap-cv (c : FA.Vec) : Id Seq (T.kap (T.CS.comb t (\ j -> E.constant (c j)) v)) (SQ.emb (suc n) (CB.comb t c pe)) =
+      trans (T.kap-ccomb t c v)
+        (trans (T.CQ.sum-cong t (\ j -> Sq.sm (c j) (T.kap (v j))) (\ j -> Sq.sm (c j) (SQ.emb (suc n) (pe j)))
+                  (\ j -> ap (Sq.sm (c j)) (T.kap-toS (suc n) (pe j))))
+          (sym (EM.comb-map t c pe))) ;
+    blk-inj (x y : BM) (e : Id Seq (SQ.emb (suc n) x) (SQ.emb (suc n) y)) : Id BM x y =
+      Blocks[l].Pow[A,IP.regular A,suc n].ext x y (\ i ->
+        trans (sym (SQ.trunc-emb (suc n) x i))
+          (trans (Pr.happly (Fin (suc n)) (\ i' -> A.R) _ _ (ap (SQ.trunc (suc n)) e) i) (SQ.trunc-emb (suc n) y i))) ;
+    van-v (j : Fin t) : SQ.Van (suc n) (T.kap (v j)) =
+      SQ.van-cong (suc n) (SQ.emb (suc n) (pe j)) (T.kap (v j)) (sym (T.kap-toS (suc n) (pe j))) (SQ.van-emb (suc n) (pe j)) ;
+    kv-top (j : Fin t) : Id A.R (T.kap (v j) n) (tp j) =
+      trans (T.at _ _ (T.kap-toS (suc n) (pe j)) n) (ap (SQ.emb (suc n) (pe j)) (sym (plus-zero n))) ;
+
+    -- the coefficient of degree e + n of sum g_j v_j
+    top-sum (e : Nat) (g : FS.Vec) (vg : (j : Fin t) -> SQ.Van (suc e) (T.kap (g j))) :
+      Id A.R (T.kap (T.CS.comb t g v) (plus e n)) (T.RAS.comb t (\ j -> T.kap (g j) e) tp) =
+      trans (T.at _ _ (PCo.kap-sum t (\ j -> E.mulQ (g j) (v j))) (plus e n))
+        (trans (T.sum-at t (\ j -> T.kap (E.mulQ (g j) (v j))) (plus e n))
+          (T.RAS.sum-cong t (\ j -> T.kap (E.mulQ (g j) (v j)) (plus e n)) (\ j -> A.mul (T.kap (g j) e) (tp j))
+            (\ j -> trans (T.top-mul e n (g j) (v j) (vg j) (van-v j)) (ap (A.mul (T.kap (g j) e)) (kv-top j))))) ;
+    top-syz (e : Nat) (g : FS.Vec) (vg : (j : Fin t) -> SQ.Van (suc e) (T.kap (g j))) (sz : SyzS g) :
+      CA.Syz t tp (\ j -> T.kap (g j) e) =
+      trans (sym (top-sum e g vg)) (trans (T.at _ _ (ap T.kap sz) (plus e n)) (PCo.PC.coef-zero (plus e n))) ;
+
+    module WithGens (a : Nat) (rho : Fin a -> FA.Vec) (rsyz : CBo.SyzAll t pe a rho) (runiv : CBo.Univ t pe a rho)
+      (b : Nat) (sg : Fin b -> FA.Vec) (ssyz : CA.SyzAll t tp b sg) (suniv : CA.Univ t tp b sg) {
+      w (k : Fin b) : BM = CB.comb t (sg k) pe ;
+      top-w (k : Fin b) : Id A.R (SQ.topc n (w k)) A.z = trans (TM.comb-map t (sg k) pe) (ssyz k) ;
+      Cw (k : Fin b) : U l = (c : FA.Vec) * Id BM (CB.comb t c pe) (SQ.Xn n (w k)) ;
+      cw (k : Fin b) : Tr.Trunc[Cw k].carrier =
+        MB.mm-rec P (SQ.Xn n (w k)) (Tr.Trunc[Cw k].carrier) Tr.Trunc[Cw k].proposition
+          (\ i -> Tr.Trunc[Cw k].inc (LB.in-fam P (SQ.Xn n (w k)) i))
+          (sat (w k) (MB.mm P (w k) (LB.fam-in P (w k) (sg k, refl (w k)))) (top-w k)) ;
+      xw (k : Fin b) : Id Seq (SQ.emb (suc n) (SQ.Xn n (w k))) (SQ.Xs (SQ.emb (suc n) (w k))) =
+        SQ.sext _ _ (SQ.emb-Xn n (w k) (top-w k)) ;
+      rhoS (i : Fin a) : FS.Vec = \ j -> E.constant (rho i j) ;
+      p : Nat = plus a b ;
+
+      module WithC (cs : Fin b -> FA.Vec) (ceq : (k : Fin b) -> Id BM (CB.comb t (cs k) pe) (SQ.Xn n (w k))) {
+        tau (k : Fin b) : FS.Vec = \ j -> E.addQ (E.mulQ E.variable (E.constant (sg k j))) (E.negQ (E.constant (cs k j))) ;
+        theta : Fin p -> FS.Vec = FinCat[l].cat FS.Vec a b rhoS tau ;
+
+        rho-syz (i : Fin a) : SyzS (rhoS i) =
+          T.kap-inj _ _ (trans (kap-cv (rho i)) (trans (ap (SQ.emb (suc n)) (rsyz i)) (trans EM.hz (sym PCo.kap-zero)))) ;
+        tau-comb (k : Fin b) : Id K (T.CS.comb t (tau k) v)
+          (E.addQ (E.mulQ E.variable (T.CS.comb t (\ j -> E.constant (sg k j)) v)) (E.negQ (T.CS.comb t (\ j -> E.constant (cs k j)) v))) =
+          trans (T.CS.comb-add t (\ j -> E.mulQ E.variable (E.constant (sg k j))) (\ j -> E.negQ (E.constant (cs k j))) v)
+            (LS.G.cong-add (T.CS.comb-sm t E.variable (\ j -> E.constant (sg k j)) v) (T.CS.comb-neg t (\ j -> E.constant (cs k j)) v)) ;
+        tau-syz (k : Fin b) : SyzS (tau k) =
+          T.kap-inj _ _ (trans (ap T.kap (tau-comb k))
+            (trans (PCo.kap-add (E.mulQ E.variable (T.CS.comb t (\ j -> E.constant (sg k j)) v)) (E.negQ (T.CS.comb t (\ j -> E.constant (cs k j)) v)))
+              (trans (T.LQ.G.cong-add (trans (PCo.kap-X (T.CS.comb t (\ j -> E.constant (sg k j)) v)) (ap SQ.Xs (kap-cv (sg k))))
+                        (trans (T.kap-neg (T.CS.comb t (\ j -> E.constant (cs k j)) v))
+                          (ap Sq.mneg (trans (kap-cv (cs k)) (trans (ap (SQ.emb (suc n)) (ceq k)) (xw k))))))
+                (trans (Sq.maddN (SQ.Xs (SQ.emb (suc n) (w k)))) (sym PCo.kap-zero))))) ;
+        theta-syz : CSo.SyzAll t v p theta = FinCat[l].cat-all FS.Vec a b rhoS tau SyzS rho-syz tau-syz ;
+
+        ----------------------------------------------------------------
+        -- every syzygy is a combination of theta
+
+        Claim (e : Nat) : U l = (g : FS.Vec) -> ((j : Fin t) -> SQ.Van (suc e) (T.kap (g j))) -> SyzS g -> VSv.MemV p theta g ;
+
+        module Z0 (g : FS.Vec) (vg : (j : Fin t) -> SQ.Van (suc zero) (T.kap (g j))) (sz : SyzS g) {
+          c (j : Fin t) : A.R = PCo.c0 (g j) ;
+          geq : Id FS.Vec g (\ j -> E.constant (c j)) = FS.ext _ _ (\ j -> T.const-of (g j) (vg j)) ;
+          bsyz : CBo.Syz t pe c =
+            blk-inj (CB.comb t c pe) B.mz
+              (trans (sym (kap-cv c))
+                (trans (ap (\ h -> T.kap (T.CS.comb t h v)) (sym geq)) (trans (ap T.kap sz) (trans PCo.kap-zero (sym EM.hz))))) ;
+          pw (lam : Fin a -> A.R) (el : Id FA.Vec (FA.VS.comb a lam rho) c) (j : Fin t) :
+            Id K (FS.VS.comb a (\ i -> E.constant (lam i)) rhoS j) (E.constant (c j)) =
+            trans (FS.comb-at a (\ i -> E.constant (lam i)) rhoS j)
+              (trans (sym (T.const-comb a lam (\ i -> rho i j)))
+                (ap E.constant (trans (sym (FA.comb-at a lam rho j)) (Pr.happly (Fin t) (\ i -> A.R) _ _ el j)))) ;
+          fromA (lam : Fin a -> A.R) (el : Id FA.Vec (FA.VS.comb a lam rho) c) : VSv.MemV a rhoS g =
+            VSv.memv-cong a rhoS (FS.VS.comb a (\ i -> E.constant (lam i)) rhoS) g
+              (trans (FS.ext _ _ (pw lam el)) (sym geq)) (VSv.memv-comb a rhoS (\ i -> E.constant (lam i))) ;
+          result : VSv.MemV p theta g =
+            Tr.Trunc[CBo.InFV t a rho c].induction @l (\ x -> VSv.MemV p theta g) (\ x -> VSv.memv-prop p theta g)
+              (\ le -> VSv.memv-cong p theta (FS.mod.madd g FS.mod.mz) g (FS.mod.maddZ g)
+                 (VSv.memv-cat a b rhoS tau g FS.mod.mz (fromA le.1 le.2) (VSv.memv-zero b tau)))
+              (runiv c bsyz) ;
+        } ;
+
+        module Z1 (e : Nat) (ih : Claim e) (g : FS.Vec) (vg : (j : Fin t) -> SQ.Van (suc (suc e)) (T.kap (g j))) (sz : SyzS g)
+          (mu : Fin b -> A.R) (emu : Id FA.Vec (FA.VS.comb b mu sg) (\ j -> T.kap (g j) (suc e))) {
+          mut (k : Fin b) : K = E.mulQ (E.constant (mu k)) (T.xpow e) ;
+          delta : FS.Vec = FS.VS.comb b mut tau ;
+          g1 : FS.Vec = \ j -> E.addQ (g j) (E.negQ (delta j)) ;
+          split-eq : Id FS.Vec g (FS.mod.madd g1 delta) =
+            FS.ext _ _ (\ j -> sym (Spans[l].Over[S,IP.regular S].sub-add (g j) (delta j))) ;
+          delta-mem : VSv.MemV p theta delta =
+            VSv.memv-cong p theta (FS.mod.madd FS.mod.mz delta) delta (LV.G.zl delta)
+              (VSv.memv-cat a b rhoS tau FS.mod.mz delta (VSv.memv-zero a rhoS) (VSv.memv-comb b tau mut)) ;
+          delta-syz : SyzS delta =
+            trans (Comb[l].Bilinear[S,IP.regular S].comb-comb t b mut tau v)
+              (T.CS.comb-vanish b mut (\ k -> T.CS.comb t (tau k) v) tau-syz) ;
+          g1-syz : SyzS g1 =
+            trans (T.CS.comb-add t g (\ j -> E.negQ (delta j)) v)
+              (trans (LS.G.cong-add sz (trans (T.CS.comb-neg t delta v) (trans (ap E.negQ delta-syz) T.RS.neg-zero)))
+                (S.addZ E.zeroQ)) ;
+
+          -- the coefficients of delta_j from degree e + 1 on
+          tau-at (k : Fin b) (j : Fin t) (i : Nat) :
+            Id A.R (T.kap (tau k j) (suc i)) (A.add (PCo.cseq (sg k j) i) (A.neg A.z)) =
+            trans (T.at _ _ (PCo.kap-add (E.mulQ E.variable (E.constant (sg k j))) (E.negQ (E.constant (cs k j)))) (suc i))
+              (trans (ap (\ x -> A.add x (T.kap (E.negQ (E.constant (cs k j))) (suc i)))
+                        (trans (PCo.kap-X-at (E.constant (sg k j)) (suc i)) (T.at _ _ (PCo.kap-const (sg k j)) i)))
+                (ap (A.add (PCo.cseq (sg k j) i))
+                  (trans (T.at _ _ (T.kap-neg (E.constant (cs k j))) (suc i)) (ap A.neg (T.at _ _ (PCo.kap-const (cs k j)) (suc i)))))) ;
+          dterm (j : Fin t) (i : Nat) (k : Fin b) :
+            Id A.R (T.kap (E.mulQ (mut k) (tau k j)) (suc (plus e i))) (A.mul (mu k) (A.add (PCo.cseq (sg k j) i) (A.neg A.z))) =
+            trans (ap (\ x -> T.kap x (suc (plus e i))) (sym (S.mulA (E.constant (mu k)) (T.xpow e) (tau k j))))
+              (trans (T.at _ _ (PCo.kap-cmul (mu k) (E.mulQ (T.xpow e) (tau k j))) (suc (plus e i)))
+                (ap (A.mul (mu k))
+                  (trans (ap (T.kap (E.mulQ (T.xpow e) (tau k j))) (sym (plus-suc e i)))
+                    (trans (T.kap-xpow e (tau k j) (suc i)) (tau-at k j i))))) ;
+          dsum (j : Fin t) (i : Nat) :
+            Id A.R (T.kap (delta j) (suc (plus e i))) (T.RAS.sum b (\ k -> A.mul (mu k) (A.add (PCo.cseq (sg k j) i) (A.neg A.z)))) =
+            trans (ap (\ x -> T.kap x (suc (plus e i))) (FS.comb-at b mut tau j))
+              (trans (T.at _ _ (PCo.kap-sum b (\ k -> E.mulQ (mut k) (tau k j))) (suc (plus e i)))
+                (trans (T.sum-at b (\ k -> T.kap (E.mulQ (mut k) (tau k j))) (suc (plus e i)))
+                  (T.RAS.sum-cong b _ _ (dterm j i)))) ;
+          g1-at (j : Fin t) (i : Nat) :
+            Id A.R (T.kap (g1 j) (suc (plus e i))) (A.add (T.kap (g j) (suc (plus e i))) (A.neg (T.kap (delta j) (suc (plus e i))))) =
+            trans (T.at _ _ (PCo.kap-add (g j) (E.negQ (delta j))) (suc (plus e i)))
+              (ap (A.add (T.kap (g j) (suc (plus e i)))) (T.at _ _ (T.kap-neg (delta j)) (suc (plus e i)))) ;
+          -- degree e + 1: the coefficient of g_j minus sum_k mu_k sigma^k_j
+          low (j : Fin t) : Id A.R (T.kap (delta j) (suc (plus e zero))) (T.kap (g j) (suc (plus e zero))) =
+            trans (dsum j zero)
+              (trans (T.RAS.sum-cong b _ (\ k -> A.mul (mu k) (sg k j))
+                        (\ k -> ap (A.mul (mu k)) (trans (ap (A.add (sg k j)) T.RA.neg-zero) (A.addZ (sg k j)))))
+                (trans (sym (FA.comb-at b mu sg j))
+                  (trans (Pr.happly (Fin t) (\ i -> A.R) _ _ emu j)
+                    (ap (\ m -> T.kap (g j) (suc m)) (sym (plus-zero e)))))) ;
+          high (j : Fin t) (i : Nat) : Id A.R (T.kap (delta j) (suc (plus e (suc i)))) A.z =
+            trans (dsum j (suc i))
+              (trans (T.RAS.sum-cong b _ (\ k -> A.z)
+                        (\ k -> trans (ap (A.mul (mu k)) (A.addN A.z)) (T.RA.mul-zero (mu k))))
+                (T.RAS.sum-zero b)) ;
+          g-high (j : Fin t) (i : Nat) : Id A.R (T.kap (g j) (suc (plus e (suc i)))) A.z =
+            subst {Nat} (\ m -> Id A.R (T.kap (g j) m) A.z) (sym (ap (\ m -> suc m) (plus-suc e i))) (vg j i) ;
+          van-case (j : Fin t) : (i : Nat) ->
+            Id A.R (A.add (T.kap (g j) (suc (plus e i))) (A.neg (T.kap (delta j) (suc (plus e i))))) A.z = split {
+            zero -> trans (ap (\ x -> A.add (T.kap (g j) (suc (plus e zero))) (A.neg x)) (low j)) (A.addN (T.kap (g j) (suc (plus e zero)))) ;
+            suc i -> trans (ap (\ x -> A.add x (A.neg (T.kap (delta j) (suc (plus e (suc i)))))) (g-high j i))
+                       (trans (ap (\ x -> A.add A.z (A.neg x)) (high j i)) (A.addN A.z)) } ;
+          van-g1 (j : Fin t) : SQ.Van (suc e) (T.kap (g1 j)) = \ i -> trans (g1-at j i) (van-case j i) ;
+
+          result : VSv.MemV p theta g =
+            VSv.memv-cong p theta (FS.mod.madd g1 delta) g (sym split-eq)
+              (VSv.memv-add p theta g1 delta (ih g1 van-g1 g1-syz) delta-mem) ;
+        } ;
+
+        claimS (e : Nat) (ih : Claim e) : Claim (suc e) = \ g vg sz ->
+          Tr.Trunc[CA.InFV t b sg (\ j -> T.kap (g j) (suc e))].induction @l (\ x -> VSv.MemV p theta g) (\ x -> VSv.memv-prop p theta g)
+            (\ me -> Z1[e, ih, g, vg, sz, me.1, me.2].result)
+            (suniv (\ j -> T.kap (g j) (suc e)) (top-syz (suc e) g vg sz)) ;
+        claim : (e : Nat) -> Claim e = split {
+          zero -> \ g vg sz -> Z0[g, vg, sz].result ;
+          suc e | ih -> claimS e ih } ;
+
+        kuniv : CSo.Univ t v p theta = \ g sz ->
+          Tr.Trunc[HD.Bnd t g E.zeroQ].induction @l (\ x -> VSv.MemV p theta g) (\ x -> VSv.memv-prop p theta g)
+            (\ bd -> claim bd.1 g (\ j -> SQ.van-up bd.1 (T.kap (g j)) (bd.2.1 j)) sz)
+            (HD.bounds t g E.zeroQ) ;
+        cohw : CSo.CohW t v = (p, (theta, (theta-syz, kuniv))) ;
+      } ;
+
+      result : Tr.Trunc[CSo.CohW t v].carrier =
+        Tr.Trunc[(k : Fin b) -> Cw k].induction @l (\ x -> Tr.Trunc[CSo.CohW t v].carrier) (\ x -> Tr.Trunc[CSo.CohW t v].proposition)
+          (\ cc -> Tr.Trunc[CSo.CohW t v].inc WithC[\ k -> (cc k).1, \ k -> (cc k).2].cohw)
+          (FinCat[l].fchoice b Cw cw) ;
+    } ;
+
+    -- (C) for the v_j
+    coh-v : Tr.Trunc[CSo.CohW t v].carrier =
+      Tr.Trunc[CBo.CohW t pe].induction @l (\ x -> Tr.Trunc[CSo.CohW t v].carrier) (\ x -> Tr.Trunc[CSo.CohW t v].proposition)
+        (\ R -> Tr.Trunc[CA.CohW t tp].induction @l (\ x -> Tr.Trunc[CSo.CohW t v].carrier) (\ x -> Tr.Trunc[CSo.CohW t v].proposition)
+           (\ Sg -> WithGens[R.1, R.2.1, R.2.2.1, R.2.2.2, Sg.1, Sg.2.1, Sg.2.2.1, Sg.2.2.2].result)
+           (coh t tp))
+        (HD.cohAll (suc n) t pe) ;
+  } ;
+} ;

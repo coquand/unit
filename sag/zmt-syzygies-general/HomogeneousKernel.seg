@@ -1,0 +1,135 @@
+-- HomogeneousKernel: a finite homogeneous matrix over a coherent graded
+-- ring with finite nonnegative homogeneous decompositions has a merely
+-- finite homogeneous generating matrix for its kernel. Source and target
+-- have arbitrary finite ranks and nonnegative shifts. The proof takes
+-- ordinary coherent kernel generators, decomposes every coordinate in a
+-- common finite degree interval, and projects their generating equations.
+-- All degree statements and extraction hold at every integer degree.
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module NA = NatArith[l] ;
+module PA = PolynomialAction4[l] ; module WP = WeightedParts4[l] ; module BR = PolynomialRing4Bridge[l] ;
+module SP = ShiftedParts[l] ; module FC = FreeCoherent[l] ; module LSL = LaurentSyzygyLift4[l] ;
+
+module Over (A : CRing) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+ module L = Laws[A,t,R,setR,G] ; module P = FiniteHomogeneousPieces[l].Over[A,t,R,setR,G] ;
+ module D = SP.Over[A,t,R,setR,G] ; module W = WP.Over[R,setR] ;
+ module RS = Comb[l].Sums[R,IP.regular R] ;
+ module F (r : Nat) { module V = Comb[l].Free[R,r] ; } ;
+ Vec (r : Nat) : U l = F[r].V.Vec ;
+ part (r : Nat) (d : Ps.Fin r -> Base.Nat) (n : Int) (x : Vec r) : Vec r = \ i -> G.pr (PA.minus n (d i)) (x i) ;
+ HomV (r : Nat) (d : Ps.Fin r -> Base.Nat) (n : Int) (x : Vec r) : U l = (i : Ps.Fin r) -> L.Hom (PA.minus n (d i)) (x i) ;
+ -- Projection commutes with any homogeneous matrix, between shifted
+ -- free modules. This identity supplies both kernel closure and extraction.
+ module Action (a r : Nat) (d : Ps.Fin a -> Base.Nat) (c : Ps.Fin r -> Base.Nat)
+  (m : Ps.Fin a -> Vec r) (hm : (i : Ps.Fin a) (j : Ps.Fin r) -> L.Hom (PA.minus (pos (d i)) (c j)) (m i j)) {
+  act (y : Vec a) : Vec r = F[r].V.VS.comb a y m ;
+  Syz (y : Vec a) : U l = Id (Vec r) (act y) (\ j -> R.z) ;
+  term (n : Int) (x : R.R) (i : Ps.Fin a) (j : Ps.Fin r) :
+   Id R.R (G.pr (PA.minus n (c j)) (R.mul x (m i j))) (R.mul (G.pr (PA.minus n (d i)) x) (m i j)) =
+   trans (G.pr-mul (PA.minus n (c j)) (PA.minus (pos (d i)) (c j)) x (m i j) (hm i j))
+    (ap (\ e -> R.mul (G.pr e x) (m i j)) (trans (SP.sub-shift n (pos (d i)) (c j)) (sub-pos n (d i)))) ;
+  project-at (n : Int) (y : Vec a) (j : Ps.Fin r) : Id R.R (G.pr (PA.minus n (c j)) (act y j)) (act (part a d n y) j) =
+   trans (ap (G.pr (PA.minus n (c j))) (F[r].V.comb-at a y m j))
+    (trans (L.pr-sum (PA.minus n (c j)) a (\ i -> R.mul (y i) (m i j)))
+     (trans (RS.sum-cong a (\ i -> G.pr (PA.minus n (c j)) (R.mul (y i) (m i j))) (\ i -> R.mul (G.pr (PA.minus n (d i)) (y i)) (m i j)) (\ i -> term n (y i) i j)) (sym (F[r].V.comb-at a (part a d n y) m j)))) ;
+  kernel-part (n : Int) (y : Vec a) (hy : Syz y) : Syz (part a d n y) =
+   F[r].V.ext _ _ (\ j -> trans (sym (project-at n y j))
+    (trans (ap (\ x -> G.pr (PA.minus n (c j)) (x j)) hy) (L.pr-zero (PA.minus n (c j))))) ;
+ } ;
+ module Matrix (a r : Nat) (d : Ps.Fin a -> Base.Nat) (c : Ps.Fin r -> Base.Nat)
+  (m : Ps.Fin a -> Vec r) (hm : (i : Ps.Fin a) (j : Ps.Fin r) -> L.Hom (PA.minus (pos (d i)) (c j)) (m i j)) {
+  module AC = Action[a,r,d,c,m,hm] ;
+  act (y : Vec a) : Vec r = AC.act y ;
+  Syz (y : Vec a) : U l = AC.Syz y ;
+  kernel-part (n : Int) (y : Vec a) (hy : Syz y) : Syz (part a d n y) = AC.kernel-part n y hy ;
+  -- A supplied ordinary generation equation is projected to coefficients
+  -- in exactly the required degrees. No degree hypothesis on them.
+  module Extract (p : Nat) (e : Ps.Fin p -> Base.Nat) (h : Ps.Fin p -> Vec a)
+   (hh : (j : Ps.Fin p) -> HomV a d (pos (e j)) (h j))
+   (n : Int) (y : Vec a) (hy : HomV a d n y) (z : Vec p)
+   (eq : Id (Vec a) (F[a].V.VS.comb p z h) y) {
+   module H = Action[p,a,e,d,h,hh] ;
+   coeff : Vec p = part p e n z ;
+   homogeneous : HomV p e n coeff = \ j -> L.hom-pr (PA.minus n (e j)) (z j) ;
+   equation : Id (Vec a) (F[a].V.VS.comb p coeff h) y = F[a].V.ext _ _ (\ i ->
+    trans (sym (H.project-at n z i))
+      (trans (ap (\ x -> G.pr (PA.minus n (d i)) (x i)) eq) (hy i))) ;
+  } ;
+  -- The witness contains ordinary generation as well as homogeneous
+  -- generation. The latter permits every integer, including negatives.
+  Gen (p : Nat) (h : Ps.Fin p -> Vec a) : U l =
+   (y : Vec a) -> Syz y -> Tr.Trunc[(z : Vec p) * Id (Vec a) (F[a].V.VS.comb p z h) y].carrier ;
+  HGen (p : Nat) (e : Ps.Fin p -> Base.Nat) (h : Ps.Fin p -> Vec a) : U l =
+   (n : Int) (y : Vec a) -> HomV a d n y -> Syz y ->
+    Tr.Trunc[(z : Vec p) * (HomV p e n z * Id (Vec a) (F[a].V.VS.comb p z h) y)].carrier ;
+  Data : U l = (p : Nat) * ((e : Ps.Fin p -> Base.Nat) * ((h : Ps.Fin p -> Vec a) *
+   (((j : Ps.Fin p) -> HomV a d (pos (e j)) (h j)) *
+    (((j : Ps.Fin p) -> Syz (h j)) * (Gen p h * HGen p e h))))) ;
+  module Witness (w : Data) {
+   rank : Nat = w.1 ; shifts : Ps.Fin rank -> Base.Nat = w.2.1 ;
+   columns : Ps.Fin rank -> Vec a = w.2.2.1 ;
+   homogeneous : (j : Ps.Fin rank) -> HomV a d (pos (shifts j)) (columns j) = w.2.2.2.1 ;
+   identity : (j : Ps.Fin rank) -> Syz (columns j) = w.2.2.2.2.1 ;
+   generate : Gen rank columns = w.2.2.2.2.2.1 ;
+   lift : HGen rank shifts columns = w.2.2.2.2.2.2 ;
+  } ;
+  module Construct (w : Coherent[l].Over[R,F[r].V.mod].CohW a m)
+   (reps : (k : Ps.Fin w.1) (i : Ps.Fin a) -> P.Rep (w.2.1 k i)) {
+   p : Nat = w.1 ; h : Ps.Fin p -> Vec a = w.2.1 ;
+   B : Base.Nat = WP.sumN p (\ k -> WP.sumN a (\ i -> D.bnd (d i) (reps k i).1)) ;
+   bounded (k : Ps.Fin p) (i : Ps.Fin a) : NA.Le (D.bnd (d i) (reps k i).1) B =
+    NA.le-trans _ _ _ (WP.le-sumN a (\ j -> D.bnd (d j) (reps k j).1) i)
+      (WP.le-sumN p (\ k -> WP.sumN a (\ j -> D.bnd (d j) (reps k j).1)) k) ;
+   q : Nat = BR.toR (suc B) ; b : Nat = WP.mulF q p ;
+   old (j : Ps.Fin b) : Ps.Fin p = (WP.decode q p j).1 ;
+   e (j : Ps.Fin b) : Base.Nat = WP.rangeN B (WP.decode q p j).2 ;
+   H (j : Ps.Fin b) : Vec a = part a d (pos (e j)) (h (old j)) ;
+   homogeneous (j : Ps.Fin b) : HomV a d (pos (e j)) (H j) = \ i -> L.hom-pr (PA.minus (pos (e j)) (d i)) (h (old j) i) ;
+   identity (j : Ps.Fin b) : Syz (H j) = kernel-part (pos (e j)) (h (old j)) (w.2.2.1 (old j)) ;
+   reconstruct (k : Ps.Fin p) (i : Ps.Fin a) :
+    Id R.R (RS.sum q (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) (d i)) (h k i))) (h k i) =
+    D.decomp (d i) B (h k i) (reps k i) (bounded k i) ;
+   module Generate (y : Vec a) (z : Vec p) (eq : Id (Vec a) (F[a].V.VS.comb p z h) y) {
+    coeff (j : Ps.Fin b) : R.R = z (old j) ;
+    equation : Id (Vec a) (F[a].V.VS.comb b coeff H) y = F[a].V.ext _ _ (\ i -> calc R.R {
+     F[a].V.VS.comb b coeff H i
+      =< F[a].V.comb-at b coeff H i > RS.sum b (\ j -> R.mul (z (old j)) (H j i))
+      =< W.sum-pair q p (\ ke -> R.mul (z ke.1) (G.pr (PA.minus (pos (WP.rangeN B ke.2)) (d i)) (h ke.1 i)))
+      > RS.sum p (\ k -> RS.sum q (\ j -> R.mul (z k) (G.pr (PA.minus (pos (WP.rangeN B j)) (d i)) (h k i))))
+      =< RS.sum-cong p _ _ (\ k -> trans (sym (RS.sum-sm q (z k) (\ j -> G.pr (PA.minus (pos (WP.rangeN B j)) (d i)) (h k i)))) (ap (R.mul (z k)) (reconstruct k i)))
+      > RS.sum p (\ k -> R.mul (z k) (h k i))
+      =< sym (F[a].V.comb-at p z h i) > F[a].V.VS.comb p z h i
+      =< Pr.happly (Ps.Fin a) (\ i -> R.R) _ _ eq i > y i }) ;
+   } ;
+   generate (y : Vec a) (hy : Syz y) : Tr.Trunc[(z : Vec b) * Id (Vec a) (F[a].V.VS.comb b z H) y].carrier =
+    TC.map ((z : Vec p) * Id (Vec a) (F[a].V.VS.comb p z h) y) ((z : Vec b) * Id (Vec a) (F[a].V.VS.comb b z H) y) (\ ze -> (Generate[y,ze.1,ze.2].coeff,Generate[y,ze.1,ze.2].equation)) (w.2.2.2 y hy) ;
+   hgenerate (n : Int) (y : Vec a) (hy : HomV a d n y) (sy : Syz y) :
+    Tr.Trunc[(z : Vec b) * (HomV b e n z * Id (Vec a) (F[a].V.VS.comb b z H) y)].carrier =
+    TC.map ((z : Vec b) * Id (Vec a) (F[a].V.VS.comb b z H) y) ((z : Vec b) * (HomV b e n z * Id (Vec a) (F[a].V.VS.comb b z H) y)) (\ ze -> (Extract[b,e,H,homogeneous,n,y,hy,ze.1,ze.2].coeff,
+     (Extract[b,e,H,homogeneous,n,y,hy,ze.1,ze.2].homogeneous,Extract[b,e,H,homogeneous,n,y,hy,ze.1,ze.2].equation))) (generate y sy) ;
+   constructed : Data = (b,(e,(H,(homogeneous,(identity,(generate,hgenerate)))))) ;
+  } ;
+  module Of (coh : Coherent[l].Over[R,IP.regular R].Coh)
+   (pieces : (x : R.R) -> Tr.Trunc[P.Rep x].carrier) {
+   module C = FC.Over[R,coh] ;
+   module CO = Coherent[l].Over[R,F[r].V.mod] ;
+   from-ungraded (w : CO.CohW a m) : Tr.Trunc[Data].carrier =
+    TC.map ((k : Ps.Fin w.1) (i : Ps.Fin a) -> P.Rep (w.2.1 k i)) Data (\ reps -> Construct[w,reps].constructed)
+     (LSL.fin-choice w.1 (\ k -> (i : Ps.Fin a) -> P.Rep (w.2.1 k i))
+       (\ k -> LSL.fin-choice a (\ i -> P.Rep (w.2.1 k i)) (\ i -> pieces (w.2.1 k i)))) ;
+   homogeneous : Tr.Trunc[Data].carrier = TC.bind (CO.CohW a m) Data from-ungraded (C.coh-vec r a m) ;
+  } ;
+ } ;
+} ;
+
+module Tower (K0 : U l) (A : CRing) (setA : Pr.isSet A.R) (cfn : CFN[l].CFN[K0,A]) (t : Nat) {
+ module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+ R : CRing = T.D t ; module H = Over[A,t,R,T.setD t,T.grD t] ;
+ module P = FiniteHomogeneousPieces[l].Tower[A,setA] ;
+ module Input (a r : Nat) (d : Ps.Fin a -> Base.Nat) (c : Ps.Fin r -> Base.Nat)
+  (m : Ps.Fin a -> H.Vec r) (hm : (i : Ps.Fin a) (j : Ps.Fin r) -> H.L.Hom (PA.minus (pos (d i)) (c j)) (m i j)) {
+  module M = H.Matrix[a,r,d,c,m,hm] ;
+  generators : Tr.Trunc[M.Data].carrier = M.Of[(T.cfnD K0 cfn t).coh,P.pieces t].homogeneous ;
+ } ;
+} ;

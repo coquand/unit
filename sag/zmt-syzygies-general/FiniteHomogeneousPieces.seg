@@ -1,0 +1,89 @@
+-- FiniteHomogeneousPieces: every element of a finite polynomial tower is
+-- merely a finite sum of homogeneous elements of nonnegative degrees.
+-- The statement is proved by recursion on the number of variables, then
+-- by Horner recursion on a representative coefficient list. No choice of
+-- representatives or homogeneous pieces is made globally.
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module RH = RingHom[l] ;
+
+module Over (A : CRing) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+ module L = Laws[A,t,R,setR,G] ; module RL = RL[R] ;
+ Term : U l = Base.Nat * R.R ;
+ Good : List Term -> U l = split {
+   nil -> Top ; cons p ps | r -> L.Hom (pos p.1) p.2 * r } ;
+ value : List Term -> R.R = split { nil -> R.z ; cons p ps | r -> R.add p.2 r } ;
+ Rep (x : R.R) : U l = (ps : List Term) * (Good ps * Id R.R (value ps) x) ;
+ append : List Term -> List Term -> List Term = split { nil -> \ qs -> qs ; cons p ps | r -> \ qs -> cons p (r qs) } ;
+ good-app : (ps qs : List Term) -> Good ps -> Good qs -> Good (append ps qs) = split {
+   nil -> \ qs hp hq -> hq ; cons p ps | r -> \ qs hp hq -> (hp.1,r qs hp.2 hq) } ;
+ value-app : (ps qs : List Term) -> Id R.R (value (append ps qs)) (R.add (value ps) (value qs)) = split {
+   nil -> \ qs -> sym (RL.zl (value qs)) ;
+   cons p ps | r -> \ qs -> trans (ap (R.add p.2) (r qs)) (R.addA p.2 (value ps) (value qs)) } ;
+ zero-rep : Rep R.z = (nil,(tt,refl R.z)) ;
+ singleton (e : Base.Nat) (x : R.R) (h : L.Hom (pos e) x) : Rep x =
+   (cons (e,x) nil,((h,tt),R.addZ x)) ;
+ add (x y : R.R) (px : Rep x) (py : Rep y) : Rep (R.add x y) =
+   (append px.1 py.1,(good-app px.1 py.1 px.2.1 py.2.1,
+     trans (value-app px.1 py.1) (L.DL.G.cong-add px.2.2 py.2.2))) ;
+ -- Multiplying all pieces by a homogeneous degree-one variable raises
+ -- each degree by one and retains their finite sum.
+ shift (v : R.R) : List Term -> List Term = split {
+   nil -> nil ; cons p ps | r -> cons (suc p.1,R.mul p.2 v) r } ;
+ good-shift (v : R.R) (hv : L.Hom (pos (suc zero)) v) : (ps : List Term) -> Good ps -> Good (shift v ps) = split {
+   nil -> \ hp -> tt ;
+   cons p ps | r -> \ hp -> (L.hom-mul (pos p.1) (pos (suc zero)) p.2 v hp.1 hv,r hp.2) } ;
+ value-shift (v : R.R) : (ps : List Term) -> Id R.R (value (shift v ps)) (R.mul (value ps) v) = split {
+   nil -> sym (RL.zero-mul v) ;
+   cons p ps | r -> trans (ap (R.add (R.mul p.2 v)) r) (sym (RL.dist-left p.2 (value ps) v)) } ;
+ mul-var (v : R.R) (hv : L.Hom (pos (suc zero)) v) (x : R.R) (px : Rep x) : Rep (R.mul x v) =
+   (shift v px.1,(good-shift v hv px.1 px.2.1,
+      trans (value-shift v px.1) (ap (\ y -> R.mul y v) px.2.2))) ;
+} ;
+
+module Map (A : CRing) (t u : Nat) (R S : CRing) (setR : Pr.isSet R.R) (setS : Pr.isSet S.R)
+ (GR : Graded[A,t,R]) (GS : Graded[A,u,S]) (f : RH.Hom R S)
+ (fh : (e : Base.Nat) (x : R.R) -> Id R.R (GR.pr (pos e) x) x -> Id S.R (GS.pr (pos e) (f.1 x)) (f.1 x)) {
+ module P = Over[A,t,R,setR,GR] ; module Q = Over[A,u,S,setS,GS] ;
+ terms : List P.Term -> List Q.Term = split { nil -> nil ; cons p ps | r -> cons (p.1,f.1 p.2) r } ;
+ good : (ps : List P.Term) -> P.Good ps -> Q.Good (terms ps) = split {
+   nil -> \ h -> tt ; cons p ps | r -> \ h -> (fh p.1 p.2 h.1,r h.2) } ;
+ val : (ps : List P.Term) -> Id S.R (Q.value (terms ps)) (f.1 (P.value ps)) = split {
+   nil -> sym (RH.zero R S f) ;
+   cons p ps | r -> trans (ap (S.add (f.1 p.2)) r) (sym (f.2.2.1 p.2 (P.value ps))) } ;
+ rep (x : R.R) (p : P.Rep x) : Q.Rep (f.1 x) =
+   (terms p.1,(good p.1 p.2.1,trans (val p.1) (ap f.1 p.2.2))) ;
+} ;
+
+module Tower (A : CRing) (setA : Pr.isSet A.R) {
+ module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+ module P (n : Nat) { module Q = Over[A,n,T.D n,T.setD n,T.grD n] ; } ;
+ Goal (n : Nat) : U l = (x : (T.D n).R) -> Tr.Trunc[P[n].Q.Rep x].carrier ;
+ base (x : A.R) : Tr.Trunc[P[zero].Q.Rep x].carrier =
+   Tr.Trunc[P[zero].Q.Rep x].inc (P[zero].Q.singleton zero x ((T.grD zero).iota-hom x)) ;
+
+ module Step (n : Nat) (ih : Goal n) {
+   R : CRing = T.D n ; module GS = CoefficientPolynomial[l].GradingStep[A,setA,n,R,T.setD n,T.grD n] ;
+   module E = GS.E ; module Q = P[suc n].Q ;
+   -- The inclusion commutes with total-degree projection, so preserves
+   -- the homogeneous pieces supplied by the induction hypothesis.
+   incl-hom (e : Base.Nat) (x : R.R) (h : Id R.R ((T.grD n).pr (pos e) x) x) :
+     Id E.Carrier (GS.pr (pos e) (E.constant x)) (E.constant x) =
+     trans (GS.pr-const (pos e) x) (ap E.constant h) ;
+   module M = Map[A,n,suc n,R,GS.S,T.setD n,E.set,T.grD n,GS.graded,E.inclusion,incl-hom] ;
+   constant (x : R.R) : Tr.Trunc[Q.Rep (E.constant x)].carrier =
+     TC.map (P[n].Q.Rep x) (Q.Rep (E.constant x)) (M.rep x) (ih x) ;
+   var-hom : Id E.Carrier (GS.pr (pos (suc zero)) E.variable) E.variable = GS.var-hom (inr tt) ;
+   list : (p : List R.R) -> Tr.Trunc[Q.Rep (E.include p)].carrier = split {
+     nil -> Tr.Trunc[Q.Rep E.zeroQ].inc Q.zero-rep ;
+     cons x p | r -> TC.map2 (Q.Rep (E.constant x)) (Q.Rep (E.include p)) (Q.Rep (E.include (cons x p)))
+       (\ px pp -> subst Q.Rep (sym (E.horner x p))
+         (Q.add (E.constant x) (E.mulQ E.variable (E.include p)) px
+           (subst Q.Rep (GS.S.mulC (E.include p) E.variable) (Q.mul-var E.variable var-hom (E.include p) pp))))
+       (constant x) r } ;
+   result (x : (T.D (suc n)).R) : Tr.Trunc[Q.Rep x].carrier =
+     E.Q.induction @l (\ x -> Tr.Trunc[Q.Rep x].carrier) (\ x -> Tr.Trunc[Q.Rep x].proposition) list x ;
+ } ;
+ pieces : (n : Nat) -> Goal n = split { zero -> base ; suc n | r -> Step[n,r].result } ;
+} ;

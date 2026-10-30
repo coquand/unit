@@ -1,0 +1,105 @@
+-- PowSpan.seg: from x in I^m (I^c M cap N) to coefficients in I^m on the
+-- generators of N (handoff §6, the bridge before the ACL application).
+--
+-- InP m s y: y is a combination of the list s whose coefficients are all in
+-- I^m (ModSpan.In with a witness of Pow m at each coefficient).  By
+-- definition InP 0 s y is In s y with trivial witnesses (in-inp0).
+--
+-- Lemma (comb).  If y1, y2 have coefficients c1_j, c2_j in I^m on s, then
+-- a y1 + b y2 has the coefficients a c1_j + b c2_j, in I^(m+1) by definition
+-- of Pow, since  a (y1 - c1 t) + b (y2 - c2 t) = (a y1 + b y2) - (a c1 + b c2) t
+-- (comb-step).
+-- Lemma (coef).  Let S be a subset of M contained in the span of ns.  Then
+-- x in I^m S merely has coefficients in I^m on ns.  Recursion on m: at a
+-- leaf x is merely in the span of ns, that is InP 0; at a node
+-- x = a x1 + b x2, Lemma comb.  The conclusion is a proposition, so the
+-- truncated decompositions of the leaves are eliminated (coef-trunc for a
+-- truncated tree).
+-- Theorem (coefficients).  For M = A^r, N = span ns, I = (a,b) over a CFN
+-- ring: merely c such that every x in I^(m+c) M cap N merely has
+-- coefficients in I^m on ns.  Theorem 14 (ArtinRees.artin-rees) with
+-- S = ReesVec.Core c, contained in N by its second component.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+
+module Over (A : CRing) (Md : IP.Mod[A]) (a b : A.R) {
+  open Md ; module ML = IP.ModL[A,Md] ; open ML ;
+  module SP = ModSpan[l].Over[A,Md] ;
+  module MS = Spans[l].Over[A,Md] ;
+  module PA = IP.Over[A,IP.regular A,a,b] ;
+  module PM = IP.Over[A,Md,a,b] ;
+
+  InP (m : Nat) : List M -> M -> U l = split {
+    nil -> \ y -> Id M y mz ;
+    cons t s | r -> \ y -> (c : A.R) * (PA.Pow m c * r (msub y (sm c t))) } ;
+
+  -- the parts of InP at cons t s: the coefficient of t, its witness in I^m,
+  -- and the combination of s giving the rest
+  inp-cons (m : Nat) (t : M) (s : List M) (y : M) (c : A.R) (p : PA.Pow m c) (h : InP m s (msub y (sm c t))) :
+    InP m (cons t s) y = (c, (p, h)) ;
+  coef-of (m : Nat) (t : M) (s : List M) (y : M) (h : InP m (cons t s) y) : A.R = h.1 ;
+  pow-of (m : Nat) (t : M) (s : List M) (y : M) (h : InP m (cons t s) y) : PA.Pow m (coef-of m t s y h) = h.2.1 ;
+  rest-of (m : Nat) (t : M) (s : List M) (y : M) (h : InP m (cons t s) y) :
+    InP m s (msub y (sm (coef-of m t s y h) t)) = h.2.2 ;
+
+  -- by definition of Pow in A: a c1 + b c2 is in I^(m+1) when c1, c2 are in I^m
+  pow-comb (m : Nat) (c1 c2 : A.R) (p1 : PA.Pow m c1) (p2 : PA.Pow m c2) :
+    PA.Pow (suc m) (A.add (A.mul a c1) (A.mul b c2)) =
+    (c1, (c2, (p1, (p2, refl (A.add (A.mul a c1) (A.mul b c2)))))) ;
+
+  in-inp0 : (s : List M) (y : M) -> SP.In s y -> InP zero s y = split {
+    nil -> \ y h -> h ;
+    cons t s | r -> \ y h -> (h.1, (tt, r (msub y (sm h.1 t)) h.2)) } ;
+
+  -- a (y1 - c1 t) + b (y2 - c2 t) = (a y1 + b y2) - (a c1 + b c2) t
+  comb-step (y1 y2 t : M) (c1 c2 : A.R) :
+    Id M (madd (sm a (msub y1 (sm c1 t))) (sm b (msub y2 (sm c2 t))))
+         (msub (madd (sm a y1) (sm b y2)) (sm (A.add (A.mul a c1) (A.mul b c2)) t)) =
+    calc M { madd (sm a (msub y1 (sm c1 t))) (sm b (msub y2 (sm c2 t)))
+               =< G.cong-add (SP.scale-step a c1 y1 t) (SP.scale-step b c2 y2 t) >
+             madd (msub (sm a y1) (sm (A.mul a c1) t)) (msub (sm b y2) (sm (A.mul b c2) t))
+               =< SP.add-step (sm a y1) (sm b y2) t (A.mul a c1) (A.mul b c2) >
+             msub (madd (sm a y1) (sm b y2)) (sm (A.add (A.mul a c1) (A.mul b c2)) t) } ;
+
+  -- a 0 + b 0 = 0
+  comb-zero (y1 y2 : M) (h1 : Id M y1 mz) (h2 : Id M y2 mz) : Id M (madd (sm a y1) (sm b y2)) mz =
+    calc M { madd (sm a y1) (sm b y2) =< G.cong-add (ap (sm a) h1) (ap (sm b) h2) > madd (sm a mz) (sm b mz)
+               =< G.cong-add (sm-zero a) (sm-zero b) > madd mz mz
+               =< maddZ mz > mz } ;
+
+  comb (m : Nat) : (s : List M) (y1 y2 : M) -> InP m s y1 -> InP m s y2 -> InP (suc m) s (madd (sm a y1) (sm b y2)) = split {
+    nil -> \ y1 y2 h1 h2 -> comb-zero y1 y2 h1 h2 ;
+    cons t s | r -> \ y1 y2 h1 h2 ->
+      inp-cons (suc m) t s (madd (sm a y1) (sm b y2))
+        (A.add (A.mul a (coef-of m t s y1 h1)) (A.mul b (coef-of m t s y2 h2)))
+        (pow-comb m (coef-of m t s y1 h1) (coef-of m t s y2 h2) (pow-of m t s y1 h1) (pow-of m t s y2 h2))
+        (subst (InP (suc m) s) (comb-step y1 y2 t (coef-of m t s y1 h1) (coef-of m t s y2 h2))
+          (r (msub y1 (sm (coef-of m t s y1 h1) t)) (msub y2 (sm (coef-of m t s y2 h2) t))
+             (rest-of m t s y1 h1) (rest-of m t s y2 h2))) } ;
+
+  module Of (ns : List M) (S : M -> U l) (inN : (x : M) -> S x -> MS.Mm ns x) {
+    Coef (m : Nat) (x : M) : U l = Tr.Trunc[InP m ns x].carrier ;
+    coef : (m : Nat) (x : M) -> PM.PowIn S m x -> Coef m x = split {
+      zero -> \ x h -> TC.map (SP.In ns x) (InP zero ns x) (in-inp0 ns x) (inN x h) ;
+      suc m | r -> \ x h ->
+        TC.map2 (InP m ns h.1) (InP m ns h.2.1) (InP (suc m) ns x)
+          (\ u v -> subst (InP (suc m) ns) (sym h.2.2.2.2) (comb m ns h.1 h.2.1 u v))
+          (r h.1 h.2.2.1) (r h.2.1 h.2.2.2.1) } ;
+    coef-trunc (m : Nat) (x : M) (h : Tr.Trunc[PM.PowIn S m x].carrier) : Coef m x =
+      TC.bind (PM.PowIn S m x) (InP m ns x) (coef m x) h ;
+  } ;
+} ;
+
+module Free (K0 : U l) (A : CRing) (setA : Pr.isSet A.R) (cfn : CFN[l].CFN[K0,A]) (r : Nat) (a b : A.R)
+  (ns : List (Comb[l].Free[A,r].Vec)) {
+  module AR = ArtinRees[l].Over[K0,A,setA,cfn,r,a,b,ns] ;
+  module PS = Over[A,AR.BG.Fr.mod,a,b] ;
+
+  -- c before m and x
+  CoefBound : U l = (c : Nat) * ((m : Nat) (x : AR.BG.Fr.Vec) -> AR.PM.Pow (plus m c) x -> AR.MS.Mm ns x ->
+    Tr.Trunc[PS.InP m ns x].carrier) ;
+  of-bound (bd : AR.Bound) : CoefBound =
+    (bd.c, \ m x hx hn -> PS.Of[ns, AR.RV.Core bd.c, \ y h -> h.2].coef-trunc m x (bd.decomp m x hx hn)) ;
+  coefficients : Tr.Trunc[CoefBound].carrier = TC.map AR.Bound CoefBound of-bound AR.artin-rees ;
+} ;

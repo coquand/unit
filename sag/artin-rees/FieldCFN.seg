@@ -1,0 +1,133 @@
+-- FieldCFN.seg: a discrete field is CFN, with its own elements as codes
+-- (artin-rees.tex, Prop. 13).
+--
+-- F is a discrete field: every x is 0 or invertible (dec), and 1 /= 0.
+-- Then x = 0 is decidable (zero-dec: an invertible x is not 0).
+-- Informal proof.  Let u_1..u_k in F.  Either every u_i is 0 or some u_j
+-- is invertible, with inverse w (cases, by Saturation.all-or).
+--   (D) If every u_i is 0, every combination is 0, and y is in the span
+--       iff y = 0, which is decidable.  If u_j w = 1, every y is in the
+--       span: y = (y w) u_j = sum_i (y w) e_j,i u_i (comb-row).
+--   (C) If every u_i is 0, every vector is a syzygy, and the standard
+--       basis generates (Basis.vec-basis).  If u_j w = 1, put
+--       K_l = - w e_j,l and g_i = e_i + u_i K, i.e. e_i - u_i w e_j:
+--       sum_l g_i,l u_l = u_i + u_i (- w u_j) = 0 (gen-syz); a syzygy lam
+--       is sum_i lam_i g_i, since its l-th coordinate is
+--       lam_l + (sum_i lam_i u_i) K_l = lam_l (gen-univ, Bilinear.comb-scaled).
+--   (N) Field.Over.noeth on the presentation of F by itself (codes
+--       El F.R base = F.R); every x is the code x.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+module CN = CodedNoeth[l] ;
+
+module Over (F : CRing) (dec : (x : F.R) -> Plus (Id F.R x F.z) ((y : F.R) * Id F.R (F.mul x y) F.o))
+  (one-nonzero : Not (Id F.R F.o F.z)) {
+  module CF = Coherent[l].Over[F,IP.regular F] ; module RS = Comb[l].Sums[F,IP.regular F] ;
+  module BL = Comb[l].Bilinear[F,IP.regular F] ; module BS = FreeCoherent[l].Basis[F] ;
+  module L = RL[F] ;
+
+  ------------------------------------------------------------------------
+  -- units, and the decision of x = 0
+
+  Unit (x : F.R) : U l = (y : F.R) * Id F.R (F.mul x y) F.o ;
+  inv (x : F.R) (h : Unit x) : F.R = h.1 ;
+  inv-eq (x : F.R) (h : Unit x) : Id F.R (F.mul x (inv x h)) F.o = h.2 ;
+
+  unit-nonzero (x : F.R) (h : Unit x) (e : Id F.R x F.z) : Empty =
+    one-nonzero (calc F.R { F.o =< sym (inv-eq x h) > F.mul x (inv x h)
+                              =< ap (\ t -> F.mul t (inv x h)) e > F.mul F.z (inv x h)
+                              =< L.zero-mul (inv x h) > F.z }) ;
+  zero-dec-of (x : F.R) : Plus (Id F.R x F.z) (Unit x) -> Plus (Id F.R x F.z) (Not (Id F.R x F.z)) = split {
+    inl e -> inl e ;
+    inr h -> inr (unit-nonzero x h) } ;
+  zero-dec (x : F.R) : Plus (Id F.R x F.z) (Not (Id F.R x F.z)) = zero-dec-of x (dec x) ;
+  unit-of-dec (x : F.R) (n : Not (Id F.R x F.z)) : Plus (Id F.R x F.z) (Unit x) -> Unit x = split {
+    inl e -> absurd (Unit x) (n e) ;
+    inr h -> h } ;
+  unit-of (x : F.R) (n : Not (Id F.R x F.z)) : Unit x = unit-of-dec x n (dec x) ;
+
+  -- every u_i is 0, or some u_j is not
+  Cases (k : Nat) (u : Fin k -> F.R) : U l = Saturation[l].AllOr k (\ i -> Id F.R (u i) F.z) ;
+  cases (k : Nat) (u : Fin k -> F.R) : Cases k u = Saturation[l].all-or k (\ i -> Id F.R (u i) F.z) (\ i -> zero-dec (u i)) ;
+
+  ------------------------------------------------------------------------
+  -- (D)
+
+  mem-zero-of (k : Nat) (u : Fin k -> F.R) (hz : (i : Fin k) -> Id F.R (u i) F.z) (y : F.R) :
+    Plus (Id F.R y F.z) (Not (Id F.R y F.z)) -> Plus (CF.Mem k u y) (Not (CF.Mem k u y)) = split {
+    inl e -> inl (Tr.Trunc[CF.InFM k u y].inc (\ i -> F.z, trans (RS.comb-zero k u) (sym e))) ;
+    inr ne -> inr (\ m -> Tr.Trunc[CF.InFM k u y].induction @l (\ t -> Empty) (\ t -> Coherent[l].empty-prop)
+                     (\ g -> ne (trans (sym g.2) (RS.comb-vanish k g.1 u hz))) m) } ;
+
+  -- y = (y w) u_j
+  mem-unit (k : Nat) (u : Fin k -> F.R) (y : F.R) (j : Fin k) (h : Unit (u j)) : CF.Mem k u y =
+    Tr.Trunc[CF.InFM k u y].inc (\ i -> F.mul (F.mul y (inv (u j) h)) (BS.basis k j i),
+      calc F.R { RS.comb k (\ i -> F.mul (F.mul y (inv (u j) h)) (BS.basis k j i)) u
+                   =< RS.comb-sm k (F.mul y (inv (u j) h)) (BS.basis k j) u > F.mul (F.mul y (inv (u j) h)) (RS.comb k (BS.basis k j) u)
+                   =< ap (F.mul (F.mul y (inv (u j) h))) (BS.comb-row k j u) > F.mul (F.mul y (inv (u j) h)) (u j)
+                   =< sym (F.mulA y (inv (u j) h) (u j)) > F.mul y (F.mul (inv (u j) h) (u j))
+                   =< ap (F.mul y) (trans (F.mulC (inv (u j) h) (u j)) (inv-eq (u j) h)) > F.mul y F.o
+                   =< F.mulO y > y }) ;
+
+  disc-of (k : Nat) (u : Fin k -> F.R) (y : F.R) : Cases k u -> Plus (CF.Mem k u y) (Not (CF.Mem k u y)) = split {
+    inl hz -> mem-zero-of k u hz y (zero-dec y) ;
+    inr jn -> inl (mem-unit k u y jn.1 (unit-of (u jn.1) jn.2)) } ;
+  disc : CF.Disc = \ k u y -> disc-of k u y (cases k u) ;
+
+  ------------------------------------------------------------------------
+  -- (C)
+
+  -- every u_i is 0: the standard basis
+  coh-zero (k : Nat) (u : Fin k -> F.R) (hz : (i : Fin k) -> Id F.R (u i) F.z) : CF.CohW k u =
+    (k, (BS.basis k, (\ j -> RS.comb-vanish k (BS.basis k j) u hz,
+      \ lam s -> Tr.Trunc[CF.InFV k k (BS.basis k) lam].inc (lam, BS.vec-basis k lam)))) ;
+
+  -- u_j w = 1: the generators e_i - u_i w e_j
+  module UnitGens (k : Nat) (u : Fin k -> F.R) (j : Fin k) (h : Unit (u j)) {
+    module FV = Comb[l].Free[F,k] ;
+    K (m : Fin k) : F.R = F.neg (F.mul (inv (u j) h) (BS.basis k j m)) ;
+    gen (i : Fin k) : CF.Vec k = \ m -> F.add (BS.basis k i m) (F.mul (u i) (K m)) ;
+
+    comb-K : Id F.R (RS.comb k K u) (F.neg F.o) =
+      calc F.R { RS.comb k K u
+                   =< RS.comb-neg k (\ m -> F.mul (inv (u j) h) (BS.basis k j m)) u
+                   > F.neg (RS.comb k (\ m -> F.mul (inv (u j) h) (BS.basis k j m)) u)
+                   =< ap F.neg (RS.comb-sm k (inv (u j) h) (BS.basis k j) u) > F.neg (F.mul (inv (u j) h) (RS.comb k (BS.basis k j) u))
+                   =< ap (\ t -> F.neg (F.mul (inv (u j) h) t)) (BS.comb-row k j u) > F.neg (F.mul (inv (u j) h) (u j))
+                   =< ap F.neg (trans (F.mulC (inv (u j) h) (u j)) (inv-eq (u j) h)) > F.neg F.o } ;
+    gen-syz (i : Fin k) : CF.Syz k u (gen i) =
+      calc F.R { RS.comb k (gen i) u
+                   =< RS.comb-add k (BS.basis k i) (\ m -> F.mul (u i) (K m)) u
+                   > F.add (RS.comb k (BS.basis k i) u) (RS.comb k (\ m -> F.mul (u i) (K m)) u)
+                   =< Presentations[l].cong2 F.R F.add _ _ _ _ (BS.comb-row k i u) (RS.comb-sm k (u i) K u)
+                   > F.add (u i) (F.mul (u i) (RS.comb k K u))
+                   =< ap (\ t -> F.add (u i) (F.mul (u i) t)) comb-K > F.add (u i) (F.mul (u i) (F.neg F.o))
+                   =< ap (F.add (u i)) (trans (L.mul-neg (u i) F.o) (ap F.neg (F.mulO (u i)))) > F.add (u i) (F.neg (u i))
+                   =< F.addN (u i) > F.z } ;
+    gen-univ (lam : CF.Vec k) (s : CF.Syz k u lam) (m : Fin k) : Id F.R (FV.VS.comb k lam gen m) (lam m) =
+      calc F.R { FV.VS.comb k lam gen m
+                   =< FV.comb-at k lam gen m > RS.comb k lam (\ i -> gen i m)
+                   =< RS.comb-addv k lam (\ i -> BS.basis k i m) (\ i -> F.mul (u i) (K m))
+                   > F.add (RS.comb k lam (\ i -> BS.basis k i m)) (RS.comb k lam (\ i -> F.mul (u i) (K m)))
+                   =< Presentations[l].cong2 F.R F.add _ _ _ _ (BS.comb-basis k lam m) (BL.comb-scaled k lam u (K m))
+                   > F.add (lam m) (F.mul (RS.comb k lam u) (K m))
+                   =< ap (\ t -> F.add (lam m) (F.mul t (K m))) s > F.add (lam m) (F.mul F.z (K m))
+                   =< ap (F.add (lam m)) (L.zero-mul (K m)) > F.add (lam m) F.z
+                   =< F.addZ (lam m) > lam m } ;
+    cohw : CF.CohW k u =
+      (k, (gen, (gen-syz, \ lam s -> Tr.Trunc[CF.InFV k k gen lam].inc (lam, FV.ext (FV.VS.comb k lam gen) lam (gen-univ lam s))))) ;
+  } ;
+
+  coh-of (k : Nat) (u : Fin k -> F.R) : Cases k u -> CF.CohW k u = split {
+    inl hz -> coh-zero k u hz ;
+    inr jn -> UnitGens[k, u, jn.1, unit-of (u jn.1) jn.2].cohw } ;
+  coh : CF.Coh = \ k u -> Tr.Trunc[CF.CohW k u].inc (coh-of k u (cases k u)) ;
+
+  ------------------------------------------------------------------------
+  -- (N)
+
+  surj : CN.Over[F,Field[l].self F].Surj = \ x -> Tr.Trunc[(c : F.R) * Id F.R c x].inc (x, refl x) ;
+  np : CN.NP F.R F = (base, (CN.ofPres F (Field[l].self F), (Field[l].Over[F,dec].noeth, surj))) ;
+
+  cfn : CFN[l].CFN[F.R,F] = CFN[l].mkCFN F.R F disc coh (Tr.Trunc[CN.NP F.R F].inc np) ;
+} ;

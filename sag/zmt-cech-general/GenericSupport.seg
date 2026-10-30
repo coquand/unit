@@ -1,0 +1,116 @@
+-- Chart support in the generic subset model. A negative coordinate must
+-- belong to the indexing subset. bad(mask,s) expresses a missing negative
+-- vertex. The differential and selected contraction preserve this support.
+-- pi is pointwise selection (all exponents negative), and vanishes on a
+-- supported cochain at every proper subset.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module IP = IdealPowers[l] ;
+
+bad : (n : Nat) -> Sub n -> Sub n -> U l = split {
+ zero -> \ mask s -> Empty ;
+ suc n | b -> \ mask s -> badStep n b mask.1 mask.2 s.1 s.2 }
+where {
+ badStep (n : Nat) (b : Sub n -> Sub n -> U l) : Flag -> Sub n -> Flag -> Sub n -> U l = split {
+   absent -> \ mask f s -> b mask s ;
+   present -> \ mask -> split { absent -> \ s -> Top ; present -> b mask } } } ;
+missing : (n : Nat) -> Sub n -> U l = split {
+ zero -> \ s -> Empty ;
+ suc n | r -> \ s -> missingStep n r s.1 s.2 }
+where { missingStep (n : Nat) (r : Sub n -> U l) : Flag -> Sub n -> U l = split {
+ absent -> \ s -> Top ; present -> r } } ;
+full-or-missing : (n : Nat) (s : Sub n) -> Plus (Id (Sub n) s (full n)) (missing n s) = split {
+ zero -> \ s -> inl (top-eq s tt) ;
+ suc n | r -> \ s -> splitFlag n r s.1 s.2 }
+where {
+ top-eq : (x y : Top) -> Id Top x y = split { tt -> split { tt -> refl tt } } ;
+ liftFull (n : Nat) (s : Sub n) : Plus (Id (Sub n) s (full n)) (missing n s) ->
+   Plus (Id (Sub (suc n)) (present,s) (full (suc n))) (missing (suc n) (present,s)) = split {
+   inl e -> inl (ap (\ t -> (present,t)) e) ; inr h -> inr h } ;
+ splitFlag (n : Nat) (r : (s : Sub n) -> Plus (Id (Sub n) s (full n)) (missing n s)) :
+   (f : Flag) (s : Sub n) -> Plus (Id (Sub (suc n)) (f,s) (full (suc n))) (missing (suc n) (f,s)) = split {
+   absent -> \ s -> inr tt ;
+   present -> \ s -> liftFull n s (r s) } ; } ;
+
+module Over (D : CRing) (setD : Prelude[l].isSet D.R) {
+ module C = GenericCube[l].Over[D,setD] ; open C ;
+ module H = GenericContraction[l].Over[D,setD] ;
+ open D ; module G = IP.ModL[D,IP.regular D] ;
+ Van (n : Nat) (mask : Sub n) (c : Raw n) : U l = (s : Sub n) -> bad n mask s -> Id R (c s) z ;
+ -- A whole raw family of zeros remains zero after any linear operation.
+ all-d-zero (n : Nat) (c : Raw n) (e : Eq n c (zeroR n)) (s : Sub n) : Id R (diff n c s) z =
+   trans (d-cong n c (zeroR n) e s) (d-zero n s) ;
+ all-h-zero (n : Nat) (mask : Sub n) (c : Raw n) (e : Eq n c (zeroR n)) (s : Sub n) : Id R (H.hom n mask c s) z =
+   trans (H.h-cong n mask c (zeroR n) e s) (H.h-zero n mask s) ;
+ zero-sub (x y : R) (hx : Id R x z) (hy : Id R y z) : Id R (G.msub x y) z =
+   trans (G.G.cong-add hx (ap neg hy)) (addN z) ;
+ -- Support of d: every face is obtained by removing a vertex.
+ d-van : (n : Nat) (mask : Sub n) (c : Raw n) -> Van n mask c -> Van n mask (diff n c) = split {
+   zero -> \ mask c v s b -> absurd (Id R z z) b ;
+   suc n | r -> \ mask c v s -> dVanS n r mask.1 mask.2 c v s.1 s.2 }
+ where {
+   dVanS (n : Nat) (r : (mask : Sub n) (c : Raw n) -> Van n mask c -> Van n mask (diff n c)) :
+     (b : Flag) (mask : Sub n) (c : Raw (suc n)) -> Van (suc n) (b,mask) c ->
+     (f : Flag) (s : Sub n) -> bad (suc n) (b,mask) (f,s) -> Id R (diff (suc n) c (f,s)) z = split {
+     absent -> \ mask c v -> split {
+       absent -> r mask (left n c) (\ s b -> v (absent,s) b) ;
+       present -> \ s b -> zero-sub (left n c s) (diff n (right n c) s)
+         (v (absent,s) b) (r mask (right n c) (\ t h -> v (present,t) h) s b) } ;
+     present -> \ mask c v -> split {
+       absent -> \ s b -> all-d-zero n (left n c) (\ t -> v (absent,t) tt) s ;
+       present -> \ s b -> zero-sub (left n c s) (diff n (right n c) s)
+         (v (absent,s) tt) (r mask (right n c) (\ t h -> v (present,t) h) s b) } } } ;
+ -- Support of h: inserting the selected nonnegative vertex is allowed.
+ h-van : (n : Nat) (mask : Sub n) (c : Raw n) -> Van n mask c -> Van n mask (H.hom n mask c) = split {
+   zero -> \ mask c v s b -> absurd (Id R z z) b ;
+   suc n | r -> \ mask c v s -> hVanS n r mask.1 mask.2 c v s.1 s.2 }
+ where {
+   hVanS (n : Nat) (r : (mask : Sub n) (c : Raw n) -> Van n mask c -> Van n mask (H.hom n mask c)) :
+     (b : Flag) (mask : Sub n) (c : Raw (suc n)) -> Van (suc n) (b,mask) c ->
+     (f : Flag) (s : Sub n) -> bad (suc n) (b,mask) (f,s) -> Id R (H.hom (suc n) (b,mask) c (f,s)) z = split {
+     absent -> \ mask c v -> split {
+       absent -> \ s b -> v (present,s) b ; present -> \ s b -> refl z } ;
+     present -> \ mask c v -> split {
+       absent -> \ s b -> all-h-zero n mask (left n c) (\ t -> v (absent,t) tt) s ;
+       present -> \ s b -> trans (ap neg (r mask (right n c) (\ t h -> v (present,t) h) s b)) G.G.neg-zero } } } ;
+
+ -- pi is pointwise: only c(s), never another subset, can contribute.
+ p-local : (n : Nat) (mask : Sub n) (c c' : Raw n) (s : Sub n) -> Id R (c s) (c' s) ->
+   Id R (H.proj n mask c s) (H.proj n mask c' s) = split {
+   zero -> \ mask c c' s e -> e ;
+   suc n | r -> \ mask c c' s e -> pLocS n r mask.1 mask.2 c c' s.1 s.2 e }
+ where {
+   pLocS (n : Nat) (r : (mask : Sub n) (c c' : Raw n) (s : Sub n) -> Id R (c s) (c' s) ->
+     Id R (H.proj n mask c s) (H.proj n mask c' s)) :
+     (b : Flag) (mask : Sub n) (c c' : Raw (suc n)) (f : Flag) (s : Sub n) -> Id R (c (f,s)) (c' (f,s)) ->
+     Id R (H.proj (suc n) (b,mask) c (f,s)) (H.proj (suc n) (b,mask) c' (f,s)) = split {
+     absent -> \ mask c c' f s e -> refl z ;
+     present -> \ mask c c' -> split {
+       absent -> r mask (left n c) (left n c') ; present -> r mask (right n c) (right n c') } } } ;
+ p-zero : (n : Nat) (mask : Sub n) (s : Sub n) -> Id R (H.proj n mask (zeroR n) s) z = split {
+   zero -> \ mask s -> refl z ;
+   suc n | r -> \ mask s -> pZeroS n r mask.1 mask.2 s.1 s.2 }
+ where {
+   pZeroS (n : Nat) (r : (mask : Sub n) (s : Sub n) -> Id R (H.proj n mask (zeroR n) s) z) :
+     (b : Flag) (mask : Sub n) (f : Flag) (s : Sub n) -> Id R (H.proj (suc n) (b,mask) (zeroR (suc n)) (f,s)) z = split {
+     absent -> \ mask f s -> refl z ;
+     present -> \ mask -> split { absent -> r mask ; present -> r mask } } } ;
+ p-zero-at (n : Nat) (mask : Sub n) (c : Raw n) (s : Sub n) (e : Id R (c s) z) : Id R (H.proj n mask c s) z =
+   trans (p-local n mask c (zeroR n) s e) (p-zero n mask s) ;
+ p-van (n : Nat) (mask : Sub n) (c : Raw n) (v : Van n mask c) : Van n mask (H.proj n mask c) =
+   \ s b -> p-zero-at n mask c s (v s b) ;
+ -- A proper subset cannot contain all the negative vertices when all
+ -- coordinates are negative; elsewhere pi is zero by construction.
+ p-missing : (n : Nat) (mask : Sub n) (c : Raw n) -> Van n mask c ->
+   (s : Sub n) -> missing n s -> Id R (H.proj n mask c s) z = split {
+   zero -> \ mask c v s b -> absurd (Id R (H.proj zero mask c s) z) b ;
+   suc n | r -> \ mask c v s -> pMissingS n r mask.1 mask.2 c v s.1 s.2 }
+ where {
+   pMissingS (n : Nat) (r : (mask : Sub n) (c : Raw n) -> Van n mask c ->
+     (s : Sub n) -> missing n s -> Id R (H.proj n mask c s) z) :
+     (b : Flag) (mask : Sub n) (c : Raw (suc n)) -> Van (suc n) (b,mask) c ->
+     (f : Flag) (s : Sub n) -> missing (suc n) (f,s) -> Id R (H.proj (suc n) (b,mask) c (f,s)) z = split {
+     absent -> \ mask c v f s b -> refl z ;
+     present -> \ mask c v -> split {
+       absent -> \ s b -> p-zero-at n mask (left n c) s (v (absent,s) tt) ;
+       present -> r mask (right n c) (\ s b -> v (present,s) b) } } } ;
+} ;

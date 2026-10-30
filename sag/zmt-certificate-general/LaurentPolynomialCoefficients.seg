@@ -1,0 +1,83 @@
+-- Extend ordinary tower coefficients by zero at negative Laurent
+-- exponents. Classification is finite recursion on coordinates; coefficient
+-- equality is never decided. Finite supports and homogeneous degrees pass
+-- through this extension, giving actual polynomial-chart Laurent functions.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module E = FiniteExponents[l] ; module L = GenericLaurent[l] ; module X = LaurentExponentBridge[l] ;
+module CP = ChartPolynomialization[l] ; module CD = ChartDenominators[l] ; module LV = Laurent4[l] ;
+module FP = FinitePolynomial4[l] ; module PA = PolynomialAction4[l] ;
+Sign (n : Nat) (m : L.Exp n) : U l = Plus ((v : E.Exp n) * Id (L.Exp n) (X.At[n].emb v) m) ((i : Ps.Fin n) * LV.Neg (m i)) ;
+module ClassifyStep (n : Nat) (rec : (m : L.Exp n) -> Sign n m) (m : L.Exp (suc n)) {
+ top (k : Base.Nat) (eq : Id Int (head n m) (pos k)) : (t : Top) -> Id Int (pos k) (m (inr t)) = split { tt -> sym eq } ;
+ at (v : E.Exp n) (eqv : Id (L.Exp n) (X.At[n].emb v) (tail n m)) (k : Base.Nat) (eq : Id Int (head n m) (pos k)) :
+  (i : Ps.Fin (suc n)) -> Id Int (X.At[suc n].emb (E.join n v k) i) (m i) = split {
+  inl i -> Pr.happly (Ps.Fin n) (\ i -> Int) _ _ eqv i ; inr t -> top k eq t } ;
+ old (k : Base.Nat) (eq : Id Int (head n m) (pos k)) : Sign n (tail n m) -> Sign (suc n) m = split {
+  inl p -> inl (E.join n p.1 k,CD.exp-ext (suc n) _ _ (at p.1 p.2 k eq)) ;
+  inr p -> inr (inl p.1,p.2) } ;
+ result : (x : Int) -> Id Int (head n m) x -> Sign (suc n) m = split {
+  pos k -> \ eq -> old k eq (rec (tail n m)) ;
+  negsuc k -> \ eq -> inr (inr tt,subst LV.Neg (sym eq) tt) } ;
+} ;
+classify : (n : Nat) (m : L.Exp n) -> Sign n m = split {
+ zero -> \ m -> inl (E.zeroE zero,CD.exp-ext zero _ _ (\ i -> absurd (Id Int (pos zero) (m i)) i)) ;
+ suc n | rec -> \ m -> ClassifyStep[n,rec,m].result (head n m) (refl (head n m)) } ;
+emb-inj (n : Nat) (u v : E.Exp n) (eq : Id (L.Exp n) (X.At[n].emb u) (X.At[n].emb v)) : Id (E.Exp n) u v =
+ trans (sym (CP.nat-emb n u)) (trans (ap (CP.asNat n) eq) (CP.nat-emb n v)) ;
+
+module MapSupport (n : Nat) {
+ module N = PA.Lists[E.Exp n] ;
+ step (u : E.Exp n) (us : List (E.Exp n)) (v : E.Exp n)
+  (rec : N.Mem v us -> L.Mem (L.Exp n) (X.At[n].emb v) (CP.mapL (E.Exp n) (L.Exp n) X.At[n].emb us)) :
+  N.Mem v (cons u us) -> L.Mem (L.Exp n) (X.At[n].emb v) (CP.mapL (E.Exp n) (L.Exp n) X.At[n].emb (cons u us)) = split {
+  inl eq -> inl (ap X.At[n].emb eq) ; inr h -> inr (rec h) } ;
+ member : (us : List (E.Exp n)) (v : E.Exp n) -> N.Mem v us -> L.Mem (L.Exp n) (X.At[n].emb v) (CP.mapL (E.Exp n) (L.Exp n) X.At[n].emb us) = split {
+  nil -> \ v h -> absurd (L.Mem (L.Exp n) (X.At[n].emb v) nil) h ;
+  cons u us | rec -> \ v -> step u us v (rec v) } ;
+} ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module P = PolynomialTowerBridge[l].Over[A,setA] ; module T = P.T ;
+ module AD = IdealPowers[l].ModL[A,IdealPowers[l].regular A] ;
+ module At (n : Nat) {
+  read (x : (T.D n).R) (m : L.Exp n) : Sign n m -> A.R = split {
+   inl p -> P.Coeff n x p.1 ; inr p -> A.z } ;
+  coeff (x : (T.D n).R) (m : L.Exp n) : A.R = read x m (classify n m) ;
+  positive (x : (T.D n).R) (v : E.Exp n) (m : L.Exp n) (eq : Id (L.Exp n) (X.At[n].emb v) m) :
+   (sign : Sign n m) -> Id A.R (read x m sign) (P.Coeff n x v) = split {
+   inl p -> ap (P.Coeff n x) (emb-inj n p.1 v (trans p.2 (sym eq))) ;
+   inr p -> absurd (Id A.R A.z (P.Coeff n x v)) (subst LV.Neg (sym (ap (\ m -> m p.1) eq)) p.2) } ;
+  negative (x : (T.D n).R) (m : L.Exp n) (i : Ps.Fin n) (neg : LV.Neg (m i)) :
+   (sign : Sign n m) -> Id A.R (read x m sign) A.z = split {
+   inl p -> absurd (Id A.R (P.Coeff n x p.1) A.z) (subst LV.Neg (sym (ap (\ m -> m i) p.2)) neg) ;
+   inr p -> refl A.z } ;
+  coeff-emb (x : (T.D n).R) (v : E.Exp n) : Id A.R (coeff x (X.At[n].emb v)) (P.Coeff n x v) = positive x v (X.At[n].emb v) (refl (X.At[n].emb v)) (classify n (X.At[n].emb v)) ;
+  coeff-neg (x : (T.D n).R) (m : L.Exp n) (i : Ps.Fin n) (neg : LV.Neg (m i)) : Id A.R (coeff x m) A.z = negative x m i neg (classify n m) ;
+  zero-case (m : L.Exp n) : (sign : Sign n m) -> Id A.R (read (T.D n).z m sign) A.z = split {
+   inl p -> P.coeff-zero n p.1 ; inr p -> refl A.z } ;
+  coeff-zero (m : L.Exp n) : Id A.R (coeff (T.D n).z m) A.z = zero-case m (classify n m) ;
+  add-case (x y : (T.D n).R) (m : L.Exp n) : (sign : Sign n m) ->
+   Id A.R (read ((T.D n).add x y) m sign) (A.add (read x m sign) (read y m sign)) = split {
+   inl p -> P.coeff-add n x y p.1 ; inr p -> sym (A.addZ A.z) } ;
+  coeff-add (x y : (T.D n).R) (m : L.Exp n) : Id A.R (coeff ((T.D n).add x y) m) (A.add (coeff x m) (coeff y m)) = add-case x y m (classify n m) ;
+  Support (x : (T.D n).R) : U l = (ms : List (L.Exp n)) * ((m : L.Exp n) -> (L.Mem (L.Exp n) m ms -> Empty) -> Id A.R (coeff x m) A.z) ;
+  module FromSupport (x : (T.D n).R) (w : P.Support[n].Data x) {
+   ms : List (L.Exp n) = CP.mapL (E.Exp n) (L.Exp n) X.At[n].emb w.1 ;
+   at (m : L.Exp n) (out : L.Mem (L.Exp n) m ms -> Empty) : (sign : Sign n m) -> Id A.R (read x m sign) A.z = split {
+    inl p -> w.2 p.1 (\ h -> out (subst (\ m -> L.Mem (L.Exp n) m ms) p.2 (MapSupport[n].member w.1 p.1 h))) ;
+    inr p -> refl A.z } ;
+   witness : Support x = (ms,\ m out -> at m out (classify n m)) ;
+  } ;
+  finite (x : (T.D n).R) : Tr.Trunc[Support x].carrier = TC.map (P.Support[n].Data x) (Support x) (\ w -> FromSupport[x,w].witness) (P.Support[n].finite x) ;
+  module Degree (k : Int) (x : (T.D n).R) (hom : CoefficientParts[l].Laws[A,n,T.D n,T.setD n,T.grD n].Hom k x) {
+   module C = PolynomialCoefficientParts[l].Over[A,setA].At[n,k] ;
+   off (v : E.Exp n) (ne : Id Int (pos (E.degree n v)) k -> Base.Empty) : Id A.R (P.Coeff n x v) A.z =
+    trans (sym (ap (\ x -> P.Coeff n x v) hom)) (trans (C.coefficient x v)
+      (FP.sel-no A (P.Coeff n x v) (Id Int (pos (E.degree n v)) k) (\ e -> Pr.absurd Empty (ne e)) (int-dec (pos (E.degree n v)) k))) ;
+   at (m : L.Exp n) (ne : Not (Id Int (L.total n m) k)) : (sign : Sign n m) -> Id A.R (read x m sign) A.z = split {
+    inl p -> off p.1 (\ eq -> absurd Base.Empty (ne (trans (sym (ap (L.total n) p.2)) (trans (CP.deg-emb n p.1) eq)))) ;
+    inr p -> refl A.z } ;
+   homogeneous (m : L.Exp n) (ne : Not (Id Int (L.total n m) k)) : Id A.R (coeff x m) A.z = at m ne (classify n m) ;
+  } ;
+ } ;
+} ;

@@ -1,0 +1,117 @@
+-- Structural contraction, with a mask recording the negative coordinates
+-- of an exponent. If the new coordinate is nonnegative, the new vertex
+-- cone is h(a,b)=(b,0). If it is negative, recurse with
+-- h(a,b)=(h a,-h b). The residual pi is identity precisely when every
+-- coordinate is negative. Induction proves d h+h d+pi=id on ALL raw
+-- cochains, before imposing chart support. No sign table is used.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module IP = IdealPowers[l] ;
+module Over (D : CRing) (setD : Prelude[l].isSet D.R) {
+ module C = GenericCube[l].Over[D,setD] ; open C ;
+ open D ; module G = IP.ModL[D,IP.regular D] ; module L = RL[D] ;
+
+ hom : (n : Nat) -> Sub n -> Raw n -> Raw n = split {
+   zero -> \ mask c s -> z ;
+   suc n | h -> \ mask c s -> hStep n h mask.1 mask.2 c s.1 s.2 }
+ where {
+   hStep (n : Nat) (h : Sub n -> Raw n -> Raw n) : Flag -> Sub n -> Raw (suc n) -> Flag -> Sub n -> R = split {
+     absent -> \ mask c -> split { absent -> right n c ; present -> \ s -> z } ;
+     present -> \ mask c -> split { absent -> h mask (left n c) ; present -> \ s -> neg (h mask (right n c) s) } } } ;
+ proj : (n : Nat) -> Sub n -> Raw n -> Raw n = split {
+   zero -> \ mask c s -> c s ;
+   suc n | p -> \ mask c s -> pStep n p mask.1 mask.2 c s.1 s.2 }
+ where {
+   pStep (n : Nat) (p : Sub n -> Raw n -> Raw n) : Flag -> Sub n -> Raw (suc n) -> Flag -> Sub n -> R = split {
+     absent -> \ mask c b s -> z ;
+     present -> \ mask c -> split { absent -> p mask (left n c) ; present -> p mask (right n c) } } } ;
+
+ h-cong : (n : Nat) (mask : Sub n) (c c' : Raw n) -> Eq n c c' -> Eq n (hom n mask c) (hom n mask c') = split {
+   zero -> \ mask c c' e s -> refl z ;
+   suc n | r -> \ mask c c' e s -> hCong n r mask.1 mask.2 c c' e s.1 s.2 }
+ where {
+   hCong (n : Nat) (r : (mask : Sub n) (c c' : Raw n) -> Eq n c c' -> Eq n (hom n mask c) (hom n mask c')) :
+     (b : Flag) (mask : Sub n) (c c' : Raw (suc n)) (e : Eq (suc n) c c') (f : Flag) (s : Sub n) ->
+     Id R (hom (suc n) (b,mask) c (f,s)) (hom (suc n) (b,mask) c' (f,s)) = split {
+     absent -> \ mask c c' e -> split { absent -> \ s -> e (present,s) ; present -> \ s -> refl z } ;
+     present -> \ mask c c' e -> split {
+       absent -> r mask (left n c) (left n c') (\ s -> e (absent,s)) ;
+       present -> \ s -> ap neg (r mask (right n c) (right n c') (\ s -> e (present,s)) s) } } } ;
+ h-add : (n : Nat) (mask : Sub n) (c c' : Raw n) -> Eq n (hom n mask (addR n c c')) (addR n (hom n mask c) (hom n mask c')) = split {
+   zero -> \ mask c c' s -> sym (addZ z) ;
+   suc n | r -> \ mask c c' s -> hAdd n r mask.1 mask.2 c c' s.1 s.2 }
+ where {
+   hAdd (n : Nat) (r : (mask : Sub n) (c c' : Raw n) -> Eq n (hom n mask (addR n c c')) (addR n (hom n mask c) (hom n mask c'))) :
+     (b : Flag) (mask : Sub n) (c c' : Raw (suc n)) (f : Flag) (s : Sub n) ->
+     Id R (hom (suc n) (b,mask) (addR (suc n) c c') (f,s))
+       (add (hom (suc n) (b,mask) c (f,s)) (hom (suc n) (b,mask) c' (f,s))) = split {
+     absent -> \ mask c c' -> split { absent -> \ s -> refl (add (c (present,s)) (c' (present,s))) ; present -> \ s -> sym (addZ z) } ;
+     present -> \ mask c c' -> split {
+       absent -> r mask (left n c) (left n c') ;
+       present -> \ s -> trans (ap neg (r mask (right n c) (right n c') s))
+         (G.G.neg-add (hom n mask (right n c) s) (hom n mask (right n c') s)) } } } ;
+ h-sm : (n : Nat) (mask : Sub n) (a : R) (c : Raw n) -> Eq n (hom n mask (smR n a c)) (smR n a (hom n mask c)) = split {
+   zero -> \ mask a c s -> sym (L.mul-zero a) ;
+   suc n | r -> \ mask a c s -> hSm n r mask.1 mask.2 a c s.1 s.2 }
+ where {
+   hSm (n : Nat) (r : (mask : Sub n) (a : R) (c : Raw n) -> Eq n (hom n mask (smR n a c)) (smR n a (hom n mask c))) :
+     (b : Flag) (mask : Sub n) (a : R) (c : Raw (suc n)) (f : Flag) (s : Sub n) ->
+     Id R (hom (suc n) (b,mask) (smR (suc n) a c) (f,s)) (mul a (hom (suc n) (b,mask) c (f,s))) = split {
+     absent -> \ mask a c -> split { absent -> \ s -> refl (mul a (c (present,s))) ; present -> \ s -> sym (L.mul-zero a) } ;
+     present -> \ mask a c -> split {
+       absent -> r mask a (left n c) ;
+       present -> \ s -> trans (ap neg (r mask a (right n c) s)) (sym (L.mul-neg a (hom n mask (right n c) s))) } } } ;
+ hlin (n : Nat) (mask : Sub n) : IP.Lin[D,rawM n,rawM n] = IP.mkLin D (rawM n) (rawM n) (hom n mask)
+   (\ c c' -> ext n _ _ (h-add n mask c c')) (\ a c -> ext n _ _ (h-sm n mask a c)) ;
+ module HL (n : Nat) (mask : Sub n) { module LL = RelationCertificate[l].LinL[D,rawM n,rawM n,hlin n mask] ; } ;
+ h-zero (n : Nat) (mask : Sub n) (s : Sub n) : Id R (hom n mask (zeroR n) s) z = ap (\ c -> c s) HL[n,mask].LL.f-zero ;
+ h-sub (n : Nat) (mask : Sub n) (c c' : Raw n) (s : Sub n) :
+   Id R (hom n mask (\ t -> G.msub (c t) (c' t)) s) (G.msub (hom n mask c s) (hom n mask c' s)) =
+   ap (\ c -> c s) (HL[n,mask].LL.f-sub c c') ;
+
+ -- The only ring identities needed in the dimension induction.
+ sub-zero (x : R) : Id R (G.msub x z) x = trans (ap (add x) G.G.neg-zero) (addZ x) ;
+ add-sub (x y : R) : Id R (add x (G.msub y x)) y =
+   trans (addC x (G.msub y x)) (trans (sym (addA y (neg x) x))
+     (trans (ap (add y) (L.neg-cancel x)) (addZ y))) ;
+ join (a x y p : R) : Id R (add (add (G.msub a (neg x)) (neg (G.msub a y))) p) (add (add x y) p) =
+   ap (\ t -> add t p)
+     (trans (G.G.cong-add (ap (add a) (G.G.neg-neg x)) (trans (G.G.neg-add a (neg y)) (ap (add (neg a)) (G.G.neg-neg y))))
+       (trans (G.G.swap a x (neg a) y) (trans (ap (\ t -> add t (add x y)) (addN a)) (G.G.zl (add x y))))) ;
+
+ -- The included component in the negative-head case has two cancelling
+ -- copies of h(left c). Name them before applying the group identity.
+ module Included (n : Nat) (mask : Sub n) (c : Raw (suc n)) (s : Sub n) {
+   a : R = hom n mask (left n c) s ;
+   x : R = diff n (hom n mask (right n c)) s ;
+   y : R = hom n mask (diff n (right n c)) s ;
+   p : R = proj n mask (right n c) s ;
+   dval : Id R (diff (suc n) (hom (suc n) (present,mask) c) (present,s)) (G.msub a (neg x)) =
+     ap (G.msub a) (d-neg n (hom n mask (right n c)) s) ;
+   hval : Id R (hom (suc n) (present,mask) (diff (suc n) c) (present,s)) (neg (G.msub a y)) =
+     ap neg (h-sub n mask (left n c) (diff n (right n c)) s) ;
+   result : Id R (add (add (diff (suc n) (hom (suc n) (present,mask) c) (present,s))
+       (hom (suc n) (present,mask) (diff (suc n) c) (present,s))) (proj (suc n) (present,mask) c (present,s)))
+       (add (add x y) p) =
+     trans (ap (\ t -> add t p) (G.G.cong-add dval hval)) (join a x y p) ;
+ } ;
+ -- THEOREM: d h + h d + pi = id, structurally for every dimension.
+ htpy : (n : Nat) (mask : Sub n) (c : Raw n) (s : Sub n) ->
+   Id R (add (add (diff n (hom n mask c) s) (hom n mask (diff n c) s)) (proj n mask c s)) (c s) = split {
+   zero -> \ mask c s -> trans (ap (\ t -> add t (c s)) (addZ z)) (G.G.zl (c s)) ;
+   suc n | r -> \ mask c s -> htpyS n r mask.1 mask.2 c s.1 s.2 }
+ where {
+   htpyS (n : Nat) (r : (mask : Sub n) (c : Raw n) (s : Sub n) ->
+     Id R (add (add (diff n (hom n mask c) s) (hom n mask (diff n c) s)) (proj n mask c s)) (c s)) :
+     (b : Flag) (mask : Sub n) (c : Raw (suc n)) (f : Flag) (s : Sub n) ->
+     Id R (add (add (diff (suc n) (hom (suc n) (b,mask) c) (f,s))
+       (hom (suc n) (b,mask) (diff (suc n) c) (f,s))) (proj (suc n) (b,mask) c (f,s))) (c (f,s)) = split {
+     absent -> \ mask c -> split {
+       absent -> \ s -> trans (addZ (add (diff n (right n c) s) (G.msub (left n c s) (diff n (right n c) s))))
+         (add-sub (diff n (right n c) s) (left n c s)) ;
+       present -> \ s -> trans (ap (\ t -> add (add (G.msub (right n c s) t) z) z) (d-zero n s))
+         (trans (ap (\ t -> add (add t z) z) (sub-zero (right n c s)))
+           (trans (addZ (add (right n c s) z)) (addZ (right n c s)))) } ;
+     present -> \ mask c -> split {
+       absent -> r mask (left n c) ;
+       present -> \ s -> trans Included[n,mask,c,s].result (r mask (right n c) s) } } } ;
+} ;

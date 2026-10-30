@@ -1,0 +1,66 @@
+-- Exchanging two finite blocks of polynomial variables; see TowerUniversal.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module RH = RingHom[l] ; module Ps = Presentations[l] ;
+
+-- A[X_1..X_n][U_1..U_m] -> A[U_1..U_m][X_1..X_n].
+-- First extend the base map to the X block; next extend to the U block.
+module Direction (A : CRing) (setA : Pr.isSet A.R) (n m : Nat) {
+  module TX = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+  module TU = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+  module TL = CoefficientPolynomial[l].CoefficientTower[TX.D n,TX.setD n] ;
+  module TR = CoefficientPolynomial[l].CoefficientTower[TU.D m,TU.setD m] ;
+  L : CRing = TL.D m ;
+  R : CRing = TR.D n ;
+  setL : Pr.isSet L.R = TL.setD m ;
+  setR : Pr.isSet R.R = TR.setD n ;
+  aL : RH.Hom A L = RH.compose A (TX.D n) L (TL.grD m).iota (TX.grD n).iota ;
+  aR : RH.Hom A R = RH.compose A (TU.D m) R (TR.grD n).iota (TU.grD m).iota ;
+  xL (i : Ps.Fin n) : L.R = (TL.grD m).iota.1 ((TX.grD n).var i) ;
+  uL (j : Ps.Fin m) : L.R = (TL.grD m).var j ;
+  xR (i : Ps.Fin n) : R.R = (TR.grD n).var i ;
+  uR (j : Ps.Fin m) : R.R = (TR.grD n).iota.1 ((TU.grD m).var j) ;
+  module EX = TowerUniversal[l].Over[A,R,setA,setR] ;
+  module EU = TowerUniversal[l].Over[TX.D n,R,TX.setD n,setR] ;
+  baseMap : RH.Hom (TX.D n) R = EX.extend n aR xR ;
+  map : RH.Hom L R = EU.extend m baseMap uR ;
+  on-base (x : (TX.D n).R) : Id R.R (map.1 ((TL.grD m).iota.1 x)) (baseMap.1 x) = EU.base m baseMap uR x ;
+  on-A (a : A.R) : Id R.R (map.1 (aL.1 a)) (aR.1 a) =
+    trans (on-base ((TX.grD n).iota.1 a)) (EX.base n aR xR a) ;
+  on-X (i : Ps.Fin n) : Id R.R (map.1 (xL i)) (xR i) =
+    trans (on-base ((TX.grD n).var i)) (EX.variable n aR xR i) ;
+  on-U (j : Ps.Fin m) : Id R.R (map.1 (uL j)) (uR j) = EU.variable m baseMap uR j ;
+} ;
+
+-- Agreement on both variable blocks proves that exchanging twice is the
+-- identity.  The argument is uniform, including empty blocks.
+module RoundTrip (A : CRing) (setA : Pr.isSet A.R) (n m : Nat) {
+  module F = Direction[A,setA,n,m] ;
+  module B = Direction[A,setA,m,n] ;
+  round : RH.Hom F.L F.L = RH.compose F.L F.R F.L B.map F.map ;
+  on-A (a : A.R) : Id F.L.R (round.1 (F.aL.1 a)) (F.aL.1 a) =
+    trans (ap B.map.1 (F.on-A a)) (B.on-A a) ;
+  on-X (i : Ps.Fin n) : Id F.L.R (round.1 (F.xL i)) (F.xL i) =
+    trans (ap B.map.1 (F.on-X i)) (B.on-U i) ;
+  on-U (j : Ps.Fin m) : Id F.L.R (round.1 (F.uL j)) (F.uL j) =
+    trans (ap B.map.1 (F.on-U j)) (B.on-X j) ;
+  restricted : RH.Hom (F.TX.D n) F.L =
+    RH.compose (F.TX.D n) F.L F.L round (F.TL.grD m).iota ;
+  base-path : Id (RH.Hom (F.TX.D n) F.L) restricted (F.TL.grD m).iota =
+    TowerUniversal[l].Over[A,F.L,setA,F.setL].ext n restricted (F.TL.grD m).iota on-A on-X ;
+  on-base (x : (F.TX.D n).R) : Id F.L.R (round.1 ((F.TL.grD m).iota.1 x)) ((F.TL.grD m).iota.1 x) =
+    ap (\ h -> h.1 x) base-path ;
+  identity : Id (RH.Hom F.L F.L) round (RH.identity F.L) =
+    TowerUniversal[l].Over[F.TX.D n,F.L,F.TX.setD n,F.setL].ext m round (RH.identity F.L) on-base on-U ;
+  pointwise (x : F.L.R) : Id F.L.R (B.map.1 (F.map.1 x)) x = ap (\ h -> h.1 x) identity ;
+} ;
+
+module Swap (A : CRing) (setA : Pr.isSet A.R) (n m : Nat) {
+  module F = Direction[A,setA,n,m] ;
+  module B = Direction[A,setA,m,n] ;
+  forward : RH.Hom F.L F.R = F.map ;
+  backward : RH.Hom F.R F.L = B.map ;
+  backward-forward (x : F.L.R) : Id F.L.R (backward.1 (forward.1 x)) x = RoundTrip[A,setA,n,m].pointwise x ;
+  forward-backward (x : F.R.R) : Id F.R.R (forward.1 (backward.1 x)) x = RoundTrip[A,setA,m,n].pointwise x ;
+  equivalence : Pr.Equiv F.L.R F.R.R =
+    (forward.1, Pr.qinv F.L.R F.R.R forward.1 backward.1 forward-backward backward-forward) ;
+} ;

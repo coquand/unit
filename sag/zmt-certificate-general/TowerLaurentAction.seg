@@ -1,0 +1,81 @@
+-- Recursive Laurent coefficient extraction proves the polynomial tower
+-- action comparison directly. A one-variable monomial shifts coefficients;
+-- iteration on the number of variables gives the multivariable monomial
+-- rule. Add finite terms to get the whole polynomial action. Thus the ring
+-- product is compared to Laurent action without assuming multiplication
+-- compatibility of representatives or adding any convolution axiom.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module E = FiniteExponents[l] ;
+module L = GenericLaurent[l] ; module X = LaurentExponentBridge[l] ; module PA = PolynomialAction4[l] ;
+module LV = Laurent4[l] ; module LP = LaurentPolynomialCoefficients[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module P = PolynomialTowerBridge[l].Over[A,setA] ; module T = P.T ;
+ module LC = LP.Over[A,setA] ; module AD = IdealPowers[l].ModL[A,IdealPowers[l].regular A] ;
+ module Level (n : Nat) {
+  module B = P.Level[n].B ; module M = P.Level[n] ;
+  module R = RL[T.D (suc n)] ;
+  mono-at (c : (T.D n).R) : (e : Base.Nat) (x : (T.D (suc n)).R) (z : Int) ->
+   Id (T.D n).R (B.at ((T.D (suc n)).mul (M.mono c e) x) z)
+    ((T.D n).mul c (B.at x (PA.minus z e))) = split {
+   zero -> \ x z -> B.at-scale c x z ;
+   suc e | rec -> \ x z ->
+    trans (ap (\ y -> B.at y z) (sym ((T.D (suc n)).mulA B.X.variable (M.mono c e) x)))
+     (trans (B.at-var ((T.D (suc n)).mul (M.mono c e) x) z)
+      (trans (rec x (predZ z))
+       (ap (\ k -> (T.D n).mul c (B.at x k)) (PA.minus-comm z (suc zero) e)))) } ;
+  at-negative (x : (T.D (suc n)).R) : (z : Int) -> LV.Neg z -> Id (T.D n).R (B.at x z) (T.D n).z = split {
+   pos k -> \ h -> absurd (Id (T.D n).R (B.at x (pos k)) (T.D n).z) h ;
+   negsuc k -> \ h -> refl (T.D n).z } ;
+ } ;
+ psi : (n : Nat) -> (T.D n).R -> L.Exp n -> A.R = split {
+  zero -> \ x m -> x ;
+  suc n | rec -> \ x m -> rec (Level[n].B.at x (head n m)) (tail n m) } ;
+ psi-zero : (n : Nat) (m : L.Exp n) -> Id A.R (psi n (T.D n).z m) A.z = split {
+  zero -> \ m -> refl A.z ;
+  suc n | rec -> \ m -> trans (ap (\ y -> psi n y (tail n m)) (Level[n].B.at-zero (head n m))) (rec (tail n m)) } ;
+ psi-natural : (n : Nat) (x : (T.D n).R) (v : E.Exp n) -> Id A.R (psi n x (X.At[n].emb v)) (P.Coeff n x v) = split {
+  zero -> \ x v -> refl x ;
+  suc n | rec -> \ x v -> rec (Level[n].B.at x (pos (v (inr tt)))) (E.old n v) } ;
+ module NegativeStep (n : Nat)
+  (rec : (x : (T.D n).R) (m : L.Exp n) (i : Ps.Fin n) -> LV.Neg (m i) -> Id A.R (psi n x m) A.z)
+  (x : (T.D (suc n)).R) (m : L.Exp (suc n)) {
+  at : (i : Ps.Fin (suc n)) -> LV.Neg (m i) -> Id A.R (psi (suc n) x m) A.z = split {
+   inl i -> \ neg -> rec (Level[n].B.at x (head n m)) (tail n m) i neg ;
+   inr t -> top t }
+  where { top : (t : Top) -> LV.Neg (m (inr t)) -> Id A.R (psi (suc n) x m) A.z = split {
+   tt -> \ neg -> trans (ap (\ y -> psi n y (tail n m)) (Level[n].at-negative x (head n m) neg)) (psi-zero n (tail n m)) } } ;
+ } ;
+ psi-negative : (n : Nat) (x : (T.D n).R) (m : L.Exp n) (i : Ps.Fin n) -> LV.Neg (m i) -> Id A.R (psi n x m) A.z = split {
+  zero -> \ x m i -> absurd (LV.Neg (m i) -> Id A.R (psi zero x m) A.z) i ;
+  suc n | rec -> \ x m -> NegativeStep[n,rec,x,m].at } ;
+ psi-read (n : Nat) (x : (T.D n).R) (m : L.Exp n) : (sg : LP.Sign n m) -> Id A.R (psi n x m) (LC.At[n].read x m sg) = split {
+  inl p -> trans (ap (psi n x) (sym p.2)) (psi-natural n x p.1) ;
+  inr p -> psi-negative n x m p.1 p.2 } ;
+ psi-coeff (n : Nat) (x : (T.D n).R) (m : L.Exp n) : Id A.R (psi n x m) (LC.At[n].coeff x m) = psi-read n x m (LP.classify n m) ;
+ psi-add : (n : Nat) (x y : (T.D n).R) (m : L.Exp n) ->
+  Id A.R (psi n ((T.D n).add x y) m) (A.add (psi n x m) (psi n y m)) = split {
+  zero -> \ x y m -> refl (A.add x y) ;
+  suc n | rec -> \ x y m -> trans (ap (\ z -> psi n z (tail n m)) (Level[n].B.at-add x y (head n m)))
+    (rec _ _ (tail n m)) } ;
+ term-mul : (n : Nat) (p : P.Term n) (x : (T.D n).R) (m : L.Exp n) ->
+  Id A.R (psi n ((T.D n).mul (P.term n p) x) m) (A.mul p.1 (psi n x (X.At[n].subE m p.2))) = split {
+  zero -> \ p x m -> refl (A.mul p.1 x) ;
+  suc n | rec -> \ p x m ->
+   trans (ap (\ y -> psi n y (tail n m)) (Level[n].mono-at (P.term n (p.1,E.old n p.2)) (p.2 (inr tt)) x (head n m)))
+    (rec (p.1,E.old n p.2) (Level[n].B.at x (PA.minus (head n m) (p.2 (inr tt)))) (tail n m)) } ;
+ module At (n : Nat) {
+  module FA = FiniteLaurentAction[l].Over[A,setA,n] ; module R = RL[T.D n] ;
+  phi-mul (x : (T.D n).R) (m : L.Exp n) : (ps : List (P.Term n)) ->
+   Id A.R (psi n ((T.D n).mul (P.phi n ps) x) m) (FA.mulP ps (psi n x) m) = split {
+   nil -> trans (ap (\ y -> psi n y m) (R.zero-mul x)) (psi-zero n m) ;
+   cons p ps | rec ->
+    trans (ap (\ y -> psi n y m) (R.dist-left (P.term n p) (P.phi n ps) x))
+     (trans (psi-add n ((T.D n).mul (P.term n p) x) ((T.D n).mul (P.phi n ps) x) m)
+      (AD.G.cong-add (term-mul n p x m) rec)) } ;
+  -- Public comparison in the finite-support coefficient extension.
+  action (ps : List (P.Term n)) (x : (T.D n).R) (m : L.Exp n) :
+   Id A.R (FA.mulP ps (LC.At[n].coeff x) m) (LC.At[n].coeff ((T.D n).mul (P.phi n ps) x) m) =
+   trans (FA.mulP-cong ps (LC.At[n].coeff x) (psi n x) (\ m -> sym (psi-coeff n x m)) m)
+    (trans (sym (phi-mul x m ps)) (psi-coeff n ((T.D n).mul (P.phi n ps) x) m)) ;
+ } ;
+} ;

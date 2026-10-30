@@ -1,0 +1,231 @@
+-- ZMT4Polynomials.seg: chart cochains as term lists (clearing finitely many
+-- denominators), and dehomogenisation through coefficients (tools for the
+-- extraction, README §3 (C)).
+--
+-- Chart conditions are decidable (decOut: a negative coordinate outside E;
+-- only signs of integers are decided).  A support list S of a function f
+-- that also vanishes on Out E is cut down to the members with no negative
+-- coordinate outside E (filt; f vanishes off filt E S: off).
+-- Clearing denominators (ChartPoly).  Let L in N^4 dominate the negative
+-- parts of the members of filt E S (dom).  Then g(m) = f(m - L) (X^L f)
+-- vanishes at every m with a negative coordinate (if m - L were in the
+-- list, m = (m - L) + L would have none: LaurentSyzygyLift4.fits) and off
+-- the shifted list, so g = cf T for a term list T
+-- (FinitePolynomial4.cf-rep).  For the patterns used, L = Lpat E' (bound S):
+-- suc (bound S)_i on the coordinates inside E' and 0 outside; it dominates
+-- for every E inside E' (dom-pat: inside E' by LaurentSyzygyLift4.bound-le,
+-- outside E' the coordinate is >= 0 by the chart condition).
+-- Homogeneous parts (filtT).  filtT dd p keeps the terms of p of total
+-- degree dd (a decision on naturals); at every exponent of degree dd it has
+-- the coefficient function of p (cf-filt: a dropped term c X^u contributes
+-- c delta0(m - u) = 0, since deg (m - u) = dd - size u /= 0), and it is
+-- homogeneous.
+-- Dehomogenisation through coefficients (Deh).  For a ring map
+-- iota : A -> E and y : Fin 3 -> E, deh p = sum_v iota(coef p v) y^v over
+-- any list without repetitions containing the exponents of p (deh-expand,
+-- as PolynomialAction4.expand), so term lists with the same coefficient
+-- function have the same dehomogenisation (deh-cf, via coef-cf).
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open HomogeneousMatrices4[l] ;
+open FinitePolynomial4[l] ; open ShiftedCech4[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ; module NA = NatArith[l] ; module LG = Logic[l] ;
+module LSL = LaurentSyzygyLift4[l] ; module ZM = ZMT4Certificate[l] ; module WP = WeightedParts4[l] ;
+
+------------------------------------------------------------------------
+-- decidable chart conditions
+
+-- a decision: X or not X (Ring.Not, the negation of the chart conditions)
+Dc (X : U l) : U l = Plus X (Not X) ;
+decNeg : (x : Int) -> Dc (Neg x) = split { pos n -> inr (\ h -> h) ; negsuc n -> inl tt } ;
+decGate (X : U l) (d : Dc X) : (s : Fl) -> Dc (gate s X) = split {
+  inside -> inr (\ h -> h) ;
+  outside -> d } ;
+or4-no (A B C E : U l) (nA : Not A) (nB : Not B) (nC : Not C) (nE : Not E) : Or4 A B C E -> Empty = split {
+  o0 x -> nA x ; o1 x -> nB x ; o2 x -> nC x ; o3 x -> nE x } ;
+dec4d (A B C E : U l) (nA : Not A) (nB : Not B) (nC : Not C) : Dc E -> Dc (Or4 A B C E) = split {
+  inl x -> inl (o3 x) ; inr n -> inr (or4-no A B C E nA nB nC n) } ;
+dec4c (A B C E : U l) (nA : Not A) (nB : Not B) (dE : Dc E) : Dc C -> Dc (Or4 A B C E) = split {
+  inl x -> inl (o2 x) ; inr n -> dec4d A B C E nA nB n dE } ;
+dec4b (A B C E : U l) (nA : Not A) (dC : Dc C) (dE : Dc E) : Dc B -> Dc (Or4 A B C E) = split {
+  inl x -> inl (o1 x) ; inr n -> dec4c A B C E nA n dE dC } ;
+dec4a (A B C E : U l) (dB : Dc B) (dC : Dc C) (dE : Dc E) : Dc A -> Dc (Or4 A B C E) = split {
+  inl x -> inl (o0 x) ; inr n -> dec4b A B C E n dC dE dB } ;
+decOutH (s0 s1 s2 s3 : Fl) : (m : E4) -> Dc (Out (sub s0 s1 s2 s3) m) = split {
+  ex a b c d -> dec4a (gate s0 (Neg a)) (gate s1 (Neg b)) (gate s2 (Neg c)) (gate s3 (Neg d))
+    (decGate (Neg b) (decNeg b) s1) (decGate (Neg c) (decNeg c) s2) (decGate (Neg d) (decNeg d) s3) (decGate (Neg a) (decNeg a) s0) } ;
+decOut : (E : Sub4) (m : E4) -> Dc (Out E m) = split { sub s0 s1 s2 s3 -> decOutH s0 s1 s2 s3 } ;
+
+-- the members of a list with no negative coordinate outside E
+filtStep (E : Sub4) (m : E4) (r : List E4) : Dc (Out E m) -> List E4 = split {
+  inl o -> r ;
+  inr n -> cons m r } ;
+filt (E : Sub4) : List E4 -> List E4 = split {
+  nil -> nil ;
+  cons m s | r -> filtStep E m r (decOut E m) } ;
+filt-memS (E : Sub4) (x m : E4) (r : List E4) (hr : Mem x r) : (d : Dc (Out E m)) -> Mem x (filtStep E m r d) = split {
+  inl o -> hr ;
+  inr n -> inr hr } ;
+filt-memH (E : Sub4) (x m : E4) (r : List E4) (e : Id E4 m x) (nx : Not (Out E x)) : (d : Dc (Out E m)) -> Mem x (filtStep E m r d) = split {
+  inl o -> absurd (Mem x r) (nx (subst (Out E) e o)) ;
+  inr n -> inl e } ;
+filt-mem (E : Sub4) (x : E4) (nx : Not (Out E x)) : (s : List E4) -> Mem x s -> Mem x (filt E s) = split {
+  nil -> \ h -> h ;
+  cons m s | r -> split {
+    inl e -> filt-memH E x m (filt E s) e nx (decOut E m) ;
+    inr h -> filt-memS E x m (filt E s) (r h) (decOut E m) } } ;
+mem-filtS (E : Sub4) (x m : E4) (s : List E4) (r : Mem x (filt E s) -> Mem x s * Not (Out E x)) :
+  (d : Dc (Out E m)) -> Mem x (filtStep E m (filt E s) d) -> Mem x (cons m s) * Not (Out E x) = split {
+  inl o -> \ h -> (inr (r h).1, (r h).2) ;
+  inr n -> split {
+    inl e -> (inl e, \ o -> n (subst (Out E) (sym e) o)) ;
+    inr h -> (inr (r h).1, (r h).2) } } ;
+mem-filt (E : Sub4) (x : E4) : (s : List E4) -> Mem x (filt E s) -> Mem x s * Not (Out E x) = split {
+  nil -> \ h -> absurd (Mem x nil * Not (Out E x)) h ;
+  cons m s | r -> mem-filtS E x m s r (decOut E m) } ;
+
+------------------------------------------------------------------------
+-- shifts dominating the negative parts on a pattern
+
+pick : Fl -> Base.Nat -> Base.Nat = split { inside -> \ b -> suc b ; outside -> \ b -> zero } ;
+Lpat : Sub4 -> N4 -> N4 = split { sub s0 s1 s2 s3 -> split { nx b0 b1 b2 b3 -> nx (pick s0 b0) (pick s1 b1) (pick s2 b2) (pick s3 b3) } } ;
+negPart-zero : (x : Int) -> Not (Neg x) -> Id Base.Nat (LSL.negPart x) zero = split {
+  pos n -> \ h -> refl zero ;
+  negsuc n -> \ h -> absurd (Id Base.Nat (suc n) zero) (h tt) } ;
+domOut (x : Int) (nn : Not (gate outside (Neg x))) : NA.Le (LSL.negPart x) zero = (zero, negPart-zero x nn) ;
+domC (x : Int) (bi : Base.Nat) (b : NA.Le (LSL.negPart x) bi) : (s s' : Fl) -> Le s s' -> Not (gate s (Neg x)) -> NA.Le (LSL.negPart x) (pick s' bi) = split {
+  inside -> split {
+    inside -> \ le nn -> WP.le-suc (LSL.negPart x) bi b ;
+    outside -> \ le nn -> absurd (NA.Le (LSL.negPart x) zero) le } ;
+  outside -> split {
+    inside -> \ le nn -> WP.le-suc (LSL.negPart x) bi b ;
+    outside -> \ le nn -> domOut x nn } } ;
+domH2 (a b c d : Int) : (B : N4) -> LSL.LeN4 (LSL.negN4 (ex a b c d)) B -> (s0 s1 s2 s3 : Fl) -> Not (Out (sub s0 s1 s2 s3) (ex a b c d)) ->
+  (t0 t1 t2 t3 : Fl) -> Le4 (sub s0 s1 s2 s3) (sub t0 t1 t2 t3) -> LSL.LeN4 (LSL.negN4 (ex a b c d)) (Lpat (sub t0 t1 t2 t3) B) = split {
+  nx b0 b1 b2 b3 -> \ hb s0 s1 s2 s3 nout t0 t1 t2 t3 le ->
+    (domC a b0 hb.1 s0 t0 le.1 (\ g -> nout (o0 g)),
+     (domC b b1 hb.2.1 s1 t1 le.2.1 (\ g -> nout (o1 g)),
+      (domC c b2 hb.2.2.1 s2 t2 le.2.2.1 (\ g -> nout (o2 g)),
+       domC d b3 hb.2.2.2 s3 t3 le.2.2.2 (\ g -> nout (o3 g))))) } ;
+-- the pattern shift dominates every member of S for every chart E inside E'
+dom-pat3 (S : List E4) (s0 s1 s2 s3 t0 t1 t2 t3 : Fl) (le : Le4 (sub s0 s1 s2 s3) (sub t0 t1 t2 t3)) :
+  (m : E4) -> Mem m S -> Not (Out (sub s0 s1 s2 s3) m) -> LSL.LeN4 (LSL.negN4 m) (Lpat (sub t0 t1 t2 t3) (LSL.bound S)) = split {
+  ex a b c d -> \ hm nout -> domH2 a b c d (LSL.bound S) (LSL.bound-le S (ex a b c d) hm) s0 s1 s2 s3 nout t0 t1 t2 t3 le } ;
+dom-pat2 (S : List E4) (s0 s1 s2 s3 : Fl) : (E' : Sub4) -> Le4 (sub s0 s1 s2 s3) E' ->
+  (m : E4) -> Mem m S -> Not (Out (sub s0 s1 s2 s3) m) -> LSL.LeN4 (LSL.negN4 m) (Lpat E' (LSL.bound S)) = split {
+  sub t0 t1 t2 t3 -> dom-pat3 S s0 s1 s2 s3 t0 t1 t2 t3 } ;
+dom-pat (S : List E4) : (E E' : Sub4) -> Le4 E E' -> (m : E4) -> Mem m S -> Not (Out E m) -> LSL.LeN4 (LSL.negN4 m) (Lpat E' (LSL.bound S)) = split {
+  sub s0 s1 s2 s3 -> dom-pat2 S s0 s1 s2 s3 } ;
+
+-- the empty type of Base (decisions of Logic) eliminated
+bot (X : U l) : Base.Empty -> X = split { } ;
+-- (pos a) - b = 0 gives b = a
+minus-zero-eq (a b : Base.Nat) (h : Id Int (minus (pos a) b) zeroZ) : Id Base.Nat b a =
+  ap FinitePolynomial4[l].posN (trans (sym (ReesPresentation4[l].addP-pos zero b))
+    (trans (ap (\ z -> addP z b) (sym h)) (addP-minus-cancel (pos a) b))) ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module PA = PolynomialAction4[l].Over[D,setD] ; module FP = FinitePolynomial4[l].Over[D,setD] ; module LD = RL[D] ;
+
+  ------------------------------------------------------------------------
+  -- X^L f as a term list, for a chart function f
+
+  module ChartPoly (E : Sub4) (f : E4 -> D.R) (S : List E4) (supp : (m : E4) -> Not (Mem m S) -> Id D.R (f m) D.z)
+    (van : (m : E4) -> Out E m -> Id D.R (f m) D.z) (L : N4)
+    (dom : (m : E4) -> Mem m S -> Not (Out E m) -> LSL.LeN4 (LSL.negN4 m) L) {
+    S' : List E4 = filt E S ;
+    offD (x : E4) (h : Not (Mem x S')) : (d : Dc (Out E x)) -> Id D.R (f x) D.z = split {
+      inl o -> van x o ;
+      inr n -> supp x (\ hm -> h (filt-mem E x n S hm)) } ;
+    -- f vanishes off the cut-down list
+    off (x : E4) (h : Not (Mem x S')) : Id D.R (f x) D.z = offD x h (decOut E x) ;
+    -- (X^L f)(m) = f(m - L)
+    g (m : E4) : D.R = f (subE m L) ;
+    g-neg (m : E4) (o : Out none m) : Id D.R (g m) D.z =
+      off (subE m L) (\ h -> LSL.fits (subE m L) L (dom (subE m L) (mem-filt E (subE m L) S h).1 (mem-filt E (subE m L) S h).2)
+                              (subst (Out none) (sym (addE-subE m L)) o)) ;
+    g-out (m : E4) (nm : Not (Mem m (mapL (\ x -> addE x L) S'))) : Id D.R (g m) D.z =
+      off (subE m L) (\ h -> nm (mem-tr (mapL (\ x -> addE x L) S') (addE (subE m L) L) m (addE-subE m L)
+                                   (mem-map (\ x -> addE x L) (subE m L) S' h))) ;
+    rep : (p : TPoly D.R) * ((m : E4) -> Id D.R (FP.cf p m) (g m)) = FP.cf-rep g g-neg (mapL (\ x -> addE x L) S') g-out ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the terms of a given total degree
+
+  keepT (dd : Base.Nat) (t : D.R * N4) (r : TPoly D.R) : LG.Dec (Id Base.Nat (size t.2) dd) -> TPoly D.R = split {
+    yes h -> cons t r ;
+    no n -> r } ;
+  filtT (dd : Base.Nat) : TPoly D.R -> TPoly D.R = split {
+    nil -> nil ;
+    cons t p | r -> keepT dd t r (nat-dec (size t.2) dd) } ;
+  hom-keep (dd : Base.Nat) (t : D.R * N4) (r : TPoly D.R) (hr : HomDeg D.R dd r) : (d : LG.Dec (Id Base.Nat (size t.2) dd)) -> HomDeg D.R dd (keepT dd t r d) = split {
+    yes h -> (h, hr) ;
+    no n -> hr } ;
+  hom-filtT (dd : Base.Nat) : (p : TPoly D.R) -> HomDeg D.R dd (filtT dd p) = split {
+    nil -> tt ;
+    cons t p | r -> hom-keep dd t (filtT dd p) r (nat-dec (size t.2) dd) } ;
+  -- a term of another degree does not contribute at m of degree dd
+  away (dd : Base.Nat) (m : E4) (hm : Id Int (deg m) (pos dd)) (t : D.R * N4) (n : LG.Not (Id Base.Nat (size t.2) dd)) :
+    Id D.R (D.mul t.1 (FP.delta0 (subE m t.2))) D.z =
+    trans (ap (D.mul t.1) (FP.delta0-away (subE m t.2)
+            (\ e -> bot Empty (n (minus-zero-eq dd (size t.2)
+                      (trans (sym (trans (deg-subE m t.2) (ap (\ k -> minus k (size t.2)) hm))) (ap deg e)))))))
+      (LD.mul-zero t.1) ;
+  cf-keep (dd : Base.Nat) (m : E4) (hm : Id Int (deg m) (pos dd)) (t : D.R * N4) (r : TPoly D.R) (p : TPoly D.R)
+    (hr : Id D.R (FP.cf r m) (FP.cf p m)) : (d : LG.Dec (Id Base.Nat (size t.2) dd)) ->
+    Id D.R (FP.cf (keepT dd t r d) m) (FP.cf (cons t p) m) = split {
+    yes h -> ap (D.add (D.mul t.1 (FP.delta0 (subE m t.2)))) hr ;
+    no n -> trans hr (sym (trans (ap (\ z -> D.add z (FP.cf p m)) (away dd m hm t n)) (LD.zl (FP.cf p m)))) } ;
+  cf-filt (dd : Base.Nat) (m : E4) (hm : Id Int (deg m) (pos dd)) : (p : TPoly D.R) -> Id D.R (FP.cf (filtT dd p) m) (FP.cf p m) = split {
+    nil -> refl D.z ;
+    cons t p | r -> cf-keep dd m hm t (filtT dd p) p r (nat-dec (size t.2) dd) } ;
+  -- at m of another degree the homogeneous part has coefficient 0
+  cf-filt-off (dd : Base.Nat) (p : TPoly D.R) (m : E4) (b : Bad (pos dd) none m) : Id D.R (FP.cf (filtT dd p) m) D.z =
+    FP.cf-van (pos dd) (filtT dd p)
+      (subst (\ k -> ShiftedCech4[l].Over[D,setD].Shifts k (pos dd) (filtT dd p)) (FinitePolynomial4[l].minus-self dd)
+        (HomogeneousMatrices4[l].Over[D,setD].hg-shifts (pos dd) dd (filtT dd p) (hom-filtT dd p))) m b ;
+} ;
+
+------------------------------------------------------------------------
+-- dehomogenisation depends on the coefficients only
+
+module Deh (A : CRing) (setA : Pr.isSet A.R) (E : CRing) (setE : Pr.isSet E.R) (iota : RH.Hom A E) (y : Ps.Fin ZM.three -> E.R) {
+  module CO = ZM.Over[A,setA,E,setE,iota,y] ;
+  module PAA = PolynomialAction4[l].Over[A,setA] ; module PE = PolynomialAction4[l].Over[E,setE] ;
+  module FPA = FinitePolynomial4[l].Over[A,setA] ;
+  module LE = RL[E] ;
+  pickD (v u : N4) (c : A.R) : (d : LG.Dec (Id N4 u v)) ->
+    Id E.R (iota.1 (TopCoordinates4[l].Over[A,setA].monoD c (Id N4 u v) d)) (TopCoordinates4[l].Over[E,setE].monoD (iota.1 c) (Id N4 u v) d) = split {
+    yes e -> refl (iota.1 c) ;
+    no n -> RH.zero A E iota } ;
+  iota-pick (v u : N4) (c : A.R) : Id E.R (iota.1 (PAA.pick v u c)) (PE.pick v u (iota.1 c)) = pickD v u c (dec-n4 u v) ;
+  -- deh p = sum_{v in L0} iota(coef p v) y^v
+  deh-expand (L0 : List N4) (nd : PE.LN.NoDup L0) : (p : TPoly A.R) -> ((v : N4) -> PE.LN.Mem v (PAA.exps p) -> PE.LN.Mem v L0) ->
+    Id E.R (CO.deh p) (PE.lsum (\ v -> E.mul (iota.1 (PAA.coef p v)) (CO.mon v)) L0) = split {
+    nil -> \ cov -> sym (PE.lsum-vanish (\ v -> E.mul (iota.1 A.z) (CO.mon v)) L0
+                     (\ v k -> trans (ap (\ z -> E.mul z (CO.mon v)) (RH.zero A E iota)) (LE.zero-mul (CO.mon v)))) ;
+    cons t p | r -> \ cov -> calc E.R {
+      E.add (E.mul (iota.1 t.1) (CO.mon t.2)) (CO.deh p)
+        =< PE.DL.G.cong-add (sym (PE.lsum-single t.2 (iota.1 t.1) CO.mon L0 nd (cov t.2 (inl (refl t.2))))) (r (\ v k -> cov v (inr k)))
+        > E.add (PE.lsum (\ v -> E.mul (PE.pick v t.2 (iota.1 t.1)) (CO.mon v)) L0) (PE.lsum (\ v -> E.mul (iota.1 (PAA.coef p v)) (CO.mon v)) L0)
+        =< sym (PE.lsum-add (\ v -> E.mul (PE.pick v t.2 (iota.1 t.1)) (CO.mon v)) (\ v -> E.mul (iota.1 (PAA.coef p v)) (CO.mon v)) L0)
+        > PE.lsum (\ v -> E.add (E.mul (PE.pick v t.2 (iota.1 t.1)) (CO.mon v)) (E.mul (iota.1 (PAA.coef p v)) (CO.mon v))) L0
+        =< PE.lsum-cong _ _ (\ v -> trans (sym (LE.dist-left (PE.pick v t.2 (iota.1 t.1)) (iota.1 (PAA.coef p v)) (CO.mon v)))
+             (ap (\ z -> E.mul z (CO.mon v))
+               (trans (ap (\ z -> E.add z (iota.1 (PAA.coef p v))) (sym (iota-pick v t.2 t.1))) (sym (iota.2.2.1 (PAA.pick v t.2 t.1) (PAA.coef p v)))))) L0
+        > PE.lsum (\ v -> E.mul (iota.1 (PAA.coef (cons t p) v)) (CO.mon v)) L0 } } ;
+  -- the exponents of p and of q
+  module Both (p q : TPoly A.R) {
+    L0 : List N4 = PE.NN.nub (Bar[l].app (PAA.exps p) (PAA.exps q)) ;
+    nd : PE.LN.NoDup L0 = PE.NN.nub-nodup (Bar[l].app (PAA.exps p) (PAA.exps q)) ;
+    covp (v : N4) (k : PE.LN.Mem v (PAA.exps p)) : PE.LN.Mem v L0 =
+      PE.NN.nub-mem (Bar[l].app (PAA.exps p) (PAA.exps q)) v (PE.LN.mem-appl v (PAA.exps p) (PAA.exps q) k) ;
+    covq (v : N4) (k : PE.LN.Mem v (PAA.exps q)) : PE.LN.Mem v L0 =
+      PE.NN.nub-mem (Bar[l].app (PAA.exps p) (PAA.exps q)) v (PE.LN.mem-appr v (PAA.exps p) (PAA.exps q) k) ;
+  } ;
+  -- equal coefficient functions give equal dehomogenisations
+  deh-cf (p q : TPoly A.R) (h : (m : E4) -> Id A.R (FPA.cf p m) (FPA.cf q m)) : Id E.R (CO.deh p) (CO.deh q) =
+    trans (deh-expand Both[p,q].L0 Both[p,q].nd p Both[p,q].covp)
+      (trans (PE.lsum-cong (\ v -> E.mul (iota.1 (PAA.coef p v)) (CO.mon v)) (\ v -> E.mul (iota.1 (PAA.coef q v)) (CO.mon v))
+                (\ v -> ap (\ z -> E.mul (iota.1 z) (CO.mon v)) (trans (FPA.coef-cf v p) (trans (h (emb v)) (sym (FPA.coef-cf v q))))) Both[p,q].L0)
+        (sym (deh-expand Both[p,q].L0 Both[p,q].nd q Both[p,q].covq))) ;
+} ;

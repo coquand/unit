@@ -1,0 +1,84 @@
+-- Degree lowering constructs one finite module V_d, d=D+sum_i a_i.
+-- A monomial either has all coordinates below the thresholds in total,
+-- or one coordinate factors off y_i^(a_i+1); the supplied relation lowers
+-- that degree by one. Thus s and every s*y_i preserve V_d, which contains1.
+-- The checked determinant trick produces all required monic equations.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr=Prelude[l] ; module Ps=Presentations[l] ; module RH=RingHom[l] ;
+module N=FiniteExponents[l] ; module NA=NatArith[l] ; module B=GenericDegreeBounds[l] ; module RB=ReesBridge4[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (E : CRing) (setE : Pr.isSet E.R)
+ (iota : RH.Hom R E) (m : Nat) (y : Ps.Fin m -> E.R) (t : Nat) (b : Ps.Fin t -> R.R) {
+ module Input=GenericDegreeLoweringData[l].Over[R,setR,E,setE,iota,m,y,t,b] ; module Ev=Input.Ev ;
+ module Split=B.Over[E] ; module LE=RL[E] ; module Axis=CoordinateExponents[l].Monomials[E] ;
+ module WithData (dat : Input.Data) {
+  d : Base.Nat=NA.plus dat.degree (N.degree m dat.a) ;
+  module V=GenericFilteredSpan[l].Over[R,setR,E,setE,iota,m,y,d] ;
+  shift (u : N.Exp m) (p : Ev.Polys) : Ev.Polys=Ev.PA.scaleT (R.o,N.join m u zero) p ;
+  shift-bound (u : N.Exp m) (a : Base.Nat) : (p : Ev.Polys) -> V.Bound a p -> V.Bound (NA.plus a (N.degree m u)) (shift u p)=split {
+   nil -> \h -> tt ; cons v p | rec -> \h ->
+    (subst (\e -> B.Le e (NA.plus a (N.degree m u)))
+      (sym (ActionComposition[l].degree-add m (N.old m v.2) u))
+      (B.le-add (N.degree m (N.old m v.2)) a (N.degree m u) (N.degree m u) h.1 (B.le-refl (N.degree m u))),rec h.2) } ;
+  shift-value (u : N.Exp m) (p : Ev.Polys) : Id E.R (Ev.deh (shift u p)) (E.mul (V.mon u) (Ev.deh p))=
+   trans (Ev.deh-scale (R.o,N.join m u zero) p)
+    (ap (\z -> E.mul z (Ev.deh p)) (trans (ap (\z -> E.mul z (V.mon u)) iota.2.1) (LE.one-left (V.mon u)))) ;
+  Reduced (u : N.Exp m) : U l=(p : Ev.Polys)*(V.Bound d p*Id E.R (E.mul dat.s (V.mon u)) (Ev.deh p)) ;
+  small (u : N.Exp m) (hu : B.Le (N.degree m u) (N.degree m dat.a)) : Reduced u=
+   (shift u dat.sT,
+    (V.weaken (NA.plus dat.degree (N.degree m u)) d
+      (B.le-add dat.degree dat.degree (N.degree m u) (N.degree m dat.a) (B.le-refl dat.degree) hu)
+      (shift u dat.sT) (shift-bound u dat.degree dat.sT (V.from-hom dat.degree dat.sT dat.homS)),
+     trans (E.mulC dat.s (V.mon u))
+      (trans (ap (E.mul (V.mon u)) (sym dat.valueS)) (sym (shift-value u dat.sT))))) ;
+  module Large (u : N.Exp m) (hu : B.Le (N.degree m u) (suc d)) (w : Split.Large m y u dat.a) {
+   i : Ps.Fin m=w.1 ; v : N.Exp m=w.2.1 ;
+   cancel : Id Base.Nat (suc (NA.plus (NA.plus (N.degree m v) (dat.a i)) hu.1)) (suc d)=
+    trans (ap (\x -> NA.plus x hu.1) (sym (NA.plus-suc (N.degree m v) (dat.a i))))
+     (trans (ap (\x -> NA.plus x hu.1) (sym w.2.2.1)) hu.2) ;
+   degree : B.Le (NA.plus (dat.a i) (N.degree m v)) d=
+    (hu.1,trans (ap (\x -> NA.plus x hu.1) (NA.plus-comm (dat.a i) (N.degree m v))) (NA.suc-inj cancel)) ;
+   value : Id E.R (E.mul dat.s (V.mon u)) (Ev.deh (shift v (dat.q i)))=
+    trans (ap (E.mul dat.s) w.2.2.2)
+     (trans (LE.mul-swap dat.s (V.mon v) (Input.P.power (y i) (suc (dat.a i))))
+      (trans (ap (E.mul (V.mon v)) (dat.lower i)) (sym (shift-value v (dat.q i))))) ;
+   result : Reduced u=(shift v (dat.q i),
+    (V.weaken (NA.plus (dat.a i) (N.degree m v)) d degree (shift v (dat.q i))
+      (shift-bound v (dat.a i) (dat.q i) (V.from-hom (dat.a i) (dat.q i) (dat.homQ i))),value)) ;
+  } ;
+  reduction-case (u : N.Exp m) (hu : B.Le (N.degree m u) (suc d)) : Split.Result m y u dat.a -> Reduced u=split {
+   inl h -> small u h ; inr w -> Large[u,hu,w].result } ;
+  reduction (u : N.Exp m) (hu : B.Le (N.degree m u) (suc d)) : Reduced u=reduction-case u hu (Split.classify m y u dat.a) ;
+  reduced-span (u : N.Exp m) (hu : B.Le (N.degree m u) (suc d)) : V.Rep (E.mul dat.s (V.mon u))=
+   V.transport (Ev.deh (reduction u hu).1) (E.mul dat.s (V.mon u)) (sym (reduction u hu).2.2)
+     (V.expand (reduction u hu).1 (reduction u hu).2.1) ;
+  zero-act (z : E.R) : V.Rep (E.mul z E.z)=V.transport E.z (E.mul z E.z) (sym (LE.mul-zero z)) V.zero ;
+  actS-case (u : N.Exp m) : (q : RB.Dich (N.degree m u) d) -> V.Rep (E.mul dat.s (V.gen-case u q))=split {
+   inl h -> reduced-span u (B.le-trans (N.degree m u) d (suc d) h (B.le-next d)) ;
+   inr h -> zero-act dat.s } ;
+  actsS : V.Acts dat.s=\j -> actS-case (V.exps j) (RB.dich (N.degree m (V.exps j)) d) ;
+  module Bump (i : Ps.Fin m) (u : N.Exp m) (hu : B.Le (N.degree m u) d) {
+   v : N.Exp m=\j -> NA.plus (u j) (CoordinateExponents[l].axis m i j) ;
+   degree : Id Base.Nat (N.degree m v) (suc (N.degree m u))=
+    trans (ActionComposition[l].degree-add m u (CoordinateExponents[l].axis m i))
+     (trans (ap (NA.plus (N.degree m u)) (CoordinateExponents[l].degree m i))
+      (trans (NA.plus-suc (N.degree m u) zero) (ap (\x -> suc x) (NA.plus-zero (N.degree m u))))) ;
+   bound : B.Le (N.degree m v) (suc d)=subst (\k -> B.Le k (suc d)) (sym degree) (B.le-suc (N.degree m u) d hu) ;
+   mon : Id E.R (V.mon v) (E.mul (V.mon u) (y i))=
+    trans (V.M.add m y u (CoordinateExponents[l].axis m i)) (ap (E.mul (V.mon u)) (Axis.value m y i)) ;
+   value : Id E.R (E.mul (E.mul dat.s (y i)) (V.mon u)) (E.mul dat.s (V.mon v))=
+    trans (sym (E.mulA dat.s (y i) (V.mon u)))
+     (trans (ap (E.mul dat.s) (E.mulC (y i) (V.mon u))) (ap (E.mul dat.s) (sym mon))) ;
+   result : V.Rep (E.mul (E.mul dat.s (y i)) (V.mon u))=
+    V.transport (E.mul dat.s (V.mon v)) (E.mul (E.mul dat.s (y i)) (V.mon u)) (sym value) (reduced-span v bound) ;
+  } ;
+  actY-case (i : Ps.Fin m) (u : N.Exp m) : (q : RB.Dich (N.degree m u) d) -> V.Rep (E.mul (E.mul dat.s (y i)) (V.gen-case u q))=split {
+   inl h -> Bump[i,u,h].result ; inr h -> zero-act (E.mul dat.s (y i)) } ;
+  actsY (i : Ps.Fin m) : V.Acts (E.mul dat.s (y i))=\j -> actY-case i (V.exps j) (RB.dich (N.degree m (V.exps j)) d) ;
+  module IS=V.Integral[dat.s,actsS] ;
+  module IY (i : Ps.Fin m) { module I=V.Integral[E.mul dat.s (y i),actsY i] ; } ;
+  certificate : ZMTCertificate[l].ZMTCert[R,E,iota,m,y,t,b]=
+   ZMTCertificate[l].mkZMTCert R E iota m y t b dat.s dat.congruence IS.polynomial IS.root
+     (\i -> IY[i].I.polynomial) (\i -> IY[i].I.root) ;
+ } ;
+ certificate (dat : Input.Data) : ZMTCertificate[l].ZMTCert[R,E,iota,m,y,t,b]=WithData[dat].certificate ;
+} ;

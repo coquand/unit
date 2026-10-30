@@ -1,0 +1,174 @@
+-- DegreeDecomposition4.seg: every element of the tower D_t = A[U_1..U_t]
+-- is, merely, the finite sum of its homogeneous parts (Gate A; used in
+-- Gates B and C for "the components generate").
+--
+-- Notions (Over[A,t,R,setR,G], any graded ring).  sumTo B f = f (B-1) + ..
+-- + f 0 (the new index is B-1), part x d = pr d x.  x decomposes below B
+-- (Decomp B x) when
+--     x = sum_{d < B} pr d x   and   pr d x = 0 for every d >= B.
+-- FinDeg x: merely Decomp B x for some B.
+-- Laws.  Decomp B x gives Decomp (m + B) x (pad: pr B x = 0 is the second
+-- clause at m = 0); 0 decomposes below every B; if x and y decompose below
+-- B so does x + y (pr additive); hence FinDeg is closed under + (pad both
+-- to B + B').
+--
+-- The tower (TowerDecomposition[A,setA].fin-deg t x).
+--   * D_0 = A: pr 0 a = a and pr k a = 0 for k /= 0, so Decomp 1 a.
+--   * D_t[U] (StepDecomposition[.., decR], given FinDeg for D_t):
+--       constants:  pr k (const c) = const (pr k c) (GradingStep.pr-const),
+--         so Decomp B c gives Decomp B (const c) (const is a ring map);
+--       U z:  pr k (U z) = U pr (k-1) z (GradingStep.pr-X), so Decomp B z
+--         gives Decomp (B+1) (U z): sum_{d < B+1} U pr (d-1) z
+--         = U (sum_{d < B} pr d z) + U pr (-1) z = U z;
+--       every x: by induction on a degree bound of x (PolyCoef.bound),
+--         x = const (x_0) + U (tail x) (PolyCoef.horner).
+-- No coefficient of A is ever decided; only integers and degree bounds.
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+------------------------------------------------------------------------
+-- sums over the degrees below B
+
+module DegSums (A : CRing) (Md : IP.Mod[A]) {
+  open Md ; module ML = IP.ModL[A,Md] ;
+  sumTo : Nat -> (Nat -> M) -> M = split {
+    zero -> \ f -> mz ;
+    suc B | r -> \ f -> madd (f B) (r f) } ;
+  sumTo-cong : (B : Nat) (f g : Nat -> M) -> ((d : Nat) -> Id M (f d) (g d)) -> Id M (sumTo B f) (sumTo B g) = split {
+    zero -> \ f g h -> refl mz ;
+    suc B | r -> \ f g h -> ML.G.cong-add (h B) (r f g h) } ;
+  sumTo-zero : (B : Nat) (f : Nat -> M) -> ((d : Nat) -> Id M (f d) mz) -> Id M (sumTo B f) mz = split {
+    zero -> \ f h -> refl mz ;
+    suc B | r -> \ f h -> trans (ML.G.cong-add (h B) (r f h)) (maddZ mz) } ;
+  sumTo-add : (B : Nat) (f g : Nat -> M) -> Id M (sumTo B (\ d -> madd (f d) (g d))) (madd (sumTo B f) (sumTo B g)) = split {
+    zero -> \ f g -> sym (maddZ mz) ;
+    suc B | r -> \ f g -> trans (ap (madd (madd (f B) (g B))) (r f g)) (ML.G.swap (f B) (g B) (sumTo B f) (sumTo B g)) } ;
+  -- the lowest index last: sum_{d < B+1} f d = sum_{d < B} f (d+1) + f 0
+  sumTo-shift : (B : Nat) (f : Nat -> M) -> Id M (sumTo (suc B) f) (madd (sumTo B (\ d -> f (suc d))) (f zero)) = split {
+    zero -> \ f -> maddC (f zero) mz ;
+    suc B | r -> \ f -> trans (ap (madd (f (suc B))) (r f)) (maddA (f (suc B)) (sumTo B (\ d -> f (suc d))) (f zero)) } ;
+} ;
+
+-- ring maps and multiplication commute with sumTo
+module DegSumsRing (R : CRing) {
+  module DS = DegSums[R,IP.regular R] ;
+  mul-sumTo (c : R.R) : (B : Nat) (f : Nat -> R.R) -> Id R.R (R.mul c (DS.sumTo B f)) (DS.sumTo B (\ d -> R.mul c (f d))) = split {
+    zero -> \ f -> RL[R].mul-zero c ;
+    suc B | r -> \ f -> trans (R.dist c (f B) (DS.sumTo B f)) (ap (R.add (R.mul c (f B))) (r f)) } ;
+  module Map (S : CRing) (h : RH.Hom R S) {
+    module DT = DegSums[S,IP.regular S] ;
+    map-sumTo : (B : Nat) (f : Nat -> R.R) -> Id S.R (h.1 (DS.sumTo B f)) (DT.sumTo B (\ d -> h.1 (f d))) = split {
+      zero -> \ f -> RH.zero R S h ;
+      suc B | r -> \ f -> trans (h.2.2.1 (f B) (DS.sumTo B f)) (ap (S.add (h.1 (f B))) (r f)) } ;
+  } ;
+} ;
+
+------------------------------------------------------------------------
+-- decompositions in a graded ring
+
+module Over (A : CRing) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+  module GL = Laws[A,t,R,setR,G] ;
+  module DS = DegSums[R,IP.regular R] ;
+  module DL = IP.ModL[R,IP.regular R] ;
+  part (x : R.R) (d : Nat) : R.R = G.pr (cdeg d) x ;
+  -- x is the sum of its parts below B, and its parts from B on vanish
+  Decomp (B : Nat) (x : R.R) : U l =
+    Id R.R x (DS.sumTo B (part x)) * ((m : Nat) -> Id R.R (G.pr (cdeg (plus B m)) x) R.z) ;
+  FinDegW (x : R.R) : U l = (B : Nat) * Decomp B x ;
+  FinDeg (x : R.R) : U l = Tr.Trunc[FinDegW x].carrier ;
+
+  pad1 (B : Nat) (x : R.R) (h : Decomp B x) : Decomp (suc B) x =
+    (trans h.1 (sym (trans (ap (\ w -> R.add w (DS.sumTo B (part x))) (subst (\ k -> Id R.R (G.pr (cdeg k) x) R.z) (plus-zero B) (h.2 zero)))
+                          (DL.G.zl (DS.sumTo B (part x))))),
+     \ m -> subst (\ k -> Id R.R (G.pr (cdeg k) x) R.z) (plus-suc B m) (h.2 (suc m))) ;
+  pad : (m : Nat) (B : Nat) (x : R.R) -> Decomp B x -> Decomp (plus m B) x = split {
+    zero -> \ B x h -> h ;
+    suc m | r -> \ B x h -> pad1 (plus m B) x (r B x h) } ;
+  dec-cong (B : Nat) (x y : R.R) (e : Id R.R x y) (h : Decomp B x) : Decomp B y = subst (Decomp B) e h ;
+
+  dec-zero (B : Nat) : Decomp B R.z =
+    (sym (DS.sumTo-zero B (part R.z) (\ d -> GL.pr-zero (cdeg d))), \ m -> GL.pr-zero (cdeg (plus B m))) ;
+  dec-add (B : Nat) (x y : R.R) (hx : Decomp B x) (hy : Decomp B y) : Decomp B (R.add x y) =
+    (trans (DL.G.cong-add hx.1 hy.1)
+       (trans (sym (DS.sumTo-add B (part x) (part y)))
+         (DS.sumTo-cong B (\ d -> R.add (part x d) (part y d)) (part (R.add x y)) (\ d -> sym (G.pr-add (cdeg d) x y)))),
+     \ m -> trans (G.pr-add (cdeg (plus B m)) x y) (trans (DL.G.cong-add (hx.2 m) (hy.2 m)) (R.addZ R.z))) ;
+  fin-zero : FinDeg R.z = Tr.Trunc[FinDegW R.z].inc (zero, dec-zero zero) ;
+  add-w (x y : R.R) (wx : FinDegW x) (wy : FinDegW y) : FinDegW (R.add x y) =
+    (plus wy.1 wx.1, dec-add (plus wy.1 wx.1) x y (pad wy.1 wx.1 x wx.2)
+       (subst (\ k -> Decomp k y) (plus-comm wx.1 wy.1) (pad wx.1 wy.1 y wy.2))) ;
+  fin-add (x y : R.R) (hx : FinDeg x) (hy : FinDeg y) : FinDeg (R.add x y) =
+    TC.map2 (FinDegW x) (FinDegW y) (FinDegW (R.add x y)) (add-w x y) hx hy ;
+  fin-cong (x y : R.R) (e : Id R.R x y) (h : FinDeg x) : FinDeg y = subst FinDeg e h ;
+} ;
+
+------------------------------------------------------------------------
+-- the tower
+
+module BaseDecomposition (A : CRing) (setA : Pr.isSet A.R) {
+  module BG = CoefficientPolynomial[l].BaseGrading[A,setA] ;
+  module D = Over[A,zero,A,setA,BG.graded] ;
+  ne-pos (n : Base.Nat) : Logic[l].Not (Id Int (pos (suc n)) zeroZ) = encode (pos (suc n)) zeroZ ;
+  -- pr 0 a = a and pr (k+1) a = 0
+  dec-one (a : A.R) : D.Decomp (suc zero) a =
+    (sym (trans (A.addZ (BG.pr zeroZ a)) (BG.keep-all (Id Int zeroZ zeroZ) (refl zeroZ) a (int-dec zeroZ zeroZ))),
+     \ m -> BG.keep-none (Id Int (pos (suc (toB m))) zeroZ) (ne-pos (toB m)) a (int-dec (pos (suc (toB m))) zeroZ)) ;
+  fin-deg (a : A.R) : D.FinDeg a = Tr.Trunc[D.FinDegW a].inc (suc zero, dec-one a) ;
+} ;
+
+module StepDecomposition (A : CRing) (setA : Pr.isSet A.R) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R])
+  (decR : (x : R.R) -> Over[A,t,R,setR,G].FinDeg x) {
+  module GS = CoefficientPolynomial[l].GradingStep[A,setA,t,R,setR,G] ;
+  module DR = Over[A,t,R,setR,G] ;
+  module D = Over[A,suc t,GS.S,GS.E.set,GS.graded] ;
+  module DSR = DegSumsRing[R] ; module DSS = DegSumsRing[GS.S] ;
+  module CM = DSR.Map[GS.S,GS.E.inclusion] ;
+  K : U l = GS.K ;
+
+  -- the constants
+  dec-const (B : Nat) (c : R.R) (h : DR.Decomp B c) : D.Decomp B (GS.E.constant c) =
+    (trans (ap GS.E.constant h.1)
+       (trans (CM.map-sumTo B (DR.part c))
+         (D.DS.sumTo-cong B (\ d -> GS.E.constant (DR.part c d)) (D.part (GS.E.constant c)) (\ d -> sym (GS.pr-const (cdeg d) c)))),
+     \ m -> trans (GS.pr-const (cdeg (plus B m)) c) (trans (ap GS.E.constant (h.2 m)) GS.const-zero)) ;
+  -- U z
+  dec-X (B : Nat) (z : K) (h : D.Decomp B z) : D.Decomp (suc B) (GS.E.mulQ GS.E.variable z) =
+    (calc K {
+      GS.E.mulQ GS.E.variable z
+        =< ap (GS.E.mulQ GS.E.variable) h.1 > GS.E.mulQ GS.E.variable (D.DS.sumTo B (D.part z))
+        =< DSS.mul-sumTo GS.E.variable B (D.part z) > D.DS.sumTo B (\ d -> GS.E.mulQ GS.E.variable (D.part z d))
+        =< sym (GS.S.addZ (D.DS.sumTo B (\ d -> GS.E.mulQ GS.E.variable (D.part z d))))
+        > GS.E.addQ (D.DS.sumTo B (\ d -> GS.E.mulQ GS.E.variable (D.part z d))) GS.E.zeroQ
+        =< ap (GS.E.addQ (D.DS.sumTo B (\ d -> GS.E.mulQ GS.E.variable (D.part z d))))
+             (sym (trans (ap (GS.E.mulQ GS.E.variable) (GS.pr-negdeg zero z)) (RL[GS.S].mul-zero GS.E.variable)))
+        > GS.E.addQ (D.DS.sumTo B (\ d -> GS.E.mulQ GS.E.variable (GS.pr (predZ (cdeg (suc d))) z))) (GS.E.mulQ GS.E.variable (GS.pr (predZ (cdeg zero)) z))
+        =< sym (D.DS.sumTo-shift B (\ d -> GS.E.mulQ GS.E.variable (GS.pr (predZ (cdeg d)) z)))
+        > D.DS.sumTo (suc B) (\ d -> GS.E.mulQ GS.E.variable (GS.pr (predZ (cdeg d)) z))
+        =< D.DS.sumTo-cong (suc B) (\ d -> GS.E.mulQ GS.E.variable (GS.pr (predZ (cdeg d)) z)) (D.part (GS.E.mulQ GS.E.variable z))
+             (\ d -> sym (GS.pr-X (cdeg d) z))
+        > D.DS.sumTo (suc B) (D.part (GS.E.mulQ GS.E.variable z)) },
+     \ m -> trans (GS.pr-X (cdeg (suc (plus B m))) z)
+              (trans (ap (GS.E.mulQ GS.E.variable) (h.2 m)) (RL[GS.S].mul-zero GS.E.variable))) ;
+
+  -- by induction on a degree bound
+  bounded : (d : Nat) (x : K) -> GS.PCo.SQ.Van d (GS.PCo.kap x) -> D.FinDeg x = split {
+    zero -> \ x v -> D.fin-cong GS.E.zeroQ x (sym (GS.PCo.van-zero-eq x v)) D.fin-zero ;
+    suc d | r -> \ x v -> D.fin-cong (GS.PCo.hor x) x (sym (GS.PCo.horner x))
+      (D.fin-add (GS.E.constant (GS.PCo.c0 x)) (GS.E.mulQ GS.E.variable (GS.PC.tail x))
+        (TC.map (DR.FinDegW (GS.PCo.c0 x)) (D.FinDegW (GS.E.constant (GS.PCo.c0 x)))
+           (\ w -> (w.1, dec-const w.1 (GS.PCo.c0 x) w.2)) (decR (GS.PCo.c0 x)))
+        (TC.map (D.FinDegW (GS.PC.tail x)) (D.FinDegW (GS.E.mulQ GS.E.variable (GS.PC.tail x)))
+           (\ w -> (suc w.1, dec-X w.1 (GS.PC.tail x) w.2)) (r (GS.PC.tail x) (GS.PCo.tail-van x d v)))) } ;
+  fin-deg (x : K) : D.FinDeg x =
+    Tr.Trunc[GS.PCo.Bound x].induction @l (\ w -> D.FinDeg x) (\ w -> Tr.Trunc[D.FinDegW x].proposition)
+      (\ w -> bounded w.1 x w.2) (GS.PCo.bound x) ;
+} ;
+
+module TowerDecomposition (A : CRing) (setA : Pr.isSet A.R) {
+  module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+  FD (t : Nat) : U (l+) = (x : (T.D t).R) -> Over[A,t,T.D t,T.setD t,T.grD t].FinDeg x ;
+  fin-deg : (t : Nat) -> FD t = split {
+    zero -> BaseDecomposition[A,setA].fin-deg ;
+    suc t | r -> StepDecomposition[A,setA,t,T.D t,T.setD t,T.grD t,r].fin-deg } ;
+} ;

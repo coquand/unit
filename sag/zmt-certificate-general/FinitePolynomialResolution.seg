@@ -1,0 +1,100 @@
+-- Finite homogeneous resolutions with term-list matrix entries, constructed
+-- from CFN coherence. Every successor chooses homogeneous representatives
+-- of the kernel columns only within the final truncation. No resolution,
+-- matrix identity or generation theorem is an input to constructed.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module E = FiniteExponents[l] ; module PA = PolynomialAction4[l] ; module IP = IdealPowers[l] ;
+record Free {
+ rank : Nat ; shifts : Ps.Fin rank -> Base.Nat ;
+} ;
+zero-free : Free = mkFree zero (\ i -> absurd Base.Nat i) ;
+module Over (K0 : U l) (A : CRing) (setA : Pr.isSet A.R) (cfn : CFN[l].CFN[K0,A]) (nvar : Nat) {
+ module P = PolynomialTowerBridge[l].Over[A,setA] ; module T = P.T ;
+ module K = HomogeneousKernel[l].Tower[K0,A,setA,cfn,nvar] ; module H = K.H ;
+ module HR = HomogeneousRepresentatives[l].Over[A,setA,nvar] ;
+ module LSL = LaurentSyzygyLift4[l] ; module SS = Comb[l].Sums[T.D nvar,IP.regular (T.D nvar)] ;
+ module RL = RL[T.D nvar] ;
+ record Arrow (S Q : Free) {
+  polys : Ps.Fin S.rank -> Ps.Fin Q.rank -> List (P.Term nvar) ;
+  homogeneous (i : Ps.Fin S.rank) (j : Ps.Fin Q.rank) : HR.HomShift (Q.shifts j) (S.shifts i) (polys i j) ;
+ } ;
+ module At (S Q : Free) (f : Arrow[S,Q]) {
+  hom-ring (dd ee : Base.Nat) : (ps : List (P.Term nvar)) -> HR.HomShift dd ee ps -> H.L.Hom (PA.minus (pos ee) dd) (P.phi nvar ps) = split {
+   nil -> \ h -> H.L.hom-zero (PA.minus (pos ee) dd) ;
+   cons p ps | rec -> \ h -> H.L.hom-add (PA.minus (pos ee) dd) (P.term nvar p) (P.phi nvar ps)
+    (subst (\ k -> H.L.Hom k (P.term nvar p))
+      (sym (trans (ap (\ e -> PA.minus (pos e) dd) (sym h.1)) (ShiftedParts[l].shift-cancel (E.degree nvar p.2) dd)))
+      (PolynomialDegreeBridge[l].Over[A,setA].term-hom nvar p)) (rec h.2) } ;
+  ring (i : Ps.Fin S.rank) (j : Ps.Fin Q.rank) : (T.D nvar).R = P.phi nvar (f.polys i j) ;
+  homogeneous (i : Ps.Fin S.rank) (j : Ps.Fin Q.rank) : H.L.Hom (PA.minus (pos (S.shifts i)) (Q.shifts j)) (ring i j) =
+   hom-ring (Q.shifts j) (S.shifts i) (f.polys i j) (f.homogeneous i j) ;
+  module Input = K.Input[S.rank,Q.rank,S.shifts,Q.shifts,ring,homogeneous] ; module M = Input.M ;
+  Reps (w : M.Data) : U l = (j : Ps.Fin w.1) (i : Ps.Fin S.rank) -> HR.ShiftedRep (S.shifts i) (w.2.1 j) (w.2.2.1 j i) ;
+  representatives (w : M.Data) : Tr.Trunc[Reps w].carrier =
+   LSL.fin-choice w.1 (\ j -> (i : Ps.Fin S.rank) -> HR.ShiftedRep (S.shifts i) (w.2.1 j) (w.2.2.1 j i))
+    (\ j -> LSL.fin-choice S.rank (\ i -> HR.ShiftedRep (S.shifts i) (w.2.1 j) (w.2.2.1 j i))
+      (\ i -> HR.shifted-representative (S.shifts i) (w.2.1 j) (w.2.2.1 j i) (w.2.2.2.1 j i))) ;
+  module Chosen (w : M.Data) (reps : Reps w) {
+   source : Free = mkFree w.1 w.2.1 ;
+   arrow : Arrow[source,S] = mkArrow source S (\ j i -> (reps j i).1) (\ j i -> (reps j i).2.2) ;
+  } ;
+ } ;
+ Resolution : Nat -> (S Q : Free) -> Arrow[S,Q] -> U l = split {
+  zero -> \ S Q f -> Top ;
+  suc n | rec -> \ S Q f -> (w : At[S,Q,f].M.Data) * ((reps : At[S,Q,f].Reps w) * rec At[S,Q,f].Chosen[w,reps].source S At[S,Q,f].Chosen[w,reps].arrow) } ;
+ Goal (n : Nat) : U l = (S Q : Free) (f : Arrow[S,Q]) -> Tr.Trunc[Resolution n S Q f].carrier ;
+ module BuildStep (n : Nat) (ih : Goal n) (S Q : Free) (f : Arrow[S,Q]) {
+  module C = At[S,Q,f] ;
+  with-reps (w : C.M.Data) (reps : C.Reps w) : Tr.Trunc[Resolution (suc n) S Q f].carrier =
+   TC.map (Resolution n C.Chosen[w,reps].source S C.Chosen[w,reps].arrow) (Resolution (suc n) S Q f)
+    (\ tail -> (w,(reps,tail))) (ih C.Chosen[w,reps].source S C.Chosen[w,reps].arrow) ;
+  with-kernel (w : C.M.Data) : Tr.Trunc[Resolution (suc n) S Q f].carrier =
+   TC.bind (C.Reps w) (Resolution (suc n) S Q f) (with-reps w) (C.representatives w) ;
+  result : Tr.Trunc[Resolution (suc n) S Q f].carrier = TC.bind C.M.Data (Resolution (suc n) S Q f) with-kernel C.Input.generators ;
+ } ;
+ constructed : (n : Nat) -> Goal n = split {
+  zero -> \ S Q f -> Tr.Trunc[Top].inc tt ; suc n | rec -> \ S Q f -> BuildStep[n,rec,S,Q,f].result } ;
+ -- A cursor keeps its target outside the case split on remaining length.
+ -- Therefore the next target is DEFINITIONALLY the current source; all
+ -- differential families fit without a chain of type transports.
+ empty-arrow (Q : Free) : Arrow[zero-free,Q] = mkArrow zero-free Q (\ i j -> absurd (List (P.Term nvar)) i)
+  (\ i j -> absurd (HR.HomShift (Q.shifts j) (zero-free.shifts i) (absurd (List (P.Term nvar)) i)) i) ;
+ Cursor : U l = (Q : Free) * ((S : Free) * ((f : Arrow[S,Q]) * ((n : Nat) * Resolution n S Q f))) ;
+ module CursorAt (cursor : Cursor) {
+  Q : Free = cursor.1 ; S : Free = cursor.2.1 ; f : Arrow[S,Q] = cursor.2.2.1 ;
+  remaining : Nat = cursor.2.2.2.1 ; tail : Resolution remaining S Q f = cursor.2.2.2.2 ;
+ } ;
+ NextData (S : Free) : U l = (K : Free) * ((h : Arrow[K,S]) * ((n : Nat) * Resolution n K S h)) ;
+ choose-next : (n : Nat) (S Q : Free) (f : Arrow[S,Q]) -> Resolution n S Q f -> NextData S = split {
+  zero -> \ S Q f t -> (zero-free,(empty-arrow S,(zero,tt))) ;
+  suc n -> \ S Q f t -> (At[S,Q,f].Chosen[t.1,t.2.1].source,(At[S,Q,f].Chosen[t.1,t.2.1].arrow,(n,t.2.2))) } ;
+ next (cursor : Cursor) : Cursor =
+  (CursorAt[cursor].S,choose-next CursorAt[cursor].remaining CursorAt[cursor].S CursorAt[cursor].Q CursorAt[cursor].f CursorAt[cursor].tail) ;
+ start (n : Nat) (S Q : Free) (f : Arrow[S,Q]) (t : Resolution n S Q f) : Cursor = (Q,(S,(f,(n,t)))) ;
+ walk (cursor : Cursor) : Nat -> Cursor = split { zero -> cursor ; suc i | rec -> next rec } ;
+ Layer (cursor : Cursor) (i : Nat) : Free = CursorAt[walk cursor i].Q ;
+ arrow (cursor : Cursor) (i : Nat) : Arrow[Layer cursor (suc i),Layer cursor i] = CursorAt[walk cursor i].f ;
+ Identity (S Q W : Free) (f : Arrow[S,Q]) (h : Arrow[W,S]) : U l =
+  (j : Ps.Fin W.rank) (k : Ps.Fin Q.rank) -> Id (T.D nvar).R
+   (SS.sum S.rank (\ i -> (T.D nvar).mul (P.phi nvar (f.polys i k)) (P.phi nvar (h.polys j i)))) (T.D nvar).z ;
+ module FirstIdentity (S Q : Free) (f : Arrow[S,Q]) (w : At[S,Q,f].M.Data) (reps : At[S,Q,f].Reps w) {
+  module C = At[S,Q,f] ; module W = C.M.Witness[w] ; module G = C.Chosen[w,reps] ;
+  equation (j : Ps.Fin G.source.rank) (k : Ps.Fin Q.rank) : Id (T.D nvar).R
+   (SS.sum S.rank (\ i -> (T.D nvar).mul (P.phi nvar (f.polys i k)) (P.phi nvar (G.arrow.polys j i)))) (T.D nvar).z =
+   trans (SS.sum-cong S.rank
+     (\ i -> (T.D nvar).mul (P.phi nvar (f.polys i k)) (P.phi nvar (G.arrow.polys j i)))
+     (\ i -> (T.D nvar).mul (W.columns j i) (P.phi nvar (f.polys i k)))
+     (\ i -> trans (ap ((T.D nvar).mul (P.phi nvar (f.polys i k))) (reps j i).2.1)
+       ((T.D nvar).mulC (P.phi nvar (f.polys i k)) (W.columns j i))))
+    (trans (sym (H.F[Q.rank].V.comb-at S.rank (W.columns j) C.ring k))
+      (ap (\ x -> x k) (W.identity j))) ;
+ } ;
+ first-identity : (n : Nat) (S Q : Free) (f : Arrow[S,Q]) (t : Resolution n S Q f) ->
+  Identity S Q (choose-next n S Q f t).1 f (choose-next n S Q f t).2.1 = split {
+  zero -> \ S Q f t j k -> absurd (Id (T.D nvar).R
+    (SS.sum S.rank (\ i -> (T.D nvar).mul (P.phi nvar (f.polys i k)) (P.phi nvar ((empty-arrow S).polys j i)))) (T.D nvar).z) j ;
+  suc n -> \ S Q f t -> FirstIdentity[S,Q,f,t.1,t.2.1].equation } ;
+ identity (cursor : Cursor) (i : Nat) : Identity (Layer cursor (suc i)) (Layer cursor i) (Layer cursor (suc (suc i))) (arrow cursor i) (arrow cursor (suc i)) =
+  first-identity CursorAt[walk cursor i].remaining CursorAt[walk cursor i].S CursorAt[walk cursor i].Q CursorAt[walk cursor i].f CursorAt[walk cursor i].tail ;
+} ;

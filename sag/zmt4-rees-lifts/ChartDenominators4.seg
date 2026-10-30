@@ -1,0 +1,70 @@
+-- Clear common denominators only in coordinates inverted by the chosen
+-- chart. Noninverted coordinates remain unchanged. This works with support
+-- lists containing forbidden exponents: their coefficients already vanish.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open PolynomialAction4[l] ; open ShiftedCech4[l] ;
+module Pr = Prelude[l] ; module N = LaurentSyzygyLift4[l] ; module NA = NatArith[l] ;
+keep : Fl -> Base.Nat -> Base.Nat = split { inside -> \ n -> n ; outside -> \ n -> zero } ;
+mask : Sub4 -> N4 -> N4 = split {
+ sub s0 s1 s2 s3 -> split { nx a b c d -> nx (keep s0 a) (keep s1 b) (keep s2 c) (keep s3 d) } } ;
+-- Outside a chart the gated negativity condition is unchanged by shifting
+-- with a supported natural exponent; inside it is empty on both sides.
+gate-add (x : Int) (n : Base.Nat) : (s : Fl) -> gate s (Neg x) -> gate s (Neg (addP x (keep s n))) = split {
+ inside -> \ h -> h ; outside -> \ h -> h } ;
+gate-sub (x : Int) (n : Base.Nat) : (s : Fl) -> gate s (Neg x) -> gate s (Neg (minus x (keep s n))) = split {
+ inside -> \ h -> h ; outside -> \ h -> h } ;
+out-add : (E : Sub4) (m : E4) (L : N4) -> Out E m -> Out E (addE m (mask E L)) = split {
+ sub s0 s1 s2 s3 -> split { ex a b c d -> split { nx l0 l1 l2 l3 -> split {
+  o0 h -> o0 (gate-add a l0 s0 h) ; o1 h -> o1 (gate-add b l1 s1 h) ;
+  o2 h -> o2 (gate-add c l2 s2 h) ; o3 h -> o3 (gate-add d l3 s3 h) } } } } ;
+out-sub : (E : Sub4) (m : E4) (L : N4) -> Out E m -> Out E (subE m (mask E L)) = split {
+ sub s0 s1 s2 s3 -> split { ex a b c d -> split { nx l0 l1 l2 l3 -> split {
+  o0 h -> o0 (gate-sub a l0 s0 h) ; o1 h -> o1 (gate-sub b l1 s1 h) ;
+  o2 h -> o2 (gate-sub c l2 s2 h) ; o3 h -> o3 (gate-sub d l3 s3 h) } } } } ;
+-- A negative coordinate after adding the masked denominator either
+-- contradicts the support bound or was already forbidden in the chart.
+neg-or-out (x : Int) (L : Base.Nat) (hL : NA.Le (N.negPart x) L) :
+ (s : Fl) -> Neg (addP x (keep s L)) -> gate s (Neg x) = split {
+ inside -> \ h -> N.nonneg-shift x L hL h ; outside -> \ h -> h } ;
+fits : (E : Sub4) (m : E4) (L : N4) -> N.LeN4 (N.negN4 m) L ->
+ Out none (addE m (mask E L)) -> Out E m = split {
+ sub s0 s1 s2 s3 -> split { ex a b c d -> split { nx l0 l1 l2 l3 -> \ h -> split {
+  o0 n -> o0 (neg-or-out a l0 h.1 s0 n) ;
+  o1 n -> o1 (neg-or-out b l1 h.2.1 s1 n) ;
+  o2 n -> o2 (neg-or-out c l2 h.2.2.1 s2 n) ;
+  o3 n -> o3 (neg-or-out d l3 h.2.2.2 s3 n) } } } } ;
+
+dec-mem (m : E4) : (S : List E4) -> Logic[l].Dec (Mem m S) = split {
+ nil -> no (\ h -> absurd Base.Empty h) ;
+ cons x xs | rec -> TopList4[l].dec-plus (Id E4 x m) (Mem m xs) (dec-e4 x m) rec } ;
+
+none-le : (E : Sub4) -> Le4 none E = split { sub s0 s1 s2 s3 -> (tt,(tt,(tt,tt))) } ;
+to-none (E : Sub4) (m : E4) : Out E m -> Out none m = out-face none E (none-le E) m ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+ module LO = Laurent4[l].Over[D,setD] ;
+ module Clear (E : Sub4) (S : List E4) {
+  L : N4 = mask E (N.bound S) ;
+  module Function (f : E4 -> D.R)
+   (supp : (m : E4) -> Not (Mem m S) -> Id D.R (f m) D.z)
+   (van : (m : E4) -> Out E m -> Id D.R (f m) D.z) {
+   raw (m : E4) : D.R = f (subE m L) ;
+   module At (m : E4) (bad : Out none m) {
+    inside (h : Mem (subE m L) S) : Id D.R (raw m) D.z =
+     van (subE m L) (fits E (subE m L) (N.bound S) (N.bound-le S (subE m L) h)
+      (subst (Out none) (sym (addE-subE m L)) bad)) ;
+   } ;
+   -- Membership in the support is decidable, but ring coefficients are not.
+   decide (m : E4) (bad : Out none m) : Logic[l].Dec (Mem (subE m L) S) -> Id D.R (raw m) D.z = split {
+    yes h -> At[m,bad].inside h ; no nh -> supp (subE m L) (\ h -> Pr.absurd Empty (nh h)) } ;
+   polynomial (m : E4) (bad : Out none m) : Id D.R (raw m) D.z = decide m bad (dec-mem (subE m L) S) ;
+   support : List E4 = mapL (\ m -> addE m L) S ;
+   support-van (m : E4) (out : Not (Mem m support)) : Id D.R (raw m) D.z =
+    supp (subE m L) (\ h -> out (mem-tr support (addE (subE m L) L) m (addE-subE m L)
+      (mem-map (\ x -> addE x L) (subE m L) S h))) ;
+   module FP = FinitePolynomial4[l].Over[D,setD] ;
+   representation : (q : TPoly D.R) * ((m : E4) -> Id D.R (FP.cf q m) (raw m)) =
+    FP.cf-rep raw polynomial support support-van ;
+
+  } ;
+ } ;
+} ;

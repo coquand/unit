@@ -1,0 +1,218 @@
+-- CoefficientParts.seg: graded coefficient rings, abstractly (handoff §4,
+-- the generic half of Gate A).
+--
+-- Degrees.  Two kinds of integers occur in this development: PROJECTIVE
+-- degrees (exponents of X_0..X_3, Laurent4.deg) and COEFFICIENT degrees
+-- (total degree in the coefficient variables U_1..U_t).  Here only
+-- coefficient degrees occur.  They are integers (Int); a list index or a
+-- coefficient index i : Nat lowers a degree k to k - i (lowerZ k i), and
+-- subZ k e = k + (-e).  cdeg n is the natural number n as a degree.
+--
+-- A grading of a commutative ring R over A with t variables (Graded A t R)
+-- consists of
+--   pr k : R -> R   (k : Int), the part of coefficient degree k, with
+--     pr k additive; pr k (pr k x) = pr k x; pr k (pr e x) = 0 for k /= e;
+--     pr k x = 0 for k < 0; and, for y homogeneous of degree e,
+--       pr k (x y) = pr (k - e) (x) y ;                              (mul)
+--   iota : A -> R, a ring map into degree 0, and base : R -> A with
+--     iota (base x) = x for x of degree 0;
+--   var j (j < t) of degree 1, and maps low j : R -> R (low j 0 = 0) with,
+--     for x of degree k+1, low j x of degree k and
+--       x = sum_j var j . low j x ;                                  (low)
+--   for every a : Fin t -> A a ring map ev a : R -> A with
+--     ev a (iota x) = x and ev a (var j) = a j.
+-- x is homogeneous of degree k (Hom k x) when pr k x = x; the zero element
+-- is homogeneous of every degree, and for k < 0 only the zero element is.
+-- Only decisions on integers are ever made, never on coefficients.
+--
+-- Consequences (Laws): pr k 0 = 0, pr k (-x) = -(pr k x), pr k (x - y),
+-- pr k of a finite sum; pr k x is homogeneous of degree k; a homogeneous
+-- element of degree e has zero degree-k part for k /= e; the homogeneous
+-- factor first: pr k (x y) = x pr (k - e) y; A-linearity
+-- pr k (iota a . y) = iota a . pr k y; products and sums of homogeneous
+-- elements; 1 has degree 0.
+-- Expressions (Expr, value, expr): a homogeneous element of degree k is the
+-- value of a finite expression all of whose monomials have degree k:
+--   Expr 0 = A, value a = iota a ;  Expr (k+1) = Fin t -> Expr k,
+--   value e = sum_j var j . value (e j) ,
+-- so value e = sum over words j_1 .. j_k of var j_1 ... var j_k iota (a_w).
+-- expr builds it (no choice: e j = expr (low j x)), expr-value: value = x.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module PA4 = PolynomialAction4[l] ; module RH = RingHom[l] ;
+
+------------------------------------------------------------------------
+-- coefficient degrees
+
+-- a natural number (list length, coefficient index) as a degree
+toB : Nat -> Base.Nat = split { zero -> zero ; suc n | r -> suc r } ;
+cdeg (n : Nat) : Int = pos (toB n) ;
+-- k - i
+lowerZ (k : Int) (i : Nat) : Int = PA4.minus k (toB i) ;
+-- k - e
+subZ (k e : Int) : Int = add k (neg e) ;
+
+-- (k - 1) - n = (k - n) - 1
+minus-pred (k : Int) : (n : Base.Nat) -> Id Int (PA4.minus (predZ k) n) (predZ (PA4.minus k n)) = split {
+  zero -> refl (predZ k) ;
+  suc n | r -> ap predZ r } ;
+lower-pred (k : Int) (i : Nat) : Id Int (lowerZ (predZ k) i) (lowerZ k (suc i)) = minus-pred k (toB i) ;
+-- (-(n+1)) - i = -(i+n+1)
+minus-negsuc (n : Base.Nat) : (i : Base.Nat) -> Id Int (PA4.minus (negsuc n) i) (negsuc (NA.plus i n)) = split {
+  zero -> refl (negsuc n) ;
+  suc i | r -> ap predZ r } ;
+-- 0 - (i+1) = -(i+1)
+minus-zero-suc : (i : Base.Nat) -> Id Int (PA4.minus zeroZ (suc i)) (negsuc i) = split {
+  zero -> refl (negsuc zero) ;
+  suc i | r -> ap predZ r } ;
+-- (x + 1) - (i + 1) = x - i
+minus-suc-suc (x : Int) (i : Base.Nat) : Id Int (PA4.minus (sucZ x) (suc i)) (PA4.minus x i) =
+  trans (ap predZ (PA4.minus-suc x i)) (pred-suc (PA4.minus x i)) ;
+lower-suc-suc (x : Int) (i : Nat) : Id Int (lowerZ (sucZ x) (suc i)) (lowerZ x i) = minus-suc-suc x (toB i) ;
+
+negPos-sucNeg : (m : Base.Nat) -> Id Int (negPos m) (sucNeg m) = split { zero -> refl (pos zero) ; suc m -> refl (negsuc m) } ;
+-- -(x - 1) = (-x) + 1
+neg-predPos : (n : Base.Nat) -> Id Int (neg (predZ (pos n))) (sucZ (neg (pos n))) = split {
+  zero -> refl (pos (suc zero)) ; suc m -> negPos-sucNeg m } ;
+neg-predZ : (x : Int) -> Id Int (neg (predZ x)) (sucZ (neg x)) = split {
+  pos n -> neg-predPos n ;
+  negsuc n -> refl (pos (suc (suc n))) } ;
+-- -(e - n) = (-e) + n
+neg-minus (e : Int) : (n : Base.Nat) -> Id Int (neg (PA4.minus e n)) (addP (neg e) n) = split {
+  zero -> refl (neg e) ;
+  suc n | r -> trans (neg-predZ (PA4.minus e n)) (ap sucZ r) } ;
+-- (k - i) - (e - i) = k - e
+sub-lower (k e : Int) (i : Nat) : Id Int (subZ (lowerZ k i) (lowerZ e i)) (subZ k e) = calc Int {
+  add (PA4.minus k (toB i)) (neg (PA4.minus e (toB i)))
+    =< ap (add (PA4.minus k (toB i))) (neg-minus e (toB i)) > add (PA4.minus k (toB i)) (addP (neg e) (toB i))
+    =< PA4.add-minusL k (addP (neg e) (toB i)) (toB i) > PA4.minus (add k (addP (neg e) (toB i))) (toB i)
+    =< ap (\ z -> PA4.minus z (toB i)) (PA4.add-addPR k (neg e) (toB i)) > PA4.minus (addP (add k (neg e)) (toB i)) (toB i)
+    =< PA4.minus-addP (add k (neg e)) (toB i) > add k (neg e) } ;
+-- (k - 1) - e = (k - e) - 1
+sub-pred (k e : Int) : Id Int (subZ (predZ k) e) (predZ (subZ k e)) = add-predL k (neg e) ;
+-- k - (n + 1) as iterated predecessor
+addN-minus (k : Int) : (m : Base.Nat) -> Id Int (addN k m) (PA4.minus k (suc m)) = split {
+  zero -> refl (predZ k) ;
+  suc m | r -> ap predZ r } ;
+-- k - pos n = minus k n
+sub-pos (k : Int) : (n : Base.Nat) -> Id Int (subZ k (pos n)) (PA4.minus k n) = split {
+  zero -> refl k ;
+  suc m -> addN-minus k m } ;
+-- (k + e) - e = k
+add-sub (k e : Int) : Id Int (subZ (add k e) e) k = trans (assoc k e (neg e)) (ap (add k) (invr e)) ;
+-- k /= e gives k - i /= e - i
+lower-ne (k e : Int) (i : Nat) (ne : Not (Id Int k e)) : Not (Id Int (lowerZ k i) (lowerZ e i)) =
+  \ p -> ne (PA4.minus-inj k e (toB i) p) ;
+
+------------------------------------------------------------------------
+-- graded rings
+
+record Graded (A : CRing) (t : Nat) (R : CRing) {
+  pr : Int -> R.R -> R.R ;
+  pr-add (k : Int) (x y : R.R) : Id R.R (pr k (R.add x y)) (R.add (pr k x) (pr k y)) ;
+  pr-idem (k : Int) (x : R.R) : Id R.R (pr k (pr k x)) (pr k x) ;
+  pr-orth (k e : Int) (ne : Not (Id Int k e)) (x : R.R) : Id R.R (pr k (pr e x)) R.z ;
+  pr-negdeg (n : Base.Nat) (x : R.R) : Id R.R (pr (negsuc n) x) R.z ;
+  pr-mul (k e : Int) (x y : R.R) (hy : Id R.R (pr e y) y) : Id R.R (pr k (R.mul x y)) (R.mul (pr (subZ k e) x) y) ;
+  iota : RH.Hom A R ;
+  iota-hom (a : A.R) : Id R.R (pr zeroZ (iota.1 a)) (iota.1 a) ;
+  base : R.R -> A.R ;
+  base-eq (x : R.R) (h : Id R.R (pr zeroZ x) x) : Id R.R (iota.1 (base x)) x ;
+  var : Ps.Fin t -> R.R ;
+  var-hom (j : Ps.Fin t) : Id R.R (pr (pos (suc zero)) (var j)) (var j) ;
+  low : Ps.Fin t -> R.R -> R.R ;
+  low-zero (j : Ps.Fin t) : Id R.R (low j R.z) R.z ;
+  low-hom (k : Base.Nat) (j : Ps.Fin t) (x : R.R) (h : Id R.R (pr (pos (suc k)) x) x) : Id R.R (pr (pos k) (low j x)) (low j x) ;
+  low-eq (k : Base.Nat) (x : R.R) (h : Id R.R (pr (pos (suc k)) x) x) :
+    Id R.R x (Comb[l].Sums[R,IP.regular R].sum t (\ j -> R.mul (var j) (low j x))) ;
+  ev (a : Ps.Fin t -> A.R) : RH.Hom R A ;
+  ev-iota (a : Ps.Fin t -> A.R) (x : A.R) : Id A.R ((ev a).1 (iota.1 x)) x ;
+  ev-var (a : Ps.Fin t -> A.R) (j : Ps.Fin t) : Id A.R ((ev a).1 (var j)) (a j) ;
+} ;
+
+-- a ring map preserves finite sums
+module HomSum (R S : CRing) (f : RH.Hom R S) {
+  module SR = Comb[l].Sums[R,IP.regular R] ; module SS = Comb[l].Sums[S,IP.regular S] ;
+  map-sum : (n : Nat) (g : Ps.Fin n -> R.R) -> Id S.R (f.1 (SR.sum n g)) (SS.sum n (\ j -> f.1 (g j))) = split {
+    zero -> \ g -> RH.zero R S f ;
+    suc n | r -> \ g -> trans (f.2.2.1 (g (inr tt)) (SR.sum n (\ j -> g (inl j)))) (ap (S.add (f.1 (g (inr tt)))) (r (\ j -> g (inl j)))) } ;
+} ;
+
+module Laws (A : CRing) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+  module DL = IP.ModL[R,IP.regular R] ; module L = RL[R] ;
+  module RS = Comb[l].Sums[R,IP.regular R] ;
+
+  -- homogeneity
+  Hom (k : Int) (x : R.R) : U l = Id R.R (G.pr k x) x ;
+  hom-prop (k : Int) (x : R.R) : Pr.isProp (Hom k x) = setR (G.pr k x) x ;
+
+  -- additivity
+  pr-zero (k : Int) : Id R.R (G.pr k R.z) R.z = DL.G.hom-zero (G.pr k) (G.pr-add k) ;
+  pr-neg (k : Int) (x : R.R) : Id R.R (G.pr k (R.neg x)) (R.neg (G.pr k x)) = DL.G.hom-neg (G.pr k) (G.pr-add k) x ;
+  pr-sub (k : Int) (x y : R.R) : Id R.R (G.pr k (DL.msub x y)) (DL.msub (G.pr k x) (G.pr k y)) =
+    trans (G.pr-add k x (R.neg y)) (ap (R.add (G.pr k x)) (pr-neg k y)) ;
+  pr-sum (k : Int) : (n : Nat) (f : Ps.Fin n -> R.R) -> Id R.R (G.pr k (RS.sum n f)) (RS.sum n (\ j -> G.pr k (f j))) = split {
+    zero -> \ f -> pr-zero k ;
+    suc n | r -> \ f -> trans (G.pr-add k (f (inr tt)) (RS.sum n (\ j -> f (inl j)))) (ap (R.add (G.pr k (f (inr tt)))) (r (\ j -> f (inl j)))) } ;
+
+  -- pr k x is homogeneous of degree k; 0 is homogeneous of every degree
+  hom-pr (k : Int) (x : R.R) : Hom k (G.pr k x) = G.pr-idem k x ;
+  hom-zero (k : Int) : Hom k R.z = pr-zero k ;
+  -- a homogeneous element of degree e has zero part in degree k /= e
+  hom-other (k e : Int) (x : R.R) (h : Hom e x) (ne : Not (Id Int k e)) : Id R.R (G.pr k x) R.z =
+    trans (ap (G.pr k) (sym h)) (G.pr-orth k e ne x) ;
+  -- in negative degree only 0 is homogeneous
+  hom-negdeg (n : Base.Nat) (x : R.R) (h : Hom (negsuc n) x) : Id R.R x R.z = trans (sym h) (G.pr-negdeg n x) ;
+  hom-add (k : Int) (x y : R.R) (hx : Hom k x) (hy : Hom k y) : Hom k (R.add x y) =
+    trans (G.pr-add k x y) (DL.G.cong-add hx hy) ;
+  hom-sum (k : Int) : (n : Nat) (f : Ps.Fin n -> R.R) -> ((j : Ps.Fin n) -> Hom k (f j)) -> Hom k (RS.sum n f) = split {
+    zero -> \ f h -> hom-zero k ;
+    suc n | r -> \ f h -> hom-add k (f (inr tt)) (RS.sum n (\ j -> f (inl j))) (h (inr tt)) (r (\ j -> f (inl j)) (\ j -> h (inl j))) } ;
+
+  -- the homogeneous factor first: pr k (x y) = x pr (k - e) y
+  pr-mul-left (k e : Int) (x y : R.R) (hx : Hom e x) : Id R.R (G.pr k (R.mul x y)) (R.mul x (G.pr (subZ k e) y)) =
+    trans (ap (G.pr k) (R.mulC x y)) (trans (G.pr-mul k e y x hx) (R.mulC (G.pr (subZ k e) y) x)) ;
+  -- with a natural degree n: pr k (x y) = pr (k - n) (x) y
+  pr-mul-pos (k : Int) (n : Base.Nat) (x y : R.R) (hy : Hom (pos n) y) :
+    Id R.R (G.pr k (R.mul x y)) (R.mul (G.pr (PA4.minus k n) x) y) =
+    trans (G.pr-mul k (pos n) x y hy) (ap (\ e -> R.mul (G.pr e x) y) (sub-pos k n)) ;
+  pr-mul-pos-left (k : Int) (n : Base.Nat) (x y : R.R) (hx : Hom (pos n) x) :
+    Id R.R (G.pr k (R.mul x y)) (R.mul x (G.pr (PA4.minus k n) y)) =
+    trans (pr-mul-left k (pos n) x y hx) (ap (\ e -> R.mul x (G.pr e y)) (sub-pos k n)) ;
+  -- products of homogeneous elements
+  hom-mul (e f : Int) (x y : R.R) (hx : Hom e x) (hy : Hom f y) : Hom (add e f) (R.mul x y) =
+    trans (G.pr-mul (add e f) f x y hy) (ap (\ w -> R.mul w y) (trans (ap (\ k -> G.pr k x) (add-sub e f)) hx)) ;
+
+  -- constants: degree 0, and A-linearity of pr k
+  hom-iota (a : A.R) : Hom zeroZ (G.iota.1 a) = G.iota-hom a ;
+  hom-one : Hom zeroZ R.o = subst (Hom zeroZ) G.iota.2.1 (hom-iota A.o) ;
+  pr-iota (k : Int) (a : A.R) (y : R.R) : Id R.R (G.pr k (R.mul (G.iota.1 a) y)) (R.mul (G.iota.1 a) (G.pr k y)) =
+    pr-mul-left k zeroZ (G.iota.1 a) y (hom-iota a) ;
+
+  ------------------------------------------------------------------------
+  -- finite expressions with all monomials of degree k
+
+  Expr : Base.Nat -> U l = split {
+    zero -> A.R ;
+    suc k | r -> Ps.Fin t -> r } ;
+  value : (k : Base.Nat) -> Expr k -> R.R = split {
+    zero -> \ a -> G.iota.1 a ;
+    suc k | r -> \ e -> RS.sum t (\ j -> R.mul (G.var j) (r (e j))) } ;
+  -- every value is homogeneous of degree k
+  value-hom : (k : Base.Nat) (e : Expr k) -> Hom (pos k) (value k e) = split {
+    zero -> \ e -> hom-iota e ;
+    suc k | r -> \ e -> hom-sum (pos (suc k)) t (\ j -> R.mul (G.var j) (value k (e j)))
+      (\ j -> subst (Hom (pos (suc k))) (R.mulC (value k (e j)) (G.var j))
+                (hom-mul (pos k) (pos (suc zero)) (value k (e j)) (G.var j) (r (e j)) (G.var-hom j))) } ;
+  -- the expression of a homogeneous element, and its value
+  expr : (k : Base.Nat) (x : R.R) -> Hom (pos k) x -> Expr k = split {
+    zero -> \ x h -> G.base x ;
+    suc k | r -> \ x h j -> r (G.low j x) (G.low-hom k j x h) } ;
+  expr-value : (k : Base.Nat) (x : R.R) (h : Hom (pos k) x) -> Id R.R (value k (expr k x h)) x = split {
+    zero -> \ x h -> G.base-eq x h ;
+    suc k | r -> \ x h ->
+      trans (RS.sum-cong t (\ j -> R.mul (G.var j) (value k (expr k (G.low j x) (G.low-hom k j x h))))
+                         (\ j -> R.mul (G.var j) (G.low j x))
+                         (\ j -> ap (R.mul (G.var j)) (r (G.low j x) (G.low-hom k j x h))))
+            (sym (G.low-eq k x h)) } ;
+} ;

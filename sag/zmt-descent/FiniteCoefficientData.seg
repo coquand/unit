@@ -1,0 +1,88 @@
+-- FiniteCoefficientData.seg: the coefficients of a polynomial expression,
+-- and lifting them to named coefficient variables, Gate B (handoff §4).
+--
+-- Polynomials in X_1 .. X_n are expressions (Presentations.Expr (Fin n)):
+-- variables, constants, sums and products.  Every element of R[X_1..X_n] is
+-- the value of one, and their evaluation is the evaluation of polynomials.
+--
+-- Mapping coefficients (Map): for h : A -> R, mapE h e replaces each constant
+-- a by h(a).  For an R-algebra E, let E_h be E as an A-algebra through
+-- iota_E o h (along); then evaluating e in E_h is evaluating mapE h e in E
+-- (eval-map), by induction on e.
+--
+-- Recording coefficients (Leaves): the constants of e, in order, form a
+-- finite family leaf e : Fin (nc e) -> R (nc e the number of constants; a
+-- sum or product concatenates the families of its two parts,
+-- FiniteFamilies.app).  Repeated values are recorded at different indices.
+-- Lifting (lift): for any beta : Fin (nc e) -> A, lift e beta is e with its
+-- k-th constant replaced by beta_k.  If h(beta_k) = leaf_k e for all k, then
+--     mapE h (lift e beta) = e                                (lift-image)
+-- as expressions: coefficient equality, by induction on e.  No equality in R
+-- has to be decided.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module H = RingHom[l] ;
+module FF = FiniteFamilies[l] ;
+
+module Map (A R : CRing) (setA : Pr.isSet A.R) (setR : Pr.isSet R.R) (h : H.Hom A R) {
+  module PA = Presentations[l].Over[A,setA] ; module PR = Presentations[l].Over[R,setR] ;
+  module CA = Algebras[l].Over[A,setA] ; module CR = Algebras[l].Over[R,setR] ;
+  mapE (V : U l) : PA.Expr V -> PR.Expr V = split {
+    var v -> var v ;
+    cst a -> cst (h.1 a) ;
+    sumE p q | rp rq -> sumE rp rq ;
+    mulE p q | rp rq -> mulE rp rq } ;
+  -- E as an A-algebra through h
+  along (E : CR.Algebra) : CA.Algebra = CA.mkAlgebra E.ring E.set (H.compose A R E.ring E.iota h) ;
+  -- by definition of along
+  along-iota (E : CR.Algebra) (a : A.R) : Id E.ring.R ((along E).iota.1 a) (E.iota.1 (h.1 a)) = refl (E.iota.1 (h.1 a)) ;
+  eval-map (V : U l) (E : CR.Algebra) (x : V -> E.ring.R) : (e : PA.Expr V) ->
+    Id E.ring.R (PA.eval V (along E) x e) (PR.eval V E x (mapE V e)) = split {
+    var v -> refl (x v) ;
+    cst a -> refl (E.iota.1 (h.1 a)) ;
+    sumE p q | rp rq -> Ps.cong2 E.ring.R E.ring.add _ _ _ _ rp rq ;
+    mulE p q | rp rq -> Ps.cong2 E.ring.R E.ring.mul _ _ _ _ rp rq } ;
+} ;
+
+module Leaves (R : CRing) (setR : Pr.isSet R.R) {
+  module PR = Presentations[l].Over[R,setR] ;
+  nc (V : U l) : PR.Expr V -> Nat = split {
+    var v -> zero ;
+    cst r -> suc zero ;
+    sumE p q | rp rq -> plus rp rq ;
+    mulE p q | rp rq -> plus rp rq } ;
+  leaf (V : U l) : (e : PR.Expr V) -> Ps.Fin (nc V e) -> R.R = split {
+    var v -> \ k -> absurd R.R k ;
+    cst r -> \ k -> r ;
+    sumE p q | rp rq -> FF.app R.R (nc V p) (nc V q) rp rq ;
+    mulE p q | rp rq -> FF.app R.R (nc V p) (nc V q) rp rq } ;
+
+  module Lift (A : CRing) (setA : Pr.isSet A.R) (h : H.Hom A R) {
+    module M = Map[A,R,setA,setR,h] ; module PA = M.PA ;
+    lift (V : U l) : (e : PR.Expr V) -> (Ps.Fin (nc V e) -> A.R) -> PA.Expr V = split {
+      var v -> \ beta -> var v ;
+      cst r -> \ beta -> cst (beta (inr tt)) ;
+      sumE p q | rp rq -> \ beta -> sumE (rp (\ k -> beta (FF.injL (nc V p) (nc V q) k))) (rq (\ k -> beta (FF.injR (nc V p) (nc V q) k))) ;
+      mulE p q | rp rq -> \ beta -> mulE (rp (\ k -> beta (FF.injL (nc V p) (nc V q) k))) (rq (\ k -> beta (FF.injR (nc V p) (nc V q) k))) } ;
+    -- the hypothesis of lift-image
+    Lifts (V : U l) (e : PR.Expr V) (beta : Ps.Fin (nc V e) -> A.R) : U l =
+      (k : Ps.Fin (nc V e)) -> Id R.R (h.1 (beta k)) (leaf V e k) ;
+    lifts-left (V : U l) (p q : PR.Expr V) (beta : Ps.Fin (plus (nc V p) (nc V q)) -> A.R)
+      (hb : (k : Ps.Fin (plus (nc V p) (nc V q))) -> Id R.R (h.1 (beta k)) (FF.app R.R (nc V p) (nc V q) (leaf V p) (leaf V q) k)) :
+      Lifts V p (\ k -> beta (FF.injL (nc V p) (nc V q) k)) =
+      \ k -> trans (hb (FF.injL (nc V p) (nc V q) k)) (FF.app-injL R.R (nc V p) (nc V q) (leaf V p) (leaf V q) k) ;
+    lifts-right (V : U l) (p q : PR.Expr V) (beta : Ps.Fin (plus (nc V p) (nc V q)) -> A.R)
+      (hb : (k : Ps.Fin (plus (nc V p) (nc V q))) -> Id R.R (h.1 (beta k)) (FF.app R.R (nc V p) (nc V q) (leaf V p) (leaf V q) k)) :
+      Lifts V q (\ k -> beta (FF.injR (nc V p) (nc V q) k)) =
+      \ k -> trans (hb (FF.injR (nc V p) (nc V q) k)) (FF.app-injR R.R (nc V p) (nc V q) (leaf V p) (leaf V q) k) ;
+    lift-image (V : U l) : (e : PR.Expr V) (beta : Ps.Fin (nc V e) -> A.R) -> Lifts V e beta ->
+      Id (PR.Expr V) (M.mapE V (lift V e beta)) e = split {
+      var v -> \ beta hb -> refl (var v) ;
+      cst r -> \ beta hb -> ap (\ w -> cst w) (hb (inr tt)) ;
+      sumE p q | rp rq -> \ beta hb -> Ps.cong2 (PR.Expr V) (\ u w -> sumE u w) _ _ _ _
+        (rp (\ k -> beta (FF.injL (nc V p) (nc V q) k)) (lifts-left V p q beta hb))
+        (rq (\ k -> beta (FF.injR (nc V p) (nc V q) k)) (lifts-right V p q beta hb)) ;
+      mulE p q | rp rq -> \ beta hb -> Ps.cong2 (PR.Expr V) (\ u w -> mulE u w) _ _ _ _
+        (rp (\ k -> beta (FF.injL (nc V p) (nc V q) k)) (lifts-left V p q beta hb))
+        (rq (\ k -> beta (FF.injR (nc V p) (nc V q) k)) (lifts-right V p q beta hb)) } ;
+  } ;
+} ;

@@ -1,0 +1,104 @@
+-- Constructed per-chart homogeneous kernel lifts give actual generic
+-- Cech-family lifts. Choose local lifts over the FINITE bitset type,
+-- discard components of the wrong cardinality, and unite their finite
+-- exponent supports. All choices stay under the final truncation.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module LG = Logic[l] ;
+module L = GenericLaurent[l] ; module K = GenericDegree[l] ; module PA = PolynomialAction4[l] ;
+module FC = FiniteChartChoice[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (nvar : Nat) {
+ module LS = LocalizedSyzygies[l].Over[A,setA,nvar] ;
+ module M = ShiftedMatrixAction[l].Over[A,setA,nvar] ;
+ module E = GenericCech[l].Over[A,setA] ;
+ module SU = FC.Over[A,L.Exp nvar] ; module RS = Comb[l].Sums[A,IP.regular A] ;
+ module ChartSum (k r : Int) {
+   module C = E.Cochains[nvar,k,r] ; module S = Comb[l].Sums[A,C.mod] ;
+   val : (a : Nat) (f : Ps.Fin a -> C.El) (s : Sub nvar) (m : L.Exp nvar) ->
+     Id A.R (C.val (S.sum a f) s m) (RS.sum a (\ i -> C.val (f i) s m)) = split {
+     zero -> \ f s m -> refl A.z ;
+     suc a | rec -> \ f s m -> ap (A.add (C.val (f (inr tt)) s m)) (rec (\ i -> f (inl i)) s m) } ;
+ } ;
+ module Input (a r : Nat) (d : Ps.Fin a -> Base.Nat) (c : Ps.Fin r -> Base.Nat)
+   (g : Ps.Fin a -> Ps.Fin r -> List (LS.P.Term nvar))
+   (hg : (i : Ps.Fin a) (j : Ps.Fin r) -> LS.H.L.Hom (PA.minus (pos (d i)) (c j)) (LS.P.phi nvar (g i j)))
+   (gg : (i : Ps.Fin a) (j : Ps.Fin r) -> M.HomShift (c j) (d i) (g i j)) {
+   module Local = LS.Input[a,r,d,c,g,hg] ;
+   module Chosen (w : Local.M.Data) (hp : Ps.Fin w.1 -> Ps.Fin a -> List (LS.P.Term nvar))
+     (hrep : (j : Ps.Fin w.1) (i : Ps.Fin a) -> Id (LS.T.D nvar).R (LS.P.phi nvar (hp j i)) (w.2.2.1 j i))
+     (hh : (j : Ps.Fin w.1) (i : Ps.Fin a) -> M.HomShift (d i) (Local.M.Witness[w].shifts j) (hp j i)) {
+     module LC = Local.Chosen[w,hp,hrep] ; module W = LC.W ;
+     module At (k R : Int) {
+       kd (i : Ps.Fin a) : Int = PA.minus k (d i) ;
+       kc (j : Ps.Fin r) : Int = PA.minus k (c j) ;
+       ke (j : Ps.Fin W.rank) : Int = PA.minus k (W.shifts j) ;
+       module G = M.Matrix[r,a,kc,kd,\ j i -> g i j,\ j i -> M.shifts k (c j) (d i) (g i j) (gg i j),R] ;
+       module H = M.Matrix[a,W.rank,kd,ke,\ i j -> hp j i,\ i j -> M.shifts k (d i) (W.shifts j) (hp j i) (hh j i),R] ;
+       module Source (i : Ps.Fin a) { module C = E.Cochains[nvar,kd i,R] ; } ;
+       module Target (j : Ps.Fin W.rank) { module C = E.Cochains[nvar,ke j,R] ; } ;
+       module Lift (y : G.Source.El) (hy : Id G.Target.El (G.lin.f y) G.Target.mod.mz) {
+         kernel (s : Sub nvar) (j : Ps.Fin r) (m : L.Exp nvar) :
+           Id A.R (RS.sum a (\ i -> LS.FA.mulP (g i j) (Source[i].C.val (y i) s) m)) A.z =
+           trans (sym (ChartSum[kc j,R].val a (\ i -> (G.entry j i).f (y i)) s m))
+             (ap (\ z -> E.Cochains[nvar,kc j,R].val (z j) s m) hy) ;
+         Support : U l = SU.Witness (Ps.Fin a * Sub nvar) (\ p -> Source[p.1].C.val (y p.1) p.2) ;
+         common : Tr.Trunc[Support].carrier = SU.finite-fin (Sub nvar) a (\ i -> Source[i].C.val (y i))
+           (\ i -> Source[i].C.M.supp (y i)) ;
+         Result : U l = (z : H.Source.El) * Id H.Target.El (H.lin.f z) y ;
+         module WithSupport (sw : Support) {
+           module Chart (s : Sub nvar) {
+             module C = LC.Chart[s,k,sw.1,\ i -> Source[i].C.val (y i) s,
+               \ i m nm -> sw.2 (i,s) m nm,
+               \ i m b -> Source[i].C.support (y i) m s b,
+               \ i m ne -> Source[i].C.projective (y i) m ne s,kernel s] ;
+           } ;
+           Choices : U l = (s : Sub nvar) -> Chart[s].C.Solution ;
+           choices : Tr.Trunc[Choices].carrier = FC.choice nvar (\ s -> Chart[s].C.Solution) (\ s -> Chart[s].C.lift) ;
+           module Selected (sol : Choices) {
+             module LocalValue (s : Sub nvar) {
+               module Z = Chart[s].C.Inverse[(sol s).1.1] ;
+             } ;
+             raw (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) : A.R = LocalValue[s].Z.value j m ;
+             choose (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) : LG.Dec (Id Int (K.card nvar s) R) -> A.R = split {
+               yes e -> raw j s m ; no ne -> A.z } ;
+             value (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) : A.R = choose j s m (int-dec (K.card nvar s) R) ;
+             choose-zero (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) (e : Id A.R (raw j s m) A.z) :
+               (q : LG.Dec (Id Int (K.card nvar s) R)) -> Id A.R (choose j s m q) A.z = split {
+                 yes h -> e ; no ne -> refl A.z } ;
+             wrong-rank (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) (ne : Not (Id Int (K.card nvar s) R)) :
+               (q : LG.Dec (Id Int (K.card nvar s) R)) -> Id A.R (choose j s m q) A.z = split {
+                 yes e -> absurd (Id A.R (raw j s m) A.z) (ne e) ; no nq -> refl A.z } ;
+             supported (j : Ps.Fin W.rank) : Tr.Trunc[SU.Witness (Sub nvar) (raw j)].carrier =
+               SU.finite-sub nvar (raw j) (\ s -> LocalValue[s].Z.finite j) ;
+             support (j : Ps.Fin W.rank) : Target[j].C.M.Supp (value j) =
+               TC.map (SU.Witness (Sub nvar) (raw j)) (Target[j].C.M.SuppW (value j))
+                 (\ t -> (t.1,\ s m nm -> choose-zero j s m (t.2 s m nm) (int-dec (K.card nvar s) R))) (supported j) ;
+             van (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) :
+               GenericCech[l].Bad nvar (ke j) R s m -> Id A.R (value j s m) A.z = split {
+                 inl ne -> choose-zero j s m (LocalValue[s].Z.Degree[(sol s).1.2.1,j].degree-preserved m ne) (int-dec (K.card nvar s) R) ;
+                 inr b -> other j s m b }
+             where { other (j : Ps.Fin W.rank) (s : Sub nvar) (m : L.Exp nvar) :
+               Plus (GenericSupport[l].bad nvar (L.mask nvar m) s) (Not (Id Int (K.card nvar s) R)) -> Id A.R (value j s m) A.z = split {
+                 inl b -> choose-zero j s m (LocalValue[s].Z.chart j m b) (int-dec (K.card nvar s) R) ;
+                 inr ne -> wrong-rank j s m ne (int-dec (K.card nvar s) R) } } ;
+             lifted (j : Ps.Fin W.rank) : Target[j].C.El = Target[j].C.M.mk (value j) (support j) (van j) ;
+             equation-case (i : Ps.Fin a) (s : Sub nvar) (m : L.Exp nvar) :
+               (q : LG.Dec (Id Int (K.card nvar s) R)) ->
+               Id A.R (RS.sum W.rank (\ j -> LS.FA.mulP (hp j i) (\ m' -> choose j s m' q) m)) (Source[i].C.val (y i) s m) = split {
+                 yes e -> (sol s).2 i m ;
+                 no ne -> trans (RS.sum-cong W.rank _ _ (\ j -> LS.FA.mulP-zero (hp j i) m))
+                   (trans (RS.sum-zero W.rank) (sym (Source[i].C.rank (y i) m s (\ e -> Pr.absurd Empty (ne e))))) } ;
+             equation : Id H.Target.El (H.lin.f lifted) y = H.Target.Prod.ext _ _ (\ i ->
+               Source[i].C.M.eq _ _ (\ s m -> trans
+                 (ChartSum[kd i,R].val W.rank (\ j -> (H.entry i j).f (lifted j)) s m)
+                 (equation-case i s m (int-dec (K.card nvar s) R)))) ;
+             result : Result = (lifted,equation) ;
+           } ;
+           lift : Tr.Trunc[Result].carrier = TC.map Choices Result (\ sol -> Selected[sol].result) choices ;
+         } ;
+         lift : Tr.Trunc[Result].carrier = TC.bind Support Result (\ sw -> WithSupport[sw].lift) common ;
+       } ;
+     } ;
+   } ;
+ } ;
+} ;

@@ -1,0 +1,69 @@
+-- Assemble a finite family of actual constant-chart modules into a
+-- generic Cech cochain. Select the indexed chart at the right cardinality,
+-- and zero elsewhere. Union the supports over the finite bitset type.
+-- Injectivity identifies the selected chart at each original face.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr=Prelude[l] ; module IP=IdealPowers[l] ; module L=GenericLaurent[l] ;
+module K=GenericDegree[l] ; module LG=Logic[l] ; module Tr=Truncation[l] ; module TC=TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) (I : U l) (face : I -> Sub n) (r : Int)
+ (card : (i : I) -> Id Int (K.card n (face i)) r)
+ (classify : (s : Sub n) -> Id Int (K.card n s) r -> (i : I)*Id (Sub n) (face i) s)
+ (injective : (i j : I) -> Id (Sub n) (face i) (face j) -> Id I i j) (k : Int) {
+ module CE=GenericCech[l].Over[A,setA] ; module CH=CE.Cochains[n,k,r] ;
+ module Local (i : I) { module C=L.Over[A,setA].Chart[L.Exp n,Sub n,\s -> NativeDegreePart[l].Bad n (face i) k] ; } ;
+ module P=ChartFamilyAssembly4[l].Product[A,I,\i -> Local[i].C.mod] ;
+ module SC=FiniteChartChoice[l].Over[A,L.Exp n] ;
+ read (f : P.El) (i : I) (m : L.Exp n) : A.R=Local[i].C.val (f i) (face i) m ;
+ select (f : P.El) (s : Sub n) : LG.Dec (Id Int (K.card n s) r) -> L.Exp n -> A.R=split {
+  yes h -> read f (classify s h).1 ; no ne -> \m -> A.z } ;
+ raw (f : P.El) (s : Sub n) (m : L.Exp n) : A.R=select f s (int-dec (K.card n s) r) m ;
+ support-case (f : P.El) (s : Sub n) : (d : LG.Dec (Id Int (K.card n s) r)) -> Tr.Trunc[SC.Single (select f s d)].carrier=split {
+  yes h -> TC.map (Local[(classify s h).1].C.SuppW (Local[(classify s h).1].C.val (f (classify s h).1)))
+    (SC.Single (read f (classify s h).1))
+    (\w -> (w.1,\m nm -> w.2 (face (classify s h).1) m nm)) (Local[(classify s h).1].C.supp (f (classify s h).1)) ;
+  no ne -> Tr.Trunc[SC.Single (\m -> A.z)].inc (nil,\m nm -> refl A.z) } ;
+ support (f : P.El) : CH.M.Supp (raw f)=SC.finite-sub n (raw f) (\s -> support-case f s (int-dec (K.card n s) r)) ;
+ native-bad (s : Sub n) (h : Id Int (K.card n s) r) (m : L.Exp n) :
+  GenericCech[l].Bad n k r s m -> NativeDegreePart[l].Bad n (face (classify s h).1) k m=split {
+   inl ne -> inl ne ; inr b -> other-bad s h m b }
+ where { other-bad (s : Sub n) (h : Id Int (K.card n s) r) (m : L.Exp n) :
+  Plus (GenericSupport[l].bad n (L.mask n m) s) (Not (Id Int (K.card n s) r)) -> NativeDegreePart[l].Bad n (face (classify s h).1) k m=split {
+   inl b -> inr (subst (GenericSupport[l].bad n (L.mask n m)) (sym (classify s h).2) b) ;
+   inr ne -> absurd (NativeDegreePart[l].Bad n (face (classify s h).1) k m) (ne h) } } ;
+ van-case (f : P.El) (s : Sub n) (m : L.Exp n) (b : GenericCech[l].Bad n k r s m) :
+  (d : LG.Dec (Id Int (K.card n s) r)) -> Id A.R (select f s d m) A.z=split {
+   yes h -> Local[(classify s h).1].C.van (f (classify s h).1) (face (classify s h).1) m (native-bad s h m b) ;
+   no ne -> refl A.z } ;
+ assemble (f : P.El) : CH.El=CH.M.mk (raw f) (support f) (\s m b -> van-case f s m b (int-dec (K.card n s) r)) ;
+ value-case (f : P.El) (i : I) (m : L.Exp n) : (d : LG.Dec (Id Int (K.card n (face i)) r)) ->
+  Id A.R (select f (face i) d m) (read f i m)=split {
+   yes h -> ap (\j -> read f j m) (injective (classify (face i) h).1 i (classify (face i) h).2) ;
+   no ne -> Pr.absurd (Id A.R A.z (read f i m)) (ne (card i)) } ;
+ value (f : P.El) (i : I) (m : L.Exp n) : Id A.R (CH.val (assemble f) (face i) m) (read f i m)=
+  value-case f i m (int-dec (K.card n (face i)) r) ;
+ add-case (f g : P.El) (s : Sub n) (m : L.Exp n) : (d : LG.Dec (Id Int (K.card n s) r)) ->
+  Id A.R (select (P.mod.madd f g) s d m) (A.add (select f s d m) (select g s d m))=split {
+   yes h -> refl (A.add (read f (classify s h).1 m) (read g (classify s h).1 m)) ; no ne -> sym (A.addZ A.z) } ;
+ sm-case (a : A.R) (f : P.El) (s : Sub n) (m : L.Exp n) : (d : LG.Dec (Id Int (K.card n s) r)) ->
+  Id A.R (select (P.mod.sm a f) s d m) (A.mul a (select f s d m))=split {
+   yes h -> refl (A.mul a (read f (classify s h).1 m)) ; no ne -> sym (RL[A].mul-zero a) } ;
+ linear : IP.Lin[A,P.mod,CH.mod]=IP.mkLin A P.mod CH.mod assemble
+  (\f g -> CH.M.eq _ _ (\s m -> add-case f g s m (int-dec (K.card n s) r)))
+  (\a f -> CH.M.eq _ _ (\s m -> sm-case a f s m (int-dec (K.card n s) r))) ;
+ ext (x y : CH.El) (eq : (i : I) (m : L.Exp n) -> Id A.R (CH.val x (face i) m) (CH.val y (face i) m)) : Id CH.El x y=
+  CH.M.eq x y (\s m -> ext-case x y eq s m (int-dec (K.card n s) r))
+ where { ext-case (x y : CH.El) (eq : (i : I) (m : L.Exp n) -> Id A.R (CH.val x (face i) m) (CH.val y (face i) m))
+  (s : Sub n) (m : L.Exp n) : LG.Dec (Id Int (K.card n s) r) -> Id A.R (CH.val x s m) (CH.val y s m)=split {
+   yes h -> subst (\v -> Id A.R (CH.val x v m) (CH.val y v m)) (classify s h).2 (eq (classify s h).1 m) ;
+   no ne -> trans {A.R} {CH.val x s m} {A.z} {CH.val y s m}
+     (CH.M.van x s m (inr (inr (\h -> Pr.absurd Empty (ne h)))))
+     (sym (CH.M.van y s m (inr (inr (\h -> Pr.absurd Empty (ne h)))))) } } ;
+} ;
+module Single (A : CRing) (setA : Pr.isSet A.R) (n : Nat) (k : Int) {
+ module F=GenericSubsetFaces[l] ;
+ module C=Over[A,setA,n,Presentations[l].Fin n,F.singleton n,K.topRank (suc zero),F.single-card n,F.classify-single n,GenericFaceInjectivity[l].single n,k] ;
+} ;
+module Pairs (A : CRing) (setA : Pr.isSet A.R) (n : Nat) (k : Int) {
+ module F=GenericSubsetFaces[l] ;
+ module C=Over[A,setA,n,F.Pair n,F.pairSet n,K.topRank (suc (suc zero)),F.pair-card n,F.classify-pair n,GenericFaceInjectivity[l].pairs n,k] ;
+} ;

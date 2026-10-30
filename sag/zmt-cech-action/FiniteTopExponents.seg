@@ -1,0 +1,57 @@
+-- Static finite enumeration of all-negative Laurent exponents of each
+-- projective degree. Use a generous natural box of side |k|, then filter
+-- by the actual integer degree. Extra box entries are harmless; the
+-- list is constructed without any input cochain or ring coefficients.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module N = FiniteExponents[l] ; module L = GenericLaurent[l] ;
+module B = FiniteExponentBoxes[l] ; module NA = NatArith[l] ;
+module LG = Logic[l] ; module Pr = Prelude[l] ;
+count : Nat -> Base.Nat = split { zero -> zero ; suc n | r -> suc r } ;
+negative (n : Nat) (u : N.Exp n) : L.Exp n = \ i -> negsuc (u i) ;
+mass (n : Nat) (u : N.Exp n) : Base.Nat = NA.plus (N.degree n u) (count n) ;
+magnitude : Int -> Base.Nat = split { pos a -> zero ; negsuc a -> suc a } ;
+mag-neg : (a : Base.Nat) -> Id Base.Nat (magnitude (negPos a)) a = split {
+ zero -> refl zero ; suc a -> refl (suc a) } ;
+mass-step (n : Nat) (u : N.Exp (suc n)) :
+ Id Base.Nat (mass (suc n) u) (suc (NA.plus (u (inr tt)) (mass n (N.old n u)))) =
+ trans (NA.plus-suc (NA.plus (u (inr tt)) (N.degree n (N.old n u))) (count n))
+   (ap (\ a -> suc a) (NA.plus-assoc (u (inr tt)) (N.degree n (N.old n u)) (count n))) ;
+addN-negative (a : Base.Nat) : (b : Base.Nat) ->
+ Id Int (addN (negsuc a) b) (negsuc (suc (NA.plus a b))) = split {
+ zero -> ap (\ x -> negsuc (suc x)) (sym (NA.plus-zero a)) ;
+ suc b | r -> trans (ap predZ r) (ap (\ x -> negsuc (suc x)) (sym (NA.plus-suc a b))) } ;
+add-negative (a : Base.Nat) : (b : Base.Nat) ->
+ Id Int (add (negsuc a) (negPos b)) (negPos (suc (NA.plus a b))) = split {
+ zero -> ap (\ x -> negsuc x) (sym (NA.plus-zero a)) ;
+ suc b -> trans (addN-negative a b) (ap (\ x -> negsuc x) (sym (NA.plus-suc a b))) } ;
+degree-negative : (n : Nat) (u : N.Exp n) -> Id Int (L.total n (negative n u)) (negPos (mass n u)) = split {
+ zero -> \ u -> refl zeroZ ;
+ suc n | r -> \ u -> trans (ap (add (negsuc (u (inr tt)))) (r (N.old n u)))
+   (trans (add-negative (u (inr tt)) (mass n (N.old n u))) (ap negPos (sym (mass-step n u)))) } ;
+mass-degree (n : Nat) (u : N.Exp n) (k : Int) (e : Id Int (L.total n (negative n u)) k) :
+ Id Base.Nat (mass n u) (magnitude k) = trans (sym (mag-neg (mass n u)))
+   (ap magnitude (trans (sym (degree-negative n u)) e)) ;
+module At (n : Nat) (k : Int) {
+ keep (u : N.Exp n) (us : List (N.Exp n)) : LG.Dec (Id Int (L.total n (negative n u)) k) -> List (N.Exp n) = split {
+   yes e -> cons u us ; no ne -> us } ;
+ filter : List (N.Exp n) -> List (N.Exp n) = split {
+   nil -> nil ; cons u us | r -> keep u r (int-dec (L.total n (negative n u)) k) } ;
+ keep-here (u : N.Exp n) (us : List (N.Exp n)) (e : Id Int (L.total n (negative n u)) k) :
+   (d : LG.Dec (Id Int (L.total n (negative n u)) k)) -> L.Mem (N.Exp n) u (keep u us d) = split {
+     yes q -> inl (refl u) ; no ne -> Pr.absurd (L.Mem (N.Exp n) u us) (ne e) } ;
+ keep-there (u v : N.Exp n) (us : List (N.Exp n)) (h : L.Mem (N.Exp n) v us) :
+   (d : LG.Dec (Id Int (L.total n (negative n u)) k)) -> L.Mem (N.Exp n) v (keep u us d) = split {
+     yes q -> inr h ; no ne -> h } ;
+ filter-cover (v : N.Exp n) (e : Id Int (L.total n (negative n v)) k) : (us : List (N.Exp n)) ->
+   L.Mem (N.Exp n) v us -> L.Mem (N.Exp n) v (filter us) = split {
+   nil -> \ h -> absurd (L.Mem (N.Exp n) v nil) h ;
+   cons u us | rec -> split {
+     inl h -> subst (\ w -> L.Mem (N.Exp n) w (filter (cons u us))) h
+       (keep-here u (filter us) (trans (ap (\ w -> L.total n (negative n w)) h) e) (int-dec (L.total n (negative n u)) k)) ;
+     inr h -> keep-there u v (filter us) (rec h) (int-dec (L.total n (negative n u)) k) } } ;
+ naturals : List (N.Exp n) = filter (B.boxes n (magnitude k)) ;
+ exponents : List (L.Exp n) = B.Lists[N.Exp n,L.Exp n].map (negative n) naturals ;
+ cover (u : N.Exp n) (e : Id Int (L.total n (negative n u)) k) : L.Mem (L.Exp n) (negative n u) exponents =
+   B.Lists[N.Exp n,L.Exp n].mem-map (negative n) u naturals
+     (filter-cover u e (B.boxes n (magnitude k)) (B.box-cover n (magnitude k) u (count n) (mass-degree n u k e))) ;
+} ;

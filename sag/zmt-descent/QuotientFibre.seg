@@ -1,0 +1,188 @@
+-- QuotientFibre.seg: the usual hypothesis "E/IE is finite over R/I" and the
+-- arbitrary-base certificate theorem with it (README §7 (2)).
+--
+-- Setting.  R a commutative set-ring with an ideal I (RegularIdeal.IdealPred,
+-- membership a proposition), E an R-algebra.  The ideal laws are used only
+-- here; FiniteFibreCertificates keeps any predicate I.
+--   IE (ideal IE): e is in IE when merely e = sum_k iota(a_k) w_k with
+--     a_k in I (the truncation of an IdealWitnesses.IEWit).  It is an ideal
+--     of E (ie-zero, ie-add, ie-mul) with propositional membership.
+--   R/I = QuotientRing[R,I], E/IE = QuotientRing[E,IE], with the projections
+--     pR, pE (ring maps).  Every element of a quotient is merely a projection
+--     (surjR, surjE).  Quotient effectiveness: pE e = pE e' gives exactly
+--     the membership e - e' in IE (QuotientRing.Q.effective: Rel e e' is
+--     IE.In (e - e')).
+--   The structure map iotaI : R/I -> E/IE with iotaI o pR = pE o iota
+--     (iotaI-beta) descends from pE o iota, since a in I gives iota(a) =
+--     iota(a) 1 in IE (unit-wit).  It is a ring map.
+--   E/IE finite over R/I (ModuleFinite[R/I, E/IE, iotaI]): finitely many
+--     gb_1 .. gb_N in E/IE such that every q is merely sum_k gb_k iotaI(ab_k).
+--     This datum chooses the gb_k, so it is not a proposition; the theorem
+--     takes it under truncation.
+--
+-- Bridge (bridge : || ModuleFinite || -> || FiniteFibre ||).  Lift the
+-- finitely many generators once, under truncation: g_k in E with
+-- pE g_k = gb_k (finite choice of surjE).  For an element e, take merely
+-- ab with pE e = sum_k gb_k iotaI(ab_k), lift only these N coefficients:
+-- alpha_k in R with pR alpha_k = ab_k.  Then
+--     pE e = sum_k pE(g_k) pE(iota alpha_k) = pE (sum_k g_k iota(alpha_k))
+-- (pE a ring map, iotaI-beta), so by effectiveness e - sum_k g_k iota(alpha_k)
+-- is merely in IE, which is the decomposition
+--     e = sum_k g_k iota(alpha_k) + r,  r in IE            (Decomp).
+-- No global choice of representatives and no hypothesis on R (no CFN).
+--
+-- Theorem (Theorem[U0].certified, TheoremCFN[Z].certified): with algebra
+-- generation by x_1 .. x_n and || E/IE finite over R/I ||, merely a_1 .. a_t
+-- in I and a certificate (FiniteFibreCertificates.Certified), given the
+-- explicit principle UniversalZMT n (or CFNZMT n).  The truncated finite
+-- fibre is eliminated directly into the propositional conclusion.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ; module Tr = Truncation[l] ;
+module ZC = ZMTCertificate[l] ; module IW = IdealWitnesses[l] ; module FFC = FiniteFibreCertificates[l] ;
+module CD = CFNDescent[l] ; module TC = TruncationCombinators[l] ; module FC = FinCat[l] ;
+module RI = RegularIdeal[l] ;
+
+-- B is finite over A along f: finitely many generators of B as an A-module
+record ModuleFinite (A B : CRing) (f : RH.Hom A B) {
+  N : Nat ;
+  gb : Ps.Fin N -> B.R ;
+  spans (q : B.R) : Tr.Trunc[(ab : Ps.Fin N -> A.R) * Id B.R q (FiniteIdeal[l].Sums[B].lin N gb (\ k -> f.1 (ab k)))].carrier ;
+} ;
+
+module Over (R : CRing) (setR : Pr.isSet R.R) (I : RI.IdealPred[R]) (propI : (a : R.R) -> Pr.isProp (I.In a))
+  (Ea : Algebras[l].Over[R,setR].Algebra) {
+  E : CRing = Ea.ring ;
+  iota : RH.Hom R E = Ea.iota ;
+  module W = IW.Over[R,I.In,E,iota] ;
+  module L = RL[E] ;
+
+  ------------------------------------------------------------------------
+  -- the ideal IE
+
+  InIE (e : E.R) : U l = Tr.Trunc[W.Wit e].carrier ;
+  propIE (e : E.R) : Pr.isProp (InIE e) = Tr.Trunc[W.Wit e].proposition ;
+  IE : RI.IdealPred[E] = RI.mkIdealPred E InIE (Tr.Trunc[W.Wit E.z].inc W.ie-zero)
+    (\ a b -> TC.map2 (W.Wit a) (W.Wit b) (W.Wit (E.add a b)) (W.ie-add a b))
+    (\ b x -> TC.map (W.Wit x) (W.Wit (E.mul b x)) (W.ie-mul b x)) ;
+  -- iota(a) = iota(a) 1 for a in I
+  unit-wit (a : R.R) (h : I.In a) : W.Wit (iota.1 a) =
+    IW.mkIEWit R I.In E iota (iota.1 a) (suc zero) (\ k -> a) (\ k -> h) (\ k -> E.o)
+      (sym (trans (E.addZ (E.mul (iota.1 a) E.o)) (E.mulO (iota.1 a)))) ;
+
+  ------------------------------------------------------------------------
+  -- the quotients
+
+  module QR = QuotientRing[l].Over[R,I,propI] ;
+  module QE = QuotientRing[l].Over[E,IE,propIE] ;
+  RmodI : CRing = QR.ring ;
+  EmodIE : CRing = QE.ring ;
+  pR : RH.Hom R RmodI = QR.projection ;
+  pE : RH.Hom E EmodIE = QE.projection ;
+  surjR (q : RmodI.R) : Tr.Trunc[(r : R.R) * Id RmodI.R (pR.1 r) q].carrier =
+    QR.Q.induction @l (\ q' -> Tr.Trunc[(r : R.R) * Id RmodI.R (pR.1 r) q'].carrier)
+      (\ q' -> Tr.Trunc[(r : R.R) * Id RmodI.R (pR.1 r) q'].proposition)
+      (\ r -> Tr.Trunc[(r' : R.R) * Id RmodI.R (pR.1 r') (pR.1 r)].inc (r, refl (pR.1 r))) q ;
+  surjE (q : EmodIE.R) : Tr.Trunc[(e : E.R) * Id EmodIE.R (pE.1 e) q].carrier =
+    QE.Q.induction @l (\ q' -> Tr.Trunc[(e : E.R) * Id EmodIE.R (pE.1 e) q'].carrier)
+      (\ q' -> Tr.Trunc[(e : E.R) * Id EmodIE.R (pE.1 e) q'].proposition)
+      (\ e -> Tr.Trunc[(e' : E.R) * Id EmodIE.R (pE.1 e') (pE.1 e)].inc (e, refl (pE.1 e))) q ;
+  -- effectiveness: pE e = pE e' is the membership e - e' in IE
+  effective (e e' : E.R) (p : Id EmodIE.R (pE.1 e) (pE.1 e')) : InIE (E.add e (E.neg e')) = QE.Q.effective e e' p ;
+
+  ------------------------------------------------------------------------
+  -- the structure map R/I -> E/IE
+
+  -- iota(x) - iota(y) = iota(x - y)
+  iota-sub (x y : R.R) : Id E.R (iota.1 (R.add x (R.neg y))) (E.add (iota.1 x) (E.neg (iota.1 y))) =
+    trans (iota.2.2.1 x (R.neg y)) (ap (E.add (iota.1 x)) (RH.negation R E iota y)) ;
+  respect (x y : R.R) (h : QR.Rel x y) : Id EmodIE.R (pE.1 (iota.1 x)) (pE.1 (iota.1 y)) =
+    QE.Q.relates (iota.1 x) (iota.1 y)
+      (Tr.Trunc[W.Wit (E.add (iota.1 x) (E.neg (iota.1 y)))].inc
+        (W.ie-eq _ _ (iota-sub x y) (unit-wit (R.add x (R.neg y)) h))) ;
+  module D = QR.Q.Descend[EmodIE.R,QE.set,\ r -> pE.1 (iota.1 r),respect] ;
+  iotaI-map (q : RmodI.R) : EmodIE.R = D.map q ;
+  iotaI-beta (r : R.R) : Id EmodIE.R (iotaI-map (pR.1 r)) (pE.1 (iota.1 r)) = D.beta r ;
+  iotaI-one : Id EmodIE.R (iotaI-map RmodI.o) EmodIE.o = trans (iotaI-beta R.o) (ap pE.1 iota.2.1) ;
+  iotaI-add (q q' : RmodI.R) : Id EmodIE.R (iotaI-map (RmodI.add q q')) (EmodIE.add (iotaI-map q) (iotaI-map q')) =
+    QR.forall2 (\ u v -> Id EmodIE.R (iotaI-map (RmodI.add u v)) (EmodIE.add (iotaI-map u) (iotaI-map v))) (\ u v -> QE.set _ _)
+      (\ x y -> calc EmodIE.R {
+        iotaI-map (RmodI.add (pR.1 x) (pR.1 y)) =< ap iotaI-map (sym (pR.2.2.1 x y)) > iotaI-map (pR.1 (R.add x y))
+          =< iotaI-beta (R.add x y) > pE.1 (iota.1 (R.add x y))
+          =< ap pE.1 (iota.2.2.1 x y) > pE.1 (E.add (iota.1 x) (iota.1 y))
+          =< pE.2.2.1 (iota.1 x) (iota.1 y) > EmodIE.add (pE.1 (iota.1 x)) (pE.1 (iota.1 y))
+          =< sym (Ps.cong2 EmodIE.R EmodIE.add _ _ _ _ (iotaI-beta x) (iotaI-beta y))
+          > EmodIE.add (iotaI-map (pR.1 x)) (iotaI-map (pR.1 y)) }) q q' ;
+  iotaI-mul (q q' : RmodI.R) : Id EmodIE.R (iotaI-map (RmodI.mul q q')) (EmodIE.mul (iotaI-map q) (iotaI-map q')) =
+    QR.forall2 (\ u v -> Id EmodIE.R (iotaI-map (RmodI.mul u v)) (EmodIE.mul (iotaI-map u) (iotaI-map v))) (\ u v -> QE.set _ _)
+      (\ x y -> calc EmodIE.R {
+        iotaI-map (RmodI.mul (pR.1 x) (pR.1 y)) =< ap iotaI-map (sym (pR.2.2.2 x y)) > iotaI-map (pR.1 (R.mul x y))
+          =< iotaI-beta (R.mul x y) > pE.1 (iota.1 (R.mul x y))
+          =< ap pE.1 (iota.2.2.2 x y) > pE.1 (E.mul (iota.1 x) (iota.1 y))
+          =< pE.2.2.2 (iota.1 x) (iota.1 y) > EmodIE.mul (pE.1 (iota.1 x)) (pE.1 (iota.1 y))
+          =< sym (Ps.cong2 EmodIE.R EmodIE.mul _ _ _ _ (iotaI-beta x) (iotaI-beta y))
+          > EmodIE.mul (iotaI-map (pR.1 x)) (iotaI-map (pR.1 y)) }) q q' ;
+  iotaI : RH.Hom RmodI EmodIE = (iotaI-map, iotaI-one, iotaI-add, iotaI-mul) ;
+
+  ------------------------------------------------------------------------
+  -- the bridge
+
+  Finite : U l = ModuleFinite[RmodI,EmodIE,iotaI] ;
+  module SE = FiniteIdeal[l].Sums[E] ; module SQ = FiniteIdeal[l].Sums[EmodIE] ;
+  module HS = ZC.HomSums[E,EmodIE,pE] ;
+  Lifts (fo : Finite) : U l = (k : Ps.Fin fo.N) -> (g : E.R) * Id EmodIE.R (pE.1 g) (fo.gb k) ;
+  Dc (fo : Finite) (ls : Lifts fo) (e : E.R) : U l = FFC.Decomp R I.In E iota fo.N (\ k -> (ls k).1) e ;
+
+  module Lifted (fo : Finite) (ls : Lifts fo) {
+    N : Nat = fo.N ;
+    g (k : Ps.Fin N) : E.R = (ls k).1 ;
+    Coefs (e : E.R) : U l = (ab : Ps.Fin N -> RmodI.R) * Id EmodIE.R (pE.1 e) (SQ.lin N fo.gb (\ k -> iotaI.1 (ab k))) ;
+    CoefLifts (ab : Ps.Fin N -> RmodI.R) : U l = (k : Ps.Fin N) -> (a : R.R) * Id RmodI.R (pR.1 a) (ab k) ;
+    -- sum_k g_k iota(alpha_k)
+    comb (al : Ps.Fin N -> R.R) : E.R = SE.lin N g (\ k -> iota.1 (al k)) ;
+    -- pE e = pE (sum_k g_k iota(alpha_k))
+    proj-eq (e : E.R) (c : Coefs e) (al : CoefLifts c.1) : Id EmodIE.R (pE.1 e) (pE.1 (comb (\ k -> (al k).1))) =
+      trans c.2 (trans (SQ.sum-cong N (\ k -> EmodIE.mul (fo.gb k) (iotaI.1 (c.1 k)))
+                          (\ k -> EmodIE.mul (pE.1 (g k)) (pE.1 (iota.1 (al k).1)))
+                          (\ k -> Ps.cong2 EmodIE.R EmodIE.mul _ _ _ _ (sym (ls k).2)
+                                    (trans (ap iotaI.1 (sym (al k).2)) (iotaI-beta (al k).1))))
+                   (sym (HS.lin-natural N g (\ k -> iota.1 (al k).1)))) ;
+    -- e = c + (e - c)
+    split-eq (e c : E.R) : Id E.R e (E.add c (E.add e (E.neg c))) =
+      sym (trans (E.addC c (E.add e (E.neg c)))
+            (trans (sym (E.addA e (E.neg c) c)) (trans (ap (E.add e) (L.neg-cancel c)) (E.addZ e)))) ;
+    decomp (e : E.R) (c : Coefs e) (al : CoefLifts c.1) : Tr.Trunc[Dc fo ls e].carrier =
+      TC.map (W.Wit (E.add e (E.neg (comb (\ k -> (al k).1))))) (Dc fo ls e)
+        (\ w -> (\ k -> (al k).1, (E.add e (E.neg (comb (\ k -> (al k).1))), (w, split-eq e (comb (\ k -> (al k).1))))))
+        (effective e (comb (\ k -> (al k).1)) (proj-eq e c al)) ;
+    -- only the N coefficients of e are lifted
+    spans (e : E.R) : Tr.Trunc[Dc fo ls e].carrier =
+      TC.bind (Coefs e) (Dc fo ls e)
+        (\ c -> TC.bind (CoefLifts c.1) (Dc fo ls e) (\ al -> decomp e c al)
+                  (FC.fchoice N (\ k -> (a : R.R) * Id RmodI.R (pR.1 a) (c.1 k)) (\ k -> surjR (c.1 k))))
+        (fo.spans (pE.1 e)) ;
+    fibre : FFC.FiniteFibre[R,I.In,E,iota] = FFC.mkFiniteFibre R I.In E iota N g spans ;
+  } ;
+  -- the generators are lifted once
+  lifts (fo : Finite) : Tr.Trunc[Lifts fo].carrier =
+    FC.fchoice fo.N (\ k -> (g : E.R) * Id EmodIE.R (pE.1 g) (fo.gb k)) (\ k -> surjE (fo.gb k)) ;
+  bridge (fo : Tr.Trunc[Finite].carrier) : Tr.Trunc[FFC.FiniteFibre[R,I.In,E,iota]].carrier =
+    TC.bind Finite (FFC.FiniteFibre[R,I.In,E,iota])
+      (\ f -> TC.map (Lifts f) (FFC.FiniteFibre[R,I.In,E,iota]) (\ ls -> Lifted[f,ls].fibre) (lifts f)) fo ;
+
+  ------------------------------------------------------------------------
+  -- the theorem with the usual hypothesis
+
+  module Gen (n : Nat) (x : Ps.Fin n -> E.R)
+    (gen : (e : E.R) -> Tr.Trunc[(H : Presentations[l].Over[R,setR].Expr (Ps.Fin n)) *
+                                 Id E.R (Presentations[l].Over[R,setR].eval (Ps.Fin n) Ea x H) e].carrier)
+    (fo : Tr.Trunc[Finite].carrier) {
+    Goal : U l = FFC.Certified[R,I.In,E,iota,n,x] ;
+    module Theorem (U0 : CD.UniversalZMT n) {
+      certified : Tr.Trunc[Goal].carrier =
+        TC.bind (FFC.FiniteFibre[R,I.In,E,iota]) Goal (\ ff -> FFC.Over[R,setR,I.In,Ea,n,x,gen,ff].Theorem[U0].certified) (bridge fo) ;
+    } ;
+    module TheoremCFN (Z : CD.CFNZMT n) {
+      certified : Tr.Trunc[Goal].carrier = Theorem[CD.universal-of-cfn n Z].certified ;
+    } ;
+  } ;
+} ;

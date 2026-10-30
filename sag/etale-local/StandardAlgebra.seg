@@ -1,0 +1,168 @@
+-- The standard algebra S = (A[X]/(Q))[1/g], g = G Q', as a presented
+-- algebra (sag/affine: PresentationExistence, Localization), for Stage B
+-- of Section 2 (HANDOFF-BLOCKS12.md, block 1, item (a)).
+-- Input: Q, G in A[X] and coefficient lists LQ, Lg of Q and of g (lists
+-- exist merely; the caller chooses them).
+-- Construction.  S0 = A[X0]/(Q(X0)) is presented by one variable and the
+-- equation hornerE LQ; S = S0[1/g(X0)] (Localization, with the
+-- expression hornerE Lg of g(X0)); s = the image of X0.
+-- (1) s is a point: Q(s) = 0 from the equation, g(s) a unit (inverse).
+-- (2) S is standard for (Q, G): Hom S B = Data (Localization) and
+--     Data = (h : S0 -> B, h(g(X0)) a unit) is the type of points:
+--     h |-> h(X0), and a point p gives the solution X0 |-> p (to, from);
+--     the composite is push (the same h(s)), so push is an equivalence.
+-- (3) Full: every x in S is merely P(s)/g(s)^n.  x is merely the value of
+--     an expression in the generators s and V = g(s)^-1 (Generated), and
+--     fractions are closed under the operations:
+--       s = X(s)/1,  V g(s) = 1,  c = c/1,
+--       (x + y) g^(n+m) = P g^m + P' g^n,  (x y) g^(n+m) = P P'.
+-- eval-hornerE: the value of the Horner expression of a list is the value
+-- of its class in A[X] (induction on the list).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module C = Algebras[l].Over[A,setA] ;
+ module P = Presentations[l].Over[A,setA] ; open P ;
+ module SE = StandardEtale[l].Over[A,setA] ;
+ module RX = SE.RX ;
+ -- the Horner expression of a coefficient list in the variable v
+ hornerE (V : U l) (v : V) : List A.R -> Expr V = split {
+  nil -> cst A.z ; cons c cs | r -> sumE (cst c) (mulE (var v) r) } ;
+ eval-hornerE (B : C.Algebra) (V : U l) (v : V) (a : V -> B.ring.R) :
+  (cs : List A.R) -> Id B.ring.R (eval V B a (hornerE V v cs)) (SE.At[B.ring,B.set,B.iota,a v].value (RX.include cs)) = split {
+  nil -> trans (H.zero A B.ring B.iota) (sym (H.zero RX.ring B.ring SE.At[B.ring,B.set,B.iota,a v].ev)) ;
+  cons c cs | r -> sym (calc B.ring.R {
+   SE.At[B.ring,B.set,B.iota,a v].ev.1 (RX.include (cons c cs))
+    =< ap SE.At[B.ring,B.set,B.iota,a v].ev.1 (RX.horner c cs)
+     > SE.At[B.ring,B.set,B.iota,a v].ev.1 (RX.addQ (RX.constant c) (RX.mulQ RX.variable (RX.include cs)))
+    =< SE.At[B.ring,B.set,B.iota,a v].ev.2.2.1 (RX.constant c) (RX.mulQ RX.variable (RX.include cs))
+     > B.ring.add (SE.At[B.ring,B.set,B.iota,a v].ev.1 (RX.constant c)) (SE.At[B.ring,B.set,B.iota,a v].ev.1 (RX.mulQ RX.variable (RX.include cs)))
+    =< Ps.cong2 B.ring.R B.ring.add _ _ _ _ (SE.At[B.ring,B.set,B.iota,a v].UP.on-constants c)
+        (trans (SE.At[B.ring,B.set,B.iota,a v].ev.2.2.2 RX.variable (RX.include cs))
+          (Ps.cong2 B.ring.R B.ring.mul _ _ _ _ SE.At[B.ring,B.set,B.iota,a v].UP.on-variable (sym r)))
+     > B.ring.add (B.iota.1 c) (B.ring.mul (a v) (eval V B a (hornerE V v cs))) }) } ;
+
+ module Build (Q G : RX.Carrier) (LQ Lg : List A.R) (hQ : Id RX.Carrier (RX.include LQ) Q)
+  (hg : Id RX.Carrier (RX.include Lg) SE.Points[Q,G].g) {
+  module Pt = SE.Points[Q,G] ;
+  V1 : U l = Ps.Fin (suc zero) ;
+  x1 : V1 = inr tt ;
+  -- S0 = A[X0]/(Q(X0))
+  pres0 : Presentation = (suc zero,cons (hornerE V1 x1 LQ) nil) ;
+  module K0 = PresentationExistence[l].Over[A,setA,pres0] ;
+  S0 : C.Algebra = K0.A.algebra ;
+  X0 : S0.ring.R = K0.A.solution.1 x1 ;
+  f0 : S0.ring.R = eval V1 S0 K0.A.solution.1 (hornerE V1 x1 Lg) ;
+  -- S = S0[1/g(X0)]
+  module Loc = Localization[l].Over[A,setA,S0,pres0,K0.presentation,f0,hornerE V1 x1 Lg,refl f0] ;
+  S : C.Algebra = Loc.algebra ;
+  s0 : S.ring.R = Loc.inclusion.1.1 X0 ;
+  module X0v = SE.At[S0.ring,S0.set,S0.iota,X0] ;
+  Q-X0 : Id S0.ring.R (X0v.value Q) S0.ring.z =
+   trans (ap X0v.value (sym hQ)) (trans (sym (eval-hornerE S0 V1 x1 K0.A.solution.1 LQ)) K0.A.solution.2.1) ;
+  g-X0 : Id S0.ring.R (X0v.value Pt.g) f0 = trans (ap X0v.value (sym hg)) (sym (eval-hornerE S0 V1 x1 K0.A.solution.1 Lg)) ;
+  -- (1) the point s
+  module Ns = SE.Natural[S0.ring,S.ring,S0.set,S.set,S0.iota,S.iota,Loc.inclusion.1,Loc.inclusion.2,X0] ;
+  point : Pt.Point S =
+   (s0,trans (sym (Ns.value Q)) (trans (ap Loc.inclusion.1.1 Q-X0) (H.zero S0.ring S.ring Loc.inclusion.1)),
+    subst (RL[S.ring].unit) (trans (ap Loc.inclusion.1.1 (sym g-X0)) (Ns.value Pt.g)) Loc.inverse) ;
+
+  -- (2) S is standard for (Q, G)
+  module Cl (B : C.Algebra) {
+   module T = Loc.To[B] ;
+   module Nd (d : T.Data) {
+    module N = SE.Natural[S0.ring,B.ring,S0.set,B.set,S0.iota,B.iota,d.1.1,d.1.2,X0] ;
+   } ;
+   to (d : T.Data) : Pt.Point B =
+    (d.1.1.1 X0,trans (sym (Nd[d].N.value Q)) (trans (ap d.1.1.1 Q-X0) (H.zero S0.ring B.ring d.1.1)),
+     subst (RL[B.ring].unit) (trans (ap d.1.1.1 (sym g-X0)) (Nd[d].N.value Pt.g)) d.2) ;
+   -- a point p is the solution X0 |-> p
+   sol (p : Pt.Point B) : Solutions pres0 B =
+    (\ v -> p.1,trans (eval-hornerE B V1 x1 (\ v -> p.1) LQ) (trans (ap SE.At[B.ring,B.set,B.iota,p.1].value hQ) p.2.1),tt) ;
+   ext (p : Pt.Point B) : C.Hom S0 B = K0.To[B].extend (sol p) ;
+   ext-gen (p : Pt.Point B) (v : V1) : Id B.ring.R ((ext p).1.1 (K0.A.solution.1 v)) p.1 =
+    ap (\ t -> t.1 v) (K0.To[B].fb (sol p)) ;
+   ext-f (p : Pt.Point B) : Id B.ring.R ((ext p).1.1 f0) (SE.At[B.ring,B.set,B.iota,p.1].value Pt.g) = calc B.ring.R {
+    (ext p).1.1 f0
+     =< natural V1 S0 B (ext p) K0.A.solution.1 (hornerE V1 x1 Lg) > eval V1 B (\ v -> (ext p).1.1 (K0.A.solution.1 v)) (hornerE V1 x1 Lg)
+     =< Generated[l].Over[A,setA].eval-ext V1 B (\ v -> (ext p).1.1 (K0.A.solution.1 v)) (\ v -> p.1) (ext-gen p) (hornerE V1 x1 Lg)
+      > eval V1 B (\ v -> p.1) (hornerE V1 x1 Lg)
+     =< trans (eval-hornerE B V1 x1 (\ v -> p.1) Lg) (ap SE.At[B.ring,B.set,B.iota,p.1].value hg)
+      > SE.At[B.ring,B.set,B.iota,p.1].value Pt.g } ;
+   from (p : Pt.Point B) : T.Data = (ext p,subst (RL[B.ring].unit) (sym (ext-f p)) p.2.2) ;
+   to-from (p : Pt.Point B) : Id (Pt.Point B) (to (from p)) p = Pt.point-ext B (to (from p)) p (ext-gen p x1) ;
+   sol-gen (d : T.Data) : (v : V1) -> Id B.ring.R ((sol (to d)).1 v) ((K0.To[B].forward d.1).1 v) = split {
+    inl e -> efq e ;
+    inr t -> ap (\ u -> d.1.1.1 (K0.A.solution.1 (inr u))) (top-prop tt t) } ;
+   from-to (d : T.Data) : Id T.Data (from (to d)) d =
+    T.data-ext (from (to d)) d
+     (trans (ap K0.To[B].extend (solutions-ext pres0 B (sol (to d)) (K0.To[B].forward d.1) (sol-gen d))) (K0.To[B].bf d.1)) ;
+   equiv : Pr.Equiv (C.Hom S B) (Pt.Point B) =
+    Equivalences[l].compose _ _ _ Loc.Canonical[B].equivalence (to,Pr.qinv _ _ to from to-from from-to) ;
+   classifies : Pr.isEquiv (C.Hom S B) (Pt.Point B) (Pt.push S point B) =
+    Equivalences[l].homotopy _ _ equiv (Pt.push S point B) (\ h -> Pt.point-ext B _ _ (refl (h.1.1 s0))) ;
+  } ;
+  standard : Pt.Standard S = (point,\ B -> Cl[B].classifies) ;
+
+  -- (3) Full
+  module Fr = EtaleCase[l].Over[A,setA].Fractions[Q,G,S,point] ;
+  module LS = RL[S.ring] ;
+  module PS = AffinePowers[l].Over[S.ring] ;
+  module PX = AffinePowers[l].Over[RX.ring] ;
+  V2 : U l = Ps.Fin (suc (suc zero)) ;
+  gens : V2 -> S.ring.R = Loc.K.A.solution.1 ;
+  -- g(s) = image of f0
+  g-s : Id S.ring.R Fr.g (Loc.inclusion.1.1 f0) = trans (sym (Ns.value Pt.g)) (ap Loc.inclusion.1.1 g-X0) ;
+  -- values of power and products of polynomials at s
+  value-power (Pp : RX.Carrier) (m : Nat) : Id S.ring.R (Fr.X.value (PX.power Pp m)) (PS.power (Fr.X.value Pp) m) =
+   AffinePowers[l].power-map RX.ring S.ring Fr.X.ev Pp m ;
+  frac-s : Fr.Fraction s0 =
+   (RX.variable,zero,trans (S.ring.mulO s0) (sym Fr.X.UP.on-variable)) ;
+  frac-V (t : Top) : Fr.Fraction (gens (inr t)) =
+   (RX.constant A.o,suc zero,calc S.ring.R {
+    S.ring.mul (gens (inr t)) (S.ring.mul Fr.g S.ring.o)
+     =< ap (\ u -> S.ring.mul (gens (inr u)) (S.ring.mul Fr.g S.ring.o)) (top-prop t tt) > S.ring.mul Loc.inverse.1 (S.ring.mul Fr.g S.ring.o)
+     =< ap (S.ring.mul Loc.inverse.1) (trans (S.ring.mulO Fr.g) g-s) > S.ring.mul Loc.inverse.1 (Loc.inclusion.1.1 f0)
+     =< trans (S.ring.mulC Loc.inverse.1 (Loc.inclusion.1.1 f0)) Loc.inverse.2 > S.ring.o
+     =< sym (trans (Fr.X.UP.on-constants A.o) S.iota.2.1) > Fr.X.value (RX.constant A.o) }) ;
+  frac-x1 : (w : V1) -> Id V1 x1 w = split { inl e -> efq e ; inr t -> ap (\ u -> inr u) (top-prop tt t) } ;
+  frac-gen0 (w : V1) : Fr.Fraction (gens (inl w)) =
+   subst Fr.Fraction (trans (ap (\ v -> Loc.inclusion.1.1 (K0.A.solution.1 v)) (frac-x1 w)) (Loc.Canonical[S].inclusion-gen w)) frac-s ;
+  frac-var : (v : V2) -> Fr.Fraction (gens v) = split { inl w -> frac-gen0 w ; inr t -> frac-V t } ;
+  frac-sum (x y : S.ring.R) (p : Fr.Fraction x) (q : Fr.Fraction y) : Fr.Fraction (S.ring.add x y) =
+   (RX.ring.add (RX.ring.mul p.1 (PX.power Pt.g q.2.1)) (RX.ring.mul q.1 (PX.power Pt.g p.2.1)),plus p.2.1 q.2.1,calc S.ring.R {
+    S.ring.mul (S.ring.add x y) (PS.power Fr.g (plus p.2.1 q.2.1))
+     =< ap (S.ring.mul (S.ring.add x y)) (PS.power-add Fr.g p.2.1 q.2.1)
+      > S.ring.mul (S.ring.add x y) (S.ring.mul (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1))
+     =< trans (LS.dist-left x y (S.ring.mul (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1)))
+         (Ps.cong2 S.ring.R S.ring.add _ _ _ _
+           (trans (S.ring.mulA x (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1)) (ap (\ t -> S.ring.mul t (PS.power Fr.g q.2.1)) p.2.2))
+           (trans (ap (S.ring.mul y) (S.ring.mulC (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1)))
+             (trans (S.ring.mulA y (PS.power Fr.g q.2.1) (PS.power Fr.g p.2.1)) (ap (\ t -> S.ring.mul t (PS.power Fr.g p.2.1)) q.2.2))))
+      > S.ring.add (S.ring.mul (Fr.X.value p.1) (PS.power Fr.g q.2.1)) (S.ring.mul (Fr.X.value q.1) (PS.power Fr.g p.2.1))
+     =< sym (trans (Fr.X.ev.2.2.1 (RX.ring.mul p.1 (PX.power Pt.g q.2.1)) (RX.ring.mul q.1 (PX.power Pt.g p.2.1)))
+          (Ps.cong2 S.ring.R S.ring.add _ _ _ _
+            (trans (Fr.X.ev.2.2.2 p.1 (PX.power Pt.g q.2.1)) (ap (S.ring.mul (Fr.X.value p.1)) (value-power Pt.g q.2.1)))
+            (trans (Fr.X.ev.2.2.2 q.1 (PX.power Pt.g p.2.1)) (ap (S.ring.mul (Fr.X.value q.1)) (value-power Pt.g p.2.1)))))
+      > Fr.X.value (RX.ring.add (RX.ring.mul p.1 (PX.power Pt.g q.2.1)) (RX.ring.mul q.1 (PX.power Pt.g p.2.1))) }) ;
+  frac-mul (x y : S.ring.R) (p : Fr.Fraction x) (q : Fr.Fraction y) : Fr.Fraction (S.ring.mul x y) =
+   (RX.ring.mul p.1 q.1,plus p.2.1 q.2.1,calc S.ring.R {
+    S.ring.mul (S.ring.mul x y) (PS.power Fr.g (plus p.2.1 q.2.1))
+     =< ap (S.ring.mul (S.ring.mul x y)) (PS.power-add Fr.g p.2.1 q.2.1)
+      > S.ring.mul (S.ring.mul x y) (S.ring.mul (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1))
+     =< LS.mul-four x y (PS.power Fr.g p.2.1) (PS.power Fr.g q.2.1)
+      > S.ring.mul (S.ring.mul x (PS.power Fr.g p.2.1)) (S.ring.mul y (PS.power Fr.g q.2.1))
+     =< Ps.cong2 S.ring.R S.ring.mul _ _ _ _ p.2.2 q.2.2 > S.ring.mul (Fr.X.value p.1) (Fr.X.value q.1)
+     =< sym (Fr.X.ev.2.2.2 p.1 q.1) > Fr.X.value (RX.ring.mul p.1 q.1) }) ;
+  frac : (e : Expr V2) -> Fr.Fraction (eval V2 S gens e) = split {
+   var v -> frac-var v ;
+   cst c -> (RX.constant c,zero,trans (S.ring.mulO (S.iota.1 c)) (sym (Fr.X.UP.on-constants c))) ;
+   sumE p q | fp fq -> frac-sum (eval V2 S gens p) (eval V2 S gens q) fp fq ;
+   mulE p q | fp fq -> frac-mul (eval V2 S gens p) (eval V2 S gens q) fp fq } ;
+  module Gn = Generated[l].Over[A,setA].Generated[Loc.pres,S,Loc.K.presentation] ;
+  full : Fr.Full = \ x ->
+   TC.map (Generated[l].Over[A,setA].Representation Loc.pres S Loc.K.presentation x) (Fr.Fraction x)
+    (\ w -> subst Fr.Fraction w.2 (frac w.1)) (Gn.generated x) ;
+ } ;
+} ;

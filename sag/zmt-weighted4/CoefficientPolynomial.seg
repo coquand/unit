@@ -1,0 +1,394 @@
+-- CoefficientPolynomial.seg: the coefficient ring D = A[U_1, .., U_t] for an
+-- arbitrary finite t, with its grading by total U-degree, its CFN
+-- structure and its evaluations (handoff §4, Gate A).
+--
+-- Variable order.  D_0 = A and D_(t+1) = D_t[U_(t+1)], the quotient ring
+-- PolynomialRing.Extension of PolyCoef/HilbertCFN.  A variable index
+-- j : Fin (t+1) = Fin t + 1 is inl j for the old variables (U_1 .. U_t,
+-- as constants of D_(t+1)) and inr tt for the new one, U_(t+1).  So U_1 is
+-- the variable of the innermost ring.
+--
+-- The base grading (BaseGrading): on A, pr k a = a if k = 0 and 0 otherwise (one
+-- decision on Int); var, low over Fin 0 are empty; an element of degree
+-- k+1 >= 1 is 0 = the empty sum; ev a is the identity.
+--
+-- The step (GradingStep[R, G]): from a grading G of R, the grading of R[U] with U of
+-- degree 1.  For x in R[U] with coefficients x_i (PolynomialCoefficients):
+--   (pr k x)_i = pr (k - i) (x_i)                                (coef-pr)
+-- defined on lists (mapP) and descended to the quotient; it respects
+-- coefficient equality since pr 0 = 0.  The laws hold coefficientwise
+-- (PolynomialCoefficients.ext), since (k - i) - (e - i) = k - e and
+-- k /= e gives k - i /= e - i.  Multiplicativity (pr-mul): for y of degree
+-- e, by induction on a degree bound of x, with x y = x_0 y + U (tail x . y)
+-- (PolyCoef.mul-hor):
+--   pr k (x_0 y) = pr (k - e) (x_0) y                         (pr-cmul)
+--   pr k (U z)   = U pr (k - 1) z                             (pr-X)
+--   pr k (x y) = pr (k-e)(x_0) y + U pr ((k-1)-e)(tail x) y = pr (k - e)(x) y
+-- by horner for pr (k - e) x.  The other data:
+--   iota' = constants o iota;  base' x = base (x_0);
+--   var' (inl j) = var j (as a constant),  var' (inr tt) = U;
+--   low' (inl j) x = low j (x_0) (as a constant),  low' (inr tt) x = tail x;
+-- for x of degree k+1, x_0 has degree k+1 and tail x degree k, and
+--   x = U tail x + sum_j var j low j (x_0)                    (low'-eq)
+-- by horner; ev' a = the evaluation of R[U] extending ev (a o inl) by
+-- U |-> a (inr tt) (Universal.Given).
+--
+-- The towers (CoefficientTower[A, setA]): tower t = (D_t, isSet, grading), by
+-- recursion on t; cfnD: CFN K0 D_t from CFN K0 A by HilbertCFN.poly at each
+-- step.  No grading is assumed: it is constructed.
+level l ; open Ring[l] ; open ZInt[l] ; open CoefficientParts[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module PA4 = PolynomialAction4[l] ; module RH = RingHom[l] ; module LG = Logic[l] ; module Tr = Truncation[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+top-eta : (u : Top) -> Id Top tt u = split { tt -> refl tt } ;
+
+------------------------------------------------------------------------
+-- the base grading on A
+
+module BaseGrading (A : CRing) (setA : Pr.isSet A.R) {
+  module L = RL[A] ;
+  -- a if the decided proposition holds, 0 otherwise
+  keep (X : U l) (a : A.R) : LG.Dec X -> A.R = split { yes p -> a ; no n -> A.z } ;
+  pr (k : Int) (a : A.R) : A.R = keep (Id Int k zeroZ) a (int-dec k zeroZ) ;
+
+  keep-add (X : U l) (a b : A.R) : (d : LG.Dec X) -> Id A.R (keep X (A.add a b) d) (A.add (keep X a d) (keep X b d)) = split {
+    yes p -> refl (A.add a b) ;
+    no n -> sym (A.addZ A.z) } ;
+  keep-idem (X : U l) (a : A.R) : (d : LG.Dec X) -> Id A.R (keep X (keep X a d) d) (keep X a d) = split {
+    yes p -> refl a ;
+    no n -> refl A.z } ;
+  keep-zero (X : U l) : (d : LG.Dec X) -> Id A.R (keep X A.z d) A.z = split {
+    yes p -> refl A.z ;
+    no n -> refl A.z } ;
+  keep-all (X : U l) (x : X) (a : A.R) : (d : LG.Dec X) -> Id A.R (keep X a d) a = split {
+    yes p -> refl a ;
+    no n -> Pr.absurd (Id A.R A.z a) (n x) } ;
+  keep-none (X : U l) (nx : LG.Not X) (a : A.R) : (d : LG.Dec X) -> Id A.R (keep X a d) A.z = split {
+    yes p -> Pr.absurd (Id A.R a A.z) (nx p) ;
+    no n -> refl A.z } ;
+  keep-mul (X : U l) (x y : A.R) : (d : LG.Dec X) -> Id A.R (keep X (A.mul x y) d) (A.mul (keep X x d) y) = split {
+    yes p -> refl (A.mul x y) ;
+    no n -> sym (L.zero-mul y) } ;
+
+  module OrthDec (k e : Int) (ne : Not (Id Int k e)) (a : A.R) {
+    res : (dk : LG.Dec (Id Int k zeroZ)) (de : LG.Dec (Id Int e zeroZ)) ->
+      Id A.R (keep (Id Int k zeroZ) (keep (Id Int e zeroZ) a de) dk) A.z = split {
+      yes pk -> split {
+        yes pe -> absurd (Id A.R a A.z) (ne (trans pk (sym pe))) ;
+        no n -> refl A.z } ;
+      no n -> \ de -> refl A.z } ;
+  } ;
+  pr-orth (k e : Int) (ne : Not (Id Int k e)) (a : A.R) : Id A.R (pr k (pr e a)) A.z =
+    OrthDec[k,e,ne,a].res (int-dec k zeroZ) (int-dec e zeroZ) ;
+  pr-negdeg (n : Base.Nat) (a : A.R) : Id A.R (pr (negsuc n) a) A.z =
+    keep-none (Id Int (negsuc n) zeroZ) (encode (negsuc n) zeroZ) a (int-dec (negsuc n) zeroZ) ;
+
+  module MulDec (k e : Int) (x y : A.R) {
+    res : (de : LG.Dec (Id Int e zeroZ)) -> Id A.R (keep (Id Int e zeroZ) y de) y ->
+      Id A.R (pr k (A.mul x y)) (A.mul (pr (subZ k e) x) y) = split {
+      yes pe -> \ hy -> trans (keep-mul (Id Int k zeroZ) x y (int-dec k zeroZ))
+                          (ap (\ e' -> A.mul (pr (subZ k e') x) y) (sym pe)) ;
+      no n -> \ hy -> calc A.R {
+        pr k (A.mul x y) =< ap (\ w -> pr k (A.mul x w)) (sym hy) > pr k (A.mul x A.z)
+          =< ap (pr k) (L.mul-zero x) > pr k A.z
+          =< keep-zero (Id Int k zeroZ) (int-dec k zeroZ) > A.z
+          =< sym (L.mul-zero (pr (subZ k e) x)) > A.mul (pr (subZ k e) x) A.z
+          =< ap (A.mul (pr (subZ k e) x)) hy > A.mul (pr (subZ k e) x) y } } ;
+  } ;
+
+  -- an element of degree k+1 >= 1 is 0
+  low-eq (k : Base.Nat) (a : A.R) (h : Id A.R (pr (pos (suc k)) a) a) : Id A.R a A.z =
+    trans (sym h) (keep-none (Id Int (pos (suc k)) zeroZ) (encode (pos (suc k)) zeroZ) a (int-dec (pos (suc k)) zeroZ)) ;
+
+  graded : Graded[A,zero,A] = mkGraded A zero A pr
+    (\ k a b -> keep-add (Id Int k zeroZ) a b (int-dec k zeroZ))
+    (\ k a -> keep-idem (Id Int k zeroZ) a (int-dec k zeroZ))
+    pr-orth pr-negdeg
+    (\ k e x y hy -> MulDec[k,e,x,y].res (int-dec e zeroZ) hy)
+    (RH.identity A)
+    (\ a -> keep-all (Id Int zeroZ zeroZ) (refl zeroZ) a (int-dec zeroZ zeroZ))
+    (\ a -> a) (\ a h -> refl a)
+    (\ j -> absurd A.R j) (\ j -> absurd (Id A.R (pr (pos (suc zero)) (absurd A.R j)) (absurd A.R j)) j)
+    (\ j a -> absurd A.R j) (\ j -> absurd (Id A.R (absurd A.R j) A.z) j)
+    (\ k j a h -> absurd (Id A.R (pr (pos k) (absurd A.R j)) (absurd A.R j)) j)
+    low-eq
+    (\ a -> RH.identity A) (\ a x -> refl x) (\ a j -> absurd (Id A.R (absurd A.R j) (a j)) j) ;
+} ;
+
+------------------------------------------------------------------------
+-- one more variable
+
+module GradingStep (A : CRing) (setA : Pr.isSet A.R) (t : Nat) (R : CRing) (setR : Pr.isSet R.R) (G : Graded[A,t,R]) {
+  module GL = Laws[A,t,R,setR,G] ;
+  module E = PolynomialRing[l].Extension[R,setR] ;
+  module PC = PolynomialCoefficients[l].Over[R,setR] ;
+  module PCo = PolyCoef[l].Over[R,setR] ;
+  module PR = Poly[l].PolyR[R] ;
+  module DLR = IP.ModL[R,IP.regular R] ;
+  -- R[U]
+  S : CRing = E.ring ;
+  K : U l = E.Carrier ;
+  module RS = RL[S] ; module DLS = IP.ModL[S,IP.regular S] ;
+
+  ------------------------------------------------------------------------
+  -- pr on R[U]
+
+  mapP : PR.P -> Int -> PR.P = split {
+    nil -> \ k -> nil ;
+    cons a p | r -> \ k -> cons (G.pr k a) (r (predZ k)) } ;
+  coef-mapP : (p : PR.P) (k : Int) (i : Nat) -> Id R.R (PR.coef (mapP p k) i) (G.pr (lowerZ k i) (PR.coef p i)) = split {
+    nil -> \ k i -> sym (GL.pr-zero (lowerZ k i)) ;
+    cons a p | r -> \ k -> split {
+      zero -> refl (G.pr k a) ;
+      suc i -> trans (r (predZ k) i) (ap (\ e -> G.pr e (PR.coef p i)) (lower-pred k i)) } } ;
+  respects (k : Int) (p q : PR.P) (h : PR.peq p q) : PR.peq (mapP p k) (mapP q k) =
+    \ i -> trans (coef-mapP p k i) (trans (ap (G.pr (lowerZ k i)) (h i)) (sym (coef-mapP q k i))) ;
+  module PD (k : Int) {
+    module DD = E.Q.Descend[K,E.set,\ p -> E.include (mapP p k),\ p q h -> E.Q.relates _ _ (respects k p q h)] ;
+  } ;
+  pr (k : Int) (x : K) : K = PD[k].DD.map x ;
+
+  -- (pr k x)_i = pr (k - i) x_i
+  coef-pr (k : Int) : (x : K) (i : Nat) -> Id R.R (PC.coef (pr k x) i) (G.pr (lowerZ k i) (PC.coef x i)) =
+    E.Q.induction @l (\ x -> (i : Nat) -> Id R.R (PC.coef (pr k x) i) (G.pr (lowerZ k i) (PC.coef x i)))
+      (\ x -> FE.isProp-Pi Nat (\ i -> Id R.R (PC.coef (pr k x) i) (G.pr (lowerZ k i) (PC.coef x i))) (\ i -> setR _ _))
+      (\ p i -> trans (ap (\ y -> PC.coef y i) (PD[k].DD.beta p))
+                  (trans (PC.coef-include (mapP p k) i)
+                    (trans (coef-mapP p k i) (ap (G.pr (lowerZ k i)) (sym (PC.coef-include p i)))))) ;
+
+  -- coefficients of sums, constants, U z
+  coef-add (x y : K) (i : Nat) : Id R.R (PC.coef (E.addQ x y) i) (R.add (PC.coef x i) (PC.coef y i)) =
+    Pr.happly Nat (\ j -> R.R) _ _ (PCo.kap-add x y) i ;
+  coef-const (a : R.R) (i : Nat) : Id R.R (PC.coef (E.constant a) i) (PCo.cseq a i) =
+    Pr.happly Nat (\ j -> R.R) _ _ (PCo.kap-const a) i ;
+  -- the coefficients of a homogeneous element
+  coef-hom (e : Int) (y : K) (hy : Id K (pr e y) y) (i : Nat) : Id R.R (G.pr (lowerZ e i) (PC.coef y i)) (PC.coef y i) =
+    trans (sym (coef-pr e y i)) (ap (\ w -> PC.coef w i) hy) ;
+
+  ------------------------------------------------------------------------
+  -- the laws, coefficientwise
+
+  pr-add (k : Int) (x y : K) : Id K (pr k (E.addQ x y)) (E.addQ (pr k x) (pr k y)) =
+    PC.ext (pr k (E.addQ x y)) (E.addQ (pr k x) (pr k y)) (\ i -> calc R.R {
+      PC.coef (pr k (E.addQ x y)) i =< coef-pr k (E.addQ x y) i > G.pr (lowerZ k i) (PC.coef (E.addQ x y) i)
+        =< ap (G.pr (lowerZ k i)) (coef-add x y i) > G.pr (lowerZ k i) (R.add (PC.coef x i) (PC.coef y i))
+        =< G.pr-add (lowerZ k i) (PC.coef x i) (PC.coef y i) > R.add (G.pr (lowerZ k i) (PC.coef x i)) (G.pr (lowerZ k i) (PC.coef y i))
+        =< sym (trans (coef-add (pr k x) (pr k y) i) (DLR.G.cong-add (coef-pr k x i) (coef-pr k y i)))
+        > PC.coef (E.addQ (pr k x) (pr k y)) i }) ;
+  pr-zero (k : Int) : Id K (pr k E.zeroQ) E.zeroQ = DLS.G.hom-zero (pr k) (pr-add k) ;
+
+  pr-idem (k : Int) (x : K) : Id K (pr k (pr k x)) (pr k x) =
+    PC.ext (pr k (pr k x)) (pr k x) (\ i -> calc R.R {
+      PC.coef (pr k (pr k x)) i =< coef-pr k (pr k x) i > G.pr (lowerZ k i) (PC.coef (pr k x) i)
+        =< ap (G.pr (lowerZ k i)) (coef-pr k x i) > G.pr (lowerZ k i) (G.pr (lowerZ k i) (PC.coef x i))
+        =< G.pr-idem (lowerZ k i) (PC.coef x i) > G.pr (lowerZ k i) (PC.coef x i)
+        =< sym (coef-pr k x i) > PC.coef (pr k x) i }) ;
+
+  pr-orth (k e : Int) (ne : Not (Id Int k e)) (x : K) : Id K (pr k (pr e x)) E.zeroQ =
+    PC.ext (pr k (pr e x)) E.zeroQ (\ i -> calc R.R {
+      PC.coef (pr k (pr e x)) i =< coef-pr k (pr e x) i > G.pr (lowerZ k i) (PC.coef (pr e x) i)
+        =< ap (G.pr (lowerZ k i)) (coef-pr e x i) > G.pr (lowerZ k i) (G.pr (lowerZ e i) (PC.coef x i))
+        =< G.pr-orth (lowerZ k i) (lowerZ e i) (lower-ne k e i ne) (PC.coef x i) > R.z
+        =< sym (PC.coef-zero i) > PC.coef E.zeroQ i }) ;
+
+  pr-negdeg (n : Base.Nat) (x : K) : Id K (pr (negsuc n) x) E.zeroQ =
+    PC.ext (pr (negsuc n) x) E.zeroQ (\ i -> calc R.R {
+      PC.coef (pr (negsuc n) x) i =< coef-pr (negsuc n) x i > G.pr (lowerZ (negsuc n) i) (PC.coef x i)
+        =< ap (\ e -> G.pr e (PC.coef x i)) (minus-negsuc n (toB i)) > G.pr (negsuc (NA.plus (toB i) n)) (PC.coef x i)
+        =< G.pr-negdeg (NA.plus (toB i) n) (PC.coef x i) > R.z
+        =< sym (PC.coef-zero i) > PC.coef E.zeroQ i }) ;
+
+  -- pr k (a, 0, 0, ..) = (pr k a, 0, 0, ..)
+  const-at (k : Int) (a : R.R) : (i : Nat) -> Id R.R (G.pr (lowerZ k i) (PCo.cseq a i)) (PCo.cseq (G.pr k a) i) = split {
+    zero -> refl (G.pr k a) ;
+    suc i -> GL.pr-zero (lowerZ k (suc i)) } ;
+  pr-const (k : Int) (a : R.R) : Id K (pr k (E.constant a)) (E.constant (G.pr k a)) =
+    PC.ext (pr k (E.constant a)) (E.constant (G.pr k a)) (\ i ->
+      trans (coef-pr k (E.constant a) i)
+        (trans (ap (G.pr (lowerZ k i)) (coef-const a i))
+          (trans (const-at k a i) (sym (coef-const (G.pr k a) i))))) ;
+
+  -- pr k (U z) = U pr (k - 1) z
+  X-at (k : Int) (z0 : K) : (i : Nat) ->
+    Id R.R (PC.coef (pr k (E.mulQ E.variable z0)) i) (PC.coef (E.mulQ E.variable (pr (predZ k) z0)) i) = split {
+    zero -> trans (coef-pr k (E.mulQ E.variable z0) zero)
+              (trans (ap (G.pr k) (PC.shift-coef z0).1)
+                (trans (GL.pr-zero k) (sym (PC.shift-coef (pr (predZ k) z0)).1))) ;
+    suc i -> trans (coef-pr k (E.mulQ E.variable z0) (suc i))
+               (trans (ap (G.pr (lowerZ k (suc i))) ((PC.shift-coef z0).2 i))
+                 (trans (ap (\ e -> G.pr e (PC.coef z0 i)) (sym (lower-pred k i)))
+                   (trans (sym (coef-pr (predZ k) z0 i)) (sym ((PC.shift-coef (pr (predZ k) z0)).2 i))))) } ;
+  pr-X (k : Int) (z0 : K) : Id K (pr k (E.mulQ E.variable z0)) (E.mulQ E.variable (pr (predZ k) z0)) =
+    PC.ext _ _ (X-at k z0) ;
+
+  ------------------------------------------------------------------------
+  -- multiplicativity
+
+  module MulBy (e : Int) (y : K) (hy : Id K (pr e y) y) {
+    -- pr k (a y) = pr (k - e) (a) y for a constant a
+    cmul-at (k : Int) (a : R.R) (i : Nat) :
+      Id R.R (PC.coef (pr k (E.mulQ (E.constant a) y)) i) (PC.coef (E.mulQ (E.constant (G.pr (subZ k e) a)) y) i) = calc R.R {
+      PC.coef (pr k (E.mulQ (E.constant a) y)) i
+        =< coef-pr k (E.mulQ (E.constant a) y) i > G.pr (lowerZ k i) (PC.coef (E.mulQ (E.constant a) y) i)
+        =< ap (G.pr (lowerZ k i)) (PC.scale-coef a y i) > G.pr (lowerZ k i) (R.mul a (PC.coef y i))
+        =< G.pr-mul (lowerZ k i) (lowerZ e i) a (PC.coef y i) (coef-hom e y hy i)
+        > R.mul (G.pr (subZ (lowerZ k i) (lowerZ e i)) a) (PC.coef y i)
+        =< ap (\ w -> R.mul (G.pr w a) (PC.coef y i)) (sub-lower k e i) > R.mul (G.pr (subZ k e) a) (PC.coef y i)
+        =< sym (PC.scale-coef (G.pr (subZ k e) a) y i) > PC.coef (E.mulQ (E.constant (G.pr (subZ k e) a)) y) i } ;
+    pr-cmul (k : Int) (a : R.R) : Id K (pr k (E.mulQ (E.constant a) y)) (E.mulQ (E.constant (G.pr (subZ k e) a)) y) =
+      PC.ext _ _ (cmul-at k a) ;
+
+    -- (a + U b) y = a y + U (b y)
+    distr (a b : K) : Id K (E.mulQ (E.addQ a (E.mulQ E.variable b)) y) (E.addQ (E.mulQ a y) (E.mulQ E.variable (E.mulQ b y))) =
+      trans (RS.dist-left a (E.mulQ E.variable b) y) (ap (E.addQ (E.mulQ a y)) (sym (S.mulA E.variable b y))) ;
+    -- pr k x = pr k x_0 + U pr (k - 1) (tail x)
+    pr-hor (k : Int) (x : K) : Id K (pr k x)
+      (E.addQ (E.constant (G.pr k (PCo.c0 x))) (E.mulQ E.variable (pr (predZ k) (PC.tail x)))) =
+      trans (ap (pr k) (PCo.horner x))
+        (trans (pr-add k (E.constant (PCo.c0 x)) (E.mulQ E.variable (PC.tail x)))
+          (DLS.G.cong-add (pr-const k (PCo.c0 x)) (pr-X k (PC.tail x)))) ;
+
+    -- by induction on a degree bound d of x
+    bounded : (d : Nat) (x : K) -> PCo.SQ.Van d (PCo.kap x) -> (k : Int) ->
+      Id K (pr k (E.mulQ x y)) (E.mulQ (pr (subZ k e) x) y) = split {
+      zero -> \ x v k -> calc K {
+        pr k (E.mulQ x y) =< ap (\ w -> pr k (E.mulQ w y)) (PCo.van-zero-eq x v) > pr k (E.mulQ E.zeroQ y)
+          =< ap (pr k) (RS.zero-mul y) > pr k E.zeroQ
+          =< pr-zero k > E.zeroQ
+          =< sym (RS.zero-mul y) > E.mulQ E.zeroQ y
+          =< ap (\ w -> E.mulQ w y) (sym (pr-zero (subZ k e))) > E.mulQ (pr (subZ k e) E.zeroQ) y
+          =< ap (\ w -> E.mulQ (pr (subZ k e) w) y) (sym (PCo.van-zero-eq x v)) > E.mulQ (pr (subZ k e) x) y } ;
+      suc d | r -> \ x v k -> calc K {
+        pr k (E.mulQ x y)
+          =< ap (pr k) (PCo.mul-hor x y)
+          > pr k (E.addQ (E.mulQ (E.constant (PCo.c0 x)) y) (E.mulQ E.variable (E.mulQ (PC.tail x) y)))
+          =< pr-add k (E.mulQ (E.constant (PCo.c0 x)) y) (E.mulQ E.variable (E.mulQ (PC.tail x) y))
+          > E.addQ (pr k (E.mulQ (E.constant (PCo.c0 x)) y)) (pr k (E.mulQ E.variable (E.mulQ (PC.tail x) y)))
+          =< DLS.G.cong-add (pr-cmul k (PCo.c0 x)) (pr-X k (E.mulQ (PC.tail x) y))
+          > E.addQ (E.mulQ (E.constant (G.pr (subZ k e) (PCo.c0 x))) y) (E.mulQ E.variable (pr (predZ k) (E.mulQ (PC.tail x) y)))
+          =< ap (\ w -> E.addQ (E.mulQ (E.constant (G.pr (subZ k e) (PCo.c0 x))) y) (E.mulQ E.variable w))
+               (trans (r (PC.tail x) (PCo.tail-van x d v) (predZ k))
+                      (ap (\ w -> E.mulQ (pr w (PC.tail x)) y) (sub-pred k e)))
+          > E.addQ (E.mulQ (E.constant (G.pr (subZ k e) (PCo.c0 x))) y) (E.mulQ E.variable (E.mulQ (pr (predZ (subZ k e)) (PC.tail x)) y))
+          =< sym (distr (E.constant (G.pr (subZ k e) (PCo.c0 x))) (pr (predZ (subZ k e)) (PC.tail x)))
+          > E.mulQ (E.addQ (E.constant (G.pr (subZ k e) (PCo.c0 x))) (E.mulQ E.variable (pr (predZ (subZ k e)) (PC.tail x)))) y
+          =< ap (\ w -> E.mulQ w y) (sym (pr-hor (subZ k e) x)) > E.mulQ (pr (subZ k e) x) y } } ;
+    res (k : Int) (x : K) : Id K (pr k (E.mulQ x y)) (E.mulQ (pr (subZ k e) x) y) =
+      Tr.Trunc[PCo.Bound x].induction @l (\ b -> Id K (pr k (E.mulQ x y)) (E.mulQ (pr (subZ k e) x) y))
+        (\ b -> E.set _ _) (\ b -> bounded b.1 x b.2 k) (PCo.bound x) ;
+  } ;
+  pr-mul (k e : Int) (x y : K) (hy : Id K (pr e y) y) : Id K (pr k (E.mulQ x y)) (E.mulQ (pr (subZ k e) x) y) =
+    MulBy[e,y,hy].res k x ;
+
+  ------------------------------------------------------------------------
+  -- constants, base, variables, lowering, evaluation
+
+  iota : RH.Hom A S = RH.compose A R S E.inclusion G.iota ;
+  iota-hom (a : A.R) : Id K (pr zeroZ (E.constant (G.iota.1 a))) (E.constant (G.iota.1 a)) =
+    trans (pr-const zeroZ (G.iota.1 a)) (ap E.constant (G.iota-hom a)) ;
+
+  base (x : K) : A.R = G.base (PCo.c0 x) ;
+  -- x of degree 0 is the constant x_0
+  deg0-at (x : K) (h : Id K (pr zeroZ x) x) : (i : Nat) -> Id R.R (PC.coef x i) (PC.coef (E.constant (PCo.c0 x)) i) = split {
+    zero -> sym (coef-const (PCo.c0 x) zero) ;
+    suc i -> calc R.R {
+      PC.coef x (suc i) =< sym (coef-hom zeroZ x h (suc i)) > G.pr (lowerZ zeroZ (suc i)) (PC.coef x (suc i))
+        =< ap (\ e -> G.pr e (PC.coef x (suc i))) (minus-zero-suc (toB i)) > G.pr (negsuc (toB i)) (PC.coef x (suc i))
+        =< G.pr-negdeg (toB i) (PC.coef x (suc i)) > R.z
+        =< sym (coef-const (PCo.c0 x) (suc i)) > PC.coef (E.constant (PCo.c0 x)) (suc i) } } ;
+  base-eq (x : K) (h : Id K (pr zeroZ x) x) : Id K (E.constant (G.iota.1 (base x))) x =
+    trans (ap E.constant (G.base-eq (PCo.c0 x) (coef-hom zeroZ x h zero)))
+      (sym (PC.ext x (E.constant (PCo.c0 x)) (deg0-at x h))) ;
+
+  var : Ps.Fin (suc t) -> K = split {
+    inl j -> E.constant (G.var j) ;
+    inr u -> E.variable } ;
+  -- U = (0, 1, 0, ..) has degree 1: its coefficient 1 has degree 0
+  T-at1 : (i : Nat) -> Id R.R (G.pr (lowerZ (pos (suc zero)) (suc i)) (PR.coef E.T (suc i))) (PR.coef E.T (suc i)) = split {
+    zero -> GL.hom-one ;
+    suc i -> GL.pr-zero (lowerZ (pos (suc zero)) (suc (suc i))) } ;
+  T-at : (i : Nat) -> Id R.R (G.pr (lowerZ (pos (suc zero)) i) (PR.coef E.T i)) (PR.coef E.T i) = split {
+    zero -> GL.pr-zero (pos (suc zero)) ;
+    suc i -> T-at1 i } ;
+  pr-variable : Id K (pr (pos (suc zero)) E.variable) E.variable =
+    PC.ext (pr (pos (suc zero)) E.variable) E.variable (\ i ->
+      trans (coef-pr (pos (suc zero)) E.variable i)
+        (trans (ap (G.pr (lowerZ (pos (suc zero)) i)) (PC.coef-include E.T i))
+          (trans (T-at i) (sym (PC.coef-include E.T i))))) ;
+  var-hom : (j : Ps.Fin (suc t)) -> Id K (pr (pos (suc zero)) (var j)) (var j) = split {
+    inl j -> trans (pr-const (pos (suc zero)) (G.var j)) (ap E.constant (G.var-hom j)) ;
+    inr u -> pr-variable } ;
+
+  low : Ps.Fin (suc t) -> K -> K = split {
+    inl j -> \ x -> E.constant (G.low j (PCo.c0 x)) ;
+    inr u -> \ x -> PC.tail x } ;
+  const-zero : Id K (E.constant R.z) E.zeroQ = RH.zero R S E.inclusion ;
+  tail-zero : Id K (PC.tail E.zeroQ) E.zeroQ =
+    PC.ext (PC.tail E.zeroQ) E.zeroQ (\ i -> trans (PC.tail-coef E.zeroQ i) (trans (PC.coef-zero (suc i)) (sym (PC.coef-zero i)))) ;
+  low-zero : (j : Ps.Fin (suc t)) -> Id K (low j E.zeroQ) E.zeroQ = split {
+    inl j -> trans (ap (\ w -> E.constant (G.low j w)) (PC.coef-zero zero)) (trans (ap E.constant (G.low-zero j)) const-zero) ;
+    inr u -> tail-zero } ;
+
+  -- tail x has degree k when x has degree k+1
+  tail-at (k : Base.Nat) (x : K) (h : Id K (pr (pos (suc k)) x) x) (i : Nat) :
+    Id R.R (PC.coef (pr (pos k) (PC.tail x)) i) (PC.coef (PC.tail x) i) = calc R.R {
+    PC.coef (pr (pos k) (PC.tail x)) i =< coef-pr (pos k) (PC.tail x) i > G.pr (lowerZ (pos k) i) (PC.coef (PC.tail x) i)
+      =< ap (G.pr (lowerZ (pos k) i)) (PC.tail-coef x i) > G.pr (lowerZ (pos k) i) (PC.coef x (suc i))
+      =< ap (\ e -> G.pr e (PC.coef x (suc i))) (sym (lower-suc-suc (pos k) i)) > G.pr (lowerZ (pos (suc k)) (suc i)) (PC.coef x (suc i))
+      =< coef-hom (pos (suc k)) x h (suc i) > PC.coef x (suc i)
+      =< sym (PC.tail-coef x i) > PC.coef (PC.tail x) i } ;
+  low-hom (k : Base.Nat) : (j : Ps.Fin (suc t)) (x : K) -> Id K (pr (pos (suc k)) x) x -> Id K (pr (pos k) (low j x)) (low j x) = split {
+    inl j -> \ x h -> trans (pr-const (pos k) (G.low j (PCo.c0 x)))
+                       (ap E.constant (G.low-hom k j (PCo.c0 x) (coef-hom (pos (suc k)) x h zero))) ;
+    inr u -> \ x h -> PC.ext _ _ (tail-at k x h) } ;
+
+  module HS = HomSum[R,S,E.inclusion] ;
+  -- x = U tail x + sum_j var j low j (x_0)
+  low-eq (k : Base.Nat) (x : K) (h : Id K (pr (pos (suc k)) x) x) :
+    Id K x (Comb[l].Sums[S,IP.regular S].sum (suc t) (\ j -> E.mulQ (var j) (low j x))) = calc K {
+    x =< PCo.horner x > E.addQ (E.constant (PCo.c0 x)) (E.mulQ E.variable (PC.tail x))
+      =< ap (\ w -> E.addQ (E.constant w) (E.mulQ E.variable (PC.tail x))) (G.low-eq k (PCo.c0 x) (coef-hom (pos (suc k)) x h zero))
+      > E.addQ (E.constant (HS.SR.sum t (\ j -> R.mul (G.var j) (G.low j (PCo.c0 x))))) (E.mulQ E.variable (PC.tail x))
+      =< ap (\ w -> E.addQ w (E.mulQ E.variable (PC.tail x)))
+           (trans (HS.map-sum t (\ j -> R.mul (G.var j) (G.low j (PCo.c0 x))))
+             (HS.SS.sum-cong t (\ j -> E.constant (R.mul (G.var j) (G.low j (PCo.c0 x))))
+                (\ j -> E.mulQ (E.constant (G.var j)) (E.constant (G.low j (PCo.c0 x))))
+                (\ j -> E.constant-mul (G.var j) (G.low j (PCo.c0 x)))))
+      > E.addQ (HS.SS.sum t (\ j -> E.mulQ (var (inl j)) (low (inl j) x))) (E.mulQ E.variable (PC.tail x))
+      =< E.add-comm (HS.SS.sum t (\ j -> E.mulQ (var (inl j)) (low (inl j) x))) (E.mulQ E.variable (PC.tail x))
+      > HS.SS.sum (suc t) (\ j -> E.mulQ (var j) (low j x)) } ;
+
+  module UA = Universal[l].Property[R,A,setR,setA] ;
+  ev (a : Ps.Fin (suc t) -> A.R) : RH.Hom S A = UA.Given[G.ev (\ j -> a (inl j)),a (inr tt)].extend ;
+  ev-iota (a : Ps.Fin (suc t) -> A.R) (x : A.R) : Id A.R ((ev a).1 (E.constant (G.iota.1 x))) x =
+    trans (UA.Given[G.ev (\ j -> a (inl j)),a (inr tt)].on-constants (G.iota.1 x)) (G.ev-iota (\ j -> a (inl j)) x) ;
+  ev-var (a : Ps.Fin (suc t) -> A.R) : (j : Ps.Fin (suc t)) -> Id A.R ((ev a).1 (var j)) (a j) = split {
+    inl j -> trans (UA.Given[G.ev (\ j' -> a (inl j')),a (inr tt)].on-constants (G.var j)) (G.ev-var (\ j' -> a (inl j')) j) ;
+    inr u -> trans UA.Given[G.ev (\ j -> a (inl j)),a (inr tt)].on-variable (ap (\ w -> a (inr w)) (top-eta u)) } ;
+
+  graded : Graded[A,suc t,S] = mkGraded A (suc t) S pr pr-add pr-idem pr-orth pr-negdeg pr-mul
+    iota iota-hom base base-eq var var-hom low low-zero low-hom low-eq ev ev-iota ev-var ;
+} ;
+
+------------------------------------------------------------------------
+-- the towers: D_t = A[U_1, .., U_t]
+
+module CoefficientTower (A : CRing) (setA : Pr.isSet A.R) {
+  Level (t : Nat) : U (l+) = (R : CRing) * (Pr.isSet R.R * Graded[A,t,R]) ;
+  tower : (t : Nat) -> Level t = split {
+    zero -> (A, (setA, BaseGrading[A,setA].graded)) ;
+    suc t | r -> (GradingStep[A,setA,t,r.1,r.2.1,r.2.2].S,
+                  (PolynomialRing[l].Extension[r.1,r.2.1].set, GradingStep[A,setA,t,r.1,r.2.1,r.2.2].graded)) } ;
+  -- accessors
+  D (t : Nat) : CRing = (tower t).1 ;
+  setD (t : Nat) : Pr.isSet (D t).R = (tower t).2.1 ;
+  grD (t : Nat) : Graded[A,t,D t] = (tower t).2.2 ;
+  -- by definition of the tower
+  D-suc (t : Nat) : Id CRing (D (suc t)) PolynomialRing[l].Extension[D t,setD t].ring = refl (D (suc t)) ;
+
+  -- CFN K0 D_t from CFN K0 A
+  cfnD (K0 : U l) (cfnA : CFN[l].CFN[K0,A]) : (t : Nat) -> CFN[l].CFN[K0,D t] = split {
+    zero -> cfnA ;
+    suc t | r -> HilbertCFN[l].Over[K0,D t,setD t].poly r } ;
+} ;

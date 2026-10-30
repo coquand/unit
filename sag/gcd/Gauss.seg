@@ -1,10 +1,14 @@
 -- Gauss.seg: Gauss's lemma by the content (doc/gcd-polynomial.tex, §3).
 --
---  Lemme 7 (Gauss): E primitive and d | every coefficient of E q give
---    d | every coefficient of q.  Dedekind-Mertens (sag/mertens, subgroup
---    form): E_w q_j, for every word w of length m+1, is a signed sum of
---    E_w' (E q)_k, so d divides it; peel the word one letter at a time by
---    Corollaire 5.  No prime element, no factorisation.
+--  Direct content induction (MRR IV.4.3), removing the constant term
+--  rather than the leading term, since lists are constant-first.
+--  Every common divisor of the coefficients of p q divides c(p)c(q).
+--  Primitive p,q: put t=gcd(d,p_0); induction on the shorter tail gives
+--  t | c(tail p)c(q), hence t | all coefficients of p, hence t | 1.
+--  Symmetrically gcd(d,q_0) | 1; d | p_0 q_0 now gives d | 1 by Euclid.
+--  General p,q: divide by nonzero contents (zero cases separate), apply
+--  that primitive-product result and Content.Bounded.prim-M.
+--  No Dedekind-Mertens, prime elements, or factorisation is used.
 --  Lemme 8: E primitive, lambda /= 0, lambda f = E q give f = E q'
 --    (q = lambda q').
 -- On the lists first; on A[X] for d /= 0 (then the conclusion is a
@@ -12,46 +16,167 @@
 level l ; open Ring[l] ;
 module Pr = Prelude[l] ;
 module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+module Direct (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
+ module PB = PolyBase[l].Over[A,G] ; open PB ;
+ module GD = GcdDomain[l].Gcd[A,G] ;
+ module RW = RawLaws[l].Laws[A] ; module RM = RawMultiplication[l].Laws[A] ;
+
+ content (p : PL.P) : R = C.cont (PL.coef p) (PL.plen p) ;
+ module At (p : PL.P) { module K = C.Bounded[PL.coef p,PL.plen p,bnd-list p] ; } ;
+ Common (d : R) (p : PL.P) : U l = (i : Nat) -> Div d (PL.coef p i) ;
+ Product (p q : PL.P) : U l = (d : R) -> Common d (ML.pmul p q) -> Div d (mul (content p) (content q)) ;
+ -- divisibility is closed under subtraction
+ div-sub (d a b : R) (ha : Div d a) (hb : Div d b) : Div d (add a (neg b)) =
+   div-add d a (neg b) ha (div-neg d b hb) ;
+ sub-add (x y : R) : Id R (add (add x y) (neg x)) y =
+   trans (ap (\ t -> add t (neg x)) (addC x y)) (add-neg-cancel y x) ;
+
+ -- A common divisor of (a+Xp)q and of a divides every coefficient of pq.
+ module Tail (a : R) (p q : PL.P) (d : R) (ha : Div d a)
+   (h : Common d (ML.pmul (cons a p) q)) (i : Nat) {
+   x : R = mul a (PL.coef q (suc i)) ;
+   y : R = PL.coef (ML.pmul p q) i ;
+   eq : Id R (PL.coef (ML.pmul (cons a p) q) (suc i)) (add x y) =
+     trans (RM.mul-cons-left a p q (suc i))
+       (trans (ML.coef-addP (ML.scal a q) (cons z (ML.pmul p q)) (suc i))
+         (ap (\ t -> add t y) (ML.coef-scal a q (suc i)))) ;
+   dx : Div d x = div-mul d a (PL.coef q (suc i)) ha ;
+   dxy : Div d (add x y) = div-eq-right d _ _ eq (h (suc i)) ;
+   result : Div d y = div-eq-right d _ y (sub-add x y) (div-sub d (add x y) x dxy dx) ;
+ } ;
+ tail-common (a : R) (p q : PL.P) (d : R) (ha : Div d a)
+   (h : Common d (ML.pmul (cons a p) q)) (i : Nat) : Div d (PL.coef (ML.pmul p q) i) =
+   Tail[a,p,q,d,ha,h,i].result ;
+
+ -- Primitive product at the next length, assuming the general statement
+ -- for pairs whose total length is one less.
+ Rec (N : Nat) : U l = (p q : PL.P) -> Id Nat (plus (PL.plen p) (PL.plen q)) N -> Product p q ;
+ module PrimStep (N : Nat) (r : Rec N) (a : R) (p : PL.P) (b : R) (q : PL.P)
+   (e : Id Nat (plus (PL.plen (cons a p)) (PL.plen (cons b q))) (suc N))
+   (pp : C.Prim (PL.coef (cons a p))) (pq : C.Prim (PL.coef (cons b q)))
+   (d : R) (h : Common d (ML.pmul (cons a p) (cons b q))) {
+   ef : Id Nat (plus (PL.plen p) (PL.plen (cons b q))) N = suc-inj e ;
+   es : Id Nat (plus (PL.plen q) (PL.plen (cons a p))) N =
+     trans (plus-comm (PL.plen q) (suc (PL.plen p)))
+       (trans (sym (plus-suc (PL.plen p) (PL.plen q))) ef) ;
+   module One (a0 : R) (p0 q0 : PL.P) (ep : Id Nat (plus (PL.plen p0) (PL.plen q0)) N)
+     (prim0 : C.Prim (PL.coef (cons a0 p0))) (prim1 : C.Prim (PL.coef q0))
+     (hh : Common d (ML.pmul (cons a0 p0) q0)) {
+     t : R = GD.gcd d a0 ;
+     ht : Common t (ML.pmul (cons a0 p0) q0) = \ i -> div-trans t d _ (GD.gcd-left d a0) (hh i) ;
+     tc : Div t (mul (content p0) (content q0)) =
+       r p0 q0 ep t (tail-common a0 p0 q0 t (GD.gcd-right d a0) ht) ;
+     ct : Div t (content p0) = div-trans t (mul (content p0) (content q0)) (content p0) tc
+       (div-eq-right (mul (content p0) (content q0)) (mul (content p0) o) (content p0) (mulO (content p0))
+         (div-scale (content q0) o (content p0) (At[q0].K.prim-c prim1))) ;
+     coeffs : Common t (cons a0 p0) = split {
+       zero -> GD.gcd-right d a0 ;
+       suc i -> div-trans t (content p0) (PL.coef p0 i) ct (At[p0].K.c-div i) } ;
+     result : Div t o = prim0 t coeffs ;
+   } ;
+   cpA : Div (GD.gcd d a) o = One[a,p,cons b q,ef,pp,pq,h].result ;
+   hs : Common d (ML.pmul (cons b q) (cons a p)) = \ i ->
+     div-eq-right d _ _ (RM.mul-comm (cons a p) (cons b q) i) (h i) ;
+   cpB : Div (GD.gcd d b) o = One[b,q,cons a p,es,pq,pp,hs].result ;
+   ab : Div d (mul a b) = div-eq-right d _ _ (ML.coef0-pmul (cons a p) (cons b q)) (h zero) ;
+   db : Div d b = GD.euclid d a b cpA ab ;
+   result : Div d o = div-trans d (GD.gcd d b) o (GD.gcd-univ d b d (div-refl d) db) cpB ;
+ } ;
+ -- The empty list cannot be primitive in a nontrivial ring.
+ not-prim-nil (p : C.Prim (PL.coef nil)) : Empty = G.nontrivial (div-of-zero o (p z (\ i -> div-zero z))) ;
+ primitive (N : Nat) (r : Rec N) : (p q : PL.P) ->
+   Id Nat (plus (PL.plen p) (PL.plen q)) (suc N) -> C.Prim (PL.coef p) -> C.Prim (PL.coef q) -> C.Prim (PL.coef (ML.pmul p q)) = split {
+   nil -> \ q e pp pq -> efq (not-prim-nil pp) ;
+   cons a p -> split {
+     nil -> \ e pp pq -> efq (not-prim-nil pq) ;
+     cons b q -> \ e pp pq d h -> PrimStep[N,r,a,p,b,q,e,pp,pq,d,h].result } } ;
+
+ -- Divide a list by its nonzero content, preserving its length.
+ div-len (c : R) : (p : PL.P) (w : Common c p) -> Id Nat (PL.plen (divL c p w)) (PL.plen p) = split {
+   nil -> \ w -> refl zero ; cons a p | r -> \ w -> ap (\ n -> suc n) (r (\ i -> w (suc i))) } ;
+ module Part (p : PL.P) (nc : Not (Id R (content p) z)) {
+   c : R = content p ;
+   qs : PL.P = divL c p (At[p].K.c-div) ;
+   length : Id Nat (PL.plen qs) (PL.plen p) = div-len c p (At[p].K.c-div) ;
+   eq (i : Nat) : Id R (PL.coef p i) (mul c (PL.coef qs i)) = divL-coef c p (At[p].K.c-div) i ;
+   scaled : PL.peq p (ML.scal c qs) = \ i -> trans (eq i) (sym (ML.coef-scal c qs i)) ;
+   prim : C.Prim (PL.coef qs) = \ d hd -> D.div-cancel c d o nc
+     (div-eq-right (mul c d) c (mul c o) (sym (mulO c))
+       (At[p].K.c-univ (mul c d) (\ i -> div-eq-right (mul c d) (mul c (PL.coef qs i)) (PL.coef p i)
+         (sym (eq i)) (div-scale d (PL.coef qs i) c (hd i))))) ;
+ } ;
+ module Nonzero (N : Nat) (r : Rec N) (p q : PL.P)
+   (e : Id Nat (plus (PL.plen p) (PL.plen q)) (suc N))
+   (np : Not (Id R (content p) z)) (nq : Not (Id R (content q) z)) {
+   module Pp = Part[p,np] ; module Pq = Part[q,nq] ;
+   u : R = mul (content p) (content q) ;
+   len' : Id Nat (plus (PL.plen Pp.qs) (PL.plen Pq.qs)) (suc N) =
+     trans (Presentations[l].cong2 Nat plus _ _ _ _ Pp.length Pq.length) e ;
+   prim : C.Prim (PL.coef (ML.pmul Pp.qs Pq.qs)) = primitive N r Pp.qs Pq.qs len' Pp.prim Pq.prim ;
+   scaled : PL.peq (ML.pmul p q) (ML.scal u (ML.pmul Pp.qs Pq.qs)) =
+     PL.peq-trans _ _ _ (RM.mul-cong p (ML.scal Pp.c Pp.qs) q (ML.scal Pq.c Pq.qs) Pp.scaled Pq.scaled)
+       (PL.peq-trans _ _ _ (RM.mul-scal-left Pp.c Pp.qs (ML.scal Pq.c Pq.qs))
+         (PL.peq-trans _ _ _ (RW.scal-cong Pp.c _ _ (RM.mul-scal-right Pq.c Pp.qs Pq.qs))
+           (RW.scal-scal Pp.c Pq.c (ML.pmul Pp.qs Pq.qs)))) ;
+   result : Product p q = \ d h -> At[ML.pmul Pp.qs Pq.qs].K.prim-M prim u d
+     (\ i -> div-eq-right d _ _ (trans (scaled i) (ML.coef-scal u (ML.pmul Pp.qs Pq.qs) i)) (h i)) ;
+ } ;
+ step (N : Nat) (r : Rec N) (p q : PL.P) (e : Id Nat (plus (PL.plen p) (PL.plen q)) (suc N)) : Product p q =
+   byP (G.dec (content p))
+   where {
+    byQ (np : Not (Id R (content p) z)) : Plus (Id R (content q) z) (Not (Id R (content q) z)) -> Product p q = split {
+      inl q0 -> \ d h -> div-eq-right d z (mul (content p) (content q))
+        (sym (trans (ap (mul (content p)) q0) (mul-zero (content p)))) (div-zero d) ;
+      inr nq -> Nonzero[N,r,p,q,e,np,nq].result } ;
+    byP : Plus (Id R (content p) z) (Not (Id R (content p) z)) -> Product p q = split {
+      inl p0 -> \ d h -> div-eq-right d z (mul (content p) (content q))
+        (sym (trans (ap (\ t -> mul t (content q)) p0) (zero-mul (content q)))) (div-zero d) ;
+      inr np -> byQ np (G.dec (content q)) } } ;
+ at-zero : (p q : PL.P) -> Id Nat (plus (PL.plen p) (PL.plen q)) zero -> Product p q = split {
+   nil -> \ q e d h -> div-eq-right d z (mul z (content q)) (sym (zero-mul (content q))) (div-zero d) ;
+   cons a p -> \ q e -> efq (suc-zero (plus (PL.plen p) (PL.plen q)) e) } ;
+ induction : (N : Nat) -> Rec N = split {
+   zero -> at-zero ; suc N | r -> step N r } ;
+ product (p q : PL.P) : Product p q = induction (plus (PL.plen p) (PL.plen q)) p q (refl (plus (PL.plen p) (PL.plen q))) ;
+ -- Conversely, products of common coefficient divisors divide the product.
+ multiply-common (c d : R) (p : PL.P) (hp : Common c p) : (q : PL.P) -> Common d q -> Common (mul c d) (ML.pmul p q) = split {
+   nil -> \ hq i -> div-zero (mul c d) ;
+   cons b q | r -> \ hq i ->
+     div-eq-right (mul c d) _ _ (sym (ML.coef-addP (ML.scal b p) (cons z (ML.pmul p q)) i))
+       (div-add (mul c d) (PL.coef (ML.scal b p) i) (PL.coef (cons z (ML.pmul p q)) i)
+         (div-eq-right (mul c d) (mul (PL.coef p i) b) (PL.coef (ML.scal b p) i)
+           (trans (mulC (PL.coef p i) b) (sym (ML.coef-scal b p i)))
+           (div-mul2 c (PL.coef p i) d b (hp i) (hq zero)))
+         (shift-common c d p q (r (\ k -> hq (suc k))) i)) }
+ where {
+   shift-common (c d : R) (p q : PL.P) (h : Common (mul c d) (ML.pmul p q)) : Common (mul c d) (cons z (ML.pmul p q)) = split {
+     zero -> div-zero (mul c d) ; suc i -> h i } } ;
+ -- Content multiplicativity up to associates, without normalising gcd units.
+ content-mul-left (p q : PL.P) : Div (content (ML.pmul p q)) (mul (content p) (content q)) =
+   product p q (content (ML.pmul p q)) (At[ML.pmul p q].K.c-div) ;
+ content-mul-right (p q : PL.P) : Div (mul (content p) (content q)) (content (ML.pmul p q)) =
+   At[ML.pmul p q].K.c-univ (mul (content p) (content q))
+     (multiply-common (content p) (content q) p (At[p].K.c-div) q (At[q].K.c-div)) ;
+ gauss (p q : PL.P) (pp : C.Prim (PL.coef p)) (d : R) (h : Common d (ML.pmul p q)) (i : Nat) : Div d (PL.coef q i) =
+   div-trans d (content q) (PL.coef q i)
+     (div-trans d (mul (content p) (content q)) (content q) (product p q d h)
+       (div-eq-right (mul (content p) (content q)) (mul (content q) o) (content q) (mulO (content q))
+         (div-eq-left (mul (content q) (content p)) (mul (content p) (content q)) (mul (content q) o)
+           (mulC (content q) (content p)) (div-scale (content p) o (content q) (At[p].K.prim-c pp)))))
+     (At[q].K.c-div i) ;
+} ;
 module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
  open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
  module PB = PolyBase[l].Over[A,G] ;
  open PB ;
- module CW = CoefficientProducts[l].Over[A] ;
- module DM = DedekindMertens[l].Over[A] ;
+ module DP = Direct[A,G] ;
 
- -- the multiples of d form an additive subgroup
- multiples (d : R) : AdditiveSpan[l].Group[A] =
-  AdditiveSpan[l].mkGroup A (Div d) (div-zero d) (div-add d) (div-neg d) ;
-
- -- d | (E q)_k for all k gives d | E_w q_j for every word w of length m+1
- module Words (p : PL.P) (g : R) (q : PL.P) (d : R) (hd : (k : Nat) -> Div d (PL.coef (ML.pmul p (cons g q)) k)) {
-  module S = DM.Statement[p,g,q] ;
-  on-generators (v : CW.Word S.m * Nat) : Div d (CW.Generators p (ML.pmul p (cons g q)) S.m v) =
-   div-mul-left d (PL.coef (ML.pmul p (cons g q)) v.2) (CW.product p S.m v.1) (hd v.2) ;
-  module Map = S.Target.CSpan.To[multiples d,on-generators] ;
-  result (w : CW.Word (suc S.m)) (j : Nat) : Div d (mul (CW.product p (suc S.m) w) (PL.coef (cons g q) j)) =
-   Map.result (mul (CW.product p (suc S.m) w) (PL.coef (cons g q) j)) (DM.theorem p q g w j) ;
- } ;
-
- -- peeling the words, for p primitive
- module Peel (p : PL.P) (pr : C.Prim (PL.coef p)) (d : R) {
-  module K = C.Bounded[PL.coef p,PL.plen p,bnd-list p] ;
-  -- (c P) v = (P v) c
-  swap3 (c P v : R) : Id R (mul (mul c P) v) (mul (mul P v) c) =
-   trans (sym (mulA c P v)) (mulC c (mul P v)) ;
-  peel : (n : Nat) (v : R) -> ((w : CW.Word n) -> Div d (mul (CW.product p n w) v)) -> Div d v = split {
-   zero -> \ v h -> div-eq-right d (mul o v) v (one-left v) (h tt) ;
-   suc n | r -> \ v h -> r v (\ w' -> K.prim-M pr (mul (CW.product p n w') v) d
-     (\ i -> div-eq-right d (mul (mul (PL.coef p i) (CW.product p n w')) v) (mul (mul (CW.product p n w') v) (PL.coef p i))
-              (swap3 (PL.coef p i) (CW.product p n w') v) (h (i,w')))) } ;
- } ;
-
- -- Lemme 7 on the lists
- gauss-list (p : PL.P) (pr : C.Prim (PL.coef p)) (d : R) : (q : PL.P) ->
-  ((k : Nat) -> Div d (PL.coef (ML.pmul p q) k)) -> (j : Nat) -> Div d (PL.coef q j) = split {
-  nil -> \ hd j -> div-zero d ;
-  cons g q -> \ hd j -> Peel[p,pr,d].peel (suc (len {R} q)) (PL.coef (cons g q) j)
-    (\ w -> Words[p,g,q,d,hd].result w j) } ;
+ -- Lemme 7 on coefficient lists, by direct content induction.
+ gauss-list (p : PL.P) (pr : C.Prim (PL.coef p)) (d : R) (q : PL.P)
+   (hd : (k : Nat) -> Div d (PL.coef (ML.pmul p q) k)) (j : Nat) : Div d (PL.coef q j) =
+   DP.gauss p q pr d hd j ;
 
  -- Lemme 7 on A[X], for d /= 0
  module GaussAt (d : R) (hd0 : Not (Id R d z)) {

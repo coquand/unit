@@ -1,0 +1,255 @@
+-- ZRing.seg: the ring Z and its universal property (artin-rees.tex, Prop. 13
+-- for Z, first part).  Z is ZInt's group of integers (pos n, negsuc n) with
+-- a multiplication; for every ring A there is a ring map iota : Z -> A,
+-- and it is the only one.
+--
+-- Multiplication, by repeated addition in the second argument:
+--   x * n = x + .. + x (n times),   x * (-(n+1)) = -(x * (n+1)).
+-- Proof of the ring laws.
+--   (suc) x * (y + 1) = x * y + x  and  (pred) x * (y - 1) = x * y - x,
+--         by cases on y;
+--   (dist) x * (y + w) = x * y + x * w, by induction on w (addition is
+--         iterated successor / predecessor in w), from (suc) and (pred);
+--   (addl) (x + x') * y = x * y + x' * y, by induction on n for y = n and
+--         y = -(n+1);
+--   1 * y = y, 0 * y = 0, and (-x) * y = -(x * y), x * (-w) = -(x * w)
+--         (inverses are unique);
+--   (comm) n * y = y * n by induction on n, since n + 1 = n + 1 holds by
+--         definition of + (addl, 1 * y = y); then -(n+1) = -(n+1) by
+--         definition, and the negation laws;
+--   (assoc) x * (y * w) = (x * y) * w by induction on w, from (dist).
+-- The map iota: n |-> 1 + .. + 1, -(n+1) |-> -(n+1).1.  It sends y + 1 to
+-- iota y + 1 and y - 1 to iota y - 1 (cases), so sums to sums (induction on
+-- the second argument), opposites to opposites, and products to products
+-- (induction on the second argument, distributivity in A).
+-- Uniqueness: a ring map f agrees with iota on n (induction, n + 1 = n + 1
+-- by definition) and on -(n+1) = -(n+1) (f preserves opposites).
+level l ; open Base ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module H = RingHom[l] ;
+module ZA = Torsor[l].AbL[intAb] ;
+
+------------------------------------------------------------------------
+-- group facts in Z
+
+one : Int = pos (suc zero) ;
+cadd {x x' y y' : Int} (p : Id Int x x') (q : Id Int y y') : Id Int (add x y) (add x' y') =
+  Ps.cong2 Int add x x' y y' p q ;
+-- a + x = 0 gives a = -x
+neg-uniq (a x : Int) (h : Id Int (add a x) zeroZ) : Id Int a (neg x) =
+  trans (ZA.solve a x zeroZ h) (zero-l (neg x)) ;
+-- (a + b) + (c + d) = (a + c) + (b + d)
+swap (a b c d : Int) : Id Int (add (add a b) (add c d)) (add (add a c) (add b d)) =
+  calc Int {
+    add (add a b) (add c d)
+      =< assoc a b (add c d) > add a (add b (add c d))
+      =< ap (add a) (sym (assoc b c d)) > add a (add (add b c) d)
+      =< ap (\ t -> add a (add t d)) (comm b c) > add a (add (add c b) d)
+      =< ap (add a) (assoc c b d) > add a (add c (add b d))
+      =< sym (assoc a c (add b d)) > add (add a c) (add b d) } ;
+neg-add (x y : Int) : Id Int (neg (add x y)) (add (neg x) (neg y)) =
+  sym (neg-uniq (add (neg x) (neg y)) (add x y)
+    (trans (swap (neg x) (neg y) x y) (trans (cadd (ZA.invl x) (ZA.invl y)) (zero-l zeroZ)))) ;
+-- (u + x) - x = u
+add-sub (u x : Int) : Id Int (add (add u x) (neg x)) u =
+  trans (assoc u x (neg x)) (ap (add u) (invr x)) ;
+-- -(u + x) + x = -u
+neg-add-cancel (u x : Int) : Id Int (add (neg (add u x)) x) (neg u) =
+  calc Int {
+    add (neg (add u x)) x
+      =< ap (\ t -> add t x) (neg-add u x) > add (add (neg u) (neg x)) x
+      =< assoc (neg u) (neg x) x > add (neg u) (add (neg x) x)
+      =< ap (add (neg u)) (ZA.invl x) > neg u } ;
+
+------------------------------------------------------------------------
+-- multiplication
+
+mulP (x : Int) : Nat -> Int = split { zero -> zeroZ ; suc n | r -> add r x } ;
+mul (x : Int) : Int -> Int = split { pos n -> mulP x n ; negsuc n -> neg (mulP x (suc n)) } ;
+-- by definition of mul at negative numbers
+mul-negsuc (x : Int) (n : Nat) : Id Int (mul x (negsuc n)) (neg (mul x (pos (suc n)))) = refl (mul x (negsuc n)) ;
+
+-- (suc)
+mul-sucNeg (x : Int) : (m : Nat) -> Id Int (mul x (sucNeg m)) (neg (mulP x m)) = split {
+  zero -> refl zeroZ ;
+  suc k -> refl (mul x (negsuc k)) } ;
+mul-suc (x : Int) : (y : Int) -> Id Int (mul x (sucZ y)) (add (mul x y) x) = split {
+  pos n -> refl (mulP x (suc n)) ;
+  negsuc m -> trans (mul-sucNeg x m) (sym (neg-add-cancel (mulP x m) x)) } ;
+-- (pred)
+mul-predPos (x : Int) : (n : Nat) -> Id Int (mul x (predPos n)) (add (mulP x n) (neg x)) = split {
+  zero -> trans (ap neg (zero-l x)) (sym (zero-l (neg x))) ;
+  suc m -> sym (add-sub (mulP x m) x) } ;
+mul-pred (x : Int) : (y : Int) -> Id Int (mul x (predZ y)) (add (mul x y) (neg x)) = split {
+  pos n -> mul-predPos x n ;
+  negsuc n -> neg-add (mulP x (suc n)) x } ;
+
+-- (dist)
+distP (x y : Int) : (n : Nat) -> Id Int (mul x (addP y n)) (add (mul x y) (mulP x n)) = split {
+  zero -> refl (mul x y) ;
+  suc n | r -> calc Int {
+    mul x (sucZ (addP y n))
+      =< mul-suc x (addP y n) > add (mul x (addP y n)) x
+      =< ap (\ t -> add t x) r > add (add (mul x y) (mulP x n)) x
+      =< assoc (mul x y) (mulP x n) x > add (mul x y) (mulP x (suc n)) } } ;
+distN (x y : Int) : (n : Nat) -> Id Int (mul x (addN y n)) (add (mul x y) (neg (mulP x (suc n)))) = split {
+  zero -> trans (mul-pred x y) (ap (\ t -> add (mul x y) (neg t)) (sym (zero-l x))) ;
+  suc n | r -> calc Int {
+    mul x (predZ (addN y n))
+      =< mul-pred x (addN y n) > add (mul x (addN y n)) (neg x)
+      =< ap (\ t -> add t (neg x)) r > add (add (mul x y) (neg (mulP x (suc n)))) (neg x)
+      =< assoc (mul x y) (neg (mulP x (suc n))) (neg x) > add (mul x y) (add (neg (mulP x (suc n))) (neg x))
+      =< ap (add (mul x y)) (sym (neg-add (mulP x (suc n)) x)) > add (mul x y) (neg (mulP x (suc (suc n)))) } } ;
+dist (x y : Int) : (w : Int) -> Id Int (mul x (add y w)) (add (mul x y) (mul x w)) = split {
+  pos n -> distP x y n ;
+  negsuc n -> distN x y n } ;
+
+-- x * (-w) = -(x * w)
+mul-neg-r (x w : Int) : Id Int (mul x (neg w)) (neg (mul x w)) =
+  neg-uniq (mul x (neg w)) (mul x w)
+    (trans (comm (mul x (neg w)) (mul x w)) (trans (sym (dist x w (neg w))) (ap (mul x) (invr w)))) ;
+
+-- (addl)
+mulP-add (x x' : Int) : (n : Nat) -> Id Int (mulP (add x x') n) (add (mulP x n) (mulP x' n)) = split {
+  zero -> refl zeroZ ;
+  suc n | r -> trans (ap (\ t -> add t (add x x')) r) (swap (mulP x n) (mulP x' n) x x') } ;
+mul-addl (x x' : Int) : (y : Int) -> Id Int (mul (add x x') y) (add (mul x y) (mul x' y)) = split {
+  pos n -> mulP-add x x' n ;
+  negsuc n -> trans (ap neg (mulP-add x x' (suc n))) (neg-add (mulP x (suc n)) (mulP x' (suc n))) } ;
+
+-- 1 * y = y, 0 * y = 0, (-x) * y = -(x * y)
+mulP-one : (n : Nat) -> Id Int (mulP one n) (pos n) = split {
+  zero -> refl zeroZ ;
+  suc n | r -> ap sucZ r } ;
+mul-one-l : (y : Int) -> Id Int (mul one y) y = split {
+  pos n -> mulP-one n ;
+  negsuc n -> ap neg (mulP-one (suc n)) } ;
+mulP-zero : (n : Nat) -> Id Int (mulP zeroZ n) zeroZ = split {
+  zero -> refl zeroZ ;
+  suc n | r -> r } ;
+mul-zero-l : (y : Int) -> Id Int (mul zeroZ y) zeroZ = split {
+  pos n -> mulP-zero n ;
+  negsuc n -> ap neg (mulP-zero (suc n)) } ;
+mul-neg-l (x y : Int) : Id Int (mul (neg x) y) (neg (mul x y)) =
+  neg-uniq (mul (neg x) y) (mul x y)
+    (trans (comm (mul (neg x) y) (mul x y)) (trans (sym (mul-addl x (neg x) y)) (trans (ap (\ t -> mul t y) (invr x)) (mul-zero-l y)))) ;
+
+-- (comm)
+-- by definition of add: n + 1 = suc n
+pos-suc-is (n : Nat) : Id Int (add (pos n) one) (pos (suc n)) = refl (pos (suc n)) ;
+-- by definition of neg: -(n+1) = negsuc n
+negsuc-is (n : Nat) : Id Int (neg (pos (suc n))) (negsuc n) = refl (negsuc n) ;
+mul-commP : (n : Nat) (y : Int) -> Id Int (mul (pos n) y) (mul y (pos n)) = split {
+  zero -> \ y -> mul-zero-l y ;
+  suc n | r -> \ y -> calc Int {
+    mul (pos (suc n)) y
+      =< ap (\ t -> mul t y) (sym (pos-suc-is n)) > mul (add (pos n) one) y
+      =< mul-addl (pos n) one y > add (mul (pos n) y) (mul one y)
+      =< cadd (r y) (mul-one-l y) > mul y (pos (suc n)) } } ;
+mulC : (x y : Int) -> Id Int (mul x y) (mul y x) = split {
+  pos n -> mul-commP n ;
+  negsuc n -> \ y -> calc Int {
+    mul (negsuc n) y
+      =< ap (\ t -> mul t y) (sym (negsuc-is n)) > mul (neg (pos (suc n))) y
+      =< mul-neg-l (pos (suc n)) y > neg (mul (pos (suc n)) y)
+      =< ap neg (mul-commP (suc n) y) > neg (mul y (pos (suc n)))
+      =< sym (mul-negsuc y n) > mul y (negsuc n) } } ;
+
+-- (assoc)
+mul-assocP (x y : Int) : (n : Nat) -> Id Int (mul x (mulP y n)) (mulP (mul x y) n) = split {
+  zero -> refl zeroZ ;
+  suc n | r -> trans (dist x (mulP y n) y) (ap (\ t -> add t (mul x y)) r) } ;
+mulA (x y : Int) : (w : Int) -> Id Int (mul x (mul y w)) (mul (mul x y) w) = split {
+  pos n -> mul-assocP x y n ;
+  negsuc n -> trans (mul-neg-r x (mulP y (suc n))) (ap neg (mul-assocP x y (suc n))) } ;
+
+mulO (x : Int) : Id Int (mul x one) x = zero-l x ;
+
+ring : CRing = mkCRing Int zeroZ one add mul neg
+  (\ x y w -> sym (assoc x y w)) comm (\ x -> refl x) invr mulA mulC mulO dist ;
+set : Pr.isSet Int = int-set ;
+
+------------------------------------------------------------------------
+-- the universal property
+
+module Initial (A : CRing) {
+  module LA = RL[A] ;
+  iotaN : Nat -> A.R = split { zero -> A.z ; suc n | r -> A.add r A.o } ;
+  iota : Int -> A.R = split { pos n -> iotaN n ; negsuc n -> A.neg (iotaN (suc n)) } ;
+  -- -(u + 1) + 1 = -u, (u + 1) - 1 = u
+  cancel1 (u : A.R) : Id A.R (A.add (A.neg (A.add u A.o)) A.o) (A.neg u) =
+    calc A.R {
+      A.add (A.neg (A.add u A.o)) A.o
+        =< ap (\ t -> A.add t A.o) (LA.neg-add u A.o) > A.add (A.add (A.neg u) (A.neg A.o)) A.o
+        =< sym (A.addA (A.neg u) (A.neg A.o) A.o) > A.add (A.neg u) (A.add (A.neg A.o) A.o)
+        =< ap (A.add (A.neg u)) (LA.neg-cancel A.o) > A.add (A.neg u) A.z
+        =< A.addZ (A.neg u) > A.neg u } ;
+
+  -- iota (y + 1) = iota y + 1
+  iota-sucNeg : (m : Nat) -> Id A.R (iota (sucNeg m)) (A.neg (iotaN m)) = split {
+    zero -> sym LA.neg-zero ;
+    suc k -> refl (iota (negsuc k)) } ;
+  iota-suc : (y : Int) -> Id A.R (iota (sucZ y)) (A.add (iota y) A.o) = split {
+    pos n -> refl (iotaN (suc n)) ;
+    negsuc m -> trans (iota-sucNeg m) (sym (cancel1 (iotaN m))) } ;
+  -- iota (y - 1) = iota y - 1
+  iota-predPos : (n : Nat) -> Id A.R (iota (predPos n)) (A.add (iotaN n) (A.neg A.o)) = split {
+    zero -> trans (ap A.neg (LA.zl A.o)) (sym (LA.zl (A.neg A.o))) ;
+    suc m -> sym (LA.add-neg-cancel (iotaN m) A.o) } ;
+  iota-pred : (y : Int) -> Id A.R (iota (predZ y)) (A.add (iota y) (A.neg A.o)) = split {
+    pos n -> iota-predPos n ;
+    negsuc n -> LA.neg-add (iotaN (suc n)) A.o } ;
+
+  -- sums
+  iota-addP (x : Int) : (n : Nat) -> Id A.R (iota (addP x n)) (A.add (iota x) (iotaN n)) = split {
+    zero -> sym (A.addZ (iota x)) ;
+    suc n | r -> calc A.R {
+      iota (sucZ (addP x n))
+        =< iota-suc (addP x n) > A.add (iota (addP x n)) A.o
+        =< ap (\ t -> A.add t A.o) r > A.add (A.add (iota x) (iotaN n)) A.o
+        =< sym (A.addA (iota x) (iotaN n) A.o) > A.add (iota x) (iotaN (suc n)) } } ;
+  iota-addN (x : Int) : (n : Nat) -> Id A.R (iota (addN x n)) (A.add (iota x) (A.neg (iotaN (suc n)))) = split {
+    zero -> trans (iota-pred x) (ap (\ t -> A.add (iota x) (A.neg t)) (sym (LA.zl A.o))) ;
+    suc n | r -> calc A.R {
+      iota (predZ (addN x n))
+        =< iota-pred (addN x n) > A.add (iota (addN x n)) (A.neg A.o)
+        =< ap (\ t -> A.add t (A.neg A.o)) r > A.add (A.add (iota x) (A.neg (iotaN (suc n)))) (A.neg A.o)
+        =< sym (A.addA (iota x) (A.neg (iotaN (suc n))) (A.neg A.o)) > A.add (iota x) (A.add (A.neg (iotaN (suc n))) (A.neg A.o))
+        =< ap (A.add (iota x)) (sym (LA.neg-add (iotaN (suc n)) A.o)) > A.add (iota x) (A.neg (iotaN (suc (suc n)))) } } ;
+  iota-add (x : Int) : (y : Int) -> Id A.R (iota (add x y)) (A.add (iota x) (iota y)) = split {
+    pos n -> iota-addP x n ;
+    negsuc n -> iota-addN x n } ;
+  iota-neg (x : Int) : Id A.R (iota (neg x)) (A.neg (iota x)) =
+    LA.neg-uniq (iota x) (iota (neg x)) (trans (sym (iota-add x (neg x))) (ap iota (invr x))) ;
+
+  -- products
+  iota-mulP (x : Int) : (n : Nat) -> Id A.R (iota (mulP x n)) (A.mul (iota x) (iotaN n)) = split {
+    zero -> sym (LA.mul-zero (iota x)) ;
+    suc n | r -> calc A.R {
+      iota (add (mulP x n) x)
+        =< iota-add (mulP x n) x > A.add (iota (mulP x n)) (iota x)
+        =< Ps.cong2 A.R A.add _ _ _ _ r (sym (A.mulO (iota x))) > A.add (A.mul (iota x) (iotaN n)) (A.mul (iota x) A.o)
+        =< sym (A.dist (iota x) (iotaN n) A.o) > A.mul (iota x) (iotaN (suc n)) } } ;
+  iota-mul (x : Int) : (y : Int) -> Id A.R (iota (mul x y)) (A.mul (iota x) (iota y)) = split {
+    pos n -> iota-mulP x n ;
+    negsuc n -> trans (iota-neg (mulP x (suc n)))
+                  (trans (ap A.neg (iota-mulP x (suc n))) (sym (LA.mul-neg (iota x) (iotaN (suc n))))) } ;
+  iota-one : Id A.R (iota one) A.o = LA.zl A.o ;
+
+  hom : H.Hom ring A = (iota, (iota-one, (iota-add, iota-mul))) ;
+
+  -- uniqueness
+  module Unique (f : H.Hom ring A) {
+    onPos : (n : Nat) -> Id A.R (f.1 (pos n)) (iotaN n) = split {
+      zero -> H.zero ring A f ;
+      suc n | r -> calc A.R {
+        f.1 (pos (suc n))
+          =< ap f.1 (sym (pos-suc-is n)) > f.1 (add (pos n) one)
+          =< f.2.2.1 (pos n) one > A.add (f.1 (pos n)) (f.1 one)
+          =< Ps.cong2 A.R A.add _ _ _ _ r f.2.1 > iotaN (suc n) } } ;
+    agree : (x : Int) -> Id A.R (f.1 x) (iota x) = split {
+      pos n -> onPos n ;
+      negsuc n -> trans (ap f.1 (sym (negsuc-is n)))
+                    (trans (H.negation ring A f (pos (suc n))) (ap A.neg (onPos (suc n)))) } ;
+  } ;
+  unique (f : H.Hom ring A) (x : Int) : Id A.R (f.1 x) (iota x) = Unique[f].agree x ;
+} ;

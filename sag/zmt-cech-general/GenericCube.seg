@@ -1,0 +1,96 @@
+-- The augmented finite-subset complex, structurally in the number n of
+-- vertices. The new vertex inr tt is FIRST in the orientation. A subset
+-- is (absent,s) when it excludes that vertex and (present,s) when it includes
+-- it. Thus d(a,b)=(d a,a-d b). This is the alternating face differential.
+-- No dimension-specific sign table is used.
+level l ; open Ring[l] ; 
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+
+data Flag = absent | present ;
+
+Sub : Nat -> U l = split { zero -> Top ; suc n | r -> Flag * r } ;
+empty : (n : Nat) -> Sub n = split { zero -> tt ; suc n | r -> (absent,r) } ;
+full : (n : Nat) -> Sub n = split { zero -> tt ; suc n | r -> (present,r) } ;
+tail (n : Nat) (m : Ps.Fin (suc n) -> ZInt[l].Int) : Ps.Fin n -> ZInt[l].Int = \ i -> m (inl i) ;
+head (n : Nat) (m : Ps.Fin (suc n) -> ZInt[l].Int) : ZInt[l].Int = m (inr tt) ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+ open D ; module L = RL[D] ; module G = IP.ModL[D,IP.regular D] ;
+ module LO = Laurent4[l].Over[D,setD] ;
+ Raw (n : Nat) : U l = Sub n -> R ;
+ zeroR (n : Nat) : Raw n = \ s -> z ;
+ addR (n : Nat) (c c' : Raw n) : Raw n = \ s -> add (c s) (c' s) ;
+ negR (n : Nat) (c : Raw n) : Raw n = \ s -> neg (c s) ;
+ smR (n : Nat) (a : R) (c : Raw n) : Raw n = \ s -> mul a (c s) ;
+ left (n : Nat) (c : Raw (suc n)) : Raw n = \ s -> c (absent,s) ;
+ right (n : Nat) (c : Raw (suc n)) : Raw n = \ s -> c (present,s) ;
+ Eq (n : Nat) (c c' : Raw n) : U l = (s : Sub n) -> Id R (c s) (c' s) ;
+ rawM (n : Nat) : IP.Mod[D] = LO.powM (Sub n) (IP.regular D) ;
+
+ -- One recursive definition is the whole alternating differential.
+ diff : (n : Nat) -> Raw n -> Raw n = split {
+   zero -> \ c s -> z ;
+   suc n | d -> \ c s -> diffS n d c s.1 s.2 }
+ where {
+   diffS (n : Nat) (d : Raw n -> Raw n) (c : Raw (suc n)) : Flag -> Sub n -> R = split {
+     absent -> d (left n c) ;
+     present -> \ s -> G.msub (left n c s) (d (right n c) s) } } ;
+ d-left (n : Nat) (c : Raw (suc n)) (s : Sub n) :
+   Id R (diff (suc n) c (absent,s)) (diff n (left n c) s) = refl (diff n (left n c) s) ;
+ d-right (n : Nat) (c : Raw (suc n)) (s : Sub n) :
+   Id R (diff (suc n) c (present,s)) (G.msub (left n c s) (diff n (right n c) s)) = refl (G.msub (left n c s) (diff n (right n c) s)) ;
+ d-cong : (n : Nat) (c c' : Raw n) -> Eq n c c' -> Eq n (diff n c) (diff n c') = split {
+   zero -> \ c c' e s -> refl z ;
+   suc n | r -> \ c c' e s -> dCongS n r c c' e s.1 s.2 }
+ where {
+   dCongS (n : Nat) (r : (c c' : Raw n) -> Eq n c c' -> Eq n (diff n c) (diff n c'))
+     (c c' : Raw (suc n)) (e : Eq (suc n) c c') : (b : Flag) (s : Sub n) ->
+     Id R (diff (suc n) c (b,s)) (diff (suc n) c' (b,s)) = split {
+       absent -> r (left n c) (left n c') (\ s -> e (absent,s)) ;
+       present -> \ s -> G.G.cong-add (e (absent,s)) (ap neg (r (right n c) (right n c') (\ t -> e (present,t)) s)) } } ;
+
+ -- Addition/scalars commute with d, by the same two structural cases.
+ d-add : (n : Nat) (c c' : Raw n) -> Eq n (diff n (addR n c c')) (addR n (diff n c) (diff n c')) = split {
+   zero -> \ c c' s -> sym (addZ z) ;
+   suc n | r -> \ c c' s -> dAddS n r c c' s.1 s.2 }
+ where {
+   dAddS (n : Nat) (r : (c c' : Raw n) -> Eq n (diff n (addR n c c')) (addR n (diff n c) (diff n c')))
+     (c c' : Raw (suc n)) : (b : Flag) (s : Sub n) ->
+     Id R (diff (suc n) (addR (suc n) c c') (b,s))
+       (add (diff (suc n) c (b,s)) (diff (suc n) c' (b,s))) = split {
+       absent -> r (left n c) (left n c') ;
+       present -> \ s -> trans (ap (G.msub (add (left n c s) (left n c' s))) (r (right n c) (right n c') s))
+         (G.sub-swap (left n c s) (left n c' s) (diff n (right n c) s) (diff n (right n c') s)) } } ;
+ d-sm : (n : Nat) (a : R) (c : Raw n) -> Eq n (diff n (smR n a c)) (smR n a (diff n c)) = split {
+   zero -> \ a c s -> sym (L.mul-zero a) ;
+   suc n | r -> \ a c s -> dSmS n r a c s.1 s.2 }
+ where {
+   dSmS (n : Nat) (r : (a : R) (c : Raw n) -> Eq n (diff n (smR n a c)) (smR n a (diff n c)))
+     (a : R) (c : Raw (suc n)) : (b : Flag) (s : Sub n) ->
+     Id R (diff (suc n) (smR (suc n) a c) (b,s)) (mul a (diff (suc n) c (b,s))) = split {
+       absent -> r a (left n c) ;
+       present -> \ s -> trans (ap (G.msub (mul a (left n c s))) (r a (right n c) s))
+         (sym (G.sm-sub a (left n c s) (diff n (right n c) s))) } } ;
+ ext (n : Nat) (c c' : Raw n) (e : Eq n c c') : Id (Raw n) c c' =
+   Axioms[l].FunExtLemmas[fe @l].funext (Sub n) (\ s -> R) c c' e ;
+ dlin (n : Nat) : IP.Lin[D,rawM n,rawM n] = IP.mkLin D (rawM n) (rawM n) (diff n)
+   (\ c c' -> ext n _ _ (d-add n c c')) (\ a c -> ext n _ _ (d-sm n a c)) ;
+ module DL (n : Nat) { module LL = RelationCertificate[l].LinL[D,rawM n,rawM n,dlin n] ; } ;
+ d-zero (n : Nat) (s : Sub n) : Id R (diff n (zeroR n) s) z = ap (\ c -> c s) DL[n].LL.f-zero ;
+ d-neg (n : Nat) (c : Raw n) (s : Sub n) : Id R (diff n (negR n c) s) (neg (diff n c s)) =
+   ap (\ c -> c s) (DL[n].LL.f-neg c) ;
+ d-sub (n : Nat) (c c' : Raw n) (s : Sub n) :
+   Id R (diff n (\ s -> G.msub (c s) (c' s)) s) (G.msub (diff n c s) (diff n c' s)) =
+   ap (\ c -> c s) (DL[n].LL.f-sub c c') ;
+ -- d^2(a,b)=(d^2 a, da-d(a-db))=(0,0).
+ dd : (n : Nat) (c : Raw n) -> Eq n (diff n (diff n c)) (zeroR n) = split {
+   zero -> \ c s -> refl z ;
+   suc n | r -> \ c s -> ddS n r c s.1 s.2 }
+ where {
+   ddS (n : Nat) (r : (c : Raw n) -> Eq n (diff n (diff n c)) (zeroR n))
+     (c : Raw (suc n)) : (b : Flag) (s : Sub n) -> Id R (diff (suc n) (diff (suc n) c) (b,s)) z = split {
+       absent -> r (left n c) ;
+       present -> \ s -> trans (ap (G.msub (diff n (left n c) s)) (d-sub n (left n c) (diff n (right n c)) s))
+         (trans (ap (\ x -> G.msub (diff n (left n c) s) (G.msub (diff n (left n c) s) x)) (r (right n c) s))
+           (G.sub-sub-self (diff n (left n c) s) z)) } } ;
+} ;

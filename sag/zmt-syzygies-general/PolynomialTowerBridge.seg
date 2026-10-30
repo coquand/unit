@@ -1,0 +1,194 @@
+-- PolynomialTowerBridge: ordinary finite-variable exponents, coefficient
+-- extensionality and term-list representation for the constructed tower.
+-- Exponents are Fin n -> Base.Nat; coefficients are extracted recursively
+-- from the newest polynomial variable. Every equality is transported through
+-- named comparison lemmas, rather than expanding quotient operations.
+level l ; open Ring[l] ; open ZInt[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module E = FiniteExponents[l] ; module BR = PolynomialRing4Bridge[l] ; module FP = FinitePolynomial4[l] ; module WP = WeightedParts4[l] ;
+module LG = Logic[l] ; module PA = PolynomialAction4[l] ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module T = CoefficientPolynomial[l].CoefficientTower[A,setA] ;
+ module AL = RL[A] ; module AD = IdealPowers[l].ModL[A,IdealPowers[l].regular A] ;
+ module Level (n : Nat) {
+  module B = BR.Level[T.D n,T.setD n] ; module X = B.X ; module PC = B.PC ;
+  mono (c : (T.D n).R) : Base.Nat -> (T.D (suc n)).R = split {
+   zero -> X.constant c ; suc e | r -> X.mulQ X.variable r } ;
+  mc0 (c : (T.D n).R) : (k : Base.Nat) ->
+   Id (T.D n).R (PC.coef (mono c zero) (BR.toR k)) (FP.sel (T.D n) c (Id Base.Nat zero k) (nat-dec zero k)) = split {
+   zero -> PC.coef-include (cons c nil) zero ; suc k -> PC.coef-include (cons c nil) (suc (BR.toR k)) } ;
+  ms (c : (T.D n).R) (e k : Base.Nat) : (q : LG.Dec (Id Base.Nat e k)) ->
+   Id (T.D n).R (FP.sel (T.D n) c (Id Base.Nat e k) q)
+    (FP.sel (T.D n) c (Id Base.Nat (suc e) (suc k)) (dec-suc e k q)) = split {
+   yes h -> refl c ; no nh -> refl (T.D n).z } ;
+  mcS (c : (T.D n).R) (e : Base.Nat)
+   (rec : (k : Base.Nat) -> Id (T.D n).R (PC.coef (mono c e) (BR.toR k)) (FP.sel (T.D n) c (Id Base.Nat e k) (nat-dec e k))) :
+   (k : Base.Nat) -> Id (T.D n).R (PC.coef (mono c (suc e)) (BR.toR k)) (FP.sel (T.D n) c (Id Base.Nat (suc e) k) (nat-dec (suc e) k)) = split {
+   zero -> (PC.shift-coef (mono c e)).1 ;
+   suc k -> trans ((PC.shift-coef (mono c e)).2 (BR.toR k)) (trans (rec k) (ms c e k (nat-dec e k))) } ;
+  mono-coef (c : (T.D n).R) : (e k : Base.Nat) ->
+   Id (T.D n).R (PC.coef (mono c e) (BR.toR k)) (FP.sel (T.D n) c (Id Base.Nat e k) (nat-dec e k)) = split {
+   zero -> mc0 c ; suc e | r -> mcS c e r } ;
+ } ;
+ Coeff : (n : Nat) -> (T.D n).R -> E.Exp n -> A.R = split {
+  zero -> \ x m -> x ;
+  suc n | rec -> \ x m -> rec (Level[n].PC.coef x (BR.toR (m (inr tt)))) (E.old n m) } ;
+ ExtGoal (n : Nat) : U l = (x y : (T.D n).R) -> ((m : E.Exp n) -> Id A.R (Coeff n x m) (Coeff n y m)) -> Id (T.D n).R x y ;
+ module ExtStep (n : Nat) (ih : ExtGoal n) (x y : (T.D (suc n)).R)
+  (h : (m : E.Exp (suc n)) -> Id A.R (Coeff (suc n) x m) (Coeff (suc n) y m)) {
+  at (k : Nat) : Id (T.D n).R (Level[n].PC.coef x k) (Level[n].PC.coef y k) =
+   ih _ _ (\ m -> trans (ap (\ j -> Coeff n (Level[n].PC.coef x j) m) (sym (BR.toR-toB k)))
+    (trans (h (E.join n m (BR.toB k))) (ap (\ j -> Coeff n (Level[n].PC.coef y j) m) (BR.toR-toB k)))) ;
+  result : Id (T.D (suc n)).R x y = Level[n].PC.ext x y at ;
+ } ;
+ ext : (n : Nat) -> ExtGoal n = split {
+  zero -> \ x y h -> h (E.zeroE zero) ; suc n | rec -> \ x y h -> ExtStep[n,rec,x,y,h].result } ;
+ ZGoal (n : Nat) : U l = (m : E.Exp n) -> Id A.R (Coeff n (T.D n).z m) A.z ;
+ coeff-zero : (n : Nat) -> ZGoal n = split {
+  zero -> \ m -> refl A.z ;
+  suc n | rec -> \ m -> trans (ap (\ x -> Coeff n x (E.old n m)) (Level[n].PC.coef-zero (BR.toR (m (inr tt))))) (rec (E.old n m)) } ;
+ AGoal (n : Nat) : U l = (x y : (T.D n).R) (m : E.Exp n) ->
+  Id A.R (Coeff n ((T.D n).add x y) m) (A.add (Coeff n x m) (Coeff n y m)) ;
+ coeff-add : (n : Nat) -> AGoal n = split {
+  zero -> \ x y m -> refl (A.add x y) ;
+  suc n | rec -> \ x y m ->
+   trans (ap (\ z -> Coeff n z (E.old n m)) (Level[n].B.at-add x y (pos (m (inr tt)))))
+     (rec _ _ (E.old n m)) } ;
+ Term (n : Nat) : U l = A.R * E.Exp n ;
+ term : (n : Nat) -> Term n -> (T.D n).R = split {
+  zero -> \ p -> p.1 ;
+  suc n | rec -> \ p -> Level[n].mono (rec (p.1,E.old n p.2)) (p.2 (inr tt)) } ;
+ phi (n : Nat) : List (Term n) -> (T.D n).R = split {
+  nil -> (T.D n).z ; cons p ps | rec -> (T.D n).add (term n p) rec } ;
+ cf (n : Nat) : List (Term n) -> E.Exp n -> A.R = split {
+  nil -> \ v -> A.z ; cons p ps | rec -> \ v -> A.add (FP.sel A p.1 (Id (E.Exp n) p.2 v) (E.dec n p.2 v)) (rec v) } ;
+ -- Nested selections on the old and newest coordinates equal the one
+ -- selection by equality of whole exponent vectors.
+ module Select (n : Nat) (u v : E.Exp (suc n)) (c : A.R) {
+  module DS = E.DecideStep[n,E.dec n,u,v] ;
+  inspect (h : Id Base.Nat (u (inr tt)) (v (inr tt))) : (d : LG.Dec (Id (E.Exp n) (E.old n u) (E.old n v))) ->
+   Id A.R (FP.sel A c (Id (E.Exp n) (E.old n u) (E.old n v)) d) (FP.sel A c (Id (E.Exp (suc n)) u v) (DS.inspect h d)) = split {
+   yes q -> refl c ; no nq -> refl A.z } ;
+  res : (d : LG.Dec (Id Base.Nat (u (inr tt)) (v (inr tt)))) ->
+   Id A.R (FP.sel A (FP.sel A c (Id (E.Exp n) (E.old n u) (E.old n v)) (E.dec n (E.old n u) (E.old n v)))
+      (Id Base.Nat (u (inr tt)) (v (inr tt))) d)
+     (FP.sel A c (Id (E.Exp (suc n)) u v) (DS.lower d)) = split {
+   yes h -> inspect h (E.dec n (E.old n u) (E.old n v)) ; no nh -> refl A.z } ;
+ } ;
+ TCGoal (n : Nat) : U l = (p : Term n) (v : E.Exp n) ->
+  Id A.R (Coeff n (term n p) v) (FP.sel A p.1 (Id (E.Exp n) p.2 v) (E.dec n p.2 v)) ;
+ module TermStep (n : Nat) (ih : TCGoal n) (p : Term (suc n)) (v : E.Exp (suc n)) {
+  c : (T.D n).R = term n (p.1,E.old n p.2) ;
+  result : Id A.R (Coeff (suc n) (term (suc n) p) v) (FP.sel A p.1 (Id (E.Exp (suc n)) p.2 v) (E.dec (suc n) p.2 v)) =
+   trans (ap (\ x -> Coeff n x (E.old n v)) (Level[n].mono-coef c (p.2 (inr tt)) (v (inr tt))))
+    (trans (FP.sel-map (T.D n) A (\ x -> Coeff n x (E.old n v)) (coeff-zero n (E.old n v)) c
+      (Id Base.Nat (p.2 (inr tt)) (v (inr tt))) (nat-dec (p.2 (inr tt)) (v (inr tt))))
+     (trans (ap (\ x -> FP.sel A x (Id Base.Nat (p.2 (inr tt)) (v (inr tt))) (nat-dec (p.2 (inr tt)) (v (inr tt)))) (ih (p.1,E.old n p.2) (E.old n v)))
+      (Select[n,p.2,v,p.1].res (nat-dec (p.2 (inr tt)) (v (inr tt)))))) ;
+ } ;
+ term-coeff : (n : Nat) -> TCGoal n = split {
+  zero -> \ p v -> refl p.1 ; suc n | rec -> \ p v -> TermStep[n,rec,p,v].result } ;
+ coeff-phi (n : Nat) : (ps : List (Term n)) (v : E.Exp n) -> Id A.R (Coeff n (phi n ps) v) (cf n ps v) = split {
+  nil -> coeff-zero n ;
+  cons p ps | rec -> \ v -> trans (coeff-add n (term n p) (phi n ps) v) (AD.G.cong-add (term-coeff n p v) (rec v)) } ;
+ phi-eq (n : Nat) (ps qs : List (Term n)) (h : (v : E.Exp n) -> Id A.R (cf n ps v) (cf n qs v)) : Id (T.D n).R (phi n ps) (phi n qs) =
+  ext n _ _ (\ v -> trans (coeff-phi n ps v) (trans (h v) (sym (coeff-phi n qs v)))) ;
+ cf-eq (n : Nat) (ps qs : List (Term n)) (h : Id (T.D n).R (phi n ps) (phi n qs)) (v : E.Exp n) : Id A.R (cf n ps v) (cf n qs v) =
+  trans (sym (coeff-phi n ps v)) (trans (ap (\ x -> Coeff n x v) h) (coeff-phi n qs v)) ;
+ -- Ring elements merely have finite term-list representatives. The proof
+ -- follows Horner recursion using the checked one-variable generator lemma.
+ module Reps (n : Nat) {
+  module R = RL[T.D n] ;
+  Rep (x : (T.D n).R) : U l = (ps : List (Term n)) * Id (T.D n).R (phi n ps) x ;
+  app : List (Term n) -> List (Term n) -> List (Term n) = split {
+   nil -> \ qs -> qs ; cons p ps | rec -> \ qs -> cons p (rec qs) } ;
+  phi-app : (ps qs : List (Term n)) -> Id (T.D n).R (phi n (app ps qs)) ((T.D n).add (phi n ps) (phi n qs)) = split {
+   nil -> \ qs -> sym (R.zl (phi n qs)) ;
+   cons p ps | rec -> \ qs -> trans (ap ((T.D n).add (term n p)) (rec qs)) ((T.D n).addA (term n p) (phi n ps) (phi n qs)) } ;
+  add (x y : (T.D n).R) (px : Rep x) (py : Rep y) : Rep ((T.D n).add x y) =
+   (app px.1 py.1,trans (phi-app px.1 py.1) (IdealPowers[l].ModL[T.D n,IdealPowers[l].regular (T.D n)].G.cong-add px.2 py.2)) ;
+ } ;
+ module RepsStep (n : Nat) {
+  module B = Level[n].B ; module X = B.X ; module O = Reps[n] ; module P = Reps[suc n] ;
+  lift : List (Term n) -> List (Term (suc n)) = split {
+   nil -> nil ; cons p ps | rec -> cons (p.1,E.join n p.2 zero) rec } ;
+  lifted : (ps : List (Term n)) -> Id (T.D (suc n)).R (phi (suc n) (lift ps)) (X.constant (phi n ps)) = split {
+   nil -> sym B.constant-zero ;
+   cons p ps | rec -> trans (ap (X.addQ (X.constant (term n p))) rec) (sym (X.inclusion.2.2.1 (term n p) (phi n ps))) } ;
+  constant (x : (T.D n).R) (px : O.Rep x) : P.Rep (X.constant x) =
+   (lift px.1,trans (lifted px.1) (ap X.constant px.2)) ;
+  bump : List (Term (suc n)) -> List (Term (suc n)) = split {
+   nil -> nil ; cons p ps | rec -> cons (p.1,E.bump n p.2) rec } ;
+  bumped : (ps : List (Term (suc n))) -> Id (T.D (suc n)).R (phi (suc n) (bump ps)) (X.mulQ X.variable (phi (suc n) ps)) = split {
+   nil -> sym (P.R.mul-zero X.variable) ;
+   cons p ps | rec -> trans (ap (X.addQ (X.mulQ X.variable (term (suc n) p))) rec)
+     (sym ((T.D (suc n)).dist X.variable (term (suc n) p) (phi (suc n) ps))) } ;
+  variable (x : (T.D (suc n)).R) (px : P.Rep x) : P.Rep (X.mulQ X.variable x) =
+   (bump px.1,trans (bumped px.1) (ap (X.mulQ X.variable) px.2)) ;
+ } ;
+ RepGoal (n : Nat) : U l = (x : (T.D n).R) -> Tr.Trunc[Reps[n].Rep x].carrier ;
+ module RepresentStep (n : Nat) (ih : RepGoal n) {
+  module P = Reps[suc n] ; module S = RepsStep[n] ;
+  q (x : (T.D (suc n)).R) : U l = Tr.Trunc[P.Rep x].carrier ;
+  qadd (x y : (T.D (suc n)).R) : q x -> q y -> q ((T.D (suc n)).add x y) =
+   TC.map2 (P.Rep x) (P.Rep y) (P.Rep ((T.D (suc n)).add x y)) (P.add x y) ;
+  qc (x : (T.D n).R) : q (S.X.constant x) = TC.map (Reps[n].Rep x) (P.Rep (S.X.constant x)) (S.constant x) (ih x) ;
+  qX (x : (T.D (suc n)).R) : q x -> q (S.X.mulQ S.X.variable x) = TC.map (P.Rep x) (P.Rep (S.X.mulQ S.X.variable x)) (S.variable x) ;
+  result : RepGoal (suc n) = S.B.gen q (\ x -> Tr.Trunc[P.Rep x].proposition)
+   (Tr.Trunc[P.Rep (T.D (suc n)).z].inc (nil,refl (T.D (suc n)).z)) qadd qc qX ;
+ } ;
+ rep : (n : Nat) -> RepGoal n = split {
+  zero -> \ x -> Tr.Trunc[Reps[zero].Rep x].inc (cons (x,E.zeroE zero) nil,A.addZ x) ;
+  suc n | rec -> RepresentStep[n,rec].result } ;
+
+ -- Conversely, every tower element merely has finite coefficient support.
+ module Support (n : Nat) {
+  module LE = PA.Lists[E.Exp n] ;
+  exponents : List (Term n) -> List (E.Exp n) = split {
+   nil -> nil ; cons p ps | rec -> cons p.2 rec } ;
+  cf-support : (ps : List (Term n)) (v : E.Exp n) -> (LE.Mem v (exponents ps) -> Empty) -> Id A.R (cf n ps v) A.z = split {
+   nil -> \ v out -> refl A.z ;
+   cons p ps | rec -> \ v out -> trans (AD.G.cong-add
+     (FP.sel-no A p.1 (Id (E.Exp n) p.2 v) (\ eq -> out (inl eq)) (E.dec n p.2 v)) (rec v (\ h -> out (inr h)))) (A.addZ A.z) } ;
+  Data (x : (T.D n).R) : U l = (us : List (E.Exp n)) * ((v : E.Exp n) -> (LE.Mem v us -> Empty) -> Id A.R (Coeff n x v) A.z) ;
+  from-rep (x : (T.D n).R) (p : Reps[n].Rep x) : Data x =
+   (exponents p.1,\ v out -> trans (ap (\ y -> Coeff n y v) (sym p.2)) (trans (coeff-phi n p.1 v) (cf-support p.1 v out))) ;
+  finite (x : (T.D n).R) : Tr.Trunc[Data x].carrier = TC.map (Reps[n].Rep x) (Data x) (from-rep x) (rep n x) ;
+ } ;
+
+ -- A finitely supported coefficient function is represented by using its
+ -- value once for each exponent in nub support. Ring equality is never
+ -- decided, and repeated support entries do not duplicate coefficients.
+ module Supported (n : Nat) (f : E.Exp n -> A.R) {
+  module LE = PA.Lists[E.Exp n] ; module NE = PA.Nub[E.Exp n,E.dec n] ;
+  tl : List (E.Exp n) -> List (Term n) = split { nil -> nil ; cons u us | rec -> cons (f u,u) rec } ;
+  selsum (x : A.R) (v : E.Exp n) : List (E.Exp n) -> A.R = split {
+   nil -> A.z ; cons u us | rec -> A.add (FP.sel A x (Id (E.Exp n) u v) (E.dec n u v)) rec } ;
+  selected (u v : E.Exp n) : (d : LG.Dec (Id (E.Exp n) u v)) ->
+   Id A.R (FP.sel A (f u) (Id (E.Exp n) u v) d) (FP.sel A (f v) (Id (E.Exp n) u v) d) = split {
+   yes e -> ap f e ; no ne -> refl A.z } ;
+  cf-tl (v : E.Exp n) : (us : List (E.Exp n)) -> Id A.R (cf n (tl us) v) (selsum (f v) v us) = split {
+   nil -> refl A.z ; cons u us | rec -> AD.G.cong-add (selected u v (E.dec n u v)) rec } ;
+  sel-none (x : A.R) (v : E.Exp n) : (us : List (E.Exp n)) -> (LE.Mem v us -> Empty) -> Id A.R (selsum x v us) A.z = split {
+   nil -> \ h -> refl A.z ;
+   cons u us | rec -> \ h -> trans (AD.G.cong-add (FP.sel-no A x (Id (E.Exp n) u v) (\ e -> h (inl e)) (E.dec n u v)) (rec (\ hu -> h (inr hu)))) (A.addZ A.z) } ;
+  sel-single (x : A.R) (v : E.Exp n) : (us : List (E.Exp n)) -> LE.NoDup us -> LE.Mem v us -> Id A.R (selsum x v us) x = split {
+   nil -> \ nd h -> absurd (Id A.R A.z x) h ;
+   cons u us | rec -> \ nd -> split {
+    inl e -> trans (AD.G.cong-add (FP.sel-yes A x (Id (E.Exp n) u v) e (E.dec n u v))
+      (sel-none x v us (\ h -> nd.1 (LE.mem-tr us v u (sym e) h)))) (A.addZ x) ;
+    inr h -> trans (AD.G.cong-add (FP.sel-no A x (Id (E.Exp n) u v) (\ e -> nd.1 (LE.mem-tr us v u (sym e) h)) (E.dec n u v)) (rec nd.2 h)) (AL.zl x) } } ;
+  poly (us : List (E.Exp n)) : List (Term n) = tl (NE.nub us) ;
+  module At (us : List (E.Exp n)) (out : (v : E.Exp n) -> (LE.Mem v us -> Empty) -> Id A.R (f v) A.z) (v : E.Exp n) {
+   decide : (d : LG.Dec (LE.Mem v (NE.nub us))) -> Id A.R (selsum (f v) v (NE.nub us)) (f v) = split {
+    yes h -> sel-single (f v) v (NE.nub us) (NE.nub-nodup us) h ;
+    no nh -> trans (sel-none (f v) v (NE.nub us) (\ h -> Pr.absurd Empty (nh h)))
+      (sym (out v (\ h -> Pr.absurd Empty (nh (NE.nub-mem us v h))))) } ;
+   equation : Id A.R (cf n (poly us) v) (f v) = trans (cf-tl v (NE.nub us)) (decide (NE.dec-mem v (NE.nub us))) ;
+  } ;
+  represent (us : List (E.Exp n)) (out : (v : E.Exp n) -> (LE.Mem v us -> Empty) -> Id A.R (f v) A.z) :
+   (x : (T.D n).R) * ((v : E.Exp n) -> Id A.R (Coeff n x v) (f v)) =
+   (phi n (poly us),\ v -> trans (coeff-phi n (poly us) v) At[us,out,v].equation) ;
+ } ;
+} ;

@@ -1,0 +1,57 @@
+-- Assemble explicit singleton-chart I^p/J errors into actual global
+-- chart cochains. Assemble each J coefficient at its shifted twist, use
+-- the coefficient formula of polynomial action, and preserve the ideal
+-- witness tree through the linear chart-family assembly.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ;
+open PolynomialAction4[l] ; open HomogeneousMatrices4[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module IP = IdealPowers[l] ;
+
+module Over (A : CRing) (setA : Pr.isSet A.R) (t : Nat) (b : Ps.Fin t -> A.R)
+  (s : Nat) (p : Ps.Fin s -> TPoly A.R) (e : Ps.Fin s -> Base.Nat)
+  (hp : (q : Ps.Fin s) -> HomDeg A.R (e q) (p q))
+  (I : U l) (set : I -> Sub4) (n : Nat) (ix : Ps.Fin n -> I)
+  (cover : (i : I) -> (j : Ps.Fin n) * Id I (ix j) i) (k : Int) {
+  module CH = ReesChart4[l].Over[A,setA,t,b,s,p,e,hp] ;
+  module CJ = CH.JC[I,set,k] ;
+  module CS = ChartFamilyAssembly4[l].Over[A,setA,I,set,n,ix,cover,k] ;
+  module PW = ProductIdealWitnesses[l].Assemble[A,setA,I,set,n,ix,cover,k,t,b] ;
+  module SCA = ShiftedCech4[l].Over[A,setA] ;
+  module S0 = SCA.ChartSums[I,BadI I set k] ;
+  module Local (i : I) {
+    module J = CH.JC[Sq,\ j -> set i,k] ;
+    module S = SCA.ChartSums[Sq,BadI Sq (\ j -> set i) k] ;
+  } ;
+  module Shift (q : Ps.Fin s) {
+    module C = ChartFamilyAssembly4[l].Over[A,setA,I,set,n,ix,cover,minus k (e q)] ;
+  } ;
+  module JFamily (x : CS.P.El) (h : (i : I) -> Local[i].J.JW (x i)) {
+    coefficients (q : Ps.Fin s) : (CJ.F.C1 q).M = Shift[q].C.assemble (\ i -> (h i).1 q) ;
+    equation : Id CJ.E.El (CS.assemble x) (CJ.F.A.f coefficients) =
+      CJ.E.eq _ _ (\ i m ->
+        trans (CS.value x i m)
+          (trans (ap (\ y -> Local[i].J.E.val y s0123 m) (h i).2)
+            (trans (Local[i].S.val-sum s (\ q -> (Local[i].J.F.gi q).f ((h i).1 q)) s0123 m)
+              (trans (CH.RSA.sum-cong s
+                (\ q -> CH.PAA.mulP (p q) (Shift[q].C.Local[i].C.val ((h i).1 q) s0123) m)
+                (\ q -> CH.PAA.mulP (p q) (Shift[q].C.CH.val (coefficients q) i) m)
+                (\ q -> CH.PAA.mulP-cong (p q)
+                  (Shift[q].C.Local[i].C.val ((h i).1 q) s0123)
+                  (Shift[q].C.CH.val (coefficients q) i)
+                  (\ m' -> sym (Shift[q].C.value (\ j -> (h j).1 q) i m')) m))
+                (sym (S0.val-sum s (\ q -> (CJ.F.gi q).f (coefficients q)) i m)))))) ;
+    witness : CJ.JW (CS.assemble x) = (coefficients, equation) ;
+  } ;
+  module Assemble (depth : Base.Nat) (x ws : CS.P.El)
+    (wi : (i : I) -> Local[i].J.FC.Wit depth (ws i))
+    (rem : (i : I) -> Local[i].J.JW (Local[i].J.ML.msub (x i) (ws i))) {
+    module LL = RelationCertificate[l].LinL[A,CS.P.mod,CJ.E.mod,CS.linear] ;
+    module PM = IP.ModL[A,CS.P.mod] ;
+    differences : CS.P.El = PM.msub x ws ;
+    module JR = JFamily[differences,rem] ;
+    w : CJ.E.El = CS.assemble ws ;
+    ideal : CJ.FC.Wit depth w = PW.assembledWitness depth ws wi ;
+    remainder : CJ.JW (CJ.ML.msub (CS.assemble x) w) =
+      subst CJ.JW (LL.f-sub x ws) JR.witness ;
+    error : CJ.IJW depth (CS.assemble x) = (w, (ideal, remainder)) ;
+  } ;
+} ;

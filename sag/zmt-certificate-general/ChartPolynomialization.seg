@@ -1,0 +1,83 @@
+-- Polynomialization of an individual chart coefficient function. The
+-- common denominator may come from a larger support list (e.g. all entries
+-- of a finite vector). Inverted coordinates use its negative-part bound;
+-- outside coordinates use the original chart vanishing. No support-list
+-- admissibility or decidability of coefficients is assumed.
+level l ; open Ring[l] ; open ZInt[l] ; open GenericCube[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module L = GenericLaurent[l] ;
+module E = FiniteExponents[l] ; module B = GenericSupport[l] ; module LV = Laurent4[l] ;
+module CD = ChartDenominators[l] ; module X = LaurentExponentBridge[l] ; module PA = PolynomialAction4[l] ;
+module FP = FinitePolynomial4[l] ;
+mapL (S T : U l) (f : S -> T) : List S -> List T = split {
+ nil -> nil ; cons u us | rec -> cons (f u) rec } ;
+module MapMem (S T : U l) (f : S -> T) {
+ module LS = PA.Lists[T] ;
+ step (u : S) (us : List S) (m : S) (rec : L.Mem S m us -> LS.Mem (f m) (mapL S T f us)) :
+  L.Mem S m (cons u us) -> LS.Mem (f m) (mapL S T f (cons u us)) = split {
+  inl e -> inl (ap f e) ; inr h -> inr (rec h) } ;
+ member : (us : List S) (m : S) -> L.Mem S m us -> LS.Mem (f m) (mapL S T f us) = split {
+  nil -> \ m h -> absurd (LS.Mem (f m) nil) h ; cons u us | rec -> \ m -> step u us m (rec m) } ;
+} ;
+asNat (n : Nat) (m : L.Exp n) : E.Exp n = \ i -> FP.posN (m i) ;
+nat-emb (n : Nat) (v : E.Exp n) : Id (E.Exp n) (asNat n (X.At[n].emb v)) v = E.ext n _ _ (\ i -> refl (v i)) ;
+-- The total Laurent degree agrees with the ordinary exponent sum.
+deg-emb : (n : Nat) (v : E.Exp n) -> Id Int (L.total n (X.At[n].emb v)) (pos (E.degree n v)) = split {
+ zero -> \ v -> refl (pos zero) ;
+ suc n | rec -> \ v -> trans (ap (add (pos (v (inr tt)))) (rec (E.old n v)))
+  (trans (ShiftedParts[l].addP-pos (v (inr tt)) (E.degree n (E.old n v)))
+    (ap (\ k -> pos k) (NatArith[l].plus-comm (E.degree n (E.old n v)) (v (inr tt))))) } ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module P = PolynomialTowerBridge[l].Over[A,setA] ;
+ module Clear (n : Nat) (s : Sub n) (support : List (L.Exp n))
+  (f : L.Exp n -> A.R)
+  (supp : (m : L.Exp n) -> (L.Mem (L.Exp n) m support -> Empty) -> Id A.R (f m) A.z)
+  (van : (m : L.Exp n) -> B.bad n (L.mask n m) s -> Id A.R (f m) A.z) {
+  module C = CD.Clear[n,s,support] ;
+  raw (m : L.Exp n) : A.R = f (CD.down n m C.u) ;
+  module At (m : L.Exp n) (i : Ps.Fin n) (neg : LV.Neg (m i)) {
+   q : L.Exp n = CD.down n m C.u ;
+   neg-up : LV.Neg (CD.up n q C.u i) = subst LV.Neg (sym (ap (\ x -> x i) (CD.up-down n m C.u))) neg ;
+   result : (flag : Flag) -> Id Flag (CD.flag n s i) flag -> Id A.R (raw m) A.z = split {
+    absent -> \ e -> van q (CD.bad-at n s q i (subst LV.Neg (sym (C.outside-down m i e)) neg) e) ;
+    present -> \ e -> supp q (\ h -> C.inverted-fit q h i e neg-up) } ;
+  } ;
+  polynomial (m : L.Exp n) (i : Ps.Fin n) (neg : LV.Neg (m i)) : Id A.R (raw m) A.z =
+   At[m,i,neg].result (CD.flag n s i) (refl (CD.flag n s i)) ;
+  natural (v : E.Exp n) : A.R = raw (X.At[n].emb v) ;
+  shifted (m : L.Exp n) : E.Exp n = asNat n (CD.up n m C.u) ;
+  nsupport : List (E.Exp n) = mapL (L.Exp n) (E.Exp n) shifted support ;
+  module MM = MapMem[L.Exp n,E.Exp n,shifted] ; module NS = PA.Lists[E.Exp n] ;
+  support-natural (v : E.Exp n) (out : NS.Mem v nsupport -> Empty) : Id A.R (natural v) A.z =
+   supp (CD.down n (X.At[n].emb v) C.u) (\ h -> out
+    (NS.mem-tr nsupport (shifted (CD.down n (X.At[n].emb v) C.u)) v
+      (trans (ap (asNat n) (CD.up-down n (X.At[n].emb v) C.u)) (nat-emb n v))
+      (MM.member support (CD.down n (X.At[n].emb v) C.u) h))) ;
+  module SR = P.Supported[n,natural] ;
+  representation : (x : (P.T.D n).R) * ((v : E.Exp n) -> Id A.R (P.Coeff n x v) (natural v)) = SR.represent nsupport support-natural ;
+  cleared : (P.T.D n).R = representation.1 ;
+  coefficients (v : E.Exp n) : Id A.R (P.Coeff n cleared v) (f (CD.down n (X.At[n].emb v) C.u)) = representation.2 v ;
+  module Degree (k : Int) (hom : (m : L.Exp n) -> Not (Id Int (L.total n m) k) -> Id A.R (f m) A.z) {
+   degree : Int = addP k (E.degree n C.u) ;
+   module AtDegree (v : E.Exp n) {
+    q : L.Exp n = CD.down n (X.At[n].emb v) C.u ;
+    q-degree : Id Int (L.total n q) (PA.minus (pos (E.degree n v)) (E.degree n C.u)) =
+     trans (X.deg-sub n (X.At[n].emb v) C.u) (ap (\ z -> PA.minus z (E.degree n C.u)) (deg-emb n v)) ;
+    restore (eq : Id Int (L.total n q) k) : Id Int (pos (E.degree n v)) degree =
+     trans (sym (PA.addP-minus-cancel (pos (E.degree n v)) (E.degree n C.u)))
+      (ap (\ z -> addP z (E.degree n C.u)) (trans (sym q-degree) eq)) ;
+    off (ne : Id Int (pos (E.degree n v)) degree -> Base.Empty) : Id A.R (P.Coeff n cleared v) A.z =
+     trans (coefficients v) (hom q (\ eq -> Pr.absurd Empty (ne (restore eq)))) ;
+   } ;
+   module PC = PolynomialCoefficientParts[l].Over[A,setA].At[n,degree] ;
+   homogeneous : PC.L.Hom degree cleared = PC.homogeneous cleared (\ v -> AtDegree[v].off) ;
+  } ;
+  -- Conversely translating a polynomial coefficient function back by this
+  -- denominator preserves the original chart, including every proper
+  -- intermediate intersection, because C.u is zero outside s.
+  inverse-van (z : L.Exp n -> A.R)
+   (pol : (m : L.Exp n) (i : Ps.Fin n) -> LV.Neg (m i) -> Id A.R (z m) A.z)
+   (m : L.Exp n) (bad : B.bad n (L.mask n m) s) : Id A.R (z (CD.up n m C.u)) A.z =
+   pol (CD.up n m C.u) (CD.bad-witness n s m bad).1
+    (subst LV.Neg (sym (C.outside-up m (CD.bad-witness n s m bad).1 (CD.bad-witness n s m bad).2.2)) (CD.bad-witness n s m bad).2.1) ;
+ } ;
+} ;

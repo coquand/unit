@@ -1,0 +1,99 @@
+-- IdealWitnesses.seg: elements of IE with finite witnesses, Gate D
+-- (handoff §6).
+--
+-- R a commutative ring, I : R -> U any predicate (the ideal; no closure
+-- property and no finite generation is used), E an R-algebra.  An element e
+-- of IE comes with a witness (IEWit): finitely many a_1 .. a_u in I and
+-- w_1 .. w_u in E with e = sum_k iota(a_k) w_k.  Membership is the
+-- truncation of witnesses; all constructions below are on explicit
+-- witnesses, used under truncation by the callers.
+--   ie-zero (u = 0), ie-eq, ie-add (concatenation of the two families,
+--   FiniteFamilies.app), ie-mul (c e: the w_k multiplied by c), ie-sum
+--   (finite sums), ie-act (sum_i r_i A_ik with every r_i in IE).
+-- A vector v_1 .. v_n of elements of IE has a common family (VecWit,
+-- vec-of-wits): a_1 .. a_u in I and W_ik with v_i = sum_k iota(a_k) W_ik,
+-- by induction on n, concatenating the families and extending each W_i by
+-- zeros on the other blocks (FiniteFamilies.lin-appL, lin-appR).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module FF = FiniteFamilies[l] ;
+
+record IEWit (R : CRing) (I : R.R -> U l) (E : CRing) (iota : RH.Hom R E) (e : E.R) {
+  u : Nat ;
+  a : Ps.Fin u -> R.R ;
+  ina (k : Ps.Fin u) : I (a k) ;
+  w : Ps.Fin u -> E.R ;
+  eq : Id E.R e (FiniteIdeal[l].Sums[E].lin u (\ k -> iota.1 (a k)) w) ;
+} ;
+
+record VecWit (R : CRing) (I : R.R -> U l) (E : CRing) (iota : RH.Hom R E) (n : Nat) (v : Ps.Fin n -> E.R) {
+  u : Nat ;
+  a : Ps.Fin u -> R.R ;
+  ina (k : Ps.Fin u) : I (a k) ;
+  W : Ps.Fin n -> Ps.Fin u -> E.R ;
+  eq (i : Ps.Fin n) : Id E.R (v i) (FiniteIdeal[l].Sums[E].lin u (\ k -> iota.1 (a k)) (W i)) ;
+} ;
+
+module Over (R : CRing) (I : R.R -> U l) (E : CRing) (iota : RH.Hom R E) {
+  module S = FiniteIdeal[l].Sums[E] ; module FS = FF.Sums[E] ; module L = RL[E] ;
+  Wit (e : E.R) : U l = IEWit[R,I,E,iota,e] ;
+  ia (u : Nat) (a : Ps.Fin u -> R.R) (k : Ps.Fin u) : E.R = iota.1 (a k) ;
+
+  ie-zero : Wit E.z = mkIEWit R I E iota E.z zero (\ k -> absurd R.R k) (\ k -> absurd (I (absurd R.R k)) k) (\ k -> absurd E.R k) (refl E.z) ;
+  ie-eq (e e' : E.R) (p : Id E.R e e') (c : Wit e) : Wit e' = mkIEWit R I E iota e' c.u c.a c.ina c.w (trans (sym p) c.eq) ;
+
+  -- iota (app a a') = app (iota a) (iota a')
+  ia-app (u u' : Nat) (a : Ps.Fin u -> R.R) (a' : Ps.Fin u' -> R.R) (k : Ps.Fin (plus u u')) :
+    Id E.R (iota.1 (FF.app R.R u u' a a' k)) (FF.app E.R u u' (ia u a) (ia u' a') k) =
+    FF.app-zip R.R R.R E.R (\ p q -> iota.1 p) u u' a a' a a' k ;
+  -- sum over the concatenated family, with iota moved inside
+  lin-cat (u u' : Nat) (a : Ps.Fin u -> R.R) (a' : Ps.Fin u' -> R.R) (W : Ps.Fin (plus u u') -> E.R) :
+    Id E.R (S.lin (plus u u') (\ k -> iota.1 (FF.app R.R u u' a a' k)) W) (S.lin (plus u u') (FF.app E.R u u' (ia u a) (ia u' a')) W) =
+    S.sum-cong (plus u u') (\ k -> E.mul (iota.1 (FF.app R.R u u' a a' k)) (W k)) (\ k -> E.mul (FF.app E.R u u' (ia u a) (ia u' a') k) (W k))
+      (\ k -> ap (\ s -> E.mul s (W k)) (ia-app u u' a a' k)) ;
+  ina-app (u u' : Nat) (a : Ps.Fin u -> R.R) (a' : Ps.Fin u' -> R.R) (h : (k : Ps.Fin u) -> I (a k)) (h' : (k : Ps.Fin u') -> I (a' k)) :
+    (k : Ps.Fin (plus u u')) -> I (FF.app R.R u u' a a' k) = FF.app-ind R.R I u u' a a' h h' ;
+
+  ie-add (e e' : E.R) (c : Wit e) (c' : Wit e') : Wit (E.add e e') =
+    mkIEWit R I E iota (E.add e e') (plus c.u c'.u) (FF.app R.R c.u c'.u c.a c'.a) (ina-app c.u c'.u c.a c'.a c.ina c'.ina)
+      (FF.app E.R c.u c'.u c.w c'.w)
+      (sym (trans (lin-cat c.u c'.u c.a c'.a (FF.app E.R c.u c'.u c.w c'.w))
+             (trans (FS.lin-app c.u c'.u (ia c.u c.a) c.w (ia c'.u c'.a) c'.w)
+                    (Ps.cong2 E.R E.add _ _ _ _ (sym c.eq) (sym c'.eq))))) ;
+  -- sum_k iota(a_k) (x w_k) = x sum_k iota(a_k) w_k
+  lin-mul (x : E.R) (u : Nat) (f w : Ps.Fin u -> E.R) : Id E.R (S.lin u f (\ k -> E.mul x (w k))) (E.mul x (S.lin u f w)) =
+    S.lin-scale u f w x ;
+  ie-mul (x e : E.R) (c : Wit e) : Wit (E.mul x e) =
+    mkIEWit R I E iota (E.mul x e) c.u c.a c.ina (\ k -> E.mul x (c.w k))
+      (trans (ap (E.mul x) c.eq) (sym (lin-mul x c.u (ia c.u c.a) c.w))) ;
+  ie-sum : (K : Nat) (f : Ps.Fin K -> E.R) -> ((k : Ps.Fin K) -> Wit (f k)) -> Wit (S.sum K f) = split {
+    zero -> \ f h -> ie-zero ;
+    suc K | r -> \ f h -> ie-add (f (inr tt)) (S.sum K (\ k -> f (inl k))) (h (inr tt)) (r (\ k -> f (inl k)) (\ k -> h (inl k))) } ;
+  -- sum_i r_i A_ik, every r_i in IE
+  ie-act (K : Nat) (r A : Ps.Fin K -> E.R) (h : (i : Ps.Fin K) -> Wit (r i)) : Wit (S.lin K r A) =
+    ie-sum K (\ i -> E.mul (r i) (A i)) (\ i -> ie-eq (E.mul (A i) (r i)) (E.mul (r i) (A i)) (E.mulC (A i) (r i)) (ie-mul (A i) (r i) (h i))) ;
+
+  ------------------------------------------------------------------------
+  -- a common family for a vector
+
+  Vec (n : Nat) (v : Ps.Fin n -> E.R) : U l = VecWit[R,I,E,iota,n,v] ;
+  zeros (u : Nat) (k : Ps.Fin u) : E.R = E.z ;
+  module Snoc (n : Nat) (v : Ps.Fin (suc n) -> E.R) (c : Vec n (\ i -> v (inl i))) (d : Wit (v (inr tt))) {
+    u : Nat = plus c.u d.u ;
+    a : Ps.Fin u -> R.R = FF.app R.R c.u d.u c.a d.a ;
+    W : Ps.Fin (suc n) -> Ps.Fin u -> E.R =
+      Ps.snoc (Ps.Fin n) (Ps.Fin u -> E.R) (\ i -> FF.app E.R c.u d.u (c.W i) (zeros d.u)) (FF.app E.R c.u d.u (zeros c.u) d.w) ;
+    eq-old (i : Ps.Fin n) : Id E.R (v (inl i)) (S.lin u (\ k -> iota.1 (a k)) (W (inl i))) =
+      trans (c.eq i) (sym (trans (lin-cat c.u d.u c.a d.a (W (inl i))) (FS.lin-appL c.u d.u (ia c.u c.a) (c.W i) (ia d.u d.a)))) ;
+    eq-last (t : Top) : Id E.R (v (inr t)) (S.lin u (\ k -> iota.1 (a k)) (W (inr t))) =
+      trans (ap (\ s -> v (inr s)) (sym (FF.top-eta t)))
+        (trans d.eq (sym (trans (lin-cat c.u d.u c.a d.a (W (inr t))) (FS.lin-appR c.u d.u (ia c.u c.a) (ia d.u d.a) d.w)))) ;
+    eq : (i : Ps.Fin (suc n)) -> Id E.R (v i) (S.lin u (\ k -> iota.1 (a k)) (W i)) = split {
+      inl i -> eq-old i ; inr t -> eq-last t } ;
+    vec : Vec (suc n) v = mkVecWit R I E iota (suc n) v u a (ina-app c.u d.u c.a d.a c.ina d.ina) W eq ;
+  } ;
+  vec-of-wits : (n : Nat) (v : Ps.Fin n -> E.R) -> ((i : Ps.Fin n) -> Wit (v i)) -> Vec n v = split {
+    zero -> \ v h -> mkVecWit R I E iota zero v zero (\ k -> absurd R.R k) (\ k -> absurd (I (absurd R.R k)) k)
+                       (\ i k -> absurd E.R k) (\ i -> absurd (Id E.R (v i) (S.lin zero (\ k -> iota.1 (absurd R.R k)) (\ k -> absurd E.R k))) i) ;
+    suc n | r -> \ v h -> Snoc[n,v,r (\ i -> v (inl i)) (\ i -> h (inl i)),h (inr tt)].vec } ;
+} ;

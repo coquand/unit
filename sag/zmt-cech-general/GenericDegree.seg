@@ -1,0 +1,84 @@
+-- The subset-cardinality grading, using integers so that the lowering
+-- operation h has the uniform degree k -> k-1, including k=0.
+-- d has degree +1. The all-negative projection vanishes on supported
+-- cochains in every cardinality other than the full subset's cardinality.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module Z = ZInt[l] ; module IP = IdealPowers[l] ;
+
+card : (n : Nat) -> Sub n -> Z.Int = split {
+ zero -> \ s -> Z.zeroZ ;
+ suc n | r -> \ s -> cardS n r s.1 s.2 }
+where { cardS (n : Nat) (r : Sub n -> Z.Int) : Flag -> Sub n -> Z.Int = split {
+ absent -> r ; present -> \ s -> Z.sucZ (r s) } } ;
+topRank : Nat -> Z.Int = split { zero -> Z.zeroZ ; suc n | r -> Z.sucZ r } ;
+card-full : (n : Nat) -> Id Z.Int (card n (full n)) (topRank n) = split {
+ zero -> refl Z.zeroZ ; suc n | r -> ap Z.sucZ r } ;
+
+module Over (D : CRing) (setD : Prelude[l].isSet D.R) {
+ module C = GenericCube[l].Over[D,setD] ; open C ;
+ module H = GenericContraction[l].Over[D,setD] ;
+ module S = GenericSupport[l].Over[D,setD] ;
+ open D ; module G = IP.ModL[D,IP.regular D] ;
+ Rank (n : Nat) (k : Z.Int) (c : Raw n) : U l = (s : Sub n) -> Not (Id Z.Int (card n s) k) -> Id R (c s) z ;
+ rank-tr (n : Nat) (k k' : Z.Int) (e : Id Z.Int k k') (c : Raw n) (v : Rank n k c) : Rank n k' c =
+   subst (\ u -> Rank n u c) e v ;
+ rank-left (n : Nat) (k : Z.Int) (c : Raw (suc n)) (v : Rank (suc n) k c) : Rank n k (left n c) =
+   \ s e -> v (absent,s) e ;
+ rank-right (n : Nat) (k : Z.Int) (c : Raw (suc n)) (v : Rank (suc n) k c) : Rank n (Z.predZ k) (right n c) =
+   \ s ne -> v (present,s) (\ e -> ne (trans (sym (Z.pred-suc (card n s))) (ap Z.predZ e))) ;
+ -- d raises cardinality by one.
+ d-rank : (n : Nat) (k : Z.Int) (c : Raw n) -> Rank n k c -> Rank n (Z.sucZ k) (diff n c) = split {
+   zero -> \ k c v s ne -> refl z ;
+   suc n | r -> \ k c v s -> dRankS n r k c v s.1 s.2 }
+ where {
+   dRankS (n : Nat) (r : (k : Z.Int) (c : Raw n) -> Rank n k c -> Rank n (Z.sucZ k) (diff n c))
+     (k : Z.Int) (c : Raw (suc n)) (v : Rank (suc n) k c) : (f : Flag) (s : Sub n) ->
+     Not (Id Z.Int (card (suc n) (f,s)) (Z.sucZ k)) -> Id R (diff (suc n) c (f,s)) z = split {
+     absent -> r k (left n c) (rank-left n k c v) ;
+     present -> \ s ne -> S.zero-sub (left n c s) (diff n (right n c) s)
+       (v (absent,s) (\ e -> ne (ap Z.sucZ e)))
+       (rank-tr n (Z.sucZ (Z.predZ k)) k (Z.suc-pred k) (diff n (right n c))
+         (r (Z.predZ k) (right n c) (rank-right n k c v)) s (\ e -> ne (ap Z.sucZ e))) } } ;
+ -- h lowers cardinality by one. Integer degrees eliminate special cases.
+ h-rank : (n : Nat) (mask : Sub n) (k : Z.Int) (c : Raw n) -> Rank n k c -> Rank n (Z.predZ k) (H.hom n mask c) = split {
+   zero -> \ mask k c v s ne -> refl z ;
+   suc n | r -> \ mask k c v s -> hRankS n r mask.1 mask.2 k c v s.1 s.2 }
+ where {
+   hRankS (n : Nat) (r : (mask : Sub n) (k : Z.Int) (c : Raw n) -> Rank n k c -> Rank n (Z.predZ k) (H.hom n mask c)) :
+     (b : Flag) (mask : Sub n) (k : Z.Int) (c : Raw (suc n)) -> Rank (suc n) k c ->
+     (f : Flag) (s : Sub n) -> Not (Id Z.Int (card (suc n) (f,s)) (Z.predZ k)) ->
+     Id R (H.hom (suc n) (b,mask) c (f,s)) z = split {
+     absent -> \ mask k c v -> split {
+       absent -> rank-right n k c v ; present -> \ s ne -> refl z } ;
+     present -> \ mask k c v -> split {
+       absent -> r mask k (left n c) (rank-left n k c v) ;
+       present -> \ s ne -> trans (ap neg (r mask (Z.predZ k) (right n c) (rank-right n k c v) s
+         (\ e -> ne (trans (ap Z.sucZ e) (Z.suc-pred (Z.predZ k)))))) G.G.neg-zero } } } ;
+ p-rank (n : Nat) (mask : Sub n) (k : Z.Int) (c : Raw n) (v : Rank n k c) : Rank n k (H.proj n mask c) =
+   \ s ne -> S.p-zero-at n mask c s (v s ne) ;
+
+ -- pi is zero away from top cardinality, using chart support at every
+ -- proper subset and the cardinality condition at the full subset.
+ module PiZero (n : Nat) (mask : Sub n) (k : Z.Int) (c : Raw n)
+   (v : S.Van n mask c) (rank : Rank n k c) (ne : Not (Id Z.Int (topRank n) k)) {
+   at-full : Id R (H.proj n mask c (full n)) z = S.p-zero-at n mask c (full n)
+     (rank (full n) (\ e -> ne (trans (sym (card-full n)) e))) ;
+   at (s : Sub n) : Plus (Id (Sub n) s (full n)) (GenericSupport[l].missing n s) -> Id R (H.proj n mask c s) z = split {
+     inl e -> subst (\ t -> Id R (H.proj n mask c t) z) (sym e) at-full ;
+     inr b -> S.p-missing n mask c v s b } ;
+   result (s : Sub n) : Id R (H.proj n mask c s) z = at s (GenericSupport[l].full-or-missing n s) ;
+ } ;
+ -- A closed, supported cochain outside top cardinality has a primitive.
+ module Primitive (n : Nat) (mask : Sub n) (k : Z.Int) (c : Raw n)
+   (v : S.Van n mask c) (rank : Rank n k c) (ne : Not (Id Z.Int (topRank n) k))
+   (closed : Eq n (diff n c) (zeroR n)) {
+   primitive : Raw n = H.hom n mask c ;
+   support : S.Van n mask primitive = S.h-van n mask c v ;
+   degree : Rank n (Z.predZ k) primitive = h-rank n mask k c rank ;
+   eq (s : Sub n) : Id R (diff n primitive s) (c s) =
+     trans (sym (addZ (diff n primitive s)))
+       (trans (sym (addZ (add (diff n primitive s) z)))
+         (trans (G.G.cong-add (ap (add (diff n primitive s)) (sym (S.all-h-zero n mask (diff n c) closed s)))
+                   (sym (PiZero[n,mask,k,c,v,rank,ne].result s))) (H.htpy n mask c s))) ;
+ } ;
+} ;

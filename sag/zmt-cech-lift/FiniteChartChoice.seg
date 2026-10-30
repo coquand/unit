@@ -1,0 +1,60 @@
+-- Choice and support union only over finite recursive bitsets. The
+-- outputs remain propositionally truncated. No infinite choice occurs.
+level l ; open Ring[l] ; open GenericCube[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module L = GenericLaurent[l] ; module Ps = Presentations[l] ;
+select (n : Nat) (P : Sub (suc n) -> U l) (a : (s : Sub n) -> P (absent,s))
+ (b : (s : Sub n) -> P (present,s)) : (f : Flag) (s : Sub n) -> P (f,s) = split { absent -> a ; present -> b } ;
+top (P : Top -> U l) (p : P tt) : (t : Top) -> P t = split { tt -> p } ;
+choice : (n : Nat) (P : Sub n -> U l) -> ((s : Sub n) -> Tr.Trunc[P s].carrier) ->
+ Tr.Trunc[(s : Sub n) -> P s].carrier = split {
+ zero -> \ P h -> TC.map (P tt) ((s : Top) -> P s) (top P) (h tt) ;
+ suc n | rec -> \ P h -> TC.map2 ((s : Sub n) -> P (absent,s)) ((s : Sub n) -> P (present,s))
+   ((s : Sub (suc n)) -> P s) (\ a b s -> select n P a b s.1 s.2)
+   (rec (\ s -> P (absent,s)) (\ s -> h (absent,s)))
+   (rec (\ s -> P (present,s)) (\ s -> h (present,s))) } ;
+module Over (D : CRing) (E : U l) {
+ Witness (I : U l) (f : I -> E -> D.R) : U l = (ms : List E) *
+   ((i : I) (m : E) -> Not (L.Mem E m ms) -> Id D.R (f i m) D.z) ;
+ Single (f : E -> D.R) : U l = (ms : List E) * ((m : E) -> Not (L.Mem E m ms) -> Id D.R (f m) D.z) ;
+ sub-union : (n : Nat) (f : Sub n -> E -> D.R) -> ((s : Sub n) -> Single (f s)) -> Witness (Sub n) f = split {
+ zero -> \ f h -> ((h tt).1,\ s -> subTop f h s) ;
+ suc n | rec -> \ f h -> joinSub n f (rec (\ s -> f (absent,s)) (\ s -> h (absent,s)))
+   (rec (\ s -> f (present,s)) (\ s -> h (present,s))) }
+ where {
+   subTop (f : Top -> E -> D.R) (h : (s : Top) -> Single (f s)) : (s : Top) (m : E) ->
+     Not (L.Mem E m (h tt).1) -> Id D.R (f s m) D.z = split { tt -> (h tt).2 } ;
+   joinAt (n : Nat) (f : Sub (suc n) -> E -> D.R)
+     (a : Witness (Sub n) (\ s -> f (absent,s))) (b : Witness (Sub n) (\ s -> f (present,s))) :
+     (q : Flag) (s : Sub n) (m : E) -> Not (L.Mem E m (L.append E a.1 b.1)) -> Id D.R (f (q,s) m) D.z = split {
+       absent -> \ s m nm -> a.2 s m (\ h -> nm (L.mem-left E m a.1 b.1 h)) ;
+       present -> \ s m nm -> b.2 s m (\ h -> nm (L.mem-right E m a.1 b.1 h)) } ;
+   joinSub (n : Nat) (f : Sub (suc n) -> E -> D.R)
+     (a : Witness (Sub n) (\ s -> f (absent,s))) (b : Witness (Sub n) (\ s -> f (present,s))) : Witness (Sub (suc n)) f =
+     (L.append E a.1 b.1,\ s -> joinAt n f a b s.1 s.2) } ;
+ finite-sub (n : Nat) (f : Sub n -> E -> D.R) (h : (s : Sub n) -> Tr.Trunc[Single (f s)].carrier) :
+   Tr.Trunc[Witness (Sub n) f].carrier = TC.map ((s : Sub n) -> Single (f s)) (Witness (Sub n) f)
+     (sub-union n f) (choice n (\ s -> Single (f s)) h) ;
+ fin-union (I : U l) : (a : Nat) (f : Ps.Fin a -> I -> E -> D.R) -> ((i : Ps.Fin a) -> Witness I (f i)) ->
+   Witness (Ps.Fin a * I) (\ p -> f p.1 p.2) = split {
+   zero -> \ f h -> (nil,\ p m nm -> absurd (Id D.R (f p.1 p.2 m) D.z) p.1) ;
+   suc a | rec -> \ f h -> joinFin I a f (rec (\ i -> f (inl i)) (\ i -> h (inl i))) (h (inr tt)) }
+ where {
+   finTop (I : U l) (a : Nat) (f : Ps.Fin (suc a) -> I -> E -> D.R)
+     (b : Witness I (f (inr tt))) : (t : Top) (i : I) (m : E) -> Not (L.Mem E m b.1) -> Id D.R (f (inr t) i m) D.z = split {
+       tt -> b.2 } ;
+   finAt (I : U l) (a : Nat) (f : Ps.Fin (suc a) -> I -> E -> D.R)
+     (u : Witness (Ps.Fin a * I) (\ p -> f (inl p.1) p.2)) (v : Witness I (f (inr tt))) :
+     (j : Ps.Fin (suc a)) (i : I) (m : E) -> Not (L.Mem E m (L.append E u.1 v.1)) -> Id D.R (f j i m) D.z = split {
+       inl j -> \ i m nm -> u.2 (j,i) m (\ h -> nm (L.mem-left E m u.1 v.1 h)) ;
+       inr t -> \ i m nm -> finTop I a f v t i m (\ h -> nm (L.mem-right E m u.1 v.1 h)) } ;
+   joinFin (I : U l) (a : Nat) (f : Ps.Fin (suc a) -> I -> E -> D.R)
+     (u : Witness (Ps.Fin a * I) (\ p -> f (inl p.1) p.2)) (v : Witness I (f (inr tt))) :
+     Witness (Ps.Fin (suc a) * I) (\ p -> f p.1 p.2) =
+       (L.append E u.1 v.1,\ p -> finAt I a f u v p.1 p.2) } ;
+ finite-fin (I : U l) (a : Nat) (f : Ps.Fin a -> I -> E -> D.R)
+   (h : (i : Ps.Fin a) -> Tr.Trunc[Witness I (f i)].carrier) :
+   Tr.Trunc[Witness (Ps.Fin a * I) (\ p -> f p.1 p.2)].carrier =
+   TC.map ((i : Ps.Fin a) -> Witness I (f i)) (Witness (Ps.Fin a * I) (\ p -> f p.1 p.2))
+     (fin-union I a f) (FinCat[l].fchoice a (\ i -> Witness I (f i)) h) ;
+} ;

@@ -1,0 +1,294 @@
+-- WeightedParts4.seg: homogeneous parts of coefficient functions and of
+-- term lists (handoff §6, Gate C, the lemmas).
+--
+-- Degree parts.  part k f (m) = f(m) if deg m = k, 0 otherwise (one
+-- decision on Z).  part k is additive and commutes with finite sums
+-- (part-sum); part k f = f when f is a homogeneous polynomial of degree k
+-- (Hom k f: f vanishes at every m of degree /= k and at every m with a
+-- negative coordinate, the conditions of the polynomial chart; part-id);
+-- part k f is one when f vanishes at the negative exponents (part-van).
+-- If every term c X^u of p goes from degree k to degree k' (k' - size u =
+-- k), then
+--     p (part k f) = part k' (p f)                                (mulP-part)
+-- termwise: deg (m - u) = deg m - size u, so deg (m - u) = k iff
+-- deg m = k' (minus-inj), and c [deg (m - u) = k] f(m - u) =
+-- [deg m = k'] c f(m - u) (sel-iff).  This holds for every integer k,
+-- negative or not.
+--
+-- Shifted-degree parts of a term list.  For a shift dd (the degree d_i of
+-- g_i) and ee, filt dd ee h keeps the terms c X^u of h with dd + size u =
+-- ee, so every term of it satisfies HomShift dd ee (filt-hom).  If every
+-- term of h has dd + size u <= B (BoundT), then for every f
+--     sum_{e = 0..B} (filt dd e h) f = h f                          (decomp)
+-- termwise: sum_{e = 0..B} [dd + size u = e] c f(m - u) = c f(m - u), the
+-- unique e being in the range (range-single).
+--
+-- The range 0..B is Fin (B + 1) (rangeN, in increasing order of the
+-- recursion: the new index is B); a pair (k, e) of Fin p * Fin q is an
+-- index of Fin (mulF q p) (decode), and sums over such indices are double
+-- sums (sum-pair).  Finite bounds of finitely many lists: bnd, sumN.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open ShiftedCech4[l] ;
+open HomogeneousMatrices4[l] ; open FinitePolynomial4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module LG = Logic[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module BR = PolynomialRing4Bridge[l] ;
+
+------------------------------------------------------------------------
+-- selections
+
+sel-add (R : CRing) (x y : R.R) (P : U l) : (d : LG.Dec P) -> Id R.R (sel R (R.add x y) P d) (R.add (sel R x P d) (sel R y P d)) = split {
+  yes p -> refl (R.add x y) ;
+  no n -> sym (R.addZ R.z) } ;
+sel-mul (R : CRing) (c x : R.R) (P : U l) : (d : LG.Dec P) -> Id R.R (sel R (R.mul c x) P d) (R.mul c (sel R x P d)) = split {
+  yes p -> refl (R.mul c x) ;
+  no n -> sym (RL[R].mul-zero c) } ;
+-- equivalent conditions select alike
+sel-iff (R : CRing) (x : R.R) (P P' : U l) (f : P -> P') (g : P' -> P) : (d : LG.Dec P) (d' : LG.Dec P') ->
+  Id R.R (sel R x P d) (sel R x P' d') = split {
+  yes p -> split {
+    yes p' -> refl x ;
+    no n' -> Pr.absurd (Id R.R x R.z) (n' (f p)) } ;
+  no n -> split {
+    yes p' -> Pr.absurd (Id R.R R.z x) (n (g p')) ;
+    no n' -> refl R.z } } ;
+
+------------------------------------------------------------------------
+-- natural numbers: order, finite ranges, finite bounds
+
+isZ : Base.Nat -> U l = split { zero -> Empty ; suc n -> Top } ;
+suc-ne-zero (n : Base.Nat) (e : Id Base.Nat (suc n) zero) : Empty = subst isZ e tt ;
+-- x <= 0 gives x = 0
+le-zero-from (x : Base.Nat) : (a : Base.Nat) -> Id Base.Nat (NA.plus a x) zero -> Id Base.Nat x zero = split {
+  zero -> \ e -> e ;
+  suc a -> \ e -> absurd (Id Base.Nat x zero) (suc-ne-zero (NA.plus a x) e) } ;
+le-zero-eq (x : Base.Nat) (h : NA.Le x zero) : Id Base.Nat x zero = le-zero-from x h.1 h.2 ;
+-- x <= B + 1 and x /= B + 1 give x <= B
+le-pred-from (x B : Base.Nat) (n : LG.Not (Id Base.Nat x (suc B))) : (a : Base.Nat) -> Id Base.Nat (NA.plus a x) (suc B) -> NA.Le x B = split {
+  zero -> \ e -> Pr.absurd (NA.Le x B) (n e) ;
+  suc a -> \ e -> (a, NA.suc-inj e) } ;
+le-pred (x B : Base.Nat) (h : NA.Le x (suc B)) (n : LG.Not (Id Base.Nat x (suc B))) : NA.Le x B = le-pred-from x B n h.1 h.2 ;
+le-suc (x B : Base.Nat) (h : NA.Le x B) : NA.Le x (suc B) = (suc h.1, ap (\ k -> suc k) h.2) ;
+-- B + 1 <= B is false
+not-le-suc : (B : Base.Nat) (a : Base.Nat) -> Id Base.Nat (NA.plus a (suc B)) B -> Empty = split {
+  zero -> \ a e -> suc-ne-zero (NA.plus a zero) (trans (sym (NA.plus-suc a zero)) e) ;
+  suc B | r -> \ a e -> r a (NA.suc-inj (trans (sym (NA.plus-suc a (suc B))) e)) } ;
+
+-- the range 0, .., B as Fin (B + 1)
+rangeStep (B : Base.Nat) (r : Ps.Fin (BR.toR (suc B)) -> Base.Nat) : Ps.Fin (BR.toR (suc (suc B))) -> Base.Nat = split {
+  inl j -> r j ;
+  inr u -> suc B } ;
+rangeN : (B : Base.Nat) -> Ps.Fin (BR.toR (suc B)) -> Base.Nat = split {
+  zero -> \ j -> zero ;
+  suc B | r -> rangeStep B r } ;
+range-le-step (B : Base.Nat) (r : (j : Ps.Fin (BR.toR (suc B))) -> NA.Le (rangeN B j) B) :
+  (j : Ps.Fin (BR.toR (suc (suc B)))) -> NA.Le (rangeN (suc B) j) (suc B) = split {
+  inl j -> le-suc (rangeN B j) B (r j) ;
+  inr u -> NA.le-refl (suc B) } ;
+range-le : (B : Base.Nat) (j : Ps.Fin (BR.toR (suc B))) -> NA.Le (rangeN B j) B = split {
+  zero -> \ j -> NA.le-refl zero ;
+  suc B | r -> range-le-step B r } ;
+
+-- finite bounds
+sumN : (n : Nat) -> (Ps.Fin n -> Base.Nat) -> Base.Nat = split {
+  zero -> \ f -> zero ;
+  suc n | r -> \ f -> NA.plus (f (inr tt)) (r (\ i -> f (inl i))) } ;
+le-sumN-top (n : Nat) (f : Ps.Fin (suc n) -> Base.Nat) : (u : Top) -> NA.Le (f (inr u)) (sumN (suc n) f) = split {
+  tt -> NA.le-sum-l (sumN n (\ i -> f (inl i))) (f (inr tt)) } ;
+le-sumN-step (n : Nat) (r : (f : Ps.Fin n -> Base.Nat) (i : Ps.Fin n) -> NA.Le (f i) (sumN n f)) (f : Ps.Fin (suc n) -> Base.Nat) :
+  (i : Ps.Fin (suc n)) -> NA.Le (f i) (sumN (suc n) f) = split {
+  inl i -> NA.le-trans (f (inl i)) (sumN n (\ i' -> f (inl i'))) (sumN (suc n) f) (r (\ i' -> f (inl i')) i)
+             (NA.le-sum-r (sumN n (\ i' -> f (inl i'))) (f (inr tt))) ;
+  inr u -> le-sumN-top n f u } ;
+le-sumN : (n : Nat) (f : Ps.Fin n -> Base.Nat) (i : Ps.Fin n) -> NA.Le (f i) (sumN n f) = split {
+  zero -> \ f i -> absurd (NA.Le (f i) zero) i ;
+  suc n | r -> le-sumN-step n r } ;
+
+------------------------------------------------------------------------
+-- pairs of indices
+
+addF : Nat -> Nat -> Nat = split { zero -> \ r -> r ; suc q | rec -> \ r -> suc (rec r) } ;
+-- p blocks of q
+mulF (q : Nat) : Nat -> Nat = split { zero -> zero ; suc p | rec -> addF q rec } ;
+joinS (X : U l) (q r : Nat) (G2 : Ps.Fin r -> X) (rec : (Ps.Fin q -> X) -> Ps.Fin (addF q r) -> X) (G1 : Ps.Fin (suc q) -> X) :
+  Ps.Fin (addF (suc q) r) -> X = split {
+  inl i -> rec (\ i' -> G1 (inl i')) i ;
+  inr u -> G1 (inr u) } ;
+-- the first q indices from G1, the others from G2
+joinF (X : U l) (r : Nat) (G2 : Ps.Fin r -> X) : (q : Nat) -> (Ps.Fin q -> X) -> Ps.Fin (addF q r) -> X = split {
+  zero -> \ G1 -> G2 ;
+  suc q | rec -> joinS X q r G2 rec } ;
+-- an index of Fin (mulF q p) is a pair (k, e)
+decode (q : Nat) : (p : Nat) -> Ps.Fin (mulF q p) -> Ps.Fin p * Ps.Fin q = split {
+  zero -> \ j -> absurd (Ps.Fin zero * Ps.Fin q) j ;
+  suc p | rec -> joinF (Ps.Fin (suc p) * Ps.Fin q) (mulF q p) (\ j -> (inl (rec j).1, (rec j).2)) q (\ e -> (inr tt, e)) } ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module SC = ShiftedCech4[l].Over[D,setD] ;
+  module FP = FinitePolynomial4[l].Over[D,setD] ;
+  module DL = IP.ModL[D,IP.regular D] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+  module L = RL[D] ;
+
+  ------------------------------------------------------------------------
+  -- sums over pairs
+
+  sum-join (X : U l) (F : X -> D.R) (r : Nat) (G2 : Ps.Fin r -> X) : (q : Nat) (G1 : Ps.Fin q -> X) ->
+    Id D.R (RS.sum (addF q r) (\ j -> F (joinF X r G2 q G1 j))) (D.add (RS.sum q (\ i -> F (G1 i))) (RS.sum r (\ j -> F (G2 j)))) = split {
+    zero -> \ G1 -> sym (L.zl (RS.sum r (\ j -> F (G2 j)))) ;
+    suc q | rec -> \ G1 -> trans (ap (D.add (F (G1 (inr tt)))) (rec (\ i -> G1 (inl i))))
+                                 (D.addA (F (G1 (inr tt))) (RS.sum q (\ i -> F (G1 (inl i)))) (RS.sum r (\ j -> F (G2 j)))) } ;
+  sum-pair (q : Nat) : (p : Nat) (G : (Ps.Fin p * Ps.Fin q) -> D.R) ->
+    Id D.R (RS.sum (mulF q p) (\ j -> G (decode q p j))) (RS.sum p (\ k -> RS.sum q (\ e -> G (k, e)))) = split {
+    zero -> \ G -> refl D.z ;
+    suc p | rec -> \ G ->
+      trans (sum-join (Ps.Fin (suc p) * Ps.Fin q) G (mulF q p) (\ j -> (inl (decode q p j).1, (decode q p j).2)) q (\ e -> (inr tt, e)))
+            (ap (D.add (RS.sum q (\ e -> G (inr tt, e)))) (rec (\ ke -> G (inl ke.1, ke.2)))) } ;
+
+  -- the action on a finite sum of functions
+  mulP-sum (p : TPoly D.R) (m : E4) : (n : Nat) (F : Ps.Fin n -> E4 -> D.R) ->
+    Id D.R (PA.mulP p (\ m' -> RS.sum n (\ j -> F j m')) m) (RS.sum n (\ j -> PA.mulP p (F j) m)) = split {
+    zero -> \ F -> PA.mulP-zero p m ;
+    suc n | r -> \ F -> trans (PA.mulP-add p (F (inr tt)) (\ m' -> RS.sum n (\ j -> F (inl j) m')) m)
+                              (ap (D.add (PA.mulP p (F (inr tt)) m)) (r (\ j -> F (inl j)))) } ;
+
+  -- sum_{e = 0..B} [x = e] c = c  for x <= B
+  range-top (c : D.R) (x B : Base.Nat) (r : NA.Le x B -> Id D.R (RS.sum (BR.toR (suc B)) (\ j -> sel D c (Id Base.Nat x (rangeN B j)) (nat-dec x (rangeN B j)))) c)
+    (le : NA.Le x (suc B)) : (d : LG.Dec (Id Base.Nat x (suc B))) ->
+    Id D.R (D.add (sel D c (Id Base.Nat x (suc B)) d) (RS.sum (BR.toR (suc B)) (\ j -> sel D c (Id Base.Nat x (rangeN B j)) (nat-dec x (rangeN B j))))) c = split {
+    yes e -> trans (ap (D.add c)
+                 (trans (RS.sum-cong (BR.toR (suc B)) (\ j -> sel D c (Id Base.Nat x (rangeN B j)) (nat-dec x (rangeN B j))) (\ j -> D.z)
+                          (\ j -> sel-no D c (Id Base.Nat x (rangeN B j))
+                                    (\ e' -> not-le-suc B (range-le B j).1
+                                               (trans (ap (NA.plus (range-le B j).1) (trans (sym e) e')) (range-le B j).2))
+                                    (nat-dec x (rangeN B j))))
+                        (RS.sum-zero (BR.toR (suc B)))))
+               (D.addZ c) ;
+    no n -> trans (L.zl (RS.sum (BR.toR (suc B)) (\ j -> sel D c (Id Base.Nat x (rangeN B j)) (nat-dec x (rangeN B j)))))
+                  (r (le-pred x B le n)) } ;
+  range-single (c : D.R) : (B x : Base.Nat) -> NA.Le x B ->
+    Id D.R (RS.sum (BR.toR (suc B)) (\ j -> sel D c (Id Base.Nat x (rangeN B j)) (nat-dec x (rangeN B j)))) c = split {
+    zero -> \ x le -> trans (D.addZ (sel D c (Id Base.Nat x zero) (nat-dec x zero)))
+                            (sel-yes D c (Id Base.Nat x zero) (le-zero-eq x le) (nat-dec x zero)) ;
+    suc B | r -> \ x le -> range-top c x B (r x) le (nat-dec x (suc B)) } ;
+
+  ------------------------------------------------------------------------
+  -- degree parts
+
+  part (k : Int) (f : E4 -> D.R) (m : E4) : D.R = sel D (f m) (Id Int (deg m) k) (int-dec (deg m) k) ;
+  -- f is a homogeneous polynomial of degree k
+  Hom (k : Int) (f : E4 -> D.R) : U l = (m : E4) -> Bad k none m -> Id D.R (f m) D.z ;
+
+  part-cong (k : Int) (f f' : E4 -> D.R) (h : (m : E4) -> Id D.R (f m) (f' m)) (m : E4) : Id D.R (part k f m) (part k f' m) =
+    ap (\ x -> sel D x (Id Int (deg m) k) (int-dec (deg m) k)) (h m) ;
+  part-off (k : Int) (f : E4 -> D.R) (m : E4) (n : Not (Id Int (deg m) k)) : Id D.R (part k f m) D.z =
+    sel-no D (f m) (Id Int (deg m) k) n (int-dec (deg m) k) ;
+  module PartId (k : Int) (f : E4 -> D.R) (h : Hom k f) (m : E4) {
+    res : (d : LG.Dec (Id Int (deg m) k)) -> Id D.R (sel D (f m) (Id Int (deg m) k) d) (f m) = split {
+      yes e -> refl (f m) ;
+      no n -> sym (h m (inl (\ e -> Pr.absurd Empty (n e)))) } ;
+  } ;
+  part-id (k : Int) (f : E4 -> D.R) (h : Hom k f) (m : E4) : Id D.R (part k f m) (f m) = PartId[k,f,h,m].res (int-dec (deg m) k) ;
+  module PartVan (k : Int) (f : E4 -> D.R) (fneg : (m : E4) -> Out none m -> Id D.R (f m) D.z) {
+    res (m : E4) : Bad k none m -> Id D.R (part k f m) D.z = split {
+      inl n -> part-off k f m n ;
+      inr o -> trans (ap (\ x -> sel D x (Id Int (deg m) k) (int-dec (deg m) k)) (fneg m o)) (sel-zero D (Id Int (deg m) k) (int-dec (deg m) k)) } ;
+  } ;
+  part-van (k : Int) (f : E4 -> D.R) (fneg : (m : E4) -> Out none m -> Id D.R (f m) D.z) : Hom k (part k f) = PartVan[k,f,fneg].res ;
+  module PartSum (k : Int) (n : Nat) (F : Ps.Fin n -> E4 -> D.R) (m : E4) {
+    res : (d : LG.Dec (Id Int (deg m) k)) ->
+      Id D.R (sel D (RS.sum n (\ j -> F j m)) (Id Int (deg m) k) d) (RS.sum n (\ j -> sel D (F j m) (Id Int (deg m) k) d)) = split {
+      yes e -> refl (RS.sum n (\ j -> F j m)) ;
+      no n' -> sym (RS.sum-zero n) } ;
+  } ;
+  part-sum (k : Int) (n : Nat) (F : Ps.Fin n -> E4 -> D.R) (m : E4) :
+    Id D.R (part k (\ m' -> RS.sum n (\ j -> F j m')) m) (RS.sum n (\ j -> part k (F j) m)) =
+    PartSum[k,n,F,m].res (int-dec (deg m) k) ;
+  -- the degree-k part of a function of degree k' /= k is 0
+  module PartOther (e e' : Base.Nat) (n : LG.Not (Id Base.Nat e e')) (f : E4 -> D.R) (hf : Hom (pos e') f) (m : E4) {
+    res : (d : LG.Dec (Id Int (deg m) (pos e))) -> Id D.R (sel D (f m) (Id Int (deg m) (pos e)) d) D.z = split {
+      yes q -> hf m (inl (\ q2 -> Pr.absurd Empty (n (ap posN (trans (sym q) q2))))) ;
+      no n2 -> refl D.z } ;
+  } ;
+  -- [e = e'] F_e (m) = part e (F_e') (m), when every F_e' is homogeneous of degree e'
+  module SelPart (F : Base.Nat -> E4 -> D.R) (hF : (e' : Base.Nat) -> Hom (pos e') (F e')) (e e' : Base.Nat) (m : E4) {
+    res : (d : LG.Dec (Id Base.Nat e e')) -> Id D.R (sel D (F e m) (Id Base.Nat e e') d) (part (pos e) (F e') m) = split {
+      yes q -> subst (\ y -> Id D.R (F e m) (part (pos e) (F y) m)) q (sym (part-id (pos e) (F e) (hF e) m)) ;
+      no n -> sym (PartOther[e,e',n,F e',hF e',m].res (int-dec (deg m) (pos e))) } ;
+  } ;
+
+  -- p (part k f) = part k' (p f)  when every term of p goes from degree k to degree k'
+  term-part (k k' : Int) (c : D.R) (u : N4) (f : E4 -> D.R) (m : E4) (hu : Id Int (minus k' (size u)) k) :
+    Id D.R (D.mul c (part k f (subE m u))) (sel D (D.mul c (f (subE m u))) (Id Int (deg m) k') (int-dec (deg m) k')) =
+    trans (sym (sel-mul D c (f (subE m u)) (Id Int (deg (subE m u)) k) (int-dec (deg (subE m u)) k)))
+      (sel-iff D (D.mul c (f (subE m u))) (Id Int (deg (subE m u)) k) (Id Int (deg m) k')
+        (\ e -> minus-inj (deg m) k' (size u) (trans (sym (deg-subE m u)) (trans e (sym hu))))
+        (\ e -> trans (deg-subE m u) (trans (ap (\ x -> minus x (size u)) e) hu))
+        (int-dec (deg (subE m u)) k) (int-dec (deg m) k')) ;
+  mulP-part (k k' : Int) (f : E4 -> D.R) (m : E4) : (p : TPoly D.R) -> SC.Shifts k k' p ->
+    Id D.R (PA.mulP p (part k f) m) (part k' (\ m' -> PA.mulP p f m') m) = split {
+    nil -> \ hp -> sym (sel-zero D (Id Int (deg m) k') (int-dec (deg m) k')) ;
+    cons t p | r -> \ hp -> trans (DL.G.cong-add (term-part k k' t.1 t.2 f m hp.1) (r hp.2))
+      (sym (sel-add D (D.mul t.1 (f (subE m t.2))) (PA.mulP p f m) (Id Int (deg m) k') (int-dec (deg m) k'))) } ;
+
+  ------------------------------------------------------------------------
+  -- shifted-degree parts of a term list
+
+  -- the terms with dd + size u = ee
+  keep (dd ee : Base.Nat) (t : D.R * N4) (r : TPoly D.R) : LG.Dec (Id Base.Nat (NA.plus dd (size t.2)) ee) -> TPoly D.R = split {
+    yes e -> cons t r ;
+    no n -> r } ;
+  filt (dd ee : Base.Nat) : TPoly D.R -> TPoly D.R = split {
+    nil -> nil ;
+    cons t p | r -> keep dd ee t r (nat-dec (NA.plus dd (size t.2)) ee) } ;
+  keep-hom (dd ee : Base.Nat) (t : D.R * N4) (r : TPoly D.R) (hr : HomShift D.R dd ee r) :
+    (d : LG.Dec (Id Base.Nat (NA.plus dd (size t.2)) ee)) -> HomShift D.R dd ee (keep dd ee t r d) = split {
+    yes e -> (e, hr) ;
+    no n -> hr } ;
+  -- every term of filt dd ee h has dd + size u = ee
+  filt-hom (dd ee : Base.Nat) : (h : TPoly D.R) -> HomShift D.R dd ee (filt dd ee h) = split {
+    nil -> tt ;
+    cons t p | r -> keep-hom dd ee t (filt dd ee p) r (nat-dec (NA.plus dd (size t.2)) ee) } ;
+  mulP-keep (dd ee : Base.Nat) (f : E4 -> D.R) (m : E4) (t : D.R * N4) (r : TPoly D.R) :
+    (d : LG.Dec (Id Base.Nat (NA.plus dd (size t.2)) ee)) ->
+    Id D.R (PA.mulP (keep dd ee t r d) f m)
+           (D.add (sel D (D.mul t.1 (f (subE m t.2))) (Id Base.Nat (NA.plus dd (size t.2)) ee) d) (PA.mulP r f m)) = split {
+    yes e -> refl (PA.mulP (cons t r) f m) ;
+    no n -> sym (L.zl (PA.mulP r f m)) } ;
+
+  -- every term has dd + size u <= B
+  BoundT (dd B : Base.Nat) : TPoly D.R -> U l = split {
+    nil -> Top ;
+    cons t p | r -> NA.Le (NA.plus dd (size t.2)) B * r } ;
+  bnd (dd : Base.Nat) : TPoly D.R -> Base.Nat = split {
+    nil -> zero ;
+    cons t p | r -> NA.plus (NA.plus dd (size t.2)) r } ;
+  bound-of (dd B : Base.Nat) : (h : TPoly D.R) -> NA.Le (bnd dd h) B -> BoundT dd B h = split {
+    nil -> \ le -> tt ;
+    cons t p | r -> \ le ->
+      (NA.le-trans (NA.plus dd (size t.2)) (bnd dd (cons t p)) B (NA.le-sum-l (bnd dd p) (NA.plus dd (size t.2))) le,
+       r (NA.le-trans (bnd dd p) (bnd dd (cons t p)) B (NA.le-sum-r (bnd dd p) (NA.plus dd (size t.2))) le)) } ;
+
+  -- (b): h f = sum_{e = 0..B} (filt dd e h) f
+  decomp (dd B : Base.Nat) (f : E4 -> D.R) (m : E4) : (h : TPoly D.R) -> BoundT dd B h ->
+    Id D.R (RS.sum (BR.toR (suc B)) (\ j -> PA.mulP (filt dd (rangeN B j) h) f m)) (PA.mulP h f m) = split {
+    nil -> \ hb -> RS.sum-zero (BR.toR (suc B)) ;
+    cons t p | r -> \ hb -> calc D.R {
+      RS.sum (BR.toR (suc B)) (\ j -> PA.mulP (filt dd (rangeN B j) (cons t p)) f m)
+        =< RS.sum-cong (BR.toR (suc B)) (\ j -> PA.mulP (filt dd (rangeN B j) (cons t p)) f m)
+             (\ j -> D.add (sel D (D.mul t.1 (f (subE m t.2))) (Id Base.Nat (NA.plus dd (size t.2)) (rangeN B j))
+                              (nat-dec (NA.plus dd (size t.2)) (rangeN B j)))
+                           (PA.mulP (filt dd (rangeN B j) p) f m))
+             (\ j -> mulP-keep dd (rangeN B j) f m t (filt dd (rangeN B j) p) (nat-dec (NA.plus dd (size t.2)) (rangeN B j)))
+        > RS.sum (BR.toR (suc B)) (\ j -> D.add (sel D (D.mul t.1 (f (subE m t.2))) (Id Base.Nat (NA.plus dd (size t.2)) (rangeN B j))
+                                                   (nat-dec (NA.plus dd (size t.2)) (rangeN B j)))
+                                                (PA.mulP (filt dd (rangeN B j) p) f m))
+        =< RS.sum-add (BR.toR (suc B))
+             (\ j -> sel D (D.mul t.1 (f (subE m t.2))) (Id Base.Nat (NA.plus dd (size t.2)) (rangeN B j)) (nat-dec (NA.plus dd (size t.2)) (rangeN B j)))
+             (\ j -> PA.mulP (filt dd (rangeN B j) p) f m)
+        > D.add (RS.sum (BR.toR (suc B)) (\ j -> sel D (D.mul t.1 (f (subE m t.2))) (Id Base.Nat (NA.plus dd (size t.2)) (rangeN B j))
+                                                    (nat-dec (NA.plus dd (size t.2)) (rangeN B j))))
+                (RS.sum (BR.toR (suc B)) (\ j -> PA.mulP (filt dd (rangeN B j) p) f m))
+        =< DL.G.cong-add (range-single (D.mul t.1 (f (subE m t.2))) B (NA.plus dd (size t.2)) hb.1) (r hb.2)
+        > PA.mulP (cons t p) f m } } ;
+} ;

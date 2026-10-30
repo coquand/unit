@@ -1,0 +1,71 @@
+-- A polynomial of degree < d is the sum of its terms:
+--   Bounded d x  ->  x = sum_(i<d) coef(x,i) X^i      (in A[X])
+-- and the coefficients of X^e are the Kronecker delta kd e.
+-- Informal proof, by induction on d.  d = 0: all coefficients vanish.
+-- d + 1: with a = coef(x,d), x' = x - a X^d has coef(x',i) = coef(x,i)
+-- for i < d and is bounded by d (coef(x',d) = a - a, and above d both
+-- vanish); so x = a X^d + x' = a X^d + sum_(i<d) coef(x,i) X^i.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ open A ;
+ module LA = RL[A] ;
+ module CP = CharPoly[l].Over[A,setA] ;
+ module RX = CP.B ;
+ module LX = RL[RX.ring] ;
+ module PSX = PowerSums[l].Over[RX.ring,RX.variable] ;
+ pwX (e : Nat) : RX.Carrier = PSX.AP.power RX.variable e ;
+ Px (d : Nat) (c : Nat -> R) : RX.Carrier = PSX.psum d (\ i -> RX.inclusion.1 (c i)) ;
+ -- Kronecker delta
+ kd : Nat -> Nat -> R = split {
+  zero -> split { zero -> o ; suc k -> z } ;
+  suc e | r -> split { zero -> z ; suc k -> r k } } ;
+ coef-power : (e k : Nat) -> Id R (CP.coef (pwX e) k) (kd e k) = split {
+  zero -> split { zero -> CP.coef-const0 o ; suc k -> CP.coef-constS o k } ;
+  suc e | r -> split {
+   zero -> CP.coef-variable (pwX e) zero ;
+   suc k -> trans (CP.coef-variable (pwX e) (suc k)) (r k) } } ;
+ kd-below : (e i : Nat) -> LoopStep[l].Le (suc i) e -> Id R (kd e i) z = split {
+  zero -> \ i h -> efq h ;
+  suc e | r -> split { zero -> \ h -> refl z ; suc i -> \ h -> r i h } } ;
+ kd-diag : (e : Nat) -> Id R (kd e e) o = split { zero -> refl o ; suc e | r -> r } ;
+ kd-above : (e i : Nat) -> Id R (kd e (plus e (suc i))) z = split {
+  zero -> \ i -> refl z ; suc e | r -> \ i -> r i } ;
+ -- psum depends only on the coefficients below e
+ psum-below : (e : Nat) (c c' : Nat -> RX.Carrier) -> ((i : Nat) -> LoopStep[l].Le (suc i) e -> Id RX.Carrier (c i) (c' i)) ->
+  Id RX.Carrier (PSX.psum e c) (PSX.psum e c') = split {
+  zero -> \ c c' h -> refl RX.zeroQ ;
+  suc e | r -> \ c c' h ->
+   Ps.cong2 RX.Carrier RX.ring.add _ _ _ _ (ap (\ v -> RX.ring.mul v (pwX e)) (h e (LoopStep[l].le-refl e)))
+    (r c c' (\ i hi -> h i (LoopStep[l].le-step (suc i) e hi))) } ;
+
+ module Step (d : Nat) (x : RX.Carrier) (h : CP.Bounded (suc d) x) {
+  a : R = CP.coef x d ;
+  term : RX.Carrier = RX.ring.mul (RX.inclusion.1 a) (pwX d) ;
+  x' : RX.Carrier = RX.ring.add x (RX.ring.neg term) ;
+  coef-x' (k : Nat) : Id R (CP.coef x' k) (add (CP.coef x k) (neg (mul a (kd d k)))) =
+   trans (CP.coef-add x (RX.ring.neg term) k)
+    (ap (add (CP.coef x k)) (trans (CP.coef-neg term k) (ap neg (trans (CP.coef-scale a (pwX d) k) (ap (mul a) (coef-power d k)))))) ;
+  bounded : CP.Bounded d x' = split {
+   zero -> trans (ap (CP.coef x') (plus-zero d))
+            (trans (coef-x' d) (trans (ap (\ t -> add a (neg t)) (trans (ap (mul a) (kd-diag d)) (mulO a))) (addN a))) ;
+   suc j -> trans (coef-x' (plus d (suc j)))
+             (trans (Ps.cong2 R add _ _ _ _ (trans (ap (CP.coef x) (plus-suc d j)) (h j))
+                      (trans (ap (\ t -> neg (mul a t)) (kd-above d j)) (trans (ap neg (LA.mul-zero a)) LA.neg-zero)))
+              (addZ z)) } ;
+  same-below (i : Nat) (hi : LoopStep[l].Le (suc i) d) : Id RX.Carrier (RX.inclusion.1 (CP.coef x' i)) (RX.inclusion.1 (CP.coef x i)) =
+   ap RX.inclusion.1 (trans (coef-x' i)
+    (trans (ap (\ t -> add (CP.coef x i) (neg (mul a t))) (kd-below d i hi)) (trans (ap (\ t -> add (CP.coef x i) (neg t)) (LA.mul-zero a))
+     (trans (ap (add (CP.coef x i)) LA.neg-zero) (addZ (CP.coef x i)))))) ;
+  -- x = a X^d + x'
+  split-x : Id RX.Carrier x (RX.ring.add term x') =
+   sym (trans (LX.add-swap term x (RX.ring.neg term)) (trans (ap (RX.ring.add x) (RX.ring.addN term)) (RX.ring.addZ x))) ;
+ } ;
+ expand : (d : Nat) (x : RX.Carrier) -> CP.Bounded d x -> Id RX.Carrier x (Px d (CP.coef x)) = split {
+  zero -> \ x h -> CP.coef-ext x RX.zeroQ (\ k -> trans (h k) (sym (CP.coef-zero k))) ;
+  suc d | r -> \ x h ->
+   trans (Step[d,x,h].split-x)
+    (ap (RX.ring.add Step[d,x,h].term)
+      (trans (r Step[d,x,h].x' Step[d,x,h].bounded)
+        (psum-below d (\ i -> RX.inclusion.1 (CP.coef Step[d,x,h].x' i)) (\ i -> RX.inclusion.1 (CP.coef x i)) Step[d,x,h].same-below))) } ;
+} ;

@@ -1,0 +1,246 @@
+-- FinitePolynomial4.seg: the coefficient function of a term-list
+-- polynomial, and finitely supported coefficient functions as term lists
+-- (handoff §4, Gate A, the part that does not mention the ring S).
+--
+-- The unit 1 = X^0 is the coefficient function delta0 (1 at 0, 0 elsewhere).
+-- The coefficient function of p is the action of p on it:
+--     cf p = p 1,   cf p (m) = sum_{c X^u in p} c delta0(m - u)       (cf)
+-- so cf (p q) = p (cf q) (PolynomialAction4.mulP-pmul), cf of a finite sum
+-- is the finite sum (mulP-psum), and cf p vanishes at every exponent with a
+-- negative coordinate (cf-neg: m - u keeps it, u >= 0) and outside the list
+-- of the exponents of p (cf-supp).  If every term of p goes from degree 0 to
+-- degree k (Shifts 0 k p), cf p vanishes at every m of degree /= k
+-- (cf-van); so cf p is an element of the polynomial chart module of degree
+-- k (polEl).
+--
+-- Coefficients.  coef p v = cf p (v) for v in N^4 (coef-cf): the term c X^u
+-- contributes [u = v] c on the left and c delta0(v - u) on the right, and
+-- v - u = 0 iff u = v (sub-self, sub-zero-eq).  Hence
+--     every coefficient of p is 0  iff  cf p = 0      (cz-of-cf, cf-of-cz).
+--
+-- Representation (cf-rep).  Let f : Z^4 -> D vanish outside a finite list s
+-- (repetitions allowed) and at every exponent with a negative coordinate.
+-- Let L = nub s (no repetitions; only equality of exponents is decided).
+-- For each m in L with no negative coordinate (classify), m = u for u in
+-- N^4, and p contains the term f(m) X^u; the other members contribute
+-- nothing.  Then cf p (m') = sum_{m in L} [m = m'] f(m') (Contrib: when m
+-- has a negative coordinate and m = m', f(m') = 0), which is f(m') when m'
+-- is in L (each member occurs once, sel-single) and 0 = f(m') otherwise
+-- (m' is then outside s, sel-none).  So cf p = f.  No coefficient of D is
+-- ever tested.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open ShiftedCech4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module LG = Logic[l] ; module Ps = Presentations[l] ;
+
+-- x when P holds, 0 otherwise (TopCoordinates4.monoD, in any ring)
+sel (R : CRing) (x : R.R) (P : U l) : LG.Dec P -> R.R = split { yes p -> x ; no n -> R.z } ;
+sel-zero (R : CRing) (P : U l) : (d : LG.Dec P) -> Id R.R (sel R R.z P d) R.z = split {
+  yes p -> refl R.z ;
+  no n -> refl R.z } ;
+sel-yes (R : CRing) (x : R.R) (P : U l) (p : P) : (d : LG.Dec P) -> Id R.R (sel R x P d) x = split {
+  yes q -> refl x ;
+  no n -> Pr.absurd (Id R.R R.z x) (n p) } ;
+sel-no (R : CRing) (x : R.R) (P : U l) (n : P -> Empty) : (d : LG.Dec P) -> Id R.R (sel R x P d) R.z = split {
+  yes p -> absurd (Id R.R x R.z) (n p) ;
+  no n' -> refl R.z } ;
+-- a map preserving 0 commutes with the selection
+sel-map (R R' : CRing) (f : R.R -> R'.R) (fz : Id R'.R (f R.z) R'.z) (x : R.R) (P : U l) :
+  (d : LG.Dec P) -> Id R'.R (f (sel R x P d)) (sel R' (f x) P d) = split {
+  yes p -> refl (f x) ;
+  no n -> fz } ;
+
+------------------------------------------------------------------------
+-- exponents in N^4 as exponents in Z^4
+
+zeroE : E4 = ex zeroZ zeroZ zeroZ zeroZ ;
+emb : N4 -> E4 = split { nx a b c d -> ex (pos a) (pos b) (pos c) (pos d) } ;
+posN : Int -> Base.Nat = split { pos n -> n ; negsuc n -> zero } ;
+emb-inj : (u v : N4) -> Id E4 (emb u) (emb v) -> Id N4 u v = split {
+  nx a b c d -> split { nx a' b' c' d' -> \ e ->
+    nx-eq a b c d a' b' c' d' (ap (\ m -> posN (e0 m)) e) (ap (\ m -> posN (e1 m)) e)
+      (ap (\ m -> posN (e2 m)) e) (ap (\ m -> posN (e3 m)) e) } } ;
+-- n - n = 0
+minus-self (n : Base.Nat) : Id Int (minus (pos n) n) zeroZ =
+  trans (ap (\ x -> minus x n) (sym (zero-lP n))) (minus-addP zeroZ n) ;
+sub-self : (v : N4) -> Id E4 (subE (emb v) v) zeroE = split {
+  nx a b c d -> ex-eq _ _ _ _ _ _ _ _ (minus-self a) (minus-self b) (minus-self c) (minus-self d) } ;
+-- 0 + u = u
+add-zeroE : (u : N4) -> Id E4 (addE zeroE u) (emb u) = split {
+  nx a b c d -> ex-eq _ _ _ _ _ _ _ _ (zero-lP a) (zero-lP b) (zero-lP c) (zero-lP d) } ;
+-- m - u = 0 gives m = u
+sub-zero-emb (m : E4) (u : N4) (e : Id E4 (subE m u) zeroE) : Id E4 m (emb u) =
+  trans (sym (addE-subE m u)) (trans (ap (\ x -> addE x u) e) (add-zeroE u)) ;
+sub-zero-eq (v u : N4) (e : Id E4 (subE (emb v) u) zeroE) : Id N4 u v = sym (emb-inj v u (sub-zero-emb (emb v) u e)) ;
+
+-- 0 has no negative coordinate
+zero-not-out : Out none zeroE -> Empty = split {
+  o0 h -> h ; o1 h -> h ; o2 h -> h ; o3 h -> h } ;
+
+-- an exponent of Z^4 is in N^4 or has a negative coordinate
+sign : (x : Int) -> Plus ((n : Base.Nat) * Id Int (pos n) x) (Neg x) = split {
+  pos n -> inl (n, refl (pos n)) ;
+  negsuc n -> inr tt } ;
+cls (a b c d : Int) : Plus ((n : Base.Nat) * Id Int (pos n) a) (Neg a) -> Plus ((n : Base.Nat) * Id Int (pos n) b) (Neg b) ->
+  Plus ((n : Base.Nat) * Id Int (pos n) c) (Neg c) -> Plus ((n : Base.Nat) * Id Int (pos n) d) (Neg d) ->
+  Plus ((u : N4) * Id E4 (emb u) (ex a b c d)) (Out none (ex a b c d)) = split {
+  inl ka -> split {
+    inl kb -> split {
+      inl kc -> split {
+        inl kd -> inl (nx ka.1 kb.1 kc.1 kd.1, ex-eq _ _ _ _ _ _ _ _ ka.2 kb.2 kc.2 kd.2) ;
+        inr h -> inr (o3 h) } ;
+      inr h -> \ sd -> inr (o2 h) } ;
+    inr h -> \ sc sd -> inr (o1 h) } ;
+  inr h -> \ sb sc sd -> inr (o0 h) } ;
+classify : (m : E4) -> Plus ((u : N4) * Id E4 (emb u) m) (Out none m) = split {
+  ex a b c d -> cls a b c d (sign a) (sign b) (sign c) (sign d) } ;
+
+-- lists of exponents of Z^4, and the list without repetitions
+module LE = Lists[E4] ;
+module NE = Nub[E4,dec-e4] ;
+mem-lists (m : E4) : (s : List E4) -> Mem m s -> LE.Mem m s = split {
+  nil -> \ h -> h ;
+  cons x xs | r -> split { inl e -> inl e ; inr h -> inr (r h) } } ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module SC = ShiftedCech4[l].Over[D,setD] ;
+  module TP = TopCoordinates4[l].Over[D,setD] ;
+  module DL = IP.ModL[D,IP.regular D] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+  module L = RL[D] ;
+
+  -- 1 = X^0
+  delta0 (m : E4) : D.R = sel D D.o (Id E4 m zeroE) (dec-e4 m zeroE) ;
+  delta0-away (m : E4) (n : Not (Id E4 m zeroE)) : Id D.R (delta0 m) D.z = sel-no D D.o (Id E4 m zeroE) n (dec-e4 m zeroE) ;
+  -- delta0 is a homogeneous polynomial of degree 0
+  delta0-van (m : E4) : Bad zeroZ none m -> Id D.R (delta0 m) D.z = split {
+    inl n -> delta0-away m (\ e -> n (ap deg e)) ;
+    inr o -> delta0-away m (\ e -> zero-not-out (subst (Out none) e o)) } ;
+
+  -- the coefficient function of p
+  cf (p : TPoly D.R) (m : E4) : D.R = PA.mulP p delta0 m ;
+
+  -- by the laws of the action
+  cf-pmul (p q : TPoly D.R) (m : E4) : Id D.R (cf (PA.pmul p q) m) (PA.mulP p (cf q) m) = PA.mulP-pmul p q delta0 m ;
+  cf-psum (n : Nat) (f : Ps.Fin n -> TPoly D.R) (m : E4) : Id D.R (cf (PA.psum n f) m) (RS.sum n (\ i -> cf (f i) m)) =
+    PA.mulP-psum n f delta0 m ;
+  cf-app (p q : TPoly D.R) (m : E4) : Id D.R (cf (Bar[l].app p q) m) (D.add (cf p m) (cf q m)) = PA.mulP-app p q delta0 m ;
+
+  -- cf p vanishes at the exponents with a negative coordinate
+  cf-neg (m : E4) (o : Out none m) : (p : TPoly D.R) -> Id D.R (cf p m) D.z = split {
+    nil -> refl D.z ;
+    cons t p | r -> trans (DL.G.cong-add
+        (trans (ap (D.mul t.1) (delta0-away (subE m t.2) (\ e -> zero-not-out (subst (Out none) e (out-subE none m t.2 o)))))
+               (L.mul-zero t.1)) r)
+      (D.addZ D.z) } ;
+  -- and outside the list of the exponents of p
+  cf-supp (p : TPoly D.R) (m : E4) (nm : Not (Mem m (SC.suppL (cons zeroE nil) p))) : Id D.R (cf p m) D.z =
+    SC.vanish-mulP (cons zeroE nil) delta0 (\ m' nm' -> delta0-away m' (\ e -> nm' (inl (sym e)))) p m nm ;
+  -- a polynomial whose terms go from degree 0 to degree k is homogeneous of degree k
+  cf-van (k : Int) (p : TPoly D.R) (hp : SC.Shifts zeroZ k p) (m : E4) (b : Bad k none m) : Id D.R (cf p m) D.z =
+    SC.van-mulP zeroZ k none delta0 delta0-van p hp m b ;
+  -- cf p in the polynomial chart module of degree k
+  polEl (k : Int) (p : TPoly D.R) (hp : SC.Shifts zeroZ k p) : LO.Chart[Sq, BadI Sq setPol k].El =
+    LO.Chart[Sq, BadI Sq setPol k].mk (\ i m -> cf p m)
+      (Truncation[l].Trunc[LO.Chart[Sq, BadI Sq setPol k].SuppW (\ i m -> cf p m)].inc
+        (SC.suppL (cons zeroE nil) p, \ i m nm -> cf-supp p m nm))
+      (\ i m b -> cf-van k p hp m b) ;
+
+  ------------------------------------------------------------------------
+  -- coefficients
+
+  module PickDelta (v u : N4) (c : D.R) {
+    res : (d1 : LG.Dec (Id N4 u v)) (d2 : LG.Dec (Id E4 (subE (emb v) u) zeroE)) ->
+      Id D.R (TP.monoD c (Id N4 u v) d1) (D.mul c (sel D D.o (Id E4 (subE (emb v) u) zeroE) d2)) = split {
+      yes e -> split {
+        yes e' -> sym (D.mulO c) ;
+        no n -> Pr.absurd (Id D.R c (D.mul c D.z)) (n (trans (ap (subE (emb v)) e) (sub-self v))) } ;
+      no n -> split {
+        yes e' -> Pr.absurd (Id D.R D.z (D.mul c D.o)) (n (sub-zero-eq v u e')) ;
+        no n' -> sym (L.mul-zero c) } } ;
+  } ;
+  -- [u = v] c = c delta0(v - u)
+  pick-delta (v u : N4) (c : D.R) : Id D.R (PA.pick v u c) (D.mul c (delta0 (subE (emb v) u))) =
+    PickDelta[v,u,c].res (dec-n4 u v) (dec-e4 (subE (emb v) u) zeroE) ;
+  coef-cf (v : N4) : (p : TPoly D.R) -> Id D.R (PA.coef p v) (cf p (emb v)) = split {
+    nil -> refl D.z ;
+    cons t p | r -> DL.G.cong-add (pick-delta v t.2 t.1) r } ;
+
+  -- every coefficient of p is 0 iff cf p = 0
+  cz-of-cf (p : TPoly D.R) (h : (m : E4) -> Id D.R (cf p m) D.z) : PA.CoefZero p =
+    \ v -> trans (coef-cf v p) (h (emb v)) ;
+  cf-of-cz (p : TPoly D.R) (cz : PA.CoefZero p) (m : E4) : Id D.R (cf p m) D.z = PA.act-zero p cz delta0 m ;
+
+  ------------------------------------------------------------------------
+  -- finitely supported coefficient functions are term lists
+
+  module Rep (f : E4 -> D.R) (neg : (m : E4) -> Out none m -> Id D.R (f m) D.z) {
+    -- the term of a member m of the support list
+    termOf (m : E4) : Plus ((u : N4) * Id E4 (emb u) m) (Out none m) -> TPoly D.R = split {
+      inl w -> cons (f m, w.1) nil ;
+      inr o -> nil } ;
+    tl : List E4 -> TPoly D.R = split {
+      nil -> nil ;
+      cons m ms | r -> Bar[l].app (termOf m (classify m)) r } ;
+
+    -- the contribution of m at m': [m = m'] f(m')
+    module Contrib (m m' : E4) {
+      on (u : N4) (w : Id E4 (emb u) m) : (d1 : LG.Dec (Id E4 m m')) (d2 : LG.Dec (Id E4 (subE m' u) zeroE)) ->
+        Id D.R (D.add (D.mul (f m) (sel D D.o (Id E4 (subE m' u) zeroE) d2)) D.z) (sel D (f m') (Id E4 m m') d1) = split {
+        yes e -> split {
+          yes e2 -> trans (D.addZ (D.mul (f m) D.o)) (trans (D.mulO (f m)) (ap f e)) ;
+          no n -> Pr.absurd (Id D.R (D.add (D.mul (f m) D.z) D.z) (f m'))
+                    (n (trans (ap (\ x -> subE x u) (sym (trans w e))) (sub-self u))) } ;
+        no n -> split {
+          yes e2 -> Pr.absurd (Id D.R (D.add (D.mul (f m) D.o) D.z) D.z) (n (trans (sym w) (sym (sub-zero-emb m' u e2)))) ;
+          no n2 -> trans (D.addZ (D.mul (f m) D.z)) (L.mul-zero (f m)) } } ;
+      off (o : Out none m) : (d1 : LG.Dec (Id E4 m m')) -> Id D.R D.z (sel D (f m') (Id E4 m m') d1) = split {
+        yes e -> sym (trans (ap f (sym e)) (neg m o)) ;
+        no n -> refl D.z } ;
+      res : (c : Plus ((u : N4) * Id E4 (emb u) m) (Out none m)) ->
+        Id D.R (cf (termOf m c) m') (sel D (f m') (Id E4 m m') (dec-e4 m m')) = split {
+        inl w -> on w.1 w.2 (dec-e4 m m') (dec-e4 (subE m' w.1) zeroE) ;
+        inr o -> off o (dec-e4 m m') } ;
+    } ;
+
+    -- sum_{m in L} [m = m'] x
+    selsum (x : D.R) (m' : E4) : List E4 -> D.R = split {
+      nil -> D.z ;
+      cons m ms | r -> D.add (sel D x (Id E4 m m') (dec-e4 m m')) r } ;
+    cf-tl (m' : E4) : (L0 : List E4) -> Id D.R (cf (tl L0) m') (selsum (f m') m' L0) = split {
+      nil -> refl D.z ;
+      cons m ms | r -> trans (cf-app (termOf m (classify m)) (tl ms) m')
+                             (DL.G.cong-add (Contrib[m,m'].res (classify m)) r) } ;
+    sel-none (x : D.R) (m' : E4) : (L0 : List E4) -> (LE.Mem m' L0 -> Empty) -> Id D.R (selsum x m' L0) D.z = split {
+      nil -> \ n -> refl D.z ;
+      cons m ms | r -> \ n -> trans (DL.G.cong-add (sel-no D x (Id E4 m m') (\ e -> n (inl e)) (dec-e4 m m')) (r (\ k -> n (inr k))))
+                                    (D.addZ D.z) } ;
+    sel-single (x : D.R) (m' : E4) : (L0 : List E4) -> LE.NoDup L0 -> LE.Mem m' L0 -> Id D.R (selsum x m' L0) x = split {
+      nil -> \ nd h -> absurd (Id D.R D.z x) h ;
+      cons m ms | r -> \ nd -> split {
+        inl e -> trans (DL.G.cong-add (sel-yes D x (Id E4 m m') e (dec-e4 m m'))
+                         (sel-none x m' ms (\ k -> nd.1 (LE.mem-tr ms m' m (sym e) k))))
+                       (D.addZ x) ;
+        inr k -> trans (DL.G.cong-add (sel-no D x (Id E4 m m') (\ e -> nd.1 (LE.mem-tr ms m' m (sym e) k)) (dec-e4 m m'))
+                         (r nd.2 k))
+                       (L.zl x) } } ;
+
+    -- the polynomial of a support list s
+    poly (s : List E4) : TPoly D.R = tl (NE.nub s) ;
+    module At (s : List E4) (out : (m : E4) -> Not (Mem m s) -> Id D.R (f m) D.z) (m' : E4) {
+      inside (h : LE.Mem m' (NE.nub s)) : Id D.R (selsum (f m') m' (NE.nub s)) (f m') =
+        sel-single (f m') m' (NE.nub s) (NE.nub-nodup s) h ;
+      outside (n : LG.Not (LE.Mem m' (NE.nub s))) : Id D.R (selsum (f m') m' (NE.nub s)) (f m') =
+        trans (sel-none (f m') m' (NE.nub s) (\ k -> Pr.absurd Empty (n k))) (sym (out m' (\ k -> Pr.absurd Empty (n (NE.nub-mem s m' (mem-lists m' s k)))))) ;
+      decide : (d : LG.Dec (LE.Mem m' (NE.nub s))) -> Id D.R (selsum (f m') m' (NE.nub s)) (f m') = split {
+        yes h -> inside h ;
+        no n -> outside n } ;
+      eq : Id D.R (cf (poly s) m') (f m') = trans (cf-tl m' (NE.nub s)) (decide (NE.dec-mem m' (NE.nub s))) ;
+    } ;
+  } ;
+  -- a coefficient function vanishing outside s and at the negative exponents is cf p
+  cf-rep (f : E4 -> D.R) (neg : (m : E4) -> Out none m -> Id D.R (f m) D.z)
+    (s : List E4) (out : (m : E4) -> Not (Mem m s) -> Id D.R (f m) D.z) :
+    (p : TPoly D.R) * ((m : E4) -> Id D.R (cf p m) (f m)) =
+    (Rep[f,neg].poly s, \ m -> Rep[f,neg].At[s,out,m].eq) ;
+} ;

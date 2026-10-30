@@ -1,0 +1,263 @@
+-- HomogeneousSyzygies4.seg: a finite homogeneous syzygy matrix H for
+-- homogeneous g_0, .., g_(a-1), with the existing Identity and SyzGen
+-- (handoff §6, Gate C).
+--
+-- Data.  Homogeneous term lists g_i, every term of degree d_i (HomDeg), and
+-- ungraded syzygies h_0, .., h_(p-1) generating all ungraded syzygies
+-- (UngradedSyzygies4.Gens.UngradedW; Gate B gives them merely).
+-- Construction (Columns).
+--   * B bounds d_i + size u for every term c X^u of every h_k,i (a finite
+--     sum of the finitely many values; bounded).
+--   * Columns: the pairs (k, e), k < p, e = 0..B (b = p (B + 1),
+--     WeightedParts4.decode); the shift of column (k, e) is e, and
+--         H_i,(k,e) = filt d_i e h_k,i    (terms with d_i + size u = e),
+--     termwise HomShift d_i e (filt-hom).  Zero columns are kept; no
+--     coefficient vector is ever tested for being 0.
+-- Proofs.
+--   (a) each column is HomShift by construction;
+--   (b) h_k,i = sum_e H_i,(k,e) as actions (WeightedParts4.decomp);
+--   (c) Identity (Col.zero): fix (k, e) and put
+--         P_e' = sum_i g_i filt d_i e' h_k,i,   P = sum_i g_i h_k,i.
+--       cf P_e' is homogeneous of degree e' (PeHom: 1 has degree 0, the
+--       filtered terms go from degree e' - e' to e' - d_i, g_i from e' - d_i
+--       to e'), and sum_{e'} cf P_e' = cf P (sum-Pe, by (b)), which is 0
+--       since h_k is a syzygy.  Hence
+--         cf P_e = sum_{e'} [e = e'] cf P_e  = sum_{e'} part e (cf P_e')
+--                = part e (cf P) = 0
+--       (range-single, SelPart, part-sum), and every coefficient of P_e is
+--       0 (FinitePolynomial4.cz-of-cf).
+--   (d) the columns generate all ungraded syzygies (generate): if
+--       y_i = sum_k h_k,i c_k by coefficients then, by (b) and sum-pair,
+--       cf y_i = sum_(k,e) H_i,(k,e) (cf c_k): the coefficients c_(k,e) = c_k.
+--   (e) SyzGen (Extract), for every integer n.  Let y be a homogeneous
+--       syzygy of degree n: y_i in the polynomial chart of degree n - d_i,
+--       A y = 0.  Each y_i merely has a support list (one truncation per i,
+--       finitely many: fin-choice); then y_i = cf p_i for a term list p_i
+--       (cf-rep), and p is an ungraded syzygy (cf-prod and A y = 0).  By (d)
+--       merely cf p_i = sum_j H_ij (cf c_j).  Put
+--         z_j = part (n - e_j) (cf c_j)                         (partEl)
+--       in the polynomial chart of degree n - e_j (also when n - e_j < 0:
+--       then z_j = 0, with its support list and degree witness).  As every
+--       H_ij goes from degree n - e_j to n - d_i (hH-shifts),
+--         (H z)_i = sum_j part (n - d_i) (H_ij cf c_j)            (mulP-part)
+--                 = part (n - d_i) (cf p_i) = part (n - d_i) y_i = y_i
+--       (part-sum, part-id: y_i has degree n - d_i).
+-- Export (Of.homogeneous): for D CFN, merely b, e, H, hH with
+-- Identity M and SyzGen M, where M has the ORIGINAL a, d, g, hg.
+level l ; open Ring[l] ; open ZInt[l] ; open Laurent4[l] ; open Cech4[l] ; open PolynomialAction4[l] ; open ShiftedCech4[l] ;
+open HomogeneousMatrices4[l] ; open FinitePolynomial4[l] ; open WeightedParts4[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module LG = Logic[l] ; module Ps = Presentations[l] ; module NA = NatArith[l] ;
+module BRt = PolynomialRing4Bridge[l] ; module LSL = LaurentSyzygyLift4[l] ;
+
+module Over (D : CRing) (setD : Pr.isSet D.R) {
+  module C = Cech4[l].Over[D,setD] ; module LO = C.LO ;
+  module PA = PolynomialAction4[l].Over[D,setD] ;
+  module SC = ShiftedCech4[l].Over[D,setD] ;
+  module HM = HomogeneousMatrices4[l].Over[D,setD] ;
+  module LS = LSL.Over[D,setD] ;
+  module FP = FinitePolynomial4[l].Over[D,setD] ;
+  module WP = WeightedParts4[l].Over[D,setD] ;
+  module UGS = UngradedSyzygies4[l].Over[D,setD] ;
+  module RS = Comb[l].Sums[D,IP.regular D] ;
+
+  -- z in the polynomial chart of degree k: the degree-k part of cf c
+  partEl (k : Int) (c : TPoly D.R) : LO.Chart[Sq, BadI Sq setPol k].El =
+    LO.Chart[Sq, BadI Sq setPol k].mk (\ s m -> WP.part k (FP.cf c) m)
+      (Tr.Trunc[LO.Chart[Sq, BadI Sq setPol k].SuppW (\ s m -> WP.part k (FP.cf c) m)].inc
+        (SC.suppL (cons zeroE nil) c, \ s m nm ->
+          trans (ap (\ x -> sel D x (Id Int (deg m) k) (int-dec (deg m) k)) (FP.cf-supp c m nm))
+                (sel-zero D (Id Int (deg m) k) (int-dec (deg m) k))))
+      (\ s m bb -> WP.part-van k (FP.cf c) (\ m' o -> FP.cf-neg m' o c) m bb) ;
+
+  module Gens (a : Nat) (d : Ps.Fin a -> Base.Nat) (g : Ps.Fin a -> TPoly D.R) (hg : (i : Ps.Fin a) -> HomDeg D.R (d i) (g i)) {
+    module G = UGS.Gens[a,g] ;
+
+    -- the homogeneous data: b, e, H, hH, with the Identity and SyzGen of the
+    -- matrices of the original a, d, g, hg
+    SyzData : U l = (b : Nat) * ((e : Ps.Fin b -> Base.Nat) * ((H : Ps.Fin a -> Ps.Fin b -> TPoly D.R) *
+      ((hH : (i : Ps.Fin a) (j : Ps.Fin b) -> HomShift D.R (d i) (e j) (H i j)) *
+       (HM.Identity (mkMatrices D a b d e g H hg hH) * LS.SyzGen (mkMatrices D a b d e g H hg hH))))) ;
+    module SD (x : SyzData) {
+      b : Nat = x.1 ;
+      e : Ps.Fin b -> Base.Nat = x.2.1 ;
+      H : Ps.Fin a -> Ps.Fin b -> TPoly D.R = x.2.2.1 ;
+      hH : (i : Ps.Fin a) (j : Ps.Fin b) -> HomShift D.R (d i) (e j) (H i j) = x.2.2.2.1 ;
+      M : Matrices[D] = mkMatrices D a b d e g H hg hH ;
+      ah : HM.Identity M = x.2.2.2.2.1 ;
+      syz : LS.SyzGen M = x.2.2.2.2.2 ;
+    } ;
+
+    module Columns (w : G.UngradedW) {
+      module W = G.UG[w] ;
+      -- a bound for the shifted degrees of all terms
+      B : Base.Nat = sumN W.p (\ k -> sumN a (\ i -> WP.bnd (d i) (W.h k i))) ;
+      bounded (k : Ps.Fin W.p) (i : Ps.Fin a) : WP.BoundT (d i) B (W.h k i) =
+        WP.bound-of (d i) B (W.h k i)
+          (NA.le-trans (WP.bnd (d i) (W.h k i)) (sumN a (\ i' -> WP.bnd (d i') (W.h k i'))) B
+             (le-sumN a (\ i' -> WP.bnd (d i') (W.h k i')) i)
+             (le-sumN W.p (\ k' -> sumN a (\ i' -> WP.bnd (d i') (W.h k' i'))) k)) ;
+      -- the columns (k, e), e = 0..B
+      q : Nat = BRt.toR (suc B) ;
+      b : Nat = mulF q W.p ;
+      colK (j : Ps.Fin b) : Ps.Fin W.p = (decode q W.p j).1 ;
+      colE (j : Ps.Fin b) : Base.Nat = rangeN B (decode q W.p j).2 ;
+      H (i : Ps.Fin a) (j : Ps.Fin b) : TPoly D.R = WP.filt (d i) (colE j) (W.h (colK j) i) ;
+      -- (a)
+      hH (i : Ps.Fin a) (j : Ps.Fin b) : HomShift D.R (d i) (colE j) (H i j) = WP.filt-hom (d i) (colE j) (W.h (colK j) i) ;
+      M : Matrices[D] = mkMatrices D a b d colE g H hg hH ;
+
+      ------------------------------------------------------------------------
+      -- (c) every column is a syzygy
+
+      -- the part of shifted degree e of sum_i g_i h_k,i
+      Pe (k : Ps.Fin W.p) (e : Base.Nat) : TPoly D.R = G.prod (\ i -> WP.filt (d i) e (W.h k i)) ;
+      module PeHom (k : Ps.Fin W.p) (e : Base.Nat) {
+        van0 : (m : E4) -> Bad (minus (pos e) e) none m -> Id D.R (FP.delta0 m) D.z =
+          subst (\ x -> (m : E4) -> Bad x none m -> Id D.R (FP.delta0 m) D.z) (sym (minus-self e)) FP.delta0-van ;
+        vanF (i : Ps.Fin a) (m : E4) (bb : Bad (minus (pos e) (d i)) none m) : Id D.R (FP.cf (WP.filt (d i) e (W.h k i)) m) D.z =
+          SC.van-mulP (minus (pos e) e) (minus (pos e) (d i)) none FP.delta0 van0 (WP.filt (d i) e (W.h k i))
+            (HM.hH-shifts (pos e) (d i) e (WP.filt (d i) e (W.h k i)) (WP.filt-hom (d i) e (W.h k i))) m bb ;
+        -- cf P_e is homogeneous of degree e
+        res : WP.Hom (pos e) (FP.cf (Pe k e)) = \ m bb ->
+          trans (G.cf-prod (\ i -> WP.filt (d i) e (W.h k i)) m)
+            (trans (RS.sum-cong a (\ i -> PA.mulP (g i) (FP.cf (WP.filt (d i) e (W.h k i))) m) (\ i -> D.z)
+                      (\ i -> SC.van-mulP (minus (pos e) (d i)) (pos e) none (FP.cf (WP.filt (d i) e (W.h k i))) (vanF i) (g i)
+                                (HM.hg-shifts (pos e) (d i) (g i) (hg i)) m bb))
+                   (RS.sum-zero a)) ;
+      } ;
+      -- sum_e cf P_e = cf P
+      sum-Pe (k : Ps.Fin W.p) (m : E4) : Id D.R (RS.sum q (\ j' -> FP.cf (Pe k (rangeN B j')) m)) (FP.cf (G.prod (W.h k)) m) = calc D.R {
+        RS.sum q (\ j' -> FP.cf (Pe k (rangeN B j')) m)
+          =< RS.sum-cong q (\ j' -> FP.cf (Pe k (rangeN B j')) m)
+               (\ j' -> RS.sum a (\ i -> PA.mulP (g i) (FP.cf (WP.filt (d i) (rangeN B j') (W.h k i))) m))
+               (\ j' -> G.cf-prod (\ i -> WP.filt (d i) (rangeN B j') (W.h k i)) m)
+          > RS.sum q (\ j' -> RS.sum a (\ i -> PA.mulP (g i) (FP.cf (WP.filt (d i) (rangeN B j') (W.h k i))) m))
+          =< RS.sum-swap q a (\ j' i -> PA.mulP (g i) (FP.cf (WP.filt (d i) (rangeN B j') (W.h k i))) m)
+          > RS.sum a (\ i -> RS.sum q (\ j' -> PA.mulP (g i) (FP.cf (WP.filt (d i) (rangeN B j') (W.h k i))) m))
+          =< RS.sum-cong a (\ i -> RS.sum q (\ j' -> PA.mulP (g i) (FP.cf (WP.filt (d i) (rangeN B j') (W.h k i))) m))
+               (\ i -> PA.mulP (g i) (FP.cf (W.h k i)) m)
+               (\ i -> trans (sym (WP.mulP-sum (g i) m q (\ j' -> FP.cf (WP.filt (d i) (rangeN B j') (W.h k i)))))
+                             (PA.mulP-cong (g i) (\ m' -> RS.sum q (\ j' -> FP.cf (WP.filt (d i) (rangeN B j') (W.h k i)) m'))
+                                (FP.cf (W.h k i)) (\ m' -> WP.decomp (d i) B FP.delta0 m' (W.h k i) (bounded k i)) m))
+          > RS.sum a (\ i -> PA.mulP (g i) (FP.cf (W.h k i)) m)
+          =< sym (G.cf-prod (W.h k) m) > FP.cf (G.prod (W.h k)) m } ;
+      module Col (j : Ps.Fin b) {
+        k : Ps.Fin W.p = colK j ;
+        e : Base.Nat = colE j ;
+        zero (m : E4) : Id D.R (FP.cf (Pe k e) m) D.z = calc D.R {
+          FP.cf (Pe k e) m
+            =< sym (WP.range-single (FP.cf (Pe k e) m) B e (range-le B (decode q W.p j).2))
+            > RS.sum q (\ j' -> sel D (FP.cf (Pe k e) m) (Id Base.Nat e (rangeN B j')) (nat-dec e (rangeN B j')))
+            =< RS.sum-cong q (\ j' -> sel D (FP.cf (Pe k e) m) (Id Base.Nat e (rangeN B j')) (nat-dec e (rangeN B j')))
+                 (\ j' -> WP.part (pos e) (FP.cf (Pe k (rangeN B j'))) m)
+                 (\ j' -> WP.SelPart[\ e' -> FP.cf (Pe k e'),\ e' -> PeHom[k,e'].res,e,rangeN B j',m].res (nat-dec e (rangeN B j')))
+            > RS.sum q (\ j' -> WP.part (pos e) (FP.cf (Pe k (rangeN B j'))) m)
+            =< sym (WP.part-sum (pos e) q (\ j' -> FP.cf (Pe k (rangeN B j'))) m)
+            > WP.part (pos e) (\ m' -> RS.sum q (\ j' -> FP.cf (Pe k (rangeN B j')) m')) m
+            =< WP.part-cong (pos e) (\ m' -> RS.sum q (\ j' -> FP.cf (Pe k (rangeN B j')) m')) (FP.cf (G.prod (W.h k))) (sum-Pe k) m
+            > WP.part (pos e) (FP.cf (G.prod (W.h k))) m
+            =< WP.part-cong (pos e) (FP.cf (G.prod (W.h k))) (\ m' -> D.z) (FP.cf-of-cz (G.prod (W.h k)) (W.syz k)) m
+            > WP.part (pos e) (\ m' -> D.z) m
+            =< sel-zero D (Id Int (deg m) (pos e)) (int-dec (deg m) (pos e)) > D.z } ;
+      } ;
+      ah : HM.Identity M = \ j -> FP.cz-of-cf (Pe (colK j) (colE j)) (Col[j].zero) ;
+
+      ------------------------------------------------------------------------
+      -- (d) the columns generate all ungraded syzygies
+
+      -- (H c')_i by coefficient functions
+      cf-col (y : Ps.Fin a -> TPoly D.R) (c : Ps.Fin b -> TPoly D.R) (i : Ps.Fin a) (m : E4) :
+        Id D.R (FP.cf (PA.psum b (\ j -> PA.pmul (H i j) (c j))) m) (RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m)) =
+        trans (FP.cf-psum b (\ j -> PA.pmul (H i j) (c j)) m)
+              (RS.sum-cong b (\ j -> FP.cf (PA.pmul (H i j) (c j)) m) (\ j -> PA.mulP (H i j) (FP.cf (c j)) m) (\ j -> FP.cf-pmul (H i j) (c j) m)) ;
+      module Generate (y : Ps.Fin a -> TPoly D.R) (cw : G.CombW W.p W.h y) {
+        c (j : Ps.Fin b) : TPoly D.R = cw.1 (colK j) ;
+        at (i : Ps.Fin a) (m : E4) : Id D.R (FP.cf (y i) m) (RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m)) = calc D.R {
+          FP.cf (y i) m
+            =< PA.act-coef (y i) (PA.psum W.p (\ k -> PA.pmul (W.h k i) (cw.1 k))) (cw.2 i) FP.delta0 m
+            > FP.cf (PA.psum W.p (\ k -> PA.pmul (W.h k i) (cw.1 k))) m
+            =< trans (FP.cf-psum W.p (\ k -> PA.pmul (W.h k i) (cw.1 k)) m)
+                 (RS.sum-cong W.p (\ k -> FP.cf (PA.pmul (W.h k i) (cw.1 k)) m) (\ k -> PA.mulP (W.h k i) (FP.cf (cw.1 k)) m)
+                   (\ k -> FP.cf-pmul (W.h k i) (cw.1 k) m))
+            > RS.sum W.p (\ k -> PA.mulP (W.h k i) (FP.cf (cw.1 k)) m)
+            =< RS.sum-cong W.p (\ k -> PA.mulP (W.h k i) (FP.cf (cw.1 k)) m)
+                 (\ k -> RS.sum q (\ e -> PA.mulP (WP.filt (d i) (rangeN B e) (W.h k i)) (FP.cf (cw.1 k)) m))
+                 (\ k -> sym (WP.decomp (d i) B (FP.cf (cw.1 k)) m (W.h k i) (bounded k i)))
+            > RS.sum W.p (\ k -> RS.sum q (\ e -> PA.mulP (WP.filt (d i) (rangeN B e) (W.h k i)) (FP.cf (cw.1 k)) m))
+            =< sym (WP.sum-pair q W.p (\ ke -> PA.mulP (WP.filt (d i) (rangeN B ke.2) (W.h ke.1 i)) (FP.cf (cw.1 ke.1)) m))
+            > RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m) } ;
+        comb : G.CombW b (\ j i -> H i j) y =
+          (c, \ i v -> trans (FP.coef-cf v (y i))
+                         (trans (at i (emb v))
+                           (sym (trans (FP.coef-cf v (PA.psum b (\ j -> PA.pmul (H i j) (c j)))) (cf-col y c i (emb v)))))) ;
+      } ;
+      generate (y : Ps.Fin a -> TPoly D.R) (sy : G.USyz y) : G.UComb b (\ j i -> H i j) y =
+        TC.map (G.CombW W.p W.h y) (G.CombW b (\ j i -> H i j) y) (\ cw -> Generate[y,cw].comb) (W.gen y sy) ;
+
+      ------------------------------------------------------------------------
+      -- (e) homogeneous syzygies, at every degree n
+
+      module Extract (n : Int) (y : LS.Pol[M,n].F.E1.El) (sy : LS.Pol[M,n].Syz y) {
+        module F = LS.Pol[M,n].F ;
+        module Y (i : Ps.Fin a) { module CH = LO.Chart[Sq, BadI Sq setPol (F.k1 i)] ; } ;
+        f (i : Ps.Fin a) (m : E4) : D.R = Y[i].CH.val (y i) s0123 m ;
+        neg (i : Ps.Fin a) (m : E4) (o : Out none m) : Id D.R (f i m) D.z = Y[i].CH.van (y i) s0123 m (inr o) ;
+        Sol : U l = (z : F.E2.El) * Id F.E1.El (F.H.f z) y ;
+        module Sw (sw : (i : Ps.Fin a) -> Y[i].CH.SuppW (Y[i].CH.val (y i))) {
+          rp (i : Ps.Fin a) : (p : TPoly D.R) * ((m : E4) -> Id D.R (FP.cf p m) (f i m)) =
+            FP.cf-rep (f i) (neg i) (sw i).1 (\ m nm -> (sw i).2 s0123 m nm) ;
+          p (i : Ps.Fin a) : TPoly D.R = (rp i).1 ;
+          -- p is an ungraded syzygy: cf (sum_i g_i p_i) = A y = 0
+          usyz : G.USyz p = FP.cz-of-cf (G.prod p) (\ m -> calc D.R {
+            FP.cf (G.prod p) m =< G.cf-prod p m > RS.sum a (\ i -> PA.mulP (g i) (FP.cf (p i)) m)
+              =< RS.sum-cong a (\ i -> PA.mulP (g i) (FP.cf (p i)) m) (\ i -> PA.mulP (g i) (f i) m)
+                   (\ i -> PA.mulP-cong (g i) (FP.cf (p i)) (f i) (rp i).2 m)
+              > RS.sum a (\ i -> PA.mulP (g i) (f i) m)
+              =< sym (SC.ChartSums[Sq,BadI Sq setPol n].val-sum a (\ i -> (F.gi i).f (y i)) s0123 m)
+              > F.E0.val (F.A.f y) s0123 m
+              =< ap (\ x -> F.E0.val x s0123 m) sy > D.z }) ;
+          module Z (cw : G.CombW b (\ j i -> H i j) p) {
+            c (j : Ps.Fin b) : TPoly D.R = cw.1 j ;
+            z : F.E2.El = \ j -> partEl (F.k2 j) (c j) ;
+            module Row (i : Ps.Fin a) {
+              col-eq (m : E4) : Id D.R (FP.cf (p i) m) (RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m)) =
+                trans (PA.act-coef (p i) (PA.psum b (\ j -> PA.pmul (H i j) (c j))) (cw.2 i) FP.delta0 m) (cf-col p c i m) ;
+              pt : (s : Sq) (m : E4) -> Id D.R (Y[i].CH.val (F.H.f z i) s m) (Y[i].CH.val (y i) s m) = split {
+                s0123 -> \ m -> calc D.R {
+                  Y[i].CH.val (F.H.f z i) s0123 m
+                    =< SC.ChartSums[Sq,BadI Sq setPol (F.k1 i)].val-sum b (\ j -> (F.hij i j).f (z j)) s0123 m
+                    > RS.sum b (\ j -> PA.mulP (H i j) (WP.part (F.k2 j) (FP.cf (c j))) m)
+                    =< RS.sum-cong b (\ j -> PA.mulP (H i j) (WP.part (F.k2 j) (FP.cf (c j))) m)
+                         (\ j -> WP.part (F.k1 i) (\ m' -> PA.mulP (H i j) (FP.cf (c j)) m') m)
+                         (\ j -> WP.mulP-part (F.k2 j) (F.k1 i) (FP.cf (c j)) m (H i j) (HM.hH-shifts n (d i) (colE j) (H i j) (hH i j)))
+                    > RS.sum b (\ j -> WP.part (F.k1 i) (\ m' -> PA.mulP (H i j) (FP.cf (c j)) m') m)
+                    =< sym (WP.part-sum (F.k1 i) b (\ j m' -> PA.mulP (H i j) (FP.cf (c j)) m') m)
+                    > WP.part (F.k1 i) (\ m' -> RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m')) m
+                    =< WP.part-cong (F.k1 i) (\ m' -> RS.sum b (\ j -> PA.mulP (H i j) (FP.cf (c j)) m')) (f i)
+                         (\ m' -> trans (sym (col-eq m')) ((rp i).2 m')) m
+                    > WP.part (F.k1 i) (f i) m
+                    =< WP.part-id (F.k1 i) (f i) (\ m' bb -> Y[i].CH.van (y i) s0123 m' bb) m > f i m } } ;
+              eq : Id Y[i].CH.El (F.H.f z i) (y i) = Y[i].CH.eq (F.H.f z i) (y i) pt ;
+            } ;
+            sol : Sol = (z, F.E1.ext (F.H.f z) y (\ i -> Row[i].eq)) ;
+          } ;
+          lifts : LS.Pol[M,n].Lifts y = TC.map (G.CombW b (\ j i -> H i j) p) Sol (\ cw -> Z[cw].sol) (generate p usyz) ;
+        } ;
+        lifts : LS.Pol[M,n].Lifts y =
+          TC.bind ((i : Ps.Fin a) -> Y[i].CH.SuppW (Y[i].CH.val (y i))) Sol (\ sw -> Sw[sw].lifts)
+            (LSL.fin-choice a (\ i -> Y[i].CH.SuppW (Y[i].CH.val (y i))) (\ i -> Y[i].CH.supp (y i))) ;
+      } ;
+      syz : LS.SyzGen M = \ n y sy -> Extract[n,y,sy].lifts ;
+
+      constructed : SyzData = (b, (colE, (H, (hH, (ah, syz))))) ;
+    } ;
+
+    -- THEOREM (Gate C): for D CFN, merely a homogeneous syzygy matrix with
+    -- the Identity and SyzGen of the original g
+    module Of (K0 : U l) (cfn : CFN[l].CFN[K0,D]) {
+      homogeneous : Tr.Trunc[SyzData].carrier =
+        TC.map G.UngradedW SyzData (\ w -> Columns[w].constructed) G.Of[K0,cfn].ungraded ;
+    } ;
+  } ;
+} ;

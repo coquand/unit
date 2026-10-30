@@ -1,0 +1,140 @@
+-- LinIso.seg: transfer of (D), (C) and (FL) along a linear isomorphism
+-- (artin-rees.tex, §3: M[X]_n is A^(r(n+1)) as an A-module).
+--
+-- Map: a linear map h preserves 0, negation, sums and combinations, and
+-- list spans (in-map: y in span(s) gives h y in span(h s)).
+-- Over: f : P -> Q and g : Q -> P linear and mutually inverse.
+--   (D) In Q, y is in span(u) iff g y is in span(g u).
+--   (C) The syzygies of u in Q are those of g u in P.
+--   (FL) Phi on lists of Q gives Phi' t = Phi (f t) on lists of P.  For t
+--   free, a y outside span(f t) gives x = g y outside span(t) and
+--   Phi (f (g y) :: f t) = Phi (y :: f t).  A free list s of Q is f (g s),
+--   with g s free.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+
+mapL (X Y : U l) (h : X -> Y) : List X -> List Y = split {
+  nil -> nil ;
+  cons t s | r -> cons (h t) r } ;
+
+module Map (A : CRing) (P Q : IP.Mod[A]) (h : P.M -> Q.M)
+  (hadd : (x y : P.M) -> Id Q.M (h (P.madd x y)) (Q.madd (h x) (h y)))
+  (hsm : (c : A.R) (x : P.M) -> Id Q.M (h (P.sm c x)) (Q.sm c (h x))) {
+  module LP = IP.ModL[A,P] ; module LQ = IP.ModL[A,Q] ;
+  module SP = Comb[l].Sums[A,P] ; module SQ = Comb[l].Sums[A,Q] ;
+  module MP = ModSpan[l].Over[A,P] ; module MQ = ModSpan[l].Over[A,Q] ;
+
+  hz : Id Q.M (h P.mz) Q.mz =
+    trans (ap h (sym (LP.zero-sm P.mz))) (trans (hsm A.z P.mz) (LQ.zero-sm (h P.mz))) ;
+  hneg (x : P.M) : Id Q.M (h (P.mneg x)) (Q.mneg (h x)) =
+    LQ.G.neg-uniq (h x) (h (P.mneg x)) (trans (sym (hadd x (P.mneg x))) (trans (ap h (P.maddN x)) hz)) ;
+  hsub (x y : P.M) : Id Q.M (h (LP.msub x y)) (LQ.msub (h x) (h y)) =
+    trans (hadd x (P.mneg y)) (ap (Q.madd (h x)) (hneg y)) ;
+
+  sum-map : (n : Nat) (u : Fin n -> P.M) -> Id Q.M (h (SP.sum n u)) (SQ.sum n (\ k -> h (u k))) = split {
+    zero -> \ u -> hz ;
+    suc n | r -> \ u -> trans (hadd (u (inr tt)) (SP.sum n (\ i -> u (inl i))))
+                              (ap (Q.madd (h (u (inr tt)))) (r (\ i -> u (inl i)))) } ;
+  comb-map (n : Nat) (c : Fin n -> A.R) (u : Fin n -> P.M) :
+    Id Q.M (h (SP.comb n c u)) (SQ.comb n c (\ k -> h (u k))) =
+    trans (sum-map n (\ k -> P.sm (c k) (u k)))
+      (SQ.sum-cong n (\ k -> h (P.sm (c k) (u k))) (\ k -> Q.sm (c k) (h (u k))) (\ k -> hsm (c k) (u k))) ;
+
+  in-map : (s : List P.M) (y : P.M) -> MP.In s y -> MQ.In (mapL P.M Q.M h s) (h y) = split {
+    nil -> \ y e -> trans (ap h e) hz ;
+    cons t s | r -> \ y e -> (e.1,
+      MQ.in-tr (mapL P.M Q.M h s) (h (LP.msub y (P.sm e.1 t))) (LQ.msub (h y) (Q.sm e.1 (h t)))
+        (trans (hsub y (P.sm e.1 t)) (ap (LQ.msub (h y)) (hsm e.1 t)))
+        (r (LP.msub y (P.sm e.1 t)) e.2)) } ;
+} ;
+
+module Over (A : CRing) (P Q : IP.Mod[A])
+  (f : P.M -> Q.M)
+  (fadd : (x y : P.M) -> Id Q.M (f (P.madd x y)) (Q.madd (f x) (f y)))
+  (fsm : (c : A.R) (x : P.M) -> Id Q.M (f (P.sm c x)) (Q.sm c (f x)))
+  (g : Q.M -> P.M)
+  (gadd : (x y : Q.M) -> Id P.M (g (Q.madd x y)) (P.madd (g x) (g y)))
+  (gsm : (c : A.R) (x : Q.M) -> Id P.M (g (Q.sm c x)) (P.sm c (g x)))
+  (fg : (y : Q.M) -> Id Q.M (f (g y)) y)
+  (gf : (x : P.M) -> Id P.M (g (f x)) x) {
+  module F = Map[A,P,Q,f,fadd,fsm] ; module G = Map[A,Q,P,g,gadd,gsm] ;
+  module CP = Coherent[l].Over[A,P] ; module CQ = Coherent[l].Over[A,Q] ;
+  module SP = Comb[l].Sums[A,P] ; module SQ = Comb[l].Sums[A,Q] ;
+  module MP = ModSpan[l].Over[A,P] ; module MQ = ModSpan[l].Over[A,Q] ;
+
+  gu (n : Nat) (u : Fin n -> Q.M) (k : Fin n) : P.M = g (u k) ;
+
+  -- comb c u = f (comb c (g u))
+  comb-back (n : Nat) (c : Fin n -> A.R) (u : Fin n -> Q.M) :
+    Id Q.M (SQ.comb n c u) (f (SP.comb n c (gu n u))) =
+    trans (SQ.sum-cong n (\ k -> Q.sm (c k) (u k)) (\ k -> Q.sm (c k) (f (g (u k)))) (\ k -> ap (Q.sm (c k)) (sym (fg (u k)))))
+      (sym (F.comb-map n c (gu n u))) ;
+
+  ------------------------------------------------------------------------
+  -- (D)
+
+  mem-to (n : Nat) (u : Fin n -> Q.M) (y : Q.M) (m : CP.Mem n (gu n u) (g y)) : CQ.Mem n u y =
+    Tr.Trunc[CP.InFM n (gu n u) (g y)].induction @l (\ t -> CQ.Mem n u y) (\ t -> Tr.Trunc[CQ.InFM n u y].proposition)
+      (\ ce -> Tr.Trunc[CQ.InFM n u y].inc (ce.1, trans (comb-back n ce.1 u) (trans (ap f ce.2) (fg y)))) m ;
+  mem-back (n : Nat) (u : Fin n -> Q.M) (y : Q.M) (m : CQ.Mem n u y) : CP.Mem n (gu n u) (g y) =
+    Tr.Trunc[CQ.InFM n u y].induction @l (\ t -> CP.Mem n (gu n u) (g y)) (\ t -> Tr.Trunc[CP.InFM n (gu n u) (g y)].proposition)
+      (\ ce -> Tr.Trunc[CP.InFM n (gu n u) (g y)].inc (ce.1, trans (sym (G.comb-map n ce.1 u)) (ap g ce.2))) m ;
+
+  dec-step (n : Nat) (u : Fin n -> Q.M) (y : Q.M) :
+    Plus (CP.Mem n (gu n u) (g y)) (Not (CP.Mem n (gu n u) (g y))) -> Plus (CQ.Mem n u y) (Not (CQ.Mem n u y)) = split {
+    inl m -> inl (mem-to n u y m) ;
+    inr no -> inr (\ m -> no (mem-back n u y m)) } ;
+  disc (dP : CP.Disc) : CQ.Disc = \ n u y -> dec-step n u y (dP n (gu n u) (g y)) ;
+
+  ------------------------------------------------------------------------
+  -- (C)
+
+  syz-to (n : Nat) (u : Fin n -> Q.M) (c : Fin n -> A.R) (h : CP.Syz n (gu n u) c) : CQ.Syz n u c =
+    trans (comb-back n c u) (trans (ap f h) F.hz) ;
+  syz-back (n : Nat) (u : Fin n -> Q.M) (c : Fin n -> A.R) (h : CQ.Syz n u c) : CP.Syz n (gu n u) c =
+    trans (sym (G.comb-map n c u)) (trans (ap g h) G.hz) ;
+
+  coh (cP : CP.Coh) : CQ.Coh = \ n u ->
+    Tr.Trunc[CP.CohW n (gu n u)].induction @l (\ t -> Tr.Trunc[CQ.CohW n u].carrier) (\ t -> Tr.Trunc[CQ.CohW n u].proposition)
+      (\ x -> Tr.Trunc[CQ.CohW n u].inc (x.1, (x.2.1,
+         (\ j -> syz-to n u (x.2.1 j) (x.2.2.1 j), \ c h -> x.2.2.2 c (syz-back n u c h)))))
+      (cP n (gu n u)) ;
+
+  ------------------------------------------------------------------------
+  -- (FL)
+
+  cons-eq (X : U l) (x x' : X) (s s' : List X) (e : Id X x x') (e' : Id (List X) s s') : Id (List X) (cons x s) (cons x' s') =
+    Pr.trans (List X) (cons x s) (cons x' s) (cons x' s')
+      (Pr.ap X (List X) (\ z -> cons z s) x x' e) (Pr.ap (List X) (List X) (\ z -> cons x' z) s s' e') ;
+  fgL : (s : List Q.M) -> Id (List Q.M) (mapL P.M Q.M f (mapL Q.M P.M g s)) s = split {
+    nil -> refl nil ;
+    cons t s | r -> cons-eq Q.M (f (g t)) t (mapL P.M Q.M f (mapL Q.M P.M g s)) s (fg t) r } ;
+  gfL : (s : List P.M) -> Id (List P.M) (mapL Q.M P.M g (mapL P.M Q.M f s)) s = split {
+    nil -> refl nil ;
+    cons t s | r -> cons-eq P.M (g (f t)) t (mapL Q.M P.M g (mapL P.M Q.M f s)) s (gf t) r } ;
+
+  -- y in span (f s) gives g y in span s
+  in-back (s : List P.M) (y : Q.M) (h : MQ.In (mapL P.M Q.M f s) y) : MP.In s (g y) =
+    subst (\ t -> MP.In t (g y)) (gfL s) (G.in-map (mapL P.M Q.M f s) y h) ;
+  in-back' (s : List Q.M) (x : P.M) (h : MP.In (mapL Q.M P.M g s) x) : MQ.In s (f x) =
+    subst (\ t -> MQ.In t (f x)) (fgL s) (F.in-map (mapL Q.M P.M g s) x h) ;
+
+  free-f : (s : List P.M) -> MP.Free s -> MQ.Free (mapL P.M Q.M f s) = split {
+    nil -> \ h -> tt ;
+    cons t s | r -> \ h -> (\ i -> h.1 (MP.in-tr s (g (f t)) t (gf t) (in-back s (f t) i)), r h.2) } ;
+  free-g : (s : List Q.M) -> MQ.Free s -> MP.Free (mapL Q.M P.M g s) = split {
+    nil -> \ h -> tt ;
+    cons t s | r -> \ h -> (\ i -> h.1 (MQ.in-tr s (f (g t)) t (fg t) (in-back' s (g t) i)), r h.2) } ;
+
+  module FLQ (flP : CP.FL) (Phi : List Q.M -> U l) (pPhi : (s : List Q.M) -> Pr.isProp (Phi s))
+    (step : (s : List Q.M) -> MQ.Free s -> ((x : Q.M) -> Not (MQ.In s x) -> Phi (cons x s)) -> Phi s) {
+    Phi' (t : List P.M) : U l = Phi (mapL P.M Q.M f t) ;
+    step' (t : List P.M) (ft : MP.Free t) (ih : (x : P.M) -> Not (MP.In t x) -> Phi' (cons x t)) : Phi' t =
+      step (mapL P.M Q.M f t) (free-f t ft) (\ y ny ->
+        subst (\ z -> Phi (cons z (mapL P.M Q.M f t))) (fg y)
+          (ih (g y) (\ i -> ny (MQ.in-tr (mapL P.M Q.M f t) (f (g y)) y (fg y) (F.in-map t (g y) i))))) ;
+    result (s : List Q.M) (fs : MQ.Free s) : Phi s =
+      subst Phi (fgL s) (flP Phi' (\ t -> pPhi (mapL P.M Q.M f t)) step' (mapL Q.M P.M g s) (free-g s fs)) ;
+  } ;
+  fl (flP : CP.FL) : CQ.FL = \ Phi pPhi step -> FLQ[flP, Phi, pPhi, step].result ;
+} ;

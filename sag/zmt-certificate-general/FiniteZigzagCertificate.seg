@@ -1,0 +1,137 @@
+-- A generic finite double-complex zigzag produces a relation certificate.
+-- Its terminal finite coordinates and kernel primitive are supplied by the
+-- explicit Cech top presentation; intermediate primitives are contractions.
+-- One checked CertificateExtension step is iterated backwards. No desired
+-- relation-reflection assertion is among this theorem's hypotheses.
+level l ; open Ring[l] ;
+module IP = IdealPowers[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module RC = RelationCertificate[l] ;
+record Certificate (D : CRing) (Z V : IP.Mod[D]) (B : Z.M -> U l) {
+ Gam : Z.M -> V.M -> U l ;
+ gam-zero : Gam Z.mz V.mz ;
+ gam-add (z z' : Z.M) (p p' : V.M) : Gam z p -> Gam z' p' -> Gam (Z.madd z z') (V.madd p p') ;
+ gam-sm (c : D.R) (z : Z.M) (p : V.M) : Gam z p -> Gam (Z.sm c z) (V.sm c p) ;
+ reflect (z : Z.M) : Gam z V.mz -> B z ;
+} ;
+relation (D : CRing) (Z V : IP.Mod[D]) (B : Z.M -> U l) (R : Certificate[D,Z,V,B]) : RC.Rel[D,Z,V] =
+ RC.mkRel D Z V B R.Gam R.gam-zero R.gam-add R.gam-sm R.reflect ;
+IfNonzero : Nat -> U l -> U l = split { zero -> \ P -> Top ; suc n -> \ P -> P } ;
+module Over (D : CRing) (F : Nat -> Nat -> IP.Mod[D])
+ (d : (i r : Nat) -> IP.Lin[D,F i r,F i (suc r)])
+ (A : (i r : Nat) -> IP.Lin[D,F (suc i) r,F i r])
+ (comm : (i r : Nat) (x : (F (suc i) r).M) ->
+  Id (F i (suc r)).M ((d i r).f ((A i r).f x)) ((A i (suc r)).f ((d (suc i) r).f x)))
+ (kill : (i r : Nat) (x : (F (suc (suc i)) r).M) ->
+  Id (F i r).M ((A i r).f ((A (suc i) r).f x)) (F i r).mz) {
+ module Cell (i r : Nat) {
+  P : IP.Mod[D] = F i r ; Z : IP.Mod[D] = F i (suc r) ; T : IP.Mod[D] = F i (suc (suc r)) ;
+  Q : IP.Mod[D] = F (suc i) (suc r) ;
+  Bdry (z : Z.M) : U l = (h : P.M) * ((a : Q.M) * Id Z.M z (Z.madd ((d i r).f h) ((A i (suc r)).f a))) ;
+  Removable (z : Z.M) : U l = Tr.Trunc[Bdry z].carrier ;
+  Contract : U l = (z : Z.M) -> Id T.M ((d i (suc r)).f z) T.mz -> Tr.Trunc[(h : P.M) * Id Z.M ((d i r).f h) z].carrier ;
+  Terminal : U l = (v : Nat) * ((top : IP.Lin[D,Z,Comb[l].Free[D,v].mod]) *
+   ((z : Z.M) -> Id Comb[l].Free[D,v].Vec (top.f z) Comb[l].Free[D,v].mod.mz -> Tr.Trunc[(h : P.M) * Id Z.M ((d i r).f h) z].carrier)) ;
+ } ;
+ Schedule : Nat -> Nat -> Nat -> U l = split {
+  zero -> \ i r -> Cell[i,r].Terminal ;
+  suc n | rec -> \ i r -> Cell[i,r].Contract * rec (suc i) (suc r) } ;
+ rank : (n i r : Nat) -> Schedule n i r -> Nat = split {
+  zero -> \ i r s -> s.1 ; suc n | rec -> \ i r s -> rec (suc i) (suc r) s.2 } ;
+ Goal (n : Nat) : U l+ = (i r : Nat) (s : Schedule n i r) -> Certificate[D,Cell[i,r].Z,Comb[l].Free[D,rank n i r s].mod,Cell[i,r].Removable] ;
+ module TerminalCase (i r : Nat) (s : Schedule zero i r) {
+  module C = Cell[i,r] ; module V = Comb[l].Free[D,s.1] ; top : IP.Lin[D,C.Z,V.mod] = s.2.1 ;
+  module LA = RC.LinL[D,C.Q,C.Z,A i (suc r)] ;
+  Gam (z : C.Z.M) (v : V.Vec) : U l = Id V.Vec (top.f z) v ;
+  found (z : C.Z.M) (h : (p : C.P.M) * Id C.Z.M ((d i r).f p) z) : C.Bdry z =
+   (h.1,(C.Q.mz,trans (sym h.2)
+    (sym (trans (ap (C.Z.madd ((d i r).f h.1)) LA.f-zero) (C.Z.maddZ ((d i r).f h.1)))))) ;
+  reflect (z : C.Z.M) (eq : Gam z V.mod.mz) : C.Removable z =
+   TC.map ((p : C.P.M) * Id C.Z.M ((d i r).f p) z) (C.Bdry z) (found z) (s.2.2 z eq) ;
+  certificate : Certificate[D,C.Z,V.mod,C.Removable] =
+   mkCertificate D C.Z V.mod C.Removable Gam RC.LinL[D,C.Z,V.mod,top].f-zero
+    (\ z z' v v' h h' -> trans (top.f-add z z') (IP.ModL[D,V.mod].G.cong-add h h'))
+    (\ c z v h -> trans (top.f-sm c z) (ap (V.mod.sm c) h)) reflect ;
+ } ;
+ module Step (n : Nat) (ih : Goal n) (i r : Nat) (s : Schedule (suc n) i r) {
+  module C = Cell[i,r] ; module N = Cell[suc i,suc r] ;
+  deeper : Certificate[D,N.Z,Comb[l].Free[D,rank n (suc i) (suc r) s.2].mod,N.Removable] = ih (suc i) (suc r) s.2 ;
+  module E = CertificateExtension[l].Extend[D,C.P,C.Z,C.T,N.P,N.Z,N.Q,Comb[l].Free[D,rank n (suc i) (suc r) s.2].mod,
+   d i r,d i (suc r),A i (suc r),d (suc i) (suc r),A i (suc (suc r)),A (suc i) (suc (suc r)),
+   comm i (suc r),kill i (suc (suc r)),s.1,
+   relation D N.Z Comb[l].Free[D,rank n (suc i) (suc r) s.2].mod N.Removable deeper,\ u h -> h] ;
+  certificate : Certificate[D,C.Z,Comb[l].Free[D,rank (suc n) i r s].mod,C.Removable] =
+   mkCertificate D C.Z Comb[l].Free[D,rank (suc n) i r s].mod C.Removable E.Gam E.gam-zero E.gam-add E.gam-sm E.reflect ;
+ } ;
+ build : (n : Nat) -> Goal n = split {
+  zero -> \ i r s -> TerminalCase[i,r,s].certificate ;
+  suc n | rec -> \ i r s -> Step[n,rec,i,r,s].certificate } ;
+ -- Raising uses local exactness only at the intermediate intersections.
+ -- Depth one ends at top immediately and needs no extra syzygy stage.
+ Lifted (i r : Nat) (c : Cell[i,r].Z.M) : U l =
+  (u : Cell[suc i,suc r].Z.M) * Id Cell[i,r].T.M ((d i (suc r)).f c) ((A i (suc (suc r))).f u) ;
+ Premise : (n i r : Nat) -> Cell[i,r].Z.M -> U l = split {
+  zero -> \ i r c -> Top ; suc n -> \ i r c -> Tr.Trunc[Lifted i r c].carrier } ;
+ LocalExact (i r : Nat) : U l = (y : (F (suc i) r).M) ->
+  Id (F i r).M ((A i r).f y) (F i r).mz ->
+   Tr.Trunc[(z : (F (suc (suc i)) r).M) * Id (F (suc i) r).M ((A (suc i) r).f z) y].carrier ;
+ Exacts : Nat -> Nat -> Nat -> U l = split {
+  zero -> \ i r -> Top ;
+  suc n | rec -> \ i r -> IfNonzero n (LocalExact i (suc (suc (suc r))) * rec (suc i) (suc r)) } ;
+ module Raising (dd : (i r : Nat) (x : (F i r).M) ->
+  Id (F i (suc (suc r))).M ((d i (suc r)).f ((d i r).f x)) (F i (suc (suc r))).mz) {
+  Partner (n i r : Nat) (s : Schedule n i r) (c : Cell[i,r].Z.M) : U l =
+   (v : Comb[l].Free[D,rank n i r s].Vec) * (build n i r s).Gam c v ;
+  NextGoal (n : Nat) : U l = (i r : Nat) (c : Cell[i,r].Z.M) (u : Cell[suc i,suc r].Z.M) ->
+   Id Cell[i,r].T.M ((d i (suc r)).f c) ((A i (suc (suc r))).f u) ->
+    IfNonzero n (LocalExact i (suc (suc (suc r))) * Exacts n (suc i) (suc r)) ->
+     Exacts n (suc i) (suc r) * Premise n (suc i) (suc r) u ;
+  module NextNonzero (n i r : Nat) (c : Cell[i,r].Z.M) (u : Cell[suc i,suc r].Z.M)
+   (eq : Id Cell[i,r].T.M ((d i (suc r)).f c) ((A i (suc (suc r))).f u))
+   (ex : LocalExact i (suc (suc (suc r))) * Exacts (suc n) (suc i) (suc r)) {
+   du : (F (suc i) (suc (suc (suc r)))).M = (d (suc i) (suc (suc r))).f u ;
+   kernel : Id (F i (suc (suc (suc r)))).M ((A i (suc (suc (suc r)))).f du) (F i (suc (suc (suc r)))).mz =
+    trans (sym (comm i (suc (suc r)) u))
+      (trans (ap (d i (suc (suc r))).f (sym eq)) (dd i (suc r) c)) ;
+   witness : Exacts (suc n) (suc i) (suc r) * Premise (suc n) (suc i) (suc r) u =
+    (ex.2,TC.map ((z : (F (suc (suc i)) (suc (suc (suc r)))).M) * Id (F (suc i) (suc (suc (suc r)))).M ((A (suc i) (suc (suc (suc r)))).f z) du)
+      (Lifted (suc i) (suc r) u) (\ z -> (z.1,sym z.2)) (ex.1 du kernel)) ;
+  } ;
+  next : (n : Nat) -> NextGoal n = split {
+   zero -> \ i r c u eq ex -> (tt,tt) ;
+   suc n -> \ i r c u eq ex -> NextNonzero[n,i,r,c,u,eq,ex].witness } ;
+  RaiseGoal (n : Nat) : U l = (i r : Nat) (s : Schedule n i r) -> Exacts n i r ->
+   (c : Cell[i,r].Z.M) -> Premise n i r c -> Tr.Trunc[Partner n i r s c].carrier ;
+  terminal-partner (i r : Nat) (s : Schedule zero i r) (c : Cell[i,r].Z.M) : Partner zero i r s c =
+   (TerminalCase[i,r,s].top.f c,refl (TerminalCase[i,r,s].top.f c)) ;
+  module RaiseStep (n : Nat) (ih : RaiseGoal n) (i r : Nat) (s : Schedule (suc n) i r)
+   (ex : Exacts (suc n) i r) (c : Cell[i,r].Z.M) (x : Lifted i r c) {
+   nx : Exacts n (suc i) (suc r) * Premise n (suc i) (suc r) x.1 = next n i r c x.1 x.2 ex ;
+   module S = Step[n,build n,i,r,s] ;
+   result : Tr.Trunc[Partner (suc n) i r s c].carrier =
+    S.E.partner c x.1 x.2 (ih (suc i) (suc r) s.2 nx.1 x.1 nx.2) ;
+  } ;
+  raise : (n : Nat) -> RaiseGoal n = split {
+   zero -> \ i r s ex c h -> Tr.Trunc[Partner zero i r s c].inc (terminal-partner i r s c) ;
+   suc n | rec -> \ i r s ex c h -> TC.bind (Lifted i r c) (Partner (suc n) i r s c)
+     (\ x -> RaiseStep[n,rec,i,r,s,ex,c,x].result) h } ;
+ } ;
+ -- The abstract finite dependence theorem reuses CertifiedDependence.
+ module Sequence (K0 : U l) (cfn : CFN[l].CFN[K0,D]) (n i r : Nat) (s : Schedule n i r)
+  (c : Nat -> Cell[i,r].Z.M)
+  (partners : (j : Nat) -> Tr.Trunc[(v : Comb[l].Free[D,rank n i r s].Vec) * (build n i r s).Gam (c j) v].carrier) {
+  R : RC.Rel[D,Cell[i,r].Z,Comb[l].Free[D,rank n i r s].mod] =
+   relation D Cell[i,r].Z Comb[l].Free[D,rank n i r s].mod Cell[i,r].Removable (build n i r s) ;
+  module S = RC.Over[D,Cell[i,r].Z,Comb[l].Free[D,rank n i r s].mod,R].Seq[c] ;
+  dependence : Tr.Trunc[S.Cert].carrier = CertifiedDependence[l].Over[K0,D,cfn,Cell[i,r].Z,rank n i r s,R,c,partners].certificate ;
+ } ;
+ module LiftedSequence (K0 : U l) (cfn : CFN[l].CFN[K0,D])
+  (dd : (i r : Nat) (x : (F i r).M) ->
+   Id (F i (suc (suc r))).M ((d i (suc r)).f ((d i r).f x)) (F i (suc (suc r))).mz)
+  (n i r : Nat) (s : Schedule n i r) (exact : Exacts n i r)
+  (c : Nat -> Cell[i,r].Z.M) (lift : (j : Nat) -> Premise n i r (c j)) {
+  module R = Raising[dd] ;
+  partners (j : Nat) : Tr.Trunc[R.Partner n i r s (c j)].carrier = R.raise n i r s exact (c j) (lift j) ;
+  module S = Sequence[K0,cfn,n,i,r,s,c,partners] ;
+  dependence : Tr.Trunc[S.S.Cert].carrier = S.dependence ;
+ } ;
+} ;
