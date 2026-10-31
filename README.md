@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and six developments written with it:
+This repository contains the checker and seven developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -42,6 +42,9 @@ This repository contains the checker and six developments written with it:
   a homotopy group of a sphere, from the universal property of S³ alone, by
   a Postnikov universal property; on the way, π₃(S²) = ℤ
   (`sag/pi3-s2-postnikov`; the directory is named after its first theorem).
+- higher categories from the axioms of Sattler and Wärn: the Segal
+  condition for every n, composition and its laws, and Wärn's results on
+  fully faithful functors (`sag/hcat`).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -135,6 +138,16 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   side (David Wärn's strategy): a high-level account. The detailed proof,
   with the declaration correspondence:
   [`postnikov-morphisms.pdf`](doc/postnikov-morphisms.pdf).
+- [`etale-field-product-proof.pdf`](doc/etale-field-product-proof.pdf):
+  a finitely presented, formally unramified algebra over a discrete field
+  is a finite product of separable monogenic algebras, with a
+  correspondence to `sag/etale-field-product`;
+  [`etale-field-reduction.pdf`](doc/etale-field-reduction.pdf) reduces
+  the field case of the local structure of étale algebras to it.
+- [`hcat-segal.pdf`](doc/hcat-segal.pdf): the Segal condition for all n,
+  composition, and fully faithful functors from the Sattler–Wärn axioms,
+  with the coherences each result uses and the correspondence to
+  `sag/hcat`.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -194,6 +207,18 @@ used. Each directory has a `README.txt`.
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
+- `etale-field-product` (with the tracks `etale-field-*`): a finitely
+  presented, formally unramified algebra S over a discrete nonzero field
+  k is merely a finite product of separable monogenic algebras
+  k[T]/(f), with an actual algebra isomorphism
+  (`UnramifiedFieldProduct...theorem`, 18 757 declarations). No prime,
+  basis, primitive element, factorisation or ZMT principle is an input.
+  If k is large, the diagonal idempotent gives a global generator and a
+  divided difference with trace duality inverts f'; if k is small, a
+  finite coefficient field and a splitting by idempotents give the
+  factors. The factors are not claimed to be fields. Connecting this to
+  the local structure of étale algebras (`etale-local`) remains to be
+  done.
 
 ## Finite free resolutions and grade (`sag/cffr`, `sag/koszul`, `sag/wiebe`)
 
@@ -263,6 +288,32 @@ gives π₄(S³) ≅ π₄(BR) ≅ π₃(R) ≅ ℤ/2. Check with
 `./segc sag/pi3-s2-postnikov all`; `README.txt` there maps files to the
 notes, and the `.opens` files record, declaration by declaration, the
 definitions the checker unfolds. See [`pi3-s2.pdf`](doc/pi3-s2.pdf) and [`pi4-s3.pdf`](doc/pi4-s3.pdf).
+
+## Higher categories from the Sattler–Wärn axioms (`sag/hcat`)
+
+In univalent type theory (Theory parameters `univ`, `images`,
+`surjections`), a wild category `Cat` of categories and functors is
+postulated with a terminal category, pullbacks, exponentials, the walking
+arrow I, the Segal axiom, Rezk completeness and the axiom that I detects
+equivalences. These are the parameters of three nested segments of
+`All.seg`, one for each level of coherence: `Wild` (associativity and
+unit paths), `Structure` (the universal properties), `Coh2` (pentagon and
+triangle). This begins as a port of an Agda proof of Wärn's Lemma 26
+(Δⁿ⁺¹ is Δⁿ with an edge glued) and continues with:
+
+- `SegalAll.segal-all`: the Segal condition for every n, i.e. a functor
+  Δⁿ → C is a chain of n composable morphisms;
+- composition of morphisms as the centre of a contractible type of
+  fillers, with unit and associativity laws (`CompLaws`,
+  `Associativity`), preserved by functors;
+- Wärn's results 33–39 (`FullyFaithful`): fully faithful functors reflect
+  invertibility, are embeddings on objects, and are isomorphisms when
+  surjective on objects, with the converse.
+
+All of it uses only the coherences of level 2 (the pentagon and the
+triangle); the layout of `All.seg` shows which level each theorem needs.
+1674 declarations, checked by `./segc sag/hcat all`; see
+[`hcat-segal.pdf`](doc/hcat-segal.pdf) and `sag/hcat/README.txt`.
 
 ## Synthetic Stone duality (`sag/stone`, `sag/stoneseq`, `sag/cca`, `sag/em`, `sag/ccacoh`)
 
