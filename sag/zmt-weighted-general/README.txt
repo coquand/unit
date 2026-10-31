@@ -1,7 +1,7 @@
 Generic weighted dependence and evaluated ideal powers
 ======================================================
 
-Status: completed, checked, uncommitted. All new proofs are in this directory;
+Status: completed, checked. All new proofs are in this directory;
 existing developments/checker/shared files are unchanged relative links.
 Eight owned source modules, 514 owned declarations. No new axioms or choice.
 

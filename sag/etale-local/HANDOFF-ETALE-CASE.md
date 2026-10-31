@@ -5,7 +5,7 @@ definitions; Section 1 lines 248-272 for the surjection u; Section 2 lines
 296-326).  Directory: `unit/sag/etale-local` (read `README.txt` first;
 `HANDOFF-ITEM4.md` is the previous step, done).
 State at handoff (2026-10-30): `./segc sag/etale-local all` (from `unit/`)
-= 67 modules, 0 failed, 0.51 s.  Nothing committed.
+= 67 modules, 0 failed, 0.51 s.
 
 ## Rules (user rulings, all apply)
 
@@ -132,7 +132,7 @@ Section1Eg.
 ## Status
 
 2026-10-30: Stage A DONE.  `./segc sag/etale-local all` = 74 modules, 0
-failed, 0.63 s.  Nothing committed.  New files: FormallyEtale,
+failed, 0.63 s.  New files: FormallyEtale,
 StandardEtale, IdempotentIdeal, EtaleCase (statements in README.txt);
 links QuotientRing, RegularIdeal (cffr), TruncationCombinators
 (replacement).  No new axioms (Theory parameters univalence +

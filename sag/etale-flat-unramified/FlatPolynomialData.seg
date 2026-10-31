@@ -1,0 +1,66 @@
+-- Finite coefficient data for flat change of coefficients A[X] -> B[X].
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Coefficients (A : CRing) (setA : Pr.isSet A.R) {
+ module P = PolynomialRing[l].Extension[A,setA] ;
+ module PC = PolynomialCoefficients[l].Over[A,setA] ;
+ module Raw = Poly[l].PolyR[A] ; module SA = FiniteIdeal[l].Sums[A] ;
+ module SP = FiniteIdeal[l].Sums[P.ring] ;
+ add (k : Nat) : (p q : P.Carrier) -> Id A.R (PC.coef (P.addQ p q) k) (A.add (PC.coef p k) (PC.coef q k)) =
+  P.forall2 (\ p q -> Id A.R (PC.coef (P.addQ p q) k) (A.add (PC.coef p k) (PC.coef q k))) (\ p q -> setA _ _)
+   (\ p q -> trans (ap (\ f -> PC.coef f k) (P.Add.beta p q))
+    (trans (PC.coef-include (Mul[l].MulR[A].addP p q) k)
+     (trans (Mul[l].MulR[A].coef-addP p q k)
+      (cong2 A.R A.add _ _ _ _ (sym (PC.coef-include p k)) (sym (PC.coef-include q k)))))) ;
+ right (k : Nat) (p : P.Carrier) (a : A.R) :
+  Id A.R (PC.coef (P.mulQ p (P.constant a)) k) (A.mul (PC.coef p k) a) =
+  trans (ap (\ f -> PC.coef f k) (P.mul-comm p (P.constant a)))
+   (trans (PC.scale-coef a p k) (A.mulC a (PC.coef p k))) ;
+ lin (k : Nat) : (n : Nat) (p : Fin n -> P.Carrier) (a : Fin n -> A.R) ->
+  Id A.R (PC.coef (SP.lin n p (\ i -> P.constant (a i))) k) (SA.lin n (\ i -> PC.coef (p i) k) a) = split {
+  zero -> \ p a -> PC.coef-zero k ;
+  suc n | ih -> \ p a ->
+   trans (add k (P.mulQ (p (inr tt)) (P.constant (a (inr tt)))) (SP.lin n (\ i -> p (inl i)) (\ i -> P.constant (a (inl i)))))
+    (cong2 A.R A.add _ _ _ _ (right k (p (inr tt)) (a (inr tt))) (ih (\ i -> p (inl i)) (\ i -> a (inl i)))) } ;
+ Representation (p : P.Carrier) : U l = (raw : Raw.P) * Id P.Carrier (P.include raw) p ;
+ representation (p : P.Carrier) : Tr.Trunc[Representation p].carrier =
+  P.Q.induction @l (\ p -> Tr.Trunc[Representation p].carrier) (\ p -> Tr.Trunc[Representation p].proposition)
+   (\ raw -> Tr.Trunc[Representation (P.include raw)].inc (raw,refl (P.include raw))) p ;
+ Bound (d : Nat) (p : P.Carrier) : U l = (k : Nat) -> CoefficientBound[l].le d k -> Id A.R (PC.coef p k) A.z ;
+ raw-bound : (p : Raw.P) (k : Nat) -> CoefficientBound[l].le (Raw.plen p) k -> Id A.R (Raw.coef p k) A.z = split {
+  nil -> \ k le -> refl A.z ;
+  cons c p | ih -> split { zero -> \ le -> efq le ; suc k -> \ le -> ih k le } } ;
+ module Family (n : Nat) (p : Fin n -> P.Carrier) (r : (i : Fin n) -> Representation (p i)) {
+  d : Nat = FiniteBounds[l].bound n (\ i -> Raw.plen (r i).1) ;
+  bound (i : Fin n) : Bound d (p i) = \ k le ->
+   trans (ap (\ f -> PC.coef f k) (sym (r i).2))
+    (trans (PC.coef-include (r i).1 k) (raw-bound (r i).1 k
+     (FiniteBounds[l].le-trans (Raw.plen (r i).1) d k (FiniteBounds[l].bounded n (\ j -> Raw.plen (r j).1) i) le))) ;
+ } ;
+ common (n : Nat) (p : Fin n -> P.Carrier) : Tr.Trunc[(d : Nat) * ((i : Fin n) -> Bound d (p i))].carrier =
+  TC.map ((i : Fin n) -> Representation (p i)) ((d : Nat) * ((i : Fin n) -> Bound d (p i)))
+   (\ r -> (Family[n,p,r].d,Family[n,p,r].bound)) (AffineFinite[l].choice n (\ i -> Representation (p i)) (\ i -> representation (p i))) ;
+} ;
+module Map (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R) (h : RingHom[l].Hom A B) {
+ module CA = Coefficients[A,setA] ; module CB = Coefficients[B,setB] ;
+ module P = CA.P ; module Q = CB.P ;
+ module UP = Universal[l].Property[A,Q.ring,setA,Q.set].Given[
+  RingHom[l].compose A B Q.ring Q.inclusion h,Q.variable] ;
+ f : RingHom[l].Hom P.ring Q.ring = UP.extend ;
+ raw : List A.R -> List B.R = split { nil -> nil ; cons a p | ih -> cons (h.1 a) ih } ;
+ on-list : (p : List A.R) -> Id Q.Carrier (f.1 (P.include p)) (Q.include (raw p)) = split {
+  nil -> RingHom[l].zero P.ring Q.ring f ;
+  cons a p | ih ->
+   trans (ap f.1 (P.horner a p))
+    (trans (f.2.2.1 (P.constant a) (P.mulQ P.variable (P.include p)))
+     (trans (cong2 Q.Carrier Q.addQ _ _ _ _ (UP.on-constants a)
+      (trans (f.2.2.2 P.variable (P.include p)) (cong2 Q.Carrier Q.mulQ _ _ _ _ UP.on-variable ih)))
+      (sym (Q.horner (h.1 a) (raw p))))) } ;
+ raw-coef : (p : List A.R) (k : Nat) -> Id B.R (CB.Raw.coef (raw p) k) (h.1 (CA.Raw.coef p k)) = split {
+  nil -> \ k -> sym (RingHom[l].zero A B h) ;
+  cons a p | ih -> split { zero -> refl (h.1 a) ; suc k -> ih k } } ;
+ coef (k : Nat) : (p : P.Carrier) -> Id B.R (CB.PC.coef (f.1 p) k) (h.1 (CA.PC.coef p k)) =
+  P.Q.induction @l (\ p -> Id B.R (CB.PC.coef (f.1 p) k) (h.1 (CA.PC.coef p k))) (\ p -> setB _ _)
+   (\ p -> trans (ap (\ q -> CB.PC.coef q k) (on-list p))
+    (trans (CB.PC.coef-include (raw p) k) (trans (raw-coef p k) (ap h.1 (sym (CA.PC.coef-include p k)))))) ;
+} ;

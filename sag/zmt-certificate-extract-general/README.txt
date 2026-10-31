@@ -1,7 +1,7 @@
 Generic degree-lowering certificate
 ===================================
 
-Status: complete, checked, uncommitted. Five owned source files,253 owned
+Status: complete, checked. Five owned source files,253 owned
 declarations. Existing sources/checker/shared files are unchanged relative
 links. No new axioms, no choice, no field, CFN or Noetherianity hypothesis.
 

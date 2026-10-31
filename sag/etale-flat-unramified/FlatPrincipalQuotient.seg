@@ -1,0 +1,67 @@
+-- Effective principal quotients and their maps; constructed from the
+-- existing quotient of a propositional ideal.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (q : A.R) {
+ module LA = RL[A] ;
+ Witness (x : A.R) : U l = (v : A.R) * Id A.R x (A.mul q v) ;
+ In (x : A.R) : U l = Tr.Trunc[Witness x].carrier ;
+ zero : In A.z = Tr.Trunc[Witness A.z].inc (A.z,sym (LA.mul-zero q)) ;
+ add (x y : A.R) (hx : Witness x) (hy : Witness y) : Witness (A.add x y) =
+  (A.add hx.1 hy.1,trans (Presentations[l].cong2 A.R A.add _ _ _ _ hx.2 hy.2) (sym (A.dist q hx.1 hy.1))) ;
+ scale (a x : A.R) (hx : Witness x) : Witness (A.mul a x) =
+  (A.mul a hx.1,trans (ap (A.mul a) hx.2) (LA.mul-swap a q hx.1)) ;
+ ideal : RegularIdeal[l].IdealPred[A] = RegularIdeal[l].mkIdealPred A In zero
+  (\ x y -> TC.map2 (Witness x) (Witness y) (Witness (A.add x y)) (add x y))
+  (\ a x -> TC.map (Witness x) (Witness (A.mul a x)) (scale a x)) ;
+ module Q = QuotientRing[l].Over[A,ideal,\ x -> Tr.Trunc[Witness x].proposition] ;
+ onto (x : Q.Carrier) : Tr.Trunc[(a : A.R) * Id Q.Carrier (Q.include a) x].carrier =
+  Q.Q.induction @l (\ x -> Tr.Trunc[(a : A.R) * Id Q.Carrier (Q.include a) x].carrier)
+   (\ x -> Tr.Trunc[(a : A.R) * Id Q.Carrier (Q.include a) x].proposition)
+   (\ a -> Tr.Trunc[(b : A.R) * Id Q.Carrier (Q.include b) (Q.include a)].inc (a,refl (Q.include a))) x ;
+ root : Id Q.Carrier (Q.include q) Q.zeroQ =
+  Q.to-zero q (Tr.Trunc[Witness q].inc (A.o,sym (A.mulO q))) ;
+ module Into (B : CRing) (setB : Pr.isSet B.R) (h : RingHom[l].Hom A B) (hq : Id B.R (h.1 q) B.z) {
+  module LB = RL[B] ;
+  killed (x : A.R) (w : Witness x) : Id B.R (h.1 x) B.z =
+   trans (ap h.1 w.2) (trans (h.2.2.2 q w.1)
+    (trans (ap (\ z -> B.mul z (h.1 w.1)) hq) (LB.zero-mul (h.1 w.1)))) ;
+  kill (x : A.R) (hx : In x) : Id B.R (h.1 x) B.z =
+   TC.rec (Witness x) @l (Id B.R (h.1 x) B.z) (setB _ _) (killed x) hx ;
+  respects (x y : A.R) (r : Q.Rel x y) : Id B.R (h.1 x) (h.1 y) =
+   FormallyEtale[l].Units[B,setB].sub-zero (h.1 x) (h.1 y)
+    (trans (sym (trans (h.2.2.1 x (A.neg y)) (ap (B.add (h.1 x)) (RingHom[l].negation A B h y))))
+     (kill (A.add x (A.neg y)) r)) ;
+  module D = Q.Q.Descend[B.R,setB,h.1,respects] ;
+  map : Q.Carrier -> B.R = D.map ;
+  beta (a : A.R) : Id B.R (map (Q.include a)) (h.1 a) = D.beta a ;
+  one : Id B.R (map Q.oneQ) B.o = trans (beta A.o) h.2.1 ;
+  plus : (x y : Q.Carrier) -> Id B.R (map (Q.addQ x y)) (B.add (map x) (map y)) =
+   Q.forall2 (\ x y -> Id B.R (map (Q.addQ x y)) (B.add (map x) (map y))) (\ x y -> setB _ _)
+    (\ x y -> trans (ap map (Q.Add.beta x y))
+     (trans (beta (A.add x y)) (trans (h.2.2.1 x y)
+      (Presentations[l].cong2 B.R B.add _ _ _ _ (sym (beta x)) (sym (beta y)))))) ;
+  times : (x y : Q.Carrier) -> Id B.R (map (Q.mulQ x y)) (B.mul (map x) (map y)) =
+   Q.forall2 (\ x y -> Id B.R (map (Q.mulQ x y)) (B.mul (map x) (map y))) (\ x y -> setB _ _)
+    (\ x y -> trans (ap map (Q.Multiply.beta x y))
+     (trans (beta (A.mul x y)) (trans (h.2.2.2 x y)
+      (Presentations[l].cong2 B.R B.mul _ _ _ _ (sym (beta x)) (sym (beta y)))))) ;
+  hom : RingHom[l].Hom Q.ring B = (map,one,plus,times) ;
+  unique (g : RingHom[l].Hom Q.ring B) (agrees : (a : A.R) -> Id B.R (g.1 (Q.include a)) (h.1 a)) :
+   (x : Q.Carrier) -> Id B.R (g.1 x) (map x) =
+   Q.Q.induction @l (\ x -> Id B.R (g.1 x) (map x)) (\ x -> setB _ _)
+    (\ a -> trans (agrees a) (sym (beta a))) ;
+ } ;
+} ;
+module Change (A B : CRing) (h : RingHom[l].Hom A B) (q : A.R) {
+ module Source = Over[A,q] ; module Target = Over[B,h.1 q] ;
+ comp : RingHom[l].Hom A Target.Q.ring = RingHom[l].compose A B Target.Q.ring Target.Q.projection h ;
+ module Induced = Source.Into[Target.Q.ring,Target.Q.set,comp,Target.root] ;
+ map : RingHom[l].Hom Source.Q.ring Target.Q.ring = Induced.hom ;
+ module Flat (flat : FlatRelations[l].Over[A,B,h].Flat) {
+  module BC = FlatPrincipalBaseChange[l].Over[A,B,Source.Q.ring,Target.Q.ring,h,
+   Source.Q.projection,Target.Q.projection,map,\ a -> sym (Induced.beta a),q,Source.root,
+   Source.onto,Target.onto,Target.Q.kernel,flat] ;
+  theorem : FlatRelations[l].Over[Source.Q.ring,Target.Q.ring,map].Flat = BC.theorem ;
+ } ;
+} ;

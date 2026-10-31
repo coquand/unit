@@ -1,0 +1,54 @@
+-- Explain a polynomial relation with scalar B-coefficients, retaining
+-- columns over A.  Flatness handles the finitely many coefficient equations.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R)
+ (h : RingHom[l].Hom A B) (flat : FlatRelations[l].Over[A,B,h].Flat) {
+ module PM = FlatPolynomialData[l].Map[A,B,setA,setB,h] ;
+ module P = PM.P ; module Q = PM.Q ; module CA = PM.CA ; module CB = PM.CB ;
+ module SA = FiniteIdeal[l].Sums[A] ; module SB = FiniteIdeal[l].Sums[B] ;
+ module SP = FiniteIdeal[l].Sums[P.ring] ; module SQ = FiniteIdeal[l].Sums[Q.ring] ;
+ module FS = FlatSystems[l].Over[A,B,setA,setB,h,flat] ;
+ record Explanation (n : Nat) (p : Fin n -> P.Carrier) (b : Fin n -> B.R) {
+  size : Nat ; column (j : Fin size) (i : Fin n) : A.R ; generator (j : Fin size) : B.R ;
+  expands (i : Fin n) : Id B.R (b i) (SB.lin size (\ j -> h.1 (column j i)) generator) ;
+  relations (j : Fin size) : Id P.Carrier (SP.lin n p (\ i -> P.constant (column j i))) P.zeroQ ;
+ } ;
+ module Given (n : Nat) (p : Fin n -> P.Carrier) (b : Fin n -> B.R)
+  (relation : Id Q.Carrier (SQ.lin n (\ i -> PM.f.1 (p i)) (\ i -> Q.constant (b i))) Q.zeroQ) {
+  coeff (k : Nat) : Id B.R (SB.lin n (\ i -> h.1 (CA.PC.coef (p i) k)) b) B.z =
+   trans (SB.sum-cong n (\ i -> B.mul (h.1 (CA.PC.coef (p i) k)) (b i))
+    (\ i -> B.mul (CB.PC.coef (PM.f.1 (p i)) k) (b i))
+    (\ i -> ap (\ x -> B.mul x (b i)) (sym (PM.coef k (p i)))))
+    (trans (sym (CB.lin k n (\ i -> PM.f.1 (p i)) b))
+     (trans (ap (\ q -> CB.PC.coef q k) relation) (CB.PC.coef-zero k))) ;
+  module Bounded (d : Nat) (bound : (i : Fin n) -> CA.Bound d (p i)) {
+   rows (v : Fin d) (i : Fin n) : A.R = CA.PC.coef (p i) (FlatFiniteSums[l].index d v) ;
+   module Explained (e : FS.Explanation[n,d,rows,b]) {
+    result-poly (j : Fin e.size) : P.Carrier = SP.lin n p (\ i -> P.constant (e.column j i)) ;
+    low (j : Fin e.size) (v : Fin d) : Id A.R (CA.PC.coef (result-poly j) (FlatFiniteSums[l].index d v)) A.z =
+     trans (CA.lin (FlatFiniteSums[l].index d v) n p (e.column j)) (e.relations v j) ;
+    high (j : Fin e.size) (k : Nat) (le : CoefficientBound[l].le d k) : Id A.R (CA.PC.coef (result-poly j) k) A.z =
+     trans (CA.lin k n p (e.column j))
+      (trans (SA.sum-cong n (\ i -> A.mul (CA.PC.coef (p i) k) (e.column j i)) (\ i -> A.z)
+       (\ i -> trans (ap (\ x -> A.mul x (e.column j i)) (bound i k le)) (RL[A].zero-mul (e.column j i))))
+       (SA.sum-zero n)) ;
+    dispatch (j : Fin e.size) (k : Nat) :
+     Plus ((v : Fin d) * Id Nat (FlatFiniteSums[l].index d v) k) (CoefficientBound[l].le d k) ->
+     Id A.R (CA.PC.coef (result-poly j) k) A.z = split {
+      inl w -> trans (ap (\ z -> CA.PC.coef (result-poly j) z) (sym w.2)) (low j w.1) ;
+      inr le -> high j k le } ;
+    relations (j : Fin e.size) : Id P.Carrier (result-poly j) P.zeroQ =
+     CA.PC.ext (result-poly j) P.zeroQ (\ k ->
+      trans (dispatch j k (FlatFiniteSums[l].locate d k)) (sym (CA.PC.coef-zero k))) ;
+    result : Explanation[n,p,b] = new Explanation[n,p,b,e.size,e.column,e.generator,e.expands,relations] ;
+   } ;
+   result : Tr.Trunc[Explanation[n,p,b]].carrier =
+    TC.map (FS.Explanation[n,d,rows,b]) (Explanation[n,p,b]) (\ e -> Explained[e].result)
+     (FS.theorem n d rows b (\ v -> coeff (FlatFiniteSums[l].index d v))) ;
+  } ;
+  theorem : Tr.Trunc[Explanation[n,p,b]].carrier =
+   TC.bind ((d : Nat) * ((i : Fin n) -> CA.Bound d (p i))) (Explanation[n,p,b])
+    (\ w -> Bounded[w.1,w.2].result) (CA.common n p) ;
+ } ;
+} ;

@@ -3,7 +3,7 @@
 Source note: `~/COLL/zmt2-revised.tex`.  Directory: `unit/sag/etale-local`
 (read `README.txt` first; `HANDOFF-ETALE-CASE.md` is the previous step,
 Stage A done).  State at handoff (2026-10-30): `./segc sag/etale-local all`
-(from `unit/`) = 74 modules, 0 failed, 0.63 s.  Nothing committed.
+(from `unit/`) = 74 modules, 0 failed, 0.63 s.
 
 Goal: Theorem `local` (note line 61): R residually discrete local, E etale,
 q a decidable prime of E containing m E; there is s not in q with E[1/s]
@@ -101,7 +101,7 @@ Inputs of `EtaleCase.Over[A,setA].Section2[S,T,u,surj,surj-eq,r,k,k-in,gen]
 
 ## Status
 
-**Block 2: done (2026-10-30), uncommitted.**  `./segc sag/etale-local all`
+**Block 2: done (2026-10-30).**  `./segc sag/etale-local all`
 = 77 modules, 0 failed, 0.64 s (standalone `seg All.seg`: 3269
 declarations, 0.97 s).  No new axioms (Theory parameters univalence +
 replacement); `--opened` audited for the three new files.
@@ -150,7 +150,7 @@ Block 1's item (c) can use `full` (in E) directly; item (b) needs the
 bridge between `DerivativeStep.der` (here `S1.LQ.DS.der`) and
 `StandardEtale` derivative as planned.
 
-**Block 1: done (2026-10-30), uncommitted.**  Theorem local is
+**Block 1: done (2026-10-30).**  Theorem local is
 `Local.Over[..].Field[x0,F0,etale].theorem : || Conclusion ||` with
 Conclusion = (s' : E) * s' not in q * (T, i : E -> T) * IsLocalisation T i s'
 * (Q, G) * T standard for (Q, G).  `./segc sag/etale-local all` = 88
@@ -179,7 +179,7 @@ bridges (evaluation at y in Loop vs StandardEtale, `Qprime-is` for the
 dual-number derivative, `push-at`, `map-at`, `compose-at`) and type
 formers.
 
-**Hypotheses in the note's form: done (2026-10-30), uncommitted.**
+**Hypotheses in the note's form: done (2026-10-30).**
 `TheoremLocal.Over[.., s, s-one, zmt, etale].FieldCase[nf, eps, sum-one,
 xs, pieces].theorem` states Theorem local with ZMT as in ACL (s in
 1 + m E) and the field case as a decomposition into factors

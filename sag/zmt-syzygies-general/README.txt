@@ -3,7 +3,7 @@ Generic finite-variable homogeneous syzygies
 
 1. Status and scope
 
-Checked, uncommitted development in this directory only. No shared source,
+Checked development in this directory only. No shared source,
 checker, earlier development or .git file is edited. Dependencies are relative
 links to the existing weighted4/syzygies4/artin-rees developments. No new axiom,
 choice or resizing principle is introduced. All.seg has exactly the existing

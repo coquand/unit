@@ -127,4 +127,4 @@ map is unnecessary for this statement: its forward map is a ring map
 and its inverse laws are included by isEquiv. Broader scheme-theoretic
 reformulations are not exported here. The quotient model is the existing
 QuotientFibre model; transporting to a different model is separate API work.
-No earlier/shared/checker file was changed by these tracks; nothing committed.
+No earlier/shared/checker file was changed by these tracks.

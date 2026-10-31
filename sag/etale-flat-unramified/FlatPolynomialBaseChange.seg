@@ -1,0 +1,65 @@
+-- If B is flat over A, then B[X] is flat over A[X].
+-- A finite family in B[X] is expanded using scalar coefficients in B;
+-- flatness simultaneously explains the coefficient equations of its relation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R)
+ (h : RingHom[l].Hom A B) (flat : FlatRelations[l].Over[A,B,h].Flat) {
+ module E = FlatPolynomialExpansion[l].Over[A,B,setA,setB,h] ;
+ module P = E.P ; module Q = E.Q ; module PM = E.PM ;
+ module PR = FlatPolynomialRelations[l].Over[A,B,setA,setB,h,flat] ;
+ module SP = FiniteIdeal[l].Sums[P.ring] ; module SQ = FiniteIdeal[l].Sums[Q.ring] ;
+ module SB = FiniteIdeal[l].Sums[B] ;
+ module MF = FlatRelations[l].MapSums[P.ring,Q.ring,PM.f] ;
+ module MC = FlatRelations[l].MapSums[B,Q.ring,Q.inclusion] ;
+ module FP = FlatFiniteSums[l].Over[P.ring] ; module FQ = FlatFiniteSums[l].Over[Q.ring] ;
+ module O = FlatRelations[l].Over[P.ring,Q.ring,PM.f] ;
+ module Given (n : Nat) (a : Fin n -> P.Carrier) (b : Fin n -> Q.Carrier) (r : O.Relation n a b)
+  (e : E.FamilyRep[n,b]) {
+  combined (j : Fin e.size) : P.Carrier = SP.lin n a (e.column j) ;
+  relation : Id Q.Carrier (SQ.lin e.size (\ j -> PM.f.1 (combined j)) (\ j -> Q.constant (e.generator j))) Q.zeroQ =
+   trans (SQ.sum-cong e.size
+    (\ j -> Q.mulQ (PM.f.1 (combined j)) (Q.constant (e.generator j)))
+    (\ j -> Q.mulQ (SQ.lin n (\ i -> PM.f.1 (a i)) (\ i -> PM.f.1 (e.column j i))) (Q.constant (e.generator j)))
+    (\ j -> ap (\ z -> Q.mulQ z (Q.constant (e.generator j))) (MF.lin n a (e.column j))))
+    (trans (sym (FQ.compose n e.size (\ i -> PM.f.1 (a i)) (\ i j -> PM.f.1 (e.column j i)) (\ j -> Q.constant (e.generator j))))
+     (trans (SQ.sum-cong n
+      (\ i -> Q.mulQ (PM.f.1 (a i)) (SQ.lin e.size (\ j -> PM.f.1 (e.column j i)) (\ j -> Q.constant (e.generator j))))
+      (\ i -> Q.mulQ (PM.f.1 (a i)) (b i))
+      (\ i -> ap (Q.mulQ (PM.f.1 (a i))) (sym (e.equation i)))) r)) ;
+  module Explained (z : PR.Explanation[e.size,combined,e.generator]) {
+   column (j : Fin z.size) (i : Fin n) : P.Carrier =
+    SP.lin e.size (\ v -> e.column v i) (\ v -> P.constant (z.column j v)) ;
+   generator (j : Fin z.size) : Q.Carrier = Q.constant (z.generator j) ;
+   mapped (j : Fin z.size) (i : Fin n) : Id Q.Carrier (PM.f.1 (column j i))
+    (SQ.lin e.size (\ v -> PM.f.1 (e.column v i)) (\ v -> Q.constant (h.1 (z.column j v)))) =
+    trans (MF.lin e.size (\ v -> e.column v i) (\ v -> P.constant (z.column j v)))
+     (SQ.sum-cong e.size
+      (\ v -> Q.mulQ (PM.f.1 (e.column v i)) (PM.f.1 (P.constant (z.column j v))))
+      (\ v -> Q.mulQ (PM.f.1 (e.column v i)) (Q.constant (h.1 (z.column j v))))
+      (\ v -> ap (Q.mulQ (PM.f.1 (e.column v i))) (PM.UP.on-constants (z.column j v)))) ;
+   constants (v : Fin e.size) : Id Q.Carrier (Q.constant (e.generator v))
+    (SQ.lin z.size (\ j -> Q.constant (h.1 (z.column j v))) generator) =
+    trans (ap Q.constant (z.expands v)) (MC.lin z.size (\ j -> h.1 (z.column j v)) z.generator) ;
+   expands (i : Fin n) : Id Q.Carrier (b i) (SQ.lin z.size (\ j -> PM.f.1 (column j i)) generator) =
+    trans (e.equation i)
+     (trans (SQ.sum-cong e.size
+      (\ v -> Q.mulQ (PM.f.1 (e.column v i)) (Q.constant (e.generator v)))
+      (\ v -> Q.mulQ (PM.f.1 (e.column v i)) (SQ.lin z.size (\ j -> Q.constant (h.1 (z.column j v))) generator))
+      (\ v -> ap (Q.mulQ (PM.f.1 (e.column v i))) (constants v)))
+      (trans (FQ.compose e.size z.size (\ v -> PM.f.1 (e.column v i)) (\ v j -> Q.constant (h.1 (z.column j v))) generator)
+       (SQ.sum-cong z.size
+        (\ j -> Q.mulQ (SQ.lin e.size (\ v -> PM.f.1 (e.column v i)) (\ v -> Q.constant (h.1 (z.column j v)))) (generator j))
+        (\ j -> Q.mulQ (PM.f.1 (column j i)) (generator j))
+        (\ j -> ap (\ x -> Q.mulQ x (generator j)) (sym (mapped j i)))))) ;
+   relations (j : Fin z.size) : Id P.Carrier (SP.lin n a (column j)) P.zeroQ =
+    trans (FP.compose n e.size a (\ i v -> e.column v i) (\ v -> P.constant (z.column j v))) (z.relations j) ;
+   result : O.Explanation[n,a,b] = new O.Explanation[n,a,b,z.size,column,generator,expands,relations] ;
+  } ;
+  result : O.Explained n a b =
+   TC.map (PR.Explanation[e.size,combined,e.generator]) (O.Explanation[n,a,b]) (\ z -> Explained[z].result)
+    (PR.Given[e.size,combined,e.generator,relation].theorem) ;
+ } ;
+ theorem : O.Flat = \ n a b r ->
+  TC.bind (E.FamilyRep[n,b]) (O.Explanation[n,a,b]) (\ e -> Given[n,a,b,r,e].result) (E.theorem n b) ;
+} ;

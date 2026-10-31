@@ -12,7 +12,7 @@ STATUS (30 October 2026).  Gates A-D and the regression instances are
 formalised and checked.  The final theorem's hypotheses are only a CFN
 set-ring D, the finite homogeneous input g with its degrees, the sequence c
 and its truncated cocycle witnesses.  No syzygy matrix, Identity or SyzGen
-is assumed anywhere.  Not committed to git.
+is assumed anywhere.
 
 Check:   ./segc sag/zmt-syzygies4 all                         (from unit/)
 Fresh:   cd sag/zmt-syzygies4 && $(cabal list-bin exe:seg) All.seg

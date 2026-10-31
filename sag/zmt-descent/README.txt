@@ -25,7 +25,7 @@ certificate, B = R[s, s x_1, .., s x_n] is constructed, B is finite over
 R, and B[1/s] -> E[1/s] is constructed and proved an isomorphism (the
 optional consequence of handoff §7).
 Fourth step (FiniteFibreLocalisation): the usual-form ZMT conclusion from
-the usual hypotheses, conditional on the principle.  Not committed to git.
+the usual hypotheses, conditional on the principle.
 
 Check (from unit/):
   timeout 55 ./segc sag/zmt-descent all

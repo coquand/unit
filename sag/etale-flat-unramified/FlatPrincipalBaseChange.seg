@@ -1,0 +1,83 @@
+-- Flatness survives simultaneous quotienting of source and target by q.
+-- The quotient rings may be any construction: only surjectivity, the
+-- commuting square and the effective principal-kernel witness are used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A B C D : CRing) (h : RingHom[l].Hom A B)
+ (p : RingHom[l].Hom A C) (t : RingHom[l].Hom B D) (k : RingHom[l].Hom C D)
+ (commute : (a : A.R) -> Id D.R (t.1 (h.1 a)) (k.1 (p.1 a)))
+ (q : A.R) (pq : Id C.R (p.1 q) C.z)
+ (onto-p : (c : C.R) -> Tr.Trunc[(a : A.R) * Id C.R (p.1 a) c].carrier)
+ (onto-t : (d : D.R) -> Tr.Trunc[(b : B.R) * Id D.R (t.1 b) d].carrier)
+ (kernel-t : (b : B.R) -> Id D.R (t.1 b) D.z ->
+  Tr.Trunc[(v : B.R) * Id B.R b (B.mul (h.1 q) v)].carrier)
+ (flat : FlatRelations[l].Over[A,B,h].Flat) {
+ module O = FlatRelations[l].Over[A,B,h] ; module N = FlatRelations[l].Over[C,D,k] ;
+ module SA = FiniteIdeal[l].Sums[A] ; module SB = FiniteIdeal[l].Sums[B] ;
+ module SC = FiniteIdeal[l].Sums[C] ; module SD = FiniteIdeal[l].Sums[D] ;
+ module MP = FlatRelations[l].MapSums[A,C,p] ; module MT = FlatRelations[l].MapSums[B,D,t] ;
+ module LA = RL[A] ; module LB = RL[B] ; module LC = RL[C] ;
+ module Given (n : Nat) (a : Fin n -> C.R) (b : Fin n -> D.R) (r : N.Relation n a b) {
+  Source : U l = (i : Fin n) -> (x : A.R) * Id C.R (p.1 x) (a i) ;
+  Target : U l = (i : Fin n) -> (x : B.R) * Id D.R (t.1 x) (b i) ;
+  module Lifted (as : Source) (bs : Target) {
+   a0 (i : Fin n) : A.R = (as i).1 ;
+   b0 (i : Fin n) : B.R = (bs i).1 ;
+   value : B.R = SB.lin n (\ i -> h.1 (a0 i)) b0 ;
+   killed : Id D.R (t.1 value) D.z =
+    trans (MT.lin n (\ i -> h.1 (a0 i)) b0)
+     (trans (SD.sum-cong n (\ i -> D.mul (t.1 (h.1 (a0 i))) (t.1 (b0 i)))
+      (\ i -> D.mul (k.1 (a i)) (b i))
+      (\ i -> cong2 D.R D.mul _ _ _ _ (trans (commute (a0 i)) (ap k.1 (as i).2)) (bs i).2)) r) ;
+   module Witness (v : B.R) (equation : Id B.R value (B.mul (h.1 q) v)) {
+    row : Fin (suc n) -> A.R = snoc (Fin n) A.R a0 (A.neg q) ;
+    terms : Fin (suc n) -> B.R = snoc (Fin n) B.R b0 v ;
+    relation : O.Relation (suc n) row terms =
+     trans (ap (\ x -> B.add (B.mul x v) value) (RingHom[l].negation A B h q))
+      (trans (ap (\ x -> B.add x value) (LB.neg-mul-left (h.1 q) v))
+       (trans (ap (\ x -> B.add (B.neg (B.mul (h.1 q) v)) x) equation) (LB.neg-cancel (B.mul (h.1 q) v)))) ;
+    module Explained (e : O.Explanation[suc n,row,terms]) {
+     column (j : Fin e.size) (i : Fin n) : C.R = p.1 (e.column j (inl i)) ;
+     generator (j : Fin e.size) : D.R = t.1 (e.generator j) ;
+     expands (i : Fin n) : Id D.R (b i) (SD.lin e.size (\ j -> k.1 (column j i)) generator) =
+      trans (sym (bs i).2)
+       (trans (ap t.1 (e.expands (inl i)))
+        (trans (MT.lin e.size (\ j -> h.1 (e.column j (inl i))) e.generator)
+         (SD.sum-cong e.size
+          (\ j -> D.mul (t.1 (h.1 (e.column j (inl i)))) (generator j))
+          (\ j -> D.mul (k.1 (column j i)) (generator j))
+          (\ j -> ap (\ x -> D.mul x (generator j)) (commute (e.column j (inl i))))))) ;
+     pnegq : Id C.R (p.1 (A.neg q)) C.z =
+      trans (RingHom[l].negation A C p q) (trans (ap C.neg pq) LC.neg-zero) ;
+     rel-all (j : Fin e.size) : Id C.R
+      (SC.lin (suc n) (\ i -> p.1 (row i)) (\ i -> p.1 (e.column j i))) C.z =
+      trans (sym (MP.lin (suc n) row (e.column j)))
+       (trans (ap p.1 (e.relations j)) (RingHom[l].zero A C p)) ;
+     rel-tail (j : Fin e.size) : Id C.R
+      (SC.lin n (\ i -> p.1 (a0 i)) (column j)) C.z =
+      trans (sym (LC.zl (SC.lin n (\ i -> p.1 (a0 i)) (column j))))
+       (trans (ap (\ x -> C.add x (SC.lin n (\ i -> p.1 (a0 i)) (column j)))
+        (sym (trans (ap (\ x -> C.mul x (p.1 (e.column j (inr tt)))) pnegq)
+         (LC.zero-mul (p.1 (e.column j (inr tt))))))) (rel-all j)) ;
+     relations (j : Fin e.size) : Id C.R (SC.lin n a (column j)) C.z =
+      trans (SC.sum-cong n (\ i -> C.mul (a i) (column j i))
+       (\ i -> C.mul (p.1 (a0 i)) (column j i))
+       (\ i -> ap (\ x -> C.mul x (column j i)) (sym (as i).2))) (rel-tail j) ;
+     result : N.Explanation[n,a,b] = new N.Explanation[n,a,b,e.size,column,generator,expands,relations] ;
+    } ;
+    result : N.Explained n a b =
+     TC.map (O.Explanation[suc n,row,terms]) (N.Explanation[n,a,b]) (\ e -> Explained[e].result)
+      (flat (suc n) row terms relation) ;
+   } ;
+   result : N.Explained n a b =
+    TC.bind ((v : B.R) * Id B.R value (B.mul (h.1 q) v)) (N.Explanation[n,a,b])
+     (\ w -> Witness[w.1,w.2].result) (kernel-t value killed) ;
+  } ;
+  result : N.Explained n a b =
+   TC.bind Source (N.Explanation[n,a,b])
+    (\ as -> TC.bind Target (N.Explanation[n,a,b]) (\ bs -> Lifted[as,bs].result)
+      (AffineFinite[l].choice n (\ i -> (x : B.R) * Id D.R (t.1 x) (b i)) (\ i -> onto-t (b i))))
+    (AffineFinite[l].choice n (\ i -> (x : A.R) * Id C.R (p.1 x) (a i)) (\ i -> onto-p (a i))) ;
+ } ;
+ theorem : N.Flat = \ n a b r -> Given[n,a,b,r].result ;
+} ;

@@ -3,7 +3,7 @@
 Source note: `~/COLL/zmt2-revised.tex`.  Directory: `unit/sag/etale-local`
 (read `README.txt` there first; `HANDOFF-LOOP.md` has the loop's design).
 State at handoff (2026-10-30): `./segc sag/etale-local all` (from `unit/`)
-= 64 modules, 0 failed, 0.5 s.  Nothing committed.
+= 64 modules, 0 failed, 0.5 s.
 
 ## Rules (user rulings, all apply)
 
@@ -86,7 +86,7 @@ make T = E_g (ZMT, Lemma 2) -- these stay hypotheses.
 ## Status
 
 DONE 2026-10-30.  `./segc sag/etale-local all` = 67 modules, 0 failed,
-0.51 s.  Nothing committed.  New files (in All.seg after LoopInputs):
+0.51 s.  New files (in All.seg after LoopInputs):
 IdealGenerated.seg (J = m B by lists of generators), ClearDenominators.seg
 (Full, clear, Certificate.cert), Section1Eg.seg (Section1 in E_g: root,
 divides, q-prime).  `--opened` audited: openings are the definitions the

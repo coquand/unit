@@ -1,6 +1,6 @@
 # The field case of Theorem local: what is left and how to do it
 
-State (2026-10-30, uncommitted): Theorem local of `~/COLL/zmt2-revised.tex`
+State (2026-10-30): Theorem local of `~/COLL/zmt2-revised.tex`
 is checked in `unit/sag/etale-local` modulo two hypotheses
 (`TheoremLocal.Over[..].FieldCase[..].theorem`, README.txt, HANDOFF-BLOCKS12.md):
 

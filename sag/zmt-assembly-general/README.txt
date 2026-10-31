@@ -1,7 +1,7 @@
 Generic finite chart-family and ideal-error assembly
 ====================================================
 
-Status: mathematical construction complete, checked, uncommitted.
+Status: mathematical construction complete, checked.
 Only this new directory is edited; existing developments are relative
 links. Four owned sources, 202 owned declarations. No new axioms/choice.
 

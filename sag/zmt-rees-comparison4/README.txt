@@ -13,7 +13,7 @@ checked: the fixed finite generating list, the bridge, the chart-level
 comparison and the finite correction.  What REMAINS is the construction of
 the inputs of the correction (the finite-fibre sections: the sequence c_n
 with its lifts and the cochains z_n, see §7) and the final ZMT certificate
-assembly.  Not committed to git.
+assembly.
 
 Check:   ./segc sag/zmt-rees-comparison4 all                  (from unit/)
 Fresh:   cd sag/zmt-rees-comparison4 && $(cabal list-bin exe:seg) All.seg

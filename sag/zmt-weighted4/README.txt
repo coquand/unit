@@ -12,7 +12,7 @@ formalised and checked.  The coefficient ring D = A[U_1..U_t], its grading,
 its CFN structure and its evaluations are CONSTRUCTED; the weighted theorem
 is obtained by projecting the conclusion (U) of the checked
 CoherentDependence4.  No syzygy, weighted-dependence or ideal-power
-statement is assumed.  Not committed to git.
+statement is assumed.
 
 Check:   ./segc sag/zmt-weighted4 all                         (from unit/)
 Fresh:   cd sag/zmt-weighted4 && $(cabal list-bin exe:seg) All.seg

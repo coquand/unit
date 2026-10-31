@@ -16,7 +16,7 @@ z_0 = Z^-1 on the chart Z give a certificate).  Remaining: (D) the
 finite-fibre sections and (E) the Rees lifts with their lifts along KG,
 then (F) the export; stated exactly in §3.  They are parameters only of the
 module ZMT4Assembly.Inputs, which is labelled conditional and is not
-claimed to prove ZMT.  Not committed to git.
+claimed to prove ZMT.
 
 Check:   ./segc sag/zmt4 all                     (from unit/)
 Fresh:   cd sag/zmt4 && $(cabal list-bin exe:seg) All.seg

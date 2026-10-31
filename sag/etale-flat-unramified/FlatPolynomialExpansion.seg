@@ -1,0 +1,81 @@
+-- A finite family in B[X] is a finite B-linear combination of families in
+-- A[X].  This is finite polynomial support, not a flatness assumption.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R) (h : RingHom[l].Hom A B) {
+ module PM = FlatPolynomialData[l].Map[A,B,setA,setB,h] ;
+ module P = PM.P ; module Q = PM.Q ;
+ f : RingHom[l].Hom P.ring Q.ring = PM.f ;
+ module SQ = FiniteIdeal[l].Sums[Q.ring] ; module SP = FiniteIdeal[l].Sums[P.ring] ;
+ module LQ = RL[Q.ring] ;
+ record FamilyRep (n : Nat) (b : Fin n -> Q.Carrier) {
+  size : Nat ;
+  column (j : Fin size) (i : Fin n) : P.Carrier ;
+  generator (j : Fin size) : B.R ;
+  equation (i : Fin n) : Id Q.Carrier (b i)
+   (SQ.lin size (\ j -> f.1 (column j i)) (\ j -> Q.constant (generator j))) ;
+ } ;
+ record Scalar (b : Q.Carrier) {
+  size : Nat ; column (j : Fin size) : P.Carrier ; generator (j : Fin size) : B.R ;
+  equation : Id Q.Carrier b (SQ.lin size (\ j -> f.1 (column j)) (\ j -> Q.constant (generator j))) ;
+ } ;
+ module Cons (a : B.R) (p : List B.R) (e : Scalar[Q.include p]) {
+  cols : Fin (suc e.size) -> P.Carrier = snoc (Fin e.size) P.Carrier (\ j -> P.mulQ P.variable (e.column j)) P.oneQ ;
+  gens : Fin (suc e.size) -> B.R = snoc (Fin e.size) B.R e.generator a ;
+  shifted : Id Q.Carrier (Q.mulQ Q.variable (Q.include p))
+   (SQ.lin e.size (\ j -> f.1 (P.mulQ P.variable (e.column j))) (\ j -> Q.constant (e.generator j))) =
+   trans (ap (Q.mulQ Q.variable) e.equation)
+    (trans (sym (SQ.sum-scale Q.variable e.size (\ j -> Q.mulQ (f.1 (e.column j)) (Q.constant (e.generator j)))))
+     (SQ.sum-cong e.size
+      (\ j -> Q.mulQ Q.variable (Q.mulQ (f.1 (e.column j)) (Q.constant (e.generator j))))
+      (\ j -> Q.mulQ (f.1 (P.mulQ P.variable (e.column j))) (Q.constant (e.generator j)))
+      (\ j -> trans (Q.mul-assoc Q.variable (f.1 (e.column j)) (Q.constant (e.generator j)))
+       (ap (\ x -> Q.mulQ x (Q.constant (e.generator j)))
+        (sym (trans (f.2.2.2 P.variable (e.column j)) (ap (\ x -> Q.mulQ x (f.1 (e.column j))) PM.UP.on-variable))))))) ;
+  constant : Id Q.Carrier (Q.constant a) (Q.mulQ (f.1 P.oneQ) (Q.constant a)) =
+   sym (trans (ap (\ x -> Q.mulQ x (Q.constant a)) f.2.1) (LQ.one-left (Q.constant a))) ;
+  result : Scalar[Q.include (cons a p)] = new Scalar[Q.include (cons a p),suc e.size,cols,gens,
+   trans (Q.horner a p) (cong2 Q.Carrier Q.addQ _ _ _ _ constant shifted)] ;
+ } ;
+ scalar : (p : List B.R) -> Scalar[Q.include p] = split {
+  nil -> new Scalar[Q.zeroQ,zero,\ j -> efq j,\ j -> efq j,refl Q.zeroQ] ;
+  cons a p | ih -> Cons[a,p,ih].result } ;
+ scalar-mere (b : Q.Carrier) : Tr.Trunc[Scalar[b]].carrier =
+  TC.map (PM.CB.Representation b) (Scalar[b])
+   (\ r -> subst (\ q -> Scalar[q]) r.2 (scalar r.1)) (PM.CB.representation b) ;
+ module Join (n : Nat) (b : Fin (suc n) -> Q.Carrier)
+  (e : FamilyRep[n,\ i -> b (inl i)]) (z : Scalar[b (inr tt)]) {
+  left (j : Fin e.size) : Fin (suc n) -> P.Carrier = snoc (Fin n) P.Carrier (e.column j) P.zeroQ ;
+  right (j : Fin z.size) : Fin (suc n) -> P.Carrier = snoc (Fin n) P.Carrier (\ i -> P.zeroQ) (z.column j) ;
+  size : Nat = plus z.size e.size ;
+  column : Fin size -> Fin (suc n) -> P.Carrier = FinSum[l].cases e.size (Fin (suc n) -> P.Carrier) left z.size right ;
+  generator : Fin size -> B.R = FinSum[l].cases e.size B.R e.generator z.size z.generator ;
+  value (i : Fin (suc n)) : Q.Carrier = SQ.lin size (\ j -> f.1 (column j i)) (\ j -> Q.constant (generator j)) ;
+  split-value (i : Fin (suc n)) : Id Q.Carrier (value i)
+   (Q.addQ (SQ.lin e.size (\ j -> f.1 (left j i)) (\ j -> Q.constant (e.generator j)))
+    (SQ.lin z.size (\ j -> f.1 (right j i)) (\ j -> Q.constant (z.generator j)))) =
+   FlatRelations[l].Concat[Q.ring].sum (Fin (suc n) -> P.Carrier) B.R
+    (\ c g -> Q.mulQ (f.1 (c i)) (Q.constant g)) e.size left e.generator z.size right z.generator ;
+  zeros (k : Nat) (v : Fin k -> B.R) :
+   Id Q.Carrier (SQ.lin k (\ j -> f.1 P.zeroQ) (\ j -> Q.constant (v j))) Q.zeroQ =
+   trans (SQ.sum-cong k (\ j -> Q.mulQ (f.1 P.zeroQ) (Q.constant (v j))) (\ j -> Q.zeroQ)
+    (\ j -> trans (ap (\ x -> Q.mulQ x (Q.constant (v j))) (RingHom[l].zero P.ring Q.ring f))
+     (LQ.zero-mul (Q.constant (v j))))) (SQ.sum-zero k) ;
+  old (i : Fin n) : Id Q.Carrier (b (inl i)) (value (inl i)) =
+   trans (e.equation i) (sym (trans (split-value (inl i))
+    (trans (ap (Q.addQ (SQ.lin e.size (\ j -> f.1 (e.column j i)) (\ j -> Q.constant (e.generator j))))
+     (zeros z.size z.generator)) (Q.add-zero _)))) ;
+  last : Id Q.Carrier (b (inr tt)) (value (inr tt)) =
+   trans z.equation (sym (trans (split-value (inr tt))
+    (trans (ap (\ x -> Q.addQ x (SQ.lin z.size (\ j -> f.1 (z.column j)) (\ j -> Q.constant (z.generator j))))
+     (zeros e.size e.generator)) (LQ.zl _)))) ;
+  result : FamilyRep[suc n,b] = new FamilyRep[suc n,b,size,column,generator,
+   AffineFinite[l].section n (\ i -> Id Q.Carrier (b i) (value i)) old last] ;
+ } ;
+ theorem : (n : Nat) (b : Fin n -> Q.Carrier) -> Tr.Trunc[FamilyRep[n,b]].carrier = split {
+  zero -> \ b -> Tr.Trunc[FamilyRep[zero,b]].inc
+   (new FamilyRep[zero,b,zero,\ j i -> efq j,\ j -> efq j,\ i -> efq i]) ;
+  suc n | ih -> \ b ->
+   TC.map2 (FamilyRep[n,\ i -> b (inl i)]) (Scalar[b (inr tt)]) (FamilyRep[suc n,b])
+    (\ e z -> Join[n,b,e,z].result) (ih (\ i -> b (inl i))) (scalar-mere (b (inr tt))) } ;
+} ;
