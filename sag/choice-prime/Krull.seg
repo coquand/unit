@@ -1,0 +1,203 @@
+-- Krull's lemma from choice: every proper ideal I lies in a prime ideal.
+--
+-- Work with subsets of R. Call S good (PI) when it is an ideal, does
+-- not contain 1, and contains I; this is a proposition. S is extensible
+-- (Ext) when merely some good T has S < T. A successor of S is T with
+--   S <= T,  S good => T good,  Ext S => not T <= S,  not Ext S => T <= S.
+-- Every S merely has one (excluded middle on Ext S: the witness, or S
+-- itself), and the successors of S form a set, so choice gives merely a
+-- map f choosing one for every S. f is inflationary; Bourbaki-Witt
+-- (BourbakiWitt) gives the tower above I with top m and f m <= m.
+-- Every element of the tower is good: I is; f preserves good subsets;
+-- the union of an inhabited chain of good subsets is good. So m is good,
+-- and m is not extensible since f m <= m. That is, m is maximal.
+--
+-- m is prime: let x y in m and x not in m. J = {u + r x | u in m} is an
+-- ideal containing m and x, so it is not <= m. Since m is maximal, J is
+-- not good, hence 1 in J (excluded middle): 1 = u + r x. Then
+--   y = y (u + r x) = y u + r (x y)
+-- lies in m. The conclusion, merely a prime above I, is a proposition, so
+-- the mere map f is enough.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module H = Prelude[l+] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Tr1 = Truncation[l+] ; module TC1 = TruncationCombinators[l+] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module FL1 = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module Rz = Resizing[l] ;
+
+module Over (A : CRing) {
+ open A ;
+ module BW = BourbakiWitt[l].Over[R] ;
+ module PE = PrimeExistence[l].Over[A] ;
+ module L = RL[A] ;
+ in-prop (S : BW.Sub) (x : R) : Pr.isProp (BW.In S x) = (S x).2 ;
+
+ -- ideals as subsets
+ ZeroIn (S : BW.Sub) : U l = BW.In S z ;
+ AddIn (S : BW.Sub) : U l = (a b : R) -> BW.In S a -> BW.In S b -> BW.In S (add a b) ;
+ MulIn (S : BW.Sub) : U l = (c x : R) -> BW.In S x -> BW.In S (mul c x) ;
+ Ideal (S : BW.Sub) : U l = ZeroIn S * AddIn S * MulIn S ;
+ add-prop (S : BW.Sub) : Pr.isProp (AddIn S) =
+  FL.isProp-Pi R (\ a -> (b : R) -> BW.In S a -> BW.In S b -> BW.In S (add a b)) (\ a ->
+   FL.isProp-Pi R (\ b -> BW.In S a -> BW.In S b -> BW.In S (add a b)) (\ b ->
+    FL.isProp-Pi (BW.In S a) (\ u -> BW.In S b -> BW.In S (add a b)) (\ u ->
+     FL.isProp-Pi (BW.In S b) (\ v -> BW.In S (add a b)) (\ v -> in-prop S (add a b))))) ;
+ mul-prop (S : BW.Sub) : Pr.isProp (MulIn S) =
+  FL.isProp-Pi R (\ c -> (x : R) -> BW.In S x -> BW.In S (mul c x)) (\ c ->
+   FL.isProp-Pi R (\ x -> BW.In S x -> BW.In S (mul c x)) (\ x ->
+    FL.isProp-Pi (BW.In S x) (\ u -> BW.In S (mul c x)) (\ u -> in-prop S (mul c x)))) ;
+ ideal-prop (S : BW.Sub) : Pr.isProp (Ideal S) =
+  Pr.isProp-Sigma (ZeroIn S) (\ h -> AddIn S * MulIn S) (in-prop S z) (\ h ->
+   Pr.isProp-Sigma (AddIn S) (\ h -> MulIn S) (add-prop S) (\ h -> mul-prop S)) ;
+
+ module From (I : RegularIdeal[l].IdealPred[A]) (propI : (x : R) -> Pr.isProp (I.In x))
+  (properI : Not (I.In o)) {
+  Ib : BW.Sub = \ x -> (I.In x,propI x) ;
+  ideal-I : Ideal Ib = (I.in-zero,I.in-add,I.in-mul) ;
+
+  Good (S : BW.Sub) : U l = Ideal S * Not (BW.In S o) * BW.Incl Ib S ;
+  good-prop (S : BW.Sub) : Pr.isProp (Good S) =
+   Pr.isProp-Sigma (Ideal S) (\ h -> Not (BW.In S o) * BW.Incl Ib S) (ideal-prop S) (\ h ->
+    Pr.isProp-Sigma (Not (BW.In S o)) (\ h -> BW.Incl Ib S) (Diaconescu[l].not-prop (BW.In S o))
+     (\ h -> BW.incl-prop Ib S)) ;
+  g-zero (S : BW.Sub) (g : Good S) : ZeroIn S = g.1.1 ;
+  g-add (S : BW.Sub) (g : Good S) : AddIn S = g.1.2.1 ;
+  g-mul (S : BW.Sub) (g : Good S) : MulIn S = g.1.2.2 ;
+  g-proper (S : BW.Sub) (g : Good S) : Not (BW.In S o) = g.2.1 ;
+  g-above (S : BW.Sub) (g : Good S) : BW.Incl Ib S = g.2.2 ;
+  good-I : Good Ib = (ideal-I,properI,BW.incl-refl Ib) ;
+
+  -- extensible subsets and successors
+  Bigger (S : BW.Sub) : U l+ = (T : BW.Sub) * Good T * BW.Incl S T * Not (BW.Incl T S) ;
+  Ext (S : BW.Sub) : U l+ = Tr1.Trunc[Bigger S].carrier ;
+  ext-prop (S : BW.Sub) : H.isProp (Ext S) = Tr1.Trunc[Bigger S].proposition ;
+  Successor (S T : BW.Sub) : U l+ = BW.Incl S T * (Good S -> Good T) *
+   (Ext S -> Not (BW.Incl T S)) * (Ring[l+].Not (Ext S) -> BW.Incl T S) ;
+  successor-prop (S T : BW.Sub) : H.isProp (Successor S T) =
+   H.isProp-Sigma (BW.Incl S T) (\ h -> (Good S -> Good T) * (Ext S -> Not (BW.Incl T S)) *
+     (Ring[l+].Not (Ext S) -> BW.Incl T S)) (BW.incl-prop S T) (\ h ->
+    H.isProp-Sigma (Good S -> Good T) (\ h -> (Ext S -> Not (BW.Incl T S)) *
+      (Ring[l+].Not (Ext S) -> BW.Incl T S))
+     (FL1.isProp-Pi (Good S) (\ g -> Good T) (\ g -> good-prop T)) (\ h ->
+     H.isProp-Sigma (Ext S -> Not (BW.Incl T S)) (\ h -> Ring[l+].Not (Ext S) -> BW.Incl T S)
+      (FL1.isProp-Pi (Ext S) (\ e -> Not (BW.Incl T S)) (\ e -> Diaconescu[l].not-prop (BW.Incl T S)))
+      (\ h -> FL1.isProp-Pi (Ring[l+].Not (Ext S)) (\ n -> BW.Incl T S) (\ n -> BW.incl-prop T S)))) ;
+  Next (S : BW.Sub) : U l+ = (T : BW.Sub) * Successor S T ;
+  next-set (S : BW.Sub) : H.isSet (Next S) =
+   H.isSet-Sigma BW.Sub (Successor S) BW.sub-set
+    (\ T -> H.prop-to-set (Successor S T) (successor-prop S T)) ;
+  from-bigger (S : BW.Sub) (w : Bigger S) : Next S =
+   (w.1,(w.2.2.1,\ g -> w.2.1,\ e -> w.2.2.2,\ ne -> Ring[l+].absurd (BW.Incl w.1 S) (ne (Tr1.Trunc[Bigger S].inc w)))) ;
+  stay (S : BW.Sub) (ne : Ring[l+].Not (Ext S)) : Next S =
+   (S,(BW.incl-refl S,\ g -> g,\ e -> Ring[l+].absurd (Not (BW.Incl S S)) (ne e),\ n -> BW.incl-refl S)) ;
+  next-cases (S : BW.Sub) : Ring[l+].Plus (Ext S) (Ring[l+].Not (Ext S)) -> Tr1.Trunc[Next S].carrier = split {
+   inl e -> TC1.map (Bigger S) (Next S) (from-bigger S) e ;
+   inr ne -> Tr1.Trunc[Next S].inc (stay S ne) } ;
+  next-exists (S : BW.Sub) : Tr1.Trunc[Next S].carrier = next-cases S (lem @(l+) (Ext S) (ext-prop S)) ;
+  Choice : U l+ = (S : BW.Sub) -> Next S ;
+  choice : Tr1.Trunc[Choice].carrier = ac @(l+) BW.Sub Next BW.sub-set next-set next-exists ;
+
+  -- the union of an inhabited chain of good subsets is good
+  module Union (C : BW.Fam) (ch : BW.Chain C) (inh : BW.Inhabited C)
+   (wg : (S : BW.Sub) -> BW.Mem C S -> Good S) {
+   U0 : BW.Sub = BW.union C ;
+   zero-in : ZeroIn U0 = TC1.rec ((S : BW.Sub) * BW.Mem C S) @l (ZeroIn U0) (in-prop U0 z)
+    (\ s -> BW.union-in C s.1 s.2 z (g-zero s.1 (wg s.1 s.2))) inh ;
+   both (a b : R) (S T : BW.Sub) (mS : BW.Mem C S) (mT : BW.Mem C T) (ua : BW.In S a) (ub : BW.In T b) :
+    Plus (BW.Incl S T) (BW.Incl T S) -> BW.In U0 (add a b) = split {
+    inl h -> BW.union-in C T mT (add a b) (g-add T (wg T mT) a b (h a ua) ub) ;
+    inr h -> BW.union-in C S mS (add a b) (g-add S (wg S mS) a b ua (h b ub)) } ;
+   add-in : AddIn U0 = \ a b ua ub ->
+    BW.union-elim C a (BW.In U0 (add a b)) (in-prop U0 (add a b)) (\ S mS ua1 ->
+     BW.union-elim C b (BW.In U0 (add a b)) (in-prop U0 (add a b)) (\ T mT ub1 ->
+      TC.rec (Plus (BW.Incl S T) (BW.Incl T S)) @l (BW.In U0 (add a b)) (in-prop U0 (add a b))
+       (both a b S T mS mT ua1 ub1) (ch S T mS mT)) ub) ua ;
+   mul-in : MulIn U0 = \ c x u ->
+    BW.union-elim C x (BW.In U0 (mul c x)) (in-prop U0 (mul c x)) (\ S mS v ->
+     BW.union-in C S mS (mul c x) (g-mul S (wg S mS) c x v)) u ;
+   proper : Not (BW.In U0 o) = \ u ->
+    BW.union-elim C o Empty Diaconescu[l].empty-prop (\ S mS v -> g-proper S (wg S mS) v) u ;
+   above : BW.Incl Ib U0 = \ x u ->
+    TC1.rec ((S : BW.Sub) * BW.Mem C S) @l (BW.In U0 x) (in-prop U0 x)
+     (\ s -> BW.union-in C s.1 s.2 x (g-above s.1 (wg s.1 s.2) x u)) inh ;
+   good : Good U0 = ((zero-in,add-in,mul-in),proper,above) ;
+  } ;
+
+  module Given (next : Choice) {
+   f (S : BW.Sub) : BW.Sub = (next S).1 ;
+   infl (S : BW.Sub) : BW.Incl S (f S) = (next S).2.1 ;
+   keeps (S : BW.Sub) : Good S -> Good (f S) = (next S).2.2.1 ;
+   leaves (S : BW.Sub) : Ext S -> Not (BW.Incl (f S) S) = (next S).2.2.2.1 ;
+   module Tw = BW.Tower[Ib,f,infl] ;
+   Goodness : BW.Fam = \ S -> (Good S,good-prop S) ;
+   all-good (S : BW.Sub) (t : Tw.T S) : Good S =
+    Tw.Induction[Goodness,good-I,\ S t g -> keeps S g,
+     \ C ch inh wt wg -> Union[C,ch,inh,wg].good].holds S t ;
+   m : BW.Sub = Tw.top ;
+   good-m : Good m = all-good m Tw.top-in ;
+   maximal : Ring[l+].Not (Ext m) = \ e -> Rz.empty-elim Ring[l+].Empty (leaves m e Tw.fixed) ;
+   not-bigger (T : BW.Sub) (gT : Good T) (h : BW.Incl m T) (nk : Not (BW.Incl T m)) : Empty =
+    Ring[l+].absurd Empty (maximal (Tr1.Trunc[Bigger m].inc (T,gT,h,nk))) ;
+
+   -- m is prime
+   module PrimeStep (x y : R) (h : BW.In m (mul x y)) (nx : Not (BW.In m x)) {
+    Comb (w : R) : U l = (u : R) * (r : R) * BW.In m u * Id R w (add u (mul r x)) ;
+    J : BW.Sub = \ w -> (Tr.Trunc[Comb w].carrier,Tr.Trunc[Comb w].proposition) ;
+    gen (w u r : R) (hu : BW.In m u) (e : Id R w (add u (mul r x))) : BW.In J w =
+     Tr.Trunc[Comb w].inc (u,r,hu,e) ;
+    -- w = w + 0 x
+    plus-zero (w : R) : Id R w (add w (mul z x)) = sym (trans (ap (add w) (L.zero-mul x)) (addZ w)) ;
+    zero-J : ZeroIn J = gen z z z (g-zero m good-m) (plus-zero z) ;
+    -- (u1 + r1 x) + (u2 + r2 x) = (u1 + u2) + (r1 + r2) x
+    sum-eq (u1 r1 u2 r2 : R) :
+     Id R (add (add u1 (mul r1 x)) (add u2 (mul r2 x))) (add (add u1 u2) (mul (add r1 r2) x)) =
+     trans (L.swap u1 (mul r1 x) u2 (mul r2 x)) (ap (add (add u1 u2)) (sym (L.dist-left r1 r2 x))) ;
+    add-comb (a b : R) (p : Comb a) (q : Comb b) : Comb (add a b) =
+     (add p.1 q.1,add p.2.1 q.2.1,g-add m good-m p.1 q.1 p.2.2.1 q.2.2.1,
+      trans (trans (ap (\ t -> add t b) p.2.2.2) (ap (add (add p.1 (mul p.2.1 x))) q.2.2.2))
+       (sum-eq p.1 p.2.1 q.1 q.2.1)) ;
+    add-J : AddIn J = \ a b ua ub -> TC.map2 (Comb a) (Comb b) (Comb (add a b)) (add-comb a b) ua ub ;
+    -- c (u + r x) = c u + (c r) x
+    scale-eq (c u r : R) : Id R (mul c (add u (mul r x))) (add (mul c u) (mul (mul c r) x)) =
+     trans (dist c u (mul r x)) (ap (add (mul c u)) (mulA c r x)) ;
+    mul-comb (c w : R) (p : Comb w) : Comb (mul c w) =
+     (mul c p.1,mul c p.2.1,g-mul m good-m c p.1 p.2.2.1,
+      trans (ap (mul c) p.2.2.2) (scale-eq c p.1 p.2.1)) ;
+    mul-J : MulIn J = \ c w u -> TC.map (Comb w) (Comb (mul c w)) (mul-comb c w) u ;
+    m-in-J : BW.Incl m J = \ w hw -> gen w w z hw (plus-zero w) ;
+    x-in-J : BW.In J x = gen x z o (g-zero m good-m) (sym (trans (L.zl (mul o x)) (L.one-left x))) ;
+    -- J contains m and x, so it is not <= m; m is maximal, so 1 is in J
+    one-cases : Plus (BW.In J o) (Not (BW.In J o)) -> BW.In J o = split {
+     inl j -> j ;
+     inr nj -> efq (not-bigger J ((zero-J,add-J,mul-J),nj,BW.incl-trans Ib m J (g-above m good-m) m-in-J)
+      m-in-J (\ k -> nx (k x x-in-J))) } ;
+    one-J : BW.In J o = one-cases (lem @l (BW.In J o) (in-prop J o)) ;
+    -- y = y (u + r x) = y u + r (x y)
+    y-eq (u r : R) (e : Id R o (add u (mul r x))) : Id R y (add (mul y u) (mul r (mul x y))) =
+     calc R { y =< sym (mulO y) > mul y o
+                =< ap (mul y) e > mul y (add u (mul r x))
+                =< dist y u (mul r x) > add (mul y u) (mul y (mul r x))
+                =< ap (add (mul y u)) (L.mul-swap y r x) > add (mul y u) (mul r (mul y x))
+                =< ap (\ t -> add (mul y u) (mul r t)) (mulC y x) > add (mul y u) (mul r (mul x y)) } ;
+    from-comb (p : Comb o) : BW.In m y =
+     subst (BW.In m) (sym (y-eq p.1 p.2.1 p.2.2.2))
+      (g-add m good-m (mul y p.1) (mul p.2.1 (mul x y))
+       (g-mul m good-m y p.1 p.2.2.1) (g-mul m good-m p.2.1 (mul x y) h)) ;
+    in-y : BW.In m y = TC.rec (Comb o) @l (BW.In m y) (in-prop m y) from-comb one-J ;
+   } ;
+   prime-cases (x y : R) (h : BW.In m (mul x y)) : Plus (BW.In m x) (Not (BW.In m x)) -> Plus (BW.In m x) (BW.In m y) = split {
+    inl hx -> inl hx ; inr nx -> inr (PrimeStep[x,y,h,nx].in-y) } ;
+   prime (x y : R) (h : BW.In m (mul x y)) : Tr.Trunc[Plus (BW.In m x) (BW.In m y)].carrier =
+    Tr.Trunc[Plus (BW.In m x) (BW.In m y)].inc (prime-cases x y h (lem @l (BW.In m x) (in-prop m x))) ;
+   ideal : RegularIdeal[l].IdealPred[A] =
+    new RegularIdeal[l].IdealPred[A,BW.In m,g-zero m good-m,g-add m good-m,g-mul m good-m] ;
+   prime-ideal : PE.Prime = new PE.Prime[ideal,in-prop m,g-proper m good-m,prime] ;
+   above : PE.Above I = (prime-ideal,g-above m good-m) ;
+  } ;
+  theorem : Tr1.Trunc[PE.Above I].carrier = TC1.map Choice (PE.Above I) (\ next -> Given[next].above) choice ;
+ } ;
+ principle : PE.Principle = \ I propI properI -> From[I,propI,properI].theorem ;
+} ;
+
+prime-existence (A : CRing) (setA : Pr.isSet A.R) : PrimeExistence[l].Over[A].Principle = Over[A].principle ;

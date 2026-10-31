@@ -1,0 +1,77 @@
+-- Diaconescu's theorem: choice gives excluded middle (HoTT book,
+-- Theorem 10.1.14).
+--
+-- Let P be a proposition. On Bool let a ~ b when merely a = b or P. This
+-- is an equivalence relation with propositional values; let Q = Bool/~
+-- and inc : Bool -> Q. The fibres of inc are sets and merely inhabited, so
+-- choice gives merely a section s : (q : Q) -> fibre q. Write v b for the
+-- Boolean of s (inc b); then inc (v b) = inc b. Equality of v true and
+-- v false is decidable.
+--  - If v true = v false, then inc true = inc false, so true ~ false by
+--    effectiveness of the quotient; since true /= false, this is P.
+--  - If v true /= v false, then not P: from P, inc true = inc false, and
+--    applying v gives v true = v false.
+-- P + not P is a proposition, so a mere section is enough.
+level l ; open Ring[l] ; open Base ; -- Ring first: its Top, Empty win
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+empty-prop : Pr.isProp Empty = \ e -> efq e ;
+not-prop (P : U l) : Pr.isProp (Not P) = FL.isProp-Pi P (\ p -> Empty) (\ p -> empty-prop) ;
+
+bool-code : Bool -> U l = split { true -> Top ; false -> Empty } ;
+true-false (p : Id Bool true false) : Empty = subst bool-code p tt ;
+decide : (a b : Bool) -> Plus (Id Bool a b) (Not (Id Bool a b)) = split {
+ true -> split { true -> inl (refl true) ; false -> inr true-false } ;
+ false -> split { true -> inr (\ p -> true-false (sym p)) ; false -> inl (refl false) } } ;
+
+-- P + not P is a proposition when P is
+decision-prop (P : U l) (prop : Pr.isProp P) : Pr.isProp (Plus P (Not P)) = split {
+ inl p -> split { inl p1 -> ap (\ t -> inl t) (prop p p1) ; inr n -> efq (n p) } ;
+ inr n -> split { inl p -> efq (n p) ; inr n1 -> ap (\ t -> inr t) (not-prop P n n1) } } ;
+
+module Over (P : U l) (prop : Pr.isProp P) {
+ Raw (a b : Bool) : U l = Plus (Id Bool a b) P ;
+ Rel (a b : Bool) : U l = Tr.Trunc[Raw a b].carrier ;
+ rel-prop (a b : Bool) : Pr.isProp (Rel a b) = Tr.Trunc[Raw a b].proposition ;
+ rel-refl (a : Bool) : Rel a a = Tr.Trunc[Raw a a].inc (inl (refl a)) ;
+ flip (a b : Bool) : Raw a b -> Raw b a = split { inl e -> inl (sym e) ; inr p -> inr p } ;
+ rel-sym (a b : Bool) : Rel a b -> Rel b a = TC.map (Raw a b) (Raw b a) (flip a b) ;
+ compose (a b c : Bool) : Raw a b -> Raw b c -> Raw a c = split {
+  inl e -> split { inl e1 -> inl (trans e e1) ; inr p -> inr p } ;
+  inr p -> \ u -> inr p } ;
+ rel-trans (a b c : Bool) : Rel a b -> Rel b c -> Rel a c =
+  TC.map2 (Raw a b) (Raw b c) (Raw a c) (compose a b c) ;
+ module Qt = Quotient[l].Quot[Bool,Rel,rel-prop,rel-refl,rel-sym,rel-trans] ;
+
+ Fibre (q : Qt.Q) : U l = (b : Bool) * Id Qt.Q (Qt.inc b) q ;
+ fibre-set (q : Qt.Q) : Pr.isSet (Fibre q) =
+  Pr.isSet-Sigma Bool (\ b -> Id Qt.Q (Qt.inc b) q) BooleanRing[l].bool-set
+   (\ b -> Pr.prop-to-set (Id Qt.Q (Qt.inc b) q) (Qt.set (Qt.inc b) q)) ;
+ fibre-inhabited : (q : Qt.Q) -> Tr.Trunc[Fibre q].carrier =
+  Qt.induction @l (\ q -> Tr.Trunc[Fibre q].carrier) (\ q -> Tr.Trunc[Fibre q].proposition)
+   (\ b -> Tr.Trunc[Fibre (Qt.inc b)].inc (b,refl (Qt.inc b))) ;
+ Section : U l = (q : Qt.Q) -> Fibre q ;
+ section : Tr.Trunc[Section].carrier = ac @l Qt.Q Fibre Qt.set fibre-set fibre-inhabited ;
+
+ -- true ~ false is P
+ out : Raw true false -> P = split { inl e -> efq (true-false e) ; inr p -> p } ;
+ related (h : Rel true false) : P = TC.rec (Raw true false) @l P prop out h ;
+
+ module At (s : Section) {
+  v (b : Bool) : Bool = (s (Qt.inc b)).1 ;
+  back (b : Bool) : Id Qt.Q (Qt.inc (v b)) (Qt.inc b) = (s (Qt.inc b)).2 ;
+  yes (e : Id Bool (v true) (v false)) : P =
+   related (Qt.effective true false (trans (sym (back true)) (trans (ap Qt.inc e) (back false)))) ;
+  no (n : Not (Id Bool (v true) (v false))) : Not P = \ p ->
+   n (ap (\ q -> (s q).1) (Qt.relates true false (Tr.Trunc[Raw true false].inc (inr p)))) ;
+  cases : Plus (Id Bool (v true) (v false)) (Not (Id Bool (v true) (v false))) -> Plus P (Not P) = split {
+   inl e -> inl (yes e) ; inr n -> inr (no n) } ;
+  decision : Plus P (Not P) = cases (decide (v true) (v false)) ;
+ } ;
+ lem : Plus P (Not P) = TC.rec Section @l (Plus P (Not P)) (decision-prop P prop)
+  (\ s -> At[s].decision) section ;
+} ;
+
+lem (P : U l) (prop : Pr.isProp P) : Plus P (Not P) = Over[P,prop].lem ;

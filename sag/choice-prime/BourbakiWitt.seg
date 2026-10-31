@@ -1,0 +1,224 @@
+-- The Bourbaki-Witt theorem for subsets, with excluded middle.
+--
+-- Subsets of X are maps X -> Prop, ordered by inclusion; mutual inclusion
+-- is equality (ext). The union of a family of subsets is again a subset
+-- (resized). Let b be a subset and f an inflationary map, S <= f S. The
+-- tower is the least family containing b, closed under f and under unions
+-- of inhabited chains. Every element of the tower contains b (above).
+-- Write x < c for x <= c and not c <= x. Call c extreme when, for every x
+-- in the tower, x < c gives f x <= c.
+--
+-- Lemma 1 (Sides). If c is in the tower and extreme, every x of the
+-- tower has x <= c or f c <= x. By induction on x. For b: b <= c. For
+-- f x: if x <= c, either c <= x, so x = c and f c <= f x, or x < c and
+-- f x <= c by extremeness; if f c <= x then f c <= x <= f x. For a
+-- union U of a chain C: if every S in C is <= c, then U <= c; otherwise
+-- some S in C is not <= c, so f c <= S <= U.
+--
+-- Lemma 2 (extreme-all). Every c of the tower is extreme. By induction
+-- on c. For b: x < b is impossible since b <= x. For f c: let x < f c.
+-- By Lemma 1 for c, x <= c or f c <= x; the second is excluded. If c <= x
+-- then x = c and f x <= f c; otherwise x < c and f x <= c <= f c. For a
+-- union U of a chain C of extreme elements: let x < U. If some S in C
+-- has x < S then f x <= S <= U. Otherwise every S in C is <= x (by
+-- Lemma 1 for S: x <= S gives S <= x, and f S <= x gives S <= f S <= x),
+-- so U <= x, which is excluded.
+--
+-- Hence the tower is a chain (Lemma 1: x <= c or c <= f c <= x), its
+-- union top lies in the tower, and so does f top: f top <= top.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module H = Prelude[l+] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Tr1 = Truncation[l+] ; module TC1 = TruncationCombinators[l+] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module FL1 = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module Rz = Resizing[l] ;
+
+module Over (X : U l) {
+ Sub : U l+ = X -> Quotient[l].Prop ;
+ sub-set : H.isSet Sub = \ S T -> Quotient[l].PropFamilies[X,S].path-prop T ;
+ In (S : Sub) (x : X) : U l = (S x).1 ;
+ Incl (S T : Sub) : U l = (x : X) -> In S x -> In T x ;
+ incl-prop (S T : Sub) : Pr.isProp (Incl S T) =
+  FL.isProp-Pi X (\ x -> In S x -> In T x) (\ x ->
+   FL.isProp-Pi (In S x) (\ u -> In T x) (\ u -> (T x).2)) ;
+ incl-refl (S : Sub) : Incl S S = \ x u -> u ;
+ incl-trans (S T V : Sub) (h : Incl S T) (k : Incl T V) : Incl S V = \ x u -> k x (h x u) ;
+ ext (S T : Sub) (h : Incl S T) (k : Incl T S) : Id Sub S T =
+  Quotient[l].PropFamilies[X,S].decode T (\ x -> (h x,k x)) ;
+
+ -- families of subsets
+ Fam : U l+ = Sub -> Quotient[l].Prop ;
+ Mem (F : Fam) (S : Sub) : U l = (F S).1 ;
+ lift (P : Sub -> U l+) (p : (S : Sub) -> H.isProp (P S)) : Fam =
+  \ S -> Rz.Resize[P S,p S].small ;
+ Within (C F : Fam) : U l+ = (S : Sub) -> Mem C S -> Mem F S ;
+ Chain (C : Fam) : U l+ = (S T : Sub) -> Mem C S -> Mem C T ->
+  Tr.Trunc[Plus (Incl S T) (Incl T S)].carrier ;
+ Inhabited (C : Fam) : U l+ = Tr1.Trunc[(S : Sub) * Mem C S].carrier ;
+
+ -- the union of a family
+ Witness (C : Fam) (x : X) : U l+ = (S : Sub) * Mem C S * In S x ;
+ Some (C : Fam) (x : X) : U l+ = Tr1.Trunc[Witness C x].carrier ;
+ union (C : Fam) : Sub = \ x -> Rz.Resize[Some C x,Tr1.Trunc[Witness C x].proposition].small ;
+ union-in (C : Fam) (S : Sub) (m : Mem C S) : Incl S (union C) = \ x u ->
+  Rz.Resize[Some C x,Tr1.Trunc[Witness C x].proposition].into (Tr1.Trunc[Witness C x].inc (S,m,u)) ;
+ union-elim (C : Fam) (x : X) (P : U l) (p : Pr.isProp P)
+  (k : (S : Sub) -> Mem C S -> In S x -> P) (u : In (union C) x) : P =
+  TC1.rec (Witness C x) @l P p (\ w -> k w.1 w.2.1 w.2.2)
+   (Rz.Resize[Some C x,Tr1.Trunc[Witness C x].proposition].out u) ;
+ union-least (C : Fam) (T : Sub) (h : (S : Sub) -> Mem C S -> Incl S T) : Incl (union C) T =
+  \ x u -> union-elim C x (In T x) ((T x).2) (\ S m v -> h S m x v) u ;
+
+ -- not every S in C satisfies Q: some S in C does not
+ module NotAll (C : Fam) (Q : Sub -> U l) (q : (S : Sub) -> Pr.isProp (Q S))
+  (n : Ring[l+].Not ((S : Sub) -> Mem C S -> Q S)) {
+  W : U l+ = (S : Sub) * Mem C S * Not (Q S) ;
+  cases : Ring[l+].Plus Tr1.Trunc[W].carrier (Ring[l+].Not Tr1.Trunc[W].carrier) -> Tr1.Trunc[W].carrier = split {
+   inl w -> w ;
+   inr nw -> Ring[l+].absurd Tr1.Trunc[W].carrier (n (\ S m ->
+    Rz.dne (Q S) (q S) (\ nq -> Ring[l+].absurd Empty (nw (Tr1.Trunc[W].inc (S,m,nq)))))) } ;
+  witness : Tr1.Trunc[W].carrier = cases (lem @(l+) Tr1.Trunc[W].carrier Tr1.Trunc[W].proposition) ;
+ } ;
+
+ module Tower (b : Sub) (f : Sub -> Sub) (infl : (S : Sub) -> Incl S (f S)) {
+  record Closed (F : Fam) {
+   base : Mem F b ;
+   step (S : Sub) : Mem F S -> Mem F (f S) ;
+   limit (C : Fam) : Chain C -> Inhabited C -> Within C F -> Mem F (union C) ;
+  } ;
+  Least (S : Sub) : U l+ = (F : Fam) -> Closed[F] -> Mem F S ;
+  least-prop (S : Sub) : H.isProp (Least S) =
+   FL1.isProp-Pi Fam (\ F -> Closed[F] -> Mem F S) (\ F ->
+    FL1.isProp-Pi Closed[F] (\ c -> Mem F S) (\ c -> (F S).2)) ;
+  tower : Fam = lift Least least-prop ;
+  T (S : Sub) : U l = Mem tower S ;
+  t-in (S : Sub) (h : Least S) : T S = Rz.Resize[Least S,least-prop S].into h ;
+  t-out (S : Sub) (t : T S) : Least S = Rz.Resize[Least S,least-prop S].out t ;
+  closed : Closed[tower] = new Closed[tower,
+   t-in b (\ F c -> c.base),
+   \ S t -> t-in (f S) (\ F c -> c.step S (t-out S t F c)),
+   \ C ch inh w -> t-in (union C) (\ F c -> c.limit C ch inh (\ S m -> t-out S (w S m) F c))] ;
+
+  -- induction over the tower, for a family Phi
+  module Induction (Phi : Fam) (base : Mem Phi b)
+   (step : (S : Sub) -> T S -> Mem Phi S -> Mem Phi (f S))
+   (limit : (C : Fam) -> Chain C -> Inhabited C -> Within C tower -> Within C Phi -> Mem Phi (union C)) {
+   Both : Fam = \ S -> (T S * Mem Phi S,
+    Pr.isProp-Sigma (T S) (\ t -> Mem Phi S) ((tower S).2) (\ t -> (Phi S).2)) ;
+   both : Closed[Both] = new Closed[Both,
+    (closed.base,base),
+    \ S h -> (closed.step S h.1,step S h.1 h.2),
+    \ C ch inh w -> (closed.limit C ch inh (\ S m -> (w S m).1),
+     limit C ch inh (\ S m -> (w S m).1) (\ S m -> (w S m).2))] ;
+   holds (S : Sub) (t : T S) : Mem Phi S = (t-out S t Both both).2 ;
+  } ;
+
+  -- every element of the tower contains b
+  Above : Fam = \ S -> (Incl b S,incl-prop b S) ;
+  above-limit (C : Fam) (ch : Chain C) (inh : Inhabited C) (wt : Within C tower)
+   (w : Within C Above) : Incl b (union C) =
+   TC1.rec ((S : Sub) * Mem C S) @l (Incl b (union C)) (incl-prop b (union C))
+    (\ s -> incl-trans b s.1 (union C) (w s.1 s.2) (union-in C s.1 s.2)) inh ;
+  above (S : Sub) (t : T S) : Incl b S =
+   Induction[Above,incl-refl b,
+    \ S t h -> incl-trans b S (f S) h (infl S),above-limit].holds S t ;
+
+  Extreme (c : Sub) : U l+ = (x : Sub) -> T x -> Incl x c -> Not (Incl c x) -> Incl (f x) c ;
+  extreme-prop (c : Sub) : H.isProp (Extreme c) =
+   FL1.isProp-Pi Sub (\ x -> T x -> Incl x c -> Not (Incl c x) -> Incl (f x) c) (\ x ->
+    FL1.isProp-Pi (T x) (\ t -> Incl x c -> Not (Incl c x) -> Incl (f x) c) (\ t ->
+     FL1.isProp-Pi (Incl x c) (\ h -> Not (Incl c x) -> Incl (f x) c) (\ h ->
+      FL1.isProp-Pi (Not (Incl c x)) (\ n -> Incl (f x) c) (\ n -> incl-prop (f x) c)))) ;
+
+  -- Lemma 1
+  module Sides (c : Sub) (tc : T c) (ec : Extreme c) {
+   Raw (x : Sub) : U l = Plus (Incl x c) (Incl (f c) x) ;
+   Side (x : Sub) : U l = Tr.Trunc[Raw x].carrier ;
+   side : Fam = \ x -> (Side x,Tr.Trunc[Raw x].proposition) ;
+   left (x : Sub) (h : Incl x c) : Side x = Tr.Trunc[Raw x].inc (inl h) ;
+   right (x : Sub) (k : Incl (f c) x) : Side x = Tr.Trunc[Raw x].inc (inr k) ;
+   equal (x : Sub) (tx : T x) (h : Incl x c) : Plus (Incl c x) (Not (Incl c x)) -> Side (f x) = split {
+    inl k -> right (f x) (H.subst Sub (\ y -> Incl (f c) (f y)) c x (ext c x k h) (incl-refl (f c))) ;
+    inr n -> left (f x) (ec x tx h n) } ;
+   step-raw (x : Sub) (tx : T x) : Raw x -> Side (f x) = split {
+    inl h -> equal x tx h (lem @l (Incl c x) (incl-prop c x)) ;
+    inr k -> right (f x) (incl-trans (f c) x (f x) k (infl x)) } ;
+   step (x : Sub) (tx : T x) (s : Side x) : Side (f x) =
+    TC.rec (Raw x) @l (Side (f x)) Tr.Trunc[Raw (f x)].proposition (step-raw x tx) s ;
+   module Limit (C : Fam) (ws : Within C side) {
+    All : U l+ = (S : Sub) -> Mem C S -> Incl S c ;
+    all-prop : H.isProp All = FL1.isProp-Pi Sub (\ S -> Mem C S -> Incl S c) (\ S ->
+     FL1.isProp-Pi (Mem C S) (\ m -> Incl S c) (\ m -> incl-prop S c)) ;
+    beyond (S : Sub) (m : Mem C S) (n : Not (Incl S c)) : Raw S -> Side (union C) = split {
+     inl h -> efq (n h) ;
+     inr k -> right (union C) (incl-trans (f c) S (union C) k (union-in C S m)) } ;
+    cases : Ring[l+].Plus All (Ring[l+].Not All) -> Side (union C) = split {
+     inl a -> left (union C) (union-least C c a) ;
+     inr na -> TC1.rec NotAll[C,\ S -> Incl S c,\ S -> incl-prop S c,na].W @l (Side (union C))
+      Tr.Trunc[Raw (union C)].proposition
+      (\ w -> TC.rec (Raw w.1) @l (Side (union C)) Tr.Trunc[Raw (union C)].proposition
+        (beyond w.1 w.2.1 w.2.2) (ws w.1 w.2.1))
+      NotAll[C,\ S -> Incl S c,\ S -> incl-prop S c,na].witness } ;
+    side-union : Side (union C) = cases (lem @(l+) All all-prop) ;
+   } ;
+   sides (x : Sub) (tx : T x) : Side x =
+    Induction[side,left b (above c tc),step,
+     \ C ch inh wt ws -> Limit[C,ws].side-union].holds x tx ;
+  } ;
+
+  -- Lemma 2
+  extreme : Fam = lift Extreme extreme-prop ;
+  e-in (c : Sub) (h : Extreme c) : Mem extreme c = Rz.Resize[Extreme c,extreme-prop c].into h ;
+  e-out (c : Sub) (h : Mem extreme c) : Extreme c = Rz.Resize[Extreme c,extreme-prop c].out h ;
+  extreme-base : Extreme b = \ x tx h n -> efq (n (above x tx)) ;
+  module ExtremeStep (c : Sub) (tc : T c) (ec : Extreme c) {
+   inside (x : Sub) (tx : T x) (h : Incl x c) : Plus (Incl c x) (Not (Incl c x)) -> Incl (f x) (f c) = split {
+    inl k -> H.subst Sub (\ y -> Incl (f y) (f c)) c x (ext c x k h) (incl-refl (f c)) ;
+    inr n -> incl-trans (f x) c (f c) (ec x tx h n) (infl c) } ;
+   raw (x : Sub) (tx : T x) (n : Not (Incl (f c) x)) : Sides[c,tc,ec].Raw x -> Incl (f x) (f c) = split {
+    inl h -> inside x tx h (lem @l (Incl c x) (incl-prop c x)) ;
+    inr k -> efq (n k) } ;
+   result : Extreme (f c) = \ x tx h n ->
+    TC.rec (Sides[c,tc,ec].Raw x) @l (Incl (f x) (f c)) (incl-prop (f x) (f c))
+     (raw x tx n) (Sides[c,tc,ec].sides x tx) ;
+  } ;
+  module ExtremeLimit (C : Fam) (wt : Within C tower) (we : Within C extreme) (x : Sub) (tx : T x)
+   (n : Not (Incl (union C) x)) {
+   E : U l+ = (S : Sub) * Mem C S * Incl x S * Not (Incl S x) ;
+   below (S : Sub) (m : Mem C S) (ne : Ring[l+].Not Tr1.Trunc[E].carrier) (h : Incl x S) :
+    Plus (Incl S x) (Not (Incl S x)) -> Incl S x = split {
+    inl k -> k ;
+    inr nk -> efq (Ring[l+].absurd Empty (ne (Tr1.Trunc[E].inc (S,m,h,nk)))) } ;
+   raw (S : Sub) (m : Mem C S) (ne : Ring[l+].Not Tr1.Trunc[E].carrier) :
+    Sides[S,wt S m,e-out S (we S m)].Raw x -> Incl S x = split {
+    inl h -> below S m ne h (lem @l (Incl S x) (incl-prop S x)) ;
+    inr k -> incl-trans S (f S) x (infl S) k } ;
+   every (ne : Ring[l+].Not Tr1.Trunc[E].carrier) (S : Sub) (m : Mem C S) : Incl S x =
+    TC.rec (Sides[S,wt S m,e-out S (we S m)].Raw x) @l (Incl S x) (incl-prop S x)
+     (raw S m ne) (Sides[S,wt S m,e-out S (we S m)].sides x tx) ;
+   cases : Ring[l+].Plus Tr1.Trunc[E].carrier (Ring[l+].Not Tr1.Trunc[E].carrier) -> Incl (f x) (union C) = split {
+    inl e -> TC1.rec E @l (Incl (f x) (union C)) (incl-prop (f x) (union C))
+     (\ w -> incl-trans (f x) w.1 (union C)
+       (e-out w.1 (we w.1 w.2.1) x tx w.2.2.1 w.2.2.2) (union-in C w.1 w.2.1)) e ;
+    inr ne -> efq (n (union-least C x (every ne))) } ;
+   result : Incl (f x) (union C) = cases (lem @(l+) Tr1.Trunc[E].carrier Tr1.Trunc[E].proposition) ;
+  } ;
+  extreme-all (c : Sub) (tc : T c) : Extreme c = e-out c (Induction[extreme,
+   e-in b extreme-base,
+   \ c tc h -> e-in (f c) (ExtremeStep[c,tc,e-out c h].result),
+   \ C ch inh wt we -> e-in (union C) (\ x tx h n -> ExtremeLimit[C,wt,we,x,tx,n].result)].holds c tc) ;
+
+  -- the tower is a chain; its union is a fixed point
+  chain-raw (x c : Sub) (tx : T x) (tc : T c) :
+   Sides[c,tc,extreme-all c tc].Raw x -> Plus (Incl x c) (Incl c x) = split {
+   inl h -> inl h ; inr k -> inr (incl-trans c (f c) x (infl c) k) } ;
+  chain : Chain tower = \ x c tx tc ->
+   TC.map (Sides[c,tc,extreme-all c tc].Raw x) (Plus (Incl x c) (Incl c x))
+    (chain-raw x c tx tc) (Sides[c,tc,extreme-all c tc].sides x tx) ;
+  top : Sub = union tower ;
+  top-in : T top = closed.limit tower chain
+   (Tr1.Trunc[(S : Sub) * Mem tower S].inc (b,closed.base)) (\ S t -> t) ;
+  fixed : Incl (f top) top = union-in tower (f top) (closed.step top top-in) ;
+ } ;
+} ;
