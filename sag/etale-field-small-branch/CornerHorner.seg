@@ -1,0 +1,81 @@
+-- Horner values and dual-number slopes through an additive,
+-- multiplicative map sending 1 to an idempotent corner. The map is
+-- deliberately not called a unital ring map into the ambient ring.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module DualValues (K A : CRing) (setA : Pr.isSet A.R) (rho : H.Hom K A) (x : A.R) {
+ module L = RL[A] ; module Ho = MonicReduce[l].Horner[K,A,rho,x] ;
+ module DN = QuadraticPairs[l].Over[A,setA,A.z] ;
+ dual : H.Hom K DN.ring = H.compose K A DN.ring DN.inclusion rho ;
+ module DH = MonicReduce[l].Horner[K,DN.ring,dual,(x,A.o)] ;
+ slope (p : List K.R) : A.R = (DH.horner p).2 ;
+ first : (p : List K.R) -> Id A.R (DH.horner p).1 (Ho.horner p) = split {
+  nil -> refl A.z ;
+  cons a p | rec -> ap (A.add (rho.1 a))
+   (trans (ap (A.add (A.mul x (DH.horner p).1)) (L.zero-mul (A.mul A.o (DH.horner p).2)))
+    (trans (A.addZ (A.mul x (DH.horner p).1)) (ap (A.mul x) rec))) } ;
+ slope-step (a : K.R) (p : List K.R) : Id A.R (slope (cons a p)) (A.add (A.mul x (slope p)) (Ho.horner p)) =
+  trans (L.zl (A.add (A.mul x (slope p)) (A.mul A.o (DH.horner p).1)))
+   (ap (A.add (A.mul x (slope p))) (trans (L.one-left (DH.horner p).1) (first p))) ;
+} ;
+module Over (R K F S : CRing) (setF : Pr.isSet F.R) (setS : Pr.isSet S.R)
+ (coefficient : H.Hom R K) (rhoF : H.Hom R F) (rhoS : H.Hom K S)
+ (j : F.R -> S.R) (e : S.R)
+ (zero : Id S.R (j F.z) S.z)
+ (add : (a b : F.R) -> Id S.R (j (F.add a b)) (S.add (j a) (j b)))
+ (mul : (a b : F.R) -> Id S.R (j (F.mul a b)) (S.mul (j a) (j b)))
+ (one : Id S.R (j F.o) e)
+ (constants : (a : R.R) -> Id S.R (j (rhoF.1 a)) (S.mul e (rhoS.1 (coefficient.1 a)))) {
+ module LS = RL[S] ;
+ map : List R.R -> List K.R = split { nil -> nil ; cons a p | rec -> cons (coefficient.1 a) rec } ;
+ module RF = FrobeniusPolynomial[l].Coefficients[R] ;
+ module RK = FrobeniusPolynomial[l].Coefficients[K] ;
+ monic : (p : List R.R) -> Id (List K.R) (map (RF.monic p)) (RK.monic (map p)) = split {
+  nil -> ap (\ a -> cons a nil) coefficient.2.1 ;
+  cons a p | rec -> ap (\ q -> cons (coefficient.1 a) q) rec } ;
+ module At (x : F.R) {
+  gamma : S.R = j x ;
+  module VF = DualValues[R,F,setF,rhoF,x] ;
+  module VS = DualValues[K,S,setS,rhoS,gamma] ;
+  value : (p : List R.R) -> Id S.R (j (VF.Ho.horner p)) (S.mul e (VS.Ho.horner (map p))) = split {
+   nil -> trans zero (sym (LS.mul-zero e)) ;
+   cons a p | rec ->
+    trans (add (rhoF.1 a) (F.mul x (VF.Ho.horner p)))
+     (trans (cong2 S.R S.add _ _ _ _ (constants a)
+      (trans (mul x (VF.Ho.horner p)) (trans (ap (S.mul gamma) rec) (LS.mul-swap gamma e (VS.Ho.horner (map p))))))
+      (sym (S.dist e (rhoS.1 (coefficient.1 a)) (S.mul gamma (VS.Ho.horner (map p)))))) } ;
+  slope : (p : List R.R) -> Id S.R (j (VF.slope p)) (S.mul e (VS.slope (map p))) = split {
+   nil -> trans zero (sym (LS.mul-zero e)) ;
+   cons a p | rec ->
+    trans (ap j (VF.slope-step a p))
+     (trans (add (F.mul x (VF.slope p)) (VF.Ho.horner p))
+      (trans (cong2 S.R S.add _ _ _ _
+       (trans (mul x (VF.slope p)) (trans (ap (S.mul gamma) rec) (LS.mul-swap gamma e (VS.slope (map p))))) (value p))
+       (trans (sym (S.dist e (S.mul gamma (VS.slope (map p))) (VS.Ho.horner (map p))))
+        (ap (S.mul e) (sym (VS.slope-step (coefficient.1 a) (map p))))))) } ;
+  module Monic (p : List R.R) {
+   lower : List K.R = map p ;
+   value-law : Id S.R (j (VF.Ho.horner (RF.monic p))) (S.mul e (VS.Ho.horner (RK.monic lower))) =
+    trans (value (RF.monic p)) (ap (\ q -> S.mul e (VS.Ho.horner q)) (monic p)) ;
+   slope-law : Id S.R (j (VF.slope (RF.monic p))) (S.mul e (VS.slope (RK.monic lower))) =
+    trans (slope (RF.monic p)) (ap (\ q -> S.mul e (VS.slope q)) (monic p)) ;
+   root (h : Id F.R (VF.Ho.horner (RF.monic p)) F.z) : Id S.R (S.mul e (VS.Ho.horner (RK.monic lower))) S.z =
+    trans (sym value-law) (trans (ap j h) zero) ;
+   inverse (v : F.R) : S.R = j v ;
+   separable (v : F.R) (h : Id F.R (F.mul (VF.slope (RF.monic p)) v) F.o) :
+    Id S.R (S.mul e (S.add (S.mul (VS.slope (RK.monic lower)) (j v)) (S.neg S.o))) S.z =
+     trans (S.dist e (S.mul (VS.slope (RK.monic lower)) (j v)) (S.neg S.o))
+      (trans (cong2 S.R S.add _ _ _ _
+       (trans (S.mulA e (VS.slope (RK.monic lower)) (j v))
+        (trans (ap (\ a -> S.mul a (j v)) (sym slope-law)) (trans (sym (mul (VF.slope (RF.monic p)) v)) (trans (ap j h) one))))
+       (trans (LS.mul-neg e S.o) (ap S.neg (S.mulO e)))) (S.addN e)) ;
+  } ;
+  represents (b : S.R) (a : F.R) (ha : Id S.R (j a) (S.mul e b))
+   (p : List R.R) (h : Id F.R (VF.Ho.horner p) a) :
+   Id S.R (S.mul e (S.add b (S.neg (VS.Ho.horner (map p))))) S.z =
+    trans (S.dist e b (S.neg (VS.Ho.horner (map p))))
+     (trans (cong2 S.R S.add _ _ _ _
+      (trans (sym ha) (trans (ap j (sym h)) (value p))) (LS.mul-neg e (VS.Ho.horner (map p))))
+      (S.addN (S.mul e (VS.Ho.horner (map p))))) ;
+ } ;
+} ;

@@ -1,0 +1,65 @@
+-- An idempotent factor of an algebra with a finite field basis has an
+-- actual field basis. Present it by the old basis and the n relations
+-- (1-e)*b_j; Gaussian quotient coordinates construct the resulting basis.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (dec : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a))
+ (S : Algebras[l].Over[k,setk].Algebra)
+ (n : Nat) (b : TraceBasis[l].Over[k,setk,S].Basis[n])
+ (e : S.ring.R) (he : Id S.ring.R (S.ring.mul e e) e) {
+ module R = TraceRetraction[l].Idempotent[k,setk,S,e,he] ;
+ module G = GaussianAlgebraBasis[l].Over[k,setk,dec,R.algebra] ;
+ module V = G.G.V ; module T = TraceBasis[l].Over[k,setk,S] ; module B = T.At[n,b] ;
+ module TL = TraceLinear[l].Over[k,setk] ; module PI = PrimeIdempotents[l].Over[S.ring] ;
+ module SL = RL[S.ring] ; module KL = RL[k] ;
+ module D = MnSums[l].Over[k] ;
+ expand (c : V.Vec n) : S.ring.R = T.SS.sum n (\ i -> S.ring.mul (S.iota.1 (c i)) (b.vector i)) ;
+ coordinate-expand (c : V.Vec n) (i : Fin n) : Id k.R (b.coordinate (expand c) i) (c i) =
+  trans (B.combination n b.vector c i)
+   (trans (T.RS.sum-cong n _ (\ j -> k.mul (c j) (D.delta n j i))
+    (\ j -> ap (k.mul (c j)) (trans (b.on-vector j i) (D.delta-sym n i j)))) (D.sum-delta-right n i c)) ;
+ expand-add (c d : V.Vec n) : Id S.ring.R (expand (V.addV n c d)) (S.ring.add (expand c) (expand d)) =
+  B.coordinates-determine _ _ (\ i -> trans (coordinate-expand (V.addV n c d) i)
+   (sym (trans (b.add (expand c) (expand d) i)
+    (cong2 k.R k.add _ _ _ _ (coordinate-expand c i) (coordinate-expand d i))))) ;
+ expand-scale (a : k.R) (c : V.Vec n) : Id S.ring.R (expand (V.scaleV n a c)) (S.ring.mul (S.iota.1 a) (expand c)) =
+  B.coordinates-determine _ _ (\ i -> trans (coordinate-expand (V.scaleV n a c) i)
+   (sym (trans (b.scale a (expand c) i) (ap (k.mul a) (coordinate-expand c i))))) ;
+ function (c : V.Vec n) : R.F.Carrier = R.F.project (expand c) ;
+ add (c d : V.Vec n) : Id R.F.Carrier (function (V.addV n c d)) (R.F.add (function c) (function d)) =
+  trans (ap R.F.project (expand-add c d)) (R.F.project-add (expand c) (expand d)) ;
+ scale (a : k.R) (c : V.Vec n) : Id R.F.Carrier (function (V.scaleV n a c)) (R.F.mul (R.iota.1 a) (function c)) =
+  trans (ap R.F.project (expand-scale a c)) (R.F.project-mul (S.iota.1 a) (expand c)) ;
+ linear : G.G.SM.Linear (G.G.DL.Free n) G.UM.M = (function,add,scale) ;
+ onto (x : R.F.Carrier) : Tr.Trunc[(c : V.Vec n) * Id R.F.Carrier (function c) x].carrier =
+  Tr.Trunc[(c : V.Vec n) * Id R.F.Carrier (function c) x].inc
+   (b.coordinate x.1,trans (ap R.F.project (b.reconstruction x.1)) (R.F.project-fixed x)) ;
+ complement : S.ring.R = PI.complement e ;
+ relations (j : Fin n) : V.Vec n = b.coordinate (S.ring.mul complement (b.vector j)) ;
+ killed (j : Fin n) : Id R.F.Carrier (function (relations j)) R.F.zero =
+  trans (ap R.F.project (b.reconstruction (S.ring.mul complement (b.vector j))))
+   (R.F.eq _ _ (trans (S.ring.mulA e complement (b.vector j))
+    (trans (ap (\ z -> S.ring.mul z (b.vector j)) (PI.complement-kills e he)) (SL.zero-mul (b.vector j))))) ;
+ module CM = TL.Coordinates[S,S,n,n,b,b,TL.multiply S complement] ;
+ combination (c : V.Vec n) (i : Fin n) : Id k.R (V.comb n n relations c i)
+  (b.coordinate (S.ring.mul complement (expand c)) i) =
+  trans (T.RS.sum-cong n (\ j -> k.mul (relations j i) (c j))
+   (\ j -> k.mul (b.coordinate (expand c) j) (relations j i))
+   (\ j -> trans (k.mulC (relations j i) (c j))
+    (ap (\ z -> k.mul z (relations j i)) (sym (coordinate-expand c j)))))
+   (sym (CM.image (expand c) i)) ;
+ complement-fixed (a : S.ring.R) (h : Id S.ring.R (S.ring.mul e a) S.ring.z) :
+  Id S.ring.R (S.ring.mul complement a) a =
+  trans (SL.dist-left S.ring.o (S.ring.neg e) a)
+   (trans (cong2 S.ring.R S.ring.add _ _ _ _ (SL.one-left a)
+    (trans (SL.neg-mul-left e a) (trans (ap S.ring.neg h) SL.neg-zero))) (S.ring.addZ a)) ;
+ kernel-witness (c : V.Vec n) (h : Id R.F.Carrier (function c) R.F.zero) : V.Span[n,n,relations].Witness c =
+  (c,\ i -> trans (combination c i)
+   (trans (ap (\ a -> b.coordinate a i) (complement-fixed (expand c) (ap (\ z -> z.1) h))) (coordinate-expand c i))) ;
+ kernel (c : V.Vec n) (h : Id R.F.Carrier (function c) R.F.zero) : Tr.Trunc[V.Span[n,n,relations].Witness c].carrier =
+  Tr.Trunc[V.Span[n,n,relations].Witness c].inc (kernel-witness c h) ;
+ module Apply = G.At[n,n,relations,linear,onto,killed,kernel] ;
+ rank : Nat = Apply.Q.rank ;
+ basis : TraceBasis[l].Over[k,setk,R.algebra].Basis[rank] = Apply.basis ;
+} ;

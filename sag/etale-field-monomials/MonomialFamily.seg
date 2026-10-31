@@ -1,0 +1,70 @@
+-- Enumerate a normalized monomial list by Fin(length), putting the head
+-- at the last index. Distinctness becomes injectivity of the exponent map,
+-- and list evaluation becomes exactly the library's finite sum.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
+ module T = MonomialLists[l].Over[A,setA,n] ;
+ length : T.Terms -> Nat = split { nil -> zero ; cons t p | rec -> suc rec } ;
+ at : (p : T.Terms) -> Fin (length p) -> T.Term = split {
+  nil -> \ i -> efq i ; cons t p | rec -> snoc (Fin (length p)) T.Term rec t } ;
+ away (u : E.Exponent n) : (p : T.Terms) -> T.Away u p ->
+  (i : Fin (length p)) -> Not (Id (E.Exponent n) u (at p i).2) = split {
+   nil -> \ hp i -> efq i ;
+   cons t p | rec -> \ hp -> AffineFinite[l].section (length p)
+    (\ i -> Not (Id (E.Exponent n) u (at (cons t p) i).2)) (rec hp.2) hp.1 } ;
+ indexed-nonzero : (p : T.Terms) -> T.Nonzero p -> (i : Fin (length p)) -> Not (Id A.R (at p i).1 A.z) = split {
+  nil -> \ hp i -> efq i ;
+  cons t p | rec -> \ hp -> AffineFinite[l].section (length p)
+   (\ i -> Not (Id A.R (at (cons t p) i).1 A.z)) (rec hp.2) hp.1 } ;
+ module DistinctStep (t : T.Term) (p : T.Terms) (hp : T.Away t.2 p)
+  (rec : (i j : Fin (length p)) -> Id (E.Exponent n) (at p i).2 (at p j).2 -> Id (Fin (length p)) i j) {
+  result : (i j : Fin (suc (length p))) ->
+   Id (E.Exponent n) (at (cons t p) i).2 (at (cons t p) j).2 -> Id (Fin (suc (length p))) i j = split {
+    inl i -> split {
+     inl j -> \ eq -> ap (\ k -> inl k) (rec i j eq) ;
+     inr u -> \ eq -> efq (away t.2 p hp i (sym eq)) } ;
+    inr u -> split {
+     inl j -> \ eq -> efq (away t.2 p hp j eq) ;
+     inr v -> \ eq -> ap (\ w -> inr w) (T.P.top-prop u v) } } ;
+ } ;
+ indexed-distinct : (p : T.Terms) -> T.Unique p -> (i j : Fin (length p)) ->
+  Id (E.Exponent n) (at p i).2 (at p j).2 -> Id (Fin (length p)) i j = split {
+   nil -> \ hp i j eq -> efq i ;
+   cons t p | rec -> \ hp -> DistinctStep[t,p,hp.1,rec hp.2].result } ;
+ module At (B : T.C.Algebra) (x : Fin n -> B.ring.R) {
+  module V = T.At[B,x] ; module S = FiniteIdeal[l].Sums[B.ring] ;
+  value : (p : T.Terms) -> Id B.ring.R (V.value p) (S.sum (length p) (\ i -> V.term (at p i))) = split {
+   nil -> refl B.ring.z ; cons t p | rec -> ap (B.ring.add (V.term t)) rec } ;
+ } ;
+ module Normalized (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z))) {
+  module N = MonomialNormalize[l].Over[A,setA,n,zero-dec] ;
+  record SparseData (e : T.P.Expr (Fin n)) {
+   size : Nat ;
+   coefficient : Fin size -> A.R ;
+   exponent : Fin size -> E.Exponent n ;
+   nonzero (i : Fin size) : Not (Id A.R (coefficient i) A.z) ;
+   distinct (i j : Fin size) : Id (E.Exponent n) (exponent i) (exponent j) -> Id (Fin size) i j ;
+   value (B : T.C.Algebra) (x : Fin n -> B.ring.R) :
+    Id B.ring.R (T.P.eval (Fin n) B x e)
+     (FiniteIdeal[l].Sums[B.ring].sum size
+      (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (MonomialEvaluation[l].Over[B.ring].monomial n x (exponent j)))) ;
+  } ;
+  module For (e : T.P.Expr (Fin n)) {
+   list : T.Terms = N.normalize (T.raw e) ;
+   size : Nat = length list ;
+   coefficient (i : Fin size) : A.R = (at list i).1 ;
+   exponent (i : Fin size) : E.Exponent n = (at list i).2 ;
+   nonzero (i : Fin size) : Not (Id A.R (coefficient i) A.z) = indexed-nonzero list (N.nonzero (T.raw e)) i ;
+   distinct (i j : Fin size) : Id (E.Exponent n) (exponent i) (exponent j) -> Id (Fin size) i j =
+    indexed-distinct list (N.unique (T.raw e)) i j ;
+   value (B : T.C.Algebra) (x : Fin n -> B.ring.R) :
+    Id B.ring.R (T.P.eval (Fin n) B x e)
+     (FiniteIdeal[l].Sums[B.ring].sum size
+      (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (MonomialEvaluation[l].Over[B.ring].monomial n x (exponent j)))) =
+    trans (N.At[B,x].sound e) (At[B,x].value list) ;
+   result : SparseData[e] = new SparseData[e,size,coefficient,exponent,nonzero,distinct,value] ;
+  } ;
+  expand (e : T.P.Expr (Fin n)) : SparseData[e] = For[e].result ;
+ } ;
+} ;

@@ -1,0 +1,76 @@
+-- Iterated monic quotients. For arbitrary finite lists p_i of lower
+-- coefficients, construct a finite-free R-algebra with generators q_i
+-- and the universal map to every tuple of roots. Homomorphisms out are
+-- determined by the q_i. The recursion uses monic quotient coordinates
+-- over the previous coefficient ring, then composes the two bases.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module MV = MonicBasisUniversal[l] ;
+ Roots (n : Nat) (cs : Fin n -> List R.R) (S : C.Algebra) (x : Fin n -> S.ring.R) : U l =
+  (i : Fin n) -> Id S.ring.R (MV.Values[R,S.ring,S.iota,x i].value (cs i)) S.ring.z ;
+ record Cover (n : Nat) (cs : Fin n -> List R.R) {
+  algebra : C.Algebra ;
+  rank : Nat ;
+  basis : TraceBasis[l].Over[R,setR,algebra].Basis[rank] ;
+  generator : Fin n -> algebra.ring.R ;
+  extend (S : C.Algebra) (x : Fin n -> S.ring.R) (hx : Roots n cs S x) : C.Hom algebra S ;
+  beta (S : C.Algebra) (x : Fin n -> S.ring.R) (hx : Roots n cs S x) (i : Fin n) :
+   Id S.ring.R ((extend S x hx).1.1 (generator i)) (x i) ;
+  unique (S : C.Algebra) (f g : C.Hom algebra S)
+   (h : (i : Fin n) -> Id S.ring.R (f.1.1 (generator i)) (g.1.1 (generator i))) (a : algebra.ring.R) :
+   Id S.ring.R (f.1.1 a) (g.1.1 a) ;
+ } ;
+ module Initial (cs : Fin zero -> List R.R) {
+  one-index : (i : Fin (suc zero)) -> Id (Fin (suc zero)) i (inr tt) = split {
+   inl e -> efq e ; inr t -> ap (\ v -> inr v) (FinSum[l].top-prop t tt) } ;
+  module D = MnSums[l].Over[R] ;
+  delta-one (i j : Fin (suc zero)) : Id R.R (D.delta (suc zero) i j) R.o =
+   trans (ap (\ k -> D.delta (suc zero) k j) (one-index i)) (ap (D.delta (suc zero) (inr tt)) (one-index j)) ;
+  basis : TraceBasis[l].Over[R,setR,C.base].Basis[suc zero] = TraceBasis[l].Over[R,setR,C.base].mkBasis (suc zero)
+   (\ i -> R.o) (\ a i -> a) (\ a b i -> refl (R.add a b)) (\ r a i -> refl (R.mul r a))
+   (\ a -> trans (R.addZ (R.mul a R.o)) (R.mulO a)) (\ j i -> sym (delta-one i j)) ;
+  result : Cover[zero,cs] = mkCover zero cs C.base (suc zero) basis (\ i -> efq i)
+   (\ S x hx -> (S.iota,\ r -> refl (S.iota.1 r))) (\ S x hx i -> efq i)
+   (\ S f g h a -> trans (f.2 a) (sym (g.2 a))) ;
+ } ;
+ module Step (n : Nat) (cs : Fin (suc n) -> List R.R) (old : Cover[n,\ i -> cs (inl i)]) {
+  Q : C.Algebra = old.algebra ;
+  module CQ = Algebras[l].Over[Q.ring,Q.set] ;
+  lower : List Q.ring.R = MV.map-list R.R Q.ring.R Q.iota.1 (cs (inr tt)) ;
+  module M = MV.Over[Q.ring,Q.set].At[lower] ;
+  T : CQ.Algebra = M.Q ;
+  module Compose = FiniteBasisComposition[l].Over[R,setR,Q,T,old.rank,old.basis,M.degree,M.basis] ;
+  A : C.Algebra = Compose.S ;
+  inclusion : C.Hom Q A = (T.iota,\ r -> refl (A.iota.1 r)) ;
+  generators : Fin (suc n) -> A.ring.R = snoc (Fin n) A.ring.R (\ i -> T.iota.1 (old.generator i)) M.x ;
+  module To (S : C.Algebra) (x : Fin (suc n) -> S.ring.R) (hx : Roots (suc n) cs S x) {
+   previous : C.Hom Q S = old.extend S (\ i -> x (inl i)) (\ i -> hx (inl i)) ;
+   target : CQ.Algebra = CQ.mkAlgebra S.ring S.set previous.1 ;
+   root : Id S.ring.R (MV.Values[Q.ring,S.ring,previous.1,x (inr tt)].value lower) S.ring.z =
+    trans (MV.Change[R,Q.ring,S.ring,Q.iota,previous.1,x (inr tt)].equation (cs (inr tt)))
+     (trans (MV.Retarget[R,S.ring,H.compose R Q.ring S.ring previous.1 Q.iota,S.iota,previous.2,x (inr tt)].equation (cs (inr tt)))
+      (hx (inr tt))) ;
+   module One = M.To[target,x (inr tt),root] ;
+   hom : C.Hom A S = (One.hom.1,\ r -> trans (One.hom.2 (Q.iota.1 r)) (previous.2 r)) ;
+   beta : (i : Fin (suc n)) -> Id S.ring.R (hom.1.1 (generators i)) (x i) = split {
+    inl i -> trans (One.hom.2 (old.generator i)) (old.beta S (\ j -> x (inl j)) (\ j -> hx (inl j)) i) ;
+    inr t -> trans One.beta (ap (\ v -> x (inr v)) (FinSum[l].top-prop tt t)) } ;
+  } ;
+  module Compare (S : C.Algebra) (f g : C.Hom A S)
+   (h : (i : Fin (suc n)) -> Id S.ring.R (f.1.1 (generators i)) (g.1.1 (generators i))) {
+   left : C.Hom Q S = C.compose Q A S f inclusion ;
+   right : C.Hom Q S = C.compose Q A S g inclusion ;
+   on-base (a : Q.ring.R) : Id S.ring.R (left.1.1 a) (right.1.1 a) = old.unique S left right (\ i -> h (inl i)) a ;
+   target : CQ.Algebra = CQ.mkAlgebra S.ring S.set left.1 ;
+   left-map : CQ.Hom T target = (f.1,\ a -> refl (left.1.1 a)) ;
+   right-map : CQ.Hom T target = (g.1,\ a -> sym (on-base a)) ;
+   result (a : A.ring.R) : Id S.ring.R (f.1.1 a) (g.1.1 a) = M.unique target left-map right-map (h (inr tt)) a ;
+  } ;
+  result : Cover[suc n,cs] = mkCover (suc n) cs A Compose.d Compose.basis generators
+   (\ S x hx -> To[S,x,hx].hom) (\ S x hx -> To[S,x,hx].beta) (\ S f g h -> Compare[S,f,g,h].result) ;
+ } ;
+ construct : (n : Nat) (cs : Fin n -> List R.R) -> Cover[n,cs] = split {
+  zero -> \ cs -> Initial[cs].result ;
+  suc n | ih -> \ cs -> Step[n,cs,ih (\ i -> cs (inl i))].result } ;
+} ;

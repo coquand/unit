@@ -1,0 +1,85 @@
+-- The generated image subalgebra R[x_1,...,x_n] is a subtype of E.
+-- Membership merely gives an expression representative. Ring operations
+-- descend to this subtype by closure; equality is equality in E. Its
+-- chosen generators merely generate every element, without global choice.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module RH = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module At (Ea : C.Algebra) (n : Nat) (x : Ps.Fin n -> Ea.ring.R) {
+  E : CRing = Ea.ring ; iota : RH.Hom R E = Ea.iota ; module L = RL[E] ;
+  ev (H : P.Expr (Ps.Fin n)) : E.R = P.eval (Ps.Fin n) Ea x H ;
+  Rep (e : E.R) : U l = (H : P.Expr (Ps.Fin n)) * Id E.R (ev H) e ;
+  InB (e : E.R) : U l = Tr.Trunc[Rep e].carrier ;
+  propB (e : E.R) : Pr.isProp (InB e) = Tr.Trunc[Rep e].proposition ;
+
+  ------------------------------------------------------------------------
+  -- closure
+
+  in-eq (e e' : E.R) (p : Id E.R e e') : InB e -> InB e' = TC.map (Rep e) (Rep e') (\ r -> (r.1, trans r.2 p)) ;
+  in-cst (r : R.R) : InB (iota.1 r) = Tr.Trunc[Rep (iota.1 r)].inc (cst r, refl (iota.1 r)) ;
+  in-w (j : Ps.Fin n) : InB (x j) = Tr.Trunc[Rep (x j)].inc (var j, refl (x j)) ;
+  in-zero : InB E.z = in-eq (iota.1 R.z) E.z (RH.zero R E iota) (in-cst R.z) ;
+  in-one : InB E.o = in-eq (iota.1 R.o) E.o iota.2.1 (in-cst R.o) ;
+  in-add (e e' : E.R) : InB e -> InB e' -> InB (E.add e e') =
+    TC.map2 (Rep e) (Rep e') (Rep (E.add e e')) (\ r r' -> (sumE r.1 r'.1, Ps.cong2 E.R E.add _ _ _ _ r.2 r'.2)) ;
+  in-mul (e e' : E.R) : InB e -> InB e' -> InB (E.mul e e') =
+    TC.map2 (Rep e) (Rep e') (Rep (E.mul e e')) (\ r r' -> (mulE r.1 r'.1, Ps.cong2 E.R E.mul _ _ _ _ r.2 r'.2)) ;
+  -- iota(-1) v = - v
+  neg-one (v : E.R) : Id E.R (E.mul (iota.1 (R.neg R.o)) v) (E.neg v) =
+    trans (ap (\ u -> E.mul u v) (trans (RH.negation R E iota R.o) (ap E.neg iota.2.1)))
+      (trans (L.neg-mul-left E.o v) (ap E.neg (L.one-left v))) ;
+  in-neg (e : E.R) : InB e -> InB (E.neg e) =
+    TC.map (Rep e) (Rep (E.neg e)) (\ r -> (mulE (cst (R.neg R.o)) r.1, trans (ap (E.mul (iota.1 (R.neg R.o))) r.2) (neg-one e))) ;
+
+  -- B is the least predicate with these closure properties
+  module Least (Q : E.R -> U l) (propQ : (e : E.R) -> Pr.isProp (Q e)) (qc : (r : R.R) -> Q (iota.1 r)) (qw : (j : Ps.Fin n) -> Q (x j))
+    (qa : (e e' : E.R) -> Q e -> Q e' -> Q (E.add e e')) (qm : (e e' : E.R) -> Q e -> Q e' -> Q (E.mul e e')) {
+    of-expr : (H : P.Expr (Ps.Fin n)) -> Q (ev H) = split {
+      var j -> qw j ; cst r -> qc r ;
+      sumE p q | rp rq -> qa (ev p) (ev q) rp rq ;
+      mulE p q | rp rq -> qm (ev p) (ev q) rp rq } ;
+    least (e : E.R) (h : InB e) : Q e =
+      Tr.Trunc[Rep e].induction @l (\ u -> Q e) (\ u -> propQ e) (\ r -> subst Q r.2 (of-expr r.1)) h ;
+  } ;
+
+  ------------------------------------------------------------------------
+  -- the ring B
+
+  Carrier : U l = (e : E.R) * InB e ;
+  eqB (b b' : Carrier) (p : Id E.R b.1 b'.1) : Id Carrier b b' = Pr.Sigma-eq E.R InB b.1 b'.1 b.2 b'.2 p (propB b'.1) ;
+  set : Pr.isSet Carrier = Pr.isSet-Sigma E.R InB Ea.set (\ e -> Pr.prop-to-set (InB e) (propB e)) ;
+  zB : Carrier = (E.z, in-zero) ;
+  oB : Carrier = (E.o, in-one) ;
+  addB (b b' : Carrier) : Carrier = (E.add b.1 b'.1, in-add b.1 b'.1 b.2 b'.2) ;
+  mulB (b b' : Carrier) : Carrier = (E.mul b.1 b'.1, in-mul b.1 b'.1 b.2 b'.2) ;
+  negB (b : Carrier) : Carrier = (E.neg b.1, in-neg b.1 b.2) ;
+  ring : CRing = mkCRing Carrier zB oB addB mulB negB
+    (\ a b c -> eqB (addB a (addB b c)) (addB (addB a b) c) (E.addA a.1 b.1 c.1))
+    (\ a b -> eqB (addB a b) (addB b a) (E.addC a.1 b.1))
+    (\ a -> eqB (addB a zB) a (E.addZ a.1))
+    (\ a -> eqB (addB a (negB a)) zB (E.addN a.1))
+    (\ a b c -> eqB (mulB a (mulB b c)) (mulB (mulB a b) c) (E.mulA a.1 b.1 c.1))
+    (\ a b -> eqB (mulB a b) (mulB b a) (E.mulC a.1 b.1))
+    (\ a -> eqB (mulB a oB) a (E.mulO a.1))
+    (\ a b c -> eqB (mulB a (addB b c)) (addB (mulB a b) (mulB a c)) (E.dist a.1 b.1 c.1)) ;
+  incl : RH.Hom ring E = (\ b -> b.1, refl E.o, \ a b -> refl (E.add a.1 b.1), \ a b -> refl (E.mul a.1 b.1)) ;
+  incl-inj (b b' : Carrier) (p : Id E.R (incl.1 b) (incl.1 b')) : Id Carrier b b' = eqB b b' p ;
+  iotaB : RH.Hom R ring =
+    (\ r -> (iota.1 r, in-cst r), eqB (iota.1 R.o, in-cst R.o) oB iota.2.1,
+     \ a b -> eqB (iota.1 (R.add a b), in-cst (R.add a b)) (addB (iota.1 a, in-cst a) (iota.1 b, in-cst b)) (iota.2.2.1 a b),
+     \ a b -> eqB (iota.1 (R.mul a b), in-cst (R.mul a b)) (mulB (iota.1 a, in-cst a) (iota.1 b, in-cst b)) (iota.2.2.2 a b)) ;
+  algebra : Algebras[l].Over[R,setR].Algebra = Algebras[l].Over[R,setR].mkAlgebra ring set iotaB ;
+  inclusion : C.Hom algebra Ea = (incl,\ r -> refl (iota.1 r)) ;
+  variables (j : Ps.Fin n) : Carrier = (x j,in-w j) ;
+  Generators : U l = (e : E.R) -> InB e ;
+  image-ev (H : P.Expr (Ps.Fin n)) : Id E.R (incl.1 (P.eval (Ps.Fin n) algebra variables H)) (ev H) =
+   P.natural (Ps.Fin n) algebra Ea inclusion variables H ;
+  ImageRep (b : Carrier) : U l = (H : P.Expr (Ps.Fin n)) * Id Carrier (P.eval (Ps.Fin n) algebra variables H) b ;
+  lift-rep (b : Carrier) (r : Rep b.1) : ImageRep b =
+   (r.1,eqB (P.eval (Ps.Fin n) algebra variables r.1) b (trans (image-ev r.1) r.2)) ;
+  generated (b : Carrier) : Tr.Trunc[ImageRep b].carrier =
+   TC.map (Rep b.1) (ImageRep b) (lift-rep b) b.2 ;
+ } ;
+} ;

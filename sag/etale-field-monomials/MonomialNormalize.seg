@@ -1,0 +1,85 @@
+-- Coalesce equal exponents by insertion, then remove zero coefficients.
+-- The two passes preserve evaluation in every algebra.  Insertion keeps
+-- exponents distinct; filtering keeps that property and proves every
+-- surviving coefficient nonzero.  Only equality of exponents and zero
+-- testing of coefficients are required.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat)
+ (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z))) {
+ module T = MonomialLists[l].Over[A,setA,n] ;
+ branch (t h : T.Term) (p rest : T.Terms) :
+  Plus (Id (E.Exponent n) t.2 h.2) (Not (Id (E.Exponent n) t.2 h.2)) -> T.Terms = split {
+   inl eq -> cons (A.add t.1 h.1,h.2) p ; inr ne -> cons h rest } ;
+ insert (t : T.Term) : T.Terms -> T.Terms = split {
+  nil -> cons t nil ; cons h p | rec -> branch t h p rec (E.dec n t.2 h.2) } ;
+ branch-away (u : E.Exponent n) (t h : T.Term) (p rest : T.Terms)
+  (nh : Not (Id (E.Exponent n) u h.2)) (hp : T.Away u p) (hr : T.Away u rest) :
+  (d : Plus (Id (E.Exponent n) t.2 h.2) (Not (Id (E.Exponent n) t.2 h.2))) -> T.Away u (branch t h p rest d) = split {
+   inl eq -> (nh,hp) ; inr ne -> (nh,hr) } ;
+ insert-away (u : E.Exponent n) (t : T.Term) (nt : Not (Id (E.Exponent n) u t.2)) :
+  (p : T.Terms) -> T.Away u p -> T.Away u (insert t p) = split {
+   nil -> \ hp -> (nt,tt) ;
+   cons h p | rec -> \ hp -> branch-away u t h p (insert t p) hp.1 hp.2 (rec hp.2) (E.dec n t.2 h.2) } ;
+ branch-unique (t h : T.Term) (p : T.Terms) (hp : T.Unique (cons h p)) (hr : T.Unique (insert t p)) :
+  (d : Plus (Id (E.Exponent n) t.2 h.2) (Not (Id (E.Exponent n) t.2 h.2))) -> T.Unique (branch t h p (insert t p) d) = split {
+   inl eq -> hp ;
+   inr ne -> (insert-away h.2 t (\ eq -> ne (sym eq)) p hp.1,hr) } ;
+ insert-unique (t : T.Term) : (p : T.Terms) -> T.Unique p -> T.Unique (insert t p) = split {
+  nil -> \ hp -> (tt,tt) ;
+  cons h p | rec -> \ hp -> branch-unique t h p hp (rec hp.2) (E.dec n t.2 h.2) } ;
+ coalesce : T.Terms -> T.Terms = split { nil -> nil ; cons t p | rec -> insert t rec } ;
+ coalesce-unique : (p : T.Terms) -> T.Unique (coalesce p) = split {
+  nil -> tt ; cons t p | rec -> insert-unique t (coalesce p) rec } ;
+ choose (t : T.Term) (p : T.Terms) : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z)) -> T.Terms = split {
+  inl eq -> p ; inr ne -> cons t p } ;
+ filter : T.Terms -> T.Terms = split { nil -> nil ; cons t p | rec -> choose t rec (zero-dec t.1) } ;
+ choose-away (u : E.Exponent n) (t : T.Term) (p : T.Terms) (nt : Not (Id (E.Exponent n) u t.2)) (hp : T.Away u p) :
+  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Away u (choose t p d) = split {
+   inl eq -> hp ; inr ne -> (nt,hp) } ;
+ filter-away (u : E.Exponent n) : (p : T.Terms) -> T.Away u p -> T.Away u (filter p) = split {
+  nil -> \ hp -> tt ; cons t p | rec -> \ hp -> choose-away u t (filter p) hp.1 (rec hp.2) (zero-dec t.1) } ;
+ choose-unique (t : T.Term) (p : T.Terms) (away : T.Away t.2 p) (hp : T.Unique p) :
+  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Unique (choose t p d) = split {
+   inl eq -> hp ; inr ne -> (away,hp) } ;
+ filter-unique : (p : T.Terms) -> T.Unique p -> T.Unique (filter p) = split {
+  nil -> \ hp -> tt ; cons t p | rec -> \ hp -> choose-unique t (filter p) (filter-away t.2 p hp.1) (rec hp.2) (zero-dec t.1) } ;
+ choose-nonzero (t : T.Term) (p : T.Terms) (hp : T.Nonzero p) :
+  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Nonzero (choose t p d) = split {
+   inl eq -> hp ; inr ne -> (ne,hp) } ;
+ filter-nonzero : (p : T.Terms) -> T.Nonzero (filter p) = split {
+  nil -> tt ; cons t p | rec -> choose-nonzero t (filter p) rec (zero-dec t.1) } ;
+ normalize (p : T.Terms) : T.Terms = filter (coalesce p) ;
+ unique (p : T.Terms) : T.Unique (normalize p) = filter-unique (coalesce p) (coalesce-unique p) ;
+ nonzero (p : T.Terms) : T.Nonzero (normalize p) = filter-nonzero (coalesce p) ;
+ module At (B : T.C.Algebra) (x : Fin n -> B.ring.R) {
+  module V = T.At[B,x] ;
+  branch-value (t h : T.Term) (p : T.Terms)
+   (rec : Id B.ring.R (V.value (insert t p)) (B.ring.add (V.term t) (V.value p))) :
+   (d : Plus (Id (E.Exponent n) t.2 h.2) (Not (Id (E.Exponent n) t.2 h.2))) ->
+   Id B.ring.R (V.value (branch t h p (insert t p) d)) (B.ring.add (V.term t) (V.value (cons h p))) = split {
+    inl eq -> trans (ap (\ a -> B.ring.add a (V.value p)) (V.term-add t.1 h.1 h.2))
+     (trans (ap (\ a -> B.ring.add (B.ring.add a (V.term h)) (V.value p))
+      (sym (ap (\ u -> V.term (t.1,u)) eq))) (sym (B.ring.addA (V.term t) (V.term h) (V.value p)))) ;
+    inr ne -> trans (ap (B.ring.add (V.term h)) rec) (V.L.add-swap (V.term h) (V.term t) (V.value p)) } ;
+  insert-value (t : T.Term) : (p : T.Terms) ->
+   Id B.ring.R (V.value (insert t p)) (B.ring.add (V.term t) (V.value p)) = split {
+    nil -> refl (B.ring.add (V.term t) B.ring.z) ;
+    cons h p | rec -> branch-value t h p rec (E.dec n t.2 h.2) } ;
+  coalesce-value : (p : T.Terms) -> Id B.ring.R (V.value (coalesce p)) (V.value p) = split {
+   nil -> refl B.ring.z ;
+   cons t p | rec -> trans (insert-value t (coalesce p)) (ap (B.ring.add (V.term t)) rec) } ;
+  choose-value (t : T.Term) (p : T.Terms) :
+   (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) ->
+   Id B.ring.R (V.value (choose t p d)) (B.ring.add (V.term t) (V.value p)) = split {
+    inl eq -> sym (trans (ap (\ a -> B.ring.add a (V.value p))
+     (trans (ap (\ a -> V.term (a,t.2)) eq) (V.term-zero t.2))) (V.L.zl (V.value p))) ;
+    inr ne -> refl (B.ring.add (V.term t) (V.value p)) } ;
+  filter-value : (p : T.Terms) -> Id B.ring.R (V.value (filter p)) (V.value p) = split {
+   nil -> refl B.ring.z ;
+   cons t p | rec -> trans (choose-value t (filter p) (zero-dec t.1)) (ap (B.ring.add (V.term t)) rec) } ;
+  value (p : T.Terms) : Id B.ring.R (V.value (normalize p)) (V.value p) = trans (filter-value (coalesce p)) (coalesce-value p) ;
+  sound (e : T.P.Expr (Fin n)) : Id B.ring.R (T.P.eval (Fin n) B x e) (V.value (normalize (T.raw e))) =
+   trans (V.sound e) (sym (value (T.raw e))) ;
+ } ;
+} ;

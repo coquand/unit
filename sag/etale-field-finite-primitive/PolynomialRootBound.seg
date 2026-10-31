@@ -1,0 +1,112 @@
+-- A polynomial of degree <n with n distinct roots in a discrete field
+-- is zero. Synthetic division removes the last root and lowers the bound.
+-- The nonvanishing corollary returns an actual index by finite search.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+tag (n : Nat) : Fin (suc n) -> Nat = split { inl i -> zero ; inr t -> suc zero } ;
+old-not-last (n : Nat) (i : Fin n) : Not (Id (Fin (suc n)) (inl i) (inr tt)) =
+ \ e -> zero-suc zero (ap (tag n) e) ;
+old-retraction (n : Nat) (d : Fin n) : Fin (suc n) -> Fin n = split { inl i -> i ; inr t -> d } ;
+module Over (A : CRing) {
+ open A ; module L = RL[A] ; module P = Poly[l].PolyR[A] ; module M = Mul[l].MulR[A] ;
+ module Bound = PolynomialBounds[l].Over[A] ;
+ ev-zero : (p : P.P) -> P.peq p nil -> (x : R) -> Id R (P.ev p x) z = split {
+  nil -> \ h x -> refl z ;
+  cons a p | rec -> \ h x -> trans (cong2 R add _ _ _ _ (h zero) (ap (mul x) (rec (\ j -> h (suc j)) x)))
+   (trans (ap (add z) (L.mul-zero x)) (addZ z)) } ;
+ ev-resp : (p q : P.P) -> P.peq p q -> (x : R) -> Id R (P.ev p x) (P.ev q x) = split {
+  nil -> \ q h x -> sym (ev-zero q (\ j -> sym (h j)) x) ;
+  cons a p | rec -> split {
+   nil -> \ h x -> ev-zero (cons a p) h x ;
+   cons b q -> \ h x -> cong2 R add _ _ _ _ (h zero) (ap (mul x) (rec q (\ j -> h (suc j)) x)) } } ;
+ ev-addc (a : R) : (p : P.P) (x : R) -> Id R (P.ev (P.addc a p) x) (add a (P.ev p x)) = split {
+  nil -> \ x -> ap (add a) (L.mul-zero x) ;
+  cons b p -> \ x -> sym (addA a b (mul x (P.ev p x))) } ;
+ factor-step (a b x v : R) :
+  Id R (add (neg (mul a b)) (mul x (add b (mul (add x (neg a)) v))))
+   (mul (add x (neg a)) (add b (mul x v))) =
+  calc R {
+   add (neg (mul a b)) (mul x (add b (mul (add x (neg a)) v)))
+    =< ap (add (neg (mul a b))) (dist x b (mul (add x (neg a)) v))
+     > add (neg (mul a b)) (add (mul x b) (mul x (mul (add x (neg a)) v)))
+    =< addA (neg (mul a b)) (mul x b) (mul x (mul (add x (neg a)) v))
+     > add (add (neg (mul a b)) (mul x b)) (mul x (mul (add x (neg a)) v))
+    =< cong2 R add _ _ _ _
+      (trans (addC (neg (mul a b)) (mul x b))
+       (sym (trans (L.dist-left x (neg a) b) (ap (add (mul x b)) (L.neg-mul-left a b)))))
+      (L.mul-swap x (add x (neg a)) v)
+     > add (mul (add x (neg a)) b) (mul (add x (neg a)) (mul x v))
+    =< sym (dist (add x (neg a)) b (mul x v))
+     > mul (add x (neg a)) (add b (mul x v)) } ;
+ ev-mulXa (a : R) : (p : P.P) (x : R) ->
+  Id R (P.ev (P.mulXa a p) x) (mul (add x (neg a)) (P.ev p x)) = split {
+   nil -> \ x -> sym (L.mul-zero (add x (neg a))) ;
+   cons b p | rec -> \ x ->
+    trans (ap (\ w -> add (neg (mul a b)) (mul x w)) (ev-addc b (P.mulXa a p) x))
+     (trans (ap (\ w -> add (neg (mul a b)) (mul x (add b w))) (rec x)) (factor-step a b x (P.ev p x))) } ;
+ sub-zero (x y : R) (h : Id R (add x (neg y)) z) : Id R x y =
+  trans (sym (addZ x)) (trans (ap (add x) (sym (L.neg-cancel y)))
+   (trans (addA x (neg y) y) (trans (ap (\ t -> add t y) h) (L.zl y)))) ;
+ unit-zero (a b : R) (inv : L.unit a) (h : Id R (mul a b) z) : Id R b z =
+  calc R { b =< sym (L.one-left b) > mul o b
+   =< ap (\ x -> mul x b) (sym inv.2) > mul (mul a inv.1) b
+   =< sym (mulA a inv.1 b) > mul a (mul inv.1 b)
+   =< L.mul-swap a inv.1 b > mul inv.1 (mul a b)
+   =< ap (mul inv.1) h > mul inv.1 z =< L.mul-zero inv.1 > z } ;
+ Injective (n : Nat) (x : Fin n -> R) : U l =
+  (i j : Fin n) -> Id R (x i) (x j) -> Id (Fin n) i j ;
+ module Field (inverse : (a : R) -> Not (Id R a z) -> L.unit a) {
+  module Step (n : Nat)
+   (ih : (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Injective n x ->
+    ((i : Fin n) -> Id R (P.ev p (x i)) z) -> P.peq p nil)
+   (p : P.P) (bound : Bound.Bound (suc n) p) (x : Fin (suc n) -> R)
+   (injective : Injective (suc n) x) (roots : (i : Fin (suc n)) -> Id R (P.ev p (x i)) z) {
+   a : R = x (inr tt) ;
+   f : P.P = Bound.cut (suc n) p ;
+   same : P.peq p f = Bound.cut-equal (suc n) p bound ;
+   f-roots (i : Fin (suc n)) : Id R (P.ev f (x i)) z = trans (sym (ev-resp p f same (x i))) (roots i) ;
+   quotient : P.P = (P.sdiv a f).1 ;
+   length : Id Nat (P.plen quotient) n = trans (P.sdiv-len a f) (ap pred (Bound.cut-length (suc n) p)) ;
+   lower-bound : Bound.Bound n quotient =
+    \ k -> trans (ap (P.coef quotient) (ap (\ d -> plus d k) (sym length))) (M.coef-beyond quotient k) ;
+   factorisation : P.peq f (P.mulXa a quotient) = P.root-factor a f (f-roots (inr tt)) ;
+   apart (i : Fin n) : Not (Id R (add (x (inl i)) (neg a)) z) =
+    \ h -> old-not-last n i (injective (inl i) (inr tt) (sub-zero (x (inl i)) a h)) ;
+   quotient-root (i : Fin n) : Id R (P.ev quotient (x (inl i))) z =
+    unit-zero (add (x (inl i)) (neg a)) (P.ev quotient (x (inl i))) (inverse _ (apart i))
+     (trans (sym (ev-mulXa a quotient (x (inl i))))
+      (trans (sym (ev-resp f (P.mulXa a quotient) factorisation (x (inl i)))) (f-roots (inl i)))) ;
+   old-injective : Injective n (\ i -> x (inl i)) =
+    \ i j h -> ap (old-retraction n i) (injective (inl i) (inl j) h) ;
+   quotient-zero : P.peq quotient nil = ih quotient lower-bound (\ i -> x (inl i)) old-injective quotient-root ;
+   result : P.peq p nil = P.peq-trans p f nil same
+    (P.peq-trans f (P.mulXa a quotient) nil factorisation (P.mulXa-peq a quotient nil quotient-zero)) ;
+  } ;
+  theorem : (n : Nat) (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Injective n x ->
+   ((i : Fin n) -> Id R (P.ev p (x i)) z) -> P.peq p nil = split {
+    zero -> \ p bound x injective roots -> bound ;
+    suc n | ih -> \ p bound x injective roots -> Step[n,ih,p,bound,x,injective,roots].result } ;
+  module Search (zero-dec : (a : R) -> Plus (Id R a z) (Not (Id R a z))) {
+   AllZero (n : Nat) (v : Fin n -> R) : U l = (i : Fin n) -> Id R (v i) z ;
+   Nonzero (n : Nat) (v : Fin n -> R) : U l = (i : Fin n) * Not (Id R (v i) z) ;
+   Result (n : Nat) (v : Fin n -> R) : U l = Plus (AllZero n v) (Nonzero n v) ;
+   old-case (n : Nat) (v : Fin (suc n) -> R) (last : Id R (v (inr tt)) z) :
+    Result n (\ i -> v (inl i)) -> Result (suc n) v = split {
+     inl h -> inl (AffineFinite[l].section n (\ i -> Id R (v i) z) h last) ;
+     inr h -> inr (inl h.1,h.2) } ;
+   last-case (n : Nat) (v : Fin (suc n) -> R) (old : Result n (\ i -> v (inl i))) :
+    Plus (Id R (v (inr tt)) z) (Not (Id R (v (inr tt)) z)) -> Result (suc n) v = split {
+     inl h -> old-case n v h old ; inr h -> inr (inr tt,h) } ;
+   scan : (n : Nat) (v : Fin n -> R) -> Result n v = split {
+    zero -> \ v -> inl (\ i -> efq i) ;
+    suc n | rec -> \ v -> last-case n v (rec (\ i -> v (inl i))) (zero-dec (v (inr tt))) } ;
+   choose (n : Nat) (p : P.P) (bound : Bound.Bound n p) (x : Fin n -> R) (injective : Injective n x)
+    (j : Nat) (nonzero : Not (Id R (P.coef p j) z)) :
+    Result n (\ i -> P.ev p (x i)) -> Nonzero n (\ i -> P.ev p (x i)) = split {
+     inl h -> efq (nonzero (theorem n p bound x injective h j)) ; inr h -> h } ;
+   nonvanishing (n : Nat) (p : P.P) (bound : Bound.Bound n p) (x : Fin n -> R) (injective : Injective n x)
+    (j : Nat) (nonzero : Not (Id R (P.coef p j) z)) : Nonzero n (\ i -> P.ev p (x i)) =
+    choose n p bound x injective j nonzero (scan n (\ i -> P.ev p (x i))) ;
+  } ;
+ } ;
+} ;

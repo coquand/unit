@@ -1,0 +1,84 @@
+-- Trace cyclicity for rectangular linear maps, proved in finite basis
+-- coordinates. This compares the trace on an idempotent factor with the
+-- ambient trace without constructing a global product decomposition.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R) {
+ module C = Algebras[l].Over[k,setk] ; module KS = FiniteIdeal[l].Sums[k] ;
+ module KSum = MnSums[l].Over[k] ;
+ record Linear (S T : C.Algebra) {
+  map : S.ring.R -> T.ring.R ;
+  add (a b : S.ring.R) : Id T.ring.R (map (S.ring.add a b)) (T.ring.add (map a) (map b)) ;
+  scale (r : k.R) (a : S.ring.R) : Id T.ring.R (map (S.ring.mul (S.iota.1 r) a)) (T.ring.mul (T.iota.1 r) (map a)) ;
+ } ;
+ identity (S : C.Algebra) : Linear[S,S] = new Linear[S,S,\ a -> a,\ a b -> refl (S.ring.add a b),\ r a -> refl (S.ring.mul (S.iota.1 r) a)] ;
+ compose (S T U0 : C.Algebra) (g : Linear[T,U0]) (f : Linear[S,T]) : Linear[S,U0] =
+  new Linear[S,U0,\ a -> g.map (f.map a),
+   \ a b -> trans (ap g.map (f.add a b)) (g.add (f.map a) (f.map b)),
+   \ r a -> trans (ap g.map (f.scale r a)) (g.scale r (f.map a))] ;
+ multiply (S : C.Algebra) (a : S.ring.R) : Linear[S,S] = new Linear[S,S,S.ring.mul a,S.ring.dist a,
+  \ r b -> RL[S.ring].mul-swap a (S.iota.1 r) b] ;
+ module Map (S T : C.Algebra) (f : Linear[S,T]) {
+  module SS = FiniteIdeal[l].Sums[S.ring] ; module TS = FiniteIdeal[l].Sums[T.ring] ;
+  zero : Id T.ring.R (f.map S.ring.z) T.ring.z =
+   RL[T.ring].add-cancel (f.map S.ring.z) (f.map S.ring.z)
+    (trans (sym (f.add S.ring.z S.ring.z)) (ap f.map (S.ring.addZ S.ring.z))) ;
+  sum : (m : Nat) (v : Fin m -> S.ring.R) ->
+   Id T.ring.R (f.map (SS.sum m v)) (TS.sum m (\ i -> f.map (v i))) = split {
+   zero -> \ v -> zero ;
+   suc m | ih -> \ v -> trans (f.add (v (inr tt)) (SS.sum m (\ i -> v (inl i))))
+    (ap (T.ring.add (f.map (v (inr tt)))) (ih (\ i -> v (inl i)))) } ;
+  combination (m : Nat) (v : Fin m -> S.ring.R) (c : Fin m -> k.R) :
+   Id T.ring.R (f.map (SS.sum m (\ i -> S.ring.mul (S.iota.1 (c i)) (v i))))
+    (TS.sum m (\ i -> T.ring.mul (T.iota.1 (c i)) (f.map (v i)))) =
+   trans (sum m (\ i -> S.ring.mul (S.iota.1 (c i)) (v i)))
+    (TS.sum-cong m _ _ (\ i -> f.scale (c i) (v i))) ;
+ } ;
+ module Coordinates (S T : C.Algebra) (n m : Nat)
+  (source : TraceBasis[l].Over[k,setk,S].Basis[n]) (target : TraceBasis[l].Over[k,setk,T].Basis[m])
+  (f : Linear[S,T]) {
+  module MapF = Map[S,T,f] ; module TB = TraceBasis[l].Over[k,setk,T].At[m,target] ;
+  image (a : S.ring.R) (i : Fin m) : Id k.R (target.coordinate (f.map a) i)
+   (KS.sum n (\ j -> k.mul (source.coordinate a j) (target.coordinate (f.map (source.vector j)) i))) =
+   trans (ap (\ b -> target.coordinate (f.map b) i) (sym (source.reconstruction a)))
+    (trans (ap (\ b -> target.coordinate b i) (MapF.combination n source.vector (source.coordinate a)))
+     (TB.combination n (\ j -> f.map (source.vector j)) (source.coordinate a) i)) ;
+ } ;
+ trace (S : C.Algebra) (n : Nat) (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (f : Linear[S,S]) : k.R =
+  KS.sum n (\ i -> basis.coordinate (f.map (basis.vector i)) i) ;
+ trace-equal (S : C.Algebra) (n : Nat) (basis : TraceBasis[l].Over[k,setk,S].Basis[n])
+  (f g : Linear[S,S]) (h : (a : S.ring.R) -> Id S.ring.R (f.map a) (g.map a)) :
+  Id k.R (trace S n basis f) (trace S n basis g) =
+  KS.sum-cong n (\ i -> basis.coordinate (f.map (basis.vector i)) i)
+   (\ i -> basis.coordinate (g.map (basis.vector i)) i)
+   (\ i -> ap (\ a -> basis.coordinate a i) (h (basis.vector i))) ;
+ multiply-trace (S : C.Algebra) (n : Nat) (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (a : S.ring.R) :
+  Id k.R (trace S n basis (multiply S a)) (TraceBasis[l].Over[k,setk,S].At[n,basis].trace a) =
+  refl (TraceBasis[l].Over[k,setk,S].At[n,basis].trace a) ;
+ module Cyclic (S T : C.Algebra) (n m : Nat)
+  (source : TraceBasis[l].Over[k,setk,S].Basis[n]) (target : TraceBasis[l].Over[k,setk,T].Basis[m])
+  (f : Linear[S,T]) (g : Linear[T,S]) {
+  module CF = Coordinates[S,T,n,m,source,target,f] ;
+  module CG = Coordinates[T,S,m,n,target,source,g] ;
+  forward (j : Fin n) (i : Fin m) : k.R =
+   k.mul (target.coordinate (f.map (source.vector j)) i) (source.coordinate (g.map (target.vector i)) j) ;
+  backward (i : Fin m) (j : Fin n) : k.R =
+   k.mul (source.coordinate (g.map (target.vector i)) j) (target.coordinate (f.map (source.vector j)) i) ;
+  theorem : Id k.R (trace S n source (compose S T S g f)) (trace T m target (compose T S T f g)) =
+   calc k.R {
+    trace S n source (compose S T S g f)
+     =< KS.sum-cong n (\ j -> source.coordinate (g.map (f.map (source.vector j))) j)
+      (\ j -> KS.sum m (forward j)) (\ j -> CG.image (f.map (source.vector j)) j)
+      > KS.sum n (\ j -> KS.sum m (forward j))
+     =< KSum.exchange m n forward
+      > KS.sum m (\ i -> KS.sum n (\ j -> forward j i))
+     =< KS.sum-cong m (\ i -> KS.sum n (\ j -> forward j i)) (\ i -> KS.sum n (backward i))
+      (\ i -> KS.sum-cong n (\ j -> forward j i) (backward i)
+       (\ j -> k.mulC (target.coordinate (f.map (source.vector j)) i) (source.coordinate (g.map (target.vector i)) j)))
+      > KS.sum m (\ i -> KS.sum n (backward i))
+     =< KS.sum-cong m (\ i -> KS.sum n (backward i))
+      (\ i -> target.coordinate (f.map (g.map (target.vector i))) i)
+      (\ i -> sym (CF.image (g.map (target.vector i)) i))
+      > trace T m target (compose T S T f g) } ;
+ } ;
+} ;

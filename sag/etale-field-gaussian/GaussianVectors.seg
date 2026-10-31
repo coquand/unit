@@ -1,0 +1,85 @@
+-- Finite coordinate vectors, linear maps, and explicit span witnesses.
+-- Span witnesses are coefficient lists, never a choice of a quotient basis.
+-- These elementary operations are used by the recursive Gaussian proof.
+level l ; open Ring[l] ; open Presentations[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) {
+ module L = RL[A] ; module S = FiniteIdeal[l].Sums[A] ; module D = MnSums[l].Over[A] ;
+ Vec (n : Nat) : U l = Fin n -> A.R ;
+ zeroV (n : Nat) : Vec n = \ i -> A.z ;
+ addV (n : Nat) (v w : Vec n) : Vec n = \ i -> A.add (v i) (w i) ;
+ negV (n : Nat) (v : Vec n) : Vec n = \ i -> A.neg (v i) ;
+ scaleV (n : Nat) (a : A.R) (v : Vec n) : Vec n = \ i -> A.mul a (v i) ;
+ subV (n : Nat) (v w : Vec n) : Vec n = addV n v (negV n w) ;
+ ext (n : Nat) (v w : Vec n) (eq : (i : Fin n) -> Id A.R (v i) (w i)) : Id (Vec n) v w =
+  F.funext (Fin n) (\ i -> A.R) v w eq ;
+ comb (n m : Nat) (v : Fin m -> Vec n) (c : Vec m) : Vec n =
+  \ i -> S.lin m (\ j -> v j i) c ;
+ record Linear (n r : Nat) {
+  map : Vec n -> Vec r ;
+  zero (i : Fin r) : Id A.R (map (\ j -> A.z) i) A.z ;
+  add (v w : Vec n) (i : Fin r) : Id A.R (map (\ j -> A.add (v j) (w j)) i) (A.add (map v i) (map w i)) ;
+  scale (a : A.R) (v : Vec n) (i : Fin r) : Id A.R (map (\ j -> A.mul a (v j)) i) (A.mul a (map v i)) ;
+ } ;
+ identity (n : Nat) : Linear[n,n] = new Linear[n,n,\ v -> v,\ i -> refl A.z,
+  \ v w i -> refl (A.add (v i) (w i)),\ a v i -> refl (A.mul a (v i))] ;
+ compose (n r s : Nat) (g : Linear[r,s]) (f : Linear[n,r]) : Linear[n,s] =
+  new Linear[n,s,\ v -> g.map (f.map v),
+   \ i -> trans (ap (\ w -> g.map w i) (ext r (f.map (zeroV n)) (zeroV r) f.zero)) (g.zero i),
+   \ v w i -> trans (ap (\ z -> g.map z i) (ext r (f.map (addV n v w)) (addV r (f.map v) (f.map w)) (f.add v w)))
+    (g.add (f.map v) (f.map w) i),
+   \ a v i -> trans (ap (\ z -> g.map z i) (ext r (f.map (scaleV n a v)) (scaleV r a (f.map v)) (f.scale a v)))
+    (g.scale a (f.map v) i)] ;
+ module On (n r : Nat) (f : Linear[n,r]) {
+  negation (v : Vec n) (i : Fin r) : Id A.R (f.map (negV n v) i) (A.neg (f.map v i)) =
+   trans (ap (\ w -> f.map w i) (ext n (negV n v) (scaleV n (A.neg A.o) v)
+    (\ j -> sym (trans (L.neg-mul-left A.o (v j)) (ap A.neg (L.one-left (v j)))))))
+    (trans (f.scale (A.neg A.o) v i) (trans (L.neg-mul-left A.o (f.map v i)) (ap A.neg (L.one-left (f.map v i))))) ;
+  subtract (v w : Vec n) (i : Fin r) : Id A.R (f.map (subV n v w) i) (A.add (f.map v i) (A.neg (f.map w i))) =
+   trans (f.add v (negV n w) i) (ap (A.add (f.map v i)) (negation w i)) ;
+  combination : (m : Nat) (v : Fin m -> Vec n) (c : Vec m) (i : Fin r) ->
+   Id A.R (f.map (comb n m v c) i) (comb r m (\ j -> f.map (v j)) c i) = split {
+   zero -> \ v c i -> f.zero i ;
+   suc m | ih -> \ v c i ->
+    trans (ap (\ w -> f.map w i) (ext n (comb n (suc m) v c)
+     (addV n (scaleV n (c (inr tt)) (v (inr tt))) (comb n m (\ j -> v (inl j)) (\ j -> c (inl j))))
+     (\ j -> ap (\ z -> A.add z (comb n m (\ k -> v (inl k)) (\ k -> c (inl k)) j)) (A.mulC (v (inr tt) j) (c (inr tt))))))
+     (trans (f.add (scaleV n (c (inr tt)) (v (inr tt))) (comb n m (\ j -> v (inl j)) (\ j -> c (inl j))) i)
+      (cong2 A.R A.add _ _ _ _
+       (trans (f.scale (c (inr tt)) (v (inr tt)) i) (A.mulC (c (inr tt)) (f.map (v (inr tt)) i)))
+       (ih (\ j -> v (inl j)) (\ j -> c (inl j)) i))) } ;
+ } ;
+ module Span (n m : Nat) (v : Fin m -> Vec n) {
+  Witness (x : Vec n) : U l = (c : Vec m) * ((i : Fin n) -> Id A.R (comb n m v c i) (x i)) ;
+  equal (x y : Vec n) (eq : (i : Fin n) -> Id A.R (x i) (y i)) (w : Witness x) : Witness y =
+   (w.1,\ i -> trans (w.2 i) (eq i)) ;
+  zero : Witness (\ i -> A.z) = (\ j -> A.z,\ i -> S.lin-zero m (\ j -> v j i)) ;
+  generator (j : Fin m) : Witness (v j) =
+   (\ k -> D.delta m k j,\ i -> D.sum-delta-right m j (\ k -> v k i)) ;
+  plus (x y : Vec n) (wx : Witness x) (wy : Witness y) : Witness (addV n x y) =
+   (addV m wx.1 wy.1,\ i -> trans (S.lin-add m (\ j -> v j i) wx.1 wy.1)
+    (cong2 A.R A.add _ _ _ _ (wx.2 i) (wy.2 i))) ;
+  times (a : A.R) (x : Vec n) (wx : Witness x) : Witness (scaleV n a x) =
+   (scaleV m a wx.1,\ i -> trans (S.lin-scale m (\ j -> v j i) wx.1 a) (ap (A.mul a) (wx.2 i))) ;
+  minus (x : Vec n) (wx : Witness x) : Witness (negV n x) =
+   (negV m wx.1,\ i -> trans (S.lin-neg m (\ j -> v j i) wx.1) (ap A.neg (wx.2 i))) ;
+  difference (x y : Vec n) (wx : Witness x) (wy : Witness y) : Witness (subV n x y) = plus x (negV n y) wx (minus y wy) ;
+  combination : (k : Nat) (x : Fin k -> Vec n) (c : Vec k) -> ((j : Fin k) -> Witness (x j)) -> Witness (comb n k x c) = split {
+   zero -> \ x c wx -> zero ;
+   suc k | ih -> \ x c wx ->
+    equal (addV n (scaleV n (c (inr tt)) (x (inr tt))) (comb n k (\ j -> x (inl j)) (\ j -> c (inl j))))
+     (comb n (suc k) x c)
+     (\ i -> ap (\ a -> A.add a (comb n k (\ j -> x (inl j)) (\ j -> c (inl j)) i)) (A.mulC (c (inr tt)) (x (inr tt) i)))
+     (plus (scaleV n (c (inr tt)) (x (inr tt))) (comb n k (\ j -> x (inl j)) (\ j -> c (inl j)))
+      (times (c (inr tt)) (x (inr tt)) (wx (inr tt)))
+      (ih (\ j -> x (inl j)) (\ j -> c (inl j)) (\ j -> wx (inl j)))) } ;
+  module Images (r : Nat) (w : Fin m -> Vec r) (f : Linear[r,n])
+   (inside : (j : Fin m) -> Witness (f.map (w j))) {
+   convert (x : Vec r) (hx : (c : Vec m) * ((i : Fin r) -> Id A.R (comb r m w c i) (x i))) : Witness (f.map x) =
+    equal (comb n m (\ j -> f.map (w j)) hx.1) (f.map x)
+     (\ i -> trans (sym (On[r,n,f].combination m w hx.1 i))
+      (ap (\ z -> f.map z i) (ext r (comb r m w hx.1) x hx.2)))
+     (combination m (\ j -> f.map (w j)) hx.1 inside) ;
+  } ;
+ } ;
+} ;

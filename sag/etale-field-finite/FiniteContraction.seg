@@ -1,0 +1,94 @@
+-- Finite scalar contraction of a finite module span.
+-- Let V_1,...,V_m lie in a coherent A-module M, and e in M.
+-- The scalars c with c*e in span(V) form a finitely generated ideal.
+-- Take syzygies of (V_1,...,V_m,-e), then project to their last
+-- coordinates. This is exactly the finite-matrix contraction step
+-- needed for R -> R[T]/(f, f_1,...,f_m), when f is monic.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module IP = IdealPowers[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+
+module Over (A : CRing) (Md : IP.Mod[A])
+ (coherent : Coherent[l].Over[A,Md].Coh)
+ (m : Nat) (vectors : Fin m -> Md.M) (e : Md.M) {
+ open Md ; module ML = IP.ModL[A,Md] ;
+ module CM = Coherent[l].Over[A,Md] ;
+ module CR = Coherent[l].Over[A,IP.regular A] ;
+ module S = Comb[l].Sums[A,Md] ; module RS = Comb[l].Sums[A,IP.regular A] ;
+ module F = Comb[l].Free[A,suc m] ;
+ Coordinates (c : A.R) : U l = CM.InFM m vectors (sm c e) ;
+ In (c : A.R) : U l = Tr.Trunc[Coordinates c].carrier ;
+ in-equal (c d : A.R) (h : Id A.R c d) (hc : In c) : In d = subst In h hc ;
+ in-zero : In A.z = Tr.Trunc[Coordinates A.z].inc
+  (\ i -> A.z,trans (S.comb-zero m vectors) (sym (ML.zero-sm e))) ;
+ add-coordinates (c d : A.R) (u : Coordinates c) (v : Coordinates d) : Coordinates (A.add c d) =
+  (\ i -> A.add (u.1 i) (v.1 i),
+   trans (S.comb-add m u.1 v.1 vectors)
+    (trans (ML.G.cong-add u.2 v.2) (sym (smE c d e)))) ;
+ in-add (c d : A.R) (hc : In c) (hd : In d) : In (A.add c d) =
+  TC.map2 (Coordinates c) (Coordinates d) (Coordinates (A.add c d)) (add-coordinates c d) hc hd ;
+ scale-coordinates (a c : A.R) (u : Coordinates c) : Coordinates (A.mul a c) =
+  (\ i -> A.mul a (u.1 i),
+   trans (S.comb-sm m a u.1 vectors) (trans (ap (sm a) u.2) (smA a c e))) ;
+ in-scale (a c : A.R) (hc : In c) : In (A.mul a c) =
+  TC.map (Coordinates c) (Coordinates (A.mul a c)) (scale-coordinates a c) hc ;
+ ideal : RegularIdeal[l].IdealPred[A] = RegularIdeal[l].mkIdealPred A In in-zero in-add in-scale ;
+
+ augmented : Fin (suc m) -> M = snoc (Fin m) M vectors (mneg e) ;
+ coefficients (lambda : Fin m -> A.R) (c : A.R) : Fin (suc m) -> A.R = snoc (Fin m) A.R lambda c ;
+ matrix-equation (v : Fin (suc m) -> A.R) :
+  Id M (S.comb (suc m) v augmented)
+   (ML.msub (S.comb m (\ i -> v (inl i)) vectors) (sm (v (inr tt)) e)) =
+  trans (ap (\ t -> madd t (S.comb m (\ i -> v (inl i)) vectors)) (ML.sm-neg (v (inr tt)) e))
+   (maddC (mneg (sm (v (inr tt)) e)) (S.comb m (\ i -> v (inl i)) vectors)) ;
+ from-syzygy (v : Fin (suc m) -> A.R) (h : CM.Syz (suc m) augmented v) : Coordinates (v (inr tt)) =
+  (\ i -> v (inl i),ML.sub-zero (S.comb m (\ i -> v (inl i)) vectors) (sm (v (inr tt)) e)
+   (trans (sym (matrix-equation v)) h)) ;
+ to-syzygy (c : A.R) (u : Coordinates c) : CM.Syz (suc m) augmented (coefficients u.1 c) =
+  trans (matrix-equation (coefficients u.1 c))
+   (trans (ap (\ t -> ML.msub t (sm c e)) u.2) (maddN (sm c e))) ;
+
+ span-in : (p : Nat) (g : Fin p -> A.R) -> ((j : Fin p) -> In (g j)) ->
+  (lambda : Fin p -> A.R) -> In (RS.comb p lambda g) = split {
+  zero -> \ g hg lambda -> in-zero ;
+  suc p | r -> \ g hg lambda ->
+   in-add (A.mul (lambda (inr tt)) (g (inr tt)))
+    (RS.comb p (\ i -> lambda (inl i)) (\ i -> g (inl i)))
+    (in-scale (lambda (inr tt)) (g (inr tt)) (hg (inr tt)))
+    (r (\ i -> g (inl i)) (\ i -> hg (inl i)) (\ i -> lambda (inl i))) } ;
+ from-span (p : Nat) (g : Fin p -> A.R) (hg : (j : Fin p) -> In (g j))
+  (c : A.R) (h : CR.Mem p g c) : In c =
+  TC.rec (CR.InFM p g c) @l (In c) Tr.Trunc[Coordinates c].proposition
+   (\ u -> in-equal (RS.comb p u.1 g) c u.2 (span-in p g hg u.1)) h ;
+
+ Finite : U l = (p : Nat) * (g : Fin p -> A.R) *
+  ((j : Fin p) -> In (g j)) * ((c : A.R) -> In c -> CR.Mem p g c) ;
+ module Generators (p : Nat) (gs : Fin p -> Fin (suc m) -> A.R)
+  (syzygies : CM.SyzAll (suc m) augmented p gs)
+  (universal : CM.Univ (suc m) augmented p gs) {
+  generators (j : Fin p) : A.R = gs j (inr tt) ;
+  in-generators (j : Fin p) : In (generators j) =
+   Tr.Trunc[Coordinates (generators j)].inc (from-syzygy (gs j) (syzygies j)) ;
+  project (c : A.R) (u : Coordinates c)
+   (v : CM.InFV (suc m) p gs (coefficients u.1 c)) : CR.InFM p generators c =
+   (v.1,trans (sym (F.comb-at p v.1 gs (inr tt))) (ap (\ w -> w (inr tt)) v.2)) ;
+  universal-coordinates (c : A.R) (u : Coordinates c) : CR.Mem p generators c =
+   TC.map (CM.InFV (suc m) p gs (coefficients u.1 c)) (CR.InFM p generators c)
+    (project c u) (universal (coefficients u.1 c) (to-syzygy c u)) ;
+  universal-in (c : A.R) (hc : In c) : CR.Mem p generators c =
+   TC.bind (Coordinates c) (CR.InFM p generators c) (universal-coordinates c) hc ;
+  result : Finite = (p,generators,in-generators,universal-in) ;
+ } ;
+ theorem : Tr.Trunc[Finite].carrier =
+  TC.map (CM.CohW (suc m) augmented) Finite
+   (\ g -> Generators[g.1,g.2.1,g.2.2.1,g.2.2.2].result) (coherent (suc m) augmented) ;
+} ;
+
+-- The intended finite-free instance only needs coherence of the ring.
+module Free (A : CRing) (coherent : Coherent[l].Over[A,IP.regular A].Coh)
+ (rank m : Nat) (vectors : Fin m -> Comb[l].Free[A,rank].Vec)
+ (e : Comb[l].Free[A,rank].Vec) {
+ module F = Comb[l].Free[A,rank] ;
+ module C = Over[A,F.mod,FreeCoherent[l].Over[A,coherent].coh-vec rank,m,vectors,e] ;
+ finite : Tr.Trunc[C.Finite].carrier = C.theorem ;
+} ;

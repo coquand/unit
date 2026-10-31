@@ -1,0 +1,87 @@
+-- Refine a selected relative free piece until its elements are
+-- polynomials in the original monic generator. CoordinateGeneration is
+-- applied to eS over eQ. The coefficients obtained in eQ are regarded
+-- as elements of Q and given their canonical polynomial representatives.
+-- Projecting each original s to eS and retaining the new idempotent
+-- gives the ambient identity f*(s-P_s(z))=0, with actual lists P_s.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Corner (A : CRing) (setA : Pr.isSet A.R) (e : A.R) (he : Id A.R (A.mul e e) e) {
+ module F = IdempotentFactor[l].Over[A,setA,e,he] ; module L = RL[A] ;
+ module R = PrincipalRegularity[l].Over[A] ; module RF = PrincipalRegularity[l].Over[F.ring] ;
+ module Prime (q : PrimeIdempotents[l].Over[A].Prime) (outside : Not (q.ideal.In e)) {
+  member (a : F.Carrier) : U l = q.ideal.In a.1 ;
+  ideal : RegularIdeal[l].IdealPred[F.ring] = RegularIdeal[l].mkIdealPred F.ring member q.ideal.in-zero
+   (\ a b -> q.ideal.in-add a.1 b.1) (\ a b -> q.ideal.in-mul a.1 b.1) ;
+  theorem : PrimeIdempotents[l].Over[F.ring].Prime = new PrimeIdempotents[l].Over[F.ring].Prime[
+   ideal,\ a -> q.proposition a.1,outside,\ a b -> q.prime a.1 b.1,\ a -> q.decide a.1] ;
+ } ;
+ module Witness (a : F.Carrier) (w : R.Witness a.1) {
+  fixed-square : Id A.R (A.mul e (A.mul a.1 a.1)) (A.mul a.1 a.1) = (F.mul a a).2 ;
+  value : Id A.R (A.mul (A.mul a.1 a.1) (A.mul e w.1)) (A.mul (A.mul a.1 a.1) w.1) =
+   trans (L.mul-swap (A.mul a.1 a.1) e w.1)
+    (trans (A.mulA e (A.mul a.1 a.1) w.1) (ap (\ b -> A.mul b w.1) fixed-square)) ;
+  result : RF.Witness a = (F.project w.1,F.eq _ _ (trans w.2 (sym value))) ;
+ } ;
+ regular (reg : R.Regular) : RF.Regular = \ a ->
+  TC.map (R.Witness a.1) (RF.Witness a) (\ w -> Witness[a,w].result) (reg a.1) ;
+} ;
+module Over (k : CRing) (setk : Pr.isSet k.R) (lower : List k.R)
+ (S : Algebras[l].Over[k,setk].Algebra)
+ (h : Algebras[l].Over[k,setk].Hom (MonicBasisUniversal[l].Over[k,setk].At[lower].Q) S)
+ (e : MonicBasisUniversal[l].Over[k,setk].At[lower].Q.ring.R)
+ (he : Id (MonicBasisUniversal[l].Over[k,setk].At[lower].Q.ring.R)
+  (MonicBasisUniversal[l].Over[k,setk].At[lower].Q.ring.mul e e) e)
+ (q : PrimeIdempotents[l].Over[S.ring].Prime) (outside-e : Not (q.ideal.In (h.1.1 e))) {
+ module C = Algebras[l].Over[k,setk] ; module M = MonicBasisUniversal[l].Over[k,setk].At[lower] ;
+ Q : C.Algebra = M.Q ; module CQ = Algebras[l].Over[Q.ring,Q.set] ;
+ algebra : CQ.Algebra = CQ.mkAlgebra S.ring S.set h.1 ;
+ module Part = IdempotentAlgebraFactor[l].Over[Q.ring,Q.set,algebra,e,he] ;
+ module BaseCorner = Corner[Q.ring,Q.set,e,he] ;
+ module Target = Corner[S.ring,S.set,h.1.1 e,Part.image-idempotent] ;
+ module SelectedPrime = Target.Prime[q,outside-e] ;
+ module Representatives = MonicRepresentatives[l].Over[k,setk,lower] ;
+ module EvalMap = Representatives.Map[S,h] ; module L = RL[S.ring] ;
+ x : S.ring.R = h.1.1 M.x ;
+ record Result {
+  value : S.ring.R ;
+  idempotent : Id S.ring.R (S.ring.mul value value) value ;
+  outside : Not (q.ideal.In value) ;
+  refines : Id S.ring.R (S.ring.mul (h.1.1 e) value) value ;
+  representative : S.ring.R -> List k.R ;
+  equation (s : S.ring.R) : Id S.ring.R
+   (S.ring.mul value (S.ring.add s (S.ring.neg (EvalMap.Ho.Ho.horner (representative s))))) S.ring.z ;
+ } ;
+ module At (r : Nat) (basis : TraceBasis[l].Over[Part.BaseFactor.ring,Part.BaseFactor.set,Part.algebra].Basis[r])
+  (coordinate : (j : Fin r) (b : Part.AlgebraFactor.Carrier) ->
+   Id Part.AlgebraFactor.Carrier (Part.iota.1 (basis.coordinate b j))
+    (Part.AlgebraFactor.mul (Part.iota.1 (basis.coordinate Part.AlgebraFactor.one j)) b)) {
+  module G = CoordinateGeneration[l].Over[Part.BaseFactor.ring,Part.BaseFactor.set,Part.algebra,r,basis,SelectedPrime.theorem,coordinate] ;
+  module Chosen (result : G.Result) {
+   value : S.ring.R = h.1.1 result.e.1 ;
+   idempotent : Id S.ring.R (S.ring.mul value value) value =
+    trans (sym (h.1.2.2.2 result.e.1 result.e.1)) (ap h.1.1 (ap (\ a -> a.1) result.idempotent)) ;
+   refines : Id S.ring.R (S.ring.mul (h.1.1 e) value) value =
+    trans (sym (h.1.2.2.2 e result.e.1)) (ap h.1.1 result.e.2) ;
+   coefficient (s : S.ring.R) : Q.ring.R = (result.preimage (Part.AlgebraFactor.project s)).1 ;
+   representative (s : S.ring.R) : List k.R = Representatives.representative (coefficient s) ;
+   image (s : S.ring.R) : Id S.ring.R (h.1.1 (coefficient s)) (S.ring.mul value s) =
+    trans (ap (\ a -> a.1) (result.equation (Part.AlgebraFactor.project s)))
+     (trans (L.mul-swap value (h.1.1 e) s)
+      (trans (S.ring.mulA (h.1.1 e) value s) (ap (\ a -> S.ring.mul a s) refines))) ;
+   polynomial (s : S.ring.R) : Id S.ring.R (EvalMap.Ho.Ho.horner (representative s)) (S.ring.mul value s) =
+    trans (EvalMap.value (coefficient s)) (image s) ;
+   equation (s : S.ring.R) : Id S.ring.R
+    (S.ring.mul value (S.ring.add s (S.ring.neg (EvalMap.Ho.Ho.horner (representative s))))) S.ring.z =
+    trans (S.ring.dist value s (S.ring.neg (EvalMap.Ho.Ho.horner (representative s))))
+     (trans (ap (S.ring.add (S.ring.mul value s))
+      (trans (L.mul-neg value (EvalMap.Ho.Ho.horner (representative s)))
+       (ap S.ring.neg (trans (ap (S.ring.mul value) (polynomial s))
+        (trans (S.ring.mulA value value s) (ap (\ a -> S.ring.mul a s) idempotent))))))
+      (S.ring.addN (S.ring.mul value s))) ;
+   theorem : Result = new Result[value,idempotent,result.outside,refines,representative,equation] ;
+  } ;
+  theorem (regular : PrincipalRegularity[l].Over[Q.ring].Regular) : Tr.Trunc[Result].carrier =
+   TC.map G.Result Result (\ r -> Chosen[r].theorem) (G.theorem (BaseCorner.regular regular)) ;
+ } ;
+} ;

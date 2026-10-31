@@ -1,0 +1,99 @@
+-- Linear maps on finite coordinate vectors are determined on the unit
+-- vectors.  This is used to prove scalar-extension ring laws by reducing
+-- multilinear identities to basis vectors, instead of expanding triples
+-- of structure-constant sums in every proof.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (B : CRing) (setB : Pr.isSet B.R) (n : Nat) {
+ module S = FiniteIdeal[l].Sums[B] ; module D = MnSums[l].Over[B] ;
+ V : U l = Fin n -> B.R ;
+ set : Pr.isSet V = F.isSet-Pi (Fin n) (\ i -> B.R) (\ i -> setB) ;
+ z : V = \ i -> B.z ;
+ add (v w : V) : V = \ i -> B.add (v i) (w i) ;
+ neg (v : V) : V = \ i -> B.neg (v i) ;
+ scale (a : B.R) (v : V) : V = \ i -> B.mul a (v i) ;
+ unit (j : Fin n) : V = \ i -> D.delta n i j ;
+ sum (m : Nat) (v : Fin m -> V) : V = \ i -> S.sum m (\ j -> v j i) ;
+ ext (v w : V) (h : (i : Fin n) -> Id B.R (v i) (w i)) : Id V v w =
+  F.funext (Fin n) (\ i -> B.R) v w h ;
+ record Linear (f : V -> V) {
+  preserves-add (v w : V) : Id V (f (add v w)) (add (f v) (f w)) ;
+  preserves-scale (a : B.R) (v : V) : Id V (f (scale a v)) (scale a (f v)) ;
+ } ;
+ identity : Linear[\ v -> v] = mkLinear (\ v -> v) (\ v w -> refl (add v w)) (\ a v -> refl (scale a v)) ;
+ compose (f g : V -> V) (lf : Linear[f]) (lg : Linear[g]) : Linear[\ v -> g (f v)] =
+  mkLinear (\ v -> g (f v))
+   (\ v w -> trans (ap g (lf.preserves-add v w)) (lg.preserves-add (f v) (f w)))
+   (\ a v -> trans (ap g (lf.preserves-scale a v)) (lg.preserves-scale a (f v))) ;
+ sum-cong (m : Nat) (v w : Fin m -> V) (h : (j : Fin m) -> Id V (v j) (w j)) : Id V (sum m v) (sum m w) =
+  ext (sum m v) (sum m w) (\ i -> S.sum-cong m (\ j -> v j i) (\ j -> w j i) (\ j -> ap (\ u -> u i) (h j))) ;
+ expansion (v : V) : Id V (sum n (\ j -> scale (v j) (unit j))) v =
+  ext _ _ (\ i -> trans (S.sum-cong n (\ j -> B.mul (v j) (D.delta n i j))
+    (\ j -> B.mul (v j) (D.delta n j i)) (\ j -> ap (B.mul (v j)) (D.delta-sym n i j)))
+   (D.sum-delta-right n i v)) ;
+ module Map (f : V -> V) (linear : Linear[f]) {
+  zero : Id V (f z) z = ext _ _ (\ i ->
+   RL[B].add-cancel (f z i) (f z i)
+    (trans (sym (ap (\ v -> v i) (linear.preserves-add z z)))
+     (ap (\ v -> f v i) (ext (add z z) z (\ j -> B.addZ B.z))))) ;
+  sum-preserved : (m : Nat) (v : Fin m -> V) -> Id V (f (sum m v)) (sum m (\ j -> f (v j))) = split {
+   zero -> \ v -> zero ;
+   suc m | ih -> \ v -> trans (linear.preserves-add (v (inr tt)) (sum m (\ j -> v (inl j))))
+    (ap (add (f (v (inr tt)))) (ih (\ j -> v (inl j)))) } ;
+  expanded (v : V) : Id V (f v) (sum n (\ j -> scale (v j) (f (unit j)))) =
+   trans (ap f (sym (expansion v)))
+    (trans (sum-preserved n (\ j -> scale (v j) (unit j)))
+     (sum-cong n _ _ (\ j -> linear.preserves-scale (v j) (unit j)))) ;
+ } ;
+ maps-equal (f g : V -> V) (lf : Linear[f]) (lg : Linear[g])
+  (h : (j : Fin n) -> Id V (f (unit j)) (g (unit j))) (v : V) : Id V (f v) (g v) =
+  trans (Map[f,lf].expanded v)
+   (trans (sum-cong n _ _ (\ j -> ap (scale (v j)) (h j))) (sym (Map[g,lg].expanded v))) ;
+ add-assoc (u v w : V) : Id V (add u (add v w)) (add (add u v) w) = ext _ _ (\ i -> B.addA (u i) (v i) (w i)) ;
+ add-comm (u v : V) : Id V (add u v) (add v u) = ext _ _ (\ i -> B.addC (u i) (v i)) ;
+ add-zero (v : V) : Id V (add v z) v = ext _ _ (\ i -> B.addZ (v i)) ;
+ add-neg (v : V) : Id V (add v (neg v)) z = ext _ _ (\ i -> B.addN (v i)) ;
+ scale-one (v : V) : Id V (scale B.o v) v = ext _ _ (\ i -> RL[B].one-left (v i)) ;
+ scale-assoc (a c : B.R) (v : V) : Id V (scale (B.mul a c) v) (scale a (scale c v)) =
+  ext _ _ (\ i -> sym (B.mulA a c (v i))) ;
+ scale-add (a c : B.R) (v : V) : Id V (scale (B.add a c) v) (add (scale a v) (scale c v)) =
+  ext _ _ (\ i -> RL[B].dist-left a c (v i)) ;
+ -- The same extensionality when the target is an algebra over B.
+ module Into (A : CRing) (g : RingHom[l].Hom B A) {
+  module AS = FiniteIdeal[l].Sums[A] ;
+  record TargetLinear (f : V -> A.R) {
+   preserves-add (v w : V) : Id A.R (f (add v w)) (A.add (f v) (f w)) ;
+   preserves-scale (a : B.R) (v : V) : Id A.R (f (scale a v)) (A.mul (g.1 a) (f v)) ;
+  } ;
+  compose-into (f : V -> V) (h : V -> A.R) (lf : Linear[f]) (lh : TargetLinear[h]) : TargetLinear[\ v -> h (f v)] =
+   mkTargetLinear (\ v -> h (f v))
+    (\ v w -> trans (ap h (lf.preserves-add v w)) (lh.preserves-add (f v) (f w)))
+    (\ a v -> trans (ap h (lf.preserves-scale a v)) (lh.preserves-scale a (f v))) ;
+  multiply (f : V -> A.R) (lf : TargetLinear[f]) (a : A.R) : TargetLinear[\ v -> A.mul a (f v)] =
+   mkTargetLinear (\ v -> A.mul a (f v))
+    (\ v w -> trans (ap (A.mul a) (lf.preserves-add v w)) (A.dist a (f v) (f w)))
+    (\ c v -> trans (ap (A.mul a) (lf.preserves-scale c v)) (RL[A].mul-swap a (g.1 c) (f v))) ;
+  multiply-right (f : V -> A.R) (lf : TargetLinear[f]) (a : A.R) : TargetLinear[\ v -> A.mul (f v) a] =
+   mkTargetLinear (\ v -> A.mul (f v) a)
+    (\ v w -> trans (ap (\ x -> A.mul x a) (lf.preserves-add v w)) (RL[A].dist-left (f v) (f w) a))
+    (\ c v -> trans (ap (\ x -> A.mul x a) (lf.preserves-scale c v)) (sym (A.mulA (g.1 c) (f v) a))) ;
+  module TargetMap (f : V -> A.R) (linear : TargetLinear[f]) {
+   zero : Id A.R (f z) A.z =
+    RL[A].add-cancel (f z) (f z)
+     (trans (sym (linear.preserves-add z z)) (ap f (ext (add z z) z (\ j -> B.addZ B.z)))) ;
+   sum-preserved : (m : Nat) (v : Fin m -> V) ->
+    Id A.R (f (sum m v)) (AS.sum m (\ j -> f (v j))) = split {
+    zero -> \ v -> zero ;
+    suc m | ih -> \ v -> trans (linear.preserves-add (v (inr tt)) (sum m (\ j -> v (inl j))))
+     (ap (A.add (f (v (inr tt)))) (ih (\ j -> v (inl j)))) } ;
+   expanded (v : V) : Id A.R (f v) (AS.sum n (\ j -> A.mul (g.1 (v j)) (f (unit j)))) =
+    trans (ap f (sym (expansion v)))
+     (trans (sum-preserved n (\ j -> scale (v j) (unit j)))
+      (AS.sum-cong n _ _ (\ j -> linear.preserves-scale (v j) (unit j)))) ;
+  } ;
+  maps-equal-into (f h : V -> A.R) (lf : TargetLinear[f]) (lh : TargetLinear[h])
+   (e : (j : Fin n) -> Id A.R (f (unit j)) (h (unit j))) (v : V) : Id A.R (f v) (h v) =
+   trans (TargetMap[f,lf].expanded v)
+    (trans (AS.sum-cong n _ _ (\ j -> ap (A.mul (g.1 (v j))) (e j))) (sym (TargetMap[h,lh].expanded v))) ;
+ } ;
+} ;

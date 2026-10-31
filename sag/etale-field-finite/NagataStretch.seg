@@ -1,0 +1,103 @@
+-- T -> T^M on coefficient lists, M positive. The implementation omits
+-- trailing padding, so a list of length d+1 becomes one of length Md+1.
+-- Its top coefficient is unchanged. The induced map is the polynomial
+-- universal-property map with variable T^M, not an assumed substitution.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module BlocksA = Blocks[l] ;
+module Over (A : CRing) (gap : Nat) {
+ module P = Poly[l].PolyR[A] ; module Bounds = PolynomialBounds[l].Over[A] ;
+ module M = Mul[l].MulR[A] ; module LA = RL[A] ;
+ radix : Nat = suc gap ;
+ shift : Nat -> P.P -> P.P = split {
+  zero -> \ p -> p ; suc n | rec -> \ p -> cons A.z (rec p) } ;
+ shift-length : (n : Nat) (p : P.P) -> Id Nat (P.plen (shift n p)) (plus n (P.plen p)) = split {
+  zero -> \ p -> refl (P.plen p) ; suc n | rec -> \ p -> ap (\ k -> suc k) (rec p) } ;
+ shift-coef : (n : Nat) (p : P.P) (k : Nat) -> Id A.R (P.coef (shift n p) (plus n k)) (P.coef p k) = split {
+  zero -> \ p k -> refl (P.coef p k) ; suc n | rec -> rec } ;
+ cons-stretch (c : A.R) : P.P -> P.P -> P.P = split {
+  nil -> \ r -> cons c nil ; cons a p -> \ r -> cons c (shift gap r) } ;
+ stretch : P.P -> P.P = split {
+  nil -> nil ; cons c p | rec -> cons-stretch c p rec } ;
+ degree-step (d : Nat) : Id Nat (BlocksA.times radix (suc d)) (suc (plus gap (BlocksA.times radix d))) =
+  plus-comm (BlocksA.times radix d) radix ;
+ length-step (c : A.R) : (p : P.P) ->
+  ((d : Nat) -> Id Nat (P.plen p) (suc d) -> Id Nat (P.plen (stretch p)) (suc (BlocksA.times radix d))) ->
+  (d : Nat) -> Id Nat (P.plen (cons c p)) (suc d) ->
+   Id Nat (P.plen (stretch (cons c p))) (suc (BlocksA.times radix d)) = split {
+  nil -> \ ih -> split {
+   zero -> \ h -> refl (suc zero) ;
+   suc d -> \ h -> efq (zero-suc d (suc-inj h)) } ;
+  cons a p -> \ ih -> split {
+   zero -> \ h -> efq (suc-zero (P.plen p) (suc-inj h)) ;
+   suc d -> \ h -> calc Nat {
+    P.plen (stretch (cons c (cons a p)))
+     =< ap (\ k -> suc k) (shift-length gap (stretch (cons a p))) >
+      suc (plus gap (P.plen (stretch (cons a p))))
+     =< ap (\ k -> suc (plus gap k)) (ih d (suc-inj h)) >
+      suc (plus gap (suc (BlocksA.times radix d)))
+     =< ap (\ k -> suc k) (plus-suc gap (BlocksA.times radix d)) >
+      suc (suc (plus gap (BlocksA.times radix d)))
+     =< ap (\ k -> suc k) (sym (degree-step d)) >
+      suc (BlocksA.times radix (suc d)) } } } ;
+ length : (p : P.P) (d : Nat) -> Id Nat (P.plen p) (suc d) ->
+  Id Nat (P.plen (stretch p)) (suc (BlocksA.times radix d)) = split {
+  nil -> \ d h -> efq (zero-suc d h) ;
+  cons c p | ih -> length-step c p ih } ;
+ top-step (c : A.R) : (p : P.P) ->
+  ((d : Nat) -> Id Nat (P.plen p) (suc d) ->
+   Id A.R (P.coef (stretch p) (BlocksA.times radix d)) (P.coef p d)) ->
+  (d : Nat) -> Id Nat (P.plen (cons c p)) (suc d) ->
+   Id A.R (P.coef (stretch (cons c p)) (BlocksA.times radix d)) (P.coef (cons c p) d) = split {
+  nil -> \ ih -> split {
+   zero -> \ h -> refl c ;
+   suc d -> \ h -> efq (zero-suc d (suc-inj h)) } ;
+  cons a p -> \ ih -> split {
+   zero -> \ h -> efq (suc-zero (P.plen p) (suc-inj h)) ;
+   suc d -> \ h ->
+    trans (ap (P.coef (stretch (cons c (cons a p)))) (degree-step d))
+     (trans (shift-coef gap (stretch (cons a p)) (BlocksA.times radix d)) (ih d (suc-inj h))) } } ;
+ top : (p : P.P) (d : Nat) -> Id Nat (P.plen p) (suc d) ->
+  Id A.R (P.coef (stretch p) (BlocksA.times radix d)) (P.coef p d) = split {
+  nil -> \ d h -> efq (zero-suc d h) ;
+  cons c p | ih -> top-step c p ih } ;
+ module Leading (d : Nat) (p : P.P) (c : A.R)
+  (length-p : Id Nat (P.plen p) (suc d)) (leading : Id A.R (P.coef p d) c) {
+  bound : Bounds.Bound (suc (BlocksA.times radix d)) (stretch p) =
+   \ k -> trans (ap (P.coef (stretch p)) (ap (\ n -> plus n k) (sym (length p d length-p))))
+    (M.coef-beyond (stretch p) k) ;
+  result : PolynomialLeading[l].Over[A].Lead (BlocksA.times radix d) (stretch p) c =
+   (bound,trans (top p d length-p) leading) ;
+ } ;
+
+ module Polynomial (setA : Pr.isSet A.R) {
+  module B = PolynomialRing[l].Extension[A,setA] ;
+  module L = RL[B.ring] ; module Pow = AffinePowers[l].Over[B.ring] ;
+  module UP = Universal[l].Property[A,B.ring,setA,B.set].Given[B.inclusion,Pow.power B.variable radix] ;
+  shift-one (p : P.P) : Id B.Carrier (B.include (cons A.z p)) (B.mulQ B.variable (B.include p)) =
+   trans (B.horner A.z p)
+    (trans (ap (\ a -> B.addQ a (B.mulQ B.variable (B.include p))) (H.zero A B.ring B.inclusion))
+     (L.zl (B.mulQ B.variable (B.include p)))) ;
+  shift-image : (n : Nat) (p : P.P) -> Id B.Carrier (B.include (shift n p))
+   (B.mulQ (Pow.power B.variable n) (B.include p)) = split {
+   zero -> \ p -> sym (L.one-left (B.include p)) ;
+   suc n | ih -> \ p -> trans (shift-one (shift n p))
+    (trans (ap (B.mulQ B.variable) (ih p))
+     (B.mul-assoc B.variable (Pow.power B.variable n) (B.include p))) } ;
+  stretch-horner (c : A.R) : (p : P.P) ->
+   Id B.Carrier (B.include (stretch (cons c p)))
+    (B.addQ (B.constant c) (B.mulQ (Pow.power B.variable radix) (B.include (stretch p)))) = split {
+   nil -> sym (trans (ap (B.addQ (B.constant c)) (L.mul-zero (Pow.power B.variable radix))) (B.add-zero (B.constant c))) ;
+   cons a p -> trans (B.horner c (shift gap (stretch (cons a p))))
+    (ap (B.addQ (B.constant c))
+     (trans (ap (B.mulQ B.variable) (shift-image gap (stretch (cons a p))))
+      (B.mul-assoc B.variable (Pow.power B.variable gap) (B.include (stretch (cons a p)))))) } ;
+  on-list : (p : P.P) -> Id B.Carrier (UP.extend.1 (B.include p)) (B.include (stretch p)) = split {
+   nil -> H.zero B.ring B.ring UP.extend ;
+   cons c p | ih -> trans (ap UP.extend.1 (B.horner c p))
+    (trans (UP.extend.2.2.1 (B.constant c) (B.mulQ B.variable (B.include p)))
+     (trans (cong2 B.Carrier B.addQ _ _ _ _ (UP.on-constants c)
+       (trans (UP.extend.2.2.2 B.variable (B.include p))
+        (cong2 B.Carrier B.mulQ _ _ _ _ UP.on-variable ih)))
+      (sym (stretch-horner c p)))) } ;
+ } ;
+} ;

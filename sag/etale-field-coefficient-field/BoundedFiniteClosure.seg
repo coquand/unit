@@ -1,0 +1,69 @@
+-- A bounded finite closure algorithm. Each unsuccessful closure test
+-- exhibits ONE new element and appends it to the distinct list. After
+-- M+1 such steps starting from the empty list, there are M+1 distinct
+-- elements. A successful test supplies all finite closure witnesses.
+-- We never ask whether the ambient type or field is finite.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module FS = FiniteScan[l] ;
+growth : Nat -> Nat -> Nat = split { zero -> \ n -> n ; suc f | ih -> \ n -> ih (suc n) } ;
+growth-suc : (f n : Nat) -> Id Nat (growth f (suc n)) (suc (growth f n)) = split {
+ zero -> \ n -> refl (suc n) ; suc f | ih -> \ n -> ih (suc n) } ;
+growth-zero : (f : Nat) -> Id Nat (growth f zero) f = split {
+ zero -> refl zero ; suc f | ih -> trans (growth-suc f zero) (ap (\ n -> suc n) ih) } ;
+module Over (X : U l) (setX : Pr.isSet X)
+ (equal : (a b : X) -> Plus (Id X a b) (Not (Id X a b)))
+ (z o : X) (neg inv : X -> X) (add mul : X -> X -> X) (t : Nat) (coefficients : Fin t -> X) {
+ module FD = FiniteDistinct[l].Over[X,setX,equal] ;
+ module At (n : Nat) (v : Fin n -> X) {
+  In (x : X) : U l = FD.Member n v x ;
+  Missing : U l = (x : X) * FD.Fresh n v x ;
+  OneLaw (f : X -> X) : U l = (i : Fin n) -> In (f (v i)) ;
+  TwoLaw (f : X -> X -> X) : U l = (i j : Fin n) -> In (f (v i) (v j)) ;
+  Coeffs : U l = (i : Fin t) -> In (coefficients i) ;
+  record Closed {
+   zero : In z ;
+   one : In o ;
+   coefficients-in : Coeffs ;
+   negation : OneLaw neg ;
+   inversion : OneLaw inv ;
+   addition : TwoLaw add ;
+   multiplication : TwoLaw mul ;
+  } ;
+  test-case (x : X) : FD.Lookup n v x -> Plus (In x) Missing = split {
+   inl w -> inl w ; inr fresh -> inr (x,fresh) } ;
+  test (x : X) : Plus (In x) Missing = test-case x (FD.lookup n v x) ;
+  unary (f : X -> X) : Plus (OneLaw f) Missing = FS.scan n (\ i -> In (f (v i))) Missing (\ i -> test (f (v i))) ;
+  row (f : X -> X -> X) (i : Fin n) : Plus ((j : Fin n) -> In (f (v i) (v j))) Missing =
+   FS.scan n (\ j -> In (f (v i) (v j))) Missing (\ j -> test (f (v i) (v j))) ;
+  binary (f : X -> X -> X) : Plus (TwoLaw f) Missing =
+   FS.scan n (\ i -> (j : Fin n) -> In (f (v i) (v j))) Missing (row f) ;
+  coeffs : Plus Coeffs Missing = FS.scan t (\ i -> In (coefficients i)) Missing (\ i -> test (coefficients i)) ;
+  ClosureData : U l = In z * In o * Coeffs * OneLaw neg * OneLaw inv * TwoLaw add * TwoLaw mul ;
+  pack (d : ClosureData) : Closed = mkClosed d.1 d.2.1 d.2.2.1 d.2.2.2.1 d.2.2.2.2.1 d.2.2.2.2.2.1 d.2.2.2.2.2.2 ;
+  data-test : Plus ClosureData Missing =
+   FS.join (In z) (In o * Coeffs * OneLaw neg * OneLaw inv * TwoLaw add * TwoLaw mul) Missing (test z)
+    (FS.join (In o) (Coeffs * OneLaw neg * OneLaw inv * TwoLaw add * TwoLaw mul) Missing (test o)
+     (FS.join Coeffs (OneLaw neg * OneLaw inv * TwoLaw add * TwoLaw mul) Missing coeffs
+      (FS.join (OneLaw neg) (OneLaw inv * TwoLaw add * TwoLaw mul) Missing (unary neg)
+       (FS.join (OneLaw inv) (TwoLaw add * TwoLaw mul) Missing (unary inv)
+        (FS.join (TwoLaw add) (TwoLaw mul) Missing (binary add) (binary mul)))))) ;
+  check : Plus Closed Missing = FS.map ClosureData Closed Missing pack data-test ;
+ } ;
+ ClosedData : U l = (n : Nat) * (v : Fin n -> X) * FD.Injective n v * At[n,v].Closed ;
+ Distinct (n : Nat) : U l = (v : Fin n -> X) * FD.Injective n v ;
+ module Step (fuel : Nat)
+  (ih : (n : Nat) (v : Fin n -> X) -> FD.Injective n v -> Plus (Distinct (growth fuel n)) ClosedData)
+  (n : Nat) (v : Fin n -> X) (inj : FD.Injective n v) {
+  module Here = At[n,v] ;
+  result : Plus Here.Closed Here.Missing -> Plus (Distinct (growth (suc fuel) n)) ClosedData = split {
+   inl closed -> inr (n,v,inj,closed) ;
+   inr missing -> ih (suc n) FD.Append[n,v,inj,missing.1,missing.2].vector FD.Append[n,v,inj,missing.1,missing.2].equal-indices } ;
+ } ;
+ run : (fuel n : Nat) (v : Fin n -> X) -> FD.Injective n v -> Plus (Distinct (growth fuel n)) ClosedData = split {
+  zero -> \ n v inj -> inl (v,inj) ;
+  suc fuel | ih -> \ n v inj -> Step[fuel,ih,n,v,inj].result At[n,v].check } ;
+ theorem (M : Nat) : Plus (Distinct (suc M)) ClosedData =
+  FS.map (Distinct (growth (suc M) zero)) (Distinct (suc M)) ClosedData
+   (\ w -> subst Distinct (growth-zero (suc M)) w)
+   (run (suc M) zero (\ i -> efq i) (\ i j h -> efq i)) ;
+} ;

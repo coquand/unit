@@ -1,0 +1,104 @@
+-- Mixed-radix weights for the Nagata coordinate change.
+-- If all exponents are < M, the weight u_last + M*weight(u_old)
+-- distinguishes exponent vectors. The newest variable has weight 1,
+-- so it can be kept as T; all old variables receive positive powers
+-- of M. This is the arithmetic part of Xi -> Yi + T^(weight Xi).
+-- The proof of uniqueness strips a common block M recursively; no
+-- quotient/remainder algorithm or infinite-field argument is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module O = NatOrder[l] ; module B = Blocks[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+
+assoc : (a b c : Nat) -> Id Nat (plus (plus a b) c) (plus a (plus b c)) = split {
+ zero -> \ b c -> refl (plus b c) ;
+ suc a | r -> \ b c -> ap (\ n -> suc n) (r b c) } ;
+cancel : (a b c : Nat) -> Id Nat (plus a b) (plus a c) -> Id Nat b c = split {
+ zero -> \ b c e -> e ; suc a | r -> \ b c e -> r b c (suc-inj e) } ;
+-- r<M cannot equal M+t.
+small-not-block : (m r : Nat) -> O.Lt r m -> (t : Nat) -> Not (Id Nat r (plus m t)) = split {
+ zero -> \ r h t e -> efq h ;
+ suc m | rec -> split {
+  zero -> \ h t e -> zero-suc (plus m t) e ;
+  suc r -> \ h t e -> rec r h t (suc-inj e) } } ;
+block (m q r : Nat) : Id Nat (plus (B.times m (suc q)) r) (plus m (plus (B.times m q) r)) =
+ trans (ap (\ a -> plus a r) (plus-comm (B.times m q) m)) (assoc m (B.times m q) r) ;
+
+module Digits (m r s : Nat) (hr : O.Lt r m) (hs : O.Lt s m) {
+ zero-left (b : Nat) (e : Id Nat r (plus (B.times m (suc b)) s)) : Empty =
+  small-not-block m r hr (plus (B.times m b) s) (trans e (block m b s)) ;
+ zero-right (a : Nat) (e : Id Nat (plus (B.times m (suc a)) r) s) : Empty =
+  small-not-block m s hs (plus (B.times m a) r) (trans (sym e) (block m a r)) ;
+ lift (a b : Nat) (h : Id Nat a b * Id Nat r s) : Id Nat (suc a) (suc b) * Id Nat r s =
+  (ap (\ n -> suc n) h.1,h.2) ;
+ compare : (a b : Nat) -> Id Nat (plus (B.times m a) r) (plus (B.times m b) s) ->
+  Id Nat a b * Id Nat r s = split {
+  zero -> split {
+   zero -> \ e -> (refl zero,e) ;
+   suc b -> \ e -> efq (zero-left b e) } ;
+  suc a | rec -> split {
+   zero -> \ e -> efq (zero-right a e) ;
+   suc b -> \ e ->
+    lift a b (rec b (cancel m (plus (B.times m a) r) (plus (B.times m b) s)
+      (trans (sym (block m a r)) (trans e (block m b s))))) } } ;
+} ;
+
+Exponent (n : Nat) : U l = Fin n -> Nat ;
+old (n : Nat) (u : Exponent (suc n)) : Exponent n = \ i -> u (inl i) ;
+Bounded (m n : Nat) (u : Exponent n) : U l = (i : Fin n) -> O.Lt (u i) m ;
+weight (m : Nat) : (n : Nat) -> Exponent n -> Nat = split {
+ zero -> \ u -> zero ;
+ suc n | r -> \ u -> plus (B.times m (r (old n u))) (u (inr tt)) } ;
+axis (m : Nat) : (n : Nat) -> Fin n -> Nat = split {
+ zero -> \ i -> efq i ;
+ suc n | rec -> snoc (Fin n) Nat (\ i -> B.times m (rec i)) (suc zero) } ;
+ext (n : Nat) (u v : Exponent n) (h : (i : Fin n) -> Id Nat (u i) (v i)) : Id (Exponent n) u v =
+ FE.funext (Fin n) (\ i -> Nat) u v h ;
+top-equal (n : Nat) (u v : Exponent (suc n))
+ (h : Id Nat (u (inr tt)) (v (inr tt))) : (t : Top) -> Id Nat (u (inr t)) (v (inr t)) = split { tt -> h } ;
+parts (n : Nat) (u v : Exponent (suc n))
+ (h : Id (Exponent n) (old n u) (old n v))
+ (q : Id Nat (u (inr tt)) (v (inr tt))) : (i : Fin (suc n)) -> Id Nat (u i) (v i) = split {
+ inl i -> ap (\ w -> w i) h ; inr t -> top-equal n u v q t } ;
+module Step (m n : Nat)
+ (ih : (u v : Exponent n) -> Bounded m n u -> Bounded m n v ->
+  Id Nat (weight m n u) (weight m n v) -> Id (Exponent n) u v)
+ (u v : Exponent (suc n)) (hu : Bounded m (suc n) u) (hv : Bounded m (suc n) v)
+ (eq : Id Nat (weight m (suc n) u) (weight m (suc n) v)) {
+ digits : Id Nat (weight m n (old n u)) (weight m n (old n v)) * Id Nat (u (inr tt)) (v (inr tt)) =
+  Digits[m,u (inr tt),v (inr tt),hu (inr tt),hv (inr tt)].compare
+   (weight m n (old n u)) (weight m n (old n v)) eq ;
+ equality : Id (Exponent (suc n)) u v =
+  ext (suc n) u v (parts n u v
+   (ih (old n u) (old n v) (\ i -> hu (inl i)) (\ i -> hv (inl i)) digits.1) digits.2) ;
+} ;
+injective (m : Nat) : (n : Nat) (u v : Exponent n) -> Bounded m n u -> Bounded m n v ->
+ Id Nat (weight m n u) (weight m n v) -> Id (Exponent n) u v = split {
+ zero -> \ u v hu hv eq -> ext zero u v (\ i -> efq i) ;
+ suc n | rec -> \ u v hu hv eq -> Step[m,n,rec,u,v,hu,hv,eq].equality } ;
+
+-- Every finite family of exponent vectors has a concrete common radix.
+le-left (a b : Nat) : O.Le a (plus a b) =
+ subst (O.Le a) (plus-comm b a) (O.le-plus-right b a) ;
+le-add-left : (a b c : Nat) -> O.Le b c -> O.Le (plus a b) (plus a c) = split {
+ zero -> \ b c h -> h ; suc a | r -> \ b c h -> r b c h } ;
+sum : (n : Nat) -> (Fin n -> Nat) -> Nat = split {
+ zero -> \ u -> zero ;
+ suc n | r -> \ u -> plus (u (inr tt)) (r (\ i -> u (inl i))) } ;
+component : (n : Nat) (u : Fin n -> Nat) (i : Fin n) -> O.Le (u i) (sum n u) = split {
+ zero -> \ u i -> efq i ;
+ suc n | rec -> \ u -> split {
+  inl i -> O.le-trans (u (inl i)) (sum n (\ j -> u (inl j))) (sum (suc n) u)
+   (rec (\ j -> u (inl j)) i) (O.le-plus-right (u (inr tt)) (sum n (\ j -> u (inl j)))) ;
+  inr t -> top-component n u t } }
+ where { top-component (n : Nat) (u : Fin (suc n) -> Nat) : (t : Top) -> O.Le (u (inr t)) (sum (suc n) u) = split {
+  tt -> le-left (u (inr tt)) (sum n (\ j -> u (inl j))) } } ;
+module Family (n k : Nat) (u : Fin k -> Exponent n) {
+ height : Nat = sum k (\ j -> sum n (u j)) ;
+ radix : Nat = suc height ;
+ bounded (j : Fin k) : Bounded radix n (u j) =
+  \ i -> O.le-trans (u j i) (sum n (u j)) height (component n (u j) i)
+   (component k (\ j -> sum n (u j)) j) ;
+ different (j h : Fin k) (neq : Not (Id (Exponent n) (u j) (u h))) :
+  Not (Id Nat (weight radix n (u j)) (weight radix n (u h))) =
+  \ eq -> neq (injective radix n (u j) (u h) (bounded j) (bounded h) eq) ;
+} ;

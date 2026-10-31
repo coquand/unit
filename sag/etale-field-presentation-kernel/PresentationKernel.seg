@@ -1,0 +1,83 @@
+-- If Q has generators q_i (expressed by hom-ext), and u:Q->S maps
+-- them to the generators of a presentation of S, then the ORIGINAL
+-- presentation equations, evaluated in Q, generate ker u. Form Q/(g),
+-- lift S to this quotient by its presentation, and compare the composite
+-- with the quotient projection on the q_i. Effectiveness gives the kernel.
+-- No field, finite-freeness, or surjectivity hypothesis is required here.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ at (V : U l) : (es : List (P.Expr V)) -> Fin (len {P.Expr V} es) -> P.Expr V = split {
+  nil -> \ i -> efq i ; cons e es | rec -> snoc (Fin (len {P.Expr V} es)) (P.Expr V) rec e } ;
+ zeros-indexed (V : U l) (S : C.Algebra) (x : V -> S.ring.R) :
+  (es : P.Equations V) -> P.Zeros V S x es ->
+  (j : Fin (len {P.Expr V} es)) -> Id S.ring.R (P.eval V S x (at V es j)) S.ring.z = split {
+   nil -> \ h j -> efq j ;
+   cons e es | rec -> \ h -> AffineFinite[l].section (len {P.Expr V} es)
+    (\ j -> Id S.ring.R (P.eval V S x (at V (cons e es) j)) S.ring.z) (rec h.2) h.1 } ;
+ indexed-zeros (V : U l) (S : C.Algebra) (x : V -> S.ring.R) :
+  (es : P.Equations V) -> ((j : Fin (len {P.Expr V} es)) -> Id S.ring.R (P.eval V S x (at V es j)) S.ring.z) ->
+  P.Zeros V S x es = split {
+   nil -> \ h -> tt ;
+   cons e es | rec -> \ h -> (h (inr tt),rec (\ j -> h (inl j))) } ;
+ eval-ext (V : U l) (S : C.Algebra) (x y : V -> S.ring.R)
+  (eq : (i : V) -> Id S.ring.R (x i) (y i)) :
+  (e : P.Expr V) -> Id S.ring.R (P.eval V S x e) (P.eval V S y e) = split {
+   var i -> eq i ; cst r -> refl (S.iota.1 r) ;
+   sumE e f | re rf -> cong2 S.ring.R S.ring.add _ _ _ _ re rf ;
+   mulE e f | re rf -> cong2 S.ring.R S.ring.mul _ _ _ _ re rf } ;
+ module At (Q S : C.Algebra) (p : P.Presentation) (ps : P.Presents p S)
+  (q : Fin p.1 -> Q.ring.R) (u : C.Hom Q S)
+  (generator-map : (i : Fin p.1) -> Id S.ring.R (u.1.1 (q i)) (ps.1.1 i))
+  (hom-ext : (T : C.Algebra) (f h : C.Hom Q T) ->
+   ((i : Fin p.1) -> Id T.ring.R (f.1.1 (q i)) (h.1.1 (q i))) ->
+   (a : Q.ring.R) -> Id T.ring.R (f.1.1 a) (h.1.1 a)) {
+  number : Nat = len {P.Expr (Fin p.1)} p.2 ;
+  equation (j : Fin number) : P.Expr (Fin p.1) = at (Fin p.1) p.2 j ;
+  generators (j : Fin number) : Q.ring.R = P.eval (Fin p.1) Q q (equation j) ;
+  killed (j : Fin number) : Id S.ring.R (u.1.1 (generators j)) S.ring.z =
+   trans (P.natural (Fin p.1) Q S u q (equation j))
+    (trans (eval-ext (Fin p.1) S (\ i -> u.1.1 (q i)) ps.1.1 generator-map (equation j))
+     (zeros-indexed (Fin p.1) S ps.1.1 p.2 ps.1.2 j)) ;
+  module Ideal = FiniteGeneratedIdeal[l].Over[Q.ring,number,generators] ;
+  module QS = FiniteIdeal[l].Sums[Q.ring] ;
+  sum-killed : (m : Nat) (v : Fin m -> Q.ring.R) ->
+   ((j : Fin m) -> Id S.ring.R (u.1.1 (v j)) S.ring.z) ->
+   Id S.ring.R (u.1.1 (QS.sum m v)) S.ring.z = split {
+    zero -> \ v h -> H.zero Q.ring S.ring u.1 ;
+    suc m | rec -> \ v h -> trans (u.1.2.2.1 (v (inr tt)) (QS.sum m (\ j -> v (inl j))))
+     (trans (cong2 S.ring.R S.ring.add _ _ _ _ (h (inr tt)) (rec (\ j -> v (inl j)) (\ j -> h (inl j))))
+      (S.ring.addZ S.ring.z)) } ;
+  combination-killed (a : Fin number -> Q.ring.R) : Id S.ring.R (u.1.1 (QS.lin number generators a)) S.ring.z =
+   sum-killed number (\ j -> Q.ring.mul (generators j) (a j)) (\ j ->
+    trans (u.1.2.2.2 (generators j) (a j))
+     (trans (ap (\ c -> S.ring.mul c (u.1.1 (a j))) (killed j)) (RL[S.ring].zero-mul (u.1.1 (a j))))) ;
+  ideal-kernel (a : Q.ring.R) : Ideal.In a -> Id S.ring.R (u.1.1 a) S.ring.z =
+   TC.rec (Ideal.Certificate a) @l (Id S.ring.R (u.1.1 a) S.ring.z) (S.set _ _)
+    (\ w -> trans (ap u.1.1 w.2) (combination-killed w.1)) ;
+  module Quot = QuotientRing[l].Over[Q.ring,Ideal.ideal,Ideal.prop] ;
+  algebra : C.Algebra = C.mkAlgebra Quot.ring Quot.set (H.compose R Q.ring Quot.ring Quot.projection Q.iota) ;
+  projection : C.Hom Q algebra = (Quot.projection,\ r -> refl (Quot.include (Q.iota.1 r))) ;
+  variables (i : Fin p.1) : Quot.Carrier = Quot.include (q i) ;
+  equation-zero (j : Fin number) : Id Quot.Carrier (P.eval (Fin p.1) algebra variables (equation j)) Quot.zeroQ =
+   trans (sym (P.natural (Fin p.1) Q algebra projection q (equation j)))
+    (Quot.to-zero (generators j) (Ideal.generator j)) ;
+  solution : P.Solutions p algebra =
+   (variables,indexed-zeros (Fin p.1) algebra variables p.2 equation-zero) ;
+  lift : C.Hom S algebra = (ps.2 algebra).sec solution ;
+  lift-generators (i : Fin p.1) : Id Quot.Carrier (lift.1.1 (ps.1.1 i)) (variables i) =
+   Pr.ap (P.Solutions p algebra) Quot.Carrier (\ a -> a.1 i) _ _ ((ps.2 algebra).sec-eq solution) ;
+  composite : C.Hom Q algebra = C.compose Q S algebra lift u ;
+  composite-generators (i : Fin p.1) :
+   Id Quot.Carrier (composite.1.1 (q i)) (projection.1.1 (q i)) =
+   trans (ap lift.1.1 (generator-map i)) (lift-generators i) ;
+  agrees (a : Q.ring.R) : Id Quot.Carrier (lift.1.1 (u.1.1 a)) (Quot.include a) =
+   hom-ext algebra composite projection composite-generators a ;
+  kernel (a : Q.ring.R) (h : Id S.ring.R (u.1.1 a) S.ring.z) :
+   Tr.Trunc[(c : Fin number -> Q.ring.R) *
+    Id Q.ring.R a (FiniteIdeal[l].Sums[Q.ring].lin number generators c)].carrier =
+   Quot.kernel a (trans (sym (agrees a))
+    (trans (ap lift.1.1 h) (H.zero S.ring Quot.ring lift.1))) ;
+ } ;
+} ;

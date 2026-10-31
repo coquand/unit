@@ -1,0 +1,117 @@
+-- Reindex a finite commutative sum/product along a permutation. The
+-- proof uses selector matrices and exchange of two folds, so no general
+-- permutation decomposition or group library is needed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Index {
+ tag (n : Nat) : Fin (suc n) -> Nat = split { inl i -> zero ; inr t -> suc zero } ;
+ retract (n : Nat) (d : Fin n) : Fin (suc n) -> Fin n = split { inl i -> i ; inr t -> d } ;
+ old-case (n : Nat) (i j : Fin n) : Plus (Id (Fin n) i j) (Not (Id (Fin n) i j)) ->
+  Plus (Id (Fin (suc n)) (inl i) (inl j)) (Not (Id (Fin (suc n)) (inl i) (inl j))) = split {
+   inl e -> inl (ap (\ k -> inl k) e) ; inr h -> inr (\ e -> h (ap (retract n i) e)) } ;
+ decide : (n : Nat) (i j : Fin n) -> Plus (Id (Fin n) i j) (Not (Id (Fin n) i j)) = split {
+  zero -> \ i j -> efq i ;
+  suc n | rec -> split {
+   inl i -> split {
+    inl j -> old-case n i j (rec i j) ;
+    inr t -> inr (\ e -> zero-suc zero (ap (tag n) e)) } ;
+   inr t -> split {
+    inl j -> inr (\ e -> suc-zero zero (ap (tag n) e)) ;
+    inr u -> inl (ap (\ v -> inr v) (AffineFinite[l].top-eq t u)) } } } ;
+} ;
+module Over (M : U l) (unit : M) (op : M -> M -> M)
+ (assoc : (a b c : M) -> Id M (op a (op b c)) (op (op a b) c))
+ (comm : (a b : M) -> Id M (op a b) (op b a))
+ (right : (a : M) -> Id M (op a unit) a) {
+ left (a : M) : Id M (op unit a) a = trans (comm unit a) (right a) ;
+ four (a b c d : M) : Id M (op (op a b) (op c d)) (op (op a c) (op b d)) =
+  trans (sym (assoc a b (op c d)))
+   (trans (ap (op a) (trans (assoc b c d)
+    (trans (ap (\ x -> op x d) (comm b c)) (sym (assoc c b d))))) (assoc a c (op b d))) ;
+ fold : (n : Nat) -> (Fin n -> M) -> M = split {
+  zero -> \ v -> unit ; suc n | rec -> \ v -> op (v (inr tt)) (rec (\ i -> v (inl i))) } ;
+ congruence : (n : Nat) (v w : Fin n -> M) -> ((i : Fin n) -> Id M (v i) (w i)) -> Id M (fold n v) (fold n w) = split {
+  zero -> \ v w h -> refl unit ;
+  suc n | rec -> \ v w h -> cong2 M op _ _ _ _ (h (inr tt)) (rec (\ i -> v (inl i)) (\ i -> w (inl i)) (\ i -> h (inl i))) } ;
+ all-unit : (n : Nat) -> Id M (fold n (\ i -> unit)) unit = split {
+  zero -> refl unit ; suc n | rec -> trans (ap (op unit) rec) (right unit) } ;
+ distribute : (n : Nat) (v w : Fin n -> M) ->
+  Id M (fold n (\ i -> op (v i) (w i))) (op (fold n v) (fold n w)) = split {
+   zero -> \ v w -> sym (right unit) ;
+   suc n | rec -> \ v w -> trans (ap (op (op (v (inr tt)) (w (inr tt)))) (rec (\ i -> v (inl i)) (\ i -> w (inl i))))
+    (four (v (inr tt)) (w (inr tt)) (fold n (\ i -> v (inl i))) (fold n (\ i -> w (inl i)))) } ;
+ exchange (m : Nat) : (n : Nat) (v : Fin n -> Fin m -> M) ->
+  Id M (fold n (\ i -> fold m (v i))) (fold m (\ j -> fold n (\ i -> v i j))) = split {
+   zero -> \ v -> sym (all-unit m) ;
+   suc n | rec -> \ v -> trans (ap (op (fold m (v (inr tt)))) (rec (\ i j -> v (inl i) j)))
+    (sym (distribute m (v (inr tt)) (\ j -> fold n (\ i -> v (inl i) j)))) } ;
+ select : (n : Nat) -> Fin n -> Fin n -> M -> M = split {
+  zero -> \ i j a -> unit ;
+  suc n | rec -> split {
+   inl i -> split { inl j -> rec i j ; inr t -> \ a -> unit } ;
+   inr t -> split { inl j -> \ a -> unit ; inr u -> \ a -> a } } } ;
+ select-symmetric : (n : Nat) (i j : Fin n) (a : M) -> Id M (select n i j a) (select n j i a) = split {
+  zero -> \ i j a -> refl unit ;
+  suc n | rec -> split {
+   inl i -> split { inl j -> rec i j ; inr t -> \ a -> refl unit } ;
+   inr t -> split { inl j -> \ a -> refl unit ; inr u -> \ a -> refl a } } } ;
+ select-diagonal : (n : Nat) (i : Fin n) (a : M) -> Id M (select n i i a) a = split {
+  zero -> \ i a -> efq i ;
+  suc n | rec -> split { inl i -> rec i ; inr t -> \ a -> refl a } } ;
+ select-equal (n : Nat) (i j : Fin n) (a : M) (h : Id (Fin n) i j) : Id M (select n i j a) a =
+  trans (ap (\ k -> select n i k a) (sym h)) (select-diagonal n i a) ;
+ select-off : (n : Nat) (i j : Fin n) (a : M) -> Not (Id (Fin n) i j) -> Id M (select n i j a) unit = split {
+  zero -> \ i j a h -> refl unit ;
+  suc n | rec -> split {
+   inl i -> split { inl j -> \ a h -> rec i j a (\ e -> h (ap (\ k -> inl k) e)) ; inr t -> \ a h -> refl unit } ;
+   inr t -> split { inl j -> \ a h -> refl unit ; inr u -> \ a h -> efq (h (ap (\ v -> inr v) (AffineFinite[l].top-eq t u))) } } } ;
+ fold-select : (n : Nat) (i : Fin n) (v : Fin n -> M) -> Id M (fold n (\ j -> select n i j (v j))) (v i) = split {
+  zero -> \ i v -> efq i ;
+  suc n | rec -> split {
+   inl i -> \ v -> trans (left (fold n (\ j -> select n i j (v (inl j))))) (rec i (\ j -> v (inl j))) ;
+   inr t -> \ v -> trans (ap (op (v (inr tt))) (all-unit n))
+    (trans (right (v (inr tt))) (ap (\ u -> v (inr u)) (AffineFinite[l].top-eq tt t))) } } ;
+ module Permutation (n : Nat) (f g : Fin n -> Fin n)
+  (fg : (i : Fin n) -> Id (Fin n) (f (g i)) i) (gf : (i : Fin n) -> Id (Fin n) (g (f i)) i) {
+  select-case (i j : Fin n) (a : M) : Plus (Id (Fin n) i (g j)) (Not (Id (Fin n) i (g j))) ->
+   Id M (select n (f i) j a) (select n i (g j) a) = split {
+    inl eq -> trans (select-equal n (f i) j a (trans (ap f eq) (fg j))) (sym (select-equal n i (g j) a eq)) ;
+    inr ne -> trans (select-off n (f i) j a (\ eq -> ne (trans (sym (gf i)) (ap g eq))))
+     (sym (select-off n i (g j) a ne)) } ;
+  select-pullback (i j : Fin n) (a : M) : Id M (select n (f i) j a) (select n i (g j) a) =
+   select-case i j a (Index.decide n i (g j)) ;
+  column (v : Fin n -> M) (j : Fin n) : Id M (fold n (\ i -> select n (f i) j (v j))) (v j) =
+   trans (congruence n (\ i -> select n (f i) j (v j)) (\ i -> select n (g j) i (v j))
+    (\ i -> trans (select-pullback i j (v j)) (select-symmetric n i (g j) (v j))))
+     (fold-select n (g j) (\ i -> v j)) ;
+  invariant (v : Fin n -> M) : Id M (fold n (\ i -> v (f i))) (fold n v) =
+   trans (congruence n (\ i -> v (f i)) (\ i -> fold n (\ j -> select n (f i) j (v j)))
+    (\ i -> sym (fold-select n (f i) v)))
+     (trans (exchange n n (\ i j -> select n (f i) j (v j)))
+      (congruence n (\ j -> fold n (\ i -> select n (f i) j (v j))) v (column v))) ;
+ } ;
+ power (a : M) : Nat -> M = split { zero -> unit ; suc n | rec -> op a rec } ;
+ constant-fold : (n : Nat) (a : M) -> Id M (fold n (\ i -> a)) (power a n) = split {
+  zero -> \ a -> refl unit ; suc n | rec -> \ a -> ap (op a) (rec a) } ;
+ except : (n : Nat) -> Fin n -> Fin n -> M -> M = split {
+  zero -> \ i j a -> unit ;
+  suc n | rec -> split {
+   inl i -> split { inl j -> rec i j ; inr t -> \ a -> a } ;
+   inr t -> split { inl j -> \ a -> a ; inr u -> \ a -> unit } } } ;
+ except-diagonal : (n : Nat) (i : Fin n) (a : M) -> Id M (except n i i a) unit = split {
+  zero -> \ i a -> efq i ;
+  suc n | rec -> split { inl i -> rec i ; inr t -> \ a -> refl unit } } ;
+ except-equal (n : Nat) (i j : Fin n) (a : M) (h : Id (Fin n) i j) : Id M (except n i j a) unit =
+  trans (ap (\ k -> except n i k a) (sym h)) (except-diagonal n i a) ;
+ except-off : (n : Nat) (i j : Fin n) (a : M) -> Not (Id (Fin n) i j) -> Id M (except n i j a) a = split {
+  zero -> \ i j a h -> efq i ;
+  suc n | rec -> split {
+   inl i -> split { inl j -> \ a h -> rec i j a (\ e -> h (ap (\ k -> inl k) e)) ; inr t -> \ a h -> refl a } ;
+   inr t -> split { inl j -> \ a h -> refl a ; inr u -> \ a h -> efq (h (ap (\ v -> inr v) (AffineFinite[l].top-eq t u))) } } } ;
+ fold-except : (n : Nat) (i : Fin (suc n)) (a : M) ->
+  Id M (fold (suc n) (\ j -> except (suc n) i j a)) (power a n) = split {
+   zero -> split { inl i -> \ a -> efq i ; inr t -> \ a -> right unit } ;
+   suc n | rec -> split {
+    inl i -> \ a -> ap (op a) (rec i a) ;
+    inr t -> \ a -> trans (left (fold (suc n) (\ j -> a))) (constant-fold (suc n) a) } } ;
+} ;

@@ -1,0 +1,88 @@
+-- A linear map is determined by its finitely many standard columns.
+-- Mapping those columns along a ring homomorphism commutes with evaluation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module H = RingHom[l] ;
+module Over (A : CRing) {
+ module V = GaussianVectors[l].Over[A] ; module S = FiniteIdeal[l].Sums[A] ;
+ module D = MnSums[l].Over[A] ; module L = RL[A] ;
+ basis (n : Nat) (j : Fin n) : V.Vec n = \ i -> D.delta n i j ;
+ expands (n : Nat) (x : V.Vec n) (i : Fin n) : Id A.R (V.comb n n (basis n) x i) (x i) = D.sum-delta n i x ;
+ matrix (n r : Nat) (c : Fin n -> V.Vec r) : V.Linear[n,r] =
+  new V.Linear[n,r,V.comb r n c,\ i -> S.lin-zero n (\ j -> c j i),
+   \ x y i -> S.lin-add n (\ j -> c j i) x y,\ a x i -> S.lin-scale n (\ j -> c j i) x a] ;
+ on-basis (n r : Nat) (c : Fin n -> V.Vec r) (j : Fin n) (i : Fin r) :
+  Id A.R ((matrix n r c).map (basis n j) i) (c j i) = D.sum-delta-right n j (\ k -> c k i) ;
+ module At (n r : Nat) (f : V.Linear[n,r]) {
+  columns (j : Fin n) : V.Vec r = f.map (basis n j) ;
+  reconstruct (x : V.Vec n) (i : Fin r) : Id A.R (f.map x i) ((matrix n r columns).map x i) =
+   trans (ap (\ y -> f.map y i) (sym (V.ext n (V.comb n n (basis n) x) x (expands n x))))
+    (V.On[n,r,f].combination n (basis n) x i) ;
+ } ;
+ module Equal (n r : Nat) (f g : V.Linear[n,r])
+  (columns : (j : Fin n) (i : Fin r) -> Id A.R (f.map (basis n j) i) (g.map (basis n j) i)) {
+  theorem (x : V.Vec n) (i : Fin r) : Id A.R (f.map x i) (g.map x i) =
+   trans (At[n,r,f].reconstruct x i)
+    (trans (S.sum-cong n (\ j -> A.mul (f.map (basis n j) i) (x j)) (\ j -> A.mul (g.map (basis n j) i) (x j))
+     (\ j -> ap (\ a -> A.mul a (x j)) (columns j i))) (sym (At[n,r,g].reconstruct x i))) ;
+ } ;
+ module Killed (e : A.R) (n r : Nat) (f : V.Linear[n,r])
+  (columns : (j : Fin n) (i : Fin r) -> Id A.R (A.mul e (f.map (basis n j) i)) A.z) {
+  theorem (x : V.Vec n) (i : Fin r) : Id A.R (A.mul e (f.map x i)) A.z =
+   trans (ap (A.mul e) (At[n,r,f].reconstruct x i))
+    (trans (sym (S.sum-scale e n (\ j -> A.mul (f.map (basis n j) i) (x j))))
+     (trans (S.sum-cong n (\ j -> A.mul e (A.mul (f.map (basis n j) i) (x j))) (\ j -> A.z)
+      (\ j -> trans (A.mulA e (f.map (basis n j) i) (x j))
+       (trans (ap (\ a -> A.mul a (x j)) (columns j i)) (L.zero-mul (x j))))) (S.sum-zero n))) ;
+ } ;
+} ;
+module Natural (A B : CRing) (h : H.Hom A B) {
+ module CA = Over[A] ; module CB = Over[B] ; module VA = CA.V ; module VB = CB.V ;
+ vector (n : Nat) (x : VA.Vec n) : VB.Vec n = \ i -> h.1 (x i) ;
+ sum : (n : Nat) (x : VA.Vec n) -> Id B.R (h.1 (CA.S.sum n x)) (CB.S.sum n (vector n x)) = split {
+  zero -> \ x -> H.zero A B h ;
+  suc n | ih -> \ x -> trans (h.2.2.1 (x (inr tt)) (CA.S.sum n (\ i -> x (inl i))))
+   (ap (B.add (h.1 (x (inr tt)))) (ih (\ i -> x (inl i)))) } ;
+ combination (n m : Nat) (c : Fin m -> VA.Vec n) (x : VA.Vec m) (i : Fin n) :
+  Id B.R (h.1 (VA.comb n m c x i)) (VB.comb n m (\ j -> vector n (c j)) (vector m x) i) =
+  trans (sum m (\ j -> A.mul (c j i) (x j)))
+   (CB.S.sum-cong m (\ j -> h.1 (A.mul (c j i) (x j))) (\ j -> B.mul (h.1 (c j i)) (h.1 (x j)))
+    (\ j -> h.2.2.2 (c j i) (x j))) ;
+ delta : (n : Nat) (i j : Fin n) -> Id B.R (h.1 (CA.D.delta n i j)) (CB.D.delta n i j) = split {
+  zero -> \ i j -> H.zero A B h ;
+  suc n | ih -> split {
+   inl i -> split { inl j -> ih i j ; inr t -> H.zero A B h } ;
+   inr t -> split { inl j -> H.zero A B h ; inr u -> h.2.1 } } } ;
+ basis (n : Nat) (j : Fin n) : Id (VB.Vec n) (vector n (CA.basis n j)) (CB.basis n j) =
+  VB.ext n _ _ (\ i -> delta n i j) ;
+ subtract (a b : A.R) : Id B.R (h.1 (A.add a (A.neg b))) (B.add (h.1 a) (B.neg (h.1 b))) =
+  trans (h.2.2.1 a (A.neg b)) (ap (B.add (h.1 a)) (H.negation A B h b)) ;
+ Matches (n r : Nat) (f : VA.Linear[n,r]) (g : VB.Linear[n,r]) : U l =
+  (x : VA.Vec n) (i : Fin r) -> Id B.R (h.1 (f.map x i)) (g.map (vector n x) i) ;
+ identity (n : Nat) : Matches n n (VA.identity n) (VB.identity n) = \ x i -> refl (h.1 (x i)) ;
+ composition (n r s : Nat) (f : VA.Linear[n,r]) (g : VA.Linear[r,s])
+  (f' : VB.Linear[n,r]) (g' : VB.Linear[r,s]) (hf : Matches n r f f') (hg : Matches r s g g') :
+  Matches n s (VA.compose n r s g f) (VB.compose n r s g' f') =
+   \ x i -> trans (hg (f.map x) i)
+    (ap (\ z -> g'.map z i) (VB.ext r (vector r (f.map x)) (f'.map (vector n x)) (hf x))) ;
+ difference (n r : Nat) (f g : VA.Linear[n,r]) (f' g' : VB.Linear[n,r])
+  (hf : Matches n r f f') (hg : Matches n r g g') :
+  Matches n r (GaussianLinear[l].Over[A].difference n r f g) (GaussianLinear[l].Over[B].difference n r f' g') =
+   \ x i -> trans (subtract (f.map x i) (g.map x i))
+    (cong2 B.R B.add _ _ _ _ (hf x i) (ap B.neg (hg x i))) ;
+ matrix (n r : Nat) (c : Fin n -> VA.Vec r) :
+  Matches n r (CA.matrix n r c) (CB.matrix n r (\ j -> vector r (c j))) = combination r n c ;
+ columns-zero (n r : Nat) (f : VA.Linear[n,r]) (g : VB.Linear[n,r]) (matched : Matches n r f g)
+  (zero-columns : (j : Fin n) (i : Fin r) -> Id B.R (g.map (CB.basis n j) i) B.z) (j : Fin n) (i : Fin r) :
+  Id B.R (h.1 (f.map (CA.basis n j) i)) B.z =
+   trans (matched (CA.basis n j) i) (trans (ap (\ x -> g.map x i) (basis n j)) (zero-columns j i)) ;
+ module Lift (n r : Nat) (f : VB.Linear[n,r]) (c : Fin n -> VA.Vec r)
+  (entries : (j : Fin n) (i : Fin r) -> Id B.R (h.1 (c j i)) (f.map (CB.basis n j) i)) {
+  linear : VA.Linear[n,r] = CA.matrix n r c ;
+  natural (x : VA.Vec n) (i : Fin r) : Id B.R (h.1 (linear.map x i)) (f.map (vector n x) i) =
+   trans (combination r n c x i)
+    (trans (CB.S.sum-cong n (\ j -> B.mul (h.1 (c j i)) (h.1 (x j)))
+      (\ j -> B.mul (f.map (CB.basis n j) i) (h.1 (x j)))
+      (\ j -> ap (\ a -> B.mul a (h.1 (x j))) (entries j i)))
+     (sym (CB.At[n,r,f].reconstruct (vector n x) i))) ;
+ } ;
+} ;

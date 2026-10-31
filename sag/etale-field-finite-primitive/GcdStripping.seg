@@ -1,0 +1,95 @@
+-- Gcd stripping, without prime factorisation. From u=d*m and gcd(m,v)=1,
+-- repeatedly remove gcd(u,v) from u and d. The strictly smaller quotient
+-- bounds recursion. The removed factor h has Support(h,v), so the final
+-- u' is coprime both to v and to h*v. No integer factorisation is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module G = NaturalGcd[l] ; module C = CoprimeArithmetic[l] ; module O = NatOrder[l] ;
+module Z = ZRing[l] ; module J = Integers[l].Over[Z.ring] ;
+times : Nat -> Nat -> Nat = G.times ;
+lt-add-positive : (a b : Nat) -> O.Lt a (plus a (suc b)) = split {
+ zero -> \ b -> tt ; suc a | rec -> \ b -> rec b } ;
+strict-product : (q g : Nat) -> Not (Id Nat q zero) -> O.Lt q (times q (suc (suc g))) = split {
+ zero -> \ g nz -> efq (nz (refl zero)) ;
+ suc q -> \ g nz -> subst (O.Lt (suc q)) (G.comm (suc (suc g)) (suc q))
+  (lt-add-positive (suc q) (plus q (times g (suc q)))) } ;
+shuffle (a b c : Nat) : Id Nat (times (times a b) c) (times (times a c) b) =
+ trans (sym (G.assoc a b c)) (trans (ap (times a) (G.comm b c)) (G.assoc a c b)) ;
+cancel (k a b : Nat) (h : Id Nat (times a (suc k)) (times b (suc k))) : Id Nat a b =
+ ZArith[l].iota-inj a b (G.cancel k (G.N a) (G.N b)
+  (trans (sym (J.iota-mul a (suc k))) (trans (ap G.N h) (J.iota-mul b (suc k))))) ;
+record Result (u d m v : Nat) {
+ removed : Nat ; small : Nat ; rest : Nat ;
+ u-factor : Id Nat u (times removed small) ;
+ d-factor : Id Nat d (times removed rest) ;
+ relation : Id Nat small (times rest m) ;
+ coprime : G.Coprime small v ;
+ support : C.Support removed v ;
+} ;
+module Stop (u d m v : Nat) (relation : Id Nat u (times d m)) (g : G.Gcd[u,v]) (one : Id Nat g.divisor (suc zero)) {
+ coprime : G.Coprime u v = (g.s,(g.t,trans (ap G.N (sym one)) g.bezout)) ;
+ result : Result[u,d,m,v] = new Result[u,d,m,v,suc zero,u,d,sym (G.one-left u),sym (G.one-left d),relation,coprime,C.support-one v] ;
+} ;
+module Step (u d m v k : Nat) (relation : Id Nat u (times d m)) (coprime : G.Coprime m v)
+ (unonzero : Not (Id Nat u zero)) (dnonzero : Not (Id Nat d zero))
+ (g : G.Gcd[u,v]) (greater : Id Nat g.divisor (suc (suc k))) {
+ q : Nat = g.left ;
+ module Div = C.CancelFactor[d,m,v,g.divisor,q,g.right,trans (sym relation) g.left-factor,g.right-factor,coprime] ;
+ r : Nat = Div.quotient.1 ;
+ d-equation : Id Nat d (times r g.divisor) = Div.quotient.2 ;
+ q-nonzero : Not (Id Nat q zero) = \ h -> unonzero (trans g.left-factor (ap (\ a -> times a g.divisor) h)) ;
+ r-nonzero : Not (Id Nat r zero) = \ h -> dnonzero (trans d-equation (ap (\ a -> times a g.divisor) h)) ;
+ new-relation : Id Nat q (times r m) = cancel (suc k) q (times r m)
+  (trans (ap (times q) (sym greater))
+   (trans (sym g.left-factor)
+    (trans relation
+     (trans (ap (\ a -> times a m) d-equation)
+      (trans (shuffle r g.divisor m) (ap (times (times r m)) greater)))))) ;
+ strict : O.Lt q u = subst (O.Lt q) (sym (trans g.left-factor (ap (times q) greater))) (strict-product q k q-nonzero) ;
+ extend (rec : Result[q,r,m,v]) : Result[u,d,m,v] =
+  new Result[u,d,m,v,times g.divisor rec.removed,rec.small,rec.rest,
+   trans g.left-factor (trans (G.comm q g.divisor)
+    (trans (ap (times g.divisor) rec.u-factor) (G.assoc g.divisor rec.removed rec.small))),
+   trans d-equation (trans (G.comm r g.divisor)
+    (trans (ap (times g.divisor) rec.d-factor) (G.assoc g.divisor rec.removed rec.rest))),
+   rec.relation,rec.coprime,
+   C.support-product g.divisor rec.removed v (C.divisor v g.divisor g.right g.right-factor) rec.support] ;
+} ;
+module StripLoop (fuel : Nat)
+ (rec : (u d m v : Nat) -> O.Le u fuel -> Not (Id Nat u zero) -> Not (Id Nat d zero) ->
+  Id Nat u (times d m) -> G.Coprime m v -> Result[u,d,m,v])
+ (up d m v : Nat) (bound : O.Le up fuel)
+ (dnz : Not (Id Nat d zero)) (relation : Id Nat (suc up) (times d m)) (coprime : G.Coprime m v) {
+ u : Nat = suc up ; unz : Not (Id Nat u zero) = suc-zero up ;
+ g : G.Gcd[u,v] = G.gcd u v ;
+ module Reduce (k : Nat) (greater : Id Nat g.divisor (suc (suc k))) {
+  module S = Step[u,d,m,v,k,relation,coprime,unz,dnz,g,greater] ;
+  smaller : O.Le S.q fuel = O.le-trans S.q up fuel S.strict bound ;
+  result : Result[u,d,m,v] = S.extend (rec S.q S.r m v smaller S.q-nonzero S.r-nonzero S.new-relation coprime) ;
+ } ;
+ positive-case : (k : Nat) -> Id Nat g.divisor (suc k) -> Result[u,d,m,v] = split {
+  zero -> \ eq -> Stop[u,d,m,v,relation,g,eq].result ;
+  suc k -> \ eq -> Reduce[k,eq].result } ;
+ choose : (d' : Nat) -> Id Nat g.divisor d' -> Result[u,d,m,v] = split {
+  zero -> \ eq -> efq (G.positive up v g eq) ;
+  suc k -> positive-case k } ;
+ result : Result[u,d,m,v] = choose g.divisor (refl g.divisor) ;
+} ;
+zero-fuel : (u d m v : Nat) -> O.Le u zero -> Not (Id Nat u zero) -> Not (Id Nat d zero) ->
+ Id Nat u (times d m) -> G.Coprime m v -> Result[u,d,m,v] = split {
+  zero -> \ d m v bound nz dnz relation coprime -> efq (nz (refl zero)) ;
+  suc up -> \ d m v bound nz dnz relation coprime -> efq bound } ;
+suc-fuel (fuel : Nat)
+ (rec : (u d m v : Nat) -> O.Le u fuel -> Not (Id Nat u zero) -> Not (Id Nat d zero) ->
+  Id Nat u (times d m) -> G.Coprime m v -> Result[u,d,m,v]) :
+ (u d m v : Nat) -> O.Le u (suc fuel) -> Not (Id Nat u zero) -> Not (Id Nat d zero) ->
+ Id Nat u (times d m) -> G.Coprime m v -> Result[u,d,m,v] = split {
+  zero -> \ d m v bound nz dnz relation coprime -> efq (nz (refl zero)) ;
+  suc up -> \ d m v bound nz dnz relation coprime -> StripLoop[fuel,rec,up,d,m,v,bound,dnz,relation,coprime].result } ;
+with-fuel : (fuel u d m v : Nat) -> O.Le u fuel -> Not (Id Nat u zero) -> Not (Id Nat d zero) ->
+ Id Nat u (times d m) -> G.Coprime m v -> Result[u,d,m,v] = split {
+  zero -> zero-fuel ; suc fuel | rec -> suc-fuel fuel rec } ;
+theorem (u d m v : Nat) (unz : Not (Id Nat u zero)) (dnz : Not (Id Nat d zero))
+ (relation : Id Nat u (times d m)) (coprime : G.Coprime m v) : Result[u,d,m,v] =
+ with-fuel u u d m v (O.le-refl u) unz dnz relation coprime ;
+final-coprime (u d m v : Nat) (r : Result[u,d,m,v]) : G.Coprime r.small (times r.removed v) =
+ C.product r.small r.removed v (r.support r.small r.coprime) r.coprime ;

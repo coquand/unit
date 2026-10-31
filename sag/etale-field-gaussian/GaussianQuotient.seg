@@ -1,0 +1,113 @@
+-- Gaussian quotient coordinates by induction on ambient dimension.
+-- If all last coordinates of the relations vanish, retain that coordinate.
+-- Otherwise normalize one pivot, subtract its multiple from every vector,
+-- and recurse on the lower coordinates without deleting relation indices.
+-- The residual difference is an explicit combination of the original
+-- relations.  No truncated choice or decidable subspace oracle is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing)
+ (dec : (x : A.R) -> Plus (Id A.R x A.z) ((w : A.R) * Id A.R (A.mul x w) A.o)) {
+ module V = GaussianVectors[l].Over[A] ; module G = GaussianLinear[l].Over[A] ;
+ module L = RL[A] ; module S = FiniteIdeal[l].Sums[A] ; module Field = FieldFlat[l].Over[A,dec] ;
+ record NormalForm (n m : Nat) (v : Fin m -> V.Vec n) {
+  rank : Nat ;
+  project : V.Linear[n,rank] ;
+  section : V.Linear[rank,n] ;
+  retract (x : V.Vec rank) (i : Fin rank) : Id A.R (project.map (section.map x) i) (x i) ;
+  kills (j : Fin m) (i : Fin rank) : Id A.R (project.map (v j) i) A.z ;
+  difference (x : V.Vec n) : V.Span[n,m,v].Witness (V.subV n x (section.map (project.map x))) ;
+ } ;
+ initial (m : Nat) (v : Fin m -> V.Vec zero) : NormalForm[zero,m,v] =
+  new NormalForm[zero,m,v,zero,V.identity zero,V.identity zero,
+   \ x i -> efq i,\ j i -> efq i,\ x -> (\ j -> A.z,\ i -> efq i)] ;
+ module ZeroRow (n m : Nat) (v : Fin m -> V.Vec (suc n))
+  (hz : (j : Fin m) -> Id A.R (v j (inr tt)) A.z)
+  (q : NormalForm[n,m,\ j -> (G.drop n).map (v j)]) {
+  project : V.Linear[suc n,suc q.rank] = G.extend n q.rank q.project ;
+  section : V.Linear[suc q.rank,suc n] = G.extend q.rank n q.section ;
+  retract (x : V.Vec (suc q.rank)) : (i : Fin (suc q.rank)) -> Id A.R (project.map (section.map x) i) (x i) =
+   AffineFinite[l].section q.rank (\ i -> Id A.R (project.map (section.map x) i) (x i))
+    (q.retract ((G.drop q.rank).map x)) (refl (x (inr tt))) ;
+  kills (j : Fin m) : (i : Fin (suc q.rank)) -> Id A.R (project.map (v j) i) A.z =
+   AffineFinite[l].section q.rank (\ i -> Id A.R (project.map (v j) i) A.z) (q.kills j) (hz j) ;
+  last-combination (c : V.Vec m) : Id A.R (V.comb (suc n) m v c (inr tt)) A.z =
+   trans (S.sum-cong m (\ j -> A.mul (v j (inr tt)) (c j)) (\ j -> A.z)
+    (\ j -> trans (ap (\ a -> A.mul a (c j)) (hz j)) (L.zero-mul (c j)))) (S.sum-zero m) ;
+  difference (x : V.Vec (suc n)) : V.Span[suc n,m,v].Witness
+   (V.subV (suc n) x (section.map (project.map x))) =
+   ((q.difference ((G.drop n).map x)).1,
+    AffineFinite[l].section n
+     (\ i -> Id A.R (V.comb (suc n) m v (q.difference ((G.drop n).map x)).1 i)
+      (V.subV (suc n) x (section.map (project.map x)) i))
+     (q.difference ((G.drop n).map x)).2
+     (trans (last-combination (q.difference ((G.drop n).map x)).1) (sym (A.addN (x (inr tt)))))) ;
+  result : NormalForm[suc n,m,v] = new NormalForm[suc n,m,v,suc q.rank,project,section,retract,kills,difference] ;
+ } ;
+ module Pivot (n m : Nat) (v : Fin m -> V.Vec (suc n)) (p : Fin m) (w : A.R)
+  (unit : Id A.R (A.mul (v p (inr tt)) w) A.o) {
+  module Span = V.Span[suc n,m,v] ;
+  u : V.Vec (suc n) = V.scaleV (suc n) w (v p) ;
+  u-last : Id A.R (u (inr tt)) A.o = trans (A.mulC w (v p (inr tt))) unit ;
+  u-in : Span.Witness u = Span.times w (v p) (Span.generator p) ;
+  reduce : V.Linear[suc n,n] = G.difference (suc n) n (G.drop n)
+   (G.outer (suc n) n ((G.drop n).map u) (inr tt)) ;
+  h (j : Fin m) : V.Vec n = reduce.map (v j) ;
+  include : V.Linear[n,suc n] = G.adjoin n ;
+  reduce-include (x : V.Vec n) (i : Fin n) : Id A.R (reduce.map (include.map x) i) (x i) =
+   trans (ap (\ a -> A.add (x i) (A.neg a)) (L.zero-mul (u (inl i))))
+    (trans (ap (A.add (x i)) L.neg-zero) (A.addZ (x i))) ;
+  remainder (x : V.Vec (suc n)) : (i : Fin (suc n)) ->
+   Id A.R (V.subV (suc n) x (include.map (reduce.map x)) i) (V.scaleV (suc n) (x (inr tt)) u i) =
+   AffineFinite[l].section n
+    (\ i -> Id A.R (V.subV (suc n) x (include.map (reduce.map x)) i) (V.scaleV (suc n) (x (inr tt)) u i))
+    (\ i -> G.sub-sub (x (inl i)) (A.mul (x (inr tt)) (u (inl i))))
+    (trans (trans (ap (A.add (x (inr tt))) L.neg-zero) (A.addZ (x (inr tt))))
+     (sym (trans (ap (A.mul (x (inr tt))) u-last) (A.mulO (x (inr tt)))))) ;
+  reduced-expression (x : V.Vec (suc n)) : (i : Fin (suc n)) ->
+   Id A.R (V.subV (suc n) x (V.scaleV (suc n) (x (inr tt)) u) i) (include.map (reduce.map x) i) =
+   AffineFinite[l].section n
+    (\ i -> Id A.R (V.subV (suc n) x (V.scaleV (suc n) (x (inr tt)) u) i) (include.map (reduce.map x) i))
+    (\ i -> refl (A.add (x (inl i)) (A.neg (A.mul (x (inr tt)) (u (inl i))))))
+    (trans (ap (\ a -> A.add (x (inr tt)) (A.neg a))
+     (trans (ap (A.mul (x (inr tt))) u-last) (A.mulO (x (inr tt))))) (A.addN (x (inr tt)))) ;
+  h-in (j : Fin m) : Span.Witness (include.map (h j)) =
+   Span.equal (V.subV (suc n) (v j) (V.scaleV (suc n) (v j (inr tt)) u)) (include.map (h j))
+    (reduced-expression (v j))
+    (Span.difference (v j) (V.scaleV (suc n) (v j (inr tt)) u)
+     (Span.generator j) (Span.times (v j (inr tt)) u u-in)) ;
+  module Lift = Span.Images[n,h,include,h-in] ;
+  module With (q : NormalForm[n,m,h]) {
+   project : V.Linear[suc n,q.rank] = V.compose (suc n) n q.rank q.project reduce ;
+   section : V.Linear[q.rank,suc n] = V.compose q.rank n (suc n) include q.section ;
+   retract (x : V.Vec q.rank) (i : Fin q.rank) : Id A.R (project.map (section.map x) i) (x i) =
+    trans (ap (\ z -> q.project.map z i) (V.ext n (reduce.map (include.map (q.section.map x))) (q.section.map x)
+     (reduce-include (q.section.map x)))) (q.retract x i) ;
+   kills (j : Fin m) (i : Fin q.rank) : Id A.R (project.map (v j) i) A.z = q.kills j i ;
+   module At (x : V.Vec (suc n)) {
+    first : V.Vec (suc n) = V.subV (suc n) x (include.map (reduce.map x)) ;
+    first-in : Span.Witness first =
+     Span.equal (V.scaleV (suc n) (x (inr tt)) u) first (\ i -> sym (remainder x i))
+      (Span.times (x (inr tt)) u u-in) ;
+    lower : V.Vec n = V.subV n (reduce.map x) (q.section.map (q.project.map (reduce.map x))) ;
+    second : V.Vec (suc n) = include.map lower ;
+    second-in : Span.Witness second = Lift.convert lower (q.difference (reduce.map x)) ;
+    telescope (i : Fin (suc n)) : Id A.R (V.addV (suc n) first second i)
+     (V.subV (suc n) x (section.map (project.map x)) i) =
+     trans (ap (A.add (first i))
+      (V.On[n,suc n,include].subtract (reduce.map x) (q.section.map (q.project.map (reduce.map x))) i))
+      (G.telescope (x i) (include.map (reduce.map x) i) (section.map (project.map x) i)) ;
+    difference : Span.Witness (V.subV (suc n) x (section.map (project.map x))) =
+     Span.equal (V.addV (suc n) first second) (V.subV (suc n) x (section.map (project.map x))) telescope
+      (Span.plus first second first-in second-in) ;
+   } ;
+   result : NormalForm[suc n,m,v] = new NormalForm[suc n,m,v,q.rank,project,section,retract,kills,\ x -> At[x].difference] ;
+  } ;
+ } ;
+ step (n : Nat) (ih : (m : Nat) (v : Fin m -> V.Vec n) -> NormalForm[n,m,v])
+  (m : Nat) (v : Fin m -> V.Vec (suc n)) : Field.Cases m (\ j -> v j (inr tt)) -> NormalForm[suc n,m,v] = split {
+   inl hz -> ZeroRow[n,m,v,hz,ih m (\ j -> (G.drop n).map (v j))].result ;
+   inr pivot -> Pivot[n,m,v,pivot.1,pivot.2.1,pivot.2.2].With[
+    ih m (Pivot[n,m,v,pivot.1,pivot.2.1,pivot.2.2].h)].result } ;
+ normal-form : (n m : Nat) (v : Fin m -> V.Vec n) -> NormalForm[n,m,v] = split {
+  zero -> initial ; suc n | ih -> \ m v -> step n ih m v (Field.cases m (\ j -> v j (inr tt))) } ;
+} ;

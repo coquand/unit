@@ -1,0 +1,95 @@
+-- The square of a finitely generated kernel and its square-zero image.
+-- Coefficients in the kernel certify membership in its square; products
+-- of two kernel elements have such certificates.  In the quotient by
+-- the square, the image of the kernel is therefore square-zero.
+-- This isolates the quotient construction previously internal to EtaleCase;
+-- neither lifting nor uniqueness is assumed here.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module H = RingHom[l] ; module Tr = Truncation[l] ;
+module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module C = Algebras[l].Over[A,setA] ;
+ module E = FormallyEtale[l].Over[A,setA] ;
+ module At (S T : C.Algebra) (u : C.Hom S T)
+  (surj : (t : T.ring.R) -> Tr.Trunc[(x : S.ring.R) * Id T.ring.R (u.1.1 x) t].carrier)
+  (r : Nat) (k : Ps.Fin r -> S.ring.R)
+  (gen : (x : S.ring.R) -> Id T.ring.R (u.1.1 x) T.ring.z ->
+   Tr.Trunc[(c : Ps.Fin r -> S.ring.R) * Id S.ring.R x (FiniteIdeal[l].Sums[S.ring].lin r k c)].carrier) {
+  module Su = EtaleCase[l].Over[A,setA].Surjection[S,T,u,surj] ;
+  module SS = FiniteIdeal[l].Sums[S.ring] ;
+  Certificate (x : S.ring.R) : U l =
+   (b : Ps.Fin r -> S.ring.R) * ((j : Ps.Fin r) -> Su.Kernel (b j)) * Id S.ring.R x (SS.lin r k b) ;
+  kernel-sum : (n : Nat) (v : Ps.Fin n -> S.ring.R) ->
+   ((i : Ps.Fin n) -> Su.Kernel (v i)) -> Su.Kernel (SS.sum n v) = split {
+   zero -> \ v h -> Su.k-zero ;
+   suc n | ih -> \ v h -> Su.k-add (v (inr tt)) (SS.sum n (\ i -> v (inl i)))
+    (h (inr tt)) (ih (\ i -> v (inl i)) (\ i -> h (inl i))) } ;
+  certificate-kernel (x : S.ring.R) (c : Certificate x) : Su.Kernel x =
+   trans (ap u.1.1 c.2.2)
+    (kernel-sum r (\ i -> S.ring.mul (k i) (c.1 i)) (\ i -> Su.k-mul (k i) (c.1 i) (c.2.1 i))) ;
+   InSquare (x : S.ring.R) : U l = Tr.Trunc[Certificate x].carrier ;
+   square-kernel (x : S.ring.R) : InSquare x -> Su.Kernel x =
+    TC.rec (Certificate x) @l (Su.Kernel x) (T.set _ _) (certificate-kernel x) ;
+   sq-zero : Certificate S.ring.z = (\ j -> S.ring.z,\ j -> Su.k-zero,sym (SS.lin-zero r k)) ;
+   sq-add (x y : S.ring.R) (p : Certificate x) (q : Certificate y) : Certificate (S.ring.add x y) =
+    (\ j -> S.ring.add (p.1 j) (q.1 j),\ j -> Su.k-add (p.1 j) (q.1 j) (p.2.1 j) (q.2.1 j),
+     trans (Ps.cong2 S.ring.R S.ring.add _ _ _ _ p.2.2 q.2.2) (sym (SS.lin-add r k p.1 q.1))) ;
+   sq-mul (c x : S.ring.R) (p : Certificate x) : Certificate (S.ring.mul c x) =
+    (\ j -> S.ring.mul c (p.1 j),\ j -> Su.k-mul c (p.1 j) (p.2.1 j),
+     trans (ap (S.ring.mul c) p.2.2) (sym (SS.lin-scale r k p.1 c))) ;
+   square : RegularIdeal[l].IdealPred[S.ring] =
+    RegularIdeal[l].mkIdealPred S.ring InSquare (Tr.Trunc[Certificate S.ring.z].inc sq-zero)
+     (\ x y hx hy -> TC.map2 (Certificate x) (Certificate y) (Certificate (S.ring.add x y)) (sq-add x y) hx hy)
+     (\ c x hx -> TC.map (Certificate x) (Certificate (S.ring.mul c x)) (sq-mul c x) hx) ;
+   -- the product of two elements of I is in I^2
+   module Product (i j : S.ring.R) (hi : Su.Kernel i) (hj : Su.Kernel j) {
+    certificate (c : Ps.Fin r -> S.ring.R) (hc : Id S.ring.R j (SS.lin r k c)) : Certificate (S.ring.mul i j) =
+     (\ m -> S.ring.mul i (c m),\ m -> Su.k-mul-left i (c m) hi,
+      trans (ap (S.ring.mul i) hc) (sym (SS.lin-scale r k c i))) ;
+    in-square : InSquare (S.ring.mul i j) =
+     TC.map ((c : Ps.Fin r -> S.ring.R) * Id S.ring.R j (SS.lin r k c)) (Certificate (S.ring.mul i j))
+      (\ w -> certificate w.1 w.2) (gen j hj) ;
+   } ;
+   -- C = S/I^2 and the projection p
+   module Q2 = QuotientRing[l].Over[S.ring,square,\ x -> Tr.Trunc[Certificate x].proposition] ;
+   Cq : C.Algebra = C.mkAlgebra Q2.ring Q2.set (H.compose A S.ring Q2.ring Q2.projection S.iota) ;
+   p : C.Hom S Cq = (Q2.projection,\ c -> refl (Q2.include (S.iota.1 c))) ;
+   -- N = the image of I in C
+   Image (x : Q2.Carrier) : U l = (i : S.ring.R) * Su.Kernel i * Id Q2.Carrier (Q2.include i) x ;
+   InN (x : Q2.Carrier) : U l = Tr.Trunc[Image x].carrier ;
+   n-zero : Image Q2.zeroQ = (S.ring.z,Su.k-zero,refl Q2.zeroQ) ;
+   n-add (x y : Q2.Carrier) (a : Image x) (b : Image y) : Image (Q2.addQ x y) =
+    (S.ring.add a.1 b.1,Su.k-add a.1 b.1 a.2.1 b.2.1,
+     trans (sym (Q2.Add.beta a.1 b.1)) (Ps.cong2 Q2.Carrier Q2.addQ _ _ _ _ a.2.2 b.2.2)) ;
+   n-mul-at (c : S.ring.R) (x : Q2.Carrier) (a : Image x) : Image (Q2.mulQ (Q2.include c) x) =
+    (S.ring.mul c a.1,Su.k-mul c a.1 a.2.1,
+     trans (sym (Q2.Multiply.beta c a.1)) (ap (Q2.mulQ (Q2.include c)) a.2.2)) ;
+   n-mul (b x : Q2.Carrier) (hx : InN x) : InN (Q2.mulQ b x) =
+    Q2.Q.induction @l (\ b' -> InN (Q2.mulQ b' x)) (\ b' -> Tr.Trunc[Image (Q2.mulQ b' x)].proposition)
+     (\ c -> TC.map (Image x) (Image (Q2.mulQ (Q2.include c) x)) (n-mul-at c x) hx) b ;
+   sq-image (x y : Q2.Carrier) (a : Image x) (b : Image y) : Id Q2.Carrier (Q2.mulQ x y) Q2.zeroQ =
+    trans (Ps.cong2 Q2.Carrier Q2.mulQ _ _ _ _ (sym a.2.2) (sym b.2.2))
+     (trans (Q2.Multiply.beta a.1 b.1)
+      (Q2.to-zero (S.ring.mul a.1 b.1) Product[a.1,b.1,a.2.1,b.2.1].in-square)) ;
+   N : E.SquareZero[Cq] =
+    E.mkSquareZero Cq
+     (RegularIdeal[l].mkIdealPred Q2.ring InN (Tr.Trunc[Image Q2.zeroQ].inc n-zero)
+      (\ x y hx hy -> TC.map2 (Image x) (Image y) (Image (Q2.addQ x y)) (n-add x y) hx hy) n-mul)
+     (\ x -> Tr.Trunc[Image x].proposition)
+     (\ x y hx hy -> TC.rec (Image x) @l (Id Q2.Carrier (Q2.mulQ x y) Q2.zeroQ) (Q2.set _ _)
+       (\ a -> TC.rec (Image y) @l (Id Q2.Carrier (Q2.mulQ x y) Q2.zeroQ) (Q2.set _ _) (\ b -> sq-image x y a b) hy) hx) ;
+   module M = E.Mod[Cq,N] ;
+   -- A difference in the kernel has image in N, so the corresponding
+   -- classes agree after the second quotient.
+   image-difference (x y : S.ring.R) (h : Su.Kernel (S.ring.add x (S.ring.neg y))) :
+    N.ideal.In (Q2.addQ (Q2.include x) (Q2.negQ (Q2.include y))) =
+    Tr.Trunc[Image (Q2.addQ (Q2.include x) (Q2.negQ (Q2.include y)))].inc
+     (S.ring.add x (S.ring.neg y),h,
+      sym (trans (ap (Q2.addQ (Q2.include x)) (Q2.Negate.beta y))
+       (Q2.Add.beta x (S.ring.neg y)))) ;
+   reduced-equal (x y : S.ring.R) (h : Su.Kernel (S.ring.add x (S.ring.neg y))) :
+    Id M.Q.Carrier (M.Q.include (Q2.include x)) (M.Q.include (Q2.include y)) =
+    M.Q.Q.relates (Q2.include x) (Q2.include y) (image-difference x y h) ;
+ } ;
+} ;

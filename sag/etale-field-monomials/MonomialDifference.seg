@@ -1,0 +1,103 @@
+-- A structural nonzero relation for the zero-dimensionality argument.
+-- From sparse P construct X_last^N-X_last^(N+1)P directly.  The leading
+-- term has coefficient 1 and last exponent N; all other last exponents
+-- are at least N+1.  Thus this family is nonempty before any evaluation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
+cancel-left : (a b c : Nat) -> Id Nat (plus a b) (plus a c) -> Id Nat b c = split {
+ zero -> \ b c eq -> eq ; suc a | rec -> \ b c eq -> rec b c (suc-inj eq) } ;
+not-raised : (a b : Nat) -> Not (Id Nat a (plus (suc a) b)) = split {
+ zero -> \ b eq -> zero-suc b eq ; suc a | rec -> \ b eq -> rec b (suc-inj eq) } ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat)
+ (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z)))
+ (one-nonzero : Not (Id A.R A.o A.z)) {
+ module Fam = MonomialFamily[l].Over[A,setA,suc n].Normalized[zero-dec] ;
+ module C = Algebras[l].Over[A,setA] ; module P = Presentations[l].Over[A,setA] ; module L = RL[A] ;
+ power : Nat -> P.Expr (Fin (suc n)) = split {
+  zero -> cst A.o ; suc k | rec -> mulE (var (inr tt)) rec } ;
+ head (N : Nat) : E.Exponent (suc n) = snoc (Fin n) Nat (E.zeroE n) N ;
+ shift (N : Nat) (u : E.Exponent (suc n)) : E.Exponent (suc n) =
+  snoc (Fin n) Nat (E.old n u) (plus (suc N) (u (inr tt))) ;
+ shift-injective (N : Nat) (u v : E.Exponent (suc n)) (eq : Id (E.Exponent (suc n)) (shift N u) (shift N v)) :
+  Id (E.Exponent (suc n)) u v =
+  E.ext (suc n) u v (AffineFinite[l].section n (\ i -> Id Nat (u i) (v i))
+   (\ i -> ap (\ w -> w (inl i)) eq)
+   (cancel-left (suc N) (u (inr tt)) (v (inr tt)) (ap (\ w -> w (inr tt)) eq))) ;
+ head-different (N : Nat) (u : E.Exponent (suc n)) : Not (Id (E.Exponent (suc n)) (head N) (shift N u)) =
+  \ eq -> not-raised N (u (inr tt)) (ap (\ w -> w (inr tt)) eq) ;
+ neg-nonzero (a : A.R) (ne : Not (Id A.R a A.z)) : Not (Id A.R (A.neg a) A.z) =
+  \ eq -> ne (trans (sym (L.neg-neg a)) (trans (ap A.neg eq) L.neg-zero)) ;
+ module At (N : Nat) (e : P.Expr (Fin (suc n))) (p : Fam.SparseData[e]) {
+  expression : P.Expr (Fin (suc n)) = sumE (power N) (mulE (cst (A.neg A.o)) (mulE (power (suc N)) e)) ;
+  size : Nat = suc p.size ;
+  coefficient : Fin size -> A.R = snoc (Fin p.size) A.R (\ i -> A.neg (p.coefficient i)) A.o ;
+  exponent : Fin size -> E.Exponent (suc n) = snoc (Fin p.size) (E.Exponent (suc n))
+   (\ i -> shift N (p.exponent i)) (head N) ;
+  nonzero : (i : Fin size) -> Not (Id A.R (coefficient i) A.z) =
+   AffineFinite[l].section p.size (\ i -> Not (Id A.R (coefficient i) A.z))
+    (\ i -> neg-nonzero (p.coefficient i) (p.nonzero i)) one-nonzero ;
+  distinct : (i j : Fin size) -> Id (E.Exponent (suc n)) (exponent i) (exponent j) -> Id (Fin size) i j = split {
+   inl i -> split {
+    inl j -> \ eq -> ap (\ k -> inl k) (p.distinct i j (shift-injective N (p.exponent i) (p.exponent j) eq)) ;
+    inr u -> \ eq -> efq (head-different N (p.exponent i) (sym eq)) } ;
+   inr u -> split {
+    inl j -> \ eq -> efq (head-different N (p.exponent j) eq) ;
+    inr v -> \ eq -> ap (\ w -> inr w) (P.top-prop u v) } } ;
+  distinguished : Fin size = inr tt ;
+  leading-coefficient : Id A.R (coefficient distinguished) A.o = refl A.o ;
+  leading-exponent : Id (E.Exponent (suc n)) (exponent distinguished) (head N) = refl (head N) ;
+  module Eval (B : C.Algebra) (x : Fin (suc n) -> B.ring.R) {
+   module Pow = AffinePowers[l].Over[B.ring] ; module M = MonomialEvaluation[l].Over[B.ring] ;
+   module LB = RL[B.ring] ; module S = FiniteIdeal[l].Sums[B.ring] ;
+   power-value : (k : Nat) -> Id B.ring.R (P.eval (Fin (suc n)) B x (power k)) (Pow.power (x (inr tt)) k) = split {
+    zero -> B.iota.2.1 ; suc k | rec -> ap (B.ring.mul (x (inr tt))) rec } ;
+   minus-one (y : B.ring.R) : Id B.ring.R (B.ring.mul (B.iota.1 (A.neg A.o)) y) (B.ring.neg y) =
+    trans (ap (\ a -> B.ring.mul a y) (RingHom[l].negation A B.ring B.iota A.o))
+     (trans (ap (\ a -> B.ring.mul (B.ring.neg a) y) B.iota.2.1)
+      (trans (LB.neg-mul-left B.ring.o y) (ap B.ring.neg (LB.one-left y)))) ;
+   expression-value : Id B.ring.R (P.eval (Fin (suc n)) B x expression)
+    (B.ring.add (Pow.power (x (inr tt)) N)
+     (B.ring.neg (B.ring.mul (Pow.power (x (inr tt)) (suc N)) (P.eval (Fin (suc n)) B x e)))) =
+    cong2 B.ring.R B.ring.add _ _ _ _ (power-value N)
+     (trans (minus-one (B.ring.mul (P.eval (Fin (suc n)) B x (power (suc N))) (P.eval (Fin (suc n)) B x e)))
+      (ap (\ a -> B.ring.neg (B.ring.mul a (P.eval (Fin (suc n)) B x e))) (power-value (suc N)))) ;
+   head-value : Id B.ring.R
+    (B.ring.mul (B.iota.1 A.o) (M.monomial (suc n) x (head N))) (Pow.power (x (inr tt)) N) =
+    trans (ap (\ a -> B.ring.mul a (M.monomial (suc n) x (head N))) B.iota.2.1)
+     (trans (LB.one-left (M.monomial (suc n) x (head N)))
+      (trans (ap (B.ring.mul (Pow.power (x (inr tt)) N)) (M.zero-value n (\ i -> x (inl i))))
+       (B.ring.mulO (Pow.power (x (inr tt)) N)))) ;
+   shift-value (u : E.Exponent (suc n)) : Id B.ring.R (M.monomial (suc n) x (shift N u))
+    (B.ring.mul (Pow.power (x (inr tt)) (suc N)) (M.monomial (suc n) x u)) =
+    trans (ap (\ a -> B.ring.mul a (M.monomial n (\ i -> x (inl i)) (E.old n u)))
+     (Pow.power-add (x (inr tt)) (suc N) (u (inr tt))))
+     (sym (B.ring.mulA (Pow.power (x (inr tt)) (suc N)) (Pow.power (x (inr tt)) (u (inr tt)))
+      (M.monomial n (\ i -> x (inl i)) (E.old n u)))) ;
+   term (i : Fin p.size) : B.ring.R = B.ring.mul (B.iota.1 (p.coefficient i)) (M.monomial (suc n) x (p.exponent i)) ;
+   shifted (i : Fin p.size) : Id B.ring.R
+    (B.ring.mul (B.iota.1 (A.neg (p.coefficient i))) (M.monomial (suc n) x (shift N (p.exponent i))))
+    (B.ring.mul (B.ring.neg (Pow.power (x (inr tt)) (suc N))) (term i)) =
+    trans (cong2 B.ring.R B.ring.mul _ _ _ _ (RingHom[l].negation A B.ring B.iota (p.coefficient i)) (shift-value (p.exponent i)))
+     (trans (LB.neg-mul-left (B.iota.1 (p.coefficient i))
+      (B.ring.mul (Pow.power (x (inr tt)) (suc N)) (M.monomial (suc n) x (p.exponent i))))
+      (trans (ap B.ring.neg (LB.mul-swap (B.iota.1 (p.coefficient i)) (Pow.power (x (inr tt)) (suc N))
+       (M.monomial (suc n) x (p.exponent i))))
+       (sym (LB.neg-mul-left (Pow.power (x (inr tt)) (suc N)) (term i))))) ;
+   sum-value : Id B.ring.R
+    (S.sum size (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (M.monomial (suc n) x (exponent j))))
+    (B.ring.add (Pow.power (x (inr tt)) N)
+     (B.ring.neg (B.ring.mul (Pow.power (x (inr tt)) (suc N)) (P.eval (Fin (suc n)) B x e)))) =
+    cong2 B.ring.R B.ring.add _ _ _ _ head-value
+     (trans (S.sum-cong p.size
+      (\ i -> B.ring.mul (B.iota.1 (A.neg (p.coefficient i))) (M.monomial (suc n) x (shift N (p.exponent i))))
+      (\ i -> B.ring.mul (B.ring.neg (Pow.power (x (inr tt)) (suc N))) (term i)) shifted)
+      (trans (S.sum-scale (B.ring.neg (Pow.power (x (inr tt)) (suc N))) p.size term)
+       (trans (LB.neg-mul-left (Pow.power (x (inr tt)) (suc N)) (S.sum p.size term))
+        (ap (\ a -> B.ring.neg (B.ring.mul (Pow.power (x (inr tt)) (suc N)) a)) (sym (p.value B x)))))) ;
+   value : Id B.ring.R (P.eval (Fin (suc n)) B x expression)
+    (S.sum size (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (M.monomial (suc n) x (exponent j)))) =
+    trans expression-value (sym sum-value) ;
+  } ;
+  sparse : Fam.SparseData[expression] = new Fam.SparseData[expression,size,coefficient,exponent,nonzero,distinct,\ B x -> Eval[B,x].value] ;
+ } ;
+} ;

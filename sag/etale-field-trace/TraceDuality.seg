@@ -1,0 +1,80 @@
+-- The normalized diagonal identity in finite coordinates.
+-- A coordinate certificate consists of c_i with sum b_i c_i=1 and
+-- z c_i=sum_j lambda_i(z b_j)c_j.  Put z=a b_i, sum over i, and exchange
+-- the finite sums.  The inner sum is precisely Tr(a b_j).  Applying the
+-- coordinate maps gives an inverse for the trace Gram matrix; taking
+-- determinants proves that its determinant is a unit.
+-- The coordinate certificate is an explicit input here.  Its extraction
+-- from an algebra-coproduct diagonal belongs to DiagonalTraceBridge.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (S : Algebras[l].Over[R,setR].Algebra)
+ (n : Nat) (b : TraceBasis[l].Over[R,setR,S].Basis[n]) {
+ module B = TraceBasis[l].Over[R,setR,S].At[n,b] ;
+ module RS = FiniteIdeal[l].Sums[R] ; module SS = FiniteIdeal[l].Sums[S.ring] ;
+ module Sum = MnSums[l].Over[S.ring] ;
+ module DT = Determinant[l].Over[R,setR] ;
+ module Det = ExteriorModel[l].Over[R] ;
+ scalar-sum : (m : Nat) (r : Fin m -> R.R) ->
+  Id S.ring.R (S.iota.1 (RS.sum m r)) (SS.sum m (\ i -> S.iota.1 (r i))) = split {
+  zero -> \ r -> H.zero R S.ring S.iota ;
+  suc m | ih -> \ r -> trans (S.iota.2.2.1 (r (inr tt)) (RS.sum m (\ i -> r (inl i))))
+   (ap (S.ring.add (S.iota.1 (r (inr tt)))) (ih (\ i -> r (inl i)))) } ;
+ sum-coefficient (m : Nat) (r : Fin m -> R.R) (c : S.ring.R) :
+  Id S.ring.R (SS.sum m (\ i -> S.ring.mul (S.iota.1 (r i)) c)) (S.ring.mul (S.iota.1 (RS.sum m r)) c) =
+  trans (Sum.sum-scale-right c m (\ i -> S.iota.1 (r i)))
+   (ap (\ x -> S.ring.mul x c) (sym (scalar-sum m r))) ;
+ record Certificate {
+  cofactor : Fin n -> S.ring.R ;
+  normalisation : Id S.ring.R (SS.sum n (\ i -> S.ring.mul (b.vector i) (cofactor i))) S.ring.o ;
+  equalises (z : S.ring.R) (i : Fin n) :
+   Id S.ring.R (S.ring.mul z (cofactor i))
+    (SS.sum n (\ j -> S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul z (b.vector j)) i)) (cofactor j))) ;
+ } ;
+ module Given (c : Certificate) {
+  trace-identity (a : S.ring.R) :
+   Id S.ring.R a (SS.sum n (\ j -> S.ring.mul (S.iota.1 (B.trace (S.ring.mul a (b.vector j)))) (c.cofactor j))) =
+   calc S.ring.R {
+    a =< sym (S.ring.mulO a) > S.ring.mul a S.ring.o
+     =< ap (S.ring.mul a) (sym c.normalisation)
+      > S.ring.mul a (SS.sum n (\ i -> S.ring.mul (b.vector i) (c.cofactor i)))
+     =< sym (SS.sum-scale a n (\ i -> S.ring.mul (b.vector i) (c.cofactor i)))
+      > SS.sum n (\ i -> S.ring.mul a (S.ring.mul (b.vector i) (c.cofactor i)))
+     =< SS.sum-cong n _ _ (\ i -> S.ring.mulA a (b.vector i) (c.cofactor i))
+      > SS.sum n (\ i -> S.ring.mul (S.ring.mul a (b.vector i)) (c.cofactor i))
+     =< SS.sum-cong n _ _ (\ i -> c.equalises (S.ring.mul a (b.vector i)) i)
+      > SS.sum n (\ i -> SS.sum n (\ j ->
+       S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul (S.ring.mul a (b.vector i)) (b.vector j)) i)) (c.cofactor j)))
+     =< Sum.exchange n n (\ i j ->
+       S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul (S.ring.mul a (b.vector i)) (b.vector j)) i)) (c.cofactor j))
+      > SS.sum n (\ j -> SS.sum n (\ i ->
+       S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul (S.ring.mul a (b.vector i)) (b.vector j)) i)) (c.cofactor j)))
+     =< SS.sum-cong n _ _ (\ j ->
+       trans (sum-coefficient n (\ i -> b.coordinate (S.ring.mul (S.ring.mul a (b.vector i)) (b.vector j)) i) (c.cofactor j))
+        (ap (\ r -> S.ring.mul (S.iota.1 r) (c.cofactor j)) (B.trace-index a j)))
+      > SS.sum n (\ j -> S.ring.mul (S.iota.1 (B.trace (S.ring.mul a (b.vector j)))) (c.cofactor j)) } ;
+  gram : DT.Mat n = \ j i -> B.trace (S.ring.mul (b.vector j) (b.vector i)) ;
+  inverse : DT.Mat n = \ j i -> b.coordinate (c.cofactor j) i ;
+  inverse-coordinate (k i : Fin n) :
+   Id R.R (DT.mmul n inverse gram k i) (DT.idm n k i) =
+   trans (sym (trans (ap (\ a -> b.coordinate a i) (trace-identity (b.vector k)))
+     (B.combination n c.cofactor (\ j -> B.trace (S.ring.mul (b.vector k) (b.vector j))) i)))
+    (trans (b.on-vector k i) (MnSums[l].Over[R].delta-sym n i k)) ;
+  matrix-inverse : Id (DT.Mat n) (DT.mmul n inverse gram) (DT.idm n) =
+   F.funext (Fin n) (\ k -> Fin n -> R.R) _ _
+    (\ k -> F.funext (Fin n) (\ i -> R.R) _ _ (inverse-coordinate k)) ;
+  gram-determinant-unit : RL[R].unit (Det.det n gram) =
+   (Det.det n inverse,
+    trans (R.mulC (Det.det n gram) (Det.det n inverse))
+     (trans (sym (DT.det-mul n inverse gram))
+      (trans (ap (Det.det n) matrix-inverse) (DT.det-id n)))) ;
+  nondegenerate (a : S.ring.R) (h : (j : Fin n) -> Id R.R (B.trace (S.ring.mul a (b.vector j))) R.z) :
+   Id S.ring.R a S.ring.z =
+   trans (trace-identity a)
+    (trans (SS.sum-cong n _ (\ j -> S.ring.z) (\ j ->
+      trans (ap (\ r -> S.ring.mul (S.iota.1 r) (c.cofactor j)) (h j))
+       (trans (ap (\ x -> S.ring.mul x (c.cofactor j)) (H.zero R S.ring S.iota))
+        (RL[S.ring].zero-mul (c.cofactor j))))) (SS.sum-zero n)) ;
+ } ;
+} ;

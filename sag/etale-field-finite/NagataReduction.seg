@@ -1,0 +1,66 @@
+-- A rooted, nonempty sparse relation reduces the number of generators.
+-- Define yi=xi-t^wi (t is the last generator), form the image k[y], and
+-- apply the constructed Nagata polynomial over that image. The old
+-- generators remain expressions in (y,t), and t satisfies a monic
+-- relation over k[y]. The image need not be finitely presented.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (dec : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a))
+ (nontrivial : Not (Id k.R k.o k.z)) {
+ module C = Algebras[l].Over[k,setk] ; module P = Presentations[l].Over[k,setk] ;
+ module Sparse = NagataSparse[l].Over[k,setk,dec,nontrivial] ;
+ module EG = ExpressionGeneration[l].Over[k,setk] ;
+ expr-power (V : U l) (e : P.Expr V) : Nat -> P.Expr V = split {
+  zero -> cst k.o ; suc n | rec -> mulE e rec } ;
+ module At (n : Nat) (S : C.Algebra) (x : Fin (suc n) -> S.ring.R)
+  (e : P.Expr (Fin (suc n)))
+  (sparse : MonomialFamily[l].Over[k,setk,suc n].Normalized[Sparse.zero-dec].SparseData[e])
+  (seed : Fin sparse.size) (relation : Id S.ring.R (P.eval (Fin (suc n)) S x e) S.ring.z) {
+  module E = Sparse.Expression[suc n,e,sparse] ;
+  module AS = NagataSemantics[l].Over[S.ring,S.set,E.W.height] ;
+  module Pow = AffinePowers[l].Over[S.ring] ; module L = RL[S.ring] ;
+  t : S.ring.R = x (inr tt) ;
+  exponent (i : Fin n) : Nat = AS.axis (suc n) (inl i) ;
+  y (i : Fin n) : S.ring.R = S.ring.add (x (inl i)) (S.ring.neg (Pow.power t (exponent i))) ;
+  variables : Fin (suc n) -> S.ring.R = snoc (Fin n) S.ring.R y t ;
+  recover (i : Fin n) : Id S.ring.R (S.ring.add (y i) (Pow.power t (exponent i))) (x (inl i)) =
+   trans (sym (S.ring.addA (x (inl i)) (S.ring.neg (Pow.power t (exponent i))) (Pow.power t (exponent i))))
+    (trans (ap (S.ring.add (x (inl i))) (L.neg-cancel (Pow.power t (exponent i)))) (S.ring.addZ (x (inl i)))) ;
+  power-value : (d : Nat) -> Id S.ring.R
+   (P.eval (Fin (suc n)) S variables (expr-power (Fin (suc n)) (var (inr tt)) d)) (Pow.power t d) = split {
+    zero -> S.iota.2.1 ; suc d | ih -> ap (S.ring.mul t) ih } ;
+  substitution : Fin (suc n) -> P.Expr (Fin (suc n)) = split {
+   inl i -> sumE (var (inl i)) (expr-power (Fin (suc n)) (var (inr tt)) (exponent i)) ;
+   inr u -> var (inr tt) } ;
+  substitution-value : (i : Fin (suc n)) ->
+   Id S.ring.R (P.eval (Fin (suc n)) S variables (substitution i)) (x i) =
+   AffineFinite[l].section n
+    (\ i -> Id S.ring.R (P.eval (Fin (suc n)) S variables (substitution i)) (x i))
+    (\ i -> trans (ap (S.ring.add (y i)) (power-value (exponent i))) (recover i)) (refl t) ;
+  module Change = EG.Change[S,suc n,suc n,x,variables,substitution,substitution-value] ;
+  module Adj = EG.Adjoin[S,n,y,t] ; module B = Adj.B ;
+  generation (gen : Change.X.Generators) : Adj.Old.Generators = Change.generated gen ;
+  coefficients : Fin (suc n) -> B.ring.R = snoc (Fin n) B.ring.R B.variables B.ring.z ;
+  module N = E.At[B.algebra,S,B.inclusion,seed,coefficients,t,x] ;
+  axis-equal (i : Fin n) : Id Nat (N.N.Sem.axis (suc n) (inl i)) (exponent i) = refl (exponent i) ;
+  shifted-old (i : Fin n) : Id S.ring.R (N.shifted (inl i))
+   (S.ring.add (y i) (Pow.power t (exponent i))) =
+   ap (\ d -> S.ring.add (y i) (Pow.power t d)) (axis-equal i) ;
+  shifted-equal : (i : Fin (suc n)) -> Id S.ring.R (N.shifted i) (x i) =
+   AffineFinite[l].section n (\ i -> Id S.ring.R (N.shifted i) (x i))
+    (\ i -> trans (shifted-old i) (recover i)) (trans (L.zl (Pow.power t (suc zero))) (S.ring.mulO t)) ;
+  degree : Nat = N.N.top ;
+  polynomial : List B.ring.R = N.Normal.raw ;
+  module Raw = Poly[l].PolyR[B.ring] ; module Bounds = PolynomialBounds[l].Over[B.ring] ;
+  module Pol = PolynomialRing[l].Extension[B.ring,B.set] ;
+  module UP = Universal[l].Property[B.ring,S.ring,B.set,S.set].Given[B.incl,t] ;
+  monic : Id B.ring.R (Raw.coef polynomial degree) B.ring.o = N.Normal.monic ;
+  bound : Bounds.Bound (suc degree) polynomial = N.Normal.bounded ;
+  root : Id S.ring.R (UP.extend.1 (Pol.include polynomial)) S.ring.z = N.root shifted-equal relation ;
+  MonicData : U l = (d : Nat) * (f : List B.ring.R) *
+   Id B.ring.R (Raw.coef f d) B.ring.o * Bounds.Bound (suc d) f *
+   Id S.ring.R (UP.extend.1 (Pol.include f)) S.ring.z ;
+  monic-data : MonicData = (degree,polynomial,monic,bound,root) ;
+ } ;
+} ;

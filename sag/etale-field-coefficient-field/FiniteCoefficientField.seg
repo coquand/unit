@@ -1,0 +1,82 @@
+-- Package a bounded closed distinct list as an actual finite subfield.
+-- Its carrier is a subtype of k with propositional list membership.
+-- Operations and inverses stay in this subtype; the inclusion is an
+-- injective ring map. Every coefficient has an explicit preimage.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (decide : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a)) (nonzero : Not (Id k.R k.o k.z))
+ (t : Nat) (coefficients : Fin t -> k.R) {
+ module D = DiscreteFieldOperations[l].Over[k,setk,decide,nonzero] ;
+ module Closure = BoundedFiniteClosure[l].Over[k.R,setk,D.equal,k.z,k.o,k.neg,D.inverse,k.add,k.mul,t,coefficients] ;
+ module Small (cl : Closure.ClosedData) {
+  n : Nat = cl.1 ;
+  v : Fin n -> k.R = cl.2.1 ;
+  injective : Closure.FD.Injective n v = cl.2.2.1 ;
+  closed : Closure.At[n,v].Closed = cl.2.2.2 ;
+  Member (x : k.R) : U l = Closure.FD.Member n v x ;
+  member-prop (x : k.R) : Pr.isProp (Member x) = Closure.FD.member-prop n v injective x ;
+  Carrier : U l = (x : k.R) * Member x ;
+  set : Pr.isSet Carrier = Pr.isSet-Sigma k.R Member setk (\ x -> Pr.prop-to-set (Member x) (member-prop x)) ;
+  ext (a b : Carrier) (h : Id k.R a.1 b.1) : Id Carrier a b =
+   Pr.Sigma-eq k.R Member a.1 b.1 a.2 b.2 h (member-prop b.1) ;
+  one : Carrier = (k.o,closed.one) ;
+  zero : Carrier = (k.z,closed.zero) ;
+  unary (f : k.R -> k.R) (law : Closure.At[n,v].OneLaw f) (a : Carrier) : Member (f a.1) =
+   subst Member (ap f a.2.2) (law a.2.1) ;
+  binary (f : k.R -> k.R -> k.R) (law : Closure.At[n,v].TwoLaw f) (a b : Carrier) : Member (f a.1 b.1) =
+   subst Member (cong2 k.R f (v a.2.1) a.1 (v b.2.1) b.1 a.2.2 b.2.2) (law a.2.1 b.2.1) ;
+  add (a b : Carrier) : Carrier = (k.add a.1 b.1,binary k.add closed.addition a b) ;
+  mul (a b : Carrier) : Carrier = (k.mul a.1 b.1,binary k.mul closed.multiplication a b) ;
+  neg (a : Carrier) : Carrier = (k.neg a.1,unary k.neg closed.negation a) ;
+  inverse (a : Carrier) : Carrier = (D.inverse a.1,unary D.inverse closed.inversion a) ;
+  ring : CRing = mkCRing Carrier zero one add mul neg
+   (\ a b c -> ext _ _ (k.addA a.1 b.1 c.1))
+   (\ a b -> ext _ _ (k.addC a.1 b.1))
+   (\ a -> ext _ _ (k.addZ a.1))
+   (\ a -> ext _ _ (k.addN a.1))
+   (\ a b c -> ext _ _ (k.mulA a.1 b.1 c.1))
+   (\ a b -> ext _ _ (k.mulC a.1 b.1))
+   (\ a -> ext _ _ (k.mulO a.1))
+   (\ a b c -> ext _ _ (k.dist a.1 b.1 c.1)) ;
+  inclusion : H.Hom ring k =
+   (\ a -> a.1,refl k.o,\ a b -> refl (k.add a.1 b.1),\ a b -> refl (k.mul a.1 b.1)) ;
+  inclusion-injective (a b : Carrier) (h : Id k.R (inclusion.1 a) (inclusion.1 b)) : Id Carrier a b = ext a b h ;
+  field-nonzero : Not (Id Carrier one zero) = \ h -> nonzero (ap (\ a -> a.1) h) ;
+  inverse-equation (a : Carrier) (h : Not (Id Carrier a zero)) : Id Carrier (mul a (inverse a)) one =
+   ext _ _ (D.inverse-law a.1 (\ e -> h (ext a zero e))) ;
+  field-case (a : Carrier) : Plus (Id k.R a.1 k.z) (Not (Id k.R a.1 k.z)) ->
+   Plus (Id Carrier a zero) (RL[ring].unit a) = split {
+   inl e -> inl (ext a zero e) ;
+   inr h -> inr (inverse a,ext _ _ (D.inverse-law a.1 h)) } ;
+  field-decide (a : Carrier) : Plus (Id Carrier a zero) (RL[ring].unit a) = field-case a (D.zero-dec a.1) ;
+  enumeration (i : Fin n) : Carrier = (v i,(i,refl (v i))) ;
+  enumeration-injective (i j : Fin n) (h : Id Carrier (enumeration i) (enumeration j)) : Id (Fin n) i j =
+   injective i j (ap (\ a -> a.1) h) ;
+  cover (a : Carrier) : (i : Fin n) * Id Carrier (enumeration i) a = (a.2.1,ext _ _ a.2.2) ;
+  coefficient (i : Fin t) : Carrier = (coefficients i,closed.coefficients-in i) ;
+  coefficient-image (i : Fin t) : Id k.R (inclusion.1 (coefficient i)) (coefficients i) = refl (coefficients i) ;
+ } ;
+ record Subfield {
+  ring : CRing ;
+  set : Pr.isSet ring.R ;
+  inclusion : H.Hom ring k ;
+  injective (a b : ring.R) : Id k.R (inclusion.1 a) (inclusion.1 b) -> Id ring.R a b ;
+  field-decide (a : ring.R) : Plus (Id ring.R a ring.z) (RL[ring].unit a) ;
+  field-nonzero : Not (Id ring.R ring.o ring.z) ;
+  size : Nat ;
+  enumeration : Fin size -> ring.R ;
+  enumeration-injective (i j : Fin size) : Id ring.R (enumeration i) (enumeration j) -> Id (Fin size) i j ;
+  cover (a : ring.R) : (i : Fin size) * Id ring.R (enumeration i) a ;
+  coefficient : Fin t -> ring.R ;
+  coefficient-image (i : Fin t) : Id k.R (inclusion.1 (coefficient i)) (coefficients i) ;
+ } ;
+ package (cl : Closure.ClosedData) : Subfield = mkSubfield
+  Small[cl].ring Small[cl].set Small[cl].inclusion Small[cl].inclusion-injective
+  Small[cl].field-decide Small[cl].field-nonzero Small[cl].n Small[cl].enumeration Small[cl].enumeration-injective Small[cl].cover
+  Small[cl].coefficient Small[cl].coefficient-image ;
+ Result (M : Nat) : U l+ = Ring[l+].Plus (Closure.Distinct (suc M)) Subfield ;
+ result-case (M : Nat) : Plus (Closure.Distinct (suc M)) Closure.ClosedData -> Result M = split {
+  inl many -> inl many ; inr cl -> inr (package cl) } ;
+ theorem (M : Nat) : Result M = result-case M (Closure.theorem M) ;
+} ;

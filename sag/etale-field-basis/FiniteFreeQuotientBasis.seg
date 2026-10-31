@@ -1,0 +1,97 @@
+-- A quotient of a finite free algebra by a finitely generated ideal
+-- has a finite basis over a discrete field.  If g_j generate ker(u),
+-- then the finite R-module relations are g_j*b_i.  Coordinates turn
+-- these products into a finite matrix.  Expanding the ideal coefficients
+-- in the basis proves that this matrix generates the whole module kernel;
+-- the checked Gaussian quotient then supplies the actual new basis.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module F = Axioms[l].FunExtLemmas[fe @l] ;
+module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (dec : (x : R.R) -> Plus (Id R.R x R.z) ((w : R.R) * Id R.R (R.mul x w) R.o)) {
+ module C = Algebras[l].Over[R,setR] ;
+ module At (Q S : C.Algebra) (d : Nat) (b : TraceBasis[l].Over[R,setR,Q].Basis[d])
+  (u : C.Hom Q S)
+  (onto : (s : S.ring.R) -> Tr.Trunc[(q : Q.ring.R) * Id S.ring.R (u.1.1 q) s].carrier)
+  (m : Nat) (g : Fin m -> Q.ring.R)
+  (killed : (j : Fin m) -> Id S.ring.R (u.1.1 (g j)) S.ring.z)
+  (kernel : (q : Q.ring.R) -> Id S.ring.R (u.1.1 q) S.ring.z ->
+   Tr.Trunc[(a : Fin m -> Q.ring.R) * Id Q.ring.R q (FiniteIdeal[l].Sums[Q.ring].lin m g a)].carrier) {
+  module TB = TraceBasis[l].Over[R,setR,Q].At[d,b] ;
+  module QS = FiniteIdeal[l].Sums[Q.ring] ; module RS = FiniteIdeal[l].Sums[R] ;
+  module RD = MnSums[l].Over[R] ; module Rect = FiniteRectangle[l] ;
+  module G = GaussianAlgebraBasis[l].Over[R,setR,dec,S] ;
+  base-map : C.Hom C.base S = (S.iota,\ r -> refl (S.iota.1 r)) ;
+  module Eval = FiniteBasisEvaluation[l].Over[R,setR,Q,C.base,d,b].At[S,u,base-map] ;
+  expand (c : Fin d -> R.R) : Q.ring.R = QS.sum d (\ i -> Q.ring.mul (Q.iota.1 (c i)) (b.vector i)) ;
+  coordinate-expand (c : Fin d -> R.R) (i : Fin d) : Id R.R (b.coordinate (expand c) i) (c i) =
+   trans (TB.combination d b.vector c i)
+    (trans (RS.sum-cong d (\ j -> R.mul (c j) (b.coordinate (b.vector j) i))
+      (\ j -> R.mul (c j) (RD.delta d j i))
+      (\ j -> ap (R.mul (c j)) (trans (b.on-vector j i) (RD.delta-sym d i j))))
+     (RD.sum-delta-right d i c)) ;
+  coordinates-expand (c : Fin d -> R.R) : Id (Fin d -> R.R) (b.coordinate (expand c)) c =
+   F.funext (Fin d) (\ i -> R.R) _ _ (coordinate-expand c) ;
+  phi : G.G.SM.Linear (G.G.DL.Free d) G.UM.M =
+   (Eval.value,Eval.linear.preserves-add,Eval.linear.preserves-scale) ;
+  phi-expand (c : Fin d -> R.R) : Id S.ring.R (phi.1 c) (u.1.1 (expand c)) =
+   trans (ap Eval.value (sym (coordinates-expand c))) (Eval.value-pure (expand c)) ;
+  phi-onto (s : S.ring.R) : Tr.Trunc[(c : Fin d -> R.R) * Id S.ring.R (phi.1 c) s].carrier =
+   TC.map ((q : Q.ring.R) * Id S.ring.R (u.1.1 q) s)
+    ((c : Fin d -> R.R) * Id S.ring.R (phi.1 c) s)
+    (\ w -> (b.coordinate w.1,trans (Eval.value-pure w.1) w.2)) (onto s) ;
+  row (j : Fin m) (i : Fin d) : Q.ring.R = Q.ring.mul (g j) (b.vector i) ;
+  size : Nat = Rect.size m d ;
+  relation (k : Fin size) : Q.ring.R = Rect.flatten Q.ring.R m d row k ;
+  columns (k : Fin size) (i : Fin d) : R.R = b.coordinate (relation k) i ;
+  row-killed (j : Fin m) (i : Fin d) : Id S.ring.R (u.1.1 (row j i)) S.ring.z =
+   trans (u.1.2.2.2 (g j) (b.vector i))
+    (trans (ap (\ a -> S.ring.mul a (u.1.1 (b.vector i))) (killed j))
+     (RL[S.ring].zero-mul (u.1.1 (b.vector i)))) ;
+  relation-killed (k : Fin size) : Id S.ring.R (u.1.1 (relation k)) S.ring.z =
+   FiniteRectangleProperty[l].flatten-property Q.ring.R
+    (\ q -> Id S.ring.R (u.1.1 q) S.ring.z) m d row row-killed k ;
+  columns-killed (k : Fin size) : Id S.ring.R (phi.1 (columns k)) S.ring.z =
+   trans (Eval.value-pure (relation k)) (relation-killed k) ;
+  module Sp = G.G.V.Span[d,size,columns] ;
+  module Coefficients (a : Fin m -> Q.ring.R) {
+   coefficient (k : Fin size) : R.R = Rect.flatten R.R m d (\ j i -> b.coordinate (a j) i) k ;
+   row-expansion (j : Fin m) :
+    Id Q.ring.R (QS.sum d (\ i -> Q.ring.mul (row j i) (Q.iota.1 (b.coordinate (a j) i))))
+     (Q.ring.mul (g j) (a j)) =
+    trans (QS.sum-cong d _ _ (\ i ->
+      trans (sym (Q.ring.mulA (g j) (b.vector i) (Q.iota.1 (b.coordinate (a j) i))))
+       (ap (Q.ring.mul (g j)) (Q.ring.mulC (b.vector i) (Q.iota.1 (b.coordinate (a j) i))))))
+     (trans (QS.sum-scale (g j) d (\ i -> Q.ring.mul (Q.iota.1 (b.coordinate (a j) i)) (b.vector i)))
+      (ap (Q.ring.mul (g j)) (b.reconstruction (a j)))) ;
+   combination :
+    Id Q.ring.R (QS.sum size (\ k -> Q.ring.mul (relation k) (Q.iota.1 (coefficient k)))) (QS.lin m g a) =
+    trans (Rect.Sum[Q.ring].formula Q.ring.R R.R (\ q r -> Q.ring.mul q (Q.iota.1 r)) m d row
+     (\ j i -> b.coordinate (a j) i))
+     (QS.sum-cong m (\ j -> QS.sum d (\ i -> Q.ring.mul (row j i) (Q.iota.1 (b.coordinate (a j) i))))
+      (\ j -> Q.ring.mul (g j) (a j)) row-expansion) ;
+   coordinate (i : Fin d) :
+    Id R.R (G.G.V.comb d size columns coefficient i)
+     (b.coordinate (QS.lin m g a) i) =
+    trans (RS.sum-cong size (\ k -> R.mul (b.coordinate (relation k) i) (coefficient k))
+      (\ k -> R.mul (coefficient k) (b.coordinate (relation k) i))
+      (\ k -> R.mulC (b.coordinate (relation k) i) (coefficient k)))
+     (trans (sym (TB.combination size relation coefficient i))
+      (ap (\ q -> b.coordinate q i)
+       (trans (QS.sum-cong size
+         (\ k -> Q.ring.mul (Q.iota.1 (coefficient k)) (relation k))
+         (\ k -> Q.ring.mul (relation k) (Q.iota.1 (coefficient k)))
+         (\ k -> Q.ring.mulC (Q.iota.1 (coefficient k)) (relation k))) combination))) ;
+  } ;
+  kernel-witness (c : Fin d -> R.R) (a : Fin m -> Q.ring.R)
+   (h : Id Q.ring.R (expand c) (QS.lin m g a)) : Sp.Witness c =
+   (Coefficients[a].coefficient,\ i -> trans (Coefficients[a].coordinate i)
+    (trans (ap (\ q -> b.coordinate q i) (sym h)) (coordinate-expand c i))) ;
+  phi-kernel (c : Fin d -> R.R) (h : Id S.ring.R (phi.1 c) S.ring.z) : Tr.Trunc[Sp.Witness c].carrier =
+   TC.map ((a : Fin m -> Q.ring.R) * Id Q.ring.R (expand c) (QS.lin m g a)) (Sp.Witness c)
+    (\ w -> kernel-witness c w.1 w.2) (kernel (expand c) (trans (sym (phi-expand c)) h)) ;
+  module Quot = G.At[d,size,columns,phi,phi-onto,columns-killed,phi-kernel] ;
+  rank : Nat = Quot.Q.rank ;
+  basis : TraceBasis[l].Over[R,setR,S].Basis[rank] = Quot.basis ;
+ } ;
+} ;

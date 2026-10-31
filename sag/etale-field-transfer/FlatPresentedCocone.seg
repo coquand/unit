@@ -1,0 +1,49 @@
+-- Build a flat extension by induction on the variables and equations
+-- of a finite presentation.  The target algebra T is arbitrary.
+-- Compare the constructed source with any algebra having that same
+-- presentation; transport flatness along their proved isomorphism.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (T : Algebras[l].Over[R,setR].Algebra)
+ (flat : FlatRelations[l].Over[R,T.ring,T.iota].Flat) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module FC = FlatCocone[l].Over[R,setR,T] ;
+ module QP = FlatQuotientPresentation[l].Over[R,setR] ;
+ record Model (p : P.Presentation) {
+  algebra : C.Algebra ;
+  presentation : P.Presents p algebra ;
+  cocone : FC.Cocone[algebra] ;
+ } ;
+ initial : Model[(zero,nil)] = new Model[(zero,nil),C.base,QP.base-presentation,FC.start flat] ;
+ module PolynomialStep (n : Nat) (m : Model[(n,nil)]) {
+  module Add = AddVariable[l].Over[R,setR].Extension[(n,nil),m.algebra,m.presentation] ;
+  module Co = FC.Polynomial[m.algebra,m.cocone] ;
+  result : Model[(suc n,nil)] = new Model[(suc n,nil),Add.AX.algebra,Add.presentation,Co.result] ;
+ } ;
+ free : (n : Nat) -> Model[(n,nil)] = split {
+  zero -> initial ; suc n | m -> PolynomialStep[n,m].result } ;
+ module EquationStep (n : Nat) (es : P.Equations (Fin n)) (m : Model[(n,es)]) (e : P.Expr (Fin n)) {
+  module Pres = QP.At[n,es,m.algebra,m.presentation,e] ;
+  module Co = FC.Principal[m.algebra,m.cocone,Pres.q] ;
+  result : Model[(n,cons e es)] = new Model[(n,cons e es),Pres.algebra,Pres.presentation,Co.result] ;
+ } ;
+ build (n : Nat) : (es : P.Equations (Fin n)) -> Model[(n,es)] = split {
+  nil -> free n ; cons e es | m -> EquationStep[n,es,m,e].result } ;
+ module At (p : P.Presentation) (S : C.Algebra) (ps : P.Presents p S) {
+  m : Model[p] = build p.1 p.2 ;
+  module Iso = PresentationComparison[l].Over[R,setR,p,m.algebra,S,m.presentation,ps] ;
+  left : C.Hom S m.cocone.algebra = C.compose S m.algebra m.cocone.algebra m.cocone.left Iso.backward ;
+  module To (B : C.Algebra) (f : C.Hom S B) (g : C.Hom T B) {
+   old : C.Hom m.algebra B = C.compose m.algebra S B f Iso.forward ;
+   hom : C.Hom m.cocone.algebra B = m.cocone.extend B old g ;
+   beta-left (s : S.ring.R) : Id B.ring.R (hom.1.1 (left.1.1 s)) (f.1.1 s) =
+    trans (m.cocone.beta-left B old g (Iso.backward.1.1 s)) (ap f.1.1 (Iso.fb s)) ;
+   beta-right (t : T.ring.R) : Id B.ring.R (hom.1.1 (m.cocone.right.1.1 t)) (g.1.1 t) =
+    m.cocone.beta-right B old g t ;
+  } ;
+  module Transport = FlatSourceIso[l].Over[m.algebra.ring,m.cocone.algebra.ring,S.ring,
+   m.cocone.left.1,Iso.backward.1,Iso.forward.1,Iso.bf,Iso.fb,m.cocone.flat] ;
+  result : FC.Cocone[S] = new FC.Cocone[S,m.cocone.algebra,left,m.cocone.right,
+   \ B f g -> To[B,f,g].hom,\ B f g -> To[B,f,g].beta-left,\ B f g -> To[B,f,g].beta-right,Transport.theorem] ;
+ } ;
+} ;

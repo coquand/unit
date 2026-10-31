@@ -1,0 +1,103 @@
+-- Pull equations from (B/I)[1/s] back to B with an explicit power of s.
+-- The map B/I -> (B/I)[1/s] is not assumed injective. A second theorem
+-- shows that B -> (B/I)[1/s] is merely onto when s has a quasi-inverse
+-- modulo I: s^N(1-s*v) belongs to I. No reducedness or field is assumed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module UnitLaws (A : CRing) {
+ open A ; module L = RL[A] ; module P = AffinePowers[l].Over[A] ;
+ cancel (a : R) (u : L.unit a) (b c : R) (eq : Id R (mul a b) (mul a c)) : Id R b c =
+  trans (sym (L.one-left b))
+   (trans (ap (\ r -> mul r b) (sym u.2))
+    (trans (sym (mulA a u.1 b))
+     (trans (L.mul-swap a u.1 b)
+      (trans (ap (mul u.1) eq)
+       (trans (L.mul-swap u.1 a c)
+        (trans (mulA a u.1 c) (trans (ap (\ r -> mul r c) u.2) (L.one-left c)))))))) ;
+ power (a : R) (u : L.unit a) : (n : Nat) -> L.unit (P.power a n) = split {
+  zero -> (o,mulO o) ;
+  suc n | ih -> (mul u.1 ih.1,trans (L.mul-four a (P.power a n) u.1 ih.1)
+   (trans (cong2 R mul _ _ _ _ u.2 ih.2) (mulO o))) } ;
+ inverse-power (a : R) (u : L.unit a) : (n : Nat) -> Id R (power a u n).1 (P.power u.1 n) = split {
+  zero -> refl o ; suc n | ih -> ap (mul u.1) ih } ;
+ power-equation (a : R) (u : L.unit a) (n : Nat) : Id R (mul (P.power a n) (P.power u.1 n)) o =
+  trans (ap (mul (P.power a n)) (sym (inverse-power a u n))) (power a u n).2 ;
+} ;
+module Over (B : CRing) (I : RegularIdeal[l].IdealPred[B])
+ (propI : (b : B.R) -> Pr.isProp (I.In b)) (s : B.R) {
+ module Q = QuotientRing[l].Over[B,I,propI] ;
+ module Loc = PowerLocalization[l].Over[Q.ring,Q.include s] ;
+ T : CRing = Loc.ring ; module LT = RL[Loc.ring] ;
+ module PB = AffinePowers[l].Over[B] ; module PT = AffinePowers[l].Over[Loc.ring] ;
+ module UL = UnitLaws[Loc.ring] ;
+ eta : H.Hom B Loc.ring = H.compose B Q.ring Loc.ring Loc.inclusion Q.projection ;
+ image-zero (b : B.R) (h : I.In b) : Id T.R (eta.1 b) T.z =
+  trans (ap Loc.inclusion.1 (Q.to-zero b h)) (H.zero Q.ring Loc.ring Loc.inclusion) ;
+ power-unit (n : Nat) : LT.unit (eta.1 (PB.power s n)) =
+  subst LT.unit (sym (AffinePowers[l].power-map B Loc.ring eta s n)) (UL.power (eta.1 s) Loc.invertible n) ;
+ Witness (b : B.R) : U l = (n : Nat) * I.In (B.mul (PB.power s n) b) ;
+ module Killed (b : B.R) (w : Loc.Killed (Q.include b)) {
+  equation : Id Q.Carrier (Q.include (B.mul (PB.power s w.1) b)) Q.zeroQ =
+   trans (Q.projection.2.2.2 (PB.power s w.1) b)
+    (trans (ap (\ a -> Q.ring.mul a (Q.include b)) (AffinePowers[l].power-map B Q.ring Q.projection s w.1)) w.2) ;
+  witness : Witness b = (w.1,Q.kernel _ equation) ;
+ } ;
+ clear (b : B.R) (eq : Id T.R (eta.1 b) T.z) : Tr.Trunc[Witness b].carrier =
+  TC.map (Loc.Killed (Q.include b)) (Witness b) (\ w -> Killed[b,w].witness) (Loc.kernel (Q.include b) eq) ;
+ vanish (b : B.R) (w : Witness b) : Id T.R (eta.1 b) T.z =
+  UL.cancel (eta.1 (PB.power s w.1)) (power-unit w.1) (eta.1 b) T.z
+   (trans (sym (eta.2.2.2 (PB.power s w.1) b))
+    (trans (image-zero _ w.2) (sym (LT.mul-zero (eta.1 (PB.power s w.1)))))) ;
+ difference (b c : B.R) : Id T.R (eta.1 (B.add b (B.neg c))) (T.add (eta.1 b) (T.neg (eta.1 c))) =
+  trans (eta.2.2.1 b (B.neg c)) (ap (T.add (eta.1 b)) (H.negation B Loc.ring eta c)) ;
+ clear-equality (b c : B.R) (eq : Id T.R (eta.1 b) (eta.1 c)) : Tr.Trunc[Witness (B.add b (B.neg c))].carrier =
+  clear (B.add b (B.neg c)) (trans (difference b c)
+   (trans (ap (\ a -> T.add a (T.neg (eta.1 c))) eq) (T.addN (eta.1 c)))) ;
+ clear-family (n : Nat) (a : Fin n -> B.R) (eq : (i : Fin n) -> Id T.R (eta.1 (a i)) T.z) :
+  Tr.Trunc[(i : Fin n) -> Witness (a i)].carrier =
+  AffineFinite[l].choice n (\ i -> Witness (a i)) (\ i -> clear (a i) (eq i)) ;
+
+ module QuasiInverse (N : Nat) (v : B.R)
+  (relation : I.In (B.mul (PB.power s N) (B.add B.o (B.neg (B.mul s v))))) {
+  difference-zero : Id T.R (T.add T.o (T.neg (T.mul (eta.1 s) (eta.1 v)))) T.z =
+   trans (sym (trans (difference B.o (B.mul s v))
+    (cong2 T.R T.add _ _ _ _ eta.2.1 (ap T.neg (eta.2.2.2 s v)))))
+    (vanish (B.add B.o (B.neg (B.mul s v))) (N,relation)) ;
+  inverse : Id T.R (T.mul (eta.1 s) (eta.1 v)) T.o =
+   sym (AffineRing[l].Laws[Loc.ring,Loc.set].difference-zero T.o (T.mul (eta.1 s) (eta.1 v)) difference-zero) ;
+  unit-s : LT.unit (eta.1 s) = (eta.1 v,inverse) ;
+  Rep (x : T.R) : U l = (b : B.R) * Id T.R (eta.1 b) x ;
+  module Fraction (f : Loc.L.Raw.Fraction) (b : B.R) (numerator : Id Q.Carrier (Q.include b) f.1) {
+   n : Nat = f.2.2.1 ;
+   value : B.R = B.mul b (PB.power v n) ;
+   denominator : Id T.R (eta.1 (PB.power s n)) (Loc.inclusion.1 f.2.1) =
+    trans (ap Loc.inclusion.1 (AffinePowers[l].power-map B Q.ring Q.projection s n))
+     (ap Loc.inclusion.1 (sym f.2.2.2)) ;
+   fraction-equation : Id T.R (T.mul (eta.1 (PB.power s n)) (Loc.L.include f)) (eta.1 b) =
+    trans (ap (\ a -> T.mul a (Loc.L.include f)) denominator)
+     (trans (Loc.L.fraction-equation f) (ap Loc.inclusion.1 (sym numerator))) ;
+   powers-inverse : Id T.R (T.mul (eta.1 (PB.power s n)) (eta.1 (PB.power v n))) T.o =
+    trans (cong2 T.R T.mul _ _ _ _ (AffinePowers[l].power-map B Loc.ring eta s n)
+     (AffinePowers[l].power-map B Loc.ring eta v n)) (UL.power-equation (eta.1 s) unit-s n) ;
+   scaled : Id T.R (T.mul (eta.1 (PB.power s n)) (eta.1 value)) (eta.1 b) =
+    trans (ap (T.mul (eta.1 (PB.power s n))) (eta.2.2.2 b (PB.power v n)))
+     (trans (LT.mul-swap (eta.1 (PB.power s n)) (eta.1 b) (eta.1 (PB.power v n)))
+      (trans (ap (T.mul (eta.1 b)) powers-inverse) (T.mulO (eta.1 b)))) ;
+   represents : Rep (Loc.L.include f) =
+    (value,UL.cancel (eta.1 (PB.power s n)) (power-unit n) (eta.1 value) (Loc.L.include f)
+     (trans scaled (sym fraction-equation))) ;
+  } ;
+  quotient-representatives (q : Q.Carrier) : Tr.Trunc[(b : B.R) * Id Q.Carrier (Q.include b) q].carrier =
+   Q.Q.induction @l (\ q -> Tr.Trunc[(b : B.R) * Id Q.Carrier (Q.include b) q].carrier)
+    (\ q -> Tr.Trunc[(b : B.R) * Id Q.Carrier (Q.include b) q].proposition)
+    (\ b -> Tr.Trunc[(c : B.R) * Id Q.Carrier (Q.include c) (Q.include b)].inc (b,refl (Q.include b))) q ;
+  fraction (f : Loc.L.Raw.Fraction) : Tr.Trunc[Rep (Loc.L.include f)].carrier =
+   TC.map ((b : B.R) * Id Q.Carrier (Q.include b) f.1) (Rep (Loc.L.include f))
+    (\ w -> Fraction[f,w.1,w.2].represents) (quotient-representatives f.1) ;
+  representative (x : T.R) (w : Loc.L.Representatives x) : Tr.Trunc[Rep x].carrier =
+   TC.map (Rep (Loc.L.include w.1)) (Rep x) (\ r -> (r.1,trans r.2 w.2)) (fraction w.1) ;
+  onto (x : T.R) : Tr.Trunc[Rep x].carrier =
+   TC.bind (Loc.L.Representatives x) (Rep x) (representative x) (Loc.L.representatives x) ;
+ } ;
+} ;

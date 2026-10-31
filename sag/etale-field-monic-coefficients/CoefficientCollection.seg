@@ -1,0 +1,66 @@
+-- Flatten finitely many coefficient lists into one finite family, with
+-- an actual location for every occurrence. Repetitions and empty lists
+-- are allowed. These locations lift the lists through any map that has
+-- explicit preimages of the collected coefficients; no choice is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (K : U l) {
+ Locations (t : Nat) (c : Fin t -> K) : List K -> U l = split {
+  nil -> Top ; cons a p | ih -> (i : Fin t) * Id K (c i) a * ih } ;
+ relocate (t u : Nat) (c : Fin t -> K) (d : Fin u -> K) (f : Fin t -> Fin u)
+  (equation : (i : Fin t) -> Id K (d (f i)) (c i)) : (p : List K) -> Locations t c p -> Locations u d p = split {
+  nil -> \ loc -> tt ;
+  cons a p | ih -> \ loc -> (f loc.1,trans (equation loc.1) loc.2.1,ih loc.2.2) } ;
+ record Collection (n : Nat) (p : Fin n -> List K) {
+  count : Nat ;
+  coefficient : Fin count -> K ;
+  locations (i : Fin n) : Locations count coefficient (p i) ;
+ } ;
+ record ListCollection (p : List K) {
+  count : Nat ;
+  coefficient : Fin count -> K ;
+  locations : Locations count coefficient p ;
+ } ;
+ module Cons (a : K) (p : List K) (old : ListCollection[p]) {
+  coefficient : Fin (suc old.count) -> K = snoc (Fin old.count) K old.coefficient a ;
+  locations : Locations (suc old.count) coefficient (cons a p) =
+   (inr tt,refl a,relocate old.count (suc old.count) old.coefficient coefficient (\ i -> inl i)
+    (\ i -> refl (old.coefficient i)) p old.locations) ;
+  result : ListCollection[cons a p] = new ListCollection[cons a p,suc old.count,coefficient,locations] ;
+ } ;
+ list : (p : List K) -> ListCollection[p] = split {
+  nil -> new ListCollection[nil,zero,\ i -> efq i,tt] ;
+  cons a p | ih -> Cons[a,p,ih].result } ;
+ module Step (n : Nat) (p : Fin (suc n) -> List K) (old : Collection[n,\ i -> p (inl i)]) {
+  last : ListCollection[p (inr tt)] = list (p (inr tt)) ;
+  count : Nat = plus last.count old.count ;
+  coefficient : Fin count -> K = FinSum[l].cases old.count K old.coefficient last.count last.coefficient ;
+  old-locations (i : Fin n) : Locations count coefficient (p (inl i)) =
+   relocate old.count count old.coefficient coefficient (FinSum[l].left old.count last.count)
+    (FinSum[l].cases-left old.count K old.coefficient last.count last.coefficient) (p (inl i)) (old.locations i) ;
+  last-locations : Locations count coefficient (p (inr tt)) =
+   relocate last.count count last.coefficient coefficient (FinSum[l].right old.count last.count)
+    (FinSum[l].cases-right old.count K old.coefficient last.count last.coefficient) (p (inr tt)) last.locations ;
+  locations : (i : Fin (suc n)) -> Locations count coefficient (p i) =
+   AffineFinite[l].section n (\ i -> Locations count coefficient (p i)) old-locations last-locations ;
+  result : Collection[suc n,p] = new Collection[suc n,p,count,coefficient,locations] ;
+ } ;
+ family : (n : Nat) (p : Fin n -> List K) -> Collection[n,p] = split {
+  zero -> \ p -> new Collection[zero,p,zero,\ i -> efq i,\ i -> efq i] ;
+  suc n | ih -> \ p -> Step[n,p,ih (\ i -> p (inl i))].result } ;
+ module Lift (L : U l) (t : Nat) (coefficients : Fin t -> K)
+  (f : L -> K) (preimages : Fin t -> L) (image-law : (i : Fin t) -> Id K (f (preimages i)) (coefficients i)) {
+  lower : (p : List K) -> Locations t coefficients p -> List L = split {
+   nil -> \ loc -> nil ; cons a p | ih -> \ loc -> cons (preimages loc.1) (ih loc.2.2) } ;
+  head-image (a : K) (p : List K) (loc : Locations t coefficients (cons a p)) : Id K (f (preimages loc.1)) a =
+   trans (image-law loc.1) loc.2.1 ;
+  image : (p : List K) (loc : Locations t coefficients p) ->
+   Id (List K) (MonicBasisUniversal[l].map-list L K f (lower p loc)) p = split {
+   nil -> \ loc -> refl nil ;
+   cons a p | ih -> \ loc ->
+    calc (List K) {
+     MonicBasisUniversal[l].map-list L K f (lower (cons a p) loc)
+      =< ap (\ b -> cons b (MonicBasisUniversal[l].map-list L K f (lower p loc.2.2))) (head-image a p loc)
+       > cons a (MonicBasisUniversal[l].map-list L K f (lower p loc.2.2))
+      =< ap (\ q -> cons a q) (ih loc.2.2) > cons a p } } ;
+ } ;
+} ;

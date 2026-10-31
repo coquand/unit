@@ -1,0 +1,80 @@
+-- Scalar extension of a finite presentation along R->K, constructed by
+-- mapping every coefficient. A K-algebra with the mapped presentation has
+-- Hom_K(T,B) equivalent to Hom_R(S,restrict B). This is the mapping-out
+-- universal property of base change, without a tensor construction.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module E = Equivalences[l] ;
+module Over (R K : CRing) (setR : Pr.isSet R.R) (setK : Pr.isSet K.R) (rho : H.Hom R K) {
+ module CR = Algebras[l].Over[R,setR] ; module CK = Algebras[l].Over[K,setK] ;
+ module PR = Presentations[l].Over[R,setR] ; module PK = Presentations[l].Over[K,setK] ;
+ restrict (B : CK.Algebra) : CR.Algebra = CR.mkAlgebra B.ring B.set (H.compose R K B.ring B.iota rho) ;
+ restrict-map (A B : CK.Algebra) (f : CK.Hom A B) : CR.Hom (restrict A) (restrict B) =
+  (f.1,\ r -> f.2 (rho.1 r)) ;
+ expression (V : U l) : PR.Expr V -> PK.Expr V = split {
+  var v -> var v ; cst r -> cst (rho.1 r) ;
+  sumE e f | re rf -> sumE re rf ; mulE e f | re rf -> mulE re rf } ;
+ equations (V : U l) : PR.Equations V -> PK.Equations V = split {
+  nil -> nil ; cons e es | rec -> cons (expression V e) rec } ;
+ presentation (p : PR.Presentation) : PK.Presentation = (p.1,equations (Fin p.1) p.2) ;
+ value (V : U l) (B : CK.Algebra) (x : V -> B.ring.R) : (e : PR.Expr V) ->
+  Id B.ring.R (PK.eval V B x (expression V e)) (PR.eval V (restrict B) x e) = split {
+   var v -> refl (x v) ; cst r -> refl (B.iota.1 (rho.1 r)) ;
+   sumE e f | re rf -> cong2 B.ring.R B.ring.add _ _ _ _ re rf ;
+   mulE e f | re rf -> cong2 B.ring.R B.ring.mul _ _ _ _ re rf } ;
+ zeros-forward (V : U l) (B : CK.Algebra) (x : V -> B.ring.R) :
+  (es : PR.Equations V) -> PR.Zeros V (restrict B) x es -> PK.Zeros V B x (equations V es) = split {
+   nil -> \ h -> tt ; cons e es | rec -> \ h -> (trans (value V B x e) h.1,rec h.2) } ;
+ zeros-backward (V : U l) (B : CK.Algebra) (x : V -> B.ring.R) :
+  (es : PR.Equations V) -> PK.Zeros V B x (equations V es) -> PR.Zeros V (restrict B) x es = split {
+   nil -> \ h -> tt ; cons e es | rec -> \ h -> (trans (sym (value V B x e)) h.1,rec h.2) } ;
+ solution-forward (p : PR.Presentation) (B : CK.Algebra) (s : PR.Solutions p (restrict B)) :
+  PK.Solutions (presentation p) B = (s.1,zeros-forward (Fin p.1) B s.1 p.2 s.2) ;
+ solution-backward (p : PR.Presentation) (B : CK.Algebra) (s : PK.Solutions (presentation p) B) :
+  PR.Solutions p (restrict B) = (s.1,zeros-backward (Fin p.1) B s.1 p.2 s.2) ;
+ solution-fb (p : PR.Presentation) (B : CK.Algebra) (s : PK.Solutions (presentation p) B) :
+  Id (PK.Solutions (presentation p) B) (solution-forward p B (solution-backward p B s)) s =
+  PK.solutions-ext (presentation p) B _ _ (\ i -> refl (s.1 i)) ;
+ solution-bf (p : PR.Presentation) (B : CK.Algebra) (s : PR.Solutions p (restrict B)) :
+  Id (PR.Solutions p (restrict B)) (solution-backward p B (solution-forward p B s)) s =
+  PR.solutions-ext p (restrict B) _ _ (\ i -> refl (s.1 i)) ;
+ solution-equivalence (p : PR.Presentation) (B : CK.Algebra) :
+  Pr.Equiv (PR.Solutions p (restrict B)) (PK.Solutions (presentation p) B) =
+  (solution-forward p B,Pr.qinv _ _ (solution-forward p B) (solution-backward p B) (solution-fb p B) (solution-bf p B)) ;
+
+ module At (S : CR.Algebra) (p : PR.Presentation) (ps : PR.Presents p S)
+  (T : CK.Algebra) (pt : PK.Presents (presentation p) T) {
+  inclusion : CR.Hom S (restrict T) = (ps.2 (restrict T)).sec (solution-backward p T pt.1) ;
+  inclusion-generators (i : Fin p.1) : Id T.ring.R (inclusion.1.1 (ps.1.1 i)) (pt.1.1 i) =
+   Pr.ap (PR.Solutions p (restrict T)) T.ring.R (\ s -> s.1 i) _ _ ((ps.2 (restrict T)).sec-eq (solution-backward p T pt.1)) ;
+  module To (B : CK.Algebra) {
+   forward (f : CK.Hom T B) : CR.Hom S (restrict B) =
+    CR.compose S (restrict T) (restrict B) (restrict-map T B f) inclusion ;
+   input (g : CR.Hom S (restrict B)) : PK.Solutions (presentation p) B =
+    solution-forward p B (PR.canonical p S ps.1 (restrict B) g) ;
+   backward (g : CR.Hom S (restrict B)) : CK.Hom T B = (pt.2 B).sec (input g) ;
+   backward-generators (g : CR.Hom S (restrict B)) (i : Fin p.1) :
+    Id B.ring.R ((backward g).1.1 (pt.1.1 i)) (g.1.1 (ps.1.1 i)) =
+    Pr.ap (PK.Solutions (presentation p) B) B.ring.R (\ s -> s.1 i) _ _ ((pt.2 B).sec-eq (input g)) ;
+   fb (g : CR.Hom S (restrict B)) : Id (CR.Hom S (restrict B)) (forward (backward g)) g =
+    E.injective (CR.Hom S (restrict B)) (PR.Solutions p (restrict B))
+     (PR.canonical p S ps.1 (restrict B)) (ps.2 (restrict B)) _ _
+     (PR.solutions-ext p (restrict B) _ _ (\ i ->
+      trans (ap (backward g).1.1 (inclusion-generators i)) (backward-generators g i))) ;
+   bf (f : CK.Hom T B) : Id (CK.Hom T B) (backward (forward f)) f =
+    E.injective (CK.Hom T B) (PK.Solutions (presentation p) B)
+     (PK.canonical (presentation p) T pt.1 B) (pt.2 B) _ _
+     (PK.solutions-ext (presentation p) B _ _ (\ i ->
+      trans (backward-generators (forward f) i) (ap f.1.1 (inclusion-generators i)))) ;
+   universal : Pr.isEquiv (CK.Hom T B) (CR.Hom S (restrict B)) forward =
+    Pr.qinv _ _ forward backward fb bf ;
+   equivalence : Pr.Equiv (CK.Hom T B) (CR.Hom S (restrict B)) = (forward,universal) ;
+  } ;
+ } ;
+ module Constructed (S : CR.Algebra) (p : PR.Presentation) (ps : PR.Presents p S) {
+  module Model = PresentationExistence[l].Over[K,setK,presentation p] ;
+  algebra : CK.Algebra = Model.A.algebra ;
+  presents : PK.Presents (presentation p) algebra = Model.presentation ;
+  finite-presentation : PK.FP algebra = Model.finitely-presented ;
+  module BC = At[S,p,ps,algebra,presents] ;
+ } ;
+} ;

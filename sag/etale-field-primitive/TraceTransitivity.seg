@@ -1,0 +1,88 @@
+-- Trace transitivity for an explicitly free intermediate algebra.
+-- No product basis is flattened or constructed. Let lambda_j be the
+-- A-coordinates of S and v_j its A-basis. The identity is sum_j g_j f_j,
+-- with g_j(a)=a*v_j and f_j=lambda_j. Rectangular trace cyclicity gives
+-- Tr_S/k(b)=sum_j Tr_A/k(lambda_j(b*v_j))=Tr_A/k(Tr_S/A(b)).
+-- Consequently perfect trace on S descends as NONDEGENERACY on an
+-- injectively embedded A; a discriminant transitivity formula is unneeded.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (A S : Algebras[l].Over[k,setk].Algebra)
+ (h : Algebras[l].Over[k,setk].Hom A S)
+ (m n : Nat) (ab : TraceBasis[l].Over[k,setk,A].Basis[m])
+ (sb : TraceBasis[l].Over[k,setk,S].Basis[n]) {
+ module C = Algebras[l].Over[A.ring,A.set] ;
+ algebra : C.Algebra = C.mkAlgebra S.ring S.set h.1 ;
+ module TL = TraceLinear[l].Over[k,setk] ;
+ module AB = TraceBasis[l].Over[k,setk,A].At[m,ab] ;
+ module SB = TraceBasis[l].Over[k,setk,S].At[n,sb] ;
+ module KS = FiniteIdeal[l].Sums[k] ; module SS = FiniteIdeal[l].Sums[S.ring] ;
+ module AS = FiniteIdeal[l].Sums[A.ring] ; module KSum = MnSums[l].Over[k] ;
+ module L = RL[S.ring] ;
+ module Free (r : Nat) (basis : TraceBasis[l].Over[A.ring,A.set,algebra].Basis[r]) {
+  module RB = TraceBasis[l].Over[A.ring,A.set,algebra].At[r,basis] ;
+  module Column (j : Fin r) {
+   into (a : A.ring.R) : S.ring.R = S.ring.mul (h.1.1 a) (basis.vector j) ;
+   into-add (a b : A.ring.R) : Id S.ring.R (into (A.ring.add a b)) (S.ring.add (into a) (into b)) =
+    trans (ap (\ c -> S.ring.mul c (basis.vector j)) (h.1.2.2.1 a b))
+     (L.dist-left (h.1.1 a) (h.1.1 b) (basis.vector j)) ;
+   into-scale (c : k.R) (a : A.ring.R) : Id S.ring.R (into (A.ring.mul (A.iota.1 c) a)) (S.ring.mul (S.iota.1 c) (into a)) =
+    trans (ap (\ b -> S.ring.mul b (basis.vector j)) (h.1.2.2.2 (A.iota.1 c) a))
+     (trans (ap (\ b -> S.ring.mul (S.ring.mul b (h.1.1 a)) (basis.vector j)) (h.2 c))
+      (sym (S.ring.mulA (S.iota.1 c) (h.1.1 a) (basis.vector j)))) ;
+   g : TL.Linear[A,S] = new TL.Linear[A,S,into,into-add,into-scale] ;
+   out-scale (c : k.R) (a : S.ring.R) :
+    Id A.ring.R (basis.coordinate (S.ring.mul (S.iota.1 c) a) j) (A.ring.mul (A.iota.1 c) (basis.coordinate a j)) =
+    trans (ap (\ b -> basis.coordinate (S.ring.mul b a) j) (sym (h.2 c))) (basis.scale (A.iota.1 c) a j) ;
+   f : TL.Linear[S,A] = new TL.Linear[S,A,\ a -> basis.coordinate a j,\ a b -> basis.add a b j,out-scale] ;
+   module At (b : S.ring.R) {
+    multiplied : TL.Linear[S,A] = TL.compose S S A f (TL.multiply S b) ;
+    module Cyclic = TL.Cyclic[S,A,n,m,sb,ab,multiplied,g] ;
+    coefficient : A.ring.R = basis.coordinate (S.ring.mul b (basis.vector j)) j ;
+    reverse (a : A.ring.R) : Id A.ring.R (multiplied.map (g.map a)) (A.ring.mul coefficient a) =
+     trans (ap (\ c -> basis.coordinate c j) (L.mul-swap b (h.1.1 a) (basis.vector j)))
+      (trans (basis.scale a (S.ring.mul b (basis.vector j)) j) (A.ring.mulC a coefficient)) ;
+    theorem : Id k.R (TL.trace S n sb (TL.compose S A S g multiplied)) (AB.trace coefficient) =
+     trans Cyclic.theorem
+      (trans (TL.trace-equal A m ab (TL.compose A S A multiplied g) (TL.multiply A coefficient) reverse)
+       (TL.multiply-trace A m ab coefficient)) ;
+   } ;
+  } ;
+  module At (b : S.ring.R) {
+   entry (i : Fin n) (j : Fin r) : k.R = sb.coordinate
+    (S.ring.mul (h.1.1 (basis.coordinate (S.ring.mul b (sb.vector i)) j)) (basis.vector j)) i ;
+   expand (i : Fin n) : Id k.R (sb.coordinate (S.ring.mul b (sb.vector i)) i) (KS.sum r (entry i)) =
+    trans (ap (\ a -> sb.coordinate a i) (sym (basis.reconstruction (S.ring.mul b (sb.vector i)))))
+     (SB.sum r (\ j -> S.ring.mul (h.1.1 (basis.coordinate (S.ring.mul b (sb.vector i)) j)) (basis.vector j)) i) ;
+   trace-linear : TL.Linear[A,Algebras[l].Over[k,setk].base] =
+    new TL.Linear[A,Algebras[l].Over[k,setk].base,AB.trace,AB.trace-add,AB.trace-scale] ;
+   module MapTrace = TL.Map[A,Algebras[l].Over[k,setk].base,trace-linear] ;
+   theorem : Id k.R (SB.trace b) (AB.trace (RB.trace b)) =
+    calc k.R {
+     SB.trace b
+      =< KS.sum-cong n (\ i -> sb.coordinate (S.ring.mul b (sb.vector i)) i) (\ i -> KS.sum r (entry i)) expand
+       > KS.sum n (\ i -> KS.sum r (entry i))
+      =< KSum.exchange r n entry
+       > KS.sum r (\ j -> KS.sum n (\ i -> entry i j))
+      =< KS.sum-cong r (\ j -> KS.sum n (\ i -> entry i j))
+       (\ j -> AB.trace (basis.coordinate (S.ring.mul b (basis.vector j)) j))
+       (\ j -> Column[j].At[b].theorem)
+       > KS.sum r (\ j -> AB.trace (basis.coordinate (S.ring.mul b (basis.vector j)) j))
+      =< sym (MapTrace.sum r (\ j -> basis.coordinate (S.ring.mul b (basis.vector j)) j))
+       > AB.trace (RB.trace b) } ;
+  } ;
+  trace (b : S.ring.R) : Id k.R (SB.trace b) (AB.trace (RB.trace b)) = At[b].theorem ;
+  module Descend
+   (injective : (a b : A.ring.R) -> Id S.ring.R (h.1.1 a) (h.1.1 b) -> Id A.ring.R a b)
+   (nondegenerate : (a : S.ring.R) -> ((b : S.ring.R) -> Id k.R (SB.trace (S.ring.mul a b)) k.z) -> Id S.ring.R a S.ring.z)
+   (a : A.ring.R) (zero-pairings : (b : A.ring.R) -> Id k.R (AB.trace (A.ring.mul a b)) k.z) {
+   pair-zero (b : S.ring.R) : Id k.R (SB.trace (S.ring.mul (h.1.1 a) b)) k.z =
+    trans (trace (S.ring.mul (h.1.1 a) b))
+     (trans (ap AB.trace (RB.trace-scale a b)) (zero-pairings (RB.trace b))) ;
+   killed : Id S.ring.R (h.1.1 a) S.ring.z = nondegenerate (h.1.1 a) pair-zero ;
+   theorem : Id A.ring.R a A.ring.z = injective a A.ring.z
+    (trans killed (sym (RingHom[l].zero A.ring S.ring h.1))) ;
+  } ;
+ } ;
+} ;

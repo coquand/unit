@@ -1,0 +1,107 @@
+-- Finite power families and polynomial annihilators. The polynomial
+-- evaluation is the constructed universal ring map. Its bounded power
+-- expansion is reused unchanged. Gaussian membership in the span of the
+-- first m powers is equivalent to a monic relation of degree m.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (field : SelectedFactorStatement[l].Over[k,setk].Field)
+ (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+ (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (x : S.ring.R) {
+ module B = PolynomialRing[l].Extension[k,setk] ; module Raw = Poly[l].PolyR[k] ; module M = Mul[l].MulR[k] ;
+ module Bound = PolynomialBounds[l].Over[k] ; module HI = HorrocksInterface[l].Over[k,setk] ;
+ module ET = EtaleTopology[l].Over[k,setk] ; module UP = Universal[l].Property[k,S.ring,setk,S.set].Given[S.iota,x] ;
+ module E = PolynomialFiniteExpansion[l].Over[k,S.ring,setk,UP.extend] ;
+ module V = GaussianVectors[l].Over[k] ; module FM = FieldLinearMembership[l].Over[k,setk,field] ;
+ module TB = TraceBasis[l].Over[k,setk,S].At[n,basis] ;
+ module Sum = FiniteIdeal[l].Sums[S.ring] ; module KS = FiniteIdeal[l].Sums[k] ;
+ module Pow = AffinePowers[l].Over[S.ring] ; module L = RL[S.ring] ;
+ value (p : Raw.P) : S.ring.R = UP.extend.1 (B.include p) ;
+ Root (p : Raw.P) : U l = Id S.ring.R (value p) S.ring.z ;
+ value-zero : Root nil = RingHom[l].zero B.ring S.ring UP.extend ;
+ value-equal (p q : Raw.P) (h : Raw.peq p q) : Id S.ring.R (value p) (value q) = ap UP.extend.1 (B.Q.relates p q h) ;
+ value-scale (a : k.R) (p : Raw.P) : Id S.ring.R (value (M.scal a p)) (S.ring.mul (S.iota.1 a) (value p)) =
+  trans (ap UP.extend.1 (FieldPolynomialDivision[l].Over[k,setk].scaled a p))
+   (trans (UP.extend.2.2.2 (B.constant a) (B.include p)) (ap (\ c -> S.ring.mul c (value p)) (UP.on-constants a))) ;
+ value-cons (a : k.R) (p : Raw.P) : Id S.ring.R (value (cons a p))
+  (S.ring.add (E.phi.1 a) (S.ring.mul E.variable (value p))) =
+  trans (ap UP.extend.1 (B.horner a p))
+   (trans (UP.extend.2.2.1 (B.constant a) (B.mulQ B.variable (B.include p)))
+    (ap (S.ring.add (E.phi.1 a)) (UP.extend.2.2.2 B.variable (B.include p)))) ;
+ module Horner = MonicReduce[l].Horner[k,S.ring,S.iota,x] ;
+ horner-value : (p : Raw.P) -> Id S.ring.R (value p) (Horner.horner p) = split {
+  nil -> value-zero ;
+  cons a p | ih -> trans (value-cons a p)
+   (cong2 S.ring.R S.ring.add _ _ _ _ (UP.on-constants a)
+    (cong2 S.ring.R S.ring.mul _ _ _ _ UP.on-variable ih)) } ;
+ monic-value : (lower : Raw.P) -> Id S.ring.R (value (HI.monic-list lower))
+  (S.ring.add (value lower) (Pow.power E.variable (Raw.plen lower))) = split {
+  nil -> trans UP.extend.2.1 (sym (trans (ap (\ a -> S.ring.add a S.ring.o) value-zero) (L.zl S.ring.o))) ;
+  cons a p | ih -> trans (value-cons a (HI.monic-list p))
+   (trans (ap (\ c -> S.ring.add (E.phi.1 a) (S.ring.mul E.variable c)) ih)
+    (trans (ap (S.ring.add (E.phi.1 a)) (S.ring.dist E.variable (value p) (Pow.power E.variable (Raw.plen p))))
+     (trans (S.ring.addA (E.phi.1 a) (S.ring.mul E.variable (value p)) (Pow.power E.variable (suc (Raw.plen p))))
+      (ap (\ c -> S.ring.add c (Pow.power E.variable (suc (Raw.plen p)))) (sym (value-cons a p)))))) } ;
+ coefficients-list : (m : Nat) (c : Fin m -> k.R) (i : Fin m) ->
+  Id k.R (E.coefficients m (ET.coefficients m c) i) (c i) = split {
+  zero -> \ c i -> efq i ;
+  suc m | ih -> \ c -> AffineFinite[l].section m
+   (\ i -> Id k.R (E.coefficients (suc m) (ET.coefficients (suc m) c) i) (c i))
+   (ih (\ i -> c (inl i))) (refl (c (inr tt))) } ;
+ list-bound (m : Nat) (c : Fin m -> k.R) : Bound.Bound m (ET.coefficients m c) =
+  \ i -> trans (ap (Raw.coef (ET.coefficients m c)) (ap (\ d -> plus d i) (sym (ET.coefficients-length m c))))
+   (M.coef-beyond (ET.coefficients m c) i) ;
+ combination (m : Nat) (c : Fin m -> k.R) : S.ring.R =
+  Sum.sum m (\ i -> S.ring.mul (E.phi.1 (c i)) (E.basis m i)) ;
+ list-value (m : Nat) (c : Fin m -> k.R) : Id S.ring.R (value (ET.coefficients m c)) (combination m c) =
+  trans (E.equation m (ET.coefficients m c) (list-bound m c))
+   (Sum.sum-cong m (\ i -> S.ring.mul (E.phi.1 (E.coefficients m (ET.coefficients m c) i)) (E.basis m i))
+    (\ i -> S.ring.mul (E.phi.1 (c i)) (E.basis m i))
+    (\ i -> ap (\ a -> S.ring.mul (E.phi.1 a) (E.basis m i)) (coefficients-list m c i))) ;
+ sum-neg : (m : Nat) (f : Fin m -> S.ring.R) -> Id S.ring.R
+  (Sum.sum m (\ i -> S.ring.neg (f i))) (S.ring.neg (Sum.sum m f)) = split {
+  zero -> \ f -> sym L.neg-zero ;
+  suc m | ih -> \ f -> trans (ap (S.ring.add (S.ring.neg (f (inr tt)))) (ih (\ i -> f (inl i))))
+   (sym (L.neg-add (f (inr tt)) (Sum.sum m (\ i -> f (inl i))))) } ;
+ combination-neg (m : Nat) (c : Fin m -> k.R) : Id S.ring.R
+  (combination m (\ i -> k.neg (c i))) (S.ring.neg (combination m c)) =
+  trans (Sum.sum-cong m (\ i -> S.ring.mul (E.phi.1 (k.neg (c i))) (E.basis m i))
+   (\ i -> S.ring.neg (S.ring.mul (E.phi.1 (c i)) (E.basis m i))) (\ i ->
+   trans (ap (\ a -> S.ring.mul a (E.basis m i)) (RingHom[l].negation k S.ring E.phi (c i)))
+    (L.neg-mul-left (E.phi.1 (c i)) (E.basis m i))))
+   (sum-neg m (\ i -> S.ring.mul (E.phi.1 (c i)) (E.basis m i))) ;
+ vectors (m : Nat) (i : Fin m) : V.Vec n = basis.coordinate (E.basis m i) ;
+ coordinate-combination (m : Nat) (c : Fin m -> k.R) (j : Fin n) :
+  Id k.R (basis.coordinate (combination m c) j) (V.comb n m (vectors m) c j) =
+  trans (TB.sum m (\ i -> S.ring.mul (E.phi.1 (c i)) (E.basis m i)) j)
+   (KS.sum-cong m (\ i -> basis.coordinate (S.ring.mul (E.phi.1 (c i)) (E.basis m i)) j)
+    (\ i -> k.mul (basis.coordinate (E.basis m i) j) (c i)) (\ i ->
+    trans (ap (\ a -> basis.coordinate (S.ring.mul a (E.basis m i)) j) (UP.on-constants (c i)))
+     (trans (basis.scale (c i) (E.basis m i) j) (k.mulC (c i) (basis.coordinate (E.basis m i) j))))) ;
+ module At (m : Nat) {
+  target : S.ring.R = Pow.power E.variable m ;
+  module Membership = FM.At[n,m,vectors m] ;
+  Witness : U l = V.Span[n,m,vectors m].Witness (basis.coordinate target) ;
+  value-of (w : Witness) : Id S.ring.R (combination m w.1) target =
+   TB.coordinates-determine _ _ (\ j -> trans (coordinate-combination m w.1 j) (w.2 j)) ;
+  module Relation (w : Witness) {
+   lower : Raw.P = ET.coefficients m (\ i -> k.neg (w.1 i)) ;
+   length : Id Nat (Raw.plen lower) m = ET.coefficients-length m (\ i -> k.neg (w.1 i)) ;
+   root : Root (HI.monic-list lower) =
+    trans (monic-value lower)
+     (trans (cong2 S.ring.R S.ring.add _ _ _ _
+      (trans (list-value m (\ i -> k.neg (w.1 i))) (trans (combination-neg m w.1) (ap S.ring.neg (value-of w))))
+      (ap (Pow.power E.variable) length)) (L.neg-cancel target)) ;
+  } ;
+  from-combination (c : Fin m -> k.R) (h : Id S.ring.R (combination m c) target) : Witness =
+   (c,\ i -> trans (sym (coordinate-combination m c i)) (ap (\ a -> basis.coordinate a i) h)) ;
+  from-monic (lower : Raw.P) (length : Id Nat (Raw.plen lower) m) (bound : Bound.Bound m lower)
+   (root : Root (HI.monic-list lower)) : Witness =
+   from-combination (\ i -> k.neg (E.coefficients m lower i))
+    (trans (combination-neg m (E.coefficients m lower))
+     (trans (ap S.ring.neg (sym (E.equation m lower bound)))
+      (sym (L.neg-uniq (value lower) target
+       (trans (sym (trans (monic-value lower) (ap (S.ring.add (value lower)) (ap (Pow.power E.variable) length)))) root))))) ;
+  decide : Plus Witness (Not Witness) = Membership.decide (basis.coordinate target) ;
+ } ;
+} ;

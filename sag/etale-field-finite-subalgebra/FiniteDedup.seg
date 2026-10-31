@@ -1,0 +1,42 @@
+-- Deduplicate a finite enumeration in a discrete set. Because the
+-- retained list is injective, its membership witness is a proposition;
+-- mere coverage therefore gives an ACTUAL unique index for every value.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (X : U l) (setX : Pr.isSet X)
+ (equal : (a b : X) -> Plus (Id X a b) (Not (Id X a b))) {
+ module D = FiniteDistinct[l].Over[X,setX,equal] ;
+ record Enumeration (n : Nat) (v : Fin n -> X) {
+  size : Nat ;
+  vector : Fin size -> X ;
+  injective : D.Injective size vector ;
+  represents (i : Fin n) : D.Member size vector (v i) ;
+ } ;
+ initial (v : Fin zero -> X) : Enumeration[zero,v] =
+  mkEnumeration zero v zero (\ i -> efq i) (\ i j h -> efq i) (\ i -> efq i) ;
+ module Step (n : Nat) (v : Fin (suc n) -> X) (old : Enumeration[n,\ i -> v (inl i)]) {
+  keep (m : D.Member old.size old.vector (v (inr tt))) : Enumeration[suc n,v] =
+   mkEnumeration (suc n) v old.size old.vector old.injective
+    (AffineFinite[l].section n (\ i -> D.Member old.size old.vector (v i)) old.represents m) ;
+  module Add (fresh : D.Fresh old.size old.vector (v (inr tt))) {
+   module A = D.Append[old.size,old.vector,old.injective,v (inr tt),fresh] ;
+   represents : (i : Fin (suc n)) -> D.Member (suc old.size) A.vector (v i) =
+    AffineFinite[l].section n (\ i -> D.Member (suc old.size) A.vector (v i))
+     (\ i -> (inl (old.represents i).1,(old.represents i).2)) (inr tt,refl (v (inr tt))) ;
+   result : Enumeration[suc n,v] = mkEnumeration (suc n) v (suc old.size) A.vector A.equal-indices represents ;
+  } ;
+  result : D.Lookup old.size old.vector (v (inr tt)) -> Enumeration[suc n,v] = split {
+   inl m -> keep m ; inr fresh -> Add[fresh].result } ;
+ } ;
+ dedup : (n : Nat) (v : Fin n -> X) -> Enumeration[n,v] = split {
+  zero -> initial ; suc n | ih -> \ v -> Step[n,v,ih (\ i -> v (inl i))].result (D.lookup (ih (\ i -> v (inl i))).size (ih (\ i -> v (inl i))).vector (v (inr tt))) } ;
+ module Onto (n : Nat) (v : Fin n -> X)
+  (onto : (x : X) -> Tr.Trunc[D.Member n v x].carrier) {
+  result : Enumeration[n,v] = dedup n v ;
+  lift (x : X) (w : D.Member n v x) : D.Member result.size result.vector x =
+   ((result.represents w.1).1,trans (result.represents w.1).2 w.2) ;
+  cover (x : X) : D.Member result.size result.vector x =
+   TC.rec (D.Member n v x) @l (D.Member result.size result.vector x)
+    (D.member-prop result.size result.vector result.injective x) (lift x) (onto x) ;
+ } ;
+} ;

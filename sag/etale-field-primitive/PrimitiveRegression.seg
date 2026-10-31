@@ -1,0 +1,229 @@
+-- A genuinely split finite algebra: F2 x F2, with the prime selected by
+-- the first projection. The finite construction produces (1,0), kills
+-- the other factor and supplies the field operations on its fixed points.
+-- A checked selected monogenic certificate then feeds the finite-basis
+-- representation extension. Reduced-integral regularity is also run.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module B = BooleanRing[l] ;
+module Tr = Truncation[l] ;
+k : CRing = B.two-ring ;
+module KL = RL[k] ;
+empty-to-ring : Base.Empty -> Empty = split {} ;
+nonzero : Not (Id k.R k.o k.z) = \ h -> empty-to-ring (B.true-false h) ;
+dec : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a) = split {
+ false -> inl (refl false) ; true -> inr (true,refl true) } ;
+Pair : U l = k.R * k.R ;
+pair-eq (a b : Pair) (h : Id k.R a.1 b.1) (j : Id k.R a.2 b.2) : Id Pair a b =
+ AffineHLevels[l].pair-path k.R k.R a.1 b.1 a.2 b.2 h j ;
+z : Pair = (false,false) ; o : Pair = (true,true) ;
+add (a b : Pair) : Pair = (k.add a.1 b.1,k.add a.2 b.2) ;
+mul (a b : Pair) : Pair = (k.mul a.1 b.1,k.mul a.2 b.2) ;
+neg (a : Pair) : Pair = (k.neg a.1,k.neg a.2) ;
+A : CRing = mkCRing Pair z o add mul neg
+ (\ a b c -> pair-eq _ _ (k.addA a.1 b.1 c.1) (k.addA a.2 b.2 c.2))
+ (\ a b -> pair-eq _ _ (k.addC a.1 b.1) (k.addC a.2 b.2))
+ (\ a -> pair-eq _ _ (k.addZ a.1) (k.addZ a.2))
+ (\ a -> pair-eq _ _ (k.addN a.1) (k.addN a.2))
+ (\ a b c -> pair-eq _ _ (k.mulA a.1 b.1 c.1) (k.mulA a.2 b.2 c.2))
+ (\ a b -> pair-eq _ _ (k.mulC a.1 b.1) (k.mulC a.2 b.2))
+ (\ a -> pair-eq _ _ (k.mulO a.1) (k.mulO a.2))
+ (\ a b c -> pair-eq _ _ (k.dist a.1 b.1 c.1) (k.dist a.2 b.2 c.2)) ;
+setA : Pr.isSet Pair = Pr.isSet-Sigma k.R (\ a -> k.R) B.bool-set (\ a -> B.bool-set) ;
+module L = RL[A] ; module PI = PrimeIdempotents[l].Over[A] ;
+member (a : Pair) : U l = Id k.R a.1 false ;
+ideal : RegularIdeal[l].IdealPred[A] = RegularIdeal[l].mkIdealPred A member (refl false)
+ (\ a b ha hb -> trans (ap (\ x -> k.add x b.1) ha) (trans (KL.zl b.1) hb))
+ (\ b a h -> trans (ap (k.mul b.1) h) (KL.mul-zero b.1)) ;
+prime-and : (a b : k.R) -> Id k.R (k.mul a b) false -> Plus (Id k.R a false) (Id k.R b false) = split {
+ false -> \ b h -> inl (refl false) ;
+ true -> split { false -> \ h -> inr (refl false) ; true -> \ h -> efq (nonzero h) } } ;
+prime-dec : (a : k.R) -> Plus (Id k.R a false) (Not (Id k.R a false)) = split {
+ false -> inl (refl false) ; true -> inr nonzero } ;
+q : PI.Prime = new PI.Prime[ideal,\ a -> B.bool-set _ _,nonzero,
+ \ a b -> prime-and a.1 b.1,\ a -> prime-dec a.1] ;
+idem (a : Pair) : Id Pair (A.mul a a) a = pair-eq _ _ (B.and-self a.1) (B.and-self a.2) ;
+module Reg = PrincipalRegularity[l].Over[A] ;
+regular-witness (a : Pair) : Reg.Witness a = (o,sym (trans (A.mulO (A.mul a a)) (idem a))) ;
+regular (a : Pair) : Tr.Trunc[Reg.Witness a].carrier = Tr.Trunc[Reg.Witness a].inc (regular-witness a) ;
+one : Nat = suc zero ; two : Nat = suc one ; three : Nat = suc two ; four : Nat = suc three ;
+i0 : Fin two = inl (inr tt) ; i1 : Fin two = inr tt ;
+i00 : Fin four = inl (inl (inl (inr tt))) ; i01 : Fin four = inl (inl (inr tt)) ;
+i10 : Fin four = inl (inr tt) ; i11 : Fin four = inr tt ;
+enumeration : Fin four -> Pair = snoc (Fin three) Pair
+ (snoc (Fin two) Pair (snoc (Fin one) Pair (\ i -> (false,false)) (false,true)) (true,false)) (true,true) ;
+index : k.R -> k.R -> Fin four = split {
+ false -> split { false -> i00 ; true -> i01 } ; true -> split { false -> i10 ; true -> i11 } } ;
+index-value : (a b : k.R) -> Id Pair (enumeration (index a b)) (a,b) = split {
+ false -> split { false -> refl (false,false) ; true -> refl (false,true) } ;
+ true -> split { false -> refl (true,false) ; true -> refl (true,true) } } ;
+covers (a : Pair) : Tr.Trunc[(i : Fin four) * Id Pair (enumeration i) a].carrier =
+ Tr.Trunc[(i : Fin four) * Id Pair (enumeration i) a].inc (index a.1 a.2,index-value a.1 a.2) ;
+module Finite = FinitePrimeFactor[l].Over[A,setA,q].Enumerated[four,enumeration,covers] ;
+module Chosen = Finite.Chosen[\ i -> regular-witness (Finite.g i)] ;
+result : FinitePrimeFactor[l].Over[A,setA,q].Result = Chosen.result ;
+computed-idempotent : Id Pair result.value (true,false) = refl (true,false) ;
+selected-outside : Not (member result.value) = result.outside ;
+kills-other : Id Pair (A.mul result.value (false,true)) z = result.kills (false,true) (refl false) ;
+module Factor = Finite.Factor[result] ;
+field-nonzero : Not (Id Factor.F.Carrier Factor.F.one Factor.F.zero) = Factor.Selected.nonzero ;
+field-inverse (a : Factor.F.Carrier) (ha : Not (Id Factor.F.Carrier a Factor.F.zero)) :
+ RL[Factor.F.ring].unit a = Factor.Selected.inverse regular a ha ;
+finite-selected-field (a : Factor.F.Carrier) : Tr.Trunc[
+ (i : Fin four) * Id Factor.F.Carrier (Factor.Finite.enumeration i) a].carrier = Factor.Finite.cover a ;
+module SelectSide = PI.At[q] ;
+selected-complement : Id Pair (SelectSide.choose (false,true) (idem (false,true))).value (true,false) = refl (true,false) ;
+module C = Algebras[l].Over[k,B.bool-set] ;
+iota : RingHom[l].Hom k A = (\ a -> (a,a),refl o,\ a b -> refl (k.add a b,k.add a b),\ a b -> refl (k.mul a b,k.mul a b)) ;
+S : C.Algebra = C.mkAlgebra A setA iota ;
+reduced (a : Pair) (h : Id Pair (A.mul a a) z) : Id Pair a z = trans (sym (idem a)) h ;
+module Integral = ReducedIntegralRegular[l].Over[k,B.bool-set,dec,S,reduced] ;
+annihilator-pair : (a b : k.R) -> Id Pair (Integral.value (a,b) (cons false (cons true (cons true nil)))) z = split {
+ false -> split { false -> refl z ; true -> refl z } ;
+ true -> split { false -> refl z ; true -> refl z } } ;
+annihilator (a : Pair) : Id Pair (Integral.value a (cons false (cons true (cons true nil)))) z = annihilator-pair a.1 a.2 ;
+constructed-regular (a : Pair) : Reg.Witness a = Integral.from-annihilator a (cons false (cons true nil)) (annihilator a) ;
+constructed-inverse-value : Id Pair (constructed-regular (true,false)).1 o = refl o ;
+-- Two basis vectors, and a selected factor with generator 0 and P=T.
+-- The only retained representations are those of the two basis vectors.
+module TB = TraceBasis[l].Over[k,B.bool-set,S] ;
+module Sum = FiniteIdeal[l].Sums[A] ;
+module Delta = MnSums[l].Over[k] ;
+two-elim (P : Fin two -> U l) (a : P i0) (b : P i1) : (i : Fin two) -> P i =
+ AffineFinite[l].section one P
+  (AffineFinite[l].section zero (\ i -> P (inl i)) (\ i -> efq i) a) b ;
+vector : Fin two -> Pair = snoc (Fin one) Pair (\ i -> (true,false)) (false,true) ;
+coordinate (a : Pair) : Fin two -> k.R = snoc (Fin one) k.R (\ i -> a.1) a.2 ;
+coordinate-add (a b : Pair) : (i : Fin two) ->
+ Id k.R (coordinate (A.add a b) i) (k.add (coordinate a i) (coordinate b i)) =
+ two-elim (\ i -> Id k.R (coordinate (A.add a b) i) (k.add (coordinate a i) (coordinate b i)))
+  (refl (k.add a.1 b.1)) (refl (k.add a.2 b.2)) ;
+coordinate-scale (r : k.R) (a : Pair) : (i : Fin two) ->
+ Id k.R (coordinate (A.mul (iota.1 r) a) i) (k.mul r (coordinate a i)) =
+ two-elim (\ i -> Id k.R (coordinate (A.mul (iota.1 r) a) i) (k.mul r (coordinate a i)))
+  (refl (k.mul r a.1)) (refl (k.mul r a.2)) ;
+reconstruction-pair : (a b : k.R) ->
+ Id Pair (Sum.sum two (\ i -> A.mul (iota.1 (coordinate (a,b) i)) (vector i))) (a,b) = split {
+ false -> split { false -> refl (false,false) ; true -> refl (false,true) } ;
+ true -> split { false -> refl (true,false) ; true -> refl (true,true) } } ;
+on-vector : (j i : Fin two) -> Id k.R (coordinate (vector j) i) (Delta.delta two i j) =
+ two-elim (\ j -> (i : Fin two) -> Id k.R (coordinate (vector j) i) (Delta.delta two i j))
+  (two-elim (\ i -> Id k.R (coordinate (vector i0) i) (Delta.delta two i i0)) (refl true) (refl false))
+  (two-elim (\ i -> Id k.R (coordinate (vector i1) i) (Delta.delta two i i1)) (refl false) (refl true)) ;
+basis : TB.Basis[two] = new TB.Basis[two,vector,coordinate,coordinate-add,coordinate-scale,
+ \ a -> reconstruction-pair a.1 a.2,on-vector] ;
+module Statement = SelectedFactorStatement[l].Over[k,B.bool-set].At[S] ;
+representations : Fin two -> List k.R = snoc (Fin one) (List k.R) (\ i -> cons true nil) nil ;
+generation : (i : Fin two) -> Id Pair
+ (A.mul result.value (A.add (basis.vector i) (A.neg (Statement.value z (representations i))))) z =
+ two-elim (\ i -> Id Pair
+  (A.mul result.value (A.add (basis.vector i) (A.neg (Statement.value z (representations i))))) z)
+  kills-other kills-other ;
+selected : Statement.Selected[two,basis,q] = new Statement.Selected[two,basis,q,
+ result.value,result.idempotent,result.outside,z,cons false nil,L.mul-zero result.value,
+ o,L.mul-zero result.value,representations,generation] ;
+module Global = SelectedPolynomial[l].Over[k,B.bool-set,S,selected.generator].At[
+ two,basis,selected.idempotent,selected.representation,selected.generates] ;
+all-representations (a : Pair) : Id Pair
+ (A.mul selected.idempotent (A.add a (A.neg (Statement.value selected.generator (Global.representation a))))) z = Global.generates a ;
+field : SelectedFactorStatement[l].Over[k,B.bool-set].Field =
+ new SelectedFactorStatement[l].Over[k,B.bool-set].Field[dec,nonzero] ;
+module Equality = DiscreteCoordinates[l].Over[k,B.bool-set,field].At[S,two,basis] ;
+selected-field (a : Factor.F.Carrier) :
+ Plus (Id Factor.F.Carrier a Factor.F.zero) (RL[Factor.F.ring].unit a) = Factor.Selected.field regular Equality.zero a ;
+answer (a b : Pair) : Plus (Id Pair a b) (Not (Id Pair a b)) -> k.R = split {
+ inl h -> true ; inr h -> false } ;
+different-coordinates : Id k.R (answer (false,true) (true,false) (Equality.decide (false,true) (true,false))) false = refl false ;
+module BasisTrace = TB.At[two,basis] ;
+perfect : RL[k].unit (ExteriorModel[l].Over[k].det two
+ (\ j i -> BasisTrace.trace (A.mul (basis.vector j) (basis.vector i)))) = (true,refl true) ;
+input : Statement.Input = new Statement.Input[field,two,basis,perfect,q] ;
+inhabited-result : Statement.Result input = Tr.Trunc[Statement.Selected[two,basis,q]].inc selected ;
+-- Extended Euclid returns the gcd together with actual Bezout data.
+module Euclid = FieldPolynomialEuclid[l].Over[k,B.bool-set,dec] ;
+f : Euclid.Raw.P = cons false (cons true (cons true nil)) ;
+t : Euclid.Raw.P = cons false (cons true nil) ;
+gcd-t : Id Euclid.Raw.P (Euclid.extended f t).gcd t = refl t ;
+gcd-one : Id Euclid.Raw.P (Euclid.extended f (cons true nil)).gcd (cons true nil) = refl (cons true nil) ;
+gcd-zero : Id Euclid.Raw.P (Euclid.extended f nil).gcd f = refl f ;
+bezout : Id Euclid.B.Carrier (Euclid.B.include (Euclid.extended f t).gcd)
+ (Euclid.B.addQ (Euclid.B.mulQ (Euclid.extended f t).left (Euclid.B.include f))
+  (Euclid.B.mulQ (Euclid.extended f t).right (Euclid.B.include t))) = (Euclid.extended f t).bezout ;
+module Minimal = MinimalPolynomial[l].Over[k,B.bool-set,field,S,two,basis,(true,false)] ;
+minimal-root : Minimal.P.Root (Minimal.HI.monic-list (cons false (cons true nil))) =
+ trans (Minimal.P.horner-value (Minimal.HI.monic-list (cons false (cons true nil)))) (annihilator (true,false)) ;
+minimal : Minimal.Minimal = Minimal.from-annihilator (cons false (cons true nil)) minimal-root ;
+minimal-exists : Tr.Trunc[Minimal.Minimal].carrier = Minimal.theorem ;
+module Minimum = Minimal.Given[minimal] ;
+minimal-divides : Id Minimal.B.Carrier (Minimal.B.include f)
+ (Minimal.B.mulQ (Minimal.B.include Minimum.polynomial) (Minimal.B.include Minimum.Divides[f,minimal-root].d.1)) =
+ Minimum.Divides[f,minimal-root].equation ;
+-- Rectangular trace cyclicity handles the projection to the first factor,
+-- even though its linear section sends 1 to (1,0), not the ambient 1.
+one-index : (i : Fin one) -> Id (Fin one) i (inr tt) = split {
+ inl e -> efq e ; inr t -> ap (\ u -> inr u) (FinSum[l].top-prop t tt) } ;
+module BaseBasis (R : CRing) (setR : Pr.isSet R.R) {
+ module CA = Algebras[l].Over[R,setR] ; module D = MnSums[l].Over[R] ;
+ delta-one (i j : Fin one) : Id R.R (D.delta one i j) R.o =
+  trans (ap (\ k -> D.delta one k j) (one-index i)) (ap (D.delta one (inr tt)) (one-index j)) ;
+ frame : TraceBasis[l].Over[R,setR,CA.base].Basis[one] =
+  TraceBasis[l].Over[R,setR,CA.base].mkBasis one (\ i -> R.o) (\ a i -> a)
+   (\ a b i -> refl (R.add a b)) (\ r a i -> refl (R.mul r a))
+   (\ a -> trans (R.addZ (R.mul a R.o)) (R.mulO a)) (\ j i -> sym (delta-one i j)) ;
+} ;
+module KB = BaseBasis[k,B.bool-set] ; module TL = TraceLinear[l].Over[k,B.bool-set] ;
+projection : C.Hom S C.base = ((\ a -> a.1,refl true,\ a b -> refl (k.add a.1 b.1),
+ \ a b -> refl (k.mul a.1 b.1)),\ r -> refl r) ;
+include : TL.Linear[C.base,S] = new TL.Linear[C.base,S,\ a -> (a,false),
+ \ a b -> refl (k.add a b,false),\ r a -> pair-eq _ _ (refl (k.mul r a)) (sym (KL.mul-zero r))] ;
+retract (a : k.R) : Id k.R (projection.1.1 (include.map a)) a = refl a ;
+multiplies (a : k.R) (b : Pair) : Id Pair (include.map (k.mul a (projection.1.1 b))) (A.mul (include.map a) b) =
+ pair-eq _ _ (refl (k.mul a b.1)) (sym (KL.zero-mul b.2)) ;
+module Retract = TraceRetraction[l].Over[k,B.bool-set,S,C.base,two,one,basis,KB.frame,
+ projection,include,retract,multiplies] ;
+module ND = PerfectTraceNondegenerate[l].Over[k,B.bool-set,S,two,basis] ;
+trace-first (a : k.R) : Id k.R (BasisTrace.trace (a,false))
+ (TraceBasis[l].Over[k,B.bool-set,C.base].At[one,KB.frame].trace a) = Retract.trace a ;
+nondegenerate-first (a : k.R)
+ (h : (b : k.R) -> Id k.R (TraceBasis[l].Over[k,B.bool-set,C.base].At[one,KB.frame].trace (k.mul a b)) k.z) :
+ Id k.R a k.z = Retract.nondegenerate (ND.nondegenerate perfect) a h ;
+-- In the tower k -> (k x k) -> (k x k), the relative rank is one.
+-- This exercises transitivity and its injective-subalgebra consequence.
+module Tower = TraceTransitivity[l].Over[k,B.bool-set,S,S,C.identity S,two,two,basis,basis] ;
+module AB = BaseBasis[A,setA] ;
+module Relative = Tower.Free[one,AB.frame] ;
+trace-tower (a : Pair) : Id k.R (BasisTrace.trace a) (BasisTrace.trace (Relative.RB.trace a)) = Relative.trace a ;
+trace-descends (a : Pair) (h : (b : Pair) -> Id k.R (BasisTrace.trace (A.mul a b)) k.z) : Id Pair a z =
+ Relative.Descend[\ a b h -> h,ND.nondegenerate perfect,a,h].theorem ;
+module Der = TraceDerivations[l].Over[k,B.bool-set,S,two,basis] ;
+all-derivations-zero (d : Der.Derivation) (a : Pair) : Id Pair (d.linear.map a) z = Der.Given[d].theorem perfect a ;
+-- S over itself has redundant generators and four genuine relations.
+-- The vector ((0,1),(1,0)) lies in the kernel, and the construction gives
+-- actual coefficients expressing it in those four relations.
+module Presentation = FiniteAlgebraModulePresentation[l].Over[k,B.bool-set,S,S,C.identity S,two,two,basis,basis] ;
+presentation-count : Id Nat Presentation.count four = refl four ;
+kernel-vector : Presentation.V.Vec two = snoc (Fin one) Pair (\ i -> (false,true)) (true,false) ;
+kernel-value : Id Pair (Presentation.phi kernel-vector) z = refl z ;
+kernel-certificate : Presentation.V.Span[two,Presentation.count,Presentation.relations].Witness kernel-vector =
+ Presentation.kernel kernel-vector kernel-value ;
+nonzero-relation : Id Pair (Presentation.relations (FiniteProduct[l].encode two two i1 i0) i1) (true,false) = refl (true,false) ;
+presentation-onto (a : Pair) : Id Pair (Presentation.phi (Presentation.eta a)) a = Presentation.phi-eta a ;
+-- The minimal quotient embeds into this split algebra and is in fact
+-- isomorphic to it: (a,b)=b+(a+b)*x at x=(1,0).
+module Injection = MinimalPolynomialInjection[l].Over[k,B.bool-set,field,S,two,basis,(true,false)].At[minimal] ;
+polynomial-list (a : Pair) : List k.R = cons a.2 (cons (k.add a.1 a.2) nil) ;
+polynomial-value-pair : (a b : k.R) -> Id Pair
+ (Minimal.P.Horner.horner (polynomial-list (a,b))) (a,b) = split {
+ false -> split { false -> refl (false,false) ; true -> refl (false,true) } ;
+ true -> split { false -> refl (true,false) ; true -> refl (true,true) } } ;
+polynomial-generation (a : Pair) : Tr.Trunc[(p : Minimal.B.Carrier) * Id Pair (Minimal.P.UP.extend.1 p) a].carrier =
+ Tr.Trunc[(p : Minimal.B.Carrier) * Id Pair (Minimal.P.UP.extend.1 p) a].inc
+  (Minimal.B.include (polynomial-list a),trans (Minimal.P.horner-value (polynomial-list a)) (polynomial-value-pair a.1 a.2)) ;
+module Isomorphism = Injection.Monogenic[polynomial-generation] ;
+quotient-isomorphism : Pr.Equiv Injection.Q.ring.R Pair = Isomorphism.equivalence ;
+quotient-prime : PrimeIdempotents[l].Over[Injection.Q.ring].Prime = Injection.Prime[q].theorem ;
+quotient-regular : PrincipalRegularity[l].Over[Injection.Q.ring].Regular = Injection.Reduced[reduced].regular ;
+quotient-root (a : Injection.Q.ring.R) : Id Injection.Q.ring.R (Isomorphism.backward.1.1 (Injection.hom.1.1 a)) a =
+ Isomorphism.backward-forward a ;
+module RelativeD = MonicRelativeDerivation[l].Over[k,B.bool-set,minimal.lower,S,(true,false),Injection.root] ;
+module ZeroD = RelativeD.At[z,L.mul-zero RelativeD.derivative] ;
+constructed-derivation-generator : Id Pair (ZeroD.derivation.linear.map RelativeD.M.x) z = ZeroD.generator ;

@@ -1,0 +1,106 @@
+-- Finite-field power laws directly from an explicit enumeration.
+-- Reindex a finite sum by x->x+1 to obtain Q*1=0. Reindex the product
+-- of the nonzero elements by x->a*x to obtain a^(Q-1)=1. No Lagrange
+-- theorem, prime-characteristic classification, or factorisation is used.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module FF = FinitePermutationFold[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R)
+ (dec : (x : A.R) -> Plus (Id A.R x A.z) (RL[A].unit x))
+ (nontrivial : Not (Id A.R A.o A.z)) {
+ open A ; module L = RL[A] ;
+ module SumFold = FF.Over[R,z,add,addA,addC,addZ] ;
+ module ProductFold = FF.Over[R,o,mul,mulA,mulC,mulO] ;
+ module Roots = PolynomialRootBound[l].Over[A] ;
+ unit-one : L.unit o = (o,mulO o) ;
+ unit-product (x y : R) (u : L.unit x) (v : L.unit y) : L.unit (mul x y) =
+  (mul u.1 v.1,trans (L.mul-four x y u.1 v.1) (trans (cong2 R mul _ _ _ _ u.2 v.2) (mulO o))) ;
+ product-unit : (n : Nat) (v : Fin n -> R) -> ((i : Fin n) -> L.unit (v i)) -> L.unit (ProductFold.fold n v) = split {
+  zero -> \ v h -> unit-one ;
+  suc n | rec -> \ v h -> unit-product (v (inr tt)) (ProductFold.fold n (\ i -> v (inl i)))
+   (h (inr tt)) (rec (\ i -> v (inl i)) (\ i -> h (inl i))) } ;
+ unit-cancel (x b : R) (u : L.unit b) (h : Id R (mul x b) b) : Id R x o =
+  trans (sym (mulO x)) (trans (ap (mul x) (sym u.2))
+   (trans (mulA x b u.1) (trans (ap (\ t -> mul t u.1) h) u.2))) ;
+ inverse-case (x : R) (nz : Not (Id R x z)) : Plus (Id R x z) (L.unit x) -> L.unit x = split {
+  inl h -> efq (nz h) ; inr u -> u } ;
+ inverse (x : R) (nz : Not (Id R x z)) : L.unit x = inverse-case x nz (dec x) ;
+ module At (n : Nat) (enumerate : Fin (suc n) -> R) (index : R -> Fin (suc n))
+  (enumerate-index : (x : R) -> Id R (enumerate (index x)) x)
+  (index-enumerate : (i : Fin (suc n)) -> Id (Fin (suc n)) (index (enumerate i)) i) {
+  size : Nat = suc n ;
+  module Reindex (f g : R -> R) (fg : (x : R) -> Id R (f (g x)) x) (gf : (x : R) -> Id R (g (f x)) x) {
+   forward (i : Fin size) : Fin size = index (f (enumerate i)) ;
+   backward (i : Fin size) : Fin size = index (g (enumerate i)) ;
+   fb (i : Fin size) : Id (Fin size) (forward (backward i)) i =
+    trans (ap (\ x -> index (f x)) (enumerate-index (g (enumerate i))))
+     (trans (ap index (fg (enumerate i))) (index-enumerate i)) ;
+   bf (i : Fin size) : Id (Fin size) (backward (forward i)) i =
+    trans (ap (\ x -> index (g x)) (enumerate-index (f (enumerate i))))
+     (trans (ap index (gf (enumerate i))) (index-enumerate i)) ;
+   value (i : Fin size) : Id R (enumerate (forward i)) (f (enumerate i)) = enumerate-index (f (enumerate i)) ;
+  } ;
+  translate (x : R) : R = add x o ;
+  untranslate (x : R) : R = add x (neg o) ;
+  translate-back (x : R) : Id R (translate (untranslate x)) x =
+   trans (sym (addA x (neg o) o)) (trans (ap (add x) (L.neg-cancel o)) (addZ x)) ;
+  untranslate-back (x : R) : Id R (untranslate (translate x)) x = L.add-neg-cancel x o ;
+  module Shift = Reindex[translate,untranslate,translate-back,untranslate-back] ;
+  module SumPermutation = SumFold.Permutation[size,Shift.forward,Shift.backward,Shift.fb,Shift.bf] ;
+  sum-shift : Id R (SumFold.fold size (\ i -> add (enumerate i) o)) (SumFold.fold size enumerate) =
+   trans (SumFold.congruence size (\ i -> add (enumerate i) o) (\ i -> enumerate (Shift.forward i))
+    (\ i -> sym (Shift.value i))) (SumPermutation.invariant enumerate) ;
+  cardinal-zero : Id R (SumFold.power o size) z =
+   trans (sym (SumFold.constant-fold size o))
+    (L.add-cancel (SumFold.fold size enumerate) (SumFold.fold size (\ i -> o))
+     (trans (sym (SumFold.distribute size enumerate (\ i -> o))) sum-shift)) ;
+
+  zero-index : Fin size = index z ;
+  index-zero (i : Fin size) (h : Id R (enumerate i) z) : Id (Fin size) i zero-index =
+   trans (sym (index-enumerate i)) (ap index h) ;
+  entry (i : Fin size) : R = ProductFold.except size zero-index i (enumerate i) ;
+  entry-zero (i : Fin size) (h : Id (Fin size) i zero-index) : Id R (entry i) o = ProductFold.except-equal size zero-index i (enumerate i) (sym h) ;
+  entry-nonzero (i : Fin size) (h : Not (Id (Fin size) i zero-index)) : Id R (entry i) (enumerate i) =
+   ProductFold.except-off size zero-index i (enumerate i) (\ e -> h (sym e)) ;
+  entry-unit-case (i : Fin size) : Plus (Id (Fin size) i zero-index) (Not (Id (Fin size) i zero-index)) -> L.unit (entry i) = split {
+   inl h -> subst L.unit (sym (entry-zero i h)) unit-one ;
+   inr h -> subst L.unit (sym (entry-nonzero i h)) (inverse (enumerate i) (\ e -> h (index-zero i e))) } ;
+  entry-unit (i : Fin size) : L.unit (entry i) = entry-unit-case i (FF.Index.decide size i zero-index) ;
+  product : R = ProductFold.fold size entry ;
+  invertible-product : L.unit product = product-unit size entry entry-unit ;
+  module Nonzero (a : R) (u : L.unit a) {
+   multiply (x : R) : R = mul a x ;
+   divide (x : R) : R = mul u.1 x ;
+   multiply-divide (x : R) : Id R (multiply (divide x)) x =
+    trans (mulA a u.1 x) (trans (ap (\ c -> mul c x) u.2) (L.one-left x)) ;
+   divide-multiply (x : R) : Id R (divide (multiply x)) x =
+    trans (L.mul-swap u.1 a x) (multiply-divide x) ;
+   module Reorder = Reindex[multiply,divide,multiply-divide,divide-multiply] ;
+   module Permutation = ProductFold.Permutation[size,Reorder.forward,Reorder.backward,Reorder.fb,Reorder.bf] ;
+   fixes-zero : Id (Fin size) (Reorder.forward zero-index) zero-index =
+    trans (ap (\ x -> index (mul a x)) (enumerate-index z)) (ap index (L.mul-zero a)) ;
+   preserves-nonzero (i : Fin size) (ne : Not (Id (Fin size) i zero-index)) :
+    Not (Id (Fin size) (Reorder.forward i) zero-index) =
+    \ eq -> ne (index-zero i (Roots.unit-zero a (enumerate i) u
+     (trans (sym (Reorder.value i)) (trans (ap enumerate eq) (enumerate-index z))))) ;
+   row-case (i : Fin size) : Plus (Id (Fin size) i zero-index) (Not (Id (Fin size) i zero-index)) ->
+    Id R (entry (Reorder.forward i)) (mul (ProductFold.except size zero-index i a) (entry i)) = split {
+     inl eq -> trans (entry-zero (Reorder.forward i) (trans (ap Reorder.forward eq) fixes-zero))
+      (sym (trans (cong2 R mul _ _ _ _ (ProductFold.except-equal size zero-index i a (sym eq)) (entry-zero i eq)) (mulO o))) ;
+     inr ne -> trans (entry-nonzero (Reorder.forward i) (preserves-nonzero i ne))
+      (trans (Reorder.value i) (sym (cong2 R mul _ _ _ _
+       (ProductFold.except-off size zero-index i a (\ eq -> ne (sym eq))) (entry-nonzero i ne)))) } ;
+   row (i : Fin size) : Id R (entry (Reorder.forward i)) (mul (ProductFold.except size zero-index i a) (entry i)) =
+    row-case i (FF.Index.decide size i zero-index) ;
+   product-scale : Id R (ProductFold.fold size (\ i -> entry (Reorder.forward i))) (mul (ProductFold.power a n) product) =
+    trans (ProductFold.congruence size (\ i -> entry (Reorder.forward i)) (\ i -> mul (ProductFold.except size zero-index i a) (entry i)) row)
+     (trans (ProductFold.distribute size (\ i -> ProductFold.except size zero-index i a) entry)
+      (ap (\ x -> mul x product) (ProductFold.fold-except n zero-index a))) ;
+   fermat : Id R (ProductFold.power a n) o = unit-cancel (ProductFold.power a n) product invertible-product
+    (trans (sym product-scale) (Permutation.invariant entry)) ;
+  } ;
+  frobenius-case (x : R) : Plus (Id R x z) (L.unit x) -> Id R (ProductFold.power x size) x = split {
+   inl eq -> trans (ap (\ a -> ProductFold.power a size) eq) (trans (L.zero-mul (ProductFold.power z n)) (sym eq)) ;
+   inr u -> trans (ap (mul x) Nonzero[x,u].fermat) (mulO x) } ;
+  frobenius (x : R) : Id R (ProductFold.power x size) x = frobenius-case x (dec x) ;
+ } ;
+} ;

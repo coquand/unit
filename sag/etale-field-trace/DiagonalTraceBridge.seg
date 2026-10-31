@@ -1,0 +1,97 @@
+-- Extract the normalized coordinate certificate from an actual diagonal
+-- averaging element, provided the scalar-extension basis of D is supplied.
+-- TensorBasis is the intermediate interface constructed from the
+-- algebra coproduct in TensorBasisConstruct.  It gives coordinate maps on D,
+-- their additive/right-S-linear laws, values on the left factor, and
+-- reconstruction in the left basis.  Coordinate equalization is proved
+-- from these laws and epsilon.equalises, never assumed separately.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module E = FormallyEtale[l].Over[R,setR] ; module Tn = Tensor[l].Over[R,setR] ;
+ module At (S D : C.Algebra) (cp : Tn.Coproduct S S D)
+  (n : Nat) (b : TraceBasis[l].Over[R,setR,S].Basis[n]) {
+  module DK = DiagonalKernel[l].Over[R,setR].At[S,D,cp] ;
+  module DC = DiagonalCertificate[l].Over[R,setR].At[S,D,cp] ;
+  module TD = TraceDuality[l].Over[R,setR,S,n,b] ;
+  module DS = FiniteIdeal[l].Sums[D.ring] ; module SS = FiniteIdeal[l].Sums[S.ring] ;
+  record TensorBasis {
+   coordinate : D.ring.R -> Fin n -> S.ring.R ;
+   add (x y : D.ring.R) (i : Fin n) :
+    Id S.ring.R (coordinate (D.ring.add x y) i) (S.ring.add (coordinate x i) (coordinate y i)) ;
+   scale (s : S.ring.R) (y : D.ring.R) (i : Fin n) :
+    Id S.ring.R (coordinate (D.ring.mul (DK.right.1.1 s) y) i) (S.ring.mul s (coordinate y i)) ;
+   on-left (s : S.ring.R) (i : Fin n) :
+    Id S.ring.R (coordinate (DK.left.1.1 s) i) (S.iota.1 (b.coordinate s i)) ;
+   reconstruction (y : D.ring.R) :
+    Id D.ring.R (DS.sum n (\ j -> D.ring.mul (DK.left.1.1 (b.vector j)) (DK.right.1.1 (coordinate y j)))) y ;
+  } ;
+  module Coordinates (t : TensorBasis) {
+   zero (i : Fin n) : Id S.ring.R (t.coordinate D.ring.z i) S.ring.z =
+    RL[S.ring].add-cancel (t.coordinate D.ring.z i) (t.coordinate D.ring.z i)
+     (trans (sym (t.add D.ring.z D.ring.z i)) (ap (\ a -> t.coordinate a i) (D.ring.addZ D.ring.z))) ;
+   sum : (m : Nat) (v : Fin m -> D.ring.R) (i : Fin n) ->
+    Id S.ring.R (t.coordinate (DS.sum m v) i) (SS.sum m (\ j -> t.coordinate (v j) i)) = split {
+    zero -> \ v i -> zero i ;
+    suc m | ih -> \ v i -> trans (t.add (v (inr tt)) (DS.sum m (\ j -> v (inl j))) i)
+     (ap (S.ring.add (t.coordinate (v (inr tt)) i)) (ih (\ j -> v (inl j)) i)) } ;
+   pure (s a : S.ring.R) (i : Fin n) :
+    Id S.ring.R (t.coordinate (D.ring.mul (DK.left.1.1 s) (DK.right.1.1 a)) i)
+     (S.ring.mul (S.iota.1 (b.coordinate s i)) a) =
+    trans (ap (\ y -> t.coordinate y i) (D.ring.mulC (DK.left.1.1 s) (DK.right.1.1 a)))
+     (trans (t.scale a (DK.left.1.1 s) i)
+      (trans (ap (S.ring.mul a) (t.on-left s i)) (S.ring.mulC a (S.iota.1 (b.coordinate s i))))) ;
+   product-pure (s a c : S.ring.R) :
+    Id D.ring.R (D.ring.mul (DK.left.1.1 s) (D.ring.mul (DK.left.1.1 a) (DK.right.1.1 c)))
+     (D.ring.mul (DK.left.1.1 (S.ring.mul s a)) (DK.right.1.1 c)) =
+    trans (D.ring.mulA (DK.left.1.1 s) (DK.left.1.1 a) (DK.right.1.1 c))
+     (ap (\ y -> D.ring.mul y (DK.right.1.1 c)) (sym (DK.left.1.2.2.2 s a))) ;
+   left-action (s : S.ring.R) (y : D.ring.R) (i : Fin n) :
+    Id S.ring.R (t.coordinate (D.ring.mul (DK.left.1.1 s) y) i)
+     (SS.sum n (\ j -> S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul s (b.vector j)) i)) (t.coordinate y j))) =
+    trans (ap (\ x -> t.coordinate (D.ring.mul (DK.left.1.1 s) x) i) (sym (t.reconstruction y)))
+     (trans (ap (\ x -> t.coordinate x i)
+       (sym (DS.sum-scale (DK.left.1.1 s) n (\ j -> D.ring.mul (DK.left.1.1 (b.vector j)) (DK.right.1.1 (t.coordinate y j))))))
+      (trans (sum n (\ j -> D.ring.mul (DK.left.1.1 s)
+        (D.ring.mul (DK.left.1.1 (b.vector j)) (DK.right.1.1 (t.coordinate y j)))) i)
+       (SS.sum-cong n _ _ (\ j ->
+        trans (ap (\ x -> t.coordinate x i) (product-pure s (b.vector j) (t.coordinate y j)))
+         (pure (S.ring.mul s (b.vector j)) (t.coordinate y j) i))))) ;
+   mu-sum : (m : Nat) (v : Fin m -> D.ring.R) ->
+    Id S.ring.R (DK.mu.1.1 (DS.sum m v)) (SS.sum m (\ j -> DK.mu.1.1 (v j))) = split {
+    zero -> \ v -> H.zero D.ring S.ring DK.mu.1 ;
+    suc m | ih -> \ v -> trans (DK.mu.1.2.2.1 (v (inr tt)) (DS.sum m (\ j -> v (inl j))))
+     (ap (S.ring.add (DK.mu.1.1 (v (inr tt)))) (ih (\ j -> v (inl j)))) } ;
+   mu-pure (a c : S.ring.R) :
+    Id S.ring.R (DK.mu.1.1 (D.ring.mul (DK.left.1.1 a) (DK.right.1.1 c))) (S.ring.mul a c) =
+    trans (DK.mu.1.2.2.2 (DK.left.1.1 a) (DK.right.1.1 c))
+     (cong2 S.ring.R S.ring.mul _ _ _ _ (DK.mu-left a) (DK.mu-right c)) ;
+   module Extract (e : DC.Witness) {
+    cofactor (j : Fin n) : S.ring.R = t.coordinate e.epsilon j ;
+    normalisation : Id S.ring.R (SS.sum n (\ j -> S.ring.mul (b.vector j) (cofactor j))) S.ring.o =
+     trans (SS.sum-cong n _ _ (\ j -> sym (mu-pure (b.vector j) (cofactor j))))
+      (trans (sym (mu-sum n (\ j -> D.ring.mul (DK.left.1.1 (b.vector j)) (DK.right.1.1 (cofactor j)))))
+       (trans (ap DK.mu.1.1 (t.reconstruction e.epsilon)) e.mu-one)) ;
+    equalises (z : S.ring.R) (i : Fin n) :
+     Id S.ring.R (S.ring.mul z (cofactor i))
+      (SS.sum n (\ j -> S.ring.mul (S.iota.1 (b.coordinate (S.ring.mul z (b.vector j)) i)) (cofactor j))) =
+     trans (sym (t.scale z e.epsilon i))
+      (trans (ap (\ x -> t.coordinate x i)
+        (trans (D.ring.mulC (DK.right.1.1 z) e.epsilon)
+         (trans (sym (e.equalises z)) (D.ring.mulC e.epsilon (DK.left.1.1 z)))))
+       (left-action z e.epsilon i)) ;
+    certificate : TD.Certificate = TD.mkCertificate cofactor normalisation equalises ;
+    module Trace = TD.Given[certificate] ;
+   } ;
+   -- This conclusion is a proposition, so the merely constructed
+   -- diagonal certificate can be consumed directly, with no choice.
+   trace-perfect (fp : P.FP S) (unique : E.Unique S) :
+    RL[R].unit (ExteriorModel[l].Over[R].det n (\ j i -> TD.B.trace (S.ring.mul (b.vector j) (b.vector i)))) =
+    TruncationCombinators[l].rec DC.Witness @l
+     (RL[R].unit (ExteriorModel[l].Over[R].det n (\ j i -> TD.B.trace (S.ring.mul (b.vector j) (b.vector i)))))
+     (FormallyEtale[l].Units[R,setR].unit-prop _)
+     (\ e -> Extract[e].Trace.gram-determinant-unit) (DC.theorem fp unique) ;
+  } ;
+ } ;
+} ;

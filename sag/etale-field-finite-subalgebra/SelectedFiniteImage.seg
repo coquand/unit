@@ -1,0 +1,75 @@
+-- Restrict the specified prime to the finite coefficient subalgebra,
+-- inherit reducedness, construct regular witnesses INSIDE that algebra,
+-- and apply the finite selected-factor theorem. For every returned
+-- idempotent, its fixed-point ring is an actual finite nonzero field.
+-- Its inclusion into the ambient algebra preserves + and *, but sends
+-- 1 to the selected idempotent; it is NOT asserted to be a unital map.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (dec : (r : R.R) -> Plus (Id R.R r R.z) (RL[R].unit r))
+ (m : Nat) (values : Fin m -> R.R) (cover : (r : R.R) -> (i : Fin m) * Id R.R (values i) r)
+ (S : Algebras[l].Over[R,setR].Algebra)
+ (equalS : (a b : S.ring.R) -> Plus (Id S.ring.R a b) (Not (Id S.ring.R a b)))
+ (n : Nat) (x : Fin n -> S.ring.R) (lower : Fin n -> List R.R)
+ (roots : IteratedMonicBasis[l].Over[R,setR].Roots n lower S x)
+ (reducedS : (a : S.ring.R) -> Id S.ring.R (S.ring.mul a a) S.ring.z -> Id S.ring.R a S.ring.z)
+ (q : PrimeIdempotents[l].Over[S.ring].Prime) {
+ module Image = MonicFiniteImage[l].Over[R,setR,m,values,cover].At[S,equalS,n,x,lower,roots] ;
+ module B = Image.B ; module PI = PrimeIdempotents[l].Over[B.ring] ;
+ ideal : RegularIdeal[l].IdealPred[B.ring] = RegularIdeal[l].mkIdealPred B.ring
+  (\ b -> q.ideal.In b.1) q.ideal.in-zero
+  (\ a b ha hb -> q.ideal.in-add a.1 b.1 ha hb) (\ a b hb -> q.ideal.in-mul a.1 b.1 hb) ;
+ prime : PI.Prime = new PI.Prime[ideal,\ b -> q.proposition b.1,q.proper,
+  \ a b -> q.prime a.1 b.1,\ a -> q.decide a.1] ;
+ module Reg = Image.Reduced[reducedS].Regular[dec] ;
+ regular : PrincipalRegularity[l].Over[B.ring].Regular = Reg.regular ;
+ module PF = FinitePrimeFactor[l].Over[B.ring,B.set,prime] ;
+ module Finite = PF.Enumerated[Image.size,Image.enumeration,Image.mere-covers] ;
+ selected : Tr.Trunc[PF.Result].carrier = Finite.theorem regular ;
+ module Chosen (r : PF.Result) {
+  module Raw = Finite.Factor[r] ; module F = Raw.F ;
+  field : CRing = F.ring ;
+  set : Pr.isSet field.R = F.set ;
+  field-nonzero : Not (Id field.R field.o field.z) = Raw.Selected.nonzero ;
+  field-decide (a : field.R) : Plus (Id field.R a field.z) (RL[field].unit a) =
+   Raw.Selected.field regular (\ b -> Image.equal b B.zB) a ;
+  equal-case (a b : field.R) : Plus (Id B.Carrier a.1 b.1) (Not (Id B.Carrier a.1 b.1)) ->
+   Plus (Id field.R a b) (Not (Id field.R a b)) = split {
+   inl h -> inl (F.eq a b h) ; inr h -> inr (\ e -> h (ap (\ c -> c.1) e)) } ;
+  equal (a b : field.R) : Plus (Id field.R a b) (Not (Id field.R a b)) = equal-case a b (Image.equal a.1 b.1) ;
+  module Distinct = FiniteDedup[l].Over[field.R,set,equal].Onto[Image.size,Raw.Finite.enumeration,Raw.Finite.cover] ;
+  size : Nat = Distinct.result.size ;
+  enumeration : Fin size -> field.R = Distinct.result.vector ;
+  enumeration-injective (i j : Fin size) (h : Id field.R (enumeration i) (enumeration j)) : Id (Fin size) i j =
+   Distinct.result.injective i j h ;
+  covers (a : field.R) : (i : Fin size) * Id field.R (enumeration i) a = Distinct.cover a ;
+  projection : H.Hom B.ring field = F.projection ;
+  coefficient-map : H.Hom R field = H.compose R B.ring field projection B.iotaB ;
+  unit-killed (a : R.R) (u : RL[R].unit a) (h : Id field.R (coefficient-map.1 a) field.z) : Empty =
+   field-nonzero (trans (sym coefficient-map.2.1)
+    (trans (ap coefficient-map.1 (sym u.2))
+     (trans (coefficient-map.2.2.2 a u.1)
+      (trans (ap (\ z -> field.mul z (coefficient-map.1 u.1)) h) (RL[field].zero-mul (coefficient-map.1 u.1)))))) ;
+  coefficient-injective-case (a b : R.R)
+   (h : Id field.R (coefficient-map.1 (R.add a (R.neg b))) field.z) :
+   Plus (Id R.R (R.add a (R.neg b)) R.z) (RL[R].unit (R.add a (R.neg b))) -> Id R.R a b = split {
+   inl e -> AffineRing[l].Laws[R,setR].difference-zero a b e ;
+   inr u -> efq (unit-killed (R.add a (R.neg b)) u h) } ;
+  coefficient-injective (a b : R.R) (h : Id field.R (coefficient-map.1 a) (coefficient-map.1 b)) : Id R.R a b =
+   coefficient-injective-case a b
+    (trans (coefficient-map.2.2.1 a (R.neg b))
+     (trans (cong2 field.R field.add _ _ _ _ h (H.negation R field coefficient-map b)) (field.addN (coefficient-map.1 b))))
+    (dec (R.add a (R.neg b))) ;
+  to-ambient (a : field.R) : S.ring.R = a.1.1 ;
+  injective (a b : field.R) (h : Id S.ring.R (to-ambient a) (to-ambient b)) : Id field.R a b = F.eq a b (B.eqB a.1 b.1 h) ;
+  idempotent : S.ring.R = r.value.1 ;
+  square : Id S.ring.R (S.ring.mul idempotent idempotent) idempotent = ap (\ b -> b.1) r.idempotent ;
+  outside : Not (q.ideal.In idempotent) = r.outside ;
+  unit-image : Id S.ring.R (to-ambient field.o) idempotent = refl idempotent ;
+  add-image (a b : field.R) : Id S.ring.R (to-ambient (field.add a b)) (S.ring.add (to-ambient a) (to-ambient b)) = refl (S.ring.add a.1.1 b.1.1) ;
+  mul-image (a b : field.R) : Id S.ring.R (to-ambient (field.mul a b)) (S.ring.mul (to-ambient a) (to-ambient b)) = refl (S.ring.mul a.1.1 b.1.1) ;
+  generator (i : Fin n) : field.R = projection.1 (B.variables i) ;
+  generator-image (i : Fin n) : Id S.ring.R (to-ambient (generator i)) (S.ring.mul idempotent (x i)) = refl (S.ring.mul idempotent (x i)) ;
+ } ;
+} ;

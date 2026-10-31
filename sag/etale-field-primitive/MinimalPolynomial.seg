@@ -1,0 +1,95 @@
+-- Construct a minimal annihilator from a finite basis. At stage m,
+-- Gaussian elimination decides whether x^m lies in the preceding power
+-- span. If it does, the coefficients give a monic relation. If it does
+-- not, every relation of degree at most m has zero top coefficient:
+-- otherwise normalization would give exactly such a power-span witness.
+-- A monic annihilator from the determinant trick terminates the search.
+-- Division by the result proves it divides every annihilating polynomial.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (field : SelectedFactorStatement[l].Over[k,setk].Field)
+ (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+ (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (x : S.ring.R) {
+ module P = PowerSpan[l].Over[k,setk,field,S,n,basis,x] ;
+ module Raw = P.Raw ; module Bound = P.Bound ; module B = P.B ; module HI = P.HI ;
+ module M = Mul[l].MulR[k] ; module L = RL[S.ring] ;
+ NoRoots (m : Nat) : U l = (p : Raw.P) -> Bound.Bound m p -> P.Root p -> Raw.peq p nil ;
+ record Minimal {
+  degree : Nat ;
+  lower : Raw.P ;
+  length : Id Nat (Raw.plen lower) degree ;
+  root : P.Root (HI.monic-list lower) ;
+  no-smaller : NoRoots degree ;
+ } ;
+ State (m : Nat) : U l = Plus Minimal (NoRoots m) ;
+ module Normalize (m : Nat) (p : Raw.P) (bounded : Bound.Bound (suc m) p)
+  (root : P.Root p) (unit : RL[k].unit (Raw.coef p m)) {
+  normalized : Raw.P = M.scal unit.1 p ;
+  top : Id k.R (Raw.coef normalized m) k.o =
+   trans (M.coef-scal unit.1 p m) (trans (k.mulC unit.1 (Raw.coef p m)) unit.2) ;
+  bound : Bound.Bound (suc m) normalized = Bound.scale-bound (suc m) unit.1 p bounded ;
+  normalized-root : P.Root normalized =
+   trans (P.value-scale unit.1 p) (trans (ap (S.ring.mul (S.iota.1 unit.1)) root) (L.mul-zero (S.iota.1 unit.1))) ;
+  lower : Raw.P = Bound.cut m normalized ;
+  length : Id Nat (Raw.plen lower) m = Bound.cut-length m normalized ;
+  relation : Raw.peq normalized (HI.monic-list lower) =
+   FiniteSpanIntegral[l].MonicLists[k,setk].canonical m normalized top bound ;
+  monic-root : P.Root (HI.monic-list lower) = trans (sym (P.value-equal normalized (HI.monic-list lower) relation)) normalized-root ;
+  power-witness : P.At[m].Witness = P.At[m].from-monic lower length (Bound.cut-bound m normalized) monic-root ;
+ } ;
+ module Advance (m : Nat) (old : NoRoots m) {
+  top-case (not-in : Not P.At[m].Witness) (p : Raw.P) (bound : Bound.Bound (suc m) p) (root : P.Root p) :
+   Plus (Id k.R (Raw.coef p m) k.z) (RL[k].unit (Raw.coef p m)) -> Raw.peq p nil = split {
+   inl h -> old p (Bound.lower-bound m p bound h) root ;
+   inr h -> efq (not-in Normalize[m,p,bound,root,h].power-witness) } ;
+  no-roots (not-in : Not P.At[m].Witness) : NoRoots (suc m) =
+   \ p bound root -> top-case not-in p bound root (field.decide (Raw.coef p m)) ;
+  choose : Plus P.At[m].Witness (Not P.At[m].Witness) -> State (suc m) = split {
+   inl w -> inl (new Minimal[m,P.At[m].Relation[w].lower,P.At[m].Relation[w].length,P.At[m].Relation[w].root,old]) ;
+   inr h -> inr (no-roots h) } ;
+  result : State (suc m) = choose P.At[m].decide ;
+ } ;
+ step (m : Nat) : State m -> State (suc m) = split {
+  inl f -> inl f ; inr old -> Advance[m,old].result } ;
+ search : (m : Nat) -> State m = split {
+  zero -> inr (\ p bound root -> bound) ; suc m | ih -> step m ih } ;
+ finish (lower : Raw.P) (root : P.Root (HI.monic-list lower)) : State (suc (Raw.plen lower)) -> Minimal = split {
+  inl f -> f ;
+  inr no -> efq (field.nonzero (trans (sym (HI.leading lower))
+   (no (HI.monic-list lower) (HI.above lower) root (Raw.plen lower)))) } ;
+ from-annihilator (lower : Raw.P) (root : P.Root (HI.monic-list lower)) : Minimal =
+  finish lower root (search (suc (Raw.plen lower))) ;
+ module FS = FiniteSpan[l].Over[k,S.ring,S.iota] ;
+ finite : FS.Data = (n,basis.vector,\ a -> Tr.Trunc[FS.Coordinates n basis.vector a].inc (basis.coordinate a,basis.reconstruction a)) ;
+ module Integral = FiniteSpanIntegral[l].Over[k,S.ring,setk,S.set,S.iota] ;
+ module IM = IntegralDescent[l].Map[k,S.ring,S.iota] ;
+ lift (h : IM.IntegralWitness x) : Minimal = from-annihilator h.1
+  (trans (FiniteSpanIntegral[l].MonicWitness[k,S.ring,setk,S.set,S.iota,x].monic-value h.1) h.2) ;
+ theorem : Tr.Trunc[Minimal].carrier = TC.map (IM.IntegralWitness x) Minimal lift (Integral.integral finite x) ;
+ module Given (f : Minimal) {
+  polynomial : Raw.P = HI.monic-list f.lower ;
+  leading : Id k.R (Raw.coef polynomial f.degree) k.o =
+   trans (ap (Raw.coef polynomial) (sym f.length)) (HI.leading f.lower) ;
+  bounded : Bound.Bound (suc f.degree) polynomial =
+   \ i -> trans (ap (Raw.coef polynomial) (ap (\ d -> plus (suc d) i) (sym f.length))) (HI.above f.lower i) ;
+  module Division = MonicDivision[l].Over[k,setk].General[polynomial,f.degree,leading,bounded] ;
+  module Divides (p : Raw.P) (root : P.Root p) {
+   d : Division.Result p = Division.divide p ;
+   remainder : Raw.P = d.2.1 ;
+   remainder-root : P.Root remainder =
+    trans (sym (L.zl (P.value remainder)))
+     (trans (ap (\ a -> S.ring.add a (P.value remainder))
+      (sym (trans (ap (\ a -> S.ring.mul a (P.UP.extend.1 (B.include d.1))) f.root)
+       (L.zero-mul (P.UP.extend.1 (B.include d.1))))))
+      (trans (sym (trans (ap P.UP.extend.1 d.2.2.2)
+       (trans (P.UP.extend.2.2.1 (B.mulQ (B.include polynomial) (B.include d.1)) (B.include remainder))
+        (ap (\ a -> S.ring.add a (P.value remainder)) (P.UP.extend.2.2.2 (B.include polynomial) (B.include d.1)))))) root)) ;
+   zero : Raw.peq remainder nil = f.no-smaller remainder d.2.2.1 remainder-root ;
+   equation : Id B.Carrier (B.include p) (B.mulQ (B.include polynomial) (B.include d.1)) =
+    trans d.2.2.2
+     (trans (ap (B.addQ (B.mulQ (B.include polynomial) (B.include d.1))) (B.Q.relates remainder nil zero))
+      (B.ring.addZ (B.mulQ (B.include polynomial) (B.include d.1)))) ;
+  } ;
+ } ;
+} ;

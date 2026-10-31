@@ -1,0 +1,86 @@
+-- Coordinate equations force generation after one selected refinement.
+-- Let S be free over A, with coordinates lambda_j, and suppose
+-- h(lambda_j(s))=h(lambda_j(1))*s. Expanding 1 shows that some
+-- a=lambda_j(1) lies outside the specified prime of S. For a=a^2*b,
+-- the idempotent e=a*b is outside that prime and
+-- h(b*lambda_j(s))=h(e)*s. Thus every selected element comes from A.
+-- No rank-one argument, tensor assumption or separability is used here.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FiniteOutside (A : CRing) (q : PrimeIdempotents[l].Over[A].Prime) {
+ module Sum = FiniteIdeal[l].Sums[A] ;
+ All (n : Nat) (v : Fin n -> A.R) : U l = (i : Fin n) -> q.ideal.In (v i) ;
+ Some (n : Nat) (v : Fin n -> A.R) : U l = (i : Fin n) * Not (q.ideal.In (v i)) ;
+ sum-member : (n : Nat) (v : Fin n -> A.R) -> All n v -> q.ideal.In (Sum.sum n v) = split {
+  zero -> \ v all -> q.ideal.in-zero ;
+  suc n | ih -> \ v all -> q.ideal.in-add (v (inr tt)) (Sum.sum n (\ i -> v (inl i)))
+   (all (inr tt)) (ih (\ i -> v (inl i)) (\ i -> all (inl i))) } ;
+ last (n : Nat) (v : Fin (suc n) -> A.R) (old : All n (\ i -> v (inl i))) :
+  Plus (q.ideal.In (v (inr tt))) (Not (q.ideal.In (v (inr tt)))) -> Plus (All (suc n) v) (Some (suc n) v) = split {
+  inl yes -> inl (AffineFinite[l].section n (\ i -> q.ideal.In (v i)) old yes) ;
+  inr no -> inr (inr tt,no) } ;
+ step (n : Nat) (v : Fin (suc n) -> A.R) :
+  Plus (All n (\ i -> v (inl i))) (Some n (\ i -> v (inl i))) -> Plus (All (suc n) v) (Some (suc n) v) = split {
+  inl all -> last n v all (q.decide (v (inr tt))) ;
+  inr found -> inr (inl found.1,found.2) } ;
+ search : (n : Nat) (v : Fin n -> A.R) -> Plus (All n v) (Some n v) = split {
+  zero -> \ v -> inl (\ i -> efq i) ; suc n | ih -> \ v -> step n v (ih (\ i -> v (inl i))) } ;
+ choose (n : Nat) (v : Fin n -> A.R) (impossible : Not (All n v)) :
+  Plus (All n v) (Some n v) -> Some n v = split { inl all -> efq (impossible all) ; inr found -> found } ;
+ theorem (n : Nat) (v : Fin n -> A.R) (impossible : Not (All n v)) : Some n v = choose n v impossible (search n v) ;
+} ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (S : Algebras[l].Over[A,setA].Algebra)
+ (r : Nat) (basis : TraceBasis[l].Over[A,setA,S].Basis[r])
+ (q : PrimeIdempotents[l].Over[S.ring].Prime)
+ (coordinate : (j : Fin r) (b : S.ring.R) -> Id S.ring.R (S.iota.1 (basis.coordinate b j))
+  (S.ring.mul (S.iota.1 (basis.coordinate S.ring.o j)) b)) {
+ module L = RL[S.ring] ; module Sum = FiniteIdeal[l].Sums[S.ring] ;
+ module Search = FiniteOutside[S.ring,q] ; module R = PrincipalRegularity[l].Over[A] ;
+ module PI = PrimeIdempotents[l].Over[A] ;
+ coefficient (j : Fin r) : A.R = basis.coordinate S.ring.o j ;
+ image (j : Fin r) : S.ring.R = S.iota.1 (coefficient j) ;
+ impossible (all : Search.All r image) : Empty =
+  q.proper (subst q.ideal.In (basis.reconstruction S.ring.o)
+   (Search.sum-member r (\ j -> S.ring.mul (image j) (basis.vector j))
+    (\ j -> subst q.ideal.In (S.ring.mulC (basis.vector j) (image j))
+     (q.ideal.in-mul (basis.vector j) (image j) (all j))))) ;
+ chosen : Search.Some r image = Search.theorem r image impossible ;
+ index : Fin r = chosen.1 ;
+ a : A.R = coefficient index ;
+ outside-a : Not (q.ideal.In (S.iota.1 a)) = chosen.2 ;
+ record Result {
+  e : A.R ;
+  idempotent : Id A.R (A.mul e e) e ;
+  outside : Not (q.ideal.In (S.iota.1 e)) ;
+  preimage : S.ring.R -> A.R ;
+  equation (s : S.ring.R) : Id S.ring.R (S.iota.1 (preimage s)) (S.ring.mul (S.iota.1 e) s) ;
+ } ;
+ module Witness (w : R.Witness a) {
+  module E = PI.Regular[a,w.1,w.2] ;
+  outside (he : q.ideal.In (S.iota.1 E.e)) : Empty = outside-a
+   (subst q.ideal.In (trans (sym (S.iota.2.2.2 a E.e)) (ap S.iota.1 E.absorb))
+    (q.ideal.in-mul (S.iota.1 a) (S.iota.1 E.e) he)) ;
+  preimage (s : S.ring.R) : A.R = A.mul w.1 (basis.coordinate s index) ;
+  equation (s : S.ring.R) : Id S.ring.R (S.iota.1 (preimage s)) (S.ring.mul (S.iota.1 E.e) s) =
+   trans (S.iota.2.2.2 w.1 (basis.coordinate s index))
+    (trans (ap (S.ring.mul (S.iota.1 w.1)) (coordinate index s))
+     (trans (S.ring.mulA (S.iota.1 w.1) (S.iota.1 a) s)
+      (ap (\ b -> S.ring.mul b s)
+       (trans (S.ring.mulC (S.iota.1 w.1) (S.iota.1 a)) (sym (S.iota.2.2.2 a w.1)))))) ;
+  result : Result = new Result[E.e,E.idempotent,outside,preimage,equation] ;
+ } ;
+ theorem (regular : R.Regular) : Tr.Trunc[Result].carrier =
+  TC.map (R.Witness a) Result (\ w -> Witness[w].result) (regular a) ;
+ module Selected (result : Result) {
+  e : S.ring.R = S.iota.1 result.e ;
+  idempotent : Id S.ring.R (S.ring.mul e e) e =
+   trans (sym (S.iota.2.2.2 result.e result.e)) (ap S.iota.1 result.idempotent) ;
+  equation (s : S.ring.R) : Id S.ring.R (S.ring.mul e (S.ring.add s (S.ring.neg (S.iota.1 (result.preimage s))))) S.ring.z =
+   trans (S.ring.dist e s (S.ring.neg (S.iota.1 (result.preimage s))))
+    (trans (ap (S.ring.add (S.ring.mul e s))
+     (trans (L.mul-neg e (S.iota.1 (result.preimage s)))
+      (ap S.ring.neg (trans (ap (S.ring.mul e) (result.equation s))
+       (trans (S.ring.mulA e e s) (ap (\ a -> S.ring.mul a s) idempotent))))))
+     (S.ring.addN (S.ring.mul e s))) ;
+ } ;
+} ;

@@ -1,0 +1,71 @@
+-- Resolve finitely many elements of a regular ring simultaneously by
+-- idempotent splitting. For a=a^2b split by f=ab and 1-f. On the first
+-- piece a has inverse b; on the second it is zero. Resolved equations
+-- survive further refinement. Induction on the length of the supplied
+-- list constructs a finite binary splitting; no dimension descent or
+-- prime selection is involved. The target P can package an actual
+-- product decomposition, provided it can glue complementary pieces.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module PI = PrimeIdempotents[l].Over[A] ; module L = RL[A] ;
+ module Reg = PrincipalRegularity[l].Over[A] ;
+ Square (e : A.R) : U l = Id A.R (A.mul e e) e ;
+ Resolved (e a : A.R) : U l = Plus (Id A.R (A.mul e a) A.z)
+  ((b : A.R) * Id A.R (A.mul e (A.mul a b)) e) ;
+ module Refine (e u : A.R) (below : Id A.R (A.mul u e) u) {
+  zero (a : A.R) (h : Id A.R (A.mul e a) A.z) : Id A.R (A.mul u a) A.z =
+   trans (ap (\ b -> A.mul b a) (sym below))
+    (trans (sym (A.mulA u e a)) (trans (ap (A.mul u) h) (L.mul-zero u))) ;
+  unit (a b : A.R) (h : Id A.R (A.mul e (A.mul a b)) e) : Id A.R (A.mul u (A.mul a b)) u =
+   trans (ap (\ c -> A.mul c (A.mul a b)) (sym below))
+    (trans (sym (A.mulA u e (A.mul a b))) (trans (ap (A.mul u) h) below)) ;
+  resolved (a : A.R) : Resolved e a -> Resolved u a = split {
+   inl h -> inl (zero a h) ; inr v -> inr (v.1,unit a v.1 v.2) } ;
+ } ;
+ product-below (e f : A.R) (he : Square e) : Id A.R (A.mul (A.mul e f) e) (A.mul e f) =
+  trans (sym (A.mulA e f e))
+   (trans (L.mul-swap e f e) (trans (ap (A.mul f) he) (A.mulC f e))) ;
+ module Split (e : A.R) (he : Square e) (a : A.R) (w : Reg.Witness a) {
+  module Support = PI.Regular[a,w.1,w.2] ;
+  positive : A.R = A.mul e Support.e ;
+  negative : A.R = A.mul e Support.annihilator ;
+  positive-square : Square positive = PI.product-idempotent e Support.e he Support.idempotent ;
+  negative-square : Square negative = PI.product-idempotent e Support.annihilator he Support.annihilator-idempotent ;
+  module Pos = Refine[e,positive,product-below e Support.e he] ;
+  module Neg = Refine[e,negative,product-below e Support.annihilator he] ;
+  positive-unit : Id A.R (A.mul positive (A.mul a w.1)) positive =
+   trans (sym (A.mulA e Support.e Support.e)) (ap (A.mul e) Support.idempotent) ;
+  negative-zero : Id A.R (A.mul negative a) A.z =
+   trans (sym (A.mulA e Support.annihilator a)) (trans (ap (A.mul e) Support.kills) (L.mul-zero e)) ;
+ } ;
+ module Into (P : (e : A.R) -> Square e -> U l)
+  (glue : (e f : A.R) (he : Square e) (hf : Square f) ->
+   P (A.mul e f) (PI.product-idempotent e f he hf) ->
+   P (A.mul e (PI.complement f)) (PI.product-idempotent e (PI.complement f) he (PI.complement-idempotent f hf)) -> P e he) {
+  Finish (n : Nat) (g : Fin n -> A.R) : U l =
+   (e : A.R) (he : Square e) -> ((i : Fin n) -> Resolved e (g i)) -> P e he ;
+  module Step (n : Nat) (g : Fin (suc n) -> A.R) (w : Reg.Witness (g (inr tt)))
+   (finish : Finish (suc n) g) (e : A.R) (he : Square e)
+   (old : (i : Fin n) -> Resolved e (g (inl i))) {
+   module Part = Split[e,he,g (inr tt),w] ;
+   positive : P Part.positive Part.positive-square = finish Part.positive Part.positive-square
+    (AffineFinite[l].section n (\ i -> Resolved Part.positive (g i))
+     (\ i -> Part.Pos.resolved (g (inl i)) (old i)) (inr (w.1,Part.positive-unit))) ;
+   negative : P Part.negative Part.negative-square = finish Part.negative Part.negative-square
+    (AffineFinite[l].section n (\ i -> Resolved Part.negative (g i))
+     (\ i -> Part.Neg.resolved (g (inl i)) (old i)) (inl Part.negative-zero)) ;
+   theorem : P e he = glue e Part.Support.e he Part.Support.idempotent positive negative ;
+  } ;
+  build : (n : Nat) (g : Fin n -> A.R) -> ((i : Fin n) -> Reg.Witness (g i)) ->
+   Finish n g -> (e : A.R) (he : Square e) -> P e he = split {
+    zero -> \ g witnesses finish e he -> finish e he (\ i -> efq i) ;
+    suc n | ih -> \ g witnesses finish e he ->
+     ih (\ i -> g (inl i)) (\ i -> witnesses (inl i))
+      (\ u hu old -> Step[n,g,witnesses (inr tt),finish,u,hu,old].theorem) e he } ;
+  theorem (propP : (e : A.R) (he : Square e) -> Pr.isProp (P e he))
+   (regular : Reg.Regular) (n : Nat) (g : Fin n -> A.R) (finish : Finish n g) (e : A.R) (he : Square e) : P e he =
+    TC.rec ((i : Fin n) -> Reg.Witness (g i)) @l (P e he) (propP e he)
+     (\ witnesses -> build n g witnesses finish e he) (AffineFinite[l].choice n (\ i -> Reg.Witness (g i)) (\ i -> regular (g i))) ;
+ } ;
+} ;

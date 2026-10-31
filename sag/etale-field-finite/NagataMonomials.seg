@@ -1,0 +1,67 @@
+-- Monic triangular transforms of monomials. Recursively replace T by
+-- T^M in the old variables and add the new factor (Y+T)^u. All degrees
+-- are the mixed-radix weights of NagataWeights. Each intermediate list
+-- is cut to degree+1, so its length and leading coefficient are explicit.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module W = NagataWeights[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (gap : Nat) {
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ module P = Poly[l].PolyR[A] ; module M = Mul[l].MulR[A] ;
+ module Bound = PolynomialBounds[l].Over[A] ; module Lead = PolynomialLeading[l].Over[A] ;
+ module Stretch = NagataStretch[l].Over[A,gap] ; module StretchMap = Stretch.Polynomial[setA] ;
+ module Pow = AffinePowers[l].Over[B.ring] ;
+ record Monic (d : Nat) {
+  raw : P.P ;
+  length : Id Nat (P.plen raw) (suc d) ;
+  top : Id A.R (P.coef raw d) A.o ;
+ } ;
+ monic-bound (d : Nat) (p : Monic[d]) : Bound.Bound (suc d) p.raw =
+  \ k -> trans (ap (P.coef p.raw) (ap (\ n -> plus n k) (sym p.length))) (M.coef-beyond p.raw k) ;
+ monic-lead (d : Nat) (p : Monic[d]) : Lead.Lead d p.raw A.o = (monic-bound d p,p.top) ;
+ one : Monic[zero] = new Monic[zero,cons A.o nil,refl (suc zero),refl A.o] ;
+ linear (a : A.R) : Monic[suc zero] =
+  new Monic[suc zero,cons a (cons A.o nil),refl (suc (suc zero)),refl A.o] ;
+ module Product (d e : Nat) (p : Monic[d]) (q : Monic[e]) {
+  degree : Nat = plus e d ;
+  raw : P.P = M.pmul p.raw q.raw ;
+  leading : Lead.Lead degree raw A.o =
+   ((Lead.product d e p.raw q.raw A.o A.o (monic-lead d p) (monic-lead e q)).1,
+    trans (Lead.product d e p.raw q.raw A.o A.o (monic-lead d p) (monic-lead e q)).2 (A.mulO A.o)) ;
+  polynomial : P.P = Bound.cut (suc degree) raw ;
+  equality : P.peq raw polynomial = Bound.cut-equal (suc degree) raw leading.1 ;
+  result : Monic[degree] = new Monic[degree,polynomial,Bound.cut-length (suc degree) raw,
+   trans (sym (equality degree)) leading.2] ;
+  equation : Id B.Carrier (B.include result.raw) (B.mulQ (B.include p.raw) (B.include q.raw)) =
+   trans (sym (B.Q.relates raw polynomial equality)) (sym (B.Multiply.beta p.raw q.raw)) ;
+ } ;
+ stretch (d : Nat) (p : Monic[d]) : Monic[Blocks[l].times Stretch.radix d] =
+  new Monic[Blocks[l].times Stretch.radix d,Stretch.stretch p.raw,
+   Stretch.length p.raw d p.length,trans (Stretch.top p.raw d p.length) p.top] ;
+ stretch-equation (d : Nat) (p : Monic[d]) :
+  Id B.Carrier (B.include (stretch d p).raw) (StretchMap.UP.extend.1 (B.include p.raw)) =
+  sym (StretchMap.on-list p.raw) ;
+ power (a : A.R) : (k : Nat) -> Monic[k] = split {
+  zero -> one ; suc k | rec -> Product[k,suc zero,rec,linear a].result } ;
+ linear-value (a : A.R) : Id B.Carrier (B.include (linear a).raw) (B.addQ (B.constant a) B.variable) =
+  trans (B.horner a (cons A.o nil)) (ap (B.addQ (B.constant a)) (B.mul-one B.variable)) ;
+ power-value (a : A.R) : (k : Nat) ->
+  Id B.Carrier (B.include (power a k).raw) (Pow.power (B.addQ (B.constant a) B.variable) k) = split {
+  zero -> refl B.oneQ ;
+  suc k | ih -> trans Product[k,suc zero,power a k,linear a].equation
+   (trans (cong2 B.Carrier B.mulQ _ _ _ _ ih (linear-value a))
+    (B.mul-comm (Pow.power (B.addQ (B.constant a) B.variable) k) (B.addQ (B.constant a) B.variable))) } ;
+
+ monomial : (n : Nat) (y : Fin n -> A.R) (u : W.Exponent n) -> Monic[W.weight Stretch.radix n u] = split {
+  zero -> \ y u -> one ;
+  suc n | ih -> \ y u ->
+   Product[u (inr tt),Blocks[l].times Stretch.radix (W.weight Stretch.radix n (W.old n u)),
+    power (y (inr tt)) (u (inr tt)),stretch (W.weight Stretch.radix n (W.old n u)) (ih (\ i -> y (inl i)) (W.old n u))].result } ;
+ monomial-step (n : Nat) (y : Fin (suc n) -> A.R) (u : W.Exponent (suc n)) :
+  Id B.Carrier (B.include (monomial (suc n) y u).raw)
+   (B.mulQ (Pow.power (B.addQ (B.constant (y (inr tt))) B.variable) (u (inr tt)))
+    (StretchMap.UP.extend.1 (B.include (monomial n (\ i -> y (inl i)) (W.old n u)).raw))) =
+  trans Product[u (inr tt),Blocks[l].times Stretch.radix (W.weight Stretch.radix n (W.old n u)),
+    power (y (inr tt)) (u (inr tt)),stretch (W.weight Stretch.radix n (W.old n u)) (monomial n (\ i -> y (inl i)) (W.old n u))].equation
+   (cong2 B.Carrier B.mulQ _ _ _ _ (power-value (y (inr tt)) (u (inr tt)))
+    (stretch-equation (W.weight Stretch.radix n (W.old n u)) (monomial n (\ i -> y (inl i)) (W.old n u)))) ;
+} ;

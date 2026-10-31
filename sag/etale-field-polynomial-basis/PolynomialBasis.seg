@@ -1,0 +1,91 @@
+-- A finite algebra basis extends to the polynomial rings, with explicit
+-- raw coefficient coordinates. The scalar extension algebra constructs
+-- the coordinate map; the polynomial universal property proves recovery.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (S : Algebras[l].Over[k,setk].Algebra)
+ (n : Nat) (b : TraceBasis[l].Over[k,setk,S].Basis[n]) {
+ module C = Algebras[l].Over[k,setk] ;
+ module K = PolynomialRing[l].Extension[k,setk] ;
+ module P = PolynomialRing[l].Extension[S.ring,S.set] ;
+ module Scalar = FlatPolynomialData[l].Map[k,S.ring,setk,S.set,S.iota] ;
+ scalar : H.Hom K.ring P.ring = Scalar.f ;
+ polynomial-base : C.Algebra = C.mkAlgebra K.ring K.set K.inclusion ;
+ polynomial-target : C.Algebra = C.mkAlgebra P.ring P.set
+  (H.compose k S.ring P.ring P.inclusion S.iota) ;
+ constants : C.Hom S polynomial-target = (P.inclusion,\ a -> refl (P.constant (S.iota.1 a))) ;
+ scalars : C.Hom polynomial-base polynomial-target = (scalar,Scalar.UP.on-constants) ;
+ module CK = Algebras[l].Over[K.ring,K.set] ;
+ algebra : CK.Algebra = CK.mkAlgebra P.ring P.set scalar ;
+ module X = FiniteBasisScalarExtension[l].Over[k,setk,S,polynomial-base,n,b] ;
+ module Forward = Universal[l].Property[S.ring,X.ring,S.set,X.V.set].Given[
+  X.left.1,X.right.1.1 K.variable] ;
+ forward : H.Hom P.ring X.ring = Forward.extend ;
+ module Backward = FiniteBasisEvaluation[l].Over[k,setk,S,polynomial-base,n,b].At[
+  polynomial-target,constants,scalars] ;
+ module Recover = Universal[l].Property[S.ring,P.ring,S.set,P.set].Given[P.inclusion,P.variable] ;
+ composite : H.Hom P.ring P.ring = H.compose P.ring X.ring P.ring Backward.hom.1 forward ;
+ inverse : Id (H.Hom P.ring P.ring) composite (H.identity P.ring) =
+  trans (Recover.unique composite
+   (\ a -> trans (ap Backward.value (Forward.on-constants a)) (Backward.value-pure a))
+   (trans (ap Backward.value Forward.on-variable)
+    (trans (Backward.value-scalar K.variable) Scalar.UP.on-variable)))
+   (sym (Recover.unique (H.identity P.ring) (\ a -> refl (P.constant a)) (refl P.variable))) ;
+ module ScalarForward = Universal[l].Property[k,X.ring,setk,X.V.set].Given[
+  X.algebra.iota,X.right.1.1 K.variable] ;
+ forward-scalar-map : Id (H.Hom K.ring X.ring)
+  (H.compose K.ring P.ring X.ring forward scalar) X.right.1 =
+  trans (ScalarForward.unique (H.compose K.ring P.ring X.ring forward scalar)
+   (\ a -> trans (ap forward.1 (Scalar.UP.on-constants a))
+    (trans (Forward.on-constants (S.iota.1 a)) (X.left.2 a)))
+   (trans (ap forward.1 Scalar.UP.on-variable) Forward.on-variable))
+   (sym (ScalarForward.unique X.right.1 X.right.2 (refl (X.right.1.1 K.variable)))) ;
+ forward-scalar (a : K.Carrier) : Id X.V.V (forward.1 (scalar.1 a)) (X.scalar a) =
+  ap (\ h -> h.1 a) forward-scalar-map ;
+ coordinate (p : P.Carrier) (i : Fin n) : K.Carrier = forward.1 p i ;
+ coordinate-add (p q : P.Carrier) (i : Fin n) :
+  Id K.Carrier (coordinate (P.ring.add p q) i) (K.ring.add (coordinate p i) (coordinate q i)) =
+  ap (\ v -> v i) (forward.2.2.1 p q) ;
+ coordinate-scale (a : K.Carrier) (p : P.Carrier) (i : Fin n) :
+  Id K.Carrier (coordinate (P.ring.mul (scalar.1 a) p) i) (K.ring.mul a (coordinate p i)) =
+  ap (\ v -> v i)
+   (trans (forward.2.2.2 (scalar.1 a) p)
+    (trans (ap (\ v -> X.product v (forward.1 p)) (forward-scalar a))
+     (X.scalar-action a (forward.1 p)))) ;
+ coordinate-constant (a : S.ring.R) (i : Fin n) :
+  Id K.Carrier (coordinate (P.constant a) i) (K.constant (b.coordinate a i)) =
+  ap (\ v -> v i) (Forward.on-constants a) ;
+ coordinate-variable (p : P.Carrier) (i : Fin n) :
+  Id K.Carrier (coordinate (P.ring.mul P.variable p) i) (K.ring.mul K.variable (coordinate p i)) =
+  trans (ap (\ t -> coordinate (P.ring.mul t p) i) (sym Scalar.UP.on-variable))
+   (coordinate-scale K.variable p i) ;
+ module PS = FiniteIdeal[l].Sums[P.ring] ;
+ reconstruction (p : P.Carrier) :
+  Id P.Carrier (PS.sum n (\ j -> P.ring.mul (scalar.1 (coordinate p j)) (P.constant (b.vector j)))) p =
+  trans (PS.sum-cong n
+   (\ j -> P.ring.mul (scalar.1 (coordinate p j)) (P.constant (b.vector j)))
+   (\ j -> P.ring.mul (P.constant (b.vector j)) (scalar.1 (coordinate p j)))
+   (\ j -> P.ring.mulC (scalar.1 (coordinate p j)) (P.constant (b.vector j))))
+   (ap (\ h -> h.1 p) inverse) ;
+ on-vector (j i : Fin n) : Id K.Carrier (coordinate (P.constant (b.vector j)) i)
+  (MnSums[l].Over[K.ring].delta n i j) =
+  trans (coordinate-constant (b.vector j) i)
+   (trans (ap K.constant (b.on-vector j i)) (X.Iota.delta-map n i j)) ;
+ basis : TraceBasis[l].Over[K.ring,K.set,algebra].Basis[n] =
+  TraceBasis[l].Over[K.ring,K.set,algebra].mkBasis n
+   (\ j -> P.constant (b.vector j)) coordinate coordinate-add coordinate-scale reconstruction on-vector ;
+ coordinateRaw : List S.ring.R -> Fin n -> List k.R = split {
+  nil -> \ i -> nil ; cons a p | ih -> \ i -> cons (b.coordinate a i) (ih i) } ;
+ coordinate-zero (i : Fin n) : Id K.Carrier (coordinate P.ring.z i) K.ring.z =
+  ap (\ v -> v i) (H.zero P.ring X.ring forward) ;
+ coordinate-list : (p : List S.ring.R) (i : Fin n) ->
+  Id K.Carrier (coordinate (P.include p) i) (K.include (coordinateRaw p i)) = split {
+  nil -> coordinate-zero ;
+  cons a p | ih -> \ i ->
+   trans (ap (\ t -> coordinate t i) (P.horner a p))
+    (trans (coordinate-add (P.constant a) (P.mulQ P.variable (P.include p)) i)
+     (trans (cong2 K.Carrier K.addQ _ _ _ _ (coordinate-constant a i)
+      (trans (coordinate-variable (P.include p) i) (ap (K.mulQ K.variable) (ih i))))
+      (sym (K.horner (b.coordinate a i) (coordinateRaw p i))))) } ;
+} ;

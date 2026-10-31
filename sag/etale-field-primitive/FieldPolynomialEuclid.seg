@@ -1,0 +1,80 @@
+-- Bounded extended Euclidean algorithm on raw field polynomials.
+-- The bound for the second argument decreases at every step: a zero top
+-- coefficient is dropped; a unit top coefficient permits division and
+-- the recursive pair is (q,remainder). Both divisibilities and the Bezout
+-- identity are retained, so the output is a genuine gcd certificate.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Identities (A : CRing) {
+ module L = RL[A] ;
+ cancel-four (v w z : A.R) : Id A.R (A.add (A.add v w) (A.add z (A.neg v))) (A.add z w) =
+  trans (ap (A.add (A.add v w)) (A.addC z (A.neg v)))
+   (trans (L.swap v w (A.neg v) z)
+    (trans (ap (\ x -> A.add x (A.add w z)) (A.addN v)) (trans (L.zl (A.add w z)) (A.addC w z)))) ;
+ bezout (q h r x y : A.R) : Id A.R
+  (A.add (A.mul y (A.add (A.mul q h) r)) (A.mul (A.add x (A.neg (A.mul y h))) q))
+  (A.add (A.mul x q) (A.mul y r)) =
+  trans (cong2 A.R A.add _ _ _ _ (A.dist y (A.mul q h) r)
+   (trans (L.dist-left x (A.neg (A.mul y h)) q)
+    (ap (A.add (A.mul x q))
+     (trans (L.neg-mul-left (A.mul y h) q)
+      (ap A.neg (trans (sym (A.mulA y h q)) (ap (A.mul y) (A.mulC h q))))))))
+   (cancel-four (A.mul y (A.mul q h)) (A.mul y r) (A.mul x q)) ;
+} ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (dec : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a)) {
+ module Raw = Poly[l].PolyR[k] ; module M = Mul[l].MulR[k] ;
+ module Bound = PolynomialBounds[l].Over[k] ; module B = PolynomialRing[l].Extension[k,setk] ;
+ module L = RL[B.ring] ; module I = Identities[B.ring] ;
+ record Result (p q : Raw.P) {
+  gcd : Raw.P ;
+  factor-left : B.Carrier ;
+  factor-right : B.Carrier ;
+  divides-left : Id B.Carrier (B.include p) (B.mulQ (B.include gcd) factor-left) ;
+  divides-right : Id B.Carrier (B.include q) (B.mulQ (B.include gcd) factor-right) ;
+  left : B.Carrier ;
+  right : B.Carrier ;
+  bezout : Id B.Carrier (B.include gcd)
+   (B.addQ (B.mulQ left (B.include p)) (B.mulQ right (B.include q))) ;
+ } ;
+ module Zero (p q : Raw.P) (h : Bound.Bound zero q) {
+  zero : Id B.Carrier (B.include q) B.zeroQ = B.Q.relates q nil h ;
+  bezout : Id B.Carrier (B.include p)
+   (B.addQ (B.mulQ B.oneQ (B.include p)) (B.mulQ B.zeroQ (B.include q))) =
+   sym (trans (cong2 B.Carrier B.addQ _ _ _ _ (L.one-left (B.include p)) (L.zero-mul (B.include q))) (B.ring.addZ (B.include p))) ;
+  result : Result[p,q] = new Result[p,q,p,B.oneQ,B.zeroQ,sym (B.ring.mulO (B.include p)),
+   trans zero (sym (L.mul-zero (B.include p))),B.oneQ,B.zeroQ,bezout] ;
+ } ;
+ module Back (p q r : Raw.P) (h : B.Carrier)
+  (division : Id B.Carrier (B.include p) (B.addQ (B.mulQ (B.include q) h) (B.include r)))
+  (rec : Result[q,r]) {
+  factor-left : B.Carrier = B.addQ (B.mulQ rec.factor-left h) rec.factor-right ;
+  divides-left : Id B.Carrier (B.include p) (B.mulQ (B.include rec.gcd) factor-left) =
+   trans division
+    (trans (cong2 B.Carrier B.addQ _ _ _ _
+     (trans (ap (\ x -> B.mulQ x h) rec.divides-left) (sym (B.ring.mulA (B.include rec.gcd) rec.factor-left h)))
+     rec.divides-right) (sym (B.ring.dist (B.include rec.gcd) (B.mulQ rec.factor-left h) rec.factor-right))) ;
+  left : B.Carrier = rec.right ;
+  right : B.Carrier = B.addQ rec.left (B.negQ (B.mulQ rec.right h)) ;
+  bezout : Id B.Carrier (B.include rec.gcd)
+   (B.addQ (B.mulQ left (B.include p)) (B.mulQ right (B.include q))) =
+   trans rec.bezout
+    (trans (sym (I.bezout (B.include q) h (B.include r) rec.left rec.right))
+     (ap (\ x -> B.addQ (B.mulQ rec.right x) (B.mulQ right (B.include q))) (sym division))) ;
+  result : Result[p,q] = new Result[p,q,rec.gcd,factor-left,rec.factor-left,divides-left,rec.divides-left,left,right,bezout] ;
+ } ;
+  module UnitStep (n : Nat) (ih : (p q : Raw.P) -> Bound.Bound n q -> Result[p,q])
+   (p q : Raw.P) (bounded : Bound.Bound (suc n) q) (h : RL[k].unit (Raw.coef q n)) {
+   module D = FieldPolynomialDivision[l].Over[k,setk].At[n,q,bounded,h].Divide[p] ;
+   result : Result[p,q] = Back[p,q,D.remainder,D.quotient,D.equation,ih q D.remainder D.remainder-bound].result ;
+  } ;
+ step (n : Nat) (ih : (p q : Raw.P) -> Bound.Bound n q -> Result[p,q])
+  (p q : Raw.P) (bounded : Bound.Bound (suc n) q) :
+  Plus (Id k.R (Raw.coef q n) k.z) (RL[k].unit (Raw.coef q n)) -> Result[p,q] = split {
+   inl h -> ih p q (Bound.lower-bound n q bounded h) ;
+   inr h -> UnitStep[n,ih,p,q,bounded,h].result } ;
+ algorithm : (n : Nat) (p q : Raw.P) -> Bound.Bound n q -> Result[p,q] = split {
+  zero -> \ p q h -> Zero[p,q,h].result ;
+  suc n | ih -> \ p q h -> step n ih p q h (dec (Raw.coef q n)) } ;
+ extended (p q : Raw.P) : Result[p,q] = algorithm (Raw.plen q) p q (M.coef-beyond q) ;
+} ;

@@ -1,0 +1,63 @@
+-- Polynomial representations of a finite basis extend to all elements
+-- by taking the same coordinate combination of their coefficient lists.
+-- Thus the eventual selected-factor construction needs finite choice
+-- only; no global choice of polynomial representatives is required.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R) (S : Algebras[l].Over[k,setk].Algebra) (x : S.ring.R) {
+ module M = Mul[l].MulR[k] ; module H = MonicReduce[l].Horner[k,S.ring,S.iota,x] ;
+ module L = RL[S.ring] ; module Sum = FiniteIdeal[l].Sums[S.ring] ;
+ add-value : (p q : List k.R) -> Id S.ring.R (H.horner (M.addP p q)) (S.ring.add (H.horner p) (H.horner q)) = split {
+  nil -> \ q -> sym (L.zl (H.horner q)) ;
+  cons a p | ih -> split {
+   nil -> sym (S.ring.addZ (H.horner (cons a p))) ;
+   cons b q -> trans (cong2 S.ring.R S.ring.add _ _ _ _ (S.iota.2.2.1 a b)
+    (trans (ap (S.ring.mul x) (ih q)) (S.ring.dist x (H.horner p) (H.horner q))))
+    (L.swap (S.iota.1 a) (S.iota.1 b) (S.ring.mul x (H.horner p)) (S.ring.mul x (H.horner q))) } } ;
+ scale-value (a : k.R) : (p : List k.R) -> Id S.ring.R
+  (H.horner (M.scal a p)) (S.ring.mul (S.iota.1 a) (H.horner p)) = split {
+   nil -> sym (L.mul-zero (S.iota.1 a)) ;
+   cons b p | ih -> trans (cong2 S.ring.R S.ring.add _ _ _ _ (S.iota.2.2.2 a b)
+    (trans (ap (S.ring.mul x) ih) (L.mul-swap x (S.iota.1 a) (H.horner p))))
+    (sym (S.ring.dist (S.iota.1 a) (S.iota.1 b) (S.ring.mul x (H.horner p)))) } ;
+ combination : (n : Nat) -> (Fin n -> k.R) -> (Fin n -> List k.R) -> List k.R = split {
+  zero -> \ r p -> nil ; suc n | ih -> \ r p -> M.addP (M.scal (r (inr tt)) (p (inr tt)))
+   (ih (\ i -> r (inl i)) (\ i -> p (inl i))) } ;
+ combination-value : (n : Nat) (r : Fin n -> k.R) (p : Fin n -> List k.R) -> Id S.ring.R
+  (H.horner (combination n r p)) (Sum.sum n (\ i -> S.ring.mul (S.iota.1 (r i)) (H.horner (p i)))) = split {
+  zero -> \ r p -> refl S.ring.z ;
+  suc n | ih -> \ r p -> trans (add-value (M.scal (r (inr tt)) (p (inr tt)))
+   (combination n (\ i -> r (inl i)) (\ i -> p (inl i))))
+   (cong2 S.ring.R S.ring.add _ _ _ _ (scale-value (r (inr tt)) (p (inr tt)))
+    (ih (\ i -> r (inl i)) (\ i -> p (inl i)))) } ;
+ module At (n : Nat) (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (e : S.ring.R)
+  (p : Fin n -> List k.R)
+  (hp : (i : Fin n) -> Id S.ring.R
+   (S.ring.mul e (S.ring.add (basis.vector i) (S.ring.neg (H.horner (p i))))) S.ring.z) {
+  vector-value (i : Fin n) : Id S.ring.R (S.ring.mul e (basis.vector i)) (S.ring.mul e (H.horner (p i))) =
+   FormallyEtale[l].Units[S.ring,S.set].sub-zero _ _
+    (trans (sym (trans (S.ring.dist e (basis.vector i) (S.ring.neg (H.horner (p i))))
+     (ap (S.ring.add (S.ring.mul e (basis.vector i))) (L.mul-neg e (H.horner (p i)))))) (hp i)) ;
+  representation (a : S.ring.R) : List k.R = combination n (basis.coordinate a) p ;
+  evaluation (a : S.ring.R) : Id S.ring.R (S.ring.mul e a) (S.ring.mul e (H.horner (representation a))) =
+   calc S.ring.R {
+    S.ring.mul e a
+     =< ap (S.ring.mul e) (sym (basis.reconstruction a))
+      > S.ring.mul e (Sum.sum n (\ i -> S.ring.mul (S.iota.1 (basis.coordinate a i)) (basis.vector i)))
+     =< sym (Sum.sum-scale e n (\ i -> S.ring.mul (S.iota.1 (basis.coordinate a i)) (basis.vector i)))
+      > Sum.sum n (\ i -> S.ring.mul e (S.ring.mul (S.iota.1 (basis.coordinate a i)) (basis.vector i)))
+     =< Sum.sum-cong n _ _ (\ i -> trans (L.mul-swap e (S.iota.1 (basis.coordinate a i)) (basis.vector i))
+      (trans (ap (S.ring.mul (S.iota.1 (basis.coordinate a i))) (vector-value i))
+       (L.mul-swap (S.iota.1 (basis.coordinate a i)) e (H.horner (p i)))))
+      > Sum.sum n (\ i -> S.ring.mul e (S.ring.mul (S.iota.1 (basis.coordinate a i)) (H.horner (p i))))
+     =< Sum.sum-scale e n (\ i -> S.ring.mul (S.iota.1 (basis.coordinate a i)) (H.horner (p i)))
+      > S.ring.mul e (Sum.sum n (\ i -> S.ring.mul (S.iota.1 (basis.coordinate a i)) (H.horner (p i))))
+     =< ap (S.ring.mul e) (sym (combination-value n (basis.coordinate a) p))
+      > S.ring.mul e (H.horner (representation a)) } ;
+  generates (a : S.ring.R) : Id S.ring.R
+   (S.ring.mul e (S.ring.add a (S.ring.neg (H.horner (representation a))))) S.ring.z =
+   trans (S.ring.dist e a (S.ring.neg (H.horner (representation a))))
+    (trans (cong2 S.ring.R S.ring.add _ _ _ _ (evaluation a) (L.mul-neg e (H.horner (representation a))))
+     (S.ring.addN (S.ring.mul e (H.horner (representation a))))) ;
+ } ;
+} ;

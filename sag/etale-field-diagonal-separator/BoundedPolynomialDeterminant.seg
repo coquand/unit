@@ -1,0 +1,60 @@
+-- Actual coefficient-list representatives and degree bounds for a
+-- polynomial determinant. The proof follows the checked exterior
+-- determinant operations, so no new determinant formula is needed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module NI = Integers[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R) {
+ module B = PolynomialRing[l].Extension[k,setk] ; module Raw = Poly[l].PolyR[k] ; module M = Mul[l].MulR[k] ;
+ module L = RawLaws[l].Laws[k] ; module PB = PolynomialBounds[l].Over[k] ; module PL = PolynomialLeading[l].Over[k] ;
+ module EM = ExteriorModel[l].Over[B.ring] ;
+ record Bounded (d : Nat) (x : B.Carrier) {
+  raw : Raw.P ; bounded : PB.Bound (suc d) raw ; equation : Id B.Carrier (B.include raw) x ;
+ } ;
+ bounded-zero (d : Nat) : Bounded[d,B.zeroQ] = new Bounded[d,B.zeroQ,nil,\ j -> refl k.z,refl B.zeroQ] ;
+ constant (d : Nat) (a : k.R) : Bounded[d,B.constant a] = new Bounded[d,B.constant a,cons a nil,
+  MonicPowers[l].Raw[k].weaken (suc zero) d (cons a nil) (\ j -> refl k.z),refl (B.constant a)] ;
+ add (d : Nat) (x y : B.Carrier) (u : Bounded[d,x]) (v : Bounded[d,y]) : Bounded[d,B.addQ x y] =
+  new Bounded[d,B.addQ x y,M.addP u.raw v.raw,PB.add-bound (suc d) u.raw v.raw u.bounded v.bounded,
+   trans (sym (B.Add.beta u.raw v.raw)) (cong2 B.Carrier B.addQ _ _ _ _ u.equation v.equation)] ;
+ neg (d : Nat) (x : B.Carrier) (u : Bounded[d,x]) : Bounded[d,B.negQ x] =
+  new Bounded[d,B.negQ x,L.negP u.raw,PB.neg-bound (suc d) u.raw u.bounded,
+   trans (sym (B.Negate.beta u.raw)) (ap B.negQ u.equation)] ;
+ multiply (d e : Nat) (x y : B.Carrier) (u : Bounded[d,x]) (v : Bounded[e,y]) : Bounded[plus e d,B.mulQ x y] =
+  new Bounded[plus e d,B.mulQ x y,M.pmul u.raw v.raw,
+   (PL.product d e u.raw v.raw (Raw.coef u.raw d) (Raw.coef v.raw e)
+    (u.bounded,refl (Raw.coef u.raw d)) (v.bounded,refl (Raw.coef v.raw e))).1,
+   trans (sym (B.Multiply.beta u.raw v.raw)) (cong2 B.Carrier B.mulQ _ _ _ _ u.equation v.equation)] ;
+ ExtBound : (n d : Nat) -> EM.Ext n -> U l = split {
+  zero -> \ d x -> Bounded[d,x] ;
+  suc n | rec -> \ d x -> rec d x.1 * rec d x.2 } ;
+ ext-zero : (n d : Nat) -> ExtBound n d (EM.ezero n) = split {
+  zero -> bounded-zero ; suc n | rec -> \ d -> (rec d,rec d) } ;
+ ext-add : (n d : Nat) (x y : EM.Ext n) -> ExtBound n d x -> ExtBound n d y -> ExtBound n d (EM.eadd n x y) = split {
+  zero -> add ; suc n | rec -> \ d x y u v -> (rec d x.1 y.1 u.1 v.1,rec d x.2 y.2 u.2 v.2) } ;
+ ext-neg : (n d : Nat) (x : EM.Ext n) -> ExtBound n d x -> ExtBound n d (EM.eneg n x) = split {
+  zero -> neg ; suc n | rec -> \ d x u -> (rec d x.1 u.1,rec d x.2 u.2) } ;
+ ext-alpha : (n d : Nat) (x : EM.Ext n) -> ExtBound n d x -> ExtBound n d (EM.alpha n x) = split {
+  zero -> \ d x u -> u ; suc n | rec -> \ d x u -> (rec d x.1 u.1,ext-neg n d (EM.alpha n x.2) (rec d x.2 u.2)) } ;
+ ext-emb : (n d : Nat) (x : B.Carrier) -> Bounded[d,x] -> ExtBound n d (EM.emb n x) = split {
+  zero -> \ d x u -> u ; suc n | rec -> \ d x u -> (rec d x u,ext-zero n d) } ;
+ ext-multiply : (n d e : Nat) (x y : EM.Ext n) -> ExtBound n d x -> ExtBound n e y -> ExtBound n (plus e d) (EM.emul n x y) = split {
+  zero -> multiply ;
+  suc n | rec -> \ d e x y u v ->
+   (rec d e x.1 y.1 u.1 v.1,
+    ext-add n (plus e d) (EM.emul n x.1 y.2) (EM.emul n x.2 (EM.alpha n y.1))
+     (rec d e x.1 y.2 u.1 v.2) (rec d e x.2 (EM.alpha n y.1) u.2 (ext-alpha n e y.1 v.1))) } ;
+ ext-gen : (n d : Nat) (x : Fin n -> B.Carrier) -> ((i : Fin n) -> Bounded[d,x i]) -> ExtBound n d (EM.gen n x) = split {
+  zero -> \ d x u -> bounded-zero d ;
+  suc n | rec -> \ d x u -> (rec d (\ i -> x (inl i)) (\ i -> u (inl i)),ext-emb n d (x (inr tt)) (u (inr tt))) } ;
+ ext-top : (n d : Nat) (x : EM.Ext n) -> ExtBound n d x -> Bounded[d,EM.top n x] = split {
+  zero -> \ d x u -> u ; suc n | rec -> \ d x u -> rec d x.2 u.2 } ;
+ ext-product (n d : Nat) : (m : Nat) (x : Fin m -> EM.Ext n) ->
+  ((i : Fin m) -> ExtBound n d (x i)) -> ExtBound n (NI.times m d) (EM.eprod n m x) = split {
+   zero -> \ x u -> ext-emb n zero B.oneQ (constant zero k.o) ;
+   suc m | rec -> \ x u -> ext-multiply n (NI.times m d) d (EM.eprod n m (\ i -> x (inl i))) (x (inr tt))
+    (rec (\ i -> x (inl i)) (\ i -> u (inl i))) (u (inr tt)) } ;
+ determinant (n d : Nat) (x : Fin n -> Fin n -> B.Carrier)
+  (u : (j i : Fin n) -> Bounded[d,x j i]) : Bounded[NI.times n d,EM.det n x] =
+   ext-top n (NI.times n d) (EM.eprod n n (\ j -> EM.gen n (x j)))
+    (ext-product n d n (\ j -> EM.gen n (x j)) (\ j -> ext-gen n d (x j) (u j))) ;
+} ;

@@ -1,0 +1,59 @@
+-- Expand polynomial-expression syntax into finite monomial lists.
+-- This first expansion permits repeated exponents and zero coefficients.
+-- The semantic theorem holds in every A-algebra, not only the base ring.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
+ module C = Algebras[l].Over[A,setA] ; module P = Presentations[l].Over[A,setA] ;
+ Term : U l = A.R * E.Exponent n ;
+ Terms : U l = List Term ;
+ append : Terms -> Terms -> Terms = split { nil -> \ q -> q ; cons t p | rec -> \ q -> cons t (rec q) } ;
+ multiply (t u : Term) : Term = (A.mul t.1 u.1,E.addE n t.2 u.2) ;
+ times (t : Term) : Terms -> Terms = split { nil -> nil ; cons u p | rec -> cons (multiply t u) rec } ;
+ product : Terms -> Terms -> Terms = split { nil -> \ q -> nil ; cons t p | rec -> \ q -> append (times t q) (rec q) } ;
+ raw : P.Expr (Fin n) -> Terms = split {
+  var j -> cons (A.o,E.unit n j) nil ;
+  cst a -> cons (a,E.zeroE n) nil ;
+  sumE e f | re rf -> append re rf ;
+  mulE e f | re rf -> product re rf } ;
+ Away (u : E.Exponent n) : Terms -> U l = split {
+  nil -> Top ; cons t p | rec -> Not (Id (E.Exponent n) u t.2) * rec } ;
+ Unique : Terms -> U l = split { nil -> Top ; cons t p | rec -> Away t.2 p * rec } ;
+ Nonzero : Terms -> U l = split { nil -> Top ; cons t p | rec -> Not (Id A.R t.1 A.z) * rec } ;
+ module At (B : C.Algebra) (x : Fin n -> B.ring.R) {
+  module M = MonomialEvaluation[l].Over[B.ring] ; module L = RL[B.ring] ;
+  term (t : Term) : B.ring.R = B.ring.mul (B.iota.1 t.1) (M.monomial n x t.2) ;
+  value : Terms -> B.ring.R = split { nil -> B.ring.z ; cons t p | rec -> B.ring.add (term t) rec } ;
+  term-zero (u : E.Exponent n) : Id B.ring.R (term (A.z,u)) B.ring.z =
+   trans (ap (\ a -> B.ring.mul a (M.monomial n x u)) (RingHom[l].zero A B.ring B.iota)) (L.zero-mul (M.monomial n x u)) ;
+  term-add (a b : A.R) (u : E.Exponent n) :
+   Id B.ring.R (term (A.add a b,u)) (B.ring.add (term (a,u)) (term (b,u))) =
+   trans (ap (\ c -> B.ring.mul c (M.monomial n x u)) (B.iota.2.2.1 a b))
+    (L.dist-left (B.iota.1 a) (B.iota.1 b) (M.monomial n x u)) ;
+  append-value : (p q : Terms) -> Id B.ring.R (value (append p q)) (B.ring.add (value p) (value q)) = split {
+   nil -> \ q -> sym (L.zl (value q)) ;
+   cons t p | rec -> \ q -> trans (ap (B.ring.add (term t)) (rec q)) (B.ring.addA (term t) (value p) (value q)) } ;
+  multiply-value (t u : Term) : Id B.ring.R (term (multiply t u)) (B.ring.mul (term t) (term u)) =
+   trans (cong2 B.ring.R B.ring.mul _ _ _ _ (B.iota.2.2.2 t.1 u.1) (M.product n x t.2 u.2))
+    (L.mul-four (B.iota.1 t.1) (B.iota.1 u.1) (M.monomial n x t.2) (M.monomial n x u.2)) ;
+  times-value (t : Term) : (p : Terms) -> Id B.ring.R (value (times t p)) (B.ring.mul (term t) (value p)) = split {
+   nil -> sym (L.mul-zero (term t)) ;
+   cons u p | rec -> trans (cong2 B.ring.R B.ring.add _ _ _ _ (multiply-value t u) rec)
+    (sym (B.ring.dist (term t) (term u) (value p))) } ;
+  product-value : (p q : Terms) -> Id B.ring.R (value (product p q)) (B.ring.mul (value p) (value q)) = split {
+   nil -> \ q -> sym (L.zero-mul (value q)) ;
+   cons t p | rec -> \ q -> trans (append-value (times t q) (product p q))
+    (trans (cong2 B.ring.R B.ring.add _ _ _ _ (times-value t q) (rec q))
+     (sym (L.dist-left (term t) (value p) (value q)))) } ;
+  variable (j : Fin n) : Id B.ring.R (value (raw (var j))) (x j) =
+   trans (B.ring.addZ (term (A.o,E.unit n j)))
+    (trans (cong2 B.ring.R B.ring.mul _ _ _ _ B.iota.2.1 (M.unit-value n x j)) (L.one-left (x j))) ;
+  constant (a : A.R) : Id B.ring.R (value (raw (cst a))) (B.iota.1 a) =
+   trans (B.ring.addZ (term (a,E.zeroE n)))
+    (trans (ap (B.ring.mul (B.iota.1 a)) (M.zero-value n x)) (B.ring.mulO (B.iota.1 a))) ;
+  sound : (e : P.Expr (Fin n)) -> Id B.ring.R (P.eval (Fin n) B x e) (value (raw e)) = split {
+   var j -> sym (variable j) ; cst a -> sym (constant a) ;
+   sumE e f | re rf -> trans (cong2 B.ring.R B.ring.add _ _ _ _ re rf) (sym (append-value (raw e) (raw f))) ;
+   mulE e f | re rf -> trans (cong2 B.ring.R B.ring.mul _ _ _ _ re rf) (sym (product-value (raw e) (raw f))) } ;
+ } ;
+} ;

@@ -1,0 +1,72 @@
+-- Evaluate a scalar-extension vector in any common target of S and B.
+-- value(v)=sum_j f(b_j)g(v_j).  The maps agree on R, so reconstruction
+-- proves value(pure a)=f(a).  Bilinearity reduces preservation of products
+-- to these pure basis vectors.  This constructs the inverse map needed
+-- to identify the coordinate algebra with the algebra coproduct.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (S B : Algebras[l].Over[R,setR].Algebra)
+ (n : Nat) (b : TraceBasis[l].Over[R,setR,S].Basis[n]) {
+ module C = Algebras[l].Over[R,setR] ;
+ module X = FiniteBasisScalarExtension[l].Over[R,setR,S,B,n,b] ;
+ module At (A : C.Algebra) (f : C.Hom S A) (g : C.Hom B A) {
+  module AS = FiniteIdeal[l].Sums[A.ring] ;
+  module FM = DeterminantLemma[l].Map[S.ring,A.ring,S.set,A.set,f.1] ;
+  module Target = X.V.Into[A.ring,g.1] ;
+  value (v : X.V.V) : A.ring.R = AS.sum n (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (v j))) ;
+  linear : Target.TargetLinear[value] =
+   Target.mkTargetLinear value
+    (\ v w ->
+     trans (AS.sum-cong n
+       (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (B.ring.add (v j) (w j))))
+       (\ j -> A.ring.add (A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (v j))) (A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (w j))))
+       (\ j -> trans (ap (A.ring.mul (f.1.1 (b.vector j))) (g.1.2.2.1 (v j) (w j)))
+        (A.ring.dist (f.1.1 (b.vector j)) (g.1.1 (v j)) (g.1.1 (w j)))))
+      (AS.sum-add n (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (v j)))
+       (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (w j)))))
+    (\ a v ->
+     trans (AS.sum-cong n
+       (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (B.ring.mul a (v j))))
+       (\ j -> A.ring.mul (g.1.1 a) (A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (v j))))
+       (\ j -> trans (ap (A.ring.mul (f.1.1 (b.vector j))) (g.1.2.2.2 a (v j)))
+        (RL[A.ring].mul-swap (f.1.1 (b.vector j)) (g.1.1 a) (g.1.1 (v j)))))
+      (AS.sum-scale (g.1.1 a) n (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (v j))))) ;
+  coefficient (r : R.R) : Id A.ring.R (g.1.1 (B.iota.1 r)) (f.1.1 (S.iota.1 r)) =
+   trans (g.2 r) (sym (f.2 r)) ;
+  value-pure (a : S.ring.R) : Id A.ring.R (value (X.pure a)) (f.1.1 a) =
+   trans (AS.sum-cong n
+     (\ j -> A.ring.mul (f.1.1 (b.vector j)) (g.1.1 (B.iota.1 (b.coordinate a j))))
+     (\ j -> f.1.1 (S.ring.mul (S.iota.1 (b.coordinate a j)) (b.vector j)))
+     (\ j -> trans (ap (A.ring.mul (f.1.1 (b.vector j))) (coefficient (b.coordinate a j)))
+      (trans (A.ring.mulC (f.1.1 (b.vector j)) (f.1.1 (S.iota.1 (b.coordinate a j))))
+       (sym (f.1.2.2.2 (S.iota.1 (b.coordinate a j)) (b.vector j))))))
+    (trans (sym (FM.sum-map n (\ j -> S.ring.mul (S.iota.1 (b.coordinate a j)) (b.vector j))))
+     (ap f.1.1 (b.reconstruction a))) ;
+  value-one : Id A.ring.R (value X.one) A.ring.o = trans (value-pure S.ring.o) f.1.2.1 ;
+  value-scalar (a : B.ring.R) : Id A.ring.R (value (X.scalar a)) (g.1.1 a) =
+   trans (linear.preserves-scale a X.one)
+    (trans (ap (A.ring.mul (g.1.1 a)) value-one) (A.ring.mulO (g.1.1 a))) ;
+  Product (v w : X.V.V) : U l = Id A.ring.R (value (X.product v w)) (A.ring.mul (value v) (value w)) ;
+  pure-product (a c : S.ring.R) : Product (X.pure a) (X.pure c) =
+   trans (ap value (X.pure-product a c))
+    (trans (value-pure (S.ring.mul a c))
+     (trans (f.1.2.2.2 a c)
+      (sym (cong2 A.ring.R A.ring.mul _ _ _ _ (value-pure a) (value-pure c))))) ;
+  basis-product (j k : Fin n) : Product (X.V.unit j) (X.V.unit k) =
+   subst (\ v -> Product v (X.V.unit k)) (X.pure-basis j)
+    (subst (Product (X.pure (b.vector j))) (X.pure-basis k) (pure-product (b.vector j) (b.vector k))) ;
+  product-one-basis (j : Fin n) (w : X.V.V) : Product (X.V.unit j) w =
+   Target.maps-equal-into (\ w -> value (X.product (X.V.unit j) w))
+    (\ w -> A.ring.mul (value (X.V.unit j)) (value w))
+    (Target.compose-into (X.product (X.V.unit j)) value (X.linear-right (X.V.unit j)) linear)
+    (Target.multiply value linear (value (X.V.unit j))) (basis-product j) w ;
+  value-product (v w : X.V.V) : Product v w =
+   Target.maps-equal-into (\ v -> value (X.product v w))
+    (\ v -> A.ring.mul (value v) (value w))
+    (Target.compose-into (\ v -> X.product v w) value (X.linear-left w) linear)
+    (Target.multiply-right value linear (value w)) (\ j -> product-one-basis j w) v ;
+  hom : C.Hom X.algebra A =
+   ((value,value-one,linear.preserves-add,value-product),\ r -> trans (value-scalar (B.iota.1 r)) (g.2 r)) ;
+ } ;
+} ;

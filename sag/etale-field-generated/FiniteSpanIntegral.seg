@@ -1,0 +1,72 @@
+-- A finite algebra is integral: choose coordinates of 1 and of x*v_i
+-- only for the fixed finite family, apply the determinant trick, and
+-- convert its monic polynomial to the coefficient-list interface used
+-- by IntegralDescent. All choices stay under truncation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module MonicLists (A : CRing) (setA : Pr.isSet A.R) {
+ module P = Poly[l].PolyR[A] ; module B = PolynomialRing[l].Extension[A,setA] ;
+ module Bounds = PolynomialBounds[l].Over[A] ; module HI = HorrocksInterface[l].Over[A,setA] ;
+ canonical : (d : Nat) (p : P.P) -> Id A.R (P.coef p d) A.o -> Bounds.Bound (suc d) p ->
+  P.peq p (HI.monic-list (Bounds.cut d p)) = split {
+  zero -> \ p lead bound -> split { zero -> lead ; suc k -> bound k } ;
+  suc d | ih -> \ p lead bound -> split {
+   zero -> refl (P.coef p zero) ;
+   suc k -> trans (sym (Bounds.tail-coef p k))
+    (ih (Bounds.tail p) (trans (Bounds.tail-coef p d) lead) (Bounds.tail-bound (suc d) p bound) k) } } ;
+} ;
+module MonicWitness (A C : CRing) (setA : Pr.isSet A.R) (setC : Pr.isSet C.R)
+ (iota : H.Hom A C) (x : C.R) {
+ module Lists = MonicLists[A,setA] ; module B = Lists.B ; module P = Lists.P ;
+ module CP = CharPoly[l].Over[A,setA] ;
+ module IM = IntegralDescent[l].Map[A,C,iota] ;
+ module UP = Universal[l].Property[A,C,setA,setC].Given[iota,x] ;
+ monic-value : (cs : List A.R) ->
+  Id C.R (UP.extend.1 (B.include (Lists.HI.monic-list cs))) (IM.PC.value x (IM.coefficients cs)) = split {
+  nil -> UP.extend.2.1 ;
+  cons c cs | ih -> trans (ap UP.extend.1 (B.horner c (Lists.HI.monic-list cs)))
+   (trans (UP.extend.2.2.1 (B.constant c) (B.mulQ B.variable (B.include (Lists.HI.monic-list cs))))
+    (cong2 C.R C.add _ _ _ _ (UP.on-constants c)
+     (trans (UP.extend.2.2.2 B.variable (B.include (Lists.HI.monic-list cs)))
+      (cong2 C.R C.mul _ _ _ _ UP.on-variable ih)))) } ;
+ module At (p : B.Carrier) (d : Nat) (bound : CP.Bounded (suc d) p)
+  (leading : Id A.R (CP.coef p d) A.o) (root : Id C.R (UP.extend.1 p) C.z) {
+  module Reps = FlatPolynomialData[l].Coefficients[A,setA] ;
+  module Raw (r : Reps.Representation p) {
+   coef (k : Nat) : Id A.R (P.coef r.1 k) (CP.coef p k) =
+    trans (sym (CP.coef-include r.1 k)) (ap (\ q -> CP.coef q k) r.2) ;
+   normalized : Id B.Carrier p (B.include (Lists.HI.monic-list (Lists.Bounds.cut d r.1))) =
+    trans (sym r.2) (B.Q.relates r.1 (Lists.HI.monic-list (Lists.Bounds.cut d r.1))
+     (Lists.canonical d r.1 (trans (coef d) leading) (\ k -> trans (coef (plus (suc d) k)) (bound k)))) ;
+   result : IM.IntegralWitness x =
+    (Lists.Bounds.cut d r.1,trans (sym (monic-value (Lists.Bounds.cut d r.1)))
+     (trans (ap UP.extend.1 (sym normalized)) root)) ;
+  } ;
+  theorem : IM.Integral x = TC.map (Reps.Representation p) (IM.IntegralWitness x) (\ r -> Raw[r].result) (Reps.representation p) ;
+ } ;
+} ;
+module Over (A C : CRing) (setA : Pr.isSet A.R) (setC : Pr.isSet C.R) (iota : H.Hom A C) {
+ module FS = FiniteSpan[l].Over[A,C,iota] ; module IM = IntegralDescent[l].Map[A,C,iota] ;
+ module SC = FiniteIdeal[l].Sums[C] ;
+ module Chosen (d : FS.Data) (x : C.R) {
+  n : Nat = d.1 ;
+  module Coordinates (one : FS.Coordinates n d.2.1 C.o)
+   (acts : (i : Fin n) -> FS.Coordinates n d.2.1 (C.mul x (d.2.1 i))) {
+   matrix (j i : Fin n) : A.R = (acts i).1 j ;
+   action (i : Fin n) : Id C.R (C.mul x (d.2.1 i))
+    (Determinant[l].Over[C,setC].act n (\ j i -> iota.1 (matrix j i)) d.2.1 i) =
+    trans (sym (acts i).2) (FlatRelations[l].lin-comm C n (\ j -> iota.1 ((acts i).1 j)) d.2.1) ;
+   module DT = DeterminantTrick[l].Integral[A,setA,C,setC,iota,x,n,matrix,d.2.1,action] ;
+   module Faith = DT.Faithful[\ i -> iota.1 (one.1 i),one.2] ;
+   result : IM.Integral x = MonicWitness[A,C,setA,setC,iota,x].At[DT.chi,n,Faith.integral.1,Faith.integral.2.1,Faith.root].theorem ;
+  } ;
+  with-one (one : FS.Coordinates n d.2.1 C.o) : IM.Integral x =
+   TC.bind ((i : Fin n) -> FS.Coordinates n d.2.1 (C.mul x (d.2.1 i))) (IM.IntegralWitness x)
+    (\ acts -> Coordinates[one,acts].result)
+    (AffineFinite[l].choice n (\ i -> FS.Coordinates n d.2.1 (C.mul x (d.2.1 i))) (\ i -> d.2.2 (C.mul x (d.2.1 i)))) ;
+  result : IM.Integral x = TC.bind (FS.Coordinates n d.2.1 C.o) (IM.IntegralWitness x) with-one (d.2.2 C.o) ;
+ } ;
+ integral (d : FS.Data) : IM.Extension = \ x -> Chosen[d,x].result ;
+ theorem (finite : FS.Finite) : IM.Extension =
+  \ x -> TC.bind FS.Data (IM.IntegralWitness x) (\ d -> Chosen[d,x].result) finite ;
+} ;

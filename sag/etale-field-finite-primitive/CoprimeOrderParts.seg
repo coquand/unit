@@ -1,0 +1,57 @@
+-- Split two positive orders m,n into exponent factors h,d and coprime
+-- remaining orders u,w, so m=h*u, n=d*w, and u*w is a multiple of both
+-- original orders. These data feed exact-power and coprime-product.
+level l ; open Ring[l] ; open Presentations[l] ;
+module G = NaturalGcd[l] ; module C = CoprimeArithmetic[l] ; module Strip = GcdStripping[l] ;
+times : Nat -> Nat -> Nat = G.times ;
+nonzero-left (x a b : Nat) (nz : Not (Id Nat x zero)) (eq : Id Nat x (times a b)) : Not (Id Nat a zero) =
+ \ h -> nz (trans eq (ap (\ c -> times c b) h)) ;
+nonzero-right (x a b : Nat) (nz : Not (Id Nat x zero)) (eq : Id Nat x (times a b)) : Not (Id Nat b zero) =
+ \ h -> nz (trans eq (trans (ap (times a) h) (G.zero-right a))) ;
+record Parts (m n : Nat) {
+ h : Nat ; d : Nat ; u : Nat ; w : Nat ;
+ m-factor : Id Nat m (times h u) ;
+ n-factor : Id Nat n (times d w) ;
+ coprime : G.Coprime u w ;
+ left-quotient : Nat ; right-quotient : Nat ;
+ left-multiple : Id Nat (times u w) (times left-quotient m) ;
+ right-multiple : Id Nat (times u w) (times right-quotient n) ;
+ h-positive : Not (Id Nat h zero) ; d-positive : Not (Id Nat d zero) ;
+ u-positive : Not (Id Nat u zero) ; w-positive : Not (Id Nat w zero) ;
+} ;
+module Given (mp np k : Nat) (g : G.Gcd[suc mp,suc np]) (positive : Id Nat g.divisor (suc k)) {
+ m : Nat = suc mp ; n : Nat = suc np ;
+ mz : Not (Id Nat m zero) = suc-zero mp ; nz : Not (Id Nat n zero) = suc-zero np ;
+ dz : Not (Id Nat g.divisor zero) = \ h -> suc-zero k (trans (sym positive) h) ;
+ module Cofactors = G.Cofactors[m,n,k,g,positive] ;
+ start : Id Nat m (times g.divisor g.left) = trans g.left-factor (G.comm g.left g.divisor) ;
+ stripped : Strip.Result[m,g.divisor,g.left,g.right] = Strip.theorem m g.divisor g.left g.right mz dz start Cofactors.coprime ;
+ h : Nat = stripped.removed ; d : Nat = stripped.rest ; u : Nat = stripped.small ; w : Nat = times h g.right ;
+ n-factor : Id Nat n (times d w) =
+  trans g.right-factor
+   (trans (ap (times g.right) stripped.d-factor)
+    (trans (G.assoc g.right h d)
+     (trans (G.comm (times g.right h) d) (ap (times d) (G.comm g.right h))))) ;
+ left-multiple : Id Nat (times u w) (times g.right m) =
+  trans (G.assoc u h g.right)
+   (trans (ap (\ a -> times a g.right) (G.comm u h))
+    (trans (ap (\ a -> times a g.right) (sym stripped.u-factor)) (G.comm m g.right))) ;
+ right-multiple : Id Nat (times u w) (times g.left n) =
+  trans (ap (\ a -> times a w) stripped.relation)
+   (trans (ap (\ a -> times a w) (G.comm d g.left))
+    (trans (sym (G.assoc g.left d w)) (ap (times g.left) (sym n-factor)))) ;
+ result : Parts[m,n] = new Parts[m,n,h,d,u,w,stripped.u-factor,n-factor,
+  Strip.final-coprime m g.divisor g.left g.right stripped,g.right,g.left,left-multiple,right-multiple,
+  nonzero-left m h u mz stripped.u-factor,nonzero-left n d w nz n-factor,
+  nonzero-right m h u mz stripped.u-factor,nonzero-right n d w nz n-factor] ;
+} ;
+module Construct (mp np : Nat) {
+ g : G.Gcd[suc mp,suc np] = G.gcd (suc mp) (suc np) ;
+ choose : (d : Nat) -> Id Nat g.divisor d -> Parts[suc mp,suc np] = split {
+  zero -> \ eq -> efq (G.positive mp (suc np) g eq) ;
+  suc k -> \ eq -> Given[mp,np,k,g,eq].result } ;
+ result : Parts[suc mp,suc np] = choose g.divisor (refl g.divisor) ;
+} ;
+theorem (mp np : Nat) : Parts[suc mp,suc np] = Construct[mp,np].result ;
+predecessor : (n : Nat) -> Not (Id Nat n zero) -> (k : Nat) * Id Nat n (suc k) = split {
+ zero -> \ h -> efq (h (refl zero)) ; suc k -> \ h -> (k,refl (suc k)) } ;

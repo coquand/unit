@@ -1,0 +1,62 @@
+-- Separate a vector from a finite span. The Gaussian quotient projection
+-- kills the span. Since the target does not belong to it, some projected
+-- coordinate is a unit. Normalize that coordinate to obtain a linear
+-- functional which kills the span and takes value 1 on the target.
+-- This constructs a functional, without extending a basis or choosing
+-- representatives for an arbitrary quotient.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (field : SelectedFactorStatement[l].Over[k,setk].Field) {
+ module V = GaussianVectors[l].Over[k] ; module L = RL[k] ;
+ module FM = FieldLinearMembership[l].Over[k,setk,field] ;
+ module Field = FieldFlat[l].Over[k,field.decide] ;
+ module At (n m : Nat) (v : Fin m -> V.Vec n) (x : V.Vec n)
+  (outside : Not (V.Span[n,m,v].Witness x)) {
+  module Membership = FM.At[n,m,v] ;
+  record Functional {
+   map : V.Vec n -> k.R ;
+   add (a b : V.Vec n) : Id k.R (map (V.addV n a b)) (k.add (map a) (map b)) ;
+   scale (r : k.R) (a : V.Vec n) : Id k.R (map (V.scaleV n r a)) (k.mul r (map a)) ;
+   kills (i : Fin m) : Id k.R (map (v i)) k.z ;
+   target : Id k.R (map x) k.o ;
+  } ;
+  module Pivot (p : Fin Membership.q.rank) (w : k.R)
+   (inverse : Id k.R (k.mul (Membership.q.project.map x p) w) k.o) {
+   map (a : V.Vec n) : k.R = k.mul w (Membership.q.project.map a p) ;
+   add (a b : V.Vec n) : Id k.R (map (V.addV n a b)) (k.add (map a) (map b)) =
+    trans (ap (k.mul w) (Membership.q.project.add a b p))
+     (k.dist w (Membership.q.project.map a p) (Membership.q.project.map b p)) ;
+   scale (r : k.R) (a : V.Vec n) : Id k.R (map (V.scaleV n r a)) (k.mul r (map a)) =
+    trans (ap (k.mul w) (Membership.q.project.scale r a p))
+     (L.mul-swap w r (Membership.q.project.map a p)) ;
+   kills (i : Fin m) : Id k.R (map (v i)) k.z =
+    trans (ap (k.mul w) (Membership.q.kills i p)) (L.mul-zero w) ;
+   target : Id k.R (map x) k.o = trans (k.mulC w (Membership.q.project.map x p)) inverse ;
+   theorem : Functional = new Functional[map,add,scale,kills,target] ;
+  } ;
+  choose : Field.Cases Membership.q.rank (Membership.q.project.map x) -> Functional = split {
+   inl zero -> efq (outside (Membership.from-zero x zero)) ;
+   inr p -> Pivot[p.1,p.2.1,p.2.2].theorem } ;
+  theorem : Functional = choose (Field.cases Membership.q.rank (Membership.q.project.map x)) ;
+ } ;
+ module Algebra (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+  (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (m : Nat)
+  (v : Fin m -> S.ring.R) (x : S.ring.R)
+  (outside : Not (V.Span[n,m,\ i -> basis.coordinate (v i)].Witness (basis.coordinate x))) {
+  module C = Algebras[l].Over[k,setk] ; module TL = TraceLinear[l].Over[k,setk] ;
+  module Selected = At[n,m,\ i -> basis.coordinate (v i),basis.coordinate x,outside] ;
+  map (a : S.ring.R) : k.R = Selected.theorem.map (basis.coordinate a) ;
+  add (a b : S.ring.R) : Id k.R (map (S.ring.add a b)) (k.add (map a) (map b)) =
+   trans (ap Selected.theorem.map (V.ext n (basis.coordinate (S.ring.add a b))
+    (V.addV n (basis.coordinate a) (basis.coordinate b)) (basis.add a b)))
+    (Selected.theorem.add (basis.coordinate a) (basis.coordinate b)) ;
+  scale (r : k.R) (a : S.ring.R) : Id k.R (map (S.ring.mul (S.iota.1 r) a)) (k.mul r (map a)) =
+   trans (ap Selected.theorem.map (V.ext n (basis.coordinate (S.ring.mul (S.iota.1 r) a))
+    (V.scaleV n r (basis.coordinate a)) (basis.scale r a)))
+    (Selected.theorem.scale r (basis.coordinate a)) ;
+  linear : TL.Linear[S,C.base] = new TL.Linear[S,C.base,map,add,scale] ;
+  kills (i : Fin m) : Id k.R (map (v i)) k.z = Selected.theorem.kills i ;
+  target : Id k.R (map x) k.o = Selected.theorem.target ;
+ } ;
+} ;

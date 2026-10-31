@@ -1,0 +1,93 @@
+-- In an explicitly finite regular ring, a decidable prime is cut out by
+-- one idempotent. Filter the enumeration into the prime, choose finitely
+-- many regular witnesses, and multiply their annihilator idempotents.
+-- The resulting e is 1 modulo the prime and kills all its elements.
+-- IdempotentFactor then constructs the selected nonzero field eA.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (q : PrimeIdempotents[l].Over[A].Prime) {
+ module PI = PrimeIdempotents[l].Over[A] ; module I = RegularIdeal[l].IdealLaws[A,q.ideal] ;
+ module L = RL[A] ; module Reg = PrincipalRegularity[l].Over[A] ;
+ select-case (a : A.R) : Plus (q.ideal.In a) (Not (q.ideal.In a)) -> A.R = split {
+  inl h -> a ; inr h -> A.z } ;
+ select (a : A.R) : A.R = select-case a (q.decide a) ;
+ select-member-case (a : A.R) : (d : Plus (q.ideal.In a) (Not (q.ideal.In a))) -> q.ideal.In (select-case a d) = split {
+  inl h -> h ; inr h -> q.ideal.in-zero } ;
+ select-member (a : A.R) : q.ideal.In (select a) = select-member-case a (q.decide a) ;
+ select-equal-case (a : A.R) (h : q.ideal.In a) :
+  (d : Plus (q.ideal.In a) (Not (q.ideal.In a))) -> Id A.R (select-case a d) a = split {
+  inl ha -> refl a ; inr na -> efq (na h) } ;
+ select-equal (a : A.R) (h : q.ideal.In a) : Id A.R (select a) a = select-equal-case a h (q.decide a) ;
+ complement-product (e f : A.R) : Id A.R
+  (A.add (PI.complement e) (A.mul e (PI.complement f))) (PI.complement (A.mul e f)) =
+  trans (ap (A.add (PI.complement e))
+   (trans (A.dist e A.o (A.neg f)) (cong2 A.R A.add _ _ _ _ (A.mulO e) (L.mul-neg e f))))
+   (trans (sym (A.addA A.o (A.neg e) (A.add e (A.neg (A.mul e f)))))
+    (ap (A.add A.o) (trans (A.addA (A.neg e) e (A.neg (A.mul e f)))
+     (trans (ap (\ a -> A.add a (A.neg (A.mul e f))) (L.neg-cancel e)) (L.zl (A.neg (A.mul e f))))))) ;
+ product-in (e f : A.R) (he : q.ideal.In (PI.complement e)) (hf : q.ideal.In (PI.complement f)) :
+  q.ideal.In (PI.complement (A.mul e f)) =
+  subst q.ideal.In (complement-product e f) (q.ideal.in-add _ _ he (q.ideal.in-mul e _ hf)) ;
+ record Family (n : Nat) (g : Fin n -> A.R) {
+  value : A.R ;
+  idempotent : Id A.R (A.mul value value) value ;
+  congruent : q.ideal.In (PI.complement value) ;
+  kills (i : Fin n) : Id A.R (A.mul value (g i)) A.z ;
+ } ;
+ module Step (n : Nat) (g : Fin (suc n) -> A.R) (members : (i : Fin (suc n)) -> q.ideal.In (g i))
+  (w : Reg.Witness (g (inr tt))) (old : Family[n,\ i -> g (inl i)]) {
+  module Last = PI.Regular[g (inr tt),w.1,w.2] ;
+  last-congruent : q.ideal.In (PI.complement Last.annihilator) =
+   subst q.ideal.In (sym Last.one-minus)
+    (subst q.ideal.In (A.mulC w.1 (g (inr tt))) (q.ideal.in-mul w.1 _ (members (inr tt)))) ;
+  value : A.R = A.mul Last.annihilator old.value ;
+  kills-old (i : Fin n) : Id A.R (A.mul value (g (inl i))) A.z =
+   trans (sym (A.mulA Last.annihilator old.value (g (inl i))))
+    (trans (ap (A.mul Last.annihilator) (old.kills i)) (L.mul-zero Last.annihilator)) ;
+  kills-last : Id A.R (A.mul value (g (inr tt))) A.z =
+   trans (sym (A.mulA Last.annihilator old.value (g (inr tt))))
+    (trans (L.mul-swap Last.annihilator old.value (g (inr tt)))
+     (trans (ap (A.mul old.value) Last.kills) (L.mul-zero old.value))) ;
+  result : Family[suc n,g] = new Family[suc n,g,value,
+   PI.product-idempotent Last.annihilator old.value Last.annihilator-idempotent old.idempotent,
+   product-in Last.annihilator old.value last-congruent old.congruent,
+   AffineFinite[l].section n (\ i -> Id A.R (A.mul value (g i)) A.z) kills-old kills-last] ;
+ } ;
+ build : (n : Nat) (g : Fin n -> A.R) -> ((i : Fin n) -> q.ideal.In (g i)) ->
+  ((i : Fin n) -> Reg.Witness (g i)) -> Family[n,g] = split {
+  zero -> \ g members witnesses -> new Family[zero,g,A.o,A.mulO A.o,
+   subst q.ideal.In (sym (A.addN A.o)) q.ideal.in-zero,\ i -> efq i] ;
+  suc n | ih -> \ g members witnesses -> Step[n,g,members,witnesses (inr tt),
+   ih (\ i -> g (inl i)) (\ i -> members (inl i)) (\ i -> witnesses (inl i))].result } ;
+ record Result {
+  value : A.R ;
+  idempotent : Id A.R (A.mul value value) value ;
+  outside : Not (q.ideal.In value) ;
+  congruent : q.ideal.In (PI.complement value) ;
+  kills (a : A.R) : q.ideal.In a -> Id A.R (A.mul value a) A.z ;
+ } ;
+ module Enumerated (n : Nat) (enumeration : Fin n -> A.R)
+  (covers : (a : A.R) -> Tr.Trunc[(i : Fin n) * Id A.R (enumeration i) a].carrier) {
+  g (i : Fin n) : A.R = select (enumeration i) ;
+  module Chosen (w : (i : Fin n) -> Reg.Witness (g i)) {
+   finite : Family[n,g] = build n g (\ i -> select-member (enumeration i)) w ;
+   outside : Not (q.ideal.In finite.value) = \ h -> PI.At[q].both-impossible finite.value h finite.congruent ;
+   kill-represented (a : A.R) (ha : q.ideal.In a) (i : Fin n) (hi : Id A.R (enumeration i) a) :
+    Id A.R (A.mul finite.value a) A.z =
+    trans (ap (A.mul finite.value) (sym (trans (select-equal (enumeration i) (subst q.ideal.In (sym hi) ha)) hi)))
+     (finite.kills i) ;
+   kills (a : A.R) (ha : q.ideal.In a) : Id A.R (A.mul finite.value a) A.z =
+    TC.rec ((i : Fin n) * Id A.R (enumeration i) a) @l (Id A.R (A.mul finite.value a) A.z)
+     (setA _ _) (\ h -> kill-represented a ha h.1 h.2) (covers a) ;
+   result : Result = new Result[finite.value,finite.idempotent,outside,finite.congruent,kills] ;
+  } ;
+  theorem (regular : Reg.Regular) : Tr.Trunc[Result].carrier =
+   TC.map ((i : Fin n) -> Reg.Witness (g i)) Result (\ w -> Chosen[w].result)
+    (AffineFinite[l].choice n (\ i -> Reg.Witness (g i)) (\ i -> regular (g i))) ;
+  module Factor (r : Result) {
+   module F = IdempotentFactor[l].Over[A,setA,r.value,r.idempotent] ;
+   module Selected = F.Selected[q,r.outside,r.kills] ;
+   module Finite = F.Enumerated[n,enumeration,covers] ;
+  } ;
+ } ;
+} ;

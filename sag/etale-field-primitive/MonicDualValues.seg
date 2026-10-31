@@ -1,0 +1,54 @@
+-- Monic Horner evaluation at x+h*epsilon has components P(x) and
+-- P'(x)*h. The derivative is the second component at x+epsilon, exactly
+-- as in the downstream local statement. This is proved by recursion on
+-- the lower coefficients, including the degree-zero polynomial 1.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (k A : CRing) (setA : Pr.isSet A.R) (iota : RingHom[l].Hom k A) (x : A.R) {
+ module D = QuadraticPairs[l].Over[A,setA,A.z] ; module L = RL[A] ;
+ dual : RingHom[l].Hom k D.ring = RingHom[l].compose k A D.ring D.inclusion iota ;
+ module Plain = MonicBasisUniversal[l].Values[k,A,iota,x] ;
+ module At (h : A.R) {
+  module Value = MonicBasisUniversal[l].Values[k,D.ring,dual,(x,h)] ;
+  first : (cs : List k.R) -> Id A.R (Value.value cs).1 (Plain.value cs) = split {
+   nil -> refl A.o ;
+   cons r cs | ih -> ap (A.add (iota.1 r))
+    (trans (ap (A.add (A.mul x (Value.value cs).1)) (L.zero-mul (A.mul h (Value.value cs).2)))
+     (trans (A.addZ (A.mul x (Value.value cs).1)) (ap (A.mul x) ih))) } ;
+  second (r : k.R) (cs : List k.R) : Id A.R (Value.value (cons r cs)).2
+   (A.add (A.mul x (Value.value cs).2) (A.mul h (Plain.value cs))) =
+   trans (L.zl (A.add (A.mul x (Value.value cs).2) (A.mul h (Value.value cs).1)))
+    (ap (A.add (A.mul x (Value.value cs).2)) (ap (A.mul h) (first cs))) ;
+ } ;
+ slope (cs : List k.R) : A.R = (At[A.o].Value.value cs).2 ;
+ slope-cons (r : k.R) (cs : List k.R) : Id A.R (slope (cons r cs)) (A.add (A.mul x (slope cs)) (Plain.value cs)) =
+  trans (At[A.o].second r cs) (ap (A.add (A.mul x (slope cs))) (L.one-left (Plain.value cs))) ;
+ scaled (h : A.R) : (cs : List k.R) -> Id A.R (At[h].Value.value cs).2 (A.mul (slope cs) h) = split {
+  nil -> sym (L.zero-mul h) ;
+  cons r cs | ih ->
+   trans (At[h].second r cs)
+    (trans (cong2 A.R A.add _ _ _ _
+     (trans (ap (A.mul x) ih) (A.mulA x (slope cs) h)) (A.mulC h (Plain.value cs)))
+     (trans (sym (L.dist-left (A.mul x (slope cs)) (Plain.value cs) h))
+      (ap (\ a -> A.mul a h) (sym (slope-cons r cs))))) } ;
+ equation (h : A.R) (cs : List k.R) : Id D.Pair (At[h].Value.value cs) (Plain.value cs,A.mul (slope cs) h) =
+  D.eq _ _ (At[h].first cs) (scaled h cs) ;
+} ;
+-- The same derivative commutes with every algebra map. The comparison
+-- goes through the already checked polynomial/dual-number naturality.
+module Natural (k : CRing) (setk : Pr.isSet k.R)
+ (S T : Algebras[l].Over[k,setk].Algebra) (h : Algebras[l].Over[k,setk].Hom S T) (x : S.ring.R) {
+ module C = Algebras[l].Over[k,setk] ;
+ module Source = Over[k,S.ring,S.set,S.iota,x] ;
+ module Target = Over[k,T.ring,T.set,T.iota,h.1.1 x] ;
+ source-dual : C.Algebra = C.mkAlgebra Source.D.ring Source.D.set Source.dual ;
+ target-dual : C.Algebra = C.mkAlgebra Target.D.ring Target.D.set Target.dual ;
+ module N = StandardEtale[l].Over[k,setk].Natural[S.ring,T.ring,S.set,T.set,S.iota,T.iota,h.1,h.2,x] ;
+ module P = PolynomialRing[l].Extension[k,setk] ; module HI = HorrocksInterface[l].Over[k,setk] ;
+ source (cs : List k.R) : Id S.ring.R (N.X.derivative (P.include (HI.monic-list cs))) (Source.slope cs) =
+  ap (\ z -> z.2) (MonicBasisUniversal[l].Over[k,setk].In[source-dual,(x,S.ring.o)].polynomial-value cs) ;
+ target (cs : List k.R) : Id T.ring.R (N.Y.derivative (P.include (HI.monic-list cs))) (Target.slope cs) =
+  ap (\ z -> z.2) (MonicBasisUniversal[l].Over[k,setk].In[target-dual,(h.1.1 x,T.ring.o)].polynomial-value cs) ;
+ slope (cs : List k.R) : Id T.ring.R (h.1.1 (Source.slope cs)) (Target.slope cs) =
+  trans (ap h.1.1 (sym (source cs))) (trans (N.derivative (P.include (HI.monic-list cs))) (target cs)) ;
+} ;

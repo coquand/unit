@@ -1,0 +1,68 @@
+-- The monic quotient with its finite basis, root and universal map.
+-- Monic values are Horner values with final coefficient 1, including
+-- degree zero. This interface avoids converting polynomial rings when
+-- monic quotients are iterated along a tower of coefficient rings.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Values (R B : CRing) (iota : H.Hom R B) (x : B.R) {
+ value : List R.R -> B.R = split { nil -> B.o ; cons r cs | ih -> B.add (iota.1 r) (B.mul x ih) } ;
+} ;
+map-list (A B : U l) (f : A -> B) : List A -> List B = split { nil -> nil ; cons a as | ih -> cons (f a) ih } ;
+module Change (R Q B : CRing) (i : H.Hom R Q) (j : H.Hom Q B) (x : B.R) {
+ composite : H.Hom R B = H.compose R Q B j i ;
+ equation : (cs : List R.R) ->
+  Id B.R (Values[Q,B,j,x].value (map-list R.R Q.R i.1 cs)) (Values[R,B,composite,x].value cs) = split {
+  nil -> refl B.o ; cons r cs | ih -> ap (\ z -> B.add (j.1 (i.1 r)) (B.mul x z)) ih } ;
+} ;
+module Retarget (R B : CRing) (i j : H.Hom R B) (same : (r : R.R) -> Id B.R (i.1 r) (j.1 r)) (x : B.R) {
+ equation : (cs : List R.R) -> Id B.R (Values[R,B,i,x].value cs) (Values[R,B,j,x].value cs) = split {
+  nil -> refl B.o ; cons r cs | ih -> cong2 B.R B.add _ _ _ _ (same r) (ap (B.mul x) ih) } ;
+} ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module W = PolynomialPresentation[l].Over[R,setR] ; module HI = HorrocksInterface[l].Over[R,setR] ;
+ module Pol = PolynomialRing[l].Extension[R,setR] ;
+ module In (S : C.Algebra) (x : S.ring.R) {
+  module V = Values[R,S.ring,S.iota,x] ;
+  module UP = Universal[l].Property[R,S.ring,setR,S.set].Given[S.iota,x] ;
+  polynomial-value : (cs : List R.R) ->
+   Id S.ring.R (UP.extend.1 (Pol.include (HI.monic-list cs))) (V.value cs) = split {
+   nil -> UP.extend.2.1 ;
+   cons r cs | ih -> trans (ap UP.extend.1 (Pol.horner r (HI.monic-list cs)))
+    (trans (UP.extend.2.2.1 (Pol.constant r) (Pol.mulQ Pol.variable (Pol.include (HI.monic-list cs))))
+     (cong2 S.ring.R S.ring.add _ _ _ _ (UP.on-constants r)
+      (trans (UP.extend.2.2.2 Pol.variable (Pol.include (HI.monic-list cs)))
+       (cong2 S.ring.R S.ring.mul _ _ _ _ UP.on-variable ih)))) } ;
+  map : C.Hom W.RX.algebra S = (UP.extend,UP.on-constants) ;
+  expression-value (cs : List R.R) :
+   Id S.ring.R (P.eval W.V S (\ v -> x) (W.expression (HI.monic-list cs))) (V.value cs) =
+   trans (Generated[l].Over[R,setR].eval-ext W.V S (\ v -> x) (\ v -> map.1.1 W.RX.X.variable)
+    (\ v -> sym UP.on-variable) (W.expression (HI.monic-list cs)))
+    (trans (sym (P.natural W.V W.RX.algebra S map (\ v -> W.RX.X.variable) (W.expression (HI.monic-list cs))))
+     (trans (ap map.1.1 (W.eval-polynomial (HI.monic-list cs))) (polynomial-value cs))) ;
+ } ;
+ module At (cs : List R.R) {
+  module M = MonicTraceBasis[l].Over[R,setR,cs] ; module B = M.M.B ;
+  Q : C.Algebra = B.A ;
+  x : Q.ring.R = B.K.A.generators (inr tt) ;
+  degree : Nat = M.M.d ;
+  basis : TraceBasis[l].Over[R,setR,Q].Basis[degree] = M.basis ;
+  root : Id Q.ring.R (Values[R,Q.ring,Q.iota,x].value cs) Q.ring.z =
+   trans (sym (In[Q,x].expression-value cs))
+    (trans (Generated[l].Over[R,setR].eval-ext W.V Q (\ v -> x) B.K.A.generators
+     (\ v -> ap B.K.A.generators (B.one-index v)) (W.expression B.f)) B.K.A.solution.2.1) ;
+  module To (S : C.Algebra) (y : S.ring.R) (hy : Id S.ring.R (Values[R,S.ring,S.iota,y].value cs) S.ring.z) {
+   solution : P.Solutions (W.presentation B.f) S = (\ v -> y,trans (In[S,y].expression-value cs) hy,tt) ;
+   hom : C.Hom Q S = B.K.To[S].extend solution ;
+   beta : Id S.ring.R (hom.1.1 x) y = B.K.To[S].At[solution].Descent.beta (var (inr tt)) ;
+  } ;
+  unique (S : C.Algebra) (f g : C.Hom Q S) (h : Id S.ring.R (f.1.1 x) (g.1.1 x)) (a : Q.ring.R) :
+   Id S.ring.R (f.1.1 a) (g.1.1 a) =
+   ap (\ z -> z.1.1 a)
+    (Equivalences[l].injective (C.Hom Q S) (P.Solutions (W.presentation B.f) S)
+     B.K.To[S].forward B.K.To[S].universal f g
+     (P.solutions-ext (W.presentation B.f) S (B.K.To[S].forward f) (B.K.To[S].forward g)
+      (\ v -> trans (ap (\ w -> f.1.1 (B.K.A.generators w)) (sym (B.one-index v)))
+       (trans h (ap (\ w -> g.1.1 (B.K.A.generators w)) (B.one-index v)))))) ;
+ } ;
+} ;

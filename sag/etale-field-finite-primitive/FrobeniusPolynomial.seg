@@ -1,0 +1,91 @@
+-- The actual monic coefficient list T^Q-T, Q>=2. Its value and
+-- dual-number Horner slope are proved. If x^Q=x and Q*1=0, the value
+-- vanishes and the slope is -1, with explicit inverse -1. Coefficients
+-- may be in ANY base ring mapping to the finite field.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module FF = FinitePermutationFold[l] ;
+module Coefficients (K : CRing) {
+ zeros : Nat -> List K.R = split { zero -> nil ; suc n | rec -> cons K.z rec } ;
+ tail : Nat -> List K.R = split { zero -> cons K.o nil ; suc n | rec -> cons K.z rec } ;
+ lower (m : Nat) : List K.R = cons K.z (cons (K.neg K.o) (zeros m)) ;
+ polynomial (m : Nat) : List K.R = cons K.z (cons (K.neg K.o) (tail m)) ;
+ monic : List K.R -> List K.R = split { nil -> cons K.o nil ; cons a p | rec -> cons a rec } ;
+ monic-zeros : (m : Nat) -> Id (List K.R) (monic (zeros m)) (tail m) = split {
+  zero -> refl (cons K.o nil) ; suc m | rec -> ap (\ p -> cons K.z p) rec } ;
+ monic-lower (m : Nat) : Id (List K.R) (monic (lower m)) (polynomial m) =
+  ap (\ p -> cons K.z (cons (K.neg K.o) p)) (monic-zeros m) ;
+ module Raw = Poly[l].PolyR[K] ;
+ tail-length : (m : Nat) -> Id Nat (Raw.plen (tail m)) (suc m) = split {
+  zero -> refl (suc zero) ; suc m | rec -> ap (\ n -> suc n) rec } ;
+ tail-leading : (m : Nat) -> Id K.R (Raw.coef (tail m) m) K.o = split {
+  zero -> refl K.o ; suc m | rec -> rec } ;
+ degree (m : Nat) : Nat = suc (suc m) ;
+ leading (m : Nat) : Id K.R (Raw.coef (polynomial m) (degree m)) K.o = tail-leading m ;
+ length (m : Nat) : Id Nat (Raw.plen (polynomial m)) (suc (degree m)) = ap (\ n -> suc (suc n)) (tail-length m) ;
+ module At (A : CRing) (rho : H.Hom K A) (x : A.R) {
+  module L = RL[A] ; module Ho = MonicReduce[l].Horner[K,A,rho,x] ;
+  module Pow = FF.Over[A.R,A.o,A.mul,A.mulA,A.mulC,A.mulO] ;
+  zero-coeff : Id A.R (rho.1 K.z) A.z = H.zero K A rho ;
+  negative-one : Id A.R (rho.1 (K.neg K.o)) (A.neg A.o) =
+   trans (H.negation K A rho K.o) (ap A.neg rho.2.1) ;
+  tail-value : (m : Nat) -> Id A.R (Ho.horner (tail m)) (Pow.power x m) = split {
+   zero -> trans (L.add-mulzero (rho.1 K.o) x) rho.2.1 ;
+   suc m | rec -> trans (cong2 A.R A.add _ _ _ _ zero-coeff (ap (A.mul x) rec)) (L.zl (A.mul x (Pow.power x m))) } ;
+  value (m : Nat) : Id A.R (Ho.horner (polynomial m)) (A.add (Pow.power x (degree m)) (A.neg x)) =
+   trans (cong2 A.R A.add _ _ _ _ zero-coeff
+    (ap (A.mul x) (cong2 A.R A.add _ _ _ _ negative-one (ap (A.mul x) (tail-value m)))))
+    (trans (L.zl (A.mul x (A.add (A.neg A.o) (A.mul x (Pow.power x m)))))
+     (trans (A.dist x (A.neg A.o) (A.mul x (Pow.power x m)))
+      (trans (ap (\ a -> A.add a (Pow.power x (degree m)))
+       (trans (L.mul-neg x A.o) (ap A.neg (A.mulO x))))
+       (A.addC (A.neg x) (Pow.power x (degree m)))))) ;
+ } ;
+} ;
+module DualPowers (A : CRing) (setA : Pr.isSet A.R) (x : A.R) {
+ open A ; module L = RL[A] ;
+ module DN = QuadraticPairs[l].Over[A,setA,z] ;
+ module AP = FF.Over[R,o,mul,mulA,mulC,mulO] ;
+ module Sum = FF.Over[R,z,add,addA,addC,addZ] ;
+ module DP = FF.Over[DN.Pair,DN.oneQ,DN.timesQ,DN.assoc-mul,DN.comm-mul,DN.one-mul] ;
+ power : Nat -> DN.Pair = DP.power (x,o) ;
+ first : (n : Nat) -> Id R (power n).1 (AP.power x n) = split {
+  zero -> refl o ;
+  suc n | rec -> trans (cong2 R add _ _ _ _ (ap (mul x) rec) (L.zero-mul (mul o (power n).2)))
+   (addZ (AP.power x (suc n))) } ;
+ base-slope : Id R (power (suc zero)).2 (mul (Sum.power o (suc zero)) (AP.power x zero)) =
+  trans (ap (\ a -> add a (mul o o)) (L.mul-zero x))
+   (trans (L.zl (mul o o)) (ap (\ a -> mul a o) (sym (addZ o)))) ;
+ second : (n : Nat) -> Id R (power (suc n)).2 (mul (Sum.power o (suc n)) (AP.power x n)) = split {
+  zero -> base-slope ;
+  suc n | rec ->
+   trans (cong2 R add _ _ _ _ (ap (mul x) rec)
+    (trans (ap (mul o) (first (suc n))) (L.one-left (AP.power x (suc n)))))
+    (trans (ap (\ a -> add a (AP.power x (suc n))) (L.mul-swap x (Sum.power o (suc n)) (AP.power x n)))
+     (trans (ap (add (mul (Sum.power o (suc n)) (AP.power x (suc n))))
+      (sym (L.one-left (AP.power x (suc n)))))
+      (trans (sym (L.dist-left (Sum.power o (suc n)) o (AP.power x (suc n))))
+       (ap (\ a -> mul a (AP.power x (suc n))) (addC (Sum.power o (suc n)) o))))) } ;
+} ;
+module At (K A : CRing) (setA : Pr.isSet A.R) (rho : H.Hom K A) (m : Nat) (x : A.R)
+ (cardinal-zero : Id A.R (FF.Over[A.R,A.z,A.add,A.addA,A.addC,A.addZ].power A.o (suc (suc m))) A.z)
+ (power-root : Id A.R (FF.Over[A.R,A.o,A.mul,A.mulA,A.mulC,A.mulO].power x (suc (suc m))) x) {
+ module C = Coefficients[K] ; module V = C.At[A,rho,x] ; module L = RL[A] ;
+ module D = DualPowers[A,setA,x] ; module DN = D.DN ;
+ dual-map : H.Hom K DN.ring = H.compose K A DN.ring DN.inclusion rho ;
+ module DV = C.At[DN.ring,dual-map,(x,A.o)] ;
+ value : A.R = V.Ho.horner (C.monic (C.lower m)) ;
+ slope : A.R = (DV.Ho.horner (C.monic (C.lower m))).2 ;
+ root : Id A.R value A.z =
+  trans (ap V.Ho.horner (C.monic-lower m))
+   (trans (V.value m) (trans (ap (\ a -> A.add a (A.neg x)) power-root) (A.addN x))) ;
+ slope-minus-one : Id A.R slope (A.neg A.o) =
+  trans (ap (\ p -> (DV.Ho.horner p).2) (C.monic-lower m))
+   (trans (ap (\ p -> p.2) (DV.value m))
+    (trans (ap (\ a -> A.add a (A.neg A.o)) (D.second (suc m)))
+     (trans (ap (\ a -> A.add (A.mul a (D.AP.power x (suc m))) (A.neg A.o)) cardinal-zero)
+      (trans (ap (\ a -> A.add a (A.neg A.o)) (L.zero-mul (D.AP.power x (suc m)))) (L.zl (A.neg A.o)))))) ;
+ separable : Id A.R (A.mul slope (A.neg A.o)) A.o =
+  trans (ap (\ a -> A.mul a (A.neg A.o)) slope-minus-one)
+   (trans (L.neg-mul-left A.o (A.neg A.o))
+    (trans (ap A.neg (L.one-left (A.neg A.o))) (L.neg-neg A.o))) ;
+} ;

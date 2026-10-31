@@ -1,0 +1,76 @@
+-- Split-ring regression for a selected Gaussian neighbourhood.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module B = BooleanRing[l] ;
+module Tr = Truncation[l] ;
+k : CRing = B.two-ring ;
+module KL = RL[k] ;
+empty-to-ring : Base.Empty -> Empty = split {} ;
+nonzero : Not (Id k.R k.o k.z) = \ h -> empty-to-ring (B.true-false h) ;
+dec : (a : k.R) -> Plus (Id k.R a k.z) (RL[k].unit a) = split {
+ false -> inl (refl false) ; true -> inr (true,refl true) } ;
+Pair : U l = k.R * k.R ;
+pair-eq (a b : Pair) (h : Id k.R a.1 b.1) (j : Id k.R a.2 b.2) : Id Pair a b =
+ AffineHLevels[l].pair-path k.R k.R a.1 b.1 a.2 b.2 h j ;
+z : Pair = (false,false) ; o : Pair = (true,true) ;
+add (a b : Pair) : Pair = (k.add a.1 b.1,k.add a.2 b.2) ;
+mul (a b : Pair) : Pair = (k.mul a.1 b.1,k.mul a.2 b.2) ;
+neg (a : Pair) : Pair = (k.neg a.1,k.neg a.2) ;
+A : CRing = mkCRing Pair z o add mul neg
+ (\ a b c -> pair-eq _ _ (k.addA a.1 b.1 c.1) (k.addA a.2 b.2 c.2))
+ (\ a b -> pair-eq _ _ (k.addC a.1 b.1) (k.addC a.2 b.2))
+ (\ a -> pair-eq _ _ (k.addZ a.1) (k.addZ a.2))
+ (\ a -> pair-eq _ _ (k.addN a.1) (k.addN a.2))
+ (\ a b c -> pair-eq _ _ (k.mulA a.1 b.1 c.1) (k.mulA a.2 b.2 c.2))
+ (\ a b -> pair-eq _ _ (k.mulC a.1 b.1) (k.mulC a.2 b.2))
+ (\ a -> pair-eq _ _ (k.mulO a.1) (k.mulO a.2))
+ (\ a b c -> pair-eq _ _ (k.dist a.1 b.1 c.1) (k.dist a.2 b.2 c.2)) ;
+setA : Pr.isSet Pair = Pr.isSet-Sigma k.R (\ a -> k.R) B.bool-set (\ a -> B.bool-set) ;
+module L = RL[A] ; module PI = PrimeIdempotents[l].Over[A] ;
+member (a : Pair) : U l = Id k.R a.1 false ;
+ideal : RegularIdeal[l].IdealPred[A] = RegularIdeal[l].mkIdealPred A member (refl false)
+ (\ a b ha hb -> trans (ap (\ x -> k.add x b.1) ha) (trans (KL.zl b.1) hb))
+ (\ b a h -> trans (ap (k.mul b.1) h) (KL.mul-zero b.1)) ;
+prime-and : (a b : k.R) -> Id k.R (k.mul a b) false -> Plus (Id k.R a false) (Id k.R b false) = split {
+ false -> \ b h -> inl (refl false) ;
+ true -> split { false -> \ h -> inr (refl false) ; true -> \ h -> efq (nonzero h) } } ;
+prime-dec : (a : k.R) -> Plus (Id k.R a false) (Not (Id k.R a false)) = split {
+ false -> inl (refl false) ; true -> inr nonzero } ;
+q : PI.Prime = new PI.Prime[ideal,\ a -> B.bool-set _ _,nonzero,
+ \ a b -> prime-and a.1 b.1,\ a -> prime-dec a.1] ;
+idem (a : Pair) : Id Pair (A.mul a a) a = pair-eq _ _ (B.and-self a.1) (B.and-self a.2) ;
+regular-witness (a : Pair) : (b : Pair) * Id Pair a (A.mul (A.mul a a) b) =
+ (o,sym (trans (A.mulO (A.mul a a)) (idem a))) ;
+regular (a : Pair) : Tr.Trunc[(b : Pair) * Id Pair a (A.mul (A.mul a a) b)].carrier =
+ Tr.Trunc[(b : Pair) * Id Pair a (A.mul (A.mul a a) b)].inc (regular-witness a) ;
+one : Nat = suc zero ; two : Nat = suc one ;
+i0 : Fin two = inl (inr tt) ; i1 : Fin two = inr tt ;
+module Field = RegularPrimeQuotient[l].Over[A,q,regular] ;
+module Cut = SelectedAnnihilator[l].Over[A,q,regular] ;
+other : Pair = (false,true) ;
+empty : Fin zero -> Pair = \ i -> efq i ;
+last : Fin one -> Pair = \ i -> other ;
+module Closed = Cut.Step[zero,last,refl false,Cut.empty (\ i -> last (inl i)),o,(regular-witness other).2] ;
+selected-idempotent : Id Pair Closed.result.e (true,false) = refl (true,false) ;
+other-killed : Id Pair (A.mul Closed.result.e other) z = Closed.result.kills (inr tt) ;
+other-nonzero (h : Id Pair other z) : Empty = nonzero (ap (\ p -> p.2) h) ;
+quotient-kills-other : Id Field.Q.Carrier (Field.Q.include other) Field.Q.zeroQ = Field.Q.to-zero other (refl false) ;
+quotient-nonzero : Not (Id Field.Q.Carrier Field.Q.oneQ Field.Q.zeroQ) = Field.nonzero ;
+module SG = SelectedGaussianConstruction[l].Over[A,q,regular] ;
+module Out = SelectedGaussian[l].Over[A,q,regular] ;
+-- The relation has a nonzero entry on each component, in different rows.
+relation : SG.V.Vec two = snoc (Fin one) Pair (\ i -> (true,false)) (false,true) ;
+relations : Fin one -> SG.V.Vec two = \ j -> relation ;
+constructed : Tr.Trunc[Out.NormalForm[two,one,relations]].carrier = SG.theorem two one relations ;
+no-relations : Fin zero -> SG.V.Vec two = \ j -> efq j ;
+free : Tr.Trunc[Out.NormalForm[two,zero,no-relations]].carrier = SG.theorem two zero no-relations ;
+zero-relations : Fin one -> SG.V.Vec zero = \ j i -> efq i ;
+empty-module : Tr.Trunc[Out.NormalForm[zero,one,zero-relations]].carrier = SG.theorem zero one zero-relations ;
+module Verify (nf : Out.NormalForm[two,one,relations]) {
+ x : SG.V.Vec two = snoc (Fin one) Pair (\ i -> other) o ;
+ retract (y : SG.V.Vec nf.rank) (i : Fin nf.rank) :
+  Id Pair (A.mul nf.e (A.add (nf.project.map (nf.section.map y) i) (A.neg (y i)))) z = nf.retract y i ;
+ kills (i : Fin nf.rank) : Id Pair (A.mul nf.e (nf.project.map relation i)) z = nf.kills (inr tt) i ;
+ correction (i : Fin two) : Id Pair
+  (A.mul nf.e (A.add (SG.V.comb two one relations (nf.coefficients.map x) i)
+   (A.neg (A.add (x i) (A.neg (nf.section.map (nf.project.map x) i)))))) z = nf.difference x i ;
+} ;

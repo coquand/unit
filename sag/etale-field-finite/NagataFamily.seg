@@ -1,0 +1,87 @@
+-- A nonempty sparse polynomial with distinct exponents becomes monic
+-- after the triangular change Xi=Yi+T^wi and division by its unique
+-- highest coefficient. Only the original coefficients need be in a
+-- field; the Yi lie in an arbitrary algebra, including the zero ring.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module W = NagataWeights[l] ;
+module O = NatOrder[l] ;
+module Over (k A : CRing) (setA : Pr.isSet A.R) (iota : H.Hom k A)
+ (n m : Nat) (c : Fin m -> k.R) (u : Fin m -> W.Exponent n)
+ (distinct : (i j : Fin m) -> Id (W.Exponent n) (u i) (u j) -> Id (Fin m) i j)
+ (seed : Fin m) (y : Fin n -> A.R) {
+ module F = W.Family[n,m,u] ;
+ module N = NagataMonomials[l].Over[A,setA,F.height] ;
+ module Sem = NagataSemantics[l].Over[A,setA,F.height] ;
+ module P = N.P ; module M = N.M ; module B = N.B ; module Lead = N.Lead ;
+ module S = FinitePolynomialSum[l].Over[A] ; module SP = S.Polynomial[setA] ;
+ module Delta = MnSums[l].Over[A] ; module Sum = FiniteIdeal[l].Sums[A] ;
+ module SumB = FiniteIdeal[l].Sums[B.ring] ;
+ degree (j : Fin m) : Nat = W.weight F.radix n (u j) ;
+ degrees-distinct (i j : Fin m) (e : Id Nat (degree i) (degree j)) : Id (Fin m) i j =
+  distinct i j (W.injective F.radix n (u i) (u j) (F.bounded i) (F.bounded j) e) ;
+ maximum : FiniteMaximum[l].Maximum m degree = FiniteMaximum[l].inhabited m degree seed ;
+ index : Fin m = maximum.1 ;
+ top : Nat = degree index ;
+ row (j : Fin m) : P.P = M.scal (iota.1 (c j)) (N.monomial n y (u j)).raw ;
+ leading (j : Fin m) : Lead.Lead (degree j) (row j) (iota.1 (c j)) =
+  ((Lead.lead-scale (degree j) (N.monomial n y (u j)).raw A.o (iota.1 (c j))
+    (N.monic-lead (degree j) (N.monomial n y (u j)))).1,
+   trans (Lead.lead-scale (degree j) (N.monomial n y (u j)).raw A.o (iota.1 (c j))
+    (N.monic-lead (degree j) (N.monomial n y (u j)))).2 (A.mulO (iota.1 (c j)))) ;
+ at-top-diagonal (j : Fin m) (e : Id (Fin m) index j) :
+  Id A.R (P.coef (row j) top) (A.mul (Delta.delta m index j) (iota.1 (c j))) =
+  subst (\ h -> Id A.R (P.coef (row h) top) (A.mul (Delta.delta m index h) (iota.1 (c h)))) e
+   (trans (leading index).2 (sym (trans (ap (\ a -> A.mul a (iota.1 (c index))) (Delta.delta-diag m index))
+    (RL[A].one-left (iota.1 (c index)))))) ;
+ at-top-below (j : Fin m) (lt : O.Lt (degree j) top) :
+  Id A.R (P.coef (row j) top) (A.mul (Delta.delta m index j) (iota.1 (c j))) =
+  trans (S.above (suc (degree j)) top (row j) (leading j).1 lt)
+   (sym (trans (ap (\ a -> A.mul a (iota.1 (c j)))
+    (Delta.delta-off m index j (\ e -> FiniteMaximum[l].lt-not-equal (degree j) top lt (ap degree (sym e)))))
+     (RL[A].zero-mul (iota.1 (c j))))) ;
+ at-top-case (j : Fin m) : Plus (O.Lt (degree j) top) (Id Nat (degree j) top) ->
+  Id A.R (P.coef (row j) top) (A.mul (Delta.delta m index j) (iota.1 (c j))) = split {
+   inl lt -> at-top-below j lt ; inr eq -> at-top-diagonal j (sym (degrees-distinct j index eq)) } ;
+ at-top (j : Fin m) : Id A.R (P.coef (row j) top) (A.mul (Delta.delta m index j) (iota.1 (c j))) =
+  at-top-case j (O.le-cases (degree j) top (maximum.2 j)) ;
+ polynomial : P.P = S.sum m row ;
+ bound : N.Bound.Bound (suc top) polynomial =
+  S.bound m row (suc top) (\ j -> S.weaken (suc (degree j)) (suc top) (row j) (leading j).1 (maximum.2 j)) ;
+ coefficient : Id A.R (P.coef polynomial top) (iota.1 (c index)) =
+  trans (S.coefficient m row top)
+   (trans (Sum.sum-cong m (\ j -> P.coef (row j) top)
+    (\ j -> A.mul (Delta.delta m index j) (iota.1 (c j))) at-top)
+     (Delta.sum-delta m index (\ j -> iota.1 (c j)))) ;
+ module Normalize (inverse : RL[k].unit (c index)) {
+  raw : P.P = M.scal (iota.1 inverse.1) polynomial ;
+  monic : Id A.R (P.coef raw top) A.o =
+   trans (M.coef-scal (iota.1 inverse.1) polynomial top)
+    (trans (ap (A.mul (iota.1 inverse.1)) coefficient)
+     (trans (sym (iota.2.2.2 inverse.1 (c index)))
+      (trans (ap iota.1 (trans (k.mulC inverse.1 (c index)) inverse.2)) iota.2.1))) ;
+  bounded : N.Bound.Bound (suc top) raw = N.Bound.scale-bound (suc top) (iota.1 inverse.1) polynomial bound ;
+ } ;
+ module Target (C : CRing) (setC : Pr.isSet C.R) (jota : H.Hom A C) (t : C.R) {
+  module EV = Sem.Target[C,setC,jota,t] ; module E = EV.Eval ;
+  module SC = FiniteIdeal[l].Sums[C] ; module MC = MonomialEvaluation[l].Over[C] ;
+  module SM = FinitePolynomialSum[l].Map[B.ring,C,E.extend] ;
+  coefficient-map : H.Hom k C = H.compose k A C jota iota ;
+  terms (j : Fin m) : C.R = C.mul (coefficient-map.1 (c j)) (MC.monomial n (EV.shifted n y) (u j)) ;
+  row-value (j : Fin m) : Id C.R (E.extend.1 (B.include (row j))) (terms j) =
+   trans (ap E.extend.1 (SP.include-scale (iota.1 (c j)) (N.monomial n y (u j)).raw))
+    (trans (E.extend.2.2.2 (B.constant (iota.1 (c j))) (B.include (N.monomial n y (u j)).raw))
+     (cong2 C.R C.mul _ _ _ _ (E.on-constants (iota.1 (c j))) (EV.monomial-value n y (u j)))) ;
+  value : Id C.R (E.extend.1 (B.include polynomial)) (SC.sum m terms) =
+   trans (ap E.extend.1 (SP.include-sum m row))
+    (trans (SM.sum m (\ j -> B.include (row j))) (SC.sum-cong m (\ j -> E.extend.1 (B.include (row j))) terms row-value)) ;
+  module Normalized (inverse : RL[k].unit (c index)) {
+   module Normal = Normalize[inverse] ;
+   normalized-value : Id C.R (E.extend.1 (B.include Normal.raw)) (C.mul (coefficient-map.1 inverse.1) (SC.sum m terms)) =
+    trans (ap E.extend.1 (SP.include-scale (iota.1 inverse.1) polynomial))
+     (trans (E.extend.2.2.2 (B.constant (iota.1 inverse.1)) (B.include polynomial))
+      (cong2 C.R C.mul _ _ _ _ (E.on-constants (iota.1 inverse.1)) value)) ;
+   root (h : Id C.R (SC.sum m terms) C.z) : Id C.R (E.extend.1 (B.include Normal.raw)) C.z =
+    trans normalized-value (trans (ap (C.mul (coefficient-map.1 inverse.1)) h) (RL[C].mul-zero (coefficient-map.1 inverse.1))) ;
+  } ;
+ } ;
+} ;

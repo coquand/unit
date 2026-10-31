@@ -1,0 +1,81 @@
+-- The factor eA is the subtype of fixed points of multiplication by e,
+-- with unit e. Its projection is a surjective ring map. If e kills a
+-- specified prime and lies outside it, regularity of A makes eA a field:
+-- a nonzero fixed point x is outside the prime; x(1-xb)=0 forces 1-xb
+-- into the prime, and projecting it gives the inverse e*b.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (e : A.R) (he : Id A.R (A.mul e e) e) {
+ module L = RL[A] ; module PI = PrimeIdempotents[l].Over[A] ;
+ Fixed (a : A.R) : U l = Id A.R (A.mul e a) a ;
+ Carrier : U l = (a : A.R) * Fixed a ;
+ eq (a b : Carrier) (h : Id A.R a.1 b.1) : Id Carrier a b =
+  Pr.Sigma-eq A.R Fixed a.1 b.1 a.2 b.2 h (setA _ _) ;
+ set : Pr.isSet Carrier = Pr.isSet-Sigma A.R Fixed setA (\ a -> Pr.prop-to-set (Fixed a) (setA _ _)) ;
+ zero : Carrier = (A.z,L.mul-zero e) ;
+ one : Carrier = (e,he) ;
+ add (a b : Carrier) : Carrier = (A.add a.1 b.1,
+  trans (A.dist e a.1 b.1) (cong2 A.R A.add _ _ _ _ a.2 b.2)) ;
+ mul (a b : Carrier) : Carrier = (A.mul a.1 b.1,
+  trans (A.mulA e a.1 b.1) (ap (\ c -> A.mul c b.1) a.2)) ;
+ neg (a : Carrier) : Carrier = (A.neg a.1,trans (L.mul-neg e a.1) (ap A.neg a.2)) ;
+ ring : CRing = mkCRing Carrier zero one add mul neg
+  (\ a b c -> eq _ _ (A.addA a.1 b.1 c.1))
+  (\ a b -> eq _ _ (A.addC a.1 b.1)) (\ a -> eq _ _ (A.addZ a.1))
+  (\ a -> eq _ _ (A.addN a.1))
+  (\ a b c -> eq _ _ (A.mulA a.1 b.1 c.1))
+  (\ a b -> eq _ _ (A.mulC a.1 b.1))
+  (\ a -> eq _ _ (trans (A.mulC a.1 e) a.2))
+  (\ a b c -> eq _ _ (A.dist a.1 b.1 c.1)) ;
+ project (a : A.R) : Carrier = (A.mul e a,trans (A.mulA e e a) (ap (\ b -> A.mul b a) he)) ;
+ project-one : Id Carrier (project A.o) one = eq _ _ (A.mulO e) ;
+ project-add (a b : A.R) : Id Carrier (project (A.add a b)) (add (project a) (project b)) = eq _ _ (A.dist e a b) ;
+ project-mul (a b : A.R) : Id Carrier (project (A.mul a b)) (mul (project a) (project b)) =
+  eq _ _ (sym (trans (L.mul-four e a e b) (ap (\ c -> A.mul c (A.mul a b)) he))) ;
+ projection : RingHom[l].Hom A ring = (project,project-one,project-add,project-mul) ;
+ project-fixed (a : Carrier) : Id Carrier (project a.1) a = eq _ _ a.2 ;
+ onto (a : Carrier) : Truncation[l].Trunc[(b : A.R) * Id Carrier (project b) a].carrier =
+  Truncation[l].Trunc[(b : A.R) * Id Carrier (project b) a].inc (a.1,project-fixed a) ;
+ module Enumerated (n : Nat) (values : Fin n -> A.R)
+  (covers : (a : A.R) -> Truncation[l].Trunc[(i : Fin n) * Id A.R (values i) a].carrier) {
+  enumeration (i : Fin n) : Carrier = project (values i) ;
+  cover (a : Carrier) : Truncation[l].Trunc[(i : Fin n) * Id Carrier (enumeration i) a].carrier =
+   TC.map ((i : Fin n) * Id A.R (values i) a.1) ((i : Fin n) * Id Carrier (enumeration i) a)
+    (\ h -> (h.1,trans (ap project h.2) (project-fixed a))) (covers a.1) ;
+ } ;
+ module Selected (q : PI.Prime) (outside : Not (q.ideal.In e))
+  (kills : (a : A.R) -> q.ideal.In a -> Id A.R (A.mul e a) A.z) {
+  nonzero : Not (Id Carrier one zero) = \ h -> outside (subst q.ideal.In (sym (ap (\ x -> x.1) h)) q.ideal.in-zero) ;
+  kernel-forward (a : A.R) (h : q.ideal.In a) : Id Carrier (project a) zero = eq _ _ (kills a h) ;
+  kernel-case (a : A.R) : Plus (q.ideal.In e) (q.ideal.In a) -> q.ideal.In a = split {
+   inl h -> efq (outside h) ; inr h -> h } ;
+  kernel-backward (a : A.R) (h : Id Carrier (project a) zero) : q.ideal.In a =
+   kernel-case a (q.prime e a (subst q.ideal.In (sym (ap (\ x -> x.1) h)) q.ideal.in-zero)) ;
+  fixed-outside (a : Carrier) (ha : Not (Id Carrier a zero)) : Not (q.ideal.In a.1) =
+   \ h -> ha (eq a zero (trans (sym a.2) (kills a.1 h))) ;
+  module Inverse (a : Carrier) (ha : Not (Id Carrier a zero))
+   (b : A.R) (hb : Id A.R a.1 (A.mul (A.mul a.1 a.1) b)) {
+   module R = PI.Regular[a.1,b,hb] ;
+   choose : Plus (q.ideal.In a.1) (q.ideal.In R.annihilator) -> q.ideal.In R.annihilator = split {
+    inl h -> efq (fixed-outside a ha h) ; inr h -> h } ;
+   annihilator-in : q.ideal.In R.annihilator = choose (q.prime a.1 R.annihilator
+    (subst q.ideal.In (sym (trans (A.mulC a.1 R.annihilator) R.kills)) q.ideal.in-zero)) ;
+   killed : Id A.R (A.mul e R.annihilator) A.z = kills R.annihilator annihilator-in ;
+   expanded : Id A.R (A.add e (A.neg (A.mul e R.e))) A.z =
+    trans (sym (trans (A.dist e A.o (A.neg R.e))
+     (cong2 A.R A.add _ _ _ _ (A.mulO e) (L.mul-neg e R.e)))) killed ;
+   identity : Id Carrier (mul a (project b)) one = eq _ _
+    (trans (L.mul-swap a.1 e b) (sym (FormallyEtale[l].Units[A,setA].sub-zero e (A.mul e R.e) expanded))) ;
+   unit : RL[ring].unit a = (project b,identity) ;
+  } ;
+  inverse (regular : PrincipalRegularity[l].Over[A].Regular) (a : Carrier) (ha : Not (Id Carrier a zero)) : RL[ring].unit a =
+   TC.rec (PrincipalRegularity[l].Over[A].Witness a.1) @l (RL[ring].unit a)
+    (FormallyEtale[l].Units[ring,set].unit-prop a) (\ w -> Inverse[a,ha,w.1,w.2].unit) (regular a.1) ;
+  decide-case (regular : PrincipalRegularity[l].Over[A].Regular) (a : Carrier) :
+   Plus (Id A.R a.1 A.z) (Not (Id A.R a.1 A.z)) -> Plus (Id Carrier a zero) (RL[ring].unit a) = split {
+   inl h -> inl (eq _ _ h) ; inr h -> inr (inverse regular a (\ p -> h (ap (\ x -> x.1) p))) } ;
+  field (regular : PrincipalRegularity[l].Over[A].Regular)
+   (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z)))
+   (a : Carrier) : Plus (Id Carrier a zero) (RL[ring].unit a) = decide-case regular a (zero-dec a.1) ;
+ } ;
+} ;

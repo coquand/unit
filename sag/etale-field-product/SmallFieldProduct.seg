@@ -1,0 +1,76 @@
+-- The finite coefficient algebra is refined at every element of its
+-- finite enumeration. Each resulting nonzero corner is an actual finite
+-- field; its constructed primitive element represents every projected
+-- ambient basis vector. The corner of S is consequently monogenic and
+-- has a separable minimal polynomial. Zero corners and both sides of
+-- every split are retained. ProductsOnIdempotents glues all pieces into
+-- an actual finite product isomorphism. No prime is supplied or chosen.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (field : SelectedFactorStatement[l].Over[k,setk].Field)
+ (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+ (basis : TraceBasis[l].Over[k,setk,S].Basis[n])
+ (reduced : (a : S.ring.R) -> Id S.ring.R (S.ring.mul a a) S.ring.z -> Id S.ring.R a S.ring.z)
+ (nondegenerate : (a : S.ring.R) -> ((b : S.ring.R) ->
+  Id k.R (TraceBasis[l].Over[k,setk,S].At[n,basis].trace (S.ring.mul a b)) k.z) -> Id S.ring.R a S.ring.z)
+ (t : Nat) (coefficients : Fin t -> k.R)
+ (K0 : FiniteCoefficientField[l].Over[k,setk,field.decide,field.nonzero,t,coefficients].Subfield) {
+ module Input = CoefficientSubalgebra[l].Over[k,setk,field,t,coefficients,K0].At[S,n,basis] ;
+ module Target = ProductPresentation[l].Over[k,setk] ; module Monogenic = MonogenicPresentation[l].Over[k,setk] ;
+ module Products = ProductsOnIdempotents[l].Over[k,setk,S] ; module SI = PrimeIdempotents[l].Over[S.ring] ;
+ module Given (lower : Fin n -> List K0.ring.R)
+  (roots : IteratedMonicBasis[l].Over[K0.ring,K0.set].Roots n lower Input.restricted basis.vector) {
+  module Image = Input.Generators[n,basis.vector,lower,roots] ; module B = Image.Image.B ;
+  module Refine = FiniteRegularRefinement[l].Over[B.ring,B.set] ; module BI = PrimeIdempotents[l].Over[B.ring] ;
+  image-square (e : B.Carrier) (he : Refine.Square e) : Products.Square e.1 = ap (\ a -> a.1) he ;
+  Result (e : B.Carrier) (he : Refine.Square e) : U l = Products.Result e.1 (image-square e he) ;
+  module Piece (e : B.Carrier) (he : Refine.Square e)
+   (resolved : (i : Fin Image.size) -> Refine.Resolved e (Image.enumeration i)) {
+   module Finite = FiniteResolvedField[l].Over[B.ring,B.set,Image.Image.equal,Image.size,Image.enumeration,Image.covers,e,he,resolved] ;
+   module F = Finite.F ;
+   module Corner = IdempotentMonogenicSpan[l].Over[k,setk,field,S,n,basis,reduced,nondegenerate,e.1,image-square e he] ;
+   module Nonzero (nonzero : Not (Id B.Carrier e B.zB)) {
+    coefficient : H.Hom K0.ring F.ring = H.compose K0.ring B.ring F.ring F.projection B.iotaB ;
+    module Primitive = FiniteFieldPrimitive[l].Over[K0.ring,F.ring,F.set,coefficient,Finite.field,Finite.nonzero nonzero] ;
+    primitive : Primitive.Data = Primitive.theorem Finite.size Finite.values Finite.injective Finite.onto ;
+    to-corner (a : F.Carrier) : Corner.F.Carrier = (a.1.1,ap (\ b -> b.1) a.2) ;
+    hom : H.Hom F.ring Corner.F.ring =
+     (to-corner,Corner.F.eq _ _ (refl e.1),
+      \ a b -> Corner.F.eq _ _ (refl (S.ring.add a.1.1 b.1.1)),
+      \ a b -> Corner.F.eq _ _ (refl (S.ring.mul a.1.1 b.1.1))) ;
+    constants (a : K0.ring.R) : Id Corner.F.Carrier (hom.1 (coefficient.1 a)) (Corner.R.iota.1 (K0.inclusion.1 a)) =
+     Corner.F.eq _ _ (refl (S.ring.mul e.1 (S.iota.1 (K0.inclusion.1 a)))) ;
+    module Values = HornerCoefficientChange[l].Over[K0.ring,k,F.ring,Corner.F.ring,K0.inclusion,coefficient,Corner.R.iota,hom,constants,primitive.gamma] ;
+    generator (i : Fin n) : F.Carrier = F.project (B.variables i) ;
+    representation (i : Fin n) : List k.R = Values.map (primitive.representation (generator i)).1 ;
+    equation (i : Fin n) : Id Corner.F.Carrier (Values.Target.horner (representation i)) (Corner.vector i) =
+     trans (sym (Values.value (primitive.representation (generator i)).1))
+      (trans (ap to-corner (primitive.representation (generator i)).2)
+       (Corner.F.eq _ _ (refl (S.ring.mul e.1 (basis.vector i))))) ;
+    theorem : Tr.Trunc[Monogenic.At[Corner.R.algebra]].carrier = Corner.Lists[to-corner primitive.gamma,representation,equation].theorem ;
+   } ;
+   cases : Plus (Id B.Carrier e B.zB) (Not (Id B.Carrier e B.zB)) -> Tr.Trunc[Monogenic.At[Corner.R.algebra]].carrier = split {
+    inl h -> Corner.Zero[ap (\ a -> a.1) h].theorem ; inr h -> Nonzero[h].theorem } ;
+   theorem : Result e he = TC.map (Monogenic.At[Corner.R.algebra]) (Target.At[Corner.R.algebra])
+    (Target.monogenic Corner.R.algebra) (cases (Image.Image.equal e B.zB)) ;
+  } ;
+  glue (e f : B.Carrier) (he : Refine.Square e) (hf : Refine.Square f)
+   (left : Result (B.mulB e f) (BI.product-idempotent e f he hf))
+   (right : Result (B.mulB e (BI.complement f)) (BI.product-idempotent e (BI.complement f) he (BI.complement-idempotent f hf))) : Result e he =
+   Products.glue e.1 f.1 (image-square e he) (image-square f hf)
+    (Products.change (S.ring.mul e.1 f.1)
+     (image-square (B.mulB e f) (BI.product-idempotent e f he hf))
+     (SI.product-idempotent e.1 f.1 (image-square e he) (image-square f hf)) left)
+    (Products.change (S.ring.mul e.1 (SI.complement f.1))
+     (image-square (B.mulB e (BI.complement f)) (BI.product-idempotent e (BI.complement f) he (BI.complement-idempotent f hf)))
+     (SI.product-idempotent e.1 (SI.complement f.1) (image-square e he) (SI.complement-idempotent f.1 (image-square f hf))) right) ;
+  module Build = Refine.Into[Result,glue] ;
+  pieces : Result B.oB (B.ring.mulO B.oB) = Build.theorem
+   (\ e he -> Tr.Trunc[Target.At[Products.algebra e.1 (image-square e he)]].proposition)
+   Image.Image.Reduced[reduced].Regular[K0.field-decide].regular
+   Image.size Image.enumeration (\ e he resolved -> Piece[e,he,resolved].theorem) B.oB (B.ring.mulO B.oB) ;
+  theorem : Tr.Trunc[Target.At[S]].carrier = Products.Whole.theorem
+   (Products.change S.ring.o (image-square B.oB (B.ring.mulO B.oB)) (S.ring.mulO S.ring.o) pieces) ;
+ } ;
+} ;

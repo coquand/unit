@@ -1,0 +1,76 @@
+-- The image R[x_1,...,x_n] is explicitly finite when R is explicitly
+-- finite and the x_i satisfy supplied monic equations over R. Its
+-- equality decision is inherited from the ambient algebra. The proof
+-- constructs the monic finite-free cover, enumerates all its coefficient
+-- tuples, and deduplicates their images. The unique retained index lets
+-- us turn mere expression representatives into ACTUAL finite coverage.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (m : Nat) (values : Fin m -> R.R)
+ (cover : (r : R.R) -> (i : Fin m) * Id R.R (values i) r) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module MB = IteratedMonicBasis[l].Over[R,setR] ;
+ module At (S : C.Algebra)
+  (equalS : (a b : S.ring.R) -> Plus (Id S.ring.R a b) (Not (Id S.ring.R a b)))
+  (n : Nat) (x : Fin n -> S.ring.R) (lower : Fin n -> List R.R) (roots : MB.Roots n lower S x) {
+  module B = GeneratedSubalgebra[l].Over[R,setR].At[S,n,x] ;
+  image-roots : MB.Roots n lower B.algebra B.variables = \ i ->
+   B.eqB _ B.zB (trans (MonicValueNaturality[l].Over[R,setR].Map[B.algebra,S,B.inclusion,B.variables i].value (lower i)) (roots i)) ;
+  monic : MB.Cover[n,lower] = MB.construct n lower ;
+  Q : C.Algebra = monic.algebra ;
+  u : C.Hom Q B.algebra = monic.extend B.algebra B.variables image-roots ;
+  on-generators (i : Fin n) : Id B.Carrier (u.1.1 (monic.generator i)) (B.variables i) = monic.beta B.algebra B.variables image-roots i ;
+  Rep (b : B.Carrier) : U l = (a : Q.ring.R) * Id B.Carrier (u.1.1 a) b ;
+  representative (b : B.Carrier) (w : B.ImageRep b) : Rep b =
+   (P.eval (Fin n) Q monic.generator w.1,
+    trans (P.natural (Fin n) Q B.algebra u monic.generator w.1)
+     (trans (Generated[l].Over[R,setR].eval-ext (Fin n) B.algebra
+      (\ i -> u.1.1 (monic.generator i)) B.variables on-generators w.1) w.2)) ;
+  onto (b : B.Carrier) : Tr.Trunc[Rep b].carrier = TC.map (B.ImageRep b) (Rep b) (representative b) (B.generated b) ;
+  module Free = FiniteFreeEnumeration[l].Over[R,setR,m,values,cover,Q,monic.rank,monic.basis] ;
+  enum (i : Fin Free.size) : B.Carrier = u.1.1 (Free.enumeration i) ;
+  finite-rep (b : B.Carrier) (w : Rep b) : (i : Fin Free.size) * Id B.Carrier (enum i) b =
+   ((Free.covers w.1).1,trans (ap u.1.1 (Free.covers w.1).2) w.2) ;
+  enum-covers (b : B.Carrier) : Tr.Trunc[(i : Fin Free.size) * Id B.Carrier (enum i) b].carrier =
+   TC.map (Rep b) ((i : Fin Free.size) * Id B.Carrier (enum i) b) (finite-rep b) (onto b) ;
+  equal-case (a b : B.Carrier) : Plus (Id S.ring.R a.1 b.1) (Not (Id S.ring.R a.1 b.1)) ->
+   Plus (Id B.Carrier a b) (Not (Id B.Carrier a b)) = split {
+   inl h -> inl (B.eqB a b h) ; inr h -> inr (\ e -> h (ap (\ a -> a.1) e)) } ;
+  equal (a b : B.Carrier) : Plus (Id B.Carrier a b) (Not (Id B.Carrier a b)) = equal-case a b (equalS a.1 b.1) ;
+  module Dedup = FiniteDedup[l].Over[B.Carrier,B.set,equal].Onto[Free.size,enum,enum-covers] ;
+  size : Nat = Dedup.result.size ;
+  enumeration : Fin size -> B.Carrier = Dedup.result.vector ;
+  enumeration-injective (i j : Fin size) (h : Id B.Carrier (enumeration i) (enumeration j)) : Id (Fin size) i j = Dedup.result.injective i j h ;
+  covers (b : B.Carrier) : (i : Fin size) * Id B.Carrier (enumeration i) b = Dedup.cover b ;
+  mere-covers (b : B.Carrier) : Tr.Trunc[(i : Fin size) * Id B.Carrier (enumeration i) b].carrier =
+   Tr.Trunc[(i : Fin size) * Id B.Carrier (enumeration i) b].inc (covers b) ;
+  -- A fixed module spanning family, separately from the finite set.
+  module FS = FiniteSpan[l].Over[R,B.ring,B.iotaB] ;
+  module BS = FiniteIdeal[l].Sums[B.ring] ;
+  family (i : Fin monic.rank) : B.Carrier = u.1.1 (monic.basis.vector i) ;
+  map-expand (v : Fin monic.rank -> R.R) :
+   Id B.Carrier (u.1.1 (Free.Coords.expand v)) (BS.lin monic.rank (\ i -> B.iotaB.1 (v i)) family) =
+   trans (FlatRelations[l].MapSums[Q.ring,B.ring,u.1].lin monic.rank (\ i -> Q.iota.1 (v i)) monic.basis.vector)
+    (BS.sum-cong monic.rank (\ i -> B.ring.mul (u.1.1 (Q.iota.1 (v i))) (family i))
+     (\ i -> B.ring.mul (B.iotaB.1 (v i)) (family i)) (\ i -> ap (\ a -> B.ring.mul a (family i)) (u.2 (v i)))) ;
+  span-rep (b : B.Carrier) (w : Rep b) : FS.Coordinates monic.rank family b =
+   (monic.basis.coordinate w.1,
+    trans (sym (map-expand (monic.basis.coordinate w.1)))
+     (trans (ap u.1.1 (monic.basis.reconstruction w.1)) w.2)) ;
+  finite-data : FS.Data = (monic.rank,family,\ b -> TC.map (Rep b) (FS.Coordinates monic.rank family b) (span-rep b) (onto b)) ;
+  finite : FS.Finite = Tr.Trunc[FS.Data].inc finite-data ;
+  module Reduced (reducedS : (a : S.ring.R) -> Id S.ring.R (S.ring.mul a a) S.ring.z -> Id S.ring.R a S.ring.z) {
+   reduced (a : B.Carrier) (h : Id B.Carrier (B.ring.mul a a) B.ring.z) : Id B.Carrier a B.ring.z =
+    B.eqB a B.zB (reducedS a.1 (ap (\ b -> b.1) h)) ;
+   module Regular (dec : (r : R.R) -> Plus (Id R.R r R.z) (RL[R].unit r)) {
+    module RI = ReducedIntegralRegular[l].Over[R,setR,dec,B.algebra,reduced] ;
+    module FI = FiniteSpanIntegral[l].Over[R,B.ring,setR,B.set,B.iotaB] ;
+    convert (a : B.Carrier) (w : FI.IM.IntegralWitness a) : RI.R.Witness a =
+     RI.from-annihilator a w.1
+      (trans (MonicValueNaturality[l].Over[R,setR].Horner[B.algebra,a].equation w.1)
+       (trans (MonicValueNaturality[l].Over[R,setR].Horner[B.algebra,a].integral-value w.1) w.2)) ;
+    regular : RI.R.Regular = \ a -> TC.map (FI.IM.IntegralWitness a) (RI.R.Witness a) (convert a) (FI.theorem finite a) ;
+   } ;
+  } ;
+ } ;
+} ;

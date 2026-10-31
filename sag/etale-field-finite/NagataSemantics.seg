@@ -1,0 +1,83 @@
+-- Semantic meaning of the monic monomial transforms: variable i is
+-- Y_i + T^(axis_i), with axis_last=1 and older axes multiplied by M.
+-- All comparisons use the constructed polynomial universal maps.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module W = NagataWeights[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Map (A C : CRing) (h : H.Hom A C) {
+ module MA = MonomialEvaluation[l].Over[A] ; module MC = MonomialEvaluation[l].Over[C] ;
+ natural : (n : Nat) (x : Fin n -> A.R) (u : W.Exponent n) ->
+  Id C.R (h.1 (MA.monomial n x u)) (MC.monomial n (\ i -> h.1 (x i)) u) = split {
+  zero -> \ x u -> h.2.1 ;
+  suc n | rec -> \ x u ->
+   trans (h.2.2.2 (MA.P.power (x (inr tt)) (u (inr tt))) (MA.monomial n (\ i -> x (inl i)) (W.old n u)))
+    (cong2 C.R C.mul _ _ _ _ (AffinePowers[l].power-map A C h (x (inr tt)) (u (inr tt)))
+     (rec (\ i -> x (inl i)) (W.old n u))) } ;
+} ;
+module Congruence (A : CRing) {
+ module M = MonomialEvaluation[l].Over[A] ;
+ ext (n : Nat) (x y : Fin n -> A.R) (h : (i : Fin n) -> Id A.R (x i) (y i)) (u : W.Exponent n) :
+  Id A.R (M.monomial n x u) (M.monomial n y u) =
+  ap (\ v -> M.monomial n v u) (FE.funext (Fin n) (\ i -> A.R) x y h) ;
+} ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (gap : Nat) {
+ module N = NagataMonomials[l].Over[A,setA,gap] ; module B = N.B ;
+ module ST = N.StretchMap.UP ; module Pow = N.Pow ;
+ module MB = MonomialEvaluation[l].Over[B.ring] ;
+ module SM = Map[B.ring,B.ring,ST.extend] ;
+ variables : (n : Nat) -> (Fin n -> A.R) -> Fin n -> B.Carrier = split {
+  zero -> \ y i -> efq i ;
+  suc n | rec -> \ y -> snoc (Fin n) B.Carrier
+   (\ i -> ST.extend.1 (rec (\ j -> y (inl j)) i))
+   (B.addQ (B.constant (y (inr tt))) B.variable) } ;
+ monomial : (n : Nat) (y : Fin n -> A.R) (u : W.Exponent n) ->
+  Id B.Carrier (B.include (N.monomial n y u).raw) (MB.monomial n (variables n y) u) = split {
+  zero -> \ y u -> refl B.oneQ ;
+  suc n | rec -> \ y u -> trans (N.monomial-step n y u)
+   (ap (B.mulQ (Pow.power (B.addQ (B.constant (y (inr tt))) B.variable) (u (inr tt))))
+    (trans (ap ST.extend.1 (rec (\ i -> y (inl i)) (W.old n u)))
+     (SM.natural n (variables n (\ i -> y (inl i))) (W.old n u)))) } ;
+ axis : (n : Nat) -> Fin n -> Nat = W.axis N.Stretch.radix ;
+ power-power : (k : Nat) ->
+  Id B.Carrier (Pow.power (Pow.power B.variable N.Stretch.radix) k)
+   (Pow.power B.variable (Blocks[l].times N.Stretch.radix k)) = split {
+  zero -> refl B.oneQ ;
+  suc k | ih -> trans (ap (B.mulQ (Pow.power B.variable N.Stretch.radix)) ih)
+   (trans (sym (Pow.power-add B.variable N.Stretch.radix (Blocks[l].times N.Stretch.radix k)))
+    (ap (Pow.power B.variable) (plus-comm N.Stretch.radix (Blocks[l].times N.Stretch.radix k)))) } ;
+ stretch-power (k : Nat) : Id B.Carrier (ST.extend.1 (Pow.power B.variable k))
+  (Pow.power B.variable (Blocks[l].times N.Stretch.radix k)) =
+  trans (AffinePowers[l].power-map B.ring B.ring ST.extend B.variable k)
+   (trans (ap (\ t -> Pow.power t k) ST.on-variable) (power-power k)) ;
+ variable-form : (n : Nat) (y : Fin n -> A.R) (i : Fin n) ->
+  Id B.Carrier (variables n y i)
+   (B.addQ (B.constant (y i)) (Pow.power B.variable (axis n i))) = split {
+  zero -> \ y i -> efq i ;
+  suc n | rec -> \ y -> AffineFinite[l].section n
+   (\ i -> Id B.Carrier (variables (suc n) y i)
+    (B.addQ (B.constant (y i)) (Pow.power B.variable (axis (suc n) i))))
+   (\ i -> trans (ap ST.extend.1 (rec (\ j -> y (inl j)) i))
+    (trans (ST.extend.2.2.1 (B.constant (y (inl i))) (Pow.power B.variable (axis n i)))
+     (cong2 B.Carrier B.addQ _ _ _ _ (ST.on-constants (y (inl i))) (stretch-power (axis n i)))))
+   (ap (B.addQ (B.constant (y (inr tt)))) (sym (B.mul-one B.variable))) } ;
+
+ module Target (C : CRing) (setC : Pr.isSet C.R) (iota : H.Hom A C) (t : C.R) {
+  module Eval = Universal[l].Property[A,C,setA,setC].Given[iota,t] ;
+  module CPow = AffinePowers[l].Over[C] ; module MC = MonomialEvaluation[l].Over[C] ;
+  module Natural = Map[B.ring,C,Eval.extend] ;
+  shifted (n : Nat) (y : Fin n -> A.R) (i : Fin n) : C.R =
+   C.add (iota.1 (y i)) (CPow.power t (axis n i)) ;
+  variable (n : Nat) (y : Fin n -> A.R) (i : Fin n) :
+   Id C.R (Eval.extend.1 (variables n y i)) (shifted n y i) =
+   trans (ap Eval.extend.1 (variable-form n y i))
+    (trans (Eval.extend.2.2.1 (B.constant (y i)) (Pow.power B.variable (axis n i)))
+     (cong2 C.R C.add _ _ _ _ (Eval.on-constants (y i))
+      (trans (AffinePowers[l].power-map B.ring C Eval.extend B.variable (axis n i))
+       (ap (\ c -> CPow.power c (axis n i)) Eval.on-variable)))) ;
+  monomial-value (n : Nat) (y : Fin n -> A.R) (u : W.Exponent n) :
+   Id C.R (Eval.extend.1 (B.include (N.monomial n y u).raw)) (MC.monomial n (shifted n y) u) =
+   trans (ap Eval.extend.1 (monomial n y u))
+    (trans (Natural.natural n (variables n y) u)
+     (Congruence[C].ext n (\ i -> Eval.extend.1 (variables n y i)) (shifted n y) (variable n y) u)) ;
+ } ;
+} ;

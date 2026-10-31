@@ -1,0 +1,122 @@
+-- Construct the selected normal form from Gaussian elimination in A/q.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module FP = FiniteProduct[l] ; module FS = FinSum[l] ;
+module Over (A : CRing) (q : PrimeIdempotents[l].Over[A].Prime)
+ (regular : (a : A.R) -> Tr.Trunc[(b : A.R) * Id A.R a (A.mul (A.mul a a) b)].carrier) {
+ module Output = SelectedGaussian[l].Over[A,q,regular] ; module V = Output.V ; module G = Output.G ;
+ module Field = RegularPrimeQuotient[l].Over[A,q,regular] ; module Q = Field.Q ;
+ module C = FiniteMatrixCoordinates[l].Over[A] ; module CQ = FiniteMatrixCoordinates[l].Over[Q.ring] ;
+ module VQ = CQ.V ; module GQ = GaussianLinear[l].Over[Q.ring] ;
+ module N = FiniteMatrixCoordinates[l].Natural[A,Q.ring,Q.projection] ;
+ module Gauss = GaussianQuotient[l].Over[Q.ring,Field.decide] ;
+ module Cut = SelectedAnnihilator[l].Over[A,q,regular] ;
+ Rep (x : Q.Carrier) : U l = (a : A.R) * Id Q.Carrier (Q.include a) x ;
+ onto : (x : Q.Carrier) -> Tr.Trunc[Rep x].carrier =
+  Q.Q.induction @l (\ x -> Tr.Trunc[Rep x].carrier) (\ x -> Tr.Trunc[Rep x].proposition)
+   (\ a -> Tr.Trunc[Rep (Q.include a)].inc (a,refl (Q.include a))) ;
+ VectorLift (n : Nat) (x : VQ.Vec n) : U l = (a : V.Vec n) * ((i : Fin n) -> Id Q.Carrier (Q.include (a i)) (x i)) ;
+ lift-vector (n : Nat) (x : VQ.Vec n) : Tr.Trunc[VectorLift n x].carrier =
+  TC.map ((i : Fin n) -> Rep (x i)) (VectorLift n x) (\ reps -> (\ i -> (reps i).1,\ i -> (reps i).2))
+   (AffineFinite[l].choice n (\ i -> Rep (x i)) (\ i -> onto (x i))) ;
+ MatrixLift (n r : Nat) (c : Fin n -> VQ.Vec r) : U l =
+  (a : Fin n -> V.Vec r) * ((j : Fin n) (i : Fin r) -> Id Q.Carrier (Q.include (a j i)) (c j i)) ;
+ lift-matrix (n r : Nat) (c : Fin n -> VQ.Vec r) : Tr.Trunc[MatrixLift n r c].carrier =
+  TC.map ((j : Fin n) -> VectorLift r (c j)) (MatrixLift n r c)
+   (\ reps -> (\ j -> (reps j).1,\ j -> (reps j).2))
+   (AffineFinite[l].choice n (\ j -> VectorLift r (c j)) (\ j -> lift-vector r (c j))) ;
+ module At (n m : Nat) (v : Fin m -> V.Vec n) {
+  vq (j : Fin m) : VQ.Vec n = N.vector n (v j) ;
+  g : Gauss.NormalForm[n,m,vq] = Gauss.normal-form n m vq ;
+  r : Nat = g.rank ;
+  pcols : Fin n -> VQ.Vec r = CQ.At[n,r,g.project].columns ;
+  scols : Fin r -> VQ.Vec n = CQ.At[r,n,g.section].columns ;
+  dcols (j : Fin n) : VQ.Vec m = (g.difference (CQ.basis n j)).1 ;
+  dq : VQ.Linear[n,m] = CQ.matrix n m dcols ;
+  module Given (pl : MatrixLift n r pcols) (sl : MatrixLift r n scols) (dl : MatrixLift n m dcols) {
+   module PL = N.Lift[n,r,g.project,pl.1,pl.2] ;
+   module SL = N.Lift[r,n,g.section,sl.1,sl.2] ;
+   module DL = N.Lift[n,m,dq,dl.1,\ j i -> trans (dl.2 j i) (sym (CQ.on-basis n m dcols j i))] ;
+   p : V.Linear[n,r] = PL.linear ; s : V.Linear[r,n] = SL.linear ; d : V.Linear[n,m] = DL.linear ;
+   rel : V.Linear[m,n] = C.matrix m n v ; relq : VQ.Linear[m,n] = CQ.matrix m n vq ;
+   ps : V.Linear[r,r] = V.compose r n r p s ;
+   psq : VQ.Linear[r,r] = VQ.compose r n r g.project g.section ;
+   ps-natural : N.Matches r r ps psq = N.composition r n r s p g.section g.project SL.natural PL.natural ;
+   re : V.Linear[r,r] = G.difference r r ps (V.identity r) ;
+   req : VQ.Linear[r,r] = GQ.difference r r psq (VQ.identity r) ;
+   re-natural : N.Matches r r re req = N.difference r r ps (V.identity r) psq (VQ.identity r) ps-natural (N.identity r) ;
+   re-zero (j i : Fin r) : Id Q.Carrier (Q.include (re.map (C.basis r j) i)) Q.zeroQ =
+    N.columns-zero r r re req re-natural
+     (\ a b -> trans (ap (\ t -> Q.ring.add t (Q.ring.neg (CQ.basis r a b))) (g.retract (CQ.basis r a) b))
+      (Q.ring.addN (CQ.basis r a b))) j i ;
+   kill-zero (j : Fin m) (i : Fin r) : Id Q.Carrier (Q.include (p.map (v j) i)) Q.zeroQ =
+    trans (PL.natural (v j) i) (g.kills j i) ;
+   sp : V.Linear[n,n] = V.compose n r n s p ;
+   spq : VQ.Linear[n,n] = VQ.compose n r n g.section g.project ;
+   rem : V.Linear[n,n] = G.difference n n (V.identity n) sp ;
+   remq : VQ.Linear[n,n] = GQ.difference n n (VQ.identity n) spq ;
+   de : V.Linear[n,n] = G.difference n n (V.compose n m n rel d) rem ;
+   deq : VQ.Linear[n,n] = GQ.difference n n (VQ.compose n m n relq dq) remq ;
+   de-natural : N.Matches n n de deq =
+    N.difference n n (V.compose n m n rel d) rem (VQ.compose n m n relq dq) remq
+     (N.composition n m n d rel dq relq DL.natural (N.matrix m n v))
+     (N.difference n n (V.identity n) sp (VQ.identity n) spq (N.identity n)
+      (N.composition n r n p s g.project g.section PL.natural SL.natural)) ;
+   deq-zero (j i : Fin n) : Id Q.Carrier (deq.map (CQ.basis n j) i) Q.zeroQ =
+    trans (ap (\ x -> Q.ring.add (relq.map x i) (Q.ring.neg (remq.map (CQ.basis n j) i)))
+     (VQ.ext m (dq.map (CQ.basis n j)) (dcols j) (CQ.on-basis n m dcols j)))
+     (trans (ap (\ a -> Q.ring.add a (Q.ring.neg (remq.map (CQ.basis n j) i)))
+      ((g.difference (CQ.basis n j)).2 i)) (Q.ring.addN (remq.map (CQ.basis n j) i))) ;
+   de-zero (j i : Fin n) : Id Q.Carrier (Q.include (de.map (C.basis n j) i)) Q.zeroQ =
+    N.columns-zero n n de deq de-natural deq-zero j i ;
+   InValue : U l = (a : A.R) * q.ideal.In a ;
+   nr : Nat = FP.size r r ; nk : Nat = FP.size m r ; nd : Nat = FP.size n n ;
+   retract-errors (u : Fin nr) : InValue =
+    (re.map (C.basis r (FP.decode r r u).1) (FP.decode r r u).2,
+     Q.kernel _ (re-zero (FP.decode r r u).1 (FP.decode r r u).2)) ;
+   kill-errors (u : Fin nk) : InValue =
+    (p.map (v (FP.decode m r u).1) (FP.decode m r u).2,
+     Q.kernel _ (kill-zero (FP.decode m r u).1 (FP.decode m r u).2)) ;
+   difference-errors (u : Fin nd) : InValue =
+    (de.map (C.basis n (FP.decode n n u).1) (FP.decode n n u).2,
+     Q.kernel _ (de-zero (FP.decode n n u).1 (FP.decode n n u).2)) ;
+   rest : Nat = plus nd nk ; total : Nat = plus rest nr ;
+   tail-errors : Fin rest -> InValue = FS.cases nk InValue kill-errors nd difference-errors ;
+   errors : Fin total -> InValue = FS.cases nr InValue retract-errors rest tail-errors ;
+   re-index (j i : Fin r) : Fin total = FS.left nr rest (FP.encode r r j i) ;
+   kill-index (j : Fin m) (i : Fin r) : Fin total = FS.right nr rest (FS.left nk nd (FP.encode m r j i)) ;
+   de-index (j i : Fin n) : Fin total = FS.right nr rest (FS.right nk nd (FP.encode n n j i)) ;
+   re-entry (j i : Fin r) : Id A.R (errors (re-index j i)).1 (re.map (C.basis r j) i) =
+    trans (ap (\ w -> w.1) (FS.cases-left nr InValue retract-errors rest tail-errors (FP.encode r r j i)))
+     (ap (\ a -> re.map (C.basis r a.1) a.2) (FP.decode-encode r r j i)) ;
+   kill-entry (j : Fin m) (i : Fin r) : Id A.R (errors (kill-index j i)).1 (p.map (v j) i) =
+    trans (ap (\ w -> w.1) (FS.cases-right nr InValue retract-errors rest tail-errors (FS.left nk nd (FP.encode m r j i))))
+     (trans (ap (\ w -> w.1) (FS.cases-left nk InValue kill-errors nd difference-errors (FP.encode m r j i)))
+      (ap (\ a -> p.map (v a.1) a.2) (FP.decode-encode m r j i))) ;
+   de-entry (j i : Fin n) : Id A.R (errors (de-index j i)).1 (de.map (C.basis n j) i) =
+    trans (ap (\ w -> w.1) (FS.cases-right nr InValue retract-errors rest tail-errors (FS.right nk nd (FP.encode n n j i))))
+     (trans (ap (\ w -> w.1) (FS.cases-right nk InValue kill-errors nd difference-errors (FP.encode n n j i)))
+      (ap (\ a -> de.map (C.basis n a.1) a.2) (FP.decode-encode n n j i))) ;
+   module Closed (c : Cut.Cut[total,\ i -> (errors i).1]) {
+    zero-from (a : A.R) (i : Fin total) (eq : Id A.R (errors i).1 a) : Id A.R (A.mul c.e a) A.z =
+     trans (ap (A.mul c.e) (sym eq)) (c.kills i) ;
+    re-killed (j i : Fin r) : Id A.R (A.mul c.e (re.map (C.basis r j) i)) A.z =
+     zero-from _ (re-index j i) (re-entry j i) ;
+    kill-killed (j : Fin m) (i : Fin r) : Id A.R (A.mul c.e (p.map (v j) i)) A.z =
+     zero-from _ (kill-index j i) (kill-entry j i) ;
+    de-killed (j i : Fin n) : Id A.R (A.mul c.e (de.map (C.basis n j) i)) A.z =
+     zero-from _ (de-index j i) (de-entry j i) ;
+    result : Output.NormalForm[n,m,v] = new Output.NormalForm[n,m,v,c.e,c.idempotent,c.outside,r,p,s,d,
+     C.Killed[c.e,r,r,re,re-killed].theorem,kill-killed,C.Killed[c.e,n,n,de,de-killed].theorem] ;
+   } ;
+   theorem : Tr.Trunc[Output.NormalForm[n,m,v]].carrier =
+    TC.map (Cut.Cut[total,\ i -> (errors i).1]) (Output.NormalForm[n,m,v]) (\ c -> Closed[c].result)
+     (Cut.theorem total (\ i -> (errors i).1) (\ i -> (errors i).2)) ;
+  } ;
+  theorem : Tr.Trunc[Output.NormalForm[n,m,v]].carrier =
+   TC.bind (MatrixLift n r pcols) (Output.NormalForm[n,m,v])
+    (\ pl -> TC.bind (MatrixLift r n scols) (Output.NormalForm[n,m,v])
+     (\ sl -> TC.bind (MatrixLift n m dcols) (Output.NormalForm[n,m,v])
+      (\ dl -> Given[pl,sl,dl].theorem) (lift-matrix n m dcols)) (lift-matrix r n scols)) (lift-matrix n r pcols) ;
+ } ;
+ theorem (n m : Nat) (v : Fin m -> V.Vec n) : Tr.Trunc[Output.NormalForm[n,m,v]].carrier = At[n,m,v].theorem ;
+} ;
