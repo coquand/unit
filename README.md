@@ -157,10 +157,18 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   correspondence to `sag/etale-field-product`;
   [`etale-field-reduction.pdf`](doc/etale-field-reduction.pdf) reduces
   the field case of the local structure of étale algebras to it.
+- [`etale-classical-global.pdf`](doc/etale-classical-global.pdf): a separate
+  classical segment turns primewise standard neighbourhoods into a finite
+  cover, with excluded middle and prime-ideal existence as explicit
+  parameters. Descent from the localised base remains separate.
 - [`qcqs.pdf`](doc/qcqs.pdf): the affine spectrum as a locally ringed
   lattice, gluing, affineness, the doubled line and the projective line;
   [`functorial-schemes.pdf`](doc/functorial-schemes.pdf): the essential
   image of the functor of points.
+- [`etale-classical-global.pdf`](doc/etale-classical-global.pdf): the
+  classical passage from primewise neighbourhoods to a finite cover, and
+  its formal boundary (the segment of excluded middle and prime
+  existence).
 - [`hcat-segal.pdf`](doc/hcat-segal.pdf): the Segal condition for all n,
   composition, and fully faithful functors from the Sattler–Wärn axioms,
   with the coherences each result uses and the correspondence to
@@ -424,6 +432,45 @@ Not formalised: the real numbers and Brouwer's fixed-point theorem
 the statements shared between directories: `stone/DESIGN.md`, the
 `HANDOFF-*` files, `STONE-INTERFACE.md`, `CCA-DESIGN.md`,
 `CCA-INTERFACE.md`.
+
+## Classical reasoning with segments (`sag/choice-prime`, `sag/etale-choice-global`)
+
+Nothing in the checker is constructive or classical: a principle such as
+excluded middle or choice is the parameter of a segment, and the segment
+shows exactly which results depend on it. Three developments illustrate
+this.
+
+- `etale-classical-global`: the passage from primewise standard étale
+  neighbourhoods to a finite cover Σ sᵢaᵢ = 1, by compactness. Its
+  classical premises are the two parameters of one segment,
+
+      module Cl (lem : [l] (P : U l) -> isProp P -> P + ¬P)
+                (prime-existence : [l] (A : CRing) -> isSet A.R ->
+                   every proper ideal of A lies in a prime ideal) { ... }
+
+  and the constructive files are imported outside it, so they do not
+  acquire either premise. See
+  [`etale-classical-global.pdf`](doc/etale-classical-global.pdf).
+- `choice-prime`: both premises from the axiom of choice for families of
+  sets over a set, the parameter `ac` of a segment `Ch`. Excluded middle
+  by Diaconescu's argument (`Diaconescu`); with it every proposition is
+  ⊤ or ⊥, hence small (`Resizing`); the Bourbaki–Witt theorem for subsets,
+  generic and without rings (`BourbakiWitt`); then Krull's lemma: choice
+  picks a strictly larger proper ideal whenever one exists, the top of the
+  tower is a maximal ideal above I, and a maximal ideal is prime
+  (`Krull`). No resizing axiom and no Zorn's lemma are assumed.
+- `etale-choice-global`: the two together. Inside `Ch`,
+
+      module Global = Classical.Cl[lem, prime-existence] ;
+
+  instantiates the classical segment with the derived premises, without
+  copying or rechecking its files, and `ChoiceGlobal` restates its
+  endpoints with choice as the only premise beyond univalence and
+  replacement (4610 declarations, 1.5 s). Every file is a link to one of
+  the two developments.
+
+Choice in this form, Π x ‖Y x‖ → ‖Π x Y x‖ for sets, and excluded middle
+for propositions are compatible with univalence.
 
 ## Conversion, and what checking opens
 
