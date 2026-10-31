@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and seven developments written with it:
+This repository contains the checker and nine developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -42,6 +42,13 @@ This repository contains the checker and seven developments written with it:
   a homotopy group of a sphere, from the universal property of S³ alone, by
   a Postnikov universal property; on the way, π₃(S²) = ℤ
   (`sag/pi3-s2-postnikov`; the directory is named after its first theorem).
+- Zariski's main theorem over any commutative ring, in every dimension,
+  and the local structure of étale algebras (`sag/zmt-general`,
+  `sag/etale-local-zmt`, `sag/etale-flat-unramified`,
+  `sag/etale-field-product`);
+- quasi-compact quasi-separated schemes as locally ringed lattices and
+  their functor of points, with the equivalence of the two univalent
+  categories (`sag/qcqs`);
 - higher categories from the axioms of Sattler and Wärn: the Segal
   condition for every n, composition and its laws, and Wärn's results on
   fully faithful functors (`sag/hcat`).
@@ -138,12 +145,22 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   side (David Wärn's strategy): a high-level account. The detailed proof,
   with the declaration correspondence:
   [`postnikov-morphisms.pdf`](doc/postnikov-morphisms.pdf).
+- [`zmt-proof.pdf`](doc/zmt-proof.pdf): Zariski's main theorem by
+  finite section lifting, and its formalisation;
+  [`etale-local-proof.pdf`](doc/etale-local-proof.pdf): the local
+  structure of étale algebras, with ZMT proved;
+  [`etale-flat.pdf`](doc/etale-flat.pdf): flatness of a standard étale
+  algebra in two variables (an argument of Claude Quitté).
 - [`etale-field-product-proof.pdf`](doc/etale-field-product-proof.pdf):
   a finitely presented, formally unramified algebra over a discrete field
   is a finite product of separable monogenic algebras, with a
   correspondence to `sag/etale-field-product`;
   [`etale-field-reduction.pdf`](doc/etale-field-reduction.pdf) reduces
   the field case of the local structure of étale algebras to it.
+- [`qcqs.pdf`](doc/qcqs.pdf): the affine spectrum as a locally ringed
+  lattice, gluing, affineness, the doubled line and the projective line;
+  [`functorial-schemes.pdf`](doc/functorial-schemes.pdf): the essential
+  image of the functor of points.
 - [`hcat-segal.pdf`](doc/hcat-segal.pdf): the Segal condition for all n,
   composition, and fully faithful functors from the Sattler–Wärn axioms,
   with the coherences each result uses and the correspondence to
@@ -207,18 +224,6 @@ used. Each directory has a `README.txt`.
   of finite freeness and split bases proved, together with the required
   algebraic and geometric prerequisites; also finite projectivity iff
   finite presentation and flatness over any commutative ring.
-- `etale-field-product` (with the tracks `etale-field-*`): a finitely
-  presented, formally unramified algebra S over a discrete nonzero field
-  k is merely a finite product of separable monogenic algebras
-  k[T]/(f), with an actual algebra isomorphism
-  (`UnramifiedFieldProduct...theorem`, 18 757 declarations). No prime,
-  basis, primitive element, factorisation or ZMT principle is an input.
-  If k is large, the diagonal idempotent gives a global generator and a
-  divided difference with trace duality inverts f'; if k is small, a
-  finite coefficient field and a splitting by idempotents give the
-  factors. The factors are not claimed to be fields. Connecting this to
-  the local structure of étale algebras (`etale-local`) remains to be
-  done.
 
 ## Finite free resolutions and grade (`sag/cffr`, `sag/koszul`, `sag/wiebe`)
 
@@ -288,6 +293,71 @@ gives π₄(S³) ≅ π₄(BR) ≅ π₃(R) ≅ ℤ/2. Check with
 `./segc sag/pi3-s2-postnikov all`; `README.txt` there maps files to the
 notes, and the `.opens` files record, declaration by declaration, the
 definitions the checker unfolds. See [`pi3-s2.pdf`](doc/pi3-s2.pdf) and [`pi4-s3.pdf`](doc/pi4-s3.pdf).
+
+## Zariski's main theorem and étale algebras
+
+Over an arbitrary commutative ring, in the setting of `sag/` (Theory
+parameters `univ`, `images`, `surjections`); no axiom of synthetic
+algebraic geometry and no hypothesis on the base ring.
+
+- `zmt-general`: Zariski's main theorem in the form of
+  Alain–Coquand–Lombardi, in every dimension
+  (`FinalZMTGeneral.Theorem...result`): if E = R[x₁,…,xₙ] and E/IE is
+  merely finite over R/I, there is merely s with s − 1 ∈ IE such that
+  B = R[s, sx₁,…,sxₙ] is finite over R and the canonical map
+  B[1/s] → E[1/s] is an isomorphism. The theorem on formal functions is
+  replaced by a finite lifting argument in a Čech complex, driven by the
+  constructive noetherianity of a polynomial ring over ℤ (`noetherian`,
+  `artin-rees`); the tracks `zmt-*` contain the steps (18 779
+  declarations). See [`zmt-proof.pdf`](doc/zmt-proof.pdf).
+- `etale-local`, `etale-local-zmt`: an étale algebra over a residually
+  discrete local ring is standard étale near a prime above the maximal
+  ideal (Theorem local of *Local structure of étale algebras*), with ZMT
+  proved (`TheoremLocalZMT`, 21 057 declarations).
+- `etale-flat`: A[X,Y][1/J]/(F,G) is flat over any commutative ring A,
+  J the Jacobian of F, G. `etale-flat-unramified`: a finitely presented,
+  flat and unramified algebra is standard étale near the given prime, by a
+  flatness transfer theorem in place of the special-fibre comparison and
+  Nakayama's lemma (7076 declarations).
+- `etale-field-product` (with the tracks `etale-field-*`): the field case.
+  A finitely presented, formally unramified algebra S over a discrete
+  nonzero field k is merely a finite product of separable monogenic
+  algebras k[T]/(f), with an actual algebra isomorphism
+  (`UnramifiedFieldProduct...theorem`, 18 757 declarations). No prime,
+  basis, primitive element, factorisation or ZMT principle is an input.
+  If k is large, the diagonal idempotent gives a global generator and a
+  divided difference with trace duality inverts f'; if k is small, a
+  finite coefficient field and a splitting by idempotents give the
+  factors. The factors are not claimed to be fields.
+
+The local theorems still take the field-case data as explicit inputs;
+connecting `etale-field-product` to them remains to be done.
+
+## Quasi-compact quasi-separated schemes (`sag/qcqs`)
+
+Schemes over an arbitrary commutative ring as locally ringed distributive
+lattices, after Zeuner's thesis, without Loc, SQC or choice. Each object
+is given by its universal property, in the style of universal algebra;
+category theory comes last and is kept minimal (`sag/categories`,
+`sag/fpalg`).
+
+- Localisation characterised by its universal property, the Zariski
+  lattice as the universal support, the structure sheaf on an arbitrary
+  lattice element, finite gluing; Spec and its universal property for
+  local morphisms, Γ(Spec A) = A; affineness and the affine criterion,
+  principal affine opens as Spec(A_g).
+- Examples: the line with doubled origin (qcqs, not affine, its points
+  classified by idempotents modulo the coordinate) and the projective
+  line, glued along X ↦ X⁻¹ (qcqs, only constant global functions, not
+  affine over a nonzero base).
+- The functor of points (after Zeuner–Hutzler): fully faithful, with its
+  essential image (functors that are Zariski sheaves with a finite affine
+  atlas), giving an equivalence of the univalent categories of qcqs
+  schemes as locally ringed lattices and as functors, also relative to a
+  base ring (`RelativeCategories.equivalence`); descent.
+
+See [`qcqs.pdf`](doc/qcqs.pdf), [`functorial-schemes.pdf`](doc/functorial-schemes.pdf)
+and `sag/qcqs/DESIGN.md`.
 
 ## Higher categories from the Sattler–Wärn axioms (`sag/hcat`)
 
