@@ -1,0 +1,186 @@
+-- The interval and the simplices (Agda Interval/Interval, the categorical
+-- part).  Parameters used: I-ob, I-mor-order, I-char-inverse,
+-- I-char-rinv, I-char-linv, Fun, ev, exp-is-equiv.
+--   I-char: Map C I ~ Monotone C (Axiom 18 assembled).
+--   Delta 0 = One, Delta (n+1) = Fun (Delta n) I (Definition 19).
+--   interp i a b: a at i = 0, b at i = 1; monotone in i when a <= b.
+--   pointwise-to-mor: f1 <= f2 pointwise gives a morphism from f1 to f2
+--   in Fun C I.  The map p (i, z) = interp i (f1 z) (f2 z) on objects of
+--   I x C is monotone, hence (I-char) a functor h : I x C -> I; its
+--   transpose eta : I -> Fun C I is the morphism.  At the vertex v of I,
+--   eta v names h o <v o !, 1> (exp-eval), whose action on objects is
+--   z |-> interp v (f1 z) (f2 z) (the two projections of <v o !, 1> o z are
+--   v and z); at v = 0 and v = 1 this is f1 and f2, and a functor to I is
+--   determined by its action on objects (I-char is injective), and an
+--   object of Fun C I by the functor it names (ob-map-equiv).
+--   mor-to-pointwise: a morphism m : f -> g of Fun C I gives f z <= g z at
+--   each object z.  Evaluation at z, ev o <1, z o !> : Fun C I -> I, takes
+--   an object f to f z (both are ev o <f, z>), so its composite with m is a
+--   morphism of I from f z to g z, ordered by I-mor-order.
+open Base ; open Finite[l] ;
+module H = Paths[l] ; module Pl = Prelude[l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ; module CU = FunExtUA[l] ;
+open WildCat ; open HigherCat ; open Constructions ; open Pullbacks ; open ExpComparison ; open Exponentials ;
+open ExpEval ; open OrdMonotone ; open MonotoneMaps ; open IntervalChar ;
+
+I-char (C : Cat) : Pl.Equiv (Map C I) (Monotone C) =
+ (I-char-comparison C,
+  Pl.qinv (Map C I) (Monotone C) (I-char-comparison C) (I-char-inverse C) (I-char-rinv C) (I-char-linv C)) ;
+
+I-char-ob-to-2 (C : Cat) (w : Monotone C) (z : Ob C) : Id Two (ob-to-2 (I-char-inverse C w) z) (w.1 z) =
+ H.apH (\ f -> f.1 z) (I-char-rinv C w) ;
+
+is-monotone-is-prop (C : Cat) (p : Ob C -> Two) : Pl.isProp (is-monotone C p) =
+ FL.isProp-Pi (Mor C) (\ m -> leq2 (p (dom m)) (p (cod m))) (\ m -> leq2-is-prop (p (dom m)) (p (cod m))) ;
+
+contr-equiv-one {A : U l} (c : CU.isContr A) : Pl.Equiv A Top =
+ (\ a -> tt, Pl.qinv A Top (\ a -> tt) (\ t -> c.1) (\ t -> isTop tt t) c.2) ;
+
+-- the inverse of a composite equivalence is the composite of the inverses,
+-- by definition
+equiv-inv-comp (A B C : U l) (e1 : Pl.Equiv A B) (e2 : Pl.Equiv B C) (c : C) :
+ Id A ((EquivalenceLemmas[l].then A B C e1 e2).2.sec c) (e1.2.sec (e2.2.sec c)) = refl (e1.2.sec (e2.2.sec c)) ;
+
+Delta : Nat -> Cat = split { zero -> One ; suc n | r -> Fun r I } ;
+
+Hom-coerce (C : Cat) {a a1 b b1 : Ob C} (pa : Id (Ob C) a1 a) (pb : Id (Ob C) b1 b) (h : Hom C a1 b1) : Hom C a b =
+ (hmor h, H.transH (hdom h) pa, H.transH (hcod h) pb) ;
+
+------------------------------------------------------------------------
+-- interpolation on Two
+
+interp : Two -> Two -> Two -> Two = split { inl u -> \ a b -> a ; inr u -> \ a b -> b } ;
+
+interp-mono : (i1 i2 a1 a2 b1 b2 : Two) -> leq2 i1 i2 -> leq2 a1 a2 -> leq2 b1 b2 -> leq2 a2 b2 ->
+ leq2 (interp i1 a1 b1) (interp i2 a2 b2) = split {
+ inl u -> split {
+  inl v -> \ a1 a2 b1 b2 hi ha hb hab -> ha ;
+  inr v -> \ a1 a2 b1 b2 hi ha hb hab -> leq2-trans a1 a2 b2 ha hab } ;
+ inr u -> split {
+  inl v -> \ a1 a2 b1 b2 hi ha hb hab -> Pl.absurd _ hi ;
+  inr v -> \ a1 a2 b1 b2 hi ha hb hab -> hb } } ;
+
+interp-cong {i1 i2 a1 a2 b1 b2 : Two} (p : Id Two i1 i2) (q : Id Two a1 a2) (r : Id Two b1 b2) :
+ Id Two (interp i1 a1 b1) (interp i2 a2 b2) =
+ H.transH (H.apH (\ i -> interp i a1 b1) p) (H.transH (H.apH (\ a -> interp i2 a b1) q) (H.apH (\ b -> interp i2 a2 b) r)) ;
+
+------------------------------------------------------------------------
+-- a pointwise order gives a morphism
+
+module PointwiseMor (C : Cat) (f1 f2 : Map C I) (pw : (z : Ob C) -> leq2 (ob-to-2 f1 z) (ob-to-2 f2 z)) {
+ pfun (u : Ob (times I C)) : Two =
+  interp (I-ob.1 (Ob-map (pi1 I C) u)) (ob-to-2 f1 (Ob-map (pi2 I C) u)) (ob-to-2 f2 (Ob-map (pi2 I C) u)) ;
+
+ -- f o pi2 is monotone, read at the objects pi2 u
+ mono-pi2 (f : Map C I) (m : Mor (times I C)) :
+  leq2 (ob-to-2 f (Ob-map (pi2 I C) (dom m))) (ob-to-2 f (Ob-map (pi2 I C) (cod m))) =
+  leq2-transport (H.apH I-ob.1 (composeA {One} {times I C} {C} {I} f (pi2 I C) (dom m)))
+   (H.apH I-ob.1 (composeA {One} {times I C} {C} {I} f (pi2 I C) (cod m)))
+   ((I-char-comparison (times I C) (comp f (pi2 I C))).2 m) ;
+
+ pmono : is-monotone (times I C) pfun = \ m ->
+  interp-mono (I-ob.1 (Ob-map (pi1 I C) (dom m))) (I-ob.1 (Ob-map (pi1 I C) (cod m)))
+   (ob-to-2 f1 (Ob-map (pi2 I C) (dom m))) (ob-to-2 f1 (Ob-map (pi2 I C) (cod m)))
+   (ob-to-2 f2 (Ob-map (pi2 I C) (dom m))) (ob-to-2 f2 (Ob-map (pi2 I C) (cod m)))
+   ((I-char-comparison (times I C) (pi1 I C)).2 m) (mono-pi2 f1 m) (mono-pi2 f2 m)
+   (pw (Ob-map (pi2 I C) (cod m))) ;
+
+ h : Map (times I C) I = I-char-inverse (times I C) (pfun, pmono) ;
+
+ eta : Mor (Fun C I) = (exp-is-equiv C I I).sec h ;
+
+ pi1-slice (v : Ob I) (z : Ob C) : Id (Ob I) (Ob-map (pi1 I C) (Ob-map (slice {I} {C} v) z)) v =
+  H.transH (comp-assoc {One} {C} {times I C} {I} (pi1 I C) (slice {I} {C} v) z)
+  (H.transH (ccl {One} {C} {I} z (pair-beta1 (comp {C} {One} {I} v (bang C)) (idMap C)))
+  (H.transH (composeA {One} {C} {One} {I} v (bang C) z)
+  (H.transH (ccr {One} {One} {I} v (one-path (comp {One} {C} {One} (bang C) z) (idMap One)))
+   (comp-id-r {One} {I} v)))) ;
+
+ pi2-slice (v : Ob I) (z : Ob C) : Id (Ob C) (Ob-map (pi2 I C) (Ob-map (slice {I} {C} v) z)) z =
+  H.transH (comp-assoc {One} {C} {times I C} {C} (pi2 I C) (slice {I} {C} v) z)
+  (H.transH (ccl {One} {C} {C} z (pair-beta2 (comp {C} {One} {I} v (bang C)) (idMap C)))
+   (comp-id-l {One} {C} z)) ;
+
+ h-slice-pw (v : Ob I) (z : Ob C) :
+  Id Two (ob-to-2 (comp h (slice {I} {C} v)) z) (interp (I-ob.1 v) (ob-to-2 f1 z) (ob-to-2 f2 z)) =
+  H.transH (H.apH I-ob.1 (composeA {One} {C} {times I C} {I} h (slice {I} {C} v) z))
+  (H.transH (I-char-ob-to-2 (times I C) (pfun, pmono) (Ob-map (slice {I} {C} v) z))
+   (interp-cong (H.apH I-ob.1 (pi1-slice v z)) (H.apH (ob-to-2 f1) (pi2-slice v z)) (H.apH (ob-to-2 f2) (pi2-slice v z)))) ;
+
+ -- at a vertex named by i, h o <v o !, 1> is the functor read off from i
+ h-slice-eq (v : Ob I) (i : Two) (pv : Id Two (I-ob.1 v) i) (f : Map C I)
+  (pf : (z : Ob C) -> Id Two (interp i (ob-to-2 f1 z) (ob-to-2 f2 z)) (ob-to-2 f z)) :
+  Id (Map C I) (comp h (slice {I} {C} v)) f =
+  Equivalences[l].injective (Map C I) (Monotone C) (I-char-comparison C) (I-char C).2 (comp h (slice {I} {C} v)) f
+   (Pl.Sigma-eq (Ob C -> Two) (is-monotone C) (ob-to-2 (comp h (slice {I} {C} v))) (ob-to-2 f)
+     (I-char-comparison C (comp h (slice {I} {C} v))).2 (I-char-comparison C f).2
+     (FL.funext (Ob C) (\ z -> Two) (ob-to-2 (comp h (slice {I} {C} v))) (ob-to-2 f)
+       (\ z -> H.transH (h-slice-pw v z)
+         (H.transH (interp-cong pv (refl (ob-to-2 f1 z)) (refl (ob-to-2 f2 z))) (pf z))))
+     (is-monotone-is-prop C (ob-to-2 f))) ;
+
+ dom-pf : Id (Ob (Fun C I)) (dom eta) (map-to-ob C I f1) =
+  Equivalences[l].injective (Ob (Fun C I)) (Map C I) (ob-to-map C I) (ob-map-equiv C I).2 (dom eta) (map-to-ob C I f1)
+   (H.transH (exp-eval C I I h I0)
+    (H.transH (h-slice-eq I0 zero2 (I-ob.2.sec-eq zero2) f1 (\ z -> refl (ob-to-2 f1 z)))
+     (H.symH (ob-map-roundtrip1 C I f1)))) ;
+
+ cod-pf : Id (Ob (Fun C I)) (cod eta) (map-to-ob C I f2) =
+  Equivalences[l].injective (Ob (Fun C I)) (Map C I) (ob-to-map C I) (ob-map-equiv C I).2 (cod eta) (map-to-ob C I f2)
+   (H.transH (exp-eval C I I h I1)
+    (H.transH (h-slice-eq I1 one2 (I-ob.2.sec-eq one2) f2 (\ z -> refl (ob-to-2 f2 z)))
+     (H.symH (ob-map-roundtrip1 C I f2)))) ;
+
+ result : Hom (Fun C I) (map-to-ob C I f1) (map-to-ob C I f2) = (eta, dom-pf, cod-pf) ;
+} ;
+
+pointwise-to-mor (C : Cat) (f1 f2 : Map C I) (pw : (z : Ob C) -> leq2 (ob-to-2 f1 z) (ob-to-2 f2 z)) :
+ Hom (Fun C I) (map-to-ob C I f1) (map-to-ob C I f2) = PointwiseMor[C, f1, f2, pw].result ;
+
+------------------------------------------------------------------------
+-- a morphism gives a pointwise order
+
+module MorPointwise (C : Cat) (z : Ob C) {
+ ev-z : Map (Fun C I) I = comp (ev C I) (pair (idMap (Fun C I)) (comp {Fun C I} {One} {C} z (bang (Fun C I)))) ;
+
+ bang-cancel (f : Ob (Fun C I)) : Id (Ob C) (comp {One} {Fun C I} {C} (comp {Fun C I} {One} {C} z (bang (Fun C I))) f) z =
+  H.transH (composeA {One} {Fun C I} {One} {C} z (bang (Fun C I)) f)
+  (H.transH (ccr {One} {One} {C} z (one-path (comp {One} {Fun C I} {One} (bang (Fun C I)) f) (idMap One)))
+   (comp-id-r {One} {C} z)) ;
+
+ ev-z-lhs (f : Ob (Fun C I)) : Id (Map One I) (comp {One} {Fun C I} {I} ev-z f) (comp (ev C I) (pair {Fun C I} {C} {One} f z)) =
+  H.transH (composeA {One} {Fun C I} {times (Fun C I) C} {I} (ev C I)
+    (pair (idMap (Fun C I)) (comp {Fun C I} {One} {C} z (bang (Fun C I)))) f)
+   (ccr (ev C I) (H.transH (pair-nat {Fun C I} {C} {Fun C I} {One} (idMap (Fun C I)) (comp {Fun C I} {One} {C} z (bang (Fun C I))) f)
+     (pair-ap (comp-id-l {One} {Fun C I} f) (bang-cancel f)))) ;
+
+ rhs-first (f : Ob (Fun C I)) :
+  Id (Map One (Fun C I)) (comp {One} {times One C} {Fun C I} (comp {times One C} {One} {Fun C I} f (pi1 One C)) (comp {One} {C} {times One C} (unit-right C) z)) f =
+  H.transH (composeA {One} {times One C} {One} {Fun C I} f (pi1 One C) (comp {One} {C} {times One C} (unit-right C) z))
+  (H.transH (ccr {One} {One} {Fun C I} f
+    (H.transH (comp-assoc {One} {C} {times One C} {One} (pi1 One C) (unit-right C) z)
+     (H.transH (ccl {One} {C} {One} z (pair-beta1 (bang C) (idMap C))) (one-path (comp {One} {C} {One} (bang C) z) (idMap One)))))
+   (comp-id-r {One} {Fun C I} f)) ;
+
+ rhs-second : Id (Ob C) (comp {One} {times One C} {C} (pi2 One C) (comp {One} {C} {times One C} (unit-right C) z)) z =
+  H.transH (comp-assoc {One} {C} {times One C} {C} (pi2 One C) (unit-right C) z)
+  (H.transH (ccl {One} {C} {C} z (pair-beta2 (bang C) (idMap C))) (comp-id-l {One} {C} z)) ;
+
+ ev-z-rhs (f : Ob (Fun C I)) : Id (Map One I) (comp {One} {C} {I} (ob-to-map C I f) z) (comp (ev C I) (pair {Fun C I} {C} {One} f z)) =
+  H.transH (composeA {One} {C} {times One C} {I} (exp-comparison C I One f) (unit-right C) z)
+  (H.transH (composeA {One} {times One C} {times (Fun C I) C} {I} (ev C I)
+     (pair (comp {times One C} {One} {Fun C I} f (pi1 One C)) (pi2 One C)) (comp {One} {C} {times One C} (unit-right C) z))
+   (ccr (ev C I) (H.transH (pair-nat (comp {times One C} {One} {Fun C I} f (pi1 One C)) (pi2 One C) (comp {One} {C} {times One C} (unit-right C) z))
+     (pair-ap (rhs-first f) rhs-second)))) ;
+
+ -- evaluation at z takes an object f of Fun C I to f z
+ ev-z-eq (f : Ob (Fun C I)) : Id (Map One I) (comp {One} {Fun C I} {I} ev-z f) (comp {One} {C} {I} (ob-to-map C I f) z) =
+  H.transH (ev-z-lhs f) (H.symH (ev-z-rhs f)) ;
+
+ result (m : Mor (Fun C I)) : leq2 (ob-to-2 (ob-to-map C I (dom m)) z) (ob-to-2 (ob-to-map C I (cod m)) z) =
+  leq2-transport (H.apH I-ob.1 (H.transH (dom-nat ev-z m) (ev-z-eq (dom m))))
+   (H.apH I-ob.1 (H.transH (cod-nat ev-z m) (ev-z-eq (cod m))))
+   (I-mor-order (comp ev-z m)) ;
+} ;
+
+mor-to-pointwise (C : Cat) (m : Mor (Fun C I)) (z : Ob C) :
+ leq2 (ob-to-2 (ob-to-map C I (dom m)) z) (ob-to-2 (ob-to-map C I (cod m)) z) = MorPointwise[C, z].result m ;

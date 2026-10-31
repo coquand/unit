@@ -1,0 +1,91 @@
+-- The free-groupoid extension of Cayley (Agda Solvers/GroupoidSolver), as
+-- one theorem, solveG.  Shapes now have inverses: Ex (ginv s) a b =
+-- Ex s b a, eval (ginv s) e = (eval s e)^-1.  The Cayley action DD s e is
+-- a pair: forwards (z, k : b = z) |-> eval . k and backwards
+-- (z, k : a = z) |-> eval^-1 . k, built by composition, the backward
+-- action of a composite being the composite of the backward actions in
+-- the other order, and ginv exchanging the two.  So associativity, units,
+-- (p . q)^-1 = q^-1 . p^-1, p^-1^-1 = p and refl^-1 = refl hold on the
+-- Cayley side by definition.  Correctness of both actions is one
+-- induction on the shape (one recursion, returning both):
+--   cplus, backwards: Dinv t (Dinv s k) = eval t^-1 . (eval s^-1 . k)
+--     = (eval t^-1 . eval s^-1) . k = (eval s . eval t)^-1 . k (sym-trans);
+--   ginv: the forward action of ginv s is the backward action of s; the
+--     backward one is the forward action of s, and p = p^-1^-1 (sym-sym).
+-- Cancellation p^-1 . (p . q) = q is not free; it is PathAlgebra.canc-l
+-- (and canc-r), Agda's cancL/cancR.
+level l ; open Base ;
+module H = Paths[l] ; module PA = PathAlgebra[l] ;
+
+data GShape = gatom | gunit | gplus (s t : GShape) | ginv (s : GShape) ;
+
+Ex {A : U l} : GShape -> A -> A -> U l = split {
+ gatom -> \ a b -> Id A a b ;
+ gunit -> \ a b -> Id A a b ;
+ gplus s t | rs rt -> \ a c -> (b : A) * rs a b * rt b c ;
+ ginv s | rs -> \ a b -> rs b a } ;
+
+eval {A : U l} : (s : GShape) (a b : A) -> Ex s a b -> Id A a b = split {
+ gatom -> \ a b e -> e ;
+ gunit -> \ a b e -> e ;
+ gplus s t | rs rt -> \ a c e -> H.transH (rs a e.1 e.2.1) (rt e.1 c e.2.2) ;
+ ginv s | rs -> \ a b e -> H.symH (rs b a e) } ;
+
+-- the forward and backward actions
+Act {A : U l} (a b : A) : U l = ((z : A) -> Id A b z -> Id A a z) * ((z : A) -> Id A a z -> Id A b z) ;
+
+DD {A : U l} : (s : GShape) (a b : A) -> Ex s a b -> Act a b = split {
+ gatom -> \ a b e -> (\ z k -> H.transH e k, \ z k -> H.transH (H.symH e) k) ;
+ gunit -> \ a b e -> (\ z k -> idJ A a (\ b1 e1 -> Id A b1 z -> Id A a z) (\ k1 -> k1) b e k,
+                      \ z k -> idJ A a (\ b1 e1 -> Id A a z -> Id A b1 z) (\ k1 -> k1) b e k) ;
+ gplus s t | rs rt -> \ a c e -> (\ z k -> (rs a e.1 e.2.1).1 z ((rt e.1 c e.2.2).1 z k),
+                                 \ z k -> (rt e.1 c e.2.2).2 z ((rs a e.1 e.2.1).2 z k)) ;
+ ginv s | rs -> \ a b e -> ((rs b a e).2, (rs b a e).1) } ;
+
+D {A : U l} (s : GShape) (a b : A) (e : Ex s a b) (z : A) (k : Id A b z) : Id A a z = (DD s a b e).1 z k ;
+Dinv {A : U l} (s : GShape) (a b : A) (e : Ex s a b) (z : A) (k : Id A a z) : Id A b z = (DD s a b e).2 z k ;
+
+Correct {A : U l} (s : GShape) (a b : A) (e : Ex s a b) : U l =
+ ((z : A) (k : Id A b z) -> Id (Id A a z) (D s a b e z k) (H.transH (eval s a b e) k)) *
+ ((z : A) (k : Id A a z) -> Id (Id A b z) (Dinv s a b e z k) (H.transH (H.symH (eval s a b e)) k)) ;
+
+correct {A : U l} : (s : GShape) (a b : A) (e : Ex s a b) -> Correct s a b e = split {
+ gatom -> \ a b e -> (\ z k -> refl (H.transH e k), \ z k -> refl (H.transH (H.symH e) k)) ;
+ gunit -> \ a b e ->
+  (\ z k -> idJ A a (\ b1 e1 -> (k1 : Id A b1 z) -> Id (Id A a z) (D gunit a b1 e1 z k1) (H.transH e1 k1))
+     (\ k1 -> H.symH (PA.unit-l k1)) b e k,
+   \ z k -> idJ A a (\ b1 e1 -> (k1 : Id A a z) -> Id (Id A b1 z) (Dinv gunit a b1 e1 z k1) (H.transH (H.symH e1) k1))
+     (\ k1 -> H.symH (PA.unit-l k1)) b e k) ;
+ gplus s t | rs rt -> \ a c e ->
+  (\ z k -> H.transH (H.apH (\ k1 -> D s a e.1 e.2.1 z k1) ((rt e.1 c e.2.2).1 z k))
+     (H.transH ((rs a e.1 e.2.1).1 z (H.transH (eval t e.1 c e.2.2) k))
+      (H.symH (PA.tassoc (eval s a e.1 e.2.1) (eval t e.1 c e.2.2) k))),
+   \ z k -> H.transH (H.apH (\ k1 -> Dinv t e.1 c e.2.2 z k1) ((rs a e.1 e.2.1).2 z k))
+     (H.transH ((rt e.1 c e.2.2).2 z (H.transH (H.symH (eval s a e.1 e.2.1)) k))
+      (H.transH (H.symH (PA.tassoc (H.symH (eval t e.1 c e.2.2)) (H.symH (eval s a e.1 e.2.1)) k))
+       (H.apH (\ w -> H.transH w k) (H.symH (PA.sym-trans (eval s a e.1 e.2.1) (eval t e.1 c e.2.2))))))) ;
+ ginv s | rs -> \ a b e ->
+  ((rs b a e).2,
+   \ z k -> H.transH ((rs b a e).1 z k) (H.apH (\ w -> H.transH w k) (H.symH (PA.sym-sym (eval s b a e))))) } ;
+
+solveG {A : U l} {a b : A} (s1 s2 : GShape) (e1 : Ex s1 a b) (e2 : Ex s2 a b)
+ (h : Id (Id A a b) (D s1 a b e1 b (refl b)) (D s2 a b e2 b (refl b))) :
+ Id (Id A a b) (eval s1 a b e1) (eval s2 a b e2) =
+ H.transH (H.symH ((correct s1 a b e1).1 b (refl b))) (H.transH h ((correct s2 a b e2).1 b (refl b))) ;
+
+-- tests, each closed by refl on the Cayley side
+test-inv-dist {A : U l} {a b c d : A} (p : Id A a b) (q : Id A b c) (r : Id A a d) :
+ Id (Id A c d) (H.transH (H.symH (H.transH p q)) r) (H.transH (H.symH q) (H.transH (H.symH p) r)) =
+ solveG (gplus (ginv (gplus gatom gatom)) gatom) (gplus (ginv gatom) (gplus (ginv gatom) gatom))
+  (a, (b, p, q), r) (b, q, (a, p, r))
+  (refl (H.transH (H.symH q) (H.transH (H.symH p) (H.transH r (refl d))))) ;
+
+test-inv-inv {A : U l} {a b : A} (p : Id A a b) : Id (Id A a b) (H.symH (H.symH p)) p =
+ solveG (ginv (ginv gatom)) gatom p p (refl p) ;
+
+test-mixed {A : U l} {a b c : A} (p : Id A a b) (q : Id A b c) :
+ Id (Id A c a) (H.symH (H.transH (H.transH p (refl b)) q))
+  (H.transH (H.symH q) (H.transH (H.symH (H.symH (H.symH p))) (refl a))) =
+ solveG (ginv (gplus (gplus gatom gunit) gatom)) (gplus (ginv gatom) (gplus (ginv (ginv (ginv gatom))) gunit))
+  (b, (b, p, refl b), q) (b, q, (a, p, refl a))
+  (refl (H.transH (H.symH q) (H.symH p))) ;

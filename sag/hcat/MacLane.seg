@@ -1,0 +1,325 @@
+-- Mac Lane's coherence theorem for the 2-wild Cat (Agda Solvers/Normaliser),
+-- stated once.  Parameters of Coh2 used: pentagonator, and triangle1 of
+-- CatCoherence.
+--
+-- Syntax.  Unit has no indexed families, so typed syntax is a shape with
+-- an interpretation by recursion on it.  A spine of length n from A to B,
+-- Sp n A B, is a path A = B for n = 0 and a map f : B' -> B with a spine
+-- A -> B' for n + 1 (Agda's typed list, with [] : A = A); Spine A B is a
+-- spine of some length.  A term of shape s, Tm s A B, is a map (tatom), a
+-- path A = B (tid; in use refl), or a composite (tcomp).
+--   emb    a spine denotes the composite of its maps (emb [] = 1, as the
+--          identity transported along the path).
+--   app    concatenation (Agda _++_), by recursion on the first length.
+--   sem    the denotation of a term; nf its normal form, a spine of length
+--          len s; nfS the normal form as a point of Spine.
+-- Coherence.
+--   emb-app        emb s o emb t = emb (s ++ t): the unit law at [] and the
+--                  reassociator at f :: s.
+--   app-assoc      (s ++ t) ++ u = s ++ (t ++ u) in Spine (cons on f :: s).
+--   emb-app-assoc  the coherence of emb-app with the reassociator: the two
+--                  ways of multiplying three spines agree, up to
+--                  app-assoc.  At [] it is triangle1 with the naturality of
+--                  the left unit; at f :: s it is the pentagon at
+--                  (f, W, Y, Z), the naturality of the reassociator in its
+--                  second and third arguments, the induction hypothesis
+--                  whiskered by f, and ap (cons f) for app-assoc (assoc-step).
+--   sound          sem x = emb (nf x).
+--   coh            two terms with equal normal forms have equal denotations:
+--                  coh x y p = sound x . emb p . (sound y)^-1; in use p is
+--                  refl when the normal forms compute to the same spine.
+--   coh-refl, coh-sound, coh-trans: coh is a functor from paths of spines.
+--   unit-l-coh     the left unit law is the coh cell of 1 o a = a.
+--   composeA-nat3  the reassociator is natural in its three arguments at once.
+--   composeA-coh   the reassociator is the coh cell of (a b) c = a (b c),
+--                  with app-assoc: sound of both sides expanded (xch slides
+--                  sound c past emb-app), composeA-nat3, emb-app-assoc.
+open Base ;
+module H = Paths[l] ; module H1 = Paths[l+] ; module PA = PathAlgebra[l] ; module PA1 = PathAlgebra[l+] ;
+open WildCat ; open Naturality ; open CatCoherence ;
+
+add : Nat -> Nat -> Nat = split { zero -> \ m -> m ; suc n | r -> \ m -> suc (r m) } ;
+
+-- ap distributes over a composite of three paths
+ap-trans3 {X Y : U l} (h : X -> Y) {x0 x1 x2 x3 : X} (p : Id X x0 x1) (q : Id X x1 x2) (r : Id X x2 x3) :
+ Id (Id Y (h x0) (h x3)) (H.apH h (H.transH p (H.transH q r))) (H.transH (H.apH h p) (H.transH (H.apH h q) (H.apH h r))) =
+ H.transH (PA.ap-trans h p (H.transH q r)) (H.apH (\ w -> H.transH (H.apH h p) w) (PA.ap-trans h q r)) ;
+
+------------------------------------------------------------------------
+-- spines
+
+Sp : Nat -> Cat -> Cat -> U l+ = split {
+ zero -> \ A B -> Id Cat A B ;
+ suc n | r -> \ A C -> (B : Cat) * Map B C * r A B } ;
+
+Spine (A B : Cat) : U l+ = (n : Nat) * Sp n A B ;
+
+-- the identity along a path of categories
+emb0 {A B : Cat} (e : Id Cat A B) : Map A B = idJ Cat A (\ X q -> Map A X) (idMap A) B e ;
+
+emb : (n : Nat) (A B : Cat) -> Sp n A B -> Map A B = split {
+ zero -> \ A B e -> emb0 e ;
+ suc n | r -> \ A C s -> comp s.2.1 (r A s.1 s.2.2) } ;
+
+embS (A B : Cat) (w : Spine A B) : Map A B = emb w.1 A B w.2 ;
+
+app : (n m : Nat) (A B C : Cat) -> Sp n B C -> Sp m A B -> Sp (add n m) A C = split {
+ zero -> \ m A B C e t -> idJ Cat B (\ X q -> Sp m A X) t C e ;
+ suc n | r -> \ m A B C s t -> (s.1, s.2.1, r m A B s.1 s.2.2 t) } ;
+
+cons {A B D : Cat} (f : Map B D) (w : Spine A B) : Spine A D = (suc w.1, (B, f, w.2)) ;
+
+emb-app : (n m : Nat) (A B C : Cat) (s : Sp n B C) (t : Sp m A B) ->
+ Id (Map A C) (comp (emb n B C s) (emb m A B t)) (emb (add n m) A C (app n m A B C s t)) = split {
+ zero -> \ m A B C e t ->
+  idJ Cat B (\ X q -> Id (Map A X) (comp (emb zero B X q) (emb m A B t)) (emb m A X (app zero m A B X q t)))
+   (comp-id-l (emb m A B t)) C e ;
+ suc n | r -> \ m A B C s t ->
+  H.transH (composeA s.2.1 (emb n B s.1 s.2.2) (emb m A B t)) (ccr s.2.1 (r m A B s.1 s.2.2 t)) } ;
+
+app-assoc : (n m k : Nat) (A B C D : Cat) (s : Sp n C D) (t : Sp m B C) (u : Sp k A B) ->
+ Id (Spine A D) (add (add n m) k, app (add n m) k A B D (app n m B C D s t) u)
+  (add n (add m k), app n (add m k) A C D s (app m k A B C t u)) = split {
+ zero -> \ m k A B C D e t u ->
+  idJ Cat C (\ X q -> Id (Spine A X) (add m k, app m k A B X (app zero m B C X q t) u)
+     (add m k, app zero (add m k) A C X q (app m k A B C t u)))
+   (refl (add m k, app m k A B C t u)) D e ;
+ suc n | r -> \ m k A B C D s t u -> H1.apH (\ w -> cons {A} {s.1} {D} s.2.1 w) (r m k A B C s.1 s.2.2 t u) } ;
+
+-- the statement of emb-app-assoc
+EAA (n m k : Nat) (A B C D : Cat) (s : Sp n C D) (t : Sp m B C) (u : Sp k A B) : U l =
+ Id (Id (Map A D) (comp (comp (emb n C D s) (emb m B C t)) (emb k A B u))
+   (emb (add n (add m k)) A D (app n (add m k) A C D s (app m k A B C t u))))
+  (H.transH (composeA (emb n C D s) (emb m B C t) (emb k A B u))
+   (H.transH (ccr (emb n C D s) (emb-app m k A B C t u)) (emb-app n (add m k) A C D s (app m k A B C t u))))
+  (H.transH (ccl (emb k A B u) (emb-app n m B C D s t))
+   (H.transH (emb-app (add n m) k A B D (app n m B C D s t) u) (H1.apH (embS A D) (app-assoc n m k A B C D s t u)))) ;
+
+-- at []: triangle1 and the naturality of the left unit
+assoc-base {A B C : Cat} (m k : Nat) (t : Sp m B C) (u : Sp k A B) : EAA zero m k A B C C (refl C) t u =
+ H.transH (H.apH (\ z -> H.transH (composeA (idMap C) (emb m B C t) (emb k A B u)) z) (H.symH (IdKl-nat (emb-app m k A B C t u))))
+  (H.transH (H.symH (PA.tassoc (composeA (idMap C) (emb m B C t) (emb k A B u)) (comp-id-l (comp (emb m B C t) (emb k A B u))) (emb-app m k A B C t u)))
+   (H.apH (\ z -> H.transH z (emb-app m k A B C t u)) (triangle1 (emb k A B u) (emb m B C t)))) ;
+
+-- at f :: s: the pentagon, naturality in 2 and 3, the hypothesis whiskered
+assoc-step {A B C B1 D : Cat} (n m k : Nat) (f : Map B1 D) (s : Sp n C B1) (t : Sp m B C) (u : Sp k A B)
+ (ih : EAA n m k A B C B1 s t u) : EAA (suc n) m k A B C D (B1, f, s) t u =
+ H.transH (H.apH (\ z -> H.transH a1 z) (H.symH (PA.tassoc (ccr (comp f w0) mm) a3 (ccr f es))))
+ (H.transH (H.apH (\ z -> H.transH a1 (H.transH z (ccr f es))) (H.symH (compose-naturality3 f w0 mm)))
+ (H.transH (H.apH (\ z -> H.transH a1 z) (PA.tassoc a2 (ccr f (ccr w0 mm)) (ccr f es)))
+ (H.transH (H.symH (PA.tassoc a1 a2 (H.transH (ccr f (ccr w0 mm)) (ccr f es))))
+ (H.transH (H.apH (\ z -> H.transH z (H.transH (ccr f (ccr w0 mm)) (ccr f es))) (pentagonator f w0 y0 z0))
+ (H.transH (PA.tassoc (H.transH pp a4) (ccr f (composeA w0 y0 z0)) (H.transH (ccr f (ccr w0 mm)) (ccr f es)))
+ (H.transH (H.apH (\ z -> H.transH (H.transH pp a4) z) (H.symH (ap-trans3 (\ m1 -> comp f m1) (composeA w0 y0 z0) (ccr w0 mm) es)))
+ (H.transH (H.apH (\ z -> H.transH (H.transH pp a4) (ccr f z)) ihx)
+ (H.transH (H.apH (\ z -> H.transH (H.transH pp a4) z) (ap-trans3 (\ m1 -> comp f m1) (ccl z0 est) esu aa))
+ (H.transH (PA.tassoc pp a4 (H.transH (ccr f (ccl z0 est)) tt0))
+ (H.transH (H.apH (\ z -> H.transH pp z) (H.symH (PA.tassoc a4 (ccr f (ccl z0 est)) tt0)))
+ (H.transH (H.apH (\ z -> H.transH pp (H.transH z tt0)) (compose-naturality2 f z0 est))
+ (H.transH (H.apH (\ z -> H.transH pp z) (PA.tassoc (ccl z0 (ccr f est)) a5 tt0))
+ (H.transH (H.symH (PA.tassoc pp (ccl z0 (ccr f est)) (H.transH a5 tt0)))
+ (H.transH (H.apH (\ z -> H.transH z (H.transH a5 tt0)) (H.symH (PA.ap-trans (\ m1 -> comp m1 z0) (composeA f w0 y0) (ccr f est))))
+ (H.transH (H.apH (\ z -> H.transH (ccl z0 (H.transH (composeA f w0 y0) (ccr f est))) z) (H.symH (PA.tassoc a5 (ccr f esu) (ccr f aa))))
+  (H.apH (\ z -> H.transH (ccl z0 (H.transH (composeA f w0 y0) (ccr f est))) (H.transH (H.transH a5 (ccr f esu)) z))
+   (H.symH aacons)))))))))))))))))
+ where {
+  w0 : Map C B1 = emb n C B1 s ;
+  y0 : Map B C = emb m B C t ;
+  z0 : Map A B = emb k A B u ;
+  tu : Map A C = emb (add m k) A C (app m k A B C t u) ;
+  st : Map B B1 = emb (add n m) B B1 (app n m B C B1 s t) ;
+  stu1 : Map A B1 = emb (add (add n m) k) A B1 (app (add n m) k A B B1 (app n m B C B1 s t) u) ;
+  stu2 : Map A B1 = emb (add n (add m k)) A B1 (app n (add m k) A C B1 s (app m k A B C t u)) ;
+  mm : Id (Map A C) (comp y0 z0) tu = emb-app m k A B C t u ;
+  est : Id (Map B B1) (comp w0 y0) st = emb-app n m B C B1 s t ;
+  esu : Id (Map A B1) (comp st z0) stu1 = emb-app (add n m) k A B B1 (app n m B C B1 s t) u ;
+  es : Id (Map A B1) (comp w0 tu) stu2 = emb-app n (add m k) A C B1 s (app m k A B C t u) ;
+  p0 : Id (Spine A B1) (add (add n m) k, app (add n m) k A B B1 (app n m B C B1 s t) u)
+   (add n (add m k), app n (add m k) A C B1 s (app m k A B C t u)) = app-assoc n m k A B C B1 s t u ;
+  aa : Id (Map A B1) stu1 stu2 = H1.apH (embS A B1) p0 ;
+  ihx : Id (Id (Map A B1) (comp (comp w0 y0) z0) stu2)
+   (H.transH (composeA w0 y0 z0) (H.transH (ccr w0 mm) es)) (H.transH (ccl z0 est) (H.transH esu aa)) = ih ;
+  a1 : Id (Map A D) (comp (comp (comp f w0) y0) z0) (comp (comp f w0) (comp y0 z0)) = composeA (comp f w0) y0 z0 ;
+  a2 : Id (Map A D) (comp (comp f w0) (comp y0 z0)) (comp f (comp w0 (comp y0 z0))) = composeA f w0 (comp y0 z0) ;
+  a3 : Id (Map A D) (comp (comp f w0) tu) (comp f (comp w0 tu)) = composeA f w0 tu ;
+  a4 : Id (Map A D) (comp (comp f (comp w0 y0)) z0) (comp f (comp (comp w0 y0) z0)) = composeA f (comp w0 y0) z0 ;
+  a5 : Id (Map A D) (comp (comp f st) z0) (comp f (comp st z0)) = composeA f st z0 ;
+  pp : Id (Map A D) (comp (comp (comp f w0) y0) z0) (comp (comp f (comp w0 y0)) z0) = ccl z0 (composeA f w0 y0) ;
+  tt0 : Id (Map A D) (comp f (comp st z0)) (comp f stu2) = H.transH (ccr f esu) (ccr f aa) ;
+  aacons : Id (Id (Map A D) (comp f stu1) (comp f stu2))
+   (H1.apH (embS A D) (H1.apH (\ w -> cons {A} {B1} {D} f w) p0)) (ccr f aa) =
+   H1.transH (PA1.ap-comp (embS A D) (\ w -> cons {A} {B1} {D} f w) p0)
+    (H1.symH (PA1.ap-comp (\ m1 -> comp f m1) (embS A B1) p0)) ;
+ } ;
+
+emb-app-assoc : (n m k : Nat) (A B C D : Cat) (s : Sp n C D) (t : Sp m B C) (u : Sp k A B) -> EAA n m k A B C D s t u = split {
+ zero -> \ m k A B C D e t u -> idJ Cat C (\ X q -> EAA zero m k A B C X q t u) (assoc-base {A} {B} {C} m k t u) D e ;
+ suc n | r -> \ m k A B C D s t u -> assoc-step {A} {B} {C} {s.1} {D} n m k s.2.1 s.2.2 t u (r m k A B C s.1 s.2.2 t u) } ;
+
+------------------------------------------------------------------------
+-- terms, normal forms, soundness
+
+data TShape = tatom | tid | tcomp (s t : TShape) ;
+
+Tm : TShape -> Cat -> Cat -> U l+ = split {
+ tatom -> \ A B -> Map A B ;
+ tid -> \ A B -> Id Cat A B ;
+ tcomp s t | rs rt -> \ A C -> (B : Cat) * rs B C * rt A B } ;
+
+sem : (s : TShape) (A B : Cat) -> Tm s A B -> Map A B = split {
+ tatom -> \ A B f -> f ;
+ tid -> \ A B e -> emb0 e ;
+ tcomp s t | rs rt -> \ A C x -> comp (rs x.1 C x.2.1) (rt A x.1 x.2.2) } ;
+
+len : TShape -> Nat = split { tatom -> suc zero ; tid -> zero ; tcomp s t | rs rt -> add rs rt } ;
+
+nf : (s : TShape) (A B : Cat) -> Tm s A B -> Sp (len s) A B = split {
+ tatom -> \ A B f -> (A, f, refl A) ;
+ tid -> \ A B e -> e ;
+ tcomp s t | rs rt -> \ A C x -> app (len s) (len t) A x.1 C (rs x.1 C x.2.1) (rt A x.1 x.2.2) } ;
+
+nfS {A B : Cat} (s : TShape) (x : Tm s A B) : Spine A B = (len s, nf s A B x) ;
+
+sound : (s : TShape) (A B : Cat) (x : Tm s A B) -> Id (Map A B) (sem s A B x) (emb (len s) A B (nf s A B x)) = split {
+ tatom -> \ A B f -> H.symH (comp-id-r f) ;
+ tid -> \ A B e -> refl (emb0 e) ;
+ tcomp s t | rs rt -> \ A C x ->
+  H.transH (ccl (sem t A x.1 x.2.2) (rs x.1 C x.2.1))
+   (H.transH (ccr (emb (len s) x.1 C (nf s x.1 C x.2.1)) (rt A x.1 x.2.2))
+    (emb-app (len s) (len t) A x.1 C (nf s x.1 C x.2.1) (nf t A x.1 x.2.2))) } ;
+
+coh {A B : Cat} (s t : TShape) (x : Tm s A B) (y : Tm t A B) (p : Id (Spine A B) (nfS s x) (nfS t y)) :
+ Id (Map A B) (sem s A B x) (sem t A B y) =
+ H.transH (sound s A B x) (H.transH (H1.apH (embS A B) p) (H.symH (sound t A B y))) ;
+
+coh-refl {A B : Cat} (s : TShape) (x : Tm s A B) :
+ Id (Id (Map A B) (sem s A B x) (sem s A B x)) (coh s s x x (refl (nfS s x))) (refl (sem s A B x)) =
+ H.transH (H.apH (\ z -> H.transH (sound s A B x) z) (PA.unit-l (H.symH (sound s A B x)))) (PA.inv-r (sound s A B x)) ;
+
+coh-sound {A B : Cat} (s t : TShape) (x : Tm s A B) (y : Tm t A B) (p : Id (Spine A B) (nfS s x) (nfS t y)) :
+ Id (Id (Map A B) (sem s A B x) (emb (len t) A B (nf t A B y)))
+  (H.transH (coh s t x y p) (sound t A B y)) (H.transH (sound s A B x) (H1.apH (embS A B) p)) =
+ H.transH (PA.tassoc (sound s A B x) (H.transH (H1.apH (embS A B) p) (H.symH (sound t A B y))) (sound t A B y))
+  (H.transH (H.apH (\ z -> H.transH (sound s A B x) z) (PA.tassoc (H1.apH (embS A B) p) (H.symH (sound t A B y)) (sound t A B y)))
+   (H.apH (\ z -> H.transH (sound s A B x) (H.transH (H1.apH (embS A B) p) z)) (PA.inv-l (sound t A B y)))) ;
+
+coh-trans {A B : Cat} (s t v : TShape) (x : Tm s A B) (y : Tm t A B) (z : Tm v A B)
+ (p : Id (Spine A B) (nfS s x) (nfS t y)) (q : Id (Spine A B) (nfS t y) (nfS v z)) :
+ Id (Id (Map A B) (sem s A B x) (sem v A B z))
+  (H.transH (coh s t x y p) (coh t v y z q)) (coh s v x z (H1.transH p q)) =
+ H.transH (PA.tassoc sx (H.transH ap0 (H.symH sy)) (H.transH sy rr))
+ (H.transH (H.apH (\ w -> H.transH sx w) (PA.tassoc ap0 (H.symH sy) (H.transH sy rr)))
+ (H.transH (H.apH (\ w -> H.transH sx (H.transH ap0 w)) (PA.canc-l sy rr))
+ (H.transH (H.apH (\ w -> H.transH sx w) (H.symH (PA.tassoc ap0 aq (H.symH sv))))
+  (H.apH (\ w -> H.transH sx (H.transH w (H.symH sv))) (H.symH (PA1.ap-trans (embS A B) p q))))))
+ where {
+  sx : Id (Map A B) (sem s A B x) (emb (len s) A B (nf s A B x)) = sound s A B x ;
+  sy : Id (Map A B) (sem t A B y) (emb (len t) A B (nf t A B y)) = sound t A B y ;
+  sv : Id (Map A B) (sem v A B z) (emb (len v) A B (nf v A B z)) = sound v A B z ;
+  ap0 : Id (Map A B) (emb (len s) A B (nf s A B x)) (emb (len t) A B (nf t A B y)) = H1.apH (embS A B) p ;
+  aq : Id (Map A B) (emb (len t) A B (nf t A B y)) (emb (len v) A B (nf v A B z)) = H1.apH (embS A B) q ;
+  rr : Id (Map A B) (emb (len t) A B (nf t A B y)) (sem v A B z) = H.transH aq (H.symH sv) ;
+ } ;
+
+-- the left unit law is the coh cell of 1 o a = a
+unit-l-coh {A B : Cat} (s : TShape) (a : Tm s A B) :
+ Id (Id (Map A B) (comp (idMap B) (sem s A B a)) (sem s A B a))
+  (comp-id-l (sem s A B a)) (coh (tcomp tid s) s (B, refl B, a) a (refl (nfS s a))) =
+ PA.cancel-r (sound s A B a)
+  (H.transH (IdKl-nat (sound s A B a))
+   (H.symH (H.transH (coh-sound (tcomp tid s) s (B, refl B, a) a (refl (nfS s a)))
+     (PA.unit-l (H.transH (ccr (idMap B) (sound s A B a)) (comp-id-l (emb (len s) A B (nf s A B a)))))))) ;
+
+-- the reassociator is natural in its three arguments at once (J three times)
+nat3-stmt {A B C D : Cat} (fa ga : Map C D) (fb gb : Map B C) (fc gc : Map A B)
+ (sa : Id (Map C D) fa ga) (sb : Id (Map B C) fb gb) (sc : Id (Map A B) fc gc) : U l =
+ Id (Id (Map A D) (comp (comp fa fb) fc) (comp ga (comp gb gc)))
+  (H.transH (composeA fa fb fc) (H.transH (ccl (comp fb fc) sa) (H.transH (ccr ga (ccl fc sb)) (ccr ga (ccr gb sc)))))
+  (H.transH (H.transH (ccl fc (ccl fb sa)) (H.transH (ccl fc (ccr ga sb)) (ccr (comp ga gb) sc))) (composeA ga gb gc)) ;
+
+composeA-nat3 {A B C D : Cat} {fa ga : Map C D} {fb gb : Map B C} {fc gc : Map A B}
+ (sa : Id (Map C D) fa ga) (sb : Id (Map B C) fb gb) (sc : Id (Map A B) fc gc) : nat3-stmt fa ga fb gb fc gc sa sb sc =
+ idJ (Map C D) fa (\ ga1 sa1 -> (gb1 : Map B C) (sb1 : Id (Map B C) fb gb1) (gc1 : Map A B) (sc1 : Id (Map A B) fc gc1) ->
+   nat3-stmt fa ga1 fb gb1 fc gc1 sa1 sb1 sc1)
+  (\ gb1 sb1 -> idJ (Map B C) fb (\ gb2 sb2 -> (gc1 : Map A B) (sc1 : Id (Map A B) fc gc1) ->
+     nat3-stmt fa fa fb gb2 fc gc1 (refl fa) sb2 sc1)
+    (\ gc1 sc1 -> idJ (Map A B) fc (\ gc2 sc2 -> nat3-stmt fa fa fb fb fc gc2 (refl fa) (refl fb) sc2)
+      (H.symH (PA.unit-l (composeA fa fb fc))) gc1 sc1) gb1 sb1)
+  ga sa gb sb gc sc ;
+
+-- the reassociator is the coh cell of (a b) c = a (b c)
+composeA-coh {A B C D : Cat} (sa sb sc : TShape) (a : Tm sa C D) (b : Tm sb B C) (c : Tm sc A B) :
+ Id (Id (Map A D) (comp (comp (sem sa C D a) (sem sb B C b)) (sem sc A B c)) (comp (sem sa C D a) (comp (sem sb B C b) (sem sc A B c))))
+  (composeA (sem sa C D a) (sem sb B C b) (sem sc A B c))
+  (coh (tcomp (tcomp sa sb) sc) (tcomp sa (tcomp sb sc)) (B, (C, a, b), c) (C, a, (B, b, c))
+   (app-assoc (len sa) (len sb) (len sc) A B C D (nf sa C D a) (nf sb B C b) (nf sc A B c))) =
+ PA.cancel-r sr (H.transH star (H.symH (coh-sound (tcomp (tcomp sa sb) sc) (tcomp sa (tcomp sb sc)) (B, (C, a, b), c) (C, a, (B, b, c))
+   (app-assoc (len sa) (len sb) (len sc) A B C D (nf sa C D a) (nf sb B C b) (nf sc A B c)))))
+ where {
+  fa : Map C D = sem sa C D a ; fb : Map B C = sem sb B C b ; fc : Map A B = sem sc A B c ;
+  ea : Map C D = emb (len sa) C D (nf sa C D a) ;
+  eb : Map B C = emb (len sb) B C (nf sb B C b) ;
+  ec : Map A B = emb (len sc) A B (nf sc A B c) ;
+  ebc : Map A C = emb (add (len sb) (len sc)) A C (app (len sb) (len sc) A B C (nf sb B C b) (nf sc A B c)) ;
+  eab : Map B D = emb (add (len sa) (len sb)) B D (app (len sa) (len sb) B C D (nf sa C D a) (nf sb B C b)) ;
+  e2 : Map A D = emb (add (len sa) (add (len sb) (len sc))) A D
+   (app (len sa) (add (len sb) (len sc)) A C D (nf sa C D a) (app (len sb) (len sc) A B C (nf sb B C b) (nf sc A B c))) ;
+  e1 : Map A D = emb (add (add (len sa) (len sb)) (len sc)) A D
+   (app (add (len sa) (len sb)) (len sc) A B D (app (len sa) (len sb) B C D (nf sa C D a) (nf sb B C b)) (nf sc A B c)) ;
+  qa : Id (Map C D) fa ea = sound sa C D a ;
+  qb : Id (Map B C) fb eb = sound sb B C b ;
+  qc : Id (Map A B) fc ec = sound sc A B c ;
+  mbc : Id (Map A C) (comp eb ec) ebc = emb-app (len sb) (len sc) A B C (nf sb B C b) (nf sc A B c) ;
+  mab : Id (Map B D) (comp ea eb) eab = emb-app (len sa) (len sb) B C D (nf sa C D a) (nf sb B C b) ;
+  ff : Id (Map A D) (comp ea ebc) e2 =
+   emb-app (len sa) (add (len sb) (len sc)) A C D (nf sa C D a) (app (len sb) (len sc) A B C (nf sb B C b) (nf sc A B c)) ;
+  gg : Id (Map A D) (comp eab ec) e1 =
+   emb-app (add (len sa) (len sb)) (len sc) A B D (app (len sa) (len sb) B C D (nf sa C D a) (nf sb B C b)) (nf sc A B c) ;
+  aa : Id (Map A D) e1 e2 =
+   H1.apH (embS A D) (app-assoc (len sa) (len sb) (len sc) A B C D (nf sa C D a) (nf sb B C b) (nf sc A B c)) ;
+  sr : Id (Map A D) (comp fa (comp fb fc)) e2 = sound (tcomp sa (tcomp sb sc)) A D (C, a, (B, b, c)) ;
+  sl : Id (Map A D) (comp (comp fa fb) fc) e1 = sound (tcomp (tcomp sa sb) sc) A D (B, (C, a, b), c) ;
+  x1 : Id (Map A D) (comp fa (comp fb fc)) (comp ea (comp fb fc)) = ccl (comp fb fc) qa ;
+  y1 : Id (Map A D) (comp ea (comp fb fc)) (comp ea (comp eb fc)) = ccr ea (ccl fc qb) ;
+  y2 : Id (Map A D) (comp ea (comp eb fc)) (comp ea (comp eb ec)) = ccr ea (ccr eb qc) ;
+  ee : Id (Map A D) (comp ea (comp eb ec)) (comp ea ebc) = ccr ea mbc ;
+  z1 : Id (Map A D) (comp (comp fa fb) fc) (comp (comp ea fb) fc) = ccl fc (ccl fb qa) ;
+  z2 : Id (Map A D) (comp (comp ea fb) fc) (comp (comp ea eb) fc) = ccl fc (ccr ea qb) ;
+  uu : Id (Map A D) (comp (comp ea eb) fc) (comp (comp ea eb) ec) = ccr (comp ea eb) qc ;
+  ww : Id (Map A D) (comp (comp ea eb) ec) (comp eab ec) = ccl ec mab ;
+  bl : Id (Map A D) (comp fa (comp fb fc)) (comp ea (comp eb ec)) = H.transH x1 (H.transH y1 y2) ;
+  br : Id (Map A D) (comp (comp fa fb) fc) (comp (comp ea eb) ec) = H.transH z1 (H.transH z2 uu) ;
+  efp : Id (Map A D) (comp ea (comp eb ec)) e2 = H.transH ee ff ;
+  sr-exp : Id (Id (Map A D) (comp fa (comp fb fc)) e2) sr (H.transH bl efp) =
+   H.transH (H.apH (\ z -> H.transH x1 (H.transH z ff)) (ap-trans3 (\ m1 -> comp ea m1) (ccl fc qb) (ccr eb qc) mbc))
+   (H.transH (H.apH (\ z -> H.transH x1 z) (PA.tassoc y1 (H.transH y2 ee) ff))
+   (H.transH (H.apH (\ z -> H.transH x1 (H.transH y1 z)) (PA.tassoc y2 ee ff))
+   (H.transH (H.apH (\ z -> H.transH x1 z) (H.symH (PA.tassoc y1 y2 efp)))
+    (H.symH (PA.tassoc x1 (H.transH y1 y2) efp))))) ;
+  sl-exp : Id (Id (Map A D) (comp (comp fa fb) fc) e1) sl (H.transH (H.transH br ww) gg) =
+   H.transH (H.apH (\ z -> H.transH z (H.transH (ccr eab qc) gg)) (ap-trans3 (\ m1 -> comp m1 fc) (ccl fb qa) (ccr ea qb) mab))
+   (H.transH (PA.tassoc z1 (H.transH z2 (ccl fc mab)) (H.transH (ccr eab qc) gg))
+   (H.transH (H.apH (\ z -> H.transH z1 z) (PA.tassoc z2 (ccl fc mab) (H.transH (ccr eab qc) gg)))
+   (H.transH (H.apH (\ z -> H.transH z1 (H.transH z2 z)) (H.symH (PA.tassoc (ccl fc mab) (ccr eab qc) gg)))
+   (H.transH (H.apH (\ z -> H.transH z1 (H.transH z2 (H.transH z gg))) (H.symH (xch mab qc)))
+   (H.transH (H.apH (\ z -> H.transH z1 (H.transH z2 z)) (PA.tassoc uu ww gg))
+   (H.transH (H.apH (\ z -> H.transH z1 z) (H.symH (PA.tassoc z2 uu (H.transH ww gg))))
+   (H.transH (H.symH (PA.tassoc z1 (H.transH z2 uu) (H.transH ww gg)))
+    (H.symH (PA.tassoc br ww gg))))))))) ;
+  star : Id (Id (Map A D) (comp (comp fa fb) fc) e2) (H.transH (composeA fa fb fc) sr) (H.transH sl aa) =
+   H.transH (H.apH (\ z -> H.transH (composeA fa fb fc) z) sr-exp)
+   (H.transH (H.symH (PA.tassoc (composeA fa fb fc) bl efp))
+   (H.transH (H.apH (\ z -> H.transH z efp) (composeA-nat3 qa qb qc))
+   (H.transH (PA.tassoc br (composeA ea eb ec) efp)
+   (H.transH (H.apH (\ z -> H.transH br z)
+     (emb-app-assoc (len sa) (len sb) (len sc) A B C D (nf sa C D a) (nf sb B C b) (nf sc A B c)))
+   (H.transH (H.symH (PA.tassoc br ww (H.transH gg aa)))
+   (H.transH (H.symH (PA.tassoc (H.transH br ww) gg aa))
+    (H.apH (\ z -> H.transH z aa) (H.symH sl-exp)))))))) ;
+ } ;
+
+-- test: a reassociation of three maps is a coh cell with refl
+coh-example {A B C D : Cat} (f : Map C D) (g : Map B C) (h : Map A B) :
+ Id (Map A D) (comp (comp f g) h) (comp f (comp g h)) =
+ coh (tcomp (tcomp tatom tatom) tatom) (tcomp tatom (tcomp tatom tatom)) (B, (C, f, g), h) (C, f, (B, g, h))
+  (refl (nfS (tcomp tatom (tcomp tatom tatom)) (C, f, (B, g, h)))) ;

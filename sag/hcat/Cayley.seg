@@ -1,0 +1,65 @@
+-- Free reassociation of composites of paths, by the Cayley embedding
+-- p |-> (p . -) (Agda Solvers/CayleyAssoc), as one theorem, solveR.
+-- Unit has no indexed families, so an expression is a shape (a binary
+-- tree of atoms and units) with a typed interpretation by recursion on the
+-- shape: Ex s a b is the type of its atoms, Ex (cplus s t) a c =
+-- (b : A) * Ex s a b * Ex t b c; an atom is a path a = b, a unit a path
+-- (in use: refl).
+--   eval   the composite of the atoms (trans).
+--   D      the Cayley image: D s e z k = eval s e . k, built by function
+--          composition (D (cplus s t) = D s o D t), so that two bracketings
+--          of the same atoms have the same image by definition.  A unit acts
+--          by J on its path, so D cunit (refl a) k = k.
+--   D-correct  D s e z k = eval s e . k, by induction on the shape: at
+--          cplus, D s (D t k) = D s (eval t . k) = eval s . (eval t . k) =
+--          (eval s . eval t) . k.
+--   solveR  if the two images at refl agree (in use: by refl), the two
+--          composites are equal: eval s1 = D s1 refl = D s2 refl = eval s2
+--          (trans p refl = p by definition).
+level l ; open Base ;
+module H = Paths[l] ; module PA = PathAlgebra[l] ;
+
+data CShape = catom | cunit | cplus (s t : CShape) ;
+
+Ex {A : U l} : CShape -> A -> A -> U l = split {
+ catom -> \ a b -> Id A a b ;
+ cunit -> \ a b -> Id A a b ;
+ cplus s t | rs rt -> \ a c -> (b : A) * rs a b * rt b c } ;
+
+eval {A : U l} : (s : CShape) (a b : A) -> Ex s a b -> Id A a b = split {
+ catom -> \ a b e -> e ;
+ cunit -> \ a b e -> e ;
+ cplus s t | rs rt -> \ a c e -> H.transH (rs a e.1 e.2.1) (rt e.1 c e.2.2) } ;
+
+D {A : U l} : (s : CShape) (a b : A) -> Ex s a b -> (z : A) -> Id A b z -> Id A a z = split {
+ catom -> \ a b e z k -> H.transH e k ;
+ cunit -> \ a b e z k -> idJ A a (\ b1 e1 -> Id A b1 z -> Id A a z) (\ k1 -> k1) b e k ;
+ cplus s t | rs rt -> \ a c e z k -> rs a e.1 e.2.1 z (rt e.1 c e.2.2 z k) } ;
+
+D-correct {A : U l} : (s : CShape) (a b : A) (e : Ex s a b) (z : A) (k : Id A b z) ->
+ Id (Id A a z) (D s a b e z k) (H.transH (eval s a b e) k) = split {
+ catom -> \ a b e z k -> refl (H.transH e k) ;
+ cunit -> \ a b e z k ->
+  idJ A a (\ b1 e1 -> (k1 : Id A b1 z) -> Id (Id A a z) (D cunit a b1 e1 z k1) (H.transH e1 k1))
+   (\ k1 -> H.symH (PA.unit-l k1)) b e k ;
+ cplus s t | rs rt -> \ a c e z k ->
+  H.transH (H.apH (\ k1 -> D s a e.1 e.2.1 z k1) (rt e.1 c e.2.2 z k))
+   (H.transH (rs a e.1 e.2.1 z (H.transH (eval t e.1 c e.2.2) k))
+    (H.symH (PA.tassoc (eval s a e.1 e.2.1) (eval t e.1 c e.2.2) k))) } ;
+
+solveR {A : U l} {a b : A} (s1 s2 : CShape) (e1 : Ex s1 a b) (e2 : Ex s2 a b)
+ (h : Id (Id A a b) (D s1 a b e1 b (refl b)) (D s2 a b e2 b (refl b))) :
+ Id (Id A a b) (eval s1 a b e1) (eval s2 a b e2) =
+ H.transH (H.symH (D-correct s1 a b e1 b (refl b))) (H.transH h (D-correct s2 a b e2 b (refl b))) ;
+
+-- tests: a reassociation, and units on either side, closed by refl
+test {A : U l} {a b c d e : A} (p : Id A a b) (q : Id A b c) (r : Id A c d) (s : Id A d e) :
+ Id (Id A a e) (H.transH (H.transH (H.transH p q) r) s) (H.transH p (H.transH q (H.transH r s))) =
+ solveR (cplus (cplus (cplus catom catom) catom) catom) (cplus catom (cplus catom (cplus catom catom)))
+  (d, (c, (b, p, q), r), s) (b, p, (c, q, (d, r, s)))
+  (refl (H.transH p (H.transH q (H.transH r (H.transH s (refl e)))))) ;
+
+test-unit {A : U l} {a b c : A} (p : Id A a b) (q : Id A b c) :
+ Id (Id A a c) (H.transH (H.transH (refl a) p) q) (H.transH p q) =
+ solveR (cplus (cplus cunit catom) catom) (cplus catom catom)
+  (b, (a, refl a, p), q) (b, p, q) (refl (H.transH p (H.transH q (refl c)))) ;

@@ -1,0 +1,328 @@
+-- The finite orders and their monotone maps to Two (Agda Interval/Interval,
+-- the parts on Two and Ord n).  Pure combinatorics: no parameter of Cat.
+--   leq2 on Two = {0 <= 1}: reflexive, transitive, a proposition, 1 is
+--   the top, x <= 0 forces x = 0; it is transported along paths.
+--   MonotoneOrd n: maps Ord n -> Two preserving the order.
+--   ord-suc: Ord (n+1) -> Ord (n+2), k |-> k+1 (through ord-sucI n :
+--   Ord n -> Ord (n+1), the same shift, so that ord-suc n (inr _) = top by
+--   definition for every n); ord-bot the bottom; ord-unsuc classifies an
+--   element of Ord (n+2) as the bottom (inl) or the successor of an element
+--   of Ord (n+1) (inr); ord-from-class is its inverse (ord-class-rinv,
+--   ord-unsuc-suc, ord-unsuc-bot).
+--   monotone-ord: MonotoneOrd n ~ Ord (n+1).  A monotone q : Ord (n+1) -> Two
+--   is determined by its value at the top and its restriction to Ord n:
+--   with top value 0 it is constantly 0 (all-const-from-top) and goes to
+--   the bottom; with top value 1 it goes to the successor of the image of
+--   the restriction.  Backwards: the bottom gives the constant 0; a
+--   successor k+1 gives the map that is the image of k on Ord n and 1 at
+--   the top.  Both round trips by induction on n.
+--   monotone-ord-fwd-mono, monotone-ord-bwd-pw: the two maps preserve the
+--   orders (pointwise order on MonotoneOrd n), through the classification
+--   order leqClass on 1 + Ord (n+1) (ord-unsuc-mono).
+open Base ; open Finite[l] ;
+module H = Paths[l] ; module Pl = Prelude[l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- the order on Two
+
+leq2-refl : (x : Two) -> leq2 x x = split { inl u -> tt ; inr u -> tt } ;
+
+any-leq2-top : (x : Two) -> leq2 x one2 = split { inl u -> tt ; inr u -> tt } ;
+
+leq2-inl-forces-inl : (x : Two) -> leq2 x zero2 -> Id Two x zero2 = split {
+ inl u -> \ h -> H.apH (\ v -> inl v) (isTop u tt) ;
+ inr u -> \ h -> Pl.absurd (Id Two (inr u) zero2) h } ;
+
+leq2-is-prop : (x y : Two) -> Pl.isProp (leq2 x y) = split {
+ inl u -> \ y -> isTop ;
+ inr u -> split { inl v -> Pl.isProp-Empty ; inr v -> isTop } } ;
+
+leq2-trans : (a b c : Two) -> leq2 a b -> leq2 b c -> leq2 a c = split {
+ inl u -> \ b c h k -> tt ;
+ inr u -> split {
+  inl v -> \ c h k -> Pl.absurd (leq2 (inr u) c) h ;
+  inr v -> split { inl w -> \ h k -> Pl.absurd Empty k ; inr w -> \ h k -> tt } } } ;
+
+leq2-transport {a a1 b b1 : Two} (p : Id Two a a1) (q : Id Two b b1) (h : leq2 a b) : leq2 a1 b1 =
+ H.substH (\ y -> leq2 a1 y) q (H.substH (\ x -> leq2 x b) p h) ;
+
+------------------------------------------------------------------------
+-- monotone maps on Ord n
+
+any-leqOrd-top (n : Nat) : (z : Ord (suc n)) -> leqOrd (suc n) z (inr tt) = split { inl x -> tt ; inr u -> tt } ;
+
+is-monotone-Ord (n : Nat) (q : Ord n -> Two) : U l = (x y : Ord n) -> leqOrd n x y -> leq2 (q x) (q y) ;
+
+MonotoneOrd (n : Nat) : U l = (q : Ord n -> Two) * is-monotone-Ord n q ;
+
+is-monotone-Ord-is-prop (n : Nat) (q : Ord n -> Two) : Pl.isProp (is-monotone-Ord n q) =
+ FL.isProp-Pi (Ord n) (\ x -> (y : Ord n) -> leqOrd n x y -> leq2 (q x) (q y)) (\ x ->
+  FL.isProp-Pi (Ord n) (\ y -> leqOrd n x y -> leq2 (q x) (q y)) (\ y ->
+   FL.isProp-Pi (leqOrd n x y) (\ le -> leq2 (q x) (q y)) (\ le -> leq2-is-prop (q x) (q y)))) ;
+
+all-const-from-top (n : Nat) (q : Ord (suc n) -> Two) (mono : is-monotone-Ord (suc n) q)
+ (p : Id Two (q (inr tt)) zero2) (z : Ord (suc n)) : Id Two (q z) zero2 =
+ leq2-inl-forces-inl (q z) (H.substH (\ b -> leq2 (q z) b) p (mono z (inr tt) (any-leqOrd-top n z))) ;
+
+-- the constant map at 0
+all-zeros (n : Nat) : MonotoneOrd n = (\ x -> zero2, \ x y le -> tt) ;
+
+-- a monotone map with top value 0 is the constant map at 0
+const-from-top (n : Nat) (w : MonotoneOrd (suc n)) (p : Id Two (w.1 (inr tt)) zero2) :
+ Id (MonotoneOrd (suc n)) w (all-zeros (suc n)) =
+ Pl.Sigma-eq (Ord (suc n) -> Two) (is-monotone-Ord (suc n)) w.1 (\ x -> zero2) w.2 (all-zeros (suc n)).2
+  (FL.funext (Ord (suc n)) (\ x -> Two) w.1 (\ x -> zero2) (all-const-from-top n w.1 w.2 p))
+  (is-monotone-Ord-is-prop (suc n) (\ x -> zero2)) ;
+
+-- the restriction of a monotone map on Ord (n+1) to Ord n
+restrict (n : Nat) (w : MonotoneOrd (suc n)) : MonotoneOrd n =
+ (\ x -> w.1 (inl x), \ x y le -> w.2 (inl x) (inl y) le) ;
+
+------------------------------------------------------------------------
+-- successor, bottom, classification
+
+ord-sucI : (n : Nat) -> Ord n -> Ord (suc n) = split {
+ zero -> \ u -> inr tt ;
+ suc n | r -> split { inl y -> inl (r y) ; inr u -> inr tt } } ;
+
+ord-suc (n : Nat) : Ord (suc n) -> Ord (suc (suc n)) = ord-sucI (suc n) ;
+
+ord-unsuc-lift (n : Nat) : Sum Top (Ord (suc n)) -> Sum Top (Ord (suc (suc n))) = split {
+ inl u -> inl tt ; inr c -> inr (inl c) } ;
+
+-- the classification of an element inl a of Ord (n+2), by recursion on n
+unsucL : (n : Nat) -> Ord (suc n) -> Sum Top (Ord (suc n)) = split {
+ zero -> split { inl u -> inl tt ; inr u -> inr (inl tt) } ;
+ suc n | r -> split { inl y -> ord-unsuc-lift n (r y) ; inr u -> inr (inl (inr tt)) } } ;
+
+ord-unsuc (n : Nat) : Ord (suc (suc n)) -> Sum Top (Ord (suc n)) = split {
+ inl a -> unsucL n a ; inr u -> inr (inr tt) } ;
+
+unsucL-sucI : (n : Nat) (x : Ord n) -> Id (Sum Top (Ord (suc n))) (unsucL n (ord-sucI n x)) (inr (inl x)) = split {
+ zero -> \ x -> H.apH (\ v -> inr (inl v)) (isTop tt x) ;
+ suc n | r -> split {
+  inl y -> H.apH (ord-unsuc-lift n) (r y) ;
+  inr u -> H.apH (\ v -> inr (inl (inr v))) (isTop tt u) } } ;
+
+ord-unsuc-suc (n : Nat) : (c : Ord (suc n)) -> Id (Sum Top (Ord (suc n))) (ord-unsuc n (ord-suc n c)) (inr c) = split {
+ inl x -> unsucL-sucI n x ;
+ inr u -> H.apH (\ v -> inr (inr v)) (isTop tt u) } ;
+
+ord-bot : (n : Nat) -> Ord (suc n) = split { zero -> inl tt ; suc n | r -> inl r } ;
+
+ord-from-class (n : Nat) : Sum Top (Ord (suc n)) -> Ord (suc (suc n)) = split {
+ inl u -> inl (ord-bot n) ; inr c -> ord-suc n c } ;
+
+ord-class-rinv-step (n : Nat) (y : Ord (suc n)) : (r : Sum Top (Ord (suc n))) ->
+ Id (Ord (suc (suc n))) (ord-from-class n r) (inl y) ->
+ Id (Ord (suc (suc (suc n)))) (ord-from-class (suc n) (ord-unsuc-lift n r)) (inl (inl y)) = split {
+ inl u -> \ ih -> H.apH (\ v -> inl v) ih ;
+ inr c -> \ ih -> H.apH (\ v -> inl v) ih } ;
+
+class-rinvL : (n : Nat) (a : Ord (suc n)) -> Id (Ord (suc (suc n))) (ord-from-class n (unsucL n a)) (inl a) = split {
+ zero -> split {
+  inl u -> H.apH (\ v -> inl (inl v)) (isTop tt u) ;
+  inr u -> H.apH (\ v -> inl (inr v)) (isTop tt u) } ;
+ suc n | r -> split {
+  inl y -> ord-class-rinv-step n y (unsucL n y) (r y) ;
+  inr u -> H.apH (\ v -> inl (inr v)) (isTop tt u) } } ;
+
+ord-class-rinv (n : Nat) : (c : Ord (suc (suc n))) -> Id (Ord (suc (suc n))) (ord-from-class n (ord-unsuc n c)) c = split {
+ inl a -> class-rinvL n a ;
+ inr u -> H.apH (\ v -> inr v) (isTop tt u) } ;
+
+ord-unsuc-bot : (n : Nat) -> Id (Sum Top (Ord (suc n))) (ord-unsuc n (inl (ord-bot n))) (inl tt) = split {
+ zero -> refl (inl tt) ;
+ suc n | r -> H.apH (ord-unsuc-lift n) r } ;
+
+------------------------------------------------------------------------
+-- MonotoneOrd n ~ Ord (n+1)
+
+-- the step of the forward map, from the forward map at n
+fwd-step (n : Nat) (fn : MonotoneOrd n -> Ord (suc n)) : Two -> MonotoneOrd n -> Ord (suc (suc n)) = split {
+ inl u -> \ w0 -> inl (fn w0) ;
+ inr u -> \ w0 -> ord-suc n (fn w0) } ;
+
+monotone-ord-fwd : (n : Nat) -> MonotoneOrd n -> Ord (suc n) = split {
+ zero -> \ w -> w.1 tt ;
+ suc n | r -> \ w -> fwd-step n r (w.1 (inr tt)) (restrict n w) } ;
+
+monotone-ord-fwd-suc (n : Nat) : Two -> MonotoneOrd n -> Ord (suc (suc n)) = fwd-step n (monotone-ord-fwd n) ;
+
+-- the extension of a monotone map on Ord n by 1 at the top
+bwd-fn (n : Nat) (rec : MonotoneOrd n) : Ord (suc n) -> Two = split { inl x -> rec.1 x ; inr u -> one2 } ;
+
+bwd-mono (n : Nat) (rec : MonotoneOrd n) : is-monotone-Ord (suc n) (bwd-fn n rec) = split {
+ inl x -> split {
+  inl y -> \ le -> rec.2 x y le ;
+  inr v -> \ le -> any-leq2-top (rec.1 x) } ;
+ inr u -> split {
+  inl y -> \ le -> Pl.absurd (leq2 one2 (rec.1 y)) le ;
+  inr v -> \ le -> tt } } ;
+
+bwd-ext (n : Nat) (rec : MonotoneOrd n) : MonotoneOrd (suc n) = (bwd-fn n rec, bwd-mono n rec) ;
+
+-- the step of the backward map, from the backward map at n
+bwd-step (n : Nat) (bn : Ord (suc n) -> MonotoneOrd n) : Sum Top (Ord (suc n)) -> MonotoneOrd (suc n) = split {
+ inl u -> all-zeros (suc n) ;
+ inr c -> bwd-ext n (bn c) } ;
+
+monotone-ord-bwd : (n : Nat) -> Ord (suc n) -> MonotoneOrd n = split {
+ zero -> \ b -> (\ x -> b, \ x y le -> leq2-refl b) ;
+ suc n | r -> \ c -> bwd-step n r (ord-unsuc n c) } ;
+
+monotone-ord-bwd-aux (n : Nat) : Sum Top (Ord (suc n)) -> MonotoneOrd (suc n) = bwd-step n (monotone-ord-bwd n) ;
+
+fwd-all-zeros : (n : Nat) -> Id (Ord (suc n)) (monotone-ord-fwd n (all-zeros n)) (ord-bot n) = split {
+ zero -> refl (inl tt) ;
+ suc n | r -> H.apH (\ v -> inl v) r } ;
+
+-- round trip 1, at n+1, from round trip 1 at n
+rinv-step (n : Nat) (rn : (c : Ord (suc n)) -> Id (Ord (suc n)) (monotone-ord-fwd n (monotone-ord-bwd n c)) c)
+ (c : Ord (suc (suc n))) : (r : Sum Top (Ord (suc n))) -> Id (Sum Top (Ord (suc n))) (ord-unsuc n c) r ->
+ Id (Ord (suc (suc n))) (monotone-ord-fwd (suc n) (monotone-ord-bwd-aux n r)) c = split {
+ inl u -> \ p -> H.transH (H.apH (\ v -> inl v) (fwd-all-zeros n))
+   (H.transH (H.symH (H.apH (ord-from-class n) p)) (ord-class-rinv n c)) ;
+ inr c1 -> \ p -> H.transH (H.apH (ord-suc n) (rn c1))
+   (H.transH (H.symH (H.apH (ord-from-class n) p)) (ord-class-rinv n c)) } ;
+
+monotone-ord-rinv : (n : Nat) (c : Ord (suc n)) -> Id (Ord (suc n)) (monotone-ord-fwd n (monotone-ord-bwd n c)) c = split {
+ zero -> \ c -> refl c ;
+ suc n | r -> \ c -> rinv-step n r c (ord-unsuc n c) (refl (ord-unsuc n c)) } ;
+
+-- round trip 2, at n+1, from round trip 2 at n
+linv-pt (n : Nat) (ln : (w : MonotoneOrd n) -> Id (MonotoneOrd n) (monotone-ord-bwd n (monotone-ord-fwd n w)) w)
+ (w : MonotoneOrd (suc n)) (u : Top) (p : Id Two (w.1 (inr tt)) (inr u)) :
+ (z : Ord (suc n)) -> Id Two (bwd-fn n (monotone-ord-bwd n (monotone-ord-fwd n (restrict n w))) z) (w.1 z) = split {
+ inl x -> H.apH (\ v -> v.1 x) (ln (restrict n w)) ;
+ inr v -> H.symH (H.transH (H.apH (\ t -> w.1 (inr t)) (isTop v tt)) (H.transH p (H.apH (\ t -> inr t) (isTop u tt)))) } ;
+
+linv-step (n : Nat) (ln : (w : MonotoneOrd n) -> Id (MonotoneOrd n) (monotone-ord-bwd n (monotone-ord-fwd n w)) w)
+ (w : MonotoneOrd (suc n)) : (b : Two) -> Id Two (w.1 (inr tt)) b ->
+ Id (MonotoneOrd (suc n)) (monotone-ord-bwd (suc n) (monotone-ord-fwd-suc n b (restrict n w))) w = split {
+ inl u -> \ p -> H.transH
+   (H.transH (H.apH (\ v -> monotone-ord-bwd-aux n (ord-unsuc n (inl (monotone-ord-fwd n v))))
+      (H.transH (H.apH (restrict n) (const-from-top n w (H.transH p (H.apH (\ v -> inl v) (isTop u tt))))) (refl (all-zeros n))))
+    (H.transH (H.apH (\ c -> monotone-ord-bwd-aux n (ord-unsuc n (inl c))) (fwd-all-zeros n))
+     (H.apH (monotone-ord-bwd-aux n) (ord-unsuc-bot n))))
+   (H.symH (const-from-top n w (H.transH p (H.apH (\ v -> inl v) (isTop u tt))))) ;
+ inr u -> \ p -> H.transH (H.apH (monotone-ord-bwd-aux n) (ord-unsuc-suc n (monotone-ord-fwd n (restrict n w))))
+   (Pl.Sigma-eq (Ord (suc n) -> Two) (is-monotone-Ord (suc n))
+     (monotone-ord-bwd-aux n (inr (monotone-ord-fwd n (restrict n w)))).1 w.1
+     (monotone-ord-bwd-aux n (inr (monotone-ord-fwd n (restrict n w)))).2 w.2
+     (FL.funext (Ord (suc n)) (\ z -> Two) (monotone-ord-bwd-aux n (inr (monotone-ord-fwd n (restrict n w)))).1 w.1
+       (linv-pt n ln w u p))
+     (is-monotone-Ord-is-prop (suc n) w.1)) } ;
+
+monotone-ord-linv : (n : Nat) (w : MonotoneOrd n) -> Id (MonotoneOrd n) (monotone-ord-bwd n (monotone-ord-fwd n w)) w = split {
+ zero -> \ w -> Pl.Sigma-eq (Ord zero -> Two) (is-monotone-Ord zero) (\ x -> w.1 tt) w.1 (\ x y le -> leq2-refl (w.1 tt)) w.2
+   (FL.funext Top (\ x -> Two) (\ x -> w.1 tt) w.1 (\ x -> H.apH w.1 (isTop tt x)))
+   (is-monotone-Ord-is-prop zero w.1) ;
+ suc n | r -> \ w -> linv-step n r w (w.1 (inr tt)) (refl (w.1 (inr tt))) } ;
+
+monotone-ord (n : Nat) : Pl.Equiv (MonotoneOrd n) (Ord (suc n)) =
+ (monotone-ord-fwd n, Pl.qinv (MonotoneOrd n) (Ord (suc n)) (monotone-ord-fwd n) (monotone-ord-bwd n)
+   (monotone-ord-rinv n) (monotone-ord-linv n)) ;
+
+------------------------------------------------------------------------
+-- the two maps preserve the orders
+
+ord-bot-le : (n : Nat) (y : Ord (suc n)) -> leqOrd (suc n) (ord-bot n) y = split {
+ zero -> split { inl u -> tt ; inr u -> tt } ;
+ suc n | r -> split { inl y -> r y ; inr u -> tt } } ;
+
+ord-sucI-mono : (n : Nat) (x y : Ord n) -> leqOrd n x y -> leqOrd (suc n) (ord-sucI n x) (ord-sucI n y) = split {
+ zero -> \ x y le -> tt ;
+ suc n | r -> split {
+  inl x -> split { inl y -> \ le -> r x y le ; inr v -> \ le -> tt } ;
+  inr u -> split { inl y -> \ le -> Pl.absurd (leqOrd (suc (suc n)) (inr tt) (inl (ord-sucI n y))) le ; inr v -> \ le -> tt } } } ;
+
+ord-suc-mono (n : Nat) (x y : Ord (suc n)) (le : leqOrd (suc n) x y) : leqOrd (suc (suc n)) (ord-suc n x) (ord-suc n y) =
+ ord-sucI-mono (suc n) x y le ;
+
+ord-bot-le-suc (n : Nat) : (y : Ord (suc n)) -> leqOrd (suc (suc n)) (inl (ord-bot n)) (ord-suc n y) = split {
+ inl y -> ord-bot-le n (ord-sucI n y) ;
+ inr u -> tt } ;
+
+fwd-mono-0 : (a b : Two) -> leq2 a b -> leqOrd (suc zero) a b = split {
+ inl u -> split { inl v -> \ h -> tt ; inr v -> \ h -> tt } ;
+ inr u -> split { inl v -> \ h -> Pl.absurd Empty h ; inr v -> \ h -> tt } } ;
+
+-- a monotone map with top value 0 goes to the bottom
+fwd-bot (n : Nat) (w : MonotoneOrd (suc n)) (p : Id Two (w.1 (inr tt)) zero2) :
+ Id (Ord (suc n)) (monotone-ord-fwd n (restrict n w)) (ord-bot n) =
+ H.transH (H.apH (\ v -> monotone-ord-fwd n (restrict n v)) (const-from-top n w p)) (fwd-all-zeros n) ;
+
+-- the forward map at n+1, from the forward map at n
+fwd-mono-step (n : Nat)
+ (mn : (w1 w2 : MonotoneOrd n) -> ((o : Ord n) -> leq2 (w1.1 o) (w2.1 o)) ->
+   leqOrd (suc n) (monotone-ord-fwd n w1) (monotone-ord-fwd n w2))
+ (w1 w2 : MonotoneOrd (suc n)) (pw : (o : Ord (suc n)) -> leq2 (w1.1 o) (w2.1 o)) :
+ (b1 b2 : Two) -> Id Two (w1.1 (inr tt)) b1 -> Id Two (w2.1 (inr tt)) b2 ->
+ leqOrd (suc (suc n)) (monotone-ord-fwd-suc n b1 (restrict n w1)) (monotone-ord-fwd-suc n b2 (restrict n w2)) = split {
+ inl u -> split {
+  inl v -> \ p1 p2 -> mn (restrict n w1) (restrict n w2) (\ o -> pw (inl o)) ;
+  inr v -> \ p1 p2 -> H.substH (\ z -> leqOrd (suc (suc n)) (inl z) (ord-suc n (monotone-ord-fwd n (restrict n w2))))
+    (H.symH (fwd-bot n w1 (H.transH p1 (H.apH (\ t -> inl t) (isTop u tt)))))
+    (ord-bot-le-suc n (monotone-ord-fwd n (restrict n w2))) } ;
+ inr u -> split {
+  inl v -> \ p1 p2 -> Pl.absurd (leqOrd (suc (suc n)) (ord-suc n (monotone-ord-fwd n (restrict n w1))) (inl (monotone-ord-fwd n (restrict n w2))))
+    (leq2-transport p1 p2 (pw (inr tt))) ;
+  inr v -> \ p1 p2 -> ord-suc-mono n (monotone-ord-fwd n (restrict n w1)) (monotone-ord-fwd n (restrict n w2))
+    (mn (restrict n w1) (restrict n w2) (\ o -> pw (inl o))) } } ;
+
+monotone-ord-fwd-mono : (n : Nat) (w1 w2 : MonotoneOrd n) -> ((o : Ord n) -> leq2 (w1.1 o) (w2.1 o)) ->
+ leqOrd (suc n) (monotone-ord-fwd n w1) (monotone-ord-fwd n w2) = split {
+ zero -> \ w1 w2 pw -> fwd-mono-0 (w1.1 tt) (w2.1 tt) (pw tt) ;
+ suc n | r -> \ w1 w2 pw -> fwd-mono-step n r w1 w2 pw (w1.1 (inr tt)) (w2.1 (inr tt)) (refl (w1.1 (inr tt))) (refl (w2.1 (inr tt))) } ;
+
+-- the classification order on 1 + Ord (n+1)
+leqClass (n : Nat) : Sum Top (Ord (suc n)) -> Sum Top (Ord (suc n)) -> U l = split {
+ inl u -> \ b -> Top ;
+ inr x -> split { inl v -> Empty ; inr y -> leqOrd (suc n) x y } } ;
+
+ord-unsuc-lift-mono (n : Nat) : (a b : Sum Top (Ord (suc n))) -> leqClass n a b ->
+ leqClass (suc n) (ord-unsuc-lift n a) (ord-unsuc-lift n b) = split {
+ inl u -> \ b le -> tt ;
+ inr x -> split { inl v -> \ le -> Pl.absurd _ le ; inr y -> \ le -> le } } ;
+
+ord-unsuc-lift-le-top (n : Nat) : (r : Sum Top (Ord (suc n))) -> leqClass (suc n) (ord-unsuc-lift n r) (inr (inl (inr tt))) = split {
+ inl u -> tt ; inr c -> any-leqOrd-top n c } ;
+
+ord-unsuc-lift-le-rrtop (n : Nat) : (r : Sum Top (Ord (suc n))) -> leqClass (suc n) (ord-unsuc-lift n r) (inr (inr tt)) = split {
+ inl u -> tt ; inr c -> tt } ;
+
+unsucL-mono : (n : Nat) (a b : Ord (suc n)) -> leqOrd (suc n) a b -> leqClass n (unsucL n a) (unsucL n b) = split {
+ zero -> split {
+  inl u -> \ b le -> tt ;
+  inr u -> split { inl v -> \ le -> Pl.absurd _ le ; inr v -> \ le -> tt } } ;
+ suc n | r -> split {
+  inl x -> split {
+   inl y -> \ le -> ord-unsuc-lift-mono n (unsucL n x) (unsucL n y) (r x y le) ;
+   inr v -> \ le -> ord-unsuc-lift-le-top n (unsucL n x) } ;
+  inr u -> split { inl y -> \ le -> Pl.absurd _ le ; inr v -> \ le -> tt } } } ;
+
+unsucL-le-top : (n : Nat) (a : Ord (suc n)) -> leqClass n (unsucL n a) (inr (inr tt)) = split {
+ zero -> split { inl u -> tt ; inr u -> tt } ;
+ suc n | r -> split { inl y -> ord-unsuc-lift-le-rrtop n (unsucL n y) ; inr u -> tt } } ;
+
+ord-unsuc-mono (n : Nat) : (x y : Ord (suc (suc n))) -> leqOrd (suc (suc n)) x y -> leqClass n (ord-unsuc n x) (ord-unsuc n y) = split {
+ inl a -> split { inl b -> \ le -> unsucL-mono n a b le ; inr v -> \ le -> unsucL-le-top n a } ;
+ inr u -> split { inl b -> \ le -> Pl.absurd _ le ; inr v -> \ le -> tt } } ;
+
+-- the backward step preserves the order, from the backward map at n
+bwd-aux-pw (n : Nat)
+ (pn : (x y : Ord (suc n)) -> leqOrd (suc n) x y -> (o : Ord n) -> leq2 ((monotone-ord-bwd n x).1 o) ((monotone-ord-bwd n y).1 o)) :
+ (a b : Sum Top (Ord (suc n))) -> leqClass n a b ->
+ (o : Ord (suc n)) -> leq2 ((monotone-ord-bwd-aux n a).1 o) ((monotone-ord-bwd-aux n b).1 o) = split {
+ inl u -> \ b le o -> tt ;
+ inr cx -> split {
+  inl v -> \ le o -> Pl.absurd (leq2 ((monotone-ord-bwd-aux n (inr cx)).1 o) zero2) le ;
+  inr cy -> \ le -> split { inl z -> pn cx cy le z ; inr w -> tt } } } ;
+
+monotone-ord-bwd-pw : (n : Nat) (x y : Ord (suc n)) -> leqOrd (suc n) x y ->
+ (o : Ord n) -> leq2 ((monotone-ord-bwd n x).1 o) ((monotone-ord-bwd n y).1 o) = split {
+ zero -> split {
+  inl u -> \ y le o -> tt ;
+  inr u -> split { inl v -> \ le o -> Pl.absurd _ le ; inr v -> \ le o -> tt } } ;
+ suc n | r -> \ x y le o -> bwd-aux-pw n r (ord-unsuc n x) (ord-unsuc n y) (ord-unsuc-mono n x y le) o } ;
