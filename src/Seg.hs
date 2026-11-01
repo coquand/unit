@@ -1349,10 +1349,11 @@ data Cx = Cx
   , cxPSorts :: [(Name, Res Lvl)]    -- sorts of the parameters of this body
   , cxSegSort :: [(Id, [(Name, Res Lvl)])]  -- per segment, its parameters' sorts
   , cxRank  :: Map.Map Id Int        -- the order of the definitions (ranksOf)
+  , cxDataFill :: [Id]               -- the data type whose body is being filled
   }
 
 emptyCx :: Cx
-emptyCx = Cx 0 ENil [] emptyTheory Set.empty [] [] [] Map.empty
+emptyCx = Cx 0 ENil [] emptyTheory Set.empty [] [] [] Map.empty []
 
 -- the context for checking a program: empty, with the order of its
 -- definitions
@@ -1919,10 +1920,10 @@ checkMod cx m = do
 
 checkModHead :: Cx -> MExp -> Res Mod
 checkModHead cx m = case m of
-  MVar x -> lookupModCx cx x (cxEnv cx)
+  MVar x -> lookupModCx cx x (cxEnv cx) >>= assumed cx m
   MSub n x -> do
     md <- checkMod cx n
-    lookupModCx cx x (instOf md)
+    lookupModCx cx x (instOf md) >>= assumed cx m
   MApp n as -> do
     md <- checkModHead cx n
     case modInst md of
@@ -1930,6 +1931,21 @@ checkModHead cx m = case m of
       _ -> do
         r <- checkInst cx (modEnv md) (modUnits md) as
         Right md { modInst = Just r }
+
+-- A constraint of a module is a hypothesis of its body: its members have
+-- the guarded types [psi]A, used at A only where psi is valid (guard beta,
+-- secTP Fig. 13).  With parameters, checkInst checks psi for the arguments;
+-- a module without parameters is used bare, so psi is checked here, at
+-- every use, in the theory of the use.
+assumed :: Cx -> MExp -> Mod -> Res Mod
+assumed cx m md = case modInst md of
+  Just r | not (hasParams (modUnits md)) ->
+    case [ c | UCstr cs <- modUnits md, c <- map (evalCs r) cs
+             , not (validCstr (cxTh cx) c) ] of
+      [] -> Right md
+      vs -> failWith ("the module " ++ showM m ++ " assumes the constraint "
+                      ++ commaSep [ prettyCs (csToCs c) | c <- vs ] ++ ", which is not valid here")
+  _ -> Right md
 
 lookupModCx :: Cx -> Name -> Env -> Res Mod
 lookupModCx _ x r0 = go r0
@@ -2426,11 +2442,23 @@ fillGroupE cx us = (us', cx1, map (snd . snd) res)
     UDef i x a b ->
       let ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
           a' = either (const (unfilledHoles a)) id ta
-          tb = inCtx ("in the definition of " ++ x) (fillC cx1 b (ev cx1 a'))
-      in (UDef i x a' (either (const (unfilledHoles b)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+          cxb = if isDataDef u then cx1 { cxDataFill = [i] } else cx1
+          tb = inCtx ("in the definition of " ++ x) (fillC cxb b (ev cx1 a'))
+      in (UDef i x a' (dataShape b (either (const (unfilledHoles b)) id tb)), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
     _ -> (u, [])
   us'  = [ fst r | (_, r) <- res ]
   cx1  = enterGroup cx us'
+
+-- a data body filled in the knot keeps the shape of the unfilled one (its
+-- lambdas and the sum; filling preserves them), so that the shape can be
+-- seen (mkRef, isNewDef) without forcing the filling: a hidden argument of
+-- a field solved by the data type itself is then found, not looped on
+dataShape :: Exp -> Exp -> Exp
+dataShape b fb = case b of
+  Lam x b'  -> Lam x (dataShape b' (case fb of { Lam _ c -> c; _ -> b' }))
+  LLam x b' -> LLam x (dataShape b' (case fb of { LLam _ c -> c; _ -> b' }))
+  Sum i cs  -> Sum i (case fb of { Sum _ cs' -> cs'; _ -> cs })
+  _         -> fb
 
 -- An application spine with holes.  Pass 1 walks the head's type with
 -- the holes as rigid placeholders and matches; the solutions are quoted;
@@ -2462,6 +2490,15 @@ fillSpine cx e mexp = do
                  Nothing -> failWith ("cannot infer hidden argument " ++ show (i + 1) ++ " of "
                                       ++ pretty h ++ "; give it as {e}\n  in  " ++ take 300 (pretty e)))
              [ p | p@(_, Nothing) <- pre ]
+  -- strict positivity (Term) is checked on the program as written; in the
+  -- body of a data type d, a solution mentioning d is an occurrence Term
+  -- did not see, and written out it is rejected (an argument of another
+  -- type)
+  case [ (i, q) | (i, q) <- qs, any (`elem` cxDataFill cx) (freeNamesE q) ] of
+    ((i, q) : _) -> failWith ("hidden argument " ++ show (i + 1) ++ " of " ++ pretty h ++ " is  "
+                              ++ pretty q ++ " , the data type being defined: in a constructor field"
+                              ++ " it occurs only as  d ps  or  (ys : Psi) -> d ps  (strict positivity)")
+    [] -> Right ()
   -- the type comes from walking the head's type with the actual
   -- arguments: asking the core to infer the filled spine again would
   -- re-check every nested application at every level (quadratic in a
