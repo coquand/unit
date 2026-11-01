@@ -894,14 +894,20 @@ resE0 rs r = case spine r [] of
        if not (null (miParams mi)) then Left ("new " ++ miPath mi ++ ": arguments missing")
         else Right (New m)            -- the canonical element: a constructor
     RSplit o bs -> do
+      dupCheck [ c | (c, _, _, _) <- bs ]
       bs' <- mapM (\(c, xs, ys, b) -> do
+                      dupCheck (filter (/= "_") (xs ++ ys))
                       b' <- resBody (bindS rs [ (x, SVar) | x <- xs ++ ys ]) b
                       -- the positions are given by the filling pass, from the data type
                       Right (c, (xs, [ RecR (-1) (-1) y | y <- ys ], b'))) bs
       Right (Split (rsPath rs ++ "split#" ++ show o) bs')
-    RRec fs -> do fs' <- resFields rs fs
+    -- Construction binds fields in order, but projection looks up a
+    -- label. Repeated labels would give those operations different types.
+    RRec fs -> do dupCheck (map fst fs)
+                  fs' <- resFields rs fs
                   Right (named rs (Rec fs'))
-    RStruct fs -> fmap Struct (mapM (\(l, e) -> do e' <- resE rs e; Right (l, e')) fs)
+    RStruct fs -> do dupCheck (map fst fs)
+                     fmap Struct (mapM (\(l, e) -> do e' <- resE rs e; Right (l, e')) fs)
     RId a x y -> do a' <- resE rs a; x' <- resE rs x; y' <- resE rs y; Right (Id a' x' y')
     RRefl a -> fmap Refl (resE rs a)
     RIdJ a x c d y p -> do
@@ -990,6 +996,7 @@ resDef' rs local u = case u of
         b' <- resBody rs1 { rsPath = i ++ "/" } b
         Right (UDef i x (piB bs a') (lamB bs (nameSplit i b')))
   RData o x tel ty ls -> do
+    dupCheck (map fst ls)
     (bs, rs1) <- resTel rs tel
     ty' <- case ty of
       Nothing -> Right (U LZero)

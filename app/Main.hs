@@ -285,10 +285,10 @@ runFile f o
   | oRepl o = repl f o
   | otherwise = do
   t0 <- getCPUTime
-  loaded <- loadProgram f o
+  loaded <- loadFiles f o
   (us, mods) <- case loaded of
     Left msg -> do putStrLn msg; exitFailure
-    Right x -> return x
+    Right (us, _, files) -> return (us, files)
   let (_, evs0) = checkUnits (programCx us) us
   tl <- secsSince t0
   if oVerbose o then printf "  (parse, resolve: %.3f s)\n" tl else return ()
@@ -300,15 +300,17 @@ runFile f o
     then do
       -- every imported module, one at a time, in one process: the parsed
       -- port and everything already evaluated are shared between modules
+      let fileSet = Set.fromList mods
+          owner = eventOwner fileSet (baseName f)
       results <- mapM (\m -> do
                          t1 <- getCPUTime
-                         (c, n) <- runEvents o total (filter (inModule m) evs0)
+                         (c, n) <- runEvents o total (filter ((== m) . owner) evs0)
                          dt <- secsSince t1
                          printf "%-4s  %-18s %4d declarations  %6.2f s\n" (if n == 0 then "ok" else "FAIL") m c dt
-                         return n) mods
+                         return n) (mods ++ [baseName f])
       tt <- secsSince t0
       let bad = length (filter (> 0) results)
-      printf "%s: %d modules, %d with failures, %.2f s in all (load %.2f s)\n" f (length mods) bad tt tl
+      printf "%s: %d modules, %d with failures, %.2f s in all (load %.2f s)\n" f (length mods + 1) bad tt tl
       if bad > 0 then exitFailure else putStrLn "OK"
     else do
       let noSel = null (oOnly o) && null (oOnlyTop o)
@@ -408,6 +410,13 @@ data Srv = Srv { sEvs :: [Event], sFiles :: [String], sMain :: String
                , sToks :: Map.Map String (Set.Set String), sNested :: Map.Map String [String]
                , sKeys :: Map.Map String String }
 
+-- Assign each event once, including declarations in the entry file.
+eventOwner :: Set.Set String -> String -> Event -> String
+eventOwner files mainFile e =
+  case [ c | c <- init (splitDots (evLabel e)), c `Set.member` files ] of
+    [] -> mainFile
+    cs -> last cs
+
 serve :: FilePath -> FilePath -> Opt -> IO ()
 serve f dir o = do
   createDirectoryIfMissing True dir
@@ -487,7 +496,15 @@ serve f dir o = do
             moved = [ y | y <- files, Just po <- [Map.lookup y preOld], Just pn <- [Map.lookup y preNew]
                         , not (Set.null (Set.difference po pn))
                           || any (`elem` oldFiles) (Set.toList (Set.difference pn po)) ]
-            dirty = if first then files else nub (textChanged ++ moved ++ removed)
+            oldLocks = concatMap (locksOf . (\x -> Map.findWithDefault "" x (sKeys old)))
+                         (oldFiles ++ [baseName f])
+            newLocks = concatMap (locksOf . (\x -> Map.findWithDefault "" x keys))
+                         (files ++ [baseName f])
+            -- Opacity is global and positional: a later file need not
+            -- mention the file that changed the lock. Recheck all files
+            -- when the lock commands (or their file order) change.
+            dirty = if first || oldLocks /= newLocks then files ++ [baseName f]
+                    else nub (textChanged ++ moved ++ removed)
         unless (null dirty) (putStrLn ("dirty: " ++ unwords dirty))
         modifyIORef st (\s -> s { sEvs = evs, sFiles = files, sStamps = stamps
                                 , sDirty = Set.union (Set.fromList dirty) (sDirty s)
@@ -558,9 +575,7 @@ serve f dir o = do
     s <- readIORef st
     total <- newIORef Map.empty
     let fileSet = Set.fromList (sFiles s)
-        owner e = case [ c | c <- init (splitDots (evLabel e)), c `Set.member` fileSet ] of
-                    [] -> sMain s
-                    cs -> last cs
+        owner = eventOwner fileSet (sMain s)
         byFile = Map.fromListWith (flip (++)) [ (owner e, [e]) | e <- sEvs s ]
     t0 <- getCPUTime
     results <- forM ms (\m -> do
@@ -579,7 +594,7 @@ serve f dir o = do
 
   -- the files depending on the seeds, transitively, in import order
   closure s seeds =
-    let files = sFiles s
+    let files = sFiles s ++ [sMain s]
         mentions x = [ y | y <- files, y /= x, x `Set.member` Map.findWithDefault Set.empty y (sToks s) ]
         inside x = Map.findWithDefault [] x (sNested s)
         go done [] = done
@@ -588,35 +603,52 @@ serve f dir o = do
           | otherwise = go (Set.insert x done) (mentions x ++ inside x ++ xs)
         everything = any (== sMain s) seeds
         set = go Set.empty (concat [ if x `elem` files then [x] else mentions x | x <- seeds ])
-    in if everything then files ++ [sMain s] else filter (`Set.member` set) files
+    in if everything then files else filter (`Set.member` set) files
 
   dirOf' p = case dirOf p of { "" -> "./"; d -> d }
 
--- the words of a text, comments and import lines removed; a qualified
+-- The words of a text, comments and import statements removed; a qualified
 -- name A.b gives A and b
 tokens :: String -> Set.Set String
-tokens src = Set.fromList (concatMap splitDots (words (map sep body)))
+tokens src = Set.fromList (concatMap splitDots (withoutImports (words (map sep body))))
  where
-  body = unlines [ l | l0 <- lines src, let l = stripComment l0
-                     , not ("import " `isPrefixOf` dropWhile (== ' ') l) ]
+  body = unlines (map stripComment (lines src))
+  -- import is a reserved word followed by one module name. Preserve
+  -- declarations following the semicolon on the same physical line.
+  withoutImports ("import" : _ : ws) = withoutImports ws
+  withoutImports (w : ws) = w : withoutImports ws
+  withoutImports [] = []
   sep c = if isAlphaNum c || c `elem` "_'-." then c else ' '
   stripComment l = case l of
     [] -> []
     ('-' : '-' : _) -> []
     (c : cs) -> c : stripComment cs
 
--- what a change must alter to matter: the text without comments, import
--- lines and blank space at line ends
+-- What a change must alter to matter: the text without comments and
+-- blank space at line ends. Import edits can change scope and ordering.
 contentKey :: String -> String
 contentKey src = unlines [ l | l0 <- lines src
                              , let l = reverse (dropWhile (== ' ') (reverse (stripC l0)))
-                             , not (null l), not ("import " `isPrefixOf` dropWhile (== ' ') l) ]
+                             , not (null l) ]
  where stripC l = case l of
          [] -> []
          ('-' : '-' : _) -> []
          (c : cs) -> c : stripC cs
 
--- the files imported in a text (its nested files)
+-- The files imported in a text, including several on one line and those
+-- nested in modules. Parse statements rather than treating lines as units.
 importsIn :: String -> [String]
-importsIn src = [ takeWhile (\c -> isAlphaNum c || c == '_') (drop 7 l)
-                | l0 <- lines src, let l = dropWhile (== ' ') l0, "import " `isPrefixOf` l ]
+importsIn src = either (const []) (concatMap go) (parseUnits src)
+ where
+  go (RImport x) = [x]
+  go (RModule _ _ _ us) = concatMap go us
+  go _ = []
+
+locksOf :: String -> [String]
+locksOf src = either (const []) (concatMap go) (parseUnits src)
+ where
+  go u@(ROpaque _) = [show u]
+  go u@(RTransparent _) = [show u]
+  go RTransAll = ["transparent_all"]
+  go (RModule _ _ _ us) = concatMap go us
+  go _ = []
