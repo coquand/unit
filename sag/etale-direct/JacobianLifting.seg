@@ -1,0 +1,118 @@
+-- An arbitrary finite square system with invertible Jacobian has unique
+-- square-zero lifting. The source and its localisation are constructed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (n : Nat)
+ (f : Fin n -> Presentations[l].Over[R,setR].Expr (Fin n)) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module E = FormallyEtale[l].Over[R,setR] ; module J = ExpressionJets[l].Over[R,setR] ;
+ module Tools = JacobianTools[l].Over[R,setR] ;
+ pres : P.Presentation = (n,Tools.family (Fin n) n f) ;
+ module At (A : C.Algebra) (pa : P.Presents pres A) {
+  module JA = J.Finite[n,A,pa.1.1] ;
+  delta : A.ring.R = ExteriorModel[l].Over[A.ring].det n (\ j i -> JA.partial (f i) j) ;
+  module Chart (expression : P.Expr (Fin n)) (rep : Id A.ring.R (P.eval (Fin n) A pa.1.1 expression) delta) {
+   module Loc = Localization[l].Over[R,setR,A,pres,pa,delta,expression,rep] ;
+   S : C.Algebra = Loc.algebra ;
+   generators (i : Fin n) : S.ring.R = Loc.inclusion.1.1 (pa.1.1 i) ;
+   module JS = J.Finite[n,S,generators] ;
+   roots (i : Fin n) : Id S.ring.R (P.eval (Fin n) S generators (f i)) S.ring.z =
+    Tools.family-zeros (Fin n) S generators n f
+     (P.zeros-natural (Fin n) A S Loc.inclusion pa.1.1 pres.2 pa.1.2) i ;
+   det-eq : Id S.ring.R (Loc.inclusion.1.1 delta)
+    (ExteriorModel[l].Over[S.ring].det n (\ j i -> JS.partial (f i) j)) =
+    Tools.Natural[n,A,S,Loc.inclusion,pa.1.1,generators,\ i -> refl (generators i)].determinant f ;
+   det-unit : RL[S.ring].unit (ExteriorModel[l].Over[S.ring].det n (\ j i -> JS.partial (f i) j)) =
+    subst (RL[S.ring].unit) det-eq Loc.inverse ;
+   hom-ext (B : C.Algebra) (h k : C.Hom S B)
+    (eq : (i : Fin n) -> Id B.ring.R (h.1.1 (generators i)) (k.1.1 (generators i))) : Id (C.Hom S B) h k =
+    Equivalences[l].injective (C.Hom S B) Loc.To[B].Data Loc.Canonical[B].map Loc.Canonical[B].universal h k
+     (Loc.To[B].data-ext _ _ (Tensor[l].Over[R,setR].hom-eq pres A pa B _ _ eq)) ;
+   module Image (B : C.Algebra) (h : C.Hom S B) {
+    a (i : Fin n) : B.ring.R = h.1.1 (generators i) ;
+    module X = J.Finite[n,B,a] ;
+    root (i : Fin n) : Id B.ring.R (P.eval (Fin n) B a (f i)) B.ring.z =
+     trans (sym (P.natural (Fin n) S B h generators (f i)))
+      (trans (ap h.1.1 (roots i)) (H.zero S.ring B.ring h.1)) ;
+    unit : RL[B.ring].unit (ExteriorModel[l].Over[B.ring].det n (\ j i -> X.partial (f i) j)) =
+     subst (RL[B.ring].unit)
+      (Tools.Natural[n,S,B,h,generators,a,\ i -> refl (a i)].determinant f)
+      (FormallyEtale[l].unit-map S.ring B.ring h.1 _ det-unit) ;
+   } ;
+   module Unique (B : C.Algebra) (N : E.SquareZero[B]) (h k : C.Hom S B)
+    (same : Id (C.Hom S E.Mod[B,N].algebra) (E.reduce S B N h) (E.reduce S B N k)) {
+    module Q = E.Mod[B,N].Q ; module X = Image[B,h] ; module Y = Image[B,k] ; module L = RL[B.ring] ;
+    v (i : Fin n) : B.ring.R = B.ring.add (Y.a i) (B.ring.neg (X.a i)) ;
+    vin (i : Fin n) : N.ideal.In (v i) = Q.Q.effective (Y.a i) (X.a i)
+     (sym (ap (\ t -> t.1.1 (generators i)) same)) ;
+    shift (i : Fin n) : Id B.ring.R (B.ring.add (X.a i) (v i)) (Y.a i) =
+     trans (L.add-swap (X.a i) (Y.a i) (B.ring.neg (X.a i)))
+      (trans (ap (B.ring.add (Y.a i)) (B.ring.addN (X.a i))) (B.ring.addZ (Y.a i))) ;
+    module T = J.At[Fin n,B,X.a].Taylor[N,v,vin] ;
+    derivative-zero (i : Fin n) : Id B.ring.R (X.X.X.derivative v (f i)) B.ring.z =
+     trans (sym (L.zl (X.X.X.derivative v (f i))))
+      (trans (ap (\ a -> B.ring.add a (X.X.X.derivative v (f i))) (sym (X.root i)))
+       (trans (sym (T.theorem (f i)))
+        (trans (Generated[l].Over[R,setR].eval-ext (Fin n) B (\ j -> B.ring.add (X.a j) (v j)) Y.a shift (f i)) (Y.root i)))) ;
+    module Solve = JacobianTools[l].LinearSolve[B.ring,B.set,n,\ j i -> X.X.partial (f i) j,X.unit] ;
+    vz (i : Fin n) : Id B.ring.R (v i) B.ring.z = Solve.injective-zero v
+     (\ j -> trans (sym (X.X.expand v (f j))) (derivative-zero j)) i ;
+    theorem : Id (C.Hom S B) h k = hom-ext B h k
+     (\ i -> sym (FormallyEtale[l].Units[B.ring,B.set].sub-zero (Y.a i) (X.a i) (vz i))) ;
+   } ;
+   unique : E.Unique S = \ B N h k same -> Unique[B,N,h,k,same].theorem ;
+   module Problem (B : C.Algebra) (N : E.SquareZero[B]) (g : C.Hom S E.Mod[B,N].algebra) {
+    module M = E.Mod[B,N] ; module Q = M.Q ; module Qr = StandardEtaleLift[l].Over[R,setR].Quot[B,N] ;
+    module Input = Image[M.algebra,g] ; module L = RL[B.ring] ; module IL = RegularIdeal[l].IdealLaws[B.ring,N.ideal] ;
+    Lift : U l = (h : C.Hom S B) * Id (C.Hom S M.algebra) (E.reduce S B N h) g ;
+    lift-prop : Pr.isProp Lift = \ h k -> Pr.Sigma-eq (C.Hom S B)
+     (\ h -> Id (C.Hom S M.algebra) (E.reduce S B N h) g) h.1 k.1 h.2 k.2
+     (unique B N h.1 k.1 (trans h.2 (sym k.2))) (StandardEtaleLift[l].Over[R,setR].hom-set S M.algebra _ _) ;
+    Representatives : U l = (i : Fin n) -> Qr.Representative (Input.a i) ;
+    module Chosen (reps : Representatives) {
+     a (i : Fin n) : B.ring.R = (reps i).1 ;
+     module X = J.Finite[n,B,a] ;
+     value (e : P.Expr (Fin n)) : Id Q.Carrier (Q.include (X.X.value e)) (P.eval (Fin n) M.algebra Input.a e) =
+      trans (P.natural (Fin n) B M.algebra M.projection a e)
+       (Generated[l].Over[R,setR].eval-ext (Fin n) M.algebra _ Input.a (\ i -> (reps i).2) e) ;
+     error (i : Fin n) : B.ring.R = X.X.value (f i) ;
+     error-in (i : Fin n) : N.ideal.In (error i) = Q.kernel (error i) (trans (value (f i)) (Input.root i)) ;
+     determinant-unit (b : Fin n -> B.ring.R) (hb : (i : Fin n) -> Id Q.Carrier (Q.include (b i)) (Input.a i)) :
+      RL[B.ring].unit (ExteriorModel[l].Over[B.ring].det n (\ j i -> J.Finite[n,B,b].partial (f i) j)) =
+      Qr.Unit[ExteriorModel[l].Over[B.ring].det n (\ j i -> J.Finite[n,B,b].partial (f i) j),subst (RL[Q.ring].unit)
+       (sym (Tools.Natural[n,B,M.algebra,M.projection,b,Input.a,hb].determinant f)) Input.unit].theorem ;
+     module Solve = JacobianTools[l].LinearSolve[B.ring,B.set,n,\ j i -> X.partial (f i) j,
+      determinant-unit a (\ i -> (reps i).2)] ;
+     v : Fin n -> B.ring.R = Solve.solution (\ i -> B.ring.neg (error i)) ;
+     vin : (i : Fin n) -> N.ideal.In (v i) =
+      Solve.Ideal[N.ideal,\ i -> B.ring.neg (error i),\ i -> IL.in-neg (error i) (error-in i)].theorem ;
+     b (i : Fin n) : B.ring.R = B.ring.add (a i) (v i) ;
+     same (i : Fin n) : Id Q.Carrier (Q.include (b i)) (Input.a i) =
+      trans (Q.projection.2.2.1 (a i) (v i))
+       (trans (ap (Q.ring.add (Q.include (a i))) (Q.to-zero (v i) (vin i)))
+        (trans (Q.ring.addZ (Q.include (a i))) (reps i).2)) ;
+     root (i : Fin n) : Id B.ring.R (P.eval (Fin n) B b (f i)) B.ring.z =
+      trans (J.At[Fin n,B,a].Taylor[N,v,vin].theorem (f i))
+       (trans (ap (B.ring.add (error i)) (trans (X.expand v (f i)) (Solve.solves (\ j -> B.ring.neg (error j)) i)))
+        (B.ring.addN (error i))) ;
+     solution : P.Solutions pres B = (b,Tools.zeros-family (Fin n) B b n f root) ;
+     old : C.Hom A B = (pa.2 B).sec solution ;
+     old-gen (i : Fin n) : Id B.ring.R (old.1.1 (pa.1.1 i)) (b i) = ap (\ s -> s.1 i) ((pa.2 B).sec-eq solution) ;
+     old-unit : RL[B.ring].unit (old.1.1 delta) = subst (RL[B.ring].unit)
+      (sym (Tools.Natural[n,A,B,old,pa.1.1,b,old-gen].determinant f)) (determinant-unit b same) ;
+     hom : C.Hom S B = Loc.Canonical[B].universal.sec (old,old-unit) ;
+     beta (i : Fin n) : Id B.ring.R (hom.1.1 (generators i)) (b i) =
+      trans (ap (\ d -> d.1.1.1 (pa.1.1 i)) (Loc.Canonical[B].universal.sec-eq (old,old-unit))) (old-gen i) ;
+     reduced : Id (C.Hom S M.algebra) (E.reduce S B N hom) g =
+      hom-ext M.algebra _ _ (\ i -> trans (ap Q.include (beta i)) (same i)) ;
+     theorem : Lift = (hom,reduced) ;
+    } ;
+    theorem : Lift = TC.rec Representatives @l Lift lift-prop (\ reps -> Chosen[reps].theorem)
+     (AffineFinite[l].choice n (\ i -> Qr.Representative (Input.a i)) (\ i -> Qr.representative (Input.a i))) ;
+   } ;
+   lift : E.Lift S = \ B N g -> Problem[B,N,g].theorem ;
+   etale : E.Etale S = ((lift,unique),(Loc.pres,Loc.K.presentation)) ;
+  } ;
+ } ;
+} ;

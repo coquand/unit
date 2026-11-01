@@ -1,0 +1,81 @@
+-- A simple relation can be made monic using any monic relation.
+-- The concrete polynomial is H + X^(length H) Q0^2. Concatenating
+-- coefficient lists records monicity without deciding a degree.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module SE = StandardEtale[l].Over[R,setR] ;
+ module B = SE.RX ; module Mon = HorrocksInterface[l].Over[R,setR] ;
+ append : List R.R -> List R.R -> List R.R = split {
+  nil -> \ q -> q ; cons a p | rec -> \ q -> cons a (rec q) } ;
+ append-monic : (p q : List R.R) -> Id (List R.R)
+  (append p (Mon.monic-list q)) (Mon.monic-list (append p q)) = split {
+  nil -> \ q -> refl (Mon.monic-list q) ;
+  cons a p | rec -> \ q -> ap (\ r -> cons a r) (rec q) } ;
+ module At (E : C.Algebra) (y : E.ring.R) {
+  module X = SE.At[E.ring,E.set,E.iota,y] ; module L = RL[E.ring] ;
+  val : B.Carrier -> E.ring.R = X.value ;
+  der : B.Carrier -> E.ring.R = X.derivative ;
+  der-add (p q : B.Carrier) : Id E.ring.R (der (B.addQ p q)) (E.ring.add (der p) (der q)) =
+   ap (\ z -> z.2) (X.evd.2.2.1 p q) ;
+  der-mul (p q : B.Carrier) : Id E.ring.R (der (B.mulQ p q))
+   (E.ring.add (E.ring.mul (val p) (der q)) (E.ring.mul (der p) (val q))) =
+   trans (ap (\ z -> z.2) (X.evd.2.2.2 p q))
+    (cong2 E.ring.R E.ring.add _ _ _ _
+     (ap (\ z -> E.ring.mul z (der q)) (X.value-first p))
+     (ap (E.ring.mul (der p)) (X.value-first q))) ;
+  der-constant (r : R.R) : Id E.ring.R (der (B.constant r)) E.ring.z =
+   ap (\ z -> z.2) (X.UPe.on-constants r) ;
+  der-variable : Id E.ring.R (der B.variable) E.ring.o = ap (\ z -> z.2) X.UPe.on-variable ;
+  der-zero : Id E.ring.R (der B.zeroQ) E.ring.z = ap (\ z -> z.2) (H.zero B.ring X.DN.ring X.evd) ;
+  val-cons (a : R.R) (p : List R.R) : Id E.ring.R (val (B.include (cons a p)))
+   (E.ring.add (E.iota.1 a) (E.ring.mul y (val (B.include p)))) =
+   trans (ap val (B.horner a p)) (trans (X.ev.2.2.1 (B.constant a) (B.mulQ B.variable (B.include p)))
+    (cong2 E.ring.R E.ring.add _ _ _ _ (X.UP.on-constants a)
+     (trans (X.ev.2.2.2 B.variable (B.include p)) (ap (\ z -> E.ring.mul z (val (B.include p))) X.UP.on-variable)))) ;
+  der-cons (a : R.R) (p : List R.R) : Id E.ring.R (der (B.include (cons a p)))
+   (E.ring.add (E.ring.mul y (der (B.include p))) (val (B.include p))) =
+   trans (ap der (B.horner a p))
+    (trans (der-add (B.constant a) (B.mulQ B.variable (B.include p)))
+     (trans (cong2 E.ring.R E.ring.add _ _ _ _ (der-constant a)
+      (trans (der-mul B.variable (B.include p))
+       (cong2 E.ring.R E.ring.add _ _ _ _
+        (ap (\ z -> E.ring.mul z (der (B.include p))) X.UP.on-variable)
+        (trans (ap (\ z -> E.ring.mul z (val (B.include p))) der-variable) (L.one-left (val (B.include p)))))))
+      (L.zl (E.ring.add (E.ring.mul y (der (B.include p))) (val (B.include p)))))) ;
+  module ZeroTail (q : List R.R) (q-zero : Id E.ring.R (val (B.include q)) E.ring.z)
+   (q-der-zero : Id E.ring.R (der (B.include q)) E.ring.z) {
+   value : (p : List R.R) -> Id E.ring.R (val (B.include (append p q))) (val (B.include p)) = split {
+    nil -> trans q-zero (sym (H.zero B.ring E.ring X.ev)) ;
+    cons a p | rec -> trans (val-cons a (append p q))
+     (trans (ap (\ z -> E.ring.add (E.iota.1 a) (E.ring.mul y z)) rec) (sym (val-cons a p))) } ;
+   derivative : (p : List R.R) -> Id E.ring.R (der (B.include (append p q))) (der (B.include p)) = split {
+    nil -> trans q-der-zero (sym der-zero) ;
+    cons a p | rec -> trans (der-cons a (append p q))
+     (trans (cong2 E.ring.R E.ring.add _ _ _ _ (ap (E.ring.mul y) rec) (value p)) (sym (der-cons a p))) } ;
+  } ;
+  module Build (lower h : List R.R)
+   (root : Id E.ring.R (val (Mon.monic lower)) E.ring.z)
+   (h-root : Id E.ring.R (val (B.include h)) E.ring.z)
+   (simple : L.unit (der (B.include h))) {
+   module Sq = MonicPowers[l].Over[R,setR].Product[lower,lower] ;
+   square-root : Id E.ring.R (val (Mon.monic Sq.lower)) E.ring.z =
+    trans (ap val Sq.equation) (trans (X.ev.2.2.2 (Mon.monic lower) (Mon.monic lower))
+     (trans (ap (\ z -> E.ring.mul z (val (Mon.monic lower))) root) (L.zero-mul (val (Mon.monic lower))))) ;
+   square-derivative : Id E.ring.R (der (Mon.monic Sq.lower)) E.ring.z =
+    trans (ap der Sq.equation) (trans (der-mul (Mon.monic lower) (Mon.monic lower))
+     (trans (cong2 E.ring.R E.ring.add _ _ _ _
+      (trans (ap (\ z -> E.ring.mul z (der (Mon.monic lower))) root) (L.zero-mul (der (Mon.monic lower))))
+      (trans (ap (E.ring.mul (der (Mon.monic lower))) root) (L.mul-zero (der (Mon.monic lower)))))
+      (E.ring.addZ E.ring.z))) ;
+   coefficients : List R.R = append h Sq.lower ;
+   polynomial : B.Carrier = Mon.monic coefficients ;
+   representation : Id B.Carrier polynomial (B.include (append h (Mon.monic-list Sq.lower))) =
+    ap B.include (sym (append-monic h Sq.lower)) ;
+   module Z = ZeroTail[Mon.monic-list Sq.lower,square-root,square-derivative] ;
+   equation : Id E.ring.R (val polynomial) E.ring.z = trans (ap val representation) (trans (Z.value h) h-root) ;
+   derivative : Id E.ring.R (der polynomial) (der (B.include h)) = trans (ap der representation) (Z.derivative h) ;
+   unit : L.unit (der polynomial) = subst L.unit (sym derivative) simple ;
+  } ;
+ } ;
+} ;

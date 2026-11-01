@@ -1,0 +1,674 @@
+-- OTLaws.seg: Lemma 2.4 of Setzer (APAL 92, 1998): <' is a linear order on
+-- T'.  Setzer: "Easy, but tedious."
+--
+-- Informal proof.  OT.seg computes the pair cmp2 x y = (x <' y, y <' x)
+-- by recursion on x.  So "y <' x" is computed twice: as the second
+-- component of cmp2 x y, and as the first component of cmp2 y x.
+--
+--   Swap.  cmp2 y x = swap (cmp2 x y), for all raw terms.  By recursion on
+--   x and then on y: in each case both sides are the same clause, with
+--   arguments that are exchanged by the induction hypotheses (for a subterm
+--   of x against any term, and for x against a subterm of y), and with
+--   eqT y x for eqT x y.  The clause functions are written so that after
+--   these rewritings the two sides agree by definition.
+--
+--   Irreflexivity.  cmp2 x x = (false, false): the guard of the diagonal
+--   cases, since eqT x x = true.
+--
+--   Trichotomy.  For x, y in T', x /= y: exactly one of the components of
+--   cmp2 x y is true (section Trichotomy).
+--
+-- So lt is irreflexive, asymmetric and total on T' (lt-irr, lt-asym,
+-- lt-total).  Transitivity is the remaining half of Lemma 2.4.
+
+level l ;
+import OT ;
+open OT ;
+
+------------------------------------------------------------------------
+-- Equality
+
+sym {A : U l} {x y : A} (p : Id A x y) : Id A y x =
+  idJ A x (\ z q -> Id A z x) (refl x) y p ;
+
+trans {A : U l} {x y z : A} (p : Id A x y) (q : Id A y z) : Id A x z =
+  idJ A y (\ w q -> Id A x w) p z q ;
+
+ap {A B : U l} (f : A -> B) {x y : A} (p : Id A x y) : Id B (f x) (f y) =
+  idJ A x (\ z q -> Id B (f x) (f z)) (refl (f x)) y p ;
+
+ap2 {A B C : U l} (f : A -> B -> C) {x x' : A} {y y' : B}
+    (p : Id A x x') (q : Id B y y') : Id C (f x y) (f x' y') =
+  trans (ap (\ u -> f u y) p) (ap (\ v -> f x' v) q) ;
+
+subst {A : U l} (P : A -> U l) {x y : A} (p : Id A x y) (u : P x) : P y =
+  idJ A x (\ z q -> P z) u y p ;
+
+------------------------------------------------------------------------
+-- Booleans
+
+-- if u then x else y at any type of level l, and the pairs (x <' y, y <' x)
+ite (A : U l) : Bool -> A -> A -> A = split { false -> \ u v -> v ; true -> \ u v -> u } ;
+B2 : U l = Bool * Bool ;
+
+ifU : Bool -> U l -> U l -> U l = split { false -> \ X Y -> Y ; true -> \ X Y -> X } ;
+
+absurdB (A : U l) (p : Id Bool false true) : A = subst (\ c -> ifU c A One) p tt ;
+absurdT (A : U l) (p : Id Bool true false) : A = absurdB A (sym p) ;
+
+and-l : (c d : Bool) -> Id Bool (and c d) true -> Id Bool c true = split {
+  false -> \ d h -> h ; true -> \ d h -> refl true } ;
+and-r : (c d : Bool) -> Id Bool (and c d) true -> Id Bool d true = split {
+  false -> \ d h -> absurdB (Id Bool d true) h ; true -> \ d h -> h } ;
+-- c and d false, c true: d false
+and-false-r : (c d : Bool) -> Id Bool c true -> Id Bool (and c d) false -> Id Bool d false = split {
+  false -> \ d pc h -> absurdB (Id Bool d false) pc ; true -> \ d pc h -> h } ;
+
+notnot : (c : Bool) -> Id Bool c (not (not c)) = split {
+  false -> refl false ; true -> refl true } ;
+
+------------------------------------------------------------------------
+-- Equality of terms is reflexive and symmetric
+
+eqT-refl : (x : T) -> Id Bool (eqT x x) true = split {
+  zero -> refl true ;
+  plus x0 xs | r0 rs -> ap2 and r0 rs ;
+  phi x0 x1 | r0 r1 -> ap2 and r0 r1 ;
+  psi x0 x1 | r0 r1 -> ap2 and r0 r1 ;
+  om x0 | r0 -> r0 ;
+  ii -> refl true } ;
+
+eqT-sym : (x y : T) -> Id Bool (eqT x y) (eqT y x) = split {
+  zero -> split {
+    zero -> refl true ; plus y0 ys -> refl false ; phi y0 y1 -> refl false ;
+    psi y0 y1 -> refl false ; om y0 -> refl false ; ii -> refl false } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> refl false ; plus y0 ys -> ap2 and (r0 y0) (rs ys) ;
+    phi y0 y1 -> refl false ; psi y0 y1 -> refl false ; om y0 -> refl false ;
+    ii -> refl false } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> refl false ; plus y0 ys -> refl false ;
+    phi y0 y1 -> ap2 and (r0 y0) (r1 y1) ;
+    psi y0 y1 -> refl false ; om y0 -> refl false ; ii -> refl false } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> refl false ; plus y0 ys -> refl false ; phi y0 y1 -> refl false ;
+    psi y0 y1 -> ap2 and (r0 y0) (r1 y1) ;
+    om y0 -> refl false ; ii -> refl false } ;
+  om x0 | r0 -> split {
+    zero -> refl false ; plus y0 ys -> refl false ; phi y0 y1 -> refl false ;
+    psi y0 y1 -> refl false ; om y0 -> r0 y0 ; ii -> refl false } ;
+  ii -> split {
+    zero -> refl false ; plus y0 ys -> refl false ; phi y0 y1 -> refl false ;
+    psi y0 y1 -> refl false ; om y0 -> refl false ; ii -> refl true } } ;
+
+------------------------------------------------------------------------
+-- Irreflexivity
+
+-- the guard of a diagonal case
+guard-eq (e : Bool) (p : Id Bool e true) (c : B2) : Id B2 (guard e c) (false, false) =
+  ap (\ u -> guard u c) p ;
+
+cmp2-irr : (x : T) -> Id B2 (cmp2 x x) (false, false) = split {
+  zero -> refl (false, false) ;
+  plus x0 xs -> guard-eq (eqT (plus x0 xs) (plus x0 xs)) (eqT-refl (plus x0 xs))
+                  (cl2 (cmp2 x0 x0) (eqT x0 x0) (cmp2 xs xs)) ;
+  phi x0 x1 -> guard-eq (eqT (phi x0 x1) (phi x0 x1)) (eqT-refl (phi x0 x1))
+                  (cl3 (cmp2 x0 x0) (cmp2 x1 (phi x0 x1)) (eqT x0 x0) (cmp2 x1 x1)
+                       (cmp2 (phi x0 x1) x1) (eqT (phi x0 x1) x1) (eqT (phi x0 x1) x1)) ;
+  psi x0 x1 -> guard-eq (eqT (psi x0 x1) (psi x0 x1)) (eqT-refl (psi x0 x1))
+                  (cl5 (isI x0) (isI x0) (eqT x0 x0) (cmp2 x1 x1) (cmp2 x0 x0)
+                       (cmp2 (psi x0 x1) x0) (cmp2 x0 (psi x0 x1))) ;
+  om x0 -> guard-eq (eqT (om x0) (om x0)) (eqT-refl (om x0)) (cl9 (cmp2 x0 x0)) ;
+  ii -> refl (false, false) } ;
+
+------------------------------------------------------------------------
+-- Swap
+
+swap (c : B2) : B2 = (bwd c, fwd c) ;
+
+guard-swap : (e : Bool) (c : B2) -> Id B2 (guard e (swap c)) (swap (guard e c)) = split {
+  false -> \ c -> refl (swap c) ;
+  true -> \ c -> refl (false, false) } ;
+
+-- One lemma per clause.  The arguments written with a prime are those of
+-- the computation of cmp2 y x; the equations say what the induction
+-- hypotheses give.  After the rewriting both sides agree by definition.
+
+-- (2), both proper sums
+sw2 (g g' e e' : Bool) (hh hh' t t' : B2)
+    (pg : Id Bool g' g) (pe : Id Bool e' e) (ph : Id B2 hh' (swap hh)) (pt : Id B2 t' (swap t))
+  : Id B2 (guard g' (cl2 hh' e' t')) (swap (guard g (cl2 hh e t))) =
+  trans (ap (\ u -> guard u (cl2 hh' e' t')) pg)
+ (trans (ap (\ u -> guard g (cl2 hh' u t')) pe)
+ (trans (ap (\ u -> guard g (cl2 u e t')) ph)
+ (trans (ap (\ u -> guard g (cl2 (swap hh) e u)) pt)
+        (guard-swap g (cl2 hh e t))))) ;
+
+-- (2), a proper sum against an atom
+sw2sa (hh hh' : B2) (e : Bool) (ph : Id B2 hh' (swap hh))
+  : Id B2 (cl2as hh' e) (swap (cl2sa hh e)) = ap (\ u -> cl2as u e) ph ;
+-- (2), an atom against a proper sum
+sw2as (hh hh' : B2) (e : Bool) (ph : Id B2 hh' (swap hh))
+  : Id B2 (cl2sa hh' e) (swap (cl2as hh e)) = ap (\ u -> cl2sa u e) ph ;
+
+-- (3): in cmp2 y x the slot of bY is filled by swap xd, that of xd by
+-- swap bY, and exd, eyb exchange
+sw3 (g g' eac eac' exd eyb : Bool) (ac ac' bY xd bd bd' bY' xd' : B2)
+    (pg : Id Bool g' g) (pe : Id Bool eac' eac) (pac : Id B2 ac' (swap ac))
+    (pbY : Id B2 bY' (swap xd)) (pbd : Id B2 bd' (swap bd)) (pxd : Id B2 xd' (swap bY))
+  : Id B2 (guard g' (cl3 ac' bY' eac' bd' xd' eyb exd))
+          (swap (guard g (cl3 ac bY eac bd xd exd eyb))) =
+  trans (ap (\ u -> guard u (cl3 ac' bY' eac' bd' xd' eyb exd)) pg)
+ (trans (ap (\ u -> guard g (cl3 ac' bY' u bd' xd' eyb exd)) pe)
+ (trans (ap (\ u -> guard g (cl3 u bY' eac bd' xd' eyb exd)) pac)
+ (trans (ap (\ u -> guard g (cl3 (swap ac) u eac bd' xd' eyb exd)) pbY)
+ (trans (ap (\ u -> guard g (cl3 (swap ac) (swap xd) eac u xd' eyb exd)) pbd)
+ (trans (ap (\ u -> guard g (cl3 (swap ac) (swap xd) eac (swap bd) u eyb exd)) pxd)
+        (guard-swap g (cl3 ac bY eac bd xd exd eyb))))))) ;
+
+-- (4) and its converse
+sw4 (aY bY aY' bY' : B2) (pa : Id B2 aY' (swap aY)) (pb : Id B2 bY' (swap bY))
+  : Id B2 (cl4r aY' bY') (swap (cl4 aY bY)) = ap2 cl4r pa pb ;
+sw4r (xc xd xc' xd' : B2) (pc : Id B2 xc' (swap xc)) (pd : Id B2 xd' (swap xd))
+  : Id B2 (cl4 xc' xd') (swap (cl4r xc xd)) = ap2 cl4 pc pd ;
+
+-- (5): the slot of xq is filled by swap pY, that of pY by swap xq
+sw5 (g g' ip iq e e' : Bool) (bd pq xq pY bd' pq' xq' pY' : B2)
+    (pg : Id Bool g' g) (pe : Id Bool e' e) (pbd : Id B2 bd' (swap bd))
+    (ppq : Id B2 pq' (swap pq)) (pxq : Id B2 xq' (swap pY)) (ppY : Id B2 pY' (swap xq))
+  : Id B2 (guard g' (cl5 iq ip e' bd' pq' xq' pY'))
+          (swap (guard g (cl5 ip iq e bd pq xq pY))) =
+  trans (ap (\ u -> guard u (cl5 iq ip e' bd' pq' xq' pY')) pg)
+ (trans (ap (\ u -> guard g (cl5 iq ip u bd' pq' xq' pY')) pe)
+ (trans (ap (\ u -> guard g (cl5 iq ip e u pq' xq' pY')) pbd)
+ (trans (ap (\ u -> guard g (cl5 iq ip e (swap bd) u xq' pY')) ppq)
+ (trans (ap (\ u -> guard g (cl5 iq ip e (swap bd) (swap pq) u pY')) pxq)
+ (trans (ap (\ u -> guard g (cl5 iq ip e (swap bd) (swap pq) (swap pY) u)) ppY)
+        (guard-swap g (cl5 ip iq e bd pq xq pY))))))) ;
+
+-- (6), (7) and the converse
+sw67 (ip epy exc : Bool) (pY xc pY' xc' : B2) (pp : Id B2 pY' (swap pY)) (pc : Id B2 xc' (swap xc))
+  : Id B2 (cl67r ip pY' epy xc' exc) (swap (cl67 ip pY epy xc exc)) =
+  ap2 (\ u v -> cl67r ip u epy v exc) pp pc ;
+sw67r (iq eqx eya : Bool) (qx aY qx' aY' : B2) (pq : Id B2 qx' (swap qx)) (pa : Id B2 aY' (swap aY))
+  : Id B2 (cl67 iq qx' eqx aY' eya) (swap (cl67r iq qx eqx aY eya)) =
+  ap2 (\ u v -> cl67 iq u eqx v eya) pq pa ;
+-- (6), (8) and the converse
+sw68 (ip epy : Bool) (pY pY' : B2) (pp : Id B2 pY' (swap pY))
+  : Id B2 (cl68r ip pY' epy) (swap (cl68 ip pY epy)) = ap (\ u -> cl68r ip u epy) pp ;
+sw68r (iq eqx : Bool) (qx qx' : B2) (pq : Id B2 qx' (swap qx))
+  : Id B2 (cl68 iq qx' eqx) (swap (cl68r iq qx eqx)) = ap (\ u -> cl68 iq u eqx) pq ;
+
+-- (9)
+sw9 (g g' : Bool) (ac ac' : B2) (pg : Id Bool g' g) (pac : Id B2 ac' (swap ac))
+  : Id B2 (guard g' (cl9 ac')) (swap (guard g (cl9 ac))) =
+  trans (ap2 (\ u v -> guard u (cl9 v)) pg pac) (guard-swap g (cl9 ac)) ;
+-- (10) and its converse
+sw10 (aI aI' : B2) (pa : Id B2 aI' (swap aI)) : Id B2 (cl10r aI') (swap (cl10 aI)) = ap cl10r pa ;
+sw10r (xc xc' : B2) (pc : Id B2 xc' (swap xc)) : Id B2 (cl10 xc') (swap (cl10r xc)) = ap cl10 pc ;
+
+-- The swap lemma.  r0, r1 (rs): hypotheses for the subterms of x against
+-- any term; s0, s1: for x against the subterms of y.
+cmp2-swap : (x y : T) -> Id B2 (cmp2 y x) (swap (cmp2 x y)) = split {
+  zero -> split {
+    zero -> refl (false, false) ;
+    plus y0 ys -> refl cl1r ; phi y0 y1 -> refl cl1r ; psi y0 y1 -> refl cl1r ;
+    om y0 -> refl cl1r ; ii -> refl cl1r } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> refl cl1 ;
+    plus y0 ys -> sw2 (eqT (plus x0 xs) (plus y0 ys)) (eqT (plus y0 ys) (plus x0 xs))
+                      (eqT x0 y0) (eqT y0 x0)
+                      (cmp2 x0 y0) (cmp2 y0 x0) (cmp2 xs ys) (cmp2 ys xs)
+                      (eqT-sym (plus y0 ys) (plus x0 xs)) (eqT-sym y0 x0) (r0 y0) (rs ys) ;
+    phi y0 y1 -> sw2sa (cmp2 x0 (phi y0 y1)) (cmp2 (phi y0 y1) x0) (eqT (phi y0 y1) x0) (r0 (phi y0 y1)) ;
+    psi y0 y1 -> sw2sa (cmp2 x0 (psi y0 y1)) (cmp2 (psi y0 y1) x0) (eqT (psi y0 y1) x0) (r0 (psi y0 y1)) ;
+    om y0 -> sw2sa (cmp2 x0 (om y0)) (cmp2 (om y0) x0) (eqT (om y0) x0) (r0 (om y0)) ;
+    ii -> sw2sa (cmp2 x0 ii) (cmp2 ii x0) (eqT ii x0) (r0 ii) } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> refl cl1 ;
+    plus y0 ys | s0 _ -> sw2as (cmp2 (phi x0 x1) y0) (cmp2 y0 (phi x0 x1)) (eqT (phi x0 x1) y0) s0 ;
+    phi y0 y1 | _ s1 ->
+      sw3 (eqT (phi x0 x1) (phi y0 y1)) (eqT (phi y0 y1) (phi x0 x1))
+          (eqT x0 y0) (eqT y0 x0) (eqT (phi x0 x1) y1) (eqT (phi y0 y1) x1)
+          (cmp2 x0 y0) (cmp2 y0 x0) (cmp2 x1 (phi y0 y1)) (cmp2 (phi x0 x1) y1)
+          (cmp2 x1 y1) (cmp2 y1 x1) (cmp2 y1 (phi x0 x1)) (cmp2 (phi y0 y1) x1)
+          (eqT-sym (phi y0 y1) (phi x0 x1)) (eqT-sym y0 x0) (r0 y0)
+          s1 (r1 y1) (r1 (phi y0 y1)) ;
+    psi y0 y1 -> sw4 (cmp2 x0 (psi y0 y1)) (cmp2 x1 (psi y0 y1)) (cmp2 (psi y0 y1) x0) (cmp2 (psi y0 y1) x1)
+                     (r0 (psi y0 y1)) (r1 (psi y0 y1)) ;
+    om y0 -> sw4 (cmp2 x0 (om y0)) (cmp2 x1 (om y0)) (cmp2 (om y0) x0) (cmp2 (om y0) x1)
+                 (r0 (om y0)) (r1 (om y0)) ;
+    ii -> sw4 (cmp2 x0 ii) (cmp2 x1 ii) (cmp2 ii x0) (cmp2 ii x1) (r0 ii) (r1 ii) } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> refl cl1 ;
+    plus y0 ys | s0 _ -> sw2as (cmp2 (psi x0 x1) y0) (cmp2 y0 (psi x0 x1)) (eqT (psi x0 x1) y0) s0 ;
+    phi y0 y1 | s0 s1 -> sw4r (cmp2 (psi x0 x1) y0) (cmp2 (psi x0 x1) y1)
+                              (cmp2 y0 (psi x0 x1)) (cmp2 y1 (psi x0 x1)) s0 s1 ;
+    psi y0 y1 | s0 _ ->
+      sw5 (eqT (psi x0 x1) (psi y0 y1)) (eqT (psi y0 y1) (psi x0 x1))
+          (isI x0) (isI y0) (eqT x0 y0) (eqT y0 x0)
+          (cmp2 x1 y1) (cmp2 x0 y0) (cmp2 (psi x0 x1) y0) (cmp2 x0 (psi y0 y1))
+          (cmp2 y1 x1) (cmp2 y0 x0) (cmp2 (psi y0 y1) x0) (cmp2 y0 (psi x0 x1))
+          (eqT-sym (psi y0 y1) (psi x0 x1)) (eqT-sym y0 x0) (r1 y1) (r0 y0)
+          (r0 (psi y0 y1)) s0 ;
+    om y0 | s0 -> sw67 (isI x0) (eqT x0 (om y0)) (eqT (psi x0 x1) y0)
+                       (cmp2 x0 (om y0)) (cmp2 (psi x0 x1) y0) (cmp2 (om y0) x0) (cmp2 y0 (psi x0 x1))
+                       (r0 (om y0)) s0 ;
+    ii -> sw68 (isI x0) (eqT x0 ii) (cmp2 x0 ii) (cmp2 ii x0) (r0 ii) } ;
+  om x0 | r0 -> split {
+    zero -> refl cl1 ;
+    plus y0 ys | s0 _ -> sw2as (cmp2 (om x0) y0) (cmp2 y0 (om x0)) (eqT (om x0) y0) s0 ;
+    phi y0 y1 | s0 s1 -> sw4r (cmp2 (om x0) y0) (cmp2 (om x0) y1) (cmp2 y0 (om x0)) (cmp2 y1 (om x0)) s0 s1 ;
+    psi y0 y1 | s0 _ -> sw67r (isI y0) (eqT y0 (om x0)) (eqT (psi y0 y1) x0)
+                             (cmp2 (om x0) y0) (cmp2 x0 (psi y0 y1)) (cmp2 y0 (om x0)) (cmp2 (psi y0 y1) x0)
+                             s0 (r0 (psi y0 y1)) ;
+    om y0 -> sw9 (eqT (om x0) (om y0)) (eqT (om y0) (om x0)) (cmp2 x0 y0) (cmp2 y0 x0)
+                 (eqT-sym (om y0) (om x0)) (r0 y0) ;
+    ii -> sw10 (cmp2 x0 ii) (cmp2 ii x0) (r0 ii) } ;
+  ii -> split {
+    zero -> refl cl1 ;
+    plus y0 ys | s0 _ -> sw2as (cmp2 ii y0) (cmp2 y0 ii) (eqT ii y0) s0 ;
+    phi y0 y1 | s0 s1 -> sw4r (cmp2 ii y0) (cmp2 ii y1) (cmp2 y0 ii) (cmp2 y1 ii) s0 s1 ;
+    psi y0 y1 | s0 _ -> sw68r (isI y0) (eqT y0 ii) (cmp2 ii y0) (cmp2 y0 ii) s0 ;
+    om y0 | s0 -> sw10r (cmp2 ii y0) (cmp2 y0 ii) s0 ;
+    ii -> refl (false, false) } } ;
+
+------------------------------------------------------------------------
+-- Soundness of eqT, and irreflexivity at equal terms
+
+eqT-sound : (x y : T) -> Id Bool (eqT x y) true -> Id T x y = split {
+  zero -> split {
+    zero -> \ p -> refl zero ;
+    plus y0 ys -> \ p -> absurdB (Id T zero (plus y0 ys)) p ;
+    phi y0 y1 -> \ p -> absurdB (Id T zero (phi y0 y1)) p ;
+    psi y0 y1 -> \ p -> absurdB (Id T zero (psi y0 y1)) p ;
+    om y0 -> \ p -> absurdB (Id T zero (om y0)) p ;
+    ii -> \ p -> absurdB (Id T zero ii) p } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> \ p -> absurdB (Id T (plus x0 xs) zero) p ;
+    plus y0 ys -> \ p -> ap2 (\ u v -> plus u v) (r0 y0 (and-l (eqT x0 y0) (eqT xs ys) p))
+                                                 (rs ys (and-r (eqT x0 y0) (eqT xs ys) p)) ;
+    phi y0 y1 -> \ p -> absurdB (Id T (plus x0 xs) (phi y0 y1)) p ;
+    psi y0 y1 -> \ p -> absurdB (Id T (plus x0 xs) (psi y0 y1)) p ;
+    om y0 -> \ p -> absurdB (Id T (plus x0 xs) (om y0)) p ;
+    ii -> \ p -> absurdB (Id T (plus x0 xs) ii) p } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> \ p -> absurdB (Id T (phi x0 x1) zero) p ;
+    plus y0 ys -> \ p -> absurdB (Id T (phi x0 x1) (plus y0 ys)) p ;
+    phi y0 y1 -> \ p -> ap2 (\ u v -> phi u v) (r0 y0 (and-l (eqT x0 y0) (eqT x1 y1) p))
+                                               (r1 y1 (and-r (eqT x0 y0) (eqT x1 y1) p)) ;
+    psi y0 y1 -> \ p -> absurdB (Id T (phi x0 x1) (psi y0 y1)) p ;
+    om y0 -> \ p -> absurdB (Id T (phi x0 x1) (om y0)) p ;
+    ii -> \ p -> absurdB (Id T (phi x0 x1) ii) p } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> \ p -> absurdB (Id T (psi x0 x1) zero) p ;
+    plus y0 ys -> \ p -> absurdB (Id T (psi x0 x1) (plus y0 ys)) p ;
+    phi y0 y1 -> \ p -> absurdB (Id T (psi x0 x1) (phi y0 y1)) p ;
+    psi y0 y1 -> \ p -> ap2 (\ u v -> psi u v) (r0 y0 (and-l (eqT x0 y0) (eqT x1 y1) p))
+                                               (r1 y1 (and-r (eqT x0 y0) (eqT x1 y1) p)) ;
+    om y0 -> \ p -> absurdB (Id T (psi x0 x1) (om y0)) p ;
+    ii -> \ p -> absurdB (Id T (psi x0 x1) ii) p } ;
+  om x0 | r0 -> split {
+    zero -> \ p -> absurdB (Id T (om x0) zero) p ;
+    plus y0 ys -> \ p -> absurdB (Id T (om x0) (plus y0 ys)) p ;
+    phi y0 y1 -> \ p -> absurdB (Id T (om x0) (phi y0 y1)) p ;
+    psi y0 y1 -> \ p -> absurdB (Id T (om x0) (psi y0 y1)) p ;
+    om y0 -> \ p -> ap (\ u -> om u) (r0 y0 p) ;
+    ii -> \ p -> absurdB (Id T (om x0) ii) p } ;
+  ii -> split {
+    zero -> \ p -> absurdB (Id T ii zero) p ;
+    plus y0 ys -> \ p -> absurdB (Id T ii (plus y0 ys)) p ;
+    phi y0 y1 -> \ p -> absurdB (Id T ii (phi y0 y1)) p ;
+    psi y0 y1 -> \ p -> absurdB (Id T ii (psi y0 y1)) p ;
+    om y0 -> \ p -> absurdB (Id T ii (om y0)) p ;
+    ii -> \ p -> refl ii } } ;
+
+eq-irr (x y : T) (p : Id Bool (eqT x y) true) : Id B2 (cmp2 x y) (false, false) =
+  subst (\ z -> Id B2 (cmp2 x z) (false, false)) (eqT-sound x y p) (cmp2-irr x) ;
+
+------------------------------------------------------------------------
+-- T' is inherited by the subterms; indices are not psi terms
+
+isT-plus0 (x0 xs : T) (p : Id Bool (isT (plus x0 xs)) true) : Id Bool (isT x0) true =
+  and-r (isA x0) (isT x0) (and-l (and (isA x0) (isT x0)) (and (not (isZero xs)) (isT xs)) p) ;
+isT-plusS (x0 xs : T) (p : Id Bool (isT (plus x0 xs)) true) : Id Bool (isT xs) true =
+  and-r (not (isZero xs)) (isT xs) (and-r (and (isA x0) (isT x0)) (and (not (isZero xs)) (isT xs)) p) ;
+isT-phi0 (x0 x1 : T) (p : Id Bool (isT (phi x0 x1)) true) : Id Bool (isT x0) true =
+  and-l (isT x0) (isT x1) p ;
+isT-phi1 (x0 x1 : T) (p : Id Bool (isT (phi x0 x1)) true) : Id Bool (isT x1) true =
+  and-r (isT x0) (isT x1) p ;
+isT-psiR (x0 x1 : T) (p : Id Bool (isT (psi x0 x1)) true) : Id Bool (isR x0) true =
+  and-l (isR x0) (isT x0) (and-l (and (isR x0) (isT x0)) (isT x1) p) ;
+isT-psi0 (x0 x1 : T) (p : Id Bool (isT (psi x0 x1)) true) : Id Bool (isT x0) true =
+  and-r (isR x0) (isT x0) (and-l (and (isR x0) (isT x0)) (isT x1) p) ;
+isT-psi1 (x0 x1 : T) (p : Id Bool (isT (psi x0 x1)) true) : Id Bool (isT x1) true =
+  and-r (and (isR x0) (isT x0)) (isT x1) p ;
+isT-om0 (x0 : T) (p : Id Bool (isT (om x0)) true) : Id Bool (isT x0) true =
+  and-r (not (isZero x0)) (isT x0) p ;
+
+-- an element of R' is not a psi term
+R-notpsi : (q : T) -> Id Bool (isR q) true -> (u v : T) -> Id Bool (eqT q (psi u v)) false = split {
+  zero -> \ h u v -> refl false ; plus q0 qs -> \ h u v -> refl false ;
+  phi q0 q1 -> \ h u v -> refl false ;
+  psi q0 q1 -> \ h u v -> absurdB (Id Bool (eqT (psi q0 q1) (psi u v)) false) h ;
+  om q0 -> \ h u v -> refl false ; ii -> \ h u v -> refl false } ;
+
+isI-true : (q : T) -> Id Bool (isI q) true -> Id T q ii = split {
+  zero -> \ h -> absurdB (Id T zero ii) h ; plus q0 qs -> \ h -> absurdB (Id T (plus q0 qs) ii) h ;
+  phi q0 q1 -> \ h -> absurdB (Id T (phi q0 q1) ii) h ; psi q0 q1 -> \ h -> absurdB (Id T (psi q0 q1) ii) h ;
+  om q0 -> \ h -> absurdB (Id T (om q0) ii) h ; ii -> \ h -> refl ii } ;
+
+isI-ne : (q : T) -> Id Bool (isI q) false -> Id Bool (eqT ii q) false = split {
+  zero -> \ h -> refl false ; plus q0 qs -> \ h -> refl false ; phi q0 q1 -> \ h -> refl false ;
+  psi q0 q1 -> \ h -> refl false ; om q0 -> \ h -> refl false ;
+  ii -> \ h -> absurdT (Id Bool true false) h } ;
+
+------------------------------------------------------------------------
+-- Trichotomy
+--
+-- Informal proof.  For x, y in T' with x /= y, exactly one of x <' y and
+-- y <' x holds, i.e. Excl (cmp2 x y).  By recursion on x and then on y.
+-- In the cases of (11) the pair is (l, not l) by construction.  In the
+-- other cases the components are Boolean combinations of comparisons of
+-- smaller pairs u, v: if u = v the comparison is (false, false)
+-- (irreflexivity), otherwise it is exclusive (induction hypothesis);
+-- these are the "facts" of a slot.  Each clause is then a truth table
+-- (lemmas ex-cl*).  T' is used for the subterms, and in (5) to know that
+-- an index (in R') is never a psi term, hence never equal to psi_pi b.
+
+Excl (c : B2) : U l = Id Bool (fwd c) (not (bwd c)) ;
+Zr (c : B2) : U l = (Id Bool (fwd c) false) * (Id Bool (bwd c) false) ;
+-- what is known of a comparison c whose two terms are equal iff e
+Facts (e : Bool) (c : B2) : U l = (Id Bool e true -> Zr c) * (Id Bool e false -> Excl c) ;
+
+facts (u v : T) (e : Bool) (pe : Id Bool e (eqT u v))
+      (ih : Id Bool (eqT u v) false -> Excl (cmp2 u v)) : Facts e (cmp2 u v) =
+  (\ p -> (ap fwd (eq-irr u v (trans (sym pe) p)), ap bwd (eq-irr u v (trans (sym pe) p))),
+   \ p -> ih (trans (sym pe) p)) ;
+
+excl-guard (e : Bool) (ne : Id Bool e false) (c : B2) (h : Excl c) : Excl (guard e c) =
+  subst (\ u -> Excl (guard u c)) (sym ne) h ;
+
+ex-other (l : Bool) : Excl (other l) = notnot l ;
+ex-otherR (r : Bool) : Excl (otherR r) = refl (not r) ;
+
+-- (2), both proper sums
+ex-cl2 : (e h1 h2 : Bool) -> (t1 t2 : Bool) -> Facts e (h1, h2) -> (Id Bool e true -> Excl (t1, t2))
+         -> Excl (cl2 (h1, h2) e (t1, t2)) = split {
+  false -> split {
+    true -> split {
+      true -> \ t1 t2 fh ft -> absurdT (Excl (cl2 (true, true) false (t1, t2))) (fh.2 (refl false)) ;
+      false -> \ t1 t2 fh ft -> refl true } ;
+    false -> split {
+      true -> \ t1 t2 fh ft -> refl false ;
+      false -> \ t1 t2 fh ft -> absurdB (Excl (cl2 (false, false) false (t1, t2))) (fh.2 (refl false)) } } ;
+  true -> split {
+    true -> \ h2 t1 t2 fh ft -> absurdT (Excl (cl2 (true, h2) true (t1, t2))) ((fh.1 (refl true)).1) ;
+    false -> split {
+      true -> \ t1 t2 fh ft -> absurdT (Excl (cl2 (false, true) true (t1, t2))) ((fh.1 (refl true)).2) ;
+      false -> \ t1 t2 fh ft -> ft (refl true) } } } ;
+
+-- (2), a proper sum against an atom:  (h1, or h2 e)
+ex-cl2sa : (e h2 : Bool) -> (h1 : Bool) -> Facts e (h1, h2) -> Excl (cl2sa (h1, h2) e) = split {
+  false -> split {
+    true -> \ h1 fh -> fh.2 (refl false) ;
+    false -> \ h1 fh -> fh.2 (refl false) } ;
+  true -> split {
+    true -> \ h1 fh -> absurdT (Excl (cl2sa (h1, true) true)) ((fh.1 (refl true)).2) ;
+    false -> \ h1 fh -> (fh.1 (refl true)).1 } } ;
+
+-- (2), an atom against a proper sum:  (or h1 e, h2)
+ex-cl2as : (e h1 : Bool) -> (h2 : Bool) -> Facts e (h1, h2) -> Excl (cl2as (h1, h2) e) = split {
+  false -> split {
+    true -> \ h2 fh -> fh.2 (refl false) ;
+    false -> \ h2 fh -> fh.2 (refl false) } ;
+  true -> split {
+    true -> \ h2 fh -> absurdT (Excl (cl2as (true, h2) true)) ((fh.1 (refl true)).1) ;
+    false -> \ h2 fh -> ap not (sym ((fh.1 (refl true)).2)) } } ;
+
+abT {A : U l} (p : Id Bool true false) : A = absurdT A p ;
+abF {A : U l} (p : Id Bool false true) : A = absurdB A p ;
+
+-- (3):  ac = (a1, a2), bY = (y1, y2), bd = (d1, d2), xd = (x1, x2)
+ex-cl3 : (eac a1 a2 : Bool) -> (eyb y1 y2 exd x1 x2 d1 d2 : Bool)
+         -> Facts eac (a1, a2) -> Facts eyb (y1, y2) -> Facts exd (x1, x2)
+         -> (Id Bool eac true -> Excl (d1, d2))
+         -> Excl (cl3 (a1, a2) (y1, y2) eac (d1, d2) (x1, x2) exd eyb) = split {
+  -- a = c: the comparison of b and d decides
+  true -> split {
+    true -> \ a2 eyb y1 y2 exd x1 x2 d1 d2 fa fy fx fd -> abT ((fa.1 (refl true)).1) ;
+    false -> split {
+      true -> \ eyb y1 y2 exd x1 x2 d1 d2 fa fy fx fd -> abT ((fa.1 (refl true)).2) ;
+      false -> \ eyb y1 y2 exd x1 x2 -> split {
+        true -> split {
+          true -> \ fa fy fx fd -> abT (fd (refl true)) ;
+          false -> \ fa fy fx fd -> refl true } ;
+        false -> split {
+          true -> \ fa fy fx fd -> refl false ;
+          false -> \ fa fy fx fd -> abF (fd (refl true)) } } } } ;
+  false -> split {
+    -- a <' c: the comparison of b and y decides
+    true -> split {
+      true -> \ eyb y1 y2 exd x1 x2 d1 d2 fa fy fx fd -> abT (fa.2 (refl false)) ;
+      false -> split {
+        true -> split {
+          true -> \ y2 exd x1 x2 d1 d2 fa fy fx fd -> abT ((fy.1 (refl true)).1) ;
+          false -> split {
+            true -> \ exd x1 x2 d1 d2 fa fy fx fd -> abT ((fy.1 (refl true)).2) ;
+            false -> \ exd x1 x2 d1 d2 fa fy fx fd -> refl false } } ;
+        false -> split {
+          true -> split {
+            true -> \ exd x1 x2 d1 d2 fa fy fx fd -> abT (fy.2 (refl false)) ;
+            false -> \ exd x1 x2 d1 d2 fa fy fx fd -> refl true } ;
+          false -> split {
+            true -> \ exd x1 x2 d1 d2 fa fy fx fd -> refl false ;
+            false -> \ exd x1 x2 d1 d2 fa fy fx fd -> abF (fy.2 (refl false)) } } } } ;
+    -- c <' a: the comparison of x and d decides
+    false -> split {
+      false -> \ eyb y1 y2 exd x1 x2 d1 d2 fa fy fx fd -> abF (fa.2 (refl false)) ;
+      true -> \ eyb y1 y2 -> split {
+        true -> split {
+          true -> \ x2 d1 d2 fa fy fx fd -> abT ((fx.1 (refl true)).1) ;
+          false -> split {
+            true -> \ d1 d2 fa fy fx fd -> abT ((fx.1 (refl true)).2) ;
+            false -> \ d1 d2 fa fy fx fd -> refl true } } ;
+        false -> split {
+          true -> split {
+            true -> \ d1 d2 fa fy fx fd -> abT (fx.2 (refl false)) ;
+            false -> \ d1 d2 fa fy fx fd -> refl true } ;
+          false -> split {
+            true -> \ d1 d2 fa fy fx fd -> refl false ;
+            false -> \ d1 d2 fa fy fx fd -> abF (fx.2 (refl false)) } } } } } } ;
+
+-- (5):  bd = (b1, b2), pq = (p1, p2), xq = (q1, q2), pY = (y1, y2)
+ex-cl5 : (ip iq e : Bool) -> (b1 b2 p1 p2 q1 q2 y1 y2 : Bool)
+         -> (Id Bool ip true -> Id Bool iq true -> Id Bool e true)
+         -> (Id Bool ip true -> Id Bool iq false -> (Id Bool e false) * Excl (q1, q2))
+         -> (Id Bool ip false -> Id Bool iq true -> (Id Bool e false) * Excl (y1, y2))
+         -> (Id Bool ip false -> Id Bool iq false -> Facts e (p1, p2))
+         -> (Id Bool e true -> Excl (b1, b2))
+         -> Excl (cl5 ip iq e (b1, b2) (p1, p2) (q1, q2) (y1, y2)) = split {
+  true -> split {
+    -- pi = ka = I: b and d decide
+    true -> split {
+      false -> \ b1 b2 p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abF (hii (refl true) (refl true)) ;
+      true -> split {
+        true -> split {
+          true -> \ p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (hbd (refl true)) ;
+          false -> \ p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> refl true } ;
+        false -> split {
+          true -> \ p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> refl false ;
+          false -> \ p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abF (hbd (refl true)) } } } ;
+    -- pi = I /= ka: psi_I b against ka decides
+    false -> split {
+      true -> \ b1 b2 p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT ((hio (refl true) (refl false)).1) ;
+      false -> \ b1 b2 p1 p2 -> split {
+        true -> split {
+          true -> \ y1 y2 hii hio hoi hoo hbd -> abT ((hio (refl true) (refl false)).2) ;
+          false -> \ y1 y2 hii hio hoi hoo hbd -> refl true } ;
+        false -> split {
+          true -> \ y1 y2 hii hio hoi hoo hbd -> refl false ;
+          false -> \ y1 y2 hii hio hoi hoo hbd -> abF ((hio (refl true) (refl false)).2) } } } } ;
+  false -> split {
+    -- pi /= ka = I: pi against psi_I d decides
+    true -> split {
+      true -> \ b1 b2 p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT ((hoi (refl false) (refl true)).1) ;
+      false -> \ b1 b2 p1 p2 q1 q2 -> split {
+        true -> split {
+          true -> \ hii hio hoi hoo hbd -> abT ((hoi (refl false) (refl true)).2) ;
+          false -> \ hii hio hoi hoo hbd -> refl true } ;
+        false -> split {
+          true -> \ hii hio hoi hoo hbd -> refl false ;
+          false -> \ hii hio hoi hoo hbd -> abF ((hoi (refl false) (refl true)).2) } } } ;
+    -- pi, ka /= I
+    false -> split {
+      -- pi = ka: b and d decide
+      true -> split {
+        true -> split {
+          true -> \ p1 p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (hbd (refl true)) ;
+          false -> split {
+            true -> \ p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).1) ;
+            false -> split {
+              true -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).2) ;
+              false -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> refl true } } } ;
+        false -> split {
+          true -> split {
+            true -> \ p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).1) ;
+            false -> split {
+              true -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).2) ;
+              false -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> refl false } } ;
+          false -> split {
+            true -> \ p2 q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).1) ;
+            false -> split {
+              true -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abT (((hoo (refl false) (refl false)).1 (refl true)).2) ;
+              false -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abF (hbd (refl true)) } } } } ;
+      -- pi /= ka: pi and ka decide
+      false -> \ b1 b2 -> split {
+        true -> split {
+          true -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abT ((hoo (refl false) (refl false)).2 (refl false)) ;
+          false -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> refl true } ;
+        false -> split {
+          true -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> refl false ;
+          false -> \ q1 q2 y1 y2 hii hio hoi hoo hbd -> abF ((hoo (refl false) (refl false)).2 (refl false)) } } } } } ;
+
+-- the trichotomy lemma: for x, y in T' with x /= y, Excl (cmp2 x y)
+cmp2-excl : (x y : T) -> Id Bool (isT x) true -> Id Bool (isT y) true
+            -> Id Bool (eqT x y) false -> Excl (cmp2 x y) = split {
+  zero -> split {
+    zero -> \ tx ty ne -> abT ne ;
+    plus y0 ys -> \ tx ty ne -> ex-other true ;
+    phi y0 y1 -> \ tx ty ne -> ex-other true ;
+    psi y0 y1 -> \ tx ty ne -> ex-other true ;
+    om y0 -> \ tx ty ne -> ex-other true ;
+    ii -> \ tx ty ne -> ex-other true } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> \ tx ty ne -> ex-otherR true ;
+    plus y0 ys -> \ tx ty ne ->
+      excl-guard (eqT (plus x0 xs) (plus y0 ys)) ne (cl2 (cmp2 x0 y0) (eqT x0 y0) (cmp2 xs ys))
+        (ex-cl2 (eqT x0 y0) (fwd (cmp2 x0 y0)) (bwd (cmp2 x0 y0)) (fwd (cmp2 xs ys)) (bwd (cmp2 xs ys))
+           (facts x0 y0 (eqT x0 y0) (refl (eqT x0 y0)) (r0 y0 (isT-plus0 x0 xs tx) (isT-plus0 y0 ys ty)))
+           (\ pe -> rs ys (isT-plusS x0 xs tx) (isT-plusS y0 ys ty) (and-false-r (eqT x0 y0) (eqT xs ys) pe ne))) ;
+    phi y0 y1 -> \ tx ty ne ->
+      ex-cl2sa (eqT (phi y0 y1) x0) (bwd (cmp2 x0 (phi y0 y1))) (fwd (cmp2 x0 (phi y0 y1)))
+        (facts x0 (phi y0 y1) (eqT (phi y0 y1) x0) (eqT-sym (phi y0 y1) x0) (r0 (phi y0 y1) (isT-plus0 x0 xs tx) ty)) ;
+    psi y0 y1 -> \ tx ty ne ->
+      ex-cl2sa (eqT (psi y0 y1) x0) (bwd (cmp2 x0 (psi y0 y1))) (fwd (cmp2 x0 (psi y0 y1)))
+        (facts x0 (psi y0 y1) (eqT (psi y0 y1) x0) (eqT-sym (psi y0 y1) x0) (r0 (psi y0 y1) (isT-plus0 x0 xs tx) ty)) ;
+    om y0 -> \ tx ty ne ->
+      ex-cl2sa (eqT (om y0) x0) (bwd (cmp2 x0 (om y0))) (fwd (cmp2 x0 (om y0)))
+        (facts x0 (om y0) (eqT (om y0) x0) (eqT-sym (om y0) x0) (r0 (om y0) (isT-plus0 x0 xs tx) ty)) ;
+    ii -> \ tx ty ne ->
+      ex-cl2sa (eqT ii x0) (bwd (cmp2 x0 ii)) (fwd (cmp2 x0 ii))
+        (facts x0 ii (eqT ii x0) (eqT-sym ii x0) (r0 ii (isT-plus0 x0 xs tx) ty)) } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> \ tx ty ne -> ex-otherR true ;
+    plus y0 ys | s0 _ -> \ tx ty ne ->
+      ex-cl2as (eqT (phi x0 x1) y0) (fwd (cmp2 (phi x0 x1) y0)) (bwd (cmp2 (phi x0 x1) y0))
+        (facts (phi x0 x1) y0 (eqT (phi x0 x1) y0) (refl (eqT (phi x0 x1) y0)) (s0 tx (isT-plus0 y0 ys ty))) ;
+    phi y0 y1 | _ s1 -> \ tx ty ne ->
+      excl-guard (eqT (phi x0 x1) (phi y0 y1)) ne
+        (cl3 (cmp2 x0 y0) (cmp2 x1 (phi y0 y1)) (eqT x0 y0) (cmp2 x1 y1) (cmp2 (phi x0 x1) y1)
+             (eqT (phi x0 x1) y1) (eqT (phi y0 y1) x1))
+        (ex-cl3 (eqT x0 y0) (fwd (cmp2 x0 y0)) (bwd (cmp2 x0 y0))
+           (eqT (phi y0 y1) x1) (fwd (cmp2 x1 (phi y0 y1))) (bwd (cmp2 x1 (phi y0 y1)))
+           (eqT (phi x0 x1) y1) (fwd (cmp2 (phi x0 x1) y1)) (bwd (cmp2 (phi x0 x1) y1))
+           (fwd (cmp2 x1 y1)) (bwd (cmp2 x1 y1))
+           (facts x0 y0 (eqT x0 y0) (refl (eqT x0 y0)) (r0 y0 (isT-phi0 x0 x1 tx) (isT-phi0 y0 y1 ty)))
+           (facts x1 (phi y0 y1) (eqT (phi y0 y1) x1) (eqT-sym (phi y0 y1) x1) (r1 (phi y0 y1) (isT-phi1 x0 x1 tx) ty))
+           (facts (phi x0 x1) y1 (eqT (phi x0 x1) y1) (refl (eqT (phi x0 x1) y1)) (s1 tx (isT-phi1 y0 y1 ty)))
+           (\ pe -> r1 y1 (isT-phi1 x0 x1 tx) (isT-phi1 y0 y1 ty) (and-false-r (eqT x0 y0) (eqT x1 y1) pe ne))) ;
+    psi y0 y1 -> \ tx ty ne -> ex-other (and (fwd (cmp2 x0 (psi y0 y1))) (fwd (cmp2 x1 (psi y0 y1)))) ;
+    om y0 -> \ tx ty ne -> ex-other (and (fwd (cmp2 x0 (om y0))) (fwd (cmp2 x1 (om y0)))) ;
+    ii -> \ tx ty ne -> ex-other (and (fwd (cmp2 x0 ii)) (fwd (cmp2 x1 ii))) } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> \ tx ty ne -> ex-otherR true ;
+    plus y0 ys | s0 _ -> \ tx ty ne ->
+      ex-cl2as (eqT (psi x0 x1) y0) (fwd (cmp2 (psi x0 x1) y0)) (bwd (cmp2 (psi x0 x1) y0))
+        (facts (psi x0 x1) y0 (eqT (psi x0 x1) y0) (refl (eqT (psi x0 x1) y0)) (s0 tx (isT-plus0 y0 ys ty))) ;
+    phi y0 y1 | s0 s1 -> \ tx ty ne -> ex-otherR (and (bwd (cmp2 (psi x0 x1) y0)) (bwd (cmp2 (psi x0 x1) y1))) ;
+    psi y0 y1 | s0 _ -> \ tx ty ne ->
+      excl-guard (eqT (psi x0 x1) (psi y0 y1)) ne
+        (cl5 (isI x0) (isI y0) (eqT x0 y0) (cmp2 x1 y1) (cmp2 x0 y0) (cmp2 (psi x0 x1) y0) (cmp2 x0 (psi y0 y1)))
+        (ex-cl5 (isI x0) (isI y0) (eqT x0 y0)
+           (fwd (cmp2 x1 y1)) (bwd (cmp2 x1 y1)) (fwd (cmp2 x0 y0)) (bwd (cmp2 x0 y0))
+           (fwd (cmp2 (psi x0 x1) y0)) (bwd (cmp2 (psi x0 x1) y0)) (fwd (cmp2 x0 (psi y0 y1))) (bwd (cmp2 x0 (psi y0 y1)))
+           (\ h1 h2 -> ap2 eqT (isI-true x0 h1) (isI-true y0 h2))
+           (\ h1 h2 -> (trans (ap (\ u -> eqT u y0) (isI-true x0 h1)) (isI-ne y0 h2),
+                       s0 tx (isT-psi0 y0 y1 ty)
+                          (trans (eqT-sym (psi x0 x1) y0) (R-notpsi y0 (isT-psiR y0 y1 ty) x0 x1))))
+           (\ h1 h2 -> (trans (ap (\ u -> eqT x0 u) (isI-true y0 h2)) (trans (eqT-sym x0 ii) (isI-ne x0 h1)),
+                       r0 (psi y0 y1) (isT-psi0 x0 x1 tx) ty (R-notpsi x0 (isT-psiR x0 x1 tx) y0 y1)))
+           (\ h1 h2 -> facts x0 y0 (eqT x0 y0) (refl (eqT x0 y0)) (r0 y0 (isT-psi0 x0 x1 tx) (isT-psi0 y0 y1 ty)))
+           (\ pe -> r1 y1 (isT-psi1 x0 x1 tx) (isT-psi1 y0 y1 ty) (and-false-r (eqT x0 y0) (eqT x1 y1) pe ne))) ;
+    om y0 | s0 -> \ tx ty ne ->
+      ex-other (ifB (isI x0) (leOf (cmp2 (psi x0 x1) y0) (eqT (psi x0 x1) y0))
+                                  (leOf (cmp2 x0 (om y0)) (eqT x0 (om y0)))) ;
+    ii -> \ tx ty ne -> ex-other (ifB (isI x0) true (leOf (cmp2 x0 ii) (eqT x0 ii))) } ;
+  om x0 | r0 -> split {
+    zero -> \ tx ty ne -> ex-otherR true ;
+    plus y0 ys | s0 _ -> \ tx ty ne ->
+      ex-cl2as (eqT (om x0) y0) (fwd (cmp2 (om x0) y0)) (bwd (cmp2 (om x0) y0))
+        (facts (om x0) y0 (eqT (om x0) y0) (refl (eqT (om x0) y0)) (s0 tx (isT-plus0 y0 ys ty))) ;
+    phi y0 y1 | s0 s1 -> \ tx ty ne -> ex-otherR (and (bwd (cmp2 (om x0) y0)) (bwd (cmp2 (om x0) y1))) ;
+    psi y0 y1 | s0 _ -> \ tx ty ne ->
+      ex-otherR (ifB (isI y0) (or (bwd (cmp2 x0 (psi y0 y1))) (eqT (psi y0 y1) x0))
+                                   (or (bwd (cmp2 (om x0) y0)) (eqT y0 (om x0)))) ;
+    om y0 -> \ tx ty ne -> excl-guard (eqT (om x0) (om y0)) ne (cl9 (cmp2 x0 y0))
+                             (r0 y0 (isT-om0 x0 tx) (isT-om0 y0 ty) ne) ;
+    ii -> \ tx ty ne -> ex-other (fwd (cmp2 x0 ii)) } ;
+  ii -> split {
+    zero -> \ tx ty ne -> ex-otherR true ;
+    plus y0 ys | s0 _ -> \ tx ty ne ->
+      ex-cl2as (eqT ii y0) (fwd (cmp2 ii y0)) (bwd (cmp2 ii y0))
+        (facts ii y0 (eqT ii y0) (refl (eqT ii y0)) (s0 tx (isT-plus0 y0 ys ty))) ;
+    phi y0 y1 | s0 s1 -> \ tx ty ne -> ex-otherR (and (bwd (cmp2 ii y0)) (bwd (cmp2 ii y1))) ;
+    psi y0 y1 | s0 _ -> \ tx ty ne -> ex-otherR (ifB (isI y0) true (or (bwd (cmp2 ii y0)) (eqT y0 ii))) ;
+    om y0 | s0 -> \ tx ty ne -> ex-otherR (bwd (cmp2 ii y0)) ;
+    ii -> \ tx ty ne -> abT ne } } ;
+
+------------------------------------------------------------------------
+-- Lemma 2.4, first half, for lt: irreflexive, asymmetric and total on T'
+
+boolCases (P : U l) : (b : Bool) -> (Id Bool b true -> P) -> (Id Bool b false -> P) -> P = split {
+  false -> \ t f -> f (refl false) ;
+  true -> \ t f -> t (refl true) } ;
+
+not-true : (c : Bool) -> Id Bool (not c) true -> Id Bool c false = split {
+  false -> \ h -> refl false ; true -> \ h -> abF h } ;
+not-false : (c : Bool) -> Id Bool (not c) false -> Id Bool c true = split {
+  false -> \ h -> abT h ; true -> \ h -> refl true } ;
+
+-- y <' x is the second component of cmp2 x y
+lt-swap (x y : T) : Id Bool (lt y x) (bwd (cmp2 x y)) = ap fwd (cmp2-swap x y) ;
+
+lt-irr (x : T) : Id Bool (lt x x) false = ap fwd (cmp2-irr x) ;
+
+lt-asym (x y : T) (tx : Id Bool (isT x) true) (ty : Id Bool (isT y) true)
+        (h : Id Bool (lt x y) true) : Id Bool (lt y x) false =
+  boolCases (Id Bool (lt y x) false) (eqT x y)
+    (\ pe -> abF (trans (sym (ap fwd (eq-irr x y pe))) h))
+    (\ ne -> trans (lt-swap x y) (not-true (bwd (cmp2 x y)) (trans (sym (cmp2-excl x y tx ty ne)) h))) ;
+
+lt-total (x y : T) (tx : Id Bool (isT x) true) (ty : Id Bool (isT y) true)
+         (ne : Id Bool (eqT x y) false) (h : Id Bool (lt x y) false) : Id Bool (lt y x) true =
+  trans (lt-swap x y) (not-false (bwd (cmp2 x y)) (trans (sym (cmp2-excl x y tx ty ne)) h)) ;

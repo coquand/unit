@@ -161,6 +161,11 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   classical segment turns primewise standard neighbourhoods into a finite
   cover, with excluded middle and prime-ideal existence as explicit
   parameters. Descent from the localised base remains separate.
+- [`etale-dynamical-global.pdf`](doc/etale-dynamical-global.pdf): the
+  constructive finite-tree-to-cover theorem, a constructed first-unit
+  coefficient scan, and complementary monic standard charts, in
+  `sag/etale-dynamical-global`. Constructing the complete tree from the
+  original local hypotheses and descending its charts remain separate.
 - [`qcqs.pdf`](doc/qcqs.pdf): the affine spectrum as a locally ringed
   lattice, gluing, affineness, the doubled line and the projective line;
   [`functorial-schemes.pdf`](doc/functorial-schemes.pdf): the essential
@@ -337,6 +342,23 @@ algebraic geometry and no hypothesis on the base ring.
   divided difference with trace duality inverts f'; if k is small, a
   finite coefficient field and a splitting by idempotents give the
   factors. The factors are not claimed to be fields.
+- `etale-direct`: over any commutative base, a finitely presented, flat,
+  formally unramified algebra is étale in the square-zero lifting sense
+  (`FlatUnramifiedEtale.Presented.theorem`). The diagonal certificate
+  constructs a Jacobian left inverse and a surjection from a multivariable
+  étale algebra; flatness transfer and flat-quotient lifting finish the
+  proof. No ZMT, field hypothesis or local-to-global cover is used.
+  5834 declarations, 0 failed; see
+  [`etale-direct-analysis.pdf`](doc/etale-direct-analysis.pdf).
+- `etale-monic-local`: the shortened ending of the local proof. From an
+  integral element y and polynomial fraction generation by y and 1/G(y),
+  finite presentation and formal unramifiedness construct a simple monic
+  relation. Formal smoothness (or flatness, by `etale-direct`) then gives
+  a monic standard presentation of E[1/G(y)], using the existing
+  idempotent-kernel theorem. The derivative relation and both finite
+  kernels are constructed. 6795 declarations, 0 failed; see
+  [`README.txt`](sag/etale-monic-local/README.txt) and the updated
+  [`mathematical note`](doc/etale-monic-cover-analysis.pdf).
 
 The local theorems still take the field-case data as explicit inputs;
 connecting `etale-field-product` to them remains to be done.
@@ -512,3 +534,11 @@ the results; `./segc core stop` stops it. Every declaration has a budget of
 `unfilled.seg` are intended (unfilled hidden arguments must fail on use);
 `byDeps` in `locks.seg` fails because instances are no longer identified
 through the dependencies of a definition.
+
+The [adversarial checker audit](tests/audit/README.txt) records the
+2026-11-01 duplicate-record-field soundness fix and partial/incremental
+checking fixes. Its runners generate 345 language tests and compare five
+driver scenarios with fresh full checks; sources and diagnostics are
+retained in their JSON reports. Run them with
+`python3 tests/audit/run.py --out /tmp/unit-audit-language` and
+`python3 tests/audit/driver.py --out /tmp/unit-audit-driver`.

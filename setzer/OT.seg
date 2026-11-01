@@ -1,0 +1,445 @@
+-- OT.seg: the terms T', the order <', the sets G_pi, the critical terms,
+-- C~_a(b) and the ordinal notations OT of Setzer, "Well-ordering proofs for
+-- Martin-Loef type theory", APAL 92 (1998), Section 2, Definitions 2.2-2.9,
+-- transcribed literally, as executable definitions, and the executable
+-- definitions of Section 2.2 (Defs. 2.10, 2.11, 2.13: +, phi, Omega, the card
+-- values, cat; their laws are in OTC.seg and OTF.seg).  No law is proved here;
+-- OTTest.seg and OTFTest.seg compute.
+--
+-- Level-free.  This file declares no level, so T, Bool and every function on
+-- them are one constant at every universe level (a declaration's arguments
+-- include the levels in scope at it).  Sets (level l) and classes (level l+)
+-- of Section 4 then speak about the same terms (WW.seg).  Hence "if" is
+-- written at each type, ifB, ifT, ifL, ifQ (the generic ite (A : U l) and
+-- B2 = Bool * Bool are in OTLaws.seg).
+--
+-- Informal text (Setzer, Def. 2.2-2.9), and how it is written below.
+--
+-- Terms (2.2).  0; sums (a0,..,an) with n > 0 and every ai in A';
+-- phi'_a b; psi_pi b with pi in R'; Omega'_a with a /= 0; I.  The classes:
+--   Suc'  = {phi'_0 0} u {(a0,..,an) | an in Suc'}
+--   R'    = {Omega'_a | a in Suc'} u {I}
+--   Fi'   = {psi_I b} u {I}
+--   Car'  = {Omega'_a} u Fi'          G' = {psi_pi b} u Car'
+--   A'    = {phi'_a b} u G'           (every non-zero term of T' is in A'
+--                                      or a sum)
+-- A term is a raw tree of the data type T; a sum (a0,..,an) is written
+-- plus a0 (plus a1 .. an), right nested, so that its tail (a1,..,an) is
+-- again a term (an atom when n = 1).  T' is the decidable predicate isT.
+--
+-- The order (2.3), a <' b, false when a = b:
+--   (1)  c /= 0  =>  0 <' c
+--   (2)  n + m >= 1:  (a0..an) <' (b0..bm)  iff  (n < m and ai = bi for
+--        i <= n) or (exists j <= min{n,m}. ai = bi for i < j and aj <' bj)
+--   (3)  phi'_a b <' phi'_c d  iff  (a <' c and b <' phi'_c d)
+--        or (a = c and b <' d) or (c <' a and phi'_a b <=' d)
+--   (4)  c in G':  phi'_a b <' c  iff  max{a,b} <' c
+--   (5)  pi, ka in R':  psi_pi b <' psi_ka d  iff  (pi = ka and b <' d)
+--        or (ka /= I /= pi and pi <' ka) or (pi = I /= ka and psi_pi b <' ka)
+--        or (pi /= ka = I and pi <' psi_ka d)
+--   (6)  I /= pi in R', ka in Car':  psi_pi b <' ka  iff  pi <=' ka
+--   (7)  psi_I b <' Omega'_c  iff  psi_I b <=' c
+--   (8)  psi_I b <' I
+--   (9)  Omega'_a <' Omega'_c  iff  a <' c
+--   (10) Omega'_a <' I  iff  a <' I
+--   (11) in all other cases  a <' b  iff  not (b <=' a).
+-- Written as one primitive recursion computing the pair
+--   cmp2 x y = (x <' y, y <' x)
+-- by recursion on x, with an inner recursion on y.  Every comparison a
+-- clause makes is between a proper subterm of x and some term, or between
+-- x and a proper subterm of y, so it is a recursive result (outer results
+-- r : T -> Bool * Bool, inner results s : Bool * Bool), with one exception: max{c,d} in (4)
+-- compares two subterms of y.  We read "max{a,b} <' c" as "a <' c and
+-- b <' c"; the two agree whenever <' is linear on the smaller terms, which
+-- is what Lemma 2.4 establishes by induction.  In case (11) the pair is
+-- the direct clause for one direction and its negation for the other.  A
+-- psi_pi b against psi_I d is covered by (5) and (6); they agree, since
+-- pi is then some Omega'_e, never equal to psi_I d, and (5) is used.
+--
+-- G_pi (2.7):  G(0) = G(I) = {};  G((a0..an)) = U G(ai);
+--   G(phi'_a b) = G(a) u G(b);  G(Omega'_a) = G(a);
+--   G(psi_ka b) = {b} u G(ka) u G(b)  if pi <=' ka /= I
+--                                       or (ka = I and (pi <=' psi_I b or pi = I))
+--               = G(ka)               if ka <' pi = I
+--               = {}                  if ka <' pi /= I
+--                                       or (ka = I and psi_I b <' pi <' I).
+-- Cr'(a) (2.8a): phi'_b c in Cr'(a) iff a <' b; b in G' is in Cr'(a) iff
+-- a <' b; 0 and sums are not.  C~_a(b) (2.8b) = {c in T' | G_a(c) <' b},
+-- where M <' b means x <' b for every x in M (Def. 2.6).
+--
+-- OT (2.9):
+--   (OT1) 0;  (OT2) (a0..an), n > 0, ai in OT n A', an <=' .. <=' a0;
+--   (OT3) phi'_a b, a, b in OT, b not in Cr'(a), not (b = 0 and a in G');
+--   (OT4) psi_pi b, b in OT, pi in R' n OT, G_pi(b) <' b;
+--   (OT5) Omega'_a, a in OT \ (Fi' u {0});  (OT6) I.
+
+
+data Bool = false | true ;
+
+not : Bool -> Bool = split { false -> true ; true -> false } ;
+and : Bool -> Bool -> Bool = split { false -> \ v -> false ; true -> \ v -> v } ;
+or : Bool -> Bool -> Bool = split { false -> \ v -> v ; true -> \ v -> true } ;
+-- if u then x else y, at Bool, at T, at L (level-free, so that every instance
+-- of the files of Section 4 shares the functions defined with them)
+ifB : Bool -> Bool -> Bool -> Bool = split { false -> \ u v -> v ; true -> \ u v -> u } ;
+
+-- the unit type
+data One = tt ;
+
+------------------------------------------------------------------------
+-- Terms (Def. 2.2)
+
+data T = zero | plus (x0 : T) (xs : T) | phi (x0 : T) (x1 : T)
+       | psi (x0 : T) (x1 : T) | om (x0 : T) | ii ;
+
+ifT : Bool -> T -> T -> T = split { false -> \ u v -> v ; true -> \ u v -> u } ;
+
+isZero : T -> Bool = split {
+  zero -> true ; plus x0 xs -> false ; phi x0 x1 -> false ;
+  psi x0 x1 -> false ; om x0 -> false ; ii -> false } ;
+
+isI : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> false ;
+  psi x0 x1 -> false ; om x0 -> false ; ii -> true } ;
+
+-- Suc': phi'_0 0, and the sums whose last summand is in Suc'
+isSuc : T -> Bool = split {
+  zero -> false ; plus x0 xs | _ rs -> rs ;
+  phi x0 x1 -> and (isZero x0) (isZero x1) ;
+  psi x0 x1 -> false ; om x0 -> false ; ii -> false } ;
+
+-- R': Omega'_a with a in Suc', and I
+isR : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> false ;
+  psi x0 x1 -> false ; om x0 -> isSuc x0 ; ii -> true } ;
+
+-- Fi': psi_I b, and I
+isFi : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> false ;
+  psi x0 x1 -> isI x0 ; om x0 -> false ; ii -> true } ;
+
+-- G': the psi terms and Car' (Omega'_a, I, psi_I b)
+isG : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> false ;
+  psi x0 x1 -> true ; om x0 -> true ; ii -> true } ;
+
+-- A': the phi terms and G'
+isA : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> true ;
+  psi x0 x1 -> true ; om x0 -> true ; ii -> true } ;
+
+-- T'
+isT : T -> Bool = split {
+  zero -> true ;
+  plus x0 xs | r0 rs -> and (and (isA x0) r0) (and (not (isZero xs)) rs) ;
+  phi x0 x1 | r0 r1 -> and r0 r1 ;
+  psi x0 x1 | r0 r1 -> and (and (isR x0) r0) r1 ;
+  om x0 | r0 -> and (not (isZero x0)) r0 ;
+  ii -> true } ;
+
+------------------------------------------------------------------------
+-- Equality of terms
+
+eqT : T -> T -> Bool = split {
+  zero -> split {
+    zero -> true ; plus y0 ys -> false ; phi y0 y1 -> false ;
+    psi y0 y1 -> false ; om y0 -> false ; ii -> false } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> false ; plus y0 ys -> and (r0 y0) (rs ys) ; phi y0 y1 -> false ;
+    psi y0 y1 -> false ; om y0 -> false ; ii -> false } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> false ; plus y0 ys -> false ; phi y0 y1 -> and (r0 y0) (r1 y1) ;
+    psi y0 y1 -> false ; om y0 -> false ; ii -> false } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> false ; plus y0 ys -> false ; phi y0 y1 -> false ;
+    psi y0 y1 -> and (r0 y0) (r1 y1) ; om y0 -> false ; ii -> false } ;
+  om x0 | r0 -> split {
+    zero -> false ; plus y0 ys -> false ; phi y0 y1 -> false ;
+    psi y0 y1 -> false ; om y0 -> r0 y0 ; ii -> false } ;
+  ii -> split {
+    zero -> false ; plus y0 ys -> false ; phi y0 y1 -> false ;
+    psi y0 y1 -> false ; om y0 -> false ; ii -> true } } ;
+
+------------------------------------------------------------------------
+-- The order (Def. 2.3): the clauses, on the comparisons they use.
+-- A value of Bool * Bool (B2 in OTLaws) is the pair (x <' y, y <' x); fwd and bwd read it.
+
+fwd (c : Bool * Bool) : Bool = c.1 ;
+bwd (c : Bool * Bool) : Bool = c.2 ;
+
+-- x <=' y from the pair for (x, y) and x = y
+leOf (c : Bool * Bool) (e : Bool) : Bool = or (fwd c) e ;
+
+-- "<' is false if a = b"
+guard : Bool -> (Bool * Bool) -> (Bool * Bool) = split { false -> \ c -> c ; true -> \ c -> (false, false) } ;
+
+-- (11), with the direct clause giving x <' y, resp. y <' x
+other (l : Bool) : Bool * Bool = (l, not l) ;
+otherR (r : Bool) : Bool * Bool = (not r, r) ;
+
+-- (1): 0 <' y, y /= 0;  its converse by (11)
+cl1 : Bool * Bool = other true ;
+cl1r : Bool * Bool = otherR true ;
+
+-- (2), both terms proper sums:  h = cmp2 x0 y0,  e : x0 = y0,
+-- t = cmp2 on the tails
+cl2 (h : Bool * Bool) (e : Bool) (t : Bool * Bool) : Bool * Bool =
+  (or (fwd h) (and e (fwd t)), or (bwd h) (and e (bwd t))) ;
+-- (2), x = (x0,..) a proper sum, y an atom:  h = cmp2 x0 y,  e : y = x0
+cl2sa (h : Bool * Bool) (e : Bool) : Bool * Bool = (fwd h, or (bwd h) e) ;
+-- (2), x an atom, y = (y0,..) a proper sum:  h = cmp2 x y0,  e : x = y0
+cl2as (h : Bool * Bool) (e : Bool) : Bool * Bool = (or (fwd h) e, bwd h) ;
+
+-- (3), x = phi'_xa xb, y = phi'_yc yd:  ac = cmp2 xa yc,  bY = cmp2 xb y,
+-- eac : xa = yc,  bd = cmp2 xb yd,  xd = cmp2 x yd,  exd : x = yd,
+-- eyb : y = xb
+cl3 (ac : Bool * Bool) (bY : Bool * Bool) (eac : Bool) (bd : Bool * Bool) (xd : Bool * Bool) (exd : Bool) (eyb : Bool) : Bool * Bool =
+  (or (or (and (fwd ac) (fwd bY)) (and eac (fwd bd))) (and (bwd ac) (leOf xd exd)),
+   or (or (and (bwd ac) (bwd xd)) (and eac (bwd bd)))
+      (and (fwd ac) (or (bwd bY) eyb))) ;
+
+-- (4), x = phi'_xa xb, y in G':  aY = cmp2 xa y,  bY = cmp2 xb y;
+-- its converse by (11)
+cl4 (aY : Bool * Bool) (bY : Bool * Bool) : Bool * Bool = other (and (fwd aY) (fwd bY)) ;
+-- (4) with the roles exchanged: x in G', y = phi'_yc yd:  xc = cmp2 x yc,
+-- xd = cmp2 x yd
+cl4r (xc : Bool * Bool) (xd : Bool * Bool) : Bool * Bool = otherR (and (bwd xc) (bwd xd)) ;
+
+-- (5), x = psi_xp xb, y = psi_yq yd:  ip : xp = I,  iq : yq = I,
+-- epq : xp = yq,  bd = cmp2 xb yd,  pq = cmp2 xp yq,  xq = cmp2 x yq,
+-- pY = cmp2 xp y
+cl5 (ip : Bool) (iq : Bool) (epq : Bool) (bd : Bool * Bool) (pq : Bool * Bool) (xq : Bool * Bool) (pY : Bool * Bool) : Bool * Bool =
+  (or (or (and epq (fwd bd)) (and (and (not ip) (not iq)) (fwd pq)))
+      (or (and (and ip (not iq)) (fwd xq)) (and (and (not ip) iq) (fwd pY))),
+   or (or (and epq (bwd bd)) (and (and (not iq) (not ip)) (bwd pq)))
+      (or (and (and iq (not ip)) (bwd pY)) (and (and (not iq) ip) (bwd xq)))) ;
+
+-- (6) and (7), x = psi_xp xb, y = Omega'_yc:  by (6) when xp /= I
+-- (pY = cmp2 xp y, epy : xp = y), by (7) when xp = I (xc = cmp2 x yc,
+-- exc : x = yc); the converse by (11)
+cl67 (ip : Bool) (pY : Bool * Bool) (epy : Bool) (xc : Bool * Bool) (exc : Bool) : Bool * Bool =
+  other (ifB ip (leOf xc exc) (leOf pY epy)) ;
+-- (6) and (8), x = psi_xp xb, y = I
+cl68 (ip : Bool) (pY : Bool * Bool) (epy : Bool) : Bool * Bool =
+  other (ifB ip true (leOf pY epy)) ;
+-- the same with the roles exchanged: y = psi_yq yd,
+-- x = Omega'_xa (qx = cmp2 x yq, eqx : yq = x, aY = cmp2 xa y, eya : y = xa)
+cl67r (iq : Bool) (qx : Bool * Bool) (eqx : Bool) (aY : Bool * Bool) (eya : Bool) : Bool * Bool =
+  otherR (ifB iq (or (bwd aY) eya) (or (bwd qx) eqx)) ;
+-- x = I
+cl68r (iq : Bool) (qx : Bool * Bool) (eqx : Bool) : Bool * Bool =
+  otherR (ifB iq true (or (bwd qx) eqx)) ;
+
+-- (9), x = Omega'_xa, y = Omega'_yc:  ac = cmp2 xa yc
+cl9 (ac : Bool * Bool) : Bool * Bool = ac ;
+-- (10), x = Omega'_xa, y = I:  aI = cmp2 xa I;  the converse by (11)
+cl10 (aI : Bool * Bool) : Bool * Bool = other (fwd aI) ;
+-- (10) with the roles exchanged: x = I, y = Omega'_yc:  xc = cmp2 I yc
+cl10r (xc : Bool * Bool) : Bool * Bool = otherR (bwd xc) ;
+
+cmp2 : T -> T -> (Bool * Bool) = split {
+  zero -> split {
+    zero -> (false, false) ;
+    plus y0 ys -> cl1 ; phi y0 y1 -> cl1 ; psi y0 y1 -> cl1 ;
+    om y0 -> cl1 ; ii -> cl1 } ;
+  plus x0 xs | r0 rs -> split {
+    zero -> cl1r ;
+    plus y0 ys -> guard (eqT (plus x0 xs) (plus y0 ys)) (cl2 (r0 y0) (eqT x0 y0) (rs ys)) ;
+    phi y0 y1 -> cl2sa (r0 (phi y0 y1)) (eqT (phi y0 y1) x0) ;
+    psi y0 y1 -> cl2sa (r0 (psi y0 y1)) (eqT (psi y0 y1) x0) ;
+    om y0 -> cl2sa (r0 (om y0)) (eqT (om y0) x0) ;
+    ii -> cl2sa (r0 ii) (eqT ii x0) } ;
+  phi x0 x1 | r0 r1 -> split {
+    zero -> cl1r ;
+    plus y0 ys | s0 _ -> cl2as s0 (eqT (phi x0 x1) y0) ;
+    phi y0 y1 | _ s1 -> guard (eqT (phi x0 x1) (phi y0 y1))
+      (cl3 (r0 y0) (r1 (phi y0 y1)) (eqT x0 y0) (r1 y1) s1 (eqT (phi x0 x1) y1) (eqT (phi y0 y1) x1)) ;
+    psi y0 y1 -> cl4 (r0 (psi y0 y1)) (r1 (psi y0 y1)) ;
+    om y0 -> cl4 (r0 (om y0)) (r1 (om y0)) ;
+    ii -> cl4 (r0 ii) (r1 ii) } ;
+  psi x0 x1 | r0 r1 -> split {
+    zero -> cl1r ;
+    plus y0 ys | s0 _ -> cl2as s0 (eqT (psi x0 x1) y0) ;
+    phi y0 y1 | s0 s1 -> cl4r s0 s1 ;
+    psi y0 y1 | s0 _ -> guard (eqT (psi x0 x1) (psi y0 y1))
+      (cl5 (isI x0) (isI y0) (eqT x0 y0) (r1 y1) (r0 y0) s0 (r0 (psi y0 y1))) ;
+    om y0 | s0 -> cl67 (isI x0) (r0 (om y0)) (eqT x0 (om y0)) s0 (eqT (psi x0 x1) y0) ;
+    ii -> cl68 (isI x0) (r0 ii) (eqT x0 ii) } ;
+  om x0 | r0 -> split {
+    zero -> cl1r ;
+    plus y0 ys | s0 _ -> cl2as s0 (eqT (om x0) y0) ;
+    phi y0 y1 | s0 s1 -> cl4r s0 s1 ;
+    psi y0 y1 | s0 _ -> cl67r (isI y0) s0 (eqT y0 (om x0)) (r0 (psi y0 y1)) (eqT (psi y0 y1) x0) ;
+    om y0 -> guard (eqT (om x0) (om y0)) (cl9 (r0 y0)) ;
+    ii -> cl10 (r0 ii) } ;
+  ii -> split {
+    zero -> cl1r ;
+    plus y0 ys | s0 _ -> cl2as s0 (eqT ii y0) ;
+    phi y0 y1 | s0 s1 -> cl4r s0 s1 ;
+    psi y0 y1 | s0 _ -> cl68r (isI y0) s0 (eqT y0 ii) ;
+    om y0 | s0 -> cl10r s0 ;
+    ii -> (false, false) } } ;
+
+-- x <' y on raw terms, and x <=' y
+lt (x y : T) : Bool = fwd (cmp2 x y) ;
+le (x y : T) : Bool = or (lt x y) (eqT x y) ;
+-- Setzer's a <' b: false unless a, b in T'
+ltT (x y : T) : Bool = and (and (isT x) (isT y)) (lt x y) ;
+
+------------------------------------------------------------------------
+-- Finite sets of terms, and M <' b (Def. 2.6)
+
+data L = nil | cons (h : T) (tl : L) ;
+
+ifL : Bool -> L -> L -> L = split { false -> \ u v -> v ; true -> \ u v -> u } ;
+
+app : L -> L -> L = split { nil -> \ m -> m ; cons h tl | r -> \ m -> cons h (r m) } ;
+
+-- M <' b: every element of M is <' b
+allLt : L -> T -> Bool = split {
+  nil -> \ y -> true ;
+  cons h tl | r -> \ y -> and (lt h y) (r y) } ;
+
+------------------------------------------------------------------------
+-- G_pi (Def. 2.7)
+
+-- the clause for psi_ka b, from G_pi(ka) = gk and G_pi(b) = gb
+gPsi (p k b : T) (gk gb : L) : L =
+  ifL (isI k)
+    (ifL (or (isI p) (le p (psi k b))) (cons b (app gk gb)) nil)
+    (ifL (le p k) (cons b (app gk gb)) (ifL (isI p) gk nil)) ;
+
+G (p : T) : T -> L = split {
+  zero -> nil ;
+  plus x0 xs | g0 gs -> app g0 gs ;
+  phi x0 x1 | g0 g1 -> app g0 g1 ;
+  psi x0 x1 | g0 g1 -> gPsi p x0 x1 g0 g1 ;
+  om x0 | g0 -> g0 ;
+  ii -> nil } ;
+
+-- G^0_pi(a) = G_pi(a) u {0}
+G0 (p x : T) : L = cons zero (G p x) ;
+
+------------------------------------------------------------------------
+-- Critical terms and C~_a(b) (Def. 2.8)
+
+-- y in Cr'(x)
+crit (x : T) : T -> Bool = split {
+  zero -> false ; plus y0 ys -> false ;
+  phi y0 y1 -> lt x y0 ;
+  psi y0 y1 -> lt x (psi y0 y1) ;
+  om y0 -> lt x (om y0) ;
+  ii -> lt x ii } ;
+
+-- z in C~_x(y)
+inC (x y z : T) : Bool = and (isT z) (allLt (G x z) y) ;
+
+------------------------------------------------------------------------
+-- OT (Def. 2.9)
+
+-- the first summand of a non-zero term
+hd : T -> T = split {
+  zero -> zero ; plus x0 xs -> x0 ; phi x0 x1 -> phi x0 x1 ;
+  psi x0 x1 -> psi x0 x1 ; om x0 -> om x0 ; ii -> ii } ;
+
+isOT : T -> Bool = split {
+  zero -> true ;
+  plus x0 xs | r0 rs ->
+    and (and (and (isA x0) r0) (and (not (isZero xs)) rs)) (le (hd xs) x0) ;
+  phi x0 x1 | r0 r1 ->
+    and (and r0 r1) (and (not (crit x0 x1)) (not (and (isZero x1) (isG x0)))) ;
+  psi x0 x1 | r0 r1 -> and (and (isR x0) r0) (and r1 (allLt (G x0 x1) x1)) ;
+  om x0 | r0 -> and (and r0 (not (isFi x0))) (not (isZero x0)) ;
+  ii -> true } ;
+
+------------------------------------------------------------------------
+-- Definitions 2.10, 2.11, 2.13 (executable; their laws are in OTC.seg, OTF.seg)
+
+isOne : T -> Bool = split {
+  zero -> false ; plus x0 xs -> false ; phi x0 x1 -> and (isZero x0) (isZero x1) ;
+  psi x0 x1 -> false ; om x0 -> false ; ii -> false } ;
+
+pred1 : T -> T = split {
+  zero -> zero ;
+  plus x0 xs | _ rs -> ifT (isOne xs) x0 (plus x0 rs) ;
+  phi x0 x1 -> zero ; psi x0 x1 -> zero ; om x0 -> zero ; ii -> zero } ;
+
+omF : T -> T = split {
+  zero -> zero ; plus x0 xs -> om (plus x0 xs) ; phi x0 x1 -> om (phi x0 x1) ;
+  psi x0 x1 -> ifT (isI x0) (psi x0 x1) (om (psi x0 x1)) ;
+  om x0 -> om (om x0) ; ii -> ii } ;
+
+kminus : T -> T = split {
+  zero -> zero ; plus x0 xs -> zero ; phi x0 x1 -> zero ; psi x0 x1 -> zero ;
+  om x0 -> omF (pred1 x0) ; ii -> zero } ;
+
+-- the argument of Omega'_a
+arg : T -> T = split {
+  zero -> zero ; plus x0 xs -> zero ; phi x0 x1 -> zero ; psi x0 x1 -> zero ; om x0 -> x0 ; ii -> zero } ;
+
+data N = nz | ns (d : N) ;
+
+one : T = phi zero zero ;
+
+------------------------------------------------------------------------
+-- 2.10
+
+-- (a), for b /= 0 and an atom g:  (g, b) if b1 <=' g, else b
+consA (g b : T) : T = ifT (le (hd b) g) (plus g b) b ;
+
+add : T -> T -> T = split {
+  zero -> \ b -> b ;
+  plus x0 xs | _ r -> \ b -> ifT (isZero b) (plus x0 xs) (ifT (le (hd b) x0) (plus x0 (r b)) b) ;
+  phi x0 x1 -> \ b -> ifT (isZero b) (phi x0 x1) (consA (phi x0 x1) b) ;
+  psi x0 x1 -> \ b -> ifT (isZero b) (psi x0 x1) (consA (psi x0 x1) b) ;
+  om x0 -> \ b -> ifT (isZero b) (om x0) (consA (om x0) b) ;
+  ii -> \ b -> ifT (isZero b) ii (consA ii b) } ;
+
+suc (a : T) : T = add a one ;
+
+-- (b)
+mul (a : T) : N -> T = split { nz -> zero ; ns m | r -> add r a } ;
+
+-- (c)
+phiF (a b : T) : T = ifT (crit a b) b (ifT (and (isZero b) (isG a)) a (phi a b)) ;
+
+-- (e)
+omN : N -> T -> T = split { nz -> \ a -> a ; ns m | r -> \ a -> omF (r a) } ;
+
+------------------------------------------------------------------------
+-- 2.13(b): the four values (a~, a+, a^-Fi, a^+Fi), and accessors
+
+-- if u then x else y on these quadruples
+ifQ : Bool -> (T * (T * (T * T))) -> (T * (T * (T * T))) -> (T * (T * (T * T))) =
+  split { false -> \ u v -> v ; true -> \ u v -> u } ;
+
+-- psi_b c, b /= I, from the values cb of b
+cardS (b : T) (cb : T * (T * (T * T))) : T * (T * (T * T)) = (kminus b, (b, (cb.2.2.1, cb.2.2.2))) ;
+
+card : T -> (T * (T * (T * T))) = split {
+  zero -> (zero, (om one, (zero, psi ii zero))) ;
+  plus x0 xs | r0 rs -> r0 ;
+  phi x0 x1 | r0 r1 -> ifQ (le x1 x0) r0 r1 ;
+  psi x0 x1 | r0 r1 -> ifQ (isI x0)
+    (psi x0 x1, (omF (suc (psi x0 x1)), (psi x0 x1, psi ii (suc x1))))
+    (cardS x0 r0) ;
+  om x0 | r0 -> (om x0, (omF (suc x0), (r0.2.2.1, r0.2.2.2))) ;
+  ii -> (ii, (omF (suc ii), (ii, ii))) } ;
+
+tilde (a : T) : T = (card a).1 ;
+up (a : T) : T = (card a).2.1 ;
+mFi (a : T) : T = (card a).2.2.1 ;
+pFi (a : T) : T = (card a).2.2.2 ;
+
+-- 2.13(c)
+mI (a : T) : T = ifT (lt a ii) zero ii ;
+
+-- Def. 2.11: (b1..bn, c1..cm) is cat b c
+cat : T -> T -> T = split {
+  zero -> \ z -> z ;
+  plus x0 xs | _ r -> \ z -> plus x0 (r z) ;
+  phi x0 x1 -> \ z -> plus (phi x0 x1) z ;
+  psi x0 x1 -> \ z -> plus (psi x0 x1) z ;
+  om x0 -> \ z -> plus (om x0) z ;
+  ii -> \ z -> plus ii z } ;
+

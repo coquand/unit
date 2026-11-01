@@ -159,6 +159,44 @@ directories are not ported.
 
 ## Measuring the levels
 
+Finite ambient coherence proposal (2026-11-01):
+[`../../doc/hcat-ambient-segal.tex`](../../doc/hcat-ambient-segal.tex)
+([PDF](../../doc/hcat-ambient-segal.pdf)) formulates a 5-restricted
+semi-Segal presentation of Cat, compared with Sattler–Wärn and
+Capriotti–Kraus. It isolates the degree-5 endpoint comparison and the
+compatibility with the existing `hcomp-assoc` needed to derive `hpent`.
+This is a mathematical proposal, not a checked replacement for `Coh3`:
+the finite extension and its comparisons remain to be constructed.
+`All.seg` and the homology development retain their current parameters.
+
+The subsequent [internal refactor experiment](../hcat-segal/README.txt)
+constructs new composition and associativity from finite horn fillers and
+derives their pentagon. The existing homology theorem files, including
+Mayer–Vietoris and spheres, check against that interface through relative
+links. See the [refactor note](../../doc/hcat-segal-refactor.pdf).
+This takes internal semi-Segal data as parameters; constructing them from
+the original ambient axioms remains open. The original `hcat` proof files
+and its assumption of `hpent` are unchanged.
+
+The finite internal semi-Segal inputs are now adopted as axioms for
+continuing homology in the sibling root. The
+[homology continuation note](../../doc/hcat-segal-homology.pdf) records
+homotopy/equivalence invariance, identification of group units with zero
+classes, and a Mayer–Vietoris tail of groups through degree zero.
+The sibling root now proves degree-zero multiplicativity, additivity of
+the existing final boundary, comparison of
+the structural boundary with the looped direct boundary, and naturality
+for supplied coherent maps of representable squares. It checks:
+114 modules, 2876 declarations, 0 failures; fresh `--opened` 3.13 s.
+The boundary proof constructs a connecting arrow to the suspension and
+identifies the existing boundary, under the chosen equivalences, with
+its pointed loop map. No new axioms beyond the explicit parameters.
+Constructing the representable cube from maps of type pushouts remains
+open. The new `hcat-spectrum` root assembles the existing
+Eilenberg–MacLane spaces into coefficient Omega-spectrum data
+(36 modules, 1001 declarations, 0 failures); the categorical model and
+ordinary-homology comparison remain to be constructed.
+
 By the layout, a theorem needs at most the level of the segment it is checked in. After
 M5 and after M7, record for each main theorem the innermost segment it needs, by moving
 it outward until it no longer checks. The questions are:
@@ -209,6 +247,8 @@ Levels after M7 (by the layout of All.seg):
 | unit laws `hcomp-unit-r/l` | Coh2 | Hom-map-id, Hom-map-gen |
 | associativity `hcomp-assoc` | Coh2 | segal-all at n = 3, Hom-map-comp |
 | Lemma 35, `rezk-idtoiso`, Lemma 37, Remark 39 (both directions) | Coh2 | unit laws, associativity |
+| FibreInclusion, CommutingLoops, LoopDifference, PullbackSource/Difference | Structure (lexical only) | type theory; no Cat parameter used |
+| HomologyDouble, HomologyFibreSource, HomologySequence | Stable inside WithPentagon | existing hpent, copowers and stability; no further coherence |
 
 So Segal for all n, composition with its laws, and the results 33-39 need
 level 2 and nothing of level 3.  Composition itself is level 1; level 2 enters
@@ -242,6 +282,149 @@ Each file is under 1 s. Each milestone is recorded below with its check figures.
 
 ## Status
 
+- 2026-11-01: positive-degree Mayer--Vietoris sequence assembled in
+  `HomologySequence` (54 lines), with all three repeating positions
+  exact and every arrow a homomorphism of the EXISTING abelian groups.
+  It uses the usual i_*, j_*, u_*-v_* and ONE structural boundary;
+  consecutive pieces agree definitionally. The positive tail ends at
+  H_1(X), with no exactness claim at that final term. `FibreInclusion`
+  retains the projected path; `PullbackSource` and `PullbackDifference`
+  prove source exactness for the same boundary as `PullbackFibre`.
+  `CommutingLoops` removes basepoint compatibility obligations when
+  loops at the target commute. `HomologyDouble` therefore obtains
+  double-loop naturality from L-nat without a higher law for L.
+  `HomologyFibreLegs` now uses one lemma for both legs (49 lines).
+  Remaining: degree-zero extension and categorical naturality of the
+  assembled sequence; H3a still open, hpent still assumed. No new
+  axioms: univ, images, surjections and the existing Cat, copower,
+  zero-object, suspension and stability parameters are unchanged.
+  Validation: changed, 14 modules, 0 failures, 0.70 s; full server check,
+  169 modules, 3978 declarations, 0 failures, 14.46 s. Fresh full
+  --opened: 3978 declarations, 0 failures, 17.44 s. All new files under
+  1 s. Both mathematical notes and PDFs updated.
+
+- 2026-11-01: structural reconstruction of the exact sequence.
+  `FibreSequence` proves exactness and homomorphism laws for the same
+  maps pi_1(fib f) -> pi_1(Y) -> pi_1(W). `FibreTower` iterates pointed
+  fibre inclusions by ordinary recursion. `FibreTowerMaps` and
+  `FibreTowerNaturality` propagate one specified pointed square to
+  commuting group squares at every stage; no further coherence inputs.
+  `PullbackFibre` retains the equivalence of the fibre of the product
+  projection with the loop space of the apex, over the boundary map.
+  `HomologyFibre`, `HomologyFibreLegs`, and `HomologyFibreExact` then give
+  ONE connecting homomorphism H_(n+2)(X) -> H_(n+1)(C), exact at its
+  target with the existing i_* and j_*, for every n >= 0. These are the
+  existing abelian groups. Comparison with the old boundary is not
+  needed for this result. Remaining: identify the other tower stages
+  with the conventional grading and difference map, degree zero, and
+  supply pointed input squares for categorical naturality. The full
+  conventional natural LES is not yet proved. No new axioms: Theory
+  still has univ, images, surjections; the existing Cat, copower and
+  stability parameters, including hpent, are unchanged. H3a remains open.
+  Validation: changed, 131 modules, 0 failures, 17.12 s; server all,
+  159 modules, 3651 declarations, 0 failures (cached). Fresh full
+  --opened check: 3651 declarations, 0 failures, 16.91 s. Every new
+  module is under 1 s. Mathematical note and PDF updated.
+
+- 2026-11-01: completed the missing Mayer--Vietoris exactness position
+  under the existing hpent. `MayerVietorisExact.exact-p` and
+  `difference-zero` prove ker(delta) = im(u_* - v_*) at H_(n+1)(X), for
+  the original boundary and chosen group structures. `delta-point-path`
+  proves that this boundary is pointed. `ZeroCoherence` and `ConeZero`
+  supply the basepoint compatibility using hpent. The generic pullback
+  path, exactness and naturality theorems are in Theory (no Cat).
+  `MayerVietorisLoop` separately constructs a homomorphism
+  H_(n+2)(X) -> H_(n+1)(C) by looping the preceding pointed boundary.
+  Agreement with the original boundary at the next degree, its
+  additivity, degree-zero homomorphisms and categorical naturality
+  remain open. In particular, the new map has not been substituted into
+  the exactness results. The comparison is stated as a type, not added
+  as an axiom-system parameter. H3a and hpent are unchanged.
+  Validation: changed passes; full check, 149 modules, 3349 declarations,
+  0 failures, 14.03 s. Fresh --opened check of the nine new modules and
+  Pi0/Pi0Maps: 359 declarations, 0 failures, 0.75 s. Each new module is
+  under 0.2 s in the full check. Mathematical note updated accordingly.
+
+- 2026-11-01: positive-degree homomorphisms proved under the existing
+  hpent. Pi0Maps proves the pointed loop-map and transport lemmas;
+  HGroupMaps applies L-nat to the existing HGroups.LoopGroup structures.
+  hmap-mul/one/inverse hold in every positive degree, and hmap-id/comp
+  in every degree. Degree-zero and connecting homomorphisms remain open.
+  H3a progressed but is NOT finished: HomTripleShort and
+  HomTripleLongCells normalize the actual short path and all five long
+  steps; HomTripleNormalize places them over one morphism path and
+  reduces HMOC3 to two explicit endpoint equations. Their derivation
+  from k5 remains open, followed by the triangle, composition-witness,
+  associator-preservation and 4-simplex steps. No parameters were added;
+  hpent remains assumed and the chosen associator is unchanged.
+  Validation: fresh --opened check of the six new files, 227 declarations,
+  0 failures, 2.14 s; changed, 10 modules, 0 failures, 1.44 s;
+  full server check (with cached results), 140 modules, 3090 declarations,
+  0 failures, 9.27 s. Each new file checks in under 1 s.
+- 2026-11-01: HomEqMap.MapEq.naturality proves the action of Hom-map on
+  Hom-eq including both endpoint cells. HomFunctorPaths provides the
+  functor-path and endpoint-transport comparisons with explicit forms.
+  These use Structure only. HomTriple (Coh2) constructs both actual paths
+  of HMOC3 using the existing Hom-map-of-comp terms; their equality type
+  is stated as Triple.Coherence, without an assumed proof. Identifying
+  their normalized endpoint pastings with k5 is still open, as is hpent.
+  No parameters were added and the existing associator is unchanged.
+  Validation: fresh --opened check, 72 declarations, 0 failures, 0.50 s;
+  changed passes; full check, 134 modules, 2863 declarations, 0 failures,
+  12.16 s.
+- 2026-11-01: continued the k5-to-hpent comparison with the existing
+  HomFunctor proof terms fixed. HomCompEndpoints.Normal.form-explicit
+  expresses Hom-map-of-comp at arbitrary endpoints as explicit pentagon
+  and naturality pastings (Coh2). HomEqCoerce.Coerce.naturality computes
+  endpoint transport of Hom-eq paths and their 2-cells (Structure).
+  The corresponding Hom-map action and the full HMOC3 equation remain
+  open; hpent has not been discharged. No new parameters were added.
+  Fresh --opened check: 53 declarations, 0 failures, 0.43 s; changed
+  passes; full check: 131 modules, 0 failures, 11.59 s. Each new file
+  checks in under 0.25 s.
+- 2026-11-01: attempt to derive hpent from k5; hpent is still open.
+  Added HomEqHigher (comparison of paths with endpoint witnesses),
+  EquivIndBeta (computation of homotopy extension, by univalence),
+  PentagonReduction (the chosen associator on spines; reduction to
+  4-simplex spines), and K5Hom (equal Hom paths from the actual k5
+  endpoint pastings). The last lemma uses Coh3; the reduction uses Coh2;
+  the two generic comparison lemmas use only the type theoretic
+  foundations. No new axiom-system parameters were introduced.
+  Identification with the existing Hom-map-of-comp pastings, followed
+  by coherence of composition witnesses, remains necessary.
+  Validation: fresh --opened check of the four files, 56 declarations,
+  0 failures, 0.47 s; changed passes and server all reports 129 modules,
+  2738 declarations, 0 failures (cached results). Homology continues to
+  use its existing hpent parameter.
+- 2026-11-01: witness transport, compatible with the concurrent H4-H5 work.
+  `WitnessTransport` proves transport along squares, identity/pasting laws,
+  and coherent uniqueness when the target vertical map is an equivalence.
+  `CopowerPost` applies this to postcomposition, including comparison of
+  successive and direct postcomposition as full witnesses. Its projection
+  is not yet identified with the specified associator of D.
+  Levels: WitnessTransport uses only the type theoretic foundations;
+  CopowerPost uses Coh2 and the existing copower parameters, with no new
+  axioms and no use of hpent or stability. Both are integrated alongside
+  the other work's Stable segment without changing its parameters.
+  Changed/all validation snapshot: 122 modules, 2545 declarations,
+  0 failures, full check 11.24 s. New modules: 80 declarations total,
+  each module at most 0.02 s; fresh --opened check: 0 failures, 0.25 s.
+- 2026-11-01: universal-witness coherence experiment for homology.
+  `UniversalWitness.globes-contr` and `Witness.coherence` prove coherent
+  uniqueness at every finite globular path dimension; `CopowerWitness`
+  retains beta compatibility in identity and composition comparisons.
+  `CompWitness` isolates the general postcomposition calculation, and
+  `ExcisionAssoc.rt-assoc` now applies it. See DESIGN-HOMOLOGY.md for the
+  scope and the remaining ambient-coherence problem.
+  - Levels: UniversalWitness is imported in Structure (uses only the type
+    theoretic foundations); CopowerWitness uses Coh2 and the copower
+    parameters; CompWitness is in Coh2 with the internal pentagon as an
+    explicit theorem argument; its excision instance still uses hpent.
+  - Validation snapshot: changed and all pass; all checked 108 modules,
+    2089 declarations, 0 failures in 9.59 s. The four witness/excision
+    modules also pass a fresh --opened check: 94 declarations, 0 failures,
+    0.56 s. The new modules each check in at most 0.31 s. The full snapshot
+    includes concurrent additions elsewhere in hcat.
 - 2026-10-31: design written. No code yet.
 - 2026-10-31: M0-M5 done.  `./segc sag/hcat all`: 74 modules, 1407 declarations,
   0 failed, 6.2 s; every file under 1 s (largest ProductPentagonR 0.88 s), every

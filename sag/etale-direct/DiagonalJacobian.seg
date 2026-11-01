@@ -1,0 +1,141 @@
+-- The diagonal certificate gives a left inverse to the presentation
+-- Jacobian. Work in E[Y], quotient by the original mapped equations,
+-- and differentiate finite kernel witnesses. All choices are truncated.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (E : Algebras[l].Over[R,setR].Algebra)
+ (p : Presentations[l].Over[R,setR].Presentation) (pe : Presentations[l].Over[R,setR].Presents p E) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module PK = PresentationKernel[l].Over[R,setR] ;
+ module M = MappedPresentation[l].Over[R,E.ring,setR,E.set,E.iota] ;
+ module CE = M.CK ; module PE = M.PK ;
+ base-back : C.Hom (M.restrict CE.base) E = (H.identity E.ring,\ r -> refl (E.iota.1 r)) ;
+ n : Nat = p.1 ; V : U l = Fin n ;
+ m : Nat = len {P.Expr V} p.2 ;
+ equation (j : Fin m) : P.Expr V = PK.at V p.2 j ;
+ x : V -> E.ring.R = pe.1.1 ;
+ module JE = ExpressionJets[l].Over[R,setR].Finite[n,E,x] ;
+ module ES = FiniteIdeal[l].Sums[E.ring] ; module ED = MnSums[l].Over[E.ring] ; module EL = RL[E.ring] ;
+ record Witness {
+  coefficient (i : V) (j : Fin m) : E.ring.R ;
+  identity (i k : V) : Id E.ring.R (ES.lin m (coefficient i) (\ j -> JE.partial (equation j) k)) (ED.delta n k i) ;
+ } ;
+ module Free = PresentationExistence[l].Over[E.ring,E.set,(n,nil)] ;
+ Q : CE.Algebra = Free.A.algebra ;
+ pq : PE.Presents (n,nil) Q = Free.presentation ;
+ y : V -> Q.ring.R = pq.1.1 ;
+ g (j : Fin m) : Q.ring.R = PE.eval V Q y (M.expression V (equation j)) ;
+ module Quot = FiniteEquationQuotient[l].Over[Q.ring,m,g] ;
+ module QT = Quot.Q ;
+ T : CE.Algebra = CE.mkAlgebra QT.ring QT.set (H.compose E.ring Q.ring QT.ring QT.projection Q.iota) ;
+ projection : CE.Hom Q T = (QT.projection,\ a -> refl (QT.include (Q.iota.1 a))) ;
+ tr : C.Algebra = M.restrict T ;
+ coordinates (i : V) : T.ring.R = QT.include (y i) ;
+ root (j : Fin m) : Id T.ring.R (P.eval V tr coordinates (equation j)) T.ring.z =
+  trans (sym (M.value V T coordinates (equation j)))
+   (trans (sym (PE.natural V Q T projection y (M.expression V (equation j)))) (Quot.root j)) ;
+ right-solution : P.Solutions p tr = (coordinates,PK.indexed-zeros V tr coordinates p.2 root) ;
+ right : C.Hom E tr = (pe.2 tr).sec right-solution ;
+ right-gen (i : V) : Id T.ring.R (right.1.1 (x i)) (coordinates i) =
+  ap (\ s -> s.1 i) ((pe.2 tr).sec-eq right-solution) ;
+ left : C.Hom E tr = (T.iota,\ r -> refl (T.iota.1 (E.iota.1 r))) ;
+ evaluation : CE.Hom Q CE.base = (pq.2 CE.base).sec (x,tt) ;
+ eval-gen (i : V) : Id E.ring.R (evaluation.1.1 (y i)) (x i) =
+  ap (\ s -> s.1 i) ((pq.2 CE.base).sec-eq (x,tt)) ;
+ eval-expression (e : PE.Expr V) :
+  Id E.ring.R (evaluation.1.1 (PE.eval V Q y e)) (PE.eval V CE.base x e) =
+  trans (PE.natural V Q CE.base evaluation y e)
+   (Generated[l].Over[E.ring,E.set].eval-ext V CE.base (\ i -> evaluation.1.1 (y i)) x eval-gen e) ;
+ eval-g (j : Fin m) : Id E.ring.R (evaluation.1.1 (g j)) E.ring.z =
+  trans (eval-expression (M.expression V (equation j)))
+   (trans (M.value V CE.base x (equation j))
+    (trans (P.natural V (M.restrict CE.base) E base-back x (equation j)) (PK.zeros-indexed V E x p.2 pe.1.2 j))) ;
+ module Mu = Quot.Into[E.ring,E.set,evaluation.1,eval-g] ;
+ mu : C.Hom tr E = (Mu.hom,\ r -> trans (Mu.beta (Q.iota.1 (E.iota.1 r))) (evaluation.2 (E.iota.1 r))) ;
+ mu-left (a : E.ring.R) : Id E.ring.R (mu.1.1 (left.1.1 a)) a =
+  trans (Mu.beta (Q.iota.1 a)) (evaluation.2 a) ;
+ mu-right-eq : Id (C.Hom E E) (C.compose E tr E mu right) (C.identity E) =
+  Tensor[l].Over[R,setR].hom-eq p E pe E _ _
+   (\ i -> trans (ap mu.1.1 (right-gen i)) (trans (Mu.beta (y i)) (eval-gen i))) ;
+ mu-right (a : E.ring.R) : Id E.ring.R (mu.1.1 (right.1.1 a)) a = ap (\ h -> h.1.1 a) mu-right-eq ;
+ difference (i : V) : Q.ring.R = Q.ring.add (y i) (Q.ring.neg (Q.iota.1 (x i))) ;
+ eval-difference (i : V) : Id E.ring.R (evaluation.1.1 (difference i)) E.ring.z =
+  trans (evaluation.1.2.2.1 (y i) (Q.ring.neg (Q.iota.1 (x i))))
+   (trans (cong2 E.ring.R E.ring.add _ _ _ _ (eval-gen i)
+    (trans (H.negation Q.ring E.ring evaluation.1 (Q.iota.1 (x i))) (ap E.ring.neg (evaluation.2 (x i)))))
+    (E.ring.addN (x i))) ;
+ module From (D : C.Algebra) (cp : Tensor[l].Over[R,setR].Coproduct E E D)
+  (cert : DiagonalCertificate[l].Over[R,setR].At[E,D,cp].Witness) {
+  module DK = DiagonalKernel[l].Over[R,setR].At[E,D,cp] ;
+  module To = DK.To[tr,left,right] ;
+  epsilon : T.ring.R = To.arrow.1.1 cert.epsilon ;
+  comparison : Id (C.Hom D E) (C.compose D tr E mu To.arrow) DK.mu =
+   DK.hom-ext E _ _
+    (\ a -> trans (ap mu.1.1 (To.on-left a)) (trans (mu-left a) (sym (DK.mu-left a))))
+    (\ a -> trans (ap mu.1.1 (To.on-right a)) (trans (mu-right a) (sym (DK.mu-right a)))) ;
+  normalisation : Id E.ring.R (mu.1.1 epsilon) E.ring.o = trans (ap (\ h -> h.1.1 cert.epsilon) comparison) cert.mu-one ;
+  equalises (a : E.ring.R) : Id T.ring.R (T.ring.mul epsilon (left.1.1 a)) (T.ring.mul epsilon (right.1.1 a)) =
+   trans (ap (T.ring.mul epsilon) (sym (To.on-left a)))
+    (trans (sym (To.arrow.1.2.2.2 cert.epsilon (DK.left.1.1 a)))
+     (trans (ap To.arrow.1.1 (cert.equalises a))
+      (trans (To.arrow.1.2.2.2 cert.epsilon (DK.right.1.1 a)) (ap (T.ring.mul epsilon) (To.on-right a))))) ;
+  module Chosen (rep : Quot.Representative epsilon) {
+   q : Q.ring.R = rep.1 ;
+   normal-q : Id E.ring.R (evaluation.1.1 q) E.ring.o = trans (sym (Mu.beta q)) (trans (ap mu.1.1 rep.2) normalisation) ;
+   image-difference (i : V) : Id T.ring.R (QT.include (difference i))
+    (T.ring.add (right.1.1 (x i)) (T.ring.neg (left.1.1 (x i)))) =
+    trans (QT.projection.2.2.1 (y i) (Q.ring.neg (Q.iota.1 (x i))))
+     (cong2 T.ring.R T.ring.add _ _ _ _ (sym (right-gen i)) (H.negation Q.ring T.ring QT.projection (Q.iota.1 (x i)))) ;
+   product-zero (i : V) : Id T.ring.R (QT.include (Q.ring.mul q (difference i))) T.ring.z =
+    trans (QT.projection.2.2.2 q (difference i))
+     (trans (cong2 T.ring.R T.ring.mul _ _ _ _ rep.2 (image-difference i))
+      (trans (T.ring.dist epsilon (right.1.1 (x i)) (T.ring.neg (left.1.1 (x i))))
+       (trans (cong2 T.ring.R T.ring.add _ _ _ _ (sym (equalises (x i)))
+        (RL[T.ring].mul-neg epsilon (left.1.1 (x i)))) (T.ring.addN (T.ring.mul epsilon (left.1.1 (x i))))))) ;
+   Rows : U l = (i : V) -> Quot.I.Certificate (Q.ring.mul q (difference i)) ;
+   module Matrix (rows : Rows) {
+    coefficient (i : V) (j : Fin m) : E.ring.R = evaluation.1.1 ((rows i).1 j) ;
+    module Column (k : V) {
+     module Der = FreePolynomialJets[l].Over[E.ring,E.set,n,Q,pq].At[CE.base,x,ED.delta n k] ;
+     dg (j : Fin m) : Id E.ring.R (Der.derivative (g j)) (JE.partial (equation j) k) =
+      trans (Der.expression (M.expression V (equation j)))
+       (trans (MappedJets[l].Over[R,E.ring,setR,E.set,E.iota].At[V,CE.base,x,ED.delta n k].theorem (equation j))
+        (ExpressionJets[l].Over[R,setR].Natural[V,M.restrict CE.base,E,base-back,x,ED.delta n k].theorem (equation j))) ;
+     dd (i : V) : Id E.ring.R (Der.derivative (difference i)) (ED.delta n k i) =
+      trans (Der.add (y i) (Q.ring.neg (Q.iota.1 (x i))))
+       (trans (cong2 E.ring.R E.ring.add _ _ _ _ (Der.variable i)
+        (trans (Der.negative (Q.iota.1 (x i))) (trans (ap E.ring.neg (Der.constant (x i))) EL.neg-zero)))
+        (E.ring.addZ (ED.delta n k i))) ;
+     lhs (i : V) : Id E.ring.R (Der.derivative (Q.ring.mul q (difference i))) (ED.delta n k i) =
+      trans (Der.product q (difference i))
+       (trans (cong2 E.ring.R E.ring.add _ _ _ _
+        (trans (cong2 E.ring.R E.ring.mul _ _ _ _ normal-q (dd i)) (EL.one-left (ED.delta n k i)))
+        (trans (ap (E.ring.mul (Der.derivative q)) (eval-difference i)) (EL.mul-zero (Der.derivative q))))
+        (E.ring.addZ (ED.delta n k i))) ;
+     term (i : V) (j : Fin m) : Id E.ring.R (Der.derivative (Q.ring.mul (g j) ((rows i).1 j)))
+      (E.ring.mul (coefficient i j) (JE.partial (equation j) k)) =
+      trans (Der.product (g j) ((rows i).1 j))
+       (trans (cong2 E.ring.R E.ring.add _ _ _ _
+        (trans (ap (\ a -> E.ring.mul a (Der.derivative ((rows i).1 j))) (eval-g j)) (EL.zero-mul (Der.derivative ((rows i).1 j))))
+        (ap (\ a -> E.ring.mul a (coefficient i j)) (dg j)))
+        (trans (EL.zl (E.ring.mul (JE.partial (equation j) k) (coefficient i j))) (E.ring.mulC _ _))) ;
+     identity (i : V) : Id E.ring.R (ES.lin m (coefficient i) (\ j -> JE.partial (equation j) k)) (ED.delta n k i) =
+      trans (sym (ES.sum-cong m (\ j -> Der.derivative (Q.ring.mul (g j) ((rows i).1 j)))
+       (\ j -> E.ring.mul (coefficient i j) (JE.partial (equation j) k)) (term i)))
+       (trans (sym (Der.sum m (\ j -> Q.ring.mul (g j) ((rows i).1 j))))
+        (trans (ap Der.derivative (sym (rows i).2)) (lhs i))) ;
+    } ;
+    witness : Witness = new Witness[coefficient,\ i k -> Column[k].identity i] ;
+   } ;
+   theorem : Tr.Trunc[Witness].carrier = TC.map Rows Witness (\ rows -> Matrix[rows].witness)
+    (AffineFinite[l].choice n (\ i -> Quot.I.Certificate (Q.ring.mul q (difference i)))
+     (\ i -> QT.kernel (Q.ring.mul q (difference i)) (product-zero i))) ;
+  } ;
+  theorem : Tr.Trunc[Witness].carrier = TC.bind (Quot.Representative epsilon) Witness (\ rep -> Chosen[rep].theorem) (Quot.onto epsilon) ;
+ } ;
+ module Unramified (unique : FormallyEtale[l].Over[R,setR].Unique E) {
+  module Diag = DiagonalCertificate[l].Over[R,setR].Concrete[p,E,pe,unique] ;
+  theorem : Tr.Trunc[Witness].carrier = TC.bind Diag.Diag.Witness Witness
+   (\ cert -> From[Diag.T.T,Diag.T.coproduct,cert].theorem) Diag.theorem ;
+ } ;
+} ;

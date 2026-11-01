@@ -1,0 +1,76 @@
+-- Clear finitely many derivative-ideal coefficients simultaneously.
+-- Polynomial jets encode the product rule, so the same fraction
+-- arithmetic proves H(y)=0 and H'(y)=G(y)^N together.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module SE = StandardEtale[l].Over[R,setR] ; module B = SE.RX ;
+ module PF = PolynomialFractions[l].Over[R,setR] ;
+ module At (E : C.Algebra) (y : E.ring.R) (G : B.Carrier) {
+  module X = SE.At[E.ring,E.set,E.iota,y] ; module L = RL[E.ring] ;
+  module DN = MonicDualTest[l].Over[R,setR,E] ;
+  module Fr = PF.At[E,y,G] ; module Pow = Fr.Pow ;
+  module DP = AffinePowers[l].Over[DN.D.ring] ;
+  module JA = LocalizationFractions[l].Arithmetic[B.ring,DN.D.ring,DN.D.set,X.evd,G] ;
+  module ES = FiniteIdeal[l].Sums[E.ring] ;
+  record Relation {
+   coefficients : List R.R ; exponent : Nat ;
+   root : Id E.ring.R (X.value (B.include coefficients)) E.ring.z ;
+   derivative : Id E.ring.R (X.derivative (B.include coefficients)) (Pow.power Fr.g exponent) ;
+  } ;
+  simple (u : L.unit Fr.g) (w : Relation) : L.unit (X.derivative (B.include w.coefficients)) =
+   subst L.unit (sym w.derivative) (Pow.Units[E.set].power-unit Fr.g u w.exponent) ;
+  first-power (n : Nat) : Id E.ring.R (DP.power (X.evd.1 G) n).1 (Pow.power Fr.g n) =
+   trans (AffinePowers[l].power-map DN.D.ring E.ring DN.projection.1 (X.evd.1 G) n)
+    (ap (\ a -> Pow.power a n) (X.value-first G)) ;
+  power-vertical (n : Nat) (a : E.ring.R) :
+   Id DN.D.Pair (DN.D.timesQ (DP.power (X.evd.1 G) n) (DN.vertical a)) (DN.vertical (E.ring.mul (Pow.power Fr.g n) a)) =
+   trans (DN.times-vertical (DP.power (X.evd.1 G) n) a)
+    (ap (\ z -> DN.vertical (E.ring.mul z a)) (first-power n)) ;
+  retarget (x y : DN.D.Pair) (same : Id DN.D.Pair x y) (w : JA.Form x) : JA.Form y =
+   (w.1,w.2.1,trans w.2.2 (ap (DN.D.timesQ (DP.power (X.evd.1 G) w.2.1)) same)) ;
+  module Given (m : Nat) (f : Fin m -> B.Carrier)
+   (root : (i : Fin m) -> Id E.ring.R (X.value (f i)) E.ring.z)
+   (b : Fin m -> E.ring.R) (identity : Id E.ring.R E.ring.o (ES.lin m (\ i -> X.derivative (f i)) b)) {
+   terms (i : Fin m) : E.ring.R = E.ring.mul (X.derivative (f i)) (b i) ;
+   module Chosen (fractions : (i : Fin m) -> Fr.Fraction (b i)) {
+    jet-root (i : Fin m) : Id DN.D.Pair (X.evd.1 (f i)) (DN.vertical (X.derivative (f i))) =
+     DN.D.eq _ _ (trans (X.value-first (f i)) (root i)) (refl (X.derivative (f i))) ;
+    module Term (i : Fin m) {
+     p : B.Carrier = (fractions i).1 ; n : Nat = (fractions i).2.1 ;
+     numerator : B.Carrier = B.mulQ p (f i) ;
+     jet : Id DN.D.Pair (X.evd.1 numerator) (DN.vertical (E.ring.mul (Pow.power Fr.g n) (terms i))) =
+      trans (X.evd.2.2.2 p (f i))
+       (trans (ap (DN.D.timesQ (X.evd.1 p)) (jet-root i))
+        (trans (DN.times-vertical (X.evd.1 p) (X.derivative (f i)))
+         (ap DN.vertical
+          (trans (ap (\ a -> E.ring.mul a (X.derivative (f i))) (trans (X.value-first p) (fractions i).2.2))
+           (trans (sym (E.ring.mulA (Pow.power Fr.g n) (b i) (X.derivative (f i))))
+            (ap (E.ring.mul (Pow.power Fr.g n)) (E.ring.mulC (b i) (X.derivative (f i))))))))) ;
+     fraction : JA.Form (DN.vertical (terms i)) =
+      (numerator,n,trans jet (sym (power-vertical n (terms i)))) ;
+    } ;
+    sum : (r : Nat) (a : Fin r -> E.ring.R) -> ((i : Fin r) -> JA.Form (DN.vertical (a i))) -> JA.Form (DN.vertical (ES.sum r a)) = split {
+     zero -> \ a h -> (B.zeroQ,zero,trans (H.zero B.ring DN.D.ring X.evd) (sym (RL[DN.D.ring].one-left DN.D.zeroQ))) ;
+     suc r | rec -> \ a h -> retarget _ _ (DN.plus-vertical (a (inr tt)) (ES.sum r (\ i -> a (inl i))))
+      (JA.add (DN.vertical (a (inr tt))) (DN.vertical (ES.sum r (\ i -> a (inl i))))
+       (h (inr tt)) (rec (\ i -> a (inl i)) (\ i -> h (inl i)))) } ;
+    total : JA.Form (DN.vertical E.ring.o) =
+     retarget _ _ (ap DN.vertical (sym identity)) (sum m terms (\ i -> Term[i].fraction)) ;
+    polynomial : B.Carrier = total.1 ; exponent : Nat = total.2.1 ;
+    jet : Id DN.D.Pair (X.evd.1 polynomial) (DN.vertical (Pow.power Fr.g exponent)) =
+     trans total.2.2 (trans (power-vertical exponent E.ring.o)
+      (ap DN.vertical (E.ring.mulO (Pow.power Fr.g exponent)))) ;
+    equation : Id E.ring.R (X.value polynomial) E.ring.z = trans (sym (X.value-first polynomial)) (ap (\ z -> z.1) jet) ;
+    derivative : Id E.ring.R (X.derivative polynomial) (Pow.power Fr.g exponent) = ap (\ z -> z.2) jet ;
+    witness (rep : PF.Representation polynomial) : Relation =
+     new Relation[rep.1,exponent,trans (ap X.value rep.2) equation,trans (ap X.derivative rep.2) derivative] ;
+    theorem : Tr.Trunc[Relation].carrier = TC.map (PF.Representation polynomial) Relation witness (PF.represents polynomial) ;
+   } ;
+   theorem (full : Fr.Full) : Tr.Trunc[Relation].carrier =
+    TC.bind ((i : Fin m) -> Fr.Fraction (b i)) Relation (\ fs -> Chosen[fs].theorem)
+     (AffineFinite[l].choice m (\ i -> Fr.Fraction (b i)) (\ i -> full (b i))) ;
+  } ;
+ } ;
+} ;

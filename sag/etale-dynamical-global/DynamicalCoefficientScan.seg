@@ -1,0 +1,66 @@
+-- Construct the first-unit proof tree for a monic coefficient list.
+-- Both branches are retained. The lower coefficients are tested in
+-- order and the final leading 1 terminates the radical branch.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Over (A : CRing) (setA : Prelude[l].isSet A.R) {
+ module T = FormalMonoidTree[l].Over[A,setA] ;
+ module Ar = MonoidNodeArrows[l].Over[A,setA] ;
+ module Trees = FormalTreeCover[l].Over[A,setA] ;
+ monic : List A.R -> List A.R = FirstUnitData[l].monic A ;
+ module At (state : T.State) {
+  module N = Ar.At[state] ;
+  mapped : List A.R -> List N.C.R = FirstUnitData[l].map A.R N.C.R N.inclusion.1 ;
+  module Data = FirstUnitData[l].Over[N.C,N.J.Member] ;
+  First (cs : List A.R) : U l = Data.First (mapped cs) ;
+ } ;
+ module Input (state : T.State) (cs : List A.R) {
+  Outcome (target : T.State) : U l = Ar.Between[state,target].Arrow * At[target].First (monic cs) ;
+  module Cover = Trees.For[Outcome] ;
+ } ;
+ Statement (cs : List A.R) : U l = (state : T.State) -> Input[state,cs].Cover.Cover state ;
+ module Step (c : A.R) (cs : List A.R) (ih : Statement cs) (state : T.State) {
+  module Current = Input[state,cons c cs] ;
+  module Branch = Ar.Branch[state,c] ;
+  left : T.State = Branch.left-state ;
+  right : T.State = Branch.right-state ;
+  module Smaller = Input[left,cs] ;
+  module RN = T.At[right].N ;
+  denominator : T.Denominator right c =
+   (c,RN.M.generator (inr tt),A.z,RN.J.zero-member,sym (A.addZ c)) ;
+  right-unit : RL[Ar.At[right].C].unit (Ar.At[right].inclusion.1 c) =
+   Ar.At[right].N.Loc.B.inverse c denominator ;
+  left-radical : Ar.At[left].J.Member (Ar.At[left].inclusion.1 c) =
+   Ar.At[left].J.generator (inr tt) ;
+  extend (target : T.State) (w : Smaller.Outcome target) : Current.Outcome target =
+   (Ar.compose state left target w.1 Branch.left,
+    inr (Ar.At[target].J.equal _ _ (w.1.constants c)
+     (w.1.radical (Ar.At[left].inclusion.1 c) left-radical),w.2)) ;
+  module Lift = Trees.Map[Smaller.Outcome,Current.Outcome,extend] ;
+  result : Current.Cover.Cover state = Current.Cover.join state c
+   (Lift.map left (ih left)) (Current.Cover.immediate right (Branch.right,inl right-unit)) ;
+ } ;
+ scan : (cs : List A.R) -> Statement cs = split {
+  nil -> \ state -> Input[state,nil].Cover.immediate state
+   (Ar.identity state,inl (subst RL[Ar.At[state].C].unit (sym Ar.At[state].inclusion.2.1)
+    (Ar.At[state].C.o,Ar.At[state].C.mulO Ar.At[state].C.o))) ;
+  cons c cs | ih -> \ state -> Step[c,cs,ih,state].result } ;
+ -- Every leaf supplies the actual relation and idempotent in ANY
+ -- algebra over its node ring, with any ideal containing the radical.
+ module Interpret (target : T.State) (cs : List A.R) (first : At[target].First (monic cs))
+  (B : CRing) (iota : RingHom[l].Hom Ar.At[target].C B)
+  (I : B.R -> U l) (I-zero : I B.z) (I-add : (a b : B.R) -> I a -> I b -> I (B.add a b))
+  (I-scale : (a b : B.R) -> I b -> I (B.mul a b))
+  (I-radical : (a : Ar.At[target].C.R) -> Ar.At[target].J.Member a -> I (iota.1 a)) (s : B.R)
+  (root : I (MonicReduce[l].Horner[Ar.At[target].C,B,iota,s].horner (At[target].mapped (monic cs)))) {
+  module Algebra = FirstUnitRelation[l].Over[Ar.At[target].C,Ar.At[target].J.Member,B,iota,
+   I,I-zero,I-add,I-scale,I-radical,s] ;
+  module Lemma = Algebra.Lemma[At[target].mapped (monic cs),first,root] ;
+  relation : Algebra.Relation = Lemma.rel0 ;
+  e : B.R = Lemma.Ide.e ;
+  idempotent : I (B.add (B.mul e e) (B.neg e)) = Lemma.Ide.idempotent ;
+  cofactor : B.R = Lemma.Ide.cofactor ;
+  multiple : Id B.R e (B.mul s cofactor) = Lemma.Ide.e-multiple ;
+  complement : I (B.mul (Algebra.AP.power s Lemma.Ide.N) (B.add B.o (B.neg e))) = Lemma.Ide.e-one ;
+  kill : (K : Nat) (w : B.R) -> I (B.mul (Algebra.AP.power s K) w) -> I (B.mul e w) = Lemma.Ide.kill ;
+ } ;
+} ;

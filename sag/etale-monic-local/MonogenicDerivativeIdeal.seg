@@ -1,0 +1,83 @@
+-- From an arbitrary finite presentation and monogenic fraction
+-- generation, construct finitely many polynomial relations whose
+-- derivatives generate 1. No derivative-ideal hypothesis is assumed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (cs : List R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module SE = StandardEtale[l].Over[R,setR] ; module B = SE.RX ;
+ module PL = PolynomialLocalisation[l].Over[R,setR,cs] ; module PF = PolynomialFractions[l].Over[R,setR] ;
+ module At (E : C.Algebra) (p : P.Presentation) (pe : P.Presents p E)
+  (y : E.ring.R) (unit : RL[E.ring].unit (SE.At[E.ring,E.set,E.iota,y].value PL.G))
+  (full : PF.At[E,y,PL.G].Full) (unique : FormallyEtale[l].Over[R,setR].Unique E) {
+  module X = SE.At[E.ring,E.set,E.iota,y] ; module L = RL[E.ring] ;
+  module Into = PL.Onto[E,y,unit,full] ; u : C.Hom PL.S E = Into.Into.map ;
+  module Map = PF.Map[PL.S,E,PL.y,y,PL.G,u,Into.Into.on-variable] ;
+  module Kernel = FiniteSurjectionKernel[l].Over[R,setR].At[PL.S,E,PL.pres,p,PL.K.presentation,pe,u] ;
+  module Surj = EtaleCase[l].Over[R,setR].Surjection[PL.S,E,u,Into.surjective] ;
+  record Certificate {
+   number : Nat ; relation : Fin number -> B.Carrier ;
+   root : (i : Fin number) -> Id E.ring.R (X.value (relation i)) E.ring.z ;
+   coefficients : Fin number -> E.ring.R ;
+   identity : Id E.ring.R E.ring.o
+    (FiniteIdeal[l].Sums[E.ring].lin number (\ i -> X.derivative (relation i)) coefficients) ;
+  } ;
+  module Chosen (k : Kernel.Certificate)
+   (fr : (i : Fin k.number) -> PL.Fr.RawFraction (k.generator i)) {
+   relation (i : Fin k.number) : B.Carrier = B.include (fr i).1 ;
+   source-fraction (i : Fin k.number) : PL.Fr.Fraction (k.generator i) = (relation i,(fr i).2) ;
+   root (i : Fin k.number) : Id E.ring.R (X.value (relation i)) E.ring.z =
+    trans (Map.fraction (k.generator i) (source-fraction i)).2.2
+     (trans (ap (E.ring.mul (Map.Bp.Pow.power Map.Bp.g (fr i).2.1)) (k.killed i))
+      (L.mul-zero (Map.Bp.Pow.power Map.Bp.g (fr i).2.1))) ;
+   module Quot = FiniteEquationQuotient[l].Over[E.ring,k.number,\ i -> X.derivative (relation i)] ;
+   A : C.Algebra = C.mkAlgebra Quot.Q.ring Quot.Q.set (H.compose R E.ring Quot.Q.ring Quot.Q.projection E.iota) ;
+   rho : C.Hom E A = (Quot.Q.projection,\ r -> refl (Quot.Q.include (E.iota.1 r))) ;
+   module DN = MonicDualTest[l].Over[R,setR,A] ;
+   module AX = SE.At[A.ring,A.set,A.iota,rho.1.1 y] ;
+   module Natural = SE.Natural[E.ring,A.ring,E.set,A.set,E.iota,A.iota,rho.1,rho.2,y] ;
+   z : DN.D.Pair = (rho.1.1 y,A.ring.o) ;
+   polynomial-first (f : B.Carrier) : Id A.ring.R (AX.evd.1 f).1 (rho.1.1 (X.value f)) =
+    trans (AX.value-first f) (sym (Natural.value f)) ;
+   g-unit : RL[DN.D.ring].unit (AX.evd.1 PL.G) = DN.unit (AX.evd.1 PL.G)
+    (subst (RL[A.ring].unit) (sym (polynomial-first PL.G)) (FormallyEtale[l].unit-map E.ring A.ring rho.1 (X.value PL.G) unit)) ;
+   module Tangent = PL.To[DN.algebra,z,g-unit] ;
+   module TM = PF.Map[PL.S,DN.algebra,PL.y,z,PL.G,Tangent.map,Tangent.on-variable] ;
+   polynomial-zero (i : Fin k.number) : Id DN.D.Pair (AX.evd.1 (relation i)) DN.D.zeroQ =
+    DN.D.eq _ _
+     (trans (polynomial-first (relation i)) (trans (ap rho.1.1 (root i)) (H.zero E.ring A.ring rho.1)))
+     (trans (sym (Natural.derivative (relation i))) (Quot.root i)) ;
+   generator-killed (i : Fin k.number) : Id DN.D.Pair (Tangent.map.1.1 (k.generator i)) DN.D.zeroQ =
+    RL[DN.D.ring].unit-reg (TM.Bp.Pow.power TM.Bp.g (fr i).2.1) (Tangent.map.1.1 (k.generator i))
+     (AffinePowers[l].Over[DN.D.ring].Units[DN.D.set].power-unit TM.Bp.g g-unit (fr i).2.1)
+     (trans (sym (TM.fraction (k.generator i) (source-fraction i)).2.2) (polynomial-zero i)) ;
+   module KQ = FiniteEquationQuotient[l].Over[PL.S.ring,k.number,k.generator] ;
+   module Kills = KQ.Into[DN.D.ring,DN.D.set,Tangent.map.1,generator-killed] ;
+   kill (s : PL.S.ring.R) (h : Surj.Kernel s) : Id DN.D.Pair (Tangent.map.1.1 s) DN.D.zeroQ =
+    Kills.kill s (k.generates s h) ;
+   module Factor = Surj.Factor[DN.algebra,Tangent.map,kill] ;
+   first-on-source : Id (C.Hom PL.S A) (C.compose PL.S DN.algebra A DN.projection Tangent.map)
+    (C.compose PL.S E A rho u) = PL.Ext[A,C.compose PL.S DN.algebra A DN.projection Tangent.map,C.compose PL.S E A rho u,
+     trans (ap (\ q -> q.1) Tangent.on-variable) (sym (ap rho.1.1 Into.Into.on-variable))].theorem ;
+   first-on-target : Id (C.Hom E A) (C.compose E DN.algebra A DN.projection Factor.hom) rho =
+    Surj.unique A _ _ (\ s -> trans (ap (\ q -> q.1) (Factor.beta s)) (ap (\ h -> h.1.1 s) first-on-source)) ;
+   module Test = DN.Test[E,unique,rho,Factor.hom,\ e -> ap (\ h -> h.1.1 e) first-on-target] ;
+   at-y : Id DN.D.Pair (Factor.hom.1.1 y) z =
+    trans (ap Factor.hom.1.1 (sym Into.Into.on-variable)) (trans (Factor.beta PL.y) Tangent.on-variable) ;
+   one-zero : Id A.ring.R A.ring.o A.ring.z = trans (sym (ap (\ q -> q.2) at-y)) (Test.derivative-zero y) ;
+   witness (w : Quot.I.Certificate E.ring.o) : Certificate =
+    new Certificate[k.number,relation,root,w.1,w.2] ;
+   theorem : Tr.Trunc[Certificate].carrier = TC.map (Quot.I.Certificate E.ring.o) Certificate witness
+    (Quot.Q.kernel E.ring.o (trans Quot.Q.projection.2.1 one-zero)) ;
+  } ;
+  module WithKernel (k : Kernel.Certificate) {
+   Fractions : U l = (i : Fin k.number) -> PL.Fr.RawFraction (k.generator i) ;
+   theorem : Tr.Trunc[Certificate].carrier = TC.bind Fractions Certificate (\ fr -> Chosen[k,fr].theorem)
+    (AffineFinite[l].choice k.number (\ i -> PL.Fr.RawFraction (k.generator i))
+     (\ i -> PL.Fr.raw-full PL.full (k.generator i))) ;
+  } ;
+  theorem : Tr.Trunc[Certificate].carrier = TC.bind Kernel.Certificate Certificate (\ k -> WithKernel[k].theorem)
+   Kernel.Surjective[Into.surjective].theorem ;
+ } ;
+} ;

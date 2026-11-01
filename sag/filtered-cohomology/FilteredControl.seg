@@ -1,0 +1,183 @@
+-- Finite representative certificates for the two filtered-cohomology controls.
+-- All finiteness data are INPUT, not deduced from constructive noetherianity.
+-- For a bound c and a generator of degree e, gap records c-e.
+-- Its coefficient in degree c+m belongs to I^(gap+m), hence to I^m.
+level l ; open Ring[l] ;
+module IP = IdealPowers[l] ; module Tr = Truncation[l] ;
+
+record ScalarFiltration (A : CRing) {
+ at : Nat -> A.R -> U l ;
+ drop (k n : Nat) (r : A.R) : at (plus k n) r -> at n r ;
+} ;
+
+record Filtration (A : CRing) (M : IP.Mod[A]) (J : ScalarFiltration[A]) {
+ at : Nat -> M.M -> U l ;
+ zero (n : Nat) : at n M.mz ;
+ add (n : Nat) (x y : M.M) : at n x -> at n y -> at n (M.madd x y) ;
+ neg (n : Nat) (x : M.M) : at n x -> at n (M.mneg x) ;
+ drop (k n : Nat) (x : M.M) : at (plus k n) x -> at n x ;
+ scale (n : Nat) (r : A.R) (x : M.M) : J.at n r -> at n (M.sm r x) ;
+} ;
+
+record Generator (A : CRing) (M : IP.Mod[A]) (c : Nat) {
+ degree : Nat ;
+ gap : Nat ;
+ bound : Id Nat (plus degree gap) c ;
+ value : M.M ;
+} ;
+
+module Family (A : CRing) (M : IP.Mod[A]) (J : ScalarFiltration[A]) (c : Nat) {
+ G : U l = Generator[A,M,c] ;
+ Coeff : U l = Nat -> A.R ;
+ tail (r : Coeff) : Coeff = \ i -> r (suc i) ;
+ sum : List G -> Coeff -> M.M = split {
+  nil -> \ r -> M.mz ;
+  cons g gs | ih -> \ r -> M.madd (M.sm (r zero) g.value) (ih (tail r)) } ;
+ All (P : M.M -> U l) : List G -> U l = split {
+  nil -> Top ; cons g gs | ih -> P g.value * ih } ;
+ Coeffs (m : Nat) : List G -> Coeff -> U l = split {
+  nil -> \ r -> Top ;
+  cons g gs | ih -> \ r -> J.at (plus g.gap m) (r zero) * ih (tail r) } ;
+ Small (m : Nat) : List G -> Coeff -> U l = split {
+  nil -> \ r -> Top ;
+  cons g gs | ih -> \ r -> J.at m (r zero) * ih (tail r) } ;
+ small (m : Nat) : (gs : List G) (r : Coeff) -> Coeffs m gs r -> Small m gs r = split {
+  nil -> \ r h -> tt ;
+  cons g gs | ih -> \ r h -> (J.drop g.gap m (r zero) h.1, ih (tail r) h.2) } ;
+ module In (F : Filtration[A,M,J]) {
+  sum-in (m : Nat) : (gs : List G) (r : Coeff) -> Coeffs m gs r -> F.at m (sum gs r) = split {
+   nil -> \ r h -> F.zero m ;
+   cons g gs | ih -> \ r h ->
+    F.add m (M.sm (r zero) g.value) (sum gs (tail r))
+     (F.scale m (r zero) g.value (J.drop g.gap m (r zero) h.1)) (ih (tail r) h.2) } ;
+ } ;
+ -- If I kills P, a combination with positive-order coefficients is zero.
+ module Killed (P : M.M -> U l)
+  (kill : (r : A.R) (x : M.M) -> J.at (suc zero) r -> P x -> Id M.M (M.sm r x) M.mz) {
+  positive (n : Nat) (r : A.R) (h : J.at (suc n) r) : J.at (suc zero) r =
+   J.drop n (suc zero) r
+    (subst {Nat} (\ k -> J.at k r) (sym (trans (plus-suc n zero) (ap (\ k -> suc k) (plus-zero n)))) h) ;
+  vanish (n : Nat) : (gs : List G) (r : Coeff) -> All P gs -> Small (suc n) gs r -> Id M.M (sum gs r) M.mz = split {
+   nil -> \ r hp hc -> refl M.mz ;
+   cons g gs | ih -> \ r hp hc ->
+    trans (ap (\ x -> M.madd x (sum gs (tail r))) (kill (r zero) g.value (positive n (r zero) hc.1) hp.1))
+     (trans (ap (M.madd M.mz) (ih (tail r) hp.2 hc.2)) (M.maddZ M.mz)) } ;
+ } ;
+} ;
+
+module Control (A : CRing) (C0 C1 : IP.Mod[A]) (d : IP.Lin[A,C0,C1])
+ (J : ScalarFiltration[A]) (F0 : Filtration[A,C0,J]) (c : Nat) {
+ module L0 = IP.ModL[A,C0] ; module L1 = IP.ModL[A,C1] ;
+ module V = Family[A,C1,J,c] ; module Fm0 = Family[A,C0,J,c] ;
+ module UI = Fm0.In[F0] ;
+ d-zero : Id C1.M (d.f C0.mz) C1.mz =
+  trans (ap d.f (sym (L0.zero-sm C0.mz)))
+   (trans (d.f-sm A.z C0.mz) (L1.zero-sm (d.f C0.mz))) ;
+ d-neg (x : C0.M) : Id C1.M (d.f (C0.mneg x)) (C1.mneg (d.f x)) =
+  L1.G.neg-uniq (d.f x) (d.f (C0.mneg x))
+   (trans (sym (d.f-add x (C0.mneg x))) (trans (ap d.f (C0.maddN x)) d-zero)) ;
+ d-sub (x y : C0.M) : Id C1.M (d.f (L0.msub x y)) (L1.msub (d.f x) (d.f y)) =
+  trans (d.f-add x (C0.mneg y)) (ap (C1.madd (d.f x)) (d-neg y)) ;
+
+ -- First control: forget the filtration on the primitive, retain I^m
+ -- coefficients of CLOSED representatives of the fixed generators.
+ module Image (Z : C1.M -> U l) (gs : List V.G) (closed : V.All Z gs) {
+  Rep (m : Nat) (x : C1.M) : U l =
+   (r : V.Coeff) * (V.Coeffs m gs r * (v : C0.M) *
+    (F0.at (plus c m) v * Id C1.M x (C1.madd (V.sum gs r) (d.f v)))) ;
+  Result (m : Nat) (x : C1.M) : U l =
+   (r : V.Coeff) * (V.Small m gs r * (v : C0.M) *
+    Id C1.M x (C1.madd (V.sum gs r) (d.f v))) ;
+  control (m : Nat) (x : C1.M) (h : Rep m x) : Result m x =
+   (h.1, (V.small m gs h.1 h.2.1, (h.2.2.1, h.2.2.2.2))) ;
+  merely (m : Nat) (x : C1.M) : Tr.Trunc[Rep m x].carrier -> Tr.Trunc[Result m x].carrier =
+   Tr.Trunc[Rep m x].induction @l (\ _ -> Tr.Trunc[Result m x].carrier)
+    (\ _ -> Tr.Trunc[Result m x].proposition) (\ h -> Tr.Trunc[Result m x].inc (control m x h)) ;
+  -- Degree-zero/torsion application: boundaries vanish and I kills cycles.
+  module Kill
+   (kill : (r : A.R) (x : C1.M) -> J.at (suc zero) r -> Z x -> Id C1.M (C1.sm r x) C1.mz)
+   (boundaries-zero : (v : C0.M) -> Id C1.M (d.f v) C1.mz) {
+   module VK = V.Killed[Z,kill] ;
+   vanish (m : Nat) (x : C1.M) (h : Rep (suc m) x) : Id C1.M x C1.mz =
+    trans h.2.2.2.2
+     (trans (ap (\ y -> C1.madd y (d.f h.2.2.1)) (VK.vanish m gs h.1 closed (V.small (suc m) gs h.1 h.2.1)))
+      (trans (ap (C1.madd C1.mz) (boundaries-zero h.2.2.1)) (C1.maddZ C1.mz))) ;
+  } ;
+ } ;
+
+ -- Second control: generators of the kernel come with primitives b_i.
+ -- Their representatives are d(b_i), NOT arbitrary cycles.
+ module Kernel (gs : List Fm0.G) {
+  dsum : List Fm0.G -> Fm0.Coeff -> C1.M = split {
+   nil -> \ r -> C1.mz ;
+   cons g xs | ih -> \ r -> C1.madd (C1.sm (r zero) (d.f g.value)) (ih (Fm0.tail r)) } ;
+  d-sum : (xs : List Fm0.G) (r : Fm0.Coeff) -> Id C1.M (d.f (Fm0.sum xs r)) (dsum xs r) = split {
+   nil -> \ r -> d-zero ;
+   cons g xs | ih -> \ r -> trans (d.f-add (C0.sm (r zero) g.value) (Fm0.sum xs (Fm0.tail r)))
+    (trans (ap (\ y -> C1.madd y (d.f (Fm0.sum xs (Fm0.tail r)))) (d.f-sm (r zero) g.value))
+     (ap (C1.madd (C1.sm (r zero) (d.f g.value))) (ih (Fm0.tail r)))) } ;
+  Rep (m : Nat) (x : C1.M) : U l =
+   (r : Fm0.Coeff) * (Fm0.Coeffs m gs r * (v : C0.M) *
+    (F0.at (plus c m) v * Id C1.M x (C1.madd (dsum gs r) (d.f v)))) ;
+  Result (m : Nat) (x : C1.M) : U l =
+   (w : C0.M) * (F0.at m w * Id C1.M (d.f w) x) ;
+  module At (m : Nat) (x : C1.M) (h : Rep m x) {
+   w : C0.M = C0.madd (Fm0.sum gs h.1) h.2.2.1 ;
+   in-power : F0.at m w =
+    F0.add m (Fm0.sum gs h.1) h.2.2.1 (UI.sum-in m gs h.1 h.2.1) (F0.drop c m h.2.2.1 h.2.2.2.1) ;
+   primitive : Id C1.M (d.f w) x =
+    trans (d.f-add (Fm0.sum gs h.1) h.2.2.1)
+     (trans (ap (\ y -> C1.madd y (d.f h.2.2.1)) (d-sum gs h.1)) (sym h.2.2.2.2)) ;
+   result : Result m x = (w, (in-power, primitive)) ;
+  } ;
+  control (m : Nat) (x : C1.M) (h : Rep m x) : Result m x = At[m,x,h].result ;
+  merely (m : Nat) (x : C1.M) : Tr.Trunc[Rep m x].carrier -> Tr.Trunc[Result m x].carrier =
+   Tr.Trunc[Rep m x].induction @l (\ _ -> Tr.Trunc[Result m x].carrier)
+    (\ _ -> Tr.Trunc[Result m x].proposition) (\ h -> Tr.Trunc[Result m x].inc (control m x h)) ;
+  module Correct (m : Nat) (z : C0.M) (cert : Rep m (d.f z)) {
+   module W = At[m,d.f z,cert] ;
+   h : C0.M = L0.msub z W.w ;
+   closed : Id C1.M (d.f h) C1.mz =
+    trans (d-sub z W.w) (trans (ap (L1.msub (d.f z)) W.primitive) (L1.sub-self (d.f z))) ;
+   difference : Id C0.M (L0.msub h z) (C0.mneg W.w) =
+    trans (L0.sub-comm z W.w z)
+     (trans (ap (\ t -> L0.msub t W.w) (L0.sub-self z)) (L0.G.zl (C0.mneg W.w))) ;
+   congruent : F0.at m (L0.msub h z) =
+    subst (F0.at m) (sym difference) (F0.neg m W.w W.in-power) ;
+  } ;
+ } ;
+ -- Uniform statements. Generation is only MERELY available at each input.
+ -- F1 n x denotes membership in I^n C1, Z denotes cycles. Supplying the
+ -- two generation functions is the explicit finiteness hypothesis.
+ module UniformImage (Z : C1.M -> U l) (F1 : Nat -> C1.M -> U l)
+  (gs : List V.G) (closed : V.All Z gs)
+  (generation : (m : Nat) (x : C1.M) -> Z x -> F1 (plus c m) x ->
+   Tr.Trunc[Image[Z,gs,closed].Rep m x].carrier) {
+  module Im = Image[Z,gs,closed] ;
+  image-control (m : Nat) (x : C1.M) (zx : Z x) (hx : F1 (plus c m) x) :
+   Tr.Trunc[Im.Result m x].carrier = Im.merely m x (generation m x zx hx) ;
+  module Kill (set1 : Prelude[l].isSet C1.M)
+   (kill : (r : A.R) (x : C1.M) -> J.at (suc zero) r -> Z x -> Id C1.M (C1.sm r x) C1.mz)
+   (boundaries-zero : (v : C0.M) -> Id C1.M (d.f v) C1.mz) {
+   module IK = Im.Kill[kill,boundaries-zero] ;
+   vanish (m : Nat) (x : C1.M) (zx : Z x) (hx : F1 (plus c (suc m)) x) : Id C1.M x C1.mz =
+    Tr.Trunc[Im.Rep (suc m) x].induction @l (\ _ -> Id C1.M x C1.mz)
+     (\ _ -> set1 x C1.mz) (\ cert -> IK.vanish m x cert) (generation (suc m) x zx hx) ;
+  } ;
+ } ;
+ module UniformKernel (F1 : Nat -> C1.M -> U l) (gs : List Fm0.G)
+  (generation : (m : Nat) (z : C0.M) -> F1 (plus c m) (d.f z) ->
+   Tr.Trunc[Kernel[gs].Rep m (d.f z)].carrier) {
+  module Ke = Kernel[gs] ;
+  kernel-control (m : Nat) (z : C0.M) (hz : F1 (plus c m) (d.f z)) :
+   Tr.Trunc[Ke.Result m (d.f z)].carrier = Ke.merely m (d.f z) (generation m z hz) ;
+  Lift (m : Nat) (z : C0.M) : U l =
+   (h : C0.M) * (Id C1.M (d.f h) C1.mz * F0.at m (L0.msub h z)) ;
+  lift-cert (m : Nat) (z : C0.M) (cert : Ke.Rep m (d.f z)) : Lift m z =
+   (Ke.Correct[m,z,cert].h, (Ke.Correct[m,z,cert].closed, Ke.Correct[m,z,cert].congruent)) ;
+  lift (m : Nat) (z : C0.M) (hz : F1 (plus c m) (d.f z)) : Tr.Trunc[Lift m z].carrier =
+   Tr.Trunc[Ke.Rep m (d.f z)].induction @l (\ _ -> Tr.Trunc[Lift m z].carrier)
+    (\ _ -> Tr.Trunc[Lift m z].proposition) (\ cert -> Tr.Trunc[Lift m z].inc (lift-cert m z cert))
+    (generation m z hz) ;
+ } ;
+} ;
