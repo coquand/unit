@@ -1,0 +1,111 @@
+-- Products of module sheaves (Serre, Sections 4 and 10).
+-- Sections and restrictions are coordinatewise. For a compatible family
+-- on a finite cover, glue each coordinate in its given sheaf. The result
+-- restricts correctly by function extensionality. Uniqueness follows by
+-- coordinate separation; the witnesses of the matching equations are
+-- propositions. This includes finite powers and the empty product.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module DL = DistLattice[l] ;
+module MM = SerreModuleMaps[l] ;
+module MP = SerreModuleProducts[l] ;
+module MS = SerreModuleSheaf[l] ;
+module SS = SerreSetSheaf[l] ;
+module On (L : DL.DLat) (G : RingedLattice[l].On[L].Presheaf)
+ (I : U l) (Ms : I -> MS.On[L,G].ModuleSheaf) {
+ module O = DL.Order[L] ;
+ module J = DL.Joins[L] ;
+ module At (a : L.L) {
+  module P = MP.Over[G.ring a,I,\ i -> (Ms i).presheaf.module-at a] ;
+ } ;
+ module Of (i : I) {
+  module M = MS.On[L,G].Of[(Ms i).presheaf] ;
+ } ;
+ restrict (a b : L.L) (k : O.Le a b) (x : At[b].P.Carrier) : At[a].P.Carrier =
+  \ i -> Of[i].M.restrict a b k (x i) ;
+ restrict-at (a b : L.L) (k : O.Le a b) (x : At[b].P.Carrier) (i : I) :
+  Id ((Ms i).presheaf.module-at a).M (restrict a b k x i) (Of[i].M.restrict a b k (x i)) =
+  refl (Of[i].M.restrict a b k (x i)) ;
+ restriction (a b : L.L) (k : O.Le a b) :
+  MM.Between[G.ring b,G.ring a,G.res a b k,At[b].P.product,At[a].P.product].Hom =
+  new MM.Between[G.ring b,G.ring a,G.res a b k,At[b].P.product,At[a].P.product].Hom[
+   restrict a b k,
+   \ x y -> At[a].P.ext _ _ (\ i ->
+    trans (restrict-at a b k (At[b].P.product.madd x y) i)
+     (trans (ap (Of[i].M.restrict a b k) (At[b].P.add-at x y i))
+      (trans (Of[i].M.res-add a b k (x i) (y i))
+       (sym (At[a].P.add-at (restrict a b k x) (restrict a b k y) i))))),
+   \ r x -> At[a].P.ext _ _ (\ i ->
+    trans (restrict-at a b k (At[b].P.product.sm r x) i)
+     (trans (ap (Of[i].M.restrict a b k) (At[b].P.scalar-at r x i))
+      (trans (Of[i].M.res-scale a b k r (x i))
+       (sym (At[a].P.scalar-at (RingMaps[l].map (G.res a b k) r) (restrict a b k x) i)))))] ;
+ presheaf : MS.On[L,G].Presheaf = new MS.On[L,G].Presheaf[
+  \ a -> At[a].P.product,restriction,
+  \ a k x -> At[a].P.ext _ _ (\ i -> (Ms i).presheaf.res-id a k (x i)),
+  \ a b c k h t x -> At[a].P.ext _ _ (\ i -> (Ms i).presheaf.res-comp a b c k h t (x i))] ;
+ module PO = MS.On[L,G].Of[presheaf] ;
+ module Cover (a : L.L) (n : Nat) (as : Fin n -> L.L)
+  (le : (j : Fin n) -> O.Le (as j) a) (covers : O.Le a (J.bigJ n as))
+  (xs : (j : Fin n) -> At[as j].P.Carrier) (compatible : PO.Cover[a,n,as,le,covers].C.Compatible xs) {
+  module C = PO.Cover[a,n,as,le,covers].C ;
+  module Coordinate (i : I) {
+   module IC = Of[i].M.Cover[a,n,as,le,covers].C ;
+   module IS = SS.On[L].SheafProofs[Of[i].M.underlying,(Ms i).sheaf].Cover[a,n,as,le,covers] ;
+   values (j : Fin n) : ((Ms i).presheaf.module-at (as j)).M = xs j i ;
+   values-compatible : IC.Compatible values = \ j k -> ap (\ x -> x i) (compatible j k) ;
+   glued : IC.Amalgam values = (IS.glue values values-compatible).1 ;
+   value : ((Ms i).presheaf.module-at a).M = IC.amalgam glued ;
+   matches (j : Fin n) : Id ((Ms i).presheaf.module-at (as j)).M
+    (Of[i].M.restrict (as j) a (le j) value) (values j) = IC.matches glued j ;
+   opaque glued ;
+  } ;
+  center : At[a].P.Carrier = \ i -> Coordinate[i].value ;
+  center-matches : C.Matches xs center = \ j -> At[as j].P.ext _ _ (\ i -> Coordinate[i].matches j) ;
+  matches-prop (x : At[a].P.Carrier) : Pr.isProp (C.Matches xs x) =
+   FE.isProp-Pi (Fin n) (\ j -> Id (At[as j].P.Carrier) (restrict (as j) a (le j) x) (xs j))
+    (\ j -> At[as j].P.product.setM _ _) ;
+  unique (u : C.Amalgam xs) : Id (At[a].P.Carrier) center (C.amalgam u) = At[a].P.ext _ _ (\ i ->
+   Coordinate[i].IS.separated (Coordinate[i].value) (C.amalgam u i) (\ j ->
+    trans (Coordinate[i].matches j) (sym (ap (\ x -> x i) (C.matches u j))))) ;
+  amalgamation : Localisation[l].isContr (C.Amalgam xs) =
+   ((center,center-matches),\ u -> Pr.Sigma-eq (At[a].P.Carrier) (C.Matches xs)
+    center (C.amalgam u) center-matches (C.matches u) (unique u) (matches-prop (C.amalgam u))) ;
+  opaque amalgamation ;
+ } ;
+ sheaf : PO.IsSheaf = \ a n as le covers xs compatible -> Cover[a,n,as,le,covers,xs,compatible].amalgamation ;
+ product : MS.On[L,G].ModuleSheaf = new MS.On[L,G].ModuleSheaf[presheaf,sheaf] ;
+ module Projection (i : I) {
+  module T = MS.On[L,G].Transform[presheaf,(Ms i).presheaf] ;
+  projection : T.Hom = new T.Hom[\ a -> At[a].P.projection i,\ a b k x -> refl (Of[i].M.restrict a b k (x i))] ;
+  projection-at (a : L.L) (x : At[a].P.Carrier) :
+   Id ((Ms i).presheaf.module-at a).M (T.at projection a x) (x i) = At[a].P.projection-at i x ;
+  opaque projection ;
+ } ;
+ module Lift (H : MS.On[L,G].Presheaf)
+  (hs : (i : I) -> MS.On[L,G].Transform[H,(Ms i).presheaf].Hom) {
+  module HP = MS.On[L,G].Transform[H,presheaf] ;
+  lift-map (a : L.L) (x : (H.module-at a).M) : At[a].P.Carrier =
+   \ i -> MS.On[L,G].Transform[H,(Ms i).presheaf].at (hs i) a x ;
+  lift-component (a : L.L) :
+   MM.Between[G.ring a,G.ring a,RingHom[l].identity (G.ring a),H.module-at a,At[a].P.product].Hom =
+   new MM.Between[G.ring a,G.ring a,RingHom[l].identity (G.ring a),H.module-at a,At[a].P.product].Hom[
+    lift-map a,
+    \ x y -> At[a].P.ext _ _ (\ i -> MS.On[L,G].Transform[H,(Ms i).presheaf].at-add (hs i) a x y),
+    \ r x -> At[a].P.ext _ _ (\ i -> MS.On[L,G].Transform[H,(Ms i).presheaf].at-scale (hs i) a r x)] ;
+  lift : HP.Hom = new HP.Hom[lift-component,\ a b k x -> At[a].P.ext _ _ (\ i -> (hs i).natural a b k x)] ;
+  lift-at (a : L.L) (x : (H.module-at a).M) (i : I) :
+   Id ((Ms i).presheaf.module-at a).M (HP.at lift a x i)
+    (MS.On[L,G].Transform[H,(Ms i).presheaf].at (hs i) a x) =
+   refl (MS.On[L,G].Transform[H,(Ms i).presheaf].at (hs i) a x) ;
+  unique-at (u : HP.Hom)
+   (on : (a : L.L) (x : (H.module-at a).M) (i : I) ->
+    Id ((Ms i).presheaf.module-at a).M (HP.at u a x i)
+     (MS.On[L,G].Transform[H,(Ms i).presheaf].at (hs i) a x))
+   (a : L.L) (x : (H.module-at a).M) : Id (At[a].P.Carrier) (HP.at u a x) (HP.at lift a x) =
+   At[a].P.ext _ _ (\ i -> trans (on a x i) (sym (lift-at a x i))) ;
+  opaque lift ;
+ } ;
+ opaque sheaf ;
+} ;

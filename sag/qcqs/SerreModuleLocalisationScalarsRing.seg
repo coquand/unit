@@ -1,0 +1,74 @@
+-- Scalar extension to the existing localisation ring (Serre note §3).
+-- Transport the scalar fraction action along the comparison between
+-- native regular-module fractions and the specified ring localisation.
+-- Additivity follows from the comparison's linearity. The product action
+-- is checked on two scalar fractions by their product formula; the
+-- inverse laws of the comparison extend it to all ring elements.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module SM = SerreModule[l] ;
+module MM = SerreModuleMaps[l] ; module RH = RingHom[l] ; module RM = RingMaps[l] ;
+module ExtendRing (A : CRing) (setA : Pr.isSet A.R) (f : A.R)
+ (B : CRing) (setB : Pr.isSet B.R) (phi : RH.Hom A B)
+ (elementary : Bridge[l].Over[A,f].LocH.Elementary B phi)
+ (Nd : SM.Over[A].Module) (invertible : Pr.isEquiv Nd.M Nd.M (Nd.sm f)) {
+ module Comparison = SerreModuleRingLocalisationBridge[l].Over[A,setA,f,B,setB,phi,elementary] ;
+ module Scalar = SerreModuleLocalisationScalar[l].Over[A,setA,Nd,f,invertible] ;
+ module S = Scalar.S ;
+ action (r : B.R) (x : Nd.M) : Nd.M = Scalar.action (Comparison.backward r) x ;
+ action-at (r : B.R) (x : Nd.M) : Id Nd.M (action r x) (Scalar.action (Comparison.backward r) x) = refl (Scalar.action (Comparison.backward r) x) ;
+ native-compose (r s : S.Carrier) (x : Nd.M) :
+  Id Nd.M (Scalar.action r (Scalar.action s x))
+   (Scalar.action (Comparison.backward (B.mul (Comparison.forward r) (Comparison.forward s))) x) =
+  S.induction @l
+   (\ r -> Id Nd.M (Scalar.action r (Scalar.action s x))
+    (Scalar.action (Comparison.backward (B.mul (Comparison.forward r) (Comparison.forward s))) x))
+   (\ r -> Nd.setM _ _)
+   (\ a p -> S.induction @l
+    (\ s -> Id Nd.M (Scalar.action (S.fraction a p) (Scalar.action s x))
+     (Scalar.action (Comparison.backward (B.mul (Comparison.forward (S.fraction a p)) (Comparison.forward s))) x))
+    (\ s -> Nd.setM _ _)
+    (\ b q -> trans (Scalar.fraction-compose a b p q x)
+     (ap (\ r -> Scalar.action r x) (sym (Comparison.backward-product-fractions a b p q)))) s) r ;
+ action-assoc (r s : B.R) (x : Nd.M) : Id Nd.M (action r (action s x)) (action (B.mul r s) x) =
+  trans (native-compose (Comparison.backward r) (Comparison.backward s) x)
+   (ap (\ r -> Scalar.action (Comparison.backward r) x)
+    (cong2 B.R B.mul _ _ _ _ (Comparison.forward-backward r) (Comparison.forward-backward s))) ;
+ action-one (x : Nd.M) : Id Nd.M (action B.o x) x =
+  trans (ap (\ r -> Scalar.action r x) Comparison.backward-one) (Scalar.one-action x) ;
+ action-add-vectors (r : B.R) (x y : Nd.M) : Id Nd.M (action r (Nd.madd x y)) (Nd.madd (action r x) (action r y)) =
+  Scalar.add-vectors (Comparison.backward r) x y ;
+ action-add-scalars (r s : B.R) (x : Nd.M) : Id Nd.M (action (B.add r s) x) (Nd.madd (action r x) (action s x)) =
+  trans (ap (\ r -> Scalar.action r x) (Comparison.backward-add r s))
+   (Scalar.add-scalars (Comparison.backward r) (Comparison.backward s) x) ;
+ scalar-module : SM.Over[B].Module = new SM.Over[B].Module[
+  Nd.M,Nd.setM,Nd.mz,Nd.madd,Nd.mneg,Nd.maddA,Nd.maddC,Nd.maddZ,Nd.maddN,
+  action,action-assoc,action-one,action-add-vectors,action-add-scalars] ;
+ module-scalar-at (r : B.R) (x : Nd.M) : Id Nd.M (scalar-module.sm r x) (action r x) = refl (action r x) ;
+ original-action (a : A.R) (x : Nd.M) : Id Nd.M (action (RM.map phi a) x) (Nd.sm a x) =
+  trans (ap (\ r -> Scalar.action r x) (Comparison.backward-original a)) (Scalar.original-action a x) ;
+ module NativeMap = MM.Between[A,B,phi,Nd,scalar-module] ;
+ native-map : NativeMap.Hom = new NativeMap.Hom[\ x -> x,\ x y -> refl (Nd.madd x y),\ a x -> sym (original-action a x)] ;
+ native-map-at (x : Nd.M) : Id Nd.M (NativeMap.map native-map x) x = refl x ;
+ module Canonical (Md : SM.Over[A].Module) (u : MM.Between[A,A,RH.identity A,Md,Nd].Hom) {
+  module Source = MM.Between[A,A,RH.identity A,Md,Nd] ;
+  module Target = MM.Between[A,B,phi,Md,scalar-module] ;
+  induced : Target.Hom = new Target.Hom[Source.map u,Source.map-add u,
+   \ a x -> trans (Source.map-scale u a x) (sym (original-action a (Source.map u x)))] ;
+  induced-at (x : Md.M) : Id Nd.M (Target.map induced x) (Source.map u x) = refl (Source.map u x) ;
+  opaque induced ;
+ } ;
+ opaque action ;
+ opaque native-map ;
+} ;
+module At (A : CRing) (setA : Pr.isSet A.R) (Md : SM.Over[A].Module) (f : A.R) {
+ module AF = Affine[l].Over[A] ;
+ module Native = SerreModuleLocalisationStructure[l].At[A,Md,f] ;
+ module ER = ExtendRing[A,setA,f,AF.Loc f,AF.set f,AF.inclusion f,AF.elementary f,
+  Native.localised,Native.Action.invertible] ;
+ localised : SM.Over[AF.Loc f].Module = ER.scalar-module ;
+ module Canonical = ER.Canonical[Md,Native.canonical] ;
+ canonical : Canonical.Target.Hom = Canonical.induced ;
+ canonical-at (x : Md.M) : Id Native.L.Carrier (Canonical.Target.map canonical x) (Native.L.fraction x zero) =
+  trans (Canonical.induced-at x) (Native.canonical-at x) ;
+ opaque canonical ;
+} ;

@@ -1,0 +1,91 @@
+-- Common exponents for finite denominator clearing (Serre note §3).
+-- A clearing witness for z consists of p,x with u(x)=f^p z.  If p+d=R,
+-- multiply x by f^d; linearity and f^d f^p=f^R give a clearing witness
+-- with exponent R. Finite choice supplies the individual witnesses, and
+-- their finite sum bounds all exponents.  The empty family is included.
+-- Matrices and triples use nested finite choice and nested finite sums.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module SM = SerreModule[l] ; module MM = SerreModuleMaps[l] ;
+module NB = NatBound[l] ; module AF = AffineFinite[l] ;
+choice2 (n m : Nat) (B : Fin n -> Fin m -> U l)
+ (h : (i : Fin n) (j : Fin m) -> Tr.Trunc[B i j].carrier) :
+ Tr.Trunc[(i : Fin n) (j : Fin m) -> B i j].carrier =
+ AF.choice n (\ i -> (j : Fin m) -> B i j) (\ i -> AF.choice m (B i) (h i)) ;
+choice3 (n m k : Nat) (B : Fin n -> Fin m -> Fin k -> U l)
+ (h : (i : Fin n) (j : Fin m) (t : Fin k) -> Tr.Trunc[B i j t].carrier) :
+ Tr.Trunc[(i : Fin n) (j : Fin m) (t : Fin k) -> B i j t].carrier =
+ AF.choice n (\ i -> (j : Fin m) (t : Fin k) -> B i j t)
+  (\ i -> choice2 m k (B i) (h i)) ;
+bound2 (n m : Nat) (ps : Fin n -> Fin m -> Nat) : Nat = NB.bound n (\ i -> NB.bound m (ps i)) ;
+bound2-above (n m : Nat) (ps : Fin n -> Fin m -> Nat) (i : Fin n) (j : Fin m) : NB.Above (ps i j) (bound2 n m ps) =
+ NB.above-trans (ps i j) (NB.bound m (ps i)) (bound2 n m ps)
+  (NB.bound-above m (ps i) j) (NB.bound-above n (\ i -> NB.bound m (ps i)) i) ;
+bound3 (n m k : Nat) (ps : Fin n -> Fin m -> Fin k -> Nat) : Nat = NB.bound n (\ i -> bound2 m k (ps i)) ;
+bound3-above (n m k : Nat) (ps : Fin n -> Fin m -> Fin k -> Nat) (i : Fin n) (j : Fin m) (t : Fin k) :
+ NB.Above (ps i j t) (bound3 n m k ps) =
+ NB.above-trans (ps i j t) (bound2 m k (ps i)) (bound3 n m k ps)
+  (bound2-above m k (ps i) j t) (NB.bound-above n (\ i -> bound2 m k (ps i)) i) ;
+module Over (A : CRing) {
+ module P = AffinePowers[l].Over[A] ;
+ module Action (Md : SM.Over[A].Module) {
+  raise (f : A.R) (p r : Nat) (above : NB.Above p r) (x : Md.M) :
+   Id Md.M (Md.sm (P.power f (NB.excess above)) (Md.sm (P.power f p) x)) (Md.sm (P.power f r) x) =
+   trans (Md.smA (P.power f (NB.excess above)) (P.power f p) x)
+    (trans (ap (\ a -> Md.sm a x) (sym (P.power-add f (NB.excess above) p)))
+     (ap (\ n -> Md.sm (P.power f n) x) (trans (plus-comm (NB.excess above) p) (NB.excess-eq above)))) ;
+ } ;
+ module At (Md Nd : SM.Over[A].Module)
+  (phi : MM.Between[A,A,RingHom[l].identity A,Md,Nd].Hom) (f : A.R) (z : Nd.M) {
+  module H = MM.Between[A,A,RingHom[l].identity A,Md,Nd] ;
+  Witness : U l = (p : Nat) * (x : Md.M) * Id Nd.M (H.map phi x) (Nd.sm (P.power f p) z) ;
+  exponent (w : Witness) : Nat = w.1 ;
+  numerator (w : Witness) : Md.M = w.2.1 ;
+  equation (w : Witness) : Id Nd.M (H.map phi (numerator w)) (Nd.sm (P.power f (exponent w)) z) = w.2.2 ;
+  raised (w : Witness) (r : Nat) (above : NB.Above (exponent w) r) : Md.M =
+   Md.sm (P.power f (NB.excess above)) (numerator w) ;
+  raised-equation (w : Witness) (r : Nat) (above : NB.Above (exponent w) r) :
+   Id Nd.M (H.map phi (raised w r above)) (Nd.sm (P.power f r) z) =
+   trans (H.map-scale phi (P.power f (NB.excess above)) (numerator w))
+    (trans (ap (Nd.sm (P.power f (NB.excess above))) (equation w)) (Action[Nd].raise f (exponent w) r above z)) ;
+  opaque raised ;
+ } ;
+ module Family (n : Nat) (Ms Ns : Fin n -> SM.Over[A].Module)
+  (phis : (i : Fin n) -> MM.Between[A,A,RingHom[l].identity A,Ms i,Ns i].Hom)
+  (fs : Fin n -> A.R) (zs : (i : Fin n) -> (Ns i).M) {
+  module AtIndex (i : Fin n) { module C = At[Ms i,Ns i,phis i,fs i,zs i] ; } ;
+  Witnesses : U l = (i : Fin n) -> AtIndex[i].C.Witness ;
+  Common : U l = (r : Nat) * (xs : (i : Fin n) -> (Ms i).M) *
+   ((i : Fin n) -> Id (Ns i).M (MM.Between[A,A,RingHom[l].identity A,Ms i,Ns i].map (phis i) (xs i))
+    ((Ns i).sm (P.power (fs i) r) (zs i))) ;
+  module Chosen (ws : Witnesses) {
+   exponents (i : Fin n) : Nat = AtIndex[i].C.exponent (ws i) ;
+   bound : Nat = NB.bound n exponents ;
+   numerators (i : Fin n) : (Ms i).M = AtIndex[i].C.raised (ws i) bound (NB.bound-above n exponents i) ;
+   common : Common = (bound,numerators,\ i -> AtIndex[i].C.raised-equation (ws i) bound (NB.bound-above n exponents i)) ;
+  } ;
+  common (ws : (i : Fin n) -> Tr.Trunc[AtIndex[i].C.Witness].carrier) : Tr.Trunc[Common].carrier =
+   Tr.Trunc[Witnesses].induction @l (\ w -> Tr.Trunc[Common].carrier) (\ w -> Tr.Trunc[Common].proposition)
+    (\ w -> Tr.Trunc[Common].inc Chosen[w].common)
+    (AF.choice n (\ i -> AtIndex[i].C.Witness) ws) ;
+ } ;
+ module Matrix (n m : Nat) (Ms Ns : Fin n -> Fin m -> SM.Over[A].Module)
+  (phis : (i : Fin n) (j : Fin m) -> MM.Between[A,A,RingHom[l].identity A,Ms i j,Ns i j].Hom)
+  (fs : Fin n -> Fin m -> A.R) (zs : (i : Fin n) (j : Fin m) -> (Ns i j).M) {
+  module AtIndex (i : Fin n) (j : Fin m) { module C = At[Ms i j,Ns i j,phis i j,fs i j,zs i j] ; } ;
+  Witnesses : U l = (i : Fin n) (j : Fin m) -> AtIndex[i,j].C.Witness ;
+  Common : U l = (r : Nat) * (xs : (i : Fin n) (j : Fin m) -> (Ms i j).M) *
+   ((i : Fin n) (j : Fin m) -> Id (Ns i j).M (MM.Between[A,A,RingHom[l].identity A,Ms i j,Ns i j].map (phis i j) (xs i j))
+    ((Ns i j).sm (P.power (fs i j) r) (zs i j))) ;
+  module Chosen (ws : Witnesses) {
+   exponents (i : Fin n) (j : Fin m) : Nat = AtIndex[i,j].C.exponent (ws i j) ;
+   bound : Nat = bound2 n m exponents ;
+   numerators (i : Fin n) (j : Fin m) : (Ms i j).M = AtIndex[i,j].C.raised (ws i j) bound (bound2-above n m exponents i j) ;
+   common : Common = (bound,numerators,\ i j -> AtIndex[i,j].C.raised-equation (ws i j) bound (bound2-above n m exponents i j)) ;
+  } ;
+  common (ws : (i : Fin n) (j : Fin m) -> Tr.Trunc[AtIndex[i,j].C.Witness].carrier) : Tr.Trunc[Common].carrier =
+   Tr.Trunc[Witnesses].induction @l (\ w -> Tr.Trunc[Common].carrier) (\ w -> Tr.Trunc[Common].proposition)
+    (\ w -> Tr.Trunc[Common].inc Chosen[w].common)
+    (choice2 n m (\ i j -> AtIndex[i,j].C.Witness) ws) ;
+ } ;
+} ;

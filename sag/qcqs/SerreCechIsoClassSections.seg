@@ -1,0 +1,76 @@
+-- Cech classes classify torsors with supplied local sections (Serre §5).
+-- Equal classes supply a mere coboundary; translate the coordinate torsors
+-- and compose with the two checked coordinate classifications. Conversely
+-- an equivariant natural isomorphism preserves unique differences. Push
+-- the first local sections across it, recover the same cocycle, and use
+-- change of trivialisation to compare with the second local sections.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module DL = DistLattice[l] ;
+module MS = SerreModuleSheaf[l] ; module Tr = Truncation[l] ;
+module On (L : DL.DLat) (G : RingedLattice[l].On[L].Presheaf)
+ (M : MS.On[L,G].ModuleSheaf) (n : Nat) (as : Fin n -> L.L)
+ (covers : DL.Order[L].Le L.top (DL.Joins[L].bigJ n as)) {
+ module Maps = SerreCechIsoClassMaps[l].On[L,G,M] ; module Torsors = Maps.Torsors ;
+ module Z = SerreCechCocycles[l].On[L,G,M,n,as] ;
+ module Classified (T : Torsors.Torsor) (ts : (i : Fin n) -> T.presheaf.obj (as i)) {
+  module C = SerreCechTorsorClassify[l].On[L,G,M,T,n,as,covers,ts] ;
+  module Local = SerreCechTorsorLocal[l].On[L,G,M,n,as,C.C.cocycle,covers] ;
+  isomorphism : Maps.Between[T,Local.torsor].EquivariantIso =
+   new Maps.Between[T,Local.torsor].EquivariantIso[
+    new Maps.Between[T,Local.torsor].EquivariantMap[
+     \ a -> C.OnOpen[a].forward,\ a b k t -> sym C.Naturality[a,b,k,t].natural,
+     \ a t m -> C.Equivariance[a,t,m].equivariant],
+    \ a -> C.OnOpen[a].equivalence] ;
+  opaque isomorphism ;
+ } ;
+ module ForSections (T V : Torsors.Torsor)
+  (ts : (i : Fin n) -> T.presheaf.obj (as i)) (vs : (i : Fin n) -> V.presheaf.obj (as i)) {
+  module A = Classified[T,ts] ; module B = Classified[V,vs] ;
+  module Back = Maps.Inverse[V,B.Local.torsor,B.isomorphism] ;
+  module FromWitness (w : Z.Translation.Witness (Z.value A.C.C.cocycle) (Z.value B.C.C.cocycle)) {
+   equation : Id Z.C.C1.Carrier (Z.value B.C.C.cocycle)
+    (Z.C.C1.product.madd (Z.value A.C.C.cocycle) (Z.C.delta w.1)) =
+    trans w.2 (ap (Z.C.C1.product.madd (Z.value A.C.C.cocycle)) (Z.C.coboundary-at w.1)) ;
+   module Move = SerreCechCoboundaryIso[l].On[L,G,M,n,as,covers].Coboundary[A.C.C.cocycle,B.C.C.cocycle,w.1,equation] ;
+   module First = Maps.Composition[T,A.Local.torsor,B.Local.torsor,A.isomorphism,Move.isomorphism] ;
+   module Second = Maps.Composition[T,B.Local.torsor,V,First.composite,Back.inverse] ;
+   isomorphism : Maps.Between[T,V].EquivariantIso = Second.composite ;
+  } ;
+  classes-to-isomorphism (same : Id Z.H1 A.C.C.class B.C.C.class) : Tr.Trunc[Maps.Between[T,V].EquivariantIso].carrier =
+   Tr.Trunc[Z.Translation.Witness (Z.value A.C.C.cocycle) (Z.value B.C.C.cocycle)].induction @l
+    (\ t -> Tr.Trunc[Maps.Between[T,V].EquivariantIso].carrier) (\ t -> Tr.Trunc[Maps.Between[T,V].EquivariantIso].proposition)
+    (\ w -> Tr.Trunc[Maps.Between[T,V].EquivariantIso].inc FromWitness[w].isomorphism)
+    (Z.Q.effective A.C.C.cocycle B.C.C.cocycle (trans (sym A.C.C.class-at) (trans same B.C.C.class-at))) ;
+  module FromIsomorphism (e : Maps.Between[T,V].EquivariantIso) {
+   pushed (i : Fin n) : V.presheaf.obj (as i) = e.morphism.at (as i) (ts i) ;
+   module Pushed = SerreCechTriviality[l].On[L,G,M,V,n,as,covers,pushed] ;
+   module VO = SerreTorsor[l].On[L,G].Over[M].Of[V] ;
+   module Pair (i j : Fin n) {
+    w : L.L = Z.C.overlap i j ;
+    right : Id (V.presheaf.obj w) (Pushed.TC.right i j) (e.morphism.at w (A.C.TC.right i j)) =
+     sym (e.morphism.natural w (as j) (Maps.O.meet-right (as i) (as j)) (ts j)) ;
+    left : Id (V.presheaf.obj w) (Pushed.TC.left i j) (e.morphism.at w (A.C.TC.left i j)) =
+     sym (e.morphism.natural w (as i) (Maps.O.meet-left (as i) (as j)) (ts i)) ;
+    difference : Id (M.presheaf.module-at w).M
+     (VO.diff w (e.morphism.at w (A.C.TC.right i j)) (e.morphism.at w (A.C.TC.left i j))) (A.C.TC.cocycle i j) =
+     VO.diff-unique w (e.morphism.at w (A.C.TC.right i j)) (e.morphism.at w (A.C.TC.left i j)) (A.C.TC.cocycle i j)
+      (trans (sym (e.morphism.action w (A.C.TC.right i j) (A.C.TC.cocycle i j)))
+       (ap (e.morphism.at w) (A.C.TC.cocycle-equation i j))) ;
+    equation : Id (M.presheaf.module-at w).M (Pushed.TC.cocycle i j) (A.C.TC.cocycle i j) =
+     trans (ap (\ u -> VO.diff w u (Pushed.TC.left i j)) right)
+      (trans (ap (VO.diff w (e.morphism.at w (A.C.TC.right i j))) left) difference) ;
+   } ;
+   cocycle-equation : Id Z.Cocycle Pushed.cocycle A.C.C.cocycle = Z.ext _ _
+    (trans Pushed.cocycle-value
+     (trans (Z.C.C1.ext _ _ (\ i -> Z.C.Row[i].Product.ext _ _ (\ j -> Pair[i,j].equation))) (sym A.C.C.cocycle-value))) ;
+   pushed-class : Id Z.H1 Pushed.class A.C.C.class =
+    trans Pushed.class-at (trans (ap Z.class cocycle-equation) (sym A.C.C.class-at)) ;
+   module Change = SerreCechChangeTrivialisation[l].On[L,G,M,V,n,as,covers,pushed,vs] ;
+   classes-equal : Id Z.H1 A.C.C.class B.C.C.class = trans (sym pushed-class) Change.class-equal ;
+  } ;
+  isomorphism-to-classes (e : Tr.Trunc[Maps.Between[T,V].EquivariantIso].carrier) : Id Z.H1 A.C.C.class B.C.C.class =
+   Tr.Trunc[Maps.Between[T,V].EquivariantIso].induction @l
+    (\ t -> Id Z.H1 A.C.C.class B.C.C.class) (\ t -> Z.h1-set _ _)
+    (\ e -> FromIsomorphism[e].classes-equal) e ;
+ } ;
+} ;

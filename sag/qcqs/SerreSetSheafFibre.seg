@@ -1,0 +1,93 @@
+-- Fibres of a map of sheaves over a global section are sheaves.
+-- A local lift restricts to a lift by naturality and composition.
+-- Glue underlying sections in the source sheaf. Their image equals the
+-- specified target section by separation in the target sheaf. The fibre
+-- equations are propositions, so equality of underlying sections gives
+-- equality of lifts and uniqueness of their amalgam.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module DL = DistLattice[l] ;
+module SS = SerreSetSheaf[l] ;
+module On (L : DL.DLat) {
+ module O = DL.Order[L] ;
+ module J = DL.Joins[L] ;
+ module S = SS.On[L] ;
+ module Between (E F : S.Presheaf) {
+  record NaturalMap {
+   at (a : L.L) : E.obj a -> F.obj a ;
+   natural (a b : L.L) (k : O.Le a b) (x : E.obj b) :
+    Id (F.obj a) (at a (E.res a b k x)) (F.res a b k (at b x)) ;
+  } ;
+  module Fibre (q : NaturalMap) (y : F.obj L.top) {
+   target (a : L.L) : F.obj a = F.res a L.top (O.le-top a) y ;
+   target-res (a b : L.L) (k : O.Le a b) : Id (F.obj a) (F.res a b k (target b)) (target a) =
+    F.res-comp a b L.top k (O.le-top b) (O.le-top a) y ;
+   Section (a : L.L) : U l = (x : E.obj a) * Id (F.obj a) (q.at a x) (target a) ;
+   value (a : L.L) (x : Section a) : E.obj a = x.1 ;
+   equation (a : L.L) (x : Section a) : Id (F.obj a) (q.at a (value a x)) (target a) = x.2 ;
+   ext (a : L.L) (x z : Section a) (p : Id (E.obj a) (value a x) (value a z)) : Id (Section a) x z =
+    Pr.Sigma-eq (E.obj a) (\ v -> Id (F.obj a) (q.at a v) (target a)) x.1 z.1 x.2 z.2 p (F.set a (q.at a z.1) (target a)) ;
+   section-set (a : L.L) : Pr.isSet (Section a) =
+    Pr.isSet-Sigma (E.obj a) (\ x -> Id (F.obj a) (q.at a x) (target a)) (E.set a)
+     (\ x -> Pr.prop-to-set (Id (F.obj a) (q.at a x) (target a)) (F.set a (q.at a x) (target a))) ;
+   restrict (a b : L.L) (k : O.Le a b) (x : Section b) : Section a =
+    (E.res a b k (value b x),trans (q.natural a b k (value b x))
+     (trans (ap (F.res a b k) (equation b x)) (target-res a b k))) ;
+   restrict-value (a b : L.L) (k : O.Le a b) (x : Section b) :
+    Id (E.obj a) (value a (restrict a b k x)) (E.res a b k (value b x)) = refl (E.res a b k (value b x)) ;
+   res-id (a : L.L) (k : O.Le a a) (x : Section a) : Id (Section a) (restrict a a k x) x =
+    ext a (restrict a a k x) x (trans (restrict-value a a k x) (E.res-id a k (value a x))) ;
+   res-comp (a b c : L.L) (k : O.Le a b) (h : O.Le b c) (t : O.Le a c) (x : Section c) :
+    Id (Section a) (restrict a b k (restrict b c h x)) (restrict a c t x) =
+    ext a (restrict a b k (restrict b c h x)) (restrict a c t x)
+     (trans (restrict-value a b k (restrict b c h x))
+      (trans (ap (E.res a b k) (restrict-value b c h x))
+       (trans (E.res-comp a b c k h t (value c x)) (sym (restrict-value a c t x))))) ;
+   presheaf : S.Presheaf = new S.Presheaf[Section,section-set,restrict,res-id,res-comp] ;
+   presheaf-res (a b : L.L) (k : O.Le a b) (x : Section b) :
+    Id (Section a) (presheaf.res a b k x) (restrict a b k x) = refl (restrict a b k x) ;
+   module SheafProof (es : S.Of[E].IsSheaf) (fs : S.Of[F].IsSheaf) {
+    module Cover (a : L.L) (n : Nat) (as : Fin n -> L.L)
+     (le : (i : Fin n) -> O.Le (as i) a) (covers : O.Le a (J.bigJ n as))
+     (xs : (i : Fin n) -> Section (as i))
+     (compatible : S.Of[presheaf].Cover[a,n,as,le,covers].Compatible xs) {
+     module EC = S.Of[E].Cover[a,n,as,le,covers] ;
+     module FC = S.Of[F].Cover[a,n,as,le,covers] ;
+     module TC = S.Of[presheaf].Cover[a,n,as,le,covers] ;
+     module ES = S.SheafProofs[E,es].Cover[a,n,as,le,covers] ;
+     module FS = S.SheafProofs[F,fs].Cover[a,n,as,le,covers] ;
+     values (i : Fin n) : E.obj (as i) = value (as i) (xs i) ;
+     values-compatible : EC.Compatible values = \ i j ->
+      trans (sym (restrict-value (L.meet (as i) (as j)) (as i) (O.meet-left (as i) (as j)) (xs i)))
+       (trans (ap (value (L.meet (as i) (as j))) (compatible i j))
+        (restrict-value (L.meet (as i) (as j)) (as j) (O.meet-right (as i) (as j)) (xs j))) ;
+     glued : EC.Amalgam values = (ES.glue values values-compatible).1 ;
+     lift-value : E.obj a = EC.amalgam glued ;
+     lift-matches (i : Fin n) : Id (E.obj (as i)) (E.res (as i) a (le i) lift-value) (values i) = EC.matches glued i ;
+     lift-equation : Id (F.obj a) (q.at a lift-value) (target a) =
+      FS.separated (q.at a lift-value) (target a) (\ i ->
+       trans (sym (q.natural (as i) a (le i) lift-value))
+        (trans (ap (q.at (as i)) (lift-matches i))
+         (trans (equation (as i) (xs i)) (sym (target-res (as i) a (le i)))))) ;
+     lift : Section a = (lift-value,lift-equation) ;
+     matches (i : Fin n) : Id (Section (as i)) (presheaf.res (as i) a (le i) lift) (xs i) =
+      ext (as i) (presheaf.res (as i) a (le i) lift) (xs i) (lift-matches i) ;
+     amalgam : TC.Amalgam xs = (lift,matches) ;
+     matches-prop (z : Section a) : Pr.isProp (TC.Matches xs z) =
+      FE.isProp-Pi (Fin n) (\ i -> Id (Section (as i)) (presheaf.res (as i) a (le i) z) (xs i))
+       (\ i -> section-set (as i) (presheaf.res (as i) a (le i) z) (xs i)) ;
+     unique (z : TC.Amalgam xs) : Id (TC.Amalgam xs) amalgam z =
+      Pr.Sigma-eq (Section a) (TC.Matches xs) lift z.1 matches z.2
+       (ext a lift z.1 (ES.separated lift-value (value a z.1) (\ i ->
+        trans (lift-matches i) (sym (trans (sym (restrict-value (as i) a (le i) z.1))
+         (ap (value (as i)) (TC.matches z i))))))) (matches-prop z.1) ;
+    } ;
+    is-sheaf : S.Of[presheaf].IsSheaf = \ a n as le covers xs compatible ->
+     (Cover[a,n,as,le,covers,xs,compatible].amalgam,Cover[a,n,as,le,covers,xs,compatible].unique) ;
+    opaque is-sheaf ;
+   } ;
+   opaque ext ; opaque section-set ;
+  } ;
+ } ;
+} ;

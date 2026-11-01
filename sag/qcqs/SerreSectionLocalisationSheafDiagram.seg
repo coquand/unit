@@ -1,0 +1,97 @@
+-- The finite sheaf equaliser as a diagram of modules over O(a) (Serre §4).
+-- Restrict scalars on each member and overlap along restriction from a.
+-- The first map takes restrictions; the second takes the difference of
+-- the two overlap restrictions. Restriction naturality identifies the
+-- scalar actions and makes both maps linear. Sheaf separation makes the
+-- first map injective. A vector in the kernel is precisely a compatible
+-- local family, so sheaf gluing proves exactness. Empty covers are included.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module DL = DistLattice[l] ; module MM = SerreModuleMaps[l] ;
+module MS = SerreModuleSheaf[l] ; module MP = SerreModuleProducts[l] ;
+module Over (L : DL.DLat) (G : RingedLattice[l].On[L].Presheaf)
+ (M : MS.On[L,G].ModuleSheaf) (a : L.L) (n : Nat) (us : Fin n -> L.L)
+ (below : (i : Fin n) -> DL.Order[L].Le (us i) a)
+ (covers : DL.Order[L].Le a (DL.Joins[L].bigJ n us)) {
+ module O = DL.Order[L] ; module MO = MS.On[L,G].Of[M.presheaf] ;
+ module Cover = MO.Cover[a,n,us,below,covers].C ;
+ module Sh = SerreSetSheaf[l].On[L].SheafProofs[MO.underlying,M.sheaf].Cover[a,n,us,below,covers] ;
+ module At (i : Fin n) {
+  module Scalars = MM.RestrictScalars[G.ring a,G.ring (us i),G.res (us i) a (below i)].Of[M.presheaf.module-at (us i)] ;
+ } ;
+ module Pair (i j : Fin n) {
+  overlap : L.L = L.meet (us i) (us j) ;
+  below-a : O.Le overlap a = O.le-trans overlap (us i) a (O.meet-left (us i) (us j)) (below i) ;
+  module Scalars = MM.RestrictScalars[G.ring a,G.ring overlap,G.res overlap a below-a].Of[M.presheaf.module-at overlap] ;
+  module Laws = SerreModule[l].Over[G.ring a].Laws[Scalars.restricted] ;
+  module Group = SerreCechAlgebra[l].Over[G.ring a,Scalars.restricted] ;
+  left (x : (M.presheaf.module-at (us i)).M) : (M.presheaf.module-at overlap).M =
+   MO.restrict overlap (us i) (O.meet-left (us i) (us j)) x ;
+  right (x : (M.presheaf.module-at (us j)).M) : (M.presheaf.module-at overlap).M =
+   MO.restrict overlap (us j) (O.meet-right (us i) (us j)) x ;
+  left-scale (r : (G.ring a).R) (x : (M.presheaf.module-at (us i)).M) :
+   Id (M.presheaf.module-at overlap).M (left (At[i].Scalars.restricted.sm r x)) (Scalars.restricted.sm r (left x)) =
+   trans (ap left (At[i].Scalars.scalar-at r x))
+    (trans (MO.res-scale overlap (us i) (O.meet-left (us i) (us j)) (RingMaps[l].map (G.res (us i) a (below i)) r) x)
+     (trans (ap (\ b -> (M.presheaf.module-at overlap).sm b (left x))
+      (G.res-comp overlap (us i) a (O.meet-left (us i) (us j)) (below i) below-a r))
+      (sym (Scalars.scalar-at r (left x))))) ;
+  right-scale (r : (G.ring a).R) (x : (M.presheaf.module-at (us j)).M) :
+   Id (M.presheaf.module-at overlap).M (right (At[j].Scalars.restricted.sm r x)) (Scalars.restricted.sm r (right x)) =
+   trans (ap right (At[j].Scalars.scalar-at r x))
+    (trans (MO.res-scale overlap (us j) (O.meet-right (us i) (us j)) (RingMaps[l].map (G.res (us j) a (below j)) r) x)
+     (trans (ap (\ b -> (M.presheaf.module-at overlap).sm b (right x))
+      (G.res-comp overlap (us j) a (O.meet-right (us i) (us j)) (below j) below-a r))
+      (sym (Scalars.scalar-at r (right x))))) ;
+  restrictions-agree (x : (M.presheaf.module-at a).M) :
+   Id (M.presheaf.module-at overlap).M (left (MO.restrict (us i) a (below i) x)) (right (MO.restrict (us j) a (below j) x)) =
+   trans (M.presheaf.res-comp overlap (us i) a (O.meet-left (us i) (us j)) (below i) below-a x)
+    (sym (M.presheaf.res-comp overlap (us j) a (O.meet-right (us i) (us j)) (below j) below-a x)) ;
+ } ;
+ module Members = MP.Over[G.ring a,Fin n,\ i -> At[i].Scalars.restricted] ;
+ module Overlaps = MP.Over[G.ring a,Fin n * Fin n,\ ij -> Pair[ij.1,ij.2].Scalars.restricted] ;
+ first-map (x : (M.presheaf.module-at a).M) : Members.Carrier = \ i -> MO.restrict (us i) a (below i) x ;
+ module First = MM.Between[G.ring a,G.ring a,RingHom[l].identity (G.ring a),M.presheaf.module-at a,Members.product] ;
+ first : First.Hom = new First.Hom[first-map,
+  \ x y -> Members.ext _ _ (\ i -> MO.res-add (us i) a (below i) x y),
+  \ r x -> Members.ext _ _ (\ i -> trans (MO.res-scale (us i) a (below i) r x)
+   (sym (At[i].Scalars.scalar-at r (MO.restrict (us i) a (below i) x))))] ;
+ first-at (x : (M.presheaf.module-at a).M) (i : Fin n) :
+  Id (M.presheaf.module-at (us i)).M (First.map first x i) (MO.restrict (us i) a (below i) x) = refl (MO.restrict (us i) a (below i) x) ;
+ difference-map (xs : Members.Carrier) : Overlaps.Carrier = \ ij ->
+  Pair[ij.1,ij.2].Laws.sub (Pair[ij.1,ij.2].left (xs ij.1)) (Pair[ij.1,ij.2].right (xs ij.2)) ;
+ module Difference = MM.Between[G.ring a,G.ring a,RingHom[l].identity (G.ring a),Members.product,Overlaps.product] ;
+ difference : Difference.Hom = new Difference.Hom[difference-map,
+  \ xs ys -> Overlaps.ext _ _ (\ ij ->
+   trans (cong2 (M.presheaf.module-at Pair[ij.1,ij.2].overlap).M Pair[ij.1,ij.2].Laws.sub _ _ _ _
+    (MO.res-add Pair[ij.1,ij.2].overlap (us ij.1) (O.meet-left (us ij.1) (us ij.2)) (xs ij.1) (ys ij.1))
+    (MO.res-add Pair[ij.1,ij.2].overlap (us ij.2) (O.meet-right (us ij.1) (us ij.2)) (xs ij.2) (ys ij.2)))
+    (Pair[ij.1,ij.2].Group.sub-add (Pair[ij.1,ij.2].left (xs ij.1)) (Pair[ij.1,ij.2].left (ys ij.1))
+     (Pair[ij.1,ij.2].right (xs ij.2)) (Pair[ij.1,ij.2].right (ys ij.2)))),
+  \ r xs -> Overlaps.ext _ _ (\ ij ->
+   trans (cong2 (M.presheaf.module-at Pair[ij.1,ij.2].overlap).M Pair[ij.1,ij.2].Laws.sub _ _ _ _
+    (Pair[ij.1,ij.2].left-scale r (xs ij.1)) (Pair[ij.1,ij.2].right-scale r (xs ij.2)))
+    (sym (Pair[ij.1,ij.2].Laws.sm-sub r (Pair[ij.1,ij.2].left (xs ij.1)) (Pair[ij.1,ij.2].right (xs ij.2)))))] ;
+ difference-at (xs : Members.Carrier) (i j : Fin n) :
+  Id (M.presheaf.module-at Pair[i,j].overlap).M (Difference.map difference xs (i,j))
+   (Pair[i,j].Laws.sub (Pair[i,j].left (xs i)) (Pair[i,j].right (xs j))) =
+  refl (Pair[i,j].Laws.sub (Pair[i,j].left (xs i)) (Pair[i,j].right (xs j))) ;
+ injective (x y : (M.presheaf.module-at a).M) (same : Id Members.Carrier (First.map first x) (First.map first y)) :
+  Id (M.presheaf.module-at a).M x y = Sh.separated x y (\ i -> ap (\ z -> z i) same) ;
+ killed (x : (M.presheaf.module-at a).M) :
+  Id Overlaps.Carrier (Difference.map difference (First.map first x)) Overlaps.product.mz =
+  Overlaps.ext _ _ (\ ij -> trans (ap (\ z -> Pair[ij.1,ij.2].Laws.sub z
+   (Pair[ij.1,ij.2].right (MO.restrict (us ij.2) a (below ij.2) x))) (Pair[ij.1,ij.2].restrictions-agree x))
+   (Pair[ij.1,ij.2].Laws.sub-self (Pair[ij.1,ij.2].right (MO.restrict (us ij.2) a (below ij.2) x)))) ;
+ module Kernel (xs : Members.Carrier) (zero : Id Overlaps.Carrier (Difference.map difference xs) Overlaps.product.mz) {
+  compatible : Cover.Compatible xs = \ i j -> Pair[i,j].Laws.sub-zero _ _ (ap (\ z -> z (i,j)) zero) ;
+  glued : Cover.Amalgam xs = (Sh.glue xs compatible).1 ;
+  source : (M.presheaf.module-at a).M = Cover.amalgam glued ;
+  equation : Id Members.Carrier (First.map first source) xs = Members.ext _ _ (Cover.matches glued) ;
+ } ;
+ exact (xs : Members.Carrier) (zero : Id Overlaps.Carrier (Difference.map difference xs) Overlaps.product.mz) :
+  Tr.Trunc[(x : (M.presheaf.module-at a).M) * Id Members.Carrier (First.map first x) xs].carrier =
+  Tr.Trunc[(x : (M.presheaf.module-at a).M) * Id Members.Carrier (First.map first x) xs].inc
+   (Kernel[xs,zero].source,Kernel[xs,zero].equation) ;
+ opaque first ; opaque difference ;
+} ;

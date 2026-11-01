@@ -177,7 +177,7 @@ algebraic infrastructure only.
 
 ## Status
 
-Latest checkpoint (2026-10-29): 249 modules, zero failures. Both absolute
+Comparison checkpoint (2026-10-29): 249 modules, zero failures. Both absolute
 and relative totalisation, essential image, and equivalence of univalent
 categories are checked. RelativeTotalisation proves the intrinsic native
 sheaf and qcqs criteria for the total functor. RelativeEssentialImage
@@ -187,6 +187,14 @@ functor and both natural isomorphisms. The independent full audit checks
 9,250 declarations with no extra openings in all 3,752 lists. The final
 relative checkpoint below records the proof, implementation and validation;
 the earlier checkpoints retain their historical continuation boundaries.
+
+Next programme (2026-10-29): the constructive external Serre criterion
+is written and reviewed in `../../doc/serre-affineness.tex` (compiled PDF
+alongside it). The parallel formalisation now proves finite exactness,
+degree-zero and degree-one module gluing, and genuine associated module
+sheafhood, alongside its torsor/Cech infrastructure. The final checkpoint
+below records the checked interfaces and remaining proof obligations;
+the Serre theorem itself is not yet formalised.
 
 
 Checked (`../../segc qcqs all`: 74 modules, 0 failed, about 1.4 s):
@@ -2140,3 +2148,813 @@ relative comparison programme. The current detailed proof is
 `../../doc/relative-totalisation.pdf`; the broader account is
 `../../doc/functorial-schemes.pdf`, and the categorical theorem appears
 in `../../doc/univalent-categories.pdf`.
+
+
+## Serre criterion checkpoint — informal proof, 2026-10-29
+
+The user requested a detailed informal proof first, with formalisation
+potentially in a fresh session. The note is now
+`../../doc/serre-affineness.tex`, with a compiled
+`../../doc/serre-affineness.pdf`. This session introduces no formal source
+for the Serre theorem, module sheaves, or external cohomology. The checked
+249-module comparison development above remains the starting point.
+
+### Statement and mathematical proof
+
+For a small qcqs locally ringed lattice X, assume that every torsor under
+every small quasi-coherent module merely has a global section. Then the
+specified canonical map X → Spec Γ(X,O) is an isomorphism. The note also
+proves that the hypothesis is equivalent to first Cech-cohomology
+vanishing on any finite affine cover. No higher cohomology or affine
+intersection hypothesis is required.
+
+The detailed argument includes all of the following steps:
+
+1. Fraction equality and power-killing for module localisations; finite
+   exactness; explicit degree-zero and degree-one gluing by clearing
+   finitely many denominators and a unit-ideal partition by powers.
+2. Associated module sheaves via compatible basic-open families; local
+   finite-affine definition of quasi-coherence; restriction and locality.
+3. Localisation of sections on a compact open of an affine, then on an
+   arbitrary qcqs scheme using the finite sheaf equaliser. Overlaps are
+   compact opens of an affine and are refined there; they need not be
+   affine. This gives affine module reconstruction and kernel closure.
+4. Sheaf torsors; affine triviality from the explicit degree-one argument;
+   cocycle classification and independence of any finite affine cover.
+   Signs are fixed by t_i = t_j + c_ij and δb_ij = b_j - b_i, so t_i+b_i
+   glue when δb=c. The theorem may first use the atlas-free torsor
+   vanishing hypothesis; the Cech packaging remains an explicit task.
+5. For a locally surjective map E → F, the sheaf of lifts of a global
+   section is a torsor under ker(E → F). If E,F are quasi-coherent, the
+   vanishing hypothesis therefore gives a mere global lift.
+6. For compact U, define J_U(a) = {t : O(a) | D_a(t) ≤ U}. This is an
+   intrinsic ideal sheaf. On an affine w, choose
+   w ∧ U = join D_w(h_i); its affine module is sqrt((h_i)). Prove
+   radical-localisation by fraction representatives, then quasi-coherence.
+7. If U ∨ V = 1 with U affine, choose U ∧ V = join D_U(g_i), keep the
+   actual ideal I=(g_i), and put Q=associated module A/I on U, A=O(U).
+   Its restriction to U ∧ V is zero. Define F(a)=Q(a ∧ U), so F is Q on U
+   and zero on V, hence quasi-coherent. Define J_U → F by restriction and
+   quotient, prove local surjectivity on U,V, and globally lift 1 in A/I.
+   The resulting f has D(f) ≤ U and
+   1=f|U+sum b_i g_i. The support laws give D(f) ∨ V = 1 directly.
+   D(f) is a principal open of affine U and hence affine. No closed
+   scheme, reduced structure, point, or generalized field principle is used.
+8. Replace finitely many atlas members by global principal affine opens,
+   maintaining the displayed covering invariant under finite induction.
+9. The row map O^m → O with entries f_i is locally surjective. Lift 1
+   using its quasi-coherent kernel to get sum c_i f_i=1 in Γ(X,O).
+   Section-localisation gives A_fi ≅ O(D(f_i)). Thus the canonical map
+   X → Spec A is an isomorphism on the corresponding target cover.
+   The note proves the local-isomorphism criterion by lattice descent
+   and the sheaf equaliser, finishing the theorem.
+
+### Review and next-session instructions
+
+The informal review checked the cocycle signs, both uses of finite
+power-clearing, the radical-localisation calculation, the local rather
+than sectionwise surjectivity of quotient sheaves, the quasi-coherent
+kernel required for lifting, and the final section-localisation theorem.
+Empty opens, zero rings, empty covers, and truncated witness choices are
+included. The proof is not a checked formal theorem; every new module
+and torsor lemma in the note remains to be implemented and audited.
+
+Read `seg/WRITING.md`, this checkpoint, and the entire detailed note first.
+Keep formal declarations close to its named definitions and lemmas.
+Suggested initial milestone: the module-localisation and degree-zero/
+degree-one algebra in Section 3; the associated sheaf and quasi-coherent
+module infrastructure is Section 4. Preserve all uncommitted work and
+make no core or category-library refactoring. Related module or torsor
+sources in other unit directories may depend on synthetic axioms or
+other interfaces: inspect dependencies before reusing any of them.
+The external theorem must not import Loc, SQC, Z-choice, or the
+synthetic generalized field property.
+
+Expose named characterising equations and scalar-change comparisons,
+lock constructions after their interfaces, inspect `--opened`, and create
+opening lists whose independent `--opens` check explicitly reports
+`nothing else opened` for every audited declaration. Existing comparison
+opening lists do not validate these future modules. Update the informal
+note if implementation reveals a missing mathematical step, before
+formalising that step.
+
+Fresh-session instruction:
+
+> Continue the Serre criterion programme from the final checkpoint in
+> unit/sag/qcqs/DESIGN.md. Read seg/WRITING.md and
+> unit/doc/serre-affineness.tex first. Implement the detailed informal proof
+> in its stated order, preserving its structure and reviewing each step
+> with opening audits. Preserve uncommitted work; no core or category
+> refactoring; no synthetic assumptions in the external theorem.
+
+### Coordination after clearing context
+
+The user explicitly requests that the main agent act as coordinating
+agent after context is cleared, using parallel agents for the Serre
+formalisation. This authorises delegation in the fresh session; no
+workers have been started at this checkpoint.
+
+The coordinator first reads this checkpoint, `seg/WRITING.md`, and the
+informal proof, then fixes the shared module and sheaf interfaces and
+assigns disjoint file ownership. The initial parallel tracks are:
+
+- Module algebra: Section 3, including localisation, finite exactness,
+  degree-zero gluing, and degree-one gluing.
+- Module sheaves: Section 4, including associated modules,
+  quasi-coherence, section localisation, and kernels; coordinate the
+  algebra interfaces before depending on the first track.
+- Torsors: Sections 5--6, including generic sheaf torsors, cocycle
+  classification, and torsors of lifts. Affine triviality is integrated
+  only after its module and degree-one prerequisites are checked.
+
+The coordinator owns shared interfaces and `All.seg`, reviews each
+worker's proof and opening audits, and integrates prerequisites in
+dependency order. Once the module layer is checked, support ideals and
+affine replacement may proceed alongside the remaining cohomology
+comparison. The coordinator assembles the finite replacement argument
+and final affineness theorem and performs the combined audit. Workers
+must not introduce unchecked assumptions as temporary interfaces or
+edit files owned by another track without coordination. All previous
+preservation and no-refactoring constraints continue to apply.
+
+Resume prompt:
+
+> Act as coordinating agent for the parallel Serre formalisation from
+> the final checkpoint in unit/sag/qcqs/DESIGN.md. Read seg/WRITING.md
+> and unit/doc/serre-affineness.tex first. Establish shared interfaces,
+> delegate disjoint tracks, and integrate and audit the proof in the
+> order specified there. Preserve uncommitted work; no core/category
+> refactoring or synthetic assumptions.
+
+## Parallel Serre formalisation checkpoint — foundations, 2026-10-29
+
+The coordinator read the writing rules and complete informal note, fixed
+the native module and semilinear restriction interfaces, and delegated
+disjoint algebra, module-sheaf, and torsor/Cech tracks. There are now 36
+new `Serre*.seg` modules, imported by the coordinator in `All.seg`.
+This is a checked foundation checkpoint, **not a proof of the Serre
+criterion**. The complete informal proof remains the specification.
+
+### Shared interfaces and checked algebra
+
+`SerreModule[l].Over[A].Module` is native to the existing `Ring.CRing`:
+`M`, `setM`, `mz`, `madd`, `mneg`, additive laws, `sm`, and the unital
+distributive action laws. The convention is
+`smA a b x : sm a (sm b x) = sm (A.mul a b) x`.
+`SerreModuleMaps.Between[A,B,h,Md,Nd].Hom` has `fn`, `additive`,
+`scalar`, with named map equations. Restriction of scalars is
+`RestrictScalars[A,B,h].Of[Nd].restricted`.
+
+The algebra foundation comprises:
+
+- `SerreModuleLocalisation`: native small effective fraction quotient,
+  equality detection, power-killing in both directions, raising
+  denominators, mere representatives, scalar-power comparison, and
+  common-denominator induction for two and three fractions.
+- `SerreModuleLocalisationMaps`, `Action`, `Product`, `Structure`,
+  `Linear`, and `Universal`: induced maps, invertible action of the
+  element being localised, binary product comparison with inverse laws,
+  the actual localised A-module, semilinear induced maps, and the
+  universal extension into any A-module with invertible f-action.
+- `SerreModuleRingLocalisationBridge`, `LocalisationScalar`, and
+  `LocalisationScalarsRing`: comparison of native regular-module
+  fractions with an existing elementary ring localisation, followed by
+  scalar extension. In particular
+  `SerreModuleLocalisationScalarsRing.At[A,setA,Md,f].localised` is a
+  module over the existing `Affine.Over[A].Loc f`; its `canonical` is
+  semilinear along the existing ring inclusion. No second localisation
+  ring is constructed. Scalar compatibility is exposed by
+  `ER.original-action` and `ER.module-scalar-at`.
+- `SerreModuleProducts`, `Sums`, `UnitIdealPowers`, and `Separation`:
+  native products, finite sums, mere powered unit-ideal coefficients,
+  and the uniqueness half of degree-zero gluing, including the empty
+  cover. `SerreModuleSeparation.Over[A,Md].Cover[n,fs,covers].separated`
+  proves x=0 from vanishing of x/1 in all the localisations.
+- `SerreModuleKernelAlgebra` and `LocalisationKernel`: the native kernel
+  and its universal factorisation; a linear kernel comparison with an
+  equivalence of carriers proves preservation of kernels under native
+  module localisation. The surjectivity proof explicitly clears the
+  denominator and multiplies the numerator by a killing power.
+
+The words `Action`, `Product`, etc. in this list abbreviate filenames
+with the common `SerreModuleLocalisation` prefix; `Products`, `Sums`,
+`UnitIdealPowers`, and `Separation` name their actual `Serre` files.
+
+### Checked module-sheaf and torsor foundations
+
+`SerreSetSheaf.On[L]` supplies finite-cover sheaves of small sets,
+including the empty cover, and separation. `SerreSetSheafFibre`
+proves sheafhood of the fibre of a natural map over a global section.
+
+`SerreModuleSheaf.On[L,G]` supplies a module `Presheaf` with
+`module-at` and actual semilinear restrictions along `G.res`.
+`Of[M].underlying` is its set presheaf. `ModuleSheaf` packages that
+presheaf and sheafhood. `Transform[E,F].Hom` has linear components and
+naturality; `LocallySurjective` means mere finite-cover lifts. Kernel
+sheaves with inclusion and universal factorisation, products with
+projections and universal factorisation, the structure module sheaf,
+restriction along `Slice`, and inverses of pointwise equivalences are
+checked in their respective `SerreModuleSheaf*` and `SerreModuleKernel`
+files. The generic sheaf kernel currently retains its original subtype
+construction; consolidating it with `SerreModuleKernelAlgebra` is a
+possible later Serre-layer cleanup, not a completed refactoring.
+
+`SerreAssociatedSections` is a genuine compatible-basic-family limit
+construction for a supplied `System` of local modules and semilinear
+restriction maps over the existing affine ring family. Its section
+modules act over the existing affine section rings. **It has not yet
+been instantiated with the localised module family, or proved to be a
+sheaf.** No quasi-coherence claim follows from this generic construction.
+
+`SerreTorsor` defines actual sheaf torsors, unique natural differences,
+translation equivalences and the atlas-free `Acyclic1` hypothesis.
+`SerreTorsorLifts` proves that local surjectivity gives a torsor of lifts
+under the sectionwise kernel, and obtains a mere global lift from
+vanishing for that kernel. It does not assume or prove that the kernel
+is quasi-coherent.
+
+`SerreTorsorCech`, `SerreCechAlgebra`, `SerreCechQuotient`, `SerreCech`,
+`SerreCechCocycles` and `SerreCechTriviality` check the signed correction
+argument, native cochain modules, the linear coboundary, cocycle laws,
+the small effective H1 set quotient, and zero class iff a mere global
+section for a torsor with specified local sections. H1 group operations,
+full classification and change of cover are not yet proved.
+`SerreModuleMeetPushforward` proves the genuine generic module-sheaf
+construction a ↦ Q(a ∧ U), needed both for twisted-coordinate torsors
+and the eventual affine-replacement target.
+
+### Continuation boundary and ownership
+
+Complete Section 3 next: finite product/cokernel and scalar-change
+comparisons needed for full finite exactness, degree-zero gluing
+existence, and degree-one gluing. The binary product and native kernel
+comparisons above do not by themselves assert all of finite exactness.
+Next instantiate associated module sections using actual restrictions
+between localised modules, expose the basic-open and scalar-change
+comparisons, and prove sheafhood using degree-zero gluing.
+
+Section 4 still needs quasi-coherence as a mere local finite-affine
+property, its restriction/locality, compact-open and general section
+localisation, affine reconstruction, and quasi-coherent kernel closure.
+Only then integrate affine torsor triviality and the quasi-coherent
+lifting consequence. Generic Cech classification may proceed in parallel
+with these prerequisites, but cannot claim the affine-cover comparison
+before affine triviality is checked. Support ideals, radical localisation,
+affine replacement, finite replacement induction, the row-map argument,
+and the final canonical isomorphism remain unimplemented.
+
+The coordinator owns `All.seg`, shared interface decisions, and combined
+validation. The eight algebra-worker files are listed by
+`serre-algebra.opens`; the eight module-sheaf-worker files by
+`serre-sheaves.opens`; the eleven torsor-worker files by
+`serre-torsors.opens`; and the nine coordinator algebra files by
+`serre-shared.opens`. All three workers finished their current batches
+with stable sources. Resume with disjoint ownership again, and consult
+these exact checked interfaces rather than adding placeholder axioms.
+No core/category source was changed and no synthetic assumption was
+introduced. Earlier uncommitted work remains preserved; this work is
+also uncommitted.
+
+### Combined validation of this checkpoint
+
+- Full server: **285 modules, zero failures** (the original 249 plus
+  36 Serre modules).
+- Independent full checker with opening instrumentation: **10,752
+  declarations, zero failures**, 13.68 s.
+- Combined opening audit: **5,254 lists**, every one explicitly reporting
+  `nothing else opened`.
+- The four new lists cover **all 1,502 Serre declarations**, with no
+  missing declarations: algebra 322, shared algebra 323, sheaves 395,
+  torsors/Cech/meet pushforward 462.
+
+Reproduce the server check from the repository root with
+`unit/segc unit/sag/qcqs all`. For the independent audit, concatenate
+`essential-image.opens`, `categories.opens`, `relative.opens`,
+`serre-algebra.opens`, `serre-shared.opens`, `serre-sheaves.opens`, and
+`serre-torsors.opens` into a temporary file. Run the unit checker on
+`unit/sag/qcqs/All.seg` with `--opens` pointing to it and `--opened`.
+Check every OPENS line for `nothing else opened` as well as the exit
+status; comparison with the Serre declaration trace verifies complete
+coverage. The earlier comparison lists alone do not audit Serre sources.
+
+## Parallel Serre checkpoint — gluing and associated sheaves, 2026-10-29
+
+The next milestone proposed after the foundation checkpoint is now
+complete: actual degree-zero and degree-one module gluing, finite
+exactness, and genuine associated module sheaves. Parallel Cech work
+also establishes the module structure on the original H1 quotient,
+twisted-coordinate torsors, and classification with supplied local
+sections. **The Serre affineness theorem is still not formalised.**
+
+There are 74 Serre modules in `All.seg`, 38 more than at the foundation
+checkpoint. The coordinator owns integration, shared algebra and the
+combined audit; three disjoint workers completed gluing, associated
+sheaves, and torsor/Cech proofs. A daemon restart interrupted the batch;
+the saved sources were checked and the workers resumed without repeating
+the completed foundation work. All sources are stable at this checkpoint.
+
+### Actual module gluing and finite exactness
+
+- `SerreModuleBasicRestrictions` constructs the actual native A-linear
+  maps M_g -> M_h for D(h) <= D(g), with their equation on original
+  numerators and identity/composition by universal-property uniqueness.
+  `BasicRestrictionsScalar` proves semilinearity over the existing ring
+  restrictions. `BasicRestrictionsOverlap` proves the two needed facts:
+  clearing an overlap element by a power of g, and killing the kernel
+  of M_h -> M_(gh) by a power of g.
+- `SerreModuleClearFinite`, `ClearErrors`, and `ClearFractions` turn
+  individual mere denominators and killing exponents into common finite
+  bounds, including matrices and cubes. Every witness remains under
+  truncation until it determines unique data or a propositional result.
+- `SerreModuleGluing.Over[A,setA,Md].Cover[n,fs,covers].equaliser`
+  proves contractible amalgamation for the actual principal-localisation
+  diagram. `GluingData` states that diagram; `GluingPartition` is the
+  powered partition-of-one step. This proves both existence and
+  uniqueness, with no assumed sheaf or gluing interface.
+- `SerreModuleCechGluing.Over[A,setA,Md].Cover[n,fs,covers].vanishing`
+  proves mere coboundary existence for actual principal-localisation
+  cocycles. `CechGluingData` fixes the triple domains and restriction
+  paths; `CechGluingPartition` finishes after the two finite clearings.
+  The checked sign is b_j-b_i=c_ij. Empty covers are included.
+- `SerreModuleLocalisationFiniteProducts` provides the linear comparison
+  and inverse laws for every finite product, including the empty one.
+  `SerreModuleCokernel` gives a native module structure and universal
+  factorisation on the existing effective additive quotient.
+  `LocalisationExact` preserves surjections and exact pairs;
+  `LocalisationCokernel` proves the actual linear cokernel comparison
+  is an equivalence. These complement the checked kernel comparison.
+- `SerreModuleEqualiser` expresses the equaliser as the kernel of the
+  difference. `KernelHomotopy` compares kernels of pointwise equal maps;
+  `LocalisationEqualiser` composes it with kernel preservation to give
+  a named linear equaliser comparison and equivalence.
+  `SerreModuleMapExact` supplies the elementary kernel-zero injectivity
+  and mere-surjectivity-to-equivalence arguments used for cokernels.
+- The finite-exactness comparisons above are native A-linear maps on
+  the actual localised carriers. `SerreModuleScalarNaturality` proves
+  that an A-linear map between literal restrictions of actual A_f-modules
+  is A_f-linear. `linear-at` preserves its underlying function. Use
+  the existing `ER.original-action` equations when identifying a native
+  A-action with a restriction of scalars; no judgemental identification
+  of those action structures is asserted.
+
+### Genuine associated module sheaves
+
+`SerreAssociatedModule.Over[A,setA,Md].system` instantiates the old
+generic compatible-family construction with actual A_g-modules and
+actual semilinear restrictions. `SerreAssociatedBasicOpen` proves the
+evaluation equivalence on D(g), its inverse equations, and naturality.
+
+`SerreModuleBasicRestrictionsComparison` proves that elementary module
+clearing and kernel detection make the native localisation comparison
+an equivalence. `BasicRestrictionsIterated` instantiates it for
+(M_g)_(inclusion_g h) -> M_(hg), with actual scalar-ring restriction
+and a named equation on canonical numerators. This is a module-level
+comparison; a complete associated-sheaf restriction comparison remains
+a later obligation.
+
+For sheafhood, `BasicRestrictionsSeparation` and
+`BasicRestrictionsGluing` directly prove relative separation and
+contractible amalgamation on an arbitrary cover D(g) = join D(h_i).
+The formal Nullstellensatz supplies a partition of a power of g, and
+division by that power takes place in M_g. This relative lemma is now
+stated explicitly as `lem:h0relative` in `../../doc/serre-affineness.tex`;
+the associated-sheaf argument cites it. The PDF has been rebuilt with
+resolved references.
+
+`SerreAssociatedSeparated` proves separation after finite basic-open
+refinement. `SerreAssociatedSheaf` glues on every finite cover, eliminating
+refinement choices into the proposition of a unique glued section.
+Its final checked interface is
+`SerreAssociatedSheaf[l].Over[A,setA,Md].associated : Modules.ModuleSheaf`.
+It includes the empty cover. The unique glued-basic-section construction
+is opaque after its interface, so clients do not reopen its truncation
+elimination or replacement construction.
+
+### Cech and torsor progress
+
+`SerreCechGroupCocycles` constructs the native cocycle module and lifted
+linear coboundary. `SerreCechGroup` compares its generic cokernel with
+the existing H1 quotient and uses `SerreCechGroupTransfer` to give that
+same H1 carrier a module structure. No second H1 carrier is substituted.
+
+`SerreCechTorsorCoordinates`, `Action`, `Difference` and `Local` construct
+the actual twisted-coordinate sheaf T_c, natural action, unique glued
+differences and explicit local points, hence a genuine torsor.
+`SerreCechTorsorClassify` constructs a natural equivariant equivalence
+T -> T_c for a torsor with supplied local sections, with inverse by
+gluing those local sections plus their coordinates.
+`SerreCechChangeTrivialisation.class-equal` proves that changing the
+supplied local sections changes the cocycle by a coboundary and leaves
+its existing H1 class unchanged.
+
+This is not yet the full isomorphism-class classification: canonical
+cocycle recovery for T_c and coboundary-induced isomorphisms remain to
+be packaged. The affine-cover comparison still requires affine torsor
+triviality and the quasi-coherent module prerequisites.
+
+### Next proof boundary
+
+Section 3's finite-exactness and degree-zero/degree-one algebra and the
+construction/sheafhood of associated modules are now checked. Continue
+Section 4 with associated functoriality, the associated-sheaf restriction
+and scalar-change comparisons, and the mere local finite-affine
+definition of quasi-coherence. Prove restriction/locality, compact-open
+and general section localisation, affine reconstruction and
+quasi-coherent kernel closure. Neither quasi-coherence nor any of these
+section-localisation/reconstruction theorems is yet asserted by the
+new associated-sheaf construction.
+
+In parallel, finish generic Cech isomorphism-class classification.
+Integrate affine torsor triviality only once affine reconstruction and
+the basic-open comparisons supply its actual local cocycle diagram.
+Then the existing generic torsor of lifts gives the quasi-coherent
+global-lifting consequence. Support ideals, radical localisation,
+affine replacement, finite replacement induction, the final row map,
+and the canonical affineness isomorphism remain unimplemented.
+
+Retain disjoint file ownership on resumption: the current audited sets
+are 17 algebra-worker modules, 19 sheaf-worker modules, 20 torsor-worker
+modules, 17 coordinator modules, and the single generic scalar-naturality
+module. `All.seg` and shared interface decisions remain coordinator-owned.
+No unchecked assumption, synthetic axiom, core/category refactoring, or
+commit was introduced. Earlier workspace changes remain preserved.
+
+### Validation of the gluing checkpoint
+
+- Full server: **323 modules, zero failures**, 10.73 s.
+- Independent full checker with both opening instruments: **12,559
+  declarations, zero failures**, 20.32 s.
+- Combined audit: **7,061 opening lists**, every one reporting
+  `nothing else opened`.
+- All **3,309 Serre declarations** are audited, with no missing entries:
+  algebra 753, shared algebra 640, sheaves 951, torsors/Cech 932, scalar
+  naturality 33. The maximum Serre declaration time in this combined
+  run was 0.06 s and the maximum distinct opened names was 19.
+
+Use `unit/segc unit/sag/qcqs all` for the server check. For the independent
+full audit, concatenate the seven lists from the foundation checkpoint
+and `serre-scalar-naturality.opens`, then run the unit checker on
+`unit/sag/qcqs/All.seg` with `--opens` pointing at that file and `--opened`.
+Verify the exit status, every OPENS line, and coverage of every Serre
+declaration. The source and audit lists are stable at this boundary.
+
+## Parallel continuation: charts, quasi-coherence and cover-trivial torsors (2026-10-29)
+
+This continues the gluing checkpoint above. The proof is still in
+Section 4 of `unit/doc/serre-affineness.tex`, with independent progress on
+Section 5. Section 3's finite exactness and degree-zero/degree-one gluing
+remain the algebraic foundation. The Serre theorem is not yet checked.
+
+### Shared chart and comparison interfaces
+
+`SerreModuleSheafDirectImage` constructs the actual module-sheaf direct
+image along a ringed-lattice map, using restriction of scalars and the
+finite-cover sheaf condition. `DirectImageMaps`, `RestrictionMaps` and
+`IsoOps` carry actual natural linear maps and equivalences through those
+constructions. `SerreModuleSheafLocalEquivalence` proves that an existing
+natural linear map is an equivalence when every open merely has a finite
+cover on which its components are equivalences.
+
+`SerreSpecBasicOpenBasis` proves that the actual inverse chart
+`SpecBasicOpen.KM.morphism` takes D(incl a) to the slice open with
+underlying D(g*a), and that image-A basics finitely generate every open
+of Spec(A_g). `SerreSpecBasicOpenRings` computes that chart's sharp on
+these basics: evaluation after sharp is the actual localisation ring
+map, whose value on an original element of A_g is its ring restriction
+to A_(g*a). These are checked scalar equations for the existing chart.
+
+`SerreModuleSheafBasisMap` constructs a global natural linear map from
+compatible linear maps on a basis with mere finite covers. It proves
+the basis formula and uniqueness by actual gluing and separation.
+`SerreModuleSheafRestrictionNested` compares restriction twice with
+direct image of restriction once along the existing `SliceNested` map,
+with identity equations on the underlying sections and scalars.
+`SerreModuleSheafEqualOpens` supplies linear restriction maps over a
+fixed containing open and proves the maps for equal opens inverse.
+`SerreModuleLocalisationElementTransport` transports a whole native
+localisation comparison along equality of its localisation elements,
+including linearity, equivalence and the fraction formula.
+
+### Associated modules and restriction
+
+`SerreAssociatedMap` constructs the actual associated sheaf morphism of
+an A-linear map; `SerreAssociatedMapLaws` proves identity and composition
+laws. `SerreAssociatedRestrictionLocal` and `RestrictionBasis` give the
+native iterated-localisation comparisons and their scalar equations.
+`SerreAssociatedRestriction` turns them into actual linear equivalences
+on the image-A basic opens of Spec(A_g), using the evaluated chart sharp.
+`SerreAssociatedRestrictionNaturality` proves their restriction squares.
+`SerreAssociatedRestrictionComparison` then constructs the genuine global
+natural linear equivalence between associated(M_g) and the direct image
+of associated(M) restricted to D(g), along the actual inverse chart
+`SpecBasicOpen.KM.morphism`. Its global map is constructed by basis gluing;
+its equivalence is proved using the same actual finite basis covers.
+Thus Section 4's associated-sheaf restriction comparison is checked,
+not merely a family of unrelated equivalences on basic opens.
+
+### Quasi-coherence and section-localisation boundary
+
+`SerreQuasiCoherent` defines quasi-coherence by a merely existing finite
+affine atlas and associated-module models along the actual canonical
+affine charts. The atlas is truncated one universe above section
+carriers; no resizing is used. `SerreQuasiCoherentInvariant` proves
+invariance under a natural linear equivalence.
+`SerreSectionLocalisationMap` constructs the canonical map from the
+native localisation of global module sections to sections on D(f),
+with fraction and uniqueness equations. This map alone is not a proof
+that it is an equivalence.
+
+`SerreSectionLocalisationFiniteEqualiser` proves the genuine finite
+exactness descent step: in a commuting equaliser diagram, termwise
+localisation equivalences imply the middle comparison is an equivalence.
+`SerreSectionLocalisationSheafDiagram` supplies the actual finite sheaf
+section equaliser over the containing open's ring, including empty
+covers. `SerreSectionLocalisationScalars` compares native localisation
+with restriction of scalars. `SerreSectionLocalisationEquivalence`
+proves that localising a semilinear carrier equivalence preserves its
+equivalence.
+
+`SerreSectionLocalisationAssociatedTerm` constructs the concrete
+carrier equivalence from an associated basic member localised over
+O(w) to associated sections on D(h) meet D(s). Its equation on original
+sections is actual restriction. The next steps are to package its
+O(w)-linearity, identify the canonical localisation comparison, prove
+the overlap squares and instantiate the finite equaliser theorem. The
+target sheaf diagram is naturally over O(w meet D(s)); restrict its
+whole native diagram to O(w) explicitly before applying that theorem.
+The compact-affine localisation lemma, general quasi-coherent section
+localisation, affine reconstruction, restriction/locality of
+quasi-coherence and quasi-coherent kernel closure remain obligations.
+
+### Fixed-cover torsor classification
+
+The generic classification for torsors merely trivialised by the fixed
+finite cover is now checked. `SerreCechCanonicalCocycle` recovers the
+original cocycle of the constructed twisted torsor. `SerreCechIsoClassMaps`
+provides equivariant natural maps and isomorphisms.
+`SerreCechCoboundaryIsoMap` and `SerreCechCoboundaryIso` construct the
+actual translation isomorphism for cohomologous cocycles, with inverse
+translation. `SerreCechIsoClassSections` identifies equality of classes
+with mere equivariant natural isomorphism when sections are supplied.
+`SerreCechIsoClass` extracts the canonical class from mere local
+trivialisations, proves the same classification without chosen local
+sections, proves zero class equivalent to a mere global section and
+proves every H1 class merely represented. Representation lives one
+universe higher; it does not require a small universe of all torsors.
+
+This completes the generic fixed-cover part, not affine torsor
+triviality or independence of the affine cover. Those still depend on
+the Section 4 comparison and reconstruction results. The later support
+ideal, radical localisation, affine replacement, finite replacement
+induction and final affineness argument remain unimplemented.
+
+### Next parallel work
+
+Keep the chart and basis interfaces opaque behind their named equations.
+A useful next split is: (1) finish the compact-affine localisation
+commuting diagram and instantiate finite equaliser descent; (2) use the
+checked associated restriction comparison and nested-restriction map to
+prove restriction/locality of quasi-coherence, then integrate general
+section localisation and affine reconstruction; (3) prove affine torsor
+triviality first for an actual associated module, using the checked
+native degree-one gluing and basic evaluations. Transfer the last result
+to arbitrary quasi-coherent modules once reconstruction is available.
+Affine-cover independence follows after affine triviality. These tasks
+can retain disjoint new files; `All.seg`, shared interfaces and this
+checkpoint remain coordinator-owned.
+
+### Validation of the chart and classification checkpoint
+
+- Full server: **355 modules, zero failures**, 15.30 s.
+- Independent full checker with both opening instruments: **13,988
+  declarations, zero failures**, 27.89 s.
+- Combined audit: **8,490 opening lists**, every one reporting
+  `nothing else opened`.
+- All **4,738 Serre declarations in 106 modules** have matching audit
+  entries, with no missing or stale entries: algebra 753, shared 640,
+  scalar naturality 33, sheaves 1,296, torsors/Cech 1,237, charts 323,
+  quasi-coherence/section localisation 318, basis extension 113, nested
+  restriction 25. Maximum Serre declaration time in the combined run
+  was 0.25 s; maximum distinct opened names was 45, comprising explicit
+  structural section, scalar and chart carriers/maps.
+- `unit/doc/serre-affineness.tex` now explicitly states the common scalar
+  ring in compact-affine localisation and includes this implementation
+  boundary. Its PDF was rebuilt twice with no unresolved references.
+
+For the independent combined check, concatenate `essential-image.opens`,
+`categories.opens`, `relative.opens` and all nine `serre-*.opens` files,
+then run the unit checker on `unit/sag/qcqs/All.seg` with both `--opens`
+and `--opened`. Check every OPENS result and exact coverage of all Serre
+declarations. The actual entry point and all source/audit files are
+stable here. No core/category refactor, synthetic axiom or commit was
+introduced; previous workspace changes remain preserved.
+
+Neither Section 4 nor Section 5 is complete. The informal text contains
+the full argument, while the checked formalisation has reached the
+compact-affine localisation boundary described above.
+
+## Serre criterion, direct implication checked (2026-10-29)
+
+The direct implication of Theorem thm:serre of
+`unit/doc/serre-affineness.tex` is checked. `SerreAffineness.Serre[L,X,
+qcqs,hypothesis].affine : AffineCriterion.Over[L,X].IsAffine`: for a qcqs
+locally ringed lattice X such that every torsor under every small
+quasi-coherent module merely has a global section
+(`SerrePartitionCover.On[L,X].Hypothesis`), the canonical map
+X -> Spec O(top) is an isomorphism. No new axioms; the development rests on
+the existing Theory parameters (univalence, replacement).
+
+### The route actually formalised
+
+The note was restructured before this formalisation; the general section
+localisation, compact-affine localisation, affine reconstruction, kernel
+closure, affine replacement and its finite induction are NOT on the
+direct route. The checked route is:
+
+1. Canonical maps first. `SerreLambda` gives λ_{a,g} : M(a)_g -> M(D_a g)
+   for any module sheaf and any open (the top-level
+   `SerreSectionLocalisationMap` on the slice X|a). `SerreLambdaElementary`,
+   `ElementaryOps` and `Clearing` characterise λ equivalences by clearing
+   denominators and killing at g, stable under restriction of scalars,
+   equivalences and finite products (`SerreLambdaProducts`).
+2. `SerreLambdaChart`: λ^O_{w,s} is an equivalence on every affine w (from
+   the chart's basic ring map; no associated model of O).
+   `SerreLambdaCriterion`: λ_{w,s} equivalences for all s on an affine w
+   give a `SerreQuasiCoherent` model at w with coefficients M(w), by basis
+   extension and local equivalence. Only this direction is formalised.
+3. `SerreLocalisationDescent`: pure descent of λ along a finite cover with
+   λ equivalences on members and overlaps, instantiating the checked
+   finite-equaliser theorem. `SerreRingLocalisation`: on a global
+   principal affine cover the canonical ring map A_{f_k} -> O(D f_k) is a
+   ring isomorphism; also "a principal open of an affine is affine".
+4. `SerreSupportIdeal`: J_U(a) = {t | D_a t <= U} is a sheaf of ideals with
+   J_U|U = O|U. Two simplifications of the note, proposed by the worker and
+   checked: `SerreSupportIdealSaturation` (a saturated sub-module-sheaf
+   inherits λ equivalences) applied to J_U ⊆ O (exponent 1, by the support
+   laws; `SerreSupportIdealLambda`) and to the zero-sum kernel K ⊆ ∏ J_i
+   (`SerrePartitionQuasiCoherent`). Hence no radical description
+   J_U(w) = √I_w, no Nullstellensatz, no radical localisation and no
+   omitted-coordinate splitting are used.
+5. `SerrePartition` builds E = ∏ J_{u_i}, the sum map and the partition
+   torsor through the checked `SerreTorsorLifts`; `SerrePartitionCover`
+   applies the hypothesis once: merely f_i with Σ f_i = 1, D(f_i) <= u_i,
+   ∨ D(f_i) = top, each D(f_i) affine, and ∨ D_A(f_i) = top.
+6. `SerreLocalIso`: isomorphisms of locally ringed lattices are local on a
+   finite target cover (lem:localiso; the relation b_i ∧ z_j = b_j ∧ z_i is
+   not needed). `SerreCanonicalMap`: over D_A(f) the canonical map is an
+   isomorphism once A_f -> O(D f) is bijective and D(f) affine.
+   `SerreAffineness`: the two covers of a partition of unity, affineness
+   as a proposition, and `Serre`, which eliminates the mere atlas and the
+   mere partition into that proposition.
+
+`SerreLambdaNatural` (naturality of λ along a linear map) checks and is
+audited but nothing depends on it. `SerreAffineTorsor` (every torsor under
+an associated module on Spec A merely has a global section, via the
+checked degree-one gluing, no separate unit-ideal step) is the first
+step of the converse.
+
+### Validation
+
+- Full server (`unit/segc unit/sag/qcqs all`): **378 modules, zero
+  failures**, 16.96 s.
+- Independent checker on `All.seg` with `--opened` and `--opens` over the
+  concatenation of `essential-image.opens`, `categories.opens`,
+  `relative.opens` and all thirteen `serre-*.opens`: **15,306
+  declarations, zero failures**, 32.4 s; **9,808 OPENS lines**, every one
+  `nothing else opened`.
+- **6,056 Serre declarations in 129 modules**, each with exactly one audit
+  entry, no missing or stale entries. New this checkpoint: 1,318
+  declarations in 23 modules (`serre-lambda.opens` 687,
+  `serre-partition.opens` 334, `serre-affineness.opens` 210,
+  `serre-affine-torsor.opens` 87). Maximum Serre declaration time 0.25 s
+  (`SerreLocalisationDescent.Over.overlap-restriction`); maximum distinct
+  opened names 45 (unchanged, `SerreAssociatedRestriction`).
+- `open#N@` audit keys are positional; regenerate a file's entries after
+  editing it.
+
+### What remains
+
+The direct implication is complete. The converse and the H^1 form are not:
+the converse direction of the λ-criterion (associated model ⇒ λ
+equivalences), affine torsor triviality for arbitrary quasi-coherent
+modules (from the λ form on a basic refinement plus degree-one gluing),
+and affine-cover independence of the Cech groups (from the checked
+fixed-cover classification). Sections 4 (optional module theory) and 5 of
+the note beyond those items are not used by the theorem.
+No core/category file was changed; nothing is committed.
+
+## Serre criterion, converse and H^1 form checked (2026-10-30)
+
+Theorem thm:serre of `unit/doc/serre-affineness.tex` is checked in both
+directions and in its H^1 form.
+- Converse: `SerreAffineConverse.On[L,X,affine].hypothesis :
+  SerrePartitionCover.On[L,X].Hypothesis` (on an affine X every torsor
+  under every small quasi-coherent module merely has a global section).
+- Equivalence: `SerreAffineConverse.Criterion[L,X,qcqs]` (`to-affine`,
+  `from-affine`).
+- H^1 form: `SerreCechVanishing.On[L,X].Theorem[qcqs]`: `affine-to-every`
+  (vanishing of the checked Cech H1 on every finite affine cover, for every
+  quasi-coherent M), `every-to-some`, `some-to-affine` (one merely given
+  affine cover suffices). `Fixed.from-acyclic` / `Fixed.section` are the two
+  directions on a fixed finite cover.
+No new axioms; the Theory parameters (univalence, replacement) as before.
+
+### Simplifications made before formalising (now in the note)
+
+1. Model => lambda (the other direction of the lambda-criterion) in the
+   element form, directly on every chart open v = pi(D h) at s|v
+   (`SerreLambdaModel.Principal`); `lambda` is the case h = 1. Evaluation
+   of the model gives B-linear bijections M(v) = N_h, M(D_v(s|v)) = N_(sh)
+   carrying restriction to the native restriction N_h -> N_(sh), which
+   clears and kills at s (`SerreModuleBasicRestrictionsOverlap`); then
+   `SerreLambdaElementarySquare.Square` (transfer along a square of
+   bijections) and `.Unrestrict` (from B to O(v)). No affineness used.
+2. Corollary cor:affine-basic-sections in lambda form
+   (`SerreAffineLocalisation`): refine the preimages of an atlas in
+   Zar(A) by D(f_k) (`ZariskiLattice.refined`); members D(f_k) and overlaps
+   D(f_k f_l) are chart opens of w_(j k), so (1) applies; pure descent
+   (`SerreLocalisationDescent`) and `SerreLambdaTop` (lambda of X at 1 is
+   lambda of X|1). Restricted models, restriction of quasi-coherence and the
+   associated restriction comparison are not used.
+3. Affine torsor triviality = affine reconstruction
+   (`SerreLambdaCriterion` at w = 1, top affine by `AffineQcqs`) + moving
+   the torsor along the chart (`SerreTorsorChart`: T'(V) = T(pi V), action
+   through e^-1; sheaf by the meet equation, local sections by the inverse
+   chart and order reflection) + the checked `SerreAffineTorsor`.
+4. Cover independence = independence of vanishing. (3) => affine uses the
+   partition torsor of the given cover: its basis vectors are points on the
+   members (`SerreTorsorLifts.point`, `SerrePartition.point`), so vanishing
+   gives a global section (`SerreCechIsoClass.zero-to-section`), which is a
+   partition (`SerrePartition.partition-at`,
+   `SerrePartitionCover.principal-cover-at`), and
+   `SerreAffineness.FromCover` (extracted from `Serre.From`, unchanged
+   proof) concludes. The canonical group isomorphism between the Cech
+   groups of two affine covers is NOT formalised and not used; it would need
+   restriction of quasi-coherence to affine opens.
+
+### Validation
+
+- Full server (`unit/segc unit/sag/qcqs all`): **385 modules, zero
+  failures**, 16.9 s.
+- Independent checker on `All.seg` with `--opened` and `--opens` over the
+  concatenation of `essential-image.opens`, `categories.opens`,
+  `relative.opens` and all fourteen `serre-*.opens`: **15,708
+  declarations, zero failures**, 37.8 s; **10,210 OPENS lines**, every one
+  `nothing else opened`.
+- **6,458 Serre declarations in 136 modules**, each with exactly one audit
+  entry, no missing or stale entries. New: `serre-converse.opens` (395
+  entries, 7 modules). Regenerated entries for the edited modules
+  `SerreTorsorLifts` (serre-torsors), `SerrePartition`,
+  `SerrePartitionCover` (serre-partition), `SerreAffineness`
+  (serre-affineness). Maximum Serre declaration time 0.28 s and maximum
+  distinct opened names 45, both unchanged (pre-existing declarations);
+  among the new ones at most 34 (`SerreLambdaModel.Principal.restricted`,
+  slice/restriction carriers) and 0.07 s.
+- Generate audit entries from a FULL `--opened` run: with `--only` the
+  trusted modules lose their `opaque` effect and openings are inflated
+  (e.g. `FromCover.R.on` opens 70 under `--only`, 10 in the full run).
+- The note was rebuilt twice: 15 pages, no unresolved references, no
+  overfull boxes.
+
+### What remains (not used by the theorem)
+
+Restriction and locality of quasi-coherence; the canonical isomorphism of
+Cech groups between two affine covers; the optional module theory of
+Section 4. No core/category file was changed; nothing is committed.
+
+## Cech groups of two affine covers compared (2026-10-30, second part)
+
+The canonical group isomorphism H1(U, M) = H1(V, M) for two finite affine
+covers and quasi-coherent M is checked:
+`SerreCechComparison.On[L,X,M,qc].Covers[U,V]` (`equivalence`,
+`comparison-add`, `comparison-torsor`: the U-class of any torsor goes to
+its V-class; inverse = comparison from V to U). No new axioms.
+
+Route (as suggested: through torsors; additivity without contracted sums):
+1. `SerreLambdaQuasiCoherent` (Cor. cor:lambda-everywhere): a
+   quasi-coherent M is lambda-local on EVERY open of X (needs only an
+   atlas, not affineness). (1) chart opens D_w(h) of a model chart, any
+   element c = e (x|v), e a unit (`SerreLambdaChart` surjectivity +
+   `SerreLambdaModel.Principal` + `SerreLambdaUnit`); (2) opens below a
+   chart, by descent on the slice over chart opens D_w(h_i) (meets
+   D_w(h_i h_k)); (3) any open w, descent on X|w over w /\ w_j. Slice
+   lambda is read on X by `SerreLambdaNested`. This REPLACES restriction of
+   quasi-coherence to affine opens. `Of.section`: every torsor has a
+   section over every affine open (model at w + `SerreTorsorChart`).
+2. `SerreCechRefinement`: restriction of cocycles along any refinement
+   (w_a <= u_(tau a)); it is the torsor-class map (restricted canonical
+   points of T_c, `SerreCechCanonicalCocycle`), well defined by the
+   classification, additive; bijective when every torsor has sections on
+   the members of the coarse cover (`Onto`).
+3. `SerreCechComparison`: Y = U ++ V (`FiniteLatticeFamilies.append`,
+   index maps `Concat.left/right`); U, V refine Y with equal members, Y is
+   affine, so both restrictions are additive bijections; compose.
+
+Validation: server 390 modules, 0 failures, 16.4 s; independent checker
+16,047 declarations, 0 failures, 35.1 s; combined audit (15 serre-*.opens,
+new `serre-comparison.opens`, 339 entries) 10,549 OPENS lines all
+`nothing else opened`; 6,797 Serre declarations in 141 modules, each with
+exactly one entry. New declarations: max 0.04 s, max 33 opened names
+(`SerreLambdaNested.j`, slice carriers). Note rebuilt: 16 pages, clean.
+Remaining unformalised (not used): restriction/locality of
+quasi-coherence, optional module theory of Section 4. Nothing committed.
