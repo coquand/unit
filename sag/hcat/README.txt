@@ -243,7 +243,7 @@ Homology (segment inside Coh2; DESIGN-HOMOLOGY.md), parameters
 Coh3 (segment inside Coh2), parameter k5 : route1 = route2 (Stasheff K5)
   K5Hom        Triple.coherence: the k5 endpoint pastings lift to equal
                Hom paths; identification with Hom-map-of-comp is open
-  CatK5        K5[f,g,h,e,d]: L, R, the faces P1-P6, N1-N3, route1, route2
+  CatK5        K5[A..F,f,g,h,e,d]: L, R, the faces P1-P6, N1-N3, route1, route2
   HcompPentagon  Pentagon C f1 f2 f3 f4 (statement of the internal pentagon)
   HomEqCalc    end-trans, Hom-ends-trans, HE-trans (composition of Hom-eq)
 

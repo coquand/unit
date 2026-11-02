@@ -47,7 +47,7 @@ occurs ids e = case e of
   _     -> any (occurs ids) (subExps e)
 
 -- the definitions of a list of units, by groups (consecutive definitions),
--- everywhere: in modules, records and lets
+-- everywhere: in modules, records, lets, instances and directives
 groups :: [Unit] -> [[Unit]]
 groups [] = []
 groups us@(u : rest) = case u of
@@ -59,6 +59,13 @@ groups us@(u : rest) = case u of
     UDef _ _ a b -> inExp a ++ inExp b
     UPar _ _ a -> inExp a
     UMod _ _ _ vs -> groups vs
+    -- the arguments of an instance (module N = M[..], open M[..]) and the
+    -- terms of directives may contain lets with data types; a #fails
+    -- block is not entered (failsTerm: it fails as a whole)
+    UInst _ _ m -> concatMap inExp (mexps m)
+    UDir (DNormal e) -> inExp e
+    UDir (DType e) -> inExp e
+    UDir (DConv a b) -> inExp a ++ inExp b
     _ -> []
   inExp e = case e of
     Let vs b -> groups vs ++ inExp b

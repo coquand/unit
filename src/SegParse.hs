@@ -221,6 +221,45 @@ telescope ts
               ((), ts5) <- sym ")" ts4
               Right (TVars xs a, ts5)
 
+-- The parameters of a module may contain definitions:
+--   module M (x : A) (y : B = e) (z : C) { .. }
+-- is  module M (x : A) { y : B = e ; z : C ; .. } : from the first
+-- definition on, the items are units of the body (a body-less unit is a
+-- parameter of the module).
+headDefs :: P [RUnit]
+headDefs ts
+  | isSym "(" ts, Right (u, ts1) <- headDef ts = do
+      (rest, ts2) <- headItems ts1
+      Right (u : rest, ts2)
+  | otherwise = Right ([], ts)
+ where
+  headItems ts0
+    | not (isSym "(" ts0) = Right ([], ts0)
+    | Right (u, ts1) <- headDef ts0 = do (rest, ts2) <- headItems ts1
+                                         Right (u : rest, ts2)
+    | otherwise = do
+        ((), ts1) <- sym "(" ts0
+        (xs, ts2) <- many1 ident ts1
+        ((), ts3) <- sym ":" ts2
+        if isKw "Level" ts3
+          then do ((), ts4) <- kw "Level" ts3
+                  ((), ts5) <- sym ")" ts4
+                  (rest, ts6) <- headItems ts5
+                  Right (RLevel xs : rest, ts6)
+          else do (a, ts4) <- expr ts3
+                  ((), ts5) <- sym ")" ts4
+                  (rest, ts6) <- headItems ts5
+                  Right ([ RDef (occ ts0 - k) y [] a Nothing | (k, y) <- zip [0 ..] xs ] ++ rest, ts6)
+  headDef ts0 = do
+    ((), ts1) <- sym "(" ts0
+    (y, ts2) <- ident ts1
+    ((), ts3) <- sym ":" ts2
+    (b, ts4) <- expr ts3
+    ((), ts5) <- sym "=" ts4
+    (e, ts6) <- expr ts5
+    ((), ts7) <- sym ")" ts6
+    Right (RDef (occ ts0) y [] b (Just (RBody e [])), ts7)
+
 constraints :: P [RCs]
 constraints ts = do
   (c, ts1) <- constraint1 ts
@@ -534,10 +573,15 @@ unit ts
                 (e, r4) <- expr2 r3
                 Right (RModInst x e, r4)
         else do (tel, r3) <- telescope r2
-                ((), r4) <- sym "{" r3
+                -- a module has no hidden parameters: its arguments are given
+                if null [ () | TVarsH _ _ <- tel ]
+                  then Right ()
+                  else Left ("module " ++ x ++ ": a module has no hidden parameters; write ( .. ) instead of { .. }")
+                (pre, r3') <- headDefs r3
+                ((), r4) <- sym "{" r3'
                 (us, r5) <- units r4
                 ((), r6) <- sym "}" r5
-                Right (RModule False x tel us, r6)
+                Right (RModule False x tel (pre ++ us), r6)
   | isKw "data" ts = do
       ((), r1)  <- kw "data" ts
       (x, r2)   <- ident r1
@@ -1303,19 +1347,21 @@ resolveProgramWith term rus = do
     bad -> Left (unlines ("a variable or level may not have the name of a variable or level in scope (no shadowing):" : map ("  " ++) (take 400 bad)))
   case splitReport us' of
     [] -> Right ()
-    bad -> Left (unlines ("a split or a data type must be the body of a definition (after its lambdas and the branches of its splits):" : map ("  in " ++) (take 10 bad)))
+    bad -> Left (unlines ("a split or a data type must be the body of a definition of a segment, not of a let or where (after its lambdas and the branches of its splits):" : map ("  in " ++) (take 10 bad)))
   if not term then Right us' else do
     case termErrors us' us' of
       [] -> Right ()
       bad -> Left (unlines ("positivity and termination:" : map ("  " ++) (take 20 bad)))
     Right (map (failsTerm us') us')
 
--- a #fails block rejected by Term fails (as one that does not resolve)
+-- a #fails block rejected by the placement of splits and data types or by
+-- Term fails (as one that does not resolve)
 failsTerm :: [Unit] -> Unit -> Unit
 failsTerm whole u = case u of
-  UDir (DFails vs) -> case termErrors whole vs of
+  UDir (DFails vs) -> case [ "#placement: a split or a data type in " ++ m | m <- splitReport vs ]
+                           ++ [ "#termination: " ++ m | m <- termErrors whole vs ] of
     [] -> UDir (DFails (map (failsTerm whole) vs))
-    (m : _) -> UDir (DFails [UDir (DNormal (Var ("#termination: " ++ m)))])
+    (m : _) -> UDir (DFails [UDir (DNormal (Var m))])
   UMod i x k vs -> UMod i x k (map (failsTerm whole) vs)
   _ -> u
 
@@ -1469,19 +1515,35 @@ splitReport = concatMap unit
     UDef i _ a b -> other i a ++ canon i b
     UPar i _ a     -> other i a
     UMod _ _ _ us -> concatMap unit us
-    UDir (DFails vs) -> concatMap unit vs
+    -- a #fails block fails as a whole (failsTerm)
+    UDir (DFails _) -> []
+    -- the arguments of an instance and the terms of directives are not
+    -- bodies of definitions
+    UInst i _ m    -> concatMap (other i) (margs m)
+    UDir (DNormal e) -> other "#normal" e
+    UDir (DType e) -> other "#type" e
+    UDir (DConv a b) -> other "#conv" a ++ other "#conv" b
     _              -> []
+  -- a definition of a let or where block is not a declaration of a
+  -- segment: no data type and no split there, at any position
+  local u = case u of
+    UDef i _ a b -> other i a ++ other i b
+    _            -> unit u
+  margs m = case m of
+    MVar _    -> []
+    MSub n _  -> margs n
+    MApp n as -> margs n ++ [ a | ATm a <- as ]
   canon i e = case e of
     Lam _ b        -> canon i b
     LLam _ b       -> canon i b
     Split _ bs   -> concat [ canon i b | (_, (_, _, b)) <- bs ]
     Sum _ cs     -> concat [ other i t | (_, tel) <- cs, (_, t) <- tel ]
-    Let us b       -> concatMap unit us ++ canon i b
+    Let us b       -> concatMap local us ++ canon i b
     _              -> other i e
   other i e = case e of
     Split _ _    -> [shortI i]
     Sum _ _      -> [shortI i]
-    Let us b       -> concatMap unit us ++ other i b
+    Let us b       -> concatMap local us ++ other i b
     _              -> concatMap (other i) (subExps e)
   shortI = takeWhile (/= '#')
   subExps e = case e of

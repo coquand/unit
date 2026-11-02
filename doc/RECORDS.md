@@ -21,6 +21,10 @@ The two differ in what a declaration in the body means:
 
 A module is never a type. A record is never instantiated as a module.
 
+**Definitions in a module head.** `module M (x : A) (y : B = e) (z : C) { body }` is `module M (x : A) { y : B = e ; z : C ; body }`: from the first definition on, the items of the head are units of the body. So `M` has the two parameters `x` and `z`, and is instantiated `M[a, c]`; `y` is a member, `M[a, c].y = e`. Test: `examples/modulehead.seg`.
+
+**No hidden parameters in a module.** A module head can't contain `{ x : A }`: all arguments of an instance are given. The parser rejects it ("a module has no hidden parameters").
+
 **`open` in a record body** is a scope operation: `open M[args]` brings `M`'s members into scope with their own identities (`Objs[obV].Ob`), and creates no field and no copy. Its arguments may use earlier fields; at an element `t`, these are the projections `t.x` (in the environment of the derived members, and in the field types). The normal scope and shadowing checks apply. Test: `examples/recordopen.seg`.
 
 ## 2. Modules

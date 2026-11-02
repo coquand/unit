@@ -50,10 +50,8 @@ module Find (P : Tree -> Bool) {
     node s t | ih-s ih-t -> step s t (P s) (refl (P s)) (ih-t) } ;
 } ;
 
-decSub (X : Ob) (Q : Subset X) : Plus (SubPt X Q) ((s : El X) -> Id Bool (Q s) false) =
-  aux (Find[\ x -> and (car X x) (QT[X, Q].qT x)].find (enum X))
- where {
-  aux : Find[\ x -> and (car X x) (QT[X, Q].qT x)].Res (enum X) -> Plus (SubPt X Q) ((s : El X) -> Id Bool (Q s) false) =
+decSub-aux (X : Ob) (Q : Subset X)
+  : Find[\ x -> and (car X x) (QT[X, Q].qT x)].Res (enum X) -> Plus (SubPt X Q) ((s : El X) -> Id Bool (Q s) false) =
     split {
       inl w -> inl ((w.1, and-l (car X w.1) (QT[X, Q].qT w.1) w.2),
                     transH (symH (QT[X, Q].qT-el (w.1, and-l (car X w.1) (QT[X, Q].qT w.1) w.2))) (and-r (car X w.1) (QT[X, Q].qT w.1) w.2)) ;
@@ -62,7 +60,8 @@ decSub (X : Ob) (Q : Subset X) : Plus (SubPt X Q) ((s : El X) -> Id Bool (Q s) f
           (trans Bool (QT[X, Q].qT s.1) (and (car X s.1) (QT[X, Q].qT s.1)) false
             (ap Bool Bool (\ c -> and c (QT[X, Q].qT s.1)) true (car X s.1) (sym Bool (car X s.1) true s.2))
             (k s.1 (cover X s.1 s.2)))) } ;
- } ;
+decSub (X : Ob) (Q : Subset X) : Plus (SubPt X Q) ((s : El X) -> Id Bool (Q s) false) =
+  decSub-aux X Q (Find[\ x -> and (car X x) (QT[X, Q].qT x)].find (enum X)) ;
 
 ------------------------------------------------------------------------
 -- Strictly monotone maps and linear posets
@@ -250,19 +249,20 @@ dl-strict (n y : Nat) : Strict (lin n) (lin (suc n)) (dl n y) = \ s t l -> dls n
 lf (i j : Nat) (p : Id Nat i j) : Id Tree (leaf i) (leaf j) = ap Nat Tree (\ m -> leaf m) i j p ;
 
 -- delta_{z+1} delta_y = delta_y delta_z  for y <= z
+pw-dl-dl-aux (n y z : Nat) (hyz : IsT (leb y z))
+  : (t : Tree) (h : IsT (car (lin n) t))
+    -> Id Tree (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (app (lin n) (lin (suc n)) (dl n y) (t, h))).1
+               (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) (app (lin n) (lin (suc n)) (dl n z) (t, h))).1 = split {
+  leaf i -> \ h -> lf (skip (suc z) (skip y i)) (skip y (skip z i)) (skip-skip y z i hyz) ;
+  node c d -> \ h -> absurd (Id Tree (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (app (lin n) (lin (suc n)) (dl n y) (node c d, h))).1
+             (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) (app (lin n) (lin (suc n)) (dl n z) (node c d, h))).1)
+             (false-true h) } ;
 pw-dl-dl (n y z : Nat) (hyz : IsT (leb y z))
   : PW (lin n) (lin (suc (suc n)))
        (compH (lin n) (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (dl n y))
        (compH (lin n) (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) (dl n z)) =
   pw-cc (lin n) (lin (suc n)) (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (dl n y) (dl (suc n) y) (dl n z)
-    (\ s -> aux s.1 s.2)
- where { aux : (t : Tree) (h : IsT (car (lin n) t))
-           -> Id Tree (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (app (lin n) (lin (suc n)) (dl n y) (t, h))).1
-                      (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) (app (lin n) (lin (suc n)) (dl n z) (t, h))).1 = split {
-           leaf i -> \ h -> lf (skip (suc z) (skip y i)) (skip y (skip z i)) (skip-skip y z i hyz) ;
-           node c d -> \ h -> absurd (Id Tree (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) (suc z)) (app (lin n) (lin (suc n)) (dl n y) (node c d, h))).1
-                      (app (lin (suc n)) (lin (suc (suc n))) (dl (suc n) y) (app (lin n) (lin (suc n)) (dl n z) (node c d, h))).1)
-                      (false-true h) } ; } ;
+    (\ s -> pw-dl-dl-aux n y z hyz s.1 s.2) ;
 
 -- the cylinder on a composite
 pw-cyl-comp (Z Y X : Ob) (f : Hom Y X) (g : Hom Z Y)
@@ -292,18 +292,21 @@ PWL (n : Nat) (Y : Ob) (f g : Hom (lin n) Y) : U a =
   (i : Nat) (h : IsT (leb i n)) -> Id Tree (app (lin n) Y f (leaf i, h)).1 (app (lin n) Y g (leaf i, h)).1 ;
 
 -- the same for two functions out of [n]
+pwlF-aux (n : Nat) (Y : Ob) (F G : El (lin n) -> El Y)
+  (p : (i : Nat) (h : IsT (leb i n)) -> Id Tree (F (leaf i, h)).1 (G (leaf i, h)).1)
+  : (t : Tree) (h : IsT (car (lin n) t)) -> Id Tree (F (t, h)).1 (G (t, h)).1 = split {
+  leaf i -> \ h -> p i h ;
+  node c d -> \ h -> absurd (Id Tree (F (node c d, h)).1 (G (node c d, h)).1) (false-true h) } ;
 pwlF (n : Nat) (Y : Ob) (F G : El (lin n) -> El Y)
   (p : (i : Nat) (h : IsT (leb i n)) -> Id Tree (F (leaf i, h)).1 (G (leaf i, h)).1)
-  : (s : El (lin n)) -> Id Tree (F s).1 (G s).1 = \ s -> aux s.1 s.2
- where { aux : (t : Tree) (h : IsT (car (lin n) t)) -> Id Tree (F (t, h)).1 (G (t, h)).1 = split {
-           leaf i -> \ h -> p i h ;
-           node c d -> \ h -> absurd (Id Tree (F (node c d, h)).1 (G (node c d, h)).1) (false-true h) } ; } ;
+  : (s : El (lin n)) -> Id Tree (F s).1 (G s).1 = \ s -> pwlF-aux n Y F G p s.1 s.2 ;
 
-pwl (n : Nat) (Y : Ob) (f g : Hom (lin n) Y) (p : PWL n Y f g) : PW (lin n) Y f g = \ s -> aux s.1 s.2
- where { aux : (t : Tree) (h : IsT (car (lin n) t)) -> Id Tree (app (lin n) Y f (t, h)).1 (app (lin n) Y g (t, h)).1 = split {
-           leaf i -> \ h -> p i h ;
-           node c d -> \ h -> absurd (Id Tree (app (lin n) Y f (node c d, h)).1 (app (lin n) Y g (node c d, h)).1)
-                                     (false-true h) } ; } ;
+pwl-aux (n : Nat) (Y : Ob) (f g : Hom (lin n) Y) (p : PWL n Y f g)
+  : (t : Tree) (h : IsT (car (lin n) t)) -> Id Tree (app (lin n) Y f (t, h)).1 (app (lin n) Y g (t, h)).1 = split {
+  leaf i -> \ h -> p i h ;
+  node c d -> \ h -> absurd (Id Tree (app (lin n) Y f (node c d, h)).1 (app (lin n) Y g (node c d, h)).1)
+                            (false-true h) } ;
+pwl (n : Nat) (Y : Ob) (f g : Hom (lin n) Y) (p : PWL n Y f g) : PW (lin n) Y f g = \ s -> pwl-aux n Y f g p s.1 s.2 ;
 
 -- the faces of Q_k
 pw-q-face (n y k : Nat)
@@ -377,17 +380,18 @@ pw-dg-dl (n y : Nat) (hy : IsT (leb y (suc n)))
 Miss (Z : Ob) (n y : Nat) (g : Hom Z (lin (suc n))) : U a =
   (s : El Z) -> IsT (not (eqN (vnum (app Z (lin (suc n)) g s).1) y)) ;
 
+pw-factor-aux (n y : Nat) (hy : IsT (leb y (suc n)))
+  : (t : Tree) (h : IsT (car (lin (suc n)) t)) -> IsT (not (eqN (vnum t) y))
+    -> Id Tree (app (lin n) (lin (suc n)) (dl n y) (app (lin (suc n)) (lin n) (dgH n y) (t, h))).1 t = split {
+  leaf j -> \ h k -> lf (skip y (dg n y j)) j (skip-dg n y j hy h k) ;
+  node c d -> \ h k -> absurd (Id Tree (app (lin n) (lin (suc n)) (dl n y)
+                                 (app (lin (suc n)) (lin n) (dgH n y) (node c d, h))).1 (node c d))
+                              (false-true h) } ;
 pw-factor (Z : Ob) (n y : Nat) (g : Hom Z (lin (suc n))) (hy : IsT (leb y (suc n))) (ms : Miss Z n y g)
   : PW Z (lin (suc n)) (compH Z (lin n) (lin (suc n)) (dl n y) (compH Z (lin (suc n)) (lin n) (dgH n y) g)) g =
   \ s -> transH (app-compH1 Z (lin n) (lin (suc n)) (dl n y) (compH Z (lin (suc n)) (lin n) (dgH n y) g) s)
           (transH (apH (\ u -> (app (lin n) (lin (suc n)) (dl n y) u).1) (app-compH Z (lin (suc n)) (lin n) (dgH n y) g s))
-                  (aux (app Z (lin (suc n)) g s).1 (app Z (lin (suc n)) g s).2 (ms s)))
- where { aux : (t : Tree) (h : IsT (car (lin (suc n)) t)) -> IsT (not (eqN (vnum t) y))
-           -> Id Tree (app (lin n) (lin (suc n)) (dl n y) (app (lin (suc n)) (lin n) (dgH n y) (t, h))).1 t = split {
-           leaf j -> \ h k -> lf (skip y (dg n y j)) j (skip-dg n y j hy h k) ;
-           node c d -> \ h k -> absurd (Id Tree (app (lin n) (lin (suc n)) (dl n y)
-                                          (app (lin (suc n)) (lin n) (dgH n y) (node c d, h))).1 (node c d))
-                                       (false-true h) } ; } ;
+                  (pw-factor-aux n y hy (app Z (lin (suc n)) g s).1 (app Z (lin (suc n)) g s).2 (ms s))) ;
 
 ------------------------------------------------------------------------
 -- A strictly monotone map [m] -> [n] is the identity, or misses a vertex

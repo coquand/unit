@@ -1,5 +1,16 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+> **Placement, soundness, module heads (2 November).** (1) A `split` or a
+> `data` type must be the body of a segment definition, never of a `let` or
+> `where` local, so that every normal form names visible definitions
+> (`PRIMREC.md` §1). The 180 local splits of `core` (48) and `sag` (132)
+> are lifted to definitions `f-x`; every development checks. (2) Two
+> soundness holes are closed: the constraints of a parameterless module are
+> checked at each use, and positivity looks through module-instance
+> arguments and directives (`examples/soundness.seg`). (3) A module head may
+> contain definitions, `module M (x : A) (y : B = e) (z : C) { .. }`, with
+> parameters `x z`; a module has no hidden parameters (`RECORDS.md` §1).
+
 > **Split comparison by name (25 October).** Split values now compare
 > only by code identity and convertible dynamic arguments. The
 > branch-comparison fallback and its counters are removed; no motive

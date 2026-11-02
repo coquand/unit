@@ -35,6 +35,17 @@ no traversal to trust: a name that is not in scope cannot be referred to,
 wherever it occurs (types, constructor fields, `let` in types, module
 arguments, directives).
 
+**Placement of splits and data types (2 November 2026).** A `split` or a
+`data` type must be the body of a definition of a segment (top level, a
+module or a record body), after its lambdas and the branches of its splits.
+It can't be the body of a `let` or `where` local. The reason is read-back: a
+split applied to neutral arguments is printed by its name, and the name of a
+local is not visible where the normal form is printed. A helper split is
+therefore a definition `f-x` just before `f`, taking the variables it uses as
+explicit arguments. The resolver reports a violation ("a split or a data type
+must be the body of a definition of a segment"); inside `#fails` it is a
+failure of the block. Locals that are not splits remain allowed.
+
 The restrictions R1 and R2 of `Term.hs` become consequences of this rule and
 are dropped. A `let` in a type can't be recursive. A constructor field can
 mention only earlier definitions and its own data type.
@@ -228,8 +239,9 @@ canonical ones.
   reconstruction is the same in both cases (`ack (suc m)`); only the check
   of the recursive results tells them apart.
 - **Named local splits** (a `where` helper inside a branch, which may use `r`)
-  are values during checking, with `r` abstract. They are read back through
-  their own name. Their `VRef` carries their whole environment as its
+  are no longer allowed (§1, placement); the following describes the former
+  treatment. They were values during checking, with `r` abstract, read back
+  through their own name. Their `VRef` carries their whole environment as its
   dynamic part, including `r`, and the name is used only when that dynamic
   part is convertible with the one in scope (as now). Their own path starts
   at their own definition, so it never goes through the abstract `r`.
