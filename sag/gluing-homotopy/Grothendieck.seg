@@ -10,7 +10,8 @@
 -- is the required equation with u c + u d as the new u), and the ring laws
 -- hold for pairs, as equations of T after expanding.  The class of a is
 -- (a, 0); it is additive and multiplicative, and a, b have the same class
--- iff a + u = b + u for some u.
+-- iff a + u = b + u for some u.  Every element is merely [s] - [t]
+-- (difference), and a map of semirings induces a ring map (Functor).
 level l ; open Ring[l] ; open Presentations[l] ;
 module Pr = Prelude[l] ;
 module F = Axioms[l].FunExtLemmas[fe @l] ;
@@ -253,4 +254,60 @@ module Over (T : Semiring[l].CSemiring) {
    (TC.map ((u : T.S) * Id T.S (T.add s u) (T.add t u)) ((u : T.S) * Witness (s,T.zero) (t,T.zero) u)
     (\ w -> (w.1,trans (ap (\ x -> T.add x w.1) (T.addZ s)) (trans w.2 (ap (\ x -> T.add x w.1) (sym (T.addZ t))))))
     h) ;
+ -- every element is a difference of classes
+ difference-at (s t : T.S) : Id Carrier (include (s,t)) (addG (class s) (negG (class t))) =
+  sym (calc Carrier { addG (class s) (negG (class t))
+    =< ap (addG (class s)) (Negate.beta (t,T.zero)) > addG (class s) (include (T.zero,t))
+    =< add2 (s,T.zero) (T.zero,t) > include (T.add s T.zero,T.add T.zero t)
+    =< ap include (pair-eq _ _ _ _ (T.addZ s) (zl t)) > include (s,t) }) ;
+ Difference (x : Carrier) : U l = Tr.Trunc[(s : T.S) * (t : T.S) * Id Carrier x (addG (class s) (negG (class t)))].carrier ;
+ difference : (x : Carrier) -> Difference x =
+  forall1 Difference (\ x -> Tr.Trunc[(s : T.S) * (t : T.S) * Id Carrier x (addG (class s) (negG (class t)))].proposition)
+   (\ p -> Tr.Trunc[(s : T.S) * (t : T.S) * Id Carrier (include p) (addG (class s) (negG (class t)))].inc
+     (p.1,(p.2,difference-at p.1 p.2))) ;
+} ;
+
+-- A map of semirings h : T -> T' induces a ring map of the Grothendieck
+-- rings, (a, b) |-> (h a, h b): a witness u of a + d + u = c + b + u goes
+-- to h u, and sums and products of pairs are preserved because h
+-- preserves + and *.  It sends the class of s to the class of h s.
+module Functor (T T' : Semiring[l].CSemiring) (h : Semiring[l].Hom[T,T']) {
+ module G = Over[T] ;
+ module G' = Over[T'] ;
+ pmap (p : G.Pair) : G'.Pair = (h.fn p.1,h.fn p.2) ;
+ -- h ((x + y) + u) = (h x + h y) + h u
+ add3 (x y u : T.S) : Id T'.S (h.fn (T.add (T.add x y) u)) (T'.add (T'.add (h.fn x) (h.fn y)) (h.fn u)) =
+  trans (h.map-add (T.add x y) u) (ap (\ t -> T'.add t (h.fn u)) (h.map-add x y)) ;
+ respects (p q : G.Pair) (r : G.Rel p q) : G'.Rel (pmap p) (pmap q) =
+  TC.map ((u : T.S) * G.Witness p q u) ((u : T'.S) * G'.Witness (pmap p) (pmap q) u)
+   (\ w -> (h.fn w.1,trans (sym (add3 p.1 q.2 w.1)) (trans (ap h.fn w.2) (add3 q.1 p.2 w.1)))) r ;
+ module D = G.Q.Descend[G'.Carrier,G'.set,\ p -> G'.include (pmap p),\ p q r -> G'.Q.relates (pmap p) (pmap q) (respects p q r)] ;
+ map : G.Carrier -> G'.Carrier = D.map ;
+ beta (p : G.Pair) : Id G'.Carrier (map (G.include p)) (G'.include (pmap p)) = D.beta p ;
+ -- h (x y + z w) = h x h y + h z h w
+ sum-of-products (x y z w : T.S) :
+  Id T'.S (h.fn (T.add (T.mul x y) (T.mul z w))) (T'.add (T'.mul (h.fn x) (h.fn y)) (T'.mul (h.fn z) (h.fn w))) =
+  trans (h.map-add (T.mul x y) (T.mul z w)) (cong2 T'.S T'.add _ _ _ _ (h.map-mul x y) (h.map-mul z w)) ;
+ map-add : (x y : G.Carrier) -> Id G'.Carrier (map (G.addG x y)) (G'.addG (map x) (map y)) =
+  G.forall2 (\ x y -> Id G'.Carrier (map (G.addG x y)) (G'.addG (map x) (map y))) (\ x y -> G'.set _ _)
+   (\ p q -> calc G'.Carrier { map (G.addG (G.include p) (G.include q))
+     =< ap map (G.add2 p q) > map (G.include (G.padd p q))
+     =< beta (G.padd p q) > G'.include (pmap (G.padd p q))
+     =< ap G'.include (G'.pair-eq _ _ _ _ (h.map-add p.1 q.1) (h.map-add p.2 q.2)) > G'.include (G'.padd (pmap p) (pmap q))
+     =< sym (G'.add2 (pmap p) (pmap q)) > G'.addG (G'.include (pmap p)) (G'.include (pmap q))
+     =< cong2 G'.Carrier G'.addG _ _ _ _ (sym (beta p)) (sym (beta q)) > G'.addG (map (G.include p)) (map (G.include q)) }) ;
+ map-mul : (x y : G.Carrier) -> Id G'.Carrier (map (G.mulG x y)) (G'.mulG (map x) (map y)) =
+  G.forall2 (\ x y -> Id G'.Carrier (map (G.mulG x y)) (G'.mulG (map x) (map y))) (\ x y -> G'.set _ _)
+   (\ p q -> calc G'.Carrier { map (G.mulG (G.include p) (G.include q))
+     =< ap map (G.mul2 p q) > map (G.include (G.pmul p q))
+     =< beta (G.pmul p q) > G'.include (pmap (G.pmul p q))
+     =< ap G'.include (G'.pair-eq _ _ _ _ (sum-of-products p.1 q.1 p.2 q.2) (sum-of-products p.1 q.2 p.2 q.1)) >
+        G'.include (G'.pmul (pmap p) (pmap q))
+     =< sym (G'.mul2 (pmap p) (pmap q)) > G'.mulG (G'.include (pmap p)) (G'.include (pmap q))
+     =< cong2 G'.Carrier G'.mulG _ _ _ _ (sym (beta p)) (sym (beta q)) > G'.mulG (map (G.include p)) (map (G.include q)) }) ;
+ map-one : Id G'.Carrier (map G.oneG) G'.oneG =
+  trans (beta G.pone) (ap G'.include (G'.pair-eq _ _ _ _ h.map-one h.map-zero)) ;
+ hom : RingHom[l].Hom G.ring G'.ring = (map,map-one,map-add,map-mul) ;
+ class-map (s : T.S) : Id G'.Carrier (map (G.class s)) (G'.class (h.fn s)) =
+  trans (beta (s,T.zero)) (ap G'.include (G'.pair-eq _ _ _ _ (refl (h.fn s)) h.map-zero)) ;
 } ;

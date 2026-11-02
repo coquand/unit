@@ -84,14 +84,14 @@ kernel by powers). So the identification `(A_a)_b = (A_b)_a` is never needed. A 
 instance with `MonoidLocalization` has not been written.
 
 Files, in the order of the proof:
-- `Bounds`: monotone exponent bounds, with a common bound for finite or matrix families.
+- `ExponentBounds`: monotone exponent bounds, with a common bound for finite or matrix families.
 - `Localising`: definition of a localising map.
 - `PolynomialLocalising`: `R -> C` localising at s implies `R[X] -> C[X]` localising at s
   (LQ 3.1/3.2, without rescaling the variable).
 - `ConstantTerm`: `value0`, `tail`, `p = p(0) + X tail p`, and X is regular.
 - `Rescaling`: `X |-> cX`, evaluation, and base change, compared by the universal property.
 - `MatrixMap`, `Unipotent`, `Conjugation`: matrix algebra.
-- `Lift`: LQ 3.4 in the form used: inverse F, F' over C[X] with F(0) = 1 lift to inverse
+- `PatchLift`: LQ 3.4 in the form used: inverse F, F' over C[X] with F(0) = 1 lift to inverse
   G, G' over R[X] with `G |-> F(s^k X)`.
 - `Comaximal`: powers of comaximal elements are comaximal.
 - `Homotopy`: the assembly.
@@ -136,7 +136,7 @@ Modules are qcqs's `SerreModule` (symlinked with `SerreModuleMaps`, `SerreModule
 - `ModuleIso`: `Iso[Md,Nd]` (a `SerreModuleMaps` Hom over the identity + inverse map),
   `make`, `identity`, `inverse` (the inverse is linear), `compose`, `Sum` (iso of sums).
 - `Vectors`: `Vec = Fin N -> R`, `act X u`, `act-mul`, `act-one`, `act-cancel`; `Map`: `map-act`.
-- `Glued`: `Glue[g]` = P_g = {(u,v) | jb v = g ja u} as a submodule of A_a^M + A_b^M
+- `GluedModule`: `Glue[g]` = P_g = {(u,v) | jb v = g ja u} as a submodule of A_a^M + A_b^M
   (`glued`, accessors `left`/`right`/`member`, `point`, `ext`); `Invariance[g,k,beta..,e]`:
   `P_k ~ P_g` when k = beta g alpha.
 - `VectorBlocks`: halves of vectors over Fin(M+M) (`lhalf`, `rhalf`, `cat`, `Halves`),
@@ -208,7 +208,7 @@ theory parameters, no new axioms). Instance: `Localisations...Instance[..].Krone
 - `Kronecker`: `kron Y X` (entry Y_jj' X_ii'), `act-kron`, `mixed`, `kron-one`, `kron-inverse`.
 - `GluedKronecker`: `Rows` (P_{1 (x) X} ~ P_X^m), `Columns` (P_{Y (x) 1} ~ P_Y^n), then
   STABLESUM for 1 (x) g and h (x) 1, with (1 (x) g)(h (x) 1) = h (x) g. No permutation matrix.
-- `Glued.Equal[g,k,e]`: P_k ~ P_g for k = g (moved from GluedProjective).
+- `GluedModule.Equal[g,k,e]`: P_k ~ P_g for k = g (moved from GluedProjective).
 Remaining for 3.6(2) proper: the K_0 product and [P_g][P_h] = [P_{g (x) h}] (see above).
 
 ## Status (2026-11-02, late night): K_0 (projector model) and the bridge DONE, checked
@@ -217,14 +217,14 @@ Remaining for 3.6(2) proper: the K_0 product and [P_g][P_h] = [P_{g (x) h}] (see
 if p presents P_h, q presents P_g (g invertible) and s presents P_{h (x) g}, then
 [p][q] = [s] in K_0(A) (81 modules, 2.14 s from a fresh server; heaviest declaration 0.14 s;
 same theory parameters, no new axioms). Instance: `Localisations...Instance[..].BridgeAt[m,n]`.
-Route (B) of the analysis above, with the tensor product given by "P (x) f" (Twist), so no
+Route (B) of the analysis above, with the tensor product given by "P (x) f" (TensorTwist), so no
 module tensor product and no rectangular matrices are needed.
 - `DirectSums`: block sums dsum p q for sizes m, n (parts lpart/rpart/catv, act-l/act-r, dsum-mul).
 - `Projectors`: `Projector` record (size, matrix, idempotent), `Image[p].image` (submodule of
   A^K), zeroP, oneP, `Sum[p,q]`, `Product[p,q]`.
 - `ProjectorSums`: Image(dsum p q) ~ Image p + Image q; Image zeroP single.
 - `ProjectorReindex`: `Reindex` (along an index bijection), `Swap`, `Assoc` for Kronecker.
-- `Twist`: `Of[P,f]` = P (x) f = {c : Fin L -> P | sum f_yy' c_y' = c_y}; `Map` (functorial in P),
+- `TensorTwist`: `Of[P,f]` = P (x) f = {c : Fin L -> P | sum f_yy' c_y' = c_y}; `Map` (functorial in P),
   `ImageOf` (Image(p (x) f) ~ Image p (x) f), `SumOf` (distributivity), `UnitOf`, `zero-single`.
 - `ModuleIso`: + `Assoc`, `Swap`, `Single`, `Singles`, `ZeroRight`.
 - `Semiring`: `CSemiring`, `FromCongruence` (quotient of a raw semiring by a congruence).
@@ -236,7 +236,7 @@ module tensor product and no rectangular matrices are needed.
   ib E = beta' D beta, D = blk 1 0 0 0) with Image E ~ P_g (`Explicit[g,g',gi].theorem`).
 - `GluedTensor`: P_h (x) E ~ P_{h (x) g} (`Tensor`), and the bridge.
 Also: `Vectors.mat-act`, `VectorBlocks.D/head/head-cat/head-head`, `VectorBlocks.Map`
-(map-cat, map-D), `Kronecker.act-one-left/right`, `Pairing.Sums.swap-sums`, `Glued.Equal`.
+(map-cat, map-D), `Kronecker.act-one-left/right`, `Pairing.Sums.swap-sums`, `GluedModule.Equal`.
 
 Next: state Lemma 3.6(1) and 3.6(2) as K_0 equations, which needs [P_g^m] = m[P_g] (an
 iso between the image of an m-fold block sum and the family product of SerreModuleProducts)
@@ -301,3 +301,143 @@ Existing pieces to check before writing (no module-level gluing exists yet in un
 Rules as above: every checker run < 60 s (`../segc sag/gluing-homotopy changed`), read
 `../seg/WRITING.md`, lock constructions after their characterising lemmas, no ring solver,
 `split` is a keyword (not a declaration name), and `module X = e` needs a module, not a value.
+
+## Status (2026-11-02, night 2): Lemma 3.6(3) in K_0 DONE, checked
+
+89 modules, 2.57 s from a fresh server (GluedImage 0.15 s, ClassKernel 0.08 s); same theory
+parameters, no new axioms. Instance `Localisations...Instance[..].KernelAt.theorem`.
+`ClassKernel.Over[..].Lemma[p,q,ha,hb].theorem`: for projectors p, q over A with
+[p] = [q] in K_0(A_a) and in K_0(A_b) (ha, hb: classes of the base changes `ProjectorMap.map`),
+merely L, inverse g, g' (L x L over C), a projector r and Image r ~ P_g, with
+[p] + [A^L] = [r] + [q]. `ClassKernel.difference` turns this into [p] - [q] = [r] - [A^L].
+Stated for x = [p] - [q] with the restriction computed on the representatives: the ring map
+K_0(A) -> K_0(A_a) itself (well-definedness on the quotient) is NOT built; every x is merely
+such a difference, but that lemma is not written either.
+Proof route: pad p, q to one size (p + 0, 0 + q); stabilise on each side; isomorphic images
+give a Murray-von Neumann equivalence; glue.
+- `Vectors`: `act-madd`, `act-mneg`, `act-mzero`.
+- `Projectors.Equal[n,X,Y,hX,hY,e]`: equal matrices, isomorphic images (no record eta in seg,
+  so stated for `new Projector[n,X,hX]`; applies to any projector defined by `new`).
+- `Complements`: `Complement[p]` (1 - p as a projector, `kills`, `kills-image`,
+  Image p + Image (1-p) ~ A^K, `class`: [p] + [1-p] = [A^K]); `Null[n]` (zero projector, class 0).
+- `Equivalence`: record `Equivalent[X,Y]` (u, v; vu = X, uv = Y, Yu = u, vY = v, Xv = v),
+  `retarget`, `Act` (on vectors), `Split` (comp w = w - F w; v-comp, f-comp, u-v-comp, v-sum,
+  comp-sum), `Pair` (G = q.u r.v + (1 - F); transport, v-matrix, comp-matrix), `Cancel`
+  (G_qr G_rq = 1), `Columns` (matrix of a linear map of images), `FromIso`, `Map` (ring maps).
+- `ProjectorMap`: base change `map p`; `Sum`, `Free`, `Null` (isos and classes).
+- `Stabilise`: [s] = [t] in K_0(B) gives merely j with Image (s + 1_j) ~ Image (t + 1_j);
+  `up-right`, `up-left` (larger j).
+- `GluedImage`: E, F over A with equivalences over A_a and A_b; G = U_b V_a + (1 - F) over C is
+  invertible and Image E + Image (1 - F) ~ P_G (`iso`, `presenter`, `presents`).
+- `ClassKernel`: the assembly.
+
+Next: the remaining items of gabber-recollement (LQ X.5.5, weak cancellation, K_0 (x) Q by
+MonoidLocalization); possibly the restriction homomorphism K_0(A) -> K_0(B) (needs: Iso of
+images => Equivalent (done: FromIso, after padding to one size) => base change => Iso).
+
+## Status (2026-11-03): restriction K_0(A) -> K_0(B), and Proposition `correct` (K-theory core) DONE, checked
+
+92 modules, 3.10 s from a fresh server (Correction 0.32 s, Restriction 0.08 s); same theory
+parameters, no new axioms. A negative test (claiming rho(f) rho(S)^n = 0) is rejected.
+- `K0Restriction.Over[A,B,setA,setB,f].restrict : Hom K_0(A) K_0(B)`, `restrict-class`: [p] |-> [f p].
+  Route: `MapIso` (iso of images survives base change: pad p + 0, 0 + q to one size, FromIso,
+  Equivalence.Map, ToIso, unpad), semiring map `shom` on classes (sums, Kronecker products,
+  0, 1 via ProjectorMap), then `Grothendieck.Functor`.
+- New generic pieces: `Equivalence.ToIso`; `Complements.PadRight/PadLeft`;
+  `ProjectorMap.Product/zero-iso/one-iso`; `Semiring.Hom` (record); `Grothendieck.Functor`
+  (semiring map => ring map, `class-map`) and `Grothendieck.difference`;
+  `K0.difference` (every x is merely [p] - [q]).
+- `ClassKernel.Kernel[x,ha,hb].theorem`: Lemma 3.6(3) as in the paper -- x restricting to 0 on
+  both sides is merely [P_g] - L (Witness: L, g, g', inverse, r, Image r ~ P_g, x = [r] - [A^L]).
+  Instance `Localisations...KernelAt.kernel`.
+- `Rational`: `Integers[R]` (nat, nat-plus, nat-times, `Binomial`: a a = 0 => (1 + a)^n = 1 + n a),
+  `NatMap`, `times-suc`, `times-split`; `Over[R]`: K = R (x) Q as MonoidLocalization at the
+  positive integers nat (k+1), `iota`, `inverse`/`inverse-law`/`unit`, `rho a s` = a/s.
+- `Correction.Over[..].Lemma[f,N0,kappa0,n0,ha,hb].theorem`: if kappa([f] - N) restricts to 0 on
+  A_a and A_b (N = N0+1, kappa = kappa0+1, n = n0+1), merely e, R = R0+1 = (n kappa N) e and a
+  projector S with [S] + e kappa([f] - N) = R in K_0(A) and rho(f) rho(S)^n = 1 in K_0(A) (x) Q.
+  Proof as in the paper: 3.6(3) gives z = [r] - L, 3.6(2) gives z z = 0, e = L + 1,
+  S = (presenter of P_(g'^e)) + 1_D with L + D = R, ClassSum.Powers.negative for [P_(g'^e)];
+  in K: tau tau = 0, rho(S) = 1 - tau/n, binomial. Instance `Localisations...CorrectionAt`.
+  Not covered (needs the twisted layer): P(V' (x) S) = P(V') (x) S^(x)n, i.e. multiplicativity of rho.
+
+Next: LQ X.5.5 (reduced K_0 nil) for Lemma `roots`, or the design of twisted modules
+(gerbe, P(V)) for `cheap`, weak cancellation and the main theorem.
+
+## Status (2026-11-03, later): nilpotence on covers and Lemma `roots` DONE, checked
+
+94 modules, 3.28 s from a fresh server (Nilpotence 0.07 s, Roots 0.03 s); same theory parameters.
+Negative test (claiming rho(f) = 0 in Roots) is rejected.
+- `K0Restriction`: + `Agree` (ring maps out of K_0 agreeing on classes agree), `Compose`
+  (restrict along g f = restrict f then g), `Pointwise` (pointwise equal maps).
+- `Nilpotence`: `Square` (x restricting to 0 on D(a), D(b) => x x = 0), `Trivial` (0 = 1 => K_0 = 0),
+  `Cover A k` (s, c with sum c_i s_i = 1), `Vanishes` (restriction to the localisation at powers
+  of s is 0), `nil : (k : Nat) -> Statement k` (Statement quantifies over rings, U (l+)):
+  x vanishing on every D(s_i) is nilpotent. Step: b = sum_(i<k) c_i s_i, induction over A_b with
+  t_i = s_i/1, comparison A_(s_i) -> (A_b)_(t_i) by MonoidLocalizationMap, then Square at (s_k, b).
+- `Rational`: + `Expand` ((1 + a)^n = 1 + a P_n, P_n = n + a q_n), `Geometric` (a^m = 0 => 1 + a unit),
+  `UnitPlus` (unit + nilpotent is a unit).
+- `Roots.Over[A,setA].Lemma[f,N0,n0,k,cv,hv,hr].theorem`: if [f] - N vanishes on each D(s_i) of a
+  cover (constant rank N, stated in K_0) and rho(f)^n = 1 in K_0 (x) Q, then rho(f) = 1.
+  This is the paper's Lemma `roots` with LQ X.5.5 replaced by `Nilpotence` (constant rank on a
+  cover suffices; the general rank map to H_0 is not built).
+
+Gerbes: unit/sag/torsor has SAG 7.4 (Gerbe.seg: A-gerbe = connected 1-type with bands
+beta_x : (x = x) ~ A for an abelian group A; Gerbe74 = Thm 7.4.7, Cech = Thm 7.4.8, Deligne's T_c).
+Open design question for the twisted layer: twisted modules as families V : G -> Mod with loops
+acting by beta (synthetic, SAG), versus the external K_0 work here (projectors over a ring A).
+
+## Status (2026-11-03, night): twisted layer started in sag/twisted (internal first, then external)
+
+Plan (agreed): use the SAG side only to externalise the gerbe; twisted modules and all K_0 work
+stay external (projectors). A twisted module = projectors V_i over A[1/u_i] with
+V_j ~ V_i (x) H_ij on D(u_i u_j), compatible with mu_ijk : H_ij (x) H_jk ~ H_ik.
+
+`sag/twisted/`: symlinks to all of gluing-homotopy + the chatelet closure of AffineLineProjector,
+Gerbe, SAGAxioms, PicardUnits (139 files, computed from `Name[l` references); All.seg concatenates
+the two import orders. `../segc sag/twisted all`: 210 modules, 4.34 s.
+Renames in gluing-homotopy to avoid clashes with chatelet names (no shadowing in seg):
+  Lift -> PatchLift, Twist -> TensorTwist, Glued -> GluedModule, Restriction -> K0Restriction,
+  Bounds -> ExponentBounds, ClassKernel.Pad -> ClassKernel.Padded.
+(Older status sections above may still use the old names.)
+
+DONE: `GerbeLines.Over[R,setR,axioms].At[Alg,fp,G,u,v,su,sv].theorem` -- for a family G of
+R^x-gerbes over Spec Alg (Alg f.p.) with points su over D(u), sv over D(v): merely a localisation
+Alg[1/uv] (AffineInterface.localize) and merely a rank-one projector H over it with
+Gamma(line of the path torsors su x = sv x) ~ Fixed H, additively and linearly
+(AffineLineProjector applied to x |-> Gerbe.GL[G x].PTor (su x) (sv x) on D(uv) = Spec Alg[1/uv]).
+
+NEXT (the decisive part of the probe):
+1. mu_ijk: composition of paths PTor(a,b) x PTor(b,c) -> PTor(a,c) gives on associated lines
+   L_ab (x) L_bc ~ L_ac (sections: (v.v')(p.q) = v(p) v'(q), well defined by the weight);
+   externally Image H_ij (x) Image H_jk ~ Image H_ik over Alg[1/u_i u_j u_k] (TensorTwist/Kronecker).
+2. base change: the projector of the restricted line is the base change of H_ij
+   (AffineLineProjector's sections iso, restricted along Alg[1/u_iu_j] -> Alg[1/u_iu_ju_k]).
+3. ring comparison: Alg[1/f] (presented, AffineInterface) vs MonoidLocalization at powers of f
+   (Localisations, used by K0Restriction/Nilpotence/Roots): both satisfy the universal property.
+4. local points from mere inhabitation: Z-choice gives the cover D(u_i) and the su_i.
+
+## Status (2026-11-03, night 2): mu_ijk externally DONE (sag/twisted), checked
+
+`../segc sag/twisted all`: 215 modules, 4.35 s fresh; no new axioms (SAG axioms Loc, SQC, Z-choice
+as the module parameter `axioms`, as in AffineLineProjector). Negative test (mu into Image H_ab) rejected.
+- `PathProduct`: in a gerbe, a.h = l_x(a) h; composition is equivariant on both sides
+  (`left`; `right` via band-conj: h l_y(a) = l_x(a) h); `Weighted[chi,..,x,y,z]`: product of
+  weight-chi functions on (x = y) and (y = z) to (x = z), constant on factorisations, by unique
+  choice; bilinear; `Multiplicative`: <d e, f g> = <d, f> <e, g> (LinePairing).
+- `GerbeTensor.At[L,fp,G,a,b,c].Product[wab,wbc]`: product frame data `product-data` for T_ac
+  indexed by Fin (m n) (sum of pairings = 1 by `double`), and `kronecker`: its projector entries
+  are the Kronecker products of those of wab, wbc (checked pointwise, SQC).
+- `LineRestrict`: frame data restrict along phi : Alg -> L; entries of the restricted projector
+  are phi of the entries (base change).
+- `LineModules.At[L,fp,T]`: `Of[w].projector` (a Projectors projector over L), sections <->
+  image (encode/decode, additive, linear); `Compare[w,w'].iso` between images of two data.
+- `GerbeMu.At[...].Mu[wab,wbc,wac].mu : Image (H_ab (x) H_bc) ~ Image H_ac` over L.
+
+NEXT: (a) ring comparison Alg[1/f] (AffineInterface, presented) vs MonoidLocalization at powers
+(used by K0Restriction/Nilpotence/Roots) -- both have the universal property;
+(b) local points from mere inhabitation (Z-choice) -> cover u_i, points s_i, data w_ij on
+Spec Alg[1/u_i u_j] (GerbeLines) and their restrictions to triple overlaps (LineRestrict);
+(c) coherence of mu on quadruple overlaps (from associativity of composition: tassoc), if the
+definition of twisted modules needs it; (d) twisted modules: V_i over A[1/u_i] with
+V_j ~ V_i (x) H_ij compatible with mu.
