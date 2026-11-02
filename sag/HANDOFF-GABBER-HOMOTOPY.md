@@ -211,6 +211,38 @@ theory parameters, no new axioms). Instance: `Localisations...Instance[..].Krone
 - `Glued.Equal[g,k,e]`: P_k ~ P_g for k = g (moved from GluedProjective).
 Remaining for 3.6(2) proper: the K_0 product and [P_g][P_h] = [P_{g (x) h}] (see above).
 
+## Status (2026-11-02, late night): K_0 (projector model) and the bridge DONE, checked
+
+`K0.Over[A,setA].K0 : CRing` and `GluedTensor.Over[..,m,n].Bridge[g,g',gi,h,p,q,s,ep,eq,es].theorem`:
+if p presents P_h, q presents P_g (g invertible) and s presents P_{h (x) g}, then
+[p][q] = [s] in K_0(A) (81 modules, 2.14 s from a fresh server; heaviest declaration 0.14 s;
+same theory parameters, no new axioms). Instance: `Localisations...Instance[..].BridgeAt[m,n]`.
+Route (B) of the analysis above, with the tensor product given by "P (x) f" (Twist), so no
+module tensor product and no rectangular matrices are needed.
+- `DirectSums`: block sums dsum p q for sizes m, n (parts lpart/rpart/catv, act-l/act-r, dsum-mul).
+- `Projectors`: `Projector` record (size, matrix, idempotent), `Image[p].image` (submodule of
+  A^K), zeroP, oneP, `Sum[p,q]`, `Product[p,q]`.
+- `ProjectorSums`: Image(dsum p q) ~ Image p + Image q; Image zeroP single.
+- `ProjectorReindex`: `Reindex` (along an index bijection), `Swap`, `Assoc` for Kronecker.
+- `Twist`: `Of[P,f]` = P (x) f = {c : Fin L -> P | sum f_yy' c_y' = c_y}; `Map` (functorial in P),
+  `ImageOf` (Image(p (x) f) ~ Image p (x) f), `SumOf` (distributivity), `UnitOf`, `zero-single`.
+- `ModuleIso`: + `Assoc`, `Swap`, `Single`, `Singles`, `ZeroRight`.
+- `Semiring`: `CSemiring`, `FromCongruence` (quotient of a raw semiring by a congruence).
+- `Grothendieck`: Grothendieck ring of a CSemiring (`ring`, `class`, `class-add`, `class-mul`,
+  `effective`/`same-class`: same class iff a + u = b + u for some u).
+- `K0`: the semiring of projectors up to isomorphic images, K_0 = its Grothendieck ring;
+  `class`, `class-sum`, `class-product`, `class-iso`, `Presenting[P,p,q,e,f].same`.
+- `GluedProjector`: for invertible g, merely a projector E (ia E = alpha D alpha',
+  ib E = beta' D beta, D = blk 1 0 0 0) with Image E ~ P_g (`Explicit[g,g',gi].theorem`).
+- `GluedTensor`: P_h (x) E ~ P_{h (x) g} (`Tensor`), and the bridge.
+Also: `Vectors.mat-act`, `VectorBlocks.D/head/head-cat/head-head`, `VectorBlocks.Map`
+(map-cat, map-D), `Kronecker.act-one-left/right`, `Pairing.Sums.swap-sums`, `Glued.Equal`.
+
+Next: state Lemma 3.6(1) and 3.6(2) as K_0 equations, which needs [P_g^m] = m[P_g] (an
+iso between the image of an m-fold block sum and the family product of SerreModuleProducts)
+and the class of a free module; then 3.6(3) and the remaining items of gabber-recollement
+(LQ X.5.5, weak cancellation, K_0 (x) Q by MonoidLocalization).
+
 ## (Former brief) Lemma 3.6(1) at the module level
 
 Goal: `[P_g] + [P_h] = [P_gh] + M` in K_0(A), for g, h in GL_M(A_ab), A_a, A_b, A_ab as in
