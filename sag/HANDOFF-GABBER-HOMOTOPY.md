@@ -122,7 +122,32 @@ Concrete instance DONE: `Localisations.seg` (with `LocalizationIdentities`, `Mon
 `HomotopyAt[N].theorem` (Lemma 3.5) and `DiagonalAt[M].theorem` (Lemma 3.6(1), matrix level).
 Still open: the module level (P_g + P_h = P_gh + M), which needs glued modules and K_0.
 
-## Next: Lemma 3.6(1) at the module level (new infrastructure; start here in a fresh session)
+## Status (2026-11-02, evening): Lemma 3.6(1) at the module level DONE, checked
+
+`StableSum.Over.Lemma.theorem` (`../segc sag/gluing-homotopy all`: 65 modules, 0.64 s from a
+fresh server; same theory parameters, no new axioms). Hypotheses: those of `DiagonalProduct`
+plus `ka : A -> A_a localising at a`, `kb : A -> A_b localising at b`. Conclusion: merely an
+isomorphism of A-modules `P_g + P_h ~ P_gh + A^M` (no K_0; step 5 not needed).
+Concrete instance: `Localisations.Over.Instance[..].StableAt[M].theorem`, with
+`Localisations.Over.Inclusion[x].localising` (A -> A_x localising at x).
+Modules are qcqs's `SerreModule` (symlinked with `SerreModuleMaps`, `SerreModuleProducts`,
+`RingMaps`); sums are `SerreModuleProducts.Pair`, A^M is `SerreModuleProducts.Over` of
+`regular`. New files, in the order of the proof:
+- `ModuleIso`: `Iso[Md,Nd]` (a `SerreModuleMaps` Hom over the identity + inverse map),
+  `make`, `identity`, `inverse` (the inverse is linear), `compose`, `Sum` (iso of sums).
+- `Vectors`: `Vec = Fin N -> R`, `act X u`, `act-mul`, `act-one`, `act-cancel`; `Map`: `map-act`.
+- `Glued`: `Glue[g]` = P_g = {(u,v) | jb v = g ja u} as a submodule of A_a^M + A_b^M
+  (`glued`, accessors `left`/`right`/`member`, `point`, `ext`); `Invariance[g,k,beta..,e]`:
+  `P_k ~ P_g` when k = beta g alpha.
+- `VectorBlocks`: halves of vectors over Fin(M+M) (`lhalf`, `rhalf`, `cat`, `Halves`),
+  `diag-l`/`diag-r` (diag(a,d) acts by halves).
+- `GluedSums`: `Diagonal[g,h].iso : P_{diag(g,h)} ~ P_g + P_h`.
+- `Equaliser`: `Equalise` (psi localising at s, psi r = psi r' gives s^e r = s^e r'),
+  `Combine`, and `Over.preimage`: unique r with ia r = u, ib r = v when ja u = jb v.
+- `GluedFree`: `iso : A^M ~ P_1`.
+- `StableSum`: the chain P_g+P_h ~ P_diag(g,h) ~ P_diag(gh,1) ~ P_gh+P_1 ~ P_gh+A^M.
+
+## (Former brief) Lemma 3.6(1) at the module level
 
 Goal: `[P_g] + [P_h] = [P_gh] + M` in K_0(A), for g, h in GL_M(A_ab), A_a, A_b, A_ab as in
 `Localisations.Instance`. The matrix part is done: `Localisations.Over.Instance[..].DiagonalAt[M].theorem`
