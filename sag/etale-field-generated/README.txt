@@ -83,3 +83,11 @@ module because a shared monic module has a local alias named Expansion;
 Unit forbids shadowing. No shared source was edited to resolve this.
 
 Check with ./segc sag/etale-field-generated all from unit/.
+
+Interface change (2 November 2026)
+----------------------------------
+ZeroDimensionalRelation.Over[k,setk,dec] and ZeroDimensionalFinite.Over[k,setk,dec]
+take dec : (a : k.R) -> Trunc (a = 0 + unit a), merely given, and no
+nontriviality: 1 = 0 is allowed. The sparse data have unit coefficients
+(1 and -u are units: unit-one, unit-neg); expansion is
+MonomialFamily...Keep[unit].Mere[dec].expand.

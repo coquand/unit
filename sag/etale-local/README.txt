@@ -307,3 +307,23 @@ FieldCase parameters; E/mE finite for ZMT) remains a hypothesis.
 
 Renamed for the combined tree: LoopStep's inner module Span is PowerSpan
 (Span is a file module of sag/zmt-general).
+
+Interface change (2 November 2026): primality relative to a falsum
+---------------------------------------------------------------------
+Introduction, FiniteIntroduction, Local, TheoremLocal, FiniteFlatLocal,
+SelectedFlatLocal, SelectedLocalLift, LocalFieldComplete and
+OriginalSLocalBridge take (Bot : U l) and
+  q-prime : (a c : E.R) -> q (a c) -> Plus (Plus (q a) (q c)) Bot
+instead of q prime.  Every "z not in q" derived from primality is read
+as q z -> Bot (Introduction.prime-out, power-out, e-out, y-out, p-out,
+g-out, Qprime-out); those from q-dec and q-proper stay negations.
+DeterminantLemma.Over..System..Congruence.Prime[Bot,prime,y-out] likewise.
+Local.Statement: Relative Bot (with q s' -> Bot), Conclusion = Relative
+Empty, Outcome Bot = Relative Bot + Bot (TheoremLocal.theorem-of, since
+"every eps_i in q" now gives Bot), strict : Outcome Empty -> Conclusion,
+decide-case (decide s' in q) : Relative Bot -> Conclusion + Bot.
+FlatLocalStatement: Relative Bot, forget-relative.
+Bot = Empty with q-prime = inl o prime is the old theorem (FlatLocal,
+FlatTheoremLocal, TheoremLocalZMT and the regressions do this).  For the
+hit-or-split cover Bot is a split: with decidable membership,
+q (a c) gives q a, q c, or the split (a, c).

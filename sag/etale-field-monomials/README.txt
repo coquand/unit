@@ -119,3 +119,15 @@ Checking from unit/:
   ./segc sag/etale-field-monomials all
   dist-newstyle/build/aarch64-osx/ghc-9.6.7/seg-0.1.0.0/x/seg/build/seg/seg sag/etale-field-monomials/All.seg --opened
   dist-newstyle/build/aarch64-osx/ghc-9.6.7/seg-0.1.0.0/x/seg/build/seg/seg sag/etale-field-monomials/All.seg --opens sag/etale-field-monomials/etale-field-monomials.opens
+
+Interface change (2 November 2026)
+----------------------------------
+MonomialLists.Keeps K replaces Nonzero (NonZero A a = not (a = 0) is
+the usual K). MonomialNormalize.Over[A,setA,n].Keep[K] holds Filtered p
+(the filtered list with its four properties) built by one step
+filter-cons; Given[decide] runs it on a decision "zero or K", Mere[decide]
+on a merely given one. MonomialFamily.Over[A,setA,n].Keep[K] holds
+SparseData (field keep : K (coefficient i), formerly nonzero) with
+Given[decide].expand and Mere[decide].expand (truncated).
+MonomialDifference.Over[A,setA,n,K,keep-one,keep-neg]; neg-nonzero is
+top level. The Z/4 regressions use K = NonZero and still compute by refl.

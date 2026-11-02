@@ -3,6 +3,7 @@
 -- and list evaluation becomes exactly the library's finite sum.
 level l ; open Ring[l] ; open Presentations[l] ;
 module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
+module Tr = Truncation[l] ; module TH = Truncation[l+] ; module THC = TruncationCombinators[l+] ;
 module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
  module T = MonomialLists[l].Over[A,setA,n] ;
  length : T.Terms -> Nat = split { nil -> zero ; cons t p | rec -> suc rec } ;
@@ -13,10 +14,10 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
    nil -> \ hp i -> efq i ;
    cons t p | rec -> \ hp -> AffineFinite[l].section (length p)
     (\ i -> Not (Id (E.Exponent n) u (at (cons t p) i).2)) (rec hp.2) hp.1 } ;
- indexed-nonzero : (p : T.Terms) -> T.Nonzero p -> (i : Fin (length p)) -> Not (Id A.R (at p i).1 A.z) = split {
+ indexed-keeps (K : A.R -> U l) : (p : T.Terms) -> T.Keeps K p -> (i : Fin (length p)) -> K (at p i).1 = split {
   nil -> \ hp i -> efq i ;
   cons t p | rec -> \ hp -> AffineFinite[l].section (length p)
-   (\ i -> Not (Id A.R (at (cons t p) i).1 A.z)) (rec hp.2) hp.1 } ;
+   (\ i -> K (at (cons t p) i).1) (rec hp.2) hp.1 } ;
  module DistinctStep (t : T.Term) (p : T.Terms) (hp : T.Away t.2 p)
   (rec : (i j : Fin (length p)) -> Id (E.Exponent n) (at p i).2 (at p j).2 -> Id (Fin (length p)) i j) {
   result : (i j : Fin (suc (length p))) ->
@@ -37,34 +38,45 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
   value : (p : T.Terms) -> Id B.ring.R (V.value p) (S.sum (length p) (\ i -> V.term (at p i))) = split {
    nil -> refl B.ring.z ; cons t p | rec -> ap (B.ring.add (V.term t)) rec } ;
  } ;
- module Normalized (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z))) {
-  module N = MonomialNormalize[l].Over[A,setA,n,zero-dec] ;
+ module Keep (K : A.R -> U l) {
+  module N = MonomialNormalize[l].Over[A,setA,n] ; module NK = N.Keep[K] ;
   record SparseData (e : T.P.Expr (Fin n)) {
    size : Nat ;
    coefficient : Fin size -> A.R ;
    exponent : Fin size -> E.Exponent n ;
-   nonzero (i : Fin size) : Not (Id A.R (coefficient i) A.z) ;
+   keep (i : Fin size) : K (coefficient i) ;
    distinct (i j : Fin size) : Id (E.Exponent n) (exponent i) (exponent j) -> Id (Fin size) i j ;
    value (B : T.C.Algebra) (x : Fin n -> B.ring.R) :
     Id B.ring.R (T.P.eval (Fin n) B x e)
      (FiniteIdeal[l].Sums[B.ring].sum size
       (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (MonomialEvaluation[l].Over[B.ring].monomial n x (exponent j)))) ;
   } ;
-  module For (e : T.P.Expr (Fin n)) {
-   list : T.Terms = N.normalize (T.raw e) ;
+  -- The filter of the coalesced expansion of e, read as sparse data.
+  module For (e : T.P.Expr (Fin n)) (f : NK.Filtered (N.coalesce (T.raw e))) {
+   list : T.Terms = f.1 ;
    size : Nat = length list ;
    coefficient (i : Fin size) : A.R = (at list i).1 ;
    exponent (i : Fin size) : E.Exponent n = (at list i).2 ;
-   nonzero (i : Fin size) : Not (Id A.R (coefficient i) A.z) = indexed-nonzero list (N.nonzero (T.raw e)) i ;
+   keep (i : Fin size) : K (coefficient i) = indexed-keeps K list f.2.2.2.1 i ;
    distinct (i j : Fin size) : Id (E.Exponent n) (exponent i) (exponent j) -> Id (Fin size) i j =
-    indexed-distinct list (N.unique (T.raw e)) i j ;
+    indexed-distinct list (f.2.2.1 (N.coalesce-unique (T.raw e))) i j ;
+   sound (B : T.C.Algebra) (x : Fin n -> B.ring.R) :
+    Id B.ring.R (T.P.eval (Fin n) B x e) (T.At[B,x].value list) =
+    trans (T.At[B,x].sound e) (sym (trans (f.2.2.2.2 B x) (N.At[B,x].coalesce-value (T.raw e)))) ;
    value (B : T.C.Algebra) (x : Fin n -> B.ring.R) :
     Id B.ring.R (T.P.eval (Fin n) B x e)
      (FiniteIdeal[l].Sums[B.ring].sum size
       (\ j -> B.ring.mul (B.iota.1 (coefficient j)) (MonomialEvaluation[l].Over[B.ring].monomial n x (exponent j)))) =
-    trans (N.At[B,x].sound e) (At[B,x].value list) ;
-   result : SparseData[e] = new SparseData[e,size,coefficient,exponent,nonzero,distinct,value] ;
+    trans (sound B x) (At[B,x].value list) ;
+   result : SparseData[e] = new SparseData[e,size,coefficient,exponent,keep,distinct,value] ;
   } ;
-  expand (e : T.P.Expr (Fin n)) : SparseData[e] = For[e].result ;
+  module Given (decide : (a : A.R) -> NK.Decision a) {
+   expand (e : T.P.Expr (Fin n)) : SparseData[e] = For[e,NK.Given[decide].filtered (N.coalesce (T.raw e))].result ;
+  } ;
+  module Mere (decide : (a : A.R) -> Tr.Trunc[NK.Decision a].carrier) {
+   expand (e : T.P.Expr (Fin n)) : TH.Trunc[SparseData[e]].carrier =
+    THC.map (NK.Filtered (N.coalesce (T.raw e))) SparseData[e] (\ f -> For[e,f].result)
+     (NK.Mere[decide].filtered (N.coalesce (T.raw e))) ;
+  } ;
  } ;
 } ;

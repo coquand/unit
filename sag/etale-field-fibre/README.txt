@@ -82,3 +82,10 @@ from B/IB to its localisation may be substituted for that argument.
 All reused sources are unchanged relative links. Import ordering handles
 existing local aliases Span, Spans and Expansion without editing shared
 sources. No checker edits, new axioms, or commits.
+
+Interface change (2 November 2026)
+----------------------------------
+LocalResidueField.Over[R,I,propI,local] gives mere-decide with no
+properness (quotient induction into a proposition); the old decision and
+nonzero are in Over[...].Proper[proper]. FiniteSpecialFibre.Over[R,setR,I,
+propI,local,E] no longer assumes I proper: the field theorem allows 1 = 0.

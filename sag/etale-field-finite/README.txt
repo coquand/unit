@@ -202,3 +202,10 @@ No polynomial ring equivalence or multivariate quotient presentation is
 constructed. Only the one-way semantic transformations needed by the proof
 are built. The larger CFN import tree is present for the optional contraction
 lemma; the Nagata and one-generator proofs themselves do not use it.
+
+Interface change (2 November 2026)
+----------------------------------
+FieldLeading.Over[A] holds Zero/Leading/Result/Normalize; the scan is in
+Over[A].Given[dec]. NagataSparse.Over[k,setk] and NagataReduction.Over[k,setk]
+take no decision and no 1 /= 0: the sparse data have unit coefficients,
+MonomialFamily.Over[k,setk,n].Keep[RL[k].unit].SparseData[e].

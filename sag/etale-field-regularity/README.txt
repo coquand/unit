@@ -90,3 +90,13 @@ standard-algebra computations in the regression files. They are a
 comparison-cost regression specification, not additional kernel trust.
 
 Check with ./segc sag/etale-field-regularity all from unit/.
+
+Interface change (2 November 2026)
+----------------------------------
+FieldFlat.Over[A] holds Cases, step and To[B,h] (choose, flat-from);
+Given[dec] gives cases/explanation/flat as data and mere = inc o dec;
+Mere[dec] gives cases and flat from a merely given decision.
+UnramifiedFieldRegular.Over[k,setk,dec] and
+UnramifiedFieldFiniteGeneral.Over[k,setk,dec] take a merely given
+zero-or-unit decision and no 1 /= 0; old callers pass
+FieldFlat[l].Over[k].Given[dec].mere.

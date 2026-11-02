@@ -4,7 +4,11 @@
 -- Hypotheses (parameters of Over and of FieldCase; they stay hypotheses):
 --  * A local, residually discrete (m, dec, rad), as in Section1Eg.
 --  * E an A-algebra (iota), q a prime of E containing m E, with decidable
---    membership (q-dec), 1 not in q.
+--    membership (q-dec), 1 not in q.  Primality is relative to a falsum Bot:
+--    q (a c) gives q a, q c, or an answer in Bot (Bot = Empty: q prime; in the
+--    hit-or-split cover Bot is a split).  Every "z not in q" derived from
+--    primality is read as q z -> Bot (prime-out); those from q-dec and
+--    q-proper stay negations.
 --  * ZMT (ACL Cor. 1.4), after the refinement of the note (lines 85-90):
 --    a finite A-subalgebra B of E, given as an A-algebra B with a map of
 --    A-algebras j : B -> E and module generators b_1 .. b_r (coord:
@@ -102,14 +106,14 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
  (E : CRing) (setE : Pr.isSet E.R) (iota : H.Hom A E)
  (q : E.R -> U l) (q-zero : q E.z) (q-add : (a c : E.R) -> q a -> q c -> q (E.add a c))
  (q-scale : (a c : E.R) -> q c -> q (E.mul a c)) (q-m : (a : A.R) -> m a -> q (iota.1 a))
- (q-prime : (a c : E.R) -> q (E.mul a c) -> Plus (q a) (q c)) (q-proper : Not (q E.o))
+ (Bot : U l) (q-prime : (a c : E.R) -> q (E.mul a c) -> Plus (Plus (q a) (q c)) Bot) (q-proper : Not (q E.o))
  (q-dec : (a : E.R) -> Plus (q a) (Not (q a)))
  -- ZMT: the finite subalgebra B with generators, and s
  (B : CRing) (setB : Pr.isSet B.R) (iB : H.Hom A B) (j : H.Hom B E)
  (j-alg : (a : A.R) -> Id E.R (j.1 (iB.1 a)) (iota.1 a))
  (n' : Nat) (bs : Ps.Fin (suc n') -> B.R)
  (coord : (x : B.R) -> Tr.Trunc[(rho : Ps.Fin (suc n') -> A.R) * Id B.R x (FiniteIdeal[l].Sums[B].sum (suc n') (\ k -> B.mul (iB.1 (rho k)) (bs k)))].carrier)
- (s : B.R) (s-out : Not (q (j.1 s)))
+ (s : B.R) (s-out : q (j.1 s) -> Bot)
  (zmt : (z : E.R) -> Tr.Trunc[(k : Nat) * (b : B.R) * Id E.R (E.mul (AffinePowers[l].Over[E].power (j.1 s) k) z) (j.1 b)].carrier) {
  r : Nat = suc n' ;
  module TC = TruncationCombinators[l] ;
@@ -141,12 +145,17 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
   cons p ps | r -> q-add _ _ (subst q (E.mulC p.2.2 (iota.1 p.1)) (q-scale p.2.2 _ (q-m p.1 p.2.1))) r } ;
  q-mE (w : E.R) (h : IGE.InmB w) : q w = subst q (sym h.2) (q-gens h.1) ;
  q-neg (a : E.R) (h : q a) : q (E.neg a) = subst q (trans (LE.neg-mul-left E.o a) (ap E.neg (LE.one-left a))) (q-scale (E.neg E.o) a h) ;
+ -- a product of elements outside q is outside q (relative to Bot)
+ factor-out (a c : E.R) (ha : q a -> Bot) (hc : q c -> Bot) : Plus (q a) (q c) -> Bot = split {
+  inl h -> ha h ; inr h -> hc h } ;
+ prime-case (a c : E.R) (ha : q a -> Bot) (hc : q c -> Bot) : Plus (Plus (q a) (q c)) Bot -> Bot = split {
+  inl d -> factor-out a c ha hc d ; inr f -> f } ;
+ prime-out (a c : E.R) (ha : q a -> Bot) (hc : q c -> Bot) (h : q (E.mul a c)) : Bot =
+  prime-case a c ha hc (q-prime a c h) ;
  -- powers of an element outside q are outside q
- out-step (w : E.R) (hw : Not (q w)) (k : Nat) (ih : Not (q (PE.power w k))) : Plus (q w) (q (PE.power w k)) -> Empty = split {
-  inl a -> hw a ; inr c -> ih c } ;
- power-out (w : E.R) (hw : Not (q w)) : (k : Nat) -> Not (q (PE.power w k)) = split {
-  zero -> q-proper ;
-  suc k | ih -> \ h -> out-step w hw k ih (q-prime w (PE.power w k) h) } ;
+ power-out (w : E.R) (hw : q w -> Bot) : (k : Nat) -> q (PE.power w k) -> Bot = split {
+  zero -> \ h -> efq (q-proper h) ;
+  suc k | ih -> prime-out w (PE.power w k) hw ih } ;
  -- an element of m B has coordinates in m
  Coords (w : B.R) : U l = (mu : Ps.Fin r -> A.R) * ((k : Ps.Fin r) -> m (mu k)) * Id B.R w (SB.lin r bs (\ k -> iB.1 (mu k))) ;
  -- iota(nu) t = sum_k b_k iota(rho_k nu)
@@ -358,23 +367,24 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
   -- e and y are not in q
   j-one-sub : Id E.R (j.1 (B.add B.o (B.neg e))) (E.add E.o (E.neg (j.1 e))) =
    trans (j.2.2.1 B.o (B.neg e)) (Ps.cong2 E.R E.add _ _ _ _ j.2.1 (H.negation B E j e)) ;
-  out-e : Plus (q (j.1 Ide.sN)) (q (j.1 (B.add B.o (B.neg e)))) -> q (j.1 e) -> Empty = split {
-   inl h -> \ he -> power-out (j.1 s) s-out Ide.N (subst q (AffinePowers[l].power-map B E j s Ide.N) h) ;
-   inr h -> \ he -> q-proper (subst q (StE.one-sub (j.1 e)) (q-add _ _ (subst q j-one-sub h) he)) } ;
-  e-out : Not (q (j.1 e)) = \ he ->
-   out-e (q-prime _ _ (subst q (j.2.2.2 Ide.sN (B.add B.o (B.neg e))) (q-mE _ (to-E _ Ide.e-one)))) he ;
-  y-case : Plus (q (j.1 x)) (q (j.1 e)) -> Empty = split { inl h -> x-out h ; inr h -> e-out h } ;
-  y-out : Not (q (j.1 y)) = \ hy -> y-case (q-prime _ _ (subst q (j.2.2.2 x e) hy)) ;
+  -- s^N (1 - e) is in q; s^N is not, so if e were in q, 1 would be
+  e-out (he : q (j.1 e)) : Bot =
+   prime-out (j.1 Ide.sN) (j.1 (B.add B.o (B.neg e)))
+    (\ h -> power-out (j.1 s) s-out Ide.N (subst q (AffinePowers[l].power-map B E j s Ide.N) h))
+    (\ h -> efq (q-proper (subst q (StE.one-sub (j.1 e)) (q-add _ _ (subst q j-one-sub h) he))))
+    (subst q (j.2.2.2 Ide.sN (B.add B.o (B.neg e))) (q-mE _ (to-E _ Ide.e-one))) ;
+  y-out (hy : q (j.1 y)) : Bot =
+   prime-out (j.1 x) (j.1 e) (\ h -> efq (x-out h)) e-out (subst q (j.2.2.2 x e) hy) ;
   -- q pulled back to B
   Jq (b : B.R) : U l = q (j.1 b) ;
   Jq-zero : Jq B.z = subst q (sym (H.zero B E j)) q-zero ;
   Jq-add (a c : B.R) (ha : Jq a) (hc : Jq c) : Jq (B.add a c) = subst q (sym (j.2.2.1 a c)) (q-add _ _ ha hc) ;
   Jq-scale (a c : B.R) (hc : Jq c) : Jq (B.mul a c) = subst q (sym (j.2.2.2 a c)) (q-scale _ _ hc) ;
   Jq-mu (k i : Ps.Fin r) : Jq (iB.1 (mu k i)) = subst q (sym (j-alg (mu k i))) (q-m _ ((cm i).2.1 k)) ;
-  Jq-prime (a c : B.R) (h : Jq (B.mul a c)) : Plus (Jq a) (Jq c) = q-prime _ _ (subst q (j.2.2.2 a c) h) ;
+  Jq-prime (a c : B.R) (h : Jq (B.mul a c)) : Plus (Plus (Jq a) (Jq c)) Bot = q-prime _ _ (subst q (j.2.2.2 a c) h) ;
   module CG = SYS.Congruence[Jq,Jq-zero,Jq-add,Jq-scale,Jq-mu] ;
   -- p is not in q
-  p-out : Not (q (j.1 p)) = CG.Prime[Jq-prime,y-out].p-out ;
+  p-out : q (j.1 p) -> Bot = CG.Prime[Bot,Jq-prime,y-out].p-out ;
 
   -- lists for the polynomials F_k with F_k(y) = p b_k: a mere choice
   Representative (Fp : LIy.RX.Carrier) : U l = (L : List A.R) * Id LIy.RX.Carrier (LIy.RX.include L) Fp ;
@@ -476,11 +486,13 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
     (N,subst IGE.InmB (sym (trans (ap (\ t -> E.mul t w) (g-power N)) (sym (E.mulA (PE.power (j.1 p) N) (PE.power (j.1 s) N) w))))
        (IGE.in-scale (PE.power (j.1 p) N) _ h)) ;
    -- g is not in q, and J is contained in q
-   g-case : Plus (q (j.1 p)) (q (j.1 s)) -> Empty = split { inl h -> p-out h ; inr h -> s-out h } ;
-   g-out : Not (q gE) = \ h -> g-case (q-prime _ _ (subst q (trans gE-value (j.2.2.2 p s)) h)) ;
-   q-J-case (w : E.R) (k : Nat) : Plus (q (PE.power gE k)) (q w) -> q w = split {
-    inl h -> efq (power-out gE g-out k h) ; inr h -> h } ;
-   q-J (w : E.R) (h : Jsat w) : q w = q-J-case w h.1 (q-prime _ _ (q-mE _ h.2)) ;
+   g-out (h : q gE) : Bot = prime-out (j.1 p) (j.1 s) p-out s-out (subst q (trans gE-value (j.2.2.2 p s)) h) ;
+   -- J is contained in q, up to Bot
+   q-J-factor (w : E.R) (k : Nat) : Plus (q (PE.power gE k)) (q w) -> Plus (q w) Bot = split {
+    inl h -> inr (power-out gE g-out k h) ; inr h -> inl h } ;
+   q-J-case (w : E.R) (k : Nat) : Plus (Plus (q (PE.power gE k)) (q w)) Bot -> Plus (q w) Bot = split {
+    inl d -> q-J-factor w k d ; inr f -> inr f } ;
+   q-J (w : E.R) (h : Jsat w) : Plus (q w) Bot = q-J-case w h.1 (q-prime _ _ (q-mE _ h.2)) ;
    module DSy = DerivativeStep[l].Over[A,setA,m,E,setE,iota,j.1 y,Jsat,J-zero,J-add,J-scale,J-m] ;
 
    -- hG: Lemma 1 modulo m B for g
@@ -585,11 +597,13 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
    Qprime : E.R = S1.LQ.DS.der S1.S1.Q ;
    Qprime-unit : S1.LQ.DS.UnitMod Qprime = S1.q-prime ;
    -- Q'(y) v - 1 is in J, hence in q; so Q'(y) is not in q
-   Qprime-out (h : q Qprime) : Empty =
-    q-proper (subst q (StE.sub-sub (E.mul Qprime Qprime-unit.1) E.o)
+   Qprime-case (h : q Qprime) : Plus (q (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o))) Bot -> Bot = split {
+    inl hj -> efq (q-proper (subst q (StE.sub-sub (E.mul Qprime Qprime-unit.1) E.o)
      (q-add (E.mul Qprime Qprime-unit.1) (E.neg (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o)))
       (subst q (E.mulC Qprime-unit.1 Qprime) (q-scale Qprime-unit.1 Qprime h))
-      (q-neg (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o)) (q-J (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o)) Qprime-unit.2)))) ;
+      (q-neg (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o)) hj)))) ;
+    inr f -> f } ;
+   Qprime-out (h : q Qprime) : Bot = Qprime-case h (q-J (E.add (E.mul Qprime Qprime-unit.1) (E.neg E.o)) Qprime-unit.2) ;
    } ;
   } ;
   } ;

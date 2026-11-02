@@ -1,12 +1,16 @@
 -- Coalesce equal exponents by insertion, then remove zero coefficients.
 -- The two passes preserve evaluation in every algebra.  Insertion keeps
--- exponents distinct; filtering keeps that property and proves every
--- surviving coefficient nonzero.  Only equality of exponents and zero
--- testing of coefficients are required.
+-- exponents distinct; filtering keeps that property and proves that
+-- every surviving coefficient has the kept property K (nonzero, or a
+-- unit over a field).  Only equality of exponents and a decision
+-- "zero or K" on coefficients are required.  The filter is one
+-- induction producing the list with its four properties (Filtered), so
+-- it runs both on decisions (Given) and on mere decisions (Mere).
 level l ; open Ring[l] ; open Presentations[l] ;
 module Pr = Prelude[l] ; module E = MonomialExponents[l] ;
-module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat)
- (zero-dec : (a : A.R) -> Plus (Id A.R a A.z) (Not (Id A.R a A.z))) {
+module Tr = Truncation[l] ; module TH = Truncation[l+] ;
+module TC = TruncationCombinators[l] ; module THC = TruncationCombinators[l+] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat) {
  module T = MonomialLists[l].Over[A,setA,n] ;
  branch (t h : T.Term) (p rest : T.Terms) :
   Plus (Id (E.Exponent n) t.2 h.2) (Not (Id (E.Exponent n) t.2 h.2)) -> T.Terms = split {
@@ -31,27 +35,6 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat)
  coalesce : T.Terms -> T.Terms = split { nil -> nil ; cons t p | rec -> insert t rec } ;
  coalesce-unique : (p : T.Terms) -> T.Unique (coalesce p) = split {
   nil -> tt ; cons t p | rec -> insert-unique t (coalesce p) rec } ;
- choose (t : T.Term) (p : T.Terms) : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z)) -> T.Terms = split {
-  inl eq -> p ; inr ne -> cons t p } ;
- filter : T.Terms -> T.Terms = split { nil -> nil ; cons t p | rec -> choose t rec (zero-dec t.1) } ;
- choose-away (u : E.Exponent n) (t : T.Term) (p : T.Terms) (nt : Not (Id (E.Exponent n) u t.2)) (hp : T.Away u p) :
-  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Away u (choose t p d) = split {
-   inl eq -> hp ; inr ne -> (nt,hp) } ;
- filter-away (u : E.Exponent n) : (p : T.Terms) -> T.Away u p -> T.Away u (filter p) = split {
-  nil -> \ hp -> tt ; cons t p | rec -> \ hp -> choose-away u t (filter p) hp.1 (rec hp.2) (zero-dec t.1) } ;
- choose-unique (t : T.Term) (p : T.Terms) (away : T.Away t.2 p) (hp : T.Unique p) :
-  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Unique (choose t p d) = split {
-   inl eq -> hp ; inr ne -> (away,hp) } ;
- filter-unique : (p : T.Terms) -> T.Unique p -> T.Unique (filter p) = split {
-  nil -> \ hp -> tt ; cons t p | rec -> \ hp -> choose-unique t (filter p) (filter-away t.2 p hp.1) (rec hp.2) (zero-dec t.1) } ;
- choose-nonzero (t : T.Term) (p : T.Terms) (hp : T.Nonzero p) :
-  (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) -> T.Nonzero (choose t p d) = split {
-   inl eq -> hp ; inr ne -> (ne,hp) } ;
- filter-nonzero : (p : T.Terms) -> T.Nonzero (filter p) = split {
-  nil -> tt ; cons t p | rec -> choose-nonzero t (filter p) rec (zero-dec t.1) } ;
- normalize (p : T.Terms) : T.Terms = filter (coalesce p) ;
- unique (p : T.Terms) : T.Unique (normalize p) = filter-unique (coalesce p) (coalesce-unique p) ;
- nonzero (p : T.Terms) : T.Nonzero (normalize p) = filter-nonzero (coalesce p) ;
  module At (B : T.C.Algebra) (x : Fin n -> B.ring.R) {
   module V = T.At[B,x] ;
   branch-value (t h : T.Term) (p : T.Terms)
@@ -69,17 +52,51 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (n : Nat)
   coalesce-value : (p : T.Terms) -> Id B.ring.R (V.value (coalesce p)) (V.value p) = split {
    nil -> refl B.ring.z ;
    cons t p | rec -> trans (insert-value t (coalesce p)) (ap (B.ring.add (V.term t)) rec) } ;
-  choose-value (t : T.Term) (p : T.Terms) :
-   (d : Plus (Id A.R t.1 A.z) (Not (Id A.R t.1 A.z))) ->
-   Id B.ring.R (V.value (choose t p d)) (B.ring.add (V.term t) (V.value p)) = split {
-    inl eq -> sym (trans (ap (\ a -> B.ring.add a (V.value p))
-     (trans (ap (\ a -> V.term (a,t.2)) eq) (V.term-zero t.2))) (V.L.zl (V.value p))) ;
-    inr ne -> refl (B.ring.add (V.term t) (V.value p)) } ;
-  filter-value : (p : T.Terms) -> Id B.ring.R (V.value (filter p)) (V.value p) = split {
-   nil -> refl B.ring.z ;
-   cons t p | rec -> trans (choose-value t (filter p) (zero-dec t.1)) (ap (B.ring.add (V.term t)) rec) } ;
-  value (p : T.Terms) : Id B.ring.R (V.value (normalize p)) (V.value p) = trans (filter-value (coalesce p)) (coalesce-value p) ;
-  sound (e : T.P.Expr (Fin n)) : Id B.ring.R (T.P.eval (Fin n) B x e) (V.value (normalize (T.raw e))) =
-   trans (V.sound e) (sym (value (T.raw e))) ;
+ } ;
+ module Keep (K : A.R -> U l) {
+  Decision (a : A.R) : U l = Plus (Id A.R a A.z) (K a) ;
+  choose (t : T.Term) (p : T.Terms) : Decision t.1 -> T.Terms = split {
+   inl eq -> p ; inr k -> cons t p } ;
+  choose-away (u : E.Exponent n) (t : T.Term) (p : T.Terms) (nt : Not (Id (E.Exponent n) u t.2)) (hp : T.Away u p) :
+   (d : Decision t.1) -> T.Away u (choose t p d) = split {
+    inl eq -> hp ; inr k -> (nt,hp) } ;
+  choose-unique (t : T.Term) (p : T.Terms) (away : T.Away t.2 p) (hp : T.Unique p) :
+   (d : Decision t.1) -> T.Unique (choose t p d) = split {
+    inl eq -> hp ; inr k -> (away,hp) } ;
+  choose-keeps (t : T.Term) (p : T.Terms) (hp : T.Keeps K p) :
+   (d : Decision t.1) -> T.Keeps K (choose t p d) = split {
+    inl eq -> hp ; inr k -> (k,hp) } ;
+  module Values (B : T.C.Algebra) (x : Fin n -> B.ring.R) {
+   module V = T.At[B,x] ;
+   choose-value (t : T.Term) (p : T.Terms) :
+    (d : Decision t.1) -> Id B.ring.R (V.value (choose t p d)) (B.ring.add (V.term t) (V.value p)) = split {
+     inl eq -> sym (trans (ap (\ a -> B.ring.add a (V.value p))
+      (trans (ap (\ a -> V.term (a,t.2)) eq) (V.term-zero t.2))) (V.L.zl (V.value p))) ;
+     inr k -> refl (B.ring.add (V.term t) (V.value p)) } ;
+  } ;
+  -- A filtered list of p: distinct exponents and evaluation preserved,
+  -- every coefficient K.
+  Filtered (p : T.Terms) : U l+ = (q : T.Terms) *
+   ((u : E.Exponent n) -> T.Away u p -> T.Away u q) * (T.Unique p -> T.Unique q) * T.Keeps K q *
+   ((B : T.C.Algebra) (x : Fin n -> B.ring.R) -> Id B.ring.R (T.At[B,x].value q) (T.At[B,x].value p)) ;
+  filter-nil : Filtered nil = (nil,\ u hp -> tt,\ hp -> tt,tt,\ B x -> refl B.ring.z) ;
+  filter-cons (t : T.Term) (p : T.Terms) (r : Filtered p) (d : Decision t.1) : Filtered (cons t p) =
+   (choose t r.1 d,
+    \ u hp -> choose-away u t r.1 hp.1 (r.2.1 u hp.2) d,
+    \ hp -> choose-unique t r.1 (r.2.1 t.2 hp.1) (r.2.2.1 hp.2) d,
+    choose-keeps t r.1 r.2.2.2.1 d,
+    \ B x -> trans (Values[B,x].choose-value t r.1 d) (ap (B.ring.add (T.At[B,x].term t)) (r.2.2.2.2 B x))) ;
+  module Given (decide : (a : A.R) -> Decision a) {
+   filtered : (p : T.Terms) -> Filtered p = split {
+    nil -> filter-nil ; cons t p | rec -> filter-cons t p rec (decide t.1) } ;
+  } ;
+  module Mere (decide : (a : A.R) -> Tr.Trunc[Decision a].carrier) {
+   filter-step (t : T.Term) (p : T.Terms) (r : Filtered p) : TH.Trunc[Filtered (cons t p)].carrier =
+    TC.rec (Decision t.1) @l+ TH.Trunc[Filtered (cons t p)].carrier TH.Trunc[Filtered (cons t p)].proposition
+     (\ d -> TH.Trunc[Filtered (cons t p)].inc (filter-cons t p r d)) (decide t.1) ;
+   filtered : (p : T.Terms) -> TH.Trunc[Filtered p].carrier = split {
+    nil -> TH.Trunc[Filtered nil].inc filter-nil ;
+    cons t p | rec -> THC.bind (Filtered p) (Filtered (cons t p)) (filter-step t p) rec } ;
+  } ;
  } ;
 } ;

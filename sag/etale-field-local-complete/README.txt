@@ -110,3 +110,8 @@ field and local-lift trees in dependency order, respecting lexical module
 names. No shared-file changes, checker edits or new axioms were made.
 The existing univalence, images and surjection parameters are inherited.
 The checking server is stopped. Nothing is committed.
+
+Interface change (2 November 2026)
+----------------------------------
+LocalResidueField's decision is now LocalResidueField.Over[R,I,propI,local]
+.Proper[proper].decide (see etale-field-fibre/README.txt).
