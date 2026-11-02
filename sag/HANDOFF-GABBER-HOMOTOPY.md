@@ -243,6 +243,28 @@ iso between the image of an m-fold block sum and the family product of SerreModu
 and the class of a free module; then 3.6(3) and the remaining items of gabber-recollement
 (LQ X.5.5, weak cancellation, K_0 (x) Q by MonoidLocalization).
 
+## Status (2026-11-02, after midnight): Lemma 3.6(1), 3.6(2) as K_0 equations DONE, checked
+
+83 modules, 2.28 s from a fresh server (ClassSum 0.06 s, ClassProduct 0.02 s); same theory
+parameters, no new axioms. Instances `Localisations...Instance[..].ClassSumAt[M]`, `ClassProductAt[m,n]`.
+- `Projectors.Free[K]`: the unit projector 1_K, `iso : Image 1_K ~ A^K` (FreeModules.free K).
+- `ProjectorSums.FreeSum[j,k].iso`: Image (1_j + 1_k) ~ Image 1_(j+k); `free-zero-single`.
+- `K0`: `free K` (= [A^K]), `multiple j x`, `free-class` (a presenter of A^K has class free K),
+  `class-zero`, `free-sum` ([A^j] + [A^k] = [A^(j+k)]), `free-zero`, `free-count` ([A^K] = K 1).
+- `ClassSum.Over[..,M].Lemma[g,g',gi,h,h',hi,p,q,s,ep,eq,es].theorem`:
+  [p] + [q] = [s] + [A^M] for p, q, s presenting P_g, P_h, P_gh (from STABLESUM).
+  `ClassSum...Powers[g,g',gi,q,eq]`: `positive j` : [r] + j[A^M] = j[q] + [A^M] for r presenting
+  P_(g^j), `negative j` : [r] + j[q] = (j+1)[A^M] for r presenting P_(g'^j) -- together the
+  "[P_(g^j)] = j[P_g] - (j-1)M for j in Z" sentence. `power`/`copower`/`power-inverse` there.
+- `ClassProduct.Over[..,m,n].Lemma[g,g',gi,h,h',hi,p,q,ep,eq].theorem`:
+  ([p] - [A^m]) ([q] - [A^n]) = 0 for p presenting P_h (m x m), q presenting P_g (n x n).
+  Proof uses only the bridge four times ([p][q], [A^m][q], [p][A^n], [A^m][A^n]) and ClassSum at
+  N = mn for (1 (x) g)(h (x) 1) = h (x) g; no [P^m] = m[P] iso was needed. Presenters of the
+  glued modules come merely from `GluedProjector.Explicit...theorem`. `Vanish` is the ring step.
+
+Next: 3.6(3) and the remaining items of gabber-recollement (LQ X.5.5, weak cancellation,
+K_0 (x) Q by MonoidLocalization).
+
 ## (Former brief) Lemma 3.6(1) at the module level
 
 Goal: `[P_g] + [P_h] = [P_gh] + M` in K_0(A), for g, h in GL_M(A_ab), A_a, A_b, A_ab as in
