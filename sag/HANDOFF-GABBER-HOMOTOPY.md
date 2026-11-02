@@ -166,6 +166,51 @@ yet; check chatelet/exterior first); 3.6(3) needs bases of F + O^j on A_a, A_b.
 Independent of this line: LQ X.5.5 (reduced K_0 is nil, for Lemma `roots`) and weak
 cancellation (Lemma `efface`).
 
+## K_0: the options (informal analysis, 2026-11-02)
+
+What gabber-recollement uses: K = K_0 (x) Q, rho(F) = [F]/N; equations k([X] - [Y]) = 0,
+i.e. X^k + T ~ Y^k + T; products (tensor) in `roots` (mu nilpotent, LQ X.5.5), `cheap`
+(tensoring stable isos with V, W) and `correct` ((1 + tau)(1 - tau/n)^n = 1, tau^2 = 0 by
+3.6(2)); restriction K_0(A) -> K_0(A_a) in 3.6(3) and `correct`.
+
+- (A) No K_0: state every equation as a mere stable isomorphism of modules. Enough for
+  3.6(1), 3.6(2) (module form, done), 3.6(3), weak cancellation, `cheap`. Not enough for
+  `roots` and `correct`, which compute in a Q-algebra with nilpotents; unfolding those
+  polynomial identities into module isomorphisms by hand is the wrong level.
+- (B) K_0 from projectors: (e, k) with e an idempotent K x K matrix over A, meaning
+  [im e] - k; equality = mere stable similarity; + = block sum, * = Kronecker (KRONECKER:
+  mixed product, 1 (x) 1 = 1, so idempotents go to idempotents). Small (matrices over A), a set
+  quotient (Quotient.seg), K_0 (x) Q by MonoidLocalization at positive integers, restriction
+  by MatrixMap. Costs: ring laws up to similarity (permutation matrices for commutativity of
+  (x) and of block sums), well-definedness on the quotient, and the bridge [P] = class of the
+  projector of any retract of P (two retracts of one P give stably similar projectors).
+  This is LQ's own setting, and lambda-operations for X.5.5 act on projectors.
+- (C) K_0 from modules: iso classes of f.g. projective SerreModules (replacement for size),
+  with a module tensor product. Unit has no module tensor product (sag/tensor and
+  chatelet/Tensor are for algebras), so (C) costs a quotient construction with its laws
+  up to iso before anything else.
+
+Recommendation: (B), keeping the module statements (A) as the lemmas proved; they transfer
+to (B) by "isomorphic modules have equal classes" and "+ is block sum".
+The one place where (B) still needs real content is [P_g][P_h] = [P_{g (x) h}]: gluing
+commutes with tensor products. Proof idea: a linear map of f.g. projective modules that is
+an isomorphism after inverting a and after inverting b (a, b comaximal) is an isomorphism;
+check it for im(e (x) f) -> P_{g (x) h} built from the retracts. The SerreModule
+localisation files in ../qcqs (SerreModuleLocalisation*) may provide the local-global step.
+
+## Status (2026-11-02, night): Lemma 3.6(2) at the module level DONE, checked
+
+`GluedKronecker.Over[..,m,n].Lemma[g,g',gi,h,h',hi].theorem`: for inverse pairs g (n x n) and
+h (m x m) over C, merely P_g^m + P_h^n ~ P_{h (x) g} + A^(times m n) (70 modules, 0.84 s; same
+theory parameters, no new axioms). Instance: `Localisations...Instance[..].KroneckerAt[m,n]`.
+- `Pairing`: `times`, `pair`/`unpair` (Fin (times m n) = Fin m * Fin n), sums as double sums,
+  delta at pairs.
+- `Kronecker`: `kron Y X` (entry Y_jj' X_ii'), `act-kron`, `mixed`, `kron-one`, `kron-inverse`.
+- `GluedKronecker`: `Rows` (P_{1 (x) X} ~ P_X^m), `Columns` (P_{Y (x) 1} ~ P_Y^n), then
+  STABLESUM for 1 (x) g and h (x) 1, with (1 (x) g)(h (x) 1) = h (x) g. No permutation matrix.
+- `Glued.Equal[g,k,e]`: P_k ~ P_g for k = g (moved from GluedProjective).
+Remaining for 3.6(2) proper: the K_0 product and [P_g][P_h] = [P_{g (x) h}] (see above).
+
 ## (Former brief) Lemma 3.6(1) at the module level
 
 Goal: `[P_g] + [P_h] = [P_gh] + M` in K_0(A), for g, h in GL_M(A_ab), A_a, A_b, A_ab as in
