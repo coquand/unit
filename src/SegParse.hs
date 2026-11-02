@@ -981,6 +981,7 @@ named _ e = Named "" e
 resFields :: RS -> [(Name, R)] -> Rz Tel
 resFields _ [] = Right []
 resFields rs ((l, a) : fs) = do
+  either (\m -> Left ("sig field: " ++ m)) Right (fresh rs l)   -- labels are not renamed
   a' <- resE rs a
   fs' <- resFields (bindS rs [(l, SVar)]) fs
   Right ((l, a') : fs')
@@ -1047,7 +1048,8 @@ resDef' rs local u = case u of
       Just t  -> resE rs1 t
     -- the data type sees itself in its fields only (PRIMREC.md 1)
     let rsF = bindS rs1 [ (x, SDef (idOf x o)) ]
-    ls' <- mapM (\(c, ctel) -> do (cbs, _) <- resTel rsF ctel
+    ls' <- mapM (\(c, ctel) -> do freshTel rsF ctel   -- fields are not renamed
+                                  (cbs, _) <- resTel rsF ctel
                                   tel' <- mapM (\bd -> case bd of
                                                   BVar y a -> Right (y, a)
                                                   _ -> Left "only term binders in a constructor") cbs
@@ -1112,6 +1114,8 @@ resUnits rs (u : us) n = case u of
       [] -> Right ()
       _  -> Left ("the record " ++ x ++ " may contain only fields, definitions and opens (no module, record, level or constraint)")
     let rsIn = rs { rsPath = rsPath rs ++ x ++ "." }
+    -- head parameters are not renamed: no shadowing, as in the body
+    either (\m -> Left ("in the head of " ++ x ++ ": " ++ m)) Right (freshTel rs tel)
     (bs, rsTel) <- resTel rsIn tel
     let varOf y = maybe SVar id (M.lookup y (rsScopeM rsTel))
     let headUnits = map bindUnit bs
@@ -1319,6 +1323,14 @@ fresh rs x = case look rs x of
   Just (SField _) -> Right ()
   Just _  -> Left ("the name " ++ x ++ " is already declared (no shadowing)")
   Nothing -> Right ()
+
+-- the names a telescope binds that are kept (not renamed by binderE):
+-- module and record heads, constructor fields
+freshTel :: RS -> [TItem] -> Rz ()
+freshTel rs tel = do
+  let xs = concat [ case t of { TVars ys _ -> ys; TVarsH ys _ -> ys; TLvls ys -> ys; TCs _ -> [] } | t <- tel ]
+  mapM_ (fresh rs) (filter (/= "_") xs)
+  dupCheck (filter (/= "_") xs)
 
 dupCheck :: [Name] -> Rz ()
 dupCheck [] = Right ()

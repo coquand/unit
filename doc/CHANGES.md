@@ -1,5 +1,14 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+> **No shadowing for every kept binder (2 November).** Two closed proofs
+> of `Empty` came from binders that were neither renamed nor checked: a
+> module or record head parameter named like a visible definition (the body
+> was checked with the definition's value), and a constructor field named
+> like its data type (taken for a recursive field). The resolver now
+> rejects both, and `sig` labels likewise (`PRIMREC.md` §1). 34 module
+> parameters of the corpus are renamed (`V` to `V0` in 22 `core`
+> modules; 12 in `sag`); every development checks.
+
 > **Placement, soundness, module heads (2 November).** (1) A `split` or a
 > `data` type must be the body of a segment definition, never of a `let` or
 > `where` local, so that every normal form names visible definitions

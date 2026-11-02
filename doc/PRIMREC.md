@@ -26,6 +26,17 @@ level, can refer to itself or to a later definition.
   parameters).
 - A `where` local sees the parameters of its definition and the earlier
   locals, but not the definition itself.
+- **No shadowing.** A binder never takes a name in scope. Lambdas, Pi and
+  Sigma binders, split patterns, recursive results and the parameters of a
+  definition or data type are renamed, so they may reuse a name. The
+  binders kept by name are checked instead: definitions, data types,
+  modules, records, levels, the parameters of a module or record (head and
+  body), constructor fields and `sig` labels. Reusing a name there is the
+  error "the name x is already declared (no shadowing)". The core relies on
+  it: a head parameter named like a definition was evaluated as the
+  definition, and a field named like its data type was taken for a
+  recursive field; both gave a closed proof of `Empty`
+  (`examples/soundness.seg` §4).
 - A violation is a resolver error ("not in scope", with a hint that recursion
   goes through `split`). Inside `#fails` it is a failure of the block, as
   resolution errors already are.
