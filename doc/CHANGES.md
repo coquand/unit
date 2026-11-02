@@ -1,5 +1,18 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+> **Elements of a record compare with their module instance (2 November).**
+> Two elements built by `new` were compared by the record's declaration,
+> parameters and fields, but not by the module instance it comes from, so
+> `new M[true].R[tt]` and `new M[false].R[tt]` were equal (record types
+> already compared it). The read-back, which looks for a variable with an
+> equal value, then wrote a fixed field of one instance as a variable of the
+> other, and a member `.d` was typed in one instance and computed in the
+> other: a closed proof of `Empty` (`examples/soundness.seg` §5). Repairs:
+> `eqVal`, `conv'` and the hidden-argument matcher compare `modDyn`; a fixed
+> field written back is checked at the field's type (else the projection is
+> kept); the core checks that the record stored in `Mem` is the record of
+> the element's type. Every development checks.
+
 > **No shadowing for every kept binder (2 November).** Two closed proofs
 > of `Empty` came from binders that were neither renamed nor checked: a
 > module or record head parameter named like a visible definition (the body

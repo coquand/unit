@@ -1030,7 +1030,7 @@ eqVal u v = case (u, v) of
   (VCPi cs a, VCPi ds b)           -> cs == ds && eqVal a b
   (VSegT m fs, VSegT n gs)         -> modId m == modId n && eqVals (modDyn m) (modDyn n)
                                       && map fst fs == map fst gs && eqVals (map snd fs) (map snd gs)
-  (VInst m r, VInst n r')          -> modId m == modId n
+  (VInst m r, VInst n r')          -> modId m == modId n && eqVals (modDyn m) (modDyn n)
                                       && and [ eqVal (lookupDyn r x) (lookupDyn r' x) | x <- paramNames (modUnits m) ]
   _                                -> False
 
@@ -1087,7 +1087,7 @@ conv' c u1 u2 = case (u1, u2) of
   (w, VPair a b)               -> conv c (vfst w) a && conv c (vsnd w) b
   -- two elements built by new: the same record, convertible parameters
   -- and fields (new is the constructor; no eta)
-  (VInst m1 r1, VInst m2 r2)   -> modId m1 == modId m2
+  (VInst m1 r1, VInst m2 r2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && and [ conv c (lookupDyn r1 x) (lookupDyn r2 x) | x <- paramNames (modUnits m1) ]
   (VSegT m1 f1, VSegT m2 f2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && map fst f1 == map fst f2
@@ -1656,7 +1656,20 @@ infer cx e = case e of
           _ -> failWith ("no member " ++ l ++ " in " ++ showV cx t)
       t' -> failWith ("not a record: " ++ pretty a ++ " : " ++ showV cx t')
   Named _ e' -> infer cx e'
-  Mem _ _ l a -> infer cx (Proj a l)
+  Mem m as l a -> do
+    -- R[ps].d at a: R[ps] must be the record of a's type (the same
+    -- declaration, module instance and head parameters)
+    t <- inferD cx a
+    case force cx t of
+      VSegT md fs
+        | md' <- evalMod (cxEnv cx) m
+        , modId md' == modId md
+        , convs (cc cx) (modDyn md') (modDyn md)
+        , hs <- paramNames (headUnits md')
+        , length hs == length as
+        , and [ maybe False (conv (cc cx) (evalArg (cxEnv cx) e)) (lookup p fs) | (p, e) <- zip hs as ]
+        -> infer cx (Proj a l)
+      t' -> failWith ("the member " ++ l ++ " of " ++ pretty a ++ " is not one of its record: " ++ showV cx t')
   Let us b -> do
     cx' <- checkLocal cx us
     infer cx' b
@@ -2311,7 +2324,11 @@ fillI cx e
           -- itself may not be inferable, e.g. a constructor)
           VSegT _ fs | Just v <- lookup l fs, notLvl v, Just e' <- quote cx v -> do
             t <- inferD cx (Proj a' l)
-            Right (e', t)
+            -- the term written back must have the field's type (it is
+            -- found by comparing values, which does not see types)
+            case check cx e' t of
+              Right () -> Right (e', t)
+              Left _   -> Right (Proj a' l, t)
           VSegT md fs | isDerived md l ->
             case quote cx (VSegT md []) of
               Just (SegT me _) -> do
@@ -2663,7 +2680,7 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
       goList k (map snd fs) (map snd gs) (goList k (modDyn m) (modDyn n) sols)
     (VInst m r, VInst n r') | modId m == modId n ->
       goList k [ lookupDyn r x | x <- paramNames (modUnits m) ]
-               [ lookupDyn r' x | x <- paramNames (modUnits n) ] sols
+               [ lookupDyn r' x | x <- paramNames (modUnits n) ] (goList k (modDyn m) (modDyn n) sols)
     (VSum i d _ _, VSum j d' _ _) | i == j -> goList k d d' sols
     -- different heads: the two sides are computed to weak head normal
     -- form WITHOUT unfolding any definition (the folded view: solutions are
