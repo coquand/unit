@@ -1,0 +1,61 @@
+-- The constant term and division by the variable in A[X].
+--   value0 : A[X] -> A, evaluation at 0, a ring map;
+--   tail   : A[X] -> A[X], drop the constant term (on lists: the tail);
+--   decompose : p = value0 p + X tail p ;
+--   tail-variable : tail (X p) = p, so X is regular (cancel-variable).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module H = RingHom[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module AX = PolynomialRing[l].Extension[A,setA] ;
+ module AP = Poly[l].PolyR[A] ;
+ module L = RawLaws[l].Laws[A] ;
+ module Ev = Evaluation[l].Evaluate[A,A,setA,setA,H.identity A,A.z] ;
+ value0 : H.Hom AX.ring A = Ev.extension ;
+ value0-cons (a : A.R) (p : AP.P) : Id A.R (value0.1 (AX.include (cons a p))) a =
+  calc A.R { value0.1 (AX.include (cons a p))
+    =< Ev.D.beta (cons a p) > A.add a (A.mul A.z (Ev.E p))
+    =< ap (A.add a) (RL[A].zero-mul (Ev.E p)) > A.add a A.z
+    =< A.addZ a > a } ;
+ value0-nil : Id A.R (value0.1 AX.zeroQ) A.z = Ev.D.beta nil ;
+ value0-constant (a : A.R) : Id A.R (value0.1 (AX.constant a)) a = Ev.on-constant a ;
+ value0-variable : Id A.R (value0.1 AX.variable) A.z = Ev.on-variable ;
+ opaque value0 ;
+ tl : AP.P -> AP.P = split { nil -> nil ; cons a p -> p } ;
+ tl-coef : (p : AP.P) (k : Nat) -> Id A.R (AP.coef (tl p) k) (AP.coef p (suc k)) = split {
+  nil -> \ k -> refl A.z ;
+  cons a p -> \ k -> refl (AP.coef p k) } ;
+ module Tail = AX.Q.Descend[AX.Carrier,AX.set,\ p -> AX.include (tl p),
+  \ p q h -> AX.Q.relates (tl p) (tl q)
+   (\ k -> trans (tl-coef p k) (trans (h (suc k)) (sym (tl-coef q k))))] ;
+ tail : AX.Carrier -> AX.Carrier = Tail.map ;
+ tail-include (p : AP.P) : Id AX.Carrier (tail (AX.include p)) (AX.include (tl p)) = Tail.beta p ;
+ opaque tail ;
+ Decomposed (p : AX.Carrier) : U l =
+  Id AX.Carrier p (AX.addQ (AX.constant (value0.1 p)) (AX.mulQ AX.variable (tail p))) ;
+ zero-list : (k : Nat) -> Id A.R (AP.coef nil k) (AP.coef (cons A.z nil) k) = split {
+  zero -> refl A.z ; suc k -> refl A.z } ;
+ -- nil = (0) = 0 + X nil
+ decompose-nil : Decomposed AX.zeroQ =
+  trans (AX.Q.relates nil (cons A.z nil) zero-list)
+   (trans (AX.horner A.z nil)
+    (cong2 AX.Carrier AX.addQ _ _ _ _ (ap AX.constant (sym value0-nil))
+     (ap (AX.mulQ AX.variable) (sym (tail-include nil))))) ;
+ -- (a :: p) = a + X p
+ decompose-cons (a : A.R) (p : AP.P) : Decomposed (AX.include (cons a p)) =
+  trans (AX.horner a p)
+   (cong2 AX.Carrier AX.addQ _ _ _ _ (ap AX.constant (sym (value0-cons a p)))
+    (ap (AX.mulQ AX.variable) (sym (tail-include (cons a p))))) ;
+ decompose-list : (p : AP.P) -> Decomposed (AX.include p) = split {
+  nil -> decompose-nil ; cons a p -> decompose-cons a p } ;
+ decompose (p : AX.Carrier) : Decomposed p =
+  AX.Q.induction @l Decomposed (\ q -> AX.set q _) decompose-list p ;
+ -- X p = shift p, whose tail is p
+ tail-variable (p : AX.Carrier) : Id AX.Carrier (tail (AX.mulQ AX.variable p)) p =
+  AX.Q.induction @l (\ q -> Id AX.Carrier (tail (AX.mulQ AX.variable q)) q) (\ q -> AX.set _ q)
+   (\ q -> trans (ap tail (trans (AX.Multiply.beta AX.T q) (AX.Q.relates _ _ (AX.T-mul q))))
+     (tail-include (L.shift q))) p ;
+ cancel-variable (p : AX.Carrier) (h : Id AX.Carrier (AX.mulQ AX.variable p) AX.zeroQ) :
+  Id AX.Carrier p AX.zeroQ =
+  trans (sym (tail-variable p)) (trans (ap tail h) (tail-include nil)) ;
+} ;
