@@ -1,0 +1,129 @@
+-- Reindexing projectors (PROJECTORS).  If sigma : Fin K' -> Fin K and
+-- tau are inverse and p' (w o sigma) = (p w) o sigma for every w, then
+--     Image p ~ Image p',   w |-> w o sigma,  w' |-> w' o tau.
+-- Kronecker products are commutative and associative up to reindexing:
+--  (swap)  ((q (x) p) (w o sigma))_(y,x) = sum_y' q_yy' sum_x' p_xx' w_(x',y')
+--          = sum_x' p_xx' sum_y' q_yy' w_(x',y') = ((p (x) q) w)_(x,y);
+--  (assoc) both sides are sum_x' p sum_y' q sum_z' r w_((x',y'),z').
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module PJ = Projectors[l].Over[A,setA] ;
+ module MI = PJ.MI ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ module PS = Pairing[l].Sums[A] ;
+ module Reindex (p p' : PJ.Projector) (sigma : Fin p'.size -> Fin p.size) (tau : Fin p.size -> Fin p'.size)
+  (st : (x : Fin p.size) -> Id (Fin p.size) (sigma (tau x)) x)
+  (ts : (x : Fin p'.size) -> Id (Fin p'.size) (tau (sigma x)) x)
+  (h : (w : Fin p.size -> A.R) (x : Fin p'.size) ->
+   Id A.R (Vectors[l].Over[A,setA,p'.size].act p'.matrix (\ y -> w (sigma y)) x) (Vectors[l].Over[A,setA,p.size].act p.matrix w (sigma x))) {
+  module IP = PJ.Image[p] ;
+  module IQ = PJ.Image[p'] ;
+  forward-member (w : IP.Carrier) : IQ.Member (\ y -> IP.value w (sigma y)) =
+   IQ.V.vec-eq _ _ (\ x -> trans (h (IP.value w) x) (IP.V.entry _ _ (IP.member w) (sigma x))) ;
+  backward-member (w : IQ.Carrier) : IP.Member (\ x -> IQ.value w (tau x)) =
+   IP.V.vec-eq _ _ (\ x -> calc A.R { IP.V.act p.matrix (\ z -> IQ.value w (tau z)) x
+     =< sym (ap (IP.V.act p.matrix (\ z -> IQ.value w (tau z))) (st x)) > IP.V.act p.matrix (\ z -> IQ.value w (tau z)) (sigma (tau x))
+     =< sym (h (\ z -> IQ.value w (tau z)) (tau x)) > IQ.V.act p'.matrix (\ y -> IQ.value w (tau (sigma y))) (tau x)
+     =< ap (\ v -> IQ.V.act p'.matrix v (tau x)) (IQ.V.vec-eq (\ y -> IQ.value w (tau (sigma y))) (IQ.value w) (\ y -> ap (IQ.value w) (ts y))) > IQ.V.act p'.matrix (IQ.value w) (tau x)
+     =< IQ.V.entry _ _ (IQ.member w) (tau x) > IQ.value w (tau x) }) ;
+  iso : MI.Iso[IP.image,IQ.image] = MI.make IP.image IQ.image
+   (\ w -> (\ y -> IP.value w (sigma y),forward-member w)) (\ w -> (\ x -> IQ.value w (tau x),backward-member w))
+   (\ w w' -> IQ.ext _ _ (refl (\ y -> A.add (IP.value w (sigma y)) (IP.value w' (sigma y)))))
+   (\ a w -> IQ.ext _ _ (refl (\ y -> A.mul a (IP.value w (sigma y)))))
+   (\ w -> IQ.ext _ _ (IQ.V.vec-eq _ _ (\ y -> ap (IQ.value w) (ts y))))
+   (\ w -> IP.ext _ _ (IP.V.vec-eq _ _ (\ x -> ap (IP.value w) (st x)))) ;
+ } ;
+
+ -- (swap)  Image (p (x) q) ~ Image (q (x) p)
+ module Swap (p q : PJ.Projector) {
+  module KP = Kronecker[l].Over[A,setA,p.size,q.size] ;
+  module KQ = Kronecker[l].Over[A,setA,q.size,p.size] ;
+  PQ : PJ.Projector = PJ.Product[p,q].projector ;
+  QP : PJ.Projector = PJ.Product[q,p].projector ;
+  sigma (z : Fin (Pairing[l].times q.size p.size)) : Fin (Pairing[l].times p.size q.size) = KP.pair (KQ.second z) (KQ.first z) ;
+  tau (z : Fin (Pairing[l].times p.size q.size)) : Fin (Pairing[l].times q.size p.size) = KQ.pair (KP.second z) (KP.first z) ;
+  sigma-at (y : Fin q.size) (x : Fin p.size) : Id (Fin (Pairing[l].times p.size q.size)) (sigma (KQ.pair y x)) (KP.pair x y) =
+   ap (\ t -> KP.pair t.2 t.1) (Pairing[l].unpair-pair p.size q.size y x) ;
+  tau-at (x : Fin p.size) (y : Fin q.size) : Id (Fin (Pairing[l].times q.size p.size)) (tau (KP.pair x y)) (KQ.pair y x) =
+   ap (\ t -> KQ.pair t.2 t.1) (Pairing[l].unpair-pair q.size p.size x y) ;
+  st (z : Fin (Pairing[l].times p.size q.size)) : Id (Fin (Pairing[l].times p.size q.size)) (sigma (tau z)) z =
+   trans (sigma-at (KP.second z) (KP.first z)) (KP.pu z) ;
+  ts (z : Fin (Pairing[l].times q.size p.size)) : Id (Fin (Pairing[l].times q.size p.size)) (tau (sigma z)) z =
+   trans (tau-at (KQ.second z) (KQ.first z)) (KQ.pu z) ;
+  at-pair (w : Fin (Pairing[l].times p.size q.size) -> A.R) (y : Fin q.size) (x : Fin p.size) :
+   Id A.R (KQ.VN.act QP.matrix (\ z -> w (sigma z)) (KQ.pair y x)) (KP.VN.act PQ.matrix w (sigma (KQ.pair y x))) =
+   calc A.R { KQ.VN.act QP.matrix (\ z -> w (sigma z)) (KQ.pair y x)
+     =< KQ.act-kron q.matrix p.matrix (\ z -> w (sigma z)) y x >
+        S.sum q.size (\ y' -> A.mul (q.matrix y y') (S.sum p.size (\ x' -> A.mul (p.matrix x x') (w (sigma (KQ.pair y' x'))))))
+     =< S.sum-cong q.size _ _ (\ y' -> ap (A.mul (q.matrix y y')) (S.sum-cong p.size _ _ (\ x' ->
+         ap (\ t -> A.mul (p.matrix x x') (w t)) (sigma-at y' x')))) >
+        S.sum q.size (\ y' -> A.mul (q.matrix y y') (S.sum p.size (\ x' -> A.mul (p.matrix x x') (w (KP.pair x' y')))))
+     =< PS.swap-sums q.size p.size (q.matrix y) (p.matrix x) (\ y' x' -> w (KP.pair x' y')) >
+        S.sum p.size (\ x' -> A.mul (p.matrix x x') (S.sum q.size (\ y' -> A.mul (q.matrix y y') (w (KP.pair x' y')))))
+     =< sym (KP.act-kron p.matrix q.matrix w x y) > KP.VN.act PQ.matrix w (KP.pair x y)
+     =< ap (KP.VN.act PQ.matrix w) (sym (sigma-at y x)) > KP.VN.act PQ.matrix w (sigma (KQ.pair y x)) } ;
+  h (w : Fin (Pairing[l].times p.size q.size) -> A.R) (z : Fin (Pairing[l].times q.size p.size)) :
+   Id A.R (KQ.VN.act QP.matrix (\ z' -> w (sigma z')) z) (KP.VN.act PQ.matrix w (sigma z)) =
+   trans (sym (ap (KQ.VN.act QP.matrix (\ z' -> w (sigma z'))) (KQ.pu z)))
+    (trans (at-pair w (KQ.first z) (KQ.second z)) (ap (\ t -> KP.VN.act PQ.matrix w (sigma t)) (KQ.pu z))) ;
+  iso : MI.Iso[PJ.Image[PQ].image,PJ.Image[QP].image] = Reindex[PQ,QP,sigma,tau,st,ts,h].iso ;
+ } ;
+
+ -- (assoc)  Image ((p (x) q) (x) r) ~ Image (p (x) (q (x) r))
+ module Assoc (p q r : PJ.Projector) {
+  PQ : PJ.Projector = PJ.Product[p,q].projector ;
+  QR : PJ.Projector = PJ.Product[q,r].projector ;
+  L : PJ.Projector = PJ.Product[PQ,r].projector ;
+  R : PJ.Projector = PJ.Product[p,QR].projector ;
+  module KPQ = Kronecker[l].Over[A,setA,p.size,q.size] ;
+  module KQR = Kronecker[l].Over[A,setA,q.size,r.size] ;
+  module KL = Kronecker[l].Over[A,setA,PQ.size,r.size] ;
+  module KR = Kronecker[l].Over[A,setA,p.size,QR.size] ;
+  sigma (z : Fin R.size) : Fin L.size = KL.pair (KPQ.pair (KR.first z) (KQR.first (KR.second z))) (KQR.second (KR.second z)) ;
+  tau (z : Fin L.size) : Fin R.size = KR.pair (KPQ.first (KL.first z)) (KQR.pair (KPQ.second (KL.first z)) (KL.second z)) ;
+  sigma-at (x : Fin p.size) (y : Fin q.size) (c : Fin r.size) :
+   Id (Fin L.size) (sigma (KR.pair x (KQR.pair y c))) (KL.pair (KPQ.pair x y) c) =
+   trans (ap (\ t -> KL.pair (KPQ.pair t.1 (KQR.first t.2)) (KQR.second t.2)) (Pairing[l].unpair-pair QR.size p.size x (KQR.pair y c)))
+    (ap (\ t -> KL.pair (KPQ.pair x t.1) t.2) (Pairing[l].unpair-pair r.size q.size y c)) ;
+  tau-at (x : Fin p.size) (y : Fin q.size) (c : Fin r.size) :
+   Id (Fin R.size) (tau (KL.pair (KPQ.pair x y) c)) (KR.pair x (KQR.pair y c)) =
+   trans (ap (\ t -> KR.pair (KPQ.first t.1) (KQR.pair (KPQ.second t.1) t.2)) (Pairing[l].unpair-pair r.size PQ.size (KPQ.pair x y) c))
+    (ap (\ t -> KR.pair t.1 (KQR.pair t.2 c)) (Pairing[l].unpair-pair q.size p.size x y)) ;
+  -- every index of L, of R is a triple
+  triple-L (z : Fin L.size) : Id (Fin L.size) (KL.pair (KPQ.pair (KPQ.first (KL.first z)) (KPQ.second (KL.first z))) (KL.second z)) z =
+   trans (ap (\ t -> KL.pair t (KL.second z)) (KPQ.pu (KL.first z))) (KL.pu z) ;
+  triple-R (z : Fin R.size) : Id (Fin R.size) (KR.pair (KR.first z) (KQR.pair (KQR.first (KR.second z)) (KQR.second (KR.second z)))) z =
+   trans (ap (KR.pair (KR.first z)) (KQR.pu (KR.second z))) (KR.pu z) ;
+  st (z : Fin L.size) : Id (Fin L.size) (sigma (tau z)) z =
+   trans (sigma-at (KPQ.first (KL.first z)) (KPQ.second (KL.first z)) (KL.second z)) (triple-L z) ;
+  ts (z : Fin R.size) : Id (Fin R.size) (tau (sigma z)) z =
+   trans (tau-at (KR.first z) (KQR.first (KR.second z)) (KQR.second (KR.second z))) (triple-R z) ;
+  -- both actions at a triple
+  inner (w : Fin L.size -> A.R) (x' : Fin p.size) (y' : Fin q.size) (c : Fin r.size) : A.R =
+   S.sum r.size (\ c' -> A.mul (r.matrix c c') (w (KL.pair (KPQ.pair x' y') c'))) ;
+  at-triple (w : Fin L.size -> A.R) (x : Fin p.size) (y : Fin q.size) (c : Fin r.size) :
+   Id A.R (KR.VN.act R.matrix (\ z -> w (sigma z)) (KR.pair x (KQR.pair y c))) (KL.VN.act L.matrix w (sigma (KR.pair x (KQR.pair y c)))) =
+   calc A.R { KR.VN.act R.matrix (\ z -> w (sigma z)) (KR.pair x (KQR.pair y c))
+     =< KR.act-kron p.matrix QR.matrix (\ z -> w (sigma z)) x (KQR.pair y c) >
+        S.sum p.size (\ x' -> A.mul (p.matrix x x') (KQR.VN.act QR.matrix (\ v -> w (sigma (KR.pair x' v))) (KQR.pair y c)))
+     =< S.sum-cong p.size _ _ (\ x' -> ap (A.mul (p.matrix x x')) (KQR.act-kron q.matrix r.matrix (\ v -> w (sigma (KR.pair x' v))) y c)) >
+        S.sum p.size (\ x' -> A.mul (p.matrix x x') (S.sum q.size (\ y' -> A.mul (q.matrix y y')
+         (S.sum r.size (\ c' -> A.mul (r.matrix c c') (w (sigma (KR.pair x' (KQR.pair y' c')))))))))
+     =< S.sum-cong p.size _ _ (\ x' -> ap (A.mul (p.matrix x x')) (S.sum-cong q.size _ _ (\ y' -> ap (A.mul (q.matrix y y'))
+         (S.sum-cong r.size (\ c' -> A.mul (r.matrix c c') (w (sigma (KR.pair x' (KQR.pair y' c')))))
+          (\ c' -> A.mul (r.matrix c c') (w (KL.pair (KPQ.pair x' y') c')))
+          (\ c' -> ap (\ t -> A.mul (r.matrix c c') (w t)) (sigma-at x' y' c')))))) >
+        S.sum p.size (\ x' -> A.mul (p.matrix x x') (S.sum q.size (\ y' -> A.mul (q.matrix y y') (inner w x' y' c))))
+     =< sym (KPQ.act-kron p.matrix q.matrix (\ u -> S.sum r.size (\ c' -> A.mul (r.matrix c c') (w (KL.pair u c')))) x y) >
+        KPQ.VN.act PQ.matrix (\ u -> S.sum r.size (\ c' -> A.mul (r.matrix c c') (w (KL.pair u c')))) (KPQ.pair x y)
+     =< sym (KL.act-kron PQ.matrix r.matrix w (KPQ.pair x y) c) > KL.VN.act L.matrix w (KL.pair (KPQ.pair x y) c)
+     =< ap (KL.VN.act L.matrix w) (sym (sigma-at x y c)) > KL.VN.act L.matrix w (sigma (KR.pair x (KQR.pair y c))) } ;
+  h (w : Fin L.size -> A.R) (z : Fin R.size) :
+   Id A.R (KR.VN.act R.matrix (\ z' -> w (sigma z')) z) (KL.VN.act L.matrix w (sigma z)) =
+   trans (sym (ap (KR.VN.act R.matrix (\ z' -> w (sigma z'))) (triple-R z)))
+    (trans (at-triple w (KR.first z) (KQR.first (KR.second z)) (KQR.second (KR.second z)))
+     (ap (\ t -> KL.VN.act L.matrix w (sigma t)) (triple-R z))) ;
+  iso : MI.Iso[PJ.Image[L].image,PJ.Image[R].image] = Reindex[L,R,sigma,tau,st,ts,h].iso ;
+ } ;
+} ;
