@@ -147,6 +147,25 @@ Modules are qcqs's `SerreModule` (symlinked with `SerreModuleMaps`, `SerreModule
 - `GluedFree`: `iso : A^M ~ P_1`.
 - `StableSum`: the chain P_g+P_h ~ P_diag(g,h) ~ P_diag(gh,1) ~ P_gh+P_1 ~ P_gh+A^M.
 
+## Status (2026-11-02, night): P_g finite projective (step 5) DONE, checked
+
+`GluedProjective.Over.Projective[g,g',gi].theorem : FM.FiniteProjective P_g` (67 modules, 0.73 s;
+same theory parameters, no new axioms): P_g is merely a retract of A^(M+M). Proof: StableSum
+with h = g' gives P_g + P_g' ~ P_gg' + A^M; gg' = 1 so P_gg' ~ P_1 ~ A^M (Invariance with
+beta = alpha = 1, then GluedFree); A^M + A^M ~ A^(M+M).
+- `FreeModules`: `free K` (= A^K as SerreModuleProducts of `regular`), `Halving[M].iso`
+  (A^(M+M) ~ A^M + A^M), `Retract[P]` / `FiniteProjective P` (the notion of
+  chatelet/DescentProjective, for SerreModule), `Summand[P,Q,K,e].retract` (P + Q ~ A^K gives
+  a retract).
+- Instance: `Localisations.Over.Instance[..].ProjectiveAt[M].theorem`.
+
+Next (see gabber-recollement.tex): a representation of K_0 (or of stable isomorphism classes
+of f.g. projectives) so that Lemma 3.6(1) reads [P_g] + [P_h] = [P_gh] + M; Lemma 3.6(2)
+needs tensor products P_g (x) P_h = P_{g (x) h} (no module tensor product in this directory
+yet; check chatelet/exterior first); 3.6(3) needs bases of F + O^j on A_a, A_b.
+Independent of this line: LQ X.5.5 (reduced K_0 is nil, for Lemma `roots`) and weak
+cancellation (Lemma `efface`).
+
 ## (Former brief) Lemma 3.6(1) at the module level
 
 Goal: `[P_g] + [P_h] = [P_gh] + M` in K_0(A), for g, h in GL_M(A_ab), A_a, A_b, A_ab as in
