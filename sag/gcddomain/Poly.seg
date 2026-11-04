@@ -1,0 +1,166 @@
+-- Poly.seg: polynomials over a commutative ring as coefficient lists,
+-- lowest degree first.  Two polynomials are equal (peq) when all their
+-- coefficients are, so trailing zeros do not matter.  Evaluation is
+-- Horner's rule; synthetic division by X - a is one primitive recursion
+-- returning the quotient and the remainder, and gives the factor theorem.
+
+level a ;
+open Ring[a] ;
+
+module PolyR (Rg : CRing) {
+  open Rg ;
+  open RL[Rg] ;
+
+  P : U a = List R ;
+  plen (p : P) : Nat = len {R} p ;
+
+  coef : P -> Nat -> R = split {
+    nil -> \ k -> z ;
+    cons c p | r -> split { zero -> c ; suc k -> r k } } ;
+
+  peq (p q : P) : U a = (k : Nat) -> Id R (coef p k) (coef q k) ;
+  peq-sym (p q : P) (h : peq p q) : peq q p = \ k -> sym (h k) ;
+  peq-trans (p q s : P) (h : peq p q) (h' : peq q s) : peq p s =
+    \ k -> trans (h k) (h' k) ;
+
+  ev : P -> R -> R = split {
+    nil -> \ x -> z ;
+    cons c p | r -> \ x -> add c (mul x (r x)) } ;
+
+  ----------------------------------------------------------------------
+  -- multiplication by X - a
+
+  -- the coefficient below k (0 below the constant term)
+  cprev (q : P) : Nat -> R = split { zero -> z ; suc k -> coef q k } ;
+  cprev-peq (p q : P) (h : peq p q) : (k : Nat) -> Id R (cprev p k) (cprev q k) =
+    split { zero -> refl z ; suc k -> h k } ;
+
+  -- adding b to the constant term
+  addc (b : R) : P -> P = split { nil -> cons b nil ; cons d p -> cons (add b d) p } ;
+  addc0 (b : R) : (p : P) -> Id R (coef (addc b p) zero) (add b (coef p zero)) =
+    split { nil -> sym (addZ b) ; cons d p -> refl (add b d) } ;
+  addcS (b : R) : (p : P) -> (k : Nat) -> Id R (coef (addc b p) (suc k)) (coef p (suc k)) =
+    split { nil -> \ k -> refl z ; cons d p -> \ k -> refl (coef p k) } ;
+  addcz (p : P) : peq (addc z p) p = split {
+    zero -> trans (addc0 z p) (zl (coef p zero)) ;
+    suc k -> addcS z p k } ;
+
+  -- (X - a)(b + X q) = -ab + X (b + (X - a) q)
+  mulXa (a : R) : P -> P = split {
+    nil -> nil ;
+    cons b q | r -> cons (neg (mul a b)) (addc b r) } ;
+
+  -- its k-th coefficient: q(k-1) - a q(k)
+  mform (a : R) (q : P) (k : Nat) : R = add (cprev q k) (neg (mul a (coef q k))) ;
+
+  mulXaS (a b : R) (q : P)
+    (r : (k : Nat) -> Id R (coef (mulXa a q) k) (mform a q k))
+    : (k : Nat) -> Id R (coef (addc b (mulXa a q)) k) (mform a (cons b q) (suc k)) = split {
+    zero -> trans (addc0 b (mulXa a q))
+                  (ap (add b) (trans (r zero) (zl (neg (mul a (coef q zero)))))) ;
+    suc k -> trans (addcS b (mulXa a q) k) (r (suc k)) } ;
+
+  coef-mulXa (a : R) : (q : P) -> (k : Nat) -> Id R (coef (mulXa a q) k) (mform a q k) = split {
+    nil -> split { zero -> sym (zero-negmul a) ; suc k -> sym (zero-negmul a) } ;
+    cons b q | r -> split {
+      zero -> sym (zl (neg (mul a b))) ;
+      suc k -> mulXaS a b q r k } } ;
+
+  mform-peq (a : R) (p q : P) (h : peq p q) (k : Nat) : Id R (mform a p k) (mform a q k) =
+    trans (ap (\ t -> add t (neg (mul a (coef p k)))) (cprev-peq p q h k))
+          (ap (\ t -> add (cprev q k) (neg (mul a t))) (h k)) ;
+
+  mulXa-peq (a : R) (p q : P) (h : peq p q) : peq (mulXa a p) (mulXa a q) =
+    \ k -> trans (coef-mulXa a p k) (trans (mform-peq a p q h k) (sym (coef-mulXa a q k))) ;
+
+  -- al (X - b1) .. (X - bn)
+  prodL (al : R) : P -> P = split {
+    nil -> cons al nil ;
+    cons b bs | r -> mulXa b r } ;
+
+  ----------------------------------------------------------------------
+  -- synthetic division:  f = (X - a) q + f(a)
+
+  -- the quotient of  c + X f  from that of f (none when f is empty)
+  consNE : P -> R -> P -> P = split { nil -> \ s q -> nil ; cons d g -> \ s q -> cons s q } ;
+
+  sdiv (a : R) : P -> (q : P) * R = split {
+    nil -> (nil, z) ;
+    cons c f | r -> (consNE f r.2 r.1, add c (mul a r.2)) } ;
+
+  sdiv-rem (a : R) : (f : P) -> Id R (sdiv a f).2 (ev f a) = split {
+    nil -> refl z ;
+    cons c f | r -> ap (\ t -> add c (mul a t)) r } ;
+
+  sdivLen (a : R) : (f : P) -> Id Nat (plen (sdiv a f).1) (pred (plen f))
+    -> Id Nat (plen (consNE f (sdiv a f).2 (sdiv a f).1)) (plen f) = split {
+    nil -> \ h -> refl zero ;
+    cons d g -> \ h -> ap (\ k -> suc k) h } ;
+
+  sdiv-len (a : R) : (f : P) -> Id Nat (plen (sdiv a f).1) (pred (plen f)) = split {
+    nil -> refl zero ;
+    cons c f | r -> sdivLen a f r } ;
+
+  rhs (a : R) (f : P) : P = addc (sdiv a f).2 (mulXa a (sdiv a f).1) ;
+
+  factorS (a c : R) : (f : P) -> peq f (rhs a f) -> peq (cons c f) (rhs a (cons c f)) = split {
+    nil -> \ h -> split { zero -> sym (add-mulzero c a) ; suc k -> refl z } ;
+    cons d g -> \ h -> split {
+      zero -> sym (add-neg-cancel c (mul a (sdiv a (cons d g)).2)) ;
+      suc k -> h k } } ;
+
+  factor (a : R) : (f : P) -> peq f (rhs a f) = split {
+    nil -> split { zero -> refl z ; suc k -> refl z } ;
+    cons c f | r -> factorS a c f r } ;
+
+  -- the factor theorem
+  root-factor (a : R) (f : P) (h0 : Id R (ev f a) z) : peq f (mulXa a (sdiv a f).1) =
+    \ k -> trans (factor a f k)
+            (trans (ap (\ t -> coef (addc t (mulXa a (sdiv a f).1)) k) (trans (sdiv-rem a f) h0))
+                   (addcz (mulXa a (sdiv a f).1) k)) ;
+
+  ----------------------------------------------------------------------
+  -- the top coefficient
+
+  lastH (c : R) : P -> R -> R = split { nil -> \ r -> c ; cons d g -> \ r -> r } ;
+  lastD : P -> R = split {
+    nil -> z ;
+    cons c f | r -> lastH c f r } ;
+
+  initH (c : R) : P -> P -> P = split { nil -> \ r -> nil ; cons d g -> \ r -> cons c r } ;
+  initL : P -> P = split {
+    nil -> nil ;
+    cons c f | r -> initH c f r } ;
+
+  initLenS (c : R) : (f : P) -> Id Nat (plen (initL f)) (pred (plen f))
+    -> Id Nat (plen (initH c f (initL f))) (plen f) = split {
+    nil -> \ h -> refl zero ;
+    cons d g -> \ h -> ap (\ k -> suc k) h } ;
+
+  init-len : (f : P) -> Id Nat (plen (initL f)) (pred (plen f)) = split {
+    nil -> refl zero ;
+    cons c f | r -> initLenS c f r } ;
+
+  initPeqS (c : R) : (f : P) -> (Id R (lastD f) z -> peq f (initL f))
+    -> Id R (lastH c f (lastD f)) z -> peq (cons c f) (initH c f (initL f)) = split {
+    nil -> \ r h -> split { zero -> h ; suc k -> refl z } ;
+    cons d g -> \ r h -> split { zero -> refl c ; suc k -> r h k } } ;
+
+  -- a zero top coefficient can be dropped
+  init-peq : (f : P) -> Id R (lastD f) z -> peq f (initL f) = split {
+    nil -> \ h k -> refl z ;
+    cons c f | r -> initPeqS c f r } ;
+
+  singleS (c : R) : (f : P) -> Id Nat (suc (plen f)) (suc zero)
+    -> peq (cons c f) (cons (lastH c f (lastD f)) nil) = split {
+    nil -> \ e k -> refl (coef (cons c nil) k) ;
+    cons d g -> \ e -> efq (suc-zero (plen g) (suc-inj e)) } ;
+
+  single : (f : P) -> Id Nat (plen f) (suc zero) -> peq f (cons (lastD f) nil) = split {
+    nil -> \ e -> efq (zero-suc zero e) ;
+    cons c f -> singleS c f } ;
+
+  len0 : (f : P) -> Id Nat (plen f) zero -> peq f nil = split {
+    nil -> \ e k -> refl z ;
+    cons c f -> \ e -> efq (suc-zero (plen f) e) } ;
+} ;

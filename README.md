@@ -71,6 +71,11 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
 
 - [`unit.pdf`](doc/unit.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
+- [`gcddomain.pdf`](doc/gcddomain.pdf): a reading example. Gauss's lemma
+  and "if A is a gcd domain, then so is A[X]", written as an informal proof
+  that follows the Unit files in [`sag/gcddomain`](sag/gcddomain)
+  declaration by declaration, so that text and files can be read side by
+  side.
 - [`prototype.pdf`](doc/prototype.pdf): the checker: its type theory
   (Π, Σ, records, data types with recursion through eliminators, identity
   type, cumulative universes with level expressions and constraints) and its
