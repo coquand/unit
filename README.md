@@ -75,7 +75,10 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   and "if A is a gcd domain, then so is A[X]", written as an informal proof
   that follows the Unit files in [`sag/gcddomain`](sag/gcddomain)
   declaration by declaration, so that text and files can be read side by
-  side.
+  side. Following van Benthem Jutting's "The development of a text in
+  AUT-QE" (1973), it gives the proof at four levels: in conversation (A),
+  as in a textbook (B), in detail following the files (C), and the Unit
+  files themselves (D).
 - [`prototype.pdf`](doc/prototype.pdf): the checker: its type theory
   (Π, Σ, records, data types with recursion through eliminators, identity
   type, cumulative universes with level expressions and constraints) and its
