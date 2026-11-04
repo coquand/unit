@@ -10,6 +10,7 @@ for n = k+1, and Jutting's n' and n are the tops n and k of [0,n+1) and
 [0,n).  Images are data (y with y < n and f y = x), constructed by the
 proof; equality of naturals is decided where Jutting writes "if ... then".
 
-Ring.seg and NatOrder.seg are plain copies from sag/gcddomain (naturals,
-order).  Check (from unit/):   ./segc sag/jutting all
+Naturals.seg holds only what the proof uses of the naturals, their
+equality and their order (Jutting's section "Naturals").
+Check (from unit/):   ./segc sag/jutting all
   2026-11-04: 4 modules, 0 failed, 0.01 s.   No Theory parameters (no univalence, no replacement).
