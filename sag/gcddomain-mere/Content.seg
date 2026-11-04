@@ -1,0 +1,97 @@
+-- Content.seg: the content of a finite sequence of coefficients
+-- (doc/gcd-polynomial.tex, §2: Lemme 4, Corollaire 5), with merely
+-- existing gcds.
+--
+--  A content of e below n is a gcd of e_0, .., e_(n-1): it divides each of
+--  them, and every common divisor of them divides it.  It is data, unique
+--  up to a unit, and every e merely has one below every n: below 0 it is
+--  0, and below n+1 it is a gcd of e_n and a content below n.  Conversely
+--  a content below n+1 is a gcd of e_n and any content below n.
+--  d | u e_i for all i < n gives d | u c for every content c below n
+--  (Lemma M).  For e with e_i = 0 when i >= n (Bnd n e) these hold for all
+--  i, and for e primitive (every common divisor divides 1):
+--  d | u e_i for all i gives d | u  (Corollaire 5).
+level l ; open Ring[l] ;
+module NO = NatOrder[l] ;
+module Over (A : CRing) (G : GcdDomain[l].GcdDomain[A]) {
+ open A ; open RL[A] ; open GcdDomain[l].Divisibility[A] ;
+ module Gd = GcdDomain[l].Gcd[A,G] ;
+ module GL = GcdDomain[l] ;
+
+ Below (n : Nat) (P : Nat -> U l) : U l = (i : Nat) -> NO.Lt i n -> P i ;
+ -- e_i = 0 for i >= n
+ Bnd (n : Nat) (e : Nat -> R) : U l = (i : Nat) -> Id R (e (plus n i)) z ;
+ -- every common divisor of the e_i divides 1
+ Prim (e : Nat -> R) : U l = (d : R) -> ((i : Nat) -> Div d (e i)) -> Div d o ;
+
+ lt-top (n : Nat) : NO.Lt n (suc n) = NO.le-refl n ;
+ lt-up (i n : Nat) (h : NO.Lt i n) : NO.Lt i (suc n) = NO.le-suc (suc i) n h ;
+ -- below n and at n: below n+1
+ below-suc-by (P : Nat -> U l) (n : Nat) (h : Below n P) (hn : P n) (i : Nat) :
+  Plus (NO.Lt i n) (Id Nat i n) -> P i = split {
+  inl lt -> h i lt ;
+  inr eq -> subst P (sym eq) hn } ;
+ below-suc (P : Nat -> U l) (n : Nat) (h : Below n P) (hn : P n) : Below (suc n) P =
+  \ i b -> below-suc-by P n h hn i (NO.le-cases i n b) ;
+
+ -- c is a content of e below n
+ Content (n : Nat) (e : Nat -> R) (c : R) : U l =
+  Below n (\ i -> Div c (e i)) * ((d : R) -> Below n (\ i -> Div d (e i)) -> Div d c) ;
+ cont-div (n : Nat) (e : Nat -> R) (c : R) (hc : Content n e c) : Below n (\ i -> Div c (e i)) = hc.1 ;
+ cont-univ (n : Nat) (e : Nat -> R) (c : R) (hc : Content n e c) (d : R) (h : Below n (\ i -> Div d (e i))) : Div d c =
+  hc.2 d h ;
+ SomeContent (n : Nat) (e : Nat -> R) : U l = (c : R) * Content n e c ;
+
+ -- below 0 the content is 0
+ cont-nil (e : Nat -> R) (c : R) (hc : Content zero e c) : Id R c z =
+  div-of-zero c (cont-univ zero e c hc z (\ i h -> efq h)) ;
+ -- a gcd of e_n and a content below n is a content below n+1
+ cont-step (e : Nat -> R) (n : Nat) (c : R) (hc : Content n e c) (g : GcdOf (e n) c) : Content (suc n) e g.1 =
+  (below-suc (\ i -> Div g.1 (e i)) n
+     (\ i b -> div-trans g.1 c (e i) (gcd-right (e n) c g) (cont-div n e c hc i b)) (gcd-left (e n) c g),
+   \ d h -> gcd-univ (e n) c g d (h n (lt-top n)) (cont-univ n e c hc d (\ i b -> h i (lt-up i n b)))) ;
+ -- a content below n+1 is a gcd of e_n and a content below n
+ cont-gcd (e : Nat -> R) (n : Nat) (c : R) (hc : Content n e c) (c' : R) (hc' : Content (suc n) e c') : GcdOf (e n) c =
+  (c', (cont-div (suc n) e c' hc' n (lt-top n),
+       (cont-univ n e c hc c' (\ i b -> cont-div (suc n) e c' hc' i (lt-up i n b)),
+        \ d hn hd -> cont-univ (suc n) e c' hc' d
+          (below-suc (\ i -> Div d (e i)) n (\ i b -> div-trans d c (e i) hd (cont-div n e c hc i b)) hn)))) ;
+ -- every e merely has a content below n
+ cont-exists (e : Nat -> R) : (n : Nat) -> GL.Merely (SomeContent n e) = split {
+  zero -> GL.merely (SomeContent zero e) (z, (\ i h -> efq h, \ d h -> div-zero d)) ;
+  suc n | r -> GL.take (SomeContent n e) (GL.Merely (SomeContent (suc n) e)) (GL.merely-prop (SomeContent (suc n) e)) r
+   (\ cc -> GL.take (GcdOf (e n) cc.1) (GL.Merely (SomeContent (suc n) e)) (GL.merely-prop (SomeContent (suc n) e))
+     (G.gcd (e n) cc.1)
+     (\ g -> GL.merely (SomeContent (suc n) e) (g.1, cont-step e n cc.1 cc.2 g))) } ;
+
+ cont-M (e : Nat -> R) (u d : R) : (n : Nat) (c : R) -> Content n e c ->
+  Below n (\ i -> Div d (mul u (e i))) -> Div d (mul u c) = split {
+  zero -> \ c hc h -> div-eq-right d z (mul u c) (sym (trans (ap (mul u) (cont-nil e c hc)) (mul-zero u))) (div-zero d) ;
+  suc n | r -> \ c hc h -> Gd.D.div-from (SomeContent n e) (cont-exists e n) d (mul u c)
+   (\ cc -> Gd.lemma-M u (e n) cc.1 d (cont-gcd e n cc.1 cc.2 c hc) (h n (lt-top n))
+              (r cc.1 cc.2 (\ i b -> h i (lt-up i n b)))) } ;
+
+ -- below n, and zero from n on: every index
+ module Bounded (e : Nat -> R) (n : Nat) (bnd : Bnd n e) {
+  every-step (d : R) (h : Below n (\ i -> Div d (e i))) (i : Nat) : Plus (NO.Le n i) (NO.Lt i n) -> Div d (e i) = split {
+   inl le -> div-eq-right d z (e i)
+              (sym (trans (ap e (trans (NO.le-plus n i le).2 (plus-comm (NO.le-plus n i le).1 n))) (bnd (NO.le-plus n i le).1)))
+              (div-zero d) ;
+   inr lt -> h i lt } ;
+  every (d : R) (h : Below n (\ i -> Div d (e i))) (i : Nat) : Div d (e i) = every-step d h i (NO.le-or-gt n i) ;
+  -- for a content c of e below n
+  module With (c : R) (hc : Content n e c) {
+   c-div (i : Nat) : Div c (e i) = every c (cont-div n e c hc) i ;
+   c-univ (d : R) (h : (i : Nat) -> Div d (e i)) : Div d c = cont-univ n e c hc d (\ i b -> h i) ;
+   -- c = 0 gives e = 0
+   c-zero (h : Id R c z) (i : Nat) : Id R (e i) z = div-of-zero (e i) (div-eq-left c z (e i) h (c-div i)) ;
+   -- a primitive e: its content divides 1
+   prim-c (p : Prim e) : Div c o = p c c-div ;
+  } ;
+  -- Corollaire 5
+  prim-M (p : Prim e) (u d : R) (h : (i : Nat) -> Div d (mul u (e i))) : Div d u =
+   Gd.D.div-from (SomeContent n e) (cont-exists e n) d u
+    (\ cc -> div-trans d (mul u cc.1) u (cont-M e u d n cc.1 cc.2 (\ i b -> h i))
+      (div-eq-right (mul u cc.1) (mul u o) u (mulO u) (div-scale cc.1 o u (With[cc.1,cc.2].prim-c p)))) ;
+ } ;
+} ;

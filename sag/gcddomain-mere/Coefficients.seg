@@ -1,0 +1,77 @@
+-- Coefficients.seg: the coefficients of an element of A[X].
+--
+-- A[X] is the quotient of coefficient lists by "same coefficients"
+-- (PolynomialRing).  The k-th coefficient descends to the quotient
+-- (Coef, coef, coef-include).  Two polynomials with the same coefficients
+-- are equal (coef-ext).  The coefficients of a sum, a scalar multiple, a
+-- negative and a product by X are computed coefficientwise: a law between
+-- coefficients holds on A[X] as soon as it holds on lists (law), since
+-- equality of coefficients is a proposition.  Bounded d x: every
+-- coefficient of x from index d on is zero (degree < d).
+--
+-- (Extracted unchanged from exterior/CharPoly.seg, which states these
+-- lemmas before its determinant part.)
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ open A ;
+ module P = Poly[l].PolyR[A] ;
+ module M = Mul[l].MulR[A] ;
+ module RW = RawLaws[l].Laws[A] ;
+ module RM = RawMultiplication[l].Laws[A] ;
+ module B = PolynomialRing[l].Extension[A,setA] ;
+ ---------------------------------------------------------------------
+ -- coefficients on A[X]
+
+ Coefficients : U l = Nat -> R ;
+ module Coef = B.Q.Descend[Coefficients,FE.isSet-Pi Nat (\ k -> R) (\ k -> setA),P.coef,
+  \ p q h -> FE.funext Nat (\ k -> R) (P.coef p) (P.coef q) h] ;
+ coef (x : B.Carrier) (k : Nat) : R = Coef.map x k ;
+ coef-include (p : P.P) (k : Nat) : Id R (coef (B.include p) k) (P.coef p k) =
+  Pr.happly Nat (\ k -> R) (Coef.map (B.include p)) (P.coef p) (Coef.beta p) k ;
+ CoefLaw (lhs rhs : B.Carrier -> Nat -> R) (x : B.Carrier) : U l =
+  (k : Nat) -> Id R (lhs x k) (rhs x k) ;
+ law (lhs rhs : B.Carrier -> Nat -> R)
+  (raw : (p : P.P) -> CoefLaw lhs rhs (B.include p)) : (x : B.Carrier) -> CoefLaw lhs rhs x =
+  B.Q.induction @l (CoefLaw lhs rhs)
+   (\ x -> FE.isProp-Pi Nat (\ k -> Id R (lhs x k) (rhs x k)) (\ k -> setA (lhs x k) (rhs x k))) raw ;
+ -- polynomials with the same coefficients are equal
+ coef-ext : (x y : B.Carrier) -> ((k : Nat) -> Id R (coef x k) (coef y k)) -> Id B.Carrier x y =
+  B.forall2 (\ x y -> ((k : Nat) -> Id R (coef x k) (coef y k)) -> Id B.Carrier x y)
+   (\ x y -> FE.isProp-Pi ((k : Nat) -> Id R (coef x k) (coef y k)) (\ h -> Id B.Carrier x y) (\ h -> B.set x y))
+   (\ p q h -> B.Q.relates p q (\ k -> trans (sym (coef-include p k)) (trans (h k) (coef-include q k)))) ;
+ coef-add : (x y : B.Carrier) (k : Nat) -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k)) =
+  B.forall2 (\ x y -> (k : Nat) -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k)))
+   (\ x y -> FE.isProp-Pi Nat (\ k -> Id R (coef (B.addQ x y) k) (add (coef x k) (coef y k))) (\ k -> setA _ _))
+   (\ p q k -> trans (ap (\ w -> coef w k) (B.Add.beta p q))
+    (trans (coef-include (M.addP p q) k)
+     (trans (M.coef-addP p q k)
+      (sym (Pr.cong2 R add _ _ _ _ (coef-include p k) (coef-include q k)))))) ;
+ coef-scale (a : R) : (x : B.Carrier) (k : Nat) -> Id R (coef (B.mulQ (B.constant a) x) k) (mul a (coef x k)) =
+  law (\ x k -> coef (B.mulQ (B.constant a) x) k) (\ x k -> mul a (coef x k))
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Multiply.beta (RW.constantP a) p))
+    (trans (coef-include (M.pmul (RW.constantP a) p) k)
+     (trans (RM.mul-single-left a p k)
+      (trans (M.coef-scal a p k) (ap (mul a) (sym (coef-include p k))))))) ;
+ coef-neg : (x : B.Carrier) (k : Nat) -> Id R (coef (B.negQ x) k) (neg (coef x k)) =
+  law (\ x k -> coef (B.negQ x) k) (\ x k -> neg (coef x k))
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Negate.beta p))
+    (trans (coef-include (RW.negP p) k)
+     (trans (RW.neg-coef p k) (ap neg (sym (coef-include p k)))))) ;
+ shifted (x : B.Carrier) : Nat -> R = split { zero -> z ; suc k -> coef x k } ;
+ shift-coef (p : P.P) : (k : Nat) -> Id R (P.coef (RW.shift p) k) (shifted (B.include p) k) = split {
+  zero -> refl z ;
+  suc k -> sym (coef-include p k) } ;
+ coef-variable : (x : B.Carrier) (k : Nat) -> Id R (coef (B.mulQ B.variable x) k) (shifted x k) =
+  law (\ x k -> coef (B.mulQ B.variable x) k) shifted
+   (\ p k -> trans (ap (\ w -> coef w k) (B.Multiply.beta B.T p))
+    (trans (coef-include (M.pmul B.T p) k)
+     (trans (B.T-mul p k) (shift-coef p k)))) ;
+ coef-zero (k : Nat) : Id R (coef B.zeroQ k) z = coef-include nil k ;
+ coef-const0 (a : R) : Id R (coef (B.constant a) zero) a = coef-include (RW.constantP a) zero ;
+ coef-constS (a : R) (k : Nat) : Id R (coef (B.constant a) (suc k)) z = coef-include (RW.constantP a) (suc k) ;
+
+ -- degree < d
+ Bounded (d : Nat) (x : B.Carrier) : U l = (i : Nat) -> Id R (coef x (plus d i)) z ;
+} ;
