@@ -8,7 +8,7 @@ propositional truncation from replacement (sag/pn/Truncation.seg).  They
 are used for the infinite elements only; domain/lazy (symlinked here)
 uses none of them.  No postulates, no holes.
 
-CHECK.  seg All.seg: 1174 declarations (with the imported domain/lazy
+CHECK.  seg All.seg: 1180 declarations (with the imported domain/lazy
 modules), 0 failed, 0.18 s.  New files: 1,859 lines.
 
 FILES
@@ -62,10 +62,12 @@ From domain/lazy it otherwise takes definitions only (Step, AllocStep,
 Ren, NewFor, Fresh, NotOcc, Ev, Value) and Eval.ev-value.
 
 DEVIATIONS FROM THE NOTE
- 1. Theorem 6.2(1), "t in V mu p (upE G) iff mu |- p :_G t": only the
-    direction from observations to elements is formalised (v-in); the
-    converse needs EnvLe from a pointwise truncated order, i.e. a choice
-    over the finitely many variables of an environment.  Not used.
+ 1. Theorem 6.2(1) in both directions: v-up (an observation gives an
+    element of V mu p (upE G)) and v-out (an element gives a truncated
+    observation).  For v-out, a witness D in upE G gives look G x <= look D x
+    for each x only truncated; D is a finite list (look D x = om off its
+    bindings), so le-collect gathers them one binding at a time, and
+    obs-env moves the observation from D to G.  No choice is used.
  2. Filters are compared by Eqv (inclusion both ways) throughout; Id of
     filters and of semantic memories (filt-ext, sem-ext) only in the final
     statement step-id.

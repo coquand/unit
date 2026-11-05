@@ -369,3 +369,48 @@ module Park (mu : Nat -> Cell) (S : SMem) (Sm : SMono S) (pre : (p : Nat) (rho :
 -- Theorem 6.2(2): V mu is a fixed point
 V-fix (mu : Nat -> Cell) (p : Nat) (rho : Rho) : Eqv (V mu p rho) (Cl (V mu) (mu p) rho) =
   (Park[mu, V mu, V-mono mu, V-pre mu].in-cl p rho, V-pre mu p rho) ;
+
+------------------------------------------------------------------------
+-- Theorem 6.2(1), the converse: an element of V mu p (upE G) is a type of
+-- p in G.  A witness D in upE G gives look G x <= look D x for each x,
+-- truncated; D is a finite list, so the inequalities are collected one
+-- binding at a time (le-collect: at an unbound variable look D x = om).
+-- Then Lemma 3.2(1) moves the observation from D to G.
+
+LeTo (f : Nat -> Ty) (D : Env) : U l = (x : Nat) -> Le (f x) (look D x) ;
+
+le-cons-case (f : Nat -> Ty) (y : Nat) (s : Ty) (D : Env) (hy : Le (f y) s)
+    (hD : LeTo (\ z -> ifB Ty (eqN z y) (look D z) (f z)) D) (x : Nat) :
+    (b : Bool) -> Id Bool b (eqN x y) -> Le (f x) (ifB Ty b s (look D x)) = split {
+  true -> \ e -> subst Nat (\ z -> Le (f z) s) y x
+                   (sym Nat x y (eqN-sound x y (subst Bool (\ z -> IsT z) true (eqN x y) e tt))) hy ;
+  false -> \ e -> subst Ty (\ u -> Le u (look D x)) (ifB Ty (eqN x y) (look D x) (f x)) (f x)
+                   (ifB-F Ty (look D x) (f x) (eqN x y) (subst Bool (\ z -> IsF z) false (eqN x y) e tt)) (hD x) } ;
+
+le-hyp-case (f : Nat -> Ty) (y : Nat) (s : Ty) (D : Env) (x : Nat) (h : Ex (Le (f x) (ifB Ty (eqN x y) s (look D x)))) :
+    (b : Bool) -> Id Bool b (eqN x y) -> Ex (Le (ifB Ty b (look D x) (f x)) (look D x)) = split {
+  true -> \ e -> ex (Le (look D x) (look D x)) (le-refl (look D x)) ;
+  false -> \ e -> subst Ty (\ u -> Ex (Le (f x) u)) (ifB Ty (eqN x y) s (look D x)) (look D x)
+                    (ifB-F Ty s (look D x) (eqN x y) (subst Bool (\ z -> IsF z) false (eqN x y) e tt)) h } ;
+
+le-collect : (D : Env) -> (f : Nat -> Ty) -> ((x : Nat) -> Ex (Le (f x) (look D x))) -> Ex (LeTo f D) = split {
+  gnil -> \ f h -> ex (LeTo f gnil) (\ x -> le-om (f x)) ;
+  gcons y s D | r -> \ f h ->
+    ex-elim (Le (f y) s) (Ex (LeTo f (gcons y s D))) (ex-prop (LeTo f (gcons y s D)))
+      (\ hy -> ex-elim (LeTo (\ z -> ifB Ty (eqN z y) (look D z) (f z)) D) (Ex (LeTo f (gcons y s D)))
+                 (ex-prop (LeTo f (gcons y s D)))
+                 (\ hD -> ex (LeTo f (gcons y s D)) (\ x -> le-cons-case f y s D hy hD x (eqN x y) (refl (eqN x y))))
+                 (r (\ z -> ifB Ty (eqN z y) (look D z) (f z))
+                    (\ x -> le-hyp-case f y s D x (h x) (eqN x y) (refl (eqN x y)))))
+      (subst Ty (\ u -> Ex (Le (f y) u)) (ifB Ty (eqN y y) s (look D y)) s
+         (ifB-T Ty s (look D y) (eqN y y) (eqN-refl y)) (h y)) } ;
+
+-- Theorem 6.2(1): t is in V mu p (upE G) iff mu |- p :_G t (truncated)
+v-out (mu : Nat -> Cell) (p : Nat) (G : Env) (t : Ty) (h : mem (V mu p (upE G)) t) : Ex (Obs mu (jdg G p t)) =
+  v-elim mu p (upE G) t (Ex (Obs mu (jdg G p t))) (ex-prop (Obs mu (jdg G p t)))
+    (\ D i o -> ex-elim (LeTo (look G) D) (Ex (Obs mu (jdg G p t))) (ex-prop (Obs mu (jdg G p t)))
+                  (\ le -> ex (Obs mu (jdg G p t)) (obs-env mu D G p t le o))
+                  (le-collect D (look G) i)) h ;
+
+v-up (mu : Nat -> Cell) (p : Nat) (G : Env) (t : Ty) (o : Obs mu (jdg G p t)) : mem (V mu p (upE G)) t =
+  v-in mu p (upE G) G t (envin-self G) o ;
