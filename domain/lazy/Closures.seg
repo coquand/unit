@@ -1,0 +1,200 @@
+-- Closures.seg: rules [G] and [L] preserve the meaning of every cell
+-- (doc/lazy-intersection.tex, Theorem 4.1).
+--
+-- [G]  mu p = (pf p2), mu pf = (FUNARG pl th), mu pl = (LAMBDA x p1),
+--      nu = mu[(FUNARG p1 x p2 th) / p].
+--  Forwards: p : t by application comes from pf : s -> t and p2 : s.  By
+--  generation at the FUNARG cell (Gen.funarg-inv) there is ONE choice s'
+--  for th with pl : s -> t in G[th : s']; by beta-soundness
+--  (Gen.lam-inv), p1 : t in G[th : s'][x : s].  These are the premises
+--  of the FUNARG rule of nu p, with the choice s'[x := s].  (The note
+--  reads "by generation from types of th"; the single choice needs the
+--  meet of the choices of the meet-tree, which Gen.funarg-inv does.)
+--  Backwards: the FUNARG rule of nu p gives a choice s with p2 : s x and
+--  p1 : t in G[th : s][x : s x]; then pl : s x -> t in G[th : s[x := om]]
+--  (the binding of x in th is shadowed), pf : s x -> t, and p : t.
+--
+-- [L]  mu p = (FUNARG pl th), mu pl = (LABEL x p1),
+--      nu = mu[(FUNARG p1 x p th) / p], a circular cell.
+--  Forwards: the FUNARG rule of mu p gives s, th : s in nu and
+--  pl : t in nu, in E = G[th : s].  By induction on the types of pl in E
+--  (Observe.cell-ind-rec), each of them is a type of p in nu: the LABEL
+--  rule gives t from p1 : t in E[x : s0] and a type s0 of pl in E, which
+--  by induction is a type of p; these are the premises of the FUNARG
+--  rule of nu p, with the choice s[x := s0], the binding x p first.
+--  Backwards: NO induction is needed beyond the transfer lemma.  The
+--  FUNARG rule of nu p gives s with p : s x and p1 : t in
+--  G[th : s][x : s x], all in mu.  By generation at mu p (FUNARG pl th),
+--  p : s x comes from one choice s2 with pl : s x in G[th : s2].  Take
+--  s3 = s2 at x and s /\ s2 elsewhere: th : s3, and Lemma 3.2(1) moves
+--  both pl : s x and p1 : t to G[th : s3] (resp. G[th : s3][x : s x]).
+--  The LABEL rule gives pl : t, and the FUNARG rule of mu p gives p : t.
+--  (The note takes the meet of all the choices made in the derivation;
+--  two suffice, because generation already met the choices of one cell.)
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ; open Gen[l] ; open Rules[l] ;
+
+------------------------------------------------------------------------
+-- choices and environments
+
+-- s with x : a
+supd (s : Nat -> Ty) (x : Nat) (a : Ty) : Nat -> Ty = \ y -> ifB Ty (eqN y x) a (s y) ;
+
+supd-at (s : Nat -> Ty) (x : Nat) (a : Ty) : Id Ty (supd s x a x) a = ifB-T Ty a (s x) (eqN x x) (eqN-refl x) ;
+supd-off (s : Nat -> Ty) (x : Nat) (a : Ty) (y : Nat) (k : IsF (eqN y x)) : Id Ty (supd s x a y) (s y) =
+  ifB-F Ty a (s y) (eqN y x) k ;
+
+ifB-le-dep (a b c d : Ty) : (bb : Bool) -> (IsT bb -> Le a b) -> (IsF bb -> Le c d) -> Le (ifB Ty bb a c) (ifB Ty bb b d) = split {
+  true -> \ f g -> f tt ;
+  false -> \ f g -> g tt } ;
+
+-- look (G[th : s]) y only depends on s y
+extTh-look (s s' : Nat -> Ty) (G : Env) (y : Nat) (h : Le (s y) (s' y)) :
+    (th : Alist) -> Le (look (extTh s th G) y) (look (extTh s' th G) y) = split {
+  anil -> le-refl (look G y) ;
+  acons z q th | r -> ifB-le-dep (s z) (s' z) (look (extTh s th G) y) (look (extTh s' th G) y) (eqN y z)
+      (\ k -> subst Nat (\ w -> Le (s w) (s' w)) y z (eqN-sound y z k) h) (\ k -> r) } ;
+
+-- the head binding shadows x
+env-shadow (x : Nat) (a b : Ty) (D G : Env) (hab : Le a b)
+    (h : (y : Nat) -> IsF (eqN y x) -> Le (look D y) (look G y)) : EnvLe (gcons x a D) (gcons x b G) =
+  \ y -> ifB-le-dep a b (look D y) (look G y) (eqN y x) (\ k -> hab) (\ k -> h y k) ;
+
+-- the bindings of (x q th): the first one, and those of th for y /= x
+ThetaCons (R : Jdg -> U l) (G : Env) (s : Nat -> Ty) : Alist -> Nat -> Nat -> U l = split {
+  anil -> \ y q -> Top ;
+  acons x p th -> \ y q -> R (jdg G p (s x)) ->
+     ((z r : Nat) -> IsF (eqN z x) -> Lookup th z r -> R (jdg G r (s z))) -> R (jdg G q (s y)) } ;
+
+theta-cons-gen (R : Jdg -> U l) (G : Env) (s : Nat -> Ty) : (th : Alist) -> (y q : Nat) -> Lookup th y q -> ThetaCons R G s th y q = split {
+  lk-here x q th -> \ h0 hr -> h0 ;
+  lk-there x r th y q ne h -> \ h0 hr -> hr y q ne h } ;
+
+theta-cons (R : Jdg -> U l) (G : Env) (x p : Nat) (th : Alist) (s : Nat -> Ty) (h0 : R (jdg G p (s x)))
+    (hr : (z r : Nat) -> IsF (eqN z x) -> Lookup th z r -> R (jdg G r (s z))) : ThetaR R G (acons x p th) s =
+  \ y q lk -> theta-cons-gen R G s (acons x p th) y q lk h0 hr ;
+
+------------------------------------------------------------------------
+-- [G]
+
+module RuleG (mu : Nat -> Cell) (p pf pl p1 p2 x : Nat) (th : Alist) (e : Id Cell (mu p) (eapp pf p2))
+    (ef : Id Cell (mu pf) (efunarg pl th)) (el : Id Cell (mu pl) (elam x p1)) {
+  c : Cell = efunarg p1 (acons x p2 th) ;
+  nu : Nat -> Cell = upd mu p c ;
+  ef' : Id Cell (nu pf) (efunarg pl th) = upd-other mu p c pf (efunarg pl th) ef (other-form mu p (eapp pf p2) (efunarg pl th) e tt) ;
+  el' : Id Cell (nu pl) (elam x p1) = upd-other mu p c pl (elam x p1) el (other-form mu p (eapp pf p2) (elam x p1) e tt) ;
+
+  fwd-body (G : Env) (t a : Ty) (v : FM nu G pl th (arr a t)) (o2 : Obs nu (jdg G p2 a)) : Obs nu (jdg G p t) =
+    obs-at' nu G p c t (upd-hit mu p c)
+      (supd v.1 x a,
+       (theta-cons (Obs nu) G x p2 th (supd v.1 x a)
+          (obs-ty nu G p2 a (supd v.1 x a x) (sym Ty (supd v.1 x a x) a (supd-at v.1 x a)) o2)
+          (\ y q k lk -> obs-ty nu G q (v.1 y) (supd v.1 x a y) (sym Ty (supd v.1 x a y) (v.1 y) (supd-off v.1 x a y k)) (v.2.1 y q lk)),
+        obs-env nu (gcons x a (extTh v.1 th G)) (gcons x (supd v.1 x a x) (extTh (supd v.1 x a) th G)) p1 t
+          (env-shadow x (supd v.1 x a x) a (extTh (supd v.1 x a) th G) (extTh v.1 th G)
+             (id-le (supd v.1 x a x) a (supd-at v.1 x a))
+             (\ y k -> extTh-look (supd v.1 x a) v.1 G y (id-le (supd v.1 x a y) (v.1 y) (supd-off v.1 x a y k)) th))
+          (lam-inv nu (extTh v.1 th G) pl x p1 el' a t v.2.2))) ;
+
+  fwd (G : Env) (t : Ty) (w : CellQ (Obs nu) G p (eapp pf p2) t) : Obs nu (jdg G p t) =
+    fwd-body G t w.1 (funarg-inv nu G pf pl th ef' (arr w.1 t) w.2.1) w.2.2 ;
+
+  bwd-theta (G : Env) (s : Nat -> Ty) (h : ThetaR (Obs mu) G (acons x p2 th) s) (y q : Nat) (lk : Lookup th y q) :
+      Plus (IsT (eqN y x)) (IsF (eqN y x)) -> Obs mu (jdg G q (supd s x om y)) = split {
+    inl k -> obs-ty mu G q om (supd s x om y) (sym Ty (supd s x om y) om (ifB-T Ty om (s y) (eqN y x) k)) (o-om G q) ;
+    inr k -> obs-ty mu G q (s y) (supd s x om y) (sym Ty (supd s x om y) (s y) (supd-off s x om y k))
+               (h y q (lk-there x p2 th y q k lk)) } ;
+
+  bwd (G : Env) (t : Ty) (w : CellQ (Obs mu) G p c t) : Obs mu (jdg G p t) =
+    obs-at' mu G p (eapp pf p2) t e
+      (w.1 x,
+       (obs-at' mu G pf (efunarg pl th) (arr (w.1 x) t) ef
+          (supd w.1 x om,
+           (\ y q lk -> bwd-theta G w.1 w.2.1 y q lk (bool-dec (eqN y x)),
+            obs-at' mu (extTh (supd w.1 x om) th G) pl (elam x p1) (arr (w.1 x) t) el
+              (w.1 x, (t, (refl (arr (w.1 x) t),
+                obs-env mu (gcons x (w.1 x) (extTh w.1 th G)) (gcons x (w.1 x) (extTh (supd w.1 x om) th G)) p1 t
+                  (env-shadow x (w.1 x) (w.1 x) (extTh (supd w.1 x om) th G) (extTh w.1 th G) (le-refl (w.1 x))
+                     (\ y k -> extTh-look (supd w.1 x om) w.1 G y
+                                 (id-le (supd w.1 x om y) (w.1 y) (supd-off w.1 x om y k)) th))
+                  w.2.2))))),
+        w.2.1 x p2 (lk-here x p2 th))) ;
+
+  inv : Inv mu nu = rewrite-inv mu p c
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p (mu p) (eapp pf p2) e t v))
+    (\ G t v -> bwd G t (cq-at (Obs mu) G p (nu p) c (upd-hit mu p c) t v)) ;
+} ;
+
+------------------------------------------------------------------------
+-- [L]
+
+module RuleL (mu : Nat -> Cell) (p pl p1 x : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg pl th))
+    (el : Id Cell (mu pl) (elabel x p1)) {
+  c : Cell = efunarg p1 (acons x p th) ;
+  nu : Nat -> Cell = upd mu p c ;
+  el' : Id Cell (nu pl) (elabel x p1) = upd-other mu p c pl (elabel x p1) el (other-form mu p (efunarg pl th) (elabel x p1) e tt) ;
+
+  -- forwards: by induction over the types of pl in G[th : s]
+  PL (G : Env) (u : Ty) : U l = Obs nu (jdg G p u) ;
+
+  fwd-leaf (G : Env) (s : Nat -> Ty) (h : ThetaR (Obs nu) G th s) (u : Ty)
+      (w : CellQ (GenM nu (extTh s th G) pl (PL G)) (extTh s th G) pl (elabel x p1) u) : Obs nu (jdg G p u) =
+    obs-at' nu G p c u (upd-hit mu p c)
+      (supd s x w.1,
+       (theta-cons (Obs nu) G x p th (supd s x w.1)
+          (obs-ty nu G p w.1 (supd s x w.1 x) (sym Ty (supd s x w.1 x) w.1 (supd-at s x w.1))
+             (w.2.2.2 (refl (extTh s th G)) (refl pl)))
+          (\ y q k lk -> obs-ty nu G q (s y) (supd s x w.1 y) (sym Ty (supd s x w.1 y) (s y) (supd-off s x w.1 y k)) (h y q lk)),
+        obs-env nu (gcons x w.1 (extTh s th G)) (gcons x (supd s x w.1 x) (extTh (supd s x w.1) th G)) p1 u
+          (env-shadow x (supd s x w.1 x) w.1 (extTh (supd s x w.1) th G) (extTh s th G)
+             (id-le (supd s x w.1 x) w.1 (supd-at s x w.1))
+             (\ y k -> extTh-look (supd s x w.1) s G y (id-le (supd s x w.1 y) (s y) (supd-off s x w.1 y k)) th))
+          w.2.1.1)) ;
+
+  fwd (G : Env) (t : Ty) (v : FM nu G pl th t) : Obs nu (jdg G p t) =
+    cell-ind-rec nu (extTh v.1 th G) pl (PL G) (o-om G p)
+      (\ a b h1 h2 -> o-meet G p a b h1 h2) (\ a b le h -> o-sub G p a b h le)
+      (\ u q -> fwd-leaf G v.1 v.2.1 u
+          (cq-at (GenM nu (extTh v.1 th G) pl (PL G)) (extTh v.1 th G) pl (nu pl) (elabel x p1) el' u q))
+      t v.2.2 ;
+
+  -- backwards: the choices s (of nu p) and s2 (of mu p) are met
+  s3 (s s2 : Nat -> Ty) : Nat -> Ty = \ y -> ifB Ty (eqN y x) (s2 y) (meet (s y) (s2 y)) ;
+
+  s3-le2 (s s2 : Nat -> Ty) (y : Nat) : Le (s3 s s2 y) (s2 y) =
+    le-trans (s3 s s2 y) (ifB Ty (eqN y x) (s2 y) (s2 y)) (s2 y)
+      (ifB-le-dep (s2 y) (s2 y) (meet (s y) (s2 y)) (s2 y) (eqN y x) (\ k -> le-refl (s2 y)) (\ k -> le-meet-r (s y) (s2 y)))
+      (id-le (ifB Ty (eqN y x) (s2 y) (s2 y)) (s2 y) (ifB-same Ty (s2 y) (eqN y x))) ;
+
+  s3-le1 (s s2 : Nat -> Ty) (y : Nat) (k : IsF (eqN y x)) : Le (s3 s s2 y) (s y) =
+    le-trans (s3 s s2 y) (meet (s y) (s2 y)) (s y)
+      (id-le (s3 s s2 y) (meet (s y) (s2 y)) (ifB-F Ty (s2 y) (meet (s y) (s2 y)) (eqN y x) k)) (le-meet-l (s y) (s2 y)) ;
+
+  bwd-theta (G : Env) (s s2 : Nat -> Ty) (h : ThetaR (Obs mu) G (acons x p th) s) (h2 : ThetaR (Obs mu) G th s2)
+      (y q : Nat) (lk : Lookup th y q) : Plus (IsT (eqN y x)) (IsF (eqN y x)) -> Obs mu (jdg G q (s3 s s2 y)) = split {
+    inl k -> obs-ty mu G q (s2 y) (s3 s s2 y) (sym Ty (s3 s s2 y) (s2 y) (ifB-T Ty (s2 y) (meet (s y) (s2 y)) (eqN y x) k)) (h2 y q lk) ;
+    inr k -> obs-ty mu G q (meet (s y) (s2 y)) (s3 s s2 y)
+               (sym Ty (s3 s s2 y) (meet (s y) (s2 y)) (ifB-F Ty (s2 y) (meet (s y) (s2 y)) (eqN y x) k))
+               (o-meet G q (s y) (s2 y) (h y q (lk-there x p th y q k lk)) (h2 y q lk)) } ;
+
+  bwd-body (G : Env) (t : Ty) (w : CellQ (Obs mu) G p c t) (v : FM mu G pl th (w.1 x)) : Obs mu (jdg G p t) =
+    obs-at' mu G p (efunarg pl th) t e
+      (s3 w.1 v.1,
+       (\ y q lk -> bwd-theta G w.1 v.1 w.2.1 v.2.1 y q lk (bool-dec (eqN y x)),
+        obs-at' mu (extTh (s3 w.1 v.1) th G) pl (elabel x p1) t el
+          (w.1 x,
+           (obs-env mu (gcons x (w.1 x) (extTh w.1 th G)) (gcons x (w.1 x) (extTh (s3 w.1 v.1) th G)) p1 t
+              (env-shadow x (w.1 x) (w.1 x) (extTh (s3 w.1 v.1) th G) (extTh w.1 th G) (le-refl (w.1 x))
+                 (\ y k -> extTh-look (s3 w.1 v.1) w.1 G y (s3-le1 w.1 v.1 y k) th))
+              w.2.2,
+            obs-env mu (extTh v.1 th G) (extTh (s3 w.1 v.1) th G) pl (w.1 x)
+              (extTh-mono (s3 w.1 v.1) v.1 (s3-le2 w.1 v.1) G G (envle-refl G) th) v.2.2)))) ;
+
+  bwd (G : Env) (t : Ty) (w : CellQ (Obs mu) G p c t) : Obs mu (jdg G p t) =
+    bwd-body G t w (funarg-inv mu G p pl th e (w.1 x) (w.2.1 x p (lk-here x p th))) ;
+
+  inv : Inv mu nu = rewrite-inv mu p c
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p (mu p) (efunarg pl th) e t v))
+    (\ G t v -> bwd G t (cq-at (Obs mu) G p (nu p) c (upd-hit mu p c) t v)) ;
+} ;

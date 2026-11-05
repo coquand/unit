@@ -1,0 +1,295 @@
+-- Laws.seg: Lemma 6.1 of doc/lazy-intersection.tex, the laws of the
+-- operations on filters.
+--
+--  (1) fstF (pairF x y) = x, sndF (pairF x y) = y: a type pair t om of
+--      pairF x y is above some pair s u with s in x; by Lemma 2.2(2) a
+--      selection of the pair components of pair s u, of meet s' <= t, is
+--      in x (psel-in).
+--  (2) beta: appF (lamF R) y = g y, for g monotone and continuous and R
+--      its trace (R s u: u in g (prin s)).  An arrow arr s t of lamF R is
+--      above a meet of arrows arr s_i u_i with R s_i u_i; by Lemma 2.2(3)
+--      a selection with s <= s_i has meet of the u_i <= t (asel-in), and
+--      the u_i are in g (prin s) by monotonicity.
+--  (3) fixF R = g (fixF R) for g monotone and continuous; and fixF R is
+--      included in every x with g x included in x (fix-least).
+--  (4) the primitives on atoms and pairs.
+--  (5) bot contains none of at a, pair om om, arr om om.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Gen[l] ; open Filter[l] ;
+
+------------------------------------------------------------------------
+-- om is below no atom, pair or arrow
+
+OmShape : Ty -> U l = split {
+  om -> Top ; atom -> Empty ; at a -> Empty ; pair s t -> Empty ; arr s t -> Empty ; meet s t -> Top } ;
+
+om-not-atom (le : Le om atom) : Empty = allc-not-atom OmShape (\ z -> z) (\ a z -> z) om tt le ;
+om-not-at (a : Atom) (le : Le om (at a)) : Empty = allc-not-at OmShape (\ a z -> z) om tt a le ;
+om-not-pair (a b : Ty) (le : Le om (pair a b)) : Empty = allc-not-pair OmShape (\ f g z -> z) om tt a b le ;
+om-not-arr (a b : Ty) (le : Le om (arr a b)) : Empty = allc-not-arr OmShape (\ f g z -> z) om tt a b le ;
+
+-- an element of prin (at a) of the form at b is at a
+prin-at (a b : Atom) (h : mem (prin (at a)) (at b)) (P : U l) (pP : isProp P) (k : Id Atom a b -> P) : P =
+  ex-elim (Le (at a) (at b)) P pP (\ le -> k (at-at a b le)) h ;
+
+------------------------------------------------------------------------
+-- (1) projections of pairs
+
+PairIn (x y : Filt) : Ty -> U l = split {
+  om -> Top ; atom -> Top ; at a -> Top ; pair s u -> mem x s * mem y u ; arr s u -> Top ;
+  meet r1 r2 | i1 i2 -> i1 * i2 } ;
+
+-- a selection of pair components of a meet of pairs from x and y
+psel-in (x y : Filt) : (r s t : Ty) -> PSel r s t -> PairIn x y r -> mem x s * mem y t = split {
+  ps-none r -> \ h -> (fom x, fom y) ;
+  ps-here a b -> \ h -> h ;
+  ps-l r1 r2 s t h | rh -> \ i -> rh i.1 ;
+  ps-r r1 r2 s t h | rh -> \ i -> rh i.2 ;
+  ps-meet r s1 t1 s2 t2 h1 h2 | r1 r2 -> \ i ->
+    (fmeet x s1 s2 (r1 i).1 (r2 i).1, fmeet y t1 t2 (r1 i).2 (r2 i).2) } ;
+
+-- pair s u <= pair a b, s in x, u in y: then a in x and b in y
+pair-below (x y : Filt) (s u a b : Ty) (hs : mem x s) (hu : mem y u) (le : Le (pair s u) (pair a b)) : mem x a * mem y b =
+  (fup x i.2.2.1 a i.2.2.2.2.2.2.1 c.1, fup y i.2.2.2.1 b i.2.2.2.2.2.2.2 c.2)
+  where {
+    i : InvPair (pair s u) a b = inv-pair (pair s u) a b le ;
+    c : mem x i.2.2.1 * mem y i.2.2.2.1 = psel-in x y (pair s u) i.2.2.1 i.2.2.2.1 i.2.2.2.2.2.1 (hs, hu) ; } ;
+
+-- the pairs of pairF x y
+pair-of-w (x y : Filt) (a b : Ty) : Pair[x, y].W (pair a b) -> mem x a * mem y b = split {
+  inl k -> absurd (mem x a * mem y b) (om-not-pair a b k) ;
+  inr v -> pair-below x y v.1 v.2.1 a b v.2.2.1 v.2.2.2.1 v.2.2.2.2 } ;
+
+pair-of (x y : Filt) (a b : Ty) (h : mem (pairF x y) (pair a b)) : mem x a * mem y b =
+  ex-elim (Pair[x, y].W (pair a b)) (mem x a * mem y b)
+    (isProp-Sigma (mem x a) (\ _ -> mem y b) (fprop x a) (\ _ -> fprop y b))
+    (pair-of-w x y a b) h ;
+
+fst-pair-w (x y : Filt) (t : Ty) : Fst[pairF x y].W t -> mem x t = split {
+  inl k -> fup x om t k (fom x) ;
+  inr m -> (pair-of x y t om m).1 } ;
+
+snd-pair-w (x y : Filt) (t : Ty) : Snd[pairF x y].W t -> mem y t = split {
+  inl k -> fup y om t k (fom y) ;
+  inr m -> (pair-of x y om t m).2 } ;
+
+fst-pair (x y : Filt) : Eqv (fstF (pairF x y)) x =
+  (Fst[pairF x y].sub x (fst-pair-w x y),
+   \ t h -> Fst[pairF x y].intro t (inr (pair-in x y t om h (fom y)))) ;
+
+snd-pair (x y : Filt) : Eqv (sndF (pairF x y)) y =
+  (Snd[pairF x y].sub y (snd-pair-w x y),
+   \ t h -> Snd[pairF x y].intro t (inr (pair-in x y om t (fom x) h))) ;
+
+------------------------------------------------------------------------
+-- continuous functions on filters and their traces
+
+Mono (g : Filt -> Filt) : U l+ = (y y' : Filt) -> Sub y y' -> Sub (g y) (g y') ;
+Cont (g : Filt -> Filt) : U l+ =
+  (y : Filt) (t : Ty) -> mem (g y) t -> Ex ((s : Ty) * (mem y s * mem (g (prin s)) t)) ;
+trace (g : Filt -> Filt) (s u : Ty) : U l = mem (g (prin s)) u ;
+
+------------------------------------------------------------------------
+-- (2) beta
+
+AMInv (R : Ty -> Ty -> U l) : Ty -> U l = split {
+  om -> Empty ; atom -> Empty ; at a -> Empty ; pair s u -> Empty ; arr s u -> R s u ;
+  meet r1 r2 -> AM R r1 * AM R r2 } ;
+
+am-inv (R : Ty -> Ty -> U l) : (r : Ty) -> AM R r -> AMInv R r = split {
+  am-one s u h -> h ;
+  am-meet r1 r2 h1 h2 -> (h1, h2) } ;
+
+-- a selection of arrow components of a meet of arrows of the trace of g
+asel-in (g : Filt -> Filt) (gm : Mono g) : (r d t : Ty) -> ASel r d t -> AM (trace g) r ->
+    (s : Ty) -> Le s d -> mem (g (prin s)) t = split {
+  as-none r -> \ a s le -> fom (g (prin s)) ;
+  as-here a b -> \ h s le -> gm (prin a) (prin s) (prin-anti s a le) b (am-inv (trace g) (arr a b) h) ;
+  as-l r1 r2 d t h | rh -> \ a -> rh (am-inv (trace g) (meet r1 r2) a).1 ;
+  as-r r1 r2 d t h | rh -> \ a -> rh (am-inv (trace g) (meet r1 r2) a).2 ;
+  as-meet r d1 t1 d2 t2 h1 h2 | r1 r2 -> \ a s le ->
+    fmeet (g (prin s)) t1 t2
+      (r1 a s (le-trans s (meet d1 d2) d1 le (le-meet-l d1 d2)))
+      (r2 a s (le-trans s (meet d1 d2) d2 le (le-meet-r d1 d2))) } ;
+
+-- an arrow arr s t of lamF (trace g)
+lam-arr-v (g : Filt -> Filt) (gm : Mono g) (s t : Ty) (v : Lam[trace g].P (arr s t)) : mem (g (prin s)) t =
+  fup (g (prin s)) i.2.2.2.1 t i.2.2.2.2.2.2.2
+    (asel-in g gm v.1 i.2.2.1 i.2.2.2.1 i.2.2.2.2.2.1 v.2.1 s i.2.2.2.2.2.2.1)
+  where { i : InvArr v.1 s t = inv-arr v.1 s t v.2.2 ; } ;
+
+lam-arr-w (g : Filt -> Filt) (gm : Mono g) (s t : Ty) : Lam[trace g].W (arr s t) -> mem (g (prin s)) t = split {
+  inl k -> absurd (mem (g (prin s)) t) (om-not-arr s t k) ;
+  inr v -> lam-arr-v g gm s t v } ;
+
+lam-arr (g : Filt -> Filt) (gm : Mono g) (s t : Ty) (h : mem (lamF (trace g)) (arr s t)) : mem (g (prin s)) t =
+  ex-elim (Lam[trace g].W (arr s t)) (mem (g (prin s)) t) (fprop (g (prin s)) t) (lam-arr-w g gm s t) h ;
+
+beta-w (g : Filt -> Filt) (gm : Mono g) (y : Filt) (t : Ty) : App[lamF (trace g), y].W t -> mem (g y) t = split {
+  inl k -> fup (g y) om t k (fom (g y)) ;
+  inr v -> gm (prin v.1) y (prin-sub v.1 y v.2.1) t (lam-arr g gm v.1 t v.2.2) } ;
+
+beta (g : Filt -> Filt) (gm : Mono g) (gc : Cont g) (y : Filt) : Eqv (appF (lamF (trace g)) y) (g y) =
+  (App[lamF (trace g), y].sub (g y) (beta-w g gm y),
+   \ t h -> ex-elim ((s : Ty) * (mem y s * mem (g (prin s)) t)) (mem (appF (lamF (trace g)) y) t)
+              (fprop (appF (lamF (trace g)) y) t)
+              (\ w -> app-in (lamF (trace g)) y w.1 t w.2.1 (lam-in (trace g) w.1 t w.2.2))
+              (gc y t h)) ;
+
+------------------------------------------------------------------------
+-- (3) the least fixed point
+
+fix-least (g : Filt -> Filt) (gm : Mono g) (x : Filt) (h : Sub (g x) x) : Sub (fixF (trace g)) x =
+  fix-ind (trace g) x (\ s t hs r -> h t (gm (prin s) x (prin-sub s x hs) t r)) ;
+
+fix-unfold (g : Filt -> Filt) (gc : Cont g) : Sub (g (fixF (trace g))) (fixF (trace g)) = \ t h ->
+  ex-elim ((s : Ty) * (mem (fixF (trace g)) s * mem (g (prin s)) t)) (mem (fixF (trace g)) t)
+    (fprop (fixF (trace g)) t)
+    (\ w -> fix-step (trace g) w.1 t w.2.1 w.2.2)
+    (gc (fixF (trace g)) t h) ;
+
+yw-fold (g : Filt -> Filt) (gm : Mono g) : (t : Ty) -> YW (trace g) t -> mem (g (fixF (trace g))) t = split {
+  y-om -> fom (g (fixF (trace g))) ;
+  y-meet s t h1 h2 | r1 r2 -> fmeet (g (fixF (trace g))) s t r1 r2 ;
+  y-up s t w le | r -> fup (g (fixF (trace g))) s t le r ;
+  y-step s t w r -> gm (prin s) (fixF (trace g)) (prin-sub s (fixF (trace g)) (ex (YW (trace g) s) w)) t r } ;
+
+fix-fold (g : Filt -> Filt) (gm : Mono g) : Sub (fixF (trace g)) (g (fixF (trace g))) =
+  tr-sub (YW (trace g)) (g (fixF (trace g))) (yw-fold g gm) ;
+
+fix-eq (g : Filt -> Filt) (gm : Mono g) (gc : Cont g) : Eqv (fixF (trace g)) (g (fixF (trace g))) =
+  (fix-fold g gm, fix-unfold g gc) ;
+
+------------------------------------------------------------------------
+-- (4) the primitives
+
+-- an element given by an equation
+mem-eq (x : Filt) (s t : Ty) (e : Id Ty t s) (h : mem x s) : mem x t =
+  subst Ty (\ z -> mem x z) s t (sym Ty t s e) h ;
+
+AtomG (x : Filt) (t : Ty) : U l = Plus (Id Ty t (at T) * mem x atom) (Id Ty t (at NIL) * mem x (pair om om)) ;
+
+atom-quote-g (a : Atom) (t : Ty) : AtomG (prin (at a)) t -> mem (prin (at T)) t = split {
+  inl v -> mem-eq (prin (at T)) (at T) t v.1 (prin-in (at T)) ;
+  inr v -> ex-elim (Le (at a) (pair om om)) (mem (prin (at T)) t) (fprop (prin (at T)) t)
+             (\ le -> absurd (mem (prin (at T)) t) (at-not-pair a om om le)) v.2 } ;
+
+atom-quote (a : Atom) : Eqv (atomF (prin (at a))) (prin (at T)) =
+  (gen-sub (AtomG (prin (at a))) (prin (at T)) (atom-quote-g a),
+   prin-sub (at T) (atomF (prin (at a)))
+     (gen-in (AtomG (prin (at a))) (at T) (inl (refl (at T), tr-in (PW (at a)) atom (le-at a))))) ;
+
+-- pairF x y has no atom type
+pair-atom-w (x y : Filt) : Pair[x, y].W atom -> Empty = split {
+  inl k -> om-not-atom k ;
+  inr v -> pair-not-atom (pair v.1 v.2.1) tt v.2.2.2.2 } ;
+
+atom-pair-g (x y : Filt) (t : Ty) : AtomG (pairF x y) t -> mem (prin (at NIL)) t = split {
+  inl v -> ex-elim (Pair[x, y].W atom) (mem (prin (at NIL)) t) (fprop (prin (at NIL)) t)
+             (\ w -> absurd (mem (prin (at NIL)) t) (pair-atom-w x y w)) v.2 ;
+  inr v -> mem-eq (prin (at NIL)) (at NIL) t v.1 (prin-in (at NIL)) } ;
+
+atom-pair (x y : Filt) : Eqv (atomF (pairF x y)) (prin (at NIL)) =
+  (gen-sub (AtomG (pairF x y)) (prin (at NIL)) (atom-pair-g x y),
+   prin-sub (at NIL) (atomF (pairF x y))
+     (gen-in (AtomG (pairF x y)) (at NIL) (inr (refl (at NIL), pair-in x y om om (fom x) (fom y))))) ;
+
+EqG (x y : Filt) (t : Ty) : U l = (a : Atom) * ((b : Atom) * (mem x (at a) * (mem y (at b) *
+  Plus (IsT (atEq a b) * Id Ty t (at T)) (IsF (atEq a b) * Id Ty t (at NIL))))) ;
+
+-- the generators of eqF on two atoms: the test is that of a1, a2
+eq-quote-g (a1 a2 : Atom) (c : Atom) (b1 b2 : Atom) (e1 : Id Atom a1 b1) (e2 : Id Atom a2 b2) (t : Ty) :
+    Plus (IsT (atEq b1 b2) * Id Ty t (at T)) (IsF (atEq b1 b2) * Id Ty t (at NIL)) ->
+    Plus (IsT (atEq a1 a2) * Id Ty t (at T)) (IsF (atEq a1 a2) * Id Ty t (at NIL)) =
+  subst Atom (\ z -> Plus (IsT (atEq z b2) * Id Ty t (at T)) (IsF (atEq z b2) * Id Ty t (at NIL)) ->
+                     Plus (IsT (atEq a1 a2) * Id Ty t (at T)) (IsF (atEq a1 a2) * Id Ty t (at NIL))) a1 b1 e1
+    (subst Atom (\ z -> Plus (IsT (atEq a1 z) * Id Ty t (at T)) (IsF (atEq a1 z) * Id Ty t (at NIL)) ->
+                        Plus (IsT (atEq a1 a2) * Id Ty t (at T)) (IsF (atEq a1 a2) * Id Ty t (at NIL))) a2 b2 e2
+       (\ w -> w)) ;
+
+EqRes (a1 a2 : Atom) (t : Ty) : U l = Plus (IsT (atEq a1 a2) * Id Ty t (at T)) (IsF (atEq a1 a2) * Id Ty t (at NIL)) ;
+
+-- read the result of eqF on two atoms
+eq-res-T (a1 a2 : Atom) (h : IsT (atEq a1 a2)) (t : Ty) : EqRes a1 a2 t -> mem (prin (at T)) t = split {
+  inl v -> mem-eq (prin (at T)) (at T) t v.2 (prin-in (at T)) ;
+  inr v -> absurd (mem (prin (at T)) t) (IsT-IsF (atEq a1 a2) h v.1) } ;
+
+eq-res-NIL (a1 a2 : Atom) (h : IsF (atEq a1 a2)) (t : Ty) : EqRes a1 a2 t -> mem (prin (at NIL)) t = split {
+  inl v -> absurd (mem (prin (at NIL)) t) (IsT-IsF (atEq a1 a2) v.1 h) ;
+  inr v -> mem-eq (prin (at NIL)) (at NIL) t v.2 (prin-in (at NIL)) } ;
+
+-- the generators of eqF (prin (at a1)) (prin (at a2)) give EqRes a1 a2
+eq-gen (a1 a2 : Atom) (t : Ty) (P : U l) (pP : isProp P) (k : EqRes a1 a2 t -> P)
+    (w : EqG (prin (at a1)) (prin (at a2)) t) : P =
+  prin-at a1 w.1 w.2.2.1 P pP (\ e1 ->
+    prin-at a2 w.2.1 w.2.2.2.1 P pP (\ e2 ->
+      k (eq-quote-g a1 a2 a1 w.1 w.2.1 e1 e2 t w.2.2.2.2))) ;
+
+eq-quote-T (a1 a2 : Atom) (h : IsT (atEq a1 a2)) : Eqv (eqF (prin (at a1)) (prin (at a2))) (prin (at T)) =
+  (gen-sub (EqG (prin (at a1)) (prin (at a2))) (prin (at T))
+     (\ t w -> eq-gen a1 a2 t (mem (prin (at T)) t) (fprop (prin (at T)) t) (eq-res-T a1 a2 h t) w),
+   prin-sub (at T) (eqF (prin (at a1)) (prin (at a2)))
+     (gen-in (EqG (prin (at a1)) (prin (at a2))) (at T)
+        (a1, (a2, (prin-in (at a1), (prin-in (at a2), inl (h, refl (at T)))))))) ;
+
+eq-quote-NIL (a1 a2 : Atom) (h : IsF (atEq a1 a2)) : Eqv (eqF (prin (at a1)) (prin (at a2))) (prin (at NIL)) =
+  (gen-sub (EqG (prin (at a1)) (prin (at a2))) (prin (at NIL))
+     (\ t w -> eq-gen a1 a2 t (mem (prin (at NIL)) t) (fprop (prin (at NIL)) t) (eq-res-NIL a1 a2 h t) w),
+   prin-sub (at NIL) (eqF (prin (at a1)) (prin (at a2)))
+     (gen-in (EqG (prin (at a1)) (prin (at a2))) (at NIL)
+        (a1, (a2, (prin-in (at a1), (prin-in (at a2), inr (h, refl (at NIL)))))))) ;
+
+-- T and NIL are distinct
+T-not-NIL (e : Id Atom T NIL) : Empty = subst Atom (\ z -> IsT (atEq T z)) T NIL e (atEq-refl T) ;
+
+CondG (x y z : Filt) (t : Ty) : U l = Plus (mem x (at T) * mem y t) (mem x (at NIL) * mem z t) ;
+
+cond-T-g (y z : Filt) (t : Ty) : CondG (prin (at T)) y z t -> mem y t = split {
+  inl v -> v.2 ;
+  inr v -> prin-at T NIL v.1 (mem y t) (fprop y t) (\ e -> absurd (mem y t) (T-not-NIL e)) } ;
+
+cond-NIL-g (y z : Filt) (t : Ty) : CondG (prin (at NIL)) y z t -> mem z t = split {
+  inl v -> prin-at NIL T v.1 (mem z t) (fprop z t)
+             (\ e -> absurd (mem z t) (T-not-NIL (sym Atom NIL T e))) ;
+  inr v -> v.2 } ;
+
+cond-T (y z : Filt) : Eqv (condF (prin (at T)) y z) y =
+  (gen-sub (CondG (prin (at T)) y z) y (cond-T-g y z),
+   \ t h -> gen-in (CondG (prin (at T)) y z) t (inl (prin-in (at T), h))) ;
+
+cond-NIL (y z : Filt) : Eqv (condF (prin (at NIL)) y z) z =
+  (gen-sub (CondG (prin (at NIL)) y z) z (cond-NIL-g y z),
+   \ t h -> gen-in (CondG (prin (at NIL)) y z) t (inr (prin-in (at NIL), h))) ;
+
+PlusG (x y : Filt) (t : Ty) : U l = (m : Nat) * ((n : Nat) * (mem x (at (num m)) * (mem y (at (num n)) *
+  Id Ty t (at (num (add m n)))))) ;
+
+num-inj (m n : Nat) (e : Id Atom (num m) (num n)) : Id Nat m n = ap Atom Nat numOf (num m) (num n) e ;
+
+plus-quote-g (m n : Nat) (t : Ty) (w : PlusG (prin (at (num m))) (prin (at (num n))) t) : mem (prin (at (num (add m n)))) t =
+  prin-at (num m) (num w.1) w.2.2.1 (mem (prin (at (num (add m n)))) t) (fprop (prin (at (num (add m n)))) t) (\ e1 ->
+    prin-at (num n) (num w.2.1) w.2.2.2.1 (mem (prin (at (num (add m n)))) t) (fprop (prin (at (num (add m n)))) t) (\ e2 ->
+      mem-eq (prin (at (num (add m n)))) (at (num (add w.1 w.2.1))) t w.2.2.2.2
+        (subst Nat (\ z -> mem (prin (at (num (add m n)))) (at (num (add z w.2.1)))) m w.1 (num-inj m w.1 e1)
+          (subst Nat (\ z -> mem (prin (at (num (add m n)))) (at (num (add m z)))) n w.2.1 (num-inj n w.2.1 e2)
+            (prin-in (at (num (add m n)))))))) ;
+
+plus-quote (m n : Nat) : Eqv (plusF (prin (at (num m))) (prin (at (num n)))) (prin (at (num (add m n)))) =
+  (gen-sub (PlusG (prin (at (num m))) (prin (at (num n)))) (prin (at (num (add m n)))) (plus-quote-g m n),
+   prin-sub (at (num (add m n))) (plusF (prin (at (num m))) (prin (at (num n))))
+     (gen-in (PlusG (prin (at (num m))) (prin (at (num n)))) (at (num (add m n)))
+        (m, (n, (prin-in (at (num m)), (prin-in (at (num n)), refl (at (num (add m n))))))))) ;
+
+------------------------------------------------------------------------
+-- (5) bot is none of the values
+
+bot-not-at (a : Atom) (h : mem bot (at a)) : Empty =
+  ex-elim (Le om (at a)) Empty isProp-Empty (om-not-at a) h ;
+bot-not-pair (h : mem bot (pair om om)) : Empty =
+  ex-elim (Le om (pair om om)) Empty isProp-Empty (om-not-pair om om) h ;
+bot-not-arr (h : mem bot (arr om om)) : Empty =
+  ex-elim (Le om (arr om om)) Empty isProp-Empty (om-not-arr om om) h ;
+
+pair-is-pair (x y : Filt) : mem (pairF x y) (pair om om) = pair-in x y om om (fom x) (fom y) ;
+lam-is-fun (g : Filt -> Filt) : mem (lamF (trace g)) (arr om om) = lam-in (trace g) om om (fom (g (prin om))) ;

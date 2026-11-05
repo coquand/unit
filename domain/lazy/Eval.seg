@@ -1,0 +1,322 @@
+-- Eval.seg: the lazy evaluator as a relation, and partial correctness
+-- (doc/lazy-intersection.tex, section 5, Corollary 5.1; henderson.pdf,
+-- the procedure Eval of section II).
+--
+-- Ev mu p nu: Eval(p, mu) halts with nu.  One constructor per case of
+-- Eval: a QUOTE, a CONS and a FUNARG of a LAMBDA are returned as they
+-- are; [C1], [C2], [A], [E], [I], PLUS, [Fa] evaluate the components and
+-- then rewrite p, the rewrite being the corresponding rule in the memory
+-- reached (the cells it reads are restated there); [Fb] rewrites p; [L],
+-- [Fc]/[Fd] (allocations, then the rewrite) and [G] (after evaluating the
+-- function) rewrite p and evaluate p again.
+--
+-- Corollary 5.1.  If Ev mu p nu and p is not free in mu, then p has the
+-- same types in mu and in nu, in every environment (eval-pres: Theorem
+-- 4.1 at each rewrite, Step.step-inv, and at each allocation,
+-- Step.alloc-inv; the evaluated cell stays non-free, since every rewrite
+-- writes a non-free cell, the copies being of evaluated cells).  And nu p
+-- is a value (ev-value).  Hence, in mu:
+--  * if nu p = (QUOTE a), the types of p are exactly those above at a;
+--  * if nu p = (CONS ..), p has type om x om and no type at a, atom, or
+--    s -> t;
+--  * if nu p = (FUNARG pl ..) with nu pl = (LAMBDA ..), p has type
+--    om -> om and no type at a, atom, or s x t.
+-- No consistency of the memory is assumed; the allocated cells are fresh
+-- (free and occurring in no cell).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Gen[l] ; open Rules[l] ; open Closures[l] ; open Funarg[l] ; open Step[l] ;
+
+------------------------------------------------------------------------
+-- values
+
+data Value (mu : Nat -> Cell) (p : Nat) : U l =
+    v-quote (a : Atom) (e : Id Cell (mu p) (equote a))
+  | v-cons (p1 p2 : Nat) (e : Id Cell (mu p) (econs p1 p2))
+  | v-clo (pl : Nat) (th : Alist) (x b : Nat) (e : Id Cell (mu p) (efunarg pl th)) (el : Id Cell (mu pl) (elam x b)) ;
+
+NonFree (mu : Nat -> Cell) (p : Nat) : U l = Not (Id Cell (mu p) efree) ;
+
+value-nonfree (mu : Nat -> Cell) (p : Nat) : Value mu p -> NonFree mu p = split {
+  v-quote a e -> \ x -> cell-ne (equote a) efree tt (trans Cell (equote a) (mu p) efree (sym Cell (mu p) (equote a) e) x) ;
+  v-cons p1 p2 e -> \ x -> cell-ne (econs p1 p2) efree tt (trans Cell (econs p1 p2) (mu p) efree (sym Cell (mu p) (econs p1 p2) e) x) ;
+  v-clo pl th x b e el -> \ y -> cell-ne (efunarg pl th) efree tt
+      (trans Cell (efunarg pl th) (mu p) efree (sym Cell (mu p) (efunarg pl th) e) y) } ;
+
+-- copying an evaluated cell q to p, p not a LAMBDA
+value-copy (mu : Nat -> Cell) (p q : Nat) (c0 : Cell) (e0 : Id Cell (mu p) c0)
+    (hl : (x b : Nat) -> IsF (eqN (tag c0) (tag (elam x b)))) : Value mu q -> Value (upd mu p (mu q)) p = split {
+  v-quote a e -> v-quote a (trans Cell (upd mu p (mu q) p) (mu q) (equote a) (upd-hit mu p (mu q)) e) ;
+  v-cons p1 p2 e -> v-cons p1 p2 (trans Cell (upd mu p (mu q) p) (mu q) (econs p1 p2) (upd-hit mu p (mu q)) e) ;
+  v-clo pl th x b e el -> v-clo pl th x b (trans Cell (upd mu p (mu q) p) (mu q) (efunarg pl th) (upd-hit mu p (mu q)) e)
+      (upd-other mu p (mu q) pl (elam x b) el (other-form mu p c0 (elam x b) e0 (hl x b))) } ;
+
+value-quote (mu : Nat -> Cell) (p : Nat) (a : Atom) : Value (upd mu p (equote a)) p =
+  v-quote a (upd-hit mu p (equote a)) ;
+
+------------------------------------------------------------------------
+-- the evaluator
+
+data Allocs : (mu nu : Nat -> Cell) -> U l =
+    al-nil (mu : Nat -> Cell) : Allocs mu mu
+  | al-cons (mu nu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) (h : Allocs (upd mu a (efunarg q th)) nu) : Allocs mu nu ;
+
+data Ev : (mu : Nat -> Cell) -> (p : Nat) -> (nu : Nat -> Cell) -> U l =
+    ev-quote (mu : Nat -> Cell) (p : Nat) (a : Atom) (e : Id Cell (mu p) (equote a)) : Ev mu p mu
+  | ev-cons (mu : Nat -> Cell) (p p1 p2 : Nat) (e : Id Cell (mu p) (econs p1 p2)) : Ev mu p mu
+  | ev-clo (mu : Nat -> Cell) (p pl : Nat) (th : Alist) (x b : Nat) (e : Id Cell (mu p) (efunarg pl th))
+      (el : Id Cell (mu pl) (elam x b)) : Ev mu p mu
+  -- [C1]
+  | ev-car (mu mu1 mu2 : Nat -> Cell) (p p' p1 p2 : Nat) (e : Id Cell (mu p) (ecar p')) (h1 : Ev mu p' mu1)
+      (e1 : Id Cell (mu1 p') (econs p1 p2)) (h2 : Ev mu1 p1 mu2)
+      (e2 : Id Cell (mu2 p) (ecar p')) (e3 : Id Cell (mu2 p') (econs p1 p2)) : Ev mu p (upd mu2 p (mu2 p1))
+  -- [C2]
+  | ev-cdr (mu mu1 mu2 : Nat -> Cell) (p p' p1 p2 : Nat) (e : Id Cell (mu p) (ecdr p')) (h1 : Ev mu p' mu1)
+      (e1 : Id Cell (mu1 p') (econs p1 p2)) (h2 : Ev mu1 p2 mu2)
+      (e2 : Id Cell (mu2 p) (ecdr p')) (e3 : Id Cell (mu2 p') (econs p1 p2)) : Ev mu p (upd mu2 p (mu2 p2))
+  -- [A]
+  | ev-atom-T (mu mu1 : Nat -> Cell) (p p' : Nat) (a : Atom) (e : Id Cell (mu p) (eatom p')) (h : Ev mu p' mu1)
+      (e1 : Id Cell (mu1 p') (equote a)) (e2 : Id Cell (mu1 p) (eatom p')) : Ev mu p (upd mu1 p (equote T))
+  | ev-atom-NIL (mu mu1 : Nat -> Cell) (p p' p1 p2 : Nat) (e : Id Cell (mu p) (eatom p')) (h : Ev mu p' mu1)
+      (e1 : Id Cell (mu1 p') (econs p1 p2)) (e2 : Id Cell (mu1 p) (eatom p')) : Ev mu p (upd mu1 p (equote NIL))
+  -- [E]
+  | ev-eq-T (mu mu1 mu2 : Nat -> Cell) (p p1 p2 : Nat) (a1 a2 : Atom) (e : Id Cell (mu p) (eeq p1 p2))
+      (h1 : Ev mu p1 mu1) (h2 : Ev mu1 p2 mu2) (e1 : Id Cell (mu2 p1) (equote a1)) (e2 : Id Cell (mu2 p2) (equote a2))
+      (e3 : Id Cell (mu2 p) (eeq p1 p2)) (k : IsT (atEq a1 a2)) : Ev mu p (upd mu2 p (equote T))
+  | ev-eq-NIL (mu mu1 mu2 : Nat -> Cell) (p p1 p2 : Nat) (a1 a2 : Atom) (e : Id Cell (mu p) (eeq p1 p2))
+      (h1 : Ev mu p1 mu1) (h2 : Ev mu1 p2 mu2) (e1 : Id Cell (mu2 p1) (equote a1)) (e2 : Id Cell (mu2 p2) (equote a2))
+      (e3 : Id Cell (mu2 p) (eeq p1 p2)) (k : IsF (atEq a1 a2)) : Ev mu p (upd mu2 p (equote NIL))
+  -- [I]
+  | ev-if-T (mu mu1 mu2 : Nat -> Cell) (p p0 p1 p2 : Nat) (e : Id Cell (mu p) (eif p0 p1 p2)) (h0 : Ev mu p0 mu1)
+      (eT : Id Cell (mu1 p0) (equote T)) (h1 : Ev mu1 p1 mu2)
+      (e2 : Id Cell (mu2 p) (eif p0 p1 p2)) (e3 : Id Cell (mu2 p0) (equote T)) : Ev mu p (upd mu2 p (mu2 p1))
+  | ev-if-NIL (mu mu1 mu2 : Nat -> Cell) (p p0 p1 p2 : Nat) (e : Id Cell (mu p) (eif p0 p1 p2)) (h0 : Ev mu p0 mu1)
+      (eN : Id Cell (mu1 p0) (equote NIL)) (h2 : Ev mu1 p2 mu2)
+      (e2 : Id Cell (mu2 p) (eif p0 p1 p2)) (e3 : Id Cell (mu2 p0) (equote NIL)) : Ev mu p (upd mu2 p (mu2 p2))
+  -- PLUS, "with the same general characteristics as EQ"
+  | ev-plus (mu mu1 mu2 : Nat -> Cell) (p p1 p2 m n : Nat) (e : Id Cell (mu p) (eplus p1 p2))
+      (h1 : Ev mu p1 mu1) (h2 : Ev mu1 p2 mu2) (e1 : Id Cell (mu2 p1) (equote (num m)))
+      (e2 : Id Cell (mu2 p2) (equote (num n))) (e3 : Id Cell (mu2 p) (eplus p1 p2)) :
+      Ev mu p (upd mu2 p (equote (num (add m n))))
+  -- [Fa]
+  | ev-Fa (mu mu1 : Nat -> Cell) (p p0 q x : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg p0 th))
+      (ev : Id Cell (mu p0) (evar x)) (lk : Lookup th x q) (h : Ev mu q mu1)
+      (e2 : Id Cell (mu1 p) (efunarg p0 th)) (e3 : Id Cell (mu1 p0) (evar x)) : Ev mu p (upd mu1 p (mu1 q))
+  -- [Fb]
+  | ev-Fb (mu : Nat -> Cell) (p p0 : Nat) (th : Alist) (a : Atom) (e : Id Cell (mu p) (efunarg p0 th))
+      (e0 : Id Cell (mu p0) (equote a)) : Ev mu p (upd mu p (equote a))
+  -- [L]
+  | ev-L (mu nu : Nat -> Cell) (p pl p1 x : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg pl th))
+      (el : Id Cell (mu pl) (elabel x p1)) (h : Ev (upd mu p (efunarg p1 (acons x p th))) p nu) : Ev mu p nu
+  -- [Fc], [Fd]
+  | ev-F (mu mu1 nu : Nat -> Cell) (p p0 : Nat) (th : Alist) (c c' : Cell) (al : Allocs mu mu1)
+      (e : Id Cell (mu1 p) (efunarg p0 th)) (e1 : Id Cell (mu1 p0) c) (r : Ren (NewFor mu1 th p) c c')
+      (h : Ev (upd mu1 p c') p nu) : Ev mu p nu
+  -- [G]
+  | ev-G (mu mu1 nu : Nat -> Cell) (p pf p2 pl p1 x : Nat) (th : Alist) (e : Id Cell (mu p) (eapp pf p2))
+      (h0 : Ev mu pf mu1) (ef : Id Cell (mu1 pf) (efunarg pl th)) (el : Id Cell (mu1 pl) (elam x p1))
+      (e2 : Id Cell (mu1 p) (eapp pf p2)) (h : Ev (upd mu1 p (efunarg p1 (acons x p2 th))) p nu) : Ev mu p nu ;
+
+-- the evaluated cell ends as a value
+ev-value : (mu : Nat -> Cell) -> (p : Nat) -> (nu : Nat -> Cell) -> Ev mu p nu -> Value nu p = split {
+  ev-quote mu p a e -> v-quote a e ;
+  ev-cons mu p p1 p2 e -> v-cons p1 p2 e ;
+  ev-clo mu p pl th x b e el -> v-clo pl th x b e el ;
+  ev-car mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 -> value-copy mu2 p p1 (ecar p') e2 (\ x b -> tt) r2 ;
+  ev-cdr mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 -> value-copy mu2 p p2 (ecdr p') e2 (\ x b -> tt) r2 ;
+  ev-atom-T mu mu1 p p' a e h e1 e2 | rh -> value-quote mu1 p T ;
+  ev-atom-NIL mu mu1 p p' p1 p2 e h e1 e2 | rh -> value-quote mu1 p NIL ;
+  ev-eq-T mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 -> value-quote mu2 p T ;
+  ev-eq-NIL mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 -> value-quote mu2 p NIL ;
+  ev-if-T mu mu1 mu2 p p0 p1 p2 e h0 eT h1 e2 e3 | r0 r1 -> value-copy mu2 p p1 (eif p0 p1 p2) e2 (\ x b -> tt) r1 ;
+  ev-if-NIL mu mu1 mu2 p p0 p1 p2 e h0 eN h2 e2 e3 | r0 r2 -> value-copy mu2 p p2 (eif p0 p1 p2) e2 (\ x b -> tt) r2 ;
+  ev-plus mu mu1 mu2 p p1 p2 m n e h1 h2 e1 e2 e3 | r1 r2 -> value-quote mu2 p (num (add m n)) ;
+  ev-Fa mu mu1 p p0 q x th e ev lk h e2 e3 | rh -> value-copy mu1 p q (efunarg p0 th) e2 (\ y b -> tt) rh ;
+  ev-Fb mu p p0 th a e e0 -> value-quote mu p a ;
+  ev-L mu nu p pl p1 x th e el h | rh -> rh ;
+  ev-F mu mu1 nu p p0 th c c' al e e1 r h | rh -> rh ;
+  ev-G mu mu1 nu p pf p2 pl p1 x th e h0 ef el e2 h | r0 rh -> rh } ;
+
+------------------------------------------------------------------------
+-- preservation of the types of non-free cells
+
+PresAt (mu nu : Nat -> Cell) (p : Nat) : U l =
+  NonFree nu p * (((G : Env) (t : Ty) -> Obs mu (jdg G p t) -> Obs nu (jdg G p t)) *
+                  ((G : Env) (t : Ty) -> Obs nu (jdg G p t) -> Obs mu (jdg G p t))) ;
+
+Pres (mu nu : Nat -> Cell) : U l = (p : Nat) -> NonFree mu p -> PresAt mu nu p ;
+
+pres-refl (mu : Nat -> Cell) : Pres mu mu = \ p n -> (n, (\ G t h -> h, \ G t h -> h)) ;
+
+pres-at-comp (a b c : Nat -> Cell) (p : Nat) (u : PresAt a b p) (v : PresAt b c p) : PresAt a c p =
+  (v.1, (\ G t h -> v.2.1 G t (u.2.1 G t h), \ G t h -> u.2.2 G t (v.2.2 G t h))) ;
+
+pres-comp (a b c : Nat -> Cell) (x : Pres a b) (y : Pres b c) : Pres a c =
+  \ p n -> pres-at-comp a b c p (x p n) (y p (x p n).1) ;
+
+nonfree-upd-by (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (p : Nat) (nf : Not (Id Cell c efree)) (n : NonFree mu p) :
+    Plus (IsT (eqN p p0)) (IsF (eqN p p0)) -> NonFree (upd mu p0 c) p = split {
+  inl k -> \ x -> nf (trans Cell c (upd mu p0 c p) efree (sym Cell (upd mu p0 c p) c (ifB-T Cell c (mu p) (eqN p p0) k)) x) ;
+  inr k -> \ x -> n (trans Cell (mu p) (upd mu p0 c p) efree (sym Cell (upd mu p0 c p) (mu p) (upd-miss mu p0 c p k)) x) } ;
+
+-- a rewrite (Theorem 4.1) that writes a non-free cell
+pres-step (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (inv : Inv mu (upd mu p0 c)) (nf : Not (Id Cell c efree)) :
+    Pres mu (upd mu p0 c) =
+  \ p n -> (nonfree-upd-by mu p0 c p nf n (bool-dec (eqN p p0)), (\ G t h -> inv.1 (jdg G p t) h, \ G t h -> inv.2 (jdg G p t) h)) ;
+
+pres-alloc-at (mu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) (p : Nat) (n : NonFree mu p) (np : IsF (eqN p a)) :
+    PresAt mu (upd mu a (efunarg q th)) p =
+  (\ x -> n (trans Cell (mu p) (upd mu a (efunarg q th) p) efree
+               (sym Cell (upd mu a (efunarg q th) p) (mu p) (upd-miss mu a (efunarg q th) p np)) x),
+   (\ G t h -> Alloc[mu, a, q, th, fr].fwd (jdg G p t) h, \ G t h -> Alloc[mu, a, q, th, fr].bwd (jdg G p t) h np)) ;
+
+pres-alloc (mu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) : Pres mu (upd mu a (efunarg q th)) =
+  \ p n -> pres-alloc-at mu a q th fr p n
+             (eqN-of-ne p a (\ e -> n (subst Nat (\ z -> Id Cell (mu z) efree) a p (sym Nat p a e) fr.1))) ;
+
+pres-allocs : (mu nu : Nat -> Cell) -> Allocs mu nu -> Pres mu nu = split {
+  al-nil mu -> pres-refl mu ;
+  al-cons mu nu a q th fr h | rh -> pres-comp mu (upd mu a (efunarg q th)) nu (pres-alloc mu a q th fr) rh } ;
+
+nf-quote (a : Atom) : Not (Id Cell (equote a) efree) = \ x -> cell-ne (equote a) efree tt x ;
+nf-funarg (p : Nat) (th : Alist) : Not (Id Cell (efunarg p th) efree) = \ x -> cell-ne (efunarg p th) efree tt x ;
+
+ren-nonfree (R : Nat -> Nat -> U l) : (c c' : Cell) -> Ren R c c' -> Not (Id Cell c' efree) = split {
+  ren-cons p q p' q' hp hq -> \ x -> cell-ne (econs p' q') efree tt x ;
+  ren-car p p' hp -> \ x -> cell-ne (ecar p') efree tt x ;
+  ren-cdr p p' hp -> \ x -> cell-ne (ecdr p') efree tt x ;
+  ren-atom p p' hp -> \ x -> cell-ne (eatom p') efree tt x ;
+  ren-eq p q p' q' hp hq -> \ x -> cell-ne (eeq p' q') efree tt x ;
+  ren-if p q r p' q' r' hp hq hr -> \ x -> cell-ne (eif p' q' r') efree tt x ;
+  ren-app p q p' q' hp hq -> \ x -> cell-ne (eapp p' q') efree tt x ;
+  ren-plus p q p' q' hp hq -> \ x -> cell-ne (eplus p' q') efree tt x } ;
+
+-- every run preserves the types of the non-free cells (Theorem 4.1 at each step)
+eval-pres : (mu : Nat -> Cell) -> (p : Nat) -> (nu : Nat -> Cell) -> Ev mu p nu -> Pres mu nu = split {
+  ev-quote mu p a e -> pres-refl mu ;
+  ev-cons mu p p1 p2 e -> pres-refl mu ;
+  ev-clo mu p pl th x b e el -> pres-refl mu ;
+  ev-car mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 ->
+    pres-comp mu mu1 (upd mu2 p (mu2 p1)) r1 (pres-comp mu1 mu2 (upd mu2 p (mu2 p1)) r2
+      (pres-step mu2 p (mu2 p1) (step-inv mu2 (upd mu2 p (mu2 p1)) (st-car p p' p1 p2 e2 e3))
+         (value-nonfree mu2 p1 (ev-value mu1 p1 mu2 h2)))) ;
+  ev-cdr mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 ->
+    pres-comp mu mu1 (upd mu2 p (mu2 p2)) r1 (pres-comp mu1 mu2 (upd mu2 p (mu2 p2)) r2
+      (pres-step mu2 p (mu2 p2) (step-inv mu2 (upd mu2 p (mu2 p2)) (st-cdr p p' p1 p2 e2 e3))
+         (value-nonfree mu2 p2 (ev-value mu1 p2 mu2 h2)))) ;
+  ev-atom-T mu mu1 p p' a e h e1 e2 | rh ->
+    pres-comp mu mu1 (upd mu1 p (equote T)) rh
+      (pres-step mu1 p (equote T) (step-inv mu1 (upd mu1 p (equote T)) (st-atom-T p p' a e2 e1)) (nf-quote T)) ;
+  ev-atom-NIL mu mu1 p p' p1 p2 e h e1 e2 | rh ->
+    pres-comp mu mu1 (upd mu1 p (equote NIL)) rh
+      (pres-step mu1 p (equote NIL) (step-inv mu1 (upd mu1 p (equote NIL)) (st-atom-NIL p p' p1 p2 e2 e1)) (nf-quote NIL)) ;
+  ev-eq-T mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 ->
+    pres-comp mu mu1 (upd mu2 p (equote T)) r1 (pres-comp mu1 mu2 (upd mu2 p (equote T)) r2
+      (pres-step mu2 p (equote T) (step-inv mu2 (upd mu2 p (equote T)) (st-eq-T p p1 p2 a1 a2 e3 e1 e2 k)) (nf-quote T))) ;
+  ev-eq-NIL mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 ->
+    pres-comp mu mu1 (upd mu2 p (equote NIL)) r1 (pres-comp mu1 mu2 (upd mu2 p (equote NIL)) r2
+      (pres-step mu2 p (equote NIL) (step-inv mu2 (upd mu2 p (equote NIL)) (st-eq-NIL p p1 p2 a1 a2 e3 e1 e2 k)) (nf-quote NIL))) ;
+  ev-if-T mu mu1 mu2 p p0 p1 p2 e h0 eT h1 e2 e3 | r0 r1 ->
+    pres-comp mu mu1 (upd mu2 p (mu2 p1)) r0 (pres-comp mu1 mu2 (upd mu2 p (mu2 p1)) r1
+      (pres-step mu2 p (mu2 p1) (step-inv mu2 (upd mu2 p (mu2 p1)) (st-if-T p p0 p1 p2 e2 e3))
+         (value-nonfree mu2 p1 (ev-value mu1 p1 mu2 h1)))) ;
+  ev-if-NIL mu mu1 mu2 p p0 p1 p2 e h0 eN h2 e2 e3 | r0 r2 ->
+    pres-comp mu mu1 (upd mu2 p (mu2 p2)) r0 (pres-comp mu1 mu2 (upd mu2 p (mu2 p2)) r2
+      (pres-step mu2 p (mu2 p2) (step-inv mu2 (upd mu2 p (mu2 p2)) (st-if-NIL p p0 p1 p2 e2 e3))
+         (value-nonfree mu2 p2 (ev-value mu1 p2 mu2 h2)))) ;
+  ev-plus mu mu1 mu2 p p1 p2 m n e h1 h2 e1 e2 e3 | r1 r2 ->
+    pres-comp mu mu1 (upd mu2 p (equote (num (add m n)))) r1 (pres-comp mu1 mu2 (upd mu2 p (equote (num (add m n)))) r2
+      (pres-step mu2 p (equote (num (add m n)))
+         (step-inv mu2 (upd mu2 p (equote (num (add m n)))) (st-plus p p1 p2 m n e3 e1 e2)) (nf-quote (num (add m n))))) ;
+  ev-Fa mu mu1 p p0 q x th e ev lk h e2 e3 | rh ->
+    pres-comp mu mu1 (upd mu1 p (mu1 q)) rh
+      (pres-step mu1 p (mu1 q) (step-inv mu1 (upd mu1 p (mu1 q)) (st-Fa p p0 q x th e2 e3 lk))
+         (value-nonfree mu1 q (ev-value mu q mu1 h))) ;
+  ev-Fb mu p p0 th a e e0 ->
+    pres-step mu p (equote a) (step-inv mu (upd mu p (equote a)) (st-Fb p p0 th a e e0)) (nf-quote a) ;
+  ev-L mu nu p pl p1 x th e el h | rh ->
+    pres-comp mu (upd mu p (efunarg p1 (acons x p th))) nu
+      (pres-step mu p (efunarg p1 (acons x p th)) (step-inv mu (upd mu p (efunarg p1 (acons x p th))) (st-L p pl p1 x th e el))
+         (nf-funarg p1 (acons x p th))) rh ;
+  ev-F mu mu1 nu p p0 th c c' al e e1 r h | rh ->
+    pres-comp mu mu1 nu (pres-allocs mu mu1 al)
+      (pres-comp mu1 (upd mu1 p c') nu
+         (pres-step mu1 p c' (step-inv mu1 (upd mu1 p c') (st-F p p0 th c c' e e1 r)) (ren-nonfree (NewFor mu1 th p) c c' r)) rh) ;
+  ev-G mu mu1 nu p pf p2 pl p1 x th e h0 ef el e2 h | r0 rh ->
+    pres-comp mu mu1 nu r0
+      (pres-comp mu1 (upd mu1 p (efunarg p1 (acons x p2 th))) nu
+         (pres-step mu1 p (efunarg p1 (acons x p2 th))
+            (step-inv mu1 (upd mu1 p (efunarg p1 (acons x p2 th))) (st-G p pf pl p1 p2 x th e2 ef el))
+            (nf-funarg p1 (acons x p2 th))) rh) } ;
+
+------------------------------------------------------------------------
+-- the meaning of the three kinds of values
+
+quote-meaning (nu : Nat -> Cell) (p : Nat) (a : Atom) (e : Id Cell (nu p) (equote a)) (G : Env) (t : Ty) :
+    (Obs nu (jdg G p t) -> Le (at a) t) * (Le (at a) t -> Obs nu (jdg G p t)) =
+  (quote-inv nu G p a e t, \ le -> o-sub G p (at a) t (obs-quote nu G p a e) le) ;
+
+-- a pair: type om x om, no atom type, no arrow type
+IsPair (nu : Nat -> Cell) (G : Env) (p : Nat) : U l =
+  Obs nu (jdg G p (pair om om)) * (((a : Atom) -> Not (Obs nu (jdg G p (at a)))) *
+    (Not (Obs nu (jdg G p atom)) * ((s t : Ty) -> Not (Obs nu (jdg G p (arr s t)))))) ;
+
+cons-meaning (nu : Nat -> Cell) (p p1 p2 : Nat) (e : Id Cell (nu p) (econs p1 p2)) (G : Env) : IsPair nu G p =
+  (obs-at' nu G p (econs p1 p2) (pair om om) e (om, (om, (refl (pair om om), (o-om G p1, o-om G p2)))),
+   (\ a o -> pair-not-at (cons-shape nu G p p1 p2 e (at a) o).1 (cons-shape nu G p p1 p2 e (at a) o).2.1 a
+               (cons-shape nu G p p1 p2 e (at a) o).2.2,
+    (\ o -> pair-not-atom (cons-shape nu G p p1 p2 e atom o).1 (cons-shape nu G p p1 p2 e atom o).2.1
+              (cons-shape nu G p p1 p2 e atom o).2.2,
+     \ s t o -> pair-not-arr (cons-shape nu G p p1 p2 e (arr s t) o).1 (cons-shape nu G p p1 p2 e (arr s t) o).2.1 s t
+                  (cons-shape nu G p p1 p2 e (arr s t) o).2.2))) ;
+
+-- a function: type om -> om, no atom type, no pair type
+IsFun (nu : Nat -> Cell) (G : Env) (p : Nat) : U l =
+  Obs nu (jdg G p (arr om om)) * (((a : Atom) -> Not (Obs nu (jdg G p (at a)))) *
+    (Not (Obs nu (jdg G p atom)) * ((s t : Ty) -> Not (Obs nu (jdg G p (pair s t)))))) ;
+
+clo-meaning (nu : Nat -> Cell) (p pl : Nat) (th : Alist) (x b : Nat) (e : Id Cell (nu p) (efunarg pl th))
+    (el : Id Cell (nu pl) (elam x b)) (G : Env) : IsFun nu G p =
+  (obs-at' nu G p (efunarg pl th) (arr om om) e
+     (\ y -> om, (\ y q k -> o-om G q,
+       obs-at' nu (extTh (\ y -> om) th G) pl (elam x b) (arr om om) el
+         (om, (om, (refl (arr om om), o-om (gcons x om (extTh (\ y -> om) th G)) b))))),
+   (\ a o -> arr-not-at (clo-shape nu G p pl x b th e el (at a) o).1 (clo-shape nu G p pl x b th e el (at a) o).2.1 a
+               (clo-shape nu G p pl x b th e el (at a) o).2.2,
+    (\ o -> arr-not-atom (clo-shape nu G p pl x b th e el atom o).1 (clo-shape nu G p pl x b th e el atom o).2.1
+              (clo-shape nu G p pl x b th e el atom o).2.2,
+     \ s t o -> arr-not-pair (clo-shape nu G p pl x b th e el (pair s t) o).1 (clo-shape nu G p pl x b th e el (pair s t) o).2.1 s t
+                  (clo-shape nu G p pl x b th e el (pair s t) o).2.2))) ;
+
+------------------------------------------------------------------------
+-- Corollary 5.1
+
+-- the types of p are the same before and after the run
+partial-correctness (mu nu : Nat -> Cell) (p : Nat) (h : Ev mu p nu) (n : NonFree mu p) : PresAt mu nu p =
+  eval-pres mu p nu h p n ;
+
+-- a run ending in (QUOTE a): the types of p, in the initial memory, are those above at a
+eval-atom (mu nu : Nat -> Cell) (p : Nat) (a : Atom) (h : Ev mu p nu) (n : NonFree mu p)
+    (e : Id Cell (nu p) (equote a)) (G : Env) (t : Ty) :
+    (Obs mu (jdg G p t) -> Le (at a) t) * (Le (at a) t -> Obs mu (jdg G p t)) =
+  (\ o -> (quote-meaning nu p a e G t).1 ((partial-correctness mu nu p h n).2.1 G t o),
+   \ le -> (partial-correctness mu nu p h n).2.2 G t ((quote-meaning nu p a e G t).2 le)) ;
+
+pres-pair (mu nu : Nat -> Cell) (G : Env) (p : Nat) (r : PresAt mu nu p) (v : IsPair nu G p) : IsPair mu G p =
+  (r.2.2 G (pair om om) v.1,
+   (\ a o -> v.2.1 a (r.2.1 G (at a) o), (\ o -> v.2.2.1 (r.2.1 G atom o), \ s t o -> v.2.2.2 s t (r.2.1 G (arr s t) o)))) ;
+
+pres-fun (mu nu : Nat -> Cell) (G : Env) (p : Nat) (r : PresAt mu nu p) (v : IsFun nu G p) : IsFun mu G p =
+  (r.2.2 G (arr om om) v.1,
+   (\ a o -> v.2.1 a (r.2.1 G (at a) o), (\ o -> v.2.2.1 (r.2.1 G atom o), \ s t o -> v.2.2.2 s t (r.2.1 G (pair s t) o)))) ;
+
+-- a run ending in a CONS: p is a pair in the initial memory
+eval-pair (mu nu : Nat -> Cell) (p p1 p2 : Nat) (h : Ev mu p nu) (n : NonFree mu p)
+    (e : Id Cell (nu p) (econs p1 p2)) (G : Env) : IsPair mu G p =
+  pres-pair mu nu G p (partial-correctness mu nu p h n) (cons-meaning nu p p1 p2 e G) ;
+
+-- a run ending in a closure: p is a function in the initial memory
+eval-fun (mu nu : Nat -> Cell) (p pl : Nat) (th : Alist) (x b : Nat) (h : Ev mu p nu) (n : NonFree mu p)
+    (e : Id Cell (nu p) (efunarg pl th)) (el : Id Cell (nu pl) (elam x b)) (G : Env) : IsFun mu G p =
+  pres-fun mu nu G p (partial-correctness mu nu p h n) (clo-meaning nu p pl th x b e el G) ;

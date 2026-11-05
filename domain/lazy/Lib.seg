@@ -1,0 +1,147 @@
+-- Lib.seg: what the development uses of sums, Booleans read as
+-- propositions, the naturals and their order, and the atoms of
+-- Hyper-Pure LISP (henderson.pdf section II; Agda LAZY/Domain/Basic).
+--
+-- A Boolean b is read as the proposition IsT b (and its negation IsF b);
+-- equality of naturals and of atoms is decided by eqN and atEq, and
+-- IsT (eqN m n) is equivalent to Id Nat m n (eqN-sound, eqN-refl).
+-- The order LeN on Nat is defined by recursion; max, pred and the few
+-- facts about them are what the measure of Types.les-trans needs.
+
+level l ;
+open Base ; open Prelude[l] ;
+
+data Plus (A B : U l) : U l = inl (x : A) | inr (y : B) ;
+Not (A : U l) : U l = A -> Empty ;
+efq {A : U l} (e : Empty) : A = absurd A e ;
+
+------------------------------------------------------------------------
+-- Booleans as propositions
+
+IsT : Bool -> U l = split { true -> Top ; false -> Empty } ;
+IsF : Bool -> U l = split { true -> Empty ; false -> Top } ;
+
+bool-dec : (b : Bool) -> Plus (IsT b) (IsF b) = split {
+  true -> inl tt ;
+  false -> inr tt } ;
+
+ifB (A : U l) : Bool -> A -> A -> A = split {
+  true -> \ x y -> x ;
+  false -> \ x y -> y } ;
+
+ifB-T (A : U l) (x y : A) : (b : Bool) -> IsT b -> Id A (ifB A b x y) x = split {
+  true -> \ h -> refl x ;
+  false -> \ h -> efq h } ;
+
+ifB-F (A : U l) (x y : A) : (b : Bool) -> IsF b -> Id A (ifB A b x y) y = split {
+  true -> \ h -> efq h ;
+  false -> \ h -> refl y } ;
+
+------------------------------------------------------------------------
+-- naturals: decided equality (Agda: natEqN, NatEq-sound, NatEq-refl)
+
+eqN-refl : (n : Nat) -> IsT (eqN n n) = split {
+  zero -> tt ;
+  suc n | r -> r } ;
+
+eqN-sound : (m n : Nat) -> IsT (eqN m n) -> Id Nat m n = split {
+  zero -> split { zero -> \ h -> refl zero ; suc n -> \ h -> efq h } ;
+  suc m | r -> split {
+    zero -> \ h -> efq h ;
+    suc n -> \ h -> ap Nat Nat (\ k -> suc k) m n (r n h) } } ;
+
+-- the two readings of a Boolean exclude each other
+IsT-IsF : (b : Bool) -> IsT b -> IsF b -> Empty = split {
+  true -> \ h k -> k ;
+  false -> \ h k -> h } ;
+
+eqN-ne (m n : Nat) (h : IsF (eqN m n)) (e : Id Nat m n) : Empty =
+  IsT-IsF (eqN m n) (subst Nat (\ k -> IsT (eqN m k)) m n e (eqN-refl m)) h ;
+
+not-IsT-IsF : (b : Bool) -> (IsT b -> Empty) -> IsF b = split {
+  true -> \ k -> k tt ;
+  false -> \ k -> tt } ;
+
+eqN-of-ne (m n : Nat) (ne : Not (Id Nat m n)) : IsF (eqN m n) =
+  not-IsT-IsF (eqN m n) (\ h -> ne (eqN-sound m n h)) ;
+
+------------------------------------------------------------------------
+-- naturals: addition, max, pred, order (Agda: add, max, Le, Le-refl ..)
+
+add : Nat -> Nat -> Nat = split {
+  zero -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+
+max : Nat -> Nat -> Nat = split {
+  zero -> \ n -> n ;
+  suc m | r -> split { zero -> suc m ; suc n -> suc (r n) } } ;
+
+pred : Nat -> Nat = split { zero -> zero ; suc n -> n } ;
+
+LeN : Nat -> Nat -> U l = split {
+  zero -> \ n -> Top ;
+  suc m | r -> split { zero -> Empty ; suc n -> r n } } ;
+
+leN-refl : (n : Nat) -> LeN n n = split {
+  zero -> tt ;
+  suc n | r -> r } ;
+
+leN-trans : (a b c : Nat) -> LeN a b -> LeN b c -> LeN a c = split {
+  zero -> \ b c h1 h2 -> tt ;
+  suc a | r -> split {
+    zero -> \ c h1 h2 -> efq h1 ;
+    suc b -> split {
+      zero -> \ h1 h2 -> efq h2 ;
+      suc c -> \ h1 h2 -> r b c h1 h2 } } } ;
+
+leN-max-l : (m n : Nat) -> LeN m (max m n) = split {
+  zero -> \ n -> tt ;
+  suc m | r -> split { zero -> leN-refl m ; suc n -> r n } } ;
+
+leN-max-r : (m n : Nat) -> LeN n (max m n) = split {
+  zero -> \ n -> leN-refl n ;
+  suc m | r -> split { zero -> tt ; suc n -> r n } } ;
+
+leN-max-lub : (a b c : Nat) -> LeN a c -> LeN b c -> LeN (max a b) c = split {
+  zero -> \ b c h1 h2 -> h2 ;
+  suc a | r -> split {
+    zero -> \ c h1 h2 -> h1 ;
+    suc b -> split {
+      zero -> \ h1 h2 -> efq h1 ;
+      suc c -> \ h1 h2 -> r b c h1 h2 } } } ;
+
+leN-pred : (m n : Nat) -> LeN m n -> LeN (pred m) (pred n) = split {
+  zero -> \ n h -> tt ;
+  suc m -> split { zero -> \ h -> efq h ; suc n -> \ h -> h } } ;
+
+-- x <= m - 1 and 1 <= m <= N give x < N
+lt-pred (x : Nat) : (m N : Nat) -> LeN x (pred m) -> LeN (suc zero) m -> LeN m N -> LeN (suc x) N = split {
+  zero -> \ N h1 h2 h3 -> efq h2 ;
+  suc m -> \ N h1 h2 h3 -> leN-trans (suc x) (suc m) N h1 h3 } ;
+
+------------------------------------------------------------------------
+-- atoms (Agda: Atom, atEqN, AtEq-refl, AtEq-sound).  The paper's atoms
+-- are strings of capital letters; T and NIL are named because IF, ATOM
+-- and EQ mention them; numerals are quoted atoms (Example 4).
+
+data Atom = T | NIL | num (n : Nat) | name (n : Nat) ;
+
+atEq : Atom -> Atom -> Bool = split {
+  T -> split { T -> true ; NIL -> false ; num n -> false ; name n -> false } ;
+  NIL -> split { T -> false ; NIL -> true ; num n -> false ; name n -> false } ;
+  num m -> split { T -> false ; NIL -> false ; num n -> eqN m n ; name n -> false } ;
+  name m -> split { T -> false ; NIL -> false ; num n -> false ; name n -> eqN m n } } ;
+
+atEq-refl : (a : Atom) -> IsT (atEq a a) = split {
+  T -> tt ; NIL -> tt ; num n -> eqN-refl n ; name n -> eqN-refl n } ;
+
+atEq-sound : (a b : Atom) -> IsT (atEq a b) -> Id Atom a b = split {
+  T -> split { T -> \ h -> refl T ; NIL -> \ h -> efq h ; num n -> \ h -> efq h ; name n -> \ h -> efq h } ;
+  NIL -> split { T -> \ h -> efq h ; NIL -> \ h -> refl NIL ; num n -> \ h -> efq h ; name n -> \ h -> efq h } ;
+  num m -> split {
+    T -> \ h -> efq h ; NIL -> \ h -> efq h ;
+    num n -> \ h -> ap Nat Atom (\ k -> num k) m n (eqN-sound m n h) ;
+    name n -> \ h -> efq h } ;
+  name m -> split {
+    T -> \ h -> efq h ; NIL -> \ h -> efq h ; num n -> \ h -> efq h ;
+    name n -> \ h -> ap Nat Atom (\ k -> name k) m n (eqN-sound m n h) } } ;

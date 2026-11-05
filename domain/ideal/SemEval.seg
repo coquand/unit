@@ -1,0 +1,169 @@
+-- SemEval.seg: Theorem 6.4, second part (doc/lazy-intersection.tex).
+--
+-- If Eval(p, mu) halts with nu (Eval.Ev), the semantic memories of mu and
+-- nu agree at the non-free cells of mu (eval-sem: Steps.step-sem at each
+-- rewrite, Steps.alloc-sem at each allocation; the same run as
+-- Eval.eval-pres, with the semantic statements).  Hence, with the
+-- paper's clauses at the final cell, V mu p rho is
+--   prin (at a)                       if nu p = (QUOTE a),
+--   pairF (V nu p1 rho) (V nu p2 rho)  if nu p = (CONS p1 p2),
+--   lamF (..)                         if nu p = (FUNARG pl th), nu pl = (LAMBDA ..);
+-- and the paper's correctness clauses follow (Laws (5)): if V mu p rho is
+-- bot, Eval(p, mu) does not halt; if it is prin (at a) and Eval halts,
+-- it halts with (QUOTE a).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Gen[l] ; open Funarg[l] ; open Step[l] ; open Eval[l] ;
+open Filter[l] ; open Laws[l] ; open Sem[l] ; open Fix[l] ; open Steps[l] ;
+
+------------------------------------------------------------------------
+-- preservation of the meaning of non-free cells
+
+SPresAt (mu nu : Nat -> Cell) (p : Nat) : U l+ = NonFree nu p * ((rho : Rho) -> Eqv (V mu p rho) (V nu p rho)) ;
+SPres (mu nu : Nat -> Cell) : U l+ = (p : Nat) -> NonFree mu p -> SPresAt mu nu p ;
+
+spres-refl (mu : Nat -> Cell) : SPres mu mu = \ p n -> (n, \ rho -> eqv-refl (V mu p rho)) ;
+
+spres-comp (a b c : Nat -> Cell) (x : SPres a b) (y : SPres b c) : SPres a c =
+  \ p n -> ((y p (x p n).1).1, \ rho -> eqv-trans (V a p rho) (V b p rho) (V c p rho) ((x p n).2 rho) ((y p (x p n).1).2 rho)) ;
+
+spres-step (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (inv : (p : Nat) (rho : Rho) -> Eqv (V mu p rho) (V (upd mu p0 c) p rho))
+    (nf : Not (Id Cell c efree)) : SPres mu (upd mu p0 c) =
+  \ p n -> (nonfree-upd-by mu p0 c p nf n (bool-dec (eqN p p0)), inv p) ;
+
+spres-alloc (mu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) : SPres mu (upd mu a (efunarg q th)) =
+  \ p n -> (\ x -> n (trans Cell (mu p) (upd mu a (efunarg q th) p) efree
+                         (sym Cell (upd mu a (efunarg q th) p) (mu p)
+                            (upd-miss mu a (efunarg q th) p
+                               (eqN-of-ne p a (\ e -> n (subst Nat (\ z -> Id Cell (mu z) efree) a p (sym Nat p a e) fr.1))))) x),
+            alloc-sem mu (upd mu a (efunarg q th)) (alloc a q th fr) p n) ;
+
+spres-allocs : (mu nu : Nat -> Cell) -> Allocs mu nu -> SPres mu nu = split {
+  al-nil mu -> spres-refl mu ;
+  al-cons mu nu a q th fr h | rh -> spres-comp mu (upd mu a (efunarg q th)) nu (spres-alloc mu a q th fr) rh } ;
+
+-- every run leaves the meaning of the non-free cells unchanged (Theorem 6.4 at each step)
+eval-sem : (mu : Nat -> Cell) -> (p : Nat) -> (nu : Nat -> Cell) -> Ev mu p nu -> SPres mu nu = split {
+  ev-quote mu p a e -> spres-refl mu ;
+  ev-cons mu p p1 p2 e -> spres-refl mu ;
+  ev-clo mu p pl th x b e el -> spres-refl mu ;
+  ev-car mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 ->
+    spres-comp mu mu1 (upd mu2 p (mu2 p1)) r1 (spres-comp mu1 mu2 (upd mu2 p (mu2 p1)) r2
+      (spres-step mu2 p (mu2 p1) (step-sem mu2 (upd mu2 p (mu2 p1)) (st-car p p' p1 p2 e2 e3))
+         (value-nonfree mu2 p1 (ev-value mu1 p1 mu2 h2)))) ;
+  ev-cdr mu mu1 mu2 p p' p1 p2 e h1 e1 h2 e2 e3 | r1 r2 ->
+    spres-comp mu mu1 (upd mu2 p (mu2 p2)) r1 (spres-comp mu1 mu2 (upd mu2 p (mu2 p2)) r2
+      (spres-step mu2 p (mu2 p2) (step-sem mu2 (upd mu2 p (mu2 p2)) (st-cdr p p' p1 p2 e2 e3))
+         (value-nonfree mu2 p2 (ev-value mu1 p2 mu2 h2)))) ;
+  ev-atom-T mu mu1 p p' a e h e1 e2 | rh ->
+    spres-comp mu mu1 (upd mu1 p (equote T)) rh
+      (spres-step mu1 p (equote T) (step-sem mu1 (upd mu1 p (equote T)) (st-atom-T p p' a e2 e1)) (nf-quote T)) ;
+  ev-atom-NIL mu mu1 p p' p1 p2 e h e1 e2 | rh ->
+    spres-comp mu mu1 (upd mu1 p (equote NIL)) rh
+      (spres-step mu1 p (equote NIL) (step-sem mu1 (upd mu1 p (equote NIL)) (st-atom-NIL p p' p1 p2 e2 e1)) (nf-quote NIL)) ;
+  ev-eq-T mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 ->
+    spres-comp mu mu1 (upd mu2 p (equote T)) r1 (spres-comp mu1 mu2 (upd mu2 p (equote T)) r2
+      (spres-step mu2 p (equote T) (step-sem mu2 (upd mu2 p (equote T)) (st-eq-T p p1 p2 a1 a2 e3 e1 e2 k)) (nf-quote T))) ;
+  ev-eq-NIL mu mu1 mu2 p p1 p2 a1 a2 e h1 h2 e1 e2 e3 k | r1 r2 ->
+    spres-comp mu mu1 (upd mu2 p (equote NIL)) r1 (spres-comp mu1 mu2 (upd mu2 p (equote NIL)) r2
+      (spres-step mu2 p (equote NIL) (step-sem mu2 (upd mu2 p (equote NIL)) (st-eq-NIL p p1 p2 a1 a2 e3 e1 e2 k)) (nf-quote NIL))) ;
+  ev-if-T mu mu1 mu2 p p0 p1 p2 e h0 eT h1 e2 e3 | r0 r1 ->
+    spres-comp mu mu1 (upd mu2 p (mu2 p1)) r0 (spres-comp mu1 mu2 (upd mu2 p (mu2 p1)) r1
+      (spres-step mu2 p (mu2 p1) (step-sem mu2 (upd mu2 p (mu2 p1)) (st-if-T p p0 p1 p2 e2 e3))
+         (value-nonfree mu2 p1 (ev-value mu1 p1 mu2 h1)))) ;
+  ev-if-NIL mu mu1 mu2 p p0 p1 p2 e h0 eN h2 e2 e3 | r0 r2 ->
+    spres-comp mu mu1 (upd mu2 p (mu2 p2)) r0 (spres-comp mu1 mu2 (upd mu2 p (mu2 p2)) r2
+      (spres-step mu2 p (mu2 p2) (step-sem mu2 (upd mu2 p (mu2 p2)) (st-if-NIL p p0 p1 p2 e2 e3))
+         (value-nonfree mu2 p2 (ev-value mu1 p2 mu2 h2)))) ;
+  ev-plus mu mu1 mu2 p p1 p2 m n e h1 h2 e1 e2 e3 | r1 r2 ->
+    spres-comp mu mu1 (upd mu2 p (equote (num (add m n)))) r1 (spres-comp mu1 mu2 (upd mu2 p (equote (num (add m n)))) r2
+      (spres-step mu2 p (equote (num (add m n)))
+         (step-sem mu2 (upd mu2 p (equote (num (add m n)))) (st-plus p p1 p2 m n e3 e1 e2)) (nf-quote (num (add m n))))) ;
+  ev-Fa mu mu1 p p0 q x th e ev lk h e2 e3 | rh ->
+    spres-comp mu mu1 (upd mu1 p (mu1 q)) rh
+      (spres-step mu1 p (mu1 q) (step-sem mu1 (upd mu1 p (mu1 q)) (st-Fa p p0 q x th e2 e3 lk))
+         (value-nonfree mu1 q (ev-value mu q mu1 h))) ;
+  ev-Fb mu p p0 th a e e0 ->
+    spres-step mu p (equote a) (step-sem mu (upd mu p (equote a)) (st-Fb p p0 th a e e0)) (nf-quote a) ;
+  ev-L mu nu p pl p1 x th e el h | rh ->
+    spres-comp mu (upd mu p (efunarg p1 (acons x p th))) nu
+      (spres-step mu p (efunarg p1 (acons x p th)) (step-sem mu (upd mu p (efunarg p1 (acons x p th))) (st-L p pl p1 x th e el))
+         (nf-funarg p1 (acons x p th))) rh ;
+  ev-F mu mu1 nu p p0 th c c' al e e1 r h | rh ->
+    spres-comp mu mu1 nu (spres-allocs mu mu1 al)
+      (spres-comp mu1 (upd mu1 p c') nu
+         (spres-step mu1 p c' (step-sem mu1 (upd mu1 p c') (st-F p p0 th c c' e e1 r)) (ren-nonfree (NewFor mu1 th p) c c' r)) rh) ;
+  ev-G mu mu1 nu p pf p2 pl p1 x th e h0 ef el e2 h | r0 rh ->
+    spres-comp mu mu1 nu r0
+      (spres-comp mu1 (upd mu1 p (efunarg p1 (acons x p2 th))) nu
+         (spres-step mu1 p (efunarg p1 (acons x p2 th))
+            (step-sem mu1 (upd mu1 p (efunarg p1 (acons x p2 th))) (st-G p pf pl p1 p2 x th e2 ef el))
+            (nf-funarg p1 (acons x p2 th))) rh) } ;
+
+------------------------------------------------------------------------
+-- the meaning of the final cell
+
+final-quote (mu nu : Nat -> Cell) (p : Nat) (a : Atom) (h : Ev mu p nu) (n : NonFree mu p) (e : Id Cell (nu p) (equote a))
+    (rho : Rho) : Eqv (V mu p rho) (prin (at a)) =
+  eqv-trans (V mu p rho) (V nu p rho) (prin (at a)) ((eval-sem mu p nu h p n).2 rho)
+    (eqv-trans (V nu p rho) (Cl (V nu) (nu p) rho) (prin (at a)) (V-fix nu p rho) (cl-at (V nu) (nu p) (equote a) e rho)) ;
+
+final-cons (mu nu : Nat -> Cell) (p p1 p2 : Nat) (h : Ev mu p nu) (n : NonFree mu p) (e : Id Cell (nu p) (econs p1 p2))
+    (rho : Rho) : Eqv (V mu p rho) (pairF (V nu p1 rho) (V nu p2 rho)) =
+  eqv-trans (V mu p rho) (V nu p rho) (pairF (V nu p1 rho) (V nu p2 rho)) ((eval-sem mu p nu h p n).2 rho)
+    (eqv-trans (V nu p rho) (Cl (V nu) (nu p) rho) (pairF (V nu p1 rho) (V nu p2 rho)) (V-fix nu p rho)
+       (cl-at (V nu) (nu p) (econs p1 p2) e rho)) ;
+
+final-clo (mu nu : Nat -> Cell) (p pl : Nat) (th : Alist) (x b : Nat) (h : Ev mu p nu) (n : NonFree mu p)
+    (e : Id Cell (nu p) (efunarg pl th)) (el : Id Cell (nu pl) (elam x b)) (rho : Rho) :
+    Eqv (V mu p rho) (lamF (trace (gfun (V nu) b (extR (V nu) rho th) x))) =
+  eqv-trans (V mu p rho) (V nu p rho) (lamF (trace (gfun (V nu) b (extR (V nu) rho th) x))) ((eval-sem mu p nu h p n).2 rho)
+    (eqv-trans (V nu p rho) (V nu pl (extR (V nu) rho th)) (lamF (trace (gfun (V nu) b (extR (V nu) rho th) x)))
+       (eqv-trans (V nu p rho) (Cl (V nu) (nu p) rho) (V nu pl (extR (V nu) rho th)) (V-fix nu p rho)
+          (cl-at (V nu) (nu p) (efunarg pl th) e rho))
+       (eqv-trans (V nu pl (extR (V nu) rho th)) (Cl (V nu) (nu pl) (extR (V nu) rho th))
+          (lamF (trace (gfun (V nu) b (extR (V nu) rho th) x)))
+          (V-fix nu pl (extR (V nu) rho th)) (cl-at (V nu) (nu pl) (elam x b) el (extR (V nu) rho th)))) ;
+
+------------------------------------------------------------------------
+-- the correctness clauses of the paper
+
+-- the meaning of a value is not bot
+value-not-bot (mu nu : Nat -> Cell) (p : Nat) (h : Ev mu p nu) (n : NonFree mu p) (rho : Rho) :
+    Value nu p -> Sub (V mu p rho) bot -> Empty = split {
+  v-quote a e -> \ k -> bot-not-at a (k (at a) ((final-quote mu nu p a h n e rho).2 (at a) (prin-in (at a)))) ;
+  v-cons p1 p2 e -> \ k -> bot-not-pair (k (pair om om) ((final-cons mu nu p p1 p2 h n e rho).2 (pair om om)
+       (pair-is-pair (V nu p1 rho) (V nu p2 rho)))) ;
+  v-clo pl th x b e el -> \ k -> bot-not-arr (k (arr om om) ((final-clo mu nu p pl th x b h n e el rho).2 (arr om om)
+       (lam-is-fun (gfun (V nu) b (extR (V nu) rho th) x)))) } ;
+
+-- if the meaning of p is bot, Eval(p, mu) does not halt
+eval-bot (mu nu : Nat -> Cell) (p : Nat) (n : NonFree mu p) (rho : Rho) (k : Sub (V mu p rho) bot) (h : Ev mu p nu) : Empty =
+  value-not-bot mu nu p h n rho (ev-value mu p nu h) k ;
+
+isProp-IsT : (b : Bool) -> isProp (IsT b) = split { true -> isTop ; false -> isProp-Empty } ;
+
+-- at a is below no arrow type
+at-not-arr (a : Atom) (b c : Ty) (le : Le (at a) (arr b c)) : Empty =
+  allc-not-arr AtShape (\ f g z -> z) (at a) tt b c le ;
+
+-- if the meaning of p is the atom a and Eval(p, mu) halts, it halts with (QUOTE a)
+value-atom (mu nu : Nat -> Cell) (p : Nat) (a : Atom) (h : Ev mu p nu) (n : NonFree mu p) (rho : Rho)
+    (k : Sub (V mu p rho) (prin (at a))) : Value nu p -> Id Cell (nu p) (equote a) = split {
+  v-quote b e -> trans Cell (nu p) (equote b) (equote a) e
+     (ap Atom Cell (\ z -> equote z) b a
+        (sym Atom a b (atEq-sound a b (ex-elim (Le (at a) (at b)) (IsT (atEq a b)) (isProp-IsT (atEq a b))
+           (\ le -> subst Atom (\ z -> IsT (atEq a z)) a b (at-at a b le) (atEq-refl a))
+           (k (at b) ((final-quote mu nu p b h n e rho).2 (at b) (prin-in (at b)))))))) ;
+  v-cons p1 p2 e -> absurd (Id Cell (nu p) (equote a))
+     (ex-elim (Le (at a) (pair om om)) Empty isProp-Empty (at-not-pair a om om)
+        (k (pair om om) ((final-cons mu nu p p1 p2 h n e rho).2 (pair om om) (pair-is-pair (V nu p1 rho) (V nu p2 rho))))) ;
+  v-clo pl th x b e el -> absurd (Id Cell (nu p) (equote a))
+     (ex-elim (Le (at a) (arr om om)) Empty isProp-Empty (at-not-arr a om om)
+        (k (arr om om) ((final-clo mu nu p pl th x b h n e el rho).2 (arr om om)
+           (lam-is-fun (gfun (V nu) b (extR (V nu) rho th) x))))) } ;
+
+eval-atom-sem (mu nu : Nat -> Cell) (p : Nat) (a : Atom) (n : NonFree mu p) (rho : Rho)
+    (k : Sub (V mu p rho) (prin (at a))) (h : Ev mu p nu) : Id Cell (nu p) (equote a) =
+  value-atom mu nu p a h n rho k (ev-value mu p nu h) ;

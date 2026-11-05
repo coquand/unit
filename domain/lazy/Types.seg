@@ -1,0 +1,414 @@
+-- Types.seg: the types and subtyping (doc/lazy-intersection.tex section 2,
+-- Definition 2.1 and Lemma 2.2).
+--
+-- Types  s, t ::= om | atom | at a | pair s t | arr s t | meet s t.
+-- Le s t is the least relation closed under the rules of Definition 2.1
+-- (an indexed family, one constructor per rule).
+--
+-- Lemma 2.2 (inversion).  Le is equivalent to the syntax-directed
+-- relation Les, defined by the shape of the target:
+--   r <=s om always;  r <=s a /\ b  iff  r <=s a and r <=s b;
+--   r <=s at a   iff  at a is a component of r            (Sel);
+--   r <=s atom   iff  atom or some at a is a component of r;
+--   r <=s pair a b  iff  r has a pair component, and a finite selection
+--     of pair components s_i x t_i of r (PSel r s t, s and t the meets of
+--     the s_i and of the t_i; the empty selection gives om, om) has
+--     s <=s a and t <=s b;
+--   r <=s arr a b   iff  r has an arrow component, and a selection of arrow
+--     components s_i -> t_i (ASel r d t) has a <=s d and t <=s b.
+-- A selection is a finite multiset: none, one component, or the meet of
+-- two selections (this makes the union of selections a constructor).
+-- The empty selection, with "has a component of this kind", is the case
+-- om <= b of the note (beta-soundness, Lemma 2.2(3)).
+--
+-- Proof.  Les is sound for Le (each selection is below the corresponding
+-- pair/arrow, using the distributivity rules).  Les is reflexive and
+-- weakens on the left (r <=s k gives r /\ z <=s k).  Transitivity of Les:
+-- r <=s p and p <=s k give r <=s k, by induction on the depth md p of the
+-- middle type (meets do not count) and, inside, on the derivation of
+-- p <=s k.  The cases om, meet, at, atom are direct (an at/atom component
+-- of p is reached from r by inverting r <=s p along the meets).  For a
+-- pair target, the selection of p (middle s, t) is transported to a
+-- selection of r with s' <=s s, t' <=s t (psel-tr: invert r <=s p at each
+-- selected component, union for meets); then s' <=s s <=s a by induction,
+-- the middle s having smaller depth than p.  Arrows likewise, with the
+-- domains contravariant (asel-tr).  Hence every rule of Definition 2.1
+-- holds for Les, and Le is included in Les.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ;
+
+data Ty = om | atom | at (a : Atom) | pair (s t : Ty) | arr (s t : Ty) | meet (s t : Ty) ;
+
+------------------------------------------------------------------------
+-- Definition 2.1
+
+data Le : (s t : Ty) -> U l =
+    le-refl (s : Ty) : Le s s
+  | le-trans (s t u : Ty) (h1 : Le s t) (h2 : Le t u) : Le s u
+  | le-meet-l (s t : Ty) : Le (meet s t) s
+  | le-meet-r (s t : Ty) : Le (meet s t) t
+  | le-meet (r s t : Ty) (h1 : Le r s) (h2 : Le r t) : Le r (meet s t)
+  | le-om (s : Ty) : Le s om
+  | le-at (a : Atom) : Le (at a) atom
+  | le-pair (s s' t t' : Ty) (h1 : Le s s') (h2 : Le t t') : Le (pair s t) (pair s' t')
+  | le-pair-meet (s t s' t' : Ty) : Le (meet (pair s t) (pair s' t')) (pair (meet s s') (meet t t'))
+  | le-arr (s s' t t' : Ty) (h1 : Le s' s) (h2 : Le t t') : Le (arr s t) (arr s' t')
+  | le-arr-meet (s t t' : Ty) : Le (meet (arr s t) (arr s t')) (arr s (meet t t'))
+  | le-arr-om (s : Ty) : Le (arr s om) (arr om om) ;
+
+-- meets are monotone
+le-meet-mono (s s' t t' : Ty) (h1 : Le s s') (h2 : Le t t') : Le (meet s t) (meet s' t') =
+  le-meet (meet s t) s' t' (le-trans (meet s t) s s' (le-meet-l s t) h1)
+    (le-trans (meet s t) t t' (le-meet-r s t) h2) ;
+
+------------------------------------------------------------------------
+-- components and selections
+
+-- k is a component of r (along the meets)
+data Sel : (r k : Ty) -> U l =
+    sel-here (k : Ty) : Sel k k
+  | sel-l (r1 r2 k : Ty) (h : Sel r1 k) : Sel (meet r1 r2) k
+  | sel-r (r1 r2 k : Ty) (h : Sel r2 k) : Sel (meet r1 r2) k ;
+
+-- a selection of pair components of r, with the meets s, t of their parts
+data PSel : (r s t : Ty) -> U l =
+    ps-none (r : Ty) : PSel r om om
+  | ps-here (a b : Ty) : PSel (pair a b) a b
+  | ps-l (r1 r2 s t : Ty) (h : PSel r1 s t) : PSel (meet r1 r2) s t
+  | ps-r (r1 r2 s t : Ty) (h : PSel r2 s t) : PSel (meet r1 r2) s t
+  | ps-meet (r s1 t1 s2 t2 : Ty) (h1 : PSel r s1 t1) (h2 : PSel r s2 t2) : PSel r (meet s1 s2) (meet t1 t2) ;
+
+-- a selection of arrow components of r, with the meets d, t of the
+-- domains and of the codomains
+data ASel : (r d t : Ty) -> U l =
+    as-none (r : Ty) : ASel r om om
+  | as-here (a b : Ty) : ASel (arr a b) a b
+  | as-l (r1 r2 d t : Ty) (h : ASel r1 d t) : ASel (meet r1 r2) d t
+  | as-r (r1 r2 d t : Ty) (h : ASel r2 d t) : ASel (meet r1 r2) d t
+  | as-meet (r d1 t1 d2 t2 : Ty) (h1 : ASel r d1 t1) (h2 : ASel r d2 t2) : ASel r (meet d1 d2) (meet t1 t2) ;
+
+------------------------------------------------------------------------
+-- the syntax-directed relation
+
+data Les : (r k : Ty) -> U l =
+    s-om (r : Ty) : Les r om
+  | s-meet (r a b : Ty) (h1 : Les r a) (h2 : Les r b) : Les r (meet a b)
+  | s-at (r : Ty) (a : Atom) (h : Sel r (at a)) : Les r (at a)
+  | s-atom (r : Ty) (h : Sel r atom) : Les r atom
+  | s-atom-at (r : Ty) (a : Atom) (h : Sel r (at a)) : Les r atom
+  | s-pair (r a b f g s t : Ty) (h : Sel r (pair f g)) (p : PSel r s t) (h1 : Les s a) (h2 : Les t b) : Les r (pair a b)
+  | s-arr (r a b f g d t : Ty) (h : Sel r (arr f g)) (p : ASel r d t) (h1 : Les a d) (h2 : Les t b) : Les r (arr a b) ;
+
+-- inversion of Les by the shape of the target
+LesInv (r : Ty) : Ty -> U l = split {
+  om -> Top ;
+  atom -> Plus (Sel r atom) ((a : Atom) * Sel r (at a)) ;
+  at a -> Sel r (at a) ;
+  pair a b -> (f : Ty) * ((g : Ty) * ((s : Ty) * ((t : Ty) *
+                (Sel r (pair f g) * (PSel r s t * (Les s a * Les t b)))))) ;
+  arr a b -> (f : Ty) * ((g : Ty) * ((d : Ty) * ((t : Ty) *
+                (Sel r (arr f g) * (ASel r d t * (Les a d * Les t b)))))) ;
+  meet a b -> Les r a * Les r b } ;
+
+les-inv : (r k : Ty) -> Les r k -> LesInv r k = split {
+  s-om r -> tt ;
+  s-meet r a b h1 h2 -> (h1, h2) ;
+  s-at r a h -> h ;
+  s-atom r h -> inl h ;
+  s-atom-at r a h -> inr (a, h) ;
+  s-pair r a b f g s t h p h1 h2 -> (f, (g, (s, (t, (h, (p, (h1, h2))))))) ;
+  s-arr r a b f g d t h p h1 h2 -> (f, (g, (d, (t, (h, (p, (h1, h2))))))) } ;
+
+------------------------------------------------------------------------
+-- soundness: Les is included in Le
+
+sel-le : (r k : Ty) -> Sel r k -> Le r k = split {
+  sel-here k -> le-refl k ;
+  sel-l r1 r2 k h | rh -> le-trans (meet r1 r2) r1 k (le-meet-l r1 r2) rh ;
+  sel-r r1 r2 k h | rh -> le-trans (meet r1 r2) r2 k (le-meet-r r1 r2) rh } ;
+
+-- r /\ (om x om) <= s x t for a pair selection, and likewise for arrows
+psel-le : (r s t : Ty) -> PSel r s t -> Le (meet r (pair om om)) (pair s t) = split {
+  ps-none r -> le-meet-r r (pair om om) ;
+  ps-here a b -> le-meet-l (pair a b) (pair om om) ;
+  ps-l r1 r2 s t h | rh ->
+    le-trans (meet (meet r1 r2) (pair om om)) (meet r1 (pair om om)) (pair s t)
+      (le-meet-mono (meet r1 r2) r1 (pair om om) (pair om om) (le-meet-l r1 r2) (le-refl (pair om om))) rh ;
+  ps-r r1 r2 s t h | rh ->
+    le-trans (meet (meet r1 r2) (pair om om)) (meet r2 (pair om om)) (pair s t)
+      (le-meet-mono (meet r1 r2) r2 (pair om om) (pair om om) (le-meet-r r1 r2) (le-refl (pair om om))) rh ;
+  ps-meet r s1 t1 s2 t2 h1 h2 | r1 r2 ->
+    le-trans (meet r (pair om om)) (meet (pair s1 t1) (pair s2 t2)) (pair (meet s1 s2) (meet t1 t2))
+      (le-meet (meet r (pair om om)) (pair s1 t1) (pair s2 t2) r1 r2)
+      (le-pair-meet s1 t1 s2 t2) } ;
+
+asel-le : (r d t : Ty) -> ASel r d t -> Le (meet r (arr om om)) (arr d t) = split {
+  as-none r -> le-meet-r r (arr om om) ;
+  as-here a b -> le-meet-l (arr a b) (arr om om) ;
+  as-l r1 r2 d t h | rh ->
+    le-trans (meet (meet r1 r2) (arr om om)) (meet r1 (arr om om)) (arr d t)
+      (le-meet-mono (meet r1 r2) r1 (arr om om) (arr om om) (le-meet-l r1 r2) (le-refl (arr om om))) rh ;
+  as-r r1 r2 d t h | rh ->
+    le-trans (meet (meet r1 r2) (arr om om)) (meet r2 (arr om om)) (arr d t)
+      (le-meet-mono (meet r1 r2) r2 (arr om om) (arr om om) (le-meet-r r1 r2) (le-refl (arr om om))) rh ;
+  as-meet r d1 t1 d2 t2 h1 h2 | r1 r2 ->
+    le-trans (meet r (arr om om)) (meet (arr d1 t1) (arr d2 t2)) (arr (meet d1 d2) (meet t1 t2))
+      (le-meet (meet r (arr om om)) (arr d1 t1) (arr d2 t2) r1 r2)
+      (le-trans (meet (arr d1 t1) (arr d2 t2)) (meet (arr (meet d1 d2) t1) (arr (meet d1 d2) t2))
+         (arr (meet d1 d2) (meet t1 t2))
+         (le-meet-mono (arr d1 t1) (arr (meet d1 d2) t1) (arr d2 t2) (arr (meet d1 d2) t2)
+            (le-arr d1 (meet d1 d2) t1 t1 (le-meet-l d1 d2) (le-refl t1))
+            (le-arr d2 (meet d1 d2) t2 t2 (le-meet-r d1 d2) (le-refl t2)))
+         (le-arr-meet (meet d1 d2) t1 t2)) } ;
+
+-- a type with a component f x g is below om x om; with f -> g, below om -> om
+pair-le-om (f g : Ty) : Le (pair f g) (pair om om) = le-pair f om g om (le-om f) (le-om g) ;
+arr-le-om (f g : Ty) : Le (arr f g) (arr om om) =
+  le-trans (arr f g) (arr f om) (arr om om) (le-arr f f g om (le-refl f) (le-om g)) (le-arr-om f) ;
+
+les-le : (r k : Ty) -> Les r k -> Le r k = split {
+  s-om r -> le-om r ;
+  s-meet r a b h1 h2 | r1 r2 -> le-meet r a b r1 r2 ;
+  s-at r a h -> sel-le r (at a) h ;
+  s-atom r h -> sel-le r atom h ;
+  s-atom-at r a h -> le-trans r (at a) atom (sel-le r (at a) h) (le-at a) ;
+  s-pair r a b f g s t h p h1 h2 | r1 r2 ->
+    le-trans r (meet r (pair om om)) (pair a b)
+      (le-meet r r (pair om om) (le-refl r)
+         (le-trans r (pair f g) (pair om om) (sel-le r (pair f g) h) (pair-le-om f g)))
+      (le-trans (meet r (pair om om)) (pair s t) (pair a b) (psel-le r s t p) (le-pair s a t b r1 r2)) ;
+  s-arr r a b f g d t h p h1 h2 | r1 r2 ->
+    le-trans r (meet r (arr om om)) (arr a b)
+      (le-meet r r (arr om om) (le-refl r)
+         (le-trans r (arr f g) (arr om om) (sel-le r (arr f g) h) (arr-le-om f g)))
+      (le-trans (meet r (arr om om)) (arr d t) (arr a b) (asel-le r d t p) (le-arr d a t b r1 r2)) } ;
+
+------------------------------------------------------------------------
+-- reflexivity and weakening of Les
+
+les-weak-l : (x y : Ty) -> Les x y -> (z : Ty) -> Les (meet x z) y = split {
+  s-om r -> \ z -> s-om (meet r z) ;
+  s-meet r a b h1 h2 | r1 r2 -> \ z -> s-meet (meet r z) a b (r1 z) (r2 z) ;
+  s-at r a h -> \ z -> s-at (meet r z) a (sel-l r z (at a) h) ;
+  s-atom r h -> \ z -> s-atom (meet r z) (sel-l r z atom h) ;
+  s-atom-at r a h -> \ z -> s-atom-at (meet r z) a (sel-l r z (at a) h) ;
+  s-pair r a b f g s t h p h1 h2 -> \ z ->
+    s-pair (meet r z) a b f g s t (sel-l r z (pair f g) h) (ps-l r z s t p) h1 h2 ;
+  s-arr r a b f g d t h p h1 h2 -> \ z ->
+    s-arr (meet r z) a b f g d t (sel-l r z (arr f g) h) (as-l r z d t p) h1 h2 } ;
+
+les-weak-r : (x y : Ty) -> Les x y -> (z : Ty) -> Les (meet z x) y = split {
+  s-om r -> \ z -> s-om (meet z r) ;
+  s-meet r a b h1 h2 | r1 r2 -> \ z -> s-meet (meet z r) a b (r1 z) (r2 z) ;
+  s-at r a h -> \ z -> s-at (meet z r) a (sel-r z r (at a) h) ;
+  s-atom r h -> \ z -> s-atom (meet z r) (sel-r z r atom h) ;
+  s-atom-at r a h -> \ z -> s-atom-at (meet z r) a (sel-r z r (at a) h) ;
+  s-pair r a b f g s t h p h1 h2 -> \ z ->
+    s-pair (meet z r) a b f g s t (sel-r z r (pair f g) h) (ps-r z r s t p) h1 h2 ;
+  s-arr r a b f g d t h p h1 h2 -> \ z ->
+    s-arr (meet z r) a b f g d t (sel-r z r (arr f g) h) (as-r z r d t p) h1 h2 } ;
+
+les-refl : (r : Ty) -> Les r r = split {
+  om -> s-om om ;
+  atom -> s-atom atom (sel-here atom) ;
+  at a -> s-at (at a) a (sel-here (at a)) ;
+  pair a b | ra rb -> s-pair (pair a b) a b a b a b (sel-here (pair a b)) (ps-here a b) ra rb ;
+  arr a b | ra rb -> s-arr (arr a b) a b a b a b (sel-here (arr a b)) (as-here a b) ra rb ;
+  meet a b | ra rb -> s-meet (meet a b) a b (les-weak-l a a ra b) (les-weak-r b b rb a) } ;
+
+------------------------------------------------------------------------
+-- transitivity of Les
+
+-- the depth of a type, meets not counted
+md : Ty -> Nat = split {
+  om -> zero ; atom -> zero ; at a -> zero ;
+  pair a b | ra rb -> suc (max ra rb) ;
+  arr a b | ra rb -> suc (max ra rb) ;
+  meet a b | ra rb -> max ra rb } ;
+
+sel-md : (r k : Ty) -> Sel r k -> LeN (md k) (md r) = split {
+  sel-here k -> leN-refl (md k) ;
+  sel-l r1 r2 k h | rh -> leN-trans (md k) (md r1) (max (md r1) (md r2)) rh (leN-max-l (md r1) (md r2)) ;
+  sel-r r1 r2 k h | rh -> leN-trans (md k) (md r2) (max (md r1) (md r2)) rh (leN-max-r (md r1) (md r2)) } ;
+
+-- the parts of a selection are strictly shallower than the type
+SelMd (r s t : Ty) : U l = LeN (md s) (pred (md r)) * LeN (md t) (pred (md r)) ;
+
+selmd-l (r1 r2 s t : Ty) (h : SelMd r1 s t) : SelMd (meet r1 r2) s t =
+  (leN-trans (md s) (pred (md r1)) (pred (max (md r1) (md r2))) h.1
+     (leN-pred (md r1) (max (md r1) (md r2)) (leN-max-l (md r1) (md r2))),
+   leN-trans (md t) (pred (md r1)) (pred (max (md r1) (md r2))) h.2
+     (leN-pred (md r1) (max (md r1) (md r2)) (leN-max-l (md r1) (md r2)))) ;
+
+selmd-r (r1 r2 s t : Ty) (h : SelMd r2 s t) : SelMd (meet r1 r2) s t =
+  (leN-trans (md s) (pred (md r2)) (pred (max (md r1) (md r2))) h.1
+     (leN-pred (md r2) (max (md r1) (md r2)) (leN-max-r (md r1) (md r2))),
+   leN-trans (md t) (pred (md r2)) (pred (max (md r1) (md r2))) h.2
+     (leN-pred (md r2) (max (md r1) (md r2)) (leN-max-r (md r1) (md r2)))) ;
+
+selmd-meet (r s1 t1 s2 t2 : Ty) (h1 : SelMd r s1 t1) (h2 : SelMd r s2 t2) : SelMd r (meet s1 s2) (meet t1 t2) =
+  (leN-max-lub (md s1) (md s2) (pred (md r)) h1.1 h2.1,
+   leN-max-lub (md t1) (md t2) (pred (md r)) h1.2 h2.2) ;
+
+psel-md : (r s t : Ty) -> PSel r s t -> SelMd r s t = split {
+  ps-none r -> (tt, tt) ;
+  ps-here a b -> (leN-max-l (md a) (md b), leN-max-r (md a) (md b)) ;
+  ps-l r1 r2 s t h | rh -> selmd-l r1 r2 s t rh ;
+  ps-r r1 r2 s t h | rh -> selmd-r r1 r2 s t rh ;
+  ps-meet r s1 t1 s2 t2 h1 h2 | r1 r2 -> selmd-meet r s1 t1 s2 t2 r1 r2 } ;
+
+asel-md : (r d t : Ty) -> ASel r d t -> SelMd r d t = split {
+  as-none r -> (tt, tt) ;
+  as-here a b -> (leN-max-l (md a) (md b), leN-max-r (md a) (md b)) ;
+  as-l r1 r2 d t h | rh -> selmd-l r1 r2 d t rh ;
+  as-r r1 r2 d t h | rh -> selmd-r r1 r2 d t rh ;
+  as-meet r d1 t1 d2 t2 h1 h2 | r1 r2 -> selmd-meet r d1 t1 d2 t2 r1 r2 } ;
+
+-- a component of r is reached from r <=s p
+sel-down : (p k : Ty) -> Sel p k -> (r : Ty) -> Les r p -> Les r k = split {
+  sel-here k -> \ r x -> x ;
+  sel-l p1 p2 k h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).1 ;
+  sel-r p1 p2 k h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).2 } ;
+
+-- transport of a pair selection of p along r <=s p
+PTr (r s t : Ty) : U l = (s' : Ty) * ((t' : Ty) * (PSel r s' t' * (Les s' s * Les t' t))) ;
+
+ptr-here (r a b : Ty) (v : LesInv r (pair a b)) : PTr r a b =
+  (v.2.2.1, (v.2.2.2.1, v.2.2.2.2.2)) ;
+
+ptr-meet (r s1 t1 s2 t2 : Ty) (u : PTr r s1 t1) (v : PTr r s2 t2) : PTr r (meet s1 s2) (meet t1 t2) =
+  (meet u.1 v.1, (meet u.2.1 v.2.1,
+   (ps-meet r u.1 u.2.1 v.1 v.2.1 u.2.2.1 v.2.2.1,
+    (s-meet (meet u.1 v.1) s1 s2 (les-weak-l u.1 s1 u.2.2.2.1 v.1) (les-weak-r v.1 s2 v.2.2.2.1 u.1),
+     s-meet (meet u.2.1 v.2.1) t1 t2 (les-weak-l u.2.1 t1 u.2.2.2.2 v.2.1) (les-weak-r v.2.1 t2 v.2.2.2.2 u.2.1))))) ;
+
+psel-tr : (p s t : Ty) -> PSel p s t -> (r : Ty) -> Les r p -> PTr r s t = split {
+  ps-none p -> \ r x -> (om, (om, (ps-none r, (s-om om, s-om om)))) ;
+  ps-here a b -> \ r x -> ptr-here r a b (les-inv r (pair a b) x) ;
+  ps-l p1 p2 s t h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).1 ;
+  ps-r p1 p2 s t h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).2 ;
+  ps-meet p s1 t1 s2 t2 h1 h2 | r1 r2 -> \ r x -> ptr-meet r s1 t1 s2 t2 (r1 r x) (r2 r x) } ;
+
+-- for arrows the domains go the other way
+ATr (r d t : Ty) : U l = (d' : Ty) * ((t' : Ty) * (ASel r d' t' * (Les d d' * Les t' t))) ;
+
+atr-here (r a b : Ty) (v : LesInv r (arr a b)) : ATr r a b =
+  (v.2.2.1, (v.2.2.2.1, v.2.2.2.2.2)) ;
+
+atr-meet (r d1 t1 d2 t2 : Ty) (u : ATr r d1 t1) (v : ATr r d2 t2) : ATr r (meet d1 d2) (meet t1 t2) =
+  (meet u.1 v.1, (meet u.2.1 v.2.1,
+   (as-meet r u.1 u.2.1 v.1 v.2.1 u.2.2.1 v.2.2.1,
+    (s-meet (meet d1 d2) u.1 v.1 (les-weak-l d1 u.1 u.2.2.2.1 d2) (les-weak-r d2 v.1 v.2.2.2.1 d1),
+     s-meet (meet u.2.1 v.2.1) t1 t2 (les-weak-l u.2.1 t1 u.2.2.2.2 v.2.1) (les-weak-r v.2.1 t2 v.2.2.2.2 u.2.1))))) ;
+
+asel-tr : (p d t : Ty) -> ASel p d t -> (r : Ty) -> Les r p -> ATr r d t = split {
+  as-none p -> \ r x -> (om, (om, (as-none r, (s-om om, s-om om)))) ;
+  as-here a b -> \ r x -> atr-here r a b (les-inv r (arr a b) x) ;
+  as-l p1 p2 d t h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).1 ;
+  as-r p1 p2 d t h | rh -> \ r x -> rh r (les-inv r (meet p1 p2) x).2 ;
+  as-meet p d1 t1 d2 t2 h1 h2 | r1 r2 -> \ r x -> atr-meet r d1 t1 d2 t2 (r1 r x) (r2 r x) } ;
+
+-- transitivity for every middle type of depth < N
+Below (N : Nat) : U l = (p : Ty) -> LeN (suc (md p)) N -> (r k : Ty) -> Les r p -> Les p k -> Les r k ;
+
+-- the pair case: s' <=s s <=s a and t' <=s t <=s b through the shallower s, t
+trans-pair (N : Nat) (rec : Below N) (p a b f g s t : Ty) (h : Sel p (pair f g)) (q : PSel p s t)
+    (h1 : Les s a) (h2 : Les t b) (m : LeN (md p) N) (r : Ty) (x : Les r p) : Les r (pair a b) =
+  s-pair r a b v.1 v.2.1 u.1 u.2.1 v.2.2.2.2.1 u.2.2.1
+    (rec s (lt-pred (md s) (md p) N (psel-md p s t q).1 pos m) u.1 a u.2.2.2.1 h1)
+    (rec t (lt-pred (md t) (md p) N (psel-md p s t q).2 pos m) u.2.1 b u.2.2.2.2 h2)
+  where {
+    u : PTr r s t = psel-tr p s t q r x ;
+    v : LesInv r (pair f g) = les-inv r (pair f g) (sel-down p (pair f g) h r x) ;
+    pos : LeN (suc zero) (md p) = leN-trans (suc zero) (md (pair f g)) (md p) tt (sel-md p (pair f g) h) ; } ;
+
+-- the arrow case: a <=s d <=s d' and t' <=s t <=s b
+trans-arr (N : Nat) (rec : Below N) (p a b f g d t : Ty) (h : Sel p (arr f g)) (q : ASel p d t)
+    (h1 : Les a d) (h2 : Les t b) (m : LeN (md p) N) (r : Ty) (x : Les r p) : Les r (arr a b) =
+  s-arr r a b v.1 v.2.1 u.1 u.2.1 v.2.2.2.2.1 u.2.2.1
+    (rec d (lt-pred (md d) (md p) N (asel-md p d t q).1 pos m) a u.1 h1 u.2.2.2.1)
+    (rec t (lt-pred (md t) (md p) N (asel-md p d t q).2 pos m) u.2.1 b u.2.2.2.2 h2)
+  where {
+    u : ATr r d t = asel-tr p d t q r x ;
+    v : LesInv r (arr f g) = les-inv r (arr f g) (sel-down p (arr f g) h r x) ;
+    pos : LeN (suc zero) (md p) = leN-trans (suc zero) (md (arr f g)) (md p) tt (sel-md p (arr f g) h) ; } ;
+
+trans-in (N : Nat) (rec : Below N) : (p k : Ty) -> Les p k -> LeN (md p) N -> (r : Ty) -> Les r p -> Les r k = split {
+  s-om p -> \ m r x -> s-om r ;
+  s-meet p a b h1 h2 | r1 r2 -> \ m r x -> s-meet r a b (r1 m r x) (r2 m r x) ;
+  s-at p a h -> \ m r x -> sel-down p (at a) h r x ;
+  s-atom p h -> \ m r x -> sel-down p atom h r x ;
+  s-atom-at p a h -> \ m r x -> s-atom-at r a (les-inv r (at a) (sel-down p (at a) h r x)) ;
+  s-pair p a b f g s t h q h1 h2 -> \ m r x -> trans-pair N rec p a b f g s t h q h1 h2 m r x ;
+  s-arr p a b f g d t h q h1 h2 -> \ m r x -> trans-arr N rec p a b f g d t h q h1 h2 m r x } ;
+
+trans-all : (N : Nat) -> Below N = split {
+  zero -> \ p lt r k x y -> efq lt ;
+  suc N | rN -> \ p lt r k x y -> trans-in N rN p k y lt r x } ;
+
+les-trans (r p k : Ty) (x : Les r p) (y : Les p k) : Les r k =
+  trans-all (suc (md p)) p (leN-refl (md p)) r k x y ;
+
+------------------------------------------------------------------------
+-- completeness: Le is included in Les, so Le and Les coincide
+
+le-les : (s t : Ty) -> Le s t -> Les s t = split {
+  le-refl s -> les-refl s ;
+  le-trans s t u h1 h2 | r1 r2 -> les-trans s t u r1 r2 ;
+  le-meet-l s t -> les-weak-l s s (les-refl s) t ;
+  le-meet-r s t -> les-weak-r t t (les-refl t) s ;
+  le-meet r s t h1 h2 | r1 r2 -> s-meet r s t r1 r2 ;
+  le-om s -> s-om s ;
+  le-at a -> s-atom-at (at a) a (sel-here (at a)) ;
+  le-pair s s' t t' h1 h2 | r1 r2 ->
+    s-pair (pair s t) s' t' s t s t (sel-here (pair s t)) (ps-here s t) r1 r2 ;
+  le-pair-meet s t s' t' ->
+    s-pair (meet (pair s t) (pair s' t')) (meet s s') (meet t t') s t (meet s s') (meet t t')
+      (sel-l (pair s t) (pair s' t') (pair s t) (sel-here (pair s t)))
+      (ps-meet (meet (pair s t) (pair s' t')) s t s' t'
+         (ps-l (pair s t) (pair s' t') s t (ps-here s t))
+         (ps-r (pair s t) (pair s' t') s' t' (ps-here s' t')))
+      (les-refl (meet s s')) (les-refl (meet t t')) ;
+  le-arr s s' t t' h1 h2 | r1 r2 ->
+    s-arr (arr s t) s' t' s t s t (sel-here (arr s t)) (as-here s t) r1 r2 ;
+  le-arr-meet s t t' ->
+    s-arr (meet (arr s t) (arr s t')) s (meet t t') s t (meet s s) (meet t t')
+      (sel-l (arr s t) (arr s t') (arr s t) (sel-here (arr s t)))
+      (as-meet (meet (arr s t) (arr s t')) s t s t'
+         (as-l (arr s t) (arr s t') s t (as-here s t))
+         (as-r (arr s t) (arr s t') s t' (as-here s t')))
+      (s-meet s s s (les-refl s) (les-refl s)) (les-refl (meet t t')) ;
+  le-arr-om s ->
+    s-arr (arr s om) om om s om om om (sel-here (arr s om)) (as-none (arr s om)) (s-om om) (s-om om) } ;
+
+------------------------------------------------------------------------
+-- Lemma 2.2, in the form used below
+
+-- (1) atoms
+inv-at (r : Ty) (a : Atom) (h : Le r (at a)) : Sel r (at a) = les-inv r (at a) (le-les r (at a) h) ;
+
+inv-atom (r : Ty) (h : Le r atom) : Plus (Sel r atom) ((a : Atom) * Sel r (at a)) =
+  les-inv r atom (le-les r atom h) ;
+
+-- (2) pairs
+InvPair (r a b : Ty) : U l = (f : Ty) * ((g : Ty) * ((s : Ty) * ((t : Ty) *
+   (Sel r (pair f g) * (PSel r s t * (Le s a * Le t b)))))) ;
+
+inv-pair-by (r a b : Ty) (v : LesInv r (pair a b)) : InvPair r a b =
+  (v.1, (v.2.1, (v.2.2.1, (v.2.2.2.1, (v.2.2.2.2.1, (v.2.2.2.2.2.1,
+    (les-le v.2.2.1 a v.2.2.2.2.2.2.1, les-le v.2.2.2.1 b v.2.2.2.2.2.2.2))))))) ;
+
+inv-pair (r a b : Ty) (h : Le r (pair a b)) : InvPair r a b =
+  inv-pair-by r a b (les-inv r (pair a b) (le-les r (pair a b) h)) ;
+
+-- (3) arrows: beta-soundness
+InvArr (r a b : Ty) : U l = (f : Ty) * ((g : Ty) * ((d : Ty) * ((t : Ty) *
+   (Sel r (arr f g) * (ASel r d t * (Le a d * Le t b)))))) ;
+
+inv-arr-by (r a b : Ty) (v : LesInv r (arr a b)) : InvArr r a b =
+  (v.1, (v.2.1, (v.2.2.1, (v.2.2.2.1, (v.2.2.2.2.1, (v.2.2.2.2.2.1,
+    (les-le a v.2.2.1 v.2.2.2.2.2.2.1, les-le v.2.2.2.1 b v.2.2.2.2.2.2.2))))))) ;
+
+inv-arr (r a b : Ty) (h : Le r (arr a b)) : InvArr r a b =
+  inv-arr-by r a b (les-inv r (arr a b) (le-les r (arr a b) h)) ;

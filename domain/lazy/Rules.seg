@@ -1,0 +1,308 @@
+-- Rules.seg: each rule preserves the meaning of every cell, both
+-- directions (doc/lazy-intersection.tex, Theorem 4.1, the local lemmas).
+--
+-- A rule rewrites one cell p0: nu = mu[c / p0].  By the transfer lemma
+-- (Observe.rewrite-inv) it suffices to show, for the one cell p0:
+--  (forwards)  a rule of mu p0 whose premises hold in nu gives the type
+--              in nu;
+--  (backwards) a rule of nu p0 = c whose premises hold in mu gives the
+--              type in mu.
+-- Rules that copy a cell, nu = mu[mu q / p0] ([C], CDR, [I], [Fa]), are
+-- one lemma (copy-inv): forwards, the rule at p0 gives the type at q in
+-- nu, and q, p0 hold the same cell in nu (Observe.obs-copy); backwards,
+-- the rule of mu q is moved from p0 to q (the LABEL self-premise needs:
+-- every type of p0 is one of q, in mu), then mu gives the type back at p0.
+--  [C]   p0 = (CAR p1), p1 = (CONS p2 p3).  Forwards: p1 : t x u, so
+--        p2 : t (Gen.cons-inv).  Backwards: p2 : t gives p1 : t x om and
+--        p0 : t; and every type of p0 is one of p2, by generation.
+--  [I]   p0 = (IF p p1 p2), p = (QUOTE T): the NIL branch would need
+--        at T <= at NIL.
+--  [Fa]  p0 = (FUNARG p' th), p' = x, th binds x first to q: a type of
+--        p0 is above s x for a choice s observed for th (Gen.funarg-inv,
+--        Gen.var-inv), hence a type of q; conversely choose s x = t.
+--  [A], [E], PLUS, [Fb]: the new cell is a QUOTE; the types of the old
+--        cell are those above the atom computed, by Gen.quote-inv
+--        (Lemma 2.2(1)) and, for ATOM of a CONS, Gen.cons-shape.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ; open Gen[l] ;
+
+------------------------------------------------------------------------
+-- small transports
+
+cq-at (R : Jdg -> U l) (G : Env) (p0 : Nat) (c c' : Cell) (e : Id Cell c c') (t : Ty) (q : CellQ R G p0 c t) : CellQ R G p0 c' t =
+  subst Cell (\ z -> CellQ R G p0 z t) c c' e q ;
+
+obs-ty (mu : Nat -> Cell) (G : Env) (q : Nat) (t t' : Ty) (et : Id Ty t t') (h : Obs mu (jdg G q t)) : Obs mu (jdg G q t') =
+  subst Ty (\ z -> Obs mu (jdg G q z)) t t' et h ;
+
+obs-adr (mu : Nat -> Cell) (G : Env) (q q' : Nat) (t : Ty) (eq : Id Nat q q') (h : Obs mu (jdg G q t)) : Obs mu (jdg G q' t) =
+  subst Nat (\ z -> Obs mu (jdg G z t)) q q' eq h ;
+
+T-ne-NIL (e : Id Atom T NIL) : Empty = subst Atom (\ a -> IsT (atEq T a)) T NIL e tt ;
+NIL-ne-T (e : Id Atom NIL T) : Empty = subst Atom (\ a -> IsT (atEq NIL a)) NIL T e tt ;
+
+-- the QUOTE rule, at a cell known to be (QUOTE a)
+obs-quote (mu : Nat -> Cell) (G : Env) (p : Nat) (a : Atom) (e : Id Cell (mu p) (equote a)) : Obs mu (jdg G p (at a)) =
+  obs-at' mu G p (equote a) (at a) e (refl (at a)) ;
+
+------------------------------------------------------------------------
+-- rules that copy a cell
+
+copy-inv (mu : Nat -> Cell) (p0 q : Nat)
+    (F : (G : Env) (t : Ty) -> CellQ (Obs (upd mu p0 (mu q))) G p0 (mu p0) t -> Obs (upd mu p0 (mu q)) (jdg G q t))
+    (A : (G : Env) (s : Ty) -> Obs mu (jdg G p0 s) -> Obs mu (jdg G q s))
+    (B : (G : Env) (t : Ty) -> Obs mu (jdg G q t) -> Obs mu (jdg G p0 t)) : Inv mu (upd mu p0 (mu q)) =
+  rewrite-inv mu p0 (mu q)
+    (\ G t v -> obs-copy (upd mu p0 (mu q)) q p0
+        (trans Cell (upd mu p0 (mu q) q) (mu q) (upd mu p0 (mu q) p0) (upd-copy mu p0 q)
+           (sym Cell (upd mu p0 (mu q) p0) (mu q) (upd-hit mu p0 (mu q))))
+        G t (F G t v))
+    (\ G t v -> B G t (obs-at mu G q t
+        (cellq-move (Obs mu) (Obs mu) G p0 q (\ J h -> h) (\ s h -> A G s h) (mu q) t
+           (cq-at (Obs mu) G p0 (upd mu p0 (mu q) p0) (mu q) (upd-hit mu p0 (mu q)) t v)))) ;
+
+-- [C]: mu p0 = (CAR p1), mu p1 = (CONS p2 p3), nu = mu[mu p2 / p0]
+module RuleCar (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecar p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) {
+  nu : Nat -> Cell = upd mu p0 (mu p2) ;
+  e1' : Id Cell (nu p1) (econs p2 p3) =
+    upd-other mu p0 (mu p2) p1 (econs p2 p3) e1 (other-form mu p0 (ecar p1) (econs p2 p3) e0 tt) ;
+  F (G : Env) (t : Ty) (v : CellQ (Obs nu) G p0 (mu p0) t) : Obs nu (jdg G p2 t) =
+    (cons-inv nu G p1 p2 p3 e1' t w.1 w.2).1
+    where { w : CellQ (Obs nu) G p0 (ecar p1) t = cq-at (Obs nu) G p0 (mu p0) (ecar p1) e0 t v ; } ;
+  A (G : Env) (s : Ty) (h : Obs mu (jdg G p0 s)) : Obs mu (jdg G p2 s) =
+    cell-ind' mu G p0 (ecar p1) e0 (\ u -> Obs mu (jdg G p2 u)) (o-om G p2)
+      (\ a b h1 h2 -> o-meet G p2 a b h1 h2) (\ a b le h1 -> o-sub G p2 a b h1 le)
+      (\ u w -> (cons-inv mu G p1 p2 p3 e1 u w.1 w.2).1) s h ;
+  B (G : Env) (t : Ty) (h : Obs mu (jdg G p2 t)) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (ecar p1) t e0
+      (om, obs-at' mu G p1 (econs p2 p3) (pair t om) e1 (t, (om, (refl (pair t om), (h, o-om G p3))))) ;
+  inv : Inv mu nu = copy-inv mu p0 p2 F A B ;
+} ;
+
+-- CDR, likewise with p3
+module RuleCdr (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecdr p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) {
+  nu : Nat -> Cell = upd mu p0 (mu p3) ;
+  e1' : Id Cell (nu p1) (econs p2 p3) =
+    upd-other mu p0 (mu p3) p1 (econs p2 p3) e1 (other-form mu p0 (ecdr p1) (econs p2 p3) e0 tt) ;
+  F (G : Env) (t : Ty) (v : CellQ (Obs nu) G p0 (mu p0) t) : Obs nu (jdg G p3 t) =
+    (cons-inv nu G p1 p2 p3 e1' w.1 t w.2).2
+    where { w : CellQ (Obs nu) G p0 (ecdr p1) t = cq-at (Obs nu) G p0 (mu p0) (ecdr p1) e0 t v ; } ;
+  A (G : Env) (s : Ty) (h : Obs mu (jdg G p0 s)) : Obs mu (jdg G p3 s) =
+    cell-ind' mu G p0 (ecdr p1) e0 (\ u -> Obs mu (jdg G p3 u)) (o-om G p3)
+      (\ a b h1 h2 -> o-meet G p3 a b h1 h2) (\ a b le h1 -> o-sub G p3 a b h1 le)
+      (\ u w -> (cons-inv mu G p1 p2 p3 e1 w.1 u w.2).2) s h ;
+  B (G : Env) (t : Ty) (h : Obs mu (jdg G p3 t)) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (ecdr p1) t e0
+      (om, obs-at' mu G p1 (econs p2 p3) (pair om t) e1 (om, (t, (refl (pair om t), (o-om G p2, h))))) ;
+  inv : Inv mu nu = copy-inv mu p0 p3 F A B ;
+} ;
+
+-- [I], true branch: mu p0 = (IF p p1 p2), mu p = (QUOTE T), nu = mu[mu p1 / p0]
+if-T-pick (m : Nat -> Cell) (G : Env) (p p1 p2 : Nat) (t : Ty) (eT : Id Cell (m p) (equote T)) :
+    Plus (Obs m (jdg G p (at T)) * Obs m (jdg G p1 t)) (Obs m (jdg G p (at NIL)) * Obs m (jdg G p2 t)) -> Obs m (jdg G p1 t) = split {
+  inl w -> w.2 ;
+  inr w -> efq (T-ne-NIL (quote-at m G p T NIL eT w.1)) } ;
+
+module RuleIfT (mu : Nat -> Cell) (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eT : Id Cell (mu p) (equote T)) {
+  nu : Nat -> Cell = upd mu p0 (mu p1) ;
+  eT' : Id Cell (nu p) (equote T) = upd-other mu p0 (mu p1) p (equote T) eT (other-form mu p0 (eif p p1 p2) (equote T) e0 tt) ;
+  F (G : Env) (t : Ty) (v : CellQ (Obs nu) G p0 (mu p0) t) : Obs nu (jdg G p1 t) =
+    if-T-pick nu G p p1 p2 t eT' (cq-at (Obs nu) G p0 (mu p0) (eif p p1 p2) e0 t v) ;
+  A (G : Env) (s : Ty) (h : Obs mu (jdg G p0 s)) : Obs mu (jdg G p1 s) =
+    cell-ind' mu G p0 (eif p p1 p2) e0 (\ u -> Obs mu (jdg G p1 u)) (o-om G p1)
+      (\ a b h1 h2 -> o-meet G p1 a b h1 h2) (\ a b le h1 -> o-sub G p1 a b h1 le)
+      (\ u w -> if-T-pick mu G p p1 p2 u eT w) s h ;
+  B (G : Env) (t : Ty) (h : Obs mu (jdg G p1 t)) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (eif p p1 p2) t e0 (inl (obs-quote mu G p T eT, h)) ;
+  inv : Inv mu nu = copy-inv mu p0 p1 F A B ;
+} ;
+
+if-NIL-pick (m : Nat -> Cell) (G : Env) (p p1 p2 : Nat) (t : Ty) (eN : Id Cell (m p) (equote NIL)) :
+    Plus (Obs m (jdg G p (at T)) * Obs m (jdg G p1 t)) (Obs m (jdg G p (at NIL)) * Obs m (jdg G p2 t)) -> Obs m (jdg G p2 t) = split {
+  inl w -> efq (NIL-ne-T (quote-at m G p NIL T eN w.1)) ;
+  inr w -> w.2 } ;
+
+module RuleIfNIL (mu : Nat -> Cell) (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eN : Id Cell (mu p) (equote NIL)) {
+  nu : Nat -> Cell = upd mu p0 (mu p2) ;
+  eN' : Id Cell (nu p) (equote NIL) = upd-other mu p0 (mu p2) p (equote NIL) eN (other-form mu p0 (eif p p1 p2) (equote NIL) e0 tt) ;
+  F (G : Env) (t : Ty) (v : CellQ (Obs nu) G p0 (mu p0) t) : Obs nu (jdg G p2 t) =
+    if-NIL-pick nu G p p1 p2 t eN' (cq-at (Obs nu) G p0 (mu p0) (eif p p1 p2) e0 t v) ;
+  A (G : Env) (s : Ty) (h : Obs mu (jdg G p0 s)) : Obs mu (jdg G p2 s) =
+    cell-ind' mu G p0 (eif p p1 p2) e0 (\ u -> Obs mu (jdg G p2 u)) (o-om G p2)
+      (\ a b h1 h2 -> o-meet G p2 a b h1 h2) (\ a b le h1 -> o-sub G p2 a b h1 le)
+      (\ u w -> if-NIL-pick mu G p p1 p2 u eN w) s h ;
+  B (G : Env) (t : Ty) (h : Obs mu (jdg G p2 t)) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (eif p p1 p2) t e0 (inr (obs-quote mu G p NIL eN, h)) ;
+  inv : Inv mu nu = copy-inv mu p0 p2 F A B ;
+} ;
+
+-- [Fa]: mu p0 = (FUNARG p th), mu p = x, th binds x first to q; nu = mu[mu q / p0]
+fa-core (m : Nat -> Cell) (G : Env) (p q x : Nat) (th : Alist) (lk : Lookup th x q) (ev : Id Cell (m p) (evar x))
+    (t : Ty) (v : FM m G p th t) : Obs m (jdg G q t) =
+  o-sub G q (v.1 x) t (v.2.1 x q lk)
+    (le-trans (v.1 x) (look (extTh v.1 th G) x) t
+       (id-le (v.1 x) (look (extTh v.1 th G) x) (sym Ty (look (extTh v.1 th G) x) (v.1 x) (lookup-extTh v.1 G th x q lk)))
+       (var-inv m (extTh v.1 th G) p x ev t v.2.2)) ;
+
+-- the choice "x : t, the other variables om"
+pickS (x : Nat) (t : Ty) : Nat -> Ty = \ y -> ifB Ty (eqN y x) t om ;
+
+fa-theta (mu : Nat -> Cell) (G : Env) (q x : Nat) (th : Alist) (lk : Lookup th x q) (t : Ty) (h : Obs mu (jdg G q t))
+    (y q' : Nat) (k : Lookup th y q') : Plus (IsT (eqN y x)) (IsF (eqN y x)) -> Obs mu (jdg G q' (pickS x t y)) = split {
+  inl b -> obs-ty mu G q' t (pickS x t y) (sym Ty (pickS x t y) t (ifB-T Ty t om (eqN y x) b))
+             (obs-adr mu G q q' t
+                (lookup-fun th x q q' lk (subst Nat (\ z -> Lookup th z q') y x (eqN-sound y x b) k)) h) ;
+  inr b -> obs-ty mu G q' om (pickS x t y) (sym Ty (pickS x t y) om (ifB-F Ty t om (eqN y x) b)) (o-om G q') } ;
+
+module RuleFa (mu : Nat -> Cell) (p0 p q x : Nat) (th : Alist) (e0 : Id Cell (mu p0) (efunarg p th))
+    (ev : Id Cell (mu p) (evar x)) (lk : Lookup th x q) {
+  nu : Nat -> Cell = upd mu p0 (mu q) ;
+  ev' : Id Cell (nu p) (evar x) = upd-other mu p0 (mu q) p (evar x) ev (other-form mu p0 (efunarg p th) (evar x) e0 tt) ;
+  F (G : Env) (t : Ty) (v : CellQ (Obs nu) G p0 (mu p0) t) : Obs nu (jdg G q t) =
+    fa-core nu G p q x th lk ev' t (cq-at (Obs nu) G p0 (mu p0) (efunarg p th) e0 t v) ;
+  A (G : Env) (s : Ty) (h : Obs mu (jdg G p0 s)) : Obs mu (jdg G q s) =
+    fa-core mu G p q x th lk ev s (funarg-inv mu G p0 p th e0 s h) ;
+  B (G : Env) (t : Ty) (h : Obs mu (jdg G q t)) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (efunarg p th) t e0
+      (pickS x t,
+       (\ y q' k -> fa-theta mu G q x th lk t h y q' k (bool-dec (eqN y x)),
+        obs-ty mu (extTh (pickS x t) th G) p (look (extTh (pickS x t) th G) x) t
+          (trans Ty (look (extTh (pickS x t) th G) x) (pickS x t x) t
+             (lookup-extTh (pickS x t) G th x q lk) (ifB-T Ty t om (eqN x x) (eqN-refl x)))
+          (obs-at' mu (extTh (pickS x t) th G) p (evar x) (look (extTh (pickS x t) th G) x) ev
+             (refl (look (extTh (pickS x t) th G) x))))) ;
+  inv : Inv mu nu = copy-inv mu p0 q F A B ;
+} ;
+
+------------------------------------------------------------------------
+-- rules whose result is a QUOTE
+
+-- [A], an atom: mu p0 = (ATOM p1), mu p1 = (QUOTE a), nu = mu[(QUOTE T) / p0]
+atom-T-fwd (nu : Nat -> Cell) (G : Env) (p0 p1 : Nat) (a : Atom) (hT : Id Cell (nu p0) (equote T))
+    (e1 : Id Cell (nu p1) (equote a)) (t : Ty) :
+    Plus (Id Ty t (at T) * Obs nu (jdg G p1 atom)) (Id Ty t (at NIL) * Obs nu (jdg G p1 (pair om om))) -> Obs nu (jdg G p0 t) = split {
+  inl w -> obs-at' nu G p0 (equote T) t hT w.1 ;
+  inr w -> efq (at-not-pair a om om (quote-inv nu G p1 a e1 (pair om om) w.2)) } ;
+
+module RuleAtomT (mu : Nat -> Cell) (p0 p1 : Nat) (a : Atom) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (equote a)) {
+  nu : Nat -> Cell = upd mu p0 (equote T) ;
+  inv : Inv mu nu = rewrite-inv mu p0 (equote T)
+    (\ G t v -> atom-T-fwd nu G p0 p1 a (upd-hit mu p0 (equote T))
+        (upd-other mu p0 (equote T) p1 (equote a) e1 (other-form mu p0 (eatom p1) (equote a) e0 tt)) t
+        (cq-at (Obs nu) G p0 (mu p0) (eatom p1) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (eatom p1) t e0
+        (inl (cq-at (Obs mu) G p0 (nu p0) (equote T) (upd-hit mu p0 (equote T)) t v,
+              o-sub G p1 (at a) atom (obs-quote mu G p1 a e1) (le-at a)))) ;
+} ;
+
+-- [A], a pair: mu p1 = (CONS p2 p3), nu = mu[(QUOTE NIL) / p0]
+atom-NIL-fwd (nu : Nat -> Cell) (G : Env) (p0 p1 p2 p3 : Nat) (hN : Id Cell (nu p0) (equote NIL))
+    (e1 : Id Cell (nu p1) (econs p2 p3)) (t : Ty) :
+    Plus (Id Ty t (at T) * Obs nu (jdg G p1 atom)) (Id Ty t (at NIL) * Obs nu (jdg G p1 (pair om om))) -> Obs nu (jdg G p0 t) = split {
+  inl w -> efq (pair-not-atom k.1 k.2.1 k.2.2)
+           where { k : Principal PairShape atom = cons-shape nu G p1 p2 p3 e1 atom w.2 ; } ;
+  inr w -> obs-at' nu G p0 (equote NIL) t hN w.1 } ;
+
+module RuleAtomNIL (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) {
+  nu : Nat -> Cell = upd mu p0 (equote NIL) ;
+  inv : Inv mu nu = rewrite-inv mu p0 (equote NIL)
+    (\ G t v -> atom-NIL-fwd nu G p0 p1 p2 p3 (upd-hit mu p0 (equote NIL))
+        (upd-other mu p0 (equote NIL) p1 (econs p2 p3) e1 (other-form mu p0 (eatom p1) (econs p2 p3) e0 tt)) t
+        (cq-at (Obs nu) G p0 (mu p0) (eatom p1) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (eatom p1) t e0
+        (inr (cq-at (Obs mu) G p0 (nu p0) (equote NIL) (upd-hit mu p0 (equote NIL)) t v,
+              obs-at' mu G p1 (econs p2 p3) (pair om om) e1 (om, (om, (refl (pair om om), (o-om G p2, o-om G p3))))))) ;
+} ;
+
+-- [E]: mu p0 = (EQ p1 p2), mu p1 = (QUOTE a1), mu p2 = (QUOTE a2)
+
+-- the decision on (a1, a2) moved to (b1, b2) along a1 = b1, a2 = b2
+atEq-move (P : Bool -> U l) (a1 a2 b1 b2 : Atom) (x : Id Atom a1 b1) (y : Id Atom a2 b2) (h : P (atEq a1 a2)) : P (atEq b1 b2) =
+  subst Atom (\ z -> P (atEq b1 z)) a2 b2 y (subst Atom (\ z -> P (atEq z a2)) a1 b1 x h) ;
+
+eq-T-fwd (nu : Nat -> Cell) (G : Env) (p0 p1 p2 : Nat) (a1 a2 : Atom) (hT : Id Cell (nu p0) (equote T))
+    (e1 : Id Cell (nu p1) (equote a1)) (e2 : Id Cell (nu p2) (equote a2)) (h : IsT (atEq a1 a2)) (t : Ty) (b1 b2 : Atom)
+    (o1 : Obs nu (jdg G p1 (at b1))) (o2 : Obs nu (jdg G p2 (at b2))) :
+    Plus (IsT (atEq b1 b2) * Id Ty t (at T)) (IsF (atEq b1 b2) * Id Ty t (at NIL)) -> Obs nu (jdg G p0 t) = split {
+  inl w -> obs-at' nu G p0 (equote T) t hT w.2 ;
+  inr w -> efq (IsT-IsF (atEq b1 b2)
+                 (atEq-move (\ z -> IsT z) a1 a2 b1 b2 (quote-at nu G p1 a1 b1 e1 o1) (quote-at nu G p2 a2 b2 e2 o2) h) w.1) } ;
+
+module RuleEqT (mu : Nat -> Cell) (p0 p1 p2 : Nat) (a1 a2 : Atom) (e0 : Id Cell (mu p0) (eeq p1 p2))
+    (e1 : Id Cell (mu p1) (equote a1)) (e2 : Id Cell (mu p2) (equote a2)) (h : IsT (atEq a1 a2)) {
+  nu : Nat -> Cell = upd mu p0 (equote T) ;
+  fwd (G : Env) (t : Ty) (w : CellQ (Obs nu) G p0 (eeq p1 p2) t) : Obs nu (jdg G p0 t) =
+    eq-T-fwd nu G p0 p1 p2 a1 a2 (upd-hit mu p0 (equote T))
+        (upd-other mu p0 (equote T) p1 (equote a1) e1 (other-form mu p0 (eeq p1 p2) (equote a1) e0 tt))
+        (upd-other mu p0 (equote T) p2 (equote a2) e2 (other-form mu p0 (eeq p1 p2) (equote a2) e0 tt))
+        h t w.1 w.2.1 w.2.2.1 w.2.2.2.1 w.2.2.2.2 ;
+  inv : Inv mu nu = rewrite-inv mu p0 (equote T)
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p0 (mu p0) (eeq p1 p2) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (eeq p1 p2) t e0
+        (a1, (a2, (obs-quote mu G p1 a1 e1, (obs-quote mu G p2 a2 e2,
+          inl (h, cq-at (Obs mu) G p0 (nu p0) (equote T) (upd-hit mu p0 (equote T)) t v)))))) ;
+} ;
+
+eq-NIL-fwd (nu : Nat -> Cell) (G : Env) (p0 p1 p2 : Nat) (a1 a2 : Atom) (hN : Id Cell (nu p0) (equote NIL))
+    (e1 : Id Cell (nu p1) (equote a1)) (e2 : Id Cell (nu p2) (equote a2)) (h : IsF (atEq a1 a2)) (t : Ty) (b1 b2 : Atom)
+    (o1 : Obs nu (jdg G p1 (at b1))) (o2 : Obs nu (jdg G p2 (at b2))) :
+    Plus (IsT (atEq b1 b2) * Id Ty t (at T)) (IsF (atEq b1 b2) * Id Ty t (at NIL)) -> Obs nu (jdg G p0 t) = split {
+  inl w -> efq (IsT-IsF (atEq b1 b2) w.1
+                 (atEq-move (\ z -> IsF z) a1 a2 b1 b2 (quote-at nu G p1 a1 b1 e1 o1) (quote-at nu G p2 a2 b2 e2 o2) h)) ;
+  inr w -> obs-at' nu G p0 (equote NIL) t hN w.2 } ;
+
+module RuleEqNIL (mu : Nat -> Cell) (p0 p1 p2 : Nat) (a1 a2 : Atom) (e0 : Id Cell (mu p0) (eeq p1 p2))
+    (e1 : Id Cell (mu p1) (equote a1)) (e2 : Id Cell (mu p2) (equote a2)) (h : IsF (atEq a1 a2)) {
+  nu : Nat -> Cell = upd mu p0 (equote NIL) ;
+  fwd (G : Env) (t : Ty) (w : CellQ (Obs nu) G p0 (eeq p1 p2) t) : Obs nu (jdg G p0 t) =
+    eq-NIL-fwd nu G p0 p1 p2 a1 a2 (upd-hit mu p0 (equote NIL))
+        (upd-other mu p0 (equote NIL) p1 (equote a1) e1 (other-form mu p0 (eeq p1 p2) (equote a1) e0 tt))
+        (upd-other mu p0 (equote NIL) p2 (equote a2) e2 (other-form mu p0 (eeq p1 p2) (equote a2) e0 tt))
+        h t w.1 w.2.1 w.2.2.1 w.2.2.2.1 w.2.2.2.2 ;
+  inv : Inv mu nu = rewrite-inv mu p0 (equote NIL)
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p0 (mu p0) (eeq p1 p2) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (eeq p1 p2) t e0
+        (a1, (a2, (obs-quote mu G p1 a1 e1, (obs-quote mu G p2 a2 e2,
+          inr (h, cq-at (Obs mu) G p0 (nu p0) (equote NIL) (upd-hit mu p0 (equote NIL)) t v)))))) ;
+} ;
+
+-- PLUS: mu p0 = (PLUS p1 p2), mu p1 = (QUOTE m), mu p2 = (QUOTE n)
+num-eq (m m' : Nat) (e : Id Atom (num m) (num m')) : Id Nat m m' = ap Atom Nat numOf (num m) (num m') e ;
+
+module RulePlus (mu : Nat -> Cell) (p0 p1 p2 m n : Nat) (e0 : Id Cell (mu p0) (eplus p1 p2))
+    (e1 : Id Cell (mu p1) (equote (num m))) (e2 : Id Cell (mu p2) (equote (num n))) {
+  c : Cell = equote (num (add m n)) ;
+  nu : Nat -> Cell = upd mu p0 c ;
+  e1' : Id Cell (nu p1) (equote (num m)) = upd-other mu p0 c p1 (equote (num m)) e1 (other-form mu p0 (eplus p1 p2) (equote (num m)) e0 tt) ;
+  e2' : Id Cell (nu p2) (equote (num n)) = upd-other mu p0 c p2 (equote (num n)) e2 (other-form mu p0 (eplus p1 p2) (equote (num n)) e0 tt) ;
+  -- the observed numbers are m and n
+  fwd (G : Env) (t : Ty) (w : CellQ (Obs nu) G p0 (eplus p1 p2) t) : Obs nu (jdg G p0 t) =
+    obs-at' nu G p0 (equote (num (add m n))) t (upd-hit mu p0 c)
+      (trans Ty t (at (num (add w.1 w.2.1))) (at (num (add m n))) w.2.2.2.2
+         (trans Ty (at (num (add w.1 w.2.1))) (at (num (add m w.2.1))) (at (num (add m n)))
+            (ap Nat Ty (\ k -> at (num (add k w.2.1))) w.1 m
+               (sym Nat m w.1 (num-eq m w.1 (quote-at nu G p1 (num m) (num w.1) e1' w.2.2.1))))
+            (ap Nat Ty (\ k -> at (num (add m k))) w.2.1 n
+               (sym Nat n w.2.1 (num-eq n w.2.1 (quote-at nu G p2 (num n) (num w.2.1) e2' w.2.2.2.1)))))) ;
+  inv : Inv mu nu = rewrite-inv mu p0 c
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p0 (mu p0) (eplus p1 p2) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (eplus p1 p2) t e0
+        (m, (n, (obs-quote mu G p1 (num m) e1, (obs-quote mu G p2 (num n) e2,
+          cq-at (Obs mu) G p0 (nu p0) c (upd-hit mu p0 c) t v))))) ;
+} ;
+
+-- [Fb]: mu p0 = (FUNARG p th), mu p = (QUOTE a), nu = mu[(QUOTE a) / p0]
+module RuleFb (mu : Nat -> Cell) (p0 p : Nat) (th : Alist) (a : Atom) (e0 : Id Cell (mu p0) (efunarg p th))
+    (e1 : Id Cell (mu p) (equote a)) {
+  nu : Nat -> Cell = upd mu p0 (equote a) ;
+  e1' : Id Cell (nu p) (equote a) = upd-other mu p0 (equote a) p (equote a) e1 (other-form mu p0 (efunarg p th) (equote a) e0 tt) ;
+  fwd (G : Env) (t : Ty) (w : FM nu G p th t) : Obs nu (jdg G p0 t) =
+    o-sub G p0 (at a) t (obs-quote nu G p0 a (upd-hit mu p0 (equote a))) (quote-inv nu (extTh w.1 th G) p a e1' t w.2.2) ;
+  inv : Inv mu nu = rewrite-inv mu p0 (equote a)
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p0 (mu p0) (efunarg p th) e0 t v))
+    (\ G t v -> obs-at' mu G p0 (efunarg p th) t e0
+        (\ x -> om, (\ x q k -> o-om G q,
+          obs-at' mu (extTh (\ x -> om) th G) p (equote a) t e1
+            (cq-at (Obs mu) G p0 (nu p0) (equote a) (upd-hit mu p0 (equote a)) t v)))) ;
+} ;

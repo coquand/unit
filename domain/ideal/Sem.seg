@@ -1,0 +1,208 @@
+-- Sem.seg: environments, semantic memories, the clauses of the paper,
+-- and the semantic function (doc/lazy-intersection.tex section 6.2).
+--
+-- An environment rho maps variables to filters; a type environment G is
+-- in rho when look G x is in rho x for every x; upE G is the environment
+-- of the principal filters of G.  A semantic memory S maps an address and
+-- an environment to a filter; it is monotone (SMono) and continuous
+-- (SCont: an element of S p rho is an element of S p (upE G) for some G
+-- in rho).  Cl S c rho is the paper's clause for the cell c; FUNARG binds
+-- the variables of its alist to the values of their addresses, the first
+-- binding winning (extR, as extTh for types).  The semantic function is
+-- defined from the observations:
+--     V mu p rho = { t | mu |- p :_G t for some G in rho }.
+-- Two type environments in rho have a meet in rho (envMeet), and the
+-- observations move to it by Lemma 3.2(1): V mu p rho is a filter.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Filter[l] ; open Laws[l] ;
+
+------------------------------------------------------------------------
+-- environments of filters
+
+Rho : U l+ = Nat -> Filt ;
+RhoSub (rho rho' : Rho) : U l = (x : Nat) -> Sub (rho x) (rho' x) ;
+
+selF : Bool -> Filt -> Filt -> Filt = split { true -> \ a c -> a ; false -> \ a c -> c } ;
+
+selF-T : (b : Bool) -> IsT b -> (a c : Filt) -> Eqv (selF b a c) a = split {
+  true -> \ h a c -> eqv-refl a ;
+  false -> \ h a c -> absurd (Eqv c a) h } ;
+selF-F : (b : Bool) -> IsF b -> (a c : Filt) -> Eqv (selF b a c) c = split {
+  true -> \ h a c -> absurd (Eqv a c) h ;
+  false -> \ h a c -> eqv-refl c } ;
+selF-mono : (b : Bool) -> (a a' c c' : Filt) -> Sub a a' -> Sub c c' -> Sub (selF b a c) (selF b a' c') = split {
+  true -> \ a a' c c' h k -> h ;
+  false -> \ a a' c c' h k -> k } ;
+
+-- rho[v / x]
+updR (rho : Rho) (x : Nat) (v : Filt) : Rho = \ y -> selF (eqN y x) v (rho y) ;
+
+updR-hit (rho : Rho) (x : Nat) (v : Filt) : Eqv (updR rho x v x) v = selF-T (eqN x x) (eqN-refl x) v (rho x) ;
+updR-miss (rho : Rho) (x : Nat) (v : Filt) (y : Nat) (h : IsF (eqN y x)) : Eqv (updR rho x v y) (rho y) =
+  selF-F (eqN y x) h v (rho y) ;
+updR-mono (rho rho' : Rho) (x : Nat) (v v' : Filt) (h : RhoSub rho rho') (k : Sub v v') : RhoSub (updR rho x v) (updR rho' x v') =
+  \ y -> selF-mono (eqN y x) v v' (rho y) (rho' y) k (h y) ;
+
+------------------------------------------------------------------------
+-- type environments in an environment
+
+EnvIn (G : Env) (rho : Rho) : U l = (x : Nat) -> mem (rho x) (look G x) ;
+upE (G : Env) : Rho = \ x -> prin (look G x) ;
+
+envin-up (G : Env) (rho : Rho) (h : EnvIn G rho) : RhoSub (upE G) rho =
+  \ x -> prin-sub (look G x) (rho x) (h x) ;
+envin-mono (G : Env) (rho rho' : Rho) (k : RhoSub rho rho') (h : EnvIn G rho) : EnvIn G rho' =
+  \ x -> k x (look G x) (h x) ;
+envin-self (G : Env) : EnvIn G (upE G) = \ x -> prin-in (look G x) ;
+envin-nil (rho : Rho) : EnvIn gnil rho = \ x -> fom (rho x) ;
+
+-- the meet of two type environments (the binding of x in G meets the
+-- visible type of x in H)
+envMeet : Env -> Env -> Env = split {
+  gnil -> \ H -> H ;
+  gcons x t G | r -> \ H -> gcons x (meet t (look H x)) (r H) } ;
+
+em-l : (G H : Env) -> EnvLe (envMeet G H) G = split {
+  gnil -> \ H y -> le-om (look H y) ;
+  gcons x t G | r -> \ H y ->
+    ifB-le (meet t (look H x)) t (look (envMeet G H) y) (look G y) (le-meet-l t (look H x)) (r H y) (eqN y x) } ;
+
+em-r-case (x y : Nat) (t : Ty) (H M : Env) (ry : Le (look M y) (look H y)) :
+    (b : Bool) -> (IsT b -> Id Nat y x) -> Le (ifB Ty b (meet t (look H x)) (look M y)) (look H y) = split {
+  true -> \ e -> subst Nat (\ z -> Le (meet t (look H z)) (look H y)) y x (e tt)
+                   (le-meet-r t (look H y)) ;
+  false -> \ e -> ry } ;
+
+em-r : (G H : Env) -> EnvLe (envMeet G H) H = split {
+  gnil -> \ H y -> le-refl (look H y) ;
+  gcons x t G | r -> \ H y -> em-r-case x y t H (envMeet G H) (r H y) (eqN y x) (eqN-sound y x) } ;
+
+em-in-case (rho : Rho) (x y : Nat) (t : Ty) (G H M : Env)
+    (r : mem (rho y) (look G y) -> mem (rho y) (look H y) -> mem (rho y) (look M y)) :
+    (b : Bool) -> (IsT b -> Id Nat y x) -> mem (rho y) (ifB Ty b t (look G y)) -> mem (rho y) (look H y) ->
+    mem (rho y) (ifB Ty b (meet t (look H x)) (look M y)) = split {
+  true -> \ e hg hh -> fmeet (rho y) t (look H x) hg (subst Nat (\ z -> mem (rho y) (look H z)) y x (e tt) hh) ;
+  false -> \ e hg hh -> r hg hh } ;
+
+em-in-at (rho : Rho) : (G H : Env) (y : Nat) -> mem (rho y) (look G y) -> mem (rho y) (look H y) ->
+    mem (rho y) (look (envMeet G H) y) = split {
+  gnil -> \ H y hg hh -> hh ;
+  gcons x t G | r -> \ H y -> em-in-case rho x y t G H (envMeet G H) (r H y) (eqN y x) (eqN-sound y x) } ;
+
+em-in (rho : Rho) (G H : Env) (hG : EnvIn G rho) (hH : EnvIn H rho) : EnvIn (envMeet G H) rho =
+  \ y -> em-in-at rho G H y (hG y) (hH y) ;
+
+------------------------------------------------------------------------
+-- association lists
+
+orB : Bool -> Bool -> Bool = split { true -> \ b -> true ; false -> \ b -> b } ;
+
+-- th binds y
+bound : Alist -> Nat -> Bool = split {
+  anil -> \ y -> false ;
+  acons x q th | r -> \ y -> orB (eqN y x) (r y) } ;
+
+------------------------------------------------------------------------
+-- semantic memories
+
+SMem : U l+ = Nat -> Rho -> Filt ;
+SMono (S : SMem) : U l+ = (p : Nat) (rho rho' : Rho) -> RhoSub rho rho' -> Sub (S p rho) (S p rho') ;
+SCont (S : SMem) : U l+ =
+  (p : Nat) (rho : Rho) (t : Ty) -> mem (S p rho) t -> Ex ((G : Env) * (EnvIn G rho * mem (S p (upE G)) t)) ;
+
+-- rho[S th rho / th]
+extR (S : SMem) (rho : Rho) : Alist -> Rho = split {
+  anil -> rho ;
+  acons x q th | r -> updR r x (S q rho) } ;
+
+extR-mono (S : SMem) (Sm : SMono S) (rho rho' : Rho) (h : RhoSub rho rho') : (th : Alist) -> RhoSub (extR S rho th) (extR S rho' th) = split {
+  anil -> h ;
+  acons x q th | r -> updR-mono (extR S rho th) (extR S rho' th) x (S q rho) (S q rho') r (Sm q rho rho' h) } ;
+
+-- the body of LAMBDA x p and LABEL x p, as a function of the value of x
+gfun (S : SMem) (p : Nat) (rho : Rho) (x : Nat) (y : Filt) : Filt = S p (updR rho x y) ;
+
+-- the clauses of the paper
+Cl (S : SMem) : Cell -> Rho -> Filt = split {
+  evar x -> \ rho -> rho x ;
+  equote a -> \ rho -> prin (at a) ;
+  econs p q -> \ rho -> pairF (S p rho) (S q rho) ;
+  ecar p -> \ rho -> fstF (S p rho) ;
+  ecdr p -> \ rho -> sndF (S p rho) ;
+  eatom p -> \ rho -> atomF (S p rho) ;
+  eeq p q -> \ rho -> eqF (S p rho) (S q rho) ;
+  eif p0 p1 p2 -> \ rho -> condF (S p0 rho) (S p1 rho) (S p2 rho) ;
+  eapp p q -> \ rho -> appF (S p rho) (S q rho) ;
+  elam x p -> \ rho -> lamF (trace (gfun S p rho x)) ;
+  elabel x p -> \ rho -> fixF (trace (gfun S p rho x)) ;
+  efunarg p th -> \ rho -> S p (extR S rho th) ;
+  eplus p q -> \ rho -> plusF (S p rho) (S q rho) ;
+  efree -> \ rho -> bot } ;
+
+gfun-mono (S : SMem) (Sm : SMono S) (p : Nat) (rho rho' : Rho) (x : Nat) (h : RhoSub rho rho') (y y' : Filt) (k : Sub y y') :
+    Sub (gfun S p rho x y) (gfun S p rho' x y') =
+  Sm p (updR rho x y) (updR rho' x y') (updR-mono rho rho' x y y' h k) ;
+
+-- Cl S c is monotone in the environment
+Cl-mono (S : SMem) (Sm : SMono S) : (c : Cell) -> (rho rho' : Rho) -> RhoSub rho rho' -> Sub (Cl S c rho) (Cl S c rho') = split {
+  evar x -> \ rho rho' h -> h x ;
+  equote a -> \ rho rho' h -> sub-refl (prin (at a)) ;
+  econs p q -> \ rho rho' h -> pair-mono (S p rho) (S p rho') (S q rho) (S q rho') (Sm p rho rho' h) (Sm q rho rho' h) ;
+  ecar p -> \ rho rho' h -> fst-mono (S p rho) (S p rho') (Sm p rho rho' h) ;
+  ecdr p -> \ rho rho' h -> snd-mono (S p rho) (S p rho') (Sm p rho rho' h) ;
+  eatom p -> \ rho rho' h -> atom-mono (S p rho) (S p rho') (Sm p rho rho' h) ;
+  eeq p q -> \ rho rho' h -> eq-mono (S p rho) (S p rho') (S q rho) (S q rho') (Sm p rho rho' h) (Sm q rho rho' h) ;
+  eif p0 p1 p2 -> \ rho rho' h -> cond-mono (S p0 rho) (S p0 rho') (S p1 rho) (S p1 rho') (S p2 rho) (S p2 rho')
+                      (Sm p0 rho rho' h) (Sm p1 rho rho' h) (Sm p2 rho rho' h) ;
+  eapp p q -> \ rho rho' h -> app-mono (S p rho) (S p rho') (S q rho) (S q rho') (Sm p rho rho' h) (Sm q rho rho' h) ;
+  elam x p -> \ rho rho' h -> lam-mono (trace (gfun S p rho x)) (trace (gfun S p rho' x))
+                 (\ s -> gfun-mono S Sm p rho rho' x h (prin s) (prin s) (sub-refl (prin s))) ;
+  elabel x p -> \ rho rho' h -> fix-mono (trace (gfun S p rho x)) (trace (gfun S p rho' x))
+                 (\ s -> gfun-mono S Sm p rho rho' x h (prin s) (prin s) (sub-refl (prin s))) ;
+  efunarg p th -> \ rho rho' h -> Sm p (extR S rho th) (extR S rho' th) (extR-mono S Sm rho rho' h th) ;
+  eplus p q -> \ rho rho' h -> plus-mono (S p rho) (S p rho') (S q rho) (S q rho') (Sm p rho rho' h) (Sm q rho rho' h) ;
+  efree -> \ rho rho' h -> sub-refl bot } ;
+
+------------------------------------------------------------------------
+-- the semantic function
+
+VW (mu : Nat -> Cell) (p : Nat) (rho : Rho) (t : Ty) : U l = (G : Env) * (EnvIn G rho * Obs mu (jdg G p t)) ;
+
+vw-meet (mu : Nat -> Cell) (p : Nat) (rho : Rho) (s t : Ty) (a : VW mu p rho s) (b : VW mu p rho t) : VW mu p rho (meet s t) =
+  (envMeet a.1 b.1, (em-in rho a.1 b.1 a.2.1 b.2.1,
+    o-meet (envMeet a.1 b.1) p s t
+      (obs-env mu a.1 (envMeet a.1 b.1) p s (em-l a.1 b.1) a.2.2)
+      (obs-env mu b.1 (envMeet a.1 b.1) p t (em-r a.1 b.1) b.2.2))) ;
+
+V (mu : Nat -> Cell) (p : Nat) (rho : Rho) : Filt =
+  truncF (VW mu p rho) (gnil, (envin-nil rho, o-om gnil p)) (vw-meet mu p rho)
+    (\ s t le a -> (a.1, (a.2.1, o-sub a.1 p s t a.2.2 le))) ;
+
+-- an observation in an environment in rho gives an element
+v-in (mu : Nat -> Cell) (p : Nat) (rho : Rho) (G : Env) (t : Ty) (h : EnvIn G rho) (o : Obs mu (jdg G p t)) : mem (V mu p rho) t =
+  tr-in (VW mu p rho) t (G, (h, o)) ;
+
+-- an element gives an observation, for a proposition
+v-elim (mu : Nat -> Cell) (p : Nat) (rho : Rho) (t : Ty) (P : U l) (pP : isProp P)
+    (k : (G : Env) -> EnvIn G rho -> Obs mu (jdg G p t) -> P) (h : mem (V mu p rho) t) : P =
+  ex-elim (VW mu p rho t) P pP (\ w -> k w.1 w.2.1 w.2.2) h ;
+
+-- two elements, with one environment for both
+v-two (mu : Nat -> Cell) (p q : Nat) (rho : Rho) (s t : Ty) (P : U l) (pP : isProp P)
+    (k : (G : Env) -> EnvIn G rho -> Obs mu (jdg G p s) -> Obs mu (jdg G q t) -> P)
+    (h1 : mem (V mu p rho) s) (h2 : mem (V mu q rho) t) : P =
+  v-elim mu p rho s P pP (\ G1 i1 o1 ->
+    v-elim mu q rho t P pP (\ G2 i2 o2 ->
+      k (envMeet G1 G2) (em-in rho G1 G2 i1 i2)
+        (obs-env mu G1 (envMeet G1 G2) p s (em-l G1 G2) o1)
+        (obs-env mu G2 (envMeet G1 G2) q t (em-r G1 G2) o2)) h2) h1 ;
+
+V-mono (mu : Nat -> Cell) : SMono (V mu) = \ p rho rho' h ->
+  tr-sub (VW mu p rho) (V mu p rho') (\ t w -> v-in mu p rho' w.1 t (envin-mono w.1 rho rho' h w.2.1) w.2.2) ;
+
+V-cont (mu : Nat -> Cell) : SCont (V mu) = \ p rho t h ->
+  v-elim mu p rho t (Ex ((G : Env) * (EnvIn G rho * mem (V mu p (upE G)) t)))
+    (ex-prop ((G : Env) * (EnvIn G rho * mem (V mu p (upE G)) t)))
+    (\ G i o -> ex ((G : Env) * (EnvIn G rho * mem (V mu p (upE G)) t)) (G, (i, v-in mu p (upE G) G t (envin-self G) o))) h ;

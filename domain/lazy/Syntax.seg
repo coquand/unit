@@ -1,0 +1,146 @@
+-- Syntax.seg: Hyper-Pure LISP cells, memories, association lists and
+-- environments (doc/lazy-intersection.tex section 1; Agda
+-- LAZY/Syntax/Heap.agda, AlistLookup of LAZY/Syntax/Step.agda).
+--
+-- A memory is a total function from addresses (naturals) to cells; a
+-- free cell is the cell efree (the Agda's `nothing').  Cells are the
+-- expression forms with addresses for the subexpressions, plus PLUS, the
+-- paper's assumed primitive.  An environment is a list of (variable,
+-- type) bindings; look G x is the type of the first binding of x, and om
+-- if there is none.  extTh s th G binds every variable of the alist th to
+-- the type s x, the first binding first: look (extTh s th G) x = s x when
+-- th binds x (lookup-extTh), as rule [Fa] chooses the smallest i.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ;
+
+------------------------------------------------------------------------
+-- cells and memories (Agda: Expr, Alist, Heap, upd)
+
+data Alist = anil | acons (x q : Nat) (th : Alist) ;
+
+data Cell =
+    evar (x : Nat)
+  | equote (a : Atom)
+  | econs (p q : Nat)
+  | ecar (p : Nat)
+  | ecdr (p : Nat)
+  | eatom (p : Nat)
+  | eeq (p q : Nat)
+  | eif (p q r : Nat)
+  | eapp (p q : Nat)
+  | elam (x p : Nat)
+  | elabel (x p : Nat)
+  | efunarg (p : Nat) (th : Alist)
+  | eplus (p q : Nat)
+  | efree ;
+
+-- mu[c / p0]
+upd (mu : Nat -> Cell) (p0 : Nat) (c : Cell) : Nat -> Cell = \ p -> ifB Cell (eqN p p0) c (mu p) ;
+
+ifB-same (A : U l) (x : A) : (b : Bool) -> Id A (ifB A b x x) x = split {
+  true -> refl x ;
+  false -> refl x } ;
+
+upd-hit (mu : Nat -> Cell) (p0 : Nat) (c : Cell) : Id Cell (upd mu p0 c p0) c =
+  ifB-T Cell c (mu p0) (eqN p0 p0) (eqN-refl p0) ;
+
+upd-miss (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (p : Nat) (h : IsF (eqN p p0)) : Id Cell (upd mu p0 c p) (mu p) =
+  ifB-F Cell c (mu p) (eqN p p0) h ;
+
+-- copying the cell of q: q keeps its cell
+upd-copy (mu : Nat -> Cell) (p0 q : Nat) : Id Cell (upd mu p0 (mu q) q) (mu q) =
+  ifB-same Cell (mu q) (eqN q p0) ;
+
+-- distinct forms (Agda: tag, cell-clash)
+tag : Cell -> Nat = split {
+  evar x -> zero ; equote a -> suc zero ; econs p q -> suc (suc zero) ;
+  ecar p -> suc (suc (suc zero)) ; ecdr p -> suc (suc (suc (suc zero))) ;
+  eatom p -> suc (suc (suc (suc (suc zero)))) ;
+  eeq p q -> suc (suc (suc (suc (suc (suc zero))))) ;
+  eif p q r -> suc (suc (suc (suc (suc (suc (suc zero)))))) ;
+  eapp p q -> suc (suc (suc (suc (suc (suc (suc (suc zero))))))) ;
+  elam x p -> suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))) ;
+  elabel x p -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))) ;
+  efunarg p th -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))))) ;
+  eplus p q -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))))) ;
+  efree -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))))))) } ;
+
+cell-ne (c d : Cell) (h : IsF (eqN (tag c) (tag d))) (e : Id Cell c d) : Empty =
+  eqN-ne (tag c) (tag d) h (ap Cell Nat tag c d e) ;
+
+-- a cell of another form than mu p0 is not rewritten by mu[c / p0]
+upd-other-by (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (q : Nat) (d : Cell) (e : Id Cell (mu q) d)
+    (dis : Not (Id Cell (mu p0) d)) : Plus (IsT (eqN q p0)) (IsF (eqN q p0)) -> Id Cell (upd mu p0 c q) d = split {
+  inl h -> efq (dis (subst Nat (\ z -> Id Cell (mu z) d) q p0 (eqN-sound q p0 h) e)) ;
+  inr h -> trans Cell (upd mu p0 c q) (mu q) d (upd-miss mu p0 c q h) e } ;
+
+upd-other (mu : Nat -> Cell) (p0 : Nat) (c : Cell) (q : Nat) (d : Cell) (e : Id Cell (mu q) d)
+    (dis : Not (Id Cell (mu p0) d)) : Id Cell (upd mu p0 c q) d =
+  upd-other-by mu p0 c q d e dis (bool-dec (eqN q p0)) ;
+
+-- the cell mu p0 has another form than d
+other-form (mu : Nat -> Cell) (p0 : Nat) (c0 d : Cell) (e0 : Id Cell (mu p0) c0)
+    (h : IsF (eqN (tag c0) (tag d))) (e : Id Cell (mu p0) d) : Empty =
+  cell-ne c0 d h (trans Cell c0 (mu p0) d (sym Cell (mu p0) c0 e0) e) ;
+
+------------------------------------------------------------------------
+-- association lists: the first binding (Agda: AlistLookup)
+
+data Lookup : (th : Alist) -> (x q : Nat) -> U l =
+    lk-here (x q : Nat) (th : Alist) : Lookup (acons x q th) x q
+  | lk-there (y r : Nat) (th : Alist) (x q : Nat) (ne : IsF (eqN x y)) (h : Lookup th x q) : Lookup (acons y r th) x q ;
+
+-- the address of the first binding (zero if none)
+lkq : Alist -> Nat -> Nat = split {
+  anil -> \ x -> zero ;
+  acons y r th | rec -> \ x -> ifB Nat (eqN x y) r (rec x) } ;
+
+lk-val : (th : Alist) -> (x q : Nat) -> Lookup th x q -> Id Nat (lkq th x) q = split {
+  lk-here x q th -> ifB-T Nat q (lkq th x) (eqN x x) (eqN-refl x) ;
+  lk-there y r th x q ne h | rh ->
+    trans Nat (lkq (acons y r th) x) (lkq th x) q (ifB-F Nat r (lkq th x) (eqN x y) ne) rh } ;
+
+lookup-fun (th : Alist) (x q q' : Nat) (h : Lookup th x q) (h' : Lookup th x q') : Id Nat q q' =
+  trans Nat q (lkq th x) q' (sym Nat (lkq th x) q (lk-val th x q h)) (lk-val th x q' h') ;
+
+LkAny (th : Alist) : U l = (x : Nat) * ((q : Nat) * Lookup th x q) ;
+
+------------------------------------------------------------------------
+-- environments
+
+data Env = gnil | gcons (x : Nat) (t : Ty) (G : Env) ;
+
+look : Env -> Nat -> Ty = split {
+  gnil -> \ x -> om ;
+  gcons y t G | r -> \ x -> ifB Ty (eqN x y) t (r x) } ;
+
+extTh (s : Nat -> Ty) : Alist -> Env -> Env = split {
+  anil -> \ G -> G ;
+  acons x q th | r -> \ G -> gcons x (s x) (r G) } ;
+
+lookup-extTh (s : Nat -> Ty) (G : Env) : (th : Alist) -> (x q : Nat) -> Lookup th x q -> Id Ty (look (extTh s th G) x) (s x) = split {
+  lk-here x q th -> ifB-T Ty (s x) (look (extTh s th G) x) (eqN x x) (eqN-refl x) ;
+  lk-there y r th x q ne h | rh ->
+    trans Ty (look (extTh s (acons y r th) G) x) (look (extTh s th G) x) (s x)
+      (ifB-F Ty (s y) (look (extTh s th G) x) (eqN x y) ne) rh } ;
+
+-- the pointwise order on environments
+EnvLe (D G : Env) : U l = (x : Nat) -> Le (look D x) (look G x) ;
+
+ifB-le (a a' c c' : Ty) (h1 : Le a a') (h2 : Le c c') : (b : Bool) -> Le (ifB Ty b a c) (ifB Ty b a' c') = split {
+  true -> h1 ;
+  false -> h2 } ;
+
+envle-refl (G : Env) : EnvLe G G = \ x -> le-refl (look G x) ;
+
+envle-cons (x : Nat) (a b : Ty) (D G : Env) (h : Le a b) (e : EnvLe D G) : EnvLe (gcons x a D) (gcons x b G) =
+  \ y -> ifB-le a b (look D y) (look G y) h (e y) (eqN y x) ;
+
+extTh-mono (s s' : Nat -> Ty) (hs : (x : Nat) -> Le (s x) (s' x)) (D G : Env) (h : EnvLe D G) :
+    (th : Alist) -> EnvLe (extTh s th D) (extTh s' th G) = split {
+  anil -> h ;
+  acons x q th | r -> envle-cons x (s x) (s' x) (extTh s th D) (extTh s' th G) (hs x) r } ;
+
+-- two environments with the same lookups
+EnvEq (D G : Env) : U l = EnvLe D G * EnvLe G D ;

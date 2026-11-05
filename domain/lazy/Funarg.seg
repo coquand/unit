@@ -1,0 +1,262 @@
+-- Funarg.seg: rules [Fc] and [Fd] (doc/lazy-intersection.tex, Theorem 4.1).
+--
+--   mu p0 = (FUNARG (a p1 .. pm) th)  =>
+--   mu' = mu[(a p1' .. pm') / p0, (FUNARG p1 th) / p1', .., (FUNARG pm th) / pm']
+-- for a an application ([Fc]) or one of CONS, CAR, CDR, ATOM, EQ, IF, PLUS
+-- ([Fd]), the pi' distinct free cells.  The rule is split in two:
+--  * allocation of a fresh cell a' with (FUNARG q th) (module Alloc): a'
+--    is free in mu and occurs in no cell of mu (Fresh).  Every type of
+--    an old cell is kept, both ways.  Forwards the free cell has no rule.
+--    Backwards, by the least-model lemma with M J = "jp J is old implies
+--    Obs mu J": a rule at an old cell has its premises at the components
+--    of the cell (old, since a' occurs in no cell of mu) or at the cell.
+--    (The note's "allocates cells not reachable from the old ones": in
+--    the paper this follows from the consistency of the memory; here it
+--    is the side condition Fresh of the allocation.)
+--  * the one-cell rewrite mu p0 = (FUNARG p th), mu p = c, nu = mu[c' / p0],
+--    where c' is c with each component a replaced by a cell a' /= p0
+--    holding (FUNARG a th) (Ren, one constructor per form).
+--    Forwards: the FUNARG rule of mu p0 gives s, th : s, and p : t in
+--    G[th : s].  By induction over the types of p in G[th : s], each rule
+--    of c, with premises a : u in G[th : s], gives the rule of c' with
+--    premises a' : u in G, by the FUNARG rule of a' with the same s.
+--    Backwards: the rule of c' at p0 has premises a' : u in G; each comes
+--    from its own choice for th (Gen.funarg-inv); the meet of these
+--    choices (at most two premises) serves all of them (Lemma 3.2(1)),
+--    giving the rule of c at p in G[th : s], and the FUNARG rule at p0.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ; open Gen[l] ; open Rules[l] ;
+
+------------------------------------------------------------------------
+-- renaming the components of a primitive cell
+
+data Ren (R : Nat -> Nat -> U l) : (c c' : Cell) -> U l =
+    ren-cons (p q p' q' : Nat) (hp : R p p') (hq : R q q') : Ren R (econs p q) (econs p' q')
+  | ren-car (p p' : Nat) (hp : R p p') : Ren R (ecar p) (ecar p')
+  | ren-cdr (p p' : Nat) (hp : R p p') : Ren R (ecdr p) (ecdr p')
+  | ren-atom (p p' : Nat) (hp : R p p') : Ren R (eatom p) (eatom p')
+  | ren-eq (p q p' q' : Nat) (hp : R p p') (hq : R q q') : Ren R (eeq p q) (eeq p' q')
+  | ren-if (p q r p' q' r' : Nat) (hp : R p p') (hq : R q q') (hr : R r r') : Ren R (eif p q r) (eif p' q' r')
+  | ren-app (p q p' q' : Nat) (hp : R p p') (hq : R q q') : Ren R (eapp p q) (eapp p' q')
+  | ren-plus (p q p' q' : Nat) (hp : R p p') (hq : R q q') : Ren R (eplus p q) (eplus p' q') ;
+
+flipR (R : Nat -> Nat -> U l) (a' a : Nat) : U l = R a a' ;
+
+ren-flip (R : Nat -> Nat -> U l) : (c c' : Cell) -> Ren R c c' -> Ren (flipR R) c' c = split {
+  ren-cons p q p' q' hp hq -> ren-cons p' q' p q hp hq ;
+  ren-car p p' hp -> ren-car p' p hp ;
+  ren-cdr p p' hp -> ren-cdr p' p hp ;
+  ren-atom p p' hp -> ren-atom p' p hp ;
+  ren-eq p q p' q' hp hq -> ren-eq p' q' p q hp hq ;
+  ren-if p q r p' q' r' hp hq hr -> ren-if p' q' r' p q r hp hq hr ;
+  ren-app p q p' q' hp hq -> ren-app p' q' p q hp hq ;
+  ren-plus p q p' q' hp hq -> ren-plus p' q' p q hp hq } ;
+
+-- a renamed cell is not a FUNARG
+ren-tag (R : Nat -> Nat -> U l) (p : Nat) (th : Alist) : (c c' : Cell) -> Ren R c c' -> IsF (eqN (tag (efunarg p th)) (tag c)) = split {
+  ren-cons p1 q p' q' hp hq -> tt ;
+  ren-car p1 p' hp -> tt ;
+  ren-cdr p1 p' hp -> tt ;
+  ren-atom p1 p' hp -> tt ;
+  ren-eq p1 q p' q' hp hq -> tt ;
+  ren-if p1 q r p' q' r' hp hq hr -> tt ;
+  ren-app p1 q p' q' hp hq -> tt ;
+  ren-plus p1 q p' q' hp hq -> tt } ;
+
+-- the rules of c, read with the premises moved along the renaming
+ren-map (R : Nat -> Nat -> U l) (M M' : Jdg -> U l) (E G : Env) (a0 b0 : Nat)
+    (f : (a a' : Nat) -> R a a' -> (u : Ty) -> M (jdg E a u) -> M' (jdg G a' u)) :
+    (c c' : Cell) -> Ren R c c' -> (t : Ty) -> CellQ M E a0 c t -> CellQ M' G b0 c' t = split {
+  ren-cons p q p' q' hp hq -> \ t v -> (v.1, (v.2.1, (v.2.2.1, (f p p' hp v.1 v.2.2.2.1, f q q' hq v.2.1 v.2.2.2.2)))) ;
+  ren-car p p' hp -> \ t v -> (v.1, f p p' hp (pair t v.1) v.2) ;
+  ren-cdr p p' hp -> \ t v -> (v.1, f p p' hp (pair v.1 t) v.2) ;
+  ren-atom p p' hp -> \ t v ->
+    plus-map (Id Ty t (at T) * M (jdg E p atom)) (Id Ty t (at NIL) * M (jdg E p (pair om om)))
+      (Id Ty t (at T) * M' (jdg G p' atom)) (Id Ty t (at NIL) * M' (jdg G p' (pair om om)))
+      (\ w -> (w.1, f p p' hp atom w.2)) (\ w -> (w.1, f p p' hp (pair om om) w.2)) v ;
+  ren-eq p q p' q' hp hq -> \ t v -> (v.1, (v.2.1, (f p p' hp (at v.1) v.2.2.1, (f q q' hq (at v.2.1) v.2.2.2.1, v.2.2.2.2)))) ;
+  ren-if p q r p' q' r' hp hq hr -> \ t v ->
+    plus-map (M (jdg E p (at T)) * M (jdg E q t)) (M (jdg E p (at NIL)) * M (jdg E r t))
+      (M' (jdg G p' (at T)) * M' (jdg G q' t)) (M' (jdg G p' (at NIL)) * M' (jdg G r' t))
+      (\ w -> (f p p' hp (at T) w.1, f q q' hq t w.2)) (\ w -> (f p p' hp (at NIL) w.1, f r r' hr t w.2)) v ;
+  ren-app p q p' q' hp hq -> \ t v -> (v.1, (f p p' hp (arr v.1 t) v.2.1, f q q' hq v.1 v.2.2)) ;
+  ren-plus p q p' q' hp hq -> \ t v ->
+    (v.1, (v.2.1, (f p p' hp (at (num v.1)) v.2.2.1, (f q q' hq (at (num v.2.1)) v.2.2.2.1, v.2.2.2.2)))) } ;
+
+------------------------------------------------------------------------
+-- one choice for the alist serves all the premises
+
+FMJ (mu : Nat -> Cell) (th : Alist) (J : Jdg) : U l = FM mu (jG J) (jp J) th (jt J) ;
+
+Coll (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 : Nat) (c : Cell) (t : Ty) : U l =
+  (s : Nat -> Ty) * (ThetaR (Obs mu) G th s * CellQ (Obs mu) (extTh s th G) a0 c t) ;
+
+Join (mu : Nat -> Cell) (G : Env) (th : Alist) (a b : Nat) (u v : Ty) : U l =
+  (s : Nat -> Ty) * (ThetaR (Obs mu) G th s * (Obs mu (jdg (extTh s th G) a u) * Obs mu (jdg (extTh s th G) b v))) ;
+
+fm-join (mu : Nat -> Cell) (G : Env) (th : Alist) (a b : Nat) (u v : Ty) (x : FM mu G a th u) (y : FM mu G b th v) :
+    Join mu G th a b u v =
+  (meetS x.1 y.1,
+   (\ z q k -> o-meet G q (x.1 z) (y.1 z) (x.2.1 z q k) (y.2.1 z q k),
+    (obs-env mu (extTh x.1 th G) (extTh (meetS x.1 y.1) th G) a u
+       (extTh-mono (meetS x.1 y.1) x.1 (\ z -> le-meet-l (x.1 z) (y.1 z)) G G (envle-refl G) th) x.2.2,
+     obs-env mu (extTh y.1 th G) (extTh (meetS x.1 y.1) th G) b v
+       (extTh-mono (meetS x.1 y.1) y.1 (\ z -> le-meet-r (x.1 z) (y.1 z)) G G (envle-refl G) th) y.2.2))) ;
+
+col-cons (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p q : Nat) (t s u : Ty) (e : Id Ty t (pair s u))
+    (j : Join mu G th p q s u) : Coll mu G th a0 (econs p q) t =
+  (j.1, (j.2.1, (s, (u, (e, (j.2.2.1, j.2.2.2)))))) ;
+
+col-atom (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p : Nat) (t : Ty) :
+    Plus (Id Ty t (at T) * FM mu G p th atom) (Id Ty t (at NIL) * FM mu G p th (pair om om)) -> Coll mu G th a0 (eatom p) t = split {
+  inl w -> (w.2.1, (w.2.2.1, inl (w.1, w.2.2.2))) ;
+  inr w -> (w.2.1, (w.2.2.1, inr (w.1, w.2.2.2))) } ;
+
+col-eq (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p q : Nat) (t : Ty) (a b : Atom)
+    (d : Plus (IsT (atEq a b) * Id Ty t (at T)) (IsF (atEq a b) * Id Ty t (at NIL)))
+    (j : Join mu G th p q (at a) (at b)) : Coll mu G th a0 (eeq p q) t =
+  (j.1, (j.2.1, (a, (b, (j.2.2.1, (j.2.2.2, d)))))) ;
+
+col-if (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p q r : Nat) (t : Ty) :
+    Plus (FM mu G p th (at T) * FM mu G q th t) (FM mu G p th (at NIL) * FM mu G r th t) -> Coll mu G th a0 (eif p q r) t = split {
+  inl w -> col-if-T (fm-join mu G th p q (at T) t w.1 w.2) ;
+  inr w -> col-if-NIL (fm-join mu G th p r (at NIL) t w.1 w.2) }
+  where {
+    col-if-T (j : Join mu G th p q (at T) t) : Coll mu G th a0 (eif p q r) t = (j.1, (j.2.1, inl (j.2.2.1, j.2.2.2))) ;
+    col-if-NIL (j : Join mu G th p r (at NIL) t) : Coll mu G th a0 (eif p q r) t = (j.1, (j.2.1, inr (j.2.2.1, j.2.2.2))) ; } ;
+
+col-app (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p q : Nat) (t s : Ty) (j : Join mu G th p q (arr s t) s) :
+    Coll mu G th a0 (eapp p q) t =
+  (j.1, (j.2.1, (s, (j.2.2.1, j.2.2.2)))) ;
+
+col-plus (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 p q : Nat) (t : Ty) (m n : Nat) (e : Id Ty t (at (num (add m n))))
+    (j : Join mu G th p q (at (num m)) (at (num n))) : Coll mu G th a0 (eplus p q) t =
+  (j.1, (j.2.1, (m, (n, (j.2.2.1, (j.2.2.2, e)))))) ;
+
+collect (R : Nat -> Nat -> U l) (mu : Nat -> Cell) (G : Env) (th : Alist) (a0 : Nat) :
+    (c c' : Cell) -> Ren R c c' -> (t : Ty) -> CellQ (FMJ mu th) G a0 c t -> Coll mu G th a0 c t = split {
+  ren-cons p q p' q' hp hq -> \ t v ->
+    col-cons mu G th a0 p q t v.1 v.2.1 v.2.2.1 (fm-join mu G th p q v.1 v.2.1 v.2.2.2.1 v.2.2.2.2) ;
+  ren-car p p' hp -> \ t v -> (v.2.1, (v.2.2.1, (v.1, v.2.2.2))) ;
+  ren-cdr p p' hp -> \ t v -> (v.2.1, (v.2.2.1, (v.1, v.2.2.2))) ;
+  ren-atom p p' hp -> \ t v -> col-atom mu G th a0 p t v ;
+  ren-eq p q p' q' hp hq -> \ t v ->
+    col-eq mu G th a0 p q t v.1 v.2.1 v.2.2.2.2 (fm-join mu G th p q (at v.1) (at v.2.1) v.2.2.1 v.2.2.2.1) ;
+  ren-if p q r p' q' r' hp hq hr -> \ t v -> col-if mu G th a0 p q r t v ;
+  ren-app p q p' q' hp hq -> \ t v -> col-app mu G th a0 p q t v.1 (fm-join mu G th p q (arr v.1 t) v.1 v.2.1 v.2.2) ;
+  ren-plus p q p' q' hp hq -> \ t v ->
+    col-plus mu G th a0 p q t v.1 v.2.1 v.2.2.2.2 (fm-join mu G th p q (at (num v.1)) (at (num v.2.1)) v.2.2.1 v.2.2.2.1) } ;
+
+------------------------------------------------------------------------
+-- the rewrite of [Fc], [Fd]
+
+-- a' is the new cell (FUNARG a th), distinct from p0
+NewFor (mu : Nat -> Cell) (th : Alist) (p0 : Nat) (a a' : Nat) : U l = Id Cell (mu a') (efunarg a th) * IsF (eqN a' p0) ;
+
+module RuleF (mu : Nat -> Cell) (p0 p : Nat) (th : Alist) (c c' : Cell) (e : Id Cell (mu p0) (efunarg p th))
+    (e1 : Id Cell (mu p) c) (r : Ren (NewFor mu th p0) c c') {
+  nu : Nat -> Cell = upd mu p0 c' ;
+  e1' : Id Cell (nu p) c = upd-other mu p0 c' p c e1 (other-form mu p0 (efunarg p th) c e (ren-tag (NewFor mu th p0) p th c c' r)) ;
+
+  -- a premise a : u in G[th : s] becomes a' : u in G
+  fF (G : Env) (s : Nat -> Ty) (h : ThetaR (Obs nu) G th s) (a a' : Nat) (n : NewFor mu th p0 a a') (u : Ty)
+      (o : Obs nu (jdg (extTh s th G) a u)) : Obs nu (jdg G a' u) =
+    obs-at' nu G a' (efunarg a th) u (trans Cell (nu a') (mu a') (efunarg a th) (upd-miss mu p0 c' a' n.2) n.1) (s, (h, o)) ;
+
+  fwd (G : Env) (t : Ty) (v : FM nu G p th t) : Obs nu (jdg G p0 t) =
+    cell-ind' nu (extTh v.1 th G) p c e1' (\ u -> Obs nu (jdg G p0 u)) (o-om G p0)
+      (\ a b h1 h2 -> o-meet G p0 a b h1 h2) (\ a b le h -> o-sub G p0 a b h le)
+      (\ u w -> obs-at' nu G p0 c' u (upd-hit mu p0 c')
+          (ren-map (NewFor mu th p0) (Obs nu) (Obs nu) (extTh v.1 th G) G p p0 (fF G v.1 v.2.1) c c' r u w))
+      t v.2.2 ;
+
+  -- a premise a' : u in G comes from a choice for th with a : u
+  fB (G : Env) (a' a : Nat) (n : NewFor mu th p0 a a') (u : Ty) (o : Obs mu (jdg G a' u)) : FMJ mu th (jdg G a u) =
+    funarg-inv mu G a' a th n.1 u o ;
+
+  bwd-body (G : Env) (t : Ty) (k : Coll mu G th p c t) : Obs mu (jdg G p0 t) =
+    obs-at' mu G p0 (efunarg p th) t e (k.1, (k.2.1, obs-at' mu (extTh k.1 th G) p c t e1 k.2.2)) ;
+
+  bwd (G : Env) (t : Ty) (w : CellQ (Obs mu) G p0 c' t) : Obs mu (jdg G p0 t) =
+    bwd-body G t (collect (NewFor mu th p0) mu G th p c c' r t
+      (ren-map (flipR (NewFor mu th p0)) (Obs mu) (FMJ mu th) G G p0 p (fB G) c' c (ren-flip (NewFor mu th p0) c c' r) t w)) ;
+
+  inv : Inv mu nu = rewrite-inv mu p0 c'
+    (\ G t v -> fwd G t (cq-at (Obs nu) G p0 (mu p0) (efunarg p th) e t v))
+    (\ G t v -> bwd G t (cq-at (Obs mu) G p0 (nu p0) c' (upd-hit mu p0 c') t v)) ;
+} ;
+
+------------------------------------------------------------------------
+-- allocation of a fresh cell
+
+NotOccTh (a : Nat) : Alist -> U l = split {
+  anil -> Top ;
+  acons x q th | r -> IsF (eqN q a) * r } ;
+
+-- a does not occur as a component of the cell
+NotOcc (a : Nat) : Cell -> U l = split {
+  evar x -> Top ; equote b -> Top ;
+  econs p q -> IsF (eqN p a) * IsF (eqN q a) ;
+  ecar p -> IsF (eqN p a) ; ecdr p -> IsF (eqN p a) ; eatom p -> IsF (eqN p a) ;
+  eeq p q -> IsF (eqN p a) * IsF (eqN q a) ;
+  eif p q r -> IsF (eqN p a) * (IsF (eqN q a) * IsF (eqN r a)) ;
+  eapp p q -> IsF (eqN p a) * IsF (eqN q a) ;
+  elam x p -> IsF (eqN p a) ; elabel x p -> IsF (eqN p a) ;
+  efunarg p th -> IsF (eqN p a) * NotOccTh a th ;
+  eplus p q -> IsF (eqN p a) * IsF (eqN q a) ;
+  efree -> Top } ;
+
+notocc-lookup (a : Nat) : (th : Alist) -> (y q : Nat) -> Lookup th y q -> NotOccTh a th -> IsF (eqN q a) = split {
+  lk-here y q th -> \ h -> h.1 ;
+  lk-there y' r th y q ne lk | rh -> \ h -> rh h.2 } ;
+
+-- premises at components of a cell in which a does not occur
+cellq-occ (R R' : Jdg -> U l) (G : Env) (p0 a : Nat) (f : (J : Jdg) -> IsF (eqN (jp J) a) -> R J -> R' J) :
+    (c : Cell) -> (t : Ty) -> NotOcc a c -> IsF (eqN p0 a) -> CellQ R G p0 c t -> CellQ R' G p0 c t = split {
+  evar x -> \ t n np v -> v ;
+  equote b -> \ t n np v -> v ;
+  econs p q -> \ t n np v -> (v.1, (v.2.1, (v.2.2.1, (f (jdg G p v.1) n.1 v.2.2.2.1, f (jdg G q v.2.1) n.2 v.2.2.2.2)))) ;
+  ecar p -> \ t n np v -> (v.1, f (jdg G p (pair t v.1)) n v.2) ;
+  ecdr p -> \ t n np v -> (v.1, f (jdg G p (pair v.1 t)) n v.2) ;
+  eatom p -> \ t n np v ->
+    plus-map (Id Ty t (at T) * R (jdg G p atom)) (Id Ty t (at NIL) * R (jdg G p (pair om om)))
+      (Id Ty t (at T) * R' (jdg G p atom)) (Id Ty t (at NIL) * R' (jdg G p (pair om om)))
+      (\ w -> (w.1, f (jdg G p atom) n w.2)) (\ w -> (w.1, f (jdg G p (pair om om)) n w.2)) v ;
+  eeq p q -> \ t n np v -> (v.1, (v.2.1, (f (jdg G p (at v.1)) n.1 v.2.2.1, (f (jdg G q (at v.2.1)) n.2 v.2.2.2.1, v.2.2.2.2)))) ;
+  eif p q r -> \ t n np v ->
+    plus-map (R (jdg G p (at T)) * R (jdg G q t)) (R (jdg G p (at NIL)) * R (jdg G r t))
+      (R' (jdg G p (at T)) * R' (jdg G q t)) (R' (jdg G p (at NIL)) * R' (jdg G r t))
+      (\ w -> (f (jdg G p (at T)) n.1 w.1, f (jdg G q t) n.2.1 w.2))
+      (\ w -> (f (jdg G p (at NIL)) n.1 w.1, f (jdg G r t) n.2.2 w.2)) v ;
+  eapp p q -> \ t n np v -> (v.1, (f (jdg G p (arr v.1 t)) n.1 v.2.1, f (jdg G q v.1) n.2 v.2.2)) ;
+  elam x p -> \ t n np v -> (v.1, (v.2.1, (v.2.2.1, f (jdg (gcons x v.1 G) p v.2.1) n v.2.2.2))) ;
+  elabel x p -> \ t n np v -> (v.1, (f (jdg (gcons x v.1 G) p t) n v.2.1, f (jdg G p0 v.1) np v.2.2)) ;
+  efunarg p th -> \ t n np v ->
+    (v.1, (\ y q k -> f (jdg G q (v.1 y)) (notocc-lookup a th y q k n.2) (v.2.1 y q k),
+           f (jdg (extTh v.1 th G) p t) n.1 v.2.2)) ;
+  eplus p q -> \ t n np v ->
+    (v.1, (v.2.1, (f (jdg G p (at (num v.1))) n.1 v.2.2.1, (f (jdg G q (at (num v.2.1))) n.2 v.2.2.2.1, v.2.2.2.2)))) ;
+  efree -> \ t n np v -> v } ;
+
+Fresh (mu : Nat -> Cell) (a : Nat) : U l = Id Cell (mu a) efree * ((p : Nat) -> NotOcc a (mu p)) ;
+
+module Alloc (mu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) {
+  nu : Nat -> Cell = upd mu a (efunarg q th) ;
+
+  -- every type is kept
+  fwd : (J : Jdg) -> Obs mu J -> Obs nu J =
+    obs-transfer mu nu (closed-agree mu nu a (\ p h -> upd-miss mu a (efunarg q th) p h)
+      (\ G t v -> efq (subst Cell (\ z -> CellQ (Obs nu) G a z t) (mu a) efree fr.1 v))) ;
+
+  OldM (J : Jdg) : U l = IsF (eqN (jp J) a) -> Obs mu J ;
+
+  bwd-rule (G : Env) (p : Nat) (t : Ty) (v : CellQ OldM G p (nu p) t) (np : IsF (eqN p a)) : Obs mu (jdg G p t) =
+    obs-at mu G p t (cellq-occ OldM (Obs mu) G p a (\ J h m -> m h) (mu p) t (fr.2 p) np
+      (cq-at OldM G p (nu p) (mu p) (upd-miss mu a (efunarg q th) p np) t v)) ;
+
+  -- the old cells keep their types
+  bwd : (J : Jdg) -> Obs nu J -> OldM J =
+    obs-model nu OldM (\ G p np -> o-om G p) (\ G p s t m1 m2 np -> o-meet G p s t (m1 np) (m2 np))
+      (\ G p s t m le np -> o-sub G p s t (m np) le) (\ G p t v np -> bwd-rule G p t v np) ;
+} ;

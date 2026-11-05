@@ -1,0 +1,333 @@
+-- Gen.seg: inversion of observations at a cell of known form, by
+-- generation (Lemma 3.2(2), Obs.cell-ind) and Lemma 2.2.
+--
+-- Each lemma chooses a filter P (om, meet, upward closed) that contains
+-- the types given by the rules of the cell, so that P holds of every type
+-- of the cell.
+--  * QUOTE a: P t = (at a <= t): the types of the cell are those above at a.
+--  * variable x: P t = (look G x <= t).
+--  * CONS p1 p2: P t = for every pair selection (s, u) of t, p1 : s and
+--    p2 : u.  Upward closed by Lemma 2.2 (a selection of a bigger type is
+--    transported to one of t, Types.psel-tr); at om and at meets by
+--    induction on the selection.  At t = a x b (selection a, b) this is
+--    the note's "CONS has type a x b iff p1 : a and p2 : b".
+--  * LAMBDA x p1, against an argument type a: P t = for every arrow
+--    selection (d, u) of t with a <= d, p1 : u in G[x : a].  With
+--    t = a -> b this is beta-soundness for observations.
+--  * FUNARG p1 th: P t = there is ONE choice s of types for th, observed,
+--    with p1 : t in G[th : s].  Closed under meet by taking the pointwise
+--    meet of two choices, using Lemma 3.2(1): this is the step the note
+--    describes for rule [L] backwards, and it is needed already here.
+--  * shapes: every type of a CONS (resp. closure) cell is above a meet of
+--    pair (resp. arrow) types, and of om; such a type is below no atom,
+--    no at a, and no arrow (resp. pair) type (Lemma 2.2).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+
+------------------------------------------------------------------------
+-- tests on components
+
+AllC (P : Ty -> U l) : Ty -> U l = split {
+  om -> P om ; atom -> P atom ; at a -> P (at a) ;
+  pair s t -> P (pair s t) ; arr s t -> P (arr s t) ;
+  meet s t | rs rt -> rs * rt } ;
+
+sel-all (P : Ty -> U l) : (r k : Ty) -> Sel r k -> AllC P r -> AllC P k = split {
+  sel-here k -> \ h -> h ;
+  sel-l r1 r2 k h | rh -> \ a -> rh a.1 ;
+  sel-r r1 r2 k h | rh -> \ a -> rh a.2 } ;
+
+IsAtOf (a : Atom) : Ty -> U l = split {
+  om -> Top ; atom -> Top ; at b -> Id Atom a b ; pair s t -> Top ; arr s t -> Top ; meet s t -> Top } ;
+
+-- Lemma 2.2(1) for a single atom: at a <= at b gives a = b
+at-at (a b : Atom) (h : Le (at a) (at b)) : Id Atom a b =
+  sel-all (IsAtOf a) (at a) (at b) (inv-at (at a) b h) (refl a) ;
+
+numOf : Atom -> Nat = split { T -> zero ; NIL -> zero ; num n -> n ; name n -> n } ;
+
+-- the shapes of the values
+PairShape : Ty -> U l = split {
+  om -> Top ; atom -> Empty ; at a -> Empty ; pair s t -> Top ; arr s t -> Empty ; meet s t -> Top } ;
+ArrShape : Ty -> U l = split {
+  om -> Top ; atom -> Empty ; at a -> Empty ; pair s t -> Empty ; arr s t -> Top ; meet s t -> Top } ;
+
+-- a type all of whose components satisfy S is below no type of shape
+-- excluded by S
+allc-not-atom-by (S : Ty -> U l) (n1 : S atom -> Empty) (n2 : (a : Atom) -> S (at a) -> Empty)
+    (k : Ty) (h : AllC S k) : Plus (Sel k atom) ((a : Atom) * Sel k (at a)) -> Empty = split {
+  inl s -> n1 (sel-all S k atom s h) ;
+  inr v -> n2 v.1 (sel-all S k (at v.1) v.2 h) } ;
+
+allc-not-atom (S : Ty -> U l) (n1 : S atom -> Empty) (n2 : (a : Atom) -> S (at a) -> Empty)
+    (k : Ty) (h : AllC S k) (le : Le k atom) : Empty =
+  allc-not-atom-by S n1 n2 k h (inv-atom k le) ;
+
+allc-not-at (S : Ty -> U l) (n : (a : Atom) -> S (at a) -> Empty) (k : Ty) (h : AllC S k) (a : Atom) (le : Le k (at a)) : Empty =
+  n a (sel-all S k (at a) (inv-at k a le) h) ;
+
+allc-not-pair (S : Ty -> U l) (n : (f g : Ty) -> S (pair f g) -> Empty) (k : Ty) (h : AllC S k) (a b : Ty) (le : Le k (pair a b)) : Empty =
+  n v.1 v.2.1 (sel-all S k (pair v.1 v.2.1) v.2.2.2.2.1 h)
+  where { v : InvPair k a b = inv-pair k a b le ; } ;
+
+allc-not-arr (S : Ty -> U l) (n : (f g : Ty) -> S (arr f g) -> Empty) (k : Ty) (h : AllC S k) (a b : Ty) (le : Le k (arr a b)) : Empty =
+  n v.1 v.2.1 (sel-all S k (arr v.1 v.2.1) v.2.2.2.2.1 h)
+  where { v : InvArr k a b = inv-arr k a b le ; } ;
+
+-- the types above a meet of types of shape S form a filter
+Principal (S : Ty -> U l) (t : Ty) : U l = (k : Ty) * (AllC S k * Le k t) ;
+
+------------------------------------------------------------------------
+-- QUOTE and variables
+
+quote-inv (mu : Nat -> Cell) (G : Env) (p : Nat) (a : Atom) (e : Id Cell (mu p) (equote a))
+    (t : Ty) (h : Obs mu (jdg G p t)) : Le (at a) t =
+  cell-ind' mu G p (equote a) e (\ u -> Le (at a) u)
+    (le-om (at a))
+    (\ s u h1 h2 -> le-meet (at a) s u h1 h2)
+    (\ s u le h1 -> le-trans (at a) s u h1 le)
+    (\ u v -> id-le (at a) u (sym Ty u (at a) v)) t h ;
+
+var-inv (mu : Nat -> Cell) (G : Env) (p : Nat) (x : Nat) (e : Id Cell (mu p) (evar x))
+    (t : Ty) (h : Obs mu (jdg G p t)) : Le (look G x) t =
+  cell-ind' mu G p (evar x) e (\ u -> Le (look G x) u)
+    (le-om (look G x))
+    (\ s u h1 h2 -> le-meet (look G x) s u h1 h2)
+    (\ s u le h1 -> le-trans (look G x) s u h1 le)
+    (\ u v -> id-le (look G x) u (sym Ty u (look G x) v)) t h ;
+
+-- a type of a QUOTE cell is not below at b for another atom b
+quote-at (mu : Nat -> Cell) (G : Env) (p : Nat) (a b : Atom) (e : Id Cell (mu p) (equote a))
+    (h : Obs mu (jdg G p (at b))) : Id Atom a b =
+  at-at a b (quote-inv mu G p a e (at b) h) ;
+
+------------------------------------------------------------------------
+-- pair selections against a "pair filter" Q
+
+module PairSel (Q : Ty -> Ty -> U l) (q-om : Q om om)
+    (q-meet : (s t s' t' : Ty) -> Q s t -> Q s' t' -> Q (meet s s') (meet t t'))
+    (q-up : (s t s' t' : Ty) -> Le s' s -> Le t' t -> Q s' t' -> Q s t) {
+
+  SelP (r : Ty) : U l = (s t : Ty) -> PSel r s t -> Q s t ;
+
+  OmH : Ty -> U l = split { om -> Top ; atom -> Empty ; at a -> Empty ; pair a b -> Empty ; arr a b -> Empty ; meet a b -> Empty } ;
+  MeetH : Ty -> U l = split { om -> Empty ; atom -> Empty ; at a -> Empty ; pair a b -> Empty ; arr a b -> Empty ;
+                              meet a b -> SelP a * SelP b } ;
+  LeafH : Ty -> U l = split { om -> Empty ; atom -> Empty ; at a -> Empty ; pair a b -> Q a b ; arr a b -> Empty ; meet a b -> Empty } ;
+
+  by-om : (r s t : Ty) -> PSel r s t -> OmH r -> Q s t = split {
+    ps-none r -> \ h -> q-om ;
+    ps-here a b -> \ h -> absurd (Q a b) h ;
+    ps-l r1 r2 s t p -> \ h -> absurd (Q s t) h ;
+    ps-r r1 r2 s t p -> \ h -> absurd (Q s t) h ;
+    ps-meet r s1 t1 s2 t2 p1 p2 | r1 r2 -> \ h -> q-meet s1 t1 s2 t2 (r1 h) (r2 h) } ;
+
+  by-meet : (r s t : Ty) -> PSel r s t -> MeetH r -> Q s t = split {
+    ps-none r -> \ h -> q-om ;
+    ps-here a b -> \ h -> absurd (Q a b) h ;
+    ps-l r1 r2 s t p -> \ h -> h.1 s t p ;
+    ps-r r1 r2 s t p -> \ h -> h.2 s t p ;
+    ps-meet r s1 t1 s2 t2 p1 p2 | r1 r2 -> \ h -> q-meet s1 t1 s2 t2 (r1 h) (r2 h) } ;
+
+  by-leaf : (r s t : Ty) -> PSel r s t -> LeafH r -> Q s t = split {
+    ps-none r -> \ h -> q-om ;
+    ps-here a b -> \ h -> h ;
+    ps-l r1 r2 s t p -> \ h -> absurd (Q s t) h ;
+    ps-r r1 r2 s t p -> \ h -> absurd (Q s t) h ;
+    ps-meet r s1 t1 s2 t2 p1 p2 | r1 r2 -> \ h -> q-meet s1 t1 s2 t2 (r1 h) (r2 h) } ;
+
+  sel-om : SelP om = \ s t p -> by-om om s t p tt ;
+  sel-meet (a b : Ty) (ha : SelP a) (hb : SelP b) : SelP (meet a b) = \ s t p -> by-meet (meet a b) s t p (ha, hb) ;
+  sel-leaf (a b : Ty) (h : Q a b) : SelP (pair a b) = \ s t p -> by-leaf (pair a b) s t p h ;
+  sel-up (r r' : Ty) (le : Le r r') (h : SelP r) : SelP r' = \ s t p -> sel-up-by s t (psel-tr r' s t p r (le-les r r' le))
+    where {
+      sel-up-by (s t : Ty) (u : PTr r s t) : Q s t =
+        q-up s t u.1 u.2.1 (les-le u.1 s u.2.2.2.1) (les-le u.2.1 t u.2.2.2.2) (h u.1 u.2.1 u.2.2.1) ; } ;
+} ;
+
+-- the same for arrow selections; the domains are contravariant
+module ArrSel (Q : Ty -> Ty -> U l) (q-om : Q om om)
+    (q-meet : (d t d' t' : Ty) -> Q d t -> Q d' t' -> Q (meet d d') (meet t t'))
+    (q-up : (d t d' t' : Ty) -> Le d d' -> Le t' t -> Q d' t' -> Q d t) {
+
+  SelA (r : Ty) : U l = (d t : Ty) -> ASel r d t -> Q d t ;
+
+  OmH : Ty -> U l = split { om -> Top ; atom -> Empty ; at a -> Empty ; pair a b -> Empty ; arr a b -> Empty ; meet a b -> Empty } ;
+  MeetH : Ty -> U l = split { om -> Empty ; atom -> Empty ; at a -> Empty ; pair a b -> Empty ; arr a b -> Empty ;
+                              meet a b -> SelA a * SelA b } ;
+  LeafH : Ty -> U l = split { om -> Empty ; atom -> Empty ; at a -> Empty ; pair a b -> Empty ; arr a b -> Q a b ; meet a b -> Empty } ;
+
+  by-om : (r d t : Ty) -> ASel r d t -> OmH r -> Q d t = split {
+    as-none r -> \ h -> q-om ;
+    as-here a b -> \ h -> absurd (Q a b) h ;
+    as-l r1 r2 d t p -> \ h -> absurd (Q d t) h ;
+    as-r r1 r2 d t p -> \ h -> absurd (Q d t) h ;
+    as-meet r d1 t1 d2 t2 p1 p2 | r1 r2 -> \ h -> q-meet d1 t1 d2 t2 (r1 h) (r2 h) } ;
+
+  by-meet : (r d t : Ty) -> ASel r d t -> MeetH r -> Q d t = split {
+    as-none r -> \ h -> q-om ;
+    as-here a b -> \ h -> absurd (Q a b) h ;
+    as-l r1 r2 d t p -> \ h -> h.1 d t p ;
+    as-r r1 r2 d t p -> \ h -> h.2 d t p ;
+    as-meet r d1 t1 d2 t2 p1 p2 | r1 r2 -> \ h -> q-meet d1 t1 d2 t2 (r1 h) (r2 h) } ;
+
+  by-leaf : (r d t : Ty) -> ASel r d t -> LeafH r -> Q d t = split {
+    as-none r -> \ h -> q-om ;
+    as-here a b -> \ h -> h ;
+    as-l r1 r2 d t p -> \ h -> absurd (Q d t) h ;
+    as-r r1 r2 d t p -> \ h -> absurd (Q d t) h ;
+    as-meet r d1 t1 d2 t2 p1 p2 | r1 r2 -> \ h -> q-meet d1 t1 d2 t2 (r1 h) (r2 h) } ;
+
+  sel-om : SelA om = \ d t p -> by-om om d t p tt ;
+  sel-meet (a b : Ty) (ha : SelA a) (hb : SelA b) : SelA (meet a b) = \ d t p -> by-meet (meet a b) d t p (ha, hb) ;
+  sel-leaf (a b : Ty) (h : Q a b) : SelA (arr a b) = \ d t p -> by-leaf (arr a b) d t p h ;
+  sel-up (r r' : Ty) (le : Le r r') (h : SelA r) : SelA r' = \ d t p -> sel-up-by d t (asel-tr r' d t p r (le-les r r' le))
+    where {
+      sel-up-by (d t : Ty) (u : ATr r d t) : Q d t =
+        q-up d t u.1 u.2.1 (les-le d u.1 u.2.2.2.1) (les-le u.2.1 t u.2.2.2.2) (h u.1 u.2.1 u.2.2.1) ; } ;
+} ;
+
+------------------------------------------------------------------------
+-- CONS
+
+ConsQ (mu : Nat -> Cell) (G : Env) (p1 p2 : Nat) (s t : Ty) : U l = Obs mu (jdg G p1 s) * Obs mu (jdg G p2 t) ;
+
+cons-qom (mu : Nat -> Cell) (G : Env) (p1 p2 : Nat) : ConsQ mu G p1 p2 om om = (o-om G p1, o-om G p2) ;
+cons-qmeet (mu : Nat -> Cell) (G : Env) (p1 p2 : Nat) (s t s' t' : Ty) (h : ConsQ mu G p1 p2 s t) (h' : ConsQ mu G p1 p2 s' t') :
+    ConsQ mu G p1 p2 (meet s s') (meet t t') = (o-meet G p1 s s' h.1 h'.1, o-meet G p2 t t' h.2 h'.2) ;
+cons-qup (mu : Nat -> Cell) (G : Env) (p1 p2 : Nat) (s t s' t' : Ty) (le1 : Le s' s) (le2 : Le t' t) (h : ConsQ mu G p1 p2 s' t') :
+    ConsQ mu G p1 p2 s t = (o-sub G p1 s' s h.1 le1, o-sub G p2 t' t h.2 le2) ;
+
+module ConsInv (mu : Nat -> Cell) (G : Env) (p p1 p2 : Nat) (e : Id Cell (mu p) (econs p1 p2)) {
+  module PS = PairSel[ConsQ mu G p1 p2, cons-qom mu G p1 p2, cons-qmeet mu G p1 p2, cons-qup mu G p1 p2] ;
+
+  leaf (t : Ty) (v : CellQ (Obs mu) G p (econs p1 p2) t) : PS.SelP t =
+    subst Ty (\ z -> PS.SelP z) (pair v.1 v.2.1) t (sym Ty t (pair v.1 v.2.1) v.2.2.1)
+      (PS.sel-leaf v.1 v.2.1 v.2.2.2) ;
+
+  -- a CONS cell has type a x b iff its components have types a and b
+  inv (a b : Ty) (h : Obs mu (jdg G p (pair a b))) : ConsQ mu G p1 p2 a b =
+    cell-ind' mu G p (econs p1 p2) e (\ u -> PS.SelP u) PS.sel-om PS.sel-meet PS.sel-up leaf
+      (pair a b) h a b (ps-here a b) ;
+} ;
+
+cons-inv (mu : Nat -> Cell) (G : Env) (p p1 p2 : Nat) (e : Id Cell (mu p) (econs p1 p2)) (a b : Ty)
+    (h : Obs mu (jdg G p (pair a b))) : ConsQ mu G p1 p2 a b = ConsInv[mu, G, p, p1, p2, e].inv a b h ;
+
+------------------------------------------------------------------------
+-- LAMBDA: beta-soundness for observations
+
+-- arrows selected with a <= d give p1 : t in G[x : a]
+LamQ (mu : Nat -> Cell) (G : Env) (x p1 : Nat) (a d t : Ty) : U l =
+  Le a d -> Obs mu (jdg (gcons x a G) p1 t) ;
+
+lam-qom (mu : Nat -> Cell) (G : Env) (x p1 : Nat) (a : Ty) : LamQ mu G x p1 a om om =
+  \ le -> o-om (gcons x a G) p1 ;
+lam-qmeet (mu : Nat -> Cell) (G : Env) (x p1 : Nat) (a d t d' t' : Ty)
+    (h : LamQ mu G x p1 a d t) (h' : LamQ mu G x p1 a d' t') : LamQ mu G x p1 a (meet d d') (meet t t') =
+  \ le -> o-meet (gcons x a G) p1 t t'
+            (h (le-trans a (meet d d') d le (le-meet-l d d')))
+            (h' (le-trans a (meet d d') d' le (le-meet-r d d'))) ;
+lam-qup (mu : Nat -> Cell) (G : Env) (x p1 : Nat) (a d t d' t' : Ty) (le1 : Le d d') (le2 : Le t' t)
+    (h : LamQ mu G x p1 a d' t') : LamQ mu G x p1 a d t =
+  \ le -> o-sub (gcons x a G) p1 t' t (h (le-trans a d d' le le1)) le2 ;
+
+module LamInv (mu : Nat -> Cell) (G : Env) (p x p1 : Nat) (e : Id Cell (mu p) (elam x p1)) (a : Ty) {
+  module AS = ArrSel[LamQ mu G x p1 a, lam-qom mu G x p1 a, lam-qmeet mu G x p1 a, lam-qup mu G x p1 a] ;
+
+  -- the rule: p1 : u in G[x : s] gives s -> u, and a <= s moves it to G[x : a]
+  leaf-q (s u : Ty) (h : Obs mu (jdg (gcons x s G) p1 u)) : LamQ mu G x p1 a s u =
+    \ le -> obs-env mu (gcons x s G) (gcons x a G) p1 u (envle-cons x a s G G le (envle-refl G)) h ;
+
+  leaf (t : Ty) (v : CellQ (Obs mu) G p (elam x p1) t) : AS.SelA t =
+    subst Ty (\ z -> AS.SelA z) (arr v.1 v.2.1) t (sym Ty t (arr v.1 v.2.1) v.2.2.1)
+      (AS.sel-leaf v.1 v.2.1 (leaf-q v.1 v.2.1 v.2.2.2)) ;
+
+  -- p : a -> b gives p1 : b in G[x : a]
+  inv (b : Ty) (h : Obs mu (jdg G p (arr a b))) : Obs mu (jdg (gcons x a G) p1 b) =
+    cell-ind' mu G p (elam x p1) e (\ u -> AS.SelA u) AS.sel-om AS.sel-meet AS.sel-up leaf
+      (arr a b) h a b (as-here a b) (le-refl a) ;
+} ;
+
+lam-inv (mu : Nat -> Cell) (G : Env) (p x p1 : Nat) (e : Id Cell (mu p) (elam x p1)) (a b : Ty)
+    (h : Obs mu (jdg G p (arr a b))) : Obs mu (jdg (gcons x a G) p1 b) = LamInv[mu, G, p, x, p1, e, a].inv b h ;
+
+------------------------------------------------------------------------
+-- FUNARG: one choice of types for the alist
+
+-- the meaning of (FUNARG p1 th) in G
+FM (mu : Nat -> Cell) (G : Env) (p1 : Nat) (th : Alist) (t : Ty) : U l =
+  (s : Nat -> Ty) * (ThetaR (Obs mu) G th s * Obs mu (jdg (extTh s th G) p1 t)) ;
+
+meetS (s s' : Nat -> Ty) : Nat -> Ty = \ x -> meet (s x) (s' x) ;
+
+fm-om (mu : Nat -> Cell) (G : Env) (p1 : Nat) (th : Alist) : FM mu G p1 th om =
+  (\ x -> om, (\ x q k -> o-om G q, o-om (extTh (\ x -> om) th G) p1)) ;
+
+-- two choices are met; Lemma 3.2(1) moves both bodies
+fm-meet (mu : Nat -> Cell) (G : Env) (p1 : Nat) (th : Alist) (t t' : Ty) (u : FM mu G p1 th t) (v : FM mu G p1 th t') :
+    FM mu G p1 th (meet t t') =
+  (meetS u.1 v.1,
+   (\ x q k -> o-meet G q (u.1 x) (v.1 x) (u.2.1 x q k) (v.2.1 x q k),
+    o-meet (extTh (meetS u.1 v.1) th G) p1 t t'
+      (obs-env mu (extTh u.1 th G) (extTh (meetS u.1 v.1) th G) p1 t
+         (extTh-mono (meetS u.1 v.1) u.1 (\ x -> le-meet-l (u.1 x) (v.1 x)) G G (envle-refl G) th) u.2.2)
+      (obs-env mu (extTh v.1 th G) (extTh (meetS u.1 v.1) th G) p1 t'
+         (extTh-mono (meetS u.1 v.1) v.1 (\ x -> le-meet-r (u.1 x) (v.1 x)) G G (envle-refl G) th) v.2.2))) ;
+
+fm-up (mu : Nat -> Cell) (G : Env) (p1 : Nat) (th : Alist) (t t' : Ty) (le : Le t t') (u : FM mu G p1 th t) : FM mu G p1 th t' =
+  (u.1, (u.2.1, o-sub (extTh u.1 th G) p1 t t' u.2.2 le)) ;
+
+-- a type of a FUNARG cell comes from one choice of types for its alist
+funarg-inv (mu : Nat -> Cell) (G : Env) (p p1 : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg p1 th))
+    (t : Ty) (h : Obs mu (jdg G p t)) : FM mu G p1 th t =
+  cell-ind' mu G p (efunarg p1 th) e (FM mu G p1 th)
+    (fm-om mu G p1 th) (fm-meet mu G p1 th) (fm-up mu G p1 th) (\ u v -> v) t h ;
+
+------------------------------------------------------------------------
+-- shapes of values
+
+-- every type of a CONS cell is above a meet of pair types
+cons-shape (mu : Nat -> Cell) (G : Env) (p p1 p2 : Nat) (e : Id Cell (mu p) (econs p1 p2)) (t : Ty)
+    (h : Obs mu (jdg G p t)) : Principal PairShape t =
+  cell-ind' mu G p (econs p1 p2) e (Principal PairShape)
+    (om, (tt, le-om om))
+    (\ s u h1 h2 -> (meet h1.1 h2.1, ((h1.2.1, h2.2.1), le-meet-mono h1.1 s h2.1 u h1.2.2 h2.2.2)))
+    (\ s u le h1 -> (h1.1, (h1.2.1, le-trans h1.1 s u h1.2.2 le)))
+    (\ u v -> (pair v.1 v.2.1, (tt, id-le (pair v.1 v.2.1) u (sym Ty u (pair v.1 v.2.1) v.2.2.1)))) t h ;
+
+-- every type of a LAMBDA cell is above a meet of arrow types
+lam-shape (mu : Nat -> Cell) (G : Env) (p x p1 : Nat) (e : Id Cell (mu p) (elam x p1)) (t : Ty)
+    (h : Obs mu (jdg G p t)) : Principal ArrShape t =
+  cell-ind' mu G p (elam x p1) e (Principal ArrShape)
+    (om, (tt, le-om om))
+    (\ s u h1 h2 -> (meet h1.1 h2.1, ((h1.2.1, h2.2.1), le-meet-mono h1.1 s h2.1 u h1.2.2 h2.2.2)))
+    (\ s u le h1 -> (h1.1, (h1.2.1, le-trans h1.1 s u h1.2.2 le)))
+    (\ u v -> (arr v.1 v.2.1, (tt, id-le (arr v.1 v.2.1) u (sym Ty u (arr v.1 v.2.1) v.2.2.1)))) t h ;
+
+-- every type of a closure (FUNARG of a LAMBDA) is above a meet of arrow types
+clo-shape (mu : Nat -> Cell) (G : Env) (p pl x p1 : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg pl th))
+    (el : Id Cell (mu pl) (elam x p1)) (t : Ty) (h : Obs mu (jdg G p t)) : Principal ArrShape t =
+  lam-shape mu (extTh u.1 th G) pl x p1 el t u.2.2
+  where { u : FM mu G pl th t = funarg-inv mu G p pl th e t h ; } ;
+
+-- the shapes exclude other kinds of types
+pair-not-atom (k : Ty) (h : AllC PairShape k) (le : Le k atom) : Empty =
+  allc-not-atom PairShape (\ z -> z) (\ a z -> z) k h le ;
+pair-not-at (k : Ty) (h : AllC PairShape k) (a : Atom) (le : Le k (at a)) : Empty =
+  allc-not-at PairShape (\ a z -> z) k h a le ;
+pair-not-arr (k : Ty) (h : AllC PairShape k) (a b : Ty) (le : Le k (arr a b)) : Empty =
+  allc-not-arr PairShape (\ f g z -> z) k h a b le ;
+arr-not-atom (k : Ty) (h : AllC ArrShape k) (le : Le k atom) : Empty =
+  allc-not-atom ArrShape (\ z -> z) (\ a z -> z) k h le ;
+arr-not-at (k : Ty) (h : AllC ArrShape k) (a : Atom) (le : Le k (at a)) : Empty =
+  allc-not-at ArrShape (\ a z -> z) k h a le ;
+arr-not-pair (k : Ty) (h : AllC ArrShape k) (a b : Ty) (le : Le k (pair a b)) : Empty =
+  allc-not-pair ArrShape (\ f g z -> z) k h a b le ;
+
+-- at a is below no pair type
+AtShape : Ty -> U l = split {
+  om -> Top ; atom -> Top ; at a -> Top ; pair s t -> Empty ; arr s t -> Empty ; meet s t -> Top } ;
+at-not-pair (a : Atom) (b c : Ty) (le : Le (at a) (pair b c)) : Empty =
+  allc-not-pair AtShape (\ f g z -> z) (at a) tt b c le ;

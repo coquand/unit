@@ -1,0 +1,371 @@
+-- Fix.seg: Theorem 6.2 of doc/lazy-intersection.tex.  V mu is the least
+-- fixed point of the paper's equations  S p = Cl S (mu p).
+--
+--  (pre)  Cl (V mu) (mu p) rho is included in V mu p rho: every generator
+--         of the clause is the conclusion of the rule of the cell mu p,
+--         in the meet of the environments of the premises (V-pre).  For
+--         LAMBDA and LABEL the environment of the body binds x to s; its
+--         binding of x is dropped (gcons x om).  For FUNARG the types of
+--         the bindings are collected along the alist (theta-collect), the
+--         first binding of a variable shadowing the others.
+--  (Park) If S is monotone and Cl S (mu p) rho is included in S p rho
+--         for all p and rho, then  mu |- p :_G t  implies that t is in
+--         Cl S (mu p) (upE G), by induction on the derivation (Park.obs):
+--         the premises at the components are in S, and the LABEL premise
+--         at the cell itself is in the clause, i.e. in the fixed point.
+--         Hence V mu is included in S (Park.least), and with S = V mu,
+--         V mu p rho is included in Cl (V mu) (mu p) rho (V-fix).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Closures[l] ; open Filter[l] ; open Laws[l] ; open Sem[l] ;
+
+------------------------------------------------------------------------
+-- alists: bound and unbound variables
+
+orB-F : (a b : Bool) -> IsF (orB a b) -> IsF a * IsF b = split {
+  true -> \ b h -> absurd (Empty * IsF b) h ;
+  false -> \ b h -> (tt, h) } ;
+orB-T-r : (a b : Bool) -> IsF a -> IsT (orB a b) -> IsT b = split {
+  true -> \ b h k -> absurd (IsT b) h ;
+  false -> \ b h k -> k } ;
+
+ext-unb (s : Nat -> Ty) (G : Env) : (th : Alist) -> (y : Nat) -> IsF (bound th y) -> Id Ty (look (extTh s th G) y) (look G y) = split {
+  anil -> \ y h -> refl (look G y) ;
+  acons x q th | r -> \ y h ->
+    trans Ty (look (extTh s (acons x q th) G) y) (look (extTh s th G) y) (look G y)
+      (ifB-F Ty (s x) (look (extTh s th G) y) (eqN y x) (orB-F (eqN y x) (bound th y) h).1)
+      (r y (orB-F (eqN y x) (bound th y) h).2) } ;
+
+extR-unb (S : SMem) (rho : Rho) : (th : Alist) -> (y : Nat) -> IsF (bound th y) -> Eqv (extR S rho th y) (rho y) = split {
+  anil -> \ y h -> eqv-refl (rho y) ;
+  acons x q th | r -> \ y h ->
+    eqv-trans (extR S rho (acons x q th) y) (extR S rho th y) (rho y)
+      (updR-miss (extR S rho th) x (S q rho) y (orB-F (eqN y x) (bound th y) h).1)
+      (r y (orB-F (eqN y x) (bound th y) h).2) } ;
+
+extR-lk (S : SMem) (rho : Rho) : (th : Alist) -> (y q : Nat) -> Lookup th y q -> Eqv (extR S rho th y) (S q rho) = split {
+  lk-here x q th -> updR-hit (extR S rho th) x (S q rho) ;
+  lk-there x r th y q ne h | rh -> eqv-trans (extR S rho (acons x r th) y) (extR S rho th y) (S q rho)
+      (updR-miss (extR S rho th) x (S r rho) y ne) rh } ;
+
+bool-T : (b : Bool) -> IsT b -> Id Bool true b = split {
+  true -> \ h -> refl true ;
+  false -> \ h -> absurd (Id Bool true false) h } ;
+
+LkNilP : Alist -> U l = split { anil -> Empty ; acons x q th -> Top } ;
+lk-nil-gen : (th : Alist) -> (y q : Nat) -> Lookup th y q -> LkNilP th = split {
+  lk-here x q th -> tt ;
+  lk-there x r th y q ne h -> tt } ;
+lk-nil (y q : Nat) (lk : Lookup anil y q) : Empty = lk-nil-gen anil y q lk ;
+
+LkSome (th : Alist) (y : Nat) : U l = (q : Nat) * Lookup th y q ;
+
+bound-T-by (x q : Nat) (th : Alist) (y : Nat) (h : IsT (orB (eqN y x) (bound th y)))
+    (r : IsT (bound th y) -> LkSome th y) : Plus (IsT (eqN y x)) (IsF (eqN y x)) -> LkSome (acons x q th) y = split {
+  inl k -> subst Nat (\ z -> LkSome (acons x q th) z) x y (sym Nat y x (eqN-sound y x k)) (q, lk-here x q th) ;
+  inr k -> ((r (orB-T-r (eqN y x) (bound th y) k h)).1,
+            lk-there x q th y (r (orB-T-r (eqN y x) (bound th y) k h)).1 k (r (orB-T-r (eqN y x) (bound th y) k h)).2) } ;
+
+bound-T : (th : Alist) -> (y : Nat) -> IsT (bound th y) -> LkSome th y = split {
+  anil -> \ y h -> absurd (LkSome anil y) h ;
+  acons x q th | r -> \ y h -> bound-T-by x q th y h (r y) (bool-dec (eqN y x)) } ;
+
+-- a property of every variable, from its bound and unbound cases
+by-bound (th : Alist) (y : Nat) (P : U l) (kb : LkSome th y -> P) (ku : IsF (bound th y) -> P) :
+    Plus (IsT (bound th y)) (IsF (bound th y)) -> P = split {
+  inl h -> kb (bound-T th y h) ;
+  inr h -> ku h } ;
+
+------------------------------------------------------------------------
+-- environments of the bodies
+
+-- G' with x shadowed by om, and its order with gcons x s G
+env-le-case (x y : Nat) (s : Ty) (G G' : Env) (le : Le s (look G' x)) :
+    (b : Bool) -> (IsT b -> Id Nat y x) -> Le (look G y) (ifB Ty b om (look G' y)) -> Le (ifB Ty b s (look G y)) (look G' y) = split {
+  true -> \ e k -> subst Nat (\ z -> Le s (look G' z)) x y (sym Nat y x (e tt)) le ;
+  false -> \ e k -> k } ;
+
+-- if G <= G'[x := om] and s <= G' x, then G[x := s] <= G'
+env-le-cons (x : Nat) (s : Ty) (G G' : Env) (le : Le s (look G' x)) (k : EnvLe G (gcons x om G')) : EnvLe (gcons x s G) G' =
+  \ y -> env-le-case x y s G G' le (eqN y x) (eqN-sound y x) (k y) ;
+
+shadow-in-case (rho : Rho) (x y : Nat) (v : Filt) (G' : Env) (h : mem (updR rho x v y) (look G' y)) :
+    (b : Bool) -> IsF (eqN y x) -> Id Bool b (eqN y x) -> mem (rho y) (ifB Ty b om (look G' y)) = split {
+  true -> \ n e -> fom (rho y) ;
+  false -> \ n e -> (updR-miss rho x v y n).1 (look G' y) h } ;
+
+shadow-in-by (rho : Rho) (x y : Nat) (v : Filt) (G' : Env) (h : mem (updR rho x v y) (look G' y)) :
+    Plus (IsT (eqN y x)) (IsF (eqN y x)) -> mem (rho y) (ifB Ty (eqN y x) om (look G' y)) = split {
+  inl k -> subst Bool (\ b -> mem (rho y) (ifB Ty b om (look G' y))) true (eqN y x)
+             (bool-T (eqN y x) k) (fom (rho y)) ;
+  inr k -> shadow-in-case rho x y v G' h (eqN y x) k (refl (eqN y x)) } ;
+
+-- G' in rho[v / x] gives G'[x := om] in rho
+shadow-in (rho : Rho) (x : Nat) (v : Filt) (G' : Env) (h : EnvIn G' (updR rho x v)) : EnvIn (gcons x om G') rho =
+  \ y -> shadow-in-by rho x y v G' (h y) (bool-dec (eqN y x)) ;
+
+-- the type of x in G' in rho[prin s / x] is above s
+at-x (rho : Rho) (x : Nat) (s : Ty) (G' : Env) (h : EnvIn G' (updR rho x (prin s))) (P : U l) (pP : isProp P)
+    (k : Le s (look G' x) -> P) : P =
+  ex-elim (Le s (look G' x)) P pP k ((updR-hit rho x (prin s)).1 (look G' x) (h x)) ;
+
+------------------------------------------------------------------------
+-- (pre)
+
+module Pre (mu : Nat -> Cell) (p : Nat) (rho : Rho) {
+
+  VP (t : Ty) : U l = mem (V mu p rho) t ;
+  vp-prop (t : Ty) : isProp (VP t) = fprop (V mu p rho) t ;
+  vp-om (t : Ty) (k : Le om t) : VP t = fup (V mu p rho) om t k (fom (V mu p rho)) ;
+
+  -- a rule of the cell c = mu p, in G in rho
+  rule (c : Cell) (e : Id Cell (mu p) c) (G : Env) (i : EnvIn G rho) (t : Ty) (q : CellQ (Obs mu) G p c t) : VP t =
+    v-in mu p rho G t i (obs-at' mu G p c t e q) ;
+
+  var-in-case (x y : Nat) (t : Ty) (h : mem (rho x) t) : (b : Bool) -> (IsT b -> Id Nat y x) -> mem (rho y) (ifB Ty b t om) = split {
+    true -> \ e -> subst Nat (\ z -> mem (rho z) t) x y (sym Nat y x (e tt)) h ;
+    false -> \ e -> fom (rho y) } ;
+  var-in (x : Nat) (t : Ty) (h : mem (rho x) t) : EnvIn (gcons x t gnil) rho =
+    \ y -> var-in-case x y t h (eqN y x) (eqN-sound y x) ;
+
+  c-var (x : Nat) (e : Id Cell (mu p) (evar x)) : Sub (rho x) (V mu p rho) = \ t h ->
+    rule (evar x) e (gcons x t gnil) (var-in x t h) t
+      (sym Ty (look (gcons x t gnil) x) t (ifB-T Ty t om (eqN x x) (eqN-refl x))) ;
+
+  c-quote (a : Atom) (e : Id Cell (mu p) (equote a)) : Sub (prin (at a)) (V mu p rho) =
+    prin-sub (at a) (V mu p rho) (rule (equote a) e gnil (envin-nil rho) (at a) (refl (at a))) ;
+
+  cons-w (q1 q2 : Nat) (e : Id Cell (mu p) (econs q1 q2)) (t : Ty) : Pair[V mu q1 rho, V mu q2 rho].W t -> VP t = split {
+    inl k -> vp-om t k ;
+    inr v -> fup (V mu p rho) (pair v.1 v.2.1) t v.2.2.2.2
+      (v-two mu q1 q2 rho v.1 v.2.1 (VP (pair v.1 v.2.1)) (vp-prop (pair v.1 v.2.1))
+        (\ G i o1 o2 -> rule (econs q1 q2) e G i (pair v.1 v.2.1) (v.1, (v.2.1, (refl (pair v.1 v.2.1), (o1, o2)))))
+        v.2.2.1 v.2.2.2.1) } ;
+
+  car-w (q : Nat) (e : Id Cell (mu p) (ecar q)) (t : Ty) : Fst[V mu q rho].W t -> VP t = split {
+    inl k -> vp-om t k ;
+    inr m -> v-elim mu q rho (pair t om) (VP t) (vp-prop t) (\ G i o -> rule (ecar q) e G i t (om, o)) m } ;
+
+  cdr-w (q : Nat) (e : Id Cell (mu p) (ecdr q)) (t : Ty) : Snd[V mu q rho].W t -> VP t = split {
+    inl k -> vp-om t k ;
+    inr m -> v-elim mu q rho (pair om t) (VP t) (vp-prop t) (\ G i o -> rule (ecdr q) e G i t (om, o)) m } ;
+
+  atom-g (q : Nat) (e : Id Cell (mu p) (eatom q)) (t : Ty) : AtomG (V mu q rho) t -> VP t = split {
+    inl v -> v-elim mu q rho atom (VP t) (vp-prop t) (\ G i o -> rule (eatom q) e G i t (inl (v.1, o))) v.2 ;
+    inr v -> v-elim mu q rho (pair om om) (VP t) (vp-prop t) (\ G i o -> rule (eatom q) e G i t (inr (v.1, o))) v.2 } ;
+
+  eq-g (q1 q2 : Nat) (e : Id Cell (mu p) (eeq q1 q2)) (t : Ty) (w : EqG (V mu q1 rho) (V mu q2 rho) t) : VP t =
+    v-two mu q1 q2 rho (at w.1) (at w.2.1) (VP t) (vp-prop t)
+      (\ G i o1 o2 -> rule (eeq q1 q2) e G i t (w.1, (w.2.1, (o1, (o2, w.2.2.2.2))))) w.2.2.1 w.2.2.2.1 ;
+
+  cond-g (q0 q1 q2 : Nat) (e : Id Cell (mu p) (eif q0 q1 q2)) (t : Ty) : CondG (V mu q0 rho) (V mu q1 rho) (V mu q2 rho) t -> VP t = split {
+    inl v -> v-two mu q0 q1 rho (at T) t (VP t) (vp-prop t) (\ G i o0 o1 -> rule (eif q0 q1 q2) e G i t (inl (o0, o1))) v.1 v.2 ;
+    inr v -> v-two mu q0 q2 rho (at NIL) t (VP t) (vp-prop t) (\ G i o0 o2 -> rule (eif q0 q1 q2) e G i t (inr (o0, o2))) v.1 v.2 } ;
+
+  plus-g (q1 q2 : Nat) (e : Id Cell (mu p) (eplus q1 q2)) (t : Ty) (w : PlusG (V mu q1 rho) (V mu q2 rho) t) : VP t =
+    v-two mu q1 q2 rho (at (num w.1)) (at (num w.2.1)) (VP t) (vp-prop t)
+      (\ G i o1 o2 -> rule (eplus q1 q2) e G i t (w.1, (w.2.1, (o1, (o2, w.2.2.2.2))))) w.2.2.1 w.2.2.2.1 ;
+
+  app-w (q1 q2 : Nat) (e : Id Cell (mu p) (eapp q1 q2)) (t : Ty) : App[V mu q1 rho, V mu q2 rho].W t -> VP t = split {
+    inl k -> vp-om t k ;
+    inr v -> v-two mu q1 q2 rho (arr v.1 t) v.1 (VP t) (vp-prop t)
+      (\ G i o1 o2 -> rule (eapp q1 q2) e G i t (v.1, (o1, o2))) v.2.2 v.2.1 } ;
+
+  -- LAMBDA: an arrow of the trace
+  lam-gen (x q : Nat) (e : Id Cell (mu p) (elam x q)) (s u : Ty) (h : mem (V mu q (updR rho x (prin s))) u) : VP (arr s u) =
+    v-elim mu q (updR rho x (prin s)) u (VP (arr s u)) (vp-prop (arr s u)) (\ G' i' o' ->
+      at-x rho x s G' i' (VP (arr s u)) (vp-prop (arr s u)) (\ le ->
+        rule (elam x q) e (gcons x om G') (shadow-in rho x (prin s) G' i') (arr s u)
+          (s, (u, (refl (arr s u),
+            obs-env mu G' (gcons x s (gcons x om G')) q u
+              (env-le-cons x s (gcons x om G') G' le (envle-refl (gcons x om G'))) o'))))) h ;
+
+  am-in (x q : Nat) (e : Id Cell (mu p) (elam x q)) : (r : Ty) -> AM (trace (gfun (V mu) q rho x)) r -> VP r = split {
+    am-one s u h -> lam-gen x q e s u h ;
+    am-meet r1 r2 h1 h2 | a1 a2 -> fmeet (V mu p rho) r1 r2 a1 a2 } ;
+
+  lam-w (x q : Nat) (e : Id Cell (mu p) (elam x q)) (t : Ty) : Lam[trace (gfun (V mu) q rho x)].W t -> VP t = split {
+    inl k -> vp-om t k ;
+    inr v -> fup (V mu p rho) v.1 t v.2.2 (am-in x q e v.1 v.2.1) } ;
+
+  -- LABEL: the rule of the fixed point
+  label-step (x q : Nat) (e : Id Cell (mu p) (elabel x q)) (s t : Ty) (hs : VP s)
+      (h : mem (V mu q (updR rho x (prin s))) t) : VP t =
+    v-elim mu p rho s (VP t) (vp-prop t) (\ G1 i1 o1 ->
+      v-elim mu q (updR rho x (prin s)) t (VP t) (vp-prop t) (\ G' i' o' ->
+        at-x rho x s G' i' (VP t) (vp-prop t) (\ le ->
+          rule (elabel x q) e (envMeet G1 (gcons x om G'))
+            (em-in rho G1 (gcons x om G') i1 (shadow-in rho x (prin s) G' i')) t
+            (s, (obs-env mu G' (gcons x s (envMeet G1 (gcons x om G'))) q t
+                   (env-le-cons x s (envMeet G1 (gcons x om G')) G' le (em-r G1 (gcons x om G'))) o',
+                 obs-env mu G1 (envMeet G1 (gcons x om G')) p s (em-l G1 (gcons x om G')) o1)))) h) hs ;
+
+  -- FUNARG: the types of the bindings, collected along the alist
+  hyp-shadow (x : Nat) (q' : Nat) (X : Filt) (sv : Nat -> Ty) (y : Nat) (k : IsF (eqN y x) -> mem X (sv y)) :
+      (b : Bool) -> Id Bool b (eqN y x) -> mem X (ifB Ty b om (sv y)) = split {
+    true -> \ e -> fom X ;
+    false -> \ e -> k (subst Bool (\ z -> IsF z) false (eqN y x) e tt) } ;
+
+  ThetaE (th : Alist) (sv : Nat -> Ty) : U l = Ex ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G th sv)) ;
+
+  theta-collect : (th : Alist) -> (sv : Nat -> Ty) -> ((y q : Nat) -> Lookup th y q -> mem (V mu q rho) (sv y)) -> ThetaE th sv = split {
+    anil -> \ sv hyp -> ex ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G anil sv))
+               (gnil, (envin-nil rho, \ y q lk -> absurd (Obs mu (jdg gnil q (sv y))) (lk-nil y q lk))) ;
+    acons x q0 th | r -> \ sv hyp ->
+      v-elim mu q0 rho (sv x) (ThetaE (acons x q0 th) sv) (ex-prop ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G (acons x q0 th) sv)))
+        (\ G1 i1 o1 ->
+          ex-elim ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G th (\ y -> ifB Ty (eqN y x) om (sv y))))
+            (ThetaE (acons x q0 th) sv) (ex-prop ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G (acons x q0 th) sv)))
+            (\ w -> ex ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G (acons x q0 th) sv))
+               (envMeet G1 w.1, (em-in rho G1 w.1 i1 w.2.1,
+                 theta-cons (Obs mu) (envMeet G1 w.1) x q0 th sv
+                   (obs-env mu G1 (envMeet G1 w.1) q0 (sv x) (em-l G1 w.1) o1)
+                   (\ z r' n lk -> obs-env mu w.1 (envMeet G1 w.1) r' (sv z) (em-r G1 w.1)
+                       (subst Ty (\ u -> Obs mu (jdg w.1 r' u)) (ifB Ty (eqN z x) om (sv z)) (sv z)
+                          (ifB-F Ty om (sv z) (eqN z x) n) (w.2.2 z r' lk))))))
+            (r (\ y -> ifB Ty (eqN y x) om (sv y))
+               (\ y q lk -> hyp-shadow x q (V mu q rho) sv y
+                  (\ n -> hyp y q (lk-there x q0 th y q n lk)) (eqN y x) (refl (eqN y x)))))
+        (hyp x q0 (lk-here x q0 th)) } ;
+
+  -- the shadowed environment of the body
+  sh-in-by (th : Alist) (G' : Env) (i' : EnvIn G' (extR (V mu) rho th)) (y : Nat) :
+      Plus (IsT (bound th y)) (IsF (bound th y)) -> mem (rho y) (look (extTh (\ z -> om) th G') y) =
+    by-bound th y (mem (rho y) (look (extTh (\ z -> om) th G') y))
+      (\ b -> mem-eq (rho y) om (look (extTh (\ z -> om) th G') y)
+                (lookup-extTh (\ z -> om) G' th y b.1 b.2) (fom (rho y)))
+      (\ n -> mem-eq (rho y) (look G' y) (look (extTh (\ z -> om) th G') y) (ext-unb (\ z -> om) G' th y n)
+                ((extR-unb (V mu) rho th y n).1 (look G' y) (i' y))) ;
+
+  ext-le-by (th : Alist) (G G' : Env) (k : EnvLe G (extTh (\ z -> om) th G')) (y : Nat) :
+      Plus (IsT (bound th y)) (IsF (bound th y)) -> Le (look (extTh (look G') th G) y) (look G' y) =
+    by-bound th y (Le (look (extTh (look G') th G) y) (look G' y))
+      (\ b -> id-le (look (extTh (look G') th G) y) (look G' y) (lookup-extTh (look G') G th y b.1 b.2))
+      (\ n -> le-trans (look (extTh (look G') th G) y) (look G y) (look G' y)
+                (id-le (look (extTh (look G') th G) y) (look G y) (ext-unb (look G') G th y n))
+                (le-trans (look G y) (look (extTh (\ z -> om) th G') y) (look G' y) (k y)
+                   (id-le (look (extTh (\ z -> om) th G') y) (look G' y) (ext-unb (\ z -> om) G' th y n)))) ;
+
+  funarg-w (q : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg q th)) (t : Ty) (w : VW mu q (extR (V mu) rho th) t) : VP t =
+    ex-elim ((G : Env) * (EnvIn G rho * ThetaR (Obs mu) G th (look w.1))) (VP t) (vp-prop t)
+      (\ c -> rule (efunarg q th) e (envMeet c.1 (extTh (\ z -> om) th w.1))
+         (em-in rho c.1 (extTh (\ z -> om) th w.1) c.2.1
+            (\ y -> sh-in-by th w.1 w.2.1 y (bool-dec (bound th y)))) t
+         (look w.1,
+          (\ y q' lk -> obs-env mu c.1 (envMeet c.1 (extTh (\ z -> om) th w.1)) q' (look w.1 y)
+                          (em-l c.1 (extTh (\ z -> om) th w.1)) (c.2.2 y q' lk),
+           obs-env mu w.1 (extTh (look w.1) th (envMeet c.1 (extTh (\ z -> om) th w.1))) q t
+             (\ y -> ext-le-by th (envMeet c.1 (extTh (\ z -> om) th w.1)) w.1
+                       (em-r c.1 (extTh (\ z -> om) th w.1)) y (bool-dec (bound th y)))
+             w.2.2)))
+      (theta-collect th (look w.1) (\ y q' lk -> (extR-lk (V mu) rho th y q' lk).1 (look w.1 y) (w.2.1 y))) ;
+
+  cell : (c : Cell) -> Id Cell (mu p) c -> Sub (Cl (V mu) c rho) (V mu p rho) = split {
+    evar x -> \ e -> c-var x e ;
+    equote a -> \ e -> c-quote a e ;
+    econs q1 q2 -> \ e -> Pair[V mu q1 rho, V mu q2 rho].sub (V mu p rho) (cons-w q1 q2 e) ;
+    ecar q -> \ e -> Fst[V mu q rho].sub (V mu p rho) (car-w q e) ;
+    ecdr q -> \ e -> Snd[V mu q rho].sub (V mu p rho) (cdr-w q e) ;
+    eatom q -> \ e -> gen-sub (AtomG (V mu q rho)) (V mu p rho) (atom-g q e) ;
+    eeq q1 q2 -> \ e -> gen-sub (EqG (V mu q1 rho) (V mu q2 rho)) (V mu p rho) (eq-g q1 q2 e) ;
+    eif q0 q1 q2 -> \ e -> gen-sub (CondG (V mu q0 rho) (V mu q1 rho) (V mu q2 rho)) (V mu p rho) (cond-g q0 q1 q2 e) ;
+    eapp q1 q2 -> \ e -> App[V mu q1 rho, V mu q2 rho].sub (V mu p rho) (app-w q1 q2 e) ;
+    elam x q -> \ e -> Lam[trace (gfun (V mu) q rho x)].sub (V mu p rho) (lam-w x q e) ;
+    elabel x q -> \ e -> fix-ind (trace (gfun (V mu) q rho x)) (V mu p rho) (label-step x q e) ;
+    efunarg q th -> \ e -> tr-sub (VW mu q (extR (V mu) rho th)) (V mu p rho) (funarg-w q th e) ;
+    eplus q1 q2 -> \ e -> gen-sub (PlusG (V mu q1 rho) (V mu q2 rho)) (V mu p rho) (plus-g q1 q2 e) ;
+    efree -> \ e -> bot-sub (V mu p rho) } ;
+} ;
+
+V-pre (mu : Nat -> Cell) (p : Nat) (rho : Rho) : Sub (Cl (V mu) (mu p) rho) (V mu p rho) =
+  Pre[mu, p, rho].cell (mu p) (refl (mu p)) ;
+
+------------------------------------------------------------------------
+-- (Park)
+
+-- upE (G[x := s]) is below (upE G)[prin s / x]
+upc-case (s a : Ty) : (b : Bool) -> Sub (prin (ifB Ty b s a)) (selF b (prin s) (prin a)) = split {
+  true -> sub-refl (prin s) ;
+  false -> sub-refl (prin a) } ;
+up-cons (x : Nat) (s : Ty) (G : Env) : RhoSub (upE (gcons x s G)) (updR (upE G) x (prin s)) =
+  \ y -> upc-case s (look G y) (eqN y x) ;
+
+-- the principal filters of equal types
+prin-id (a b : Ty) (e : Id Ty a b) : Sub (prin a) (prin b) = prin-anti b a (id-le b a (sym Ty a b e)) ;
+
+module Park (mu : Nat -> Cell) (S : SMem) (Sm : SMono S) (pre : (p : Nat) (rho : Rho) -> Sub (Cl S (mu p) rho) (S p rho)) {
+
+  M (J : Jdg) : U l = mem (Cl S (mu (jp J)) (upE (jG J))) (jt J) ;
+
+  -- a premise at the address q
+  prem (G : Env) (q : Nat) (s : Ty) (m : M (jdg G q s)) : mem (S q (upE G)) s = pre q (upE G) s m ;
+
+  body (x q : Nat) (G : Env) (s u : Ty) (m : M (jdg (gcons x s G) q u)) : mem (gfun S q (upE G) x (prin s)) u =
+    Sm q (upE (gcons x s G)) (updR (upE G) x (prin s)) (up-cons x s G) u (prem (gcons x s G) q u m) ;
+
+  ext-up-by (G : Env) (th : Alist) (sv : Nat -> Ty) (ht : ThetaR M G th sv) (y : Nat) :
+      Plus (IsT (bound th y)) (IsF (bound th y)) -> Sub (upE (extTh sv th G) y) (extR S (upE G) th y) =
+    by-bound th y (Sub (upE (extTh sv th G) y) (extR S (upE G) th y))
+      (\ b -> sub-trans (upE (extTh sv th G) y) (S b.1 (upE G)) (extR S (upE G) th y)
+                (sub-trans (upE (extTh sv th G) y) (prin (sv y)) (S b.1 (upE G))
+                   (prin-id (look (extTh sv th G) y) (sv y) (lookup-extTh sv G th y b.1 b.2))
+                   (prin-sub (sv y) (S b.1 (upE G)) (prem G b.1 (sv y) (ht y b.1 b.2))))
+                (extR-lk S (upE G) th y b.1 b.2).2)
+      (\ n -> sub-trans (upE (extTh sv th G) y) (upE G y) (extR S (upE G) th y)
+                (prin-id (look (extTh sv th G) y) (look G y) (ext-unb sv G th y n))
+                (extR-unb S (upE G) th y n).2) ;
+
+  cell (G : Env) (p : Nat) : (c : Cell) -> Id Cell (mu p) c -> (t : Ty) -> CellQ M G p c t -> mem (Cl S c (upE G)) t = split {
+    evar x -> \ e t q -> mem-eq (prin (look G x)) (look G x) t q (prin-in (look G x)) ;
+    equote a -> \ e t q -> mem-eq (prin (at a)) (at a) t q (prin-in (at a)) ;
+    econs q1 q2 -> \ e t v -> mem-eq (pairF (S q1 (upE G)) (S q2 (upE G))) (pair v.1 v.2.1) t v.2.2.1
+       (pair-in (S q1 (upE G)) (S q2 (upE G)) v.1 v.2.1 (prem G q1 v.1 v.2.2.2.1) (prem G q2 v.2.1 v.2.2.2.2)) ;
+    ecar q -> \ e t v -> Fst[S q (upE G)].intro t (inr
+       (fup (S q (upE G)) (pair t v.1) (pair t om) (le-pair t t v.1 om (le-refl t) (le-om v.1)) (prem G q (pair t v.1) v.2))) ;
+    ecdr q -> \ e t v -> Snd[S q (upE G)].intro t (inr
+       (fup (S q (upE G)) (pair v.1 t) (pair om t) (le-pair v.1 om t t (le-om v.1) (le-refl t)) (prem G q (pair v.1 t) v.2))) ;
+    eatom q -> \ e t v -> gen-in (AtomG (S q (upE G))) t
+       (pmap (Id Ty t (at T) * M (jdg G q atom)) (Id Ty t (at NIL) * M (jdg G q (pair om om)))
+             (Id Ty t (at T) * mem (S q (upE G)) atom) (Id Ty t (at NIL) * mem (S q (upE G)) (pair om om))
+             (\ w -> (w.1, prem G q atom w.2)) (\ w -> (w.1, prem G q (pair om om) w.2)) v) ;
+    eeq q1 q2 -> \ e t v -> gen-in (EqG (S q1 (upE G)) (S q2 (upE G))) t
+       (v.1, (v.2.1, (prem G q1 (at v.1) v.2.2.1, (prem G q2 (at v.2.1) v.2.2.2.1, v.2.2.2.2)))) ;
+    eif q0 q1 q2 -> \ e t v -> gen-in (CondG (S q0 (upE G)) (S q1 (upE G)) (S q2 (upE G))) t
+       (pmap (M (jdg G q0 (at T)) * M (jdg G q1 t)) (M (jdg G q0 (at NIL)) * M (jdg G q2 t))
+             (mem (S q0 (upE G)) (at T) * mem (S q1 (upE G)) t) (mem (S q0 (upE G)) (at NIL) * mem (S q2 (upE G)) t)
+             (\ w -> (prem G q0 (at T) w.1, prem G q1 t w.2)) (\ w -> (prem G q0 (at NIL) w.1, prem G q2 t w.2)) v) ;
+    eapp q1 q2 -> \ e t v -> app-in (S q1 (upE G)) (S q2 (upE G)) v.1 t (prem G q2 v.1 v.2.2) (prem G q1 (arr v.1 t) v.2.1) ;
+    elam x q -> \ e t v -> mem-eq (lamF (trace (gfun S q (upE G) x))) (arr v.1 v.2.1) t v.2.2.1
+       (lam-in (trace (gfun S q (upE G) x)) v.1 v.2.1 (body x q G v.1 v.2.1 v.2.2.2)) ;
+    elabel x q -> \ e t v -> fix-step (trace (gfun S q (upE G) x)) v.1 t
+       (subst Cell (\ c -> mem (Cl S c (upE G)) v.1) (mu p) (elabel x q) e v.2.2)
+       (body x q G v.1 t v.2.1) ;
+    efunarg q th -> \ e t v -> Sm q (upE (extTh v.1 th G)) (extR S (upE G) th)
+       (\ y -> ext-up-by G th v.1 v.2.1 y (bool-dec (bound th y))) t (prem (extTh v.1 th G) q t v.2.2) ;
+    eplus q1 q2 -> \ e t v -> gen-in (PlusG (S q1 (upE G)) (S q2 (upE G))) t
+       (v.1, (v.2.1, (prem G q1 (at (num v.1)) v.2.2.1, (prem G q2 (at (num v.2.1)) v.2.2.2.1, v.2.2.2.2)))) ;
+    efree -> \ e t v -> absurd (mem bot t) v } ;
+
+  closed : Closed mu M = \ G p t q -> cell G p (mu p) (refl (mu p)) t q ;
+
+  obs : (J : Jdg) -> Obs mu J -> M J =
+    obs-model mu M
+      (\ G p -> fom (Cl S (mu p) (upE G)))
+      (\ G p s t a b -> fmeet (Cl S (mu p) (upE G)) s t a b)
+      (\ G p s t a le -> fup (Cl S (mu p) (upE G)) s t le a)
+      closed ;
+
+  -- every element of V mu p rho is in the clause of S
+  in-cl (p : Nat) (rho : Rho) : Sub (V mu p rho) (Cl S (mu p) rho) =
+    tr-sub (VW mu p rho) (Cl S (mu p) rho) (\ t w ->
+      Cl-mono S Sm (mu p) (upE w.1) rho (envin-up w.1 rho w.2.1) t (obs (jdg w.1 p t) w.2.2)) ;
+
+  -- Theorem 6.2(3): V mu is the least
+  least (p : Nat) (rho : Rho) : Sub (V mu p rho) (S p rho) =
+    sub-trans (V mu p rho) (Cl S (mu p) rho) (S p rho) (in-cl p rho) (pre p rho) ;
+} ;
+
+-- Theorem 6.2(2): V mu is a fixed point
+V-fix (mu : Nat -> Cell) (p : Nat) (rho : Rho) : Eqv (V mu p rho) (Cl (V mu) (mu p) rho) =
+  (Park[mu, V mu, V-mono mu, V-pre mu].in-cl p rho, V-pre mu p rho) ;

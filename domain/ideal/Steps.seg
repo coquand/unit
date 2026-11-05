@@ -1,0 +1,432 @@
+-- Steps.seg: the rules leave the semantic memory unchanged
+-- (doc/lazy-intersection.tex section 6.3, Lemma 6.3 and Theorem 6.4).
+--
+-- A rule rewrites one cell: nu = mu[c' / p0] (OneCell).  By Park's
+-- principle (Fix.Park) with S = V nu, V mu is included in V nu as soon as
+-- Cl (V nu) (mu p0) is included in V nu p0 (dir1): at the other cells mu
+-- and nu agree and V nu is a fixed point.  Symmetrically (dir2).  For all
+-- rules but [L] both follow from one equation (Loc): for every monotone,
+-- continuous S satisfying S p = Cl S (mu p) at the cells p /= p0,
+--     Cl S (mu p0) = Cl S c'.
+-- Each is a calculation with the laws of Laws.seg:
+--   [C]    fstF (S p1) = fstF (pairF (S p2) (S p3)) = S p2 = Cl S (mu p2)
+--   [A],[E],[I], PLUS   the laws of the primitives
+--   [Fa]   S p rho' = rho' x = S q rho    (rho' = rho[S th rho / th])
+--   [Fb]   S p rho' = prin (at a)
+--   [F]    the rewrite of [Fc]/[Fd]: Cl S c rho' = Cl S c' rho, the new
+--          cells a' holding FUNARG a th: S a' rho = S a rho'
+--   [G]    appF (S pf) (S p2) = appF (lamF g) (S p2) = g (S p2) by beta
+-- [L] by fixed-point induction, for Y and for V.  The allocation of a
+-- fresh cell a (no cell of mu mentions a): V mu <= V nu by Park, and
+-- V nu <= V mu off a by Park with S = V mu except topF at a.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Funarg[l] ; open Step[l] ;
+open Filter[l] ; open Laws[l] ; open Sem[l] ; open Fix[l] ;
+
+------------------------------------------------------------------------
+-- tools
+
+rho-refl (rho : Rho) : RhoSub rho rho = \ x -> sub-refl (rho x) ;
+
+-- a clause along an equation of cells
+cl-at (S : SMem) (c d : Cell) (e : Id Cell c d) (rho : Rho) : Eqv (Cl S c rho) (Cl S d rho) =
+  subst Cell (\ z -> Eqv (Cl S c rho) (Cl S z rho)) c d e (eqv-refl (Cl S c rho)) ;
+
+-- two cells of different forms have different addresses
+diff-addr (mu : Nat -> Cell) (p q : Nat) (c d : Cell) (ep : Id Cell (mu p) c) (eq : Id Cell (mu q) d)
+    (h : IsF (eqN (tag c) (tag d))) : IsF (eqN q p) =
+  eqN-of-ne q p (\ e -> cell-ne c d h
+    (trans Cell c (mu p) d (sym Cell (mu p) c ep)
+       (trans Cell (mu p) (mu q) d (ap Nat Cell mu p q (sym Nat q p e)) eq))) ;
+
+by-addr (q p : Nat) (P : Nat -> U l) (kt : P p) (kf : IsF (eqN q p) -> P q) :
+    Plus (IsT (eqN q p)) (IsF (eqN q p)) -> P q = split {
+  inl h -> subst Nat P p q (sym Nat q p (eqN-sound q p h)) kt ;
+  inr h -> kf h } ;
+
+-- congruence of the operations
+pair-cong (x x' y y' : Filt) (a : Eqv x x') (b : Eqv y y') : Eqv (pairF x y) (pairF x' y') =
+  (pair-mono x x' y y' a.1 b.1, pair-mono x' x y' y a.2 b.2) ;
+fst-cong (x x' : Filt) (a : Eqv x x') : Eqv (fstF x) (fstF x') = (fst-mono x x' a.1, fst-mono x' x a.2) ;
+snd-cong (x x' : Filt) (a : Eqv x x') : Eqv (sndF x) (sndF x') = (snd-mono x x' a.1, snd-mono x' x a.2) ;
+atom-cong (x x' : Filt) (a : Eqv x x') : Eqv (atomF x) (atomF x') = (atom-mono x x' a.1, atom-mono x' x a.2) ;
+eq-cong (x x' y y' : Filt) (a : Eqv x x') (b : Eqv y y') : Eqv (eqF x y) (eqF x' y') =
+  (eq-mono x x' y y' a.1 b.1, eq-mono x' x y' y a.2 b.2) ;
+cond-cong (x x' y y' z z' : Filt) (a : Eqv x x') (b : Eqv y y') (c : Eqv z z') : Eqv (condF x y z) (condF x' y' z') =
+  (cond-mono x x' y y' z z' a.1 b.1 c.1, cond-mono x' x y' y z' z a.2 b.2 c.2) ;
+plus-cong (x x' y y' : Filt) (a : Eqv x x') (b : Eqv y y') : Eqv (plusF x y) (plusF x' y') =
+  (plus-mono x x' y y' a.1 b.1, plus-mono x' x y' y a.2 b.2) ;
+app-cong (x x' y y' : Filt) (a : Eqv x x') (b : Eqv y y') : Eqv (appF x y) (appF x' y') =
+  (app-mono x x' y y' a.1 b.1, app-mono x' x y' y a.2 b.2) ;
+
+-- the body of a LAMBDA or LABEL is continuous in its variable
+gc-case (rho : Rho) (x z : Nat) (y : Filt) (G : Env) (iz : mem (updR rho x y z) (look G z)) :
+    (b : Bool) -> (IsT b -> Id Nat z x) -> Id Bool b (eqN z x) -> Sub (prin (look G z)) (selF b (prin (look G x)) (rho z)) = split {
+  true -> \ e k -> subst Nat (\ w -> Sub (prin (look G w)) (prin (look G x))) x z (sym Nat z x (e tt)) (sub-refl (prin (look G x))) ;
+  false -> \ e k -> prin-sub (look G z) (rho z)
+      ((updR-miss rho x y z (subst Bool (\ w -> IsF w) false (eqN z x) k tt)).1 (look G z) iz) } ;
+
+gfun-cont-in (S : SMem) (Sm : SMono S) (p : Nat) (rho : Rho) (x : Nat) (y : Filt) (t : Ty) (G : Env)
+    (i : EnvIn G (updR rho x y)) (h : mem (S p (upE G)) t) : Ex ((s : Ty) * (mem y s * mem (gfun S p rho x (prin s)) t)) =
+  ex ((s : Ty) * (mem y s * mem (gfun S p rho x (prin s)) t))
+    (look G x, ((updR-hit rho x y).1 (look G x) (i x),
+      Sm p (upE G) (updR rho x (prin (look G x)))
+        (\ z -> gc-case rho x z y G (i z) (eqN z x) (eqN-sound z x) (refl (eqN z x))) t h)) ;
+
+gfun-cont (S : SMem) (Sm : SMono S) (Sc : SCont S) (p : Nat) (rho : Rho) (x : Nat) : Cont (gfun S p rho x) =
+  \ y t h -> ex-elim ((G : Env) * (EnvIn G (updR rho x y) * mem (S p (upE G)) t))
+     (Ex ((s : Ty) * (mem y s * mem (gfun S p rho x (prin s)) t)))
+     (ex-prop ((s : Ty) * (mem y s * mem (gfun S p rho x (prin s)) t)))
+     (\ w -> gfun-cont-in S Sm p rho x y t w.1 w.2.1 w.2.2)
+     (Sc p (updR rho x y) t h) ;
+
+gfun-m (S : SMem) (Sm : SMono S) (p : Nat) (rho : Rho) (x : Nat) : Mono (gfun S p rho x) =
+  \ y y' k -> gfun-mono S Sm p rho rho x (rho-refl rho) y y' k ;
+
+------------------------------------------------------------------------
+-- Lemma 6.3: one-cell rewrites
+
+FixOff (S : SMem) (mu : Nat -> Cell) (p0 : Nat) : U l+ =
+  (p : Nat) -> IsF (eqN p p0) -> (rho : Rho) -> Eqv (S p rho) (Cl S (mu p) rho) ;
+
+module OneCell (mu : Nat -> Cell) (p0 : Nat) (c' : Cell) {
+  nu : Nat -> Cell = upd mu p0 c' ;
+  agree (p : Nat) (n : IsF (eqN p p0)) : Id Cell (nu p) (mu p) = upd-miss mu p0 c' p n ;
+  hit : Id Cell (nu p0) c' = upd-hit mu p0 c' ;
+
+  fo-mu : FixOff (V mu) mu p0 = \ p n rho -> V-fix mu p rho ;
+  fo-nu : FixOff (V nu) mu p0 = \ p n rho ->
+    eqv-trans (V nu p rho) (Cl (V nu) (nu p) rho) (Cl (V nu) (mu p) rho) (V-fix nu p rho)
+      (cl-at (V nu) (nu p) (mu p) (agree p n) rho) ;
+
+  pre1 (h1 : (rho : Rho) -> Sub (Cl (V nu) (mu p0) rho) (V nu p0 rho)) (p : Nat) (rho : Rho) :
+      Sub (Cl (V nu) (mu p) rho) (V nu p rho) =
+    by-addr p p0 (\ z -> Sub (Cl (V nu) (mu z) rho) (V nu z rho)) (h1 rho)
+      (\ n -> sub-trans (Cl (V nu) (mu p) rho) (Cl (V nu) (nu p) rho) (V nu p rho)
+                (cl-at (V nu) (nu p) (mu p) (agree p n) rho).2 (V-pre nu p rho))
+      (bool-dec (eqN p p0)) ;
+
+  pre2 (h2 : (rho : Rho) -> Sub (Cl (V mu) c' rho) (V mu p0 rho)) (p : Nat) (rho : Rho) :
+      Sub (Cl (V mu) (nu p) rho) (V mu p rho) =
+    by-addr p p0 (\ z -> Sub (Cl (V mu) (nu z) rho) (V mu z rho))
+      (sub-trans (Cl (V mu) (nu p0) rho) (Cl (V mu) c' rho) (V mu p0 rho)
+         (cl-at (V mu) (nu p0) c' hit rho).1 (h2 rho))
+      (\ n -> sub-trans (Cl (V mu) (nu p) rho) (Cl (V mu) (mu p) rho) (V mu p rho)
+                (cl-at (V mu) (nu p) (mu p) (agree p n) rho).1 (V-pre mu p rho))
+      (bool-dec (eqN p p0)) ;
+
+  dir1 (h1 : (rho : Rho) -> Sub (Cl (V nu) (mu p0) rho) (V nu p0 rho)) (p : Nat) (rho : Rho) : Sub (V mu p rho) (V nu p rho) =
+    Park[mu, V nu, V-mono nu, pre1 h1].least p rho ;
+
+  dir2 (h2 : (rho : Rho) -> Sub (Cl (V mu) c' rho) (V mu p0 rho)) (p : Nat) (rho : Rho) : Sub (V nu p rho) (V mu p rho) =
+    Park[nu, V mu, V-mono mu, pre2 h2].least p rho ;
+
+  Loc : U l+ = (S : SMem) -> SMono S -> SCont S -> FixOff S mu p0 -> (rho : Rho) -> Eqv (Cl S (mu p0) rho) (Cl S c' rho) ;
+
+  from-local (L : Loc) (p : Nat) (rho : Rho) : Eqv (V mu p rho) (V nu p rho) =
+    (dir1 (\ r -> sub-trans (Cl (V nu) (mu p0) r) (Cl (V nu) c' r) (V nu p0 r)
+                    (L (V nu) (V-mono nu) (V-cont nu) fo-nu r).1
+                    (sub-trans (Cl (V nu) c' r) (Cl (V nu) (nu p0) r) (V nu p0 r)
+                       (cl-at (V nu) (nu p0) c' hit r).2 (V-pre nu p0 r))) p rho,
+     dir2 (\ r -> sub-trans (Cl (V mu) c' r) (Cl (V mu) (mu p0) r) (V mu p0 r)
+                    (L (V mu) (V-mono mu) (V-cont mu) fo-mu r).2 (V-pre mu p0 r)) p rho) ;
+} ;
+
+------------------------------------------------------------------------
+-- the local equations
+
+-- a copy rule: c' = mu q; the case q = p0 is trivial
+copy (mu : Nat -> Cell) (S : SMem) (p0 q : Nat) (rho : Rho)
+    (k : IsF (eqN q p0) -> Eqv (Cl S (mu p0) rho) (Cl S (mu q) rho)) : Eqv (Cl S (mu p0) rho) (Cl S (mu q) rho) =
+  by-addr q p0 (\ z -> Eqv (Cl S (mu p0) rho) (Cl S (mu z) rho)) (eqv-refl (Cl S (mu p0) rho)) k (bool-dec (eqN q p0)) ;
+
+-- [C]
+loc-car (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecar p1)) (e1 : Id Cell (mu p1) (econs p2 p3))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (Cl S (mu p2) rho) =
+  copy mu S p0 p2 rho (\ n2 ->
+    eqv-trans (Cl S (mu p0) rho) (fstF (S p1 rho)) (Cl S (mu p2) rho) (cl-at S (mu p0) (ecar p1) e0 rho)
+    (eqv-trans (fstF (S p1 rho)) (fstF (pairF (S p2 rho) (S p3 rho))) (Cl S (mu p2) rho)
+       (fst-cong (S p1 rho) (pairF (S p2 rho) (S p3 rho))
+          (eqv-trans (S p1 rho) (Cl S (mu p1) rho) (pairF (S p2 rho) (S p3 rho))
+             (fo p1 (diff-addr mu p0 p1 (ecar p1) (econs p2 p3) e0 e1 tt) rho) (cl-at S (mu p1) (econs p2 p3) e1 rho)))
+    (eqv-trans (fstF (pairF (S p2 rho) (S p3 rho))) (S p2 rho) (Cl S (mu p2) rho)
+       (fst-pair (S p2 rho) (S p3 rho)) (fo p2 n2 rho)))) ;
+
+loc-cdr (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecdr p1)) (e1 : Id Cell (mu p1) (econs p2 p3))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (Cl S (mu p3) rho) =
+  copy mu S p0 p3 rho (\ n3 ->
+    eqv-trans (Cl S (mu p0) rho) (sndF (S p1 rho)) (Cl S (mu p3) rho) (cl-at S (mu p0) (ecdr p1) e0 rho)
+    (eqv-trans (sndF (S p1 rho)) (sndF (pairF (S p2 rho) (S p3 rho))) (Cl S (mu p3) rho)
+       (snd-cong (S p1 rho) (pairF (S p2 rho) (S p3 rho))
+          (eqv-trans (S p1 rho) (Cl S (mu p1) rho) (pairF (S p2 rho) (S p3 rho))
+             (fo p1 (diff-addr mu p0 p1 (ecdr p1) (econs p2 p3) e0 e1 tt) rho) (cl-at S (mu p1) (econs p2 p3) e1 rho)))
+    (eqv-trans (sndF (pairF (S p2 rho) (S p3 rho))) (S p3 rho) (Cl S (mu p3) rho)
+       (snd-pair (S p2 rho) (S p3 rho)) (fo p3 n3 rho)))) ;
+
+-- a component holding a quoted atom
+quoted (mu : Nat -> Cell) (S : SMem) (p0 p : Nat) (c0 : Cell) (e0 : Id Cell (mu p0) c0) (a : Atom) (e : Id Cell (mu p) (equote a))
+    (h : IsF (eqN (tag c0) (tag (equote a)))) (fo : FixOff S mu p0) (rho : Rho) : Eqv (S p rho) (prin (at a)) =
+  eqv-trans (S p rho) (Cl S (mu p) rho) (prin (at a)) (fo p (diff-addr mu p0 p c0 (equote a) e0 e h) rho)
+    (cl-at S (mu p) (equote a) e rho) ;
+
+-- [A]
+loc-atom-T (mu : Nat -> Cell) (p0 p1 : Nat) (a : Atom) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (equote a))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (prin (at T)) =
+  eqv-trans (Cl S (mu p0) rho) (atomF (S p1 rho)) (prin (at T)) (cl-at S (mu p0) (eatom p1) e0 rho)
+    (eqv-trans (atomF (S p1 rho)) (atomF (prin (at a))) (prin (at T))
+       (atom-cong (S p1 rho) (prin (at a)) (quoted mu S p0 p1 (eatom p1) e0 a e1 tt fo rho)) (atom-quote a)) ;
+
+loc-atom-NIL (mu : Nat -> Cell) (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (econs p2 p3))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (prin (at NIL)) =
+  eqv-trans (Cl S (mu p0) rho) (atomF (S p1 rho)) (prin (at NIL)) (cl-at S (mu p0) (eatom p1) e0 rho)
+    (eqv-trans (atomF (S p1 rho)) (atomF (pairF (S p2 rho) (S p3 rho))) (prin (at NIL))
+       (atom-cong (S p1 rho) (pairF (S p2 rho) (S p3 rho))
+          (eqv-trans (S p1 rho) (Cl S (mu p1) rho) (pairF (S p2 rho) (S p3 rho))
+             (fo p1 (diff-addr mu p0 p1 (eatom p1) (econs p2 p3) e0 e1 tt) rho) (cl-at S (mu p1) (econs p2 p3) e1 rho)))
+       (atom-pair (S p2 rho) (S p3 rho))) ;
+
+-- [E]
+loc-eq (mu : Nat -> Cell) (p0 p1 p2 : Nat) (a1 a2 : Atom) (e0 : Id Cell (mu p0) (eeq p1 p2))
+    (e1 : Id Cell (mu p1) (equote a1)) (e2 : Id Cell (mu p2) (equote a2))
+    (S : SMem) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (eqF (prin (at a1)) (prin (at a2))) =
+  eqv-trans (Cl S (mu p0) rho) (eqF (S p1 rho) (S p2 rho)) (eqF (prin (at a1)) (prin (at a2))) (cl-at S (mu p0) (eeq p1 p2) e0 rho)
+    (eq-cong (S p1 rho) (prin (at a1)) (S p2 rho) (prin (at a2))
+       (quoted mu S p0 p1 (eeq p1 p2) e0 a1 e1 tt fo rho) (quoted mu S p0 p2 (eeq p1 p2) e0 a2 e2 tt fo rho)) ;
+
+-- [I]
+loc-if-T (mu : Nat -> Cell) (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eT : Id Cell (mu p) (equote T))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (Cl S (mu p1) rho) =
+  copy mu S p0 p1 rho (\ n1 ->
+    eqv-trans (Cl S (mu p0) rho) (condF (S p rho) (S p1 rho) (S p2 rho)) (Cl S (mu p1) rho) (cl-at S (mu p0) (eif p p1 p2) e0 rho)
+    (eqv-trans (condF (S p rho) (S p1 rho) (S p2 rho)) (condF (prin (at T)) (S p1 rho) (S p2 rho)) (Cl S (mu p1) rho)
+       (cond-cong (S p rho) (prin (at T)) (S p1 rho) (S p1 rho) (S p2 rho) (S p2 rho)
+          (quoted mu S p0 p (eif p p1 p2) e0 T eT tt fo rho) (eqv-refl (S p1 rho)) (eqv-refl (S p2 rho)))
+    (eqv-trans (condF (prin (at T)) (S p1 rho) (S p2 rho)) (S p1 rho) (Cl S (mu p1) rho)
+       (cond-T (S p1 rho) (S p2 rho)) (fo p1 n1 rho)))) ;
+
+loc-if-NIL (mu : Nat -> Cell) (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eN : Id Cell (mu p) (equote NIL))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (Cl S (mu p2) rho) =
+  copy mu S p0 p2 rho (\ n2 ->
+    eqv-trans (Cl S (mu p0) rho) (condF (S p rho) (S p1 rho) (S p2 rho)) (Cl S (mu p2) rho) (cl-at S (mu p0) (eif p p1 p2) e0 rho)
+    (eqv-trans (condF (S p rho) (S p1 rho) (S p2 rho)) (condF (prin (at NIL)) (S p1 rho) (S p2 rho)) (Cl S (mu p2) rho)
+       (cond-cong (S p rho) (prin (at NIL)) (S p1 rho) (S p1 rho) (S p2 rho) (S p2 rho)
+          (quoted mu S p0 p (eif p p1 p2) e0 NIL eN tt fo rho) (eqv-refl (S p1 rho)) (eqv-refl (S p2 rho)))
+    (eqv-trans (condF (prin (at NIL)) (S p1 rho) (S p2 rho)) (S p2 rho) (Cl S (mu p2) rho)
+       (cond-NIL (S p1 rho) (S p2 rho)) (fo p2 n2 rho)))) ;
+
+-- PLUS
+loc-plus (mu : Nat -> Cell) (p0 p1 p2 m n : Nat) (e0 : Id Cell (mu p0) (eplus p1 p2))
+    (e1 : Id Cell (mu p1) (equote (num m))) (e2 : Id Cell (mu p2) (equote (num n)))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (prin (at (num (add m n)))) =
+  eqv-trans (Cl S (mu p0) rho) (plusF (S p1 rho) (S p2 rho)) (prin (at (num (add m n)))) (cl-at S (mu p0) (eplus p1 p2) e0 rho)
+    (eqv-trans (plusF (S p1 rho) (S p2 rho)) (plusF (prin (at (num m))) (prin (at (num n)))) (prin (at (num (add m n))))
+       (plus-cong (S p1 rho) (prin (at (num m))) (S p2 rho) (prin (at (num n)))
+          (quoted mu S p0 p1 (eplus p1 p2) e0 (num m) e1 tt fo rho) (quoted mu S p0 p2 (eplus p1 p2) e0 (num n) e2 tt fo rho))
+       (plus-quote m n)) ;
+
+-- FUNARG at p0: the body in rho[S th rho / th]
+funarg-body (mu : Nat -> Cell) (S : SMem) (p0 p : Nat) (th : Alist) (c : Cell) (e0 : Id Cell (mu p0) (efunarg p th))
+    (e1 : Id Cell (mu p) c) (h : IsF (eqN (tag (efunarg p th)) (tag c))) (fo : FixOff S mu p0) (rho : Rho) :
+    Eqv (Cl S (mu p0) rho) (Cl S c (extR S rho th)) =
+  eqv-trans (Cl S (mu p0) rho) (S p (extR S rho th)) (Cl S c (extR S rho th)) (cl-at S (mu p0) (efunarg p th) e0 rho)
+    (eqv-trans (S p (extR S rho th)) (Cl S (mu p) (extR S rho th)) (Cl S c (extR S rho th))
+       (fo p (diff-addr mu p0 p (efunarg p th) c e0 e1 h) (extR S rho th)) (cl-at S (mu p) c e1 (extR S rho th))) ;
+
+-- [Fa]
+loc-Fa (mu : Nat -> Cell) (p0 p q x : Nat) (th : Alist) (e0 : Id Cell (mu p0) (efunarg p th)) (ev : Id Cell (mu p) (evar x))
+    (lk : Lookup th x q) (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) :
+    Eqv (Cl S (mu p0) rho) (Cl S (mu q) rho) =
+  copy mu S p0 q rho (\ nq ->
+    eqv-trans (Cl S (mu p0) rho) (extR S rho th x) (Cl S (mu q) rho)
+      (funarg-body mu S p0 p th (evar x) e0 ev tt fo rho)
+    (eqv-trans (extR S rho th x) (S q rho) (Cl S (mu q) rho) (extR-lk S rho th x q lk) (fo q nq rho))) ;
+
+-- [Fb]
+loc-Fb (mu : Nat -> Cell) (p0 p : Nat) (th : Alist) (a : Atom) (e0 : Id Cell (mu p0) (efunarg p th)) (e1 : Id Cell (mu p) (equote a))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) : Eqv (Cl S (mu p0) rho) (prin (at a)) =
+  funarg-body mu S p0 p th (equote a) e0 e1 tt fo rho ;
+
+-- [F]: a renamed primitive
+ren-cl (S : SMem) (rho1 rho2 : Rho) (R : Nat -> Nat -> U l) (f : (a a' : Nat) -> R a a' -> Eqv (S a rho1) (S a' rho2)) :
+    (c c' : Cell) -> Ren R c c' -> Eqv (Cl S c rho1) (Cl S c' rho2) = split {
+  ren-cons p q p' q' hp hq -> pair-cong (S p rho1) (S p' rho2) (S q rho1) (S q' rho2) (f p p' hp) (f q q' hq) ;
+  ren-car p p' hp -> fst-cong (S p rho1) (S p' rho2) (f p p' hp) ;
+  ren-cdr p p' hp -> snd-cong (S p rho1) (S p' rho2) (f p p' hp) ;
+  ren-atom p p' hp -> atom-cong (S p rho1) (S p' rho2) (f p p' hp) ;
+  ren-eq p q p' q' hp hq -> eq-cong (S p rho1) (S p' rho2) (S q rho1) (S q' rho2) (f p p' hp) (f q q' hq) ;
+  ren-if p q r p' q' r' hp hq hr -> cond-cong (S p rho1) (S p' rho2) (S q rho1) (S q' rho2) (S r rho1) (S r' rho2)
+      (f p p' hp) (f q q' hq) (f r r' hr) ;
+  ren-app p q p' q' hp hq -> app-cong (S p rho1) (S p' rho2) (S q rho1) (S q' rho2) (f p p' hp) (f q q' hq) ;
+  ren-plus p q p' q' hp hq -> plus-cong (S p rho1) (S p' rho2) (S q rho1) (S q' rho2) (f p p' hp) (f q q' hq) } ;
+
+loc-F (mu : Nat -> Cell) (p0 p : Nat) (th : Alist) (c c' : Cell) (e0 : Id Cell (mu p0) (efunarg p th)) (e1 : Id Cell (mu p) c)
+    (r : Ren (NewFor mu th p0) c c') (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p0) (rho : Rho) :
+    Eqv (Cl S (mu p0) rho) (Cl S c' rho) =
+  eqv-trans (Cl S (mu p0) rho) (Cl S c (extR S rho th)) (Cl S c' rho)
+    (funarg-body mu S p0 p th c e0 e1 (ren-tag (NewFor mu th p0) p th c c' r) fo rho)
+    (ren-cl S (extR S rho th) rho (NewFor mu th p0)
+       (\ a a' h -> eqv-sym (S a' rho) (S a (extR S rho th))
+          (eqv-trans (S a' rho) (Cl S (mu a') rho) (S a (extR S rho th)) (fo a' h.2 rho)
+             (cl-at S (mu a') (efunarg a th) h.1 rho)))
+       c c' r) ;
+
+-- [G]
+loc-G (mu : Nat -> Cell) (p pf pl p1 p2 x : Nat) (th : Alist) (e : Id Cell (mu p) (eapp pf p2))
+    (ef : Id Cell (mu pf) (efunarg pl th)) (el : Id Cell (mu pl) (elam x p1))
+    (S : SMem) (Sm : SMono S) (Sc : SCont S) (fo : FixOff S mu p) (rho : Rho) :
+    Eqv (Cl S (mu p) rho) (gfun S p1 (extR S rho th) x (S p2 rho)) =
+  eqv-trans (Cl S (mu p) rho) (appF (S pf rho) (S p2 rho)) (gfun S p1 (extR S rho th) x (S p2 rho))
+    (cl-at S (mu p) (eapp pf p2) e rho)
+  (eqv-trans (appF (S pf rho) (S p2 rho)) (appF (lamF (trace (gfun S p1 (extR S rho th) x))) (S p2 rho))
+     (gfun S p1 (extR S rho th) x (S p2 rho))
+     (app-cong (S pf rho) (lamF (trace (gfun S p1 (extR S rho th) x))) (S p2 rho) (S p2 rho)
+        (eqv-trans (S pf rho) (S pl (extR S rho th)) (lamF (trace (gfun S p1 (extR S rho th) x)))
+           (eqv-trans (S pf rho) (Cl S (mu pf) rho) (S pl (extR S rho th))
+              (fo pf (diff-addr mu p pf (eapp pf p2) (efunarg pl th) e ef tt) rho)
+              (cl-at S (mu pf) (efunarg pl th) ef rho))
+           (eqv-trans (S pl (extR S rho th)) (Cl S (mu pl) (extR S rho th)) (lamF (trace (gfun S p1 (extR S rho th) x)))
+              (fo pl (diff-addr mu p pl (eapp pf p2) (elam x p1) e el tt) (extR S rho th))
+              (cl-at S (mu pl) (elam x p1) el (extR S rho th))))
+        (eqv-refl (S p2 rho)))
+     (beta (gfun S p1 (extR S rho th) x) (gfun-m S Sm p1 (extR S rho th) x) (gfun-cont S Sm Sc p1 (extR S rho th) x) (S p2 rho))) ;
+
+------------------------------------------------------------------------
+-- [L]: fixed-point induction for Y and for V
+
+module RuleL (mu : Nat -> Cell) (p pl p1 x : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg pl th))
+    (el : Id Cell (mu pl) (elabel x p1)) {
+  c' : Cell = efunarg p1 (acons x p th) ;
+  nu : Nat -> Cell = upd mu p c' ;
+  npl : IsF (eqN pl p) = diff-addr mu p pl (efunarg pl th) (elabel x p1) e el tt ;
+
+  -- for S a fixed point at pl: the clause of mu p is the fixed point Y
+  at-p (S : SMem) (Sm : SMono S) (fpl : (rho : Rho) -> Eqv (S pl rho) (Cl S (mu pl) rho)) (rho : Rho) :
+      Eqv (Cl S (mu p) rho) (fixF (trace (gfun S p1 (extR S rho th) x))) =
+    eqv-trans (Cl S (mu p) rho) (S pl (extR S rho th)) (fixF (trace (gfun S p1 (extR S rho th) x)))
+      (cl-at S (mu p) (efunarg pl th) e rho)
+      (eqv-trans (S pl (extR S rho th)) (Cl S (mu pl) (extR S rho th)) (fixF (trace (gfun S p1 (extR S rho th) x)))
+         (fpl (extR S rho th)) (cl-at S (mu pl) (elabel x p1) el (extR S rho th))) ;
+
+  -- V mu <= V nu: Y is below V nu p, a prefixed point
+  h1 (rho : Rho) : Sub (Cl (V nu) (mu p) rho) (V nu p rho) =
+    sub-trans (Cl (V nu) (mu p) rho) (fixF (trace (gfun (V nu) p1 (extR (V nu) rho th) x))) (V nu p rho)
+      (at-p (V nu) (V-mono nu) (OneCell[mu, p, c'].fo-nu pl npl) rho).1
+      (fix-least (gfun (V nu) p1 (extR (V nu) rho th) x) (gfun-m (V nu) (V-mono nu) p1 (extR (V nu) rho th) x) (V nu p rho)
+         (sub-trans (Cl (V nu) c' rho) (Cl (V nu) (nu p) rho) (V nu p rho)
+            (cl-at (V nu) (nu p) c' (upd-hit mu p c') rho).2 (V-pre nu p rho))) ;
+
+  -- V nu <= V mu: V mu p is Y, and Y is a prefixed point
+  h2 (rho : Rho) : Sub (Cl (V mu) c' rho) (V mu p rho) =
+    sub-trans (Cl (V mu) c' rho) (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x))) (V mu p rho)
+      (sub-trans (gfun (V mu) p1 (extR (V mu) rho th) x (V mu p rho))
+                 (gfun (V mu) p1 (extR (V mu) rho th) x (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x))))
+                 (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x)))
+         (gfun-m (V mu) (V-mono mu) p1 (extR (V mu) rho th) x (V mu p rho) (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x)))
+            (sub-trans (V mu p rho) (Cl (V mu) (mu p) rho) (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x)))
+               (V-fix mu p rho).1 (at-p (V mu) (V-mono mu) (\ r -> V-fix mu pl r) rho).1))
+         (fix-unfold (gfun (V mu) p1 (extR (V mu) rho th) x) (gfun-cont (V mu) (V-mono mu) (V-cont mu) p1 (extR (V mu) rho th) x)))
+      (sub-trans (fixF (trace (gfun (V mu) p1 (extR (V mu) rho th) x))) (Cl (V mu) (mu p) rho) (V mu p rho)
+         (at-p (V mu) (V-mono mu) (\ r -> V-fix mu pl r) rho).2 (V-pre mu p rho)) ;
+
+  inv (q : Nat) (rho : Rho) : Eqv (V mu q rho) (V nu q rho) =
+    (OneCell[mu, p, c'].dir1 h1 q rho, OneCell[mu, p, c'].dir2 h2 q rho) ;
+} ;
+
+------------------------------------------------------------------------
+-- Theorem 6.4, first part: a rule leaves the semantic memory unchanged
+
+step-sem (mu : Nat -> Cell) : (nu : Nat -> Cell) -> Step[l].Step mu nu -> (p : Nat) (rho : Rho) -> Eqv (V mu p rho) (V nu p rho) = split {
+  st-car p0 p1 p2 p3 e0 e1 -> OneCell[mu, p0, mu p2].from-local (loc-car mu p0 p1 p2 p3 e0 e1) ;
+  st-cdr p0 p1 p2 p3 e0 e1 -> OneCell[mu, p0, mu p3].from-local (loc-cdr mu p0 p1 p2 p3 e0 e1) ;
+  st-atom-T p0 p1 a e0 e1 -> OneCell[mu, p0, equote T].from-local (loc-atom-T mu p0 p1 a e0 e1) ;
+  st-atom-NIL p0 p1 p2 p3 e0 e1 -> OneCell[mu, p0, equote NIL].from-local (loc-atom-NIL mu p0 p1 p2 p3 e0 e1) ;
+  st-eq-T p0 p1 p2 a1 a2 e0 e1 e2 h -> OneCell[mu, p0, equote T].from-local (\ S Sm Sc fo rho ->
+      eqv-trans (Cl S (mu p0) rho) (eqF (prin (at a1)) (prin (at a2))) (prin (at T))
+        (loc-eq mu p0 p1 p2 a1 a2 e0 e1 e2 S fo rho) (eq-quote-T a1 a2 h)) ;
+  st-eq-NIL p0 p1 p2 a1 a2 e0 e1 e2 h -> OneCell[mu, p0, equote NIL].from-local (\ S Sm Sc fo rho ->
+      eqv-trans (Cl S (mu p0) rho) (eqF (prin (at a1)) (prin (at a2))) (prin (at NIL))
+        (loc-eq mu p0 p1 p2 a1 a2 e0 e1 e2 S fo rho) (eq-quote-NIL a1 a2 h)) ;
+  st-if-T p0 p p1 p2 e0 eT -> OneCell[mu, p0, mu p1].from-local (loc-if-T mu p0 p p1 p2 e0 eT) ;
+  st-if-NIL p0 p p1 p2 e0 eN -> OneCell[mu, p0, mu p2].from-local (loc-if-NIL mu p0 p p1 p2 e0 eN) ;
+  st-plus p0 p1 p2 m n e0 e1 e2 -> OneCell[mu, p0, equote (num (add m n))].from-local (loc-plus mu p0 p1 p2 m n e0 e1 e2) ;
+  st-Fa p0 p q x th e0 ev lk -> OneCell[mu, p0, mu q].from-local (loc-Fa mu p0 p q x th e0 ev lk) ;
+  st-Fb p0 p th a e0 e1 -> OneCell[mu, p0, equote a].from-local (loc-Fb mu p0 p th a e0 e1) ;
+  st-F p0 p th c c' e0 e1 r -> OneCell[mu, p0, c'].from-local (loc-F mu p0 p th c c' e0 e1 r) ;
+  st-G p pf pl p1 p2 x th e ef el -> OneCell[mu, p, efunarg p1 (acons x p2 th)].from-local (loc-G mu p pf pl p1 p2 x th e ef el) ;
+  st-L p pl p1 x th e el -> RuleL[mu, p, pl, p1, x, th, e, el].inv } ;
+
+------------------------------------------------------------------------
+-- allocation of a fresh cell
+
+extR-agree (S1 S2 : SMem) (a : Nat) (rho : Rho) (ag : (p : Nat) -> IsF (eqN p a) -> (r : Rho) -> Sub (S1 p r) (S2 p r)) :
+    (th : Alist) -> NotOccTh a th -> RhoSub (extR S1 rho th) (extR S2 rho th) = split {
+  anil -> \ n -> rho-refl rho ;
+  acons x q th | r -> \ n -> updR-mono (extR S1 rho th) (extR S2 rho th) x (S1 q rho) (S2 q rho) (r n.2) (ag q n.1 rho) } ;
+
+-- a cell in which a does not occur has the same clause in S1 and S2 if they agree off a
+cl-agree (S1 S2 : SMem) (S1m : SMono S1) (a : Nat) (ag : (p : Nat) -> IsF (eqN p a) -> (r : Rho) -> Sub (S1 p r) (S2 p r)) :
+    (c : Cell) -> NotOcc a c -> (rho : Rho) -> Sub (Cl S1 c rho) (Cl S2 c rho) = split {
+  evar x -> \ n rho -> sub-refl (rho x) ;
+  equote b -> \ n rho -> sub-refl (prin (at b)) ;
+  econs p q -> \ n rho -> pair-mono (S1 p rho) (S2 p rho) (S1 q rho) (S2 q rho) (ag p n.1 rho) (ag q n.2 rho) ;
+  ecar p -> \ n rho -> fst-mono (S1 p rho) (S2 p rho) (ag p n rho) ;
+  ecdr p -> \ n rho -> snd-mono (S1 p rho) (S2 p rho) (ag p n rho) ;
+  eatom p -> \ n rho -> atom-mono (S1 p rho) (S2 p rho) (ag p n rho) ;
+  eeq p q -> \ n rho -> eq-mono (S1 p rho) (S2 p rho) (S1 q rho) (S2 q rho) (ag p n.1 rho) (ag q n.2 rho) ;
+  eif p q r -> \ n rho -> cond-mono (S1 p rho) (S2 p rho) (S1 q rho) (S2 q rho) (S1 r rho) (S2 r rho)
+                 (ag p n.1 rho) (ag q n.2.1 rho) (ag r n.2.2 rho) ;
+  eapp p q -> \ n rho -> app-mono (S1 p rho) (S2 p rho) (S1 q rho) (S2 q rho) (ag p n.1 rho) (ag q n.2 rho) ;
+  elam x p -> \ n rho -> lam-mono (trace (gfun S1 p rho x)) (trace (gfun S2 p rho x))
+                 (\ s u h -> ag p n (updR rho x (prin s)) u h) ;
+  elabel x p -> \ n rho -> fix-mono (trace (gfun S1 p rho x)) (trace (gfun S2 p rho x))
+                 (\ s u h -> ag p n (updR rho x (prin s)) u h) ;
+  efunarg p th -> \ n rho -> sub-trans (S1 p (extR S1 rho th)) (S1 p (extR S2 rho th)) (S2 p (extR S2 rho th))
+                 (S1m p (extR S1 rho th) (extR S2 rho th) (extR-agree S1 S2 a rho ag th n.2))
+                 (ag p n.1 (extR S2 rho th)) ;
+  eplus p q -> \ n rho -> plus-mono (S1 p rho) (S2 p rho) (S1 q rho) (S2 q rho) (ag p n.1 rho) (ag q n.2 rho) ;
+  efree -> \ n rho -> sub-refl bot } ;
+
+module AllocS (mu : Nat -> Cell) (a q : Nat) (th : Alist) (fr : Fresh mu a) {
+  c' : Cell = efunarg q th ;
+  nu : Nat -> Cell = upd mu a c' ;
+
+  -- V mu, with every type at a
+  S' (p : Nat) (rho : Rho) : Filt = selF (eqN p a) topF (V mu p rho) ;
+  S'm : SMono S' = \ p rho rho' h -> selF-mono (eqN p a) topF topF (V mu p rho) (V mu p rho') (sub-refl topF) (V-mono mu p rho rho' h) ;
+  ag (p : Nat) (n : IsF (eqN p a)) (rho : Rho) : Sub (S' p rho) (V mu p rho) = (selF-F (eqN p a) n topF (V mu p rho)).1 ;
+  ag' (p : Nat) (n : IsF (eqN p a)) (rho : Rho) : Sub (V mu p rho) (S' p rho) = (selF-F (eqN p a) n topF (V mu p rho)).2 ;
+
+  pre (p : Nat) (rho : Rho) : Sub (Cl S' (nu p) rho) (S' p rho) =
+    by-addr p a (\ z -> Sub (Cl S' (nu z) rho) (S' z rho))
+      (sub-trans (Cl S' (nu a) rho) topF (S' a rho) (top-sub (Cl S' (nu a) rho)) (selF-T (eqN a a) (eqN-refl a) topF (V mu a rho)).2)
+      (\ n -> sub-trans (Cl S' (nu p) rho) (Cl S' (mu p) rho) (S' p rho)
+         (cl-at S' (nu p) (mu p) (upd-miss mu a c' p n) rho).1
+         (sub-trans (Cl S' (mu p) rho) (Cl (V mu) (mu p) rho) (S' p rho)
+            (cl-agree S' (V mu) S'm a ag (mu p) (fr.2 p) rho)
+            (sub-trans (Cl (V mu) (mu p) rho) (V mu p rho) (S' p rho) (V-pre mu p rho) (ag' p n rho))))
+      (bool-dec (eqN p a)) ;
+
+  inv (p : Nat) (n : IsF (eqN p a)) (rho : Rho) : Eqv (V mu p rho) (V nu p rho) =
+    (OneCell[mu, a, c'].dir1 (\ r -> sub-trans (Cl (V nu) (mu a) r) bot (V nu a r)
+                                   (cl-at (V nu) (mu a) efree fr.1 r).1 (bot-sub (V nu a r))) p rho,
+     sub-trans (V nu p rho) (S' p rho) (V mu p rho) (Park[nu, S', S'm, pre].least p rho) (ag p n rho)) ;
+} ;
+
+alloc-sem (mu : Nat -> Cell) : (nu : Nat -> Cell) -> AllocStep mu nu -> (p : Nat) -> Not (Id Cell (mu p) efree) ->
+    (rho : Rho) -> Eqv (V mu p rho) (V nu p rho) = split {
+  alloc a q th fr -> \ p n rho -> AllocS[mu, a, q, th, fr].inv p
+     (eqN-of-ne p a (\ e -> n (subst Nat (\ z -> Id Cell (mu z) efree) a p (sym Nat p a e) fr.1))) rho } ;
+
+------------------------------------------------------------------------
+-- the equations of semantic memories
+
+sem-ext (S1 S2 : SMem) (h : (p : Nat) (rho : Rho) -> Eqv (S1 p rho) (S2 p rho)) : Id SMem S1 S2 =
+  Axioms[l+].FunExtLemmas[fe @l+].funext Nat (\ _ -> Rho -> Filt) S1 S2 (\ p ->
+    Axioms[l+].FunExtLemmas[fe @l+].funext Rho (\ _ -> Filt) (S1 p) (S2 p) (\ rho ->
+      filt-ext (S1 p rho) (S2 p rho) (h p rho))) ;
+
+-- Theorem 6.4: a rule leaves the semantic memory unchanged
+step-id (mu nu : Nat -> Cell) (st : Step[l].Step mu nu) : Id SMem (V mu) (V nu) =
+  sem-ext (V mu) (V nu) (step-sem mu nu st) ;

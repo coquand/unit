@@ -1,0 +1,132 @@
+-- Example4.seg: Example 4 of henderson.pdf (Agda LAZY/Example4.agda).
+--
+--   alpha : (FUNARG ((LAMBDA INTS (CAR (CDR (INTS 0))))
+--                    (LABEL INTEGERS (LAMBDA I (CONS I (INTEGERS (PLUS I 1)))))))
+--
+-- The paper runs the evaluator on alpha and ends with alpha : 1.  Here, as
+-- in the Agda, the semantic fact: in the INITIAL memory alpha has the
+-- type at 1 (example4).  The derivation unfolds the LABEL twice: with
+-- INTEGERS : om, INTEGERS has type u1 = 1 -> (1 x om) (round1); with
+-- INTEGERS : u1, it has type u2 = 0 -> (0 x (1 x om)) (round2), and
+-- CAR (CDR (u2 0)) is 1.  The approximants u1, u2 are types; no
+-- consistency of them is needed.
+--
+-- With Corollary 5.1: if the evaluator halts on alpha with a QUOTE, the
+-- atom is 1 (example4-atom), and it does not halt with a CONS or a
+-- function (example4-not-pair, example4-not-fun).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Gen[l] ; open Rules[l] ; open Eval[l] ;
+
+------------------------------------------------------------------------
+-- numerals, variables, the memory (the paper's layout, as in the Agda)
+
+n1 : Nat = suc zero ;            n2 : Nat = suc n1 ;   n3 : Nat = suc n2 ;   n4 : Nat = suc n3 ;
+n5 : Nat = suc n4 ;   n6 : Nat = suc n5 ;   n7 : Nat = suc n6 ;   n8 : Nat = suc n7 ;
+n9 : Nat = suc n8 ;   n10 : Nat = suc n9 ;  n11 : Nat = suc n10 ; n12 : Nat = suc n11 ;
+n13 : Nat = suc n12 ; n14 : Nat = suc n13 ; n15 : Nat = suc n14 ; n16 : Nat = suc n15 ;
+
+INTS : Nat = zero ;  INTEGERS : Nat = n1 ;  I : Nat = n2 ;
+
+data Cells = cnil | ccons (c : Cell) (cs : Cells) ;
+
+nth : Cells -> Nat -> Cell = split {
+  cnil -> \ n -> efree ;
+  ccons c cs | r -> split { zero -> c ; suc n -> r n } } ;
+
+--  0  alpha (FUNARG 1 <empty>)         9  (LAMBDA I 10)
+--  1  (2 3)                            10  (CONS 11 12)
+--  2  (LAMBDA INTS 4)                  11  I
+--  3  (LABEL INTEGERS 9)               12  (13 14)        (INTEGERS (PLUS I 1))
+--  4  (CAR 5)                          13  INTEGERS
+--  5  (CDR 6)                          14  (PLUS 15 16)
+--  6  (7 8)          (INTS 0)          15  I
+--  7  INTS                             16  (QUOTE 1)
+--  8  (QUOTE 0)
+mu : Nat -> Cell = nth
+  (ccons (efunarg n1 anil) (ccons (eapp n2 n3) (ccons (elam INTS n4) (ccons (elabel INTEGERS n9)
+  (ccons (ecar n5) (ccons (ecdr n6) (ccons (eapp n7 n8) (ccons (evar INTS) (ccons (equote (num zero))
+  (ccons (elam I n10) (ccons (econs n11 n12) (ccons (evar I) (ccons (eapp n13 n14) (ccons (evar INTEGERS)
+  (ccons (eplus n15 n16) (ccons (evar I) (ccons (equote (num n1)) cnil))))))))))))))))) ;
+
+------------------------------------------------------------------------
+-- the two approximants of INTEGERS
+
+at0 : Ty = at (num zero) ;
+at1 : Ty = at (num n1) ;
+u1 : Ty = arr at1 (pair at1 om) ;
+u2 : Ty = arr at0 (pair at0 (pair at1 om)) ;
+
+E1 : Env = gcons INTEGERS om gnil ;
+E2 : Env = gcons INTEGERS u1 gnil ;
+
+-- first unfolding: INTEGERS : om gives INTEGERS : u1
+round1 : Obs mu (jdg gnil n3 u1) =
+  obs-at mu gnil n3 u1
+    (om,
+     (obs-at mu E1 n9 u1
+        (at1, (pair at1 om, (refl u1,
+          obs-at mu (gcons I at1 E1) n10 (pair at1 om)
+            (at1, (om, (refl (pair at1 om),
+              (obs-at mu (gcons I at1 E1) n11 at1 (refl at1),
+               o-om (gcons I at1 E1) n12))))))),
+      o-om gnil n3)) ;
+
+-- second unfolding: INTEGERS : u1 gives INTEGERS : u2; the recursive call
+-- (INTEGERS (PLUS I 1)) is observed through u1
+round2 : Obs mu (jdg gnil n3 u2) =
+  obs-at mu gnil n3 u2
+    (u1,
+     (obs-at mu E2 n9 u2
+        (at0, (pair at0 (pair at1 om), (refl u2,
+          obs-at mu (gcons I at0 E2) n10 (pair at0 (pair at1 om))
+            (at0, (pair at1 om, (refl (pair at0 (pair at1 om)),
+              (obs-at mu (gcons I at0 E2) n11 at0 (refl at0),
+               obs-at mu (gcons I at0 E2) n12 (pair at1 om)
+                 (at1,
+                  (obs-at mu (gcons I at0 E2) n13 u1 (refl u1),
+                   obs-at mu (gcons I at0 E2) n14 at1
+                     (zero, (n1, (obs-at mu (gcons I at0 E2) n15 at0 (refl at0),
+                                  (obs-at mu (gcons I at0 E2) n16 at1 (refl at1), refl at1))))))))))))),
+      round1)) ;
+
+-- the body (CAR (CDR (INTS 0))) observes 1 when INTS : u2
+body : Obs mu (jdg (gcons INTS u2 gnil) n4 at1) =
+  obs-at mu (gcons INTS u2 gnil) n4 at1
+    (om, obs-at mu (gcons INTS u2 gnil) n5 (pair at1 om)
+      (at0, obs-at mu (gcons INTS u2 gnil) n6 (pair at0 (pair at1 om))
+        (at0, (obs-at mu (gcons INTS u2 gnil) n7 u2 (refl u2),
+               obs-at mu (gcons INTS u2 gnil) n8 at0 (refl at0))))) ;
+
+isNil : Alist -> Bool = split { anil -> true ; acons x q th -> false } ;
+
+-- the empty alist binds nothing
+lookup-cons : (th : Alist) -> (x q : Nat) -> Lookup th x q -> IsF (isNil th) = split {
+  lk-here x q th -> tt ;
+  lk-there y r th x q ne h -> tt } ;
+
+-- Example 4: alpha has type 1 in the initial memory
+example4 : Obs mu (jdg gnil zero at1) =
+  obs-at mu gnil zero at1
+    (\ x -> om,
+     (\ x q k -> efq (lookup-cons anil x q k),
+      obs-at mu gnil n1 at1
+        (u2, (obs-at mu gnil n2 (arr u2 at1) (u2, (at1, (refl (arr u2 at1), body))), round2)))) ;
+
+------------------------------------------------------------------------
+-- with Corollary 5.1
+
+alpha-nonfree : NonFree mu zero = \ x -> cell-ne (efunarg n1 anil) efree tt x ;
+
+-- if Eval(alpha, mu) halts with (QUOTE a) at alpha, then a is 1
+example4-atom (nu : Nat -> Cell) (a : Atom) (h : Ev mu zero nu) (e : Id Cell (nu zero) (equote a)) : Id Atom a (num n1) =
+  at-at a (num n1) ((eval-atom mu nu zero a h alpha-nonfree e gnil at1).1 example4) ;
+
+-- it does not halt with a CONS, nor with a function
+example4-not-pair (nu : Nat -> Cell) (p1 p2 : Nat) (h : Ev mu zero nu) (e : Id Cell (nu zero) (econs p1 p2)) : Empty =
+  (eval-pair mu nu zero p1 p2 h alpha-nonfree e gnil).2.1 (num n1) example4 ;
+
+example4-not-fun (nu : Nat -> Cell) (pl : Nat) (th : Alist) (x b : Nat) (h : Ev mu zero nu)
+    (e : Id Cell (nu zero) (efunarg pl th)) (el : Id Cell (nu pl) (elam x b)) : Empty =
+  (eval-fun mu nu zero pl th x b h alpha-nonfree e el gnil).2.1 (num n1) example4 ;

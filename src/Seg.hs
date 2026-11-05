@@ -3087,6 +3087,10 @@ scopeOf cx = go (cxEnv cx) (QScope [] [] True ((cc cx) { ccOpen = False }) (cxK 
  where
   go r sc = case r of
     ENil -> sc
+    -- the indices a split absorbed (bindIdx) are internal: never a name
+    -- for a variable in a read-back (the index m of  c m : D (suc m) m  is
+    -- the branch variable m, not %ix2)
+    EVar r' x _ | take 3 x == "%ix" -> go r' sc
     EVar r' x v -> go r' (addVar' x v sc)
     EDecl r' _ _ -> go r' sc
     ELvl r' x l -> go r' (case latoms l of

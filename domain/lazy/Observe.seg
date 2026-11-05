@@ -1,0 +1,418 @@
+-- Observe.seg: the meaning of a memory cell (doc/lazy-intersection.tex
+-- section 3, Definition 3.1 and Lemma 3.2).
+--
+-- A judgement jdg G p t reads "the cell p has type t in G".  The rules
+-- of a cell are given once, as rule instances RuleI G c t (the cell c
+-- derives t in G, the side data recorded) with their premises: an index
+-- type Prem and the premise judgements prem.  Obs mu is then the least
+-- relation closed under om, meet, subsumption, and o-rule: a rule
+-- instance of the cell mu p all of whose premises hold.  The premises
+-- are a function field indexed by Prem, so Obs is one indexed family,
+-- neither mutual nor nested (the FUNARG rule has one premise per binding
+-- of its alist).  The LABEL rule has a premise about its own address p.
+--
+-- CellQ R G p c t is the readable form of "a rule of c derives t in G at
+-- p from premises in R": cell-view and cell-build go between rule
+-- instances and CellQ, so that every proof below reasons on CellQ.
+--
+-- Least model.  If M contains om, is closed under meet and subsumption,
+-- and contains t whenever CellQ M G p (mu p) t, then Obs mu is included
+-- in M (obs-model, the eliminator).  With M = Obs nu this is the common
+-- transfer lemma of section 4 (obs-transfer); with mu, nu agreeing off
+-- p0, the hypothesis at p is needed at p0 only (closed-agree).
+--
+-- Lemma 3.2(1) (environments): if D <= G pointwise, every type of p in G
+-- is a type of p in D (obs-env).  Lemma 3.2(2) (generation): a filter P
+-- (om, meet, upward closed) containing every type given by one rule of
+-- the cell mu p from observations of its components contains every type
+-- of p (cell-ind).  Copy: two addresses with the same cell have the same
+-- types (obs-copy).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ;
+
+data Jdg = jdg (G : Env) (p : Nat) (t : Ty) ;
+
+jG : Jdg -> Env = split { jdg G p t -> G } ;
+jp : Jdg -> Nat = split { jdg G p t -> p } ;
+jt : Jdg -> Ty = split { jdg G p t -> t } ;
+
+------------------------------------------------------------------------
+-- rule instances of a cell (Definition 3.1, one constructor per rule)
+
+data RuleI (G : Env) : (c : Cell) -> (t : Ty) -> U l =
+    r-var (x : Nat) : RuleI G (evar x) (look G x)
+  | r-quote (a : Atom) : RuleI G (equote a) (at a)
+  | r-cons (p q : Nat) (s t : Ty) : RuleI G (econs p q) (pair s t)
+  | r-car (p : Nat) (s t : Ty) : RuleI G (ecar p) s
+  | r-cdr (p : Nat) (s t : Ty) : RuleI G (ecdr p) t
+  | r-atom-T (p : Nat) : RuleI G (eatom p) (at T)
+  | r-atom-NIL (p : Nat) : RuleI G (eatom p) (at NIL)
+  | r-eq-T (p q : Nat) (a b : Atom) (h : IsT (atEq a b)) : RuleI G (eeq p q) (at T)
+  | r-eq-NIL (p q : Nat) (a b : Atom) (h : IsF (atEq a b)) : RuleI G (eeq p q) (at NIL)
+  | r-if-T (p0 p1 p2 : Nat) (s : Ty) : RuleI G (eif p0 p1 p2) s
+  | r-if-NIL (p0 p1 p2 : Nat) (s : Ty) : RuleI G (eif p0 p1 p2) s
+  | r-app (p q : Nat) (s t : Ty) : RuleI G (eapp p q) t
+  | r-lam (x p : Nat) (s t : Ty) : RuleI G (elam x p) (arr s t)
+  | r-label (x p : Nat) (s t : Ty) : RuleI G (elabel x p) t
+  | r-funarg (p : Nat) (th : Alist) (s : Nat -> Ty) (t : Ty) : RuleI G (efunarg p th) t
+  | r-plus (p q : Nat) (m n : Nat) : RuleI G (eplus p q) (at (num (add m n))) ;
+
+-- the premises: none, one (Top), two (Bool), or for FUNARG the body and
+-- one per binding of the alist
+Prem (G : Env) : (c : Cell) -> (t : Ty) -> RuleI G c t -> U l = split {
+  r-var x -> Empty ;
+  r-quote a -> Empty ;
+  r-cons p q s t -> Bool ;
+  r-car p s t -> Top ;
+  r-cdr p s t -> Top ;
+  r-atom-T p -> Top ;
+  r-atom-NIL p -> Top ;
+  r-eq-T p q a b h -> Bool ;
+  r-eq-NIL p q a b h -> Bool ;
+  r-if-T p0 p1 p2 s -> Bool ;
+  r-if-NIL p0 p1 p2 s -> Bool ;
+  r-app p q s t -> Bool ;
+  r-lam x p s t -> Top ;
+  r-label x p s t -> Bool ;
+  r-funarg p th s t -> Plus Top (LkAny th) ;
+  r-plus p q m n -> Bool } ;
+
+two : Bool -> Jdg -> Jdg -> Jdg = split { true -> \ J K -> J ; false -> \ J K -> K } ;
+
+funarg-prem (G : Env) (p : Nat) (th : Alist) (s : Nat -> Ty) (t : Ty) : Plus Top (LkAny th) -> Jdg = split {
+  inl u -> jdg (extTh s th G) p t ;
+  inr k -> jdg G k.2.1 (s k.1) } ;
+
+-- the premise judgements of a rule instance at the address p0
+prem (G : Env) (p0 : Nat) : (c : Cell) -> (t : Ty) -> (r : RuleI G c t) -> Prem G c t r -> Jdg = split {
+  r-var x -> \ j -> efq j ;
+  r-quote a -> \ j -> efq j ;
+  r-cons p q s t -> \ j -> two j (jdg G p s) (jdg G q t) ;
+  r-car p s t -> \ j -> jdg G p (pair s t) ;
+  r-cdr p s t -> \ j -> jdg G p (pair s t) ;
+  r-atom-T p -> \ j -> jdg G p atom ;
+  r-atom-NIL p -> \ j -> jdg G p (pair om om) ;
+  r-eq-T p q a b h -> \ j -> two j (jdg G p (at a)) (jdg G q (at b)) ;
+  r-eq-NIL p q a b h -> \ j -> two j (jdg G p (at a)) (jdg G q (at b)) ;
+  r-if-T p1 p2 p3 s -> \ j -> two j (jdg G p1 (at T)) (jdg G p2 s) ;
+  r-if-NIL p1 p2 p3 s -> \ j -> two j (jdg G p1 (at NIL)) (jdg G p3 s) ;
+  r-app p q s t -> \ j -> two j (jdg G p (arr s t)) (jdg G q s) ;
+  r-lam x p s t -> \ j -> jdg (gcons x s G) p t ;
+  r-label x p s t -> \ j -> two j (jdg (gcons x s G) p t) (jdg G p0 s) ;
+  r-funarg p th s t -> \ j -> funarg-prem G p th s t j ;
+  r-plus p q m n -> \ j -> two j (jdg G p (at (num m))) (jdg G q (at (num n))) } ;
+
+------------------------------------------------------------------------
+-- Definition 3.1
+
+data Obs (mu : Nat -> Cell) : (J : Jdg) -> U l =
+    o-om (G : Env) (p : Nat) : Obs mu (jdg G p om)
+  | o-meet (G : Env) (p : Nat) (s t : Ty) (h1 : Obs mu (jdg G p s)) (h2 : Obs mu (jdg G p t)) : Obs mu (jdg G p (meet s t))
+  | o-sub (G : Env) (p : Nat) (s t : Ty) (h : Obs mu (jdg G p s)) (le : Le s t) : Obs mu (jdg G p t)
+  | o-rule (G : Env) (p : Nat) (t : Ty) (r : RuleI G (mu p) t)
+      (h : (j : Prem G (mu p) t r) -> Obs mu (prem G p (mu p) t r j)) : Obs mu (jdg G p t) ;
+
+------------------------------------------------------------------------
+-- the rules, read by the form of the cell
+
+-- the types of the bindings of th, in G
+ThetaR (R : Jdg -> U l) (G : Env) (th : Alist) (s : Nat -> Ty) : U l =
+  (x q : Nat) -> Lookup th x q -> R (jdg G q (s x)) ;
+
+CellQ (R : Jdg -> U l) (G : Env) (p0 : Nat) : Cell -> Ty -> U l = split {
+  evar x -> \ t -> Id Ty t (look G x) ;
+  equote a -> \ t -> Id Ty t (at a) ;
+  econs p q -> \ t -> (s : Ty) * ((u : Ty) * (Id Ty t (pair s u) * (R (jdg G p s) * R (jdg G q u)))) ;
+  ecar p -> \ t -> (u : Ty) * R (jdg G p (pair t u)) ;
+  ecdr p -> \ t -> (s : Ty) * R (jdg G p (pair s t)) ;
+  eatom p -> \ t -> Plus (Id Ty t (at T) * R (jdg G p atom)) (Id Ty t (at NIL) * R (jdg G p (pair om om))) ;
+  eeq p q -> \ t -> (a : Atom) * ((b : Atom) * (R (jdg G p (at a)) * (R (jdg G q (at b)) *
+                Plus (IsT (atEq a b) * Id Ty t (at T)) (IsF (atEq a b) * Id Ty t (at NIL))))) ;
+  eif p0 p1 p2 -> \ t -> Plus (R (jdg G p0 (at T)) * R (jdg G p1 t)) (R (jdg G p0 (at NIL)) * R (jdg G p2 t)) ;
+  eapp p q -> \ t -> (s : Ty) * (R (jdg G p (arr s t)) * R (jdg G q s)) ;
+  elam x p -> \ t -> (s : Ty) * ((u : Ty) * (Id Ty t (arr s u) * R (jdg (gcons x s G) p u))) ;
+  elabel x p -> \ t -> (s : Ty) * (R (jdg (gcons x s G) p t) * R (jdg G p0 s)) ;
+  efunarg p th -> \ t -> (s : Nat -> Ty) * (ThetaR R G th s * R (jdg (extTh s th G) p t)) ;
+  eplus p q -> \ t -> (m : Nat) * ((n : Nat) * (R (jdg G p (at (num m))) * (R (jdg G q (at (num n))) *
+                Id Ty t (at (num (add m n)))))) ;
+  efree -> \ t -> Empty } ;
+
+cell-view (R : Jdg -> U l) (G : Env) (p0 : Nat) : (c : Cell) -> (t : Ty) -> (r : RuleI G c t) ->
+    ((j : Prem G c t r) -> R (prem G p0 c t r j)) -> CellQ R G p0 c t = split {
+  r-var x -> \ h -> refl (look G x) ;
+  r-quote a -> \ h -> refl (at a) ;
+  r-cons p q s u -> \ h -> (s, (u, (refl (pair s u), (h true, h false)))) ;
+  r-car p s u -> \ h -> (u, h tt) ;
+  r-cdr p s u -> \ h -> (s, h tt) ;
+  r-atom-T p -> \ h -> inl (refl (at T), h tt) ;
+  r-atom-NIL p -> \ h -> inr (refl (at NIL), h tt) ;
+  r-eq-T p q a b e -> \ h -> (a, (b, (h true, (h false, inl (e, refl (at T)))))) ;
+  r-eq-NIL p q a b e -> \ h -> (a, (b, (h true, (h false, inr (e, refl (at NIL)))))) ;
+  r-if-T p1 p2 p3 s -> \ h -> inl (h true, h false) ;
+  r-if-NIL p1 p2 p3 s -> \ h -> inr (h true, h false) ;
+  r-app p q s t -> \ h -> (s, (h true, h false)) ;
+  r-lam x p s t -> \ h -> (s, (t, (refl (arr s t), h tt))) ;
+  r-label x p s t -> \ h -> (s, (h true, h false)) ;
+  r-funarg p th s t -> \ h -> (s, (\ x q k -> h (inr (x, (q, k))), h (inl tt))) ;
+  r-plus p q m n -> \ h -> (m, (n, (h true, (h false, refl (at (num (add m n))))))) } ;
+
+-- a rule instance with its premises
+RuleP (R : Jdg -> U l) (G : Env) (p0 : Nat) (c : Cell) (t : Ty) : U l =
+  (r : RuleI G c t) * ((j : Prem G c t r) -> R (prem G p0 c t r j)) ;
+
+bool-prem (R : Jdg -> U l) (J K : Jdg) (h1 : R J) (h2 : R K) : (j : Bool) -> R (two j J K) = split {
+  true -> h1 ;
+  false -> h2 } ;
+
+funarg-prems (R : Jdg -> U l) (G : Env) (p : Nat) (th : Alist) (s : Nat -> Ty) (t : Ty)
+    (ht : ThetaR R G th s) (hb : R (jdg (extTh s th G) p t)) :
+    (j : Plus Top (LkAny th)) -> R (funarg-prem G p th s t j) = split {
+  inl u -> hb ;
+  inr k -> ht k.1 k.2.1 k.2.2 } ;
+
+-- move a rule instance along an equation of conclusions
+rulep-eq (R : Jdg -> U l) (G : Env) (p0 : Nat) (c : Cell) (t t' : Ty) (e : Id Ty t t')
+    (b : RuleP R G p0 c t') : RuleP R G p0 c t =
+  subst Ty (\ z -> RuleP R G p0 c z) t' t (sym Ty t t' e) b ;
+
+-- eatom, eeq and eif: the alternatives
+atom-build (R : Jdg -> U l) (G : Env) (p0 p : Nat) (t : Ty) :
+    Plus (Id Ty t (at T) * R (jdg G p atom)) (Id Ty t (at NIL) * R (jdg G p (pair om om))) -> RuleP R G p0 (eatom p) t = split {
+  inl v -> rulep-eq R G p0 (eatom p) t (at T) v.1 (r-atom-T p, \ j -> v.2) ;
+  inr v -> rulep-eq R G p0 (eatom p) t (at NIL) v.1 (r-atom-NIL p, \ j -> v.2) } ;
+
+eq-build (R : Jdg -> U l) (G : Env) (p0 p q : Nat) (t : Ty) (a b : Atom) (h1 : R (jdg G p (at a))) (h2 : R (jdg G q (at b))) :
+    Plus (IsT (atEq a b) * Id Ty t (at T)) (IsF (atEq a b) * Id Ty t (at NIL)) -> RuleP R G p0 (eeq p q) t = split {
+  inl v -> rulep-eq R G p0 (eeq p q) t (at T) v.2
+             (r-eq-T p q a b v.1, bool-prem R (jdg G p (at a)) (jdg G q (at b)) h1 h2) ;
+  inr v -> rulep-eq R G p0 (eeq p q) t (at NIL) v.2
+             (r-eq-NIL p q a b v.1, bool-prem R (jdg G p (at a)) (jdg G q (at b)) h1 h2) } ;
+
+if-build (R : Jdg -> U l) (G : Env) (p0 p1 p2 p3 : Nat) (t : Ty) :
+    Plus (R (jdg G p1 (at T)) * R (jdg G p2 t)) (R (jdg G p1 (at NIL)) * R (jdg G p3 t)) -> RuleP R G p0 (eif p1 p2 p3) t = split {
+  inl v -> (r-if-T p1 p2 p3 t, bool-prem R (jdg G p1 (at T)) (jdg G p2 t) v.1 v.2) ;
+  inr v -> (r-if-NIL p1 p2 p3 t, bool-prem R (jdg G p1 (at NIL)) (jdg G p3 t) v.1 v.2) } ;
+
+cell-build (R : Jdg -> U l) (G : Env) (p0 : Nat) : (c : Cell) -> (t : Ty) -> CellQ R G p0 c t -> RuleP R G p0 c t = split {
+  evar x -> \ t e -> rulep-eq R G p0 (evar x) t (look G x) e (r-var x, \ j -> efq j) ;
+  equote a -> \ t e -> rulep-eq R G p0 (equote a) t (at a) e (r-quote a, \ j -> efq j) ;
+  econs p q -> \ t v -> rulep-eq R G p0 (econs p q) t (pair v.1 v.2.1) v.2.2.1
+      (r-cons p q v.1 v.2.1, bool-prem R (jdg G p v.1) (jdg G q v.2.1) v.2.2.2.1 v.2.2.2.2) ;
+  ecar p -> \ t v -> (r-car p t v.1, \ j -> v.2) ;
+  ecdr p -> \ t v -> (r-cdr p v.1 t, \ j -> v.2) ;
+  eatom p -> \ t v -> atom-build R G p0 p t v ;
+  eeq p q -> \ t v -> eq-build R G p0 p q t v.1 v.2.1 v.2.2.1 v.2.2.2.1 v.2.2.2.2 ;
+  eif p1 p2 p3 -> \ t v -> if-build R G p0 p1 p2 p3 t v ;
+  eapp p q -> \ t v -> (r-app p q v.1 t, bool-prem R (jdg G p (arr v.1 t)) (jdg G q v.1) v.2.1 v.2.2) ;
+  elam x p -> \ t v -> rulep-eq R G p0 (elam x p) t (arr v.1 v.2.1) v.2.2.1
+      (r-lam x p v.1 v.2.1, \ j -> v.2.2.2) ;
+  elabel x p -> \ t v -> (r-label x p v.1 t, bool-prem R (jdg (gcons x v.1 G) p t) (jdg G p0 v.1) v.2.1 v.2.2) ;
+  efunarg p th -> \ t v -> (r-funarg p th v.1 t, funarg-prems R G p th v.1 t v.2.1 v.2.2) ;
+  eplus p q -> \ t v -> rulep-eq R G p0 (eplus p q) t (at (num (add v.1 v.2.1))) v.2.2.2.2
+      (r-plus p q v.1 v.2.1, bool-prem R (jdg G p (at (num v.1))) (jdg G q (at (num v.2.1))) v.2.2.1 v.2.2.2.1) ;
+  efree -> \ t v -> efq v } ;
+
+-- a rule of the cell of p, read in CellQ form, gives a type of p
+obs-at (mu : Nat -> Cell) (G : Env) (p : Nat) (t : Ty) (q : CellQ (Obs mu) G p (mu p) t) : Obs mu (jdg G p t) =
+  o-rule G p t b.1 b.2
+  where { b : RuleP (Obs mu) G p (mu p) t = cell-build (Obs mu) G p (mu p) t q ; } ;
+
+obs-at' (mu : Nat -> Cell) (G : Env) (p : Nat) (c : Cell) (t : Ty) (e : Id Cell (mu p) c)
+    (q : CellQ (Obs mu) G p c t) : Obs mu (jdg G p t) =
+  obs-at mu G p t (subst Cell (\ z -> CellQ (Obs mu) G p z t) c (mu p) (sym Cell (mu p) c e) q) ;
+
+------------------------------------------------------------------------
+-- moving premises: change the predicate, and the address of the LABEL
+-- self-premise
+
+plus-map (A B A' B' : U l) (f : A -> A') (g : B -> B') : Plus A B -> Plus A' B' = split {
+  inl x -> inl (f x) ;
+  inr y -> inr (g y) } ;
+
+cellq-move (R R' : Jdg -> U l) (G : Env) (a b : Nat) (f : (J : Jdg) -> R J -> R' J)
+    (self : (s : Ty) -> R (jdg G a s) -> R' (jdg G b s)) : (c : Cell) -> (t : Ty) -> CellQ R G a c t -> CellQ R' G b c t = split {
+  evar x -> \ t v -> v ;
+  equote x -> \ t v -> v ;
+  econs p q -> \ t v -> (v.1, (v.2.1, (v.2.2.1, (f (jdg G p v.1) v.2.2.2.1, f (jdg G q v.2.1) v.2.2.2.2)))) ;
+  ecar p -> \ t v -> (v.1, f (jdg G p (pair t v.1)) v.2) ;
+  ecdr p -> \ t v -> (v.1, f (jdg G p (pair v.1 t)) v.2) ;
+  eatom p -> \ t v -> plus-map (Id Ty t (at T) * R (jdg G p atom)) (Id Ty t (at NIL) * R (jdg G p (pair om om)))
+      (Id Ty t (at T) * R' (jdg G p atom)) (Id Ty t (at NIL) * R' (jdg G p (pair om om)))
+      (\ w -> (w.1, f (jdg G p atom) w.2)) (\ w -> (w.1, f (jdg G p (pair om om)) w.2)) v ;
+  eeq p q -> \ t v -> (v.1, (v.2.1, (f (jdg G p (at v.1)) v.2.2.1, (f (jdg G q (at v.2.1)) v.2.2.2.1, v.2.2.2.2)))) ;
+  eif p1 p2 p3 -> \ t v -> plus-map (R (jdg G p1 (at T)) * R (jdg G p2 t)) (R (jdg G p1 (at NIL)) * R (jdg G p3 t))
+      (R' (jdg G p1 (at T)) * R' (jdg G p2 t)) (R' (jdg G p1 (at NIL)) * R' (jdg G p3 t))
+      (\ w -> (f (jdg G p1 (at T)) w.1, f (jdg G p2 t) w.2)) (\ w -> (f (jdg G p1 (at NIL)) w.1, f (jdg G p3 t) w.2)) v ;
+  eapp p q -> \ t v -> (v.1, (f (jdg G p (arr v.1 t)) v.2.1, f (jdg G q v.1) v.2.2)) ;
+  elam x p -> \ t v -> (v.1, (v.2.1, (v.2.2.1, f (jdg (gcons x v.1 G) p v.2.1) v.2.2.2))) ;
+  elabel x p -> \ t v -> (v.1, (f (jdg (gcons x v.1 G) p t) v.2.1, self v.1 v.2.2)) ;
+  efunarg p th -> \ t v -> (v.1, (\ x q k -> f (jdg G q (v.1 x)) (v.2.1 x q k), f (jdg (extTh v.1 th G) p t) v.2.2)) ;
+  eplus p q -> \ t v -> (v.1, (v.2.1, (f (jdg G p (at (num v.1))) v.2.2.1, (f (jdg G q (at (num v.2.1))) v.2.2.2.1, v.2.2.2.2)))) ;
+  efree -> \ t v -> v } ;
+
+cellq-map (R R' : Jdg -> U l) (G : Env) (p : Nat) (f : (J : Jdg) -> R J -> R' J) (c : Cell) (t : Ty)
+    (v : CellQ R G p c t) : CellQ R' G p c t =
+  cellq-move R R' G p p f (\ s -> f (jdg G p s)) c t v ;
+
+------------------------------------------------------------------------
+-- the least model (the eliminator of Obs), and the transfer lemma
+
+Closed (mu : Nat -> Cell) (M : Jdg -> U l) : U l =
+  (G : Env) (p : Nat) (t : Ty) -> CellQ M G p (mu p) t -> M (jdg G p t) ;
+
+obs-model (mu : Nat -> Cell) (M : Jdg -> U l)
+    (mo : (G : Env) (p : Nat) -> M (jdg G p om))
+    (mm : (G : Env) (p : Nat) (s t : Ty) -> M (jdg G p s) -> M (jdg G p t) -> M (jdg G p (meet s t)))
+    (ms : (G : Env) (p : Nat) (s t : Ty) -> M (jdg G p s) -> Le s t -> M (jdg G p t))
+    (H : Closed mu M) : (J : Jdg) -> Obs mu J -> M J = split {
+  o-om G p -> mo G p ;
+  o-meet G p s t h1 h2 | r1 r2 -> mm G p s t r1 r2 ;
+  o-sub G p s t h le | rh -> ms G p s t rh le ;
+  o-rule G p t r h | rh -> H G p t (cell-view M G p (mu p) t r rh) } ;
+
+-- the common transfer lemma
+obs-transfer (mu nu : Nat -> Cell) (H : Closed mu (Obs nu)) : (J : Jdg) -> Obs mu J -> Obs nu J =
+  obs-model mu (Obs nu) (\ G p -> o-om G p) (\ G p s t h1 h2 -> o-meet G p s t h1 h2)
+    (\ G p s t h le -> o-sub G p s t h le) H ;
+
+-- the hypothesis at the one changed cell
+Local (mu nu : Nat -> Cell) (p0 : Nat) : U l =
+  (G : Env) (t : Ty) -> CellQ (Obs nu) G p0 (mu p0) t -> Obs nu (jdg G p0 t) ;
+
+closed-agree-by (mu nu : Nat -> Cell) (p0 : Nat) (ag : (p : Nat) -> IsF (eqN p p0) -> Id Cell (nu p) (mu p))
+    (L : Local mu nu p0) (G : Env) (p : Nat) (t : Ty) (q : CellQ (Obs nu) G p (mu p) t) :
+    Plus (IsT (eqN p p0)) (IsF (eqN p p0)) -> Obs nu (jdg G p t) = split {
+  inl h -> subst Nat (\ z -> CellQ (Obs nu) G z (mu z) t -> Obs nu (jdg G z t)) p0 p
+             (sym Nat p p0 (eqN-sound p p0 h)) (L G t) q ;
+  inr h -> obs-at' nu G p (mu p) t (ag p h) q } ;
+
+closed-agree (mu nu : Nat -> Cell) (p0 : Nat) (ag : (p : Nat) -> IsF (eqN p p0) -> Id Cell (nu p) (mu p))
+    (L : Local mu nu p0) : Closed mu (Obs nu) =
+  \ G p t q -> closed-agree-by mu nu p0 ag L G p t q (bool-dec (eqN p p0)) ;
+
+-- both directions for a one-cell rewrite mu[c / p0]
+Inv (mu nu : Nat -> Cell) : U l = ((J : Jdg) -> Obs mu J -> Obs nu J) * ((J : Jdg) -> Obs nu J -> Obs mu J) ;
+
+rewrite-inv (mu : Nat -> Cell) (p0 : Nat) (c : Cell)
+    (Lf : Local mu (upd mu p0 c) p0) (Lb : Local (upd mu p0 c) mu p0) : Inv mu (upd mu p0 c) =
+  (obs-transfer mu (upd mu p0 c) (closed-agree mu (upd mu p0 c) p0 (\ p h -> upd-miss mu p0 c p h) Lf),
+   obs-transfer (upd mu p0 c) mu
+     (closed-agree (upd mu p0 c) mu p0 (\ p h -> sym Cell (upd mu p0 c p) (mu p) (upd-miss mu p0 c p h)) Lb)) ;
+
+------------------------------------------------------------------------
+-- Lemma 3.2(1): environments
+
+EnvR (mu : Nat -> Cell) (J : Jdg) : U l = (D : Env) -> EnvLe D (jG J) -> Obs mu (jdg D (jp J) (jt J)) ;
+
+id-le (s t : Ty) (e : Id Ty s t) : Le s t = subst Ty (\ z -> Le s z) s t e (le-refl s) ;
+
+env-map (mu : Nat -> Cell) (G D : Env) (le : EnvLe D G) (p : Nat) :
+    (c : Cell) -> (t : Ty) -> Id Cell (mu p) c -> CellQ (EnvR mu) G p c t -> Obs mu (jdg D p t) = split {
+  evar x -> \ t e v -> o-sub D p (look D x) t (obs-at' mu D p (evar x) (look D x) e (refl (look D x)))
+      (le-trans (look D x) (look G x) t (le x) (id-le (look G x) t (sym Ty t (look G x) v))) ;
+  equote a -> \ t e v -> obs-at' mu D p (equote a) t e v ;
+  econs p1 p2 -> \ t e v -> obs-at' mu D p (econs p1 p2) t e (v.1, (v.2.1, (v.2.2.1, (v.2.2.2.1 D le, v.2.2.2.2 D le)))) ;
+  ecar p1 -> \ t e v -> obs-at' mu D p (ecar p1) t e (v.1, v.2 D le) ;
+  ecdr p1 -> \ t e v -> obs-at' mu D p (ecdr p1) t e (v.1, v.2 D le) ;
+  eatom p1 -> \ t e v -> obs-at' mu D p (eatom p1) t e
+      (plus-map (Id Ty t (at T) * EnvR mu (jdg G p1 atom)) (Id Ty t (at NIL) * EnvR mu (jdg G p1 (pair om om)))
+         (Id Ty t (at T) * Obs mu (jdg D p1 atom)) (Id Ty t (at NIL) * Obs mu (jdg D p1 (pair om om)))
+         (\ w -> (w.1, w.2 D le)) (\ w -> (w.1, w.2 D le)) v) ;
+  eeq p1 p2 -> \ t e v -> obs-at' mu D p (eeq p1 p2) t e (v.1, (v.2.1, (v.2.2.1 D le, (v.2.2.2.1 D le, v.2.2.2.2)))) ;
+  eif p1 p2 p3 -> \ t e v -> obs-at' mu D p (eif p1 p2 p3) t e
+      (plus-map (EnvR mu (jdg G p1 (at T)) * EnvR mu (jdg G p2 t)) (EnvR mu (jdg G p1 (at NIL)) * EnvR mu (jdg G p3 t))
+         (Obs mu (jdg D p1 (at T)) * Obs mu (jdg D p2 t)) (Obs mu (jdg D p1 (at NIL)) * Obs mu (jdg D p3 t))
+         (\ w -> (w.1 D le, w.2 D le)) (\ w -> (w.1 D le, w.2 D le)) v) ;
+  eapp p1 p2 -> \ t e v -> obs-at' mu D p (eapp p1 p2) t e (v.1, (v.2.1 D le, v.2.2 D le)) ;
+  elam x p1 -> \ t e v -> obs-at' mu D p (elam x p1) t e
+      (v.1, (v.2.1, (v.2.2.1, v.2.2.2 (gcons x v.1 D) (envle-cons x v.1 v.1 D G (le-refl v.1) le)))) ;
+  elabel x p1 -> \ t e v -> obs-at' mu D p (elabel x p1) t e
+      (v.1, (v.2.1 (gcons x v.1 D) (envle-cons x v.1 v.1 D G (le-refl v.1) le), v.2.2 D le)) ;
+  efunarg p1 th -> \ t e v -> obs-at' mu D p (efunarg p1 th) t e
+      (v.1, (\ x q k -> v.2.1 x q k D le,
+             v.2.2 (extTh v.1 th D) (extTh-mono v.1 v.1 (\ y -> le-refl (v.1 y)) D G le th))) ;
+  eplus p1 p2 -> \ t e v -> obs-at' mu D p (eplus p1 p2) t e (v.1, (v.2.1, (v.2.2.1 D le, (v.2.2.2.1 D le, v.2.2.2.2)))) ;
+  efree -> \ t e v -> efq v } ;
+
+obs-env-all (mu : Nat -> Cell) : (J : Jdg) -> Obs mu J -> EnvR mu J =
+  obs-model mu (EnvR mu)
+    (\ G p D le -> o-om D p)
+    (\ G p s t r1 r2 D le -> o-meet D p s t (r1 D le) (r2 D le))
+    (\ G p s t rh h D le -> o-sub D p s t (rh D le) h)
+    (\ G p t q D le -> env-map mu G D le p (mu p) t (refl (mu p)) q) ;
+
+-- Lemma 3.2(1)
+obs-env (mu : Nat -> Cell) (G D : Env) (p : Nat) (t : Ty) (le : EnvLe D G) (h : Obs mu (jdg G p t)) : Obs mu (jdg D p t) =
+  obs-env-all mu (jdg G p t) h D le ;
+
+------------------------------------------------------------------------
+-- Lemma 3.2(2): generation, as induction over the types of one cell
+
+-- the types of p in G, together with the property P
+GenM (mu : Nat -> Cell) (G : Env) (p : Nat) (P : Ty -> U l) (J : Jdg) : U l =
+  Obs mu J * (Id Env (jG J) G -> Id Nat (jp J) p -> P (jt J)) ;
+
+gen-leaf (mu : Nat -> Cell) (G : Env) (p : Nat) (P : Ty -> U l) (R : Jdg -> U l)
+    (leaf : (t : Ty) -> CellQ R G p (mu p) t -> P t)
+    (G' : Env) (p' : Nat) (t : Ty) (q : CellQ R G' p' (mu p') t) (eG : Id Env G' G) (ep : Id Nat p' p) : P t =
+  subst Nat (\ z -> CellQ R G' z (mu z) t -> P t) p p' (sym Nat p' p ep)
+    (subst Env (\ E -> CellQ R E p (mu p) t -> P t) G G' (sym Env G' G eG) (leaf t)) q ;
+
+gen-fst (mu : Nat -> Cell) (G : Env) (p : Nat) (P : Ty -> U l) (J : Jdg) (m : GenM mu G p P J) : Obs mu J = m.1 ;
+
+cell-ind (mu : Nat -> Cell) (G : Env) (p : Nat) (P : Ty -> U l)
+    (top : P om) (mt : (s t : Ty) -> P s -> P t -> P (meet s t)) (up : (s t : Ty) -> Le s t -> P s -> P t)
+    (leaf : (t : Ty) -> CellQ (Obs mu) G p (mu p) t -> P t) (t : Ty) (h : Obs mu (jdg G p t)) : P t =
+  (obs-model mu (GenM mu G p P)
+    (\ G' p' -> (o-om G' p', \ eG ep -> top))
+    (\ G' p' s u m1 m2 -> (o-meet G' p' s u m1.1 m2.1, \ eG ep -> mt s u (m1.2 eG ep) (m2.2 eG ep)))
+    (\ G' p' s u m le -> (o-sub G' p' s u m.1 le, \ eG ep -> up s u le (m.2 eG ep)))
+    (\ G' p' u q -> (obs-at mu G' p' u (cellq-map (GenM mu G p P) (Obs mu) G' p' (gen-fst mu G p P) (mu p') u q),
+                     gen-leaf mu G p P (Obs mu) leaf G' p' u
+                       (cellq-map (GenM mu G p P) (Obs mu) G' p' (gen-fst mu G p P) (mu p') u q)))
+    (jdg G p t) h).2 (refl G) (refl p) ;
+
+-- the same, where the rule may use the property on its premises at the
+-- same cell and environment (the LABEL self-premise)
+cell-ind-rec (mu : Nat -> Cell) (G : Env) (p : Nat) (P : Ty -> U l)
+    (top : P om) (mt : (s t : Ty) -> P s -> P t -> P (meet s t)) (up : (s t : Ty) -> Le s t -> P s -> P t)
+    (leaf : (t : Ty) -> CellQ (GenM mu G p P) G p (mu p) t -> P t) (t : Ty) (h : Obs mu (jdg G p t)) : P t =
+  (obs-model mu (GenM mu G p P)
+    (\ G' p' -> (o-om G' p', \ eG ep -> top))
+    (\ G' p' s u m1 m2 -> (o-meet G' p' s u m1.1 m2.1, \ eG ep -> mt s u (m1.2 eG ep) (m2.2 eG ep)))
+    (\ G' p' s u m le -> (o-sub G' p' s u m.1 le, \ eG ep -> up s u le (m.2 eG ep)))
+    (\ G' p' u q -> (obs-at mu G' p' u (cellq-map (GenM mu G p P) (Obs mu) G' p' (gen-fst mu G p P) (mu p') u q),
+                     gen-leaf mu G p P (GenM mu G p P) leaf G' p' u q))
+    (jdg G p t) h).2 (refl G) (refl p) ;
+
+-- the same, for a cell of known form
+cell-ind' (mu : Nat -> Cell) (G : Env) (p : Nat) (c : Cell) (e : Id Cell (mu p) c) (P : Ty -> U l)
+    (top : P om) (mt : (s t : Ty) -> P s -> P t -> P (meet s t)) (up : (s t : Ty) -> Le s t -> P s -> P t)
+    (leaf : (t : Ty) -> CellQ (Obs mu) G p c t -> P t) (t : Ty) (h : Obs mu (jdg G p t)) : P t =
+  cell-ind mu G p P top mt up
+    (\ u q -> leaf u (subst Cell (\ z -> CellQ (Obs mu) G p z u) (mu p) c e q)) t h ;
+
+------------------------------------------------------------------------
+-- copy: two addresses holding the same cell have the same types
+
+CopyM (nu : Nat -> Cell) (a b : Nat) (J : Jdg) : U l =
+  Obs nu J * (Id Nat (jp J) a -> Obs nu (jdg (jG J) b (jt J))) ;
+
+copy-fst (nu : Nat -> Cell) (a b : Nat) (J : Jdg) (m : CopyM nu a b J) : Obs nu J = m.1 ;
+
+copy-rule (nu : Nat -> Cell) (a b : Nat) (e : Id Cell (nu a) (nu b)) (G : Env) (t : Ty)
+    (q : CellQ (CopyM nu a b) G a (nu a) t) : Obs nu (jdg G b t) =
+  obs-at nu G b t
+    (cellq-move (CopyM nu a b) (Obs nu) G a b (copy-fst nu a b) (\ s m -> m.2 (refl a)) (nu b) t
+       (subst Cell (\ z -> CellQ (CopyM nu a b) G a z t) (nu a) (nu b) e q)) ;
+
+obs-copy (nu : Nat -> Cell) (a b : Nat) (e : Id Cell (nu a) (nu b)) (G : Env) (t : Ty) (h : Obs nu (jdg G a t)) : Obs nu (jdg G b t) =
+  (obs-model nu (CopyM nu a b)
+    (\ G' p' -> (o-om G' p', \ ep -> o-om G' b))
+    (\ G' p' s u m1 m2 -> (o-meet G' p' s u m1.1 m2.1, \ ep -> o-meet G' b s u (m1.2 ep) (m2.2 ep)))
+    (\ G' p' s u m le -> (o-sub G' p' s u m.1 le, \ ep -> o-sub G' b s u (m.2 ep) le))
+    (\ G' p' u q -> (obs-at nu G' p' u (cellq-map (CopyM nu a b) (Obs nu) G' p' (copy-fst nu a b) (nu p') u q),
+                     \ ep -> subst Nat (\ z -> CellQ (CopyM nu a b) G' z (nu z) u -> Obs nu (jdg G' b u)) a p'
+                               (sym Nat p' a ep) (copy-rule nu a b e G' u) q))
+    (jdg G a t) h).2 (refl a) ;

@@ -1,0 +1,82 @@
+-- Step.seg: the transformation rules as a relation on memories, and
+-- Theorem 4.1 (doc/lazy-intersection.tex; Agda LAZY/Syntax/Step.agda).
+--
+-- Step mu nu: nu is mu rewritten at one cell by one of the rules [C]
+-- (CAR and CDR), [A], [E], [I], PLUS, [Fa], [Fb], [G], [L], and the
+-- rewrite of [Fc]/[Fd] (st-F), whose new cells are allocated beforehand
+-- by AllocStep (Funarg.seg).  The paper's convention that
+-- "mu(p0) = (CAR (CONS p2 p3)) implicitly asserts the existence of a p1"
+-- is explicit, as in the Agda.
+--
+-- Theorem 4.1.  If Step mu nu, every cell has the same types in mu and in
+-- nu, in every environment (step-inv).  If AllocStep mu nu, every cell
+-- but the allocated one does (alloc-inv).  Proof: the local lemmas of
+-- Rules.seg, Closures.seg and Funarg.seg.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Syntax[l] ; open Observe[l] ;
+open Gen[l] ; open Rules[l] ; open Closures[l] ; open Funarg[l] ;
+
+data Step (mu : Nat -> Cell) : (nu : Nat -> Cell) -> U l =
+    st-car (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecar p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) :
+      Step mu (upd mu p0 (mu p2))
+  | st-cdr (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (ecdr p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) :
+      Step mu (upd mu p0 (mu p3))
+  | st-atom-T (p0 p1 : Nat) (a : Atom) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (equote a)) :
+      Step mu (upd mu p0 (equote T))
+  | st-atom-NIL (p0 p1 p2 p3 : Nat) (e0 : Id Cell (mu p0) (eatom p1)) (e1 : Id Cell (mu p1) (econs p2 p3)) :
+      Step mu (upd mu p0 (equote NIL))
+  | st-eq-T (p0 p1 p2 : Nat) (a1 a2 : Atom) (e0 : Id Cell (mu p0) (eeq p1 p2))
+      (e1 : Id Cell (mu p1) (equote a1)) (e2 : Id Cell (mu p2) (equote a2)) (h : IsT (atEq a1 a2)) :
+      Step mu (upd mu p0 (equote T))
+  | st-eq-NIL (p0 p1 p2 : Nat) (a1 a2 : Atom) (e0 : Id Cell (mu p0) (eeq p1 p2))
+      (e1 : Id Cell (mu p1) (equote a1)) (e2 : Id Cell (mu p2) (equote a2)) (h : IsF (atEq a1 a2)) :
+      Step mu (upd mu p0 (equote NIL))
+  | st-if-T (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eT : Id Cell (mu p) (equote T)) :
+      Step mu (upd mu p0 (mu p1))
+  | st-if-NIL (p0 p p1 p2 : Nat) (e0 : Id Cell (mu p0) (eif p p1 p2)) (eN : Id Cell (mu p) (equote NIL)) :
+      Step mu (upd mu p0 (mu p2))
+  | st-plus (p0 p1 p2 m n : Nat) (e0 : Id Cell (mu p0) (eplus p1 p2))
+      (e1 : Id Cell (mu p1) (equote (num m))) (e2 : Id Cell (mu p2) (equote (num n))) :
+      Step mu (upd mu p0 (equote (num (add m n))))
+  | st-Fa (p0 p q x : Nat) (th : Alist) (e0 : Id Cell (mu p0) (efunarg p th)) (ev : Id Cell (mu p) (evar x))
+      (lk : Lookup th x q) : Step mu (upd mu p0 (mu q))
+  | st-Fb (p0 p : Nat) (th : Alist) (a : Atom) (e0 : Id Cell (mu p0) (efunarg p th)) (e1 : Id Cell (mu p) (equote a)) :
+      Step mu (upd mu p0 (equote a))
+  | st-F (p0 p : Nat) (th : Alist) (c c' : Cell) (e0 : Id Cell (mu p0) (efunarg p th)) (e1 : Id Cell (mu p) c)
+      (r : Ren (NewFor mu th p0) c c') : Step mu (upd mu p0 c')
+  | st-G (p pf pl p1 p2 x : Nat) (th : Alist) (e : Id Cell (mu p) (eapp pf p2))
+      (ef : Id Cell (mu pf) (efunarg pl th)) (el : Id Cell (mu pl) (elam x p1)) :
+      Step mu (upd mu p (efunarg p1 (acons x p2 th)))
+  | st-L (p pl p1 x : Nat) (th : Alist) (e : Id Cell (mu p) (efunarg pl th)) (el : Id Cell (mu pl) (elabel x p1)) :
+      Step mu (upd mu p (efunarg p1 (acons x p th))) ;
+
+-- Theorem 4.1
+step-inv (mu : Nat -> Cell) : (nu : Nat -> Cell) -> Step mu nu -> Inv mu nu = split {
+  st-car p0 p1 p2 p3 e0 e1 -> RuleCar[mu, p0, p1, p2, p3, e0, e1].inv ;
+  st-cdr p0 p1 p2 p3 e0 e1 -> RuleCdr[mu, p0, p1, p2, p3, e0, e1].inv ;
+  st-atom-T p0 p1 a e0 e1 -> RuleAtomT[mu, p0, p1, a, e0, e1].inv ;
+  st-atom-NIL p0 p1 p2 p3 e0 e1 -> RuleAtomNIL[mu, p0, p1, p2, p3, e0, e1].inv ;
+  st-eq-T p0 p1 p2 a1 a2 e0 e1 e2 h -> RuleEqT[mu, p0, p1, p2, a1, a2, e0, e1, e2, h].inv ;
+  st-eq-NIL p0 p1 p2 a1 a2 e0 e1 e2 h -> RuleEqNIL[mu, p0, p1, p2, a1, a2, e0, e1, e2, h].inv ;
+  st-if-T p0 p p1 p2 e0 eT -> RuleIfT[mu, p0, p, p1, p2, e0, eT].inv ;
+  st-if-NIL p0 p p1 p2 e0 eN -> RuleIfNIL[mu, p0, p, p1, p2, e0, eN].inv ;
+  st-plus p0 p1 p2 m n e0 e1 e2 -> RulePlus[mu, p0, p1, p2, m, n, e0, e1, e2].inv ;
+  st-Fa p0 p q x th e0 ev lk -> RuleFa[mu, p0, p, q, x, th, e0, ev, lk].inv ;
+  st-Fb p0 p th a e0 e1 -> RuleFb[mu, p0, p, th, a, e0, e1].inv ;
+  st-F p0 p th c c' e0 e1 r -> RuleF[mu, p0, p, th, c, c', e0, e1, r].inv ;
+  st-G p pf pl p1 p2 x th e ef el -> RuleG[mu, p, pf, pl, p1, p2, x, th, e, ef, el].inv ;
+  st-L p pl p1 x th e el -> RuleL[mu, p, pl, p1, x, th, e, el].inv } ;
+
+-- allocation of a fresh cell, the first half of [Fc] and [Fd]
+data AllocStep (mu : Nat -> Cell) : (nu : Nat -> Cell) -> U l =
+    alloc (a q : Nat) (th : Alist) (fr : Fresh mu a) : AllocStep mu (upd mu a (efunarg q th)) ;
+
+-- the allocated cell is the only free cell of mu changed; the other cells keep their types
+alloc-inv (mu : Nat -> Cell) : (nu : Nat -> Cell) -> AllocStep mu nu ->
+    (p : Nat) -> Not (Id Cell (mu p) efree) -> (G : Env) (t : Ty) ->
+    (Obs mu (jdg G p t) -> Obs nu (jdg G p t)) * (Obs nu (jdg G p t) -> Obs mu (jdg G p t)) = split {
+  alloc a q th fr -> \ p n G t ->
+    (Alloc[mu, a, q, th, fr].fwd (jdg G p t),
+     \ h -> Alloc[mu, a, q, th, fr].bwd (jdg G p t) h
+              (eqN-of-ne p a (\ e -> n (subst Nat (\ z -> Id Cell (mu z) efree) a p (sym Nat p a e) fr.1)))) } ;

@@ -1,0 +1,665 @@
+\documentclass[11pt]{amsart}
+\usepackage{amssymb}
+\usepackage[margin=1.15in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={The lazy evaluator of Henderson and Morris, by intersection types}}
+
+% Stamp on every page: file name and compilation date.
+\newcommand{\stamptime}{\the\numexpr(\time-30)/60\relax:\ifnum\numexpr\time-60*((\time-30)/60)\relax<10 0\fi\the\numexpr\time-60*((\time-30)/60)\relax}
+\AddToHook{shipout/foreground}{%
+ \put(0.5\paperwidth,-\paperheight+0.55cm){\makebox[0pt]{\tiny\ttfamily
+  unit/doc/\jobname.tex \ --- \ compiled \today, \stamptime}}}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\kw}[1]{\mathsf{#1}}
+\newcommand{\at}[1]{\ulcorner #1\urcorner}
+\newcommand{\Atom}{\mathsf{atom}}
+\newcommand{\obs}[4]{#1\vdash #2:_{#3}#4}
+\newcommand{\T}{\mathsf{T}}
+\newcommand{\NIL}{\mathsf{NIL}}
+\newcommand{\D}{\mathcal D}
+\newcommand{\V}{\mathcal V}
+\newcommand{\U}{\mathcal U}
+\newcommand{\up}{{\uparrow}}
+
+\title[The lazy evaluator by intersection types]{The lazy evaluator of Henderson and Morris,\\ by intersection types}
+\date{}
+
+\begin{document}
+\begin{abstract}
+Henderson and Morris \cite{HM76} give a lazy
+evaluator for a pure LISP as seven rewrite rules on a memory, and sketch a
+proof that the rules preserve a Scott--Strachey semantics, the delicate
+case being the rule that creates a circular structure. We present the
+semantics by \emph{intersection types}: the compact elements of the value
+domain are the types, ordered by a subtyping relation given by inference
+rules, and the meaning of a memory cell is the set of types derivable for
+it. All the relations are inductive and positive. There is no
+approximation index, no computed join and no consistency hypothesis in
+the invariance proofs. The circular rule is proved by one induction on
+derivations, and partial correctness of the evaluator follows. This is the
+informal basis for a formalisation in Unit with indexed inductive families.
+Finally, the infinite elements are the filters of types. The semantic
+function of the paper is then the least solution of its own equations, and
+the invariance theorem holds in the paper's form, as equalities of semantic
+memories, each rule being a short calculation and the circular rule two
+applications of fixed-point induction.
+\end{abstract}
+\maketitle
+
+\section{The language and the memory}
+
+We follow \S II of the paper. Expressions are
+\[
+\begin{aligned}
+e\ ::=\ {}&\xi \mid (\kw{QUOTE}\ a)\mid(\kw{CONS}\ e\ e)\mid(\kw{CAR}\ e)\mid(\kw{CDR}\ e)\mid(\kw{ATOM}\ e)\mid(\kw{EQ}\ e\ e)\\
+\mid{}&(\kw{IF}\ e\ e\ e)\mid(e\ e)\mid(\kw{LAMBDA}\ \xi\ e)\mid(\kw{LABEL}\ \xi\ e)\mid(\kw{FUNARG}\ e\ \theta)
+\end{aligned}
+\]
+with $\xi$ a variable, $a$ an atom and $\theta=\xi_1\,e_1\dots\xi_n\,e_n$ an
+association list. A \emph{memory} $\mu$ maps addresses $\pi$ to \emph{cells}:
+the same forms with addresses in place of subexpressions. Two memories differ
+\emph{at} $\pi_0$ if they agree everywhere except at $\pi_0$; $\mu[e/\pi_0]$
+is $\mu$ with the cell $e$ at $\pi_0$.
+
+The rules are those of the paper:
+$[C]$ ($\kw{CAR}/\kw{CDR}$ of a $\kw{CONS}$), $[A]$, $[E]$, $[I]$,
+$[F]$ ($a$: variable lookup in a $\kw{FUNARG}$, the smallest $i$ with
+$\xi_i=\xi$; $b$: a quoted atom; $c$: an application under a $\kw{FUNARG}$;
+$d$: a primitive under a $\kw{FUNARG}$), $[G]$ (applying a
+$\kw{FUNARG}$-closed $\kw{LAMBDA}$) and $[L]$:
+\[
+\mu(\pi_0)=(\kw{FUNARG}\ \pi_\ell\ \theta),\quad \mu(\pi_\ell)=(\kw{LABEL}\ \xi\ \pi_1)
+\ \Longrightarrow\ \mu'=\mu[(\kw{FUNARG}\ \pi_1\ \xi\ \pi_0\ \theta)/\pi_0],
+\]
+which creates a circular structure. Each rule rewrites one cell; $[Fc]$ and
+$[Fd]$ first allocate new cells. An allocated cell is \emph{fresh}: free, and
+occurring in no cell of the memory. In the paper this is part of the
+consistency of the memory (``no non-free cell points at a free one''), and
+it is the only consistency property used below. The evaluator $\kw{Eval}$ of
+the paper performs a sequence of such rewrites.
+
+\section{Types}
+
+The value domain of the paper is $V=A+(V\times V)+(V\to V)$, with Reynolds's
+separated sum \cite{Rey71}, so that $\bot$, ``some atom'', $(\kw{CONS}\ \bot\ \bot)$ and
+$(\kw{LAMBDA}\ x\ \bot)$ are distinct. Its compact elements are described by
+the \emph{types}
+\[
+\sigma,\tau\ ::=\ \omega\mid \Atom\mid \at{a}\mid \sigma\times\tau\mid \sigma\to\tau\mid \sigma\wedge\tau .
+\]
+Here $\omega$ is no information, $\Atom$ is ``an atom'', $\at a$ the atom
+$a$, $\sigma\times\tau$ a pair whose components have types $\sigma$ and
+$\tau$, and $\sigma\to\tau$ a function sending $\sigma$ to $\tau$. Thus
+$\omega\times\omega$ is ``a pair'' and $\omega\to\omega$ ``a function''. A finite step function
+$\{(u_1,v_1),\dots,(u_n,v_n)\}$ is the type
+$(u_1\to v_1)\wedge\dots\wedge(u_n\to v_n)$.
+
+\begin{definition}[subtyping]
+$\sigma\le\tau$ is the least relation closed under: reflexivity and
+transitivity; $\sigma\wedge\tau\le\sigma$, $\sigma\wedge\tau\le\tau$, and
+$\rho\le\sigma,\ \rho\le\tau\ \Rightarrow\ \rho\le\sigma\wedge\tau$;
+$\sigma\le\omega$; $\at a\le\Atom$;
+$\sigma\le\sigma',\ \tau\le\tau'\Rightarrow\sigma\times\tau\le\sigma'\times\tau'$
+and $(\sigma\times\tau)\wedge(\sigma'\times\tau')\le(\sigma\wedge\sigma')\times(\tau\wedge\tau')$;
+$\sigma'\le\sigma,\ \tau\le\tau'\Rightarrow\sigma\to\tau\le\sigma'\to\tau'$,
+$(\sigma\to\tau)\wedge(\sigma\to\tau')\le\sigma\to(\tau\wedge\tau')$, and
+$\sigma\to\omega\le\omega\to\omega$.
+\end{definition}
+
+The last axiom says that every arrow type gives ``a function'': all the types
+$\sigma\to\omega$ are equivalent to $\omega\to\omega$. It replaces the axiom
+$\omega\le\omega\to\omega$ of the usual systems, which would identify ``a
+function'' with ``no information'' and so contradict the separated sum.
+
+Presenting compact elements as types is the domain interpretation of
+Martin-L\"of \cite{ML83}, also the basis of Abramsky's domain theory in
+logical form \cite{Abr91}; for the untyped $\lambda$-calculus it is the
+filter model \cite{BCD83}. The order is given by inference rules, so the join
+of step functions never has to be computed: it is assembled in a derivation
+from $\wedge$ and the arrow rules, and the characterisation of the order
+becomes a lemma. Write a type as a meet of \emph{components} (types that are
+not meets). A \emph{selection} of components is a finite multiset of them,
+possibly empty; the meet of the empty selection is $\omega$.
+
+\begin{lemma}[inversion of subtyping]\label{lem:inv}
+Let $\rho$ have components $\rho_k$.
+\begin{enumerate}
+\item $\rho\le\at a$ iff some $\rho_k$ is $\at a$; $\rho\le\Atom$ iff some
+$\rho_k$ is $\Atom$ or an $\at a$.
+\item $\rho\le\sigma\times\tau$ iff $\rho$ has a pair component and a
+selection of pair components $\sigma_i\times\tau_i$ with
+$\bigwedge\sigma_i\le\sigma$ and $\bigwedge\tau_i\le\tau$.
+\item ($\beta$-soundness) $\rho\le\sigma\to\tau$ iff $\rho$ has an arrow
+component and a selection of arrow components $\sigma_i\to\tau_i$ with
+$\sigma\le\bigwedge\sigma_i$ and $\bigwedge\tau_i\le\tau$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}[Proof sketch]
+The right-hand sides define a relation $\le^{s}$, \emph{syntax directed}:
+inductive on the target and positive (the order appears only in premises).
+It contains the generating rules and is reflexive. Transitivity of $\le^s$ is
+proved by induction on the depth of the middle type, meets not counted: in
+the arrow case, $\rho\le^s\pi$ and $\pi\le^s\sigma\to\tau$ give a selection
+of arrows $\pi_k\to\pi'_k$ of $\pi$, each inverted to a selection of arrows of
+$\rho$; their union (a meet of selections, which is why selections are
+multisets) works, using transitivity through the meets of the $\pi_k$ and of
+the $\pi'_k$, whose depth is smaller than that of $\pi$ (their size need not
+be, a selection may repeat a component). Hence $\le\ =\ \le^s$.
+\end{proof}
+
+Types may be inconsistent ($\at a\wedge\at b$ with $a\ne b$, or
+$\Atom\wedge(\omega\times\omega)$). The elements of $V$ are the consistent
+filters of types; nothing below needs consistency.
+
+\section{The meaning of a memory cell}
+
+An \emph{environment} $\Gamma$ assigns types to finitely many variables;
+$\Gamma(\xi)=\omega$ otherwise, and $\Gamma[\xi:\sigma]$ updates it. For
+an association list $\theta=\xi_1\pi_1\dots\xi_n\pi_n$ and types
+$\vec\sigma$, write $\Gamma[\theta:\vec\sigma]=\Gamma[\xi_n:\sigma_n]\cdots[\xi_1:\sigma_1]$,
+so that the smallest $i$ wins, as in rule $[Fa]$.
+
+\begin{definition}[observation]
+$\obs\mu\pi\Gamma\sigma$ (``in $\mu$, the cell $\pi$ has type $\sigma$ in
+$\Gamma$'') is the least relation closed under the rules
+$\obs\mu\pi\Gamma\omega$;
+$\obs\mu\pi\Gamma\sigma,\ \obs\mu\pi\Gamma\tau\Rightarrow\obs\mu\pi\Gamma{\sigma\wedge\tau}$;
+$\obs\mu\pi\Gamma\sigma,\ \sigma\le\tau\Rightarrow\obs\mu\pi\Gamma\tau$;
+and, according to the cell $\mu(\pi)$:
+\begin{itemize}
+\item $\xi$: \ $\obs\mu\pi\Gamma{\Gamma(\xi)}$;\quad $(\kw{QUOTE}\ a)$: \ $\obs\mu\pi\Gamma{\at a}$;
+\item $(\kw{CONS}\ \pi_1\ \pi_2)$: from $\obs\mu{\pi_1}\Gamma\sigma$ and $\obs\mu{\pi_2}\Gamma\tau$, the type $\sigma\times\tau$;
+\item $(\kw{CAR}\ \pi')$: from $\obs\mu{\pi'}\Gamma{\sigma\times\tau}$, the type $\sigma$; $\kw{CDR}$ likewise with $\tau$;
+\item $(\kw{ATOM}\ \pi')$: from $\Atom$, the type $\at\T$; from $\omega\times\omega$, the type $\at\NIL$;
+\item $(\kw{EQ}\ \pi_1\ \pi_2)$: from $\at{a_1}$ and $\at{a_2}$, the type $\at\T$ if $a_1=a_2$ and $\at\NIL$ otherwise;
+\item $(\kw{IF}\ \pi_0\ \pi_1\ \pi_2)$: from $\at\T$ at $\pi_0$ and $\sigma$ at $\pi_1$, the type $\sigma$; from $\at\NIL$ at $\pi_0$ and $\sigma$ at $\pi_2$, the type $\sigma$;
+\item $(\pi_0\ \pi_1)$: from $\sigma\to\tau$ at $\pi_0$ and $\sigma$ at $\pi_1$, the type $\tau$;
+\item $(\kw{LAMBDA}\ \xi\ \pi')$: from $\obs\mu{\pi'}{\Gamma[\xi:\sigma]}\tau$, the type $\sigma\to\tau$;
+\item $(\kw{LABEL}\ \xi\ \pi')$: from $\obs\mu{\pi'}{\Gamma[\xi:\sigma]}\tau$ and $\obs\mu\pi\Gamma\sigma$, the type $\tau$;
+\item $(\kw{FUNARG}\ \pi'\ \theta)$: from $\obs\mu{\pi_i}\Gamma{\sigma_i}$ for each binding $\xi_i\pi_i$ of $\theta$ and $\obs\mu{\pi'}{\Gamma[\theta:\vec\sigma]}\tau$, the type $\tau$.
+\end{itemize}
+\end{definition}
+
+This is the paper's $V\mu\pi\rho$ read as an inductive relation: the meaning
+of $\pi$ in an environment is the filter of its types (Section~6 makes this
+precise). The paper argues with the approximations $V_i$ of $V$ and $Y_i$ of
+the fixed point; here the height of derivations plays their role. Being
+inductive, the relation is a least fixed point, so the $\kw{LABEL}$ clause
+\emph{is} the paper's $Y\{\lambda x.\ldots\}$; and a circular memory simply
+has no derivations that would need infinite unfolding. Note that the
+$\kw{LABEL}$ rule has a premise about its own address $\pi$.
+Environments are lists of types, not of values. The first three rules make
+the set of types of a cell a filter. Two basic facts:
+
+\begin{lemma}\label{lem:basic}
+\begin{enumerate}
+\item (environments) If $\Delta(\xi)\le\Gamma(\xi)$ for all $\xi$, then
+$\obs\mu\pi\Gamma\sigma$ implies $\obs\mu\pi\Delta\sigma$.
+\item (generation) A filter containing every type given by one rule of the
+cell $\mu(\pi)$ in $\Gamma$, from observations of its components, contains
+every type of $\pi$ in $\Gamma$.
+\end{enumerate}
+\end{lemma}
+
+Both are proved by induction on derivations. Each inversion below is (2)
+with a filter chosen for the purpose, and Lemma~\ref{lem:inv}. For example,
+a cell $(\kw{CONS}\ \pi_1\ \pi_2)$ has type $\sigma\times\tau$ iff $\pi_1$ has
+type $\sigma$ and $\pi_2$ type $\tau$; it has no type $\at a$ and no arrow
+type. For a $\kw{FUNARG}$ cell the filter ``the types derived from one choice
+of types for $\theta$'' is closed under meets because two choices have a
+meet, again a choice, to which Lemma~\ref{lem:basic}(1) moves both
+derivations; so every type of $(\kw{FUNARG}\ \pi'\ \theta)$ comes from a
+single choice of types for $\theta$.
+
+\section{The rules preserve the meaning}
+
+\begin{theorem}\label{thm:inv}
+If $\mu\Rightarrow\mu'$ by one of the rules, then for every non-free cell
+$\pi$ of $\mu$, every $\Gamma$ and every $\sigma$:\quad
+$\obs\mu\pi\Gamma\sigma\iff\obs{\mu'}\pi\Gamma\sigma$.
+\end{theorem}
+
+\noindent\emph{The common part.} Consider first a rewrite of one cell
+$\pi_0$. Define $\mu\Rrightarrow\nu$
+at $\pi_0$: every type that one rule of the cell $\mu(\pi_0)$ derives from
+$\nu$-observations of its components is a $\nu$-type of $\pi_0$. If
+$\mu\Rrightarrow\nu$ at $\pi_0$ and $\mu,\nu$ agree elsewhere, then every
+$\mu$-observation is a $\nu$-observation: by induction on the derivation,
+copying every step that does not use the cell $\pi_0$ and using the hypothesis
+for the steps that do. So each direction of each rule is one local lemma.
+An allocation keeps the types of the old cells, both ways: forwards the
+fresh cell has no rule in $\mu$; backwards, a rule at an old cell has its
+premises at its components, which are old since the fresh cell occurs in
+no cell of $\mu$, or (for $\kw{LABEL}$) at the cell itself.
+
+The forward directions of $[A]$, $[E]$, $[I]$, PLUS and $[Fb]$ use
+Lemma~\ref{lem:inv} to discard impossible cases: $\at a\le\at b$ gives $a=b$,
+$\at a$ is below no pair type, and a $\kw{CONS}$ cell has no atom type.
+
+\noindent\emph{The local lemmas.} We give three; the others are similar.
+\begin{itemize}
+\item $[C]$: $\mu(\pi_0)=(\kw{CAR}\ \pi_1)$, $\mu(\pi_1)=(\kw{CONS}\ \pi_2\ \pi_3)$,
+$\mu'=\mu[\mu(\pi_2)/\pi_0]$. A type $\sigma$ of $\pi_0$ by the $\kw{CAR}$ rule
+comes from a type $\sigma\times\tau$ of $\pi_1$, hence (generation) from a type
+$\sigma$ of $\pi_2$, whose last rule is the rule of the cell $\mu(\pi_2)=\mu'(\pi_0)$.
+Conversely, $\pi_0$ and $\pi_2$ hold the same cell in $\mu'$, so they have
+the same types, by induction on derivations (a $\kw{LABEL}$ premise at
+$\pi_0$ is read at $\pi_2$); and $\pi_3$ has type $\omega$, so $\pi_0$ has type
+$\sigma$ by $\kw{CAR}$ of $\sigma\times\omega$. The other copying rules ($[I]$,
+$[Fa]$) are treated alike.
+\item $[G]$: $\mu(\pi_0)=(\pi_f\ \pi_2)$, $\mu(\pi_f)=(\kw{FUNARG}\ \pi_\lambda\ \theta)$,
+$\mu(\pi_\lambda)=(\kw{LAMBDA}\ \xi\ \pi_1)$, $\mu'=\mu[(\kw{FUNARG}\ \pi_1\ \xi\ \pi_2\ \theta)/\pi_0]$.
+A type $\tau$ of $\pi_0$ by application comes from $\sigma\to\tau$ at $\pi_f$ and
+$\sigma$ at $\pi_2$; by generation, from a single choice $\vec\sigma$ of types
+for $\theta$ and, by Lemma~\ref{lem:inv}(3), from $\pi_1:\tau$ in
+$\Gamma[\theta:\vec\sigma][\xi:\sigma]$, the environment of the new
+$\kw{FUNARG}$ cell with the choice $\vec\sigma$ updated at $\xi$. Conversely,
+a derivation at the new cell gives $\pi_2:\sigma$ and a choice for $\theta$;
+the choice for the old $\kw{FUNARG}$ cell must give $\omega$ to $\xi$, since
+its binding of $\xi$ is shadowed by the new one.
+\item $[Fa]$: $\mu(\pi_0)=(\kw{FUNARG}\ \pi'\ \theta)$, $\mu(\pi')=\xi$, $i$ the
+smallest index with $\xi_i=\xi$, $\mu'=\mu[\mu(\pi_i)/\pi_0]$. A type of $\pi_0$
+is above $\Gamma[\theta:\vec\sigma](\xi)=\sigma_i$, a type of $\pi_i$; and
+conversely.
+\item $[Fc]$, $[Fd]$: after the allocation of fresh cells $\pi'_j$ holding
+$(\kw{FUNARG}\ \pi_j\ \theta)$, the cell $(\kw{FUNARG}\ (\pi_1\ \pi_2)\ \theta)$
+becomes $(\pi'_1\ \pi'_2)$. Forwards, the types chosen for $\theta$ at $\pi_0$
+serve for both new cells. Backwards, the two new cells may choose different
+types for $\theta$; their meet is a choice of types for $\theta$, and
+Lemma~\ref{lem:basic}(1) moves both subderivations to it.
+\end{itemize}
+
+\noindent\emph{The circular rule $[L]$.} Here
+$\mu(\pi_0)=(\kw{FUNARG}\ \pi_\ell\ \theta)$, $\mu(\pi_\ell)=(\kw{LABEL}\ \xi\ \pi_1)$
+and $\nu=\mu[(\kw{FUNARG}\ \pi_1\ \xi\ \pi_0\ \theta)/\pi_0]$.
+
+($\mu\Rightarrow\nu$.) By induction on the derivation of
+$\obs\mu{\pi_\ell}{\Gamma[\theta:\vec\sigma]}\tau$, with $\vec\sigma$ types of
+$\theta$ in $\nu$, using the induction hypothesis on the self-premise of the
+$\kw{LABEL}$ rule: that rule uses
+$\pi_1:\tau$ in $\Gamma[\theta:\vec\sigma][\xi:\sigma]$ and a strictly smaller
+derivation of $\pi_\ell:\sigma$, which by induction gives $\pi_0:\sigma$ in $\nu$;
+these are exactly the premises of the $\kw{FUNARG}$ rule of $\nu(\pi_0)$, the
+binding $\xi\pi_0$ being first. Each unfolding of the label becomes one step
+through the circular binding: this single induction replaces the paper's two
+nested approximations $V_i$ and $Y_i$.
+
+($\nu\Rightarrow\mu$.) By the common part, it suffices that a type $\tau$
+given at $\pi_0$ by the $\kw{FUNARG}$ rule of $\nu(\pi_0)$, from
+$\mu$-observations, is a $\mu$-type of $\pi_0$. That rule gives a choice
+$\vec\sigma$ for $\theta$, a type $\sigma$ of $\pi_0$ for $\xi$, and $\pi_1:\tau$ in
+$\Gamma[\theta:\vec\sigma][\xi:\sigma]$. In $\mu$, by generation, $\pi_0:\sigma$
+comes from a choice $\vec\sigma'$ for $\theta$ and $\pi_\ell:\sigma$ in
+$\Gamma[\theta:\vec\sigma']$. Their meet $\vec\delta$ is a choice for $\theta$, and by
+Lemma~\ref{lem:basic}(1) both derivations hold with $\vec\delta$; the $\kw{LABEL}$
+rule then gives $\pi_\ell:\tau$ in $\Gamma[\theta:\vec\delta]$, hence $\pi_0:\tau$.
+The meet always exists, inconsistent or not: no consistency of the
+observations of a cell is needed.
+
+\section{Partial correctness}
+
+\begin{corollary}\label{cor:pc}
+Let $\kw{Eval}(\pi_0,\mu)$ halt with $\mu'$, $\pi_0$ non-free in $\mu$. Then
+$\pi_0$ has the same types in $\mu$ and $\mu'$, in every environment, and:
+if $\mu'(\pi_0)=(\kw{QUOTE}\ a)$, the types of $\pi_0$ are exactly those above
+$\at a$: its value is the atom $a$;
+if $\mu'(\pi_0)$ is a $\kw{CONS}$, $\pi_0$ has type $\omega\times\omega$ and no
+atom or arrow type: its value is a pair;
+if $\mu'(\pi_0)=(\kw{FUNARG}\ (\kw{LAMBDA}\dots)\dots)$, it has type
+$\omega\to\omega$ and no atom or pair type: its value is a function.
+\end{corollary}
+
+\begin{proof}
+$\kw{Eval}$ performs a finite sequence of allocations and rule
+applications, so Theorem~\ref{thm:inv} applies at each step; $\pi_0$ stays
+non-free, since every rewrite writes a non-free cell (the copies are of
+evaluated cells). The three cases are Lemma~\ref{lem:basic}(2) at the final
+cell, with Lemma~\ref{lem:inv}.
+\end{proof}
+
+As in the paper, the same argument shows that the final form does not depend
+on the order of the rewrites. No consistency of the memory is used: the
+meaning of $\pi_0$ is shown equal to a principal filter of a consistent type.
+Example~4 of the paper (\texttt{integers}, evaluating to $1$) is the instance
+where $\mu'(\pi_0)=(\kw{QUOTE}\ 1)$.
+
+\section{Infinite elements: the semantics of Henderson and Morris}
+
+The preceding sections use only the compact elements. We now add the
+infinite elements, as filters of types, and recover the paper's statements
+literally: its semantic function is the least solution of its own
+equations, and each rule leaves the semantic memory unchanged. This is the
+construction of the elements as filters of compact elements
+\cite{ML83,Sco82,Abr91}, as in the filter model \cite{BCD83}, here for the
+domain with separated sum.
+
+\subsection{The domain}
+
+A \emph{filter} is a set $x$ of types with $\omega\in x$, closed under
+$\wedge$ and upward closed for $\le$. Let $\D$ be the set of filters,
+ordered by inclusion. It is a complete lattice: the intersection of filters
+is a filter, and so is a directed union. Its least element is
+$\bot=\up\omega=\{\sigma\mid\omega\le\sigma\}$; its greatest element is the
+set of all types. The \emph{compact} elements are the principal filters
+$\up\sigma$, and every filter is the directed union of the $\up\sigma$,
+$\sigma\in x$. We keep all the filters, the inconsistent ones included:
+$\D$ is a lattice, as the paper's domain is (``$\bot$ being the bottom of
+the whole lattice''), and nothing requires consistency. Two filters are
+equal when they have the same elements.
+
+For a set $A$ of types, the filter \emph{generated} by $A$ is
+$\langle A\rangle=\{\tau\mid\omega\le\tau$, or
+$\sigma_1\wedge\dots\wedge\sigma_n\le\tau$ for some
+$\sigma_1,\dots,\sigma_n\in A$, $n\ge1\}$.
+The operations of the paper become, for $x,y,z\in\D$:
+\[
+\begin{aligned}
+\langle x,y\rangle&=\langle\{\sigma\times\tau\mid\sigma\in x,\ \tau\in y\}\rangle, &
+x.1&=\{\sigma\mid\omega\le\sigma\ \text{or}\ \sigma\times\omega\in x\},\quad
+x.2\ \text{likewise},\\
+x\cdot y&=\{\tau\mid\omega\le\tau\ \text{or}\ \sigma\to\tau\in x\ \text{for some}\ \sigma\in y\}, &
+\kw{atom}(x)&=\langle\{\at\T\mid\Atom\in x\}\cup\{\at\NIL\mid\omega\times\omega\in x\}\rangle,
+\end{aligned}
+\]
+$\kw{eq}(x,y)$ is generated by $\at\T$ if $\at a\in x$ and $\at a\in y$ for
+some atom $a$, and by $\at\NIL$ if $\at a\in x$ and $\at b\in y$ with
+$a\ne b$; $\kw{if}(x,y,z)$ is generated by $y$ if $\at\T\in x$ and by $z$ if
+$\at\NIL\in x$. Each is a filter (for $x\cdot y$ by the two arrow rules of
+Definition~2.1), and each is monotone in its arguments. The summand
+$\omega\le\tau$ is the separated sum: $\bot\cdot y=\bot$, but
+$\langle\bot,\bot\rangle=\up(\omega\times\omega)\ne\bot$.
+
+A monotone $g:\D\to\D$ is \emph{continuous} if
+$g(x)=\bigcup_{\sigma\in x}g(\up\sigma)$; it is then determined by its
+\emph{trace}, the relation $\tau\in g(\up\sigma)$ between types. For such
+$g$ put
+\[
+\Lambda g=\langle\{\sigma\to\tau\mid\tau\in g(\up\sigma)\}\rangle,
+\]
+and let $Yg$ be the least set of types containing $\omega$, closed under
+$\wedge$ and $\le$, and such that $\sigma\in Yg$ and $\tau\in g(\up\sigma)$
+give $\tau\in Yg$. Both depend only on the trace of $g$. Note
+$\omega\to\omega\in\Lambda g$, so $\Lambda g\ne\bot$: ``$(\kw{LAMBDA}\ x\ \bot)$''
+and $\bot$ are distinct, as the paper requires.
+
+\begin{lemma}[laws]\label{lem:laws}
+For $x,y,z\in\D$, atoms $a,b$, and $g$ continuous:
+\begin{enumerate}
+\item $\langle x,y\rangle.1=x$ and $\langle x,y\rangle.2=y$;
+\item ($\beta$) $(\Lambda g)\cdot y=g(y)$;
+\item $Yg=g(Yg)$, and $g(x)\subseteq x$ implies $Yg\subseteq x$;
+\item $\kw{atom}(\up\at a)=\up\at\T$, $\kw{atom}\langle x,y\rangle=\up\at\NIL$;
+$\kw{eq}(\up\at a,\up\at a)=\up\at\T$, $\kw{eq}(\up\at a,\up\at b)=\up\at\NIL$
+for $a\ne b$; $\kw{if}(\up\at\T,y,z)=y$, $\kw{if}(\up\at\NIL,y,z)=z$;
+\item $\up\at a$, $\langle x,y\rangle$ and $\Lambda g$ are pairwise distinct
+and distinct from $\bot$: they contain respectively $\at a$, $\omega\times\omega$,
+$\omega\to\omega$, and no other of these three types.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+All but (3) are Lemma~\ref{lem:inv} read on generated filters. For (1): if
+$\sigma\times\omega\in\langle x,y\rangle$ and $\omega\not\le\sigma$, then
+$\bigwedge(\sigma_i\times\tau_i)\le\sigma\times\omega$ with $\sigma_i\in x$,
+so $\bigwedge\sigma_i\le\sigma$ and $\sigma\in x$. For (2): let
+$\sigma\to\tau\in\Lambda g$ with $\sigma\in y$; then
+$\bigwedge_k(\sigma_k\to\tau_k)\le\sigma\to\tau$ with
+$\tau_k\in g(\up\sigma_k)$ ($\omega\le\sigma\to\tau$ is impossible), and
+Lemma~\ref{lem:inv}(3) gives a selection with $\sigma\le\sigma_k$ and
+$\bigwedge\tau_k\le\tau$; since $\up\sigma_k\subseteq\up\sigma\subseteq y$,
+monotonicity gives $\tau\in g(y)$.
+Conversely $\tau\in g(y)$ is in some $g(\up\sigma)$, $\sigma\in y$, and
+$\sigma\to\tau\in\Lambda g$. For (3): if $g(x)\subseteq x$, then $Yg\subseteq x$
+by induction on the generation of $Yg$, since $\sigma\in x$ and
+$\tau\in g(\up\sigma)$ give $\tau\in g(x)\subseteq x$. Next
+$Yg\subseteq g(Yg)$ by the same induction, $\up\sigma\subseteq Yg$ giving
+$g(\up\sigma)\subseteq g(Yg)$; and $g(Yg)\subseteq Yg$ by continuity and the
+last closure rule.
+\end{proof}
+
+The least fixed point is thus obtained by an inductive generation, not as
+the limit of the iterates $g^n(\bot)$; (3) is fixed-point induction
+(Park's principle \cite{Par69}).
+
+\subsection{Semantic memories}
+
+An \emph{environment} $\rho$ maps variables to filters. A type
+environment $\Gamma$ (Section~3) is \emph{in} $\rho$ when
+$\Gamma(\xi)\in\rho(\xi)$ for all $\xi$; write $\up\Gamma$ for the
+environment $\xi\mapsto\up\Gamma(\xi)$. A function $F$ from environments to
+filters is continuous if it is monotone and
+$F(\rho)=\bigcup_{\Gamma\in\rho}F(\up\Gamma)$. A \emph{semantic memory} $S$
+maps each address to a continuous function from environments to filters.
+Following the paper, for a cell $e$ let $\U(S)(e)\rho$ be:
+\[
+\begin{array}{ll}
+\rho(\xi) & e=\xi\\
+\up\at a & e=(\kw{QUOTE}\ a)\\
+\langle S\pi_1\rho,S\pi_2\rho\rangle & e=(\kw{CONS}\ \pi_1\ \pi_2)\\
+(S\pi'\rho).1,\quad(S\pi'\rho).2 & e=(\kw{CAR}\ \pi'),\ (\kw{CDR}\ \pi')\\
+\kw{atom}(S\pi'\rho),\ \kw{eq}(S\pi_1\rho,S\pi_2\rho),\ \kw{if}(S\pi_0\rho,S\pi_1\rho,S\pi_2\rho)
+ & e=(\kw{ATOM}\ \pi'),\ (\kw{EQ}\ \pi_1\ \pi_2),\ (\kw{IF}\ \pi_0\ \pi_1\ \pi_2)\\
+S\pi_0\rho\cdot S\pi_1\rho & e=(\pi_0\ \pi_1)\\
+\Lambda(x\mapsto S\pi'\rho[x/\xi]) & e=(\kw{LAMBDA}\ \xi\ \pi')\\
+Y(x\mapsto S\pi'\rho[x/\xi]) & e=(\kw{LABEL}\ \xi\ \pi')\\
+S\pi'\rho[S\theta\rho/\theta] & e=(\kw{FUNARG}\ \pi'\ \theta)\\
+\bot & \pi\ \text{free}
+\end{array}
+\]
+where $\rho[S\theta\rho/\theta]$ binds each $\xi_i$ of $\theta=\xi_1\pi_1\dots\xi_n\pi_n$
+to $S\pi_i\rho$, the smallest $i$ winning. Each clause is continuous in
+$\rho$ (for $Y$, by induction on its generation). The paper defines its semantic function $\V$ as the least solution
+of $\V\mu\pi=\U(\V\mu)(\mu\pi)$. We take the observations of Section~3 as
+the definition:
+\[
+\V\mu\pi\rho=\{\sigma\mid\obs\mu\pi\Gamma\sigma\ \text{for some}\ \Gamma\ \text{in}\ \rho\}.
+\]
+
+\begin{theorem}\label{thm:fix}
+\begin{enumerate}
+\item $\V\mu\pi\rho$ is a filter, continuous in $\rho$, and
+$\sigma\in\V\mu\pi(\up\Gamma)$ iff $\obs\mu\pi\Gamma\sigma$.
+\item $\V\mu\pi=\U(\V\mu)(\mu\pi)$ for every $\pi$.
+\item If $S$ is a semantic memory with $\U(S)(\mu\pi)\subseteq S\pi$ for all
+$\pi$, then $\V\mu\pi\subseteq S\pi$ for all $\pi$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(1) $\omega$ is a type of $\pi$ in the empty environment. If $\Gamma_1$ and
+$\Gamma_2$ are in $\rho$, so is their pointwise meet, and
+Lemma~\ref{lem:basic}(1) moves both derivations to it: this gives the meet
+rule and continuity. The last claim is Lemma~\ref{lem:basic}(1).
+
+($\supseteq$ in (2)) Every generator of $\U(\V\mu)(\mu\pi)\rho$ is the
+conclusion of the rule of the cell $\mu\pi$, in an environment in $\rho$
+obtained as the meet of the environments of the premises. For
+$\kw{LAMBDA}$: if $\tau\in\V\mu\pi'(\rho[\up\sigma/\xi])$, by $\Gamma'$, then
+$\Gamma=\Gamma'[\xi:\omega]$ is in $\rho$ and $\Gamma[\xi:\sigma]$ is below
+$\Gamma'$, so $\pi:\sigma\to\tau$ in $\Gamma$. For $\kw{LABEL}$ use
+Lemma~\ref{lem:laws}(3) with $x=\V\mu\pi\rho$: by continuity, an element of
+$\V\mu\pi'(\rho[x/\xi])$ is in some $\V\mu\pi'(\rho[\up\sigma/\xi])$ with
+$\sigma\in x$, and the $\kw{LABEL}$ rule applies. For $\kw{FUNARG}$ the
+environment of the premises meets the environments given for the
+$\pi_i$; this is where the meet of the choices of types for $\theta$
+(Section~4) now happens, inside the filters.
+
+($\subseteq$ in (2), and (3)) Let $S$ satisfy $\U(S)(\mu\pi)\subseteq S\pi$
+for all $\pi$. By induction on derivations, $\obs\mu\pi\Gamma\sigma$ implies
+$\sigma\in\U(S)(\mu\pi)\rho$ for every $\rho$ containing $\Gamma$: the
+premises at a component $\pi_i$ give, by induction, types in
+$\U(S)(\mu\pi_i)\subseteq S\pi_i$, and the rule is the corresponding
+generator. For $\kw{LABEL}$ the premise $\obs\mu\pi\Gamma\sigma$ at the cell
+itself gives, by induction, $\sigma\in\U(S)(\mu\pi)\rho=Y(\dots)$, and with
+$\tau\in S\pi'(\rho[\up\sigma/\xi])$ the closure rule of $Y$ gives
+$\tau\in Y(\dots)$. Hence $\V\mu\pi\subseteq\U(S)(\mu\pi)\subseteq S\pi$.
+Taking $S=\V\mu$, a prefixed point by the first part, gives $\subseteq$
+in (2).
+\end{proof}
+
+So $\V\mu$ is the least fixed point of $S\mapsto\U(S)(\mu\,\cdot)$, that is,
+the paper's $\V\mu=\lim_i\V_i\mu$; the approximations are not needed. By
+(1), Theorem~\ref{thm:inv} is the statement $\V\mu\pi=\V\mu'\pi$ restricted to
+the environments $\up\Gamma$, and continuity gives the converse. We now prove
+the equalities directly, as the paper does.
+
+\subsection{The rules leave the semantic memory unchanged}
+
+\begin{lemma}[comparison]\label{lem:cmp}
+Let $\nu=\mu[e/\pi_0]$. If $\U(\V\nu)(\mu\pi_0)\subseteq\V\nu\pi_0$, then
+$\V\mu\subseteq\V\nu$.
+\end{lemma}
+
+\begin{proof}
+For $\pi\ne\pi_0$, $\U(\V\nu)(\mu\pi)=\U(\V\nu)(\nu\pi)=\V\nu\pi$ by
+Theorem~\ref{thm:fix}(2); so $\V\nu$ satisfies the hypothesis of
+Theorem~\ref{thm:fix}(3) for $\mu$.
+\end{proof}
+
+So for each rule two inclusions at $\pi_0$ are to be checked, and for all
+rules but $[L]$ both follow from one equation: if
+$\U(S)(\mu\pi_0)=\U(S)(\nu\pi_0)$ for every semantic memory $S$ satisfying
+$S\pi=\U(S)(\mu\pi)$ at the cells $\pi\ne\pi_0$, then, taking $S=\V\nu$ and
+$S=\V\mu$, $\V\mu=\V\nu$. Note that $\U(S)(e)$ does not mention the address
+of $e$; this is why the copying rules need no care about $\kw{LABEL}$ cells
+here. The equations, with $\rho'=\rho[S\theta\rho/\theta]$:
+\begin{itemize}
+\item $[C]$: $\U(S)(\kw{CAR}\ \pi_1)\rho=(S\pi_1\rho).1=\langle S\pi_2\rho,S\pi_3\rho\rangle.1
+=S\pi_2\rho=\U(S)(\mu\pi_2)\rho$, by Lemma~\ref{lem:laws}(1). (If $\pi_2=\pi_0$
+then $\nu=\mu$.)
+\item $[A]$, $[E]$, $[I]$: Lemma~\ref{lem:laws}(4), in the same way.
+\item $[Fa]$: $\U(S)(\kw{FUNARG}\ \pi'\ \theta)\rho=S\pi'\rho'=\rho'(\xi)=S\pi_i\rho=\U(S)(\mu\pi_i)\rho$;
+$[Fb]$: $S\pi'\rho'=\up\at a$.
+\item $[G]$: $\U(S)(\pi_f\ \pi_2)\rho=S\pi_f\rho\cdot S\pi_2\rho
+=\Lambda(x\mapsto S\pi_1\rho'[x/\xi])\cdot S\pi_2\rho
+=S\pi_1\rho'[S\pi_2\rho/\xi]=\U(S)(\kw{FUNARG}\ \pi_1\ \xi\,\pi_2\,\theta)\rho$,
+by $\beta$ (Lemma~\ref{lem:laws}(2)).
+\end{itemize}
+
+\noindent\emph{The circular rule $[L]$}, with
+$\mu\pi_0=(\kw{FUNARG}\ \pi_\ell\ \theta)$, $\mu\pi_\ell=(\kw{LABEL}\ \xi\ \pi_1)$,
+$\nu\pi_0=(\kw{FUNARG}\ \pi_1\ \xi\,\pi_0\,\theta)$. Write
+$g_S(x)=S\pi_1\rho'[x/\xi]$. Then $\U(S)(\mu\pi_0)\rho=S\pi_\ell\rho'=Yg_S$
+and $\U(S)(\nu\pi_0)\rho=g_S(S\pi_0\rho)$.
+\begin{itemize}
+\item ($\V\mu\subseteq\V\nu$) For $S=\V\nu$: $g_S(\V\nu\pi_0\rho)=\U(\V\nu)(\nu\pi_0)\rho=\V\nu\pi_0\rho$,
+so $Yg_S\subseteq\V\nu\pi_0\rho$ by Lemma~\ref{lem:laws}(3).
+\item ($\V\nu\subseteq\V\mu$) For $S=\V\mu$: $\V\mu\pi_0\rho=Yg_S$, so
+$\U(\V\mu)(\nu\pi_0)\rho=g_S(Yg_S)=Yg_S=\V\mu\pi_0\rho$.
+\end{itemize}
+The paper proves the second inclusion by cutting the loop of $Y$ and the
+loop of $\V$ together (approximations $\V_i$ and $Y_i$); with both
+characterised as least fixed points, each inclusion is one application of
+fixed-point induction.
+
+\noindent\emph{The allocating rules $[Fc]$, $[Fd]$}: $\mu\pi_0=(\kw{FUNARG}\ \pi_a\ \theta)$
+with $\mu\pi_a$ a primitive form $p(\pi_1,\dots,\pi_k)$ (an application or a
+primitive). The rule first allocates cells $\pi'_j$ holding
+$(\kw{FUNARG}\ \pi_j\ \theta)$, then rewrites $\pi_0$ to $p(\pi'_1,\dots,\pi'_k)$.
+The rewrite is a one-cell rule: with $P$ the operation of $p$,
+$\U(S)(\mu\pi_0)\rho=S\pi_a\rho'=P(S\pi_1\rho',\dots)=P(S\pi'_1\rho,\dots)$,
+since $S\pi'_j\rho=S\pi_j\rho'$. An allocation $\nu=\mu[(\kw{FUNARG}\ \pi_j\ \theta)/\pi']$
+takes a free cell $\pi'$ occurring in no cell of $\mu$ (as in the paper, no
+non-free cell points at a free one). Then $\V\mu\subseteq\V\nu$ by
+Lemma~\ref{lem:cmp}, since $\U(\V\nu)(\mu\pi')=\bot$. Conversely, let $S$ be
+$\V\mu$ except at $\pi'$, where it is the filter of all types. No cell of
+$\mu$ mentions $\pi'$, so $\U(S)(\nu\pi)=\U(\V\mu)(\mu\pi)\subseteq S\pi$
+for $\pi\ne\pi'$, and $\U(S)(\nu\pi')\subseteq S\pi'$ trivially. Hence
+$\V\nu\subseteq S$ by Theorem~\ref{thm:fix}(3), and $\V\nu\pi=\V\mu\pi$ at
+the non-free cells of $\mu$.
+
+\begin{theorem}\label{thm:hm}
+If $\mu\Rightarrow\nu$ by one of the rules, then $\V\mu\pi=\V\nu\pi$ for
+every non-free cell $\pi$ of $\mu$. If $\kw{Eval}(\pi_0,\mu)$ halts, then
+$\V\mu\pi_0\bot$ is $\up\at a$, a pair $\langle x,y\rangle$ or a function
+$\Lambda g$, according as it halts with $(\kw{QUOTE}\ a)$, a $\kw{CONS}$ or a
+$\kw{FUNARG}$ of a $\kw{LAMBDA}$ at $\pi_0$. In particular, if
+$\V\mu\pi_0\bot=\bot$ then $\kw{Eval}(\pi_0,\mu)$ does not halt, and if
+$\V\mu\pi_0\bot=\up\at a$ and it halts, it halts with $(\kw{QUOTE}\ a)$.
+\end{theorem}
+
+\noindent These are the paper's four correctness clauses; the last two
+sentences are Lemma~\ref{lem:laws}(5), which rests on the separated sum.
+
+\section{Relation to the finite-element presentation}
+
+An earlier formalisation, in Agda, presents the compact elements as finite
+elements, ordered by an algorithm. Up to the equivalence $\sigma\le\tau\le\sigma$, the consistent types are the
+finite elements: $\omega$ is $\bot$, $\at a$ an atom, $\sigma\times\tau$ a pair
+and $\bigwedge(u_i\to v_i)$ the step function $\{(u_i,v_i)\}$. Subtyping is the
+\emph{reverse} of the information order: $u\sqsubseteq v$ iff $v\le u$, so
+$\omega$, the top type, is the least element $\bot$, and the meet of types is
+the join of the corresponding elements, when they are consistent. What changes is
+the presentation of the order: by inference rules instead of an algorithm
+computing $h(u)$. This removes the stage stratification of the order and its
+stability lemmas, the duplicate (propositional and decidable) orders, the
+consistency proof of observations, and the ``shape-directed'' inversion forced
+by the closure rules (here: Lemma~\ref{lem:basic}(2)). The order algorithm, if
+wanted for computation, can be added afterwards as a decision procedure proved
+equivalent to $\le$.
+
+\section{Formalisation in Unit}
+
+Types are one ordinary inductive type. Subtyping $\le$, its syntax-directed
+form $\le^s$ (with a family of selections of arrow components), and the
+observation relation are indexed inductive families \cite{CPM90}, with all
+recursive premises positive; none of them is mutual or nested. The rule
+instances of a cell are separated from their premises: the premises form a
+function field indexed by a type of premises, which gives the
+$\kw{FUNARG}$ rule one premise per binding. The memory is a parameter (a
+function from addresses to cells), the environment a list of types. The
+evaluator is a relation (big-step, as $\kw{Eval}$), each case restating the
+cells of its rewrite in the memory reached. Sections~2--5 are formalised in
+\texttt{domain/lazy}, with no parameters; for Example~4 the observation
+derivation, not the paper's run of the evaluator.
+
+The infinite elements of Section~6 need function extensionality and
+propositional extensionality (both consequences of univalence) to state
+equalities of filters and of semantic memories, and propositional
+truncation for ``for some $\Gamma$ in $\rho$''. They are parameters of the
+development, which the finite part above does not use. A filter is a
+proposition-valued predicate on types with the three closure properties;
+the filters form a type one universe up. Continuous functions are given by
+their traces, relations between types, so that $\Lambda$ and $Y$ are
+inductive filters in the universe of the types and no resizing is needed.
+This part is formalised in \texttt{domain/ideal} (filters and operations,
+Lemma~\ref{lem:laws}, Theorem~\ref{thm:fix}, Lemma~\ref{lem:cmp} and
+Theorem~\ref{thm:hm}); its proof of Theorem~\ref{thm:hm} uses the
+observations only through Theorem~\ref{thm:fix}, not
+Theorem~\ref{thm:inv}. Of Theorem~\ref{thm:fix}(1), the inclusion of the
+observations in $\V\mu\pi(\up\Gamma)$ is formalised; the converse, not used,
+would need a choice over the variables of an environment.
+
+\begin{thebibliography}{99}
+\bibitem{HM76} P. Henderson and J. H. Morris, A lazy evaluator.
+\emph{Proc. 3rd ACM Symposium on Principles of Programming Languages}, 1976, 95--103.
+\bibitem{ML83} P. Martin-L\"of, The domain interpretation of type theory.
+Lecture notes, Workshop on Semantics of Programming Languages (K. Karlsson,
+K. Petersson, eds.), Chalmers University of Technology and University of
+G\"oteborg, August 1983.
+\bibitem{Abr91} S. Abramsky, Domain theory in logical form.
+\emph{Annals of Pure and Applied Logic} 51 (1991), 1--77; LICS 1987.
+\bibitem{BCD83} H. Barendregt, M. Coppo and M. Dezani-Ciancaglini, A filter
+lambda model and the completeness of type assignment.
+\emph{Journal of Symbolic Logic} 48 (1983), 931--940.
+\bibitem{Sco82} D. Scott, Domains for denotational semantics.
+\emph{ICALP 1982}, LNCS 140, 577--613.
+\bibitem{Rey71} J. C. Reynolds, Notes on a lattice-theoretic approach to the
+theory of computation. Lecture notes, Syracuse University, 1971.
+\bibitem{Par69} D. Park, Fixpoint induction and proofs of program properties.
+\emph{Machine Intelligence} 5 (1969), 59--78.
+\bibitem{CPM90} Th. Coquand and C. Paulin-Mohring, Inductively defined types.
+\emph{COLOG-88}, LNCS 417 (1990), 50--66.
+\end{thebibliography}
+
+\end{document}

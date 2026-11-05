@@ -258,3 +258,15 @@ may not be named like a visible definition, the data type or a parameter,
 and the index names are distinct.  A field may reuse an index name (it is
 bound inside the constructor; resolver and evaluation agree), as in `Le`.
 Regressions: the `#fails` blocks at the end of `examples/indexed.seg`.
+
+**Absorbed indices are not read-back names (fix found by the LAZY
+formalisation).**  In a branch, the indices the split absorbed are bound
+internally (`%ix1`, `%ix2`, ...) to the values of the constructor's target.
+When such an index is a bare constructor variable, as `m` in
+`t-here (m : N) : Two (suc m) m`, the internal name was bound to the same
+generic as `m`, and the read-back (used to write a solved hidden argument
+back as a term) could choose `%ix2` as the name of `m`, which is not in scope:
+"no type for %ix2".  The read-back scope now ignores the internal index
+bindings.  This is a scoping fix; hidden arguments are still solved by
+one-way matching only, and the elaboration has no unification.
+Regression: `two-elim` in `examples/indexed.seg`.
