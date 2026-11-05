@@ -1,0 +1,124 @@
+-- Models.seg: the set model, the pointwise model over Baire space, the
+-- dialogue model, and the correctness of the dialogue interpretation.
+--
+-- The dialogue model interprets iota as B N (trees), Omega as the generic
+-- sequence, and iteration through the Kleisli extension (KE, extended to
+-- all types pointwise).  The relation R between the pointwise model and
+-- the dialogue model is: at iota, n a = decode a n' for every a; at
+-- arrows, the logical lifting.  It relates the constants (r-iter by
+-- induction on the iteration count, through R-kleisli), so by the
+-- fundamental lemma it relates the interpretations of every term.  For a
+-- closed term e of type (N -> N) -> N without Omega, applied to Omega,
+-- this says:  [[e]] a = decode a (tree e)  for every a (dialogue-correct).
+-- Hence every T-definable functional is eloquent, hence continuous.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open SystemT[l] ; open Dialogue[l] ;
+
+iterN (X : U l) (f : X -> X) (x : X) : Nat -> X = split { zero -> x ; suc n | r -> f r } ;
+
+------------------------------------------------------------------------
+-- the set model, with the oracle a for Omega
+
+SetV : Ty -> U l = split { iota -> Nat ; arr s t | a b -> a -> b } ;
+SetM (a : Baire) : Model = new Model[SetV, \ s t f x -> f x, zero, \ n -> suc n, a,
+  \ s f x n -> iterN (SetV s) f x n, \ s u x y -> x, \ r s u f g x -> f x (g x)] ;
+
+-- the pointwise model: values depending on the oracle
+PV (t : Ty) : U l = Baire -> SetV t ;
+PM : Model = new Model[PV, \ s t f x a -> f a (x a), \ a -> zero, \ a n -> suc n, \ a -> a,
+  \ s a f x n -> iterN (SetV s) f x n, \ s u a x y -> x, \ r s u a f g x -> f x (g x)] ;
+
+-- the dialogue model
+BV : Ty -> U l = split { iota -> B Nat ; arr s t | a b -> a -> b } ;
+KE : (t : Ty) -> (Nat -> BV t) -> B Nat -> BV t = split {
+  iota -> \ g d -> kleisli Nat Nat g d ;
+  arr s t | ks kt -> \ g d y -> kt (\ n -> g n y) d } ;
+DM : Model = new Model[BV, \ s t f x -> f x, eta zero, fmap Nat Nat (\ n -> suc n), generic,
+  \ s f x -> KE s (iterN (BV s) f x), \ s u x y -> x, \ r s u f g x -> f x (g x)] ;
+
+------------------------------------------------------------------------
+-- the relation
+
+R : (t : Ty) -> PV t -> BV t -> U l = split {
+  iota -> \ n n' -> (a : Baire) -> Id Nat (n a) (decode Nat a n') ;
+  arr s t | rs rt -> \ f f' -> (x : PV s) (x' : BV s) -> rs x x' -> rt (\ a -> f a (x a)) (f' x') } ;
+
+R-kleisli : (t : Ty) -> (g : Nat -> PV t) -> (g' : Nat -> BV t) -> ((k : Nat) -> R t (g k) (g' k))
+  -> (n : PV iota) -> (n' : B Nat) -> R iota n n' -> R t (\ a -> g (n a) a) (KE t g' n') = split {
+  iota -> \ g g' rg n n' rn a -> calc Nat {
+    g (n a) a =< rg (n a) a >
+    decode Nat a (g' (n a)) =< apH (\ m -> decode Nat a (g' m)) (rn a) >
+    decode Nat a (g' (decode Nat a n')) =< decode-kleisli Nat Nat g' a n' >
+    decode Nat a (kleisli Nat Nat g' n') } ;
+  arr s t | ks kt -> \ g g' rg n n' rn y y' ry ->
+    kt (\ k a -> g k a (y a)) (\ k -> g' k y') (\ k -> rg k y y' ry) n n' rn } ;
+
+-- the iterates are related
+module IterRel (s : Ty) (f : PV (arr s s)) (f' : BV (arr s s)) (rf : R (arr s s) f f') (x : PV s) (x' : BV s) (rx : R s x x') {
+  g (k : Nat) : PV s = \ a -> iterN (SetV s) (f a) (x a) k ;
+  g' (k : Nat) : BV s = iterN (BV s) f' x' k ;
+  rg : (k : Nat) -> R s (g k) (g' k) = split { zero -> rx ; suc k | r -> rf (g k) (g' k) r } ;
+} ;
+
+LR : Rel[PM, DM] = new Rel[PM, DM, R,
+  \ s t f g x y rf rx -> rf x y rx,
+  \ a -> refl zero,
+  \ n n' rn a -> calc Nat {
+    suc (n a) =< apH (\ m -> suc m) (rn a) >
+    suc (decode Nat a n') =< decode-natural Nat Nat (\ m -> suc m) a n' >
+    decode Nat a (fmap Nat Nat (\ m -> suc m) n') },
+  \ n n' rn a -> calc Nat {
+    a (n a) =< apH a (rn a) > a (decode Nat a n') =< generic-diagram a n' > decode Nat a (generic n') },
+  \ s f f' rf x x' rx -> R-kleisli s (IterRel[s, f, f', rf, x, x', rx].g) (IterRel[s, f, f', rf, x, x', rx].g') (IterRel[s, f, f', rf, x, x', rx].rg),
+  \ s u x x' rx y y' ry -> rx,
+  \ r s u f f' rf g g' rg x x' rx -> rf x x' rx (\ a -> g a (x a)) (g' x') (rg x x' rx)] ;
+
+------------------------------------------------------------------------
+-- correctness
+
+FT : Ty = arr nat2 iota ;
+-- the dialogue tree of a term of type (N -> N) -> N: apply it to Omega
+tree (e : Tm) (h : Has e FT) : B Nat = Eval[DM].ev (App nat2 e Omega) iota (h, refl nat2) ;
+
+-- the pointwise model at a is the set model with oracle a
+eval-at (c t : Ty) (p : Id Ty c t) (x : PV c) (a : Baire) : Id (SetV t) (substH PV p x a) (substH SetV p (x a)) =
+  idJ Ty c (\ t0 p0 -> Id (SetV t0) (substH PV p0 x a) (substH SetV p0 (x a))) (refl (x a)) t p ;
+app-eq (s t : Ty) (f g : SetV (arr s t)) (x y : SetV s) (p : Id (SetV (arr s t)) f g) (q : Id (SetV s) x y) : Id (SetV t) (f x) (g y) =
+  calc (SetV t) { f x =< apH (\ k -> k x) p > g x =< apH g q > g y } ;
+pointwise (a : Baire) : (e : Tm) -> (t : Ty) -> (h : Has e t) -> Id (SetV t) (Eval[PM].ev e t h a) (Eval[SetM a].ev e t h) = split {
+  Zero -> \ t h -> eval-at iota t (symH h) PM.zero-v a ;
+  Succ -> \ t h -> eval-at nat2 t (symH h) PM.succ-v a ;
+  Omega -> \ t h -> eval-at nat2 t (symH h) PM.omega-v a ;
+  Iter s -> \ t h -> eval-at (iterTy s) t (symH h) (PM.iter-v s) a ;
+  K s u -> \ t h -> eval-at (kTy s u) t (symH h) (PM.k-v s u) a ;
+  S r s u -> \ t h -> eval-at (sTy r s u) t (symH h) (PM.s-v r s u) a ;
+  App s f x | pf px -> \ t h -> app-eq s t (Eval[PM].ev f (arr s t) h.1 a) (Eval[SetM a].ev f (arr s t) h.1)
+    (Eval[PM].ev x s h.2 a) (Eval[SetM a].ev x s h.2) (pf (arr s t) h.1) (px s h.2) } ;
+
+-- a term of T does not depend on the oracle
+oracle-free (a b : Baire) : (e : Tm) -> OmegaFree e -> (t : Ty) -> (h : Has e t) -> Id (SetV t) (Eval[SetM a].ev e t h) (Eval[SetM b].ev e t h) = split {
+  Zero -> \ o t h -> refl (Eval[SetM a].ev Zero t h) ;
+  Succ -> \ o t h -> refl (Eval[SetM a].ev Succ t h) ;
+  Omega -> \ o t h -> absurd (Id (SetV t) (Eval[SetM a].ev Omega t h) (Eval[SetM b].ev Omega t h)) o ;
+  Iter s -> \ o t h -> refl (Eval[SetM a].ev (Iter s) t h) ;
+  K s u -> \ o t h -> refl (Eval[SetM a].ev (K s u) t h) ;
+  S r s u -> \ o t h -> refl (Eval[SetM a].ev (S r s u) t h) ;
+  App s f x | of ox -> \ o t h -> app-eq s t (Eval[SetM a].ev f (arr s t) h.1) (Eval[SetM b].ev f (arr s t) h.1)
+    (Eval[SetM a].ev x s h.2) (Eval[SetM b].ev x s h.2) (of o.1 (arr s t) h.1) (ox o.2 s h.2) } ;
+
+-- the meaning of a term of T of type (N -> N) -> N
+a0 : Baire = \ n -> zero ;
+meaning (e : Tm) (h : Has e FT) : Baire -> Nat = Eval[SetM a0].ev e FT h ;
+
+-- Theorem (dialogue-tree-correct)
+dialogue-correct (e : Tm) (h : Has e FT) (o : OmegaFree e) (a : Baire) : Id Nat (meaning e h a) (decode Nat a (tree e h)) = calc Nat {
+  meaning e h a =< apH (\ k -> k a) (oracle-free a0 a e o FT h) >
+  Eval[SetM a].ev e FT h a =< apH (\ k -> k a) (symH (pointwise a e FT h)) >
+  Eval[PM].ev e FT h a a =< Fund[PM, DM, LR].fund (App nat2 e Omega) iota (h, refl nat2) a >
+  decode Nat a (tree e h) } ;
+
+-- T-definable functionals are eloquent, hence continuous
+Definable (f : Baire -> Nat) : U l = (e : Tm) * ((h : Has e FT) * (OmegaFree e * ((a : Baire) -> Id Nat (meaning e h a) (f a)))) ;
+eloquence (f : Baire -> Nat) (q : Definable f) : Eloquent f =
+  (tree q.1 q.2.1, \ a -> transH (symH (dialogue-correct q.1 q.2.1 q.2.2.1 a)) (q.2.2.2 a)) ;
+definable-continuous (f : Baire -> Nat) (q : Definable f) : Continuous f = eloquent-continuous f (eloquence f q) ;

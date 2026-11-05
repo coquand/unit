@@ -1,0 +1,91 @@
+-- SystemT.seg: combinatory System T, its models, and the fundamental lemma
+-- of logical relations, once for all models.
+--
+-- Unit has no indexed inductive families, so a typed term is an untyped
+-- term e with a proof of Has e t, defined by recursion on e (the
+-- application node records the type of its argument).  The term Omega
+-- stands for the generic sequence (the oracle).
+--
+-- A model gives a type of values for each type, application, and the
+-- values of the constants; every model interprets typed terms (Eval).  A
+-- logical relation between two models relates the constants and is
+-- compatible with application; then it relates the interpretations of all
+-- typed terms (Fund), by induction on the term.  The set model, the
+-- pointwise model over Baire space and the dialogue model are instances
+-- (Models.seg), and the correctness of the dialogue interpretation is the
+-- fundamental lemma for one relation between the last two.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ;
+
+data Ty = iota | arr (s t : Ty) ;
+data Tm = Zero | Succ | Omega | Iter (s : Ty) | K (s t : Ty) | S (r s t : Ty) | App (s : Ty) (f x : Tm) ;
+
+-- the types of the constants
+nat2 : Ty = arr iota iota ;
+iterTy (s : Ty) : Ty = arr (arr s s) (arr s (arr iota s)) ;
+kTy (s u : Ty) : Ty = arr s (arr u s) ;
+sTy (r s u : Ty) : Ty = arr (arr r (arr s u)) (arr (arr r s) (arr r u)) ;
+
+Has : Tm -> Ty -> U l = split {
+  Zero -> \ t -> Id Ty t iota ;
+  Succ -> \ t -> Id Ty t nat2 ;
+  Omega -> \ t -> Id Ty t nat2 ;
+  Iter s -> \ t -> Id Ty t (iterTy s) ;
+  K s u -> \ t -> Id Ty t (kTy s u) ;
+  S r s u -> \ t -> Id Ty t (sTy r s u) ;
+  App s f x | hf hx -> \ t -> hf (arr s t) * hx s } ;
+
+-- the terms of System T proper
+OmegaFree : Tm -> U l = split {
+  Zero -> Top ; Succ -> Top ; Omega -> Empty ; Iter s -> Top ; K s u -> Top ; S r s u -> Top ;
+  App s f x | a b -> a * b } ;
+
+record Model {
+  V (t : Ty) : U l ;
+  ap (s t : Ty) (f : V (arr s t)) (x : V s) : V t ;
+  zero-v : V iota ;
+  succ-v : V nat2 ;
+  omega-v : V nat2 ;
+  iter-v (s : Ty) : V (iterTy s) ;
+  k-v (s u : Ty) : V (kTy s u) ;
+  s-v (r s u : Ty) : V (sTy r s u) ;
+} ;
+
+module Eval (M : Model) {
+  ev : (e : Tm) -> (t : Ty) -> Has e t -> M.V t = split {
+    Zero -> \ t h -> substH M.V (symH h) M.zero-v ;
+    Succ -> \ t h -> substH M.V (symH h) M.succ-v ;
+    Omega -> \ t h -> substH M.V (symH h) M.omega-v ;
+    Iter s -> \ t h -> substH M.V (symH h) (M.iter-v s) ;
+    K s u -> \ t h -> substH M.V (symH h) (M.k-v s u) ;
+    S r s u -> \ t h -> substH M.V (symH h) (M.s-v r s u) ;
+    App s f x | ef ex -> \ t h -> M.ap s t (ef (arr s t) h.1) (ex s h.2) } ;
+} ;
+
+record Rel (M N : Model) {
+  R (t : Ty) (x : M.V t) (y : N.V t) : U l ;
+  r-ap (s t : Ty) (f : M.V (arr s t)) (g : N.V (arr s t)) (x : M.V s) (y : N.V s)
+    (rf : R (arr s t) f g) (rx : R s x y) : R t (M.ap s t f x) (N.ap s t g y) ;
+  r-zero : R iota M.zero-v N.zero-v ;
+  r-succ : R nat2 M.succ-v N.succ-v ;
+  r-omega : R nat2 M.omega-v N.omega-v ;
+  r-iter (s : Ty) : R (iterTy s) (M.iter-v s) (N.iter-v s) ;
+  r-k (s u : Ty) : R (kTy s u) (M.k-v s u) (N.k-v s u) ;
+  r-s (r s u : Ty) : R (sTy r s u) (M.s-v r s u) (N.s-v r s u) ;
+} ;
+
+-- the fundamental lemma
+module Fund (M N : Model) (Q : Rel[M, N]) {
+  module EM = Eval[M] ; module EN = Eval[N] ;
+  move (c t : Ty) (p : Id Ty c t) (x : M.V c) (y : N.V c) (r : Q.R c x y) : Q.R t (substH M.V p x) (substH N.V p y) =
+    idJ Ty c (\ t0 p0 -> Q.R t0 (substH M.V p0 x) (substH N.V p0 y)) r t p ;
+  fund : (e : Tm) -> (t : Ty) -> (h : Has e t) -> Q.R t (EM.ev e t h) (EN.ev e t h) = split {
+    Zero -> \ t h -> move iota t (symH h) M.zero-v N.zero-v Q.r-zero ;
+    Succ -> \ t h -> move nat2 t (symH h) M.succ-v N.succ-v Q.r-succ ;
+    Omega -> \ t h -> move nat2 t (symH h) M.omega-v N.omega-v Q.r-omega ;
+    Iter s -> \ t h -> move (iterTy s) t (symH h) (M.iter-v s) (N.iter-v s) (Q.r-iter s) ;
+    K s u -> \ t h -> move (kTy s u) t (symH h) (M.k-v s u) (N.k-v s u) (Q.r-k s u) ;
+    S r s u -> \ t h -> move (sTy r s u) t (symH h) (M.s-v r s u) (N.s-v r s u) (Q.r-s r s u) ;
+    App s f x | ff fx -> \ t h -> Q.r-ap s t (EM.ev f (arr s t) h.1) (EN.ev f (arr s t) h.1) (EM.ev x s h.2) (EN.ev x s h.2)
+      (ff (arr s t) h.1) (fx s h.2) } ;
+} ;

@@ -1,0 +1,70 @@
+-- Bracket.seg: terms with variables, compiled to combinators by bracket
+-- abstraction (Agda DialogueTrees.Sharpness: Cx, _∋_, Tm, abs, tm).
+--
+-- Unit has no indexed families, so, as for Tm, the source terms Ex are
+-- untyped (de Bruijn variables, constants of T, application recording the
+-- type of its argument) and HasE G e t is a typing judgement by recursion
+-- on e; a constant must be a typed term of T (Has and OmegaFree).
+-- abs a e t removes the innermost variable (of type a) from e : t: that
+-- variable becomes I, another variable or a constant becomes its weakening
+-- by K, an application the S of the abstracted parts; it preserves typing
+-- (abs-has).  tm reads a closed source term back as a term, typed
+-- (tm-has) and Omega-free (tm-free).  close abstracts all the variables of
+-- a context at once.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open SystemT[l] ;
+
+-- Agda: Cx, Tm (Γ), _∋_
+data Cx = emp | ext (G : Cx) (a : Ty) ;
+data Ex = var (n : Nat) | con (c : Tm) | app (s : Ty) (f x : Ex) ;
+
+-- the variable n has type t in G
+Look : Cx -> Nat -> Ty -> U l = split {
+  emp -> \ n t -> Empty ;
+  ext G a | r -> split { zero -> \ t -> Id Ty a t ; suc n -> r n } } ;
+HasE (G : Cx) : Ex -> Ty -> U l = split {
+  var n -> \ t -> Look G n t ;
+  con c -> \ t -> Has c t * OmegaFree c ;
+  app s f x | hf hx -> \ t -> hf (arr s t) * hx s } ;
+
+-- Agda: abs
+absVar (a t : Ty) : Nat -> Ex = split {
+  zero -> con (Examples[l].I a) ;
+  suc n -> app t (con (K t a)) (var n) } ;
+abs (a : Ty) : Ex -> Ty -> Ex = split {
+  var n -> \ t -> absVar a t n ;
+  con c -> \ t -> app t (con (K t a)) (con c) ;
+  app s f x | rf rx -> \ t -> app (arr a s) (app (arr a (arr s t)) (con (S a s t)) (rf (arr s t))) (rx s) } ;
+
+absVar-has (G : Cx) (a t : Ty) : (n : Nat) -> Look (ext G a) n t -> HasE G (absVar a t n) (arr a t) = split {
+  zero -> \ p -> (substH (\ t0 -> Has (Examples[l].I a) (arr a t0)) p (Examples[l].hI a), ((tt, tt), tt)) ;
+  suc n -> \ p -> ((refl (kTy t a), tt), p) } ;
+abs-has (G : Cx) (a : Ty) : (e : Ex) -> (t : Ty) -> HasE (ext G a) e t -> HasE G (abs a e t) (arr a t) = split {
+  var n -> \ t p -> absVar-has G a t n p ;
+  con c -> \ t p -> ((refl (kTy t a), tt), p) ;
+  app s f x | rf rx -> \ t p -> (((refl (sTy a s t), tt), rf (arr s t) p.1), rx s p.2) } ;
+
+-- Agda: tm
+tm : Ex -> Tm = split { var n -> Zero ; con c -> c ; app s f x | a b -> App s a b } ;
+tm-has : (e : Ex) -> (t : Ty) -> HasE emp e t -> Has (tm e) t = split {
+  var n -> \ t p -> absurd (Has Zero t) p ;
+  con c -> \ t p -> p.1 ;
+  app s f x | a b -> \ t p -> (a (arr s t) p.1, b s p.2) } ;
+tm-free : (e : Ex) -> (t : Ty) -> HasE emp e t -> OmegaFree (tm e) = split {
+  var n -> \ t p -> absurd (OmegaFree Zero) p ;
+  con c -> \ t p -> p.2 ;
+  app s f x | a b -> \ t p -> (a (arr s t) p.1, b s p.2) } ;
+
+-- abstracting all the variables of a context
+arrs : Cx -> Ty -> Ty = split { emp -> \ t -> t ; ext G a | r -> \ t -> r (arr a t) } ;
+lams : Cx -> Ex -> Ty -> Ex = split { emp -> \ e t -> e ; ext G a | r -> \ e t -> r (abs a e t) (arr a t) } ;
+lams-has : (G : Cx) -> (e : Ex) -> (t : Ty) -> HasE G e t -> HasE emp (lams G e t) (arrs G t) = split {
+  emp -> \ e t p -> p ;
+  ext G a | r -> \ e t p -> r (abs a e t) (arr a t) (abs-has G a e t p) } ;
+
+-- a closed term from a body in context G
+close (G : Cx) (e : Ex) (t : Ty) : Tm = tm (lams G e t) ;
+close-has (G : Cx) (e : Ex) (t : Ty) (p : HasE G e t) : Has (close G e t) (arrs G t) =
+  tm-has (lams G e t) (arrs G t) (lams-has G e t p) ;
+close-free (G : Cx) (e : Ex) (t : Ty) (p : HasE G e t) : OmegaFree (close G e t) =
+  tm-free (lams G e t) (arrs G t) (lams-has G e t p) ;

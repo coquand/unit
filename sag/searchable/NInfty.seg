@@ -1,0 +1,97 @@
+-- NInfty.seg: the generic convergent sequence N-infinity.
+--
+-- An element is a decreasing binary sequence a (a (n+1) = 1 gives a n = 1);
+-- under n is 1 below n and 0 from n on, infinity is constantly 1.  Equality
+-- is pointwise (function extensionality; being decreasing is a
+-- proposition).
+--
+-- Lemma (first zero).  If a n = 0 for some n, then a = under m for some m.
+-- Proof, by induction on n.  If a n = 0 and n = 0, a is constantly 0 = under 0.
+-- If a (n+1) = 0: either a n = 0 (induction), or a n = 1 and then
+-- a = under (n+1), since a i = 1 for i <= n (a decreasing sequence which is
+-- 1 at n is 1 below n) and a i = 0 for i >= n+1 (it stays 0 after a 0).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- the order of the naturals, as a decision
+
+-- i < n
+ltb : Nat -> Nat -> Bool = split {
+  zero -> split { zero -> false ; suc n -> true } ;
+  suc i | r -> split { zero -> false ; suc n -> r n } } ;
+
+ltb-zero : (i : Nat) -> Id Bool (ltb i zero) false = split { zero -> refl false ; suc i -> refl false } ;
+ltb-self : (n : Nat) -> Id Bool (ltb n n) false = split { zero -> refl false ; suc n | r -> r } ;
+ltb-suc : (n : Nat) -> Id Bool (ltb n (suc n)) true = split { zero -> refl true ; suc n | r -> r } ;
+-- 0 < m fails only for m = 0
+ltb-zero-l : (m : Nat) -> Id Bool (ltb zero m) false -> Id Nat zero m = split {
+  zero -> \ h -> refl zero ; suc m -> \ h -> absurd (Id Nat zero (suc m)) (so-false true h tt) } ;
+-- i+1 < n gives i < n
+ltb-down : (i n : Nat) -> so (ltb (suc i) n) -> so (ltb i n) = split {
+  zero -> split { zero -> \ h -> h ; suc n -> \ h -> tt } ;
+  suc i | r -> split { zero -> \ h -> h ; suc n -> \ h -> r n h } } ;
+-- i < m and not i+1 < m give i+1 = m
+lt-step : (i m : Nat) -> so (ltb i m) -> Id Bool (ltb (suc i) m) false -> Id Nat (suc i) m = split {
+  zero -> split {
+    zero -> \ h e -> absurd (Id Nat (suc zero) zero) h ;
+    suc m -> \ h e -> apH (\ j -> suc j) (ltb-zero-l m e) } ;
+  suc i | r -> split {
+    zero -> \ h e -> absurd (Id Nat (suc (suc i)) zero) h ;
+    suc m -> \ h e -> apH (\ j -> suc j) (r m h e) } } ;
+-- i < n+1 gives not n < i
+ge : (i n : Nat) -> so (ltb i (suc n)) -> Id Bool (ltb n i) false = split {
+  zero -> \ n h -> ltb-zero n ;
+  suc i | r -> split {
+    zero -> \ h -> absurd (Id Bool (ltb zero (suc i)) false) (so-false (ltb i zero) (ltb-zero i) h) ;
+    suc n -> \ h -> r n h } } ;
+
+------------------------------------------------------------------------
+-- N-infinity
+
+Seq : U l = Nat -> Bool ;
+Decr (a : Seq) : U l = (n : Nat) -> so (a (suc n)) -> so (a n) ;
+decr-prop (a : Seq) : isProp (Decr a) = FL.isProp-Pi Nat (\ n -> so (a (suc n)) -> so (a n)) (\ n ->
+  FL.isProp-Pi (so (a (suc n))) (\ h -> so (a n)) (\ h -> so-prop (a n))) ;
+NI : U l = (a : Seq) * Decr a ;
+
+ni-eq (x y : NI) (h : (n : Nat) -> Id Bool (x.1 n) (y.1 n)) : Id NI x y =
+  Sigma-eq Seq Decr x.1 y.1 x.2 y.2 (FL.funext Nat (\ n -> Bool) x.1 y.1 h) (decr-prop y.1) ;
+ni-at (x y : NI) (p : Id NI x y) (n : Nat) : Id Bool (x.1 n) (y.1 n) = apH (\ z -> z.1 n) p ;
+
+under (n : Nat) : NI = (\ i -> ltb i n, \ i h -> ltb-down i n h) ;
+infty : NI = (\ i -> true, \ i h -> tt) ;
+
+------------------------------------------------------------------------
+-- the first zero
+
+module First (a : NI) {
+  -- after a 0 the sequence stays 0
+  up-suc (i : Nat) (e : Id Bool (a.1 i) false) : Id Bool (a.1 (suc i)) false =
+    cases (\ b -> Id Bool (a.1 (suc i)) b -> Id Bool (a.1 (suc i)) false) (a.1 (suc i))
+      (\ t q -> absurd (Id Bool (a.1 (suc i)) false) (so-false (a.1 i) e (a.2 i (so-true (a.1 (suc i)) t))))
+      (\ f q -> f) (refl (a.1 (suc i))) ;
+  up (m : Nat) (fm : Id Bool (a.1 m) false) : (i : Nat) -> Id Bool (ltb i m) false -> Id Bool (a.1 i) false = split {
+    zero -> \ h -> substH (\ j -> Id Bool (a.1 j) false) (symH (ltb-zero-l m h)) fm ;
+    suc i | r -> \ h -> cases (\ b -> Id Bool (ltb i m) b -> Id Bool (a.1 (suc i)) false) (ltb i m)
+      (\ t q -> substH (\ j -> Id Bool (a.1 j) false) (symH (lt-step i m (so-true (ltb i m) t) h)) fm)
+      (\ f q -> up-suc i (r f)) (refl (ltb i m)) } ;
+  -- a 1 at n gives 1 below n
+  down (n : Nat) (t : so (a.1 n)) (i : Nat) (h : so (ltb i (suc n))) : so (a.1 i) =
+    cases (\ b -> Id Bool (a.1 i) b -> so (a.1 i)) (a.1 i)
+      (\ e q -> so-true (a.1 i) e)
+      (\ e q -> absurd (so (a.1 i)) (so-false (a.1 n) (up i e n (ge i n h)) t)) (refl (a.1 i)) ;
+  -- a 0 at m and 1 below m: a is under m
+  pin (m : Nat) (fm : Id Bool (a.1 m) false) (tm : (i : Nat) -> so (ltb i m) -> so (a.1 i)) : Id NI a (under m) =
+    ni-eq a (under m) (\ i -> cases (\ b -> Id Bool (ltb i m) b -> Id Bool (a.1 i) (ltb i m)) (ltb i m)
+      (\ t q -> transH (true-so (a.1 i) (tm i (so-true (ltb i m) t))) (symH t))
+      (\ f q -> transH (up m fm i f) (symH f)) (refl (ltb i m))) ;
+  -- the lemma
+  Under : U l = (m : Nat) * Id NI a (under m) ;
+  first-zero : (n : Nat) -> Id Bool (a.1 n) false -> Under = split {
+    zero -> \ f -> (zero, pin zero f (\ i h -> absurd (so (a.1 i)) (so-false (ltb i zero) (ltb-zero i) h))) ;
+    suc n | r -> \ f -> cases (\ b -> Id Bool (a.1 n) b -> Under) (a.1 n)
+      (\ t q -> (suc n, pin (suc n) f (\ i h -> down n (so-true (a.1 n) t) i h)))
+      (\ g q -> r g) (refl (a.1 n)) } ;
+} ;

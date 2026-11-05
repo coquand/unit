@@ -1,0 +1,58 @@
+-- Dialogue.seg: dialogue trees (Escardo, MFPS XXIX).
+-- A tree in D X Y Z is a leaf eta z, or a query beta phi x: ask x, and
+-- continue with phi y on the answer y.  It denotes a functional
+-- (X -> Y) -> Z (dialogue).  B Z = D N N Z is a monad (kleisli), and
+-- decoding along a : N -> N commutes with the monad structure.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ;
+
+data D (X Y Z : U l) : U l = eta (z : Z) | beta (phi : Y -> D X Y Z) (x : X) ;
+
+dialogue (X Y Z : U l) : D X Y Z -> (X -> Y) -> Z = split {
+  eta z -> \ a -> z ;
+  beta phi x | r -> \ a -> r (a x) a } ;
+
+Baire : U l = Nat -> Nat ;
+B (Z : U l) : U l = D Nat Nat Z ;
+decode (Z : U l) (a : Baire) (d : B Z) : Z = dialogue Nat Nat Z d a ;
+
+kleisli (X Y : U l) (f : X -> B Y) : B X -> B Y = split {
+  eta x -> f x ;
+  beta phi i | r -> beta r i } ;
+fmap (X Y : U l) (f : X -> Y) (d : B X) : B Y = kleisli X Y (\ x -> eta (f x)) d ;
+
+decode-natural (X Y : U l) (g : X -> Y) (a : Baire) : (d : B X) -> Id Y (g (decode X a d)) (decode Y a (fmap X Y g d)) = split {
+  eta x -> refl (g x) ;
+  beta phi i | r -> r (a i) } ;
+decode-kleisli (X Y : U l) (f : X -> B Y) (a : Baire) : (d : B X) -> Id Y (decode Y a (f (decode X a d))) (decode Y a (kleisli X Y f d)) = split {
+  eta x -> refl (decode Y a (f x)) ;
+  beta phi i | r -> r (a i) } ;
+
+-- the generic sequence: query the value of the argument
+generic (d : B Nat) : B Nat = kleisli Nat Nat (\ n -> beta (\ m -> eta m) n) d ;
+generic-diagram (a : Baire) : (d : B Nat) -> Id Nat (a (decode Nat a d)) (decode Nat a (generic d)) = split {
+  eta n -> refl (a n) ;
+  beta phi i | r -> r (a i) } ;
+
+------------------------------------------------------------------------
+-- continuity
+
+data List (A : U l) : U l = nil | cons (x : A) (xs : List A) ;
+-- a and b agree on the indices in a list
+Agree (a b : Baire) : List Nat -> U l = split { nil -> Top ; cons i is | r -> Id Nat (a i) (b i) * r } ;
+Continuous (f : Baire -> Nat) : U l = (a : Baire) -> (is : List Nat) * ((b : Baire) -> Agree a b is -> Id Nat (f a) (f b)) ;
+
+dialogue-continuity : (d : B Nat) -> Continuous (\ a -> decode Nat a d) = split {
+  eta n -> \ a -> (nil, \ b h -> refl n) ;
+  beta phi i | r -> \ a -> (cons i (r (a i) a).1, \ b h -> calc Nat {
+    decode Nat a (phi (a i)) =< (r (a i) a).2 b h.2 >
+    decode Nat b (phi (a i)) =< apH (\ n -> decode Nat b (phi n)) h.1 >
+    decode Nat b (phi (b i)) }) } ;
+
+continuity-ext (f g : Baire -> Nat) (e : (a : Baire) -> Id Nat (f a) (g a)) (c : Continuous f) : Continuous g = \ a ->
+  ((c a).1, \ b h -> calc Nat { g a =< symH (e a) > f a =< (c a).2 b h > f b =< e b > g b }) ;
+
+-- a functional is eloquent if a dialogue tree computes it
+Eloquent (f : Baire -> Nat) : U l = (d : B Nat) * ((a : Baire) -> Id Nat (decode Nat a d) (f a)) ;
+eloquent-continuous (f : Baire -> Nat) (q : Eloquent f) : Continuous f =
+  continuity-ext (\ a -> decode Nat a q.1) f q.2 (dialogue-continuity q.1) ;

@@ -1,0 +1,220 @@
+-- Cascade.seg: scalar graded maps whose exponents are graded maps in their
+-- turn (Agda BrouwerOrdinals.Cascade and BrouwerOrdinals.CascadeLevel).
+--
+-- The datum of the combinator S carries an exponent that is a map of the
+-- argument, so the exponent of a map is a map of the same kind, one grade
+-- up.  A scalar graded map on tuples of width k (datum Sc k: one
+-- translation per grade and a constant at the bottom) acts by
+--   valSc (c, E) (a, t) = ((a + tsum t) + c) * w^(valSc E t),   valSc c tt = c.
+-- Ending at a constant carried by the map (rather than at an exponent read
+-- off a grade below, which would be 0, making the last grade a translation
+-- that cannot absorb a doubling) lets every grade pay for a doubling by a
+-- successor on the grade above.
+--
+-- Facts: values below eps0 (valSc-lt-eps0), monotone in the tuple
+-- (valSc-mono), inflationary; a successor costs a successor on every
+-- translation (valSc-suc: S V <= V + V <= V * w, and V * w is the value
+-- with one more on the exponent, omega-step); the sum of two maps at one
+-- tuple is below their join (valSc-join, the repeated argument of S);
+-- widening (upSc), the constant below the value, multiplication by w
+-- (bumpSc).  Each operation on data keeps them below eps0 (..-AllLt).
+-- CascadeLevel: domination of data (leSc, Agda ⊑Sc), which dominates
+-- values, and the two readings of the j+1 entries of a datum of width j
+-- as a tuple (scToTup, tupToSc).
+--
+-- Decision: the operations on Sc (suc, join, up, zero, bump) are kept as
+-- separate definitions, each with its value lemma and its AllLt lemma, as
+-- in the Agda.  They have different arities and two change the width
+-- (upSc) or are nullary (zeroSc), so a record of a graded-map algebra
+-- would need one field shape per operation and would not shorten the text.
+--
+-- Deviations: Agda one-≤-⊗-left is Epsilon0.le-mul-left (not re-declared);
+-- the step  (B * w^X) * w <= B * w^Y  from  S X <= Y, written four times in
+-- the Agda (grow, valSc-bump, RectAdd.valSc-fold), is the lemma omega-step;
+-- the two monotonicity steps of a product are Epsilon0/MultClosure's
+-- add-mono and mul-mono.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Brouwer[l] ; open Ordinals[l] ; open Epsilon0[l] ;
+open MultClosure[l] ; open Tuples[l] ;
+
+-- (B * w^X) * w = B * w^(S X) <= B * w^Y  when  S X <= Y
+omega-step (B X Y : Br) (p : Le (Sb X) Y) : Le (mul (mul B (wexp X)) omega) (mul B (wexp Y)) =
+  substH (\ z -> Le z (mul B (wexp Y))) (symH (mul-assoc B (wexp X) omega))
+    (mul-mono-right B (wexp (Sb X)) (wexp Y) (wexp-mono (Sb X) Y p)) ;
+
+------------------------------------------------------------------------
+-- scalar graded maps
+
+-- Agda: Sc, valSc, ScAll<
+Sc : Nat -> U l = split { zero -> Br ; suc k | r -> Br * r } ;
+valSc : (k : Nat) -> Sc k -> Tup k -> Br = split {
+  zero -> \ c t -> c ;
+  suc k | r -> \ E t -> mul (add (add t.1 (tsum k t.2)) E.1) (wexp (r E.2 t.2)) } ;
+ScAllLt : (k : Nat) -> Sc k -> U l = split {
+  zero -> \ c -> Lt c eps0 ;
+  suc k | r -> \ E -> Lt E.1 eps0 * r E.2 } ;
+
+-- Agda: valSc-<-ε₀
+valSc-lt-eps0 : (k : Nat) -> (E : Sc k) -> (t : Tup k) -> ScAllLt k E -> AllLt k t -> Lt (valSc k E t) eps0 = split {
+  zero -> \ c t p a -> p ;
+  suc k | r -> \ E t p a ->
+    mul-lt-eps0 (add (add t.1 (tsum k t.2)) E.1) (wexp (valSc k E.2 t.2))
+      (add-lt-eps0 (add t.1 (tsum k t.2)) E.1 (tsum-lt-eps0 (suc k) t a) p.1)
+      (wexp-lt-eps0 (valSc k E.2 t.2) (r E.2 t.2 p.2 a.2)) } ;
+
+-- Agda: valSc-mono
+valSc-mono : (k : Nat) -> (E : Sc k) -> (t u : Tup k) -> leT k t u -> Le (valSc k E t) (valSc k E u) = split {
+  zero -> \ c t u p -> le-refl c ;
+  suc k | r -> \ E t u p ->
+    mul-mono (add (add t.1 (tsum k t.2)) E.1) (add (add u.1 (tsum k u.2)) E.1)
+      (wexp (valSc k E.2 t.2)) (wexp (valSc k E.2 u.2))
+      (add-mono-left (add t.1 (tsum k t.2)) (add u.1 (tsum k u.2)) (tsum-mono (suc k) t u p) E.1)
+      (wexp-mono (valSc k E.2 t.2) (valSc k E.2 u.2) (r E.2 t.2 u.2 p.2)) } ;
+
+-- Agda: valSc-increasing
+valSc-increasing (k : Nat) (c : Br) (E : Sc k) (a : Br) (t : Tup k) : Le a (valSc (suc k) (c, E) (a, t)) =
+  le-trans a (add a (tsum k t)) (valSc (suc k) (c, E) (a, t)) (add-increasing-right a (tsum k t))
+    (le-trans (add a (tsum k t)) (add (add a (tsum k t)) c) (valSc (suc k) (c, E) (a, t))
+      (add-increasing-right (add a (tsum k t)) c)
+      (le-mul-right (add (add a (tsum k t)) c) (wexp (valSc k E t)) (one-le-wexp (valSc k E t)))) ;
+
+------------------------------------------------------------------------
+-- successor
+
+-- Agda: sucSc
+sucSc : (k : Nat) -> Sc k -> Sc k = split {
+  zero -> \ c -> Sb c ;
+  suc k | r -> \ E -> (Sb E.1, r E.2) } ;
+
+-- Agda: valSc-suc (the successor case)
+valSc-suc-step (k : Nat) (c : Br) (E : Sc k) (a : Br) (t : Tup k)
+  (ih : Le (Sb (valSc k E t)) (valSc k (sucSc k E) t))
+  : Le (Sb (valSc (suc k) (c, E) (a, t))) (valSc (suc k) (sucSc (suc k) (c, E)) (a, t)) =
+  le-trans (Sb (valSc (suc k) (c, E) (a, t))) (Sb V) (valSc (suc k) (sucSc (suc k) (c, E)) (a, t)) Vge
+    (le-trans (Sb V) (add V V) (valSc (suc k) (sucSc (suc k) (c, E)) (a, t)) Sdup
+      (le-trans (add V V) (mul V omega) (valSc (suc k) (sucSc (suc k) (c, E)) (a, t)) (dup-omega V)
+        (omega-step (Sb (add s c)) X (valSc k (sucSc k E) t) ih)))
+ where {
+   s : Br = add a (tsum k t) ;
+   X : Br = valSc k E t ;
+   V : Br = mul (Sb (add s c)) (wexp X) ;
+   Vge : Le (mul (add s c) (wexp X)) V = mul-mono-left (add s c) (Sb (add s c)) (S-increasing (add s c)) (wexp X) ;
+   V1 : Le one V = le-trans one (Sb (add s c)) V tt (le-mul-right (Sb (add s c)) (wexp X) (one-le-wexp X)) ;
+   Sdup : Le (Sb V) (add V V) = add-mono-right V one V V1 ;
+ } ;
+-- Agda: valSc-suc
+valSc-suc : (k : Nat) -> (E : Sc k) -> (t : Tup k) -> Le (Sb (valSc k E t)) (valSc k (sucSc k E) t) = split {
+  zero -> \ c t -> le-refl (Sb c) ;
+  suc k | r -> \ E t -> valSc-suc-step k E.1 E.2 t.1 t.2 (r E.2 t.2) } ;
+
+------------------------------------------------------------------------
+-- join
+
+-- Agda: joinSc
+joinSc : (k : Nat) -> Sc k -> Sc k -> Sc k = split {
+  zero -> \ c1 c2 -> add c1 c2 ;
+  suc k | r -> \ E1 E2 -> (add E1.1 E2.1, sucSc k (r E1.2 E2.2)) } ;
+
+-- Agda: valSc-join (the successor case)
+valSc-join-step (k : Nat) (c1 : Br) (E1 : Sc k) (c2 : Br) (E2 : Sc k) (a : Br) (t : Tup k)
+  (ih : Le (add (valSc k E1 t) (valSc k E2 t)) (valSc k (joinSc k E1 E2) t))
+  : Le (add (valSc (suc k) (c1, E1) (a, t)) (valSc (suc k) (c2, E2) (a, t)))
+       (valSc (suc k) (joinSc (suc k) (c1, E1) (c2, E2)) (a, t)) =
+  le-trans (add (valSc (suc k) (c1, E1) (a, t)) (valSc (suc k) (c2, E2) (a, t))) (add W W)
+    (valSc (suc k) (joinSc (suc k) (c1, E1) (c2, E2)) (a, t))
+    (add-mono (valSc (suc k) (c1, E1) (a, t)) W (valSc (suc k) (c2, E2) (a, t)) W b1 b2)
+    (le-trans (add W W) (mul W omega) (valSc (suc k) (joinSc (suc k) (c1, E1) (c2, E2)) (a, t))
+      (dup-omega W) (omega-step (add s c12) (add X1 X2) (valSc k (sucSc k (joinSc k E1 E2)) t) expLe))
+ where {
+   s : Br = add a (tsum k t) ;
+   X1 : Br = valSc k E1 t ;
+   X2 : Br = valSc k E2 t ;
+   c12 : Br = add c1 c2 ;
+   W : Br = mul (add s c12) (wexp (add X1 X2)) ;
+   b1 : Le (mul (add s c1) (wexp X1)) W =
+     mul-mono (add s c1) (add s c12) (wexp X1) (wexp (add X1 X2))
+       (add-mono-right s c1 c12 (add-increasing-right c1 c2)) (wexp-mono X1 (add X1 X2) (add-increasing-right X1 X2)) ;
+   b2 : Le (mul (add s c2) (wexp X2)) W =
+     mul-mono (add s c2) (add s c12) (wexp X2) (wexp (add X1 X2))
+       (add-mono-right s c2 c12 (add-increasing-left c1 c2)) (wexp-mono X2 (add X1 X2) (add-increasing-left X1 X2)) ;
+   expLe : Le (Sb (add X1 X2)) (valSc k (sucSc k (joinSc k E1 E2)) t) =
+     le-trans (Sb (add X1 X2)) (Sb (valSc k (joinSc k E1 E2) t)) (valSc k (sucSc k (joinSc k E1 E2)) t)
+       ih (valSc-suc k (joinSc k E1 E2) t) ;
+ } ;
+-- Agda: valSc-join
+valSc-join : (k : Nat) -> (E1 E2 : Sc k) -> (t : Tup k)
+  -> Le (add (valSc k E1 t) (valSc k E2 t)) (valSc k (joinSc k E1 E2) t) = split {
+  zero -> \ c1 c2 t -> le-refl (add c1 c2) ;
+  suc k | r -> \ E1 E2 t -> valSc-join-step k E1.1 E1.2 E2.1 E2.2 t.1 t.2 (r E1.2 E2.2 t.2) } ;
+
+------------------------------------------------------------------------
+-- widening, AllLt of the operations, zero, the constant, multiplication by w
+
+-- Agda: upSc, valSc-up, upSc-All<
+upSc (k : Nat) (E : Sc k) : Sc (suc k) = (one, E) ;
+valSc-up (k : Nat) (E : Sc k) (a : Br) (t : Tup k) : Le (valSc k E t) (valSc (suc k) (upSc k E) (a, t)) =
+  le-trans (valSc k E t) (wexp (valSc k E t)) (valSc (suc k) (upSc k E) (a, t))
+    (le-wexp (valSc k E t)) (le-mul-left (Sb (add a (tsum k t))) (wexp (valSc k E t)) tt) ;
+upSc-AllLt (k : Nat) (E : Sc k) (p : ScAllLt k E) : ScAllLt (suc k) (upSc k E) = (S-lt-eps0 Zb Z-lt-eps0, p) ;
+
+-- Agda: sucSc-All<, joinSc-All<
+sucSc-AllLt : (k : Nat) -> (E : Sc k) -> ScAllLt k E -> ScAllLt k (sucSc k E) = split {
+  zero -> \ c p -> S-lt-eps0 c p ;
+  suc k | r -> \ E p -> (S-lt-eps0 E.1 p.1, r E.2 p.2) } ;
+joinSc-AllLt : (k : Nat) -> (E1 E2 : Sc k) -> ScAllLt k E1 -> ScAllLt k E2 -> ScAllLt k (joinSc k E1 E2) = split {
+  zero -> \ c1 c2 p q -> add-lt-eps0 c1 c2 p q ;
+  suc k | r -> \ E1 E2 p q ->
+    (add-lt-eps0 E1.1 E2.1 p.1 q.1, sucSc-AllLt k (joinSc k E1.2 E2.2) (r E1.2 E2.2 p.2 q.2)) } ;
+
+-- Agda: zeroSc, zeroSc-All<, valSc-const
+zeroSc : (k : Nat) -> Sc k = split { zero -> Zb ; suc k | r -> (Zb, r) } ;
+zeroSc-AllLt : (k : Nat) -> ScAllLt k (zeroSc k) = split { zero -> Z-lt-eps0 ; suc k | r -> (Z-lt-eps0, r) } ;
+valSc-const (k : Nat) (c : Br) (E : Sc k) (a : Br) (t : Tup k) : Le c (valSc (suc k) (c, E) (a, t)) =
+  le-trans c (add (add a (tsum k t)) c) (valSc (suc k) (c, E) (a, t)) (add-increasing-left (add a (tsum k t)) c)
+    (le-mul-right (add (add a (tsum k t)) c) (wexp (valSc k E t)) (one-le-wexp (valSc k E t))) ;
+
+-- Agda: bumpSc, valSc-bump, bumpSc-All<
+bumpSc : (k : Nat) -> Sc k -> Sc k = split {
+  zero -> \ c -> mul c omega ;
+  suc k -> \ E -> (E.1, sucSc k E.2) } ;
+valSc-bump : (k : Nat) -> (E : Sc k) -> (t : Tup k) -> Le (mul (valSc k E t) omega) (valSc k (bumpSc k E) t) = split {
+  zero -> \ c t -> le-refl (mul c omega) ;
+  suc k -> \ E t -> omega-step (add (add t.1 (tsum k t.2)) E.1) (valSc k E.2 t.2) (valSc k (sucSc k E.2) t.2)
+    (valSc-suc k E.2 t.2) } ;
+bumpSc-AllLt : (k : Nat) -> (E : Sc k) -> ScAllLt k E -> ScAllLt k (bumpSc k E) = split {
+  zero -> \ c p -> mul-lt-eps0 c omega p omega-lt-eps0 ;
+  suc k -> \ E p -> (p.1, sucSc-AllLt k E.2 p.2) } ;
+
+------------------------------------------------------------------------
+-- CascadeLevel: domination of data, and data as tuples
+
+-- Agda: _⊑Sc_, valSc-⊑
+leSc : (k : Nat) -> Sc k -> Sc k -> U l = split {
+  zero -> \ c c' -> Le c c' ;
+  suc k | r -> \ E E' -> Le E.1 E'.1 * r E.2 E'.2 } ;
+valSc-leSc : (k : Nat) -> (E E' : Sc k) -> leSc k E E' -> (t : Tup k) -> Le (valSc k E t) (valSc k E' t) = split {
+  zero -> \ c c' p t -> p ;
+  suc k | r -> \ E E' p t ->
+    mul-mono (add (add t.1 (tsum k t.2)) E.1) (add (add t.1 (tsum k t.2)) E'.1)
+      (wexp (valSc k E.2 t.2)) (wexp (valSc k E'.2 t.2))
+      (add-mono-right (add t.1 (tsum k t.2)) E.1 E'.1 p.1)
+      (wexp-mono (valSc k E.2 t.2) (valSc k E'.2 t.2) (r E.2 E'.2 p.2 t.2)) } ;
+
+-- Agda: scToTup, tupToSc
+scToTup : (j : Nat) -> Sc j -> Tup (suc j) = split {
+  zero -> \ c -> (c, tt) ;
+  suc j | r -> \ E -> (E.1, r E.2) } ;
+tupToSc : (j : Nat) -> Tup (suc j) -> Sc j = split {
+  zero -> \ t -> t.1 ;
+  suc j | r -> \ t -> (t.1, r t.2) } ;
+
+-- Agda: scToTup-⊑, scToTup-All<, tupToSc-All<
+scToTup-le : (j : Nat) -> (E : Sc j) -> (u : Tup (suc j)) -> leT (suc j) (scToTup j E) u -> leSc j E (tupToSc j u) = split {
+  zero -> \ c u p -> p.1 ;
+  suc j | r -> \ E u p -> (p.1, r E.2 u.2 p.2) } ;
+scToTup-AllLt : (j : Nat) -> (E : Sc j) -> ScAllLt j E -> AllLt (suc j) (scToTup j E) = split {
+  zero -> \ c p -> (p, tt) ;
+  suc j | r -> \ E p -> (p.1, r E.2 p.2) } ;
+tupToSc-AllLt : (j : Nat) -> (u : Tup (suc j)) -> AllLt (suc j) u -> ScAllLt j (tupToSc j u) = split {
+  zero -> \ u p -> p.1 ;
+  suc j | r -> \ u p -> (p.1, r u.2 p.2) } ;

@@ -1,0 +1,62 @@
+-- Cantor.seg: the Cantor space 2^N is searchable for uniformly continuous
+-- predicates.
+--
+-- 2^n (n-fold product of 2, Bits n) is searchable, by the Sigma closure.
+-- Let p : 2^N -> 2 have modulus n: p a = p b when a, b agree below n.  Put
+-- extend u = u followed by zeros, and q = p o extend on 2^n.  Then
+-- a0 = extend (e_n q) works: if p a0 = 1 then q is constantly 1, and for
+-- every a, p a = p (extend (prefix a)) = q (prefix a) = 1, since a and
+-- extend (prefix a) agree below n.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ; open NInfty[l] ; open Search[l] ;
+
+Cantor : U l = Nat -> Bool ;
+
+-- finite words
+Bits : Nat -> U l = split { zero -> Top ; suc n | r -> Bool * r } ;
+top-searchable : Searchable Top = (\ p -> tt, \ p h x -> substH (\ t -> Id Bool (p t) true) (isTop tt x) h) ;
+bits-searchable : (n : Nat) -> Searchable (Bits n) = split {
+  zero -> top-searchable ;
+  suc n | r -> product-searchable Bool (Bits n) bool-searchable r } ;
+
+tail (a : Cantor) : Cantor = \ i -> a (suc i) ;
+cons (b : Bool) (a : Cantor) : Cantor = split { zero -> b ; suc i -> a i } ;
+prefix : (n : Nat) -> Cantor -> Bits n = split {
+  zero -> \ a -> tt ;
+  suc n | r -> \ a -> (a zero, r (tail a)) } ;
+extend : (n : Nat) -> Bits n -> Cantor = split {
+  zero -> \ u i -> false ;
+  suc n | r -> \ u -> cons u.1 (r u.2) } ;
+
+-- a and b agree below n
+Agree (n : Nat) (a b : Cantor) : U l = (i : Nat) -> so (ltb i n) -> Id Bool (a i) (b i) ;
+-- p has modulus of uniform continuity n
+UC (n : Nat) (p : Cantor -> Bool) : U l = (a b : Cantor) -> Agree n a b -> Id Bool (p a) (p b) ;
+
+extend-agree-c (n : Nat) (r : (a : Cantor) -> Agree n (extend n (prefix n a)) a) (a : Cantor)
+  : Agree (suc n) (extend (suc n) (prefix (suc n) a)) a = split {
+  zero -> \ h -> refl (a zero) ;
+  suc i -> \ h -> r (tail a) i h } ;
+extend-agree : (n : Nat) -> (a : Cantor) -> Agree n (extend n (prefix n a)) a = split {
+  zero -> \ a i h -> absurd (Id Bool (extend zero (prefix zero a) i) (a i)) (so-false (ltb i zero) (ltb-zero i) h) ;
+  suc n | r -> extend-agree-c n r } ;
+
+-- Theorem
+module UCSearch (n : Nat) (p : Cantor -> Bool) (m : UC n p) {
+  q (u : Bits n) : Bool = p (extend n u) ;
+  a0 : Cantor = extend n ((bits-searchable n).1 q) ;
+  spec (h : Id Bool (p a0) true) (a : Cantor) : Id Bool (p a) true = calc Bool {
+    p a =< symH (m (extend n (prefix n a)) a (extend-agree n a)) >
+    q (prefix n a) =< (bits-searchable n).2 q h (prefix n a) >
+    true } ;
+} ;
+uc-search (n : Nat) (p : Cantor -> Bool) (m : UC n p)
+  : (a0 : Cantor) * (Id Bool (p a0) true -> (a : Cantor) -> Id Bool (p a) true) =
+  (UCSearch[n, p, m].a0, UCSearch[n, p, m].spec) ;
+-- so uniformly continuous predicates on the Cantor space are decidable
+uc-omniscient (n : Nat) (p : Cantor -> Bool) (m : UC n p)
+  : Plus ((a : Cantor) * Id Bool (p a) false) ((a : Cantor) -> Id Bool (p a) true) =
+  cases (\ b -> Id Bool (p (uc-search n p m).1) b -> Plus ((a : Cantor) * Id Bool (p a) false) ((a : Cantor) -> Id Bool (p a) true))
+    (p (uc-search n p m).1)
+    (\ t q -> inr ((uc-search n p m).2 t))
+    (\ f q -> inl ((uc-search n p m).1, f)) (refl (p (uc-search n p m).1)) ;

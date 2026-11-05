@@ -1,0 +1,282 @@
+-- Rect.seg: rectangular graded maps at every pair of widths, and adding a
+-- code to a datum (Agda BrouwerOrdinals.Rect and BrouwerOrdinals.RectAdd).
+--
+-- A map from data of width p to data of width q is given, for each output
+-- order j, by a scalar cascade reading the input orders j and above (an
+-- exponent is raised only by entries of its own order or higher).  Its
+-- datum RD p q is the triangular array: one cascade per output order, each
+-- shorter than the last, and bare constants once the input is exhausted;
+-- rect is the action.  For a map to be a datum in its turn, rdOf reads it
+-- out of a tuple of width WD p q = max (p+1) q, the cascade for output
+-- order j being the suffix of the tuple from j (pre, tupToSc).
+-- Facts: readings and actions stay below eps0, are monotone, a square
+-- action is inflationary, an action dominates the datum it was read from
+-- (rect-rdOf-ge, the clause for K) and its argument (rect-arg-ge), both up
+-- to the projection topq.
+--
+-- RectAdd.  The recursor's majorant is translated by the height of the
+-- count argument, so a datum absorbs  + v  (addNu: v added at order 0 and
+-- one successor at every order above; valSc-fold: a value is above itself
+-- enlarged and above v, so the sum is below the value doubled, which costs
+-- one successor above).  Reading commutes with the adjustment (rdOf-sucTup,
+-- rdOf-addNu), so adjusting a datum and then acting is above acting and
+-- then adjusting (rect-addNu).
+--
+-- Deviations.  Agda mx is Epsilon0.maxN (same clauses).  The datum of a map
+-- from width 0 is RD 0 q = Tup q (Agda: the same nested pairs, a separate
+-- clause of RD); so rect 0 q D x = D, and on width 0 the reading rdOf and
+-- the projection topq are both top0, the identity on Tup (WD 0 q) at
+-- q >= 1.  Agda's clauses at (0, q) by recursion on q (rdOf, topq,
+-- rdOf-All<, rdOf-mono, rect-rdOf-≥, rect-arg-≥, sucRD, addRD, rdOf-sucTup,
+-- rdOf-addν) become one clause at Tup (top0-AllLt, top0-mono, leT-refl,
+-- rect-increasing, sucTup, addNu, refl).  Agda pair＝ is pair-eq.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Brouwer[l] ; open Ordinals[l] ; open Epsilon0[l] ;
+open Tuples[l] ; open Cascade[l] ;
+
+------------------------------------------------------------------------
+-- data and action
+
+-- Agda: pre  (mx is maxN)
+pre : (a : Nat) -> (b : Nat) -> Tup (maxN a b) -> Tup a = split {
+  zero -> \ b t -> tt ;
+  suc a | r -> split {
+    zero -> \ t -> t ;
+    suc b -> \ t -> (t.1, r b t.2) } } ;
+
+-- Agda: RD, rect
+RD : Nat -> Nat -> U l = split {
+  zero -> \ q -> Tup q ;
+  suc p | r -> split { zero -> Top ; suc q -> Sc (suc p) * r q } } ;
+rect : (p : Nat) -> (q : Nat) -> RD p q -> Tup p -> Tup q = split {
+  zero -> \ q D x -> D ;
+  suc p | r -> split {
+    zero -> \ D x -> tt ;
+    suc q -> \ D x -> (valSc (suc p) D.1 x, r q D.2 x.2) } } ;
+
+-- Agda: WD, rdOf
+WD (p q : Nat) : Nat = maxN (suc p) q ;
+top0 : (q : Nat) -> Tup (WD zero q) -> Tup q = split { zero -> \ d -> tt ; suc q -> \ d -> d } ;
+rdOf : (p : Nat) -> (q : Nat) -> Tup (WD p q) -> RD p q = split {
+  zero -> top0 ;
+  suc p | r -> split {
+    zero -> \ d -> tt ;
+    suc q -> \ d -> (tupToSc (suc p) (pre (suc (suc p)) (suc q) d), r q d.2) } } ;
+
+------------------------------------------------------------------------
+-- below eps0
+
+-- Agda: RDAll<, rect-All<, pre-All<, rdOf-All<
+RDAllLt : (p : Nat) -> (q : Nat) -> RD p q -> U l = split {
+  zero -> \ q D -> AllLt q D ;
+  suc p | r -> split { zero -> \ D -> Top ; suc q -> \ D -> ScAllLt (suc p) D.1 * r q D.2 } } ;
+rect-AllLt : (p : Nat) -> (q : Nat) -> (D : RD p q) -> (x : Tup p) -> RDAllLt p q D -> AllLt p x
+  -> AllLt q (rect p q D x) = split {
+  zero -> \ q D x h hx -> h ;
+  suc p | r -> split {
+    zero -> \ D x h hx -> tt ;
+    suc q -> \ D x h hx -> (valSc-lt-eps0 (suc p) D.1 x h.1 hx, r q D.2 x.2 h.2 hx.2) } } ;
+pre-AllLt : (a : Nat) -> (b : Nat) -> (t : Tup (maxN a b)) -> AllLt (maxN a b) t -> AllLt a (pre a b t) = split {
+  zero -> \ b t p -> tt ;
+  suc a | r -> split {
+    zero -> \ t p -> p ;
+    suc b -> \ t p -> (p.1, r b t.2 p.2) } } ;
+top0-AllLt : (q : Nat) -> (d : Tup (WD zero q)) -> AllLt (WD zero q) d -> AllLt q (top0 q d) = split {
+  zero -> \ d p -> tt ;
+  suc q -> \ d p -> p } ;
+rdOf-AllLt : (p : Nat) -> (q : Nat) -> (d : Tup (WD p q)) -> AllLt (WD p q) d -> RDAllLt p q (rdOf p q d) = split {
+  zero -> top0-AllLt ;
+  suc p | r -> split {
+    zero -> \ d h -> tt ;
+    suc q -> \ d h -> (tupToSc-AllLt (suc p) (pre (suc (suc p)) (suc q) d) (pre-AllLt (suc (suc p)) (suc q) d h),
+                       r q d.2 h.2) } } ;
+
+------------------------------------------------------------------------
+-- monotonicity
+
+-- Agda: _⊑RD_, rect-⊑RD, rect-increasing
+leRD : (p : Nat) -> (q : Nat) -> RD p q -> RD p q -> U l = split {
+  zero -> leT ;
+  suc p | r -> split { zero -> \ D D' -> Top ; suc q -> \ D D' -> leSc (suc p) D.1 D'.1 * r q D.2 D'.2 } } ;
+rect-leRD : (p : Nat) -> (q : Nat) -> (D D' : RD p q) -> leRD p q D D' -> (x : Tup p)
+  -> leT q (rect p q D x) (rect p q D' x) = split {
+  zero -> \ q D D' h x -> h ;
+  suc p | r -> split {
+    zero -> \ D D' h x -> tt ;
+    suc q -> \ D D' h x -> (valSc-leSc (suc p) D.1 D'.1 h.1 x, r q D.2 D'.2 h.2 x.2) } } ;
+rect-increasing : (p : Nat) -> (D : RD p p) -> (x : Tup p) -> leT p x (rect p p D x) = split {
+  zero -> \ D x -> tt ;
+  suc p | r -> \ D x -> (valSc-increasing p D.1.1 D.1.2 x.1 x.2, r D.2 x.2) } ;
+
+-- Agda: tupToSc-mono, pre-mono, rdOf-mono
+tupToSc-mono : (j : Nat) -> (t u : Tup (suc j)) -> leT (suc j) t u -> leSc j (tupToSc j t) (tupToSc j u) = split {
+  zero -> \ t u h -> h.1 ;
+  suc j | r -> \ t u h -> (h.1, r t.2 u.2 h.2) } ;
+pre-mono : (a : Nat) -> (b : Nat) -> (t u : Tup (maxN a b)) -> leT (maxN a b) t u -> leT a (pre a b t) (pre a b u) = split {
+  zero -> \ b t u h -> tt ;
+  suc a | r -> split {
+    zero -> \ t u h -> h ;
+    suc b -> \ t u h -> (h.1, r b t.2 u.2 h.2) } } ;
+top0-mono : (q : Nat) -> (d d' : Tup (WD zero q)) -> leT (WD zero q) d d' -> leT q (top0 q d) (top0 q d') = split {
+  zero -> \ d d' h -> tt ;
+  suc q -> \ d d' h -> h } ;
+rdOf-mono : (p : Nat) -> (q : Nat) -> (d d' : Tup (WD p q)) -> leT (WD p q) d d' -> leRD p q (rdOf p q d) (rdOf p q d') = split {
+  zero -> top0-mono ;
+  suc p | r -> split {
+    zero -> \ d d' h -> tt ;
+    suc q -> \ d d' h ->
+      (tupToSc-mono (suc p) (pre (suc (suc p)) (suc q) d) (pre (suc (suc p)) (suc q) d')
+         (pre-mono (suc (suc p)) (suc q) d d' h),
+       r q d.2 d'.2 h.2) } } ;
+
+------------------------------------------------------------------------
+-- an action dominates its datum and its argument
+
+-- Agda: topq
+topq : (p : Nat) -> (q : Nat) -> Tup (WD p q) -> Tup q = split {
+  zero -> top0 ;
+  suc p | r -> split {
+    zero -> \ d -> tt ;
+    suc q -> \ d -> (d.1, r q d.2) } } ;
+
+-- Agda: rect-rdOf-≥
+rect-rdOf-ge : (p : Nat) -> (q : Nat) -> (d : Tup (WD p q)) -> (x : Tup p)
+  -> leT q (topq p q d) (rect p q (rdOf p q d) x) = split {
+  zero -> \ q d x -> leT-refl q (top0 q d) ;
+  suc p | r -> split {
+    zero -> \ d x -> tt ;
+    suc q -> \ d x -> (valSc-const p d.1 (tupToSc (suc p) (pre (suc (suc p)) (suc q) d)).2 x.1 x.2,
+                       r q d.2 x.2) } } ;
+
+-- Agda: rect-arg-≥
+rect-arg-ge : (r : Nat) -> (p : Nat) -> (D : RD p (WD r p)) -> (e : Tup p)
+  -> leT p e (topq r p (rect p (WD r p) D e)) = split {
+  zero -> split {
+    zero -> \ D e -> tt ;
+    suc p -> rect-increasing (suc p) } ;
+  suc r | ih -> split {
+    zero -> \ D e -> tt ;
+    suc p -> \ D e -> (valSc-increasing p D.1.1 D.1.2 e.1 e.2, ih p D.2 e.2) } } ;
+
+------------------------------------------------------------------------
+-- RectAdd: the adjustment by a code
+
+-- Agda: sucTup, addν, sucRD, addRD
+sucTup : (n : Nat) -> Tup n -> Tup n = split {
+  zero -> \ t -> tt ;
+  suc n | r -> \ t -> (Sb t.1, r t.2) } ;
+addNu : (n : Nat) -> Tup n -> Br -> Tup n = split {
+  zero -> \ t v -> tt ;
+  suc n -> \ t v -> (add t.1 v, sucTup n t.2) } ;
+sucRD : (p : Nat) -> (q : Nat) -> RD p q -> RD p q = split {
+  zero -> sucTup ;
+  suc p | r -> split { zero -> \ D -> tt ; suc q -> \ D -> (sucSc (suc p) D.1, r q D.2) } } ;
+addRD : (p : Nat) -> (q : Nat) -> RD p q -> Br -> RD p q = split {
+  zero -> addNu ;
+  suc p -> split {
+    zero -> \ D v -> tt ;
+    suc q -> \ D v -> ((add D.1.1 v, sucSc p D.1.2), sucRD p q D.2) } } ;
+
+-- Agda: valSc-fold
+valSc-fold (k : Nat) (c : Br) (E : Sc k) (t : Tup (suc k)) (v : Br)
+  : Le (add (valSc (suc k) (c, E) t) v) (valSc (suc k) (add c v, sucSc k E) t) =
+  le-trans (add (valSc (suc k) (c, E) t) v) (add Q Q) (valSc (suc k) (add c v, sucSc k E) t)
+    (add-mono (valSc (suc k) (c, E) t) Q v Q t1 t2)
+    (le-trans (add Q Q) (mul Q omega) (valSc (suc k) (add c v, sucSc k E) t) (dup-omega Q)
+      (omega-step (add s (add c v)) X (valSc k (sucSc k E) t.2) (valSc-suc k E t.2)))
+ where {
+   s : Br = add t.1 (tsum k t.2) ;
+   X : Br = valSc k E t.2 ;
+   Q : Br = mul (add s (add c v)) (wexp X) ;
+   t1 : Le (mul (add s c) (wexp X)) Q =
+     mul-mono-left (add s c) (add s (add c v)) (add-mono-right s c (add c v) (add-increasing-right c v)) (wexp X) ;
+   t2 : Le v Q = le-trans v (add c v) Q (add-increasing-left c v)
+     (le-trans (add c v) (add s (add c v)) Q (add-increasing-left s (add c v))
+       (le-mul-right (add s (add c v)) (wexp X) (one-le-wexp X))) ;
+ } ;
+
+-- Agda: rect-sucRD, rect-addRD
+rect-sucRD : (p : Nat) -> (q : Nat) -> (D : RD p q) -> (x : Tup p)
+  -> leT q (sucTup q (rect p q D x)) (rect p q (sucRD p q D) x) = split {
+  zero -> \ q D x -> leT-refl q (sucTup q D) ;
+  suc p | r -> split {
+    zero -> \ D x -> tt ;
+    suc q -> \ D x -> (valSc-suc (suc p) D.1 x, r q D.2 x.2) } } ;
+rect-addRD : (p : Nat) -> (q : Nat) -> (D : RD p q) -> (x : Tup p) -> (v : Br)
+  -> leT q (addNu q (rect p q D x) v) (rect p q (addRD p q D v) x) = split {
+  zero -> \ q D x v -> leT-refl q (addNu q D v) ;
+  suc p -> split {
+    zero -> \ D x v -> tt ;
+    suc q -> \ D x v -> (valSc-fold p D.1.1 D.1.2 x v, rect-sucRD p q D.2 x.2) } } ;
+
+-- Agda: pair＝
+pair-eq (A B : U l) (a a' : A) (b b' : B) (p : Id A a a') (q : Id B b b') : Id (A * B) (a, b) (a', b') =
+  trans (A * B) (a, b) (a', b) (a', b') (ap A (A * B) (\ x -> (x, b)) a a' p) (ap B (A * B) (\ y -> (a', y)) b b' q) ;
+
+-- Agda: pre-sucTup, tupToSc-sucTup, rdOf-sucTup
+pre-sucTup : (a : Nat) -> (b : Nat) -> (t : Tup (maxN a b))
+  -> Id (Tup a) (pre a b (sucTup (maxN a b) t)) (sucTup a (pre a b t)) = split {
+  zero -> \ b t -> refl tt ;
+  suc a | r -> split {
+    zero -> \ t -> refl (sucTup (suc a) t) ;
+    suc b -> \ t -> ap (Tup a) (Tup (suc a)) (\ y -> (Sb t.1, y))
+      (pre a b (sucTup (maxN a b) t.2)) (sucTup a (pre a b t.2)) (r b t.2) } } ;
+tupToSc-sucTup : (j : Nat) -> (t : Tup (suc j)) -> Id (Sc j) (tupToSc j (sucTup (suc j) t)) (sucSc j (tupToSc j t)) = split {
+  zero -> \ t -> refl (Sb t.1) ;
+  suc j | r -> \ t -> ap (Sc j) (Sc (suc j)) (\ y -> (Sb t.1, y))
+    (tupToSc j (sucTup (suc j) t.2)) (sucSc j (tupToSc j t.2)) (r t.2) } ;
+rdOf-sucTup : (p : Nat) -> (q : Nat) -> (d : Tup (WD p q))
+  -> Id (RD p q) (rdOf p q (sucTup (WD p q) d)) (sucRD p q (rdOf p q d)) = split {
+  zero -> split {
+    zero -> \ d -> refl tt ;
+    suc q -> \ d -> refl (sucTup (suc q) d) } ;
+  suc p | r -> split {
+    zero -> \ d -> refl tt ;
+    suc q -> \ d -> pair-eq (Sc (suc p)) (RD p q)
+      (tupToSc (suc p) (pre (suc (suc p)) (suc q) (sucTup (WD (suc p) (suc q)) d)))
+      (sucSc (suc p) (tupToSc (suc p) (pre (suc (suc p)) (suc q) d)))
+      (rdOf p q (sucTup (WD p q) d.2)) (sucRD p q (rdOf p q d.2))
+      (calc (Sc (suc p)) {
+        tupToSc (suc p) (pre (suc (suc p)) (suc q) (sucTup (WD (suc p) (suc q)) d))
+          =< apH (tupToSc (suc p)) (pre-sucTup (suc (suc p)) (suc q) d) >
+        tupToSc (suc p) (sucTup (suc (suc p)) (pre (suc (suc p)) (suc q) d))
+          =< tupToSc-sucTup (suc p) (pre (suc (suc p)) (suc q) d) >
+        sucSc (suc p) (tupToSc (suc p) (pre (suc (suc p)) (suc q) d)) })
+      (r q d.2) } } ;
+
+-- Agda: pre-addν, tupToSc-addν, rdOf-addν
+pre-addNu : (a : Nat) -> (b : Nat) -> (t : Tup (maxN a b)) -> (v : Br)
+  -> Id (Tup a) (pre a b (addNu (maxN a b) t v)) (addNu a (pre a b t) v) = split {
+  zero -> \ b t v -> refl tt ;
+  suc a -> split {
+    zero -> \ t v -> refl (addNu (suc a) t v) ;
+    suc b -> \ t v -> ap (Tup a) (Tup (suc a)) (\ y -> (add t.1 v, y))
+      (pre a b (sucTup (maxN a b) t.2)) (sucTup a (pre a b t.2)) (pre-sucTup a b t.2) } } ;
+tupToSc-addNu (j : Nat) (w : Tup (suc (suc j))) (v : Br)
+  : Id (Sc (suc j)) (tupToSc (suc j) (addNu (suc (suc j)) w v)) (add w.1 v, sucSc j (tupToSc (suc j) w).2) =
+  ap (Sc j) (Sc (suc j)) (\ y -> (add w.1 v, y)) (tupToSc j (sucTup (suc j) w.2)) (sucSc j (tupToSc j w.2))
+    (tupToSc-sucTup j w.2) ;
+rdOf-addNu : (p : Nat) -> (q : Nat) -> (d : Tup (WD p q)) -> (v : Br)
+  -> Id (RD p q) (rdOf p q (addNu (WD p q) d v)) (addRD p q (rdOf p q d) v) = split {
+  zero -> split {
+    zero -> \ d v -> refl tt ;
+    suc q -> \ d v -> refl (addNu (suc q) d v) } ;
+  suc p -> split {
+    zero -> \ d v -> refl tt ;
+    suc q -> \ d v -> pair-eq (Sc (suc p)) (RD p q)
+      (tupToSc (suc p) (pre (suc (suc p)) (suc q) (addNu (WD (suc p) (suc q)) d v)))
+      (add d.1 v, sucSc p (tupToSc (suc p) (pre (suc (suc p)) (suc q) d)).2)
+      (rdOf p q (sucTup (WD p q) d.2)) (sucRD p q (rdOf p q d.2))
+      (calc (Sc (suc p)) {
+        tupToSc (suc p) (pre (suc (suc p)) (suc q) (addNu (WD (suc p) (suc q)) d v))
+          =< apH (tupToSc (suc p)) (pre-addNu (suc (suc p)) (suc q) d v) >
+        tupToSc (suc p) (addNu (suc (suc p)) (pre (suc (suc p)) (suc q) d) v)
+          =< tupToSc-addNu p (pre (suc (suc p)) (suc q) d) v >
+        (add d.1 v, sucSc p (tupToSc (suc p) (pre (suc (suc p)) (suc q) d)).2) })
+      (rdOf-sucTup p q d.2) } } ;
+
+-- Agda: rect-addν
+rect-addNu (p q : Nat) (d : Tup (WD p q)) (x : Tup p) (v : Br)
+  : leT q (addNu q (rect p q (rdOf p q d) x) v) (rect p q (rdOf p q (addNu (WD p q) d v)) x) =
+  substH (\ D -> leT q (addNu q (rect p q (rdOf p q d) x) v) (rect p q D x)) (symH (rdOf-addNu p q d v))
+    (rect-addRD p q (rdOf p q d) x v) ;

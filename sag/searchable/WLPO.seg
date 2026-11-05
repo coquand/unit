@@ -1,0 +1,69 @@
+-- WLPO.seg: (Escardo) WLPO holds iff some f : N-infinity -> 2 is
+-- discontinuous at infinity: f (under n) = 0 for all n and f infinity = 1.
+--
+-- => Given WLPO, let f x = 1 iff x n = 1 for all n (decided by WLPO on
+--    n |-> not (x n)).  under n has a 0 at n, so f (under n) = 0; and
+--    f infinity = 1.
+-- <= Given such f and a : N -> 2, let x_a n = 1 iff a i = 0 for all i <= n.
+--    If a is constantly 0, x_a = infinity, so f x_a = 1.  If a n = 1, x_a
+--    has a 0 at n, so x_a = under m (first zero) and f x_a = 0.  Hence
+--    deciding f x_a decides whether a is constantly 0.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ; open NInfty[l] ;
+
+Zero (a : Nat -> Bool) : U l = (n : Nat) -> Id Bool (a n) false ;
+WLPO : U l = (a : Nat -> Bool) -> Plus (Zero a) (Zero a -> Empty) ;
+Discontinuous : U l = (f : NI -> Bool) * (((n : Nat) -> Id Bool (f (under n)) false) * Id Bool (f infty) true) ;
+
+-- =>
+to-bool (A B : U l) : Plus A B -> Bool = split { inl a -> true ; inr b -> false } ;
+to-bool-false (A B : U l) (k : A -> Empty) : (d : Plus A B) -> Id Bool (to-bool A B d) false = split {
+  inl a -> absurd (Id Bool true false) (k a) ; inr b -> refl false } ;
+to-bool-true (A B : U l) (a0 : A) (k : B -> Empty) : (d : Plus A B) -> Id Bool (to-bool A B d) true = split {
+  inl a -> refl true ; inr b -> absurd (Id Bool false true) (k b) } ;
+
+module FromWLPO (w : WLPO) {
+  neg (x : NI) (n : Nat) : Bool = not (x.1 n) ;
+  f (x : NI) : Bool = to-bool (Zero (neg x)) (Zero (neg x) -> Empty) (w (neg x)) ;
+  at-under (n : Nat) : Id Bool (f (under n)) false =
+    to-bool-false (Zero (neg (under n))) (Zero (neg (under n)) -> Empty)
+      (\ z -> so-false true (transH (symH (apH not (ltb-self n))) (z n)) tt) (w (neg (under n))) ;
+  at-infty : Id Bool (f infty) true =
+    to-bool-true (Zero (neg infty)) (Zero (neg infty) -> Empty) (\ n -> refl false) (\ k -> k (\ n -> refl false)) (w (neg infty)) ;
+  discontinuous : Discontinuous = (f, (at-under, at-infty)) ;
+} ;
+
+-- <=
+module FromDiscontinuous (D : Discontinuous) (a : Nat -> Bool) {
+  f (x : NI) : Bool = D.1 x ;
+  seq : Nat -> Bool = split { zero -> not (a zero) ; suc n | r -> and r (not (a (suc n))) } ;
+  x : NI = (seq, \ n h -> so-and-l (seq n) (not (a (suc n))) h) ;
+
+  not-false (b : Bool) (e : Id Bool b false) : Id Bool (not b) true = apH not e ;
+  and-false : (b : Bool) -> Id Bool (and b false) false = split { true -> refl false ; false -> refl false } ;
+  -- constantly 0: x = infinity
+  seq-true (z : Zero a) : (n : Nat) -> Id Bool (seq n) true = split {
+    zero -> not-false (a zero) (z zero) ;
+    suc n | r -> transH (apH (\ b -> and b (not (a (suc n)))) r) (not-false (a (suc n)) (z (suc n))) } ;
+  -- a 1 at n: x has a 0 at n
+  seq-false : (n : Nat) -> Id Bool (a n) true -> Id Bool (seq n) false = split {
+    zero -> \ t -> apH not t ;
+    suc n -> \ t -> transH (apH (and (seq n)) (apH not t)) (and-false (seq n)) } ;
+  at-one (n : Nat) (t : Id Bool (a n) true) : Id Bool (f x) false =
+    transH (apH f (First[x].first-zero n (seq-false n t)).2) (D.2.1 (First[x].first-zero n (seq-false n t)).1) ;
+
+  zero-of (t : Id Bool (f x) true) (n : Nat) : Id Bool (a n) false =
+    cases (\ b -> Id Bool (a n) b -> Id Bool (a n) false) (a n)
+      (\ e q -> absurd (Id Bool (a n) false) (so-false (f x) (at-one n e) (so-true (f x) t)))
+      (\ e q -> e) (refl (a n)) ;
+  not-zero (e : Id Bool (f x) false) (z : Zero a) : Empty =
+    so-false (f x) e (so-true (f x) (transH (apH f (ni-eq x infty (seq-true z))) D.2.2)) ;
+  decide : Plus (Zero a) (Zero a -> Empty) =
+    cases (\ b -> Id Bool (f x) b -> Plus (Zero a) (Zero a -> Empty)) (f x)
+      (\ t q -> inl (zero-of t))
+      (\ e q -> inr (not-zero e)) (refl (f x)) ;
+} ;
+
+-- Theorem
+wlpo-discontinuous (w : WLPO) : Discontinuous = FromWLPO[w].discontinuous ;
+discontinuous-wlpo (D : Discontinuous) : WLPO = \ a -> FromDiscontinuous[D, a].decide ;

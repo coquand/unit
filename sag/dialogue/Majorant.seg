@@ -1,0 +1,113 @@
+-- Majorant.seg: the height majorant of every term (Agda DialogueTrees.Majorant
+-- and DialogueTrees.MajorantAll).
+--
+-- The majorant model MajM interprets iota by Brouwer codes and arrows by
+-- functions (Agda Maj).  Zero has majorant 0, Succ the identity (relabelling
+-- keeps the height), the oracle the successor, K and S the projection and
+-- the substitution.  The recursor: the dialogue model iterates through the
+-- Kleisli extension KE, which passes the tree argument under the function
+-- arguments; the majorant does the same with a hereditary supremum MajSup
+-- (L at iota) and a hereditary right translation MajAdd (add at iota), and
+-- the majorant of iter is  phi a v |-> MajAdd (MajSup (iterates of phi from a)) v.
+--
+-- The relation RH between the dialogue model and MajM is  height x <= a  at
+-- iota and the logical lifting at arrows (Agda R).  It relates the
+-- constants (Agda R-Zero .. R-S, R-Iterᵀ); the recursor clause is the
+-- hereditary Kleisli bound RH-kleisli, by induction on the type: at iota
+-- the grafting lemma height-kleisli with the upper bound of the supremum,
+-- at arrows by definition.  So HR : Rel[DM, MajM], and the generic
+-- fundamental lemma Fund[DM, MajM, HR].fund replaces Agda's fundamentalᵀ:
+--   height (tree e) <= muTree e  for every e : (N -> N) -> N.
+--
+-- Deviation: the Agda states the final bound for t in T (Omega-free),
+-- through embedding t · Ω; here it holds for every typed term e, Omega
+-- allowed, applied to Omega (as tree in Models.seg).  Agda μᵀ is
+-- Eval[MajM].ev.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open SystemT[l] ; open Dialogue[l] ; open Models[l] ;
+open Brouwer[l] ; open Height[l] ; open Epsilon0[l] ;
+
+------------------------------------------------------------------------
+-- the majorant model
+
+-- Agda: Maj
+MV : Ty -> U l = split { iota -> Br ; arr s t | a b -> a -> b } ;
+
+-- Agda: Maj-sup, Maj-⊕, μ-Kleisli
+MajSup : (t : Ty) -> (Nat -> MV t) -> MV t = split {
+  iota -> \ h -> Lb h ;
+  arr s t | ks kt -> \ h a -> kt (\ k -> h k a) } ;
+MajAdd : (t : Ty) -> MV t -> Br -> MV t = split {
+  iota -> \ a v -> add a v ;
+  arr s t | ks kt -> \ phi v a -> kt (phi a) v } ;
+mu-kleisli (t : Ty) (h : Nat -> MV t) (v : Br) : MV t = MajAdd t (MajSup t h) v ;
+
+-- Agda: μ-Zero, μ-Succ, μ-Ω, μ-Iterᵀ, μ-K, μ-S
+mu-Zero : MV iota = Zb ;
+mu-Succ : MV nat2 = \ a -> a ;
+mu-Omega : MV nat2 = \ a -> Sb a ;
+mu-Iter (s : Ty) : MV (iterTy s) = \ phi a v -> mu-kleisli s (iterN (MV s) phi a) v ;
+mu-K (s u : Ty) : MV (kTy s u) = \ a b -> a ;
+mu-S (r s u : Ty) : MV (sTy r s u) = \ phi g a -> phi a (g a) ;
+
+MajM : Model = new Model[MV, \ s t f x -> f x, mu-Zero, mu-Succ, mu-Omega, mu-Iter, mu-K, mu-S] ;
+
+------------------------------------------------------------------------
+-- the height relation
+
+-- Agda: R
+RH : (t : Ty) -> BV t -> MV t -> U l = split {
+  iota -> \ x a -> Le (height x) a ;
+  arr s t | rs rt -> \ f phi -> (x : BV s) (a : MV s) -> rs x a -> rt (f x) (phi a) } ;
+
+-- Agda: R-Zero, R-Succ, R-Ω, R-K, R-S
+RH-Zero : RH iota (eta zero) mu-Zero = tt ;
+RH-Succ : RH nat2 (fmap Nat Nat (\ n -> suc n)) mu-Succ = \ d b hd ->
+  substH (\ x -> Le x b) (symH (height-relabel (\ n -> suc n) d)) hd ;
+RH-Omega : RH nat2 generic mu-Omega = \ d b hd ->
+  le-trans (height (generic d)) (Sb (height d)) (Sb b) (height-generic d) hd ;
+RH-K (s u : Ty) : RH (kTy s u) (\ x y -> x) (mu-K s u) = \ x a rx y b ry -> rx ;
+RH-S (r s u : Ty) : RH (sTy r s u) (\ f g x -> f x (g x)) (mu-S r s u) =
+  \ f phi rf g gam rg x a rx -> rf x a rx (g x) (gam a) (rg x a rx) ;
+
+-- Agda: R-Kleisli  (the hereditary Kleisli bound)
+RH-kleisli : (t : Ty) -> (g : Nat -> BV t) -> (h : Nat -> MV t) -> ((k : Nat) -> RH t (g k) (h k))
+  -> (n : B Nat) -> (v : Br) -> Le (height n) v -> RH t (KE t g n) (mu-kleisli t h v) = split {
+  iota -> \ g h rg n v rn ->
+    le-trans (height (kleisli Nat Nat g n)) (add (Lb h) (height n)) (add (Lb h) v)
+      (height-kleisli g (Lb h) (\ k -> le-trans (height (g k)) (h k) (Lb h) (rg k) (upper h k)) n)
+      (add-mono-right (Lb h) (height n) v rn) ;
+  arr s t | ks kt -> \ g h rg n v rn x a rx ->
+    kt (\ k -> g k x) (\ k -> h k a) (\ k -> rg k x a rx) n v rn } ;
+
+-- Agda: orbit (in R-Iterᵀ): the iterates are related
+module Orbit (s : Ty) (f : BV (arr s s)) (phi : MV (arr s s)) (rf : RH (arr s s) f phi) (x : BV s) (a : MV s) (rx : RH s x a) {
+  orbit : (k : Nat) -> RH s (iterN (BV s) f x k) (iterN (MV s) phi a k) = split {
+    zero -> rx ;
+    suc k | r -> rf (iterN (BV s) f x k) (iterN (MV s) phi a k) r } ;
+} ;
+
+-- Agda: R-Iterᵀ
+RH-Iter (s : Ty) : RH (iterTy s) (DM.iter-v s) (mu-Iter s) = \ f phi rf x a rx ->
+  RH-kleisli s (iterN (BV s) f x) (iterN (MV s) phi a) (Orbit[s, f, phi, rf, x, a, rx].orbit) ;
+
+HR : Rel[DM, MajM] = new Rel[DM, MajM, RH, \ s t f g x y rf rx -> rf x y rx,
+  RH-Zero, RH-Succ, RH-Omega, RH-Iter, RH-K, RH-S] ;
+
+------------------------------------------------------------------------
+-- the bound
+
+-- Agda: fundamentalᵀ at iota: a ground term has height at most its majorant
+height-le-mu (e : Tm) (h : Has e iota) : Le (height (Eval[DM].ev e iota h)) (Eval[MajM].ev e iota h) =
+  Fund[DM, MajM, HR].fund e iota h ;
+
+-- the majorant of a term of type (N -> N) -> N, applied to Omega (as tree)
+muTree (e : Tm) (h : Has e FT) : Br = Eval[MajM].ev (App nat2 e Omega) iota (h, refl nat2) ;
+
+-- Agda: dialogue-tree-height-≤-μᵀ
+dialogue-tree-height-le-mu (e : Tm) (h : Has e FT) : Le (height (tree e h)) (muTree e h) =
+  height-le-mu (App nat2 e Omega) (h, refl nat2) ;
+
+-- Agda: dialogue-height-<-ε₀  (the ordinal bound as hypothesis)
+dialogue-height-lt-eps0 (e : Tm) (h : Has e FT) (hmu : Lt (muTree e h) eps0) : Lt (height (tree e h)) eps0 =
+  le-trans (Sb (height (tree e h))) (Sb (muTree e h)) eps0 (dialogue-tree-height-le-mu e h) hmu ;

@@ -1,0 +1,62 @@
+-- Search.seg: searchable and omniscient types (Escardo).
+--
+-- X is searchable if it has a selection function e : (X -> 2) -> X with
+--   p (e p) = 1  =>  p x = 1 for all x,
+-- i.e. e p is a counterexample to p if there is one.  X is omniscient if
+-- for every p : X -> 2 either p x = 0 for some x, or p x = 1 for all x.
+--   * searchable => omniscient: decide p (e p);
+--   * 2 is searchable, with e p = p 0;
+--   * Sigma (x : X) Y x is searchable if X and every Y x are: with
+--     e_x(p) the selection for y |-> p (x, y), take x0 = e_X (x |-> p (x, e_x(p)))
+--     and the pair (x0, e_x0(p)).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ;
+
+Searchable (X : U l) : U l = (e : (X -> Bool) -> X)
+  * ((p : X -> Bool) -> Id Bool (p (e p)) true -> (x : X) -> Id Bool (p x) true) ;
+Omniscient (X : U l) : U l = (p : X -> Bool)
+  -> Plus ((x : X) * Id Bool (p x) false) ((x : X) -> Id Bool (p x) true) ;
+
+omniscient (X : U l) (S : Searchable X) : Omniscient X = \ p ->
+  cases (\ b -> Id Bool (p (S.1 p)) b -> Plus ((x : X) * Id Bool (p x) false) ((x : X) -> Id Bool (p x) true)) (p (S.1 p))
+    (\ t q -> inr (S.2 p t))
+    (\ f q -> inl (S.1 p, f)) (refl (p (S.1 p))) ;
+
+-- the Booleans
+bool-all (p : Bool -> Bool) (t : Id Bool (p true) true) (f : Id Bool (p false) true) : (x : Bool) -> Id Bool (p x) true = split {
+  true -> t ; false -> f } ;
+bool-searchable : Searchable Bool = (\ p -> p false, \ p h ->
+  cases (\ b -> Id Bool (p false) b -> (x : Bool) -> Id Bool (p x) true) (p false)
+    (\ t q -> bool-all p (substH (\ b -> Id Bool (p b) true) t h) t)
+    (\ f q -> absurd ((x : Bool) -> Id Bool (p x) true)
+       (so-false (p false) f (so-true (p false) (substH (\ b -> Id Bool (p b) true) f h)))) (refl (p false))) ;
+
+-- dependent sums
+module SigmaS (X : U l) (Y : X -> U l) (SX : Searchable X) (SY : (x : X) -> Searchable (Y x)) {
+  -- for p on the sum: the selection in the fibre over x, and the value there
+  sel (p : ((x : X) * Y x) -> Bool) (x : X) : Y x = (SY x).1 (\ y -> p (x, y)) ;
+  q (p : ((x : X) * Y x) -> Bool) (x : X) : Bool = p (x, sel p x) ;
+  e (p : ((x : X) * Y x) -> Bool) : (x : X) * Y x = (SX.1 (q p), sel p (SX.1 (q p))) ;
+  spec (p : ((x : X) * Y x) -> Bool) (h : Id Bool (p (e p)) true) (z : (x : X) * Y x) : Id Bool (p z) true =
+    (SY z.1).2 (\ y -> p (z.1, y)) (SX.2 (q p) h z.1) z.2 ;
+  searchable : Searchable ((x : X) * Y x) = (e, spec) ;
+} ;
+product-searchable (X Y : U l) (SX : Searchable X) (SY : Searchable Y) : Searchable (X * Y) =
+  SigmaS[X, \ x -> Y, SX, \ x -> SY].searchable ;
+
+-- extensional equality of Boolean functions on a searchable type is decidable
+beq : Bool -> Bool -> Bool = split { true -> \ b -> b ; false -> \ b -> not b } ;
+beq-self : (a : Bool) -> Id Bool (beq a a) true = split { true -> refl true ; false -> refl true } ;
+beq-sound : (a b : Bool) -> Id Bool (beq a b) true -> Id Bool a b = split {
+  true -> split { true -> \ h -> refl true ; false -> \ h -> symH h } ;
+  false -> split { true -> \ h -> h ; false -> \ h -> refl false } } ;
+beq-false : (a b : Bool) -> Id Bool (beq a b) false -> Id Bool a b -> Empty = \ a b h e ->
+  so-false (beq a b) h (so-true (beq a b) (transH (apH (beq a) (symH e)) (beq-self a))) ;
+decide-eq-of (X : U l) (f g : X -> Bool)
+  : Plus ((x : X) * Id Bool (beq (f x) (g x)) false) ((x : X) -> Id Bool (beq (f x) (g x)) true)
+  -> Plus ((x : X) * (Id Bool (f x) (g x) -> Empty)) ((x : X) -> Id Bool (f x) (g x)) = split {
+  inl w -> inl (w.1, beq-false (f w.1) (g w.1) w.2) ;
+  inr a -> inr (\ x -> beq-sound (f x) (g x) (a x)) } ;
+decide-eq (X : U l) (S : Searchable X) (f g : X -> Bool)
+  : Plus ((x : X) * (Id Bool (f x) (g x) -> Empty)) ((x : X) -> Id Bool (f x) (g x)) =
+  decide-eq-of X f g (omniscient X S (\ x -> beq (f x) (g x))) ;

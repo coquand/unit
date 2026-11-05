@@ -1,0 +1,71 @@
+-- Moves.seg: moves on ordinal data and their closure under iteration
+-- (Agda BrouwerOrdinals.Move).
+--
+-- A move (t, s), with s >= 1 and t, s < eps0, acts by  a |-> (a + t) * w^s
+-- (img), the affine form with the constant inside the product.  It carries
+-- the validity of its multiplier w^s as a field (ValidMult: positive,
+-- absorbing doubling, below eps0): 2 * w^s <= w^s is not provable for an
+-- arbitrary positive s (a limit exponent may have non-positive
+-- approximants), so it comes from the way s is built: every move is
+-- padded, s becoming s*w, and dbl-wexp gives the validity for s*w.
+--
+-- Iterating a move stays below the single move (t, s*w) (move-orbit):
+-- by LimitMult.orbit-inv the k-th iterate is below (a + t) * (w^s)^k
+-- <= (a + t) * w^(s*k) <= (a + t) * w^(s*w).  A sequence starting below a0
+-- and growing by at most one move per step is uniformly below that move
+-- at a0 (move-orbit-rec).
+--
+-- Deviation: Agda's orbit mv and padMove (mt mv) (ms mv) .. have the same
+-- body; here orbit is defined as that padMove.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Brouwer[l] ; open Ordinals[l] ; open Epsilon0[l] ;
+open MultClosure[l] ; open Affine[l] ;
+
+-- Agda: ValidMult
+ValidMult (M : Br) : U l = Le one M * (Le (mul two M) M * Lt M eps0) ;
+
+-- Agda: Move (mt, ms, mt<, ms+, ms<, mvalid)
+record Move {
+  mt : Br ;
+  ms : Br ;
+  mt-lt : Lt mt eps0 ;
+  ms-pos : Le one ms ;
+  ms-lt : Lt ms eps0 ;
+  mvalid : ValidMult (wexp ms) ;
+} ;
+
+-- Agda: img, img-mono
+img (mv : Move) (a : Br) : Br = mul (add a mv.mt) (wexp mv.ms) ;
+img-mono (mv : Move) (a a' : Br) (p : Le a a') : Le (img mv a) (img mv a') =
+  mul-mono-left (add a mv.mt) (add a' mv.mt) (add-mono-left a a' p mv.mt) (wexp mv.ms) ;
+
+-- Agda: padMove
+padMove (t s : Br) (tl : Lt t eps0) (spos : Le one s) (sl : Lt s eps0) : Move =
+  new Move[t, mul s omega, tl, le-trans one s (mul s omega) spos (le-mul-right s omega omega-pos), sw,
+    (one-le-wexp (mul s omega), (dbl-wexp s spos, wexp-lt-eps0 (mul s omega) sw))]
+ where {
+   sw : Lt (mul s omega) eps0 = mul-lt-eps0 s omega sl omega-lt-eps0 ;
+ } ;
+
+-- Agda: orbit
+orbit (mv : Move) : Move = padMove mv.mt mv.ms mv.mt-lt mv.ms-pos mv.ms-lt ;
+
+-- Agda: move-orbit
+move-orbit (mv : Move) (a : Br) (k : Nat) : Le (Models[l].iterN Br (img mv) a k) (img (orbit mv) a) =
+  le-trans (Models[l].iterN Br (img mv) a k) (mul (add a mv.mt) (pw (wexp mv.ms) k)) (img (orbit mv) a)
+    (LimitMult[wexp mv.ms, one-le-wexp mv.ms, mv.mvalid.2.1].orbit-inv a mv.mt k)
+    (mul-mono-right (add a mv.mt) (pw (wexp mv.ms) k) (wexp (mul mv.ms omega))
+      (le-trans (pw (wexp mv.ms) k) (wexp (mul mv.ms (numB k))) (wexp (mul mv.ms omega))
+        (pw-wexp mv.ms k)
+        (wexp-mono (mul mv.ms (numB k)) (mul mv.ms omega) (mul-mono-right mv.ms (numB k) omega (upper numB k))))) ;
+
+-- Agda: move-orbit-rec (and its dom)
+move-dom (mv : Move) (a : Nat -> Br) (a0 : Br) (base : Le (a zero) a0)
+  (step : (k : Nat) -> Le (a (suc k)) (img mv (a k))) : (j : Nat) -> Le (a j) (Models[l].iterN Br (img mv) a0 j) = split {
+  zero -> base ;
+  suc j | r -> le-trans (a (suc j)) (img mv (a j)) (img mv (Models[l].iterN Br (img mv) a0 j))
+    (step j) (img-mono mv (a j) (Models[l].iterN Br (img mv) a0 j) r) } ;
+move-orbit-rec (mv : Move) (a : Nat -> Br) (a0 : Br) (base : Le (a zero) a0)
+  (step : (k : Nat) -> Le (a (suc k)) (img mv (a k))) (k : Nat) : Le (a k) (img (orbit mv) a0) =
+  le-trans (a k) (Models[l].iterN Br (img mv) a0 k) (img (orbit mv) a0)
+    (move-dom mv a a0 base step k) (move-orbit mv a0 k) ;
