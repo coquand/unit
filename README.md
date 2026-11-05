@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and nine developments written with it:
+This repository contains the checker and twelve developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -51,7 +51,17 @@ This repository contains the checker and nine developments written with it:
   categories (`sag/qcqs`);
 - higher categories from the axioms of Sattler and Wärn: the Segal
   condition for every n, composition and its laws, and Wärn's results on
-  fully faithful functors (`sag/hcat`).
+  fully faithful functors (`sag/hcat`);
+- the free group and the free abelian group on a set as filtered colimits
+  of free structures on finite sets: universal properties, injectivity of
+  the unit, and, for a locally small set, local smallness and small fibres
+  of the unit (`sag/freegroup`);
+- Escardó's searchable sets: ℕ∞ is searchable, the Cantor space is
+  searchable for uniformly continuous predicates, and WLPO holds iff some
+  function ℕ∞ → 2 is discontinuous at ∞ (`sag/searchable`);
+- a translation of Escardó's *DialogueTreesHeight*: the dialogue tree of
+  every term of System T of type (ℕ → ℕ) → ℕ has height below ε₀, and ε₀
+  is the least such bound (`sag/dialogue`).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -188,6 +198,9 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
   composition, and fully faithful functors from the Sattler–Wärn axioms,
   with the coherences each result uses and the correspondence to
   `sag/hcat`.
+- [`free-colimit.pdf`](doc/free-colimit.pdf): free groups and free
+  abelian groups as filtered colimits, with the size of the unit; informal
+  proofs, then what is formalised in `sag/freegroup`.
 - [`PRIMREC.md`](doc/PRIMREC.md), [`RECORDS.md`](doc/RECORDS.md): design notes
   on recursion through eliminators and on records versus modules.
 
@@ -504,6 +517,38 @@ this.
 Choice in this form, Π x ‖Y x‖ → ‖Π x Y x‖ for sets, and excluded middle
 for propositions are compatible with univalence.
 
+## Free structures, searchable sets, dialogue trees (`sag/freegroup`, `sag/searchable`, `sag/dialogue`)
+
+- `freegroup`: a stage is a finite set El c (c a code: 0, 1, +) with a map
+  to X; F(X) is the quotient of the elements of the free structures on the
+  stages by the links between stages. The construction is written once for
+  an interface `FinFree` of free structures on finite stages, with two
+  instances: reduced words (free groups, by van der Waerden's action) and
+  ℤ^c (free abelian groups, with push-forward as sums over fibres).
+  Equality in F(E) is witnessed by one identification of the formal
+  variables, so for a locally small set E it is small, and the fibres of
+  the unit are small; for A(E) also as a finite disjunction of
+  conjunctions of equalities in E. Univalence and replacement as
+  parameters; `Theorems.seg` lists the statements. See
+  [`free-colimit.pdf`](doc/free-colimit.pdf).
+- `searchable`: after Escardó (*Infinite sets that satisfy the principle of
+  omniscience in any variety of constructive mathematics*, JSL 2013): ℕ∞
+  is searchable, hence omniscient, and equality of functions ℕ∞ → 2 is
+  decidable; Σ and products of searchable types; uniformly continuous
+  predicates on the Cantor space; WLPO iff a discontinuous function
+  ℕ∞ → 2 exists. Function extensionality is the only parameter.
+- `dialogue`: a complete translation of Escardó's
+  [DialogueTreesHeight](https://github.com/martinescardo/DialogueTreesHeight)
+  with the effectful forcing of TypeTopology. The mathematics is
+  Escardó's; the organisation differs: one fundamental lemma for logical
+  relations between models of System T (records `Model` and `Rel`), and
+  four models joined by three relations, the pointwise and dialogue
+  models (correctness of the dialogue interpretation), the majorants
+  (height ≤ majorant) and the graded tuples (majorant < ε₀), where the
+  Agda proves three inductions on terms. `Theorems.seg`: `restated`
+  (height < ε₀), `attained`, `cofinal`, `least`. Function extensionality
+  is the only parameter; `README.txt` maps the files to the Agda modules.
+
 ## Conversion, and what checking opens
 
 Conversion is uniform. Two values are first compared by their names:
@@ -537,6 +582,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
     ./segc core changed            # after an edit: the changed files and their dependents
     ./segc sag/torsor all          # one of the sag/ developments (each under 10 s)
     ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
+    ./segc sag/dialogue all        # DialogueTreesHeight (0.3 s)
 
 `segc` starts a checking server that loads the development once and keeps
 the results; `./segc core stop` stops it. Every declaration has a budget of
