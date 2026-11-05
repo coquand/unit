@@ -131,10 +131,15 @@ data Exp
   | Lam Name Exp
   | Pi Name Exp Exp
   | Let [Unit] Exp
-  | Sum Id [(Name, Tel)]                     -- d_L (its occurrence), labels
+  | Sum Id Tel [(Name, Tel, [Exp])]          -- d_L (its occurrence), its indices (the
+                                             -- names its lambdas bind, their types),
+                                             -- labels: fields and target indices
   | Con Name [Exp]
-  | Split Id [(Name, ([Name], [RecR], Exp))]  -- f_B (its occurrence), branches: the
-                                             -- pattern variables, the recursive results
+  | Split Id Int [(Name, ([Name], [RecR], Exp))]  -- f_B (its occurrence), the number
+                                             -- of indices it absorbs (-1: not yet
+                                             -- known, the filling pass decides),
+                                             -- branches: the pattern variables,
+                                             -- the recursive results
   | Sig Name Exp Exp
   | Pair Exp Exp
   | Fst Exp
@@ -171,11 +176,34 @@ data Exp
 -- position j, with n binders when it is a function field, the result
 -- named y.  The resolver gives the names (position -1); the filling pass
 -- gives the positions, from the data type, and evaluation reads only them.
-data RecR = RecR Int Int Name
+-- For an indexed family (INDEXED.md) the filling pass also gives the
+-- indices of the field, as terms of the branch (in the scope of the
+-- pattern variables and, for a function field, of its binders recArg).
+data RecR = RecR Int Int [Exp] Name
   deriving (Eq, Show)
 
 recNames :: [RecR] -> [Name]
-recNames rs = [ y | RecR _ _ y <- rs ]
+recNames rs = [ y | RecR _ _ _ y <- rs ]
+
+-- the constructors of a sum: their fields and target indices
+conOf :: Name -> [(Name, Tel, [Exp])] -> Maybe (Tel, [Exp])
+conOf c cs = case [ (t, es) | (c', t, es) <- cs, c' == c ] of
+  (x : _) -> Just x
+  []      -> Nothing
+
+conNames :: [(Name, Tel, [Exp])] -> [Name]
+conNames cs = [ c | (c, _, _) <- cs ]
+
+-- the last k explicit arguments of an application (the indices of a
+-- field type  d ps es )
+lastArgs :: Int -> Exp -> [Exp]
+lastArgs k e = reverse (take k (go e))
+ where go x = case x of { App a b -> b : go a; LApp a _ -> go a; _ -> [] }
+
+-- the internal name of the i-th index of the split t, bound in a branch
+-- (the read-back of a split nested in a branch of an indexed split)
+recIdx :: Id -> Int -> Name
+recIdx t i = "%ix" ++ show i ++ "\1" ++ t
 
 -- the shape of a field of the data type d: Just n when it is recursive,
 -- d ps or (ys : Psi) -> d ps with n binders (certified by Term.positivity)
@@ -210,20 +238,22 @@ recFld :: Id -> Name -> Int -> Name
 recFld t c j = "%fld" ++ show j ++ "\1" ++ t ++ "/" ++ c
 
 -- the recursive result for a function field x with n binders:
--- \ y1 .. yn -> self (x y1 .. yn)
-recLam :: Id -> Name -> Int -> Int -> Name -> Exp
-recLam t c j n x = foldr Lam (App (Var (recSelf t c j)) (foldl App (Var x) (map Var ys))) ys
+-- \ y1 .. yn -> self es (x y1 .. yn), es the indices of the field (none
+-- for a data type without indices)
+recLam :: Id -> Name -> Int -> Int -> [Exp] -> Name -> Exp
+recLam t c j n es x = foldr Lam (App (foldl App (Var (recSelf t c j)) es) (foldl App (Var x) (map Var ys))) ys
  where ys = [ recArg t c j i | i <- [1 .. n] ]
 
--- the type of that result: (ys : Psi) -> mot (x ys), from the field type
--- (ys : Psi) -> d ps, its binders renamed
-recTyExp :: Id -> Name -> Int -> Exp -> Exp
-recTyExp t c j ft = go 1 [] ft
+-- the type of that result: (ys : Psi) -> mot es (x ys), from the field
+-- type (ys : Psi) -> d ps es (k indices), its binders renamed
+recTyExp :: Id -> Name -> Int -> Int -> Exp -> Exp
+recTyExp t c j k ft = go 1 [] ft
  where
   go i ren e = case e of
     Pi z a b -> let y = recTyArg t c j i
                 in Pi y (renameVars ren a) (go (i + 1) ((z, y) : ren) b)
-    _ -> App (Var (recMot t c j)) (foldl App (Var (recFld t c j)) [ Var y | (_, y) <- reverse ren ])
+    _ -> App (foldl App (Var (recMot t c j)) (map (renameVars ren) (lastArgs k e)))
+             (foldl App (Var (recFld t c j)) [ Var y | (_, y) <- reverse ren ])
 
 -- the holes of a term whose filling failed: Unfilled (an error when used),
 -- so that they make no equalities in a run that trusts that definition
@@ -232,9 +262,9 @@ unfilledHoles e = case e of
   Hole -> Unfilled
   App a b -> App (go a) (go b); Lam x b -> Lam x (go b); Pi x a b -> Pi x (go a) (go b)
   Let us b -> Let (map unit us) (go b)
-  Sum i cs -> Sum i [ (c, [ (x, go a) | (x, a) <- tel ]) | (c, tel) <- cs ]
+  Sum i ix cs -> Sum i [ (x, go a) | (x, a) <- ix ] [ (c, [ (x, go a) | (x, a) <- tel ], map go es) | (c, tel, es) <- cs ]
   Con c as -> Con c (map go as)
-  Split i bs -> Split i [ (c, (xs, rs, go b)) | (c, (xs, rs, b)) <- bs ]
+  Split i k bs -> Split i k [ (c, (xs, [ RecR j n (map go es) y | RecR j n es y <- rs ], go b)) | (c, (xs, rs, b)) <- bs ]
   Sig x a b -> Sig x (go a) (go b); Pair a b -> Pair (go a) (go b); Fst a -> Fst (go a); Snd a -> Snd (go a)
   Rec t -> Rec [ (l, go a) | (l, a) <- t ]; Struct fs -> Struct [ (l, go a) | (l, a) <- fs ]
   Proj a l -> Proj (go a) l; ProjU a l -> ProjU (go a) l
@@ -266,9 +296,9 @@ renameVars ren e = case e of
   Var x -> Var (fromMaybe x (lookup x ren))
   App a b -> App (go a) (go b); Lam x b -> Lam x (go b); Pi x a b -> Pi x (go a) (go b)
   Let us b -> Let (map unit us) (go b)
-  Sum i cs -> Sum i [ (c, [ (x, go a) | (x, a) <- tel ]) | (c, tel) <- cs ]
+  Sum i ix cs -> Sum i [ (x, go a) | (x, a) <- ix ] [ (c, [ (x, go a) | (x, a) <- tel ], map go es) | (c, tel, es) <- cs ]
   Con c as -> Con c (map go as)
-  Split i bs -> Split i [ (c, (xs, rs, go b)) | (c, (xs, rs, b)) <- bs ]
+  Split i k bs -> Split i k [ (c, (xs, [ RecR j n (map go es) y | RecR j n es y <- rs ], go b)) | (c, (xs, rs, b)) <- bs ]
   Sig x a b -> Sig x (go a) (go b); Pair a b -> Pair (go a) (go b); Fst a -> Fst (go a); Snd a -> Snd (go a)
   Rec t -> Rec [ (l, go a) | (l, a) <- t ]; Struct fs -> Struct [ (l, go a) | (l, a) <- fs ]
   Proj a l -> Proj (go a) l; ProjU a l -> ProjU (go a) l
@@ -343,8 +373,11 @@ data Val
   | VLam Clos
   | VPi Val Clos
   | VCon Name [Val]
-  | VSum Id [Val] [(Name, Tel)] Env
-  | VSplit Id [Val] [(Name, ([Name], [RecR], Exp))] Env
+  | VSum Id [Val] Tel [(Name, Tel, [Exp])] Env     -- the indices of the
+                                            -- instance: the index names in Env
+  | VSplit Id [Val] Int [Val] [(Name, ([Name], [RecR], Exp))] Env
+                                            -- the number k of indices it absorbs
+                                            -- and those absorbed so far
   | VSig SName Val Clos                     -- SName: the internal name
                                             -- of its occurrence, if any
   | VPair Val Val
@@ -389,9 +422,9 @@ eval r e = case e of
   Lam x b      -> VLam (Clos x b r)
   Pi x a b     -> VPi (eval r a) (Clos x b r)
   Let us b     -> eval (mkGroup r us) b
-  Sum t cs   -> VSum t (dynVals r) cs r
+  Sum t ix cs -> VSum t (dynVals r) ix cs r
   Con c as     -> VCon c (map (eval r) as)
-  Split t bs -> VSplit t (dynVals r) bs r
+  Split t k bs -> VSplit t (dynVals r) k [] bs r
   Sig x a b    -> VSig Nothing (eval r a) (Clos x b r)
   Pair a b     -> VPair (eval r a) (eval r b)
   Fst a        -> vfst (eval r a)
@@ -438,10 +471,13 @@ lcapp (LClos x b r) l = eval (ELvl r x l) b
 -- whnf resumes it.  eval never consults the lock.
 app :: Val -> Val -> Val
 app (VLam f) v = capp f v
-app f@(VSplit t _ bs r) v = case v of
+-- a split on an indexed family first absorbs the k indices (INDEXED.md 5)
+app (VSplit t d k is bs r) v | length is < k = VSplit t d k (is ++ [v]) bs r
+app f@(VSplit t _ k is bs r) v = case v of
   VCon c vs -> case lookup c bs of
-    Just (xs, rs, b) -> eval (recBind t c f (bindAll r xs vs) xs vs rs) b
-    Nothing      -> error ("split: no branch for " ++ c)
+    Just (xs, rs, b) -> eval (recBind t c f (bindIdx t is (bindAll r xs vs)) xs vs rs) b
+    Nothing | k < 0 -> VApp f v         -- not annotated (its definition failed)
+            | otherwise -> error ("split: no branch for " ++ c)
   -- a record: the branch applied to its fields (beta for the eliminator)
   _ | Just vs <- recordFields v, [(_, (xs, _, b))] <- bs -> eval (bindAll r xs vs) b
   _ -> VApp f v
@@ -453,13 +489,31 @@ app u v = VApp u v
 recBind :: Id -> Name -> Val -> Env -> [Name] -> [Val] -> [RecR] -> Env
 recBind t c f r0 xs vs = foldl bindRec r0
  where
-  bindRec r (RecR j n y)
+  bindRec r rr@(RecR j _ _ y)
     -- not annotated: the definition did not pass the filling pass (it is
     -- reported there); its results are never equal to anything (lazy)
     | j < 0     = EVar r y (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                    ++ ": the split was not annotated (its definition failed)"))
-    | n == 0    = EVar r y (app f (vs !! j))
-    | otherwise = EVar r y (eval (EVar r0 (recSelf t c j) f) (recLam t c j n (xs !! j)))
+    | otherwise = EVar r y (recVal t c (splitBase f) r0 xs vs rr)
+
+-- the recursive result of a field: the split (with no index absorbed)
+-- applied to the indices of the field, then to the field; for a function
+-- field, under its binders.  r0: the branch environment
+recVal :: Id -> Name -> Val -> Env -> [Name] -> [Val] -> RecR -> Val
+recVal t c f r0 xs vs (RecR j n es _)
+  | n == 0    = app (foldl app f (map (eval r0) es)) (vs !! j)
+  | otherwise = eval (EVar r0 (recSelf t c j) f) (recLam t c j n es (xs !! j))
+
+-- a split with no index absorbed
+splitBase :: Val -> Val
+splitBase v = case v of
+  VSplit t d k _ bs r -> VSplit t d k [] bs r
+  _ -> v
+
+-- in a branch of a split on an indexed family, the indices it absorbed
+-- (for the read-back of a split or sum nested in the branch)
+bindIdx :: Id -> [Val] -> Env -> Env
+bindIdx t is r = foldl (\e (i, v) -> EVar e (recIdx t i) v) r (zip [1 ..] is)
 
 vfst :: Val -> Val
 vfst (VPair u _)       = u
@@ -804,7 +858,7 @@ isDataDef (UDef _ _ _ b) = dataBody b
   dataBody e = case e of
     Lam _ e' -> dataBody e'
     LLam _ e' -> dataBody e'
-    Sum _ _ -> True
+    Sum _ _ _ -> True
     _ -> False
 isDataDef _ = False
 
@@ -816,7 +870,7 @@ blockingRef :: Locks -> Val -> Maybe Unit
 blockingRef s v = case v of
   VRef r _ | Set.notMember (defId r) s -> Just r
   VApp f a -> case f of
-    VSplit{} -> blockingRef s a
+    VSplit{} | saturated f -> blockingRef s a
     _        -> blockingRef s f
   VFst p -> blockingRef s p
   VSnd p -> blockingRef s p
@@ -834,7 +888,7 @@ unfold1 s v0 = whnfFolded (go v0)
     VRef r e | Set.notMember (defId r) s ->
       (if isDataDef r then id else countUnfold (defId r)) (unfoldRef r e)
     VApp f a -> case f of
-      VSplit{} -> VApp f (go a)
+      VSplit{} | saturated f -> VApp f (go a)
       _        -> VApp (go f) a
     VFst p -> VFst (go p)
     VSnd p -> VSnd (go p)
@@ -842,6 +896,13 @@ unfold1 s v0 = whnfFolded (go v0)
     VLApp p l -> VLApp (go p) l
     VIdJ a x c d y p -> VIdJ a x c d y (go p)
     _ -> v
+
+-- a split that has absorbed its indices: its next argument is the
+-- scrutinee
+saturated :: Val -> Bool
+saturated v = case v of
+  VSplit _ _ k is _ _ -> length is >= k
+  _ -> True
 
 -- weak head normal form: head steps until no definition blocks (whnfP
 -- unfolds exactly the blocking definitions, in one recursion)
@@ -899,6 +960,8 @@ whnfC :: Bool -> (Id -> Bool) -> Val -> Val
 whnfC c u v = case v of
   VRef r e | u (defId r) -> (if c && not (isDataDef r) then countUnfold (defId r) else id) (whnfC c u (unfoldRef r e))
   VApp f a -> case whnfC c u f of
+    -- a split still absorbing indices: the argument is not inspected
+    f'@(VSplit{}) | not (saturated f') -> whnfC c u (app f' a)
     f'@(VSplit{}) -> case whnfC c u a of
       a'@(VCon _ _) -> whnfC c u (app f' a')
       a' | Just _ <- recordFields a' -> whnfC c u (app f' a')
@@ -1014,8 +1077,8 @@ eqVal u v = case (u, v) of
   (VSig _ a f, VSig _ b g)         -> eqVal a b && eqClos f g
   (VRec (Just (i, d)) _ _, VRec (Just (j, e)) _ _) -> i == j && eqVals d e
   (VCon c as, VCon d bs)           -> c == d && eqVals as bs
-  (VSum t d _ _, VSum t' d' _ _)   -> t == t' && eqVals d d'
-  (VSplit t d _ _, VSplit t' d' _ _) -> t == t' && eqVals d d'
+  (VSum t d _ _ _, VSum t' d' _ _ _) -> t == t' && eqVals d d'
+  (VSplit t d _ is _ _, VSplit t' d' _ is' _ _) -> t == t' && eqVals d d' && eqVals is is'
   (VPair a b, VPair a' b')         -> eqVal a a' && eqVal b b'
   (VFst a, VFst b)                 -> eqVal a b
   (VSnd a, VSnd b)                 -> eqVal a b
@@ -1113,10 +1176,10 @@ conv' c u1 u2 = case (u1, u2) of
   (VCon k1 vs, VCon k2 ws)     -> k1 == k2 && convs c vs ws
   -- Data types are compared only by their code identity and arguments.
   -- Their constructor telescopes are not compared.
-  (VSum t1 d1 _ _, VSum t2 d2 _ _) -> t1 == t2 && convs c d1 d2
+  (VSum t1 d1 _ _ _, VSum t2 d2 _ _ _) -> t1 == t2 && convs c d1 d2
   -- Splits are compared only by their code identity and arguments.
   -- Neither their branches nor their motives are compared.
-  (VSplit t1 d1 _ _, VSplit t2 d2 _ _) -> t1 == t2 && convs c d1 d2
+  (VSplit t1 d1 _ i1 _ _, VSplit t2 d2 _ i2 _ _) -> t1 == t2 && convs c d1 d2 && convs c i1 i2
   (VApp a b, VApp a' b')       -> conv c a a' && conv c b b'
   (VFst a, VFst b)             -> conv c a b
   (VSnd a, VSnd b)             -> conv c a b
@@ -1183,8 +1246,8 @@ rb full s k v0 = case (if full then whnf s v0 else v0) of
   VLam f        -> Lam (nm k) (rb full s (k+1) (capp f (VGen k)))
   VPi a f       -> Pi (nm k) (go a) (rb full s (k+1) (capp f (VGen k)))
   VCon c vs     -> Con c (map go vs)
-  VSum t _ _ _  -> Var (shortId t)
-  VSplit t _ _ _ -> Var (shortId t)
+  VSum t _ _ _ _ -> Var (shortId t)
+  VSplit t _ _ is _ _ -> foldl App (Var (shortId t)) (map go is)
   VSig _ a f    -> Sig (nm k) (go a) (rb full s (k+1) (capp f (VGen k)))
   VPair a b     -> Pair (go a) (go b)
   VFst a        -> Fst (go a)
@@ -1277,8 +1340,8 @@ prettyAt lim = pr 0 lim
   pr d n e0 = go d n e0
   go _ _ (U l)       = "U " ++ plv True l
   go _ _ (Var x)     = shortName x
-  go _ _ (Sum t _) = shortId t
-  go _ _ (Split t _) = shortId t
+  go _ _ (Sum t _ _) = shortId t
+  go _ _ (Split t _ _) = shortId t
   go d n (App a b)   = paren (d > 10) (pr 10 n a ++ " " ++ pr 11 (n-1) b)
   go d n (LApp a l)  = paren (d > 10) (pr 10 n a ++ " @" ++ plv True l)
   go d n (Lam x b)   = paren (d > 0) ("\\ " ++ binderName x ++ " -> " ++ pr 0 (n-1) b)
@@ -1521,12 +1584,21 @@ checkW cx e t0 = case (e, t) of
       else failWith ("refl " ++ pretty a ++ " does not prove " ++ showV cx t0 ++
                      concat [ "\n  not convertible (no constant unfolded):  " ++ showV cx l ++ "   /=   " ++ showV cx r
                             | (l, r) <- [ (va, x) | not (conv (cc cx) va x) ] ++ [ (va, y) | not (conv (cc cx) va y) ] ])
-  (Sum _ cs, VU _) -> mapM_ (\(_, tel) -> checkTelIn cx tel t) cs
-  (Con c as, VSum _ _ cs r) -> case lookup c cs of
+  (Sum _ ix cs, VU _) -> mapM_ (\(c, tel, es) -> do checkTelIn cx tel t
+                                                    checkTargets cx c tel ix es) cs
+  (Con c as, VSum _ _ ix cs r) -> case conOf c cs of
     Nothing  -> failWith ("constructor " ++ c ++ " is not in " ++ showV cx t)
-    Just tel -> checkArgs cx as tel r
-  (Split _ bs, VPi dom f) -> case force cx dom of
-    VSum st _ cs r -> checkSplit cx st bs cs r f
+    Just (tel, es) -> do checkArgs cx as tel r
+                         checkConIndices cx c as tel es ix r t0
+  (Split si k bs, VPi dom f) -> let d = force cx dom in case splitIndices cx k (map fst bs) t d of
+   Left msg -> failWith msg
+   Right n | n > 0 -> if k /= n then failWith ("split: not annotated with its " ++ show n ++ " indices (internal)")
+                      else checkSplitI cx si n bs t
+           | k > 0 -> failWith "split: annotated with indices, but not on an indexed family (internal)"
+   Right _ -> case d of
+    VSum st _ [] cs r -> checkSplit cx st bs [ (c, tel) | (c, tel, _) <- cs ] r f
+    VSum{} -> failWith ("split: " ++ unwords (map fst bs) ++ " are not the constructors of the indexed family "
+                        ++ showV cx dom)
     d -> case bs of
       -- a record: one branch binding its fields, checked at the canonical
       -- element built from them
@@ -1879,15 +1951,204 @@ checkSplitAll cx t bs ((c, tel) : cs) r f = case lookup c bs of
 recCx :: Cx -> Id -> Name -> Tel -> Env -> Clos -> [Val] -> [RecR] -> Res Cx
 recCx cx0 t c tel r f vs = foldl step (Right cx0)
  where
-  step acc (RecR j n y) = do
+  step acc (RecR j n _ y) = do
     cx <- acc
     if j < 0 then failWith ("split: the recursive results of " ++ c ++ " are not annotated (internal)") else do
       let ty | n == 0 = capp f (vs !! j)
              | otherwise = eval (EVar (EVar (fieldEnv j) (recFld t c j) (vs !! j)) (recMot t c j) (VLam f))
-                                (recTyExp t c j (snd (tel !! j)))
+                                (recTyExp t c j 0 (snd (tel !! j)))
       Right (fst (extVar cx y ty))
   -- the environment of the field types before position j
   fieldEnv j = foldl (\e ((z, _), v) -> EVar e z v) r (take j (zip tel vs))
+
+------------------------------------------------------------------------
+-- Indexed inductive families (INDEXED.md; Coquand and Paulin-Mohring,
+-- Inductively defined types, COLOG-88).  A sum carries its indices (the
+-- names its lambdas bind) and, per constructor, its target indices.
+
+-- the environment of a constructor's fields, bound to vs
+telEnv :: Env -> Tel -> [Val] -> Env
+telEnv r tel vs = foldl (\e ((z, _), v) -> EVar e z v) r (zip tel vs)
+
+-- the indices of an instance of a sum
+sumIndices :: Tel -> Env -> [Val]
+sumIndices ix r = [ lookupVal r x | (x, _) <- ix ]
+
+-- formation: the target of a constructor, in the scope of its fields,
+-- has the index types (each instantiated with the earlier targets)
+checkTargets :: Cx -> Name -> Tel -> Tel -> [Exp] -> Res ()
+checkTargets _ _ _ [] [] = ok
+checkTargets cx0 c tel ix es
+  | length es /= length ix =
+      failWith ("constructor " ++ c ++ ": its target has " ++ show (length es) ++ " indices, the family has "
+                ++ show (length ix))
+  | otherwise = go (cxEnv cxF) ix es
+ where
+  cxF = foldl (\cx (x, a) -> fst (extVar cx x (ev cx a))) cx0 tel
+  go _ [] [] = ok
+  go r ((i, ia) : ix') (e : es') = do
+    inCtx ("in the target of the constructor " ++ c) (check cxF e (eval r ia))
+    go (EVar r i (ev cxF e)) ix' es'
+  go _ _ _ = ok
+
+-- a constructor is checked, not inferred: its target indices, computed
+-- from its arguments, must be convertible with the indices of the
+-- expected type (no unification)
+checkConIndices :: Cx -> Name -> [Exp] -> Tel -> [Exp] -> Tel -> Env -> Val -> Res ()
+checkConIndices _ _ _ _ _ [] _ _ = ok
+checkConIndices cx c as tel es ix r t
+  | and (zipWith (conv (cc cx)) got want) = ok
+  | otherwise = failWith ("constructor " ++ c ++ " builds an element at the indices  "
+                          ++ unwords (map (showV cx) got) ++ "  , not at the indices of " ++ showV cx t
+                          ++ concat [ "\n  not convertible:  " ++ showV cx g ++ "   /=   " ++ showV cx w
+                                    | (g, w) <- zip got want, not (conv (cc cx) g w) ])
+ where
+  got  = map (eval (telEnv r tel (map (ev cx) as))) es
+  want = sumIndices ix r
+
+-- INDEXED.md 4: the number of indices a split absorbs, from its type t
+-- (forced), the domain d of t (forced) and its labels.  k is its
+-- annotation: 0 when the resolver or the filling pass found it is not on
+-- an indexed family; then only a split on an indexed family is refused.
+-- Right 0: a split as before (data type without indices, record); Right k:
+-- a split on a family with k indices; Left: a family at other indices.
+splitIndices :: Cx -> Int -> [Name] -> Val -> Val -> Either String Int
+splitIndices cx k ls t d
+  | k == 0 = case d of
+      VSum _ _ (_ : _) _ _ -> fromMaybe (Right 0) (peelIndexed cx ls t)
+      _ -> Right 0
+  | otherwise = case d of
+      VSum _ _ [] cs _ | sameSet ls (conNames cs) -> Right 0
+      _ -> fromMaybe (Right 0) (peelIndexed cx ls t)
+ where sameSet a b = all (`elem` b) a && all (`elem` a) b
+
+-- the index binders of the type of a split: the context with them (fresh
+-- variables), their values, and the rest of the type.  They are not
+-- named: the branches do not see them, and no term (a hidden argument
+-- written back by quote) can mention them
+peelGens :: Cx -> Int -> Val -> (Cx, [Val], Val)
+peelGens cx 0 t = (cx, [], t)
+peelGens cx n t = case force cx t of
+  VPi a f -> let (cx', g) = freshIdx cx a
+                 (cx'', gs, rest) = peelGens cx' (n - 1) (capp f g)
+             in (cx'', g : gs, rest)
+  w -> (cx, [], w)
+
+-- the first binder of t whose type is an indexed family whose labels
+-- include ls: Right k when it is the binder k + 1, at the k variables bound
+-- before it (in order), with parameters that do not depend on them.  (A
+-- split with no branch is on the first indexed family.)
+peelIndexed :: Cx -> [Name] -> Val -> Maybe (Either String Int)
+peelIndexed cx0 ls t0 = go cx0 [] t0
+ where
+  go cx gs t = case force cx t of
+    VPi a f -> case force cx a of
+      VSum _ _ ix@(_ : _) cs r
+        | all (`elem` conNames cs) ls, length ix /= length gs || not (and (zipWith eqVal (sumIndices ix r) gs)) ->
+            Just (Left ("split on " ++ showV cx a ++ ", a family with " ++ show (length ix)
+                        ++ " indices: the type of the split must be  (i1 .. ik) -> (x : D ps i1 .. ik) -> P ,"
+                        ++ " the indices being the variables just bound (for other indices, split at"
+                        ++ " variable indices and add an equation on the index)"))
+        | all (`elem` conNames cs) ls, not (uniform r (length ix)) ->
+            Just (Left ("split on " ++ showV cx a ++ ": the parameters of the family depend on its indices"))
+        | all (`elem` conNames cs) ls -> Just (Right (length gs))
+      -- another binder (an index, or a family of other labels)
+      _ -> let (cx', g) = freshIdx cx a in go cx' (gs ++ [g]) (capp f g)
+    _ -> Nothing
+   where
+    -- the same family at fresh indices: the parameters must be the same
+    uniform r k =
+      let (cx2, _, rest) = peelGens cx k t0
+      in case force cx2 rest of
+           VPi a2 _ | VSum _ _ _ _ r2 <- force cx2 a2 ->
+             convs (cc cx2) (drop k (dynVals r)) (drop k (dynVals r2))
+           _ -> False
+
+-- a fresh variable of type a, not bound to a name
+freshIdx :: Cx -> Val -> (Cx, Val)
+freshIdx cx a = (cx { cxK = cxK cx + 1 }, etaV a (VGen (cxK cx)))
+
+-- the type of a split applied to values: the motive at indices and element
+motiveAt :: Cx -> Val -> [Val] -> Val
+motiveAt _ t [] = t
+motiveAt cx t (v : vs) = case force cx t of
+  VPi _ f -> motiveAt cx (capp f v) vs
+  w -> w
+
+-- the motive as a function of the k indices and the element, read off
+-- the type (i1 : I1) .. (ik : Ik) -> (x : D ..) -> P written as products
+motiveLam :: Cx -> Int -> Val -> Maybe Val
+motiveLam cx k t = case force cx t of
+  VPi _ (Clos z b r) -> fmap (\b' -> VLam (Clos z b' r)) (lams k b)
+  _ -> Nothing
+ where
+  lams :: Int -> Exp -> Maybe Exp
+  lams 0 e = Just e
+  lams m e = case e of
+    Pi x _ e' -> fmap (Lam x) (lams (m - 1) e')
+    _ -> Nothing
+
+-- a split on a family with k indices: the branch for c xs is checked at
+-- P es (c xs), es the target of c; a recursive result at the indices of
+-- its field
+checkSplitI :: Cx -> Id -> Int -> [(Name, ([Name], [RecR], Exp))] -> Val -> Res ()
+checkSplitI cx si k bs t = case peelGens cx k t of
+  (cxI, _, rest) -> case force cxI rest of
+    VPi dom _ | VSum st _ _ cs r <- force cxI dom ->
+      case [ c | (c, _) <- bs, c `notElem` conNames cs ] of
+        (c : _) -> failWith ("split: " ++ c ++ " is not a constructor of this data type")
+        [] -> mapM_ (branch cxI st cs r) cs
+    _ -> failWith "split: not on an indexed family (internal)"
+ where
+  branch cxI st _ r (c, tel, es) = case lookup c bs of
+    Nothing -> failWith ("split: missing the branch for " ++ c)
+    Just (xs, rs, body) -> do
+      (cx', vs) <- openTel cxI xs tel r
+      let ivs = map (eval (telEnv r tel vs)) es
+          cx'' = cx' { cxEnv = bindIdx si ivs (cxEnv cx') }
+      cx3 <- recCxI cx'' si st c k tel r t vs rs
+      case check cx3 body (motiveAt cxI t (ivs ++ [VCon c vs])) of
+        Left msg -> failWith ("in the branch  " ++ c ++ "  of the split:\n" ++ msg)
+        Right () -> ok
+
+-- the recursive results of a branch of a split on an indexed family: for
+-- the field x : d ps es the result  P es x , for x : (ys : Psi) -> d ps es
+-- the result  (ys : Psi) -> P es (x ys) ; the indices the filling pass
+-- wrote (evaluation reads them) must be those of the field
+recCxI :: Cx -> Id -> Id -> Name -> Int -> Tel -> Env -> Val -> [Val] -> [RecR] -> Res Cx
+recCxI cx0 si t c k tel r ty vs = foldl step (Right cx0)
+ where
+  step acc (RecR j n es y) = do
+    cx <- acc
+    if j < 0 then failWith ("split: the recursive results of " ++ c ++ " are not annotated (internal)") else do
+      let ft = snd (tel !! j)
+          fe = fieldEnv j
+      if recIdxAgree cx si c j k fe ft es then ok
+        else failWith ("split: the indices of the recursive field " ++ show (j + 1) ++ " of " ++ c
+                       ++ " are not annotated (internal)")
+      rty <- if n == 0 then Right (motiveAt cx ty (map (eval fe) (lastArgs k ft) ++ [vs !! j]))
+             else case motiveLam cx k ty of
+               Just mot -> Right (eval (EVar (EVar fe (recFld t c j) (vs !! j)) (recMot t c j) mot)
+                                       (recTyExp t c j k ft))
+               Nothing -> failWith ("split: the recursive function field " ++ show (j + 1) ++ " of " ++ c
+                                    ++ " needs the type of the split written as products"
+                                    ++ "  (i1 : I1) .. (ik : Ik) -> (x : D ps i1 .. ik) -> P")
+      Right (fst (extVar cx y rty))
+  fieldEnv j = telEnv r (take j tel) vs
+
+-- the indices of a field (ys : Psi) -> d ps es, under its binders bound to
+-- fresh variables named recArg; with the given terms, their values
+fieldIdx :: Cx -> Id -> Name -> Int -> Int -> Env -> Exp -> (Cx, [Val])
+fieldIdx cx0 si c j k fe0 ft0 = go cx0 fe0 ft0 (1 :: Int)
+ where
+  go cx fe ft i = case ft of
+    Pi z a b -> let (cx', g) = extVar cx (recArg si c j i) (eval fe a) in go cx' (EVar fe z g) b (i + 1)
+    _ -> (cx, map (eval fe) (lastArgs k ft))
+
+recIdxAgree :: Cx -> Id -> Name -> Int -> Int -> Env -> Exp -> [Exp] -> Bool
+recIdxAgree cx si c j k fe ft es =
+  let (cx', want) = fieldIdx cx si c j k fe ft
+  in length es == k && and (zipWith (conv (cc cx')) (map (ev cx') es) want)
 
 openTel :: Cx -> [Name] -> Tel -> Env -> Res (Cx, [Val])
 openTel cx [] [] _ = Right (cx, [])
@@ -2154,10 +2415,11 @@ hasHole e = case e of
   Lam _ b      -> hasHole b
   Pi _ a b     -> hasHole a || hasHole b
   Let us b     -> any unitHole us || hasHole b
-  Sum _ cs   -> any (any (hasHole . snd) . snd) cs
+  Sum _ ix cs -> any (hasHole . snd) ix || any (\(_, tel, es) -> any (hasHole . snd) tel || any hasHole es) cs
   Con _ as     -> any hasHole as
-  -- a split whose recursive results are not yet annotated is filled too
-  Split _ bs -> any (\(_, (_, rs, b)) -> any (\(RecR j _ _) -> j < 0) rs || hasHole b) bs
+  -- a split whose recursive results are not yet annotated is filled too,
+  -- and one whose number of indices is not known (INDEXED.md)
+  Split _ k bs -> k < 0 || any (\(_, (_, rs, b)) -> any (\(RecR j _ _ _) -> j < 0) rs || hasHole b) bs
   Sig _ a b    -> hasHole a || hasHole b
   Pair a b     -> hasHole a || hasHole b
   Fst a        -> hasHole a
@@ -2206,19 +2468,27 @@ fillC cx e t0
                               b' <- fillC (fst (extVar cx x (ev cx a'))) b t
                               Right (Sig x a' b')
       (Rec tel, VU _) -> fmap Rec (fillTelIn cx tel t)
-      (Sum i cs, VU _) -> fmap (Sum i) (mapM (\(c, tel) -> fmap ((,) c) (fillTelIn cx tel t)) cs)
+      (Sum i ix cs, VU _) -> fmap (Sum i ix) (mapM (\(c, tel, es) -> do
+                                 tel' <- fillTelIn cx tel t
+                                 es' <- fillTargets tel' ix es
+                                 Right (c, tel', es')) cs)
       (Pair a b, VSig _ ta f) -> do a' <- fillC cx a ta
                                     b' <- fillC cx b (capp f (ev cx a'))
                                     Right (Pair a' b')
       (Struct fs, VRec _ tel r) -> fmap Struct (fillStruct fs tel r)
-      (Con c as, VSum _ _ cs r) -> case lookup c cs of
-        Just tel -> fmap (Con c) (fillArgs as tel r)
+      (Con c as, VSum _ _ _ cs r) -> case conOf c cs of
+        Just (tel, _) -> fmap (Con c) (fillArgs as tel r)
         Nothing  -> Right e
-      (Split i bs, VPi dom f) -> case force cx dom of
-        VSum st _ cs r -> fmap (Split i) (mapM (fillBranch st cs r f) bs)
-        d -> case bs of
+      (Split i k bs, VPi dom f) -> let d = force cx dom in case splitIndices cx k (map fst bs) t d of
+       Left msg -> failWith msg
+       Right n | n > 0 -> fillSplitI i n bs
+       Right _ | k /= 0 -> let e0 = Split i 0 bs in if hasHole e0 then fillC cx e0 t0 else Right e0
+       Right _ -> case d of
+        VSum st _ [] cs r -> fmap (Split i 0) (mapM (fillBranch st [ (c, tel) | (c, tel, _) <- cs ] r f) bs)
+        VSum{} -> Right (Split i 0 bs)
+        _ -> case bs of
           [(c, (xs, rs, b))] | Just (cx', el) <- recordBranch cx d xs ->
-            fmap (\b' -> Split i [(c, (xs, rs, b'))]) (fillC cx' b (capp f el))
+            fmap (\b' -> Split i 0 [(c, (xs, rs, b'))]) (fillC cx' b (capp f el))
           _ -> Right e
       (Refl a, VId ta _ _) -> fmap Refl (fillC cx a ta)
       (Let us b, _) -> do (us', cx') <- fillLocal cx us
@@ -2254,8 +2524,42 @@ fillC cx e t0
     | length rs /= length shapes =
         failWith ("the branch " ++ c ++ " names " ++ show (length rs) ++ " recursive results, but "
                   ++ c ++ " has " ++ show (length shapes) ++ " recursive fields")
-    | otherwise = Right [ RecR j n y | ((j, n), RecR _ _ y) <- zip shapes rs ]
+    | otherwise = Right [ RecR j n [] y | ((j, n), RecR _ _ _ y) <- zip shapes rs ]
    where shapes = [ (j, n) | (j, (_, ta)) <- zip [0 ..] tel, Just n <- [recShape d ta] ]
+  -- the targets of a constructor, in the scope of its fields
+  fillTargets _ [] es = Right es
+  fillTargets tel ix es
+    | not (any hasHole es) = Right es
+    | otherwise = go (cxEnv cxF) ix es
+   where
+    cxF = foldl (\c (x, a) -> fst (extVar c x (ev c a))) cx tel
+    go r ((x, ia) : ix') (a : es') = do
+      a' <- fillC cxF a (eval r ia)
+      rest <- go (EVar r x (ev cxF a')) ix' es'
+      Right (a' : rest)
+    go _ _ es' = Right es'
+  -- a split on a family with k indices (checkSplitI): the positions of the
+  -- recursive fields and their indices, as terms of the branch
+  fillSplitI si k bs = case peelGens cx k t of
+    (cxI, _, rest) -> case force cxI rest of
+      VPi dom _ | VSum st _ _ cs r <- force cxI dom -> fmap (Split si k) (mapM (fillBranchI cxI si k st cs r) bs)
+      _ -> failWith "split: not on an indexed family (internal)"
+  fillBranchI cxI si k st cs r (c, (xs, rs, body)) = case conOf c cs of
+    Nothing -> Right (c, (xs, rs, body))
+    Just (tel, es) -> do
+      rs0 <- annotate (sumDef st) c tel rs
+      (cx', vs) <- openTel cxI xs tel r
+      let ivs = map (eval (telEnv r tel vs)) es
+          cx'' = cx' { cxEnv = bindIdx si ivs (cxEnv cx') }
+      rs' <- mapM (\(RecR j n _ y) -> do
+                     let (cxY, vals) = fieldIdx cx'' si c j k (telEnv r (take j tel) vs) (snd (tel !! j))
+                     es' <- mapM (\v -> maybe (failWith ("split: the index  " ++ showV cxY v ++ "  of the recursive field "
+                                                          ++ show (j + 1) ++ " of " ++ c ++ " cannot be written in the branch"))
+                                               Right (quote cxY v)) vals
+                     Right (RecR j n es' y)) rs0
+      cx3 <- recCxI cx'' si st c k tel r t vs rs'
+      body' <- fillC cx3 body (motiveAt cxI t (ivs ++ [VCon c vs]))
+      Right (c, (xs, rs', body'))
 
 isVar :: Exp -> Bool
 isVar e = case e of
@@ -2474,7 +2778,8 @@ dataShape :: Exp -> Exp -> Exp
 dataShape b fb = case b of
   Lam x b'  -> Lam x (dataShape b' (case fb of { Lam _ c -> c; _ -> b' }))
   LLam x b' -> LLam x (dataShape b' (case fb of { LLam _ c -> c; _ -> b' }))
-  Sum i cs  -> Sum i (case fb of { Sum _ cs' -> cs'; _ -> cs })
+  -- lazily: the shape is seen without forcing the filling
+  Sum i ix cs -> Sum i (case fb of { Sum _ ix' _ -> ix'; _ -> ix }) (case fb of { Sum _ _ cs' -> cs'; _ -> cs })
   _         -> fb
 
 -- An application spine with holes.  Pass 1 walks the head's type with
@@ -2681,7 +2986,7 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
     (VInst m r, VInst n r') | modId m == modId n ->
       goList k [ lookupDyn r x | x <- paramNames (modUnits m) ]
                [ lookupDyn r' x | x <- paramNames (modUnits n) ] (goList k (modDyn m) (modDyn n) sols)
-    (VSum i d _ _, VSum j d' _ _) | i == j -> goList k d d' sols
+    (VSum i d _ _ _, VSum j d' _ _ _) | i == j -> goList k d d' sols
     -- different heads: the two sides are computed to weak head normal
     -- form WITHOUT unfolding any definition (the folded view: solutions are
     -- written with names), and compared again if one of them changed
@@ -2868,9 +3173,9 @@ freeNamesE e0 = go [] e0
     Named _ a  -> go bs a
     Let us b     -> let bs' = [ unitName u | u <- us ] ++ bs
                     in concat [ go bs' a ++ go bs' t | UDef _ _ a t <- us ] ++ go bs' b
-    Sum _ cs   -> concat [ tel bs t | (_, t) <- cs ]
+    Sum _ ix cs -> tel bs ix ++ concat [ tel bs t ++ concatMap (go (map fst t ++ bs)) es | (_, t, es) <- cs ]
     Con _ as     -> concatMap (go bs) as
-    Split _ br -> concat [ go (xs ++ recNames rs ++ bs) b | (_, (xs, rs, b)) <- br ]
+    Split _ _ br -> concat [ go (xs ++ recNames rs ++ bs) b | (_, (xs, rs, b)) <- br ]
     Pair a b     -> go bs a ++ go bs b
     Fst a        -> go bs a
     Snd a        -> go bs a
@@ -2937,17 +3242,22 @@ quoteBlame cx v0 = go (scopeOf cx) v0
 -- the read-back must refuse it.
 quoteTest :: Cx -> Id -> [String]
 quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
-  f@(VSplit t _ bs rho) -> concat [ one f t rho c xs rs b | (c, (xs, rs@(_ : _), b)) <- bs ]
+  f@(VSplit t _ ki _ bs rho) -> concat [ one f t ki rho c xs rs b | (c, (xs, rs@(_ : _), b)) <- bs ]
   _ -> ["not a split"]
  where
-  k = cxK cx
-  one f t rho c xs rs b =
-    let n = length xs
+  k0 = cxK cx
+  one f t ki rho c xs rs b =
+    let -- a split on an indexed family: at fresh indices first
+        is = [ VGen (k0 + j) | j <- [0 .. ki - 1] ]
+        k = k0 + max 0 ki
+        n = length xs
         gens = [ VGen (k + j) | j <- [0 .. n - 1] ]
         rgens = [ VGen (k + n + j) | j <- [0 .. length rs - 1] ]
-        canonical = eval (recBind t c f (bindAll rho xs gens) xs gens rs) b
-        abstract = eval (bindAll (bindAll rho xs gens) (recNames rs) rgens) b
-        sc = (scopeOf cx) { scGens = zip [k ..] (xs ++ recNames rs) ++ scGens (scopeOf cx)
+        rho' = bindIdx t is (bindAll rho xs gens)
+        canonical = eval (recBind t c (foldl app f is) rho' xs gens rs) b
+        abstract = eval (bindAll rho' (recNames rs) rgens) b
+        sc = (scopeOf cx) { scGens = zip [k0 ..] [ "i" ++ show j | j <- [1 .. ki] ]
+                                     ++ zip [k ..] (xs ++ recNames rs) ++ scGens (scopeOf cx)
                           , scK = k + n + length rs }
         shw v = case whnf Set.empty v of
           w@(VSplit{}) -> maybe "REFUSED (not written back)" pretty (quoteWith sc w)
@@ -3025,8 +3335,10 @@ quoteWith sc v0 = case v0 of
   -- the body of (the resolver names them so), if that name evaluates to it
   -- a sum or a split: its definition applied to the values of its path
   -- (mTT10 section 5: R(B rho) = f_B (R rho)); never a redex
-  VSum t _ _ r   -> byPath t r
-  VSplit t _ _ r -> byPath t r
+  VSum t _ _ _ r -> byPath t r
+  -- a split on an indexed family: applied to the indices it absorbed
+  VSplit t _ _ is _ r -> do h <- byPath t r
+                            foldl App h <$> mapM q is
   _ -> Nothing
  where
   q = quoteWith sc
@@ -3103,12 +3415,16 @@ quoteWith sc v0 = case v0 of
       -- otherwise the value is not written back
       if canonicalRecs fid (read ps :: [[String]]) then Just () else Nothing
       h <- quoteWith sc { scUnfold = False } (lookupVal r fid)
-      let item e it = case it of
+      let item e (it, is) = case it of
             ["v", x]      -> App e <$> q (lookupDyn r x)
             ["l", x]      -> LApp e <$> qLvl (lookupLvl r x)
-            ("c" : c : ys) -> App e . Con c <$> mapM (q . lookupDyn r) ys
+            -- a branch of a split on an indexed family: its indices first
+            ("c" : c : ys) -> do is' <- mapM q is
+                                 App (foldl App e is') . Con c <$> mapM (q . lookupDyn r) ys
             _             -> Nothing
-      foldl (\acc it -> acc >>= \e -> item e it) (Just h) (read ps :: [[String]])
+          items = read ps :: [[String]]
+          idxs = branchIdx (unf (lookupVal r fid)) items
+      foldl (\acc it -> acc >>= \e -> item e it) (Just h) (zip items (idxs ++ repeat []))
     _ -> Nothing
    where
     canonicalRecs fid items = walk (unf (lookupVal r fid)) items
@@ -3118,15 +3434,30 @@ quoteWith sc v0 = case v0 of
       ["v", x] -> walk (unf (app v (lookupDyn r x))) rest
       ["l", x] -> walk (unf (lapp v (lookupLvl r x))) rest
       ("c" : c : ys) -> case v of
-        VSplit st _ bs rho | Just (_, rs, _) <- lookup c bs ->
+        VSplit st _ k _ bs rho | Just (_, rs, _) <- lookup c bs ->
           let vs = map (lookupDyn r) ys
-              canon (RecR j n _)
-                | n == 0 = app v (vs !! j)
-                | otherwise = eval (EVar (bindAll rho ys vs) (recSelf st c j) v) (recLam st c j n (ys !! j))
-          in and [ conv (scCC sc) (lookupDyn r y) (canon rr) | rr@(RecR _ _ y) <- rs ]
-             && walk (unf (app v (VCon c vs))) rest
+              is = [ lookupDyn r (recIdx st i) | i <- [1 .. k] ]
+              v' = foldl app (splitBase v) is
+              r0 = bindIdx st is (bindAll rho ys vs)
+          in and [ conv (scCC sc) (lookupDyn r y) (recVal st c (splitBase v) r0 ys vs rr) | rr@(RecR _ _ _ y) <- rs ]
+             && walk (unf (app v' (VCon c vs))) rest
         _ -> False
       _ -> False
+    -- the indices absorbed by the splits of the path, at their branches
+    -- (bound in the branch, bindIdx); none for a split without indices
+    branchIdx v items = case items of
+      [] -> []
+      (it : rest) -> case it of
+        ["v", x] -> [] : branchIdx (unf (app v (lookupDyn r x))) rest
+        ["l", x] -> [] : branchIdx (unf (lapp v (lookupLvl r x))) rest
+        ("c" : c : ys) -> case v of
+          VSplit st _ k _ _ _ | k > 0 ->
+            let is = [ lookupDyn r (recIdx st i) | i <- [1 .. k] ]
+                v' = foldl app (splitBase v) is
+            in is : branchIdx (unf (app v' (VCon c (map (lookupDyn r) ys)))) rest
+          VSplit{} -> [] : branchIdx (unf (app v (VCon c (map (lookupDyn r) ys)))) rest
+          _ -> []
+        _ -> []
   -- the names of the original text mean here what they meant there
   freeHere ns r = and [ sameName n r | n <- ns ]
   sameName n r = case (lookupAnyE r n, lookupAnyE (scEnv sc) n) of

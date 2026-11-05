@@ -82,6 +82,22 @@ mention only earlier definitions and its own data type.
   can be added later if needed. `core` has none.
 - **Records** are not recursive: a record can't name itself inside its body,
   and its `split` binds fields without recursive results.
+- **Indexed families** (added 5 November 2026, `INDEXED.md`; Coquand and
+  Paulin-Mohring, *Inductively defined types*, COLOG-88, LNCS 417, 1990).
+  `data D (ps : Δ) : (is : Θ) → U l = c tel : D ps es | …`: the annotation's
+  products are the indices, each constructor states its target. The
+  parameters stay uniform (fields and targets apply `D` to exactly `ps`);
+  index expressions don't mention `D`; the recursive shapes are
+  `D ps es` and `(ys : Ψ) → D ps es`. A split on `D` has the type
+  `(is : Θ) → (x : D ps is) → P is x`, the indices being exactly the
+  variables just bound and `ps` not depending on them; it absorbs the
+  indices. The branch for `c xs` is checked at `P es (c xs)`, the result
+  for `x_j : D ps es_j` has type `P es_j x_j` (for a function field
+  `(ys : Ψ) → P es_j(ys) (x_j ys)`). The filling pass records in each
+  `RecR` the field's indices as terms of the branch; evaluation applies the
+  split to them (§5.2), the checker verifies them against the data type.
+  No unification: a constructor's target must be convertible with the
+  expected indices. Without indices everything is as before.
 
 ## 3. Branches and their typing
 
@@ -404,6 +420,10 @@ Decided:
 - The whole `| rs` list may be omitted. When present, it has full length.
   `_` is allowed.
 - The definition-position restriction for `split` is kept.
+
+- Indexed families are eliminated at variable indices only; matching at a
+  fixed index is a split at general indices with an equation on the index
+  (`INDEXED.md` §6). No K.
 
 Open:
 - Comparing the motives in the conversion of splits (§5.3).

@@ -114,7 +114,7 @@ data RBody = RBody R [RUnit]                 -- an expression and its where bloc
 
 data RUnit
   = RDef Int Name [TItem] R (Maybe RBody)   -- occurrence, name, tel, type, body
-  | RData Int Name [TItem] (Maybe R) [(Name, [TItem])]
+  | RData Int Name [TItem] (Maybe R) [(Name, [TItem], Maybe R)]   -- labels: fields, target
   | RLevel [Name]
   | RCstr [RCs]
   | RModule Bool Name [TItem] [RUnit]       -- True: a record
@@ -605,17 +605,23 @@ unit ts
                 Right (RDef (occ ts) x tel a (Just b), r6)
         else Right (RDef (occ ts) x tel a Nothing, r4)
 
-labels :: P [(Name, [TItem])]
+-- a label: its fields and, for an indexed family, its target  : D ps es
+labels :: P [(Name, [TItem], Maybe R)]
 labels ts
   | isSym ";" ts || isSym "}" ts || null ts = Right ([], ts)
 labels ts = do
   (c, r1)   <- ident ts
   (tel, r2) <- telescope r1
-  if isSym "|" r2
-    then do ((), r3) <- sym "|" r2
+  (tg, r2') <- if isSym ":" r2
+                 then do ((), r) <- sym ":" r2
+                         (a, r') <- expr r
+                         Right (Just a, r')
+                 else Right (Nothing, r2)
+  if isSym "|" r2'
+    then do ((), r3) <- sym "|" r2'
             (ls, r4) <- labels r3
-            Right ((c, tel) : ls, r4)
-    else Right ([(c, tel)], r2)
+            Right ((c, tel, tg) : ls, r4)
+    else Right ([(c, tel, tg)], r2')
 
 parseUnits :: String -> Either String [RUnit]
 parseUnits src = do
@@ -673,7 +679,11 @@ data RS = RS { rsScope :: Scope, rsLabels :: [(Name, Int)], rsPath :: String
              , rsScopeM :: M.Map Name SInfo, rsMasksM :: M.Map Name [Pos]
              -- the survey (--survey-records): a module used as a type is
              -- not an error, and every segment keeps its head parameters
-             , rsSurvey :: Bool }
+             , rsSurvey :: Bool
+             -- the labels of the indexed families of the program (Nothing:
+             -- there is none): a split with one of them, or with no branch,
+             -- absorbs a number of indices decided by the filling pass
+             , rsIxLabels :: Maybe [Name] }
 
 look :: RS -> Name -> Maybe SInfo
 look rs x = M.lookup x (rsScopeM rs)
@@ -943,8 +953,14 @@ resE0 rs r = case spine r [] of
                       dupCheck (filter (/= "_") (xs ++ ys))
                       b' <- resBody (bindS rs [ (x, SVar) | x <- xs ++ ys ]) b
                       -- the positions are given by the filling pass, from the data type
-                      Right (c, (xs, [ RecR (-1) (-1) y | y <- ys ], b'))) bs
-      Right (Split (rsPath rs ++ "split#" ++ show o) bs')
+                      Right (c, (xs, [ RecR (-1) (-1) [] y | y <- ys ], b'))) bs
+      -- the number of indices: 0 unless a label (or no label) may be of an
+      -- indexed family; then the filling pass decides (-1)
+      let ls = [ c | (c, _, _, _) <- bs ]
+          k = case rsIxLabels rs of
+                Just ixl | null ls || any (`elem` ixl) ls -> -1
+                _ -> 0
+      Right (Split (rsPath rs ++ "split#" ++ show o) k bs')
     -- Construction binds fields in order, but projection looks up a
     -- label. Repeated labels would give those operations different types.
     RRec fs -> do dupCheck (map fst fs)
@@ -1041,34 +1057,118 @@ resDef' rs local u = case u of
         b' <- resBody rs1 { rsPath = i ++ "/" } b
         Right (UDef i x (piB bs a') (lamB bs (nameSplit i b')))
   RData o x tel ty ls -> do
-    dupCheck (map fst ls)
+    dupCheck [ c | (c, _, _) <- ls ]
     (bs, rs1) <- resTel rs tel
     ty' <- case ty of
       Nothing -> Right (U LZero)
       Just t  -> resE rs1 t
-    -- the data type sees itself in its fields only (PRIMREC.md 1)
-    let rsF = bindS rs1 [ (x, SDef (idOf x o)) ]
-    ls' <- mapM (\(c, ctel) -> do freshTel rsF ctel   -- fields are not renamed
-                                  (cbs, _) <- resTel rsF ctel
-                                  tel' <- mapM (\bd -> case bd of
-                                                  BVar y a -> Right (y, a)
-                                                  _ -> Left "only term binders in a constructor") cbs
-                                  Right (c, tel')) ls
-    let i = idOf x o
-    Right (UDef i x (piB bs ty') (lamB bs (Sum i ls')))
+    -- the indices (INDEXED.md): the products of the annotation; its
+    -- binders name them in the type only
+    let ix = [ (if y == "_" then "%ix" ++ show n else y, a) | (n, (y, a)) <- zip [1 :: Int ..] (piTel ty') ]
+        k = length ix
+        i = idOf x o
+    -- the data type sees itself in its fields and targets only (PRIMREC.md 1)
+    let rsF = bindS rs1 [ (x, SDef i) ]
+    -- the index binders are kept by name around the sum (the core is
+    -- named), so an index must not capture a visible name: no index named
+    -- like a visible definition, the data type or a parameter (no
+    -- shadowing, as for module heads and constructor fields).  A field
+    -- may reuse an index name: it is bound inside, and resolver and
+    -- evaluation both read it as the field.
+    let ixNames = [ y | (y, _) <- piTel ty', y /= "_" ]
+    either (\m -> Left ("in the indices of " ++ x ++ ": " ++ m)) Right $ do
+      mapM_ (fresh rsF) ixNames
+      dupCheck ixNames
+    ls' <- mapM (\(c, ctel, mt) -> do
+                    freshTel rsF ctel   -- fields are not renamed
+                    (cbs, rsC) <- resTel rsF ctel
+                    tel' <- mapM (\bd -> case bd of
+                                    BVar y a -> Right (y, a)
+                                    _ -> Left "only term binders in a constructor") cbs
+                    es <- case mt of
+                      Nothing | k == 0 -> Right []
+                              | otherwise -> Left ("the constructor " ++ c ++ " of the indexed family " ++ x
+                                                   ++ " needs its target:  " ++ c ++ " .. : " ++ x ++ " ps es")
+                      Just tg | k == 0 -> Left ("the constructor " ++ c ++ " has a target, but " ++ x ++ " has no indices")
+                              | otherwise -> do tg' <- resE rsC tg
+                                                targetIdx x i bs k c tg'
+                    Right (c, tel', es)) ls
+    Right (UDef i x (piB bs ty') (lamB bs (foldr Lam (Sum i ix ls') (map fst ix))))
   _ -> Left "not a definition"
  where
   idOf x o = rsPath rs ++ x ++ (if local then "#" ++ show o else "")
   -- a split that is the body of a definition is named after it
   nameSplit i e = case e of
-    Split _ bs -> Split i bs
+    Split _ k bs -> Split i k bs
     Let us b      -> Let us (nameSplit i b)
     _             -> e
 
 labelsOf :: [RUnit] -> [(Name, Int)]
-labelsOf us = concat [ [ (c, sum (map width tel)) | (c, tel) <- ls ] | RData _ _ _ _ ls <- us ]
+labelsOf us = concat [ [ (c, sum (map width tel)) | (c, tel, _) <- ls ] | RData _ _ _ _ ls <- us ]
  where width (TVars xs _) = length xs
        width _ = 0
+
+-- the leading products of a resolved type: the indices of an annotation
+piTel :: Exp -> [(Name, Exp)]
+piTel e = case e of
+  Pi y a b -> (y, a) : piTel b
+  _ -> []
+
+-- the target  D ps es  of a constructor: D applied to exactly its
+-- parameters, then to k index expressions (returned)
+targetIdx :: Name -> Id -> [Bind] -> Int -> Name -> Exp -> Rz [Exp]
+targetIdx x i bs k c tg = case spineOf tg [] of
+  (Var h, as)
+    | h /= i -> Left bad
+    | length as /= length ps + k -> Left ("the target of " ++ c ++ " applies " ++ x ++ " to " ++ show (length as)
+                                          ++ " arguments: its " ++ show (length ps) ++ " parameters and "
+                                          ++ show k ++ " indices are expected")
+    | map toP (take (length ps) as) /= ps ->
+        Left ("the target of " ++ c ++ ": " ++ x ++ " is not applied to exactly its parameters (they are uniform)")
+    | otherwise -> mapM idx (drop (length ps) as)
+  _ -> Left bad
+ where
+  bad = "the target of " ++ c ++ " must be " ++ x ++ " applied to its parameters and its indices"
+  ps = [ p | b <- bs, Just p <- [param b] ]
+  param b = case b of
+    BVar y _ -> Just (Left y)
+    BLvl y   -> Just (Right y)
+    BCs _    -> Nothing
+  toP a = case a of
+    Left (Var y) -> Left y
+    Right (LV y) -> Right y
+    _ -> Left "?"
+  idx a = case a of
+    Left e -> Right e
+    Right _ -> Left ("the target of " ++ c ++ ": an index is a term, not a level")
+  spineOf e acc = case e of
+    App a b -> spineOf a (Left b : acc)
+    LApp a l -> spineOf a (Right l : acc)
+    _ -> (e, acc)
+
+-- the labels of the indexed families of a program (Nothing: none)
+ixLabels :: [RUnit] -> Maybe [Name]
+ixLabels rus = case go rus of
+  [] -> Nothing
+  ds -> Just (concat ds)
+ where
+  go = concatMap one
+  one u = case u of
+    RData _ _ _ (Just t) ls | indexed t -> [ [ c | (c, _, _) <- ls ] ]
+    RDef _ _ _ _ (Just (RBody e ws)) -> go ws ++ inR e
+    RModule _ _ _ us -> go us
+    RFails us -> go us
+    _ -> []
+  indexed t = case t of
+    RPi _ _ -> True
+    RArr _ _ -> True
+    _ -> False
+  inR e = case e of
+    RLet us b -> go us ++ inR b
+    RSplit _ bs -> concat [ go ws ++ inR b | (_, _, _, RBody b ws) <- bs ]
+    RLam _ b -> inR b
+    RApp a b -> inR a ++ inR b
+    _ -> []
 
 -- all labels in a program, modules and where blocks included
 allLabels :: [RUnit] -> [(Name, Int)]
@@ -1349,7 +1449,7 @@ resolveProgram = resolveProgramWith True
 -- enforced: errors of the program, and inside #fails a failure of the block
 resolveProgramWith :: Bool -> [RUnit] -> Either String [Unit]
 resolveProgramWith term rus = do
-  let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty False
+  let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty False (ixLabels rus)
   (us, _) <- resUnits rs0 rus 0
   let us1 = numberUnits "" us
       us' = pathUnits (binderUnits us1)   -- paths after renaming: the names a path
@@ -1417,11 +1517,14 @@ numE pre n e = case e of
   Let us b     -> let us' = numberUnits (pre ++ "#" ++ show n ++ "let") us
                       (n', b') = numE pre (n + 1) b
                   in (n', Let us' b')
-  Sum t cs  -> let (n', cs') = mapL (\m (c, tel) -> let (m', tel') = numTel m tel in (m', (c, tel'))) n cs
-                  in (n', Sum t cs')
+  Sum t ix cs -> let (n0, ix') = numTel n ix
+                     (n', cs') = mapL (\m (c, tel, es) -> let (m', tel') = numTel m tel
+                                                              (m'', es') = numL m' es
+                                                          in (m'', (c, tel', es'))) n0 cs
+                 in (n', Sum t ix' cs')
   Con c as     -> let (n', as') = numL n as in (n', Con c as')
-  Split t bs -> let (n', bs') = mapL (\m (c, (xs, rs, b)) -> let (m', b') = numE pre m b in (m', (c, (xs, rs, b')))) n bs
-                   in (n', Split t bs')
+  Split t k bs -> let (n', bs') = mapL (\m (c, (xs, rs, b)) -> let (m', b') = numE pre m b in (m', (c, (xs, rs, b')))) n bs
+                   in (n', Split t k bs')
   Pair a b     -> two Pair a b
   Fst a        -> one Fst a
   Snd a        -> one Snd a
@@ -1497,8 +1600,8 @@ pathE :: Id -> [[String]] -> Exp -> Exp
 pathE i p e = case e of
   Lam x b       -> Lam x (pathE i (p ++ [["v", x]]) b)
   LLam x b      -> LLam x (pathE i (p ++ [["l", x]]) b)
-  Split _ bs -> Split (pathId i p) [ (c, (xs, rs, pathE i (p ++ [("c" : c : xs)]) b)) | (c, (xs, rs, b)) <- bs ]
-  Sum _ cs   -> Sum (pathId i p) cs
+  Split _ k bs -> Split (pathId i p) k [ (c, (xs, rs, pathE i (p ++ [("c" : c : xs)]) b)) | (c, (xs, rs, b)) <- bs ]
+  Sum _ ix cs -> Sum (pathId i p) ix cs
   Let us b      -> Let (pathUnits us) (pathE i p b)
   _             -> e
 
@@ -1548,13 +1651,14 @@ splitReport = concatMap unit
   canon i e = case e of
     Lam _ b        -> canon i b
     LLam _ b       -> canon i b
-    Split _ bs   -> concat [ canon i b | (_, (_, _, b)) <- bs ]
-    Sum _ cs     -> concat [ other i t | (_, tel) <- cs, (_, t) <- tel ]
+    Split _ _ bs -> concat [ canon i b | (_, (_, _, b)) <- bs ]
+    Sum _ ix cs  -> concat [ other i t | (_, t) <- ix ]
+                    ++ concat [ other i t | (_, tel, es) <- cs, t <- map snd tel ++ es ]
     Let us b       -> concatMap local us ++ canon i b
     _              -> other i e
   other i e = case e of
-    Split _ _    -> [shortI i]
-    Sum _ _      -> [shortI i]
+    Split _ _ _  -> [shortI i]
+    Sum _ _ _    -> [shortI i]
     Let us b       -> concatMap local us ++ other i b
     _              -> concatMap (other i) (subExps e)
   shortI = takeWhile (/= '#')
@@ -1596,8 +1700,8 @@ shadowReport = units "" S.empty
     Sig x a b    -> expr w sc a ++ binds w sc [x] (\sc' -> expr w sc' b)
     LPi x a      -> binds w sc [x] (\sc' -> expr w (S.insert ('%' : x) sc') a)
     LLam x a     -> binds w sc [x] (\sc' -> expr w (S.insert ('%' : x) sc') a)
-    Split _ bs -> concat [ binds w sc (xs ++ recNames rs) (\sc' -> expr w sc' b) | (_, (xs, rs, b)) <- bs ]
-    Sum _ cs   -> concat [ tel w sc t | (_, t) <- cs ]
+    Split _ _ bs -> concat [ binds w sc (xs ++ recNames rs) (\sc' -> expr w sc' b) | (_, (xs, rs, b)) <- bs ]
+    Sum _ _ cs -> concat [ tel w sc t ++ concat [ expr w (foldr S.insert sc (map fst t)) e | e <- es ] | (_, t, es) <- cs ]
     Let us b     -> concat [ expr w sc a ++ expr w sc t | UDef _ _ a t <- us ] ++ expr w sc b
     Acc m _      -> mexp w sc m
     SegT m fs    -> mexp w sc m ++ concat [ expr w sc a | (_, ATm a) <- fs ]
@@ -1664,14 +1768,21 @@ binderE pre e0 = snd (go M.empty 0 e0)
                                           _ -> (k, u)) n us
                         (n2, b') = go ren n1 b
                     in (n2, Let us' b')
-    Sum t cs     -> let (n1, cs') = mapL (\k (c, tel) -> let (k', tel') = telG ren k tel in (k', (c, tel'))) n cs in (n1, Sum t cs')
+    -- the indices: the names the lambdas bound (renamed there), their
+    -- types; a target is in the scope of the fields (kept)
+    Sum t ix cs  -> let (n0, ix') = mapL (\k (x, a) -> let (k', a') = go ren k a in (k', (M.findWithDefault x x ren, a'))) n ix
+                        (n1, cs') = mapL (\k (c, tel, es) ->
+                                      let (k', tel') = telG ren k tel
+                                          ren' = foldr M.delete ren (map fst tel)
+                                          (k'', es') = mapL (go ren') k' es
+                                      in (k'', (c, tel', es'))) n0 cs in (n1, Sum t ix' cs')
     Con c as     -> let (n1, as') = mapL (go ren) n as in (n1, Con c as')
-    Split t bs   -> let (n1, bs') = mapL (\k (c, (xs, rs, b)) ->
+    Split t sk bs -> let (n1, bs') = mapL (\k (c, (xs, rs, b)) ->
                                       let (xs', ren', k1) = foldl (\(acc, r, kk) x -> let (x', r', kk') = bind r kk x in (acc ++ [x'], r', kk')) ([], ren, k) xs
                                           (ys', ren'', k1') = foldl (\(acc, r, kk) x -> let (x', r', kk') = bind r kk x in (acc ++ [x'], r', kk')) ([], ren', k1) (recNames rs)
                                           (k2, b') = go ren'' k1' b
-                                      in (k2, (c, (xs', [ RecR j m y | (RecR j m _, y) <- zip rs ys' ], b')))) n bs
-                    in (n1, Split t bs')
+                                      in (k2, (c, (xs', [ RecR j m es y | (RecR j m es _, y) <- zip rs ys' ], b')))) n bs
+                    in (n1, Split t sk bs')
     Pair a b     -> two Pair a b
     Fst a        -> one Fst a
     Snd a        -> one Snd a
@@ -1724,7 +1835,7 @@ binderM pre m = case m of
 
 surveyRecords :: [RUnit] -> Either String String
 surveyRecords rus = do
-  let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty True
+  let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty True (ixLabels rus)
   (us, _) <- resUnits rs0 rus 0
   let segs  = M.fromList [ (i, (k, vs)) | (i, k, vs) <- allSegs us ]
       insts = M.fromList [ (i, m) | (i, m) <- allInsts us ]
@@ -1804,8 +1915,8 @@ surveyRecords rus = do
     New m -> ("new", m) : through m
     Acc m _ -> modUses m
     Let vs b -> concatMap unitUses vs ++ expUses b
-    Split _ bs -> concat [ expUses b | (_, (_, _, b)) <- bs ]
-    Sum _ cs -> concat [ expUses a | (_, t) <- cs, (_, a) <- t ]
+    Split _ _ bs -> concat [ expUses b | (_, (_, _, b)) <- bs ]
+    Sum _ ix cs -> concat [ expUses a | (_, a) <- ix ] ++ concat [ expUses a | (_, t, es) <- cs, a <- map snd t ++ es ]
     Lam _ b -> expUses b
     Pi _ a b -> expUses a ++ expUses b
     Sig _ a b -> expUses a ++ expUses b

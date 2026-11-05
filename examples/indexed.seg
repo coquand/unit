@@ -1,0 +1,201 @@
+-- indexed.seg: indexed inductive families (doc/INDEXED.md; Coquand and
+-- Paulin-Mohring, Inductively defined types, COLOG-88, LNCS 417, 1990).
+-- A constructor states its target; a split on a family with k indices
+-- absorbs them; no unification, no matching on refl.
+
+level a ;
+data Empty = ;
+data One = tt ;
+data N = zero | suc (n : N) ;
+one : N = suc zero ;
+two : N = suc one ;
+three : N = suc two ;
+
+plus : N -> N -> N = split {
+  zero -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+
+efq (A : U a) : Empty -> A = split { } ;
+
+-- no confusion: zero is not a successor
+isZero : N -> U a = split { zero -> One ; suc m -> Empty } ;
+zero-suc (m : N) (e : Id N zero (suc m)) : Empty =
+  idJ N zero (\ z q -> isZero z) tt (suc m) e ;
+
+------------------------------------------------------------------------
+-- families
+
+data Fin : (n : N) -> U a =
+    fz (m : N) : Fin (suc m)
+  | fs (m : N) (i : Fin m) : Fin (suc m) ;
+
+data Vec (A : U a) : (n : N) -> U a =
+    vnil : Vec A zero
+  | vcons (m : N) (x : A) (xs : Vec A m) : Vec A (suc m) ;
+
+data Le : (m n : N) -> U a =
+    lz (n : N) : Le zero n
+  | ls (m n : N) (h : Le m n) : Le (suc m) (suc n) ;
+
+-- a recursive function field whose index depends on its binder
+data T2 : (n : N) -> U a =
+    l2 : T2 zero
+  | s2 (j : N) (t : T2 j) : T2 (suc j)
+  | n2 (f : (k : N) -> T2 k) : T2 zero ;
+
+-- the identity type as a family
+data Eq (A : U a) (x : A) : (y : A) -> U a = erefl : Eq A x x ;
+
+------------------------------------------------------------------------
+-- eliminators: the split absorbs the indices, branches at the targets,
+-- recursive results at the indices of the fields
+
+fin2n : (n : N) -> Fin n -> N = split {
+  fz m -> zero ;
+  fs m i | r -> suc r } ;
+#conv fin2n three (fs two (fs one (fz zero))) = two ;
+
+vmap (A B : U a) (f : A -> B) : (n : N) -> Vec A n -> Vec B n = split {
+  vnil -> vnil ;
+  vcons m x xs | r -> vcons m (f x) r } ;
+
+vappend (A : U a) (k : N) (ys : Vec A k) : (n : N) -> Vec A n -> Vec A (plus n k) = split {
+  vnil -> ys ;
+  vcons m x xs | r -> vcons (plus m k) x r } ;
+
+vlength (A : U a) : (n : N) -> Vec A n -> N = split {
+  vnil -> zero ;
+  vcons m x xs | r -> suc r } ;
+
+v2 : Vec N two = vcons one zero (vcons zero one vnil) ;
+#conv vmap N N (\ n -> suc n) two v2 = vcons one one (vcons zero two vnil) ;
+#conv vlength N three (vappend N one (vcons zero two vnil) two v2) = three ;
+
+-- vhead through the general eliminator and an equation on the index
+vhead-gen (A : U a) : (n : N) -> Vec A n -> (p : N) -> Id N n (suc p) -> A = split {
+  vnil -> \ p e -> efq A (zero-suc p e) ;
+  vcons m x xs -> \ p e -> x } ;
+vhead (A : U a) (n : N) (v : Vec A (suc n)) : A = vhead-gen A (suc n) v n (refl (suc n)) ;
+#conv vhead N one v2 = zero ;
+
+-- likewise: Fin zero is empty
+no-fin0-gen : (n : N) -> Fin n -> Id N n zero -> Empty = split {
+  fz m -> \ e -> zero-suc m (sym-zs (suc m) e) ;
+  fs m i -> \ e -> zero-suc m (sym-zs (suc m) e) }
+ where { sym-zs (x : N) (e : Id N x zero) : Id N zero x = idJ N x (\ z q -> Id N z x) (refl x) zero e ; } ;
+no-fin0 (i : Fin zero) : Empty = no-fin0-gen zero i (refl zero) ;
+
+-- two indices
+le-refl : (n : N) -> Le n n = split {
+  zero -> lz zero ;
+  suc m | r -> ls m m r } ;
+le-step : (m n : N) -> Le m n -> Le m (suc n) = split {
+  lz n -> lz (suc n) ;
+  ls m n h | r -> ls m (suc n) r } ;
+le-diff : (m n : N) -> Le m n -> N = split {
+  lz n -> n ;
+  ls m n h | r -> r } ;
+#conv le-diff one three (le-step one two (ls zero one (lz one))) = two ;
+
+-- a function field: r : (k : N) -> N, at the index k of f k
+mkT2 : (k : N) -> T2 k = split { zero -> l2 ; suc j | r -> s2 j r } ;
+size : (n : N) -> T2 n -> N = split {
+  l2 -> zero ;
+  s2 j t | r -> suc r ;
+  n2 f | r -> suc (r two) } ;
+#conv size zero (n2 mkT2) = three ;
+#normal size zero (n2 mkT2) ;
+
+-- J for Eq, and its computation rule
+eqJ (A : U a) (x : A) (P : (y : A) -> Eq A x y -> U a) (d : P x erefl) :
+    (y : A) -> (e : Eq A x y) -> P y e = split { erefl -> d } ;
+#conv eqJ N one (\ y e -> N) two one erefl = two ;
+
+------------------------------------------------------------------------
+-- rejected
+
+-- index confusion: no unification, the target must be convertible
+#fails { bad : Fin zero = fz zero ; } ;
+#fails { bad : Vec N one = vnil ; } ;
+#fails { bad (m : N) : Fin m = fz m ; } ;
+#fails { bad (p : Le one zero) : Le zero zero = le-step one zero p ; } ;
+
+-- a constructor at the wrong index
+#fails { data Bad : (n : N) -> U a = b : Bad one two ; } ;
+#fails { data Bad : (n : N) -> U a = b ; } ;
+#fails { data Bad : (n : N) -> U a = b : Fin zero ; } ;
+#fails { data Bad : (n : N) -> U a = b (x : One) : Bad x ; } ;
+
+-- a non-uniform parameter, in a field or in a target
+#fails { data Bad (A : U a) : (n : N) -> U a = b (x : Bad N zero) : Bad A one ; } ;
+#fails { data Bad (A : U a) : (n : N) -> U a = b : Bad N zero ; } ;
+
+-- the family inside an index expression
+#fails { k0 (X : U a) : N = zero ; data Bad : (n : N) -> U a = b : Bad (k0 (Bad zero)) ; } ;
+#fails { k0 (X : U a) : N = zero ; data Bad : (n : N) -> U a = b (x : Bad (k0 (Bad zero))) : Bad zero ; } ;
+
+-- a split whose type has a non-variable index, or the indices out of order
+#fails { f : (i : Fin zero) -> Empty = split { fz m -> tt ; fs m i -> tt } ; } ;
+#fails { f : (n : N) -> Fin (suc n) -> N = split { fz m -> zero ; fs m i -> zero } ; } ;
+#fails { f (n : N) : Fin n -> N = split { fz m -> zero ; fs m i -> zero } ; } ;
+#fails { f : (m n : N) -> Le n m -> N = split { lz n -> zero ; ls m n h -> zero } ; } ;
+
+-- a branch at the wrong type
+#fails { f : (n : N) -> Vec N n -> N = split { vnil -> zero ; vcons m x xs | r -> xs } ; } ;
+#fails { f : (n : N) -> Vec N n -> Vec N (suc n) = split { vnil -> vnil ; vcons m x xs -> vcons m x xs } ; } ;
+#fails { f : (n : N) -> Fin n -> Fin n = split { fz m -> fz (suc m) ; fs m i | r -> fs m r } ; } ;
+#fails { f : (n : N) -> Fin n -> Fin n = split { fz m -> fz m ; fs m i | r -> fs (suc m) r } ; } ;
+
+-- axiom K by a split on Eq at a fixed index, or with a parameter that
+-- depends on the index
+#fails { K (A : U a) (x : A) (P : Eq A x x -> U a) (d : P erefl) : (e : Eq A x x) -> P e =
+           split { erefl -> d } ; } ;
+#fails { K (A : U a) (P : (y : A) -> Eq A y y -> U a) (d : (y : A) -> P y erefl) :
+           (y : A) -> (e : Eq A y y) -> P y e = split { erefl -> d zero } ; } ;
+
+------------------------------------------------------------------------
+-- a split nested in a branch, with the outer recursive result
+vsum : (n : N) -> Vec N n -> N -> N = split {
+  vnil -> \ k -> k ;
+  vcons m x xs | r -> split { zero -> r x ; suc k | s -> suc s } } ;
+#conv vsum two v2 zero = one ;
+#conv vsum two v2 two = three ;
+
+-- hidden parameters solved through an indexed family
+vlen {A : U a} : (n : N) -> Vec A n -> N = split {
+  vnil -> zero ;
+  vcons m x xs | r -> suc r } ;
+#conv vlen two v2 = two ;
+#conv vlen two (vmap N N (\ n -> suc n) two v2) = two ;
+
+-- dependent indices: the type of an index mentions the earlier ones
+data DI (A : U a) : (n : N) -> (v : Vec A n) -> U a =
+    di0 : DI A zero vnil
+  | di1 (m : N) (x : A) (w : Vec A m) (d : DI A m w) : DI A (suc m) (vcons m x w) ;
+di-len (A : U a) : (n : N) -> (v : Vec A n) -> DI A n v -> N = split {
+  di0 -> zero ;
+  di1 m x w d | r -> suc r } ;
+#conv di-len N one (vcons zero two vnil) (di1 zero two vnil di0) = one ;
+#fails { data DI2 (A : U a) : (n : N) -> (v : Vec A n) -> U a = d2 (x : A) : DI2 A zero (vcons zero x vnil) ; } ;
+
+-- a family in a module, used through an instance
+module M (B : U a) {
+  data V : (n : N) -> U a = vn : V zero | vc (m : N) (b : B) (t : V m) : V (suc m) ;
+  len : (n : N) -> V n -> N = split { vn -> zero ; vc m b t | r -> suc r } ;
+} ;
+module MN = M[N] ;
+#conv MN.len two (vc one zero (vc zero one vn)) = two ;
+#fails { bad : MN.V one = vn ; } ;
+
+------------------------------------------------------------------------
+-- index binders are kept by name around the sum: no index may capture a
+-- visible name (no shadowing).  An index named like a global definition
+-- would capture it in the targets (data B1 : (one : N) -> U a = b1 : B1 one
+-- would give b1 : B1 n for every n).  A field may reuse an index name
+-- (it is bound inside the constructor), as in Le above.
+
+one1 : N = suc zero ;
+#fails { data B1 : (one1 : N) -> U a = b1 : B1 one1 ; } ;
+#fails { data B2 : (B2 : N) -> U a = b2 : B2 zero ; } ;
+#fails { data B3 (p : N) : (p : N) -> U a = b3 : B3 p zero ; } ;
+#fails { data B6 : (m m : N) -> U a = b6 : B6 zero zero ; } ;

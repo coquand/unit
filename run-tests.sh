@@ -12,3 +12,5 @@ for d in ack skipN; do
   echo "quote-test $d:"
   (cd "$ROOT/examples" && timeout 30 "$SEG" primrec.seg --quote-test $d 2>&1)
 done
+echo "quote-test vsum (indexed):"
+(cd "$ROOT/examples" && timeout 30 "$SEG" indexed.seg --quote-test vsum 2>&1)
