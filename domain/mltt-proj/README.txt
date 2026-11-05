@@ -4,7 +4,7 @@ filters of domain/mltt.  domain/mltt (owned by another session) is
 imported READ-ONLY through symlinks; nothing there is edited.  No
 parameters, no postulates.  Not committed.
 
-CHECK.  seg All.seg: 711 declarations (with domain/mltt), 0 failed, 0.09 s.
+CHECK.  seg All.seg: 1353 declarations (with domain/mltt), 0 failed, 0.22 s.
 
 Proj.seg (156 lines)
   Meets P f      f is a meet of elements satisfying P
@@ -41,5 +41,21 @@ sem-cons, soundness).
 ProjBot.seg (35 lines): LamU[A, G].eq : FEq (p U (lamF A G)) (prin om),
 the clause "p U b = bot otherwise" for functions (no hypotheses).
 
+Infinite.seg (~300 lines): Coquand-Huber section 4, Definition 1 and
+Propositions 2-3, on domain/mltt's relation at compact witnesses (RelC,
+step 4; uncommitted there at the time of writing).
+  Def1[n, D]   TyF X T T' = TyR c T T' for all c in X; TmF V T M M' the
+               same at u in V (no type witness, so no "exists a0");
+               tyf-prin/tmf-prin: at prin c it is TyR c / TmR c (by M);
+               ArgF A V A0 P P' (V consistent, of type A, D |- P = P' : A0,
+               TmF V A0 P P'); FamF, AppF: the three conclusions
+  FamAt[G, anti].at V   G(V) = union of G x, x in V
+  Prop2[n, D, A, G, anti]: prop2-to, prop2-from (A a filter of types):
+               TyF (Pi A G) T T' iff PiF T T' (reducts, conversions,
+               TyF A A0 A1, family clause at every argument filter V)
+  Prop3[n, D, A, G, T, A0, B0, rT, W, M, M']: prop3-to, prop3-from
+               (W of type Pi A G): TmF W T M M' iff FunF (applications at
+               every argument filter V, in appF W V)
+  The right sides quantify over filters, so they are in U l+.
+
 Not done: the paper's eta example (needs a base type; MLTT_eta has none).
-Next: Coquand-Huber Def. 1, Props 2-3, once domain/mltt step 4 exists.

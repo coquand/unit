@@ -1,0 +1,314 @@
+-- Infinite.seg: Coquand-Huber ("An adequacy theorem for dependent type
+-- theory", section 4) Definition 1 and Propositions 2-3: the relation of
+-- domain/mltt (RelC, compact witnesses) extended to arbitrary filters by
+-- continuity.
+--
+-- Definition 1.  For a filter X of types and a filter V of elements
+--   TyF X T T'      TyR c T T' for every c in X,
+--   TmF V T M M'    TmR u T M M' for every u in V.
+-- The relation of RelC has no type witness, so the paper's "there is a
+-- finite a0 <= a with J |u0:a0" disappears; at a principal filter
+-- Definition 1 is the relation itself (M, RelC.mono).
+--
+-- An argument at a filter V (the paper's N : B |v:b, v in El b) is
+-- ArgF A V A0 P P': V consistent, V of type A (Sound.HasTy),
+-- D |- P = P' : A0, and TmF V A0 P P'.  The family at V is
+-- G(V) = union of the G x, x in V (FamAt; a filter as G is antitone).
+--
+-- Proposition 2 (G antitone, A a filter of types).  TyF (Pi A G) T T' iff
+-- T ~>* Pi A0 B0, T' ~>* Pi A1 B1, D |- A0 = A1 : U, D, A0 |- B0 = B1 : U,
+-- TyF A A0 A1, and every argument (V, P, P') gives the three TyF G(V)
+-- B0[P] B0[P'], B1[P] B1[P'], B0[P] B1[P'].
+-- Proof.  (=>) pi om om is in Pi A G: the reducts.  The Pi clause of
+-- pi a om (a in A) gives the domain, that of pi om (x -> y) (x : A, y in
+-- G x) the family; the reducts are moved to the first ones by determinism
+-- (Reduction.reds-pp, LawsC.pid-l/pid-r).  For the family at y in G(V),
+-- y in G x with x in V: V of type A gives a typed x0 <= x in V, and
+-- y in G x0 (G antitone); the argument at x0 is in V.
+-- (<=) An element c of Pi A G is om-like (RelC.l1) or above some pi a b,
+-- a in A, b made of entries x -> v with x : A, v in G x; by M it suffices
+-- to treat pi a b, i.e. its Pi clause at (a, b).  The domain is TyF A at
+-- a.  At a selection (d, y) of b with Cons d: d is typed in A (the keys
+-- are typed, AdeqLam.keys-tyin), so V = prin d is an argument, and y is
+-- in G d (Filter.Entries.sel), so in G(prin d).
+--
+-- Proposition 3 (T ~>* Pi A0 B0 fixed; W of type Pi A G).  TmF W T M M'
+-- iff every argument (V, P, P') gives the three TmF (app W V) B0[P]
+-- (M P) (M P'), (M' P) (M' P'), (M P) (M' P').
+-- Proof.  (=>) z in app W V: g <= x -> z, g in W, x in V; a selection
+-- (d, t) of g with x <= d, t <= z (inv-arr); the argument moves from x to
+-- d (M), the Pi clause of g at (d, t) gives t, then M to z.  No typing of
+-- W is used.
+-- (<=) An element of W is above a typed v : c, c in Pi A G (HasTy); by M
+-- it suffices to treat v.  By generation (Typing.Shape) v is om-like, or
+-- v == f with f made of entries of type Pi B psi == c (c cannot be U:
+-- Pi A G has no element below U).  Then v has no type component
+-- (LawsC.tyc-fun), and at a selection (d, t) of v, a reduct Pi A0' B0' of
+-- T (= Pi A0 B0 by determinism) and an argument at d, the selection of
+-- f below it, (d2, t2) with d <= d2, t2 <= t, has d2 : B, B in A (as
+-- pi a b <= c <= pi B psi); so prin d2 is an argument, t2 is in
+-- app W (prin d2), and the hypothesis gives t2, then M to t.
+--
+-- As the paper remarks, the propositions could not serve as the
+-- definition: G(V) may be as complex as Pi A G.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open Filter[l] ; open Sem[l] ; open Sound[l] ; open Reduction[l] ; open RelC[l] ;
+open LawsC[l] ; open AdeqBase[l] ; open AdeqLam[l] ;
+
+------------------------------------------------------------------------
+-- the family at a filter: G(V) = union of the G x, x in V
+
+module FamAt (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x')) {
+
+  Mem (V : Filt) (t : Ty) : U l = sig { x : Ty ; inx : V.mem x ; m : (G x).mem t } ;
+
+  mem-om (V : Filt) : Mem V om = struct { x = om ; inx = V.fom ; m = (G om).fom } ;
+
+  mem-meet (V : Filt) (s t : Ty) (a : Mem V s) (b : Mem V t) : Mem V (meet s t) =
+    struct { x = meet a.x b.x ; inx = V.fmeet a.x b.x a.inx b.inx ;
+             m = (G (meet a.x b.x)).fmeet s t
+                   (anti a.x (meet a.x b.x) (le-meet-l a.x b.x) s a.m)
+                   (anti b.x (meet a.x b.x) (le-meet-r a.x b.x) t b.m) } ;
+
+  mem-up (V : Filt) (s t : Ty) (le : Le s t) (a : Mem V s) : Mem V t =
+    struct { x = a.x ; inx = a.inx ; m = (G a.x).fup s t le a.m } ;
+
+  at (V : Filt) : Filt = new Filt[Mem V, mem-om V, mem-meet V, mem-up V] ;
+
+  -- G(prin x) contains G x
+  at-prin (x t : Ty) (m : (G x).mem t) : (at (prin x)).mem t = struct { x = x ; inx = prin-in x ; m = m } ;
+} ;
+
+------------------------------------------------------------------------
+-- the elements of Pi A G
+
+pi-in (A : Filt) (G : Ty -> Filt) (a b : Ty) (ina : A.mem a) (e : EntS (EntR A G) b) : (piF A G).mem (pi a b) =
+  inr (struct { a = a ; b = b ; le = le-refl (pi a b) ; ina = ina ; ents = e }) ;
+
+-- no element of Pi A G is below U
+pi-not-below-univ (A : Filt) (G : Ty -> Filt) (c : Ty) (le : Le c univ) : (piF A G).mem c -> Empty = split {
+  inl e -> om-not-univ (le-trans om c univ e le) ;
+  inr w -> pi-not-univ w.a w.b (le-trans (pi w.a w.b) c univ w.le le) } ;
+
+-- an element of Pi A G below pi B psi has its domain B in A
+pi-dom-in (A : Filt) (G : Ty -> Filt) (c B psi : Ty) (le : Le c (pi B psi)) : (piF A G).mem c -> A.mem B = split {
+  inl e -> absurd (A.mem B) (om-not-pi B psi (le-trans om c (pi B psi) e le)) ;
+  inr w -> A.fup w.a B (pi-inj w.a w.b B psi (le-trans (pi w.a w.b) c (pi B psi) w.le le)).1 w.ina } ;
+
+------------------------------------------------------------------------
+-- Definition 1
+
+module Def1 (n : Nat) (D : Ctx n) {
+  open RelCD[n, D] ;
+  open AdeqB[n, D] ;
+
+  TyF (X : Filt) (T T' : Tm n) : U l = (c : Ty) -> X.mem c -> TyR c T T' ;
+  TmF (V : Filt) (T M M' : Tm n) : U l = (u : Ty) -> V.mem u -> TmR u T M M' ;
+
+  -- at a compact element, Definition 1 is the relation
+  tyf-prin (c : Ty) (T T' : Tm n) : Iff (TyF (prin c) T T') (TyR c T T') =
+    (\ h -> h c (prin-in c), \ t c' le -> cmono-ty c c' le T T' t) ;
+
+  tmf-prin (u : Ty) (T M M' : Tm n) : Iff (TmF (prin u) T M M') (TmR u T M M') =
+    (\ h -> h u (prin-in u), \ t u' le -> cmono-tm u u' le T M M' t) ;
+
+  -- an argument at a filter V of type A
+  ArgF (A V : Filt) (A0 P P' : Tm n) : U l =
+    sig { cv : ConsF V ; ty : HasTy V A ; eq : Der n (jeq D P P' A0) ; rel : TmF V A0 P P' } ;
+
+  -- the three conclusions of a family, at a filter
+  FamF (X : Filt) (B0 B1 : Tm (suc n)) (P P' : Tm n) : U l =
+    sig { c1 : TyF X (subst1 n B0 P) (subst1 n B0 P') ;
+          c2 : TyF X (subst1 n B1 P) (subst1 n B1 P') ;
+          c3 : TyF X (subst1 n B0 P) (subst1 n B1 P') } ;
+
+  -- the three conclusions of an application, at a filter
+  AppF (X : Filt) (B M M' P P' : Tm n) : U l =
+    sig { c1 : TmF X B (app n M P) (app n M P') ;
+          c2 : TmF X B (app n M' P) (app n M' P') ;
+          c3 : TmF X B (app n M P) (app n M' P') } ;
+} ;
+
+------------------------------------------------------------------------
+-- Proposition 2
+
+module Prop2 (n : Nat) (D : Ctx n) (A : Filt) (G : Ty -> Filt)
+    (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x')) {
+  open RelCD[n, D] ;
+  open LawsCD[n, D] ;
+  open AdeqB[n, D] ;
+  open Def1[n, D] ;
+  open FamAt[G, anti] ;
+
+  -- the right side, for given reducts
+  PiFD (A0 : Tm n) (B0 : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n)) : U l+ =
+    sig { cA : Der n (jeq D A0 A1 (uu n)) ; cB : Der (suc n) (jeq (ext n D A0) B0 B1 (uu (suc n))) ;
+          dom : TyF A A0 A1 ;
+          fam : (V : Filt) -> (P P' : Tm n) -> ArgF A V A0 P P' -> FamF (at V) B0 B1 P P' } ;
+
+  PiF (T T' : Tm n) : U l+ =
+    sig { A0 : Tm n ; B0 : Tm (suc n) ; A1 : Tm n ; B1 : Tm (suc n) ;
+          red : Reds n T (pp n A0 B0) ; red' : Reds n T' (pp n A1 B1) ; d : PiFD A0 B0 A1 B1 } ;
+
+  ----------------------------------------------------------------------
+  -- (=>)
+
+  module Fwd (T T' : Tm n) (h : TyF (piF A G) T T') {
+
+    -- the Pi clause of an element pi a b
+    clause (a b : Ty) (m : (piF A G).mem (pi a b)) : PiTy Can a b T T' =
+      pity-of-tyc Can a b T T' ((tyr-unfold (pi a b) T T').1 (h (pi a b) m)) ;
+
+    -- the reducts, from pi om om
+    p0 : PiTy Can om om T T' = clause om om (pi-in A G om om A.fom es-om) ;
+
+    -- a Pi clause, at the reducts of p0
+    moved (a b : Ty) (p : PiTy Can a b T T') : PiD Can a b p0.A0 p0.B0 p0.A1 p0.B1 =
+      pid-r Can a b p0.A0 p0.B0 p.A1 p0.A1 p.B1 p0.B1 (reds-pp n T' p.A1 p0.A1 p.B1 p0.B1 p.red' p0.red')
+        (pid-l Can a b p.A0 p0.A0 p.B0 p0.B0 p.A1 p.B1 (reds-pp n T p.A0 p0.A0 p.B0 p0.B0 p.red p0.red) p.d) ;
+
+    dom : TyF A p0.A0 p0.A1 =
+      \ a m -> (moved a om (clause a om (pi-in A G a om m es-om))).dom ;
+
+    -- the family at one y in G(V)
+    fam-at (V : Filt) (P P' : Tm n) (g : ArgF A V p0.A0 P P') (y : Ty) (m : (at V).mem y) :
+        FamC Can y p0.B0 p0.B1 P P' =
+      q.fam e.v y (as-here e.v y) P P' (struct { cd = g.cv e.v e.inA ; cv = g.eq ; rel = g.rel e.v e.inA })
+      where {
+        e : Enl V A m.x = g.ty m.x m.inx ;
+        tx : TyIn A e.v = struct { a = e.c ; ina = e.inB ; tp = e.tp } ;
+        my : (G e.v).mem y = anti m.x e.v e.below y m.m ;
+        q : PiD Can om (arr e.v y) p0.A0 p0.B0 p0.A1 p0.B1 =
+          moved om (arr e.v y) (clause om (arr e.v y) (pi-in A G om (arr e.v y) A.fom (es-arr e.v y (tx, my)))) ; } ;
+
+    fam (V : Filt) (P P' : Tm n) (g : ArgF A V p0.A0 P P') : FamF (at V) p0.B0 p0.B1 P P' =
+      struct { c1 = \ y m -> (fam-at V P P' g y m).c1 ;
+               c2 = \ y m -> (fam-at V P P' g y m).c2 ;
+               c3 = \ y m -> (fam-at V P P' g y m).c3 } ;
+
+    res : PiF T T' =
+      struct { A0 = p0.A0 ; B0 = p0.B0 ; A1 = p0.A1 ; B1 = p0.B1 ; red = p0.red ; red' = p0.red' ;
+               d = struct { cA = p0.d.cA ; cB = p0.d.cB ; dom = dom ; fam = fam } } ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- (<=), for A a filter of types
+
+  module Bwd (tyuA : TyU A) (T T' : Tm n) (p : PiF T T') {
+
+    -- the family clause at a selection (d, y) of the entries b
+    fam-sel (b : Ty) (e : EntS (EntR A G) b) (d y : Ty) (q : ASel b d y) (P P' : Tm n)
+        (ar : Arg Can d p.A0 P P') : FamC Can y p.B0 p.B1 P P' =
+      struct { c1 = f.c1 y my ; c2 = f.c2 y my ; c3 = f.c3 y my }
+      where {
+        f : FamF (at (prin d)) p.B0 p.B1 P P' =
+          p.d.fam (prin d) P P'
+            (struct { cv = prin-cons d ar.cd ;
+                      ty = prin-hasty A d (keys-tyin A G tyuA b d y q e ar.cd) ;
+                      eq = ar.cv ;
+                      rel = (tmf-prin d p.A0 P P').2 ar.rel }) ;
+        my : (at (prin d)).mem y =
+          at-prin d y (Entries[G, anti, EntR A G, \ x v r -> r.2].sel b d y q e d (le-refl d)) ; } ;
+
+    -- the element pi a b
+    at-pi (a b : Ty) (ina : A.mem a) (e : EntS (EntR A G) b) : TyR (pi a b) T T' =
+      (tyr-unfold (pi a b) T T').2
+        (tyc-of-pity Can cmono a b T T'
+           (struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A1 ; B1 = p.B1 ; red = p.red ; red' = p.red' ;
+                     d = struct { cA = p.d.cA ; cB = p.d.cB ; dom = p.d.dom a ina ;
+                                  fam = fam-sel b e } })) ;
+
+    res : TyF (piF A G) T T' = \ c -> split {
+      inl e -> can-om (rty c T T') e ;
+      inr w -> cmono-ty (pi w.a w.b) c w.le T T' (at-pi w.a w.b w.ina w.ents) } ;
+  } ;
+
+  -- Proposition 2 (the right side quantifies over filters: it is large)
+  prop2-to (T T' : Tm n) (h : TyF (piF A G) T T') : PiF T T' = Fwd[T, T', h].res ;
+  prop2-from (tyuA : TyU A) (T T' : Tm n) (p : PiF T T') : TyF (piF A G) T T' = Bwd[tyuA, T, T', p].res ;
+} ;
+
+------------------------------------------------------------------------
+-- Proposition 3
+
+module Prop3 (n : Nat) (D : Ctx n) (A : Filt) (G : Ty -> Filt)
+    (T : Tm n) (A0 : Tm n) (B0 : Tm (suc n)) (rT : Reds n T (pp n A0 B0)) (W : Filt) (M M' : Tm n) {
+  open RelCD[n, D] ;
+  open LawsCD[n, D] ;
+  open AdeqB[n, D] ;
+  open Def1[n, D] ;
+
+  -- the right side, at the reduct Pi (pp-dom Z) (pp-cod Z)
+  FunZ (Z : Tm n) : U l+ =
+    (V : Filt) -> (P P' : Tm n) -> ArgF A V (pp-dom n Z) P P' -> AppF (appF W V) (subst1 n (pp-cod n Z) P) M M' P P' ;
+
+  FunF : U l+ = FunZ (pp n A0 B0) ;
+
+  ----------------------------------------------------------------------
+  -- (=>)
+
+  fwd-at (h : TmF W T M M') (V : Filt) (P P' : Tm n) (g : ArgF A V A0 P P') (z : Ty) (m : (appF W V).mem z) :
+      AppC Can z (subst1 n B0 P) M M' P P' =
+    appc-mono Can cmono i.2.1 z i.2.2.2.2 (subst1 n B0 P) M M' P P'
+      (((tmr-unfold m.g T M M').1 (h m.g m.ing)).fn A0 B0 rT i.1 i.2.1 i.2.2.1 P P' a)
+    where {
+      i : InvArr m.g m.x z = inv-arr m.g m.x z m.le ;
+      a : Arg Can i.1 A0 P P' =
+        struct { cd = cons-down m.x i.1 i.2.2.2.1 (g.cv m.x m.inx) ; cv = g.eq ;
+                 rel = cmono-tm m.x i.1 i.2.2.2.1 A0 P P' (g.rel m.x m.inx) } ; } ;
+
+  fwd (h : TmF W T M M') : FunF =
+    \ V P P' g -> struct { c1 = \ z m -> (fwd-at h V P P' g z m).c1 ;
+                           c2 = \ z m -> (fwd-at h V P P' g z m).c2 ;
+                           c3 = \ z m -> (fwd-at h V P P' g z m).c3 } ;
+
+  ----------------------------------------------------------------------
+  -- (<=), for W of type Pi A G
+
+  module Bwd (H : FunF) {
+
+    -- the function clause at a typed v == f, f of type pi B psi == c
+    fn-at (v c B psi f : Ty) (e1 : Eqv v f) (e2 : Eqv c (pi B psi)) (h1 : Tp (el (pi B psi) univ))
+        (h2 : Tp (ent f B psi)) (inv : W.mem v) (inc : (piF A G).mem c)
+        (A0' : Tm n) (B0' : Tm (suc n)) (rT' : Reds n T (pp n A0' B0')) (d t : Ty) (q : ASel v d t)
+        (P P' : Tm n) (a : Arg Can d A0' P P') : AppC Can t (subst1 n B0' P) M M' P P' =
+      appc-mono Can cmono i.2.1 t i.2.2.2.2 (subst1 n B0' P) M M' P P'
+        (struct { c1 = r.c1 i.2.1 mt ; c2 = r.c2 i.2.1 mt ; c3 = r.c3 i.2.1 mt })
+      where {
+        H' : FunZ (pp n A0' B0') = Prelude[l+].subst (Tm n) FunZ (pp n A0 B0) (pp n A0' B0') (reds-pp n T A0 A0' B0 B0' rT rT') H ;
+        i : InvArr f d t = inv-arr f d t (le-trans f v (arr d t) e1.2 (asel-le v d t q)) ;
+        cd2 : Cons i.1 = cons-down d i.1 i.2.2.2.1 a.cd ;
+        tyd2 : TyIn A i.1 =
+          struct { a = B ; ina = pi-dom-in A G c B psi e2.1 inc ;
+                   tp = key-tp f i.1 i.2.1 i.2.2.1 B psi h2 (pi-dom B psi h1) cd2 } ;
+        r : AppF (appF W (prin i.1)) (subst1 n B0' P) M M' P P' =
+          H' (prin i.1) P P'
+            (struct { cv = prin-cons i.1 cd2 ; ty = prin-hasty A i.1 tyd2 ; eq = a.cv ;
+                      rel = (tmf-prin i.1 A0' P P').2 (cmono-tm d i.1 i.2.2.2.1 A0' P P' a.rel) }) ;
+        mt : (appF W (prin i.1)).mem i.2.1 =
+          struct { g = v ; x = i.1 ; ing = inv ; inx = prin-in i.1 ;
+                   le = le-trans v f (arr i.1 i.2.1) e1.1 (asel-le f i.1 i.2.1 i.2.2.1) } ; } ;
+
+    -- a typed element v : c of W, c in Pi A G, by its shape
+    at-typed (v c : Ty) (inv : W.mem v) (inc : (piF A G).mem c) : Shape v c -> TmR v T M M' = split {
+      sh-bot e h -> tmr-om v e T M M' ;
+      sh-univ e1 e2 -> absurd (TmR v T M M') (pi-not-below-univ A G c e2.1 inc) ;
+      sh-pi B psi e1 e2 h1 h2 cp -> absurd (TmR v T M M') (pi-not-below-univ A G c e2.1 inc) ;
+      sh-lam B psi f e1 e2 h1 h2 cf ->
+        (tmr-unfold v T M M').2
+          (struct { ty = tyc-fun Can v f B psi e1.2 h2 M M' ;
+                    fn = \ A0' B0' rT' d t q P P' a -> fn-at v c B psi f e1 e2 h1 h2 inv inc A0' B0' rT' d t q P P' a }) } ;
+
+    res-at (tyW : HasTy W (piF A G)) (u : Ty) (m : W.mem u) : TmR u T M M' =
+      cmono-tm e.v u e.below T M M' (at-typed e.v e.c e.inA e.inB (shape e.v e.c e.tp))
+      where { e : Enl W (piF A G) u = tyW u m ; } ;
+
+    res (tyW : HasTy W (piF A G)) : TmF W T M M' = res-at tyW ;
+  } ;
+
+  -- Proposition 3
+  prop3-to (h : TmF W T M M') : FunF = fwd h ;
+  prop3-from (tyW : HasTy W (piF A G)) (H : FunF) : TmF W T M M' = Bwd[H].res tyW ;
+} ;
