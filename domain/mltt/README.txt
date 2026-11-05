@@ -62,9 +62,12 @@ and the lemmas of Sem.seg.  Check with --opened after the file name.
  Typing.seg change: app-sel (Lemma 2.8) now also gives f <= x -> w.
 
 NEXT
- 4. Logical relation by recursion on the depth of the witness (Nat),
-    Pi clauses per entry, Unit records for the clauses; its laws
-    (sec. 2.7); adequacy (Thm 2.35); Pi injectivity, subject reduction.
+ 4. See NOTE-4-plan.txt: 4a syntactic metatheory (weakening and
+    substitution of derivations, presupposition, context conversion; the
+    Pi clause records syntactic conversions, so it is needed), 4b the
+    logical relation by recursion on a fuel with R (N+1) = new clause AND
+    R N, its laws (sec. 2.7), adequacy (Thm 2.35), Pi injectivity (2.37),
+    subject reduction (2.38).
  Confluence (MIN/Syntax/Confluence*) is not needed.
 
 CHECK.  From here: $(cd ../.. && cabal list-bin exe:seg) All.seg
