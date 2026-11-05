@@ -1,0 +1,380 @@
+-- Sem.seg: the semantics of terms as filters of types (paper Fig. 4,
+-- with domain environments, Def. 2.28; NOTE-3.txt section 3.3).
+--   Env n      a filter for each variable; extE rho X, tlE rho
+--   sem M rho  by recursion on M;  fam M rho x = sem M (extE rho (prin x))
+-- Lemma 3.4 sem-mono, sem-eq (environments compared pointwise)
+-- Lemma 3.5 sem-cons (consistent environments give consistent elements)
+-- Lemma 3.6 cont (continuity: t in sem M rho needs only compact parts of
+--           rho), cont-last (the last variable)
+-- Lemma 3.7 SemTrav (one lemma for the traversal over a kit), its
+--           instances wk-sem (renaming) and subst1-sem (paper Lemma 2.29)
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open Filter[l] ;
+
+------------------------------------------------------------------------
+-- environments
+
+Env (n : Nat) : U l+ = Fin n -> Filt ;
+
+extE (n : Nat) (rho : Env n) (X : Filt) : Env (suc n) = split {
+  none -> X ;
+  some i -> rho i } ;
+
+tlE (n : Nat) (rho : Env (suc n)) : Env n = \ i -> rho (fs n i) ;
+
+EnvIncl (n : Nat) (rho rho' : Env n) : U l = (i : Fin n) -> Incl (rho i) (rho' i) ;
+EnvEq (n : Nat) (rho rho' : Env n) : U l = (i : Fin n) -> FEq (rho i) (rho' i) ;
+
+envincl-refl (n : Nat) (rho : Env n) : EnvIncl n rho rho = \ i -> incl-refl (rho i) ;
+
+extE-incl (n : Nat) (rho rho' : Env n) (X X' : Filt) (h : EnvIncl n rho rho') (k : Incl X X') :
+    EnvIncl (suc n) (extE n rho X) (extE n rho' X') = split {
+  none -> k ;
+  some i -> h i } ;
+
+-- rho is pointwise its tail extended by its last value
+eta-env (n : Nat) (rho : Env (suc n)) : EnvEq (suc n) rho (extE n (tlE n rho) (rho (fz n))) = split {
+  none -> feq-refl (rho (fz n)) ;
+  some i -> feq-refl (rho (fs n i)) } ;
+
+------------------------------------------------------------------------
+-- the semantics
+
+sem : (n : Nat) -> Tm n -> Env n -> Filt = split {
+  var n i -> \ rho -> rho i ;
+  uu n -> \ rho -> univF ;
+  pp n A B | rA rB -> \ rho -> piF (rA rho) (\ x -> rB (extE n rho (prin x))) ;
+  lam n A M | rA rM -> \ rho -> lamF (rA rho) (\ x -> rM (extE n rho (prin x))) ;
+  app n M N | rM rN -> \ rho -> appF (rM rho) (rN rho) } ;
+
+-- the family of a binder
+fam (n : Nat) (B : Tm (suc n)) (rho : Env n) (x : Ty) : Filt = sem (suc n) B (extE n rho (prin x)) ;
+
+-- the clauses, by definition (as equations, and as equivalences of
+-- filters; sem is locked at the end of this file, after the lemmas proved
+-- by its clauses)
+sem-pp (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n) :
+    Id Filt (sem n (pp n A B) rho) (piF (sem n A rho) (fam n B rho)) = refl (piF (sem n A rho) (fam n B rho)) ;
+sem-lam (n : Nat) (A : Tm n) (M : Tm (suc n)) (rho : Env n) :
+    Id Filt (sem n (lam n A M) rho) (lamF (sem n A rho) (fam n M rho)) = refl (lamF (sem n A rho) (fam n M rho)) ;
+
+sem-var-eq (n : Nat) (i : Fin n) (rho : Env n) : FEq (sem n (var n i) rho) (rho i) = feq-refl (rho i) ;
+sem-uu-eq (n : Nat) (rho : Env n) : FEq (sem n (uu n) rho) univF = feq-refl univF ;
+sem-pp-eq (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n) :
+    FEq (sem n (pp n A B) rho) (piF (sem n A rho) (fam n B rho)) = feq-refl (piF (sem n A rho) (fam n B rho)) ;
+sem-lam-eq (n : Nat) (A : Tm n) (M : Tm (suc n)) (rho : Env n) :
+    FEq (sem n (lam n A M) rho) (lamF (sem n A rho) (fam n M rho)) = feq-refl (lamF (sem n A rho) (fam n M rho)) ;
+sem-app-eq (n : Nat) (M N : Tm n) (rho : Env n) :
+    FEq (sem n (app n M N) rho) (appF (sem n M rho) (sem n N rho)) = feq-refl (appF (sem n M rho) (sem n N rho)) ;
+
+------------------------------------------------------------------------
+-- Lemma 3.4: monotone in the environment
+
+sem-mono : (n : Nat) -> (M : Tm n) -> (rho rho' : Env n) -> EnvIncl n rho rho' ->
+    Incl (sem n M rho) (sem n M rho') = split {
+  var n i -> \ rho rho' h -> h i ;
+  uu n -> \ rho rho' h -> incl-refl univF ;
+  pp n A B | rA rB -> \ rho rho' h ->
+    piF-mono (sem n A rho) (sem n A rho') (fam n B rho) (fam n B rho') (rA rho rho' h)
+      (\ x hx -> rB (extE n rho (prin x)) (extE n rho' (prin x)) (extE-incl n rho rho' (prin x) (prin x) h (incl-refl (prin x)))) ;
+  lam n A M | rA rM -> \ rho rho' h ->
+    lamF-mono (sem n A rho) (sem n A rho') (fam n M rho) (fam n M rho') (rA rho rho' h)
+      (\ x hx -> rM (extE n rho (prin x)) (extE n rho' (prin x)) (extE-incl n rho rho' (prin x) (prin x) h (incl-refl (prin x)))) ;
+  app n M N | rM rN -> \ rho rho' h ->
+    appF-mono (sem n M rho) (sem n M rho') (sem n N rho) (sem n N rho') (rM rho rho' h) (rN rho rho' h) } ;
+
+sem-eq (n : Nat) (M : Tm n) (rho rho' : Env n) (e : EnvEq n rho rho') : FEq (sem n M rho) (sem n M rho') =
+  (sem-mono n M rho rho' (\ i -> (e i).1), sem-mono n M rho' rho (\ i -> (e i).2)) ;
+
+-- the family of a binder is antitone
+fam-anti (n : Nat) (B : Tm (suc n)) (rho : Env n) (x x' : Ty) (le : Le x' x) :
+    Incl (fam n B rho x) (fam n B rho x') =
+  sem-mono (suc n) B (extE n rho (prin x)) (extE n rho (prin x'))
+    (extE-incl n rho rho (prin x) (prin x') (envincl-refl n rho) (prin-anti x' x le)) ;
+
+------------------------------------------------------------------------
+-- Lemma 3.5: consistency
+
+ConsEnv (n : Nat) (rho : Env n) : U l = (i : Fin n) -> ConsF (rho i) ;
+
+consenv-ext (n : Nat) (rho : Env n) (X : Filt) (c : ConsEnv n rho) (cX : ConsF X) :
+    ConsEnv (suc n) (extE n rho X) = split {
+  none -> cX ;
+  some i -> c i } ;
+
+sem-cons : (n : Nat) -> (M : Tm n) -> (rho : Env n) -> ConsEnv n rho -> ConsF (sem n M rho) = split {
+  var n i -> \ rho c -> c i ;
+  uu n -> \ rho c t h -> cons-down univ t h cons-univ ;
+  pp n A B | rA rB -> \ rho c ->
+    OpCons[sem n A rho, fam n B rho, fam-anti n B rho,
+           \ x cx -> rB (extE n rho (prin x)) (consenv-ext n rho (prin x) c (prin-cons x cx))].pic (rA rho c) ;
+  lam n A M | rA rM -> \ rho c ->
+    OpCons[sem n A rho, fam n M rho, fam-anti n M rho,
+           \ x cx -> rM (extE n rho (prin x)) (consenv-ext n rho (prin x) c (prin-cons x cx))].lamc ;
+  app n M N | rM rN -> \ rho c -> appF-cons (sem n M rho) (sem n N rho) (rM rho c) (rN rho c) } ;
+
+------------------------------------------------------------------------
+-- Lemma 3.6: continuity
+
+-- a compact approximation of rho
+Apx (n : Nat) (rho : Env n) : U l = sig { k : Fin n -> Ty ; ink : (i : Fin n) -> (rho i).mem (k i) } ;
+
+penv (n : Nat) (k : Fin n -> Ty) : Env n = \ i -> prin (k i) ;
+
+-- k' below k pointwise gives the larger environment
+LeK (n : Nat) (k k' : Fin n -> Ty) : U l = (i : Fin n) -> Le (k' i) (k i) ;
+
+penv-incl (n : Nat) (k k' : Fin n -> Ty) (h : LeK n k k') : EnvIncl n (penv n k) (penv n k') =
+  \ i -> prin-anti (k' i) (k i) (h i) ;
+
+apx-top (n : Nat) (rho : Env n) : Apx n rho = struct { k = \ i -> om ; ink = \ i -> (rho i).fom } ;
+
+apx-meet (n : Nat) (rho : Env n) (a b : Apx n rho) : Apx n rho =
+  struct { k = \ i -> meet (a.k i) (b.k i) ; ink = \ i -> (rho i).fmeet (a.k i) (b.k i) (a.ink i) (b.ink i) } ;
+
+apx-meet-l (n : Nat) (rho : Env n) (a b : Apx n rho) : LeK n a.k (apx-meet n rho a b).k =
+  \ i -> le-meet-l (a.k i) (b.k i) ;
+apx-meet-r (n : Nat) (rho : Env n) (a b : Apx n rho) : LeK n b.k (apx-meet n rho a b).k =
+  \ i -> le-meet-r (a.k i) (b.k i) ;
+
+-- the point approximation: t at i, om elsewhere
+pt : (n : Nat) -> Fin n -> Ty -> Fin n -> Ty = split {
+  zero -> \ i t j -> efq i ;
+  suc n | r -> split {
+    none -> \ t -> split { none -> t ; some j -> om } ;
+    some i -> \ t -> split { none -> om ; some j -> r i t j } } } ;
+
+pt-in : (n : Nat) -> (rho : Env n) -> (i : Fin n) -> (t : Ty) -> (rho i).mem t ->
+    (j : Fin n) -> (rho j).mem (pt n i t j) = split {
+  zero -> \ rho i -> efq i ;
+  suc n | r -> \ rho -> split {
+    none -> \ t h -> split { none -> h ; some j -> (rho (fs n j)).fom } ;
+    some i -> \ t h -> split { none -> (rho (fz n)).fom ; some j -> r (tlE n rho) i t h j } } } ;
+
+pt-self : (n : Nat) -> (i : Fin n) -> (t : Ty) -> Le (pt n i t i) t = split {
+  zero -> \ i -> efq i ;
+  suc n | r -> split {
+    none -> \ t -> le-refl t ;
+    some i -> \ t -> r i t } } ;
+
+-- t in sem M rho, from a compact approximation
+ApxIn (n : Nat) (M : Tm n) (rho : Env n) (t : Ty) : U l = (a : Apx n rho) * (sem n M (penv n a.k)).mem t ;
+
+-- a property of approximations, monotone, is collected over the entries
+module Collect (n : Nat) (rho : Env n) (Q : (Fin n -> Ty) -> Ty -> Ty -> U l)
+    (qmono : (k k' : Fin n -> Ty) -> LeK n k k' -> (x v : Ty) -> Q k x v -> Q k' x v) {
+  AQ (x v : Ty) : U l = (a : Apx n rho) * Q a.k x v ;
+  collect : (f : Ty) -> EntS AQ f -> (a : Apx n rho) * EntS (Q a.k) f = split {
+    es-om -> (apx-top n rho, es-om) ;
+    es-arr x v h -> (h.1, es-arr x v h.2) ;
+    es-meet f1 f2 h1 h2 | r1 r2 ->
+      (apx-meet n rho r1.1 r2.1,
+       es-meet f1 f2
+         (ents-map (Q r1.1.k) (Q (apx-meet n rho r1.1 r2.1).k)
+            (qmono r1.1.k (apx-meet n rho r1.1 r2.1).k (apx-meet-l n rho r1.1 r2.1)) f1 r1.2)
+         (ents-map (Q r2.1.k) (Q (apx-meet n rho r1.1 r2.1).k)
+            (qmono r2.1.k (apx-meet n rho r1.1 r2.1).k (apx-meet-r n rho r1.1 r2.1)) f2 r2.2)) } ;
+} ;
+
+-- the entries of a binder at the approximation k
+BindQ (n : Nat) (A : Tm n) (B : Tm (suc n)) (k : Fin n -> Ty) (x v : Ty) : U l =
+  EntR (sem n A (penv n k)) (fam n B (penv n k)) x v ;
+
+bindq-mono (n : Nat) (A : Tm n) (B : Tm (suc n)) (k k' : Fin n -> Ty) (h : LeK n k k') (x v : Ty)
+    (q : BindQ n A B k x v) : BindQ n A B k' x v =
+  entr-mono (sem n A (penv n k)) (sem n A (penv n k')) (fam n B (penv n k)) (fam n B (penv n k'))
+    (sem-mono n A (penv n k) (penv n k') (penv-incl n k k' h))
+    (\ y hy -> sem-mono (suc n) B (extE n (penv n k) (prin y)) (extE n (penv n k') (prin y))
+                 (extE-incl n (penv n k) (penv n k') (prin y) (prin y) (penv-incl n k k' h) (incl-refl (prin y))))
+    x v q ;
+
+-- an approximation of the body, restricted to the old variables
+apx-tail (n : Nat) (rho : Env n) (X : Filt) (a : Apx (suc n) (extE n rho X)) : Apx n rho =
+  struct { k = \ i -> a.k (fs n i) ; ink = \ i -> a.ink (fs n i) } ;
+
+-- the body: the value at the new variable is below x
+body-incl (n : Nat) (rho : Env n) (x : Ty) (a : Apx (suc n) (extE n rho (prin x))) :
+    EnvIncl (suc n) (penv (suc n) a.k) (extE n (penv n (apx-tail n rho (prin x) a).k) (prin x)) = split {
+  none -> prin-anti x (a.k (fz n)) (a.ink (fz n)) ;
+  some i -> incl-refl (prin (a.k (fs n i))) } ;
+
+-- one entry of a binder
+bind-entry (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
+    (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
+    (rB : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) B rho').mem t -> ApxIn (suc n) B rho' t)
+    (x v : Ty) (e : EntR (sem n A rho) (fam n B rho) x v) :
+    (a : Apx n rho) * BindQ n A B a.k x v =
+  (apx-meet n rho p.1 q,
+   (tyin-mono (sem n A (penv n p.1.k)) (sem n A (penv n (apx-meet n rho p.1 q).k))
+      (sem-mono n A (penv n p.1.k) (penv n (apx-meet n rho p.1 q).k)
+         (penv-incl n p.1.k (apx-meet n rho p.1 q).k (apx-meet-l n rho p.1 q)))
+      x (struct { a = e.1.a ; ina = p.2 ; tp = e.1.tp }),
+    sem-mono (suc n) B (penv (suc n) w.1.k) (extE n (penv n (apx-meet n rho p.1 q).k) (prin x))
+      (\ i -> incl-trans (penv (suc n) w.1.k i) (extE n (penv n q.k) (prin x) i)
+                (extE n (penv n (apx-meet n rho p.1 q).k) (prin x) i)
+                (body-incl n rho x w.1 i)
+                (extE-incl n (penv n q.k) (penv n (apx-meet n rho p.1 q).k) (prin x) (prin x)
+                   (penv-incl n q.k (apx-meet n rho p.1 q).k (apx-meet-r n rho p.1 q)) (incl-refl (prin x)) i))
+      v w.2))
+  where {
+    p : ApxIn n A rho e.1.a = rA e.1.a e.1.ina ;
+    w : ApxIn (suc n) B (extE n rho (prin x)) v = rB (extE n rho (prin x)) v e.2 ;
+    q : Apx n rho = apx-tail n rho (prin x) w.1 ; } ;
+
+-- the entries of a binder
+bind-ents (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
+    (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
+    (rB : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) B rho').mem t -> ApxIn (suc n) B rho' t)
+    (f : Ty) (e : EntS (EntR (sem n A rho) (fam n B rho)) f) :
+    (a : Apx n rho) * EntS (BindQ n A B a.k) f =
+  Collect[n, rho, BindQ n A B, bindq-mono n A B].collect f
+    (ents-map (EntR (sem n A rho) (fam n B rho)) (Collect[n, rho, BindQ n A B, bindq-mono n A B].AQ)
+       (bind-entry n A B rho rA rB) f e) ;
+
+-- the product: the domain and the entries
+cont-pi (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
+    (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
+    (rB : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) B rho').mem t -> ApxIn (suc n) B rho' t)
+    (t : Ty) (w : PiW (sem n A rho) (fam n B rho) t) : ApxIn n (pp n A B) rho t =
+  (apx-meet n rho p.1 q.1,
+   inr (struct {
+     a = w.a ; b = w.b ; le = w.le ;
+     ina = sem-mono n A (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.a p.2 ;
+     ents = ents-map (BindQ n A B q.1.k) (BindQ n A B (apx-meet n rho p.1 q.1).k)
+              (bindq-mono n A B q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.b q.2 }))
+  where {
+    p : ApxIn n A rho w.a = rA w.a w.ina ;
+    q : (a : Apx n rho) * EntS (BindQ n A B a.k) w.b = bind-ents n A B rho rA rB w.b w.ents ; } ;
+
+cont-pi-by (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
+    (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
+    (rB : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) B rho').mem t -> ApxIn (suc n) B rho' t)
+    (t : Ty) : (sem n (pp n A B) rho).mem t -> ApxIn n (pp n A B) rho t = split {
+  inl e -> (apx-top n rho, inl e) ;
+  inr w -> cont-pi n A B rho rA rB t w } ;
+
+cont-lam (n : Nat) (A : Tm n) (M : Tm (suc n)) (rho : Env n)
+    (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
+    (rM : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) M rho').mem t -> ApxIn (suc n) M rho' t)
+    (t : Ty) (w : LamW (sem n A rho) (fam n M rho) t) : ApxIn n (lam n A M) rho t =
+  (q.1, struct { f = w.f ; le = w.le ; ents = q.2 })
+  where { q : (a : Apx n rho) * EntS (BindQ n A M a.k) w.f = bind-ents n A M rho rA rM w.f w.ents ; } ;
+
+cont-app (n : Nat) (M N : Tm n) (rho : Env n)
+    (rM : (t : Ty) -> (sem n M rho).mem t -> ApxIn n M rho t)
+    (rN : (t : Ty) -> (sem n N rho).mem t -> ApxIn n N rho t)
+    (t : Ty) (w : AppW (sem n M rho) (sem n N rho) t) : ApxIn n (app n M N) rho t =
+  (apx-meet n rho p.1 q.1,
+   struct {
+     g = w.g ; x = w.x ;
+     ing = sem-mono n M (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.g p.2 ;
+     inx = sem-mono n N (penv n q.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.x q.2 ;
+     le = w.le })
+  where {
+    p : ApxIn n M rho w.g = rM w.g w.ing ;
+    q : ApxIn n N rho w.x = rN w.x w.inx ; } ;
+
+-- Lemma 3.6
+cont : (n : Nat) -> (M : Tm n) -> (rho : Env n) -> (t : Ty) -> (sem n M rho).mem t -> ApxIn n M rho t = split {
+  var n i -> \ rho t h -> (struct { k = pt n i t ; ink = pt-in n rho i t h }, pt-self n i t) ;
+  uu n -> \ rho t h -> (apx-top n rho, h) ;
+  pp n A B | rA rB -> \ rho -> cont-pi-by n A B rho (rA rho) rB ;
+  lam n A M | rA rM -> \ rho -> cont-lam n A M rho (rA rho) rM ;
+  app n M N | rM rN -> \ rho -> cont-app n M N rho (rM rho) (rN rho) } ;
+
+-- the last variable: t in sem M (rho, X) is in sem M (rho, prin x) for an x in X
+LastIn (n : Nat) (M : Tm (suc n)) (rho : Env n) (X : Filt) (t : Ty) : U l =
+  (x : Ty) * (X.mem x * (fam n M rho x).mem t) ;
+
+last-incl (n : Nat) (rho : Env n) (X : Filt) (a : Apx (suc n) (extE n rho X)) :
+    EnvIncl (suc n) (penv (suc n) a.k) (extE n rho (prin (a.k (fz n)))) = split {
+  none -> incl-refl (prin (a.k (fz n))) ;
+  some i -> prin-sub (a.k (fs n i)) (rho i) (a.ink (fs n i)) } ;
+
+cont-last (n : Nat) (M : Tm (suc n)) (rho : Env n) (X : Filt) (t : Ty) (h : (sem (suc n) M (extE n rho X)).mem t) :
+    LastIn n M rho X t =
+  (c.1.k (fz n), (c.1.ink (fz n),
+    sem-mono (suc n) M (penv (suc n) c.1.k) (extE n rho (prin (c.1.k (fz n)))) (last-incl n rho X c.1) t c.2))
+  where { c : ApxIn (suc n) M (extE n rho X) t = cont (suc n) M (extE n rho X) t h ; } ;
+
+------------------------------------------------------------------------
+-- Lemma 3.7: the traversal over a kit
+
+module SemTrav (K : Kit)
+    (law-z : (n : Nat) -> (rho : Env n) -> (X : Filt) -> FEq (sem (suc n) (K.vr (suc n) (K.vz n)) (extE n rho X)) X)
+    (law-w : (n : Nat) -> (v : K.V n) -> (rho : Env n) -> (X : Filt) ->
+       FEq (sem (suc n) (K.vr (suc n) (K.wkv n v)) (extE n rho X)) (sem n (K.vr n v) rho)) {
+  module T = Trav[K] ;
+
+  -- the environment of a substitution
+  senv (m n : Nat) (s : Fin m -> K.V n) (rho : Env n) : Env m = \ i -> sem n (K.vr n (s i)) rho ;
+
+  -- under a binder
+  senv-lift (m n : Nat) (s : Fin m -> K.V n) (rho : Env n) (X : Filt) :
+      EnvEq (suc m) (senv (suc m) (suc n) (T.lift m n s) (extE n rho X)) (extE m (senv m n s rho) X) = split {
+    none -> law-z n rho X ;
+    some i -> law-w n (s i) rho X } ;
+
+  bind (m n : Nat) (B : Tm (suc m)) (s : Fin m -> K.V n) (rho : Env n)
+      (rB : (n' : Nat) -> (s' : Fin (suc m) -> K.V n') -> (rho' : Env n') ->
+              FEq (sem n' (T.trav (suc m) B n' s') rho') (sem (suc m) B (senv (suc m) n' s' rho')))
+      (x : Ty) : FEq (fam n (T.trav (suc m) B (suc n) (T.lift m n s)) rho x) (fam m B (senv m n s rho) x) =
+    feq-trans (fam n (T.trav (suc m) B (suc n) (T.lift m n s)) rho x)
+      (sem (suc m) B (senv (suc m) (suc n) (T.lift m n s) (extE n rho (prin x))))
+      (fam m B (senv m n s rho) x)
+      (rB (suc n) (T.lift m n s) (extE n rho (prin x)))
+      (sem-eq (suc m) B (senv (suc m) (suc n) (T.lift m n s) (extE n rho (prin x))) (extE m (senv m n s rho) (prin x))
+         (senv-lift m n s rho (prin x))) ;
+
+  trav-sem : (m : Nat) -> (M : Tm m) -> (n : Nat) -> (s : Fin m -> K.V n) -> (rho : Env n) ->
+      FEq (sem n (T.trav m M n s) rho) (sem m M (senv m n s rho)) = split {
+    var m i -> \ n s rho -> feq-refl (sem n (K.vr n (s i)) rho) ;
+    uu m -> \ n s rho -> feq-refl univF ;
+    pp m A B | rA rB -> \ n s rho ->
+      piF-eq (sem n (T.trav m A n s) rho) (sem m A (senv m n s rho))
+        (fam n (T.trav (suc m) B (suc n) (T.lift m n s)) rho) (fam m B (senv m n s rho))
+        (rA n s rho) (\ x hx -> bind m n B s rho rB x) ;
+    lam m A M | rA rM -> \ n s rho ->
+      lamF-eq (sem n (T.trav m A n s) rho) (sem m A (senv m n s rho))
+        (fam n (T.trav (suc m) M (suc n) (T.lift m n s)) rho) (fam m M (senv m n s rho))
+        (rA n s rho) (\ x hx -> bind m n M s rho rM x) ;
+    app m M N | rM rN -> \ n s rho ->
+      appF-eq (sem n (T.trav m M n s) rho) (sem m M (senv m n s rho))
+        (sem n (T.trav m N n s) rho) (sem m N (senv m n s rho)) (rM n s rho) (rN n s rho) } ;
+} ;
+
+-- renaming: both laws by definition
+module RS = SemTrav[renK, \ n rho X -> feq-refl X, \ n i rho X -> feq-refl (rho i)] ;
+
+wk-sem (n : Nat) (M : Tm n) (rho : Env n) (X : Filt) : FEq (sem (suc n) (wk n M) (extE n rho X)) (sem n M rho) =
+  RS.trav-sem n M (suc n) (\ i -> fs n i) (extE n rho X) ;
+
+-- weakening at any environment
+wk-sem-tl (n : Nat) (M : Tm n) (rho : Env (suc n)) : FEq (sem (suc n) (wk n M) rho) (sem n M (tlE n rho)) =
+  feq-trans (sem (suc n) (wk n M) rho) (sem (suc n) (wk n M) (extE n (tlE n rho) (rho (fz n)))) (sem n M (tlE n rho))
+    (sem-eq (suc n) (wk n M) rho (extE n (tlE n rho) (rho (fz n))) (eta-env n rho))
+    (wk-sem n M (tlE n rho) (rho (fz n))) ;
+
+-- substitution: the second law is wk-sem
+module SS = SemTrav[subK, \ n rho X -> feq-refl X, \ n M rho X -> wk-sem n M rho X] ;
+
+sub1-env (n : Nat) (N : Tm n) (rho : Env n) :
+    EnvEq (suc n) (SS.senv (suc n) n (sub1 n N) rho) (extE n rho (sem n N rho)) = split {
+  none -> feq-refl (sem n N rho) ;
+  some i -> feq-refl (rho i) } ;
+
+-- paper Lemma 2.29
+subst1-sem (n : Nat) (M : Tm (suc n)) (N : Tm n) (rho : Env n) :
+    FEq (sem n (subst1 n M N) rho) (sem (suc n) M (extE n rho (sem n N rho))) =
+  feq-trans (sem n (subst1 n M N) rho) (sem (suc n) M (SS.senv (suc n) n (sub1 n N) rho))
+    (sem (suc n) M (extE n rho (sem n N rho)))
+    (SS.trav-sem (suc n) M n (sub1 n N) rho)
+    (sem-eq (suc n) M (SS.senv (suc n) n (sub1 n N) rho) (extE n rho (sem n N rho)) (sub1-env n N rho)) ;
+
+-- from here on sem is used through its clauses and the lemmas above
+opaque sem ;

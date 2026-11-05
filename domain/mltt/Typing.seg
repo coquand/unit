@@ -1,0 +1,430 @@
+-- Typing.seg: semantic typing (step 2; NOTE-1-2.txt section 2), paper
+-- Fig. 2 in the intensional form of Prop. 2.15, as one inductive family
+-- Tp indexed by two judgement forms:
+--   el u a       u : a
+--   ent f A phi  each entry x -> v of f has x : A and v : y for some y
+--                with phi <= x -> y (the application phi(x) is never
+--                computed).
+-- Rules (each conclusion u : a for any u, a in the class of the
+-- canonical form, so no conversion rule):
+--   Bot  om <= u, a : U;   Univ  u == U, a == U;
+--   Pi   u == Pi(A, phi), a == U, A : U, ent phi A (om -> U), Cons phi;
+--   Lam  u == f, a == Pi(A, phi), Pi(A, phi) : U, ent f A phi, Cons f.
+-- Proved: 2.1 conversion (tp-conv), 2.2 presupposition (tp-pre),
+-- 2.3 generation (shape) and its consequences (below-univ, below-pi,
+-- pi-dom, pi-fam-cons), 2.4 typed elements are consistent (tp-cons),
+-- Prop 2.5 = paper 2.17 (tp-up, tp-up-ent), Prop 2.6 = paper 2.16
+-- (tp-join), Lemma 2.7 (ent-sel), Lemma 2.8 (app-sel: the values of a
+-- typed function, what is used of paper 2.15; with f <= x -> w, for the
+-- application case of soundness).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ;
+
+------------------------------------------------------------------------
+-- equivalence of types
+
+Eqv (s t : Ty) : U l = Le s t * Le t s ;
+
+eqv-refl (s : Ty) : Eqv s s = (le-refl s, le-refl s) ;
+eqv-sym (s t : Ty) (e : Eqv s t) : Eqv t s = (e.2, e.1) ;
+eqv-trans (s t u : Ty) (e1 : Eqv s t) (e2 : Eqv t u) : Eqv s u =
+  (le-trans s t u e1.1 e2.1, le-trans u t s e2.2 e1.2) ;
+
+-- meets of equivalent types
+eqv-meet (s s' t t' : Ty) (e1 : Eqv s s') (e2 : Eqv t t') : Eqv (meet s t) (meet s' t') =
+  (le-meet-mono s s' t t' e1.1 e2.1, le-meet-mono s' s t' t e1.2 e2.2) ;
+
+-- an om-like type is neutral for meets
+eqv-meet-om-l (u v : Ty) (e : Le om u) : Eqv (meet u v) v =
+  (le-meet-r u v, le-meet v u v (le-trans v om u (le-om v) e) (le-refl v)) ;
+
+eqv-meet-om-r (u v : Ty) (e : Le om v) : Eqv (meet u v) u =
+  (le-meet-l u v, le-meet u u v (le-refl u) (le-trans u om v (le-om u) e)) ;
+
+-- Pi(A, phi) /\ Pi(B, psi) == Pi(A /\ B, phi /\ psi)
+eqv-pi-meet (u v A phi B psi : Ty) (e1 : Eqv u (pi A phi)) (e2 : Eqv v (pi B psi)) :
+    Eqv (meet u v) (pi (meet A B) (meet phi psi)) =
+  (le-trans (meet u v) (meet (pi A phi) (pi B psi)) (pi (meet A B) (meet phi psi))
+     (le-meet-mono u (pi A phi) v (pi B psi) e1.1 e2.1) (le-pi-meet A phi B psi),
+   le-meet (pi (meet A B) (meet phi psi)) u v
+     (le-trans (pi (meet A B) (meet phi psi)) (pi A phi) u
+        (le-pi (meet A B) A (meet phi psi) phi (le-meet-l A B) (le-meet-l phi psi)) e1.2)
+     (le-trans (pi (meet A B) (meet phi psi)) (pi B psi) v
+        (le-pi (meet A B) B (meet phi psi) psi (le-meet-r A B) (le-meet-r phi psi)) e2.2)) ;
+
+eqv-pi-inj (A phi B psi : Ty) (e : Eqv (pi A phi) (pi B psi)) : Eqv A B * Eqv phi psi =
+  ((i.1, j.1), (i.2, j.2))
+  where {
+    i : Le A B * Le phi psi = pi-inj A phi B psi e.1 ;
+    j : Le B A * Le psi phi = pi-inj B psi A phi e.2 ; } ;
+
+------------------------------------------------------------------------
+-- semantic typing
+
+data Form = el (u a : Ty) | ent (f A phi : Ty) ;
+
+data Tp : (J : Form) -> U l =
+    t-bot (u a : Ty) (e : Le om u) (h : Tp (el a univ)) : Tp (el u a)
+  | t-univ (u a : Ty) (e1 : Eqv u univ) (e2 : Eqv a univ) : Tp (el u a)
+  | t-pi (u a A phi : Ty) (e1 : Eqv u (pi A phi)) (e2 : Eqv a univ)
+      (h1 : Tp (el A univ)) (h2 : Tp (ent phi A (arr om univ))) (c : Cons phi) : Tp (el u a)
+  | t-lam (u a A phi f : Ty) (e1 : Eqv u f) (e2 : Eqv a (pi A phi))
+      (h1 : Tp (el (pi A phi) univ)) (h2 : Tp (ent f A phi)) (c : Cons f) : Tp (el u a)
+  | en-om (A phi : Ty) : Tp (ent om A phi)
+  | en-arr (x v y A phi : Ty) (h1 : Tp (el x A)) (le : Le phi (arr x y)) (h2 : Tp (el v y)) :
+      Tp (ent (arr x v) A phi)
+  | en-meet (f1 f2 A phi : Ty) (h1 : Tp (ent f1 A phi)) (h2 : Tp (ent f2 A phi)) :
+      Tp (ent (meet f1 f2) A phi) ;
+
+-- a statement for each judgement form
+ByForm (P : Ty -> Ty -> U l) (Q : Ty -> Ty -> Ty -> U l) : Form -> U l = split {
+  el u a -> P u a ;
+  ent f A phi -> Q f A phi } ;
+
+NoEnt (f A phi : Ty) : U l = Top ;
+
+tp-UU : Tp (el univ univ) = t-univ univ univ (eqv-refl univ) (eqv-refl univ) ;
+tp-omU : Tp (el om univ) = t-bot om univ (le-refl om) tp-UU ;
+tp-omom : Tp (el om om) = t-bot om om (le-refl om) tp-omU ;
+
+------------------------------------------------------------------------
+-- Lemma 2.1: conversion
+
+ConvP (u a : Ty) : U l = (u' a' : Ty) -> Eqv u u' -> Eqv a a' -> Tp (el u' a') ;
+
+tp-conv-by : (J : Form) -> Tp J -> ByForm ConvP NoEnt J = split {
+  t-bot u a e h | rh -> \ u' a' eu ea -> t-bot u' a' (le-trans om u u' e eu.1) (rh a' univ ea (eqv-refl univ)) ;
+  t-univ u a e1 e2 -> \ u' a' eu ea ->
+    t-univ u' a' (eqv-trans u' u univ (eqv-sym u u' eu) e1) (eqv-trans a' a univ (eqv-sym a a' ea) e2) ;
+  t-pi u a A phi e1 e2 h1 h2 c | r1 r2 -> \ u' a' eu ea ->
+    t-pi u' a' A phi (eqv-trans u' u (pi A phi) (eqv-sym u u' eu) e1) (eqv-trans a' a univ (eqv-sym a a' ea) e2) h1 h2 c ;
+  t-lam u a A phi f e1 e2 h1 h2 c | r1 r2 -> \ u' a' eu ea ->
+    t-lam u' a' A phi f (eqv-trans u' u f (eqv-sym u u' eu) e1) (eqv-trans a' a (pi A phi) (eqv-sym a a' ea) e2) h1 h2 c ;
+  en-om A phi -> tt ;
+  en-arr x v y A phi h1 le h2 | r1 r2 -> tt ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> tt } ;
+
+tp-conv (u a u' a' : Ty) (h : Tp (el u a)) (eu : Eqv u u') (ea : Eqv a a') : Tp (el u' a') =
+  tp-conv-by (el u a) h u' a' eu ea ;
+
+------------------------------------------------------------------------
+-- Lemma 2.3: generation
+
+data Shape (u a : Ty) : U l =
+    sh-bot (e : Le om u) (h : Tp (el a univ))
+  | sh-univ (e1 : Eqv u univ) (e2 : Eqv a univ)
+  | sh-pi (A phi : Ty) (e1 : Eqv u (pi A phi)) (e2 : Eqv a univ)
+      (h1 : Tp (el A univ)) (h2 : Tp (ent phi A (arr om univ))) (c : Cons phi)
+  | sh-lam (A phi f : Ty) (e1 : Eqv u f) (e2 : Eqv a (pi A phi))
+      (h1 : Tp (el (pi A phi) univ)) (h2 : Tp (ent f A phi)) (c : Cons f) ;
+
+shape-by : (J : Form) -> Tp J -> ByForm Shape NoEnt J = split {
+  t-bot u a e h -> sh-bot e h ;
+  t-univ u a e1 e2 -> sh-univ e1 e2 ;
+  t-pi u a A phi e1 e2 h1 h2 c -> sh-pi A phi e1 e2 h1 h2 c ;
+  t-lam u a A phi f e1 e2 h1 h2 c -> sh-lam A phi f e1 e2 h1 h2 c ;
+  en-om A phi -> tt ;
+  en-arr x v y A phi h1 le h2 -> tt ;
+  en-meet f1 f2 A phi h1 h2 -> tt } ;
+
+shape (u a : Ty) (h : Tp (el u a)) : Shape u a = shape-by (el u a) h ;
+
+-- the entries of f, by the shape of f
+EntInv (A phi : Ty) : Ty -> U l = split {
+  om -> Top ; univ -> Empty ; pi s t -> Empty ;
+  arr x v -> Tp (el x A) * ((y : Ty) * (Le phi (arr x y) * Tp (el v y))) ;
+  meet f1 f2 -> Tp (ent f1 A phi) * Tp (ent f2 A phi) } ;
+
+ElTop (u a : Ty) : U l = Top ;
+EntInvF (f A phi : Ty) : U l = EntInv A phi f ;
+
+ent-inv-by : (J : Form) -> Tp J -> ByForm ElTop EntInvF J = split {
+  t-bot u a e h -> tt ;
+  t-univ u a e1 e2 -> tt ;
+  t-pi u a A phi e1 e2 h1 h2 c -> tt ;
+  t-lam u a A phi f e1 e2 h1 h2 c -> tt ;
+  en-om A phi -> tt ;
+  en-arr x v y A phi h1 le h2 -> (h1, (y, (le, h2))) ;
+  en-meet f1 f2 A phi h1 h2 -> (h1, h2) } ;
+
+ent-inv (f A phi : Ty) (h : Tp (ent f A phi)) : EntInv A phi f = ent-inv-by (ent f A phi) h ;
+
+-- (a) a type below U is U
+below-univ-by (a : Ty) (le : Le a univ) : Shape a univ -> Eqv a univ = split {
+  sh-bot e h -> efq (om-not-univ (le-trans om a univ e le)) ;
+  sh-univ e1 e2 -> e1 ;
+  sh-pi A phi e1 e2 h1 h2 c -> efq (pi-not-univ A phi (le-trans (pi A phi) a univ e1.2 le)) ;
+  sh-lam A phi f e1 e2 h1 h2 c -> efq (univ-not-pi A phi e2.1) } ;
+
+below-univ (a : Ty) (h : Tp (el a univ)) (le : Le a univ) : Eqv a univ =
+  below-univ-by a le (shape a univ h) ;
+
+-- (b) a type below Pi(A, phi) is a Pi
+PiBelow (a A phi : Ty) : U l =
+  (A1 : Ty) * ((phi1 : Ty) * (Eqv a (pi A1 phi1) * (Le A1 A * (Le phi1 phi *
+    (Tp (el A1 univ) * (Tp (ent phi1 A1 (arr om univ)) * Cons phi1)))))) ;
+
+below-pi-by (a A phi : Ty) (le : Le a (pi A phi)) : Shape a univ -> PiBelow a A phi = split {
+  sh-bot e h -> efq (om-not-pi A phi (le-trans om a (pi A phi) e le)) ;
+  sh-univ e1 e2 -> efq (univ-not-pi A phi (le-trans univ a (pi A phi) e1.2 le)) ;
+  sh-pi A1 phi1 e1 e2 h1 h2 c ->
+    (A1, (phi1, (e1, ((pi-inj A1 phi1 A phi (le-trans (pi A1 phi1) a (pi A phi) e1.2 le)).1,
+      ((pi-inj A1 phi1 A phi (le-trans (pi A1 phi1) a (pi A phi) e1.2 le)).2, (h1, (h2, c))))))) ;
+  sh-lam A2 phi2 f e1 e2 h1 h2 c -> efq (univ-not-pi A2 phi2 e2.1) } ;
+
+below-pi (a A phi : Ty) (h : Tp (el a univ)) (le : Le a (pi A phi)) : PiBelow a A phi =
+  below-pi-by a A phi le (shape a univ h) ;
+
+-- (c) the parts of a Pi type
+pi-parts (A phi : Ty) (b : PiBelow (pi A phi) A phi) : Eqv A b.1 * Eqv phi b.2.1 =
+  eqv-pi-inj A phi b.1 b.2.1 b.2.2.1 ;
+
+pi-dom (A phi : Ty) (h : Tp (el (pi A phi) univ)) : Tp (el A univ) =
+  tp-conv b.1 univ A univ b.2.2.2.2.2.1 (eqv-sym A b.1 (pi-parts A phi b).1) (eqv-refl univ)
+  where { b : PiBelow (pi A phi) A phi = below-pi (pi A phi) A phi h (le-refl (pi A phi)) ; } ;
+
+pi-fam-cons (A phi : Ty) (h : Tp (el (pi A phi) univ)) : Cons phi =
+  cons-down b.2.1 phi (pi-parts A phi b).2.2 b.2.2.2.2.2.2.2
+  where { b : PiBelow (pi A phi) A phi = below-pi (pi A phi) A phi h (le-refl (pi A phi)) ; } ;
+
+------------------------------------------------------------------------
+-- Lemma 2.2: presupposition
+
+tp-pre-by (u a : Ty) : Shape u a -> Tp (el a univ) = split {
+  sh-bot e h -> h ;
+  sh-univ e1 e2 -> t-univ a univ e2 (eqv-refl univ) ;
+  sh-pi A phi e1 e2 h1 h2 c -> t-univ a univ e2 (eqv-refl univ) ;
+  sh-lam A phi f e1 e2 h1 h2 c -> tp-conv (pi A phi) univ a univ h1 (eqv-sym a (pi A phi) e2) (eqv-refl univ) } ;
+
+tp-pre (u a : Ty) (h : Tp (el u a)) : Tp (el a univ) = tp-pre-by u a (shape u a h) ;
+
+------------------------------------------------------------------------
+-- Lemma 2.4: typed elements are consistent
+
+ConsP (u a : Ty) : U l = Cons u ;
+
+tp-cons-by : (J : Form) -> Tp J -> ByForm ConsP NoEnt J = split {
+  t-bot u a e h | rh -> cons-down om u e cons-om ;
+  t-univ u a e1 e2 -> cons-down univ u e1.2 cons-univ ;
+  t-pi u a A phi e1 e2 h1 h2 c | r1 r2 -> cons-down (pi A phi) u e1.2 (cons-pi A phi r1 c) ;
+  t-lam u a A phi f e1 e2 h1 h2 c | r1 r2 -> cons-down f u e1.2 c ;
+  en-om A phi -> tt ;
+  en-arr x v y A phi h1 le h2 | r1 r2 -> tt ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> tt } ;
+
+tp-cons (u a : Ty) (h : Tp (el u a)) : Cons u = tp-cons-by (el u a) h ;
+
+------------------------------------------------------------------------
+-- Proposition 2.5 (paper 2.17): upward monotonicity in the type
+
+UpP (u a : Ty) : U l = (a' : Ty) -> Le a' a -> Tp (el a' univ) -> Tp (el u a') ;
+UpQ (f A phi : Ty) : U l =
+  (A' phi' : Ty) -> Le A' A -> Le phi' phi -> Tp (el A' univ) -> Tp (ent f A' phi') ;
+
+-- the Lam case: a' == Pi(A1, phi1) below Pi(A, phi)
+up-lam (u a' A phi f : Ty) (e1 : Eqv u f) (c : Cons f) (rec : UpQ f A phi)
+    (h' : Tp (el a' univ)) (b : PiBelow a' A phi) : Tp (el u a') =
+  t-lam u a' b.1 b.2.1 f e1 b.2.2.1
+    (tp-conv a' univ (pi b.1 b.2.1) univ h' b.2.2.1 (eqv-refl univ))
+    (rec b.1 b.2.1 b.2.2.2.1 b.2.2.2.2.1 b.2.2.2.2.2.1) c ;
+
+tp-up-by : (J : Form) -> Tp J -> ByForm UpP UpQ J = split {
+  t-bot u a e h | rh -> \ a' le h' -> t-bot u a' e h' ;
+  t-univ u a e1 e2 -> \ a' le h' -> t-univ u a' e1 (below-univ a' h' (le-trans a' a univ le e2.1)) ;
+  t-pi u a A phi e1 e2 h1 h2 c | r1 r2 -> \ a' le h' ->
+    t-pi u a' A phi e1 (below-univ a' h' (le-trans a' a univ le e2.1)) h1 h2 c ;
+  t-lam u a A phi f e1 e2 h1 h2 c | r1 r2 -> \ a' le h' ->
+    up-lam u a' A phi f e1 c r2 h' (below-pi a' A phi h' (le-trans a' a (pi A phi) le e2.1)) ;
+  en-om A phi -> \ A' phi' l1 l2 hA -> en-om A' phi' ;
+  en-arr x v y A phi h1 le h2 | r1 r2 -> \ A' phi' l1 l2 hA ->
+    en-arr x v y A' phi' (r1 A' l1 hA) (le-trans phi' phi (arr x y) l2 le) h2 ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> \ A' phi' l1 l2 hA ->
+    en-meet f1 f2 A' phi' (r1 A' phi' l1 l2 hA) (r2 A' phi' l1 l2 hA) } ;
+
+tp-up (u a a' : Ty) (h : Tp (el u a)) (le : Le a' a) (h' : Tp (el a' univ)) : Tp (el u a') =
+  tp-up-by (el u a) h a' le h' ;
+
+tp-up-ent (f A phi A' phi' : Ty) (h : Tp (ent f A phi)) (l1 : Le A' A) (l2 : Le phi' phi)
+    (hA : Tp (el A' univ)) : Tp (ent f A' phi') =
+  tp-up-by (ent f A phi) h A' phi' l1 l2 hA ;
+
+------------------------------------------------------------------------
+-- Proposition 2.6 (paper 2.16): joins of compatible typed elements
+
+JoinP (u a : Ty) : U l = (v : Ty) -> Tp (el v a) -> Cons (meet u v) -> Tp (el (meet u v) a) ;
+
+-- v om-like: u /\ v == u
+join-bot-r (u v a : Ty) (h : Tp (el u a)) (e : Le om v) : Tp (el (meet u v) a) =
+  tp-conv u a (meet u v) a h (eqv-sym (meet u v) u (eqv-meet-om-r u v e)) (eqv-refl a) ;
+
+-- a univ component in u and a pi component in v clash
+clash-up (u v A phi : Ty) (c : Cons (meet u v)) (lu : Le u univ) (lv : Le v (pi A phi)) : Empty =
+  cons-clash (meet u v) c i.1 i.2.1 (sel-l u v univ (inv-univ u lu)) (sel-r u v (pi i.1 i.2.1) i.2.2.2.2.1)
+  where { i : InvPi v A phi = inv-pi v A phi lv ; } ;
+
+-- a == U against a == Pi(A, phi)
+univ-pi (a A phi : Ty) (e : Eqv a univ) (e' : Eqv a (pi A phi)) : Empty =
+  univ-not-pi A phi (le-trans univ a (pi A phi) e.2 e'.1) ;
+
+join-univ (u a v : Ty) (e1 : Eqv u univ) (e2 : Eqv a univ) (c : Cons (meet u v)) :
+    Shape v a -> Tp (el (meet u v) a) = split {
+  sh-bot e h -> join-bot-r u v a (t-univ u a e1 e2) e ;
+  sh-univ e1' e2' -> t-univ (meet u v) a
+    (eqv-trans (meet u v) (meet univ univ) univ (eqv-meet u univ v univ e1 e1')
+       (le-meet-l univ univ, le-meet univ univ univ (le-refl univ) (le-refl univ))) e2 ;
+  sh-pi B psi e1' e2' h1 h2 c' -> efq (clash-up u v B psi c e1.1 e1'.1) ;
+  sh-lam B psi g e1' e2' h1 h2 c' -> efq (univ-pi a B psi e2 e2') } ;
+
+-- Pi/Pi: Pi(A /\ B, phi /\ psi)
+join-pi-pi (u v a A phi B psi : Ty) (e1 : Eqv u (pi A phi)) (e1' : Eqv v (pi B psi)) (e2 : Eqv a univ)
+    (rA : JoinP A univ) (hB : Tp (el B univ))
+    (h2 : Tp (ent phi A (arr om univ))) (h2' : Tp (ent psi B (arr om univ)))
+    (c : Cons (meet u v)) : Tp (el (meet u v) a) =
+  t-pi (meet u v) a (meet A B) (meet phi psi) (eqv-pi-meet u v A phi B psi e1 e1') e2 hAB
+    (en-meet phi psi (meet A B) (arr om univ)
+       (tp-up-ent phi A (arr om univ) (meet A B) (arr om univ) h2 (le-meet-l A B) (le-refl (arr om univ)) hAB)
+       (tp-up-ent psi B (arr om univ) (meet A B) (arr om univ) h2' (le-meet-r A B) (le-refl (arr om univ)) hAB))
+    cp.2
+  where {
+    cpp : Cons (meet (pi A phi) (pi B psi)) =
+      cons-down (meet u v) (meet (pi A phi) (pi B psi)) (le-meet-mono u (pi A phi) v (pi B psi) e1.1 e1'.1) c ;
+    cp : Cons (meet A B) * Cons (meet phi psi) =
+      cons-psel (meet (pi A phi) (pi B psi)) (meet A B) (meet phi psi) cpp
+        (ps-meet (meet (pi A phi) (pi B psi)) A phi B psi
+           (ps-l (pi A phi) (pi B psi) A phi (ps-here A phi))
+           (ps-r (pi A phi) (pi B psi) B psi (ps-here B psi))) ;
+    hAB : Tp (el (meet A B) univ) = rA B hB cp.1 ; } ;
+
+join-pi (u a A phi v : Ty) (e1 : Eqv u (pi A phi)) (e2 : Eqv a univ) (h1 : Tp (el A univ))
+    (h2 : Tp (ent phi A (arr om univ))) (c0 : Cons phi) (rA : JoinP A univ) (c : Cons (meet u v)) :
+    Shape v a -> Tp (el (meet u v) a) = split {
+  sh-bot e h -> join-bot-r u v a (t-pi u a A phi e1 e2 h1 h2 c0) e ;
+  sh-univ e1' e2' -> efq (clash-up v u A phi
+      (cons-down (meet u v) (meet v u) (le-meet (meet u v) v u (le-meet-r u v) (le-meet-l u v)) c) e1'.1 e1.1) ;
+  sh-pi B psi e1' e2' h1' h2' c' -> join-pi-pi u v a A phi B psi e1 e1' e2 rA h1' h2 h2' c ;
+  sh-lam B psi g e1' e2' h1' h2' c' -> efq (univ-pi a B psi e2 e2') } ;
+
+-- Lam/Lam: the entries of g move to (A, phi)
+join-lam (u a A phi f v : Ty) (e1 : Eqv u f) (e2 : Eqv a (pi A phi)) (h1 : Tp (el (pi A phi) univ))
+    (h2 : Tp (ent f A phi)) (c0 : Cons f) (c : Cons (meet u v)) :
+    Shape v a -> Tp (el (meet u v) a) = split {
+  sh-bot e h -> join-bot-r u v a (t-lam u a A phi f e1 e2 h1 h2 c0) e ;
+  sh-univ e1' e2' -> efq (univ-pi a A phi e2' e2) ;
+  sh-pi B psi e1' e2' h1' h2' c' -> efq (univ-pi a A phi e2' e2) ;
+  sh-lam B psi g e1' e2' h1' h2' c' ->
+    t-lam (meet u v) a A phi (meet f g) (eqv-meet u f v g e1 e1') e2 h1
+      (en-meet f g A phi h2
+         (tp-up-ent g B psi A phi h2'
+            (pi-inj A phi B psi (le-trans (pi A phi) a (pi B psi) e2.2 e2'.1)).1
+            (pi-inj A phi B psi (le-trans (pi A phi) a (pi B psi) e2.2 e2'.1)).2
+            (pi-dom A phi h1)))
+      (cons-down (meet u v) (meet f g) (eqv-meet u f v g e1 e1').1 c) } ;
+
+tp-join-by : (J : Form) -> Tp J -> ByForm JoinP NoEnt J = split {
+  t-bot u a e h | rh -> \ v hv c ->
+    tp-conv v a (meet u v) a hv (eqv-sym (meet u v) v (eqv-meet-om-l u v e)) (eqv-refl a) ;
+  t-univ u a e1 e2 -> \ v hv c -> join-univ u a v e1 e2 c (shape v a hv) ;
+  t-pi u a A phi e1 e2 h1 h2 c0 | r1 r2 -> \ v hv c -> join-pi u a A phi v e1 e2 h1 h2 c0 r1 c (shape v a hv) ;
+  t-lam u a A phi f e1 e2 h1 h2 c0 | r1 r2 -> \ v hv c -> join-lam u a A phi f v e1 e2 h1 h2 c0 c (shape v a hv) ;
+  en-om A phi -> tt ;
+  en-arr x v y A phi h1 le h2 | r1 r2 -> tt ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> tt } ;
+
+tp-join (u v a : Ty) (hu : Tp (el u a)) (hv : Tp (el v a)) (c : Cons (meet u v)) : Tp (el (meet u v) a) =
+  tp-join-by (el u a) hu v hv c ;
+
+------------------------------------------------------------------------
+-- Lemma 2.7: the entries at a selection
+
+-- t : y for some y with phi <= x -> y
+SelT (phi x t : Ty) : U l = (y : Ty) * (Le phi (arr x y) * Tp (el t y)) ;
+
+-- phi <= x -> y, Cons phi, Cons x give Cons y
+cons-value (phi x y : Ty) (cphi : Cons phi) (cx : Cons x) (le : Le phi (arr x y)) : Cons y =
+  cons-down i.2.1 y i.2.2.2.2
+    (cons-asel phi i.1 i.2.1 cphi i.2.2.1 (cons-down x i.1 i.2.2.2.1 cx))
+  where { i : InvArr phi x y = inv-arr phi x y le ; } ;
+
+-- every type is below x -> om
+om-arr-at (phi x : Ty) : Le phi (arr x om) =
+  le-trans phi (arr om om) (arr x om) (om-arr phi) (le-arr om x om om (le-om x) (le-refl om)) ;
+
+-- the meet of two selections
+selt-meet (phi x t1 t2 : Ty) (cphi : Cons phi) (cx : Cons x) (c12 : Cons (meet t1 t2))
+    (s1 : SelT phi x t1) (s2 : SelT phi x t2) : SelT phi x (meet t1 t2) =
+  (meet s1.1 s2.1,
+   (le-y,
+    tp-join t1 t2 (meet s1.1 s2.1)
+      (tp-up t1 s1.1 (meet s1.1 s2.1) s1.2.2 (le-meet-l s1.1 s2.1) hy)
+      (tp-up t2 s2.1 (meet s1.1 s2.1) s2.2.2 (le-meet-r s1.1 s2.1) hy) c12))
+  where {
+    le-y : Le phi (arr x (meet s1.1 s2.1)) =
+      le-trans phi (meet (arr x s1.1) (arr x s2.1)) (arr x (meet s1.1 s2.1))
+        (le-meet phi (arr x s1.1) (arr x s2.1) s1.2.1 s2.2.1) (le-arr-meet x s1.1 s2.1) ;
+    hy : Tp (el (meet s1.1 s2.1) univ) =
+      tp-join s1.1 s2.1 univ (tp-pre t1 s1.1 s1.2.2) (tp-pre t2 s2.1 s2.2.2)
+        (cons-value phi x (meet s1.1 s2.1) cphi cx le-y) ; } ;
+
+-- one entry x' -> v with x <= x'
+selt-entry (A phi x x' v : Ty) (le : Le x x') (e : EntInv A phi (arr x' v)) : SelT phi x v =
+  (e.2.1, (le-trans phi (arr x' e.2.1) (arr x e.2.1) e.2.2.1 (le-arr x' x e.2.1 e.2.1 le (le-refl e.2.1)), e.2.2.2)) ;
+
+le-meet-split-l (x d1 d2 : Ty) (le : Le x (meet d1 d2)) : Le x d1 = le-trans x (meet d1 d2) d1 le (le-meet-l d1 d2) ;
+le-meet-split-r (x d1 d2 : Ty) (le : Le x (meet d1 d2)) : Le x d2 = le-trans x (meet d1 d2) d2 le (le-meet-r d1 d2) ;
+
+EntSel (g d t : Ty) : U l =
+  (A phi x : Ty) -> Tp (ent g A phi) -> Cons g -> Cons phi -> Tp (el x A) -> Le x d -> SelT phi x t ;
+
+ent-sel : (g d t : Ty) -> ASel g d t -> EntSel g d t = split {
+  as-none g -> \ A phi x h cg cphi hx le -> (om, (om-arr-at phi x, tp-omom)) ;
+  as-here a b -> \ A phi x h cg cphi hx le -> selt-entry A phi x a b le (ent-inv (arr a b) A phi h) ;
+  as-l g1 g2 d t q | rq -> \ A phi x h cg cphi hx le ->
+    rq A phi x (ent-inv (meet g1 g2) A phi h).1 (cons-meet-l g1 g2 cg) cphi hx le ;
+  as-r g1 g2 d t q | rq -> \ A phi x h cg cphi hx le ->
+    rq A phi x (ent-inv (meet g1 g2) A phi h).2
+      (cons-down (meet g1 g2) g2 (le-meet-r g1 g2) cg) cphi hx le ;
+  as-meet g d1 t1 d2 t2 q1 q2 | r1 r2 -> \ A phi x h cg cphi hx le ->
+    selt-meet phi x t1 t2 cphi (tp-cons x A hx)
+      (cons-asel g (meet d1 d2) (meet t1 t2) cg (as-meet g d1 t1 d2 t2 q1 q2)
+         (cons-down x (meet d1 d2) le (tp-cons x A hx)))
+      (r1 A phi x h cg cphi hx (le-meet-split-l x d1 d2 le))
+      (r2 A phi x h cg cphi hx (le-meet-split-r x d1 d2 le)) } ;
+
+------------------------------------------------------------------------
+-- Lemma 2.8: the values of a typed function
+
+-- the part t of f(x) is below a typed element w of phi(x), and f <= x -> w
+AppT (f phi x t : Ty) : U l =
+  sig { y : Ty ; ley : Le phi (arr x y) ; w : Ty ; lew : Le w t ; tpw : Tp (el w y) ; lef : Le f (arr x w) } ;
+
+-- f om-like: the codomain of a selection of f is om-like
+app-bot (f d t : Ty) (e : Le om f) (q : ASel f d t) : Le om t =
+  les-le om t (les-trans om w.2.1 t (om-les-omonly w.2.1 (asel-zero om w.1 w.2.1 w.2.2.1 tt)) w.2.2.2.2)
+  where { w : ATr om d t = asel-tr f d t q om (le-les om f e) ; } ;
+
+app-lam (f A phi x d t B psi g : Ty) (q : ASel f d t) (hx : Tp (el x A)) (le : Le x d) (hpi : Tp (el (pi A phi) univ))
+    (e1 : Eqv f g) (e : Eqv (pi A phi) (pi B psi)) (h2 : Tp (ent g B psi)) (cg : Cons g) : AppT f phi x t =
+  struct {
+    y = s.1 ; ley = s.2.1 ; w = w.2.1 ; lew = les-le w.2.1 t w.2.2.2.2 ; tpw = s.2.2 ;
+    lef = le-trans f g (arr x w.2.1) e1.1
+            (le-trans g (arr w.1 w.2.1) (arr x w.2.1) (asel-le g w.1 w.2.1 w.2.2.1)
+               (le-arr w.1 x w.2.1 w.2.1 (le-trans x d w.1 le (les-le d w.1 w.2.2.2.1)) (le-refl w.2.1))) }
+  where {
+    w : ATr g d t = asel-tr f d t q g (le-les g f e1.2) ;
+    s : SelT phi x w.2.1 =
+      ent-sel g w.1 w.2.1 w.2.2.1 A phi x
+        (tp-up-ent g B psi A phi h2 (pi-inj A phi B psi e.1).1 (pi-inj A phi B psi e.1).2 (pi-dom A phi hpi))
+        cg (pi-fam-cons A phi hpi) hx (le-trans x d w.1 le (les-le d w.1 w.2.2.2.1)) ; } ;
+
+app-sel-by (f A phi x d t : Ty) (q : ASel f d t) (hx : Tp (el x A)) (le : Le x d)
+    (hpi : Tp (el (pi A phi) univ)) : Shape f (pi A phi) -> AppT f phi x t = split {
+  sh-bot e h -> struct {
+    y = om ; ley = om-arr-at phi x ; w = t ; lew = le-refl t ; tpw = t-bot t om (app-bot f d t e q) tp-omU ;
+    lef = le-trans f (arr d t) (arr x t) (asel-le f d t q) (le-arr d x t t le (le-refl t)) } ;
+  sh-univ e1 e2 -> absurd (AppT f phi x t) (univ-pi (pi A phi) A phi e2 (eqv-refl (pi A phi))) ;
+  sh-pi B psi e1 e2 h1 h2 c -> absurd (AppT f phi x t) (univ-pi (pi A phi) A phi e2 (eqv-refl (pi A phi))) ;
+  sh-lam B psi g e1 e2 h1 h2 c -> app-lam f A phi x d t B psi g q hx le hpi e1 e2 h2 c } ;
+
+app-sel (f A phi x d t : Ty) (hf : Tp (el f (pi A phi))) (q : ASel f d t) (hx : Tp (el x A)) (le : Le x d) : AppT f phi x t =
+  app-sel-by f A phi x d t q hx le (tp-pre f (pi A phi) hf) (shape f (pi A phi) hf) ;

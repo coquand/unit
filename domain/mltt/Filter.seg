@@ -1,0 +1,287 @@
+-- Filter.seg: filters of types (the paper's ideals, Def. 2.7) and the
+-- operations of the semantics (step 3; NOTE-3.txt section 3.2).
+--   Filt         a predicate on types with om, meets, upward closed; not
+--                truncated, so no parameters (as domain/ideal/Filter.seg
+--                without truncF); compared by Incl and FEq
+--   prin, univF  principal filters
+--   EntS R f     f is made of entries x -> v with R x v
+--   TyIn A x     x : A for a filter A: x : a for some a in A
+--   appF, lamF, piF   the operations of Fig. 4; monotone
+-- Lemma 3.1 (Entries.sel): the values at a selection of entries.
+-- Lemma 3.2 (Entries.cons): consistency of entries.
+-- Lemma 3.3 (ents-in): a function is in a filter when its entries are.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+
+------------------------------------------------------------------------
+-- filters
+
+record Filt {
+  mem (t : Ty) : U l ;
+  fom : mem om ;
+  fmeet (s t : Ty) (h1 : mem s) (h2 : mem t) : mem (meet s t) ;
+  fup (s t : Ty) (le : Le s t) (h : mem s) : mem t ;
+} ;
+
+Incl (X Y : Filt) : U l = (t : Ty) -> X.mem t -> Y.mem t ;
+FEq (X Y : Filt) : U l = Incl X Y * Incl Y X ;
+
+incl-refl (X : Filt) : Incl X X = \ t h -> h ;
+incl-trans (X Y Z : Filt) (p : Incl X Y) (q : Incl Y Z) : Incl X Z = \ t h -> q t (p t h) ;
+feq-refl (X : Filt) : FEq X X = (incl-refl X, incl-refl X) ;
+feq-sym (X Y : Filt) (e : FEq X Y) : FEq Y X = (e.2, e.1) ;
+feq-trans (X Y Z : Filt) (p : FEq X Y) (q : FEq Y Z) : FEq X Z =
+  (incl-trans X Y Z p.1 q.1, incl-trans Z Y X q.2 p.2) ;
+
+-- an om-like type is in every filter
+om-in (X : Filt) (t : Ty) (e : Le om t) : X.mem t = X.fup om t e X.fom ;
+
+------------------------------------------------------------------------
+-- principal filters
+
+prin (s : Ty) : Filt =
+  new Filt[\ t -> Le s t, le-om s, \ t u h k -> le-meet s t u h k, \ t u le h -> le-trans s t u h le] ;
+
+prin-in (s : Ty) : (prin s).mem s = le-refl s ;
+-- prin s is the least filter containing s
+prin-sub (s : Ty) (X : Filt) (h : X.mem s) : Incl (prin s) X = \ t le -> X.fup s t le h ;
+-- prin is antitone
+prin-anti (s s' : Ty) (le : Le s s') : Incl (prin s') (prin s) = \ t h -> le-trans s s' t le h ;
+
+univF : Filt = prin univ ;
+
+------------------------------------------------------------------------
+-- entries
+
+data EntS (R : Ty -> Ty -> U l) : (f : Ty) -> U l =
+    es-om : EntS R om
+  | es-arr (x v : Ty) (h : R x v) : EntS R (arr x v)
+  | es-meet (f1 f2 : Ty) (h1 : EntS R f1) (h2 : EntS R f2) : EntS R (meet f1 f2) ;
+
+ents-map (R R' : Ty -> Ty -> U l) (h : (x v : Ty) -> R x v -> R' x v) :
+    (f : Ty) -> EntS R f -> EntS R' f = split {
+  es-om -> es-om ;
+  es-arr x v r -> es-arr x v (h x v r) ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> es-meet f1 f2 r1 r2 } ;
+
+-- inversion, by the shape of f
+EntInvS (R : Ty -> Ty -> U l) : Ty -> U l = split {
+  om -> Top ; univ -> Empty ; pi s t -> Empty ;
+  arr x v -> R x v ;
+  meet f1 f2 -> EntS R f1 * EntS R f2 } ;
+
+ents-inv (R : Ty -> Ty -> U l) : (f : Ty) -> EntS R f -> EntInvS R f = split {
+  es-om -> tt ;
+  es-arr x v r -> r ;
+  es-meet f1 f2 h1 h2 -> (h1, h2) } ;
+
+-- a function has no U or Pi component
+NotUP : Ty -> U l = split {
+  om -> Top ; univ -> Empty ; pi s t -> Empty ; arr s t -> Top ; meet s t -> Top } ;
+
+ents-all (R : Ty -> Ty -> U l) : (f : Ty) -> EntS R f -> AllC NotUP f = split {
+  es-om -> tt ;
+  es-arr x v r -> tt ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> (r1, r2) } ;
+
+-- so its pi selections are om-only
+psel-nopi : (r s t : Ty) -> PSel r s t -> AllC NotUP r -> OmOnly s * OmOnly t = split {
+  ps-none r -> \ a -> (tt, tt) ;
+  ps-here a b -> \ h -> efq h ;
+  ps-l r1 r2 s t h | rh -> \ a -> rh a.1 ;
+  ps-r r1 r2 s t h | rh -> \ a -> rh a.2 ;
+  ps-meet r s1 t1 s2 t2 h1 h2 | r1 r2 -> \ a -> (((r1 a).1, (r2 a).1), ((r1 a).2, (r2 a).2)) } ;
+
+omonly-cons (s : Ty) (o : OmOnly s) : Cons s = cons-down om s (les-le om s (om-les-omonly s o)) cons-om ;
+
+le-split-l (x d1 d2 : Ty) (le : Le x (meet d1 d2)) : Le x d1 = le-trans x (meet d1 d2) d1 le (le-meet-l d1 d2) ;
+le-split-r (x d1 d2 : Ty) (le : Le x (meet d1 d2)) : Le x d2 = le-trans x (meet d1 d2) d2 le (le-meet-r d1 d2) ;
+
+-- Lemmas 3.1 and 3.2, for entries whose values are in an antitone family
+-- of filters
+module Entries (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x'))
+    (R : Ty -> Ty -> U l) (hR : (x v : Ty) -> R x v -> (G x).mem v) {
+
+  -- Lemma 3.1
+  sel : (b d t : Ty) -> ASel b d t -> EntS R b -> (x0 : Ty) -> Le x0 d -> (G x0).mem t = split {
+    as-none b -> \ e x0 le -> (G x0).fom ;
+    as-here a v -> \ e x0 le -> anti a x0 le v (hR a v (ents-inv R (arr a v) e)) ;
+    as-l b1 b2 d t h | rh -> \ e x0 le -> rh (ents-inv R (meet b1 b2) e).1 x0 le ;
+    as-r b1 b2 d t h | rh -> \ e x0 le -> rh (ents-inv R (meet b1 b2) e).2 x0 le ;
+    as-meet b d1 t1 d2 t2 h1 h2 | r1 r2 -> \ e x0 le ->
+      (G x0).fmeet t1 t2 (r1 e x0 (le-split-l x0 d1 d2 le)) (r2 e x0 (le-split-r x0 d1 d2 le)) } ;
+
+  -- Lemma 3.2
+  cons (gc : (x : Ty) -> Cons x -> (v : Ty) -> (G x).mem v -> Cons v) (f : Ty) (e : EntS R f) : Cons f =
+    cons-fix-from f
+      (\ g h hu hp -> sel-all NotUP f univ hu a,
+       (\ d t hu q cd -> efq (sel-all NotUP f univ hu a),
+       (\ g h d t hp q cd -> efq (sel-all NotUP f (pi g h) hp a),
+       (\ s t q -> (omonly-cons s (psel-nopi f s t q a).1, omonly-cons t (psel-nopi f s t q a).2),
+        \ d t q cd -> gc d cd t (sel f d t q e d (le-refl d))))))
+    where { a : AllC NotUP f = ents-all R f e ; } ;
+} ;
+
+-- Lemma 3.3: f0 is in X when its entries are
+ents-in (X : Filt) (R : Ty -> Ty -> U l) (f0 : Ty)
+    (h : (x v : Ty) -> R x v -> Le f0 (arr x v) -> X.mem (arr x v)) :
+    (f : Ty) -> EntS R f -> Le f0 f -> X.mem f = split {
+  es-om -> \ le -> X.fom ;
+  es-arr x v r -> \ le -> h x v r le ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> \ le -> X.fmeet f1 f2 (r1 (le-split-l f0 f1 f2 le)) (r2 (le-split-r f0 f1 f2 le)) } ;
+
+------------------------------------------------------------------------
+-- typing of a compact element by a filter
+
+TyIn (A : Filt) (x : Ty) : U l = sig { a : Ty ; ina : A.mem a ; tp : Tp (el x a) } ;
+
+tyin-mono (A A' : Filt) (i : Incl A A') (x : Ty) (h : TyIn A x) : TyIn A' x =
+  struct { a = h.a ; ina = i h.a h.ina ; tp = h.tp } ;
+
+-- the entries of lam A G and pi A G
+EntR (A : Filt) (G : Ty -> Filt) (x v : Ty) : U l = TyIn A x * (G x).mem v ;
+
+-- the families are compared at the keys x : A
+FamIncl (A : Filt) (G G' : Ty -> Filt) : U l = (x : Ty) -> TyIn A x -> Incl (G x) (G' x) ;
+
+entr-mono (A A' : Filt) (G G' : Ty -> Filt) (iA : Incl A A') (iG : FamIncl A G G') (x v : Ty)
+    (r : EntR A G x v) : EntR A' G' x v =
+  (tyin-mono A A' iA x r.1, iG x r.1 v r.2) ;
+
+------------------------------------------------------------------------
+-- application: app(F, X) = { t | g <= x -> t, g in F, x in X }
+
+le-arr-meet2 (d1 t1 d2 t2 : Ty) : Le (meet (arr d1 t1) (arr d2 t2)) (arr (meet d1 d2) (meet t1 t2)) =
+  le-trans (meet (arr d1 t1) (arr d2 t2)) (meet (arr (meet d1 d2) t1) (arr (meet d1 d2) t2))
+    (arr (meet d1 d2) (meet t1 t2))
+    (le-meet-mono (arr d1 t1) (arr (meet d1 d2) t1) (arr d2 t2) (arr (meet d1 d2) t2)
+       (le-arr d1 (meet d1 d2) t1 t1 (le-meet-l d1 d2) (le-refl t1))
+       (le-arr d2 (meet d1 d2) t2 t2 (le-meet-r d1 d2) (le-refl t2)))
+    (le-arr-meet (meet d1 d2) t1 t2) ;
+
+AppW (F X : Filt) (t : Ty) : U l = sig { g : Ty ; x : Ty ; ing : F.mem g ; inx : X.mem x ; le : Le g (arr x t) } ;
+
+app-om (F X : Filt) : AppW F X om = struct { g = om ; x = om ; ing = F.fom ; inx = X.fom ; le = le-om-arr } ;
+
+app-meet (F X : Filt) (s t : Ty) (v : AppW F X s) (w : AppW F X t) : AppW F X (meet s t) =
+  struct {
+    g = meet v.g w.g ; x = meet v.x w.x ;
+    ing = F.fmeet v.g w.g v.ing w.ing ; inx = X.fmeet v.x w.x v.inx w.inx ;
+    le = le-trans (meet v.g w.g) (meet (arr v.x s) (arr w.x t)) (arr (meet v.x w.x) (meet s t))
+           (le-meet-mono v.g (arr v.x s) w.g (arr w.x t) v.le w.le) (le-arr-meet2 v.x s w.x t) } ;
+
+app-up (F X : Filt) (t t' : Ty) (le : Le t t') (w : AppW F X t) : AppW F X t' =
+  struct { g = w.g ; x = w.x ; ing = w.ing ; inx = w.inx ;
+           le = le-trans w.g (arr w.x t) (arr w.x t') w.le (le-arr w.x w.x t t' (le-refl w.x) le) } ;
+
+appF (F X : Filt) : Filt = new Filt[AppW F X, app-om F X, app-meet F X, app-up F X] ;
+
+appF-mono (F F' X X' : Filt) (iF : Incl F F') (iX : Incl X X') : Incl (appF F X) (appF F' X') =
+  \ t w -> struct { g = w.g ; x = w.x ; ing = iF w.g w.ing ; inx = iX w.x w.inx ; le = w.le } ;
+
+appF-eq (F F' X X' : Filt) (eF : FEq F F') (eX : FEq X X') : FEq (appF F X) (appF F' X') =
+  (appF-mono F F' X X' eF.1 eX.1, appF-mono F' F X' X eF.2 eX.2) ;
+
+------------------------------------------------------------------------
+-- abstraction: lam(A, G) = { t | f <= t, the entries x -> v of f have
+-- x : A and v in G x }
+
+LamW (A : Filt) (G : Ty -> Filt) (t : Ty) : U l = sig { f : Ty ; le : Le f t ; ents : EntS (EntR A G) f } ;
+
+lam-om (A : Filt) (G : Ty -> Filt) : LamW A G om = struct { f = om ; le = le-refl om ; ents = es-om } ;
+
+lam-meet (A : Filt) (G : Ty -> Filt) (s t : Ty) (v : LamW A G s) (w : LamW A G t) : LamW A G (meet s t) =
+  struct { f = meet v.f w.f ; le = le-meet-mono v.f s w.f t v.le w.le ; ents = es-meet v.f w.f v.ents w.ents } ;
+
+lam-up (A : Filt) (G : Ty -> Filt) (t t' : Ty) (le : Le t t') (w : LamW A G t) : LamW A G t' =
+  struct { f = w.f ; le = le-trans w.f t t' w.le le ; ents = w.ents } ;
+
+lamF (A : Filt) (G : Ty -> Filt) : Filt = new Filt[LamW A G, lam-om A G, lam-meet A G, lam-up A G] ;
+
+lamF-mono (A A' : Filt) (G G' : Ty -> Filt) (iA : Incl A A') (iG : FamIncl A G G') : Incl (lamF A G) (lamF A' G') =
+  \ t w -> struct { f = w.f ; le = w.le ;
+                    ents = ents-map (EntR A G) (EntR A' G') (entr-mono A A' G G' iA iG) w.f w.ents } ;
+
+------------------------------------------------------------------------
+-- products: pi(A, G) = { t | om <= t, or pi a b <= t with a in A and the
+-- entries x -> v of b with x : A, v in G x }
+
+PiW (A : Filt) (G : Ty -> Filt) (t : Ty) : U l =
+  sig { a : Ty ; b : Ty ; le : Le (pi a b) t ; ina : A.mem a ; ents : EntS (EntR A G) b } ;
+
+pi-meet (A : Filt) (G : Ty -> Filt) (s t : Ty) (v : PiW A G s) (w : PiW A G t) : PiW A G (meet s t) =
+  struct {
+    a = meet v.a w.a ; b = meet v.b w.b ;
+    le = le-meet (pi (meet v.a w.a) (meet v.b w.b)) s t
+           (le-trans (pi (meet v.a w.a) (meet v.b w.b)) (pi v.a v.b) s
+              (le-pi (meet v.a w.a) v.a (meet v.b w.b) v.b (le-meet-l v.a w.a) (le-meet-l v.b w.b)) v.le)
+           (le-trans (pi (meet v.a w.a) (meet v.b w.b)) (pi w.a w.b) t
+              (le-pi (meet v.a w.a) w.a (meet v.b w.b) w.b (le-meet-r v.a w.a) (le-meet-r v.b w.b)) w.le) ;
+    ina = A.fmeet v.a w.a v.ina w.ina ;
+    ents = es-meet v.b w.b v.ents w.ents } ;
+
+pi-up (A : Filt) (G : Ty -> Filt) (t t' : Ty) (le : Le t t') (w : PiW A G t) : PiW A G t' =
+  struct { a = w.a ; b = w.b ; le = le-trans (pi w.a w.b) t t' w.le le ; ina = w.ina ; ents = w.ents } ;
+
+-- an om summand
+module OmOr (P : Ty -> U l) (pmeet : (s t : Ty) -> P s -> P t -> P (meet s t))
+    (pup : (s t : Ty) -> Le s t -> P s -> P t) {
+  W (t : Ty) : U l = Plus (Le om t) (P t) ;
+  left (s t : Ty) (k : Le om s) (w : P t) : P (meet s t) =
+    pup t (meet s t) (le-meet t s t (le-trans t om s (le-om t) k) (le-refl t)) w ;
+  right (s t : Ty) (w : P s) (k : Le om t) : P (meet s t) =
+    pup s (meet s t) (le-meet s s t (le-refl s) (le-trans s om t (le-om s) k)) w ;
+  wmeet (s t : Ty) : W s -> W t -> W (meet s t) = split {
+    inl k -> split {
+      inl k' -> inl (le-meet om s t k k') ;
+      inr w -> inr (left s t k w) } ;
+    inr v -> split {
+      inl k' -> inr (right s t v k') ;
+      inr w -> inr (pmeet s t v w) } } ;
+  wup (s t : Ty) (le : Le s t) : W s -> W t = split {
+    inl k -> inl (le-trans om s t k le) ;
+    inr w -> inr (pup s t le w) } ;
+  filt : Filt = new Filt[W, inl (le-refl om), wmeet, wup] ;
+} ;
+
+piF (A : Filt) (G : Ty -> Filt) : Filt = OmOr[PiW A G, pi-meet A G, pi-up A G].filt ;
+
+piF-mono (A A' : Filt) (G G' : Ty -> Filt) (iA : Incl A A') (iG : FamIncl A G G') :
+    Incl (piF A G) (piF A' G') = \ t -> split {
+  inl e -> inl e ;
+  inr w -> inr (struct { a = w.a ; b = w.b ; le = w.le ; ina = iA w.a w.ina ;
+                         ents = ents-map (EntR A G) (EntR A' G') (entr-mono A A' G G' iA iG) w.b w.ents }) } ;
+
+-- the equivalences: the families are compared at the keys of the first
+FamEq (A : Filt) (G G' : Ty -> Filt) : U l = (x : Ty) -> TyIn A x -> FEq (G x) (G' x) ;
+
+fameq-back (A A' : Filt) (G G' : Ty -> Filt) (eA : FEq A A') (eG : FamEq A G G') : FamIncl A' G' G =
+  \ x h -> (eG x (tyin-mono A' A eA.2 x h)).2 ;
+
+lamF-eq (A A' : Filt) (G G' : Ty -> Filt) (eA : FEq A A') (eG : FamEq A G G') : FEq (lamF A G) (lamF A' G') =
+  (lamF-mono A A' G G' eA.1 (\ x h -> (eG x h).1), lamF-mono A' A G' G eA.2 (fameq-back A A' G G' eA eG)) ;
+
+piF-eq (A A' : Filt) (G G' : Ty -> Filt) (eA : FEq A A') (eG : FamEq A G G') : FEq (piF A G) (piF A' G') =
+  (piF-mono A A' G G' eA.1 (\ x h -> (eG x h).1), piF-mono A' A G' G eA.2 (fameq-back A A' G G' eA eG)) ;
+
+------------------------------------------------------------------------
+-- consistency of the operations (used by Lemma 3.5)
+
+ConsF (X : Filt) : U l = (t : Ty) -> X.mem t -> Cons t ;
+
+prin-cons (x : Ty) (cx : Cons x) : ConsF (prin x) = \ t le -> cons-down x t le cx ;
+
+appF-cons (F X : Filt) (cF : ConsF F) (cX : ConsF X) : ConsF (appF F X) =
+  \ t w -> cons-value w.g w.x t (cF w.g w.ing) (cX w.x w.inx) w.le ;
+
+module OpCons (A : Filt) (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x'))
+    (gc : (x : Ty) -> Cons x -> ConsF (G x)) {
+  -- the entries of lam A G and pi A G are consistent
+  entc (f : Ty) (e : EntS (EntR A G) f) : Cons f =
+    Entries[G, anti, EntR A G, \ x v r -> r.2].cons gc f e ;
+  lamc : ConsF (lamF A G) = \ t w -> cons-down w.f t w.le (entc w.f w.ents) ;
+  pic (cA : ConsF A) : ConsF (piF A G) = \ t -> split {
+    inl e -> cons-down om t e cons-om ;
+    inr w -> cons-down (pi w.a w.b) t w.le (cons-pi w.a w.b (cA w.a w.ina) (entc w.b w.ents)) } ;
+} ;

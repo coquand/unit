@@ -1,0 +1,143 @@
+-- Syntax.seg: the terms of MLTT_eta and its judgements (step 3;
+-- NOTE-3.txt section 3.1).
+--   Fin n      the variables, by recursion on n: Fin (n+1) = Opt (Fin n)
+--   Tm n       terms with n free variables, an indexed family
+--   Kit, Trav  one traversal over a kit (values V n, var, vz, wk);
+--              renaming (V = Fin) and substitution (V = Tm) are instances
+--   Ctx n      contexts, by recursion on n; lookup G i the type of var i
+--   Der n J    the judgements, ONE family indexed by the judgement form
+--              J = wf G | ty G M A | eq G M N A; the rules of
+--              MIN/Syntax/Typing.agda.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ;
+
+data Opt (A : U l) : U l = none | some (x : A) ;
+
+Fin : Nat -> U l = split { zero -> Empty ; suc n | r -> Opt r } ;
+
+fz (n : Nat) : Fin (suc n) = none ;
+fs (n : Nat) (i : Fin n) : Fin (suc n) = some i ;
+
+data Tm : (n : Nat) -> U l =
+    var (n : Nat) (i : Fin n) : Tm n
+  | uu (n : Nat) : Tm n
+  | pp (n : Nat) (A : Tm n) (B : Tm (suc n)) : Tm n
+  | lam (n : Nat) (A : Tm n) (M : Tm (suc n)) : Tm n
+  | app (n : Nat) (M N : Tm n) : Tm n ;
+
+------------------------------------------------------------------------
+-- one traversal over a kit
+
+record Kit {
+  V : Nat -> U l ;
+  vr (n : Nat) (v : V n) : Tm n ;
+  vz (n : Nat) : V (suc n) ;
+  wkv (n : Nat) (v : V n) : V (suc n) ;
+} ;
+
+module Trav (K : Kit) {
+  -- under a binder: the new variable to vz, the others weakened
+  lift (m n : Nat) (s : Fin m -> K.V n) : Fin (suc m) -> K.V (suc n) = split {
+    none -> K.vz n ;
+    some i -> K.wkv n (s i) } ;
+
+  trav : (m : Nat) -> Tm m -> (n : Nat) -> (Fin m -> K.V n) -> Tm n = split {
+    var m i -> \ n s -> K.vr n (s i) ;
+    uu m -> \ n s -> uu n ;
+    pp m A B | rA rB -> \ n s -> pp n (rA n s) (rB (suc n) (lift m n s)) ;
+    lam m A M | rA rM -> \ n s -> lam n (rA n s) (rM (suc n) (lift m n s)) ;
+    app m M N | rM rN -> \ n s -> app n (rM n s) (rN n s) } ;
+} ;
+
+-- renaming
+renK : Kit = new Kit[\ n -> Fin n, \ n i -> var n i, \ n -> fz n, \ n i -> fs n i] ;
+module Ren = Trav[renK] ;
+
+wk (n : Nat) (M : Tm n) : Tm (suc n) = Ren.trav n M (suc n) (\ i -> fs n i) ;
+
+-- substitution
+subK : Kit = new Kit[\ n -> Tm n, \ n M -> M, \ n -> var (suc n) (fz n), \ n M -> wk n M] ;
+module Sub = Trav[subK] ;
+
+-- M[N]: the last variable to N
+sub1 (n : Nat) (N : Tm n) : Fin (suc n) -> Tm n = split {
+  none -> N ;
+  some i -> var n i } ;
+
+subst1 (n : Nat) (M : Tm (suc n)) (N : Tm n) : Tm n = Sub.trav (suc n) M n (sub1 n N) ;
+
+------------------------------------------------------------------------
+-- contexts
+
+Ctx : Nat -> U l = split { zero -> Top ; suc n | r -> r * Tm n } ;
+
+ext (n : Nat) (G : Ctx n) (A : Tm n) : Ctx (suc n) = (G, A) ;
+
+-- the type of var i, weakened to the whole context
+lookup : (n : Nat) -> Ctx n -> Fin n -> Tm n = split {
+  zero -> \ G i -> efq i ;
+  suc n | r -> \ G -> split {
+    none -> wk n G.2 ;
+    some i -> wk n (r G.1 i) } } ;
+
+------------------------------------------------------------------------
+-- the judgements, one family indexed by the judgement form
+
+data Jf (n : Nat) : U l =
+    jwf (G : Ctx n)
+  | jty (G : Ctx n) (M A : Tm n)
+  | jeq (G : Ctx n) (M N A : Tm n) ;
+
+data Der : (n : Nat) (J : Jf n) -> U l =
+  -- contexts
+    wf-emp : Der zero (jwf tt)
+  | wf-ext (n : Nat) (G : Ctx n) (A : Tm n) (h : Der n (jty G A (uu n))) :
+      Der (suc n) (jwf (ext n G A))
+  -- typing
+  | ty-var (n : Nat) (G : Ctx n) (i : Fin n) (h : Der n (jwf G)) :
+      Der n (jty G (var n i) (lookup n G i))
+  | ty-conv (n : Nat) (G : Ctx n) (M A B : Tm n) (h1 : Der n (jty G M A))
+      (h2 : Der n (jeq G A B (uu n))) (h3 : Der n (jty G B (uu n))) : Der n (jty G M B)
+  | ty-U (n : Nat) (G : Ctx n) (h : Der n (jwf G)) : Der n (jty G (uu n) (uu n))
+  | ty-Pi (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n))
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n)))) :
+      Der n (jty G (pp n A B) (uu n))
+  | ty-Lam (n : Nat) (G : Ctx n) (A : Tm n) (B M : Tm (suc n))
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der (suc n) (jty (ext n G A) M B)) :
+      Der n (jty G (lam n A M) (pp n A B))
+  | ty-App (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (f a : Tm n)
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der n (jty G f (pp n A B))) (h4 : Der n (jty G a A)) :
+      Der n (jty G (app n f a) (subst1 n B a))
+  -- conversion
+  | eq-refl (n : Nat) (G : Ctx n) (M A : Tm n) (h : Der n (jty G M A)) : Der n (jeq G M M A)
+  | eq-sym (n : Nat) (G : Ctx n) (M N A : Tm n) (h : Der n (jeq G M N A)) : Der n (jeq G N M A)
+  | eq-trans (n : Nat) (G : Ctx n) (M N P A : Tm n) (h1 : Der n (jeq G M N A))
+      (h2 : Der n (jeq G N P A)) : Der n (jeq G M P A)
+  | eq-conv (n : Nat) (G : Ctx n) (M N A B : Tm n) (h1 : Der n (jeq G M N A))
+      (h2 : Der n (jeq G A B (uu n))) (h3 : Der n (jty G B (uu n))) : Der n (jeq G M N B)
+  | eq-beta (n : Nat) (G : Ctx n) (A : Tm n) (B M : Tm (suc n)) (a : Tm n)
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der (suc n) (jty (ext n G A) M B)) (h4 : Der n (jty G a A)) :
+      Der n (jeq G (app n (lam n A M) a) (subst1 n M a) (subst1 n B a))
+  | eq-Pi (n : Nat) (G : Ctx n) (A A' : Tm n) (B B' : Tm (suc n))
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der (suc n) (jty (ext n G A) B' (uu (suc n))))
+      (h4 : Der n (jeq G A A' (uu n))) (h5 : Der (suc n) (jeq (ext n G A) B B' (uu (suc n)))) :
+      Der n (jeq G (pp n A B) (pp n A' B') (uu n))
+  | eq-funext (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (f g : Tm n)
+      (h1 : Der n (jty G A (uu n)))
+      (h2 : Der (suc n) (jeq (ext n G A) (app (suc n) (wk n f) (var (suc n) (fz n)))
+                              (app (suc n) (wk n g) (var (suc n) (fz n))) B))
+      (h3 : Der n (jty G f (pp n A B))) (h4 : Der n (jty G g (pp n A B))) :
+      Der n (jeq G f g (pp n A B))
+  | eq-app-fun (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (f f' a : Tm n)
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der n (jeq G f f' (pp n A B))) (h4 : Der n (jty G a A)) :
+      Der n (jeq G (app n f a) (app n f' a) (subst1 n B a))
+  | eq-app-arg (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (f a a' : Tm n)
+      (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n))))
+      (h3 : Der n (jty G f (pp n A B))) (h4 : Der n (jeq G a a' A)) :
+      Der n (jeq G (app n f a) (app n f a') (subst1 n B a)) ;

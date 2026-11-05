@@ -1,0 +1,255 @@
+-- Consistency.seg: consistency of types (step 1; NOTE-1-2.txt section 1).
+--
+-- A type is consistent when its components have a join in the paper's
+-- CUSL C.  For a predicate P on the parts, CL P r are the clauses
+--   (c1) no univ component together with a pi component;
+--   (c2) a univ component and an arrow selection d, t: P d => om <= t;
+--   (c3) the same with a pi component;
+--   (c4) a pi selection s, t: P s and P t;
+--   (c5) an arrow selection d, t: P d => P t
+-- (keys compatible => values compatible, all entries at once).  P is
+-- negative in (c2), (c3), (c5), so consistency is defined by recursion on
+-- a fuel N: C 0 = true, C (N+1) = CL (C N), Cons r = C (md r) r.
+--   Lemma 1.1 (c-move)   enough fuel: md r <= a, b give C a r <=> C b r.
+--   Lemma 1.2 (cons-fix) Cons r <=> CL Cons r.  Then Cons is locked.
+--   Lemma 1.3 (cons-down) r <= k and Cons r give Cons k.
+--   Lemma 1.4 Cons om, Cons univ, Cons pi.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ;
+
+Iff (A B : U l) : U l = (A -> B) * (B -> A) ;
+
+leN-suc : (n : Nat) -> LeN n (suc n) = split {
+  zero -> tt ;
+  suc n | r -> r } ;
+
+leN-pred-self : (m : Nat) -> LeN (pred m) m = split {
+  zero -> tt ;
+  suc m -> leN-suc m } ;
+
+------------------------------------------------------------------------
+-- the clauses
+
+CL (P : Ty -> U l) (r : Ty) : U l =
+  ((f g : Ty) -> Sel r univ -> Sel r (pi f g) -> Empty) *
+  (((d t : Ty) -> Sel r univ -> ASel r d t -> P d -> Les om t) *
+  (((f g d t : Ty) -> Sel r (pi f g) -> ASel r d t -> P d -> Les om t) *
+  (((s t : Ty) -> PSel r s t -> P s * P t) *
+   ((d t : Ty) -> ASel r d t -> P d -> P t)))) ;
+
+cl-up (P : Ty -> U l) (r : Ty) (c : CL P r) : (f g : Ty) -> Sel r univ -> Sel r (pi f g) -> Empty = c.1 ;
+cl-ua (P : Ty -> U l) (r : Ty) (c : CL P r) : (d t : Ty) -> Sel r univ -> ASel r d t -> P d -> Les om t = c.2.1 ;
+cl-pa (P : Ty -> U l) (r : Ty) (c : CL P r) : (f g d t : Ty) -> Sel r (pi f g) -> ASel r d t -> P d -> Les om t = c.2.2.1 ;
+cl-ps (P : Ty -> U l) (r : Ty) (c : CL P r) : (s t : Ty) -> PSel r s t -> P s * P t = c.2.2.2.1 ;
+cl-as (P : Ty -> U l) (r : Ty) (c : CL P r) : (d t : Ty) -> ASel r d t -> P d -> P t = c.2.2.2.2 ;
+
+-- P implies Q at the parts of r
+Parts (r : Ty) (P Q : Ty -> U l) : U l = (s : Ty) -> LeN (md s) (pred (md r)) -> P s -> Q s ;
+
+-- the clauses only see P at the parts
+cl-map (P Q : Ty -> U l) (r : Ty) (pq : Parts r P Q) (qp : Parts r Q P) (c : CL P r) : CL Q r =
+  (cl-up P r c,
+   (\ d t hu q x -> cl-ua P r c d t hu q (qp d (asel-md r d t q).1 x),
+   (\ f g d t hp q x -> cl-pa P r c f g d t hp q (qp d (asel-md r d t q).1 x),
+   (\ s t q -> (pq s (psel-md r s t q).1 (cl-ps P r c s t q).1,
+                pq t (psel-md r s t q).2 (cl-ps P r c s t q).2),
+    \ d t q x -> pq t (asel-md r d t q).2 (cl-as P r c d t q (qp d (asel-md r d t q).1 x)))))) ;
+
+-- a type of depth 0 has no pi component
+nopi-zero (r f g : Ty) (z : LeN (md r) zero) (h : Sel r (pi f g)) : Empty =
+  leN-trans (md (pi f g)) (md r) zero (sel-md r (pi f g) h) z ;
+
+-- the parts of a type of depth 0 have depth 0
+part-zero (r s : Ty) (z : LeN (md r) zero) (h : LeN (md s) (pred (md r))) : LeN (md s) zero =
+  leN-trans (md s) (pred (md r)) zero h (leN-pred (md r) zero z) ;
+
+-- at depth 0 the clauses hold when P holds at depth 0
+cl-zero (P : Ty -> U l) (r : Ty) (z : LeN (md r) zero) (hp : (s : Ty) -> LeN (md s) zero -> P s) : CL P r =
+  (\ f g hu h -> nopi-zero r f g z h,
+   (\ d t hu q x -> omonly-les t t (les-refl t) (asel-zero r d t q z),
+   (\ f g d t h q x -> efq (nopi-zero r f g z h),
+   (\ s t q -> (hp s (part-zero r s z (psel-md r s t q).1), hp t (part-zero r t z (psel-md r s t q).2)),
+    \ d t q x -> hp t (part-zero r t z (asel-md r d t q).2))))) ;
+
+------------------------------------------------------------------------
+-- consistency with fuel, and Lemma 1.1
+
+C : Nat -> Ty -> U l = split {
+  zero -> \ r -> Top ;
+  suc N | rN -> \ r -> CL rN r } ;
+
+-- a part of r below the fuel of r
+part-fuel (r s : Ty) (a : Nat) (ha : LeN (md r) (suc a)) (h : LeN (md s) (pred (md r))) : LeN (md s) a =
+  leN-trans (md s) (pred (md r)) a h (leN-pred (md r) (suc a) ha) ;
+
+c-move : (a b : Nat) -> (r : Ty) -> LeN (md r) a -> LeN (md r) b -> Iff (C a r) (C b r) = split {
+  zero -> split {
+    zero -> \ r ha hb -> (\ x -> x, \ x -> x) ;
+    suc b | rb -> \ r ha hb ->
+      (\ x -> cl-zero (C b) r ha (\ s z -> (rb s z (leN-trans (md s) zero b z tt)).1 tt),
+       \ x -> tt) } ;
+  suc a | ra -> split {
+    zero -> \ r ha hb ->
+      (\ x -> tt,
+       \ x -> cl-zero (C a) r hb (\ s z -> (ra zero s (leN-trans (md s) zero a z tt) z).2 tt)) ;
+    suc b -> \ r ha hb ->
+      (cl-map (C a) (C b) r
+         (\ s h -> (ra b s (part-fuel r s a ha h) (part-fuel r s b hb h)).1)
+         (\ s h -> (ra b s (part-fuel r s a ha h) (part-fuel r s b hb h)).2),
+       cl-map (C b) (C a) r
+         (\ s h -> (ra b s (part-fuel r s a ha h) (part-fuel r s b hb h)).2)
+         (\ s h -> (ra b s (part-fuel r s a ha h) (part-fuel r s b hb h)).1)) } } ;
+
+------------------------------------------------------------------------
+-- Lemma 1.3 with fuel: the clauses go down along Les
+
+univ-down (x y : Ty) (h : Les x y) (hu : Sel y univ) : Sel x univ =
+  les-inv x univ (sel-down y univ hu x h) ;
+
+PiComp (x : Ty) : U l = (f : Ty) * ((g : Ty) * Sel x (pi f g)) ;
+
+pi-down (x y f g : Ty) (h : Les x y) (hp : Sel y (pi f g)) : PiComp x =
+  (v.1, (v.2.1, v.2.2.2.2.1))
+  where { v : LesInv x (pi f g) = les-inv x (pi f g) (sel-down y (pi f g) hp x h) ; } ;
+
+module Down (P : Ty -> U l) (hP : (s s' : Ty) -> Les s s' -> P s -> P s')
+    (x y : Ty) (h : Les x y) (c : CL P x) {
+
+  up (f g : Ty) (hu : Sel y univ) (hp : Sel y (pi f g)) : Empty =
+    cl-up P x c v.1 v.2.1 (univ-down x y h hu) v.2.2
+    where { v : PiComp x = pi-down x y f g h hp ; } ;
+
+  ua (d t : Ty) (hu : Sel y univ) (q : ASel y d t) (pd : P d) : Les om t =
+    les-trans om w.2.1 t
+      (cl-ua P x c w.1 w.2.1 (univ-down x y h hu) w.2.2.1 (hP d w.1 w.2.2.2.1 pd)) w.2.2.2.2
+    where { w : ATr x d t = asel-tr y d t q x h ; } ;
+
+  pa (f g d t : Ty) (hp : Sel y (pi f g)) (q : ASel y d t) (pd : P d) : Les om t =
+    les-trans om w.2.1 t
+      (cl-pa P x c v.1 v.2.1 w.1 w.2.1 v.2.2 w.2.2.1 (hP d w.1 w.2.2.2.1 pd)) w.2.2.2.2
+    where { v : PiComp x = pi-down x y f g h hp ; w : ATr x d t = asel-tr y d t q x h ; } ;
+
+  ps (s t : Ty) (q : PSel y s t) : P s * P t =
+    (hP w.1 s w.2.2.2.1 (cl-ps P x c w.1 w.2.1 w.2.2.1).1,
+     hP w.2.1 t w.2.2.2.2 (cl-ps P x c w.1 w.2.1 w.2.2.1).2)
+    where { w : PTr x s t = psel-tr y s t q x h ; } ;
+
+  as (d t : Ty) (q : ASel y d t) (pd : P d) : P t =
+    hP w.2.1 t w.2.2.2.2 (cl-as P x c w.1 w.2.1 w.2.2.1 (hP d w.1 w.2.2.2.1 pd))
+    where { w : ATr x d t = asel-tr y d t q x h ; } ;
+
+  cl : CL P y = (up, (ua, (pa, (ps, as)))) ;
+} ;
+
+c-down : (N : Nat) -> (x y : Ty) -> Les x y -> C N x -> C N y = split {
+  zero -> \ x y h c -> tt ;
+  suc N | rN -> \ x y h c -> Down[C N, rN, x, y, h, c].cl } ;
+
+------------------------------------------------------------------------
+-- consistency, Lemmas 1.2 and 1.3
+
+Cons (r : Ty) : U l = C (md r) r ;
+
+cons-om : Cons om = tt ;
+cons-univ : Cons univ = tt ;
+
+part-le (r s : Ty) (h : LeN (md s) (pred (md r))) : LeN (md s) (md r) =
+  leN-trans (md s) (pred (md r)) (md r) h (leN-pred-self (md r)) ;
+
+-- at a part s of r: C (md r) s <=> Cons s
+part-move (r s : Ty) (h : LeN (md s) (pred (md r))) : Iff (C (md r) s) (Cons s) =
+  c-move (md r) (md s) s (part-le r s h) (leN-refl (md s)) ;
+
+-- C (md r) r <=> C (md r + 1) r = CL (C (md r)) r
+fuel-up (r : Ty) : Iff (Cons r) (C (suc (md r)) r) =
+  c-move (md r) (suc (md r)) r (leN-refl (md r)) (leN-suc (md r)) ;
+
+cons-fix-to (r : Ty) (c : Cons r) : CL Cons r =
+  cl-map (C (md r)) Cons r
+    (\ s h -> (part-move r s h).1) (\ s h -> (part-move r s h).2)
+    ((fuel-up r).1 c) ;
+
+cons-fix-from (r : Ty) (c : CL Cons r) : Cons r =
+  (fuel-up r).2
+    (cl-map Cons (C (md r)) r
+       (\ s h -> (part-move r s h).2) (\ s h -> (part-move r s h).1) c) ;
+
+cons-down-s (x y : Ty) (h : Les x y) (c : Cons x) : Cons y =
+  (c-move (max (md x) (md y)) (md y) y (leN-max-r (md x) (md y)) (leN-refl (md y))).1
+    (c-down (max (md x) (md y)) x y h
+       ((c-move (md x) (max (md x) (md y)) x (leN-refl (md x)) (leN-max-l (md x) (md y))).1 c)) ;
+
+opaque Cons ;
+
+cons-down (x y : Ty) (h : Le x y) (c : Cons x) : Cons y = cons-down-s x y (le-les x y h) c ;
+
+------------------------------------------------------------------------
+-- the clauses of a consistent type
+
+cons-clash (r : Ty) (c : Cons r) (f g : Ty) (hu : Sel r univ) (hp : Sel r (pi f g)) : Empty =
+  cl-up Cons r (cons-fix-to r c) f g hu hp ;
+
+cons-psel (r s t : Ty) (c : Cons r) (q : PSel r s t) : Cons s * Cons t =
+  cl-ps Cons r (cons-fix-to r c) s t q ;
+
+cons-asel (r d t : Ty) (c : Cons r) (q : ASel r d t) (cd : Cons d) : Cons t =
+  cl-as Cons r (cons-fix-to r c) d t q cd ;
+
+cons-meet-l (x y : Ty) (c : Cons (meet x y)) : Cons x = cons-down (meet x y) x (le-meet-l x y) c ;
+
+------------------------------------------------------------------------
+-- Lemma 1.4: a single pi component
+
+-- the parts of a pi selection of pi a b are above a, b
+PiParts : Ty -> Ty -> Ty -> U l = split {
+  om -> \ s t -> Top ; univ -> \ s t -> Top ;
+  pi a b -> \ s t -> Les a s * Les b t ;
+  arr a b -> \ s t -> Top ; meet a b -> \ s t -> Top } ;
+
+piparts-none : (r : Ty) -> PiParts r om om = split {
+  om -> tt ; univ -> tt ; pi a b -> (s-om a, s-om b) ; arr a b -> tt ; meet a b -> tt } ;
+
+piparts-meet : (r s1 t1 s2 t2 : Ty) -> PiParts r s1 t1 -> PiParts r s2 t2 -> PiParts r (meet s1 s2) (meet t1 t2) = split {
+  om -> \ s1 t1 s2 t2 h1 h2 -> tt ;
+  univ -> \ s1 t1 s2 t2 h1 h2 -> tt ;
+  pi a b -> \ s1 t1 s2 t2 h1 h2 -> (s-meet a s1 s2 h1.1 h2.1, s-meet b t1 t2 h1.2 h2.2) ;
+  arr a b -> \ s1 t1 s2 t2 h1 h2 -> tt ;
+  meet a b -> \ s1 t1 s2 t2 h1 h2 -> tt } ;
+
+psel-parts : (r s t : Ty) -> PSel r s t -> PiParts r s t = split {
+  ps-none r -> piparts-none r ;
+  ps-here a b -> (les-refl a, les-refl b) ;
+  ps-l r1 r2 s t h -> tt ;
+  ps-r r1 r2 s t h -> tt ;
+  ps-meet r s1 t1 s2 t2 h1 h2 | r1 r2 -> piparts-meet r s1 t1 s2 t2 r1 r2 } ;
+
+-- Pi injectivity of the order
+pi-inj (a b a' b' : Ty) (h : Le (pi a b) (pi a' b')) : Le a a' * Le b b' =
+  (le-trans a i.2.2.1 a' (les-le a i.2.2.1 p.1) i.2.2.2.2.2.2.1,
+   le-trans b i.2.2.2.1 b' (les-le b i.2.2.2.1 p.2) i.2.2.2.2.2.2.2)
+  where {
+    i : InvPi (pi a b) a' b' = inv-pi (pi a b) a' b' h ;
+    p : PiParts (pi a b) i.2.2.1 i.2.2.2.1 = psel-parts (pi a b) i.2.2.1 i.2.2.2.1 i.2.2.2.2.2.1 ; } ;
+
+-- arrow selections of a type without arrow components are om-only
+NoArr : Ty -> U l = split {
+  om -> Top ; univ -> Top ; pi s t -> Top ; arr s t -> Empty ; meet s t -> Top } ;
+
+asel-noarr : (r d t : Ty) -> ASel r d t -> AllC NoArr r -> OmOnly t = split {
+  as-none r -> \ o -> tt ;
+  as-here a b -> \ o -> efq o ;
+  as-l r1 r2 d t h | rh -> \ o -> rh o.1 ;
+  as-r r1 r2 d t h | rh -> \ o -> rh o.2 ;
+  as-meet r d1 t1 d2 t2 h1 h2 | r1 r2 -> \ o -> (r1 o, r2 o) } ;
+
+om-les-omonly (t : Ty) (o : OmOnly t) : Les om t = omonly-les t t (les-refl t) o ;
+
+cons-pi (a b : Ty) (ca : Cons a) (cb : Cons b) : Cons (pi a b) =
+  cons-fix-from (pi a b)
+    (\ f g hu hp -> sel-all PiShape (pi a b) univ hu tt,
+     (\ d t hu q x -> efq (sel-all PiShape (pi a b) univ hu tt),
+     (\ f g d t hp q x -> om-les-omonly t (asel-noarr (pi a b) d t q tt),
+     (\ s t q -> (cons-down-s a s (psel-parts (pi a b) s t q).1 ca,
+                  cons-down-s b t (psel-parts (pi a b) s t q).2 cb),
+      \ d t q x -> cons-down-s om t (om-les-omonly t (asel-noarr (pi a b) d t q tt)) cons-om)))) ;
