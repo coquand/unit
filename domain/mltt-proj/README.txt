@@ -4,7 +4,7 @@ filters of domain/mltt.  domain/mltt (owned by another session) is
 imported READ-ONLY through symlinks; nothing there is edited.  No
 parameters, no postulates.  Not committed.
 
-CHECK.  seg All.seg: 697 declarations (with domain/mltt), 0 failed, 0.09 s.
+CHECK.  seg All.seg: 711 declarations (with domain/mltt), 0 failed, 0.09 s.
 
 Proj.seg (156 lines)
   Meets P f      f is a meet of elements satisfying P
@@ -36,5 +36,10 @@ ProjLam.seg (99 lines): Coquand-Huber Prop. 1, function clause
   (>=) by Sound.sound-lam and lam-app-sub.
 
 Hypotheses are those the semantics of terms satisfies (Sem.fam-anti,
-sem-cons, soundness).  Not yet done: p U of an element with no U/Pi
-information (= bot), and the paper's eta example as an instance.
+sem-cons, soundness).
+
+ProjBot.seg (35 lines): LamU[A, G].eq : FEq (p U (lamF A G)) (prin om),
+the clause "p U b = bot otherwise" for functions (no hypotheses).
+
+Not done: the paper's eta example (needs a base type; MLTT_eta has none).
+Next: Coquand-Huber Def. 1, Props 2-3, once domain/mltt step 4 exists.
