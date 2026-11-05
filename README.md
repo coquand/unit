@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and thirteen developments written with it:
+This repository contains the checker and fourteen developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -68,7 +68,18 @@ This repository contains the checker and thirteen developments written with it:
   section 2: domain semantics with the compact elements as intersection
   types, soundness, a logical relation at compact witnesses, adequacy,
   Π-injectivity and subject reduction (`domain/mltt`; comparison with the
-  Agda mechanisation below).
+  Agda mechanisation below); on the same filters, the finitary projections
+  of Coquand and Huber, *An adequacy theorem for dependent type theory*
+  (Proposition 1, with El (U → U) as the continuous functions
+  El U → El U), and their extension of the logical relation to infinite
+  types by continuity (Definition 1, Propositions 2–3) (`domain/mltt-proj`);
+- the lazy evaluator of Henderson and Morris (*A Lazy Evaluator*, 1976),
+  with the compact elements as intersection types: invariance of the
+  observations under the rules of the evaluator, partial correctness of the
+  procedure Eval, and the run of the paper's Example 4 (`domain/lazy`);
+  the infinite elements as filters of types, and the semantics in the
+  paper's own form (`domain/ideal`). An Agda version with finite elements
+  is `LAZY/` in [coquand/domain-semantics](https://github.com/coquand/domain-semantics).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -131,6 +142,9 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 
 - [`unit.pdf`](doc/unit.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
+- [`lazy-intersection.pdf`](doc/lazy-intersection.pdf): the lazy
+  evaluator of Henderson and Morris by intersection types, the informal
+  proof followed by `domain/lazy` and `domain/ideal`.
 - [`gcddomain.pdf`](doc/gcddomain.pdf): a reading example. Gauss's lemma
   and "if A is a gcd domain, then so is A[X]", written as an informal proof
   that follows the Unit files in [`sag/gcddomain`](sag/gcddomain)
