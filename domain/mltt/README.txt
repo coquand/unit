@@ -1,9 +1,8 @@
 domain/mltt: MLTT_eta (Pi, U : U, beta, eta) after Carneiro, Coquand,
 Frabetti Mathieu, Lennon-Bertrand, Mellies, Weirich, "Definitional
 inversion, without normalisation" (~/DOMAIN/paper1.pdf, arXiv 2607.13662),
-section 2; a port of ~/DOMAIN/MIN (its Agda mechanisation, 27k lines) with
+section 2; a port of ~/DOMAIN/MIN (its Agda mechanisation) with
 the compact elements as INTERSECTION TYPES (user's choice, 2026-11-05).
-Not committed.
 
 DONE.  Types.seg (152 declarations with Lib, 0 failed, 0.02 s; no
 parameters): types om | univ | pi s t | arr s t | meet s t; order Le by
@@ -61,13 +60,53 @@ and the lemmas of Sem.seg.  Check with --opened after the file name.
     2.32 for the empty context (pi-not-u-closed).
  Typing.seg change: app-sel (Lemma 2.8) now also gives f <= x -> w.
 
-NEXT
- 4. See NOTE-4-plan.txt: 4a syntactic metatheory (weakening and
-    substitution of derivations, presupposition, context conversion; the
-    Pi clause records syntactic conversions, so it is needed), 4b the
-    logical relation by recursion on a fuel with R (N+1) = new clause AND
-    R N, its laws (sec. 2.7), adequacy (Thm 2.35), Pi injectivity (2.37),
-    subject reduction (2.38).
- Confluence (MIN/Syntax/Confluence*) is not needed.
+DONE (step 4a; informal argument NOTE-4.txt 4.1-4.5, written first).
+ SynLemmas.seg  equations on terms over the kit (E0-E4, D1-D4)
+ Weaken.seg     Lemma R (renaming of derivations), weakening
+ Subst.seg      P0, Lemma S (substitution), sub1, identity, context conversion
+ Presup.seg     wf inversion, lookup : U, type and conversion presupposition
+ Cross.seg      Lemma X: two equal substitutions give equal instances
+STEP 4b, PARTLY (NOTE-4.txt 4.6-4.12).
+ Reduction.seg  head reduction as a function (deterministic by construction)
+ LogRel.seg     Dom/Cod/Fam of a filter, Lemma 4.7.1, the relation at
+                FILTER witnesses by fuel, laws L0, L1, L7, L8
+ Laws.seg       L2-L6 (diagonal, symmetry, conversion, transitivity)
+All.seg: 853 declarations, 0 failed, 0.14 s, no parameters, no postulates.
+DONE (step 4b at compact witnesses; NOTE-4.txt 4.14, written first).
+4.12 (adequacy fails at a fixed fuel) is settled by 4.14 (decision 4.13):
+compact witnesses, the arguments read off the arrow selections of the
+ELEMENT witness (as MIN), no type witness; stability is the enough-fuel
+Lemma F.  LogRel.seg / Laws.seg stay as the record of 4.8.
+ RelC.seg         the relation (4.14.1), M (monotone in the witness), L1,
+                  Lemma F, TyR / TmR at the canonical fuel, unfolding
+ LawsC.seg        L2-L7 at every fuel; L3-L6 with a typing hypothesis,
+                  through the typed representative (key-tp, fam-val)
+ AdeqBase.seg     the substitution (s, P); the laws at the canonical
+                  fuel; related substitutions (both types), sym, diag, ext
+ AdeqPi.seg       statement Ad; var, conv, U, Pi / eq-Pi
+ AdeqLam.seg      refl, sym, trans, lam
+ AdeqApp.seg      app / app-fun / app-arg, beta
+ AdeqFun.seg      funext
+ Adequacy.seg     Theorem 2.35, one eliminator on the derivations
+ Consequences.seg bottom environment, identity related, Corollary 2.37
+                  (pi-injectivity) in any context
+All.seg: 1486 declarations, 0 failed, 0.25 s; no parameters, no
+postulates.
+DONE (subject reduction, paper 2.38; NOTE-4.txt 4.15, written first).
+ SubjRed.seg      gen-lam (generation for lam up to conversion, motive by
+                  cases on the subject), beta-ty (pi-injectivity, Lemma S),
+                  subject-reduction (one eliminator; app by cases on the
+                  function), subject-reds (along ~>*)
+All.seg: 1507 declarations, 0 failed, 0.26 s; no parameters, no
+postulates.
+
+COMPARISON WITH THE AGDA DEVELOPMENT (~/DOMAIN/MIN), same machine.
+ Agda 2.9.0, no interface files, MIN/SubjectReduction.agda and all it
+ imports: 54 modules, 21,987 lines, 1.10 MB, 13.0 s (0.30 s on cached
+ interfaces).  Unit: 27 files, 6,045 lines, 0.34 MB (library included,
+ LogRel/Laws excluded), All.seg 0.26 s.  By part (characters, Agda / Unit):
+ domain 231k / 56k, syntax 55k / 78k, model 224k / 67k, relation 219k /
+ 46k, adequacy 361k / 66k, Pi injectivity + subject reduction 14k / 12k.
+ See the top-level README.md for where the difference comes from.
 
 CHECK.  From here: $(cd ../.. && cabal list-bin exe:seg) All.seg

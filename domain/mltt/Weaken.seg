@@ -1,0 +1,180 @@
+-- Weaken.seg: renaming of derivations (step 4a; NOTE-4.txt section 4.2).
+--   der-ty-ty .. der-eq-l   a derivation moved along an equation of terms
+--   RenOk G H r             r typed from G to H; renok-wk, renok-lift
+--   ren-der                 Lemma R, one eliminator for Der
+--   wk-ty, wk-eq            weakening
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ; open SynLemmas[l] ;
+
+------------------------------------------------------------------------
+-- a derivation moved along an equation of terms
+
+der-ty-ty (n : Nat) (G : Ctx n) (M A A' : Tm n) (e : Id (Tm n) A A') (d : Der n (jty G M A)) : Der n (jty G M A') =
+  subst (Tm n) (\ T -> Der n (jty G M T)) A A' e d ;
+
+der-ty-tm (n : Nat) (G : Ctx n) (M M' A : Tm n) (e : Id (Tm n) M M') (d : Der n (jty G M A)) : Der n (jty G M' A) =
+  subst (Tm n) (\ T -> Der n (jty G T A)) M M' e d ;
+
+der-eq-ty (n : Nat) (G : Ctx n) (M N A A' : Tm n) (e : Id (Tm n) A A') (d : Der n (jeq G M N A)) : Der n (jeq G M N A') =
+  subst (Tm n) (\ T -> Der n (jeq G M N T)) A A' e d ;
+
+der-eq-l (n : Nat) (G : Ctx n) (M M' N A : Tm n) (e : Id (Tm n) M M') (d : Der n (jeq G M N A)) : Der n (jeq G M' N A) =
+  subst (Tm n) (\ T -> Der n (jeq G T N A)) M M' e d ;
+
+der-eq-r (n : Nat) (G : Ctx n) (M N N' A : Tm n) (e : Id (Tm n) N N') (d : Der n (jeq G M N A)) : Der n (jeq G M N' A) =
+  subst (Tm n) (\ T -> Der n (jeq G M T A)) N N' e d ;
+
+------------------------------------------------------------------------
+-- typed renamings
+
+RenOk (n m : Nat) (G : Ctx n) (H : Ctx m) (r : Fin n -> Fin m) : U l =
+  (i : Fin n) -> Id (Tm m) (lookup m H (r i)) (Ren.trav n (lookup n G i) m r) ;
+
+-- fs, by definition of lookup
+renok-wk (n : Nat) (G : Ctx n) (C : Tm n) : RenOk n (suc n) G (ext n G C) (\ i -> fs n i) =
+  \ i -> refl (wk n (lookup n G i)) ;
+
+renok-lift (n m : Nat) (G : Ctx n) (H : Ctx m) (r : Fin n -> Fin m) (A : Tm n) (ro : RenOk n m G H r) :
+    RenOk (suc n) (suc m) (ext n G A) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) = split {
+  none -> sym (Tm (suc m)) (Ren.trav (suc n) (wk n A) (suc m) (Ren.lift n m r)) (wk m (Ren.trav n A m r)) (wk-ren n m r A) ;
+  some i -> trans (Tm (suc m)) (wk m (lookup m H (r i))) (wk m (Ren.trav n (lookup n G i) m r))
+              (Ren.trav (suc n) (wk n (lookup n G i)) (suc m) (Ren.lift n m r))
+              (ap (Tm m) (Tm (suc m)) (\ T -> wk m T) (lookup m H (r i)) (Ren.trav n (lookup n G i) m r) (ro i))
+              (sym (Tm (suc m)) (Ren.trav (suc n) (wk n (lookup n G i)) (suc m) (Ren.lift n m r))
+                 (wk m (Ren.trav n (lookup n G i) m r)) (wk-ren n m r (lookup n G i))) } ;
+
+------------------------------------------------------------------------
+-- Lemma R
+
+RenJ (n : Nat) : Jf n -> U l = split {
+  jwf G -> Top ;
+  jty G M A -> (m : Nat) -> (H : Ctx m) -> (r : Fin n -> Fin m) -> RenOk n m G H r -> Der m (jwf H) ->
+    Der m (jty H (Ren.trav n M m r) (Ren.trav n A m r)) ;
+  jeq G M N A -> (m : Nat) -> (H : Ctx m) -> (r : Fin n -> Fin m) -> RenOk n m G H r -> Der m (jwf H) ->
+    Der m (jeq H (Ren.trav n M m r) (Ren.trav n N m r) (Ren.trav n A m r)) } ;
+
+-- the funext premise: the renamed (wk f) applied to var 0 is wk of the renamed f, applied to var 0
+ren-wk-app (n m : Nat) (r : Fin n -> Fin m) (f : Tm n) :
+    Id (Tm (suc m)) (Ren.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Ren.lift n m r))
+      (app (suc m) (wk m (Ren.trav n f m r)) (var (suc m) (fz m))) =
+  ap (Tm (suc m)) (Tm (suc m)) (\ X -> app (suc m) X (var (suc m) (fz m)))
+    (Ren.trav (suc n) (wk n f) (suc m) (Ren.lift n m r)) (wk m (Ren.trav n f m r)) (wk-ren n m r f) ;
+
+ren-der : (n : Nat) -> (J : Jf n) -> Der n J -> RenJ n J = split {
+  wf-emp -> tt ;
+  wf-ext n G A h -> tt ;
+  ty-var n G i h -> \ m H r ro wH ->
+    der-ty-ty m H (var m (r i)) (lookup m H (r i)) (Ren.trav n (lookup n G i) m r) (ro i) (ty-var m H (r i) wH) ;
+  ty-conv n G M A B h1 h2 h3 | r1 r2 r3 -> \ m H r ro wH ->
+    ty-conv m H (Ren.trav n M m r) (Ren.trav n A m r) (Ren.trav n B m r)
+      (r1 m H r ro wH) (r2 m H r ro wH) (r3 m H r ro wH) ;
+  ty-U n G h -> \ m H r ro wH -> ty-U m H wH ;
+  ty-Pi n G A B h1 h2 | r1 r2 -> \ m H r ro wH ->
+    ty-Pi m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (r1 m H r ro wH)
+      (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH))) ;
+  ty-Lam n G A B M h1 h2 h3 | r1 r2 r3 -> \ m H r ro wH ->
+    ty-Lam m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+      (Ren.trav (suc n) M (suc m) (Ren.lift n m r)) (r1 m H r ro wH)
+      (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+      (r3 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH))) ;
+  ty-App n G A B f a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H r ro wH ->
+    der-ty-ty m H (app m (Ren.trav n f m r) (Ren.trav n a m r))
+      (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r)) (Ren.trav n (subst1 n B a) m r)
+      (sym (Tm m) (Ren.trav n (subst1 n B a) m r) (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+         (ren-subst1 n m r B a))
+      (ty-App m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n f m r) (Ren.trav n a m r)
+         (r1 m H r ro wH)
+         (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+            (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+         (r3 m H r ro wH) (r4 m H r ro wH)) ;
+  eq-refl n G M A h | r1 -> \ m H r ro wH ->
+    eq-refl m H (Ren.trav n M m r) (Ren.trav n A m r) (r1 m H r ro wH) ;
+  eq-sym n G M N A h | r1 -> \ m H r ro wH ->
+    eq-sym m H (Ren.trav n M m r) (Ren.trav n N m r) (Ren.trav n A m r) (r1 m H r ro wH) ;
+  eq-trans n G M N P A h1 h2 | r1 r2 -> \ m H r ro wH ->
+    eq-trans m H (Ren.trav n M m r) (Ren.trav n N m r) (Ren.trav n P m r) (Ren.trav n A m r)
+      (r1 m H r ro wH) (r2 m H r ro wH) ;
+  eq-conv n G M N A B h1 h2 h3 | r1 r2 r3 -> \ m H r ro wH ->
+    eq-conv m H (Ren.trav n M m r) (Ren.trav n N m r) (Ren.trav n A m r) (Ren.trav n B m r)
+      (r1 m H r ro wH) (r2 m H r ro wH) (r3 m H r ro wH) ;
+  eq-beta n G A B M a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H r ro wH ->
+    der-eq-ty m H (Ren.trav n (app n (lam n A M) a) m r) (Ren.trav n (subst1 n M a) m r)
+      (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r)) (Ren.trav n (subst1 n B a) m r)
+      (sym (Tm m) (Ren.trav n (subst1 n B a) m r) (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+         (ren-subst1 n m r B a))
+      (der-eq-r m H (Ren.trav n (app n (lam n A M) a) m r)
+         (subst1 m (Ren.trav (suc n) M (suc m) (Ren.lift n m r)) (Ren.trav n a m r)) (Ren.trav n (subst1 n M a) m r)
+         (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+         (sym (Tm m) (Ren.trav n (subst1 n M a) m r) (subst1 m (Ren.trav (suc n) M (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+            (ren-subst1 n m r M a))
+         (eq-beta m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+            (Ren.trav (suc n) M (suc m) (Ren.lift n m r)) (Ren.trav n a m r) (r1 m H r ro wH)
+            (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+               (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+            (r3 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+               (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+            (r4 m H r ro wH))) ;
+  eq-Pi n G A A' B B' h1 h2 h3 h4 h5 | r1 r2 r3 r4 r5 -> \ m H r ro wH ->
+    eq-Pi m H (Ren.trav n A m r) (Ren.trav n A' m r)
+      (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav (suc n) B' (suc m) (Ren.lift n m r))
+      (r1 m H r ro wH)
+      (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+      (r3 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+      (r4 m H r ro wH)
+      (r5 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+         (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH))) ;
+  eq-funext n G A B f g h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H r ro wH ->
+    eq-funext m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n f m r) (Ren.trav n g m r)
+      (r1 m H r ro wH)
+      (der-eq-l (suc m) (ext m H (Ren.trav n A m r))
+         (Ren.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Ren.lift n m r))
+         (app (suc m) (wk m (Ren.trav n f m r)) (var (suc m) (fz m)))
+         (app (suc m) (wk m (Ren.trav n g m r)) (var (suc m) (fz m)))
+         (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+         (ren-wk-app n m r f)
+         (der-eq-r (suc m) (ext m H (Ren.trav n A m r))
+            (Ren.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Ren.lift n m r))
+            (Ren.trav (suc n) (app (suc n) (wk n g) (var (suc n) (fz n))) (suc m) (Ren.lift n m r))
+            (app (suc m) (wk m (Ren.trav n g m r)) (var (suc m) (fz m)))
+            (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+            (ren-wk-app n m r g)
+            (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+               (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))))
+      (r3 m H r ro wH) (r4 m H r ro wH) ;
+  eq-app-fun n G A B f f' a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H r ro wH ->
+    der-eq-ty m H (app m (Ren.trav n f m r) (Ren.trav n a m r)) (app m (Ren.trav n f' m r) (Ren.trav n a m r))
+      (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r)) (Ren.trav n (subst1 n B a) m r)
+      (sym (Tm m) (Ren.trav n (subst1 n B a) m r) (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+         (ren-subst1 n m r B a))
+      (eq-app-fun m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+         (Ren.trav n f m r) (Ren.trav n f' m r) (Ren.trav n a m r) (r1 m H r ro wH)
+         (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+            (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+         (r3 m H r ro wH) (r4 m H r ro wH)) ;
+  eq-app-arg n G A B f a a' h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H r ro wH ->
+    der-eq-ty m H (app m (Ren.trav n f m r) (Ren.trav n a m r)) (app m (Ren.trav n f m r) (Ren.trav n a' m r))
+      (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r)) (Ren.trav n (subst1 n B a) m r)
+      (sym (Tm m) (Ren.trav n (subst1 n B a) m r) (subst1 m (Ren.trav (suc n) B (suc m) (Ren.lift n m r)) (Ren.trav n a m r))
+         (ren-subst1 n m r B a))
+      (eq-app-arg m H (Ren.trav n A m r) (Ren.trav (suc n) B (suc m) (Ren.lift n m r))
+         (Ren.trav n f m r) (Ren.trav n a m r) (Ren.trav n a' m r) (r1 m H r ro wH)
+         (r2 (suc m) (ext m H (Ren.trav n A m r)) (Ren.lift n m r) (renok-lift n m G H r A ro)
+            (wf-ext m H (Ren.trav n A m r) (r1 m H r ro wH)))
+         (r3 m H r ro wH) (r4 m H r ro wH)) } ;
+
+------------------------------------------------------------------------
+-- weakening
+
+wk-ty (n : Nat) (G : Ctx n) (C M A : Tm n) (dC : Der n (jty G C (uu n))) (d : Der n (jty G M A)) :
+    Der (suc n) (jty (ext n G C) (wk n M) (wk n A)) =
+  ren-der n (jty G M A) d (suc n) (ext n G C) (\ i -> fs n i) (renok-wk n G C) (wf-ext n G C dC) ;
+
+wk-eq (n : Nat) (G : Ctx n) (C M N A : Tm n) (dC : Der n (jty G C (uu n))) (d : Der n (jeq G M N A)) :
+    Der (suc n) (jeq (ext n G C) (wk n M) (wk n N) (wk n A)) =
+  ren-der n (jeq G M N A) d (suc n) (ext n G C) (\ i -> fs n i) (renok-wk n G C) (wf-ext n G C dC) ;

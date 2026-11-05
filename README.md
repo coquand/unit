@@ -19,7 +19,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and twelve developments written with it:
+This repository contains the checker and thirteen developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -61,7 +61,14 @@ This repository contains the checker and twelve developments written with it:
   function ℕ∞ → 2 is discontinuous at ∞ (`sag/searchable`);
 - a translation of Escardó's *DialogueTreesHeight*: the dialogue tree of
   every term of System T of type (ℕ → ℕ) → ℕ has height below ε₀, and ε₀
-  is the least such bound (`sag/dialogue`).
+  is the least such bound (`sag/dialogue`);
+- definitional inversion without normalisation for MLTT with η (Π, U : U,
+  β, η), after Carneiro, Coquand, Frabetti Mathieu, Lennon-Bertrand,
+  Melliès, Weirich, *Definitional inversion, without normalisation*,
+  section 2: domain semantics with the compact elements as intersection
+  types, soundness, a logical relation at compact witnesses, adequacy,
+  Π-injectivity and subject reduction (`domain/mltt`; comparison with the
+  Agda mechanisation below).
 
 **Mathematical attribution: all mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
@@ -76,6 +83,49 @@ Sattler's mathematics.
 here, together with the delooping and cup-product constructions.** Our
 contribution was to develop the argument in detail and formalise it in Unit.
 Owen Milner formulated the Sính invariant in homotopy type theory.
+
+## Definitional inversion: Unit and Agda
+
+`domain/mltt` ports the Agda mechanisation of section 2 of *Definitional
+inversion, without normalisation* (the MIN development). Both prove the
+same chain, with no postulates: soundness of the domain model, adequacy
+of the logical relation, Π-injectivity (Corollary 2.37) and subject
+reduction (Theorem 2.38).
+
+|                         | Agda 2.9.0 (MIN)     | Unit (`domain/mltt`) |
+|-------------------------|----------------------|----------------------|
+| files checked           | 54 modules           | 27 files             |
+| size                    | 21,987 lines, 1.10 MB | 6,045 lines, 0.34 MB |
+| check from scratch      | 13.0 s               | 0.26 s               |
+
+Measured on the same machine; the Agda time is a check without interface
+files of `MIN/SubjectReduction.agda` and everything it imports. The Unit
+size includes its general library (Base, Prelude, Lib, 406 lines) and
+excludes the first, superseded version of the relation (LogRel, Laws); the
+Unit time is that of the whole `All.seg`, both versions included.
+
+Where the difference comes from:
+- **Compact elements.** Agda carves the stages C_n out of one nested type
+  with a rank (19 modules, 4,900 lines, of order, rank and membership
+  lemmas). In Unit
+  the compact elements are intersection types with an order given by
+  rules; transitivity and inversion are one induction on depth
+  (`Types.seg`, `Consistency.seg`, `Typing.seg`).
+- **No type witness in the relation.** The arguments of the Π clauses are
+  read off the arrow selections of the element itself, so the relation
+  needs no monotonicity in the type (Agda's `MonoTypeIncr`/`MonoTypeDecr`)
+  and stability (Corollary 2.33) is an enough-fuel lemma
+  (`RelC.seg`, `LawsC.seg`; `NOTE-4.txt` §4.14).
+- **Adequacy without stage bookkeeping.** No fuel is left in the statement
+  of adequacy, and the application needs no special case.
+- **Head reduction is a function,** so it is deterministic by
+  construction.
+- **The semantics is larger:** terms denote filters, over environments of
+  filters (infinite elements included), where Agda uses compact
+  environments.
+
+The proofs are written first as informal arguments (`NOTE-1-2.txt`,
+`NOTE-3.txt`, `NOTE-4.txt`), which the files follow step by step.
 
 ## Documents (`doc/`)
 

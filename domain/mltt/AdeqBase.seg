@@ -1,0 +1,177 @@
+-- AdeqBase.seg: what adequacy (NOTE-4.txt 4.14.3) uses besides the
+-- rules: the substitution (s, P) and its equations; the laws at the
+-- canonical fuel (moved by Lemma F); related substitutions, their
+-- symmetry, diagonal and extension.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open SynLemmas[l] ; open Weaken[l] ; open Subst[l] ; open Presup[l] ; open Cross[l] ;
+open Filter[l] ; open Sem[l] ; open Sound[l] ; open Reduction[l] ; open RelC[l] ; open LawsC[l] ;
+
+------------------------------------------------------------------------
+-- the substitution (s, P)
+
+consS (m n : Nat) (s : Fin m -> Tm n) (P : Tm n) : Fin (suc m) -> Tm n = split {
+  none -> P ;
+  some i -> s i } ;
+
+consS-pt (m n : Nat) (s : Fin m -> Tm n) (P : Tm n) :
+    SL.PtEq (suc m) n (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n P)) (consS m n s P) = split {
+  none -> refl P ;
+  some i -> sub1-wk n (s i) P } ;
+
+-- M[liftS s][P] = M[(s, P)]
+consS-eq (m n : Nat) (s : Fin m -> Tm n) (P : Tm n) (M : Tm (suc m)) :
+    Id (Tm n) (subst1 n (Sub.trav (suc m) M (suc n) (Sub.lift m n s)) P) (Sub.trav (suc m) M n (consS m n s P)) =
+  trans (Tm n) (subst1 n (Sub.trav (suc m) M (suc n) (Sub.lift m n s)) P)
+    (Sub.trav (suc m) M n (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n P)))
+    (Sub.trav (suc m) M n (consS m n s P))
+    (sub-sub (suc m) M (suc n) (Sub.lift m n s) n (sub1 n P))
+    (SL.trav-ext (suc m) M n (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n P)) (consS m n s P) (consS-pt m n s P)) ;
+
+-- (wk A)[(s, P)] = A[s]
+consS-wk (m n : Nat) (s : Fin m -> Tm n) (P : Tm n) (A : Tm m) :
+    Id (Tm n) (Sub.trav (suc m) (wk m A) n (consS m n s P)) (Sub.trav m A n s) =
+  SL.trav-ren m A (suc m) (\ i -> fs m i) n (consS m n s P) ;
+
+module AdeqB (n : Nat) (D : Ctx n) {
+  open RelCD[n, D] ;
+  open LawsCD[n, D] ;
+
+  ----------------------------------------------------------------------
+  -- the laws at the canonical fuel
+
+  -- Can j and Rel K j agree above the depth of the witness
+  to-fuel (j : RC n) (K : Nat) (hK : LeN (suc (md (wit n j))) K) (t : Can j) : Rel K j =
+    (fmove (suc (md (wit n j))) K j (leN-refl (md (wit n j))) hK).1 t ;
+  from-fuel (j : RC n) (K : Nat) (hK : LeN (suc (md (wit n j))) K) (t : Rel K j) : Can j =
+    (fmove (suc (md (wit n j))) K j (leN-refl (md (wit n j))) hK).2 t ;
+
+  cmono-ty (c c' : Ty) (le : Le c c') (T T' : Tm n) (t : TyR c T T') : TyR c' T T' =
+    from-fuel (rty c' T T') (suc (max (md c) (md c'))) (leN-max-r (md c) (md c'))
+      ((mono (suc (max (md c) (md c')))).ty c c' le T T'
+         (to-fuel (rty c T T') (suc (max (md c) (md c'))) (leN-max-l (md c) (md c')) t)) ;
+
+  cmono-tm (u u' : Ty) (le : Le u u') (T M M' : Tm n) (t : TmR u T M M') : TmR u' T M M' =
+    from-fuel (rtm u' T M M') (suc (max (md u) (md u'))) (leN-max-r (md u) (md u'))
+      ((mono (suc (max (md u) (md u')))).tm u u' le T M M'
+         (to-fuel (rtm u T M M') (suc (max (md u) (md u'))) (leN-max-l (md u) (md u')) t)) ;
+
+  cmono : Mono Can = struct { ty = cmono-ty ; tm = cmono-tm } ;
+
+  cl2 (u : Ty) (T M M' : Tm n) (t : TmR u T M M') : TmR u T M M =
+    (laws (suc (md u))).dtm u T M M' t ;
+
+  cl4 (u c : Ty) (hc : Tp (el u c)) (T M M' : Tm n) (t : TmR u T M M') : TmR u T M' M =
+    (laws (suc (md u))).stm u c hc T M M' t ;
+
+  cl6 (u c : Ty) (hc : Tp (el u c)) (T M1 M2 M3 : Tm n) (t1 : TmR u T M1 M2) (t2 : TmR u T M2 M3) : TmR u T M1 M3 =
+    (laws (suc (md u))).ttm u c hc T M1 M2 M3 t1 t2 ;
+
+  cl5 (u c : Ty) (hc : Tp (el u c)) (T T2 M M' : Tm n) (ty : TyR c T T2) (t : TmR u T M M') : TmR u T2 M M' =
+    from-fuel (rtm u T2 M M') (suc (max (md u) (md c))) (leN-max-l (md u) (md c))
+      ((laws (suc (max (md u) (md c)))).cv u c hc T T2 M M'
+         (to-fuel (rty c T T2) (suc (max (md u) (md c))) (leN-max-r (md u) (md c)) ty)
+         (to-fuel (rtm u T M M') (suc (max (md u) (md c))) (leN-max-l (md u) (md c)) t)) ;
+
+  cl7 (u : Ty) (T M M' M1 M1' : Tm n) (r : Reds n M M1) (r' : Reds n M' M1') (t : TmR u T M1 M1') : TmR u T M M' =
+    l7tm (suc (md u)) u T M M' M1 M1' r r' t ;
+
+  -- an element of U is related as a type (the first component)
+  tmr-ty (u : Ty) (T M M' : Tm n) (t : TmR u T M M') : TyR u M M' =
+    (tyr-unfold u M M').2 ((tmr-unfold u T M M').1 t).ty ;
+
+  -- om-like witnesses
+  tmr-om (u : Ty) (e : Le om u) (T M M' : Tm n) : TmR u T M M' = can-om (rtm u T M M') e ;
+
+  -- the type of a judgement moved along an equation of terms
+  tmr-tr (u : Ty) (T T' : Tm n) (e : Id (Tm n) T T') (M M' : Tm n) (t : TmR u T M M') : TmR u T' M M' =
+    Prelude[l].subst (Tm n) (\ Z -> TmR u Z M M') T T' e t ;
+
+  tmr-trl (u : Ty) (T M1 M2 M' : Tm n) (e : Id (Tm n) M1 M2) (t : TmR u T M1 M') : TmR u T M2 M' =
+    Prelude[l].subst (Tm n) (\ Z -> TmR u T Z M') M1 M2 e t ;
+
+  tmr-trr (u : Ty) (T M M1 M2 : Tm n) (e : Id (Tm n) M1 M2) (t : TmR u T M M1) : TmR u T M M2 =
+    Prelude[l].subst (Tm n) (\ Z -> TmR u T M Z) M1 M2 e t ;
+
+  ----------------------------------------------------------------------
+  -- related substitutions
+
+  -- the variables, at both types
+  VarR (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (i : Fin m) (u : Ty) : U l =
+    TmR u (Sub.trav m (lookup m G i) n s) (s i) (s' i) * TmR u (Sub.trav m (lookup m G i) n s') (s i) (s' i) ;
+
+  RelS (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) : U l =
+    sig { ok : SubOk m n G D s ; ok' : SubOk m n G D s' ; eq : SubEq m n G D s s' ; eq' : SubEq m n G D s' s ;
+          vr : (i : Fin m) -> (u c : Ty) -> (rho i).mem u -> (sem m (lookup m G i) rho).mem c -> Tp (el u c) ->
+               VarR m G rho s s' i u } ;
+
+  rels-sym (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') : RelS m G rho s' s =
+    struct { ok = rs.ok' ; ok' = rs.ok ; eq = rs.eq' ; eq' = rs.eq ;
+             vr = \ i u c mu mc hc ->
+               (cl4 u c hc (Sub.trav m (lookup m G i) n s') (s i) (s' i) (rs.vr i u c mu mc hc).2,
+                cl4 u c hc (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1) } ;
+
+  rels-diag (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') : RelS m G rho s s =
+    struct { ok = rs.ok ; ok' = rs.ok ;
+             eq = \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i) ;
+             eq' = \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i) ;
+             vr = \ i u c mu mc hc ->
+               (cl2 u (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1,
+                cl2 u (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1) } ;
+
+  -- the related arguments for the new variable, at both types
+  ArgR (m : Nat) (A : Tm m) (rho : Env m) (X : Filt) (s s' : Fin m -> Tm n) (P P' : Tm n) : U l =
+    (u c : Ty) -> X.mem u -> (sem m A rho).mem c -> Tp (el u c) ->
+    TmR u (Sub.trav m A n s) P P' * TmR u (Sub.trav m A n s') P P' ;
+
+  ext-ok (m : Nat) (G : Ctx m) (A : Tm m) (s : Fin m -> Tm n) (P : Tm n) (so : SubOk m n G D s)
+      (dP : Der n (jty D P (Sub.trav m A n s))) : SubOk (suc m) n (ext m G A) D (consS m n s P) = split {
+    none -> der-ty-ty n D P (Sub.trav m A n s) (Sub.trav (suc m) (wk m A) n (consS m n s P))
+              (sym (Tm n) (Sub.trav (suc m) (wk m A) n (consS m n s P)) (Sub.trav m A n s) (consS-wk m n s P A)) dP ;
+    some i -> der-ty-ty n D (s i) (Sub.trav m (lookup m G i) n s) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P))
+              (sym (Tm n) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P)) (Sub.trav m (lookup m G i) n s)
+                 (consS-wk m n s P (lookup m G i))) (so i) } ;
+
+  ext-eq (m : Nat) (G : Ctx m) (A : Tm m) (s s' : Fin m -> Tm n) (P P' : Tm n) (se : SubEq m n G D s s')
+      (eP : Der n (jeq D P P' (Sub.trav m A n s))) : SubEq (suc m) n (ext m G A) D (consS m n s P) (consS m n s' P') = split {
+    none -> der-eq-ty n D P P' (Sub.trav m A n s) (Sub.trav (suc m) (wk m A) n (consS m n s P))
+              (sym (Tm n) (Sub.trav (suc m) (wk m A) n (consS m n s P)) (Sub.trav m A n s) (consS-wk m n s P A)) eP ;
+    some i -> der-eq-ty n D (s i) (s' i) (Sub.trav m (lookup m G i) n s)
+              (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P))
+              (sym (Tm n) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P)) (Sub.trav m (lookup m G i) n s)
+                 (consS-wk m n s P (lookup m G i))) (se i) } ;
+
+  ext-vr (m : Nat) (G : Ctx m) (A : Tm m) (rho : Env m) (X : Filt) (s s' : Fin m -> Tm n) (P P' : Tm n)
+      (rs : RelS m G rho s s') (hP : ArgR m A rho X s s' P P') :
+      (i : Fin (suc m)) -> (u c : Ty) -> (extE m rho X i).mem u ->
+      (sem (suc m) (lookup (suc m) (ext m G A) i) (extE m rho X)).mem c -> Tp (el u c) ->
+      VarR (suc m) (ext m G A) (extE m rho X) (consS m n s P) (consS m n s' P') i u = split {
+    none -> \ u c mu mc hc ->
+      (tmr-tr u (Sub.trav m A n s) (Sub.trav (suc m) (wk m A) n (consS m n s P))
+         (sym (Tm n) (Sub.trav (suc m) (wk m A) n (consS m n s P)) (Sub.trav m A n s) (consS-wk m n s P A)) P P'
+         (hP u c mu ((wk-sem m A rho X).1 c mc) hc).1,
+       tmr-tr u (Sub.trav m A n s') (Sub.trav (suc m) (wk m A) n (consS m n s' P'))
+         (sym (Tm n) (Sub.trav (suc m) (wk m A) n (consS m n s' P')) (Sub.trav m A n s') (consS-wk m n s' P' A)) P P'
+         (hP u c mu ((wk-sem m A rho X).1 c mc) hc).2) ;
+    some i -> \ u c mu mc hc ->
+      (tmr-tr u (Sub.trav m (lookup m G i) n s) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P))
+         (sym (Tm n) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s P)) (Sub.trav m (lookup m G i) n s)
+            (consS-wk m n s P (lookup m G i))) (s i) (s' i)
+         (rs.vr i u c mu ((wk-sem m (lookup m G i) rho X).1 c mc) hc).1,
+       tmr-tr u (Sub.trav m (lookup m G i) n s') (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s' P'))
+         (sym (Tm n) (Sub.trav (suc m) (wk m (lookup m G i)) n (consS m n s' P')) (Sub.trav m (lookup m G i) n s')
+            (consS-wk m n s' P' (lookup m G i))) (s i) (s' i)
+         (rs.vr i u c mu ((wk-sem m (lookup m G i) rho X).1 c mc) hc).2) } ;
+
+  -- the extension (s, P), (s', P') over (rho, X)
+  rels-ext (m : Nat) (G : Ctx m) (A : Tm m) (rho : Env m) (X : Filt) (s s' : Fin m -> Tm n) (P P' : Tm n)
+      (rs : RelS m G rho s s') (eP : Der n (jeq D P P' (Sub.trav m A n s))) (eP' : Der n (jeq D P' P (Sub.trav m A n s')))
+      (hP : ArgR m A rho X s s' P P') :
+      RelS (suc m) (ext m G A) (extE m rho X) (consS m n s P) (consS m n s' P') =
+    struct { ok = ext-ok m G A s P rs.ok (eq-pre n (jeq D P P' (Sub.trav m A n s)) eP).1 ;
+             ok' = ext-ok m G A s' P' rs.ok' (eq-pre n (jeq D P' P (Sub.trav m A n s')) eP').1 ;
+             eq = ext-eq m G A s s' P P' rs.eq eP ;
+             eq' = ext-eq m G A s' s P' P rs.eq' eP' ;
+             vr = ext-vr m G A rho X s s' P P' rs hP } ;
+} ;

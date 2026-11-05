@@ -1,0 +1,680 @@
+Step 4 of domain/mltt: the informal argument (written before the .seg
+files, which follow it step by step).  Plan and design findings:
+NOTE-4-plan.txt.  Part 4a (sections 4.1-4.5), the syntactic metatheory
+(MIN/Syntax/Substitution.agda), is checked.  Part 4b (sections 4.6-4.11),
+the relation, was first done with FILTER witnesses (4.8-4.9); that
+version fails at the application (4.12).  The checked version is 4.14:
+compact witnesses, arguments read off the selections of the element
+witness, no type witness (RelC, LawsC, Adeq*, Adequacy, Consequences).
+
+Notation (Syntax.seg).  ren r M is the traversal of the renaming kit,
+sub s M that of the substitution kit; liftR r, liftS s their lifts under
+a binder; wk M = ren fs M; M[N] = sub (sub1 N) M with sub1 N 0 = N,
+sub1 N (i+1) = var i.  Equalities of terms are Id (Tm n).  "By
+definition" below means: the two sides compute to the same term.
+The facts used by definition, for all i:
+  liftR r 0 = 0,          liftR r (i+1) = (r i)+1,
+  liftS s 0 = var 0,      liftS s (i+1) = wk (s i),
+  wk (var i) = var (i+1), sub s (var i) = s i.
+
+------------------------------------------------------------------------
+4.1 Equations on terms (SynLemmas.seg)
+
+E0 (extensionality).  For any kit, s i = s' i for all i gives
+trav s M = trav s' M.  Induction on M; under a binder lift s and lift s'
+agree pointwise by cases on the variable.
+
+E1 (a traversal after a renaming).  For any kit,
+trav s (ren r M) = trav (s . r) M.
+Induction on M.  Under a binder lift s (liftR r i) = lift (s . r) i by
+definition in both cases (0 |-> vz; i+1 |-> wkv (s (r i))), then E0.
+
+E2 (a renaming after a substitution).  ren r (sub s M) = sub (ren r . s) M.
+Induction on M.  Under a binder, at 0 both sides are var 0; at i+1 the
+claim is
+  (WR)  ren (liftR r) (wk N) = wk (ren r N):
+both sides are ren (fs . r) N by E1 (with the renaming kit), the left
+since liftR r . fs = fs . r by definition.
+
+E3 (a substitution after a substitution).
+sub s2 (sub s1 M) = sub (sub s2 . s1) M.
+Induction on M.  Under a binder, at 0 both sides are var 0; at i+1 the
+claim is
+  (WS)  sub (liftS s) (wk N) = wk (sub s N):
+both sides are sub (wk . s) N, the left by E1 (substitution kit) since
+liftS s . fs = wk . s by definition, the right by E2.
+
+E4 (identity).  sub var M = M.  Induction on M; under a binder liftS var
+agrees with var pointwise by definition, then E0.
+
+Consequences.
+D1  (wk e)[a] = e.   E1: sub (sub1 a . fs) e, and sub1 a . fs = var
+    by definition; E4.
+D2  sub s (B[a]) = (sub (liftS s) B)[sub s a].  By E3 both sides are
+    sub t B: at 0 both t's give sub s a by definition; at i+1, s i
+    and (wk (s i))[sub s a], equal by D1.
+D3  ren r (B[a]) = (ren (liftR r) B)[ren r a].  E2 on the left, E1 on
+    the right; the two substitutions agree pointwise by definition.
+D4  (ren (liftR fs) e)[var 0] = e.  E1: the substitution
+    sub1 (var 0) . liftR fs is var by definition; E4.
+(WR) and (WS) are stated as lemmas wk-ren and wk-sub: they are the
+commutations with weakening used by the typing lemmas below.
+
+------------------------------------------------------------------------
+4.2 Renaming of derivations (Weaken.seg)
+
+A renaming r : Fin n -> Fin m is typed from G to H, RenOk G H r, when
+lookup H (r i) = ren r (lookup G i) for every i.
+ - fs is typed from G to (G, C), by definition of lookup.
+ - liftR r is typed from (G, A) to (H, ren r A) when r is typed: at 0,
+   wk (ren r A) = ren (liftR r) (wk A) by WR; at i+1,
+   wk (lookup H (r i)) = wk (ren r (lookup G i)) by the hypothesis, and
+   = ren (liftR r) (wk (lookup G i)) by WR.
+
+Lemma R.  RenOk G H r and wf H give, from G |- M : A,
+H |- ren r M : ren r A, and from G |- M = N : A,
+H |- ren r M = ren r N : ren r A.
+Proof.  One induction on the derivation (motive Top at wf G).  Each rule
+is mapped to itself; under a binder the hypothesis wf (H, ren r A) is
+wf-ext of the induction hypothesis at A, and liftR r is typed.  The
+conclusion is transported along an equation of terms in: var (the
+hypothesis RenOk), app, beta, the two app congruences (D3: renaming
+commutes with M[a]), funext (wk-ren for f and g; liftR r 0 = 0).
+
+Weakening: G |- C : U gives, by R with fs, from G |- J the judgement
+(G, C) |- wk J (wf (G, C) by wf-ext).
+
+------------------------------------------------------------------------
+4.3 Substitution of derivations (Subst.seg; P0 of 4.4 and context
+    conversion are there too)
+
+A substitution s : Fin g -> Tm h is typed from G to H, SubOk H G s, when
+H |- s i : sub s (lookup G i) for every i.
+ - Lift: SubOk H G s and H |- sub s A : U give
+   SubOk (H, sub s A) (G, A) (liftS s): at 0, var 0 : wk (sub s A)
+   by the variable rule, and wk (sub s A) = sub (liftS s) (wk A) by WS;
+   at i+1, wk (s i) : wk (sub s (lookup G i)) by weakening, and WS.
+   (The typing of sub s A is a hypothesis, given by the induction
+   hypothesis at A: so there is no mutual induction.)
+ - sub1: G |- A : U and G |- a : A give SubOk G (G, A) (sub1 a): at 0,
+   a : A = (wk A)[a] by D1; at i+1, var i : lookup G i = (wk (lookup G i))[a]
+   by D1 (needs wf G, 4.4).
+ - Identity: wf G gives SubOk G G var, by E4.
+
+Lemma S.  SubOk H G s and wf H give, from G |- M : A,
+H |- sub s M : sub s A, and the same for conversions.
+Proof.  As Lemma R, with the lift above; the variable rule is the
+hypothesis itself (sub s (var i) = s i by definition); the transports in
+app, beta, the app congruences are D2, in funext WS.
+
+------------------------------------------------------------------------
+4.4 Presupposition and context conversion (Presup.seg)
+
+P0  Every derivation of G |- J gives wf G.  Induction: the rules with a
+    premise wf G return it, the others take it from their first premise.
+P1  wf (G, A) gives G |- A : U (inversion of wf-ext: a motive by cases
+    on n, Ctx (n+1) being a pair).  So wf G gives G |- lookup G i : U
+    for every i, by induction on n: at 0, weakening of A; at i+1,
+    weakening of the induction hypothesis at G.
+P2  G |- M : A gives G |- A : U.  Induction: var P1, conv its premise,
+    U by U, Pi by U (wf from P0), lam by Pi, app by S with sub1.
+Context conversion.  G |- A : U, G |- A' : U, G |- A = A' : U give
+SubOk (G, A') (G, A) var: at 0, var 0 : wk A' and wk A' = wk A by
+weakening (symmetry), so var 0 : wk A by conversion, wk A : U by
+weakening; at i+1 by the variable rule; then E4 for sub var (wk A).
+By Lemma S and E4, (G, A) |- J gives (G, A') |- J.
+P3  G |- M = N : A gives G |- M : A and G |- N : A.  Induction.  refl,
+    sym, trans, conv: directly.  beta: app of lam on the left, S with
+    sub1 on the right.  Pi: Pi A B by the rule; for Pi A' B', A' : U by
+    the induction hypothesis at A = A', B' over (G, A') by context
+    conversion.  funext: its premises.  app-fun: app on both sides.
+    app-arg: on the right a' : A, and B[a'] = B[a] : U, obtained from
+    app-arg at the function lam A B : Pi A U (B : U over (G, A)) and
+    beta at a and a' (MIN's trick, as there is no congruence for
+    substitution); then conversion.
+
+------------------------------------------------------------------------
+4.5 Two related substitutions (Cross.seg)
+
+s and s' are equal from G to H, SubEq H G s s', when
+H |- s i = s' i : sub s (lookup G i) for every i.
+
+Lemma X.  SubOk H G s, SubOk H G s', SubEq H G s s', wf H and
+G |- M : A give H |- sub s M = sub s' M : sub s A.
+Proof.  Induction on the typing derivation (motive Top at wf and
+conversion judgements), the motive quantified over H, s, s'.
+ - var: the hypothesis SubEq.  U: refl.
+ - conv: conversion along S at the premise A = B.
+ - Under a binder (Pi, lam, app): the lifts are typed from (G, A) to
+   (H, sub s A); liftS s' only to (H, sub s' A), so it is moved to
+   (H, sub s A) by context conversion along the induction hypothesis
+   sub s A = sub s' A : U.  The lifts are equal: at 0 refl of var 0, at
+   i+1 weakening of SubEq; with WS for the types.
+ - Pi: the Pi-congruence rule; its premises are the induction
+   hypotheses and their presuppositions (P3).
+ - lam: there is no congruence for lam, so by funext: with
+   L = lam (sub s A) (sub (liftS s) M), L' likewise with s',
+     wk L applied to var 0  =  sub (liftS s) M      (beta, D4)
+                            =  sub (liftS s') M     (induction)
+                            =  wk L' applied to var 0 (beta, D4, context
+                                                     conversion, and the
+                                                     codomains equal by
+                                                     induction at B).
+   The typing of L' at Pi (sub s A) (sub (liftS s) B) is the lam rule
+   at s' and conversion along the Pi-congruence.
+ - app: app-fun (induction at f) then app-arg (induction at a), the type
+   of sub s' f moved to Pi (sub s A) (sub (liftS s) B) by conversion as
+   in lam; D2 for the type.
+
+========================================================================
+Part 4b: the logical relation (paper sections 2.6-2.8)
+
+------------------------------------------------------------------------
+4.6 Head reduction (Reduction.seg)
+
+One head step is a FUNCTION hstep : Tm n -> Opt (Tm n):
+  hstep (app (lam A M) N) = some M[N]
+  hstep (app M N)         = app (-) N of hstep M   (M not a lam)
+  hstep M                 = none                    (var, U, Pi, lam).
+M ~> M' is hstep M = some M'; M ~>* M' its reflexive-transitive closure
+(an inductive family).  Determinism is then by construction:
+ - M ~> M1 and M ~> M2 give M1 = M2 (some is injective);
+ - U, Pi A B, lam A M do not reduce (none is not some);
+ - so T ~>* N1 and T ~>* N2 with N1, N2 among U, Pi A B give N1 = N2
+   (induction on the first closure), and Pi A B ~>* N gives N = Pi A B.
+ - M ~>* M' gives app M N ~>* app M' N (hstep at app of a non-lam;
+   a reducing M is not a lam).
+The relation uses this untyped reduction; the typed conversions are in
+the relation only where they are read off (4.8).
+
+------------------------------------------------------------------------
+4.7 Domain and codomain of a filter (LogRel.seg, first part)
+
+For a filter X:
+  IsPi X     pi om om in X;
+  Dom X    = { a | om <= a, or pi a om in X }   (OmOr, Filter.seg)
+  Cod X    = { b | om <= b, or pi om b in X }
+  Fam X W  = app (Cod X) W                     for a filter W.
+Pi is covariant, so pi a b in X iff pi a om and pi om b in X: X's Pi part
+is Dom X x Cod X.  All three respect == of filters (and W).
+
+Lemma 4.7.1 (the semantic Pi).  For A a filter, G = fam B rho:
+ (a) Dom (pi A G) == A, and IsPi (pi A G);
+ (b) if W : A (HasTy), then Fam (pi A G) W == [[B]] (rho, W).
+Proof.  (a) pi a om in pi A G iff some pi a' b' <= pi a om with a' in A
+(the om summand is excluded: om is not below pi), iff a in A.  pi om om
+from a = om, b = om.
+(b) c=: t in Fam: g <= w -> t with pi om g in pi A G, w in W; g is above
+the family part b' of an element of pi A G, whose entries x -> v have
+v in G x; by Lemma 3.1 (selection) at w, t in G w = [[B]] (rho, prin w),
+included in [[B]] (rho, W) (3.4, prin w c= W).  =c: t in [[B]] (rho, W);
+by continuity in the last variable (cont-last) t in [[B]] (rho, prin w)
+for some w in W; W : A gives a typed w' <= w in W, w' : a, a in A, and
+t in [[B]] (rho, prin w') (3.4); then pi a (w' -> t) in pi A G, so
+w' -> t in Cod, and t in app (Cod) W.
+
+------------------------------------------------------------------------
+4.8 The relation (LogRel.seg)
+
+Fix the context D of n variables (the relation is not Kripke: all terms
+live in D).  For a fuel N, a type filter X, an element filter Y, terms T
+(type), M, M', and type terms T, T':
+
+  TyR 0 Y T T'           = 1          TmR 0 X Y T M M'     = 1
+  TyR (N+1) Y T T'       = TyR N Y T T'
+                         * (univ in Y  ->  T ~>* U and T' ~>* U)
+                         * (IsPi Y    ->  PiTy N Y T T')
+  TmR (N+1) X Y T M M'   = TmR N X Y T M M'
+                         * (univ in X  ->  TyR (N+1) Y M M')
+                         * (IsPi X    ->  PiTm N X Y T M M')
+
+PiTy N Y T T': there are A0, B0, A0', B0' with
+  T ~>* Pi A0 B0,  T' ~>* Pi A0' B0',  D |- A0 = A0' : U,
+  D, A0 |- B0 = B0' : U,  TyR N (Dom Y) A0 A0',  and for every filter W
+  and terms P, P' with W : Dom Y, D |- P = P' : A0,
+  TmR N (Dom Y) W A0 P P', the three
+     TyR N (Fam Y W) B0[P] B0[P'],  TyR N (Fam Y W) B0'[P] B0'[P'],
+     TyR N (Fam Y W) B0[P] B0'[P'].
+PiTm N X Y T M M': for all A0, B0 with T ~>* Pi A0 B0, and W, P, P' as
+above (at Dom X, A0), the three, all at the type B0[P],
+     TmR N (Fam X W) (app Y W) B0[P] (M P)  (M P'),
+     TmR N (Fam X W) (app Y W) B0[P] (M' P) (M' P'),
+     TmR N (Fam X W) (app Y W) B0[P] (M P)  (M' P').
+
+Recursion is on N only (B2): the witnesses Dom Y, Fam Y W are not
+smaller than Y.  TyR (N+1) is defined from TyR N and TmR N, then
+TmR (N+1) from TmR N and TyR (N+1).  The conjunct "R N" in R (N+1) makes
+R (N+1) => R N a projection (B3: Kripke over the fuel).
+
+Why filters (departing from B4 of the plan).  With compact witnesses a, u
+and clauses at all upper bounds (Le a univ, Le a (pi A phi)), monotonicity
+toward less information is free, but adequacy also needs it toward MORE
+information: in the cases Pi and lam the argument comes related at the
+domain A of an upper bound of the type witness, while the related
+substitution for the new variable asks for every type witness in [[A]] rho
+(the paper's MonoTypeIncr, and with it Join).  The paper and MIN prove
+these laws (MIN Validity/Mono, Stability, Levels: about 3k lines), and the
+Lam case of MonoTypeIncr needs the typing of the arguments at both
+domains.  With the semantic filters themselves as witnesses, adequacy
+relates exactly [[M]] rho at exactly [[A]] rho: every law below keeps the
+witnesses fixed (up to ==), no law needs a typing premise, and there is
+no monotonicity, join or stability.  The relation at infinite elements
+(Coquand-Huber) is the same definition.
+
+------------------------------------------------------------------------
+4.9 Laws (LogRel.seg; each by induction on N, the case N+1 using the laws
+    at N; the order of the list is the order of proof at N+1)
+
+L0 (==).  X == X', Y == Y' give TyR N Y T T' <=> TyR N Y' T T' and
+   TmR N X Y T M M' <=> TmR N X' Y' T M M'.  (Dom, Fam, app respect ==;
+   the argument hypotheses are compared by L0 at N in both directions.)
+L1 (trivial element).  If every element of Y is om-like, TyR N Y T T' and
+   TmR N X Y T M M' hold.  (univ in Y, IsPi Y are false; app Y W is
+   trivial, then L1 at N and L0.)
+L2 (diagonal).  TyR N Y T T' gives TyR N Y T T; TmR N X Y T M M' gives
+   TmR N X Y T M M.  (The first of the three conclusions; refl of A0, B0,
+   typed by presupposition 4.4.)
+L3 (symmetry of TyR).  TyR N Y T T' gives TyR N Y T' T.
+   Pi: reductions swapped; conversions by symmetry, B0' = B0 moved to
+   the context (D, A0') by context conversion; domain by L3 at N; for
+   arguments at A0': moved to A0 by L5 at N (with L3 at N for the
+   domain), then the second, first conclusions and, for B0'[P] = B0[P'],
+   the third at the arguments (P', P) (L4 at N) and L3 at N.
+L4 (symmetry of TmR).  TmR N X Y T M M' gives TmR N X Y T M' M.
+   U: L3 at N+1.  Pi: second, first, and M' P = M P' by L6 at N from
+   M' P = M P (L4 at N of the third at (P, P), L2) and M P = M P'.
+L5 (conversion).  TyR N X T T2 and TmR N X Y T M M' give
+   TmR N X Y T2 M M'.  Pi: T2 ~>* Pi A2 B2 is the reduct recorded in
+   TyR (determinism); arguments at A2 are moved to A0 (L5 at N, L3 at N
+   at the domain; conversion of P = P' along A2 = A0); the conclusions
+   at B0[P] are moved to B2[P] by L5 at N along the third conclusion of
+   the family at (P, P) (L2).
+L6 (transitivity).  TyR N Y T1 T2, TyR N Y T2 T3 give TyR N Y T1 T3, and
+   the same for TmR at a fixed type T.  Reducts of T2: determinism.
+   Conversions by transitivity (context conversion for B).  Family:
+   B1[P] = B3[P'] from B1[P] = B2[P'] and B2[P'] = B3[P'] (the second's
+   third conclusion at (P', P'), moved from A1 to A2 by L5); terms:
+   M1 P = M3 P' from M1 P = M2 P (at (P, P)) and M2 P = M3 P'.
+L7 (head expansion).  M ~>* M1, M' ~>* M1' and TmR N X Y T M1 M1' give
+   TmR N X Y T M M'; the same for TyR.  (Reductions compose; app M P ~>*
+   app M1 P.)  Expansion on one side only is the case M' = M1'.
+L8 (to type).  univ in X and TmR (N+1) X Y T M M' give TyR (N+1) Y M M'.
+
+------------------------------------------------------------------------
+4.10 Adequacy (paper Thm 2.35; Adequacy.seg)
+
+Related substitutions.  s, s' : D -> G (Fin m -> Tm n) are related over
+an environment rho fitting G at fuel N when SubOk s, SubOk s', SubEq s s'
+(4.3, 4.5) and for every variable i, with A_i = lookup G i,
+    TmR N ([[A_i]] rho) (rho i) (A_i[s]) (s i) (s' i)   and
+    TyR N ([[A_i]] rho) (A_i[s]) (A_i[s']).
+Then (s, s) is related (L2 at each variable; SubEq refl), and so is
+(s', s): L4 then L5 along TyR A_i[s'] A_i[s] (L3); SubEq by symmetry and
+conversion along A_i[s] = A_i[s'] (Lemma X at lookup G i : U, 4.4).
+Without the TyR part the case sym below would need adequacy at the types
+A_i, which are not premises of the derivation.
+
+Theorem.  rho fits G, s, s' related over rho at fuel N:
+    G |- M = M' : A  gives  TmR N ([[A]] rho) ([[M]] rho) A[s] M[s] M'[s']
+                     and    TyR N ([[A]] rho) A[s] A[s'],
+and G |- M : A the same with M' = M.  At A = U, L8 turns the first into
+TyR N ([[M]] rho) M[s] M'[s'] (for N = 0 both are 1).
+Proof.  Induction on the derivation; in each case induction on N (the
+conjunct R N by the same case at N; N = 0 is 1).  The semantics are
+moved along == by L0 and the equations of Sem/Sound (sem-*-eq,
+subst1-sem, Beta, 4.7.1).  The syntactic conversions in the Pi clauses
+are Lemma X (4.5) and S (4.3).  The second part (TyR of the type) is
+built from the premises typing the type: var (related substitutions),
+conv (B : U), Pi (U), lam (as the case Pi at A, B), app and beta (B at
+(s, a[s]), (s', a[s'])), funext (f : Pi A B), the others from their
+premise at the same type.
+Extension.  If s, s' are related over rho, W : [[A]] rho, D |- P = P' :
+A[s], TmR N [[A]] W A[s] P P' and TyR N [[A]] A[s] A[s'], then (s, P),
+(s', P') are related over (rho, W) (which fits (G, A)): SubOk of (s', P')
+by conversion along A[s] = A[s'] (Lemma X); the old variables by
+wk-sem (L0) and (wk A_i)[(s, P)] = A_i[s] (D1).
+ - var: the hypothesis on s, s'.
+ - conv (M : A, A = B): [[A]] = [[B]] (soundness); TyR N [[A]] A[s] B[s]
+   by induction at (s, s); L5.
+ - U: univ in univF; TyR (N+1) univF U U: U ~>* U, univF is not a Pi.
+ - Pi, eq-Pi: TyR (N+1) [[Pi A B]] (Pi A B)[s] (Pi A' B')[s']: univ is not
+   in [[Pi A B]] (pi-univ-clash); IsPi, Dom = [[A]] rho (4.7.1);
+   reductions of length 0; conversions by Lemma X (Pi) or S and X
+   (eq-Pi); domain by induction at N; family: for W : [[A]], P = P' at
+   A[s], TmR N [[A]] W A[s] P P', the substitutions (s, P), (s', P') are
+   related over (rho, W) at N (W : [[A]] makes (rho, W) fit (G, A));
+   induction at B gives the third conclusion; the first from (s, P),
+   (s, P') ((s, s) related); the second from the first and third by L4,
+   L6 (all at Fam = [[B]] (rho, W), 4.7.1(b)).
+ - lam: TmR (N+1) [[Pi A B]] [[lam A M]] (Pi A B)[s] ..: univ not in the
+   type; T = Pi A[s] B[liftS s] is normal (4.6), so A0, B0 are these;
+   app [[lam A M]] W == [[M]] (rho, W) (Beta, W : [[A]]); the body by
+   induction at fuel N with (s, P), (s', P'), and head expansion L7
+   ((lam ..) P ~> M[liftS s][P] = M[(s, P)]); the third conclusion
+   directly, the first at (s, P), (s, P'), the second by L4, L6 from the
+   third at (P, P) and at (P, P').
+ - app: the function at fuel N+2 (its Pi clause gives the application at
+   N+1), the argument at N+1; Fam [[Pi A B]] [[N]] == [[B]] (rho, [[N]]) ==
+   [[B[N]]] rho; B[liftS s][N[s]] = B[N][s] (D2).
+ - beta: L7 on the left, then the body as in lam, with (s, N[s]),
+   (s', N[s']).
+ - funext: the Pi clause from the premise (G, A |- f x = g x : B) at
+   (s, P), (s', P') (third); the first and second from the typings of f,
+   g (their own Pi clauses at N+1).
+ - refl: the typing.  sym: the premise at (s', s), L4, then L5 along
+   TyR A[s'] A[s] (L3 of the second part at (s, s')).  trans: the first
+   premise at (s, s), the second at (s, s'), L6.  eq-conv: as conv.
+ - app-fun: the function equation at N+2 and (s, s'), its third
+   conclusion at the argument a[s], a[s'].  app-arg: the function typing
+   at N+2, the third conclusion at a[s], a'[s'] (S, then X, for
+   D |- a[s] = a'[s'] : A[s]).
+
+------------------------------------------------------------------------
+4.11 Consequences (Consequences.seg)
+
+The bottom environment rho0 (prin om at every variable) fits every
+well-formed context (induction on wf G, with soundness: [[A]] rho0 : U
+gives typed elements, and om is below each); var, var are related over
+rho0 at every fuel by L1 (prin om is trivial), with SubOk, SubEq of the
+identity (4.3).
+Corollary 2.37 (Pi injectivity).  G |- Pi A B = Pi A' B' : U gives
+G |- A = A' : U and G, A |- B = B' : U.
+Proof.  Adequacy at N = 2 with rho0 and the identity, at type U: L8 gives
+TyR 2 [[Pi A B]] rho0 (Pi A B)[id] (Pi A' B')[id]; IsPi (4.7.1); Pi A B
+is normal, so its Pi clause records the two conversions, at A[id] = A
+and B[liftS id] = B (E4).
+Theorem 2.38 (subject reduction).  G |- M : A and M ~> M' give
+G |- M' : A: generation for app up to conversion, Pi injectivity, and the
+substitution lemma (4.3).
+
+------------------------------------------------------------------------
+4.12 OPEN: the fuel at an application (found while writing Adequacy.seg;
+     4.6-4.9 are checked, 4.10-4.11 are NOT valid as written)
+
+The Pi clause of TmR (N+1) gives the applications at fuel N.  So in the
+case app, the conclusion at N needs the function at N+1, hence the
+substitution related at N+1: adequacy "related at N => related at N"
+fails.  It cannot be repaired by asking more fuel of the substitution
+(N + height of the derivation): in the case lam the argument P comes
+related at N only, and the body may apply it.  Example: lam x. x y, with
+x : Pi A A; the clause at N+1 asks P y related at N for P related at N,
+and P's own clause gives P y at N-1 only.  The same holds with the
+compact witnesses of the plan: B3 (the conjunct R N in R (N+1)) gives
+R (N+1) => R N, while the application needs R N => R (N+1) at the
+witnesses at hand.  In the paper this is stability (Cor. 2.33): the
+witnesses at stage n are in C_n (depth <= n, also the arguments v in the
+Pi clause), the result of applying a stage-(n+1) witness is in C_n, and
+the relation at stage n+1 restricted to C_n is the relation at stage n.
+With filters (possibly infinite elements) there is no such bound, and
+lam x. x y is genuinely not related at a fixed fuel.
+
+What stands: 4.6 (Reduction.seg), 4.7, and the laws L0-L8 for this
+definition (LogRel.seg, Laws.seg), which keep the witnesses fixed and so
+need no stability.  What changes: the quantifications must be bounded by
+the stage (compact witnesses of depth <= N, as C_N) and a stability lemma
+proved, or another way found to make the fuel of the arguments match the
+fuel of the body.
+
+------------------------------------------------------------------------
+4.13 DECISION (user, 2026-11-05): option 1, the paper's / MIN's route.
+     The projection approach (filters via finitary projections) is for
+     later.  Handoff for the next session:
+
+ - Witnesses are compact types (Ty), with the stage N bounding their
+   depth (md <= N), as C_N; every quantification in the Pi clauses
+   (argument witnesses included) is bounded by the stage.  Read first:
+   MIN/Validity/Stratified.agda (Stage by recursion on n; Pi edges
+   quantify over the entries of the family code, Selection f u v),
+   Levels.agda and Stability.agda (Cor 2.33: relation independent of
+   the stage above the rank), Mono.agda (MonoTypeIncr/Decr, restrict).
+ - Write the informal argument (stability by induction on N, the Mono
+   laws, adequacy at the application using stability) in NOTE-4 before
+   any .seg; the obstacle met with upper-bound clauses (4.8, "Why
+   filters": the Lam case of MonoTypeIncr) must be settled on paper.
+ - Reusable as is: 4a (SynLemmas, Weaken, Subst, Presup, Cross),
+   Reduction.seg, Lemma 4.7.1 (LogRel.seg FamPi) if filters stay in the
+   semantics.  LogRel.seg / Laws.seg (filter witnesses) are the pattern
+   for the PER laws but their definition will be replaced.
+ - Consider typed head reduction (MIN's Red3) if a law needs T = Pi A0 B0.
+ - canonicity-78 waits for a frozen relation signature: message it then.
+
+========================================================================
+4.14 The relation at compact witnesses (4.13 worked out; replaces 4.8,
+     4.9 and 4.10-4.12; 4.6 and the filter facts of 4.7 stay)
+
+The quantifications of the Pi clauses are over the ARROW SELECTIONS OF
+THE WITNESS ITSELF (MIN: Selection g u v, entries of the code), not over
+all arguments of the domain (paper).  The arguments and values are then
+parts of the witness, of smaller depth (Types.asel-md, psel-md), so the
+recursion on the fuel stops at the depth of the witness and the relation
+is independent of the fuel above it (Lemma F, the stability of the paper,
+proved as Consistency's Lemma 1.1).  The application in adequacy then
+needs no fuel bookkeeping (4.12 disappears: there is no fuel left).
+Since the arguments are read off the element, the relation has NO TYPE
+WITNESS: the type is needed only by the laws comparing two types (L3-L6),
+where it is a typing hypothesis u : c (Typing.Tp).  So the paper's
+MonoTypeIncr / MonoTypeDecr and Join have no counterpart.
+
+Notation.  A selection (d, t) of u is ASel u d t: d, t the meets of the
+domains and codomains of chosen arrow components of u (u <= d -> t,
+asel-le); (A, phi) a pi selection of c (PSel c A phi) when c has a pi
+component (Sel c (pi f g)); then c <= pi A phi (psel-le).
+
+------------------------------------------------------------------------
+4.14.1 Definition (context D fixed; fuel N; witnesses c, u : Ty)
+
+  TyR 0 c T T' = 1,    TmR 0 u T M M' = 1,
+  TyR (N+1) c T T' = (Sel c univ  ->  T ~>* U  and  T' ~>* U)
+                   * (for every pi component of c and pi selection
+                      (A, phi) of c:  PiTy N A phi T T')
+  PiTy N A phi T T': there are A0, B0, A1, B1 with
+      T ~>* Pi A0 B0,  T' ~>* Pi A1 B1,  D |- A0 = A1 : U,
+      D, A0 |- B0 = B1 : U,  TyR N A A0 A1,  and for every selection
+      (d, y) of phi with Cons d, and P, P' with D |- P = P' : A0 and
+      TmR N d A0 P P', the three
+         TyR N y B0[P] B0[P'],  TyR N y B1[P] B1[P'],  TyR N y B0[P] B1[P'].
+  TmR (N+1) u T M M' = TyR (N+1) u M M'
+                   * (for all A0, B0 with T ~>* Pi A0 B0, every selection
+                      (d, t) of u with Cons d, and P, P' with
+                      D |- P = P' : A0 and TmR N d A0 P P', the three
+                         TmR N t B0[P] (M P) (M P'),  TmR N t B0[P] (M' P) (M' P'),
+                         TmR N t B0[P] (M P) (M' P')).
+
+TyR (N+1) uses TmR N; TmR (N+1) uses TyR (N+1) at the same witness and
+TmR N.  The first component of TmR is the paper's clause at U (an
+element of U is a type); the second its clause at Pi.  For a function
+witness the first is vacuous (no univ or pi component), for a type
+witness the second (its arrow selections are om-like, L1).
+
+Lemma F (enough fuel).  md u < a and md u < b give R a <=> R b at the
+witness u (R = TyR or TmR, all terms).
+Proof.  Induction on a, b.  At a+1, b+1 the clauses compare the relations
+at a and b at parts of u (d, t, A, y), of depth <= md u - 1 < a, b: by
+induction in both directions (the arguments occur negatively).  When
+md u = 0 the selections are om-only, and both sides hold by L1.
+Then  TyR c = TyR (md c + 1) c,  TmR u = TmR (md u + 1) u,  and by F
+each unfolds to the clauses above with TyR, TmR at the parts (the
+fixpoint, as Consistency's Lemma 1.2); the definition is then locked.
+
+------------------------------------------------------------------------
+4.14.2 Laws (each at every fuel N by induction on N, then at the
+       canonical fuel by F)
+
+M (monotone in the witness).  u <= u' gives R N u => R N u'.
+  Univ: a univ component of u' gives one of u (u <= u' <= univ, inv-univ).
+  Pi: a pi selection (A', phi') of u' gives one (A, phi) of u with
+  A <= A', phi <= phi' (inv-pi); PiTy moves up: the domain by M, a
+  selection (d', y') of phi' gives one (d, y) of phi with d' <= d,
+  y <= y' (inv-arr), Cons d by cons-down, the argument from d' to d by M,
+  the conclusions from y to y' by M.  Terms: a selection (d', t') of u'
+  gives one (d, t) of u with d' <= d, t <= t'; the same.
+  So R respects == , and a witness may be replaced by an equivalent one.
+L1 (om-like).  om <= u gives R N u.  No univ or pi component (om-not-univ,
+  om-not-pi); every selection value t has om <= t (om-app); induction.
+L2 (diagonal), L7 (head expansion): as 4.9 (no typing used).
+
+Typed representatives (Typing 2.3, 2.6, 2.7).  c : U gives om <= c, or
+c == U, or c == pi A phi with A : U, ent phi A (om -> U), Cons phi.
+u : c with c == pi A phi gives om <= u, or u == f with ent f A phi,
+Cons f.  For a selection (d, t) of f (or of phi) with Cons d: d : A (the
+keys are of type A, Prop 2.6), and t : y for some y with phi <= d -> y
+(Lemma 2.7).  By M the laws below may assume c and u are these
+representatives, so the parts of the witnesses are typed.
+
+L3 (symmetry of TyR).  c : U, TyR N c T T' give TyR N c T' T.
+L4 (symmetry of TmR).  u : c, TmR N u T M M' give TmR N u T M' M.
+L5 (conversion).  u : c, TyR N c T T2, TmR N u T M M' give TmR N u T2 M M'.
+L6 (transitivity).  c : U: TyR N c T1 T2, TyR N c T2 T3 give TyR N c T1 T3;
+  u : c: TmR N u T M1 M2, TmR N u T M2 M3 give TmR N u T M1 M3.
+Proofs as in 4.9, the arguments now at the keys d of the representative:
+ - L5, Pi: T2 ~>* Pi A2 B2; c == pi A phi gives the domain TyR A A0 A2
+   (determinism for T's reduct); an argument at (d, A2) is moved to A0 by
+   L5 at N (d : A; L3 at N for the domain); the conclusion at t, type
+   B0[P], is moved to B2[P] by L5 at N, with t : y and TyR y B0[P] B2[P]
+   from the family of c at a selection (d', y') of phi with d <= d',
+   y' <= y (phi <= d -> y), and M.
+ - L3, L6: the same moves of the arguments (L5 at N at the keys d : A),
+   and the family conclusions combined as in 4.9 at y : U.
+ - L4: M' P = M P' by L6 at N (at t : y) from M' P = M P (L4 at N of the
+   third conclusion at (P, P), L2) and M P = M P'.
+
+------------------------------------------------------------------------
+4.14.3 Adequacy (no fuel)
+
+rho fits G (Sound.Fits).  sigma, sigma' : D -> G are related over rho
+when SubOk sigma, SubOk sigma', SubEq sigma sigma' (4.3, 4.5) and, for
+every variable i and every u in rho i with u : c for some c in
+[[A_i]] rho:
+   TmR u A_i[sigma] (sigma i) (sigma' i)  and  TmR u A_i[sigma'] (sigma i) (sigma' i).
+Then (sigma', sigma) is related (L4; SubEq by symmetry and conversion,
+Lemma X), and (sigma, sigma) (L2).  The two types replace the TyR part of
+4.10: the case sym needs no conversion between A[sigma] and A[sigma'].
+
+Theorem.  rho fits G, sigma, sigma' related over rho, G |- M = M' : A,
+u in [[M]] rho, c in [[A]] rho, u : c give
+   TmR u A[sigma] M[sigma] M'[sigma']  and  TmR u A[sigma'] M[sigma] M'[sigma'],
+and G |- M : A the same with M' = M.  (At A = U the first component is
+TyR u M[sigma] M'[sigma'].)
+Proof.  Induction on the derivation; the semantics through Sem/Sound
+(sem-*-eq, soundness, HasTy: every element of [[M]] rho is above a typed
+one, then M).
+ - var: the hypothesis.  U: univ is not a pi component, U ~>* U.
+ - conv (M : A, A = B): u : c, c in [[B]] = [[A]] (soundness); TyR c
+   A[s] B[s] at (s, s) and at (s', s') from the premise A = B; L5 twice.
+ - Pi, eq-Pi (TyR c, c : U, c in [[Pi A B]] rho): no univ component
+   (pi-univ-clash with c : U); at a pi selection (A_c, phi_c): the
+   reducts have length 0, conversions by S, X (4.3, 4.5); c == pi A1 phi1
+   (representative), A1 in [[A]] rho (4.7.1(a)), A1 : U, domain by
+   induction at A1 and M.  Family: a selection (d, y) of phi_c, Cons d,
+   P = P' at d gives (d1, y1) of phi1 with d <= d1, y1 <= y; d1 : A1;
+   rho' = (rho, prin d1) fits (G, A); y1 in [[B]] rho' (the family part
+   of an element of piF, as in FamPi.from-pi) and y1 : U.  The arguments
+   at d1 (M), at both types by L5 along the induction at A; so (s, P),
+   (s', P') are related over rho' (old variables: wk-sem, D1).  Induction
+   at B gives the third conclusion at y1, then M; the first from
+   (s, P), (s, P'), the second by L4, L6.
+ - lam (u in [[lam A M]] rho, c == pi A_c phi_c in [[Pi A B]] rho): the
+   first component is vacuous (u has no univ or pi component: u : c).
+   T = (Pi A B)[s] is normal.  A selection (d, t) of u, Cons d, P = P' at d:
+   u is above an element f of lamF, whose entries have keys typed in
+   [[A]] rho and values in [[M]] (rho, prin key); a selection (d2, t2) of
+   f has d <= d2, t2 <= t; d2 is typed in [[A]] rho (Cons d2 from Cons d;
+   meets of typed keys, 2.6), so rho' = (rho, prin d2) fits; t2 in
+   [[M]] rho' (sem-mono), above a typed t3 in [[M]] rho' (soundness).
+   The argument at d2 (M), at both types (L5 along the induction at A),
+   so (s, P), (s', P') are related over rho'; induction at the body
+   (t3, then M to t), head expansion L7 ((lam ..) P ~> M[liftS s][P]
+   = M[(s, P)]): the first conclusion from (s, P), (s, P'), the third
+   from (s, P), (s', P'), the second by L4, L6 from the third and
+   (s, P), (s', P), all at the type B[(s, P)].  The type (Pi A B)[s']:
+   L5 along the case Pi (premises A, B : U).
+ - app (M N, z in [[M N]] rho = appF): g in [[M]], w in [[N]], g <= w -> z;
+   typed g', w' below them (soundness); the representative f == g' (in
+   [[M]] rho, filters respect ==) has f <= w' -> z, so a selection (d, t)
+   of f with w' <= d, t <= z (inv-arr), Cons d (cons-down, w' typed).
+   N at w' by induction, at d by M; M at f by induction, its Pi clause
+   at (d, t) gives the application at t, then M to z.  Type: B[liftS s]
+   [N[s]] = B[N][s] (D2).  The type B[N][s']: L5 at z along B at
+   (s, N[s]), (s', N[s']) over (rho, [[N]] rho) (premise B : U; N[s] and
+   N[s'] related by the premise on N, at both types, with L4, L6 for
+   app-arg).
+ - beta: L7 on the left, then the body as in lam over (s, N[s]),
+   (s', N[s']) at (rho, [[N]] rho).
+ - funext: the selection (d, t) of u through the representative f0 of u
+   (c == pi A_c phi_c, ent f0 A_c phi_c): (d2, t2), d2 : A_c, rho' =
+   (rho, prin d2) fits; t2 in [[f x]] rho' (app of the weakening), the
+   premise at (s, P), (s', P') gives the third conclusion, the typing of
+   f the first, L4, L6 with the premise at (s, P), (s', P) the second.
+   The type (Pi A B)[s']: L6 of the typing of f at (s, s') (its second
+   type) and the case itself at (s', s').
+ - refl: the typing.  sym: the premise at (s', s) and L4 on both types.
+   trans: the first premise at (s, s), the second at (s, s'), L6 on
+   A[s]; on A[s']: the first at (s, s'), the second at (s', s'), L6.
+   eq-conv: as conv.  app-fun, app-arg: as app, with the function or
+   argument equation.
+
+------------------------------------------------------------------------
+4.14.4 Consequences
+
+The bottom environment rho0 fits every well-formed context (4.11); the
+identity substitution is related over rho0: SubOk, SubEq of the identity
+(4.3), and every element of prin om is om-like (L1, both types).
+Pi injectivity: adequacy at Pi A B = Pi A' B' : U, rho0, identity, at
+the element pi om om (in [[Pi A B]] rho0, of type U); its pi selection
+(om, om) records G |- A = A' : U and G, A |- B = B' : U (E4).
+Subject reduction as in 4.11.
+
+Files: RelC.seg (definition, F, unfolding, lock), LawsC.seg (M, L1-L7),
+Adequacy.seg, Consequences.seg.  LogRel.seg / Laws.seg (filter
+witnesses) stay as the record of 4.8-4.9; FamPi (4.7.1) is reused.
+
+Status (2026-11-05).  4.14.1-4.14.4 checked: All.seg 1486 declarations,
+0 failed, 0.25 s, no parameters, no postulates.  Pi injectivity in any
+context is Consequences.pi-injectivity.  Subject reduction (paper 2.38)
+is not done: it needs generation for lam up to conversion, then Pi
+injectivity and the substitution lemma (4.3).
+
+========================================================================
+4.15 Subject reduction (paper Theorem 2.38; SubjRed.seg)
+
+M ~> M' is the head step of 4.6: hstep M = some M'.
+
+Generation for lam (up to conversion).  G |- lam A0 M0 : T gives B0 with
+    G, A0 |- M0 : B0    and    G |- Pi A0 B0 = T : U.
+Proof.  Induction on the derivation.  The motive at jty G M T is defined
+by cases on the term M: the statement above when M = lam A0 M0, 1
+otherwise (so no equation between terms is needed, and the rules whose
+subject is not a lam are trivial); 1 at wf and conversion judgements.
+Only two rules conclude the typing of a lam:
+ - lam (A0 : U, G, A0 |- B : U, G, A0 |- M0 : B): B0 = B, and
+   Pi A0 B = Pi A0 B : U is refl of the Pi rule.
+ - conv (M : A, A = T : U): the induction hypothesis Pi A0 B0 = A : U,
+   then trans.
+
+Beta typing.  G |- lam A0 M0 : Pi A B and G |- a : A give
+G |- M0[a] : B[a].
+Proof.  Generation gives B0, G, A0 |- M0 : B0 and
+Pi A0 B0 = Pi A B : U.  Pi injectivity (4.14.4) gives G |- A0 = A : U
+and G, A0 |- B0 = B : U; by P3 (4.4), G |- A0 : U and G, A0 |- B : U.
+So G, A0 |- M0 : B (conversion), and G |- a : A0 (conversion along the
+symmetric A = A0).  Lemma S with sub1 a (4.3; wf G by P0) gives
+G |- M0[a] : B[a].  No context conversion is needed: the body stays
+over (G, A0), and only the argument is converted.
+
+Theorem 2.38.  G |- M : T and M ~> M' give G |- M' : T.
+Proof.  Induction on the derivation, the motive at jty G M T being
+"for every M', hstep M = some M' gives G |- M' : T" (1 at the other
+judgement forms).
+ - var, U, Pi, lam: hstep M = none, which is not some M'.
+ - conv (M : A, A = T : U): the induction hypothesis gives M' : A, then
+   conversion.
+ - app (f : Pi A B, a : A, M = app f a, T = B[a]): by cases on f.
+   f = lam A0 M0: hstep M = some M0[a], so M' = M0[a] (some is
+   injective); beta typing.  f a variable, U or a Pi: hstep M = none.
+   f = app P Q: hstep M = omap (app - a) (hstep f); by cases on hstep f,
+   hstep f = some f1 and M' = app f1 a; the induction hypothesis at f
+   gives f1 : Pi A B, and the app rule gives app f1 a : B[a].
+Corollary.  G |- M : T and M ~>* M' give G |- M' : T (induction on ~>*).
+
+Status (2026-11-05).  4.15 checked (SubjRed.seg): All.seg 1507
+declarations, 0 failed, 0.26 s, no parameters, no postulates.

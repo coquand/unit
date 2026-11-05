@@ -1,0 +1,123 @@
+-- Reduction.seg: head reduction (step 4b; NOTE-4.txt section 4.6).
+--   hstep        one head step, a function: deterministic by construction
+--   Red1, Reds   M ~> M' (hstep M = some M') and its closure
+--   reds-det     two reductions to normal forms end at the same term
+--   pp-dom, pp-cod, pp-inj   Pi A B = Pi A' B' gives A = A', B = B'
+--   reds-app     M ~>* M' gives app M N ~>* app M' N
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ;
+
+------------------------------------------------------------------------
+-- options
+
+omap (A B : U l) (f : A -> B) : Opt A -> Opt B = split {
+  none -> none ;
+  some x -> some (f x) } ;
+
+IsSome (A : U l) : Opt A -> U l = split { none -> Empty ; some x -> Top } ;
+
+none-not-some (A : U l) (y : A) (e : Id (Opt A) none (some y)) : Empty =
+  subst (Opt A) (IsSome A) (some y) none (sym (Opt A) none (some y) e) tt ;
+
+oget (A : U l) (d : A) : Opt A -> A = split { none -> d ; some x -> x } ;
+
+some-inj (A : U l) (x y : A) (e : Id (Opt A) (some x) (some y)) : Id A x y =
+  ap (Opt A) A (oget A x) (some x) (some y) e ;
+
+------------------------------------------------------------------------
+-- one head step
+
+-- app M N, given the step of M
+happ : (n : Nat) -> (M : Tm n) -> Tm n -> Opt (Tm n) -> Opt (Tm n) = split {
+  var n i -> \ N r -> omap (Tm n) (Tm n) (\ X -> app n X N) r ;
+  uu n -> \ N r -> omap (Tm n) (Tm n) (\ X -> app n X N) r ;
+  pp n A B -> \ N r -> omap (Tm n) (Tm n) (\ X -> app n X N) r ;
+  lam n A M -> \ N r -> some (subst1 n M N) ;
+  app n M1 M2 -> \ N r -> omap (Tm n) (Tm n) (\ X -> app n X N) r } ;
+
+hstep : (n : Nat) -> Tm n -> Opt (Tm n) = split {
+  var n i -> none ;
+  uu n -> none ;
+  pp n A B -> none ;
+  lam n A M -> none ;
+  app n M N | rM rN -> happ n M N rM } ;
+
+Red1 (n : Nat) (M M' : Tm n) : U l = Id (Opt (Tm n)) (hstep n M) (some M') ;
+
+Normal (n : Nat) (M : Tm n) : U l = Id (Opt (Tm n)) (hstep n M) none ;
+
+red1-det (n : Nat) (M M1 M2 : Tm n) (h1 : Red1 n M M1) (h2 : Red1 n M M2) : Id (Tm n) M1 M2 =
+  some-inj (Tm n) M1 M2 (trans (Opt (Tm n)) (some M1) (hstep n M) (some M2) (sym (Opt (Tm n)) (hstep n M) (some M1) h1) h2) ;
+
+-- a normal term does not reduce
+normal-red1 (n : Nat) (M M1 : Tm n) (nM : Normal n M) (h : Red1 n M M1) : Empty =
+  none-not-some (Tm n) M1 (trans (Opt (Tm n)) none (hstep n M) (some M1) (sym (Opt (Tm n)) (hstep n M) none nM) h) ;
+
+-- beta, by definition
+red1-beta (n : Nat) (A : Tm n) (M : Tm (suc n)) (N : Tm n) : Red1 n (app n (lam n A M) N) (subst1 n M N) =
+  refl (some (subst1 n M N)) ;
+
+normal-pp (n : Nat) (A : Tm n) (B : Tm (suc n)) : Normal n (pp n A B) = refl (hstep n (pp n A B)) ;
+normal-uu (n : Nat) : Normal n (uu n) = refl (hstep n (uu n)) ;
+
+------------------------------------------------------------------------
+-- the closure
+
+data Reds : (n : Nat) (M M' : Tm n) -> U l =
+    rrefl (n : Nat) (M : Tm n) : Reds n M M
+  | rstep (n : Nat) (M M1 M2 : Tm n) (h : Red1 n M M1) (r : Reds n M1 M2) : Reds n M M2 ;
+
+reds-trans : (n : Nat) -> (M M1 : Tm n) -> Reds n M M1 -> (M2 : Tm n) -> Reds n M1 M2 -> Reds n M M2 = split {
+  rrefl n M -> \ M2 r -> r ;
+  rstep n M M1 M2 h r | ih -> \ M3 r' -> rstep n M M1 M3 h (ih M3 r') } ;
+
+-- from a normal term, a reduction is empty
+reds-from-normal : (n : Nat) -> (M X : Tm n) -> Reds n M X -> Normal n M -> Id (Tm n) M X = split {
+  rrefl n M -> \ nM -> refl M ;
+  rstep n M M1 M2 h r -> \ nM -> efq (normal-red1 n M M1 nM h) } ;
+
+-- a reduction to a normal form passes through the reduct of the first step
+reds-step-inv : (n : Nat) -> (M X : Tm n) -> Reds n M X -> (M1 : Tm n) -> Red1 n M M1 -> Normal n X -> Reds n M1 X = split {
+  rrefl n M -> \ M1 h nX -> efq (normal-red1 n M M1 nX h) ;
+  rstep n M M1' X h' r -> \ M1 h nX -> subst (Tm n) (\ Z -> Reds n Z X) M1' M1 (red1-det n M M1' M1 h' h) r } ;
+
+reds-det : (n : Nat) -> (T X1 : Tm n) -> Reds n T X1 -> (X2 : Tm n) -> Reds n T X2 -> Normal n X1 -> Normal n X2 ->
+    Id (Tm n) X1 X2 = split {
+  rrefl n T -> \ X2 r2 n1 n2 -> reds-from-normal n T X2 r2 n1 ;
+  rstep n T M1 X1 h r | ih -> \ X2 r2 n1 n2 -> ih X2 (reds-step-inv n T X2 r2 M1 h n2) n1 n2 } ;
+
+------------------------------------------------------------------------
+-- the parts of a Pi
+
+pp-dom : (n : Nat) -> Tm n -> Tm n = split {
+  var n i -> var n i ; uu n -> uu n ; pp n A B -> A ; lam n A M -> lam n A M ; app n M N -> app n M N } ;
+
+pp-cod : (n : Nat) -> Tm n -> Tm (suc n) = split {
+  var n i -> uu (suc n) ; uu n -> uu (suc n) ; pp n A B -> B ; lam n A M -> uu (suc n) ; app n M N -> uu (suc n) } ;
+
+pp-inj-dom (n : Nat) (A A' : Tm n) (B B' : Tm (suc n)) (e : Id (Tm n) (pp n A B) (pp n A' B')) : Id (Tm n) A A' =
+  ap (Tm n) (Tm n) (pp-dom n) (pp n A B) (pp n A' B') e ;
+
+pp-inj-cod (n : Nat) (A A' : Tm n) (B B' : Tm (suc n)) (e : Id (Tm n) (pp n A B) (pp n A' B')) : Id (Tm (suc n)) B B' =
+  ap (Tm n) (Tm (suc n)) (pp-cod n) (pp n A B) (pp n A' B') e ;
+
+-- two reductions of T to Pi types
+reds-pp (n : Nat) (T A A' : Tm n) (B B' : Tm (suc n)) (r : Reds n T (pp n A B)) (r' : Reds n T (pp n A' B')) :
+    Id (Tm n) (pp n A B) (pp n A' B') =
+  reds-det n T (pp n A B) r (pp n A' B') r' (normal-pp n A B) (normal-pp n A' B') ;
+
+------------------------------------------------------------------------
+-- congruence in function position
+
+red1-app : (n : Nat) -> (M : Tm n) -> (N M1 : Tm n) -> Red1 n M M1 -> Red1 n (app n M N) (app n M1 N) = split {
+  var n i -> \ N M1 h -> efq (none-not-some (Tm n) M1 h) ;
+  uu n -> \ N M1 h -> efq (none-not-some (Tm n) M1 h) ;
+  pp n A B -> \ N M1 h -> efq (none-not-some (Tm n) M1 h) ;
+  lam n A M -> \ N M1 h -> efq (none-not-some (Tm n) M1 h) ;
+  app n P Q -> \ N M1 h ->
+    ap (Opt (Tm n)) (Opt (Tm n)) (omap (Tm n) (Tm n) (\ X -> app n X N)) (hstep n (app n P Q)) (some M1) h } ;
+
+reds-app : (n : Nat) -> (M M' : Tm n) -> Reds n M M' -> (N : Tm n) -> Reds n (app n M N) (app n M' N) = split {
+  rrefl n M -> \ N -> rrefl n (app n M N) ;
+  rstep n M M1 M2 h r | ih -> \ N -> rstep n (app n M N) (app n M1 N) (app n M2 N) (red1-app n M N M1 h) (ih N) } ;

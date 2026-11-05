@@ -1,0 +1,243 @@
+-- AdeqLam.seg: adequacy (NOTE-4.txt 4.14.3), the cases refl, sym, trans,
+-- lam, app (and app-fun, app-arg: one lemma ad-app), beta, funext.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open SynLemmas[l] ; open Weaken[l] ; open Subst[l] ; open Presup[l] ; open Cross[l] ;
+open Filter[l] ; open Sem[l] ; open Sound[l] ; open Reduction[l] ; open RelC[l] ; open LawsC[l] ; open AdeqBase[l] ;
+open AdeqPi[l] ;
+
+-- the meet of two keys typed in a filter of types
+tyin-meet (A : Filt) (tyuA : TyU A) (x1 x2 : Ty) (h1 : TyIn A x1) (h2 : TyIn A x2) (c : Cons (meet x1 x2)) :
+    TyIn A (meet x1 x2) =
+  struct { a = te.a ; ina = te.inA ;
+           tp = tp-join x1 x2 te.a
+                  (tp-up x1 h1.a te.a h1.tp (le-trans te.a (meet h1.a h2.a) h1.a te.below (le-meet-l h1.a h2.a)) te.tp)
+                  (tp-up x2 h2.a te.a h2.tp (le-trans te.a (meet h1.a h2.a) h2.a te.below (le-meet-r h1.a h2.a)) te.tp) c }
+  where { te : TyEl A (meet h1.a h2.a) = ty-enl A tyuA (meet h1.a h2.a) (A.fmeet h1.a h2.a h1.ina h2.ina) ; } ;
+
+-- the keys of a selection of an element of lam(A, G) are typed in A
+keys-tyin (A : Filt) (G : Ty -> Filt) (tyuA : TyU A) : (f d t : Ty) -> ASel f d t -> EntS (EntR A G) f -> Cons d -> TyIn A d = split {
+  as-none f -> \ e cd -> struct { a = om ; ina = A.fom ; tp = tp-omom } ;
+  as-here x v -> \ e cd -> (ents-inv (EntR A G) (arr x v) e).1 ;
+  as-l f1 f2 d t q | rq -> \ e cd -> rq (ents-inv (EntR A G) (meet f1 f2) e).1 cd ;
+  as-r f1 f2 d t q | rq -> \ e cd -> rq (ents-inv (EntR A G) (meet f1 f2) e).2 cd ;
+  as-meet f d1 t1 d2 t2 q1 q2 | r1 r2 -> \ e cd ->
+    tyin-meet A tyuA d1 d2 (r1 e (cons-meet-l d1 d2 cd)) (r2 e (cons-down (meet d1 d2) d2 (le-meet-r d1 d2) cd)) cd } ;
+
+-- one beta step
+reds-beta (n : Nat) (A : Tm n) (M : Tm (suc n)) (N : Tm n) : Reds n (app n (lam n A M) N) (subst1 n M N) =
+  rstep n (app n (lam n A M) N) (subst1 n M N) (subst1 n M N) (red1-beta n A M N) (rrefl n (subst1 n M N)) ;
+
+-- X[(s, a[s])] = (X[a])[s]
+eq-cons-sub (m n : Nat) (s : Fin m -> Tm n) (X : Tm (suc m)) (a : Tm m) :
+    Id (Tm n) (Sub.trav (suc m) X n (consS m n s (Sub.trav m a n s))) (Sub.trav m (subst1 m X a) n s) =
+  trans (Tm n) (Sub.trav (suc m) X n (consS m n s (Sub.trav m a n s)))
+    (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s)) (Sub.trav m a n s)) (Sub.trav m (subst1 m X a) n s)
+    (sym (Tm n) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s)) (Sub.trav m a n s))
+       (Sub.trav (suc m) X n (consS m n s (Sub.trav m a n s))) (consS-eq m n s (Sub.trav m a n s) X))
+    (sym (Tm n) (Sub.trav m (subst1 m X a) n s) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s)) (Sub.trav m a n s))
+       (sub-subst1 m n s X a)) ;
+
+-- X[(s, Q)] = X[liftS s][Q]
+eq-cons (m n : Nat) (s : Fin m -> Tm n) (Q : Tm n) (X : Tm (suc m)) :
+    Id (Tm n) (Sub.trav (suc m) X n (consS m n s Q)) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s)) Q) =
+  sym (Tm n) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s)) Q) (Sub.trav (suc m) X n (consS m n s Q))
+    (consS-eq m n s Q X) ;
+
+-- the family part of an element of piF at a key d with phic <= d -> y
+fam-mem-le (m : Nat) (A : Tm m) (B : Tm (suc m)) (rho : Env m) (Ac phic : Ty)
+    (pin : PiIn (sem m A rho) (fam m B rho) Ac phic) (d y : Ty) (le : Le phic (arr d y)) : (fam m B rho d).mem y =
+  (fam m B rho d).fup i.2.1 y i.2.2.2.2
+    (Entries[fam m B rho, fam-anti m B rho, EntR (sem m A rho) (fam m B rho), \ x v r -> r.2].sel
+       pin.b i.1 i.2.1 i.2.2.1 pin.ents d i.2.2.2.1)
+  where { i : InvArr pin.b d y = inv-arr pin.b d y (le-trans pin.b phic (arr d y) pin.leb le) ; } ;
+
+module AdeqL (n : Nat) (D : Ctx n) (wD : Der n (jwf D)) {
+  open RelCD[n, D] ;
+  open LawsCD[n, D] ;
+  open AdeqB[n, D] ;
+  open AdeqP[n, D, wD] ;
+
+  ----------------------------------------------------------------------
+  -- refl, sym, trans
+
+  ad-sym-at (m : Nat) (G : Ctx m) (M N A : Tm m) (r : Ad m G M N A)
+      (sMN : (rho : Env m) -> Fits m G rho -> FEq (sem m M rho) (sem m N rho))
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') (u c : Ty)
+      (mu : (sem m N rho).mem u) (mc : (sem m A rho).mem c) (hc : Tp (el u c)) :
+      TmR u (Sub.trav m A n s) (Sub.trav m N n s) (Sub.trav m M n s') *
+      TmR u (Sub.trav m A n s') (Sub.trav m N n s) (Sub.trav m M n s') =
+    (cl4 u c hc (Sub.trav m A n s) (Sub.trav m M n s') (Sub.trav m N n s) t.2,
+     cl4 u c hc (Sub.trav m A n s') (Sub.trav m M n s') (Sub.trav m N n s) t.1)
+    where {
+      t : TmR u (Sub.trav m A n s') (Sub.trav m M n s') (Sub.trav m N n s) *
+          TmR u (Sub.trav m A n s) (Sub.trav m M n s') (Sub.trav m N n s) =
+        r rho fi s' s (rels-sym m G rho s s' rs) u c ((sMN rho fi).2 u mu) mc hc ; } ;
+
+  ad-sym (m : Nat) (G : Ctx m) (M N A : Tm m) (r : Ad m G M N A)
+      (sMN : (rho : Env m) -> Fits m G rho -> FEq (sem m M rho) (sem m N rho)) : Ad m G N M A =
+    \ rho fi s s' rs u c mu mc hc -> ad-sym-at m G M N A r sMN rho fi s s' rs u c mu mc hc ;
+
+  ad-trans-at (m : Nat) (G : Ctx m) (M N P A : Tm m) (r1 : Ad m G M N A) (r2 : Ad m G N P A)
+      (sMN : (rho : Env m) -> Fits m G rho -> FEq (sem m M rho) (sem m N rho))
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') (u c : Ty)
+      (mu : (sem m M rho).mem u) (mc : (sem m A rho).mem c) (hc : Tp (el u c)) :
+      TmR u (Sub.trav m A n s) (Sub.trav m M n s) (Sub.trav m P n s') *
+      TmR u (Sub.trav m A n s') (Sub.trav m M n s) (Sub.trav m P n s') =
+    (cl6 u c hc (Sub.trav m A n s) (Sub.trav m M n s) (Sub.trav m N n s) (Sub.trav m P n s')
+       (r1 rho fi s s (rels-diag m G rho s s' rs) u c mu mc hc).1 (r2 rho fi s s' rs u c uN mc hc).1,
+     cl6 u c hc (Sub.trav m A n s') (Sub.trav m M n s) (Sub.trav m N n s') (Sub.trav m P n s')
+       (r1 rho fi s s' rs u c mu mc hc).2
+       (r2 rho fi s' s' (rels-diag m G rho s' s (rels-sym m G rho s s' rs)) u c uN mc hc).1)
+    where { uN : (sem m N rho).mem u = (sMN rho fi).1 u mu ; } ;
+
+  ad-trans (m : Nat) (G : Ctx m) (M N P A : Tm m) (r1 : Ad m G M N A) (r2 : Ad m G N P A)
+      (sMN : (rho : Env m) -> Fits m G rho -> FEq (sem m M rho) (sem m N rho)) : Ad m G M P A =
+    \ rho fi s s' rs u c mu mc hc -> ad-trans-at m G M N P A r1 r2 sMN rho fi s s' rs u c mu mc hc ;
+
+  ----------------------------------------------------------------------
+  -- a function clause at a normal Pi type: the reduct is the type itself
+
+  fun-at-pp (u : Ty) (A0 : Tm n) (B0 : Tm (suc n)) (M M' : Tm n)
+      (h : (d t : Ty) -> ASel u d t -> (P P' : Tm n) -> Arg Can d A0 P P' -> AppC Can t (subst1 n B0 P) M M' P P') :
+      FunC Can u (pp n A0 B0) M M' =
+    \ A1 B1 rT d t q P P' ->
+      Prelude[l].subst (Tm n) (\ Z -> Arg Can d (pp-dom n Z) P P' -> AppC Can t (subst1 n (pp-cod n Z) P) M M' P P')
+        (pp n A0 B0) (pp n A1 B1) (reds-from-normal n (pp n A0 B0) (pp n A1 B1) rT (normal-pp n A0 B0)) (h d t q P P') ;
+
+  -- an element of lam(A, G) has no univ or pi component
+  pc-lamw (A : Filt) (G : Ty -> Filt) (u : Ty) (w : LamW A G u) (S S' : Tm n) (f g B psi : Ty)
+      (hp : Sel u (pi f g)) (q : PSel u B psi) : PiTy Can B psi S S' =
+    absurd (PiTy Can B psi S S') (sel-all NotUP w.f (pi i.1 i.2.1) i.2.2.2.2.1 (ents-all (EntR A G) w.f w.ents))
+    where { i : InvPi w.f f g = inv-pi w.f f g (le-trans w.f u (pi f g) w.le (sel-le u (pi f g) hp)) ; } ;
+
+  tyc-lamw (A : Filt) (G : Ty -> Filt) (u : Ty) (w : LamW A G u) (S S' : Tm n) : TyC Can u S S' =
+    struct { un = \ hu -> absurd (Reds n S (uu n) * Reds n S' (uu n))
+                    (sel-all NotUP w.f univ (inv-univ w.f (le-trans w.f u univ w.le (sel-le u univ hu)))
+                       (ents-all (EntR A G) w.f w.ents)) ;
+             pc = pc-lamw A G u w S S' } ;
+
+  ----------------------------------------------------------------------
+  -- lam
+
+  module LamCase (m : Nat) (G : Ctx m) (A : Tm m) (B M : Tm (suc m))
+      (h1 : Der m (jty G A (uu m))) (h3 : Der (suc m) (jty (ext m G A) M B))
+      (r1 : Ad m G A A (uu m)) (r3 : Ad (suc m) (ext m G A) M M B)
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') {
+
+    As : Tm n = Sub.trav m A n s ;
+    As' : Tm n = Sub.trav m A n s' ;
+    Bs : Tm (suc n) = Sub.trav (suc m) B (suc n) (Sub.lift m n s) ;
+    Ms : Tm (suc n) = Sub.trav (suc m) M (suc n) (Sub.lift m n s) ;
+    Ms' : Tm (suc n) = Sub.trav (suc m) M (suc n) (Sub.lift m n s') ;
+    L : Tm n = lam n As Ms ;
+    L' : Tm n = lam n As' Ms' ;
+
+    tyuA : TyU (sem m A rho) = tyu-of m A rho (soundness-ty m G A (uu m) h1 rho fi) ;
+    eA : Der n (jeq D As As' (uu n)) = subst-cross m n G D s s' A (uu m) h1 rs.ok rs.ok' rs.eq wD ;
+
+    module At (u : Ty) (w : LamW (sem m A rho) (fam m M rho) u) (d t : Ty) (q : ASel u d t) (P P' : Tm n)
+        (a : Arg Can d As P P') {
+
+      i : InvArr w.f d t = inv-arr w.f d t (le-trans w.f u (arr d t) w.le (asel-le u d t q)) ;
+      cd2 : Cons i.1 = cons-down d i.1 i.2.2.2.1 a.cd ;
+      ty2 : TyIn (sem m A rho) i.1 = keys-tyin (sem m A rho) (fam m M rho) tyuA w.f i.1 i.2.1 i.2.2.1 w.ents cd2 ;
+      rho' : Env (suc m) = extE m rho (prin i.1) ;
+      fi' : Fits (suc m) (ext m G A) rho' = fits-ext m G A rho i.1 fi tyuA ty2 ;
+      mt2 : (sem (suc m) M rho').mem i.2.1 =
+        Entries[fam m M rho, fam-anti m M rho, EntR (sem m A rho) (fam m M rho), \ x v r -> r.2].sel
+          w.f i.1 i.2.1 i.2.2.1 w.ents i.1 (le-refl i.1) ;
+      e : Enl (sem (suc m) M rho') (sem (suc m) B rho') i.2.1 = soundness-ty (suc m) (ext m G A) M B h3 rho' fi' i.2.1 mt2 ;
+      tyA : TyR ty2.a As As' = ad-ty m G A A r1 rho fi s s' rs ty2.a ty2.ina (tp-pre i.1 ty2.a ty2.tp) ;
+
+      -- the arguments at the key i.1 of the selection of the representative
+      at2 (Q Q' : Tm n) (aQ : TmR d As Q Q') : TmR i.1 As Q Q' = cmono-tm d i.1 i.2.2.2.1 As Q Q' aQ ;
+      ar (Q Q' : Tm n) (aQ : TmR d As Q Q') : ArgR m A rho (prin i.1) s s' Q Q' = \ u' c' mu' mc' hc' ->
+        (cmono-tm i.1 u' mu' As Q Q' (at2 Q Q' aQ),
+         cmono-tm i.1 u' mu' As' Q Q' (cl5 i.1 ty2.a ty2.tp As As' Q Q' tyA (at2 Q Q' aQ))) ;
+      ar1 (Q Q' : Tm n) (aQ : TmR d As Q Q') : ArgR m A rho (prin i.1) s s Q Q' = \ u' c' mu' mc' hc' ->
+        (cmono-tm i.1 u' mu' As Q Q' (at2 Q Q' aQ), cmono-tm i.1 u' mu' As Q Q' (at2 Q Q' aQ)) ;
+
+      dP : Der n (jty D P As) = (eq-pre n (jeq D P P' As) a.cv).1 ;
+      eP1 : Der n (jeq D P P' As') = eq-conv n D P P' As As' a.cv eA (eq-pre n (jeq D As As' (uu n)) eA).2 ;
+      dP1 : Der n (jty D P As') = (eq-pre n (jeq D P P' As') eP1).1 ;
+
+      -- the body at (s, Q), (s1, Q')
+      body (s1 : Fin m -> Tm n) (rs1 : RelS m G rho s s1) (Q Q' : Tm n) (eQ : Der n (jeq D Q Q' As))
+          (eQ' : Der n (jeq D Q' Q (Sub.trav m A n s1))) (arQ : ArgR m A rho (prin i.1) s s1 Q Q') :
+          TmR e.v (Sub.trav (suc m) B n (consS m n s Q)) (Sub.trav (suc m) M n (consS m n s Q)) (Sub.trav (suc m) M n (consS m n s1 Q')) =
+        (r3 rho' fi' (consS m n s Q) (consS m n s1 Q') (rels-ext m G A rho (prin i.1) s s1 Q Q' rs1 eQ eQ' arQ)
+           e.v e.c e.inA e.inB e.tp).1 ;
+
+      b3 : TmR e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s' P')) =
+        body s' rs P P' a.cv (eq-sym n D P P' As' eP1) (ar P P' a.rel) ;
+      b1 : TmR e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s P')) =
+        body s (rels-diag m G rho s s' rs) P P' a.cv (eq-sym n D P P' As a.cv) (ar1 P P' a.rel) ;
+      b0 : TmR e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s' P)) =
+        body s' rs P P (eq-refl n D P As dP) (eq-refl n D P As' dP1) (ar P P (cl2 d As P P' a.rel)) ;
+      b2 : TmR e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s' P)) (Sub.trav (suc m) M n (consS m n s' P')) =
+        cl6 e.v e.c e.tp (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s' P))
+          (Sub.trav (suc m) M n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s' P'))
+          (cl4 e.v e.c e.tp (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s P))
+             (Sub.trav (suc m) M n (consS m n s' P)) b0)
+          b3 ;
+
+      -- from the body at e.v to the application at t
+      fin (s1 s2 : Fin m -> Tm n) (Q Q' : Tm n) (A1 A2 : Tm n) (M1 M2 : Tm (suc n))
+          (e1 : Id (Tm (suc n)) (Sub.trav (suc m) M (suc n) (Sub.lift m n s1)) M1)
+          (e2 : Id (Tm (suc n)) (Sub.trav (suc m) M (suc n) (Sub.lift m n s2)) M2)
+          (b : TmR e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s1 Q)) (Sub.trav (suc m) M n (consS m n s2 Q'))) :
+          TmR t (subst1 n Bs P) (app n (lam n A1 M1) Q) (app n (lam n A2 M2) Q') =
+        cl7 t (subst1 n Bs P) (app n (lam n A1 M1) Q) (app n (lam n A2 M2) Q') (subst1 n M1 Q) (subst1 n M2 Q')
+          (reds-beta n A1 M1 Q) (reds-beta n A2 M2 Q')
+          (cmono-tm e.v t (le-trans e.v i.2.1 t e.below i.2.2.2.2) (subst1 n Bs P) (subst1 n M1 Q) (subst1 n M2 Q')
+             (tmr-tr e.v (Sub.trav (suc m) B n (consS m n s P)) (subst1 n Bs P) (eq-cons m n s P B)
+                (subst1 n M1 Q) (subst1 n M2 Q')
+                (tmr-trr e.v (Sub.trav (suc m) B n (consS m n s P)) (subst1 n M1 Q)
+                   (Sub.trav (suc m) M n (consS m n s2 Q')) (subst1 n M2 Q')
+                   (Prelude[l].subst (Tm (suc n)) (\ Z -> Id (Tm n) (Sub.trav (suc m) M n (consS m n s2 Q')) (subst1 n Z Q'))
+                      (Sub.trav (suc m) M (suc n) (Sub.lift m n s2)) M2 e2 (eq-cons m n s2 Q' M))
+                   (tmr-trl e.v (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) M n (consS m n s1 Q))
+                      (subst1 n M1 Q) (Sub.trav (suc m) M n (consS m n s2 Q'))
+                      (Prelude[l].subst (Tm (suc n)) (\ Z -> Id (Tm n) (Sub.trav (suc m) M n (consS m n s1 Q)) (subst1 n Z Q))
+                         (Sub.trav (suc m) M (suc n) (Sub.lift m n s1)) M1 e1 (eq-cons m n s1 Q M))
+                      b)))) ;
+
+      appc : AppC Can t (subst1 n Bs P) L L' P P' =
+        struct { c1 = fin s s P P' As As Ms Ms (refl Ms) (refl Ms) b1 ;
+                 c2 = fin s' s' P P' As' As' Ms' Ms' (refl Ms') (refl Ms') b2 ;
+                 c3 = fin s s' P P' As As' Ms Ms' (refl Ms) (refl Ms') b3 } ;
+    } ;
+
+    tm1 (u : Ty) (mu : (sem m (lam m A M) rho).mem u) : TmR u (pp n As Bs) L L' =
+      (tmr-unfold u (pp n As Bs) L L').2
+        (struct { ty = tyc-lamw (sem m A rho) (fam m M rho) u w L L' ;
+                  fn = fun-at-pp u As Bs L L' (\ d t q P P' a -> At[u, w, d, t, q, P, P', a].appc) })
+      where { w : LamW (sem m A rho) (fam m M rho) u = (sem-lam-eq m A M rho).1 u mu ; } ;
+  } ;
+
+  ad-lam-at (m : Nat) (G : Ctx m) (A : Tm m) (B M : Tm (suc m))
+      (h1 : Der m (jty G A (uu m))) (h2 : Der (suc m) (jty (ext m G A) B (uu (suc m)))) (h3 : Der (suc m) (jty (ext m G A) M B))
+      (r1 : Ad m G A A (uu m)) (r2 : Ad (suc m) (ext m G A) B B (uu (suc m))) (r3 : Ad (suc m) (ext m G A) M M B)
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') (u c : Ty)
+      (mu : (sem m (lam m A M) rho).mem u) (mc : (sem m (pp m A B) rho).mem c) (hc : Tp (el u c)) :
+      TmR u (Sub.trav m (pp m A B) n s) (Sub.trav m (lam m A M) n s) (Sub.trav m (lam m A M) n s') *
+      TmR u (Sub.trav m (pp m A B) n s') (Sub.trav m (lam m A M) n s) (Sub.trav m (lam m A M) n s') =
+    (t1,
+     cl5 u c hc (Sub.trav m (pp m A B) n s) (Sub.trav m (pp m A B) n s')
+       (Sub.trav m (lam m A M) n s) (Sub.trav m (lam m A M) n s')
+       (ad-ty m G (pp m A B) (pp m A B)
+          (ad-pi m G A A B B h1 h1 (eq-refl m G A (uu m) h1) h2 (eq-refl (suc m) (ext m G A) B (uu (suc m)) h2) r1 r1 r2 r2 r2)
+          rho fi s s' rs c mc (tp-pre u c hc))
+       t1)
+    where {
+      t1 : TmR u (Sub.trav m (pp m A B) n s) (Sub.trav m (lam m A M) n s) (Sub.trav m (lam m A M) n s') =
+        LamCase[m, G, A, B, M, h1, h3, r1, r3, rho, fi, s, s', rs].tm1 u mu ; } ;
+
+  ad-lam (m : Nat) (G : Ctx m) (A : Tm m) (B M : Tm (suc m))
+      (h1 : Der m (jty G A (uu m))) (h2 : Der (suc m) (jty (ext m G A) B (uu (suc m)))) (h3 : Der (suc m) (jty (ext m G A) M B))
+      (r1 : Ad m G A A (uu m)) (r2 : Ad (suc m) (ext m G A) B B (uu (suc m))) (r3 : Ad (suc m) (ext m G A) M M B) :
+      Ad m G (lam m A M) (lam m A M) (pp m A B) =
+    \ rho fi s s' rs u c mu mc hc -> ad-lam-at m G A B M h1 h2 h3 r1 r2 r3 rho fi s s' rs u c mu mc hc ;
+} ;

@@ -1,0 +1,446 @@
+-- LawsC.seg: the laws of the relation at compact witnesses (NOTE-4.txt
+-- 4.14.2): L2 diagonal, L3 symmetry of TyR, L4 symmetry of TmR,
+-- L5 conversion, L6 transitivity, at every fuel by induction; L7 head
+-- expansion.  L3-L6 take a typing hypothesis (c : U, u : c) and go
+-- through the typed representative (Typing 2.3) by M (RelC.mono): the
+-- keys of its selections are typed (key-tp), and the values are typed
+-- (fam-val for a family of types, Lemma 2.7 ent-sel for a function).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open Weaken[l] ; open Subst[l] ; open Presup[l] ; open Reduction[l] ; open RelC[l] ;
+
+------------------------------------------------------------------------
+-- the typed parts of a representative
+
+-- the keys of a selection of f with ent f A phi have type A
+key-tp : (g d t : Ty) -> ASel g d t -> (A phi : Ty) -> Tp (ent g A phi) -> Tp (el A univ) -> Cons d -> Tp (el d A) = split {
+  as-none g -> \ A phi h hA cd -> t-bot om A (le-refl om) hA ;
+  as-here a b -> \ A phi h hA cd -> (ent-inv (arr a b) A phi h).1 ;
+  as-l g1 g2 d t q | rq -> \ A phi h hA cd -> rq A phi (ent-inv (meet g1 g2) A phi h).1 hA cd ;
+  as-r g1 g2 d t q | rq -> \ A phi h hA cd -> rq A phi (ent-inv (meet g1 g2) A phi h).2 hA cd ;
+  as-meet g d1 t1 d2 t2 q1 q2 | r1 r2 -> \ A phi h hA cd ->
+    tp-join d1 d2 A (r1 A phi h hA (cons-meet-l d1 d2 cd))
+      (r2 A phi h hA (cons-down (meet d1 d2) d2 (le-meet-r d1 d2) cd)) cd } ;
+
+-- the codomains of the selections of om -> U have no pi component
+NoPiC : Ty -> U l = split { om -> Top ; univ -> Top ; pi s t -> Empty ; arr s t -> Top ; meet s t -> Top } ;
+CodNoPi : Ty -> U l = split { om -> Top ; univ -> Top ; pi s t -> Top ; arr s t -> AllC NoPiC t ; meet s t -> Top } ;
+
+asel-cod : (r d t : Ty) -> ASel r d t -> AllC CodNoPi r -> AllC NoPiC t = split {
+  as-none r -> \ h -> tt ;
+  as-here a b -> \ h -> h ;
+  as-l r1 r2 d t q | rq -> \ h -> rq h.1 ;
+  as-r r1 r2 d t q | rq -> \ h -> rq h.2 ;
+  as-meet r d1 t1 d2 t2 q1 q2 | r1 r2 -> \ h -> (r1 h, r2 h) } ;
+
+-- v : y with om -> U <= x -> y gives v : U
+val-u-by (x v y : Ty) (h : Tp (el v y)) (le : Le (arr om univ) (arr x y)) : Shape v y -> Tp (el v univ) = split {
+  sh-bot e hy -> t-bot v univ e tp-UU ;
+  sh-univ e1 e2 -> t-univ v univ e1 (eqv-refl univ) ;
+  sh-pi B psi e1 e2 h1 h2 c -> tp-conv v y v univ h (eqv-refl v) e2 ;
+  sh-lam B psi f e1 e2 h1 h2 c ->
+    absurd (Tp (el v univ)) (sel-all NoPiC i.2.1 (pi j.1 j.2.1) j.2.2.2.2.1 (asel-cod (arr om univ) i.1 i.2.1 i.2.2.1 tt))
+    where {
+      i : InvArr (arr om univ) x (pi B psi) =
+        inv-arr (arr om univ) x (pi B psi)
+          (le-trans (arr om univ) (arr x y) (arr x (pi B psi)) le (le-arr x x y (pi B psi) (le-refl x) e2.1)) ;
+      j : InvPi i.2.1 B psi = inv-pi i.2.1 B psi i.2.2.2.2 ; } } ;
+
+val-u (x v y : Ty) (h : Tp (el v y)) (le : Le (arr om univ) (arr x y)) : Tp (el v univ) =
+  val-u-by x v y h le (shape v y h) ;
+
+-- the values of a selection of a family of types are types
+fam-val : (g d t : Ty) -> ASel g d t -> (A : Ty) -> Tp (ent g A (arr om univ)) -> Cons g -> Cons d -> Tp (el t univ) = split {
+  as-none g -> \ A h cg cd -> tp-omU ;
+  as-here a b -> \ A h cg cd ->
+    val-u a b (ent-inv (arr a b) A (arr om univ) h).2.1 (ent-inv (arr a b) A (arr om univ) h).2.2.2
+      (ent-inv (arr a b) A (arr om univ) h).2.2.1 ;
+  as-l g1 g2 d t q | rq -> \ A h cg cd -> rq A (ent-inv (meet g1 g2) A (arr om univ) h).1 (cons-meet-l g1 g2 cg) cd ;
+  as-r g1 g2 d t q | rq -> \ A h cg cd ->
+    rq A (ent-inv (meet g1 g2) A (arr om univ) h).2 (cons-down (meet g1 g2) g2 (le-meet-r g1 g2) cg) cd ;
+  as-meet g d1 t1 d2 t2 q1 q2 | r1 r2 -> \ A h cg cd ->
+    tp-join t1 t2 univ (r1 A h cg (cons-meet-l d1 d2 cd)) (r2 A h cg (cons-down (meet d1 d2) d2 (le-meet-r d1 d2) cd))
+      (cons-asel g (meet d1 d2) (meet t1 t2) cg (as-meet g d1 t1 d2 t2 q1 q2) cd) } ;
+
+-- a function representative has no univ or pi component
+ArrShape : Ty -> U l = split { om -> Top ; univ -> Empty ; pi s t -> Empty ; arr s t -> Top ; meet s t -> Top } ;
+
+ent-arrs : (f : Ty) -> (A phi : Ty) -> Tp (ent f A phi) -> AllC ArrShape f = split {
+  om -> \ A phi h -> tt ;
+  univ -> \ A phi h -> ent-inv univ A phi h ;
+  pi s t -> \ A phi h -> ent-inv (pi s t) A phi h ;
+  arr s t -> \ A phi h -> tt ;
+  meet f1 f2 | r1 r2 -> \ A phi h ->
+    (r1 A phi (ent-inv (meet f1 f2) A phi h).1, r2 A phi (ent-inv (meet f1 f2) A phi h).2) } ;
+
+fun-no-univ (u f A phi : Ty) (e : Le f u) (h : Tp (ent f A phi)) (hu : Sel u univ) : Empty =
+  sel-all ArrShape f univ (inv-univ f (le-trans f u univ e (sel-le u univ hu))) (ent-arrs f A phi h) ;
+
+fun-no-pi (u f A phi g k : Ty) (e : Le f u) (h : Tp (ent f A phi)) (hp : Sel u (pi g k)) : Empty =
+  sel-all ArrShape f (pi i.1 i.2.1) i.2.2.2.2.1 (ent-arrs f A phi h)
+  where { i : InvPi f g k = inv-pi f g k (le-trans f u (pi g k) e (sel-le u (pi g k) hp)) ; } ;
+
+-- a type representative (om, U, a Pi) has no arrow component
+NoArrS : Ty -> U l = split { om -> Top ; univ -> Top ; pi s t -> Top ; arr s t -> Empty ; meet s t -> Top } ;
+
+asel-noarr : (r d t : Ty) -> ASel r d t -> AllC NoArrS r -> OmOnly t = split {
+  as-none r -> \ h -> tt ;
+  as-here a b -> \ h -> efq h ;
+  as-l r1 r2 d t q | rq -> \ h -> rq h.1 ;
+  as-r r1 r2 d t q | rq -> \ h -> rq h.2 ;
+  as-meet r d1 t1 d2 t2 q1 q2 | r1 r2 -> \ h -> (r1 h, r2 h) } ;
+
+-- u above such a w: the selection values of u are om-like
+val-noarr (u w d t : Ty) (le : Le w u) (nw : AllC NoArrS w) (q : ASel u d t) : Le om t =
+  le-trans om i.2.1 t (les-le om i.2.1 (omonly-les i.2.1 i.2.1 (les-refl i.2.1) (asel-noarr w i.1 i.2.1 i.2.2.1 nw)))
+    i.2.2.2.2
+  where { i : InvArr w d t = inv-arr w d t (le-trans w u (arr d t) le (asel-le u d t q)) ; } ;
+
+module LawsCD (n : Nat) (D : Ctx n) {
+  open RelCD[n, D] ;
+
+  ----------------------------------------------------------------------
+  -- the clauses at a representative
+
+  -- a Pi clause at (A, phi) is the clause at the type pi A phi
+  pc-of-pity (r : RC n -> U l) (hm : Mono r) (A phi : Ty) (S S' : Tm n) (p : PiTy r A phi S S')
+      (f g s t : Ty) (hp : Sel (pi A phi) (pi f g)) (q : PSel (pi A phi) s t) : PiTy r s t S S' =
+    pity-mono r hm A phi s t (pi-inj A phi s t le).1 (pi-inj A phi s t le).2 S S' p
+    where { le : Le (pi A phi) (pi s t) = psel-up (pi A phi) f g s t hp q ; } ;
+
+  tyc-of-pity (r : RC n -> U l) (hm : Mono r) (A phi : Ty) (S S' : Tm n) (p : PiTy r A phi S S') : TyC r (pi A phi) S S' =
+    struct { un = \ hu -> absurd (Reds n S (uu n) * Reds n S' (uu n)) (pi-not-univ A phi (sel-le (pi A phi) univ hu)) ;
+             pc = pc-of-pity r hm A phi S S' p } ;
+
+  pity-of-tyc (r : RC n -> U l) (A phi : Ty) (S S' : Tm n) (t : TyC r (pi A phi) S S') : PiTy r A phi S S' =
+    t.pc A phi A phi (sel-here (pi A phi)) (ps-here A phi) ;
+
+  -- the clause of a type == U
+  tyc-at-univ (r : RC n -> U l) (c : Ty) (e : Le univ c) (S S' : Tm n)
+      (un : Sel c univ -> Reds n S (uu n) * Reds n S' (uu n)) : TyC r c S S' =
+    struct { un = un ;
+             pc = \ f g A phi hp q -> absurd (PiTy r A phi S S') (univ-not-pi f g (le-trans univ c (pi f g) e (sel-le c (pi f g) hp))) } ;
+
+  -- the type clause of a function
+  tyc-fun (r : RC n -> U l) (u f A phi : Ty) (e : Le f u) (h : Tp (ent f A phi)) (S S' : Tm n) : TyC r u S S' =
+    struct { un = \ hu -> absurd (Reds n S (uu n) * Reds n S' (uu n)) (fun-no-univ u f A phi e h hu) ;
+             pc = \ g k B psi hp q -> absurd (PiTy r B psi S S') (fun-no-pi u f A phi g k e h hp) } ;
+
+  -- the function clause of a type
+  fun-typ (r : RC n -> U l) (hr : OmRel r) (u w : Ty) (le : Le w u) (nw : AllC NoArrS w) (T M M' : Tm n) : FunC r u T M M' =
+    \ A0 B0 rT d t q P P' a ->
+      appc-all r t (\ T1 M1 M1' -> hr (rtm t T1 M1 M1') (val-noarr u w d t le nw q)) (subst1 n B0 P) M M' P P' ;
+
+  -- PiD moved along an equation of the right reduct
+  pid-r (r : RC n -> U l) (A phi : Ty) (A0 : Tm n) (B0 : Tm (suc n)) (A1 A1' : Tm n) (B1 B1' : Tm (suc n))
+      (e : Id (Tm n) (pp n A1 B1) (pp n A1' B1')) (d : PiD r A phi A0 B0 A1 B1) : PiD r A phi A0 B0 A1' B1' =
+    Prelude[l].subst (Tm n) (\ Z -> PiD r A phi A0 B0 (pp-dom n Z) (pp-cod n Z)) (pp n A1 B1) (pp n A1' B1') e d ;
+
+  pid-l (r : RC n -> U l) (A phi : Ty) (A0 A0' : Tm n) (B0 B0' : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n))
+      (e : Id (Tm n) (pp n A0 B0) (pp n A0' B0')) (d : PiD r A phi A0 B0 A1 B1) : PiD r A phi A0' B0' A1 B1 =
+    Prelude[l].subst (Tm n) (\ Z -> PiD r A phi (pp-dom n Z) (pp-cod n Z) A1 B1) (pp n A0 B0) (pp n A0' B0') e d ;
+
+  ----------------------------------------------------------------------
+  -- the laws at a fuel
+
+  L2Ty (N : Nat) : U l = (c : Ty) -> (T T' : Tm n) -> Rel N (rty c T T') -> Rel N (rty c T T) ;
+  L2Tm (N : Nat) : U l = (u : Ty) -> (T M M' : Tm n) -> Rel N (rtm u T M M') -> Rel N (rtm u T M M) ;
+  L3 (N : Nat) : U l = (c : Ty) -> Tp (el c univ) -> (T T' : Tm n) -> Rel N (rty c T T') -> Rel N (rty c T' T) ;
+  L4 (N : Nat) : U l =
+    (u c : Ty) -> Tp (el u c) -> (T M M' : Tm n) -> Rel N (rtm u T M M') -> Rel N (rtm u T M' M) ;
+  L5 (N : Nat) : U l =
+    (u c : Ty) -> Tp (el u c) -> (T T2 M M' : Tm n) -> Rel N (rty c T T2) -> Rel N (rtm u T M M') -> Rel N (rtm u T2 M M') ;
+  L6Ty (N : Nat) : U l =
+    (c : Ty) -> Tp (el c univ) -> (T1 T2 T3 : Tm n) -> Rel N (rty c T1 T2) -> Rel N (rty c T2 T3) -> Rel N (rty c T1 T3) ;
+  L6Tm (N : Nat) : U l =
+    (u c : Ty) -> Tp (el u c) -> (T M1 M2 M3 : Tm n) -> Rel N (rtm u T M1 M2) -> Rel N (rtm u T M2 M3) -> Rel N (rtm u T M1 M3) ;
+
+  LawsAt (N : Nat) : U l =
+    sig { dty : L2Ty N ; dtm : L2Tm N ; sty : L3 N ; stm : L4 N ; cv : L5 N ; tty : L6Ty N ; ttm : L6Tm N } ;
+
+  ----------------------------------------------------------------------
+  -- arguments, at fuel N
+
+  arg-diag (N : Nat) (h : LawsAt N) (d : Ty) (A0 P P' : Tm n) (a : Arg (Rel N) d A0 P P') : Arg (Rel N) d A0 P P =
+    struct { cd = a.cd ; cv = eq-refl n D P A0 (eq-pre n (jeq D P P' A0) a.cv).1 ; rel = h.dtm d A0 P P' a.rel } ;
+
+  arg-sym (N : Nat) (h : LawsAt N) (d A : Ty) (hd : Tp (el d A)) (A0 P P' : Tm n) (a : Arg (Rel N) d A0 P P') :
+      Arg (Rel N) d A0 P' P =
+    struct { cd = a.cd ; cv = eq-sym n D P P' A0 a.cv ; rel = h.stm d A hd A0 P P' a.rel } ;
+
+  arg-conv (N : Nat) (h : LawsAt N) (d A : Ty) (hd : Tp (el d A)) (A0 A2 P P' : Tm n) (a : Arg (Rel N) d A0 P P')
+      (tr : Rel N (rty A A0 A2)) (e : Der n (jeq D A0 A2 (uu n))) : Arg (Rel N) d A2 P P' =
+    struct { cd = a.cd ; cv = eq-conv n D P P' A0 A2 a.cv e (eq-pre n (jeq D A0 A2 (uu n)) e).2 ;
+             rel = h.cv d A hd A0 A2 P P' tr a.rel } ;
+
+  ----------------------------------------------------------------------
+  -- L2 (no typing)
+
+  famc-11 (r : RC n -> U l) (y : Ty) (B0 B1 : Tm (suc n)) (P P' : Tm n) (c : FamC r y B0 B1 P P') :
+      FamC r y B0 B0 P P' = struct { c1 = c.c1 ; c2 = c.c1 ; c3 = c.c1 } ;
+
+  appc-11 (r : RC n -> U l) (t : Ty) (B M M' P P' : Tm n) (c : AppC r t B M M' P P') : AppC r t B M M P P' =
+    struct { c1 = c.c1 ; c2 = c.c1 ; c3 = c.c1 } ;
+
+  pity-diag (N : Nat) (h : LawsAt N) (A phi : Ty) (T T' : Tm n) (p : PiTy (Rel N) A phi T T') : PiTy (Rel N) A phi T T =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A0 ; B1 = p.B0 ; red = p.red ; red' = p.red ;
+             d = struct {
+               cA = eq-refl n D p.A0 (uu n) (eq-pre n (jeq D p.A0 p.A1 (uu n)) p.d.cA).1 ;
+               cB = eq-refl (suc n) (ext n D p.A0) p.B0 (uu (suc n))
+                      (eq-pre (suc n) (jeq (ext n D p.A0) p.B0 p.B1 (uu (suc n))) p.d.cB).1 ;
+               dom = h.dty A p.A0 p.A1 p.d.dom ;
+               fam = \ d y q P P' a -> famc-11 (Rel N) y p.B0 p.B1 P P' (p.d.fam d y q P P' a) } } ;
+
+  l2ty-step (N : Nat) (h : LawsAt N) : L2Ty (suc N) = \ c T T' t ->
+    struct { un = \ hu -> ((t.un hu).1, (t.un hu).1) ;
+             pc = \ f g A phi hp q -> pity-diag N h A phi T T' (t.pc f g A phi hp q) } ;
+
+  l2tm-step (N : Nat) (h : LawsAt N) (d1 : L2Ty (suc N)) : L2Tm (suc N) = \ u T M M' t ->
+    struct { ty = d1 u M M' t.ty ;
+             fn = \ A0 B0 rT d t' q P P' a -> appc-11 (Rel N) t' (subst1 n B0 P) M M' P P' (t.fn A0 B0 rT d t' q P P' a) } ;
+
+  ----------------------------------------------------------------------
+  -- L3, at a Pi type (A : U, phi a family of types over A)
+
+  famc-sym (N : Nat) (h : LawsAt N) (A phi : Ty) (hA : Tp (el A univ)) (hphi : Tp (ent phi A (arr om univ)))
+      (cphi : Cons phi) (T T' : Tm n) (p : PiTy (Rel N) A phi T T') (d y : Ty) (q : ASel phi d y) (P P' : Tm n)
+      (a : Arg (Rel N) d p.A1 P P') : FamC (Rel N) y p.B1 p.B0 P P' =
+    struct { c1 = f.c2 ; c2 = f.c1 ; c3 = h.sty y hy (subst1 n p.B0 P') (subst1 n p.B1 P) fs.c3 }
+    where {
+      hd : Tp (el d A) = key-tp phi d y q A (arr om univ) hphi hA a.cd ;
+      hy : Tp (el y univ) = fam-val phi d y q A hphi cphi a.cd ;
+      a0 : Arg (Rel N) d p.A0 P P' =
+        arg-conv N h d A hd p.A1 p.A0 P P' a (h.sty A hA p.A0 p.A1 p.d.dom) (eq-sym n D p.A0 p.A1 (uu n) p.d.cA) ;
+      f : FamC (Rel N) y p.B0 p.B1 P P' = p.d.fam d y q P P' a0 ;
+      fs : FamC (Rel N) y p.B0 p.B1 P' P = p.d.fam d y q P' P (arg-sym N h d A hd p.A0 P P' a0) ; } ;
+
+  pity-sym (N : Nat) (h : LawsAt N) (A phi : Ty) (hA : Tp (el A univ)) (hphi : Tp (ent phi A (arr om univ)))
+      (cphi : Cons phi) (T T' : Tm n) (p : PiTy (Rel N) A phi T T') : PiTy (Rel N) A phi T' T =
+    struct { A0 = p.A1 ; B0 = p.B1 ; A1 = p.A0 ; B1 = p.B0 ; red = p.red' ; red' = p.red ;
+             d = struct {
+               cA = eq-sym n D p.A0 p.A1 (uu n) p.d.cA ;
+               cB = ctxconv-eq n D p.A0 p.A1 (eq-pre n (jeq D p.A0 p.A1 (uu n)) p.d.cA).1
+                      (eq-pre n (jeq D p.A0 p.A1 (uu n)) p.d.cA).2 p.d.cA p.B1 p.B0 (uu (suc n))
+                      (eq-sym (suc n) (ext n D p.A0) p.B0 p.B1 (uu (suc n)) p.d.cB) ;
+               dom = h.sty A hA p.A0 p.A1 p.d.dom ;
+               fam = famc-sym N h A phi hA hphi cphi T T' p } } ;
+
+  l3-by (N : Nat) (h : LawsAt N) (c : Ty) (T T' : Tm n) (t : TyC (Rel N) c T T') : Shape c univ -> TyC (Rel N) c T' T = split {
+    sh-bot e hu -> tyc-om (Rel N) c e T' T ;
+    sh-univ e1 e2 -> tyc-at-univ (Rel N) c e1.2 T' T (\ hu -> ((t.un hu).2, (t.un hu).1)) ;
+    sh-pi A phi e1 e2 h1 h2 cp ->
+      tyc-mono (Rel N) (mono N) (pi A phi) c e1.2 T' T
+        (tyc-of-pity (Rel N) (mono N) A phi T' T
+           (pity-sym N h A phi h1 h2 cp T T'
+              (pity-of-tyc (Rel N) A phi T T' (tyc-mono (Rel N) (mono N) c (pi A phi) e1.1 T T' t)))) ;
+    sh-lam A phi f e1 e2 h1 h2 cf -> absurd (TyC (Rel N) c T' T) (univ-not-pi A phi e2.1) } ;
+
+  l3-step (N : Nat) (h : LawsAt N) : L3 (suc N) = \ c hc T T' t -> l3-by N h c T T' t (shape c univ hc) ;
+
+  ----------------------------------------------------------------------
+  -- L6 for types
+
+  famc-trans (N : Nat) (h : LawsAt N) (A phi : Ty) (hA : Tp (el A univ)) (hphi : Tp (ent phi A (arr om univ)))
+      (cphi : Cons phi) (A0 : Tm n) (B0 : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n)) (A2 : Tm n) (B2 : Tm (suc n))
+      (p : PiD (Rel N) A phi A0 B0 A1 B1) (q : PiD (Rel N) A phi A1 B1 A2 B2)
+      (d y : Ty) (s : ASel phi d y) (P P' : Tm n) (a : Arg (Rel N) d A0 P P') : FamC (Rel N) y B0 B2 P P' =
+    struct { c1 = f1.c1 ; c2 = f2.c2 ;
+             c3 = h.tty y hy (subst1 n B0 P) (subst1 n B1 P') (subst1 n B2 P') f1.c3 f2d.c3 }
+    where {
+      hd : Tp (el d A) = key-tp phi d y s A (arr om univ) hphi hA a.cd ;
+      hy : Tp (el y univ) = fam-val phi d y s A hphi cphi a.cd ;
+      f1 : FamC (Rel N) y B0 B1 P P' = p.fam d y s P P' a ;
+      a1 : Arg (Rel N) d A1 P P' = arg-conv N h d A hd A0 A1 P P' a p.dom p.cA ;
+      f2 : FamC (Rel N) y B1 B2 P P' = q.fam d y s P P' a1 ;
+      f2d : FamC (Rel N) y B1 B2 P' P' =
+        q.fam d y s P' P' (arg-diag N h d A1 P' P (arg-sym N h d A hd A1 P P' a1)) ; } ;
+
+  pid-trans (N : Nat) (h : LawsAt N) (A phi : Ty) (hA : Tp (el A univ)) (hphi : Tp (ent phi A (arr om univ)))
+      (cphi : Cons phi) (A0 : Tm n) (B0 : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n)) (A2 : Tm n) (B2 : Tm (suc n))
+      (p : PiD (Rel N) A phi A0 B0 A1 B1) (q : PiD (Rel N) A phi A1 B1 A2 B2) : PiD (Rel N) A phi A0 B0 A2 B2 =
+    struct {
+      cA = eq-trans n D A0 A1 A2 (uu n) p.cA q.cA ;
+      cB = eq-trans (suc n) (ext n D A0) B0 B1 B2 (uu (suc n)) p.cB
+             (ctxconv-eq n D A1 A0 (eq-pre n (jeq D A0 A1 (uu n)) p.cA).2 (eq-pre n (jeq D A0 A1 (uu n)) p.cA).1
+                (eq-sym n D A0 A1 (uu n) p.cA) B1 B2 (uu (suc n)) q.cB) ;
+      dom = h.tty A hA A0 A1 A2 p.dom q.dom ;
+      fam = famc-trans N h A phi hA hphi cphi A0 B0 A1 B1 A2 B2 p q } ;
+
+  pity-trans (N : Nat) (h : LawsAt N) (A phi : Ty) (hA : Tp (el A univ)) (hphi : Tp (ent phi A (arr om univ)))
+      (cphi : Cons phi) (T1 T2 T3 : Tm n) (p : PiTy (Rel N) A phi T1 T2) (q : PiTy (Rel N) A phi T2 T3) :
+      PiTy (Rel N) A phi T1 T3 =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = q.A1 ; B1 = q.B1 ; red = p.red ; red' = q.red' ;
+             d = pid-trans N h A phi hA hphi cphi p.A0 p.B0 p.A1 p.B1 q.A1 q.B1 p.d
+                   (pid-l (Rel N) A phi q.A0 p.A1 q.B0 p.B1 q.A1 q.B1 (reds-pp n T2 q.A0 p.A1 q.B0 p.B1 q.red p.red') q.d) } ;
+
+  l6ty-by (N : Nat) (h : LawsAt N) (c : Ty) (T1 T2 T3 : Tm n) (t1 : TyC (Rel N) c T1 T2) (t2 : TyC (Rel N) c T2 T3) :
+      Shape c univ -> TyC (Rel N) c T1 T3 = split {
+    sh-bot e hu -> tyc-om (Rel N) c e T1 T3 ;
+    sh-univ e1 e2 -> tyc-at-univ (Rel N) c e1.2 T1 T3 (\ hu -> ((t1.un hu).1, (t2.un hu).2)) ;
+    sh-pi A phi e1 e2 h1 h2 cp ->
+      tyc-mono (Rel N) (mono N) (pi A phi) c e1.2 T1 T3
+        (tyc-of-pity (Rel N) (mono N) A phi T1 T3
+           (pity-trans N h A phi h1 h2 cp T1 T2 T3
+              (pity-of-tyc (Rel N) A phi T1 T2 (tyc-mono (Rel N) (mono N) c (pi A phi) e1.1 T1 T2 t1))
+              (pity-of-tyc (Rel N) A phi T2 T3 (tyc-mono (Rel N) (mono N) c (pi A phi) e1.1 T2 T3 t2)))) ;
+    sh-lam A phi f e1 e2 h1 h2 cf -> absurd (TyC (Rel N) c T1 T3) (univ-not-pi A phi e2.1) } ;
+
+  l6ty-step (N : Nat) (h : LawsAt N) : L6Ty (suc N) = \ c hc T1 T2 T3 t1 t2 -> l6ty-by N h c T1 T2 T3 t1 t2 (shape c univ hc) ;
+
+  ----------------------------------------------------------------------
+  -- the function clauses at a function representative f (ent f A phi)
+
+  -- the value t of a selection of f, at a key d with Cons d, is typed
+  sel-val (f A phi d t : Ty) (h2 : Tp (ent f A phi)) (cf : Cons f) (hpi : Tp (el (pi A phi) univ)) (q : ASel f d t)
+      (cd : Cons d) : SelT phi d t =
+    ent-sel f d t q A phi d h2 cf (pi-fam-cons A phi hpi) (key-tp f d t q A phi h2 (pi-dom A phi hpi) cd) (le-refl d) ;
+
+  appc-sym (N : Nat) (h : LawsAt N) (f A phi : Ty) (h2 : Tp (ent f A phi)) (cf : Cons f) (hpi : Tp (el (pi A phi) univ))
+      (T M M' : Tm n) (fn : FunC (Rel N) f T M M') (A0 : Tm n) (B0 : Tm (suc n)) (rT : Reds n T (pp n A0 B0))
+      (d t : Ty) (q : ASel f d t) (P P' : Tm n) (a : Arg (Rel N) d A0 P P') : AppC (Rel N) t (subst1 n B0 P) M' M P P' =
+    struct { c1 = c.c2 ; c2 = c.c1 ;
+             c3 = h.ttm t s.1 s.2.2 (subst1 n B0 P) (app n M' P) (app n M P) (app n M P')
+                    (h.stm t s.1 s.2.2 (subst1 n B0 P) (app n M P) (app n M' P) cd.c3) c.c1 }
+    where {
+      s : SelT phi d t = sel-val f A phi d t h2 cf hpi q a.cd ;
+      c : AppC (Rel N) t (subst1 n B0 P) M M' P P' = fn A0 B0 rT d t q P P' a ;
+      cd : AppC (Rel N) t (subst1 n B0 P) M M' P P = fn A0 B0 rT d t q P P (arg-diag N h d A0 P P' a) ; } ;
+
+  appc-conv (N : Nat) (h : LawsAt N) (f A phi : Ty) (h2 : Tp (ent f A phi)) (cf : Cons f) (hpi : Tp (el (pi A phi) univ))
+      (T T2 M M' : Tm n) (pd : PiTy (Rel N) A phi T T2) (fn : FunC (Rel N) f T M M') (A2 : Tm n) (B2 : Tm (suc n))
+      (r2 : Reds n T2 (pp n A2 B2)) (d t : Ty) (q : ASel f d t) (P P' : Tm n) (a : Arg (Rel N) d A2 P P') :
+      AppC (Rel N) t (subst1 n B2 P) M M' P P' =
+    struct { c1 = h.cv t s.1 s.2.2 (subst1 n pd.B0 P) (subst1 n B2 P) (app n M P) (app n M P') ty c.c1 ;
+             c2 = h.cv t s.1 s.2.2 (subst1 n pd.B0 P) (subst1 n B2 P) (app n M' P) (app n M' P') ty c.c2 ;
+             c3 = h.cv t s.1 s.2.2 (subst1 n pd.B0 P) (subst1 n B2 P) (app n M P) (app n M' P') ty c.c3 }
+    where {
+      hA : Tp (el A univ) = pi-dom A phi hpi ;
+      hd : Tp (el d A) = key-tp f d t q A phi h2 hA a.cd ;
+      dq : PiD (Rel N) A phi pd.A0 pd.B0 A2 B2 =
+        pid-r (Rel N) A phi pd.A0 pd.B0 pd.A1 A2 pd.B1 B2 (reds-pp n T2 pd.A1 A2 pd.B1 B2 pd.red' r2) pd.d ;
+      a0 : Arg (Rel N) d pd.A0 P P' =
+        arg-conv N h d A hd A2 pd.A0 P P' a (h.sty A hA pd.A0 A2 dq.dom) (eq-sym n D pd.A0 A2 (uu n) dq.cA) ;
+      c : AppC (Rel N) t (subst1 n pd.B0 P) M M' P P' = fn pd.A0 pd.B0 pd.red d t q P P' a0 ;
+      s : SelT phi d t = sel-val f A phi d t h2 cf hpi q a.cd ;
+      w : InvArr phi d s.1 = inv-arr phi d s.1 s.2.1 ;
+      fc : FamC (Rel N) w.2.1 pd.B0 B2 P P =
+        dq.fam w.1 w.2.1 w.2.2.1 P P
+          (arg-mono (Rel N) (mono N) d w.1 w.2.2.2.1 pd.A0 P P (arg-diag N h d pd.A0 P P' a0)) ;
+      ty : Rel N (rty s.1 (subst1 n pd.B0 P) (subst1 n B2 P)) =
+        (mono N).ty w.2.1 s.1 w.2.2.2.2 (subst1 n pd.B0 P) (subst1 n B2 P) fc.c3 ; } ;
+
+  appc-trans (N : Nat) (h : LawsAt N) (f A phi : Ty) (h2 : Tp (ent f A phi)) (cf : Cons f) (hpi : Tp (el (pi A phi) univ))
+      (T M1 M2 M3 : Tm n) (fn1 : FunC (Rel N) f T M1 M2) (fn2 : FunC (Rel N) f T M2 M3) (A0 : Tm n) (B0 : Tm (suc n))
+      (rT : Reds n T (pp n A0 B0)) (d t : Ty) (q : ASel f d t) (P P' : Tm n) (a : Arg (Rel N) d A0 P P') :
+      AppC (Rel N) t (subst1 n B0 P) M1 M3 P P' =
+    struct { c1 = c1.c1 ; c2 = c2.c2 ;
+             c3 = h.ttm t s.1 s.2.2 (subst1 n B0 P) (app n M1 P) (app n M2 P) (app n M3 P') c1d.c3 c2.c3 }
+    where {
+      s : SelT phi d t = sel-val f A phi d t h2 cf hpi q a.cd ;
+      c1 : AppC (Rel N) t (subst1 n B0 P) M1 M2 P P' = fn1 A0 B0 rT d t q P P' a ;
+      c2 : AppC (Rel N) t (subst1 n B0 P) M2 M3 P P' = fn2 A0 B0 rT d t q P P' a ;
+      c1d : AppC (Rel N) t (subst1 n B0 P) M1 M2 P P = fn1 A0 B0 rT d t q P P (arg-diag N h d A0 P P' a) ; } ;
+
+  ----------------------------------------------------------------------
+  -- L4, L5, L6 for terms, by the shape of u : c
+
+  -- u : c gives u : U when c == U
+  tp-at-u (u c : Ty) (hc : Tp (el u c)) (e : Eqv c univ) : Tp (el u univ) = tp-conv u c u univ hc (eqv-refl u) e ;
+
+  l4-by (N : Nat) (h : LawsAt N) (s1 : L3 (suc N)) (u c : Ty) (hc : Tp (el u c)) (T M M' : Tm n)
+      (t : TmC (Rel N) u T M M') : Shape u c -> TmC (Rel N) u T M' M = split {
+    sh-bot e hu -> struct { ty = tyc-om (Rel N) u e M' M ; fn = fun-om (Rel N) (l1 N) u e T M' M } ;
+    sh-univ e1 e2 -> struct { ty = s1 u (tp-at-u u c hc e2) M M' t.ty ;
+                              fn = fun-typ (Rel N) (l1 N) u univ e1.2 tt T M' M } ;
+    sh-pi A phi e1 e2 h1 h2 cp -> struct { ty = s1 u (tp-at-u u c hc e2) M M' t.ty ;
+                                           fn = fun-typ (Rel N) (l1 N) u (pi A phi) e1.2 tt T M' M } ;
+    sh-lam A phi f e1 e2 h1 h2 cf -> struct {
+      ty = tyc-fun (Rel N) u f A phi e1.2 h2 M' M ;
+      fn = fun-mono (Rel N) (mono N) f u e1.2 T M' M
+             (\ A0 B0 rT d t' q P P' a ->
+                appc-sym N h f A phi h2 cf h1 T M M' (fun-mono (Rel N) (mono N) u f e1.1 T M M' t.fn) A0 B0 rT d t' q P P' a) } } ;
+
+  l4-step (N : Nat) (h : LawsAt N) (s1 : L3 (suc N)) : L4 (suc N) = \ u c hc T M M' t ->
+    l4-by N h s1 u c hc T M M' t (shape u c hc) ;
+
+  l5-by (N : Nat) (h : LawsAt N) (u c : Ty) (T T2 M M' : Tm n) (ty : TyC (Rel N) c T T2)
+      (t : TmC (Rel N) u T M M') : Shape u c -> TmC (Rel N) u T2 M M' = split {
+    sh-bot e hu -> struct { ty = tyc-om (Rel N) u e M M' ; fn = fun-om (Rel N) (l1 N) u e T2 M M' } ;
+    sh-univ e1 e2 -> struct { ty = t.ty ; fn = fun-typ (Rel N) (l1 N) u univ e1.2 tt T2 M M' } ;
+    sh-pi A phi e1 e2 h1 h2 cp -> struct { ty = t.ty ; fn = fun-typ (Rel N) (l1 N) u (pi A phi) e1.2 tt T2 M M' } ;
+    sh-lam A phi f e1 e2 h1 h2 cf -> struct {
+      ty = t.ty ;
+      fn = fun-mono (Rel N) (mono N) f u e1.2 T2 M M'
+             (\ A2 B2 r2 d t' q P P' a ->
+                appc-conv N h f A phi h2 cf h1 T T2 M M'
+                  (pity-of-tyc (Rel N) A phi T T2 (tyc-mono (Rel N) (mono N) c (pi A phi) e2.1 T T2 ty))
+                  (fun-mono (Rel N) (mono N) u f e1.1 T M M' t.fn) A2 B2 r2 d t' q P P' a) } } ;
+
+  l5-step (N : Nat) (h : LawsAt N) : L5 (suc N) = \ u c hc T T2 M M' ty t ->
+    l5-by N h u c T T2 M M' ty t (shape u c hc) ;
+
+  l6tm-by (N : Nat) (h : LawsAt N) (t6 : L6Ty (suc N)) (u c : Ty) (hc : Tp (el u c)) (T M1 M2 M3 : Tm n)
+      (t1 : TmC (Rel N) u T M1 M2) (t2 : TmC (Rel N) u T M2 M3) : Shape u c -> TmC (Rel N) u T M1 M3 = split {
+    sh-bot e hu -> struct { ty = tyc-om (Rel N) u e M1 M3 ; fn = fun-om (Rel N) (l1 N) u e T M1 M3 } ;
+    sh-univ e1 e2 -> struct { ty = t6 u (tp-at-u u c hc e2) M1 M2 M3 t1.ty t2.ty ;
+                              fn = fun-typ (Rel N) (l1 N) u univ e1.2 tt T M1 M3 } ;
+    sh-pi A phi e1 e2 h1 h2 cp -> struct { ty = t6 u (tp-at-u u c hc e2) M1 M2 M3 t1.ty t2.ty ;
+                                           fn = fun-typ (Rel N) (l1 N) u (pi A phi) e1.2 tt T M1 M3 } ;
+    sh-lam A phi f e1 e2 h1 h2 cf -> struct {
+      ty = tyc-fun (Rel N) u f A phi e1.2 h2 M1 M3 ;
+      fn = fun-mono (Rel N) (mono N) f u e1.2 T M1 M3
+             (\ A0 B0 rT d t' q P P' a ->
+                appc-trans N h f A phi h2 cf h1 T M1 M2 M3
+                  (fun-mono (Rel N) (mono N) u f e1.1 T M1 M2 t1.fn)
+                  (fun-mono (Rel N) (mono N) u f e1.1 T M2 M3 t2.fn) A0 B0 rT d t' q P P' a) } } ;
+
+  l6tm-step (N : Nat) (h : LawsAt N) (t6 : L6Ty (suc N)) : L6Tm (suc N) = \ u c hc T M1 M2 M3 t1 t2 ->
+    l6tm-by N h t6 u c hc T M1 M2 M3 t1 t2 (shape u c hc) ;
+
+  ----------------------------------------------------------------------
+  -- all laws, at every fuel
+
+  laws : (N : Nat) -> LawsAt N = split {
+    zero -> struct {
+      dty = \ c T T' t -> tt ; dtm = \ u T M M' t -> tt ; sty = \ c hc T T' t -> tt ;
+      stm = \ u c hc T M M' t -> tt ; cv = \ u c hc T T2 M M' ty t -> tt ;
+      tty = \ c hc T1 T2 T3 t1 t2 -> tt ; ttm = \ u c hc T M1 M2 M3 t1 t2 -> tt } ;
+    suc N | h -> struct {
+      dty = l2ty-step N h ; dtm = l2tm-step N h (l2ty-step N h) ;
+      sty = l3-step N h ; stm = l4-step N h (l3-step N h) ;
+      cv = l5-step N h ;
+      tty = l6ty-step N h ; ttm = l6tm-step N h (l6ty-step N h) } } ;
+
+  ----------------------------------------------------------------------
+  -- L7: head expansion
+
+  pity-exp (N : Nat) (A phi : Ty) (T T' T1 T1' : Tm n) (r : Reds n T T1) (r' : Reds n T' T1')
+      (p : PiTy (Rel N) A phi T1 T1') : PiTy (Rel N) A phi T T' =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A1 ; B1 = p.B1 ;
+             red = reds-trans n T T1 r (pp n p.A0 p.B0) p.red ;
+             red' = reds-trans n T' T1' r' (pp n p.A1 p.B1) p.red' ; d = p.d } ;
+
+  l7ty : (N : Nat) -> (c : Ty) -> (T T' T1 T1' : Tm n) -> Reds n T T1 -> Reds n T' T1' ->
+      Rel N (rty c T1 T1') -> Rel N (rty c T T') = split {
+    zero -> \ c T T' T1 T1' r r' t -> tt ;
+    suc N -> \ c T T' T1 T1' r r' t ->
+      struct { un = \ hu -> (reds-trans n T T1 r (uu n) (t.un hu).1, reds-trans n T' T1' r' (uu n) (t.un hu).2) ;
+               pc = \ f g A phi hp q -> pity-exp N A phi T T' T1 T1' r r' (t.pc f g A phi hp q) } } ;
+
+  L7Tm (N : Nat) : U l = (u : Ty) -> (T M M' M1 M1' : Tm n) -> Reds n M M1 -> Reds n M' M1' ->
+      Rel N (rtm u T M1 M1') -> Rel N (rtm u T M M') ;
+
+  appc-exp (N : Nat) (ih : L7Tm N) (t : Ty) (B M M' M1 M1' P P' : Tm n) (r : Reds n M M1) (r' : Reds n M' M1')
+      (c : AppC (Rel N) t B M1 M1' P P') : AppC (Rel N) t B M M' P P' =
+    struct { c1 = ih t B (app n M P) (app n M P') (app n M1 P) (app n M1 P') (reds-app n M M1 r P) (reds-app n M M1 r P') c.c1 ;
+             c2 = ih t B (app n M' P) (app n M' P') (app n M1' P) (app n M1' P') (reds-app n M' M1' r' P) (reds-app n M' M1' r' P') c.c2 ;
+             c3 = ih t B (app n M P) (app n M' P') (app n M1 P) (app n M1' P') (reds-app n M M1 r P) (reds-app n M' M1' r' P') c.c3 } ;
+
+  l7tm : (N : Nat) -> L7Tm N = split {
+    zero -> \ u T M M' M1 M1' r r' t -> tt ;
+    suc N | ih -> \ u T M M' M1 M1' r r' t ->
+      struct { ty = l7ty (suc N) u M M' M1 M1' r r' t.ty ;
+               fn = \ A0 B0 rT d t' q P P' a ->
+                 appc-exp N ih t' (subst1 n B0 P) M M' M1 M1' P P' r r' (t.fn A0 B0 rT d t' q P P' a) } } ;
+} ;

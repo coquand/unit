@@ -1,0 +1,223 @@
+-- AdeqPi.seg: adequacy (NOTE-4.txt 4.14.3), the statement Ad and the
+-- cases var, conv (and eq-conv), U, Pi (and eq-Pi, one lemma ad-pi).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open SynLemmas[l] ; open Weaken[l] ; open Subst[l] ; open Presup[l] ; open Cross[l] ;
+open Filter[l] ; open Sem[l] ; open Sound[l] ; open Reduction[l] ; open RelC[l] ; open LawsC[l] ; open AdeqBase[l] ;
+
+IsUU : (k : Nat) -> Tm k -> U l = split {
+  var k i -> Empty ; uu k -> Top ; pp k A B -> Empty ; lam k A M -> Empty ; app k M N -> Empty } ;
+
+uu-not-pp (n : Nat) (A0 : Tm n) (B0 : Tm (suc n)) (r : Reds n (uu n) (pp n A0 B0)) : Empty =
+  Prelude[l].subst (Tm n) (IsUU n) (uu n) (pp n A0 B0) (reds-from-normal n (uu n) (pp n A0 B0) r (normal-uu n)) tt ;
+
+univ-in (m : Nat) (rho : Env m) : (sem m (uu m) rho).mem univ = (sem-uu-eq m rho).2 univ (le-refl univ) ;
+
+module AdeqP (n : Nat) (D : Ctx n) (wD : Der n (jwf D)) {
+  open RelCD[n, D] ;
+  open LawsCD[n, D] ;
+  open AdeqB[n, D] ;
+
+  -- the statement, for a judgement M = M' : A in G (M' = M for a typing)
+  Ad (m : Nat) (G : Ctx m) (M M' A : Tm m) : U l+ =
+    (rho : Env m) -> Fits m G rho -> (s s' : Fin m -> Tm n) -> RelS m G rho s s' ->
+    (u c : Ty) -> (sem m M rho).mem u -> (sem m A rho).mem c -> Tp (el u c) ->
+    TmR u (Sub.trav m A n s) (Sub.trav m M n s) (Sub.trav m M' n s') *
+    TmR u (Sub.trav m A n s') (Sub.trav m M n s) (Sub.trav m M' n s') ;
+
+  -- at the type U: the relation as types
+  ad-ty (m : Nat) (G : Ctx m) (A A' : Tm m) (r : Ad m G A A' (uu m)) (rho : Env m) (fi : Fits m G rho)
+      (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') (c : Ty) (mc : (sem m A rho).mem c) (hc : Tp (el c univ)) :
+      TyR c (Sub.trav m A n s) (Sub.trav m A' n s') =
+    tmr-ty c (uu n) (Sub.trav m A n s) (Sub.trav m A' n s') (r rho fi s s' rs c univ mc (univ-in m rho) hc).1 ;
+
+  -- TyR moved along equations of both sides
+  tyr-tr (c : Ty) (T1 T2 T1' T2' : Tm n) (e1 : Id (Tm n) T1 T1') (e2 : Id (Tm n) T2 T2') (t : TyR c T1 T2) :
+      TyR c T1' T2' =
+    Prelude[l].subst (Tm n) (\ Z -> TyR c T1' Z) T2 T2' e2
+      (Prelude[l].subst (Tm n) (\ Z -> TyR c Z T2) T1 T1' e1 t) ;
+
+  ----------------------------------------------------------------------
+  -- var
+
+  ad-var (m : Nat) (G : Ctx m) (i : Fin m) : Ad m G (var m i) (var m i) (lookup m G i) =
+    \ rho fi s s' rs u c mu mc hc -> rs.vr i u c ((sem-var-eq m i rho).1 u mu) mc hc ;
+
+  ----------------------------------------------------------------------
+  -- conv: L5 along the premise A = B, at (s, s) and at (s', s')
+
+  ad-conv-at (m : Nat) (G : Ctx m) (M M' A B : Tm m) (r1 : Ad m G M M' A) (r2 : Ad m G A B (uu m))
+      (sAB : (rho : Env m) -> Fits m G rho -> FEq (sem m A rho) (sem m B rho))
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') (u c : Ty)
+      (mu : (sem m M rho).mem u) (mc : (sem m B rho).mem c) (hc : Tp (el u c)) :
+      TmR u (Sub.trav m B n s) (Sub.trav m M n s) (Sub.trav m M' n s') *
+      TmR u (Sub.trav m B n s') (Sub.trav m M n s) (Sub.trav m M' n s') =
+    (cl5 u c hc (Sub.trav m A n s) (Sub.trav m B n s) (Sub.trav m M n s) (Sub.trav m M' n s')
+       (ad-ty m G A B r2 rho fi s s (rels-diag m G rho s s' rs) c mcA hcU) t.1,
+     cl5 u c hc (Sub.trav m A n s') (Sub.trav m B n s') (Sub.trav m M n s) (Sub.trav m M' n s')
+       (ad-ty m G A B r2 rho fi s' s' (rels-diag m G rho s' s (rels-sym m G rho s s' rs)) c mcA hcU) t.2)
+    where {
+      mcA : (sem m A rho).mem c = (sAB rho fi).2 c mc ;
+      hcU : Tp (el c univ) = tp-pre u c hc ;
+      t : TmR u (Sub.trav m A n s) (Sub.trav m M n s) (Sub.trav m M' n s') *
+          TmR u (Sub.trav m A n s') (Sub.trav m M n s) (Sub.trav m M' n s') = r1 rho fi s s' rs u c mu mcA hc ; } ;
+
+  ad-conv (m : Nat) (G : Ctx m) (M M' A B : Tm m) (r1 : Ad m G M M' A) (r2 : Ad m G A B (uu m))
+      (sAB : (rho : Env m) -> Fits m G rho -> FEq (sem m A rho) (sem m B rho)) : Ad m G M M' B =
+    \ rho fi s s' rs u c mu mc hc -> ad-conv-at m G M M' A B r1 r2 sAB rho fi s s' rs u c mu mc hc ;
+
+  ----------------------------------------------------------------------
+  -- U
+
+  tmr-uu (u : Ty) (lu : Le univ u) : TmR u (uu n) (uu n) (uu n) =
+    (tmr-unfold u (uu n) (uu n) (uu n)).2
+      (struct { ty = tyc-at-univ Can u lu (uu n) (uu n) (\ hu -> (rrefl n (uu n), rrefl n (uu n))) ;
+                fn = fun-typ Can can-om u univ lu tt (uu n) (uu n) (uu n) }) ;
+
+  ad-U (m : Nat) (G : Ctx m) : Ad m G (uu m) (uu m) (uu m) =
+    \ rho fi s s' rs u c mu mc hc -> (tmr-uu u ((sem-uu-eq m rho).1 u mu), tmr-uu u ((sem-uu-eq m rho).1 u mu)) ;
+
+  ----------------------------------------------------------------------
+  -- Pi and eq-Pi
+
+  -- a function clause at the type U is vacuous: U is not a Pi
+  fun-at-uu (u : Ty) (M M' : Tm n) : FunC Can u (uu n) M M' =
+    \ A0 B0 rT d t q P P' a -> absurd (AppC Can t (subst1 n B0 P) M M' P P') (uu-not-pp n A0 B0 rT) ;
+
+  module PiCase (m : Nat) (G : Ctx m) (A A' : Tm m) (B B' : Tm (suc m))
+      (h1 : Der m (jty G A (uu m))) (hA' : Der m (jty G A' (uu m))) (eAA : Der m (jeq G A A' (uu m)))
+      (hB' : Der (suc m) (jty (ext m G A) B' (uu (suc m)))) (eBB : Der (suc m) (jeq (ext m G A) B B' (uu (suc m))))
+      (rA0 : Ad m G A A (uu m)) (rA : Ad m G A A' (uu m))
+      (rB1 : Ad (suc m) (ext m G A) B B (uu (suc m))) (rB'1 : Ad (suc m) (ext m G A) B' B' (uu (suc m)))
+      (rB : Ad (suc m) (ext m G A) B B' (uu (suc m)))
+      (rho : Env m) (fi : Fits m G rho) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') {
+
+    As : Tm n = Sub.trav m A n s ;
+    As' : Tm n = Sub.trav m A n s' ;
+    T : Tm n = pp n As (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) ;
+    T' : Tm n = pp n (Sub.trav m A' n s') (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) ;
+
+    tyuA : TyU (sem m A rho) = tyu-of m A rho (soundness-ty m G A (uu m) h1 rho fi) ;
+    eA : Der n (jeq D As As' (uu n)) = subst-cross m n G D s s' A (uu m) h1 rs.ok rs.ok' rs.eq wD ;
+
+    -- the conversions recorded by the clause
+    cA : Der n (jeq D As (Sub.trav m A' n s') (uu n)) =
+      eq-trans n D As (Sub.trav m A' n s) (Sub.trav m A' n s') (uu n)
+        (sub-der m (jeq G A A' (uu m)) eAA n D s rs.ok wD)
+        (subst-cross m n G D s s' A' (uu m) hA' rs.ok rs.ok' rs.eq wD) ;
+
+    cB : Der (suc n) (jeq (ext n D As) (Sub.trav (suc m) B (suc n) (Sub.lift m n s))
+           (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) (uu (suc n))) =
+      eq-trans (suc n) (ext n D As) (Sub.trav (suc m) B (suc n) (Sub.lift m n s))
+        (Sub.trav (suc m) B' (suc n) (Sub.lift m n s)) (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) (uu (suc n))
+        (sub-der (suc m) (jeq (ext m G A) B B' (uu (suc m))) eBB (suc n) (ext n D As) (Sub.lift m n s)
+           (XB[m, n, G, D, s, s', rs.ok, rs.ok', rs.eq, wD, A, h1, eA].soL)
+           (XB[m, n, G, D, s, s', rs.ok, rs.ok', rs.eq, wD, A, h1, eA].wHA))
+        (XB[m, n, G, D, s, s', rs.ok, rs.ok', rs.eq, wD, A, h1, eA].under B' (uu (suc m))
+           (xsub (suc m) (jty (ext m G A) B' (uu (suc m))) hB')) ;
+
+    -- at an element u of the semantic Pi, of type U
+    module At (u : Ty) (mpi : (piF (sem m A rho) (fam m B rho)).mem u) (Ac phic : Ty) (e : Eqv u (pi Ac phic))
+        (hAc : Tp (el Ac univ)) (hphic : Tp (ent phic Ac (arr om univ))) (cphic : Cons phic) {
+
+      pin : PiIn (sem m A rho) (fam m B rho) Ac phic = pi-in-pi (sem m A rho) (fam m B rho) u Ac phic e.1 mpi ;
+
+      tyA : TyR Ac As As' = ad-ty m G A A rA0 rho fi s s' rs Ac pin.inA1 hAc ;
+
+      -- the family part of the element at a selection (d, y) of phic
+      fam-mem (d y : Ty) (q : ASel phic d y) : (fam m B rho d).mem y =
+        (fam m B rho d).fup i.2.1 y i.2.2.2.2
+          (Entries[fam m B rho, fam-anti m B rho, EntR (sem m A rho) (fam m B rho), \ x v r -> r.2].sel
+             pin.b i.1 i.2.1 i.2.2.1 pin.ents d i.2.2.2.1)
+        where { i : InvArr pin.b d y = inv-arr pin.b d y (le-trans pin.b phic (arr d y) pin.leb (asel-le phic d y q)) ; } ;
+
+      module Arg1 (d y : Ty) (q : ASel phic d y) (P P' : Tm n) (a : Arg Can d As P P') {
+        hd : Tp (el d Ac) = key-tp phic d y q Ac (arr om univ) hphic hAc a.cd ;
+        hy : Tp (el y univ) = fam-val phic d y q Ac hphic cphic a.cd ;
+        rho' : Env (suc m) = extE m rho (prin d) ;
+        fi' : Fits (suc m) (ext m G A) rho' =
+          fits-ext m G A rho d fi tyuA (struct { a = Ac ; ina = pin.inA1 ; tp = hd }) ;
+        my : (sem (suc m) B rho').mem y = fam-mem d y q ;
+        my' : (sem (suc m) B' rho').mem y = (soundness-eq (suc m) (ext m G A) B B' (uu (suc m)) eBB rho' fi').1 y my ;
+
+        -- the arguments at both types
+        aP' : TmR d As' P P' = cl5 d Ac hd As As' P P' tyA a.rel ;
+        eP1 : Der n (jeq D P P' As') = eq-conv n D P P' As As' a.cv eA (eq-pre n (jeq D As As' (uu n)) eA).2 ;
+        eQ : Der n (jeq D P' P As) = eq-sym n D P P' As a.cv ;
+        eQ1 : Der n (jeq D P' P As') = eq-sym n D P P' As' eP1 ;
+
+        ar-ss' : ArgR m A rho (prin d) s s' P P' = \ u' c' mu' mc' hc' ->
+          (cmono-tm d u' mu' As P P' a.rel, cmono-tm d u' mu' As' P P' aP') ;
+        ar-ss : ArgR m A rho (prin d) s s P P' = \ u' c' mu' mc' hc' ->
+          (cmono-tm d u' mu' As P P' a.rel, cmono-tm d u' mu' As P P' a.rel) ;
+        ar-s's' : ArgR m A rho (prin d) s' s' P P' = \ u' c' mu' mc' hc' ->
+          (cmono-tm d u' mu' As' P P' aP', cmono-tm d u' mu' As' P P' aP') ;
+
+        rs3 : RelS (suc m) (ext m G A) rho' (consS m n s P) (consS m n s' P') =
+          rels-ext m G A rho (prin d) s s' P P' rs a.cv eQ1 ar-ss' ;
+        rs1 : RelS (suc m) (ext m G A) rho' (consS m n s P) (consS m n s P') =
+          rels-ext m G A rho (prin d) s s P P' (rels-diag m G rho s s' rs) a.cv eQ ar-ss ;
+        rs2 : RelS (suc m) (ext m G A) rho' (consS m n s' P) (consS m n s' P') =
+          rels-ext m G A rho (prin d) s' s' P P' (rels-diag m G rho s' s (rels-sym m G rho s s' rs)) eP1 eQ1 ar-s's' ;
+
+        -- B[liftS s][P] = B[(s, P)]
+        eqB (s1 : Fin m -> Tm n) (Q : Tm n) (X : Tm (suc m)) :
+            Id (Tm n) (Sub.trav (suc m) X n (consS m n s1 Q)) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s1)) Q) =
+          sym (Tm n) (subst1 n (Sub.trav (suc m) X (suc n) (Sub.lift m n s1)) Q) (Sub.trav (suc m) X n (consS m n s1 Q))
+            (consS-eq m n s1 Q X) ;
+
+        famc : FamC Can y (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) P P' =
+          struct {
+            c1 = tyr-tr y (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) B n (consS m n s P'))
+                   (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) P) (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) P')
+                   (eqB s P B) (eqB s P' B)
+                   (ad-ty (suc m) (ext m G A) B B rB1 rho' fi' (consS m n s P) (consS m n s P') rs1 y my hy) ;
+            c2 = tyr-tr y (Sub.trav (suc m) B' n (consS m n s' P)) (Sub.trav (suc m) B' n (consS m n s' P'))
+                   (subst1 n (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) P) (subst1 n (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) P')
+                   (eqB s' P B') (eqB s' P' B')
+                   (ad-ty (suc m) (ext m G A) B' B' rB'1 rho' fi' (consS m n s' P) (consS m n s' P') rs2 y my' hy) ;
+            c3 = tyr-tr y (Sub.trav (suc m) B n (consS m n s P)) (Sub.trav (suc m) B' n (consS m n s' P'))
+                   (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) P) (subst1 n (Sub.trav (suc m) B' (suc n) (Sub.lift m n s')) P')
+                   (eqB s P B) (eqB s' P' B')
+                   (ad-ty (suc m) (ext m G A) B B' rB rho' fi' (consS m n s P) (consS m n s' P') rs3 y my hy) } ;
+      } ;
+
+      pity : PiTy Can Ac phic T T' =
+        struct { A0 = As ; B0 = Sub.trav (suc m) B (suc n) (Sub.lift m n s) ;
+                 A1 = Sub.trav m A' n s' ; B1 = Sub.trav (suc m) B' (suc n) (Sub.lift m n s') ;
+                 red = rrefl n T ; red' = rrefl n T' ;
+                 d = struct { cA = cA ; cB = cB ;
+                              dom = ad-ty m G A A' rA rho fi s s' rs Ac pin.inA1 hAc ;
+                              fam = \ d y q P P' a -> Arg1[d, y, q, P, P', a].famc } } ;
+    } ;
+
+    -- the clause at a pi selection of u : U
+    pc-at (u : Ty) (hu : Tp (el u univ)) (mpi : (piF (sem m A rho) (fam m B rho)).mem u) (f g Au phiu : Ty)
+        (hp : Sel u (pi f g)) (q : PSel u Au phiu) : PiTy Can Au phiu T T' =
+      pity-mono Can cmono b.1 b.2.1 Au phiu b.2.2.2.1 b.2.2.2.2.1 T T'
+        (At[u, mpi, b.1, b.2.1, b.2.2.1, b.2.2.2.2.2.1, b.2.2.2.2.2.2.1, b.2.2.2.2.2.2.2].pity)
+      where { b : PiBelow u Au phiu = below-pi u Au phiu hu (psel-up u f g Au phiu hp q) ; } ;
+
+    tm (u c : Ty) (mu : (sem m (pp m A B) rho).mem u) (mc : (sem m (uu m) rho).mem c) (hc : Tp (el u c)) :
+        TmR u (uu n) T T' =
+      (tmr-unfold u (uu n) T T').2
+        (struct {
+           ty = struct {
+             un = \ hu -> absurd (Reds n T (uu n) * Reds n T' (uu n))
+                    (pi-univ-clash (sem m A rho) (fam m B rho) u (sel-le u univ hu) mpi) ;
+             pc = pc-at u (tp-univ u c hc ((sem-uu-eq m rho).1 c mc)) mpi } ;
+           fn = fun-at-uu u T T' })
+      where { mpi : (piF (sem m A rho) (fam m B rho)).mem u = (sem-pp-eq m A B rho).1 u mu ; } ;
+  } ;
+
+  ad-pi (m : Nat) (G : Ctx m) (A A' : Tm m) (B B' : Tm (suc m))
+      (h1 : Der m (jty G A (uu m))) (hA' : Der m (jty G A' (uu m))) (eAA : Der m (jeq G A A' (uu m)))
+      (hB' : Der (suc m) (jty (ext m G A) B' (uu (suc m)))) (eBB : Der (suc m) (jeq (ext m G A) B B' (uu (suc m))))
+      (rA0 : Ad m G A A (uu m)) (rA : Ad m G A A' (uu m))
+      (rB1 : Ad (suc m) (ext m G A) B B (uu (suc m))) (rB'1 : Ad (suc m) (ext m G A) B' B' (uu (suc m)))
+      (rB : Ad (suc m) (ext m G A) B B' (uu (suc m))) : Ad m G (pp m A B) (pp m A' B') (uu m) =
+    \ rho fi s s' rs u c mu mc hc ->
+      (PiCase[m, G, A, A', B, B', h1, hA', eAA, hB', eBB, rA0, rA, rB1, rB'1, rB, rho, fi, s, s', rs].tm u c mu mc hc,
+       PiCase[m, G, A, A', B, B', h1, hA', eAA, hB', eBB, rA0, rA, rB1, rB'1, rB, rho, fi, s, s', rs].tm u c mu mc hc) ;
+} ;

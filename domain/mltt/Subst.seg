@@ -1,0 +1,239 @@
+-- Subst.seg: substitution of derivations (step 4a; NOTE-4.txt sections
+-- 4.3 and 4.4, first part).
+--   ctxOf, wf-of            P0: every derivation gives wf of its context
+--   SubOk G H s             s typed from G to H; subok-lift
+--   sub-der                 Lemma S, one eliminator for Der
+--   sub1-ok, subst1-ty/eq   the substitution M[a]
+--   id-ok, ctxconv-ok       the identity, typed from G to G and from
+--                           (G, A) to (G, A') when A = A'
+--   ctxconv-ty, ctxconv-eq  context conversion
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ; open SynLemmas[l] ; open Weaken[l] ;
+
+------------------------------------------------------------------------
+-- P0
+
+ctxOf (n : Nat) : Jf n -> Ctx n = split {
+  jwf G -> G ;
+  jty G M A -> G ;
+  jeq G M N A -> G } ;
+
+wf-of : (n : Nat) -> (J : Jf n) -> Der n J -> Der n (jwf (ctxOf n J)) = split {
+  wf-emp -> wf-emp ;
+  wf-ext n G A h -> wf-ext n G A h ;
+  ty-var n G i h -> h ;
+  ty-conv n G M A B h1 h2 h3 | r1 r2 r3 -> r1 ;
+  ty-U n G h -> h ;
+  ty-Pi n G A B h1 h2 | r1 r2 -> r1 ;
+  ty-Lam n G A B M h1 h2 h3 | r1 r2 r3 -> r1 ;
+  ty-App n G A B f a h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 ;
+  eq-refl n G M A h | r1 -> r1 ;
+  eq-sym n G M N A h | r1 -> r1 ;
+  eq-trans n G M N P A h1 h2 | r1 r2 -> r1 ;
+  eq-conv n G M N A B h1 h2 h3 | r1 r2 r3 -> r1 ;
+  eq-beta n G A B M a h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 ;
+  eq-Pi n G A A' B B' h1 h2 h3 h4 h5 | r1 r2 r3 r4 r5 -> r1 ;
+  eq-funext n G A B f g h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 ;
+  eq-app-fun n G A B f f' a h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 ;
+  eq-app-arg n G A B f a a' h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 } ;
+
+------------------------------------------------------------------------
+-- typed substitutions
+
+SubOk (n m : Nat) (G : Ctx n) (H : Ctx m) (s : Fin n -> Tm m) : U l =
+  (i : Fin n) -> Der m (jty H (s i) (Sub.trav n (lookup n G i) m s)) ;
+
+subok-lift (n m : Nat) (G : Ctx n) (H : Ctx m) (s : Fin n -> Tm m) (A : Tm n) (so : SubOk n m G H s)
+    (dA : Der m (jty H (Sub.trav n A m s) (uu m))) :
+    SubOk (suc n) (suc m) (ext n G A) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) = split {
+  none -> der-ty-ty (suc m) (ext m H (Sub.trav n A m s)) (var (suc m) (fz m)) (wk m (Sub.trav n A m s))
+            (Sub.trav (suc n) (wk n A) (suc m) (Sub.lift n m s))
+            (sym (Tm (suc m)) (Sub.trav (suc n) (wk n A) (suc m) (Sub.lift n m s)) (wk m (Sub.trav n A m s)) (wk-sub n m s A))
+            (ty-var (suc m) (ext m H (Sub.trav n A m s)) (fz m) (wf-ext m H (Sub.trav n A m s) dA)) ;
+  some i -> der-ty-ty (suc m) (ext m H (Sub.trav n A m s)) (wk m (s i)) (wk m (Sub.trav n (lookup n G i) m s))
+            (Sub.trav (suc n) (wk n (lookup n G i)) (suc m) (Sub.lift n m s))
+            (sym (Tm (suc m)) (Sub.trav (suc n) (wk n (lookup n G i)) (suc m) (Sub.lift n m s))
+               (wk m (Sub.trav n (lookup n G i) m s)) (wk-sub n m s (lookup n G i)))
+            (wk-ty m H (Sub.trav n A m s) (s i) (Sub.trav n (lookup n G i) m s) dA (so i)) } ;
+
+------------------------------------------------------------------------
+-- Lemma S
+
+SubJ (n : Nat) : Jf n -> U l = split {
+  jwf G -> Top ;
+  jty G M A -> (m : Nat) -> (H : Ctx m) -> (s : Fin n -> Tm m) -> SubOk n m G H s -> Der m (jwf H) ->
+    Der m (jty H (Sub.trav n M m s) (Sub.trav n A m s)) ;
+  jeq G M N A -> (m : Nat) -> (H : Ctx m) -> (s : Fin n -> Tm m) -> SubOk n m G H s -> Der m (jwf H) ->
+    Der m (jeq H (Sub.trav n M m s) (Sub.trav n N m s) (Sub.trav n A m s)) } ;
+
+sub-wk-app (n m : Nat) (s : Fin n -> Tm m) (f : Tm n) :
+    Id (Tm (suc m)) (Sub.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Sub.lift n m s))
+      (app (suc m) (wk m (Sub.trav n f m s)) (var (suc m) (fz m))) =
+  ap (Tm (suc m)) (Tm (suc m)) (\ X -> app (suc m) X (var (suc m) (fz m)))
+    (Sub.trav (suc n) (wk n f) (suc m) (Sub.lift n m s)) (wk m (Sub.trav n f m s)) (wk-sub n m s f) ;
+
+sub-der : (n : Nat) -> (J : Jf n) -> Der n J -> SubJ n J = split {
+  wf-emp -> tt ;
+  wf-ext n G A h -> tt ;
+  ty-var n G i h -> \ m H s so wH -> so i ;
+  ty-conv n G M A B h1 h2 h3 | r1 r2 r3 -> \ m H s so wH ->
+    ty-conv m H (Sub.trav n M m s) (Sub.trav n A m s) (Sub.trav n B m s)
+      (r1 m H s so wH) (r2 m H s so wH) (r3 m H s so wH) ;
+  ty-U n G h -> \ m H s so wH -> ty-U m H wH ;
+  ty-Pi n G A B h1 h2 | r1 r2 -> \ m H s so wH ->
+    ty-Pi m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (r1 m H s so wH)
+      (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH))) ;
+  ty-Lam n G A B M h1 h2 h3 | r1 r2 r3 -> \ m H s so wH ->
+    ty-Lam m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+      (Sub.trav (suc n) M (suc m) (Sub.lift n m s)) (r1 m H s so wH)
+      (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+      (r3 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH))) ;
+  ty-App n G A B f a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H s so wH ->
+    der-ty-ty m H (app m (Sub.trav n f m s) (Sub.trav n a m s))
+      (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s)) (Sub.trav n (subst1 n B a) m s)
+      (sym (Tm m) (Sub.trav n (subst1 n B a) m s) (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+         (sub-subst1 n m s B a))
+      (ty-App m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n f m s) (Sub.trav n a m s)
+         (r1 m H s so wH)
+         (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+            (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+         (r3 m H s so wH) (r4 m H s so wH)) ;
+  eq-refl n G M A h | r1 -> \ m H s so wH ->
+    eq-refl m H (Sub.trav n M m s) (Sub.trav n A m s) (r1 m H s so wH) ;
+  eq-sym n G M N A h | r1 -> \ m H s so wH ->
+    eq-sym m H (Sub.trav n M m s) (Sub.trav n N m s) (Sub.trav n A m s) (r1 m H s so wH) ;
+  eq-trans n G M N P A h1 h2 | r1 r2 -> \ m H s so wH ->
+    eq-trans m H (Sub.trav n M m s) (Sub.trav n N m s) (Sub.trav n P m s) (Sub.trav n A m s)
+      (r1 m H s so wH) (r2 m H s so wH) ;
+  eq-conv n G M N A B h1 h2 h3 | r1 r2 r3 -> \ m H s so wH ->
+    eq-conv m H (Sub.trav n M m s) (Sub.trav n N m s) (Sub.trav n A m s) (Sub.trav n B m s)
+      (r1 m H s so wH) (r2 m H s so wH) (r3 m H s so wH) ;
+  eq-beta n G A B M a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H s so wH ->
+    der-eq-ty m H (Sub.trav n (app n (lam n A M) a) m s) (Sub.trav n (subst1 n M a) m s)
+      (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s)) (Sub.trav n (subst1 n B a) m s)
+      (sym (Tm m) (Sub.trav n (subst1 n B a) m s) (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+         (sub-subst1 n m s B a))
+      (der-eq-r m H (Sub.trav n (app n (lam n A M) a) m s)
+         (subst1 m (Sub.trav (suc n) M (suc m) (Sub.lift n m s)) (Sub.trav n a m s)) (Sub.trav n (subst1 n M a) m s)
+         (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+         (sym (Tm m) (Sub.trav n (subst1 n M a) m s) (subst1 m (Sub.trav (suc n) M (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+            (sub-subst1 n m s M a))
+         (eq-beta m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+            (Sub.trav (suc n) M (suc m) (Sub.lift n m s)) (Sub.trav n a m s) (r1 m H s so wH)
+            (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+               (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+            (r3 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+               (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+            (r4 m H s so wH))) ;
+  eq-Pi n G A A' B B' h1 h2 h3 h4 h5 | r1 r2 r3 r4 r5 -> \ m H s so wH ->
+    eq-Pi m H (Sub.trav n A m s) (Sub.trav n A' m s)
+      (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav (suc n) B' (suc m) (Sub.lift n m s))
+      (r1 m H s so wH)
+      (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+      (r3 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+      (r4 m H s so wH)
+      (r5 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+         (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH))) ;
+  eq-funext n G A B f g h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H s so wH ->
+    eq-funext m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n f m s) (Sub.trav n g m s)
+      (r1 m H s so wH)
+      (der-eq-l (suc m) (ext m H (Sub.trav n A m s))
+         (Sub.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Sub.lift n m s))
+         (app (suc m) (wk m (Sub.trav n f m s)) (var (suc m) (fz m)))
+         (app (suc m) (wk m (Sub.trav n g m s)) (var (suc m) (fz m)))
+         (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+         (sub-wk-app n m s f)
+         (der-eq-r (suc m) (ext m H (Sub.trav n A m s))
+            (Sub.trav (suc n) (app (suc n) (wk n f) (var (suc n) (fz n))) (suc m) (Sub.lift n m s))
+            (Sub.trav (suc n) (app (suc n) (wk n g) (var (suc n) (fz n))) (suc m) (Sub.lift n m s))
+            (app (suc m) (wk m (Sub.trav n g m s)) (var (suc m) (fz m)))
+            (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+            (sub-wk-app n m s g)
+            (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+               (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))))
+      (r3 m H s so wH) (r4 m H s so wH) ;
+  eq-app-fun n G A B f f' a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H s so wH ->
+    der-eq-ty m H (app m (Sub.trav n f m s) (Sub.trav n a m s)) (app m (Sub.trav n f' m s) (Sub.trav n a m s))
+      (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s)) (Sub.trav n (subst1 n B a) m s)
+      (sym (Tm m) (Sub.trav n (subst1 n B a) m s) (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+         (sub-subst1 n m s B a))
+      (eq-app-fun m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+         (Sub.trav n f m s) (Sub.trav n f' m s) (Sub.trav n a m s) (r1 m H s so wH)
+         (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+            (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+         (r3 m H s so wH) (r4 m H s so wH)) ;
+  eq-app-arg n G A B f a a' h1 h2 h3 h4 | r1 r2 r3 r4 -> \ m H s so wH ->
+    der-eq-ty m H (app m (Sub.trav n f m s) (Sub.trav n a m s)) (app m (Sub.trav n f m s) (Sub.trav n a' m s))
+      (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s)) (Sub.trav n (subst1 n B a) m s)
+      (sym (Tm m) (Sub.trav n (subst1 n B a) m s) (subst1 m (Sub.trav (suc n) B (suc m) (Sub.lift n m s)) (Sub.trav n a m s))
+         (sub-subst1 n m s B a))
+      (eq-app-arg m H (Sub.trav n A m s) (Sub.trav (suc n) B (suc m) (Sub.lift n m s))
+         (Sub.trav n f m s) (Sub.trav n a m s) (Sub.trav n a' m s) (r1 m H s so wH)
+         (r2 (suc m) (ext m H (Sub.trav n A m s)) (Sub.lift n m s) (subok-lift n m G H s A so (r1 m H s so wH))
+            (wf-ext m H (Sub.trav n A m s) (r1 m H s so wH)))
+         (r3 m H s so wH) (r4 m H s so wH)) } ;
+
+------------------------------------------------------------------------
+-- the substitution M[a]
+
+sub1-ok (n : Nat) (G : Ctx n) (A a : Tm n) (wG : Der n (jwf G)) (da : Der n (jty G a A)) :
+    SubOk (suc n) n (ext n G A) G (sub1 n a) = split {
+  none -> der-ty-ty n G a A (subst1 n (wk n A) a) (sym (Tm n) (subst1 n (wk n A) a) A (sub1-wk n A a)) da ;
+  some i -> der-ty-ty n G (var n i) (lookup n G i) (subst1 n (wk n (lookup n G i)) a)
+              (sym (Tm n) (subst1 n (wk n (lookup n G i)) a) (lookup n G i) (sub1-wk n (lookup n G i) a))
+              (ty-var n G i wG) } ;
+
+subst1-ty (n : Nat) (G : Ctx n) (A a : Tm n) (M B : Tm (suc n)) (wG : Der n (jwf G)) (da : Der n (jty G a A))
+    (d : Der (suc n) (jty (ext n G A) M B)) : Der n (jty G (subst1 n M a) (subst1 n B a)) =
+  sub-der (suc n) (jty (ext n G A) M B) d n G (sub1 n a) (sub1-ok n G A a wG da) wG ;
+
+subst1-eq (n : Nat) (G : Ctx n) (A a : Tm n) (M N B : Tm (suc n)) (wG : Der n (jwf G)) (da : Der n (jty G a A))
+    (d : Der (suc n) (jeq (ext n G A) M N B)) : Der n (jeq G (subst1 n M a) (subst1 n N a) (subst1 n B a)) =
+  sub-der (suc n) (jeq (ext n G A) M N B) d n G (sub1 n a) (sub1-ok n G A a wG da) wG ;
+
+------------------------------------------------------------------------
+-- the identity, and context conversion
+
+id-ok (n : Nat) (G : Ctx n) (wG : Der n (jwf G)) : SubOk n n G G (idS n) = \ i ->
+  der-ty-ty n G (var n i) (lookup n G i) (Sub.trav n (lookup n G i) n (idS n))
+    (sym (Tm n) (Sub.trav n (lookup n G i) n (idS n)) (lookup n G i) (sub-id n (lookup n G i))) (ty-var n G i wG) ;
+
+ctxconv-ok (n : Nat) (G : Ctx n) (A A' : Tm n) (dA : Der n (jty G A (uu n))) (dA' : Der n (jty G A' (uu n)))
+    (e : Der n (jeq G A A' (uu n))) : SubOk (suc n) (suc n) (ext n G A) (ext n G A') (idS (suc n)) = split {
+  none -> der-ty-ty (suc n) (ext n G A') (var (suc n) (fz n)) (wk n A) (Sub.trav (suc n) (wk n A) (suc n) (idS (suc n)))
+            (sym (Tm (suc n)) (Sub.trav (suc n) (wk n A) (suc n) (idS (suc n))) (wk n A) (sub-id (suc n) (wk n A)))
+            (ty-conv (suc n) (ext n G A') (var (suc n) (fz n)) (wk n A') (wk n A)
+               (ty-var (suc n) (ext n G A') (fz n) (wf-ext n G A' dA'))
+               (wk-eq n G A' A' A (uu n) dA' (eq-sym n G A A' (uu n) e))
+               (wk-ty n G A' A (uu n) dA' dA)) ;
+  some i -> der-ty-ty (suc n) (ext n G A') (var (suc n) (fs n i)) (wk n (lookup n G i))
+              (Sub.trav (suc n) (wk n (lookup n G i)) (suc n) (idS (suc n)))
+              (sym (Tm (suc n)) (Sub.trav (suc n) (wk n (lookup n G i)) (suc n) (idS (suc n))) (wk n (lookup n G i))
+                 (sub-id (suc n) (wk n (lookup n G i))))
+              (ty-var (suc n) (ext n G A') (fs n i) (wf-ext n G A' dA')) } ;
+
+ctxconv-ty (n : Nat) (G : Ctx n) (A A' : Tm n) (dA : Der n (jty G A (uu n))) (dA' : Der n (jty G A' (uu n)))
+    (e : Der n (jeq G A A' (uu n))) (M B : Tm (suc n)) (d : Der (suc n) (jty (ext n G A) M B)) :
+    Der (suc n) (jty (ext n G A') M B) =
+  der-ty-tm (suc n) (ext n G A') (Sub.trav (suc n) M (suc n) (idS (suc n))) M B (sub-id (suc n) M)
+    (der-ty-ty (suc n) (ext n G A') (Sub.trav (suc n) M (suc n) (idS (suc n))) (Sub.trav (suc n) B (suc n) (idS (suc n))) B
+       (sub-id (suc n) B)
+       (sub-der (suc n) (jty (ext n G A) M B) d (suc n) (ext n G A') (idS (suc n)) (ctxconv-ok n G A A' dA dA' e)
+          (wf-ext n G A' dA'))) ;
+
+ctxconv-eq (n : Nat) (G : Ctx n) (A A' : Tm n) (dA : Der n (jty G A (uu n))) (dA' : Der n (jty G A' (uu n)))
+    (e : Der n (jeq G A A' (uu n))) (M N B : Tm (suc n)) (d : Der (suc n) (jeq (ext n G A) M N B)) :
+    Der (suc n) (jeq (ext n G A') M N B) =
+  der-eq-l (suc n) (ext n G A') (Sub.trav (suc n) M (suc n) (idS (suc n))) M N B (sub-id (suc n) M)
+    (der-eq-r (suc n) (ext n G A') (Sub.trav (suc n) M (suc n) (idS (suc n))) (Sub.trav (suc n) N (suc n) (idS (suc n))) N B
+       (sub-id (suc n) N)
+       (der-eq-ty (suc n) (ext n G A') (Sub.trav (suc n) M (suc n) (idS (suc n))) (Sub.trav (suc n) N (suc n) (idS (suc n)))
+          (Sub.trav (suc n) B (suc n) (idS (suc n))) B (sub-id (suc n) B)
+          (sub-der (suc n) (jeq (ext n G A) M N B) d (suc n) (ext n G A') (idS (suc n)) (ctxconv-ok n G A A' dA dA' e)
+             (wf-ext n G A' dA')))) ;

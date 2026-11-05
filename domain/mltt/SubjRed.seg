@@ -1,0 +1,139 @@
+-- SubjRed.seg: subject reduction (paper Theorem 2.38; NOTE-4.txt 4.15).
+--   gen-lam            generation for lam up to conversion: lam A0 M0 : T
+--                      gives M0 : B0 over (G, A0) and Pi A0 B0 = T : U
+--   beta-ty            lam A0 M0 : Pi A B and a : A give M0[a] : B[a]
+--                      (pi injectivity and Lemma S)
+--   subject-reduction  M : T and M ~> M' give M' : T
+--   subject-reds       the same along M ~>* M'
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ; open SynLemmas[l] ; open Weaken[l] ; open Subst[l] ;
+open Presup[l] ; open Reduction[l] ; open Consequences[l] ;
+
+------------------------------------------------------------------------
+-- generation for lam
+
+-- the statement, by cases on the subject: 1 unless it is a lam
+LamGen : (n : Nat) -> Tm n -> Ctx n -> Tm n -> U l = split {
+  var n i -> \ G T -> Top ;
+  uu n -> \ G T -> Top ;
+  pp n A B -> \ G T -> Top ;
+  lam n A0 M0 -> \ G T ->
+    (B0 : Tm (suc n)) * (Der (suc n) (jty (ext n G A0) M0 B0) * Der n (jeq G (pp n A0 B0) T (uu n))) ;
+  app n M N -> \ G T -> Top } ;
+
+-- the statement moves along a conversion of the type
+gen-conv : (n : Nat) -> (M : Tm n) -> (G : Ctx n) -> (A B : Tm n) -> LamGen n M G A ->
+    Der n (jeq G A B (uu n)) -> LamGen n M G B = split {
+  var n i -> \ G A B g e -> tt ;
+  uu n -> \ G A B g e -> tt ;
+  pp n A0 B0 -> \ G A B g e -> tt ;
+  lam n A0 M0 -> \ G A B g e -> (g.1, (g.2.1, eq-trans n G (pp n A0 g.1) A B (uu n) g.2.2 e)) ;
+  app n P Q -> \ G A B g e -> tt } ;
+
+GenJ (n : Nat) : Jf n -> U l = split {
+  jwf G -> Top ;
+  jty G M T -> LamGen n M G T ;
+  jeq G M N A -> Top } ;
+
+gen-lam : (n : Nat) -> (J : Jf n) -> Der n J -> GenJ n J = split {
+  wf-emp -> tt ;
+  wf-ext n G A h -> tt ;
+  ty-var n G i h -> tt ;
+  ty-conv n G M A B h1 h2 h3 | r1 r2 r3 -> gen-conv n M G A B r1 h2 ;
+  ty-U n G h -> tt ;
+  ty-Pi n G A B h1 h2 -> tt ;
+  ty-Lam n G A B M h1 h2 h3 -> (B, (h3, eq-refl n G (pp n A B) (uu n) (ty-Pi n G A B h1 h2))) ;
+  ty-App n G A B f a h1 h2 h3 h4 -> tt ;
+  eq-refl n G M A h -> tt ;
+  eq-sym n G M N A h -> tt ;
+  eq-trans n G M N P A h1 h2 -> tt ;
+  eq-conv n G M N A B h1 h2 h3 -> tt ;
+  eq-beta n G A B M a h1 h2 h3 h4 -> tt ;
+  eq-Pi n G A A' B B' h1 h2 h3 h4 h5 -> tt ;
+  eq-funext n G A B f g h1 h2 h3 h4 -> tt ;
+  eq-app-fun n G A B f f' a h1 h2 h3 h4 -> tt ;
+  eq-app-arg n G A B f a a' h1 h2 h3 h4 -> tt } ;
+
+------------------------------------------------------------------------
+-- the typing of a beta reduct
+
+beta-ty (n : Nat) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (A0 : Tm n) (M0 : Tm (suc n)) (a : Tm n)
+    (dl : Der n (jty G (lam n A0 M0) (pp n A B))) (da : Der n (jty G a A)) :
+    Der n (jty G (subst1 n M0 a) (subst1 n B a)) =
+  subst1-ty n G A0 a M0 B (wf-of n (jty G a A) da)
+    (ty-conv n G a A A0 da (eq-sym n G A0 A (uu n) pin.1) dA0)
+    (ty-conv (suc n) (ext n G A0) M0 g.1 B g.2.1 pin.2 dB)
+  where {
+    g : LamGen n (lam n A0 M0) G (pp n A B) = gen-lam n (jty G (lam n A0 M0) (pp n A B)) dl ;
+    pin : Der n (jeq G A0 A (uu n)) * Der (suc n) (jeq (ext n G A0) g.1 B (uu (suc n))) =
+      pi-injectivity n G A0 A g.1 B g.2.2 ;
+    dA0 : Der n (jty G A0 (uu n)) = (eq-pre n (jeq G A0 A (uu n)) pin.1).1 ;
+    dB : Der (suc n) (jty (ext n G A0) B (uu (suc n))) =
+      (eq-pre (suc n) (jeq (ext n G A0) g.1 B (uu (suc n))) pin.2).2 ; } ;
+
+------------------------------------------------------------------------
+-- subject reduction
+
+-- a step of app f a with f not a lam is a step of f
+omap-some (A B : U l) (g : A -> B) (y : B) :
+    (o : Opt A) -> Id (Opt B) (omap A B g o) (some y) -> (x : A) * (Id (Opt A) o (some x) * Id B (g x) y) = split {
+  none -> \ e -> efq (none-not-some B y e) ;
+  some x -> \ e -> (x, (refl (some x), some-inj B (g x) y e)) } ;
+
+-- f ~> f1 with app f a ~> app f1 a = M'
+sr-app-step (n : Nat) (f : Tm n) (G : Ctx n) (A : Tm n) (B : Tm (suc n)) (a M' : Tm n)
+    (h1 : Der n (jty G A (uu n))) (h2 : Der (suc n) (jty (ext n G A) B (uu (suc n)))) (h4 : Der n (jty G a A))
+    (ih : (f1 : Tm n) -> Red1 n f f1 -> Der n (jty G f1 (pp n A B)))
+    (w : (f1 : Tm n) * (Red1 n f f1 * Id (Tm n) (app n f1 a) M')) : Der n (jty G M' (subst1 n B a)) =
+  der-ty-tm n G (app n w.1 a) M' (subst1 n B a) w.2.2 (ty-App n G A B w.1 a h1 h2 (ih w.1 w.2.1) h4) ;
+
+-- the case app, by cases on the function
+sr-app : (n : Nat) -> (f : Tm n) -> (G : Ctx n) -> (A : Tm n) -> (B : Tm (suc n)) -> (a M' : Tm n) ->
+    Der n (jty G A (uu n)) -> Der (suc n) (jty (ext n G A) B (uu (suc n))) ->
+    Der n (jty G f (pp n A B)) -> Der n (jty G a A) ->
+    ((f1 : Tm n) -> Red1 n f f1 -> Der n (jty G f1 (pp n A B))) ->
+    Red1 n (app n f a) M' -> Der n (jty G M' (subst1 n B a)) = split {
+  var n i -> \ G A B a M' h1 h2 h3 h4 ih r -> efq (none-not-some (Tm n) M' r) ;
+  uu n -> \ G A B a M' h1 h2 h3 h4 ih r -> efq (none-not-some (Tm n) M' r) ;
+  pp n A0 B0 -> \ G A B a M' h1 h2 h3 h4 ih r -> efq (none-not-some (Tm n) M' r) ;
+  lam n A0 M0 -> \ G A B a M' h1 h2 h3 h4 ih r ->
+    der-ty-tm n G (subst1 n M0 a) M' (subst1 n B a) (some-inj (Tm n) (subst1 n M0 a) M' r)
+      (beta-ty n G A B A0 M0 a h3 h4) ;
+  app n P Q -> \ G A B a M' h1 h2 h3 h4 ih r ->
+    sr-app-step n (app n P Q) G A B a M' h1 h2 h4 ih
+      (omap-some (Tm n) (Tm n) (\ X -> app n X a) M' (hstep n (app n P Q)) r) } ;
+
+SRJ (n : Nat) : Jf n -> U l = split {
+  jwf G -> Top ;
+  jty G M T -> (M' : Tm n) -> Red1 n M M' -> Der n (jty G M' T) ;
+  jeq G M N A -> Top } ;
+
+-- paper Theorem 2.38, as one eliminator on the derivations
+sr : (n : Nat) -> (J : Jf n) -> Der n J -> SRJ n J = split {
+  wf-emp -> tt ;
+  wf-ext n G A h -> tt ;
+  ty-var n G i h -> \ M' r -> efq (none-not-some (Tm n) M' r) ;
+  ty-conv n G M A B h1 h2 h3 | r1 r2 r3 -> \ M' r -> ty-conv n G M' A B (r1 M' r) h2 h3 ;
+  ty-U n G h -> \ M' r -> efq (none-not-some (Tm n) M' r) ;
+  ty-Pi n G A B h1 h2 -> \ M' r -> efq (none-not-some (Tm n) M' r) ;
+  ty-Lam n G A B M h1 h2 h3 -> \ M' r -> efq (none-not-some (Tm n) M' r) ;
+  ty-App n G A B f a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ M' r -> sr-app n f G A B a M' h1 h2 h3 h4 r3 r ;
+  eq-refl n G M A h -> tt ;
+  eq-sym n G M N A h -> tt ;
+  eq-trans n G M N P A h1 h2 -> tt ;
+  eq-conv n G M N A B h1 h2 h3 -> tt ;
+  eq-beta n G A B M a h1 h2 h3 h4 -> tt ;
+  eq-Pi n G A A' B B' h1 h2 h3 h4 h5 -> tt ;
+  eq-funext n G A B f g h1 h2 h3 h4 -> tt ;
+  eq-app-fun n G A B f f' a h1 h2 h3 h4 -> tt ;
+  eq-app-arg n G A B f a a' h1 h2 h3 h4 -> tt } ;
+
+subject-reduction (n : Nat) (G : Ctx n) (M M' T : Tm n) (d : Der n (jty G M T)) (r : Red1 n M M') :
+    Der n (jty G M' T) =
+  sr n (jty G M T) d M' r ;
+
+subject-reds : (n : Nat) -> (M M' : Tm n) -> Reds n M M' -> (G : Ctx n) -> (T : Tm n) ->
+    Der n (jty G M T) -> Der n (jty G M' T) = split {
+  rrefl n M -> \ G T d -> d ;
+  rstep n M M1 M2 h r | ih -> \ G T d -> ih G T (subject-reduction n G M M1 T d h) } ;

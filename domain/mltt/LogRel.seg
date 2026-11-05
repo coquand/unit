@@ -1,0 +1,289 @@
+-- LogRel.seg: the logical relation (step 4b; NOTE-4.txt sections 4.7-4.9).
+--   IsPi, Dom, Cod, Fam   the Pi part of a filter (4.7); dom-pi, fam-pi:
+--                         Lemma 4.7.1 for the semantic Pi
+--   RF, module RelD       the relation in a context D: Rel N by recursion
+--                         on the fuel, TyR / TmR its two forms (4.8)
+--   L0 (==), L1 (trivial element), L7 (head expansion), L8 (to type);
+--   the other laws are in Laws.seg
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open Filter[l] ; open Sem[l] ; open Sound[l] ; open Reduction[l] ;
+
+------------------------------------------------------------------------
+-- 4.7 the Pi part of a filter
+
+IsPi (X : Filt) : U l = X.mem (pi om om) ;
+DomP (X : Filt) (a : Ty) : U l = X.mem (pi a om) ;
+CodP (X : Filt) (b : Ty) : U l = X.mem (pi om b) ;
+
+-- pi s t /\ pi s' t' <= pi (s /\ s') t'' when t /\ t' <= t''
+pi-meet-to (s t s' t' t'' : Ty) (le : Le (meet t t') t'') : Le (meet (pi s t) (pi s' t')) (pi (meet s s') t'') =
+  le-trans (meet (pi s t) (pi s' t')) (pi (meet s s') (meet t t')) (pi (meet s s') t'')
+    (le-pi-meet s t s' t') (le-pi (meet s s') (meet s s') (meet t t') t'' (le-refl (meet s s')) le) ;
+
+dom-meet (X : Filt) (s t : Ty) (h1 : DomP X s) (h2 : DomP X t) : DomP X (meet s t) =
+  X.fup (meet (pi s om) (pi t om)) (pi (meet s t) om) (pi-meet-to s om t om om (le-om (meet om om)))
+    (X.fmeet (pi s om) (pi t om) h1 h2) ;
+
+dom-up (X : Filt) (s t : Ty) (le : Le s t) (h : DomP X s) : DomP X t =
+  X.fup (pi s om) (pi t om) (le-pi s t om om le (le-refl om)) h ;
+
+cod-meet (X : Filt) (s t : Ty) (h1 : CodP X s) (h2 : CodP X t) : CodP X (meet s t) =
+  X.fup (meet (pi om s) (pi om t)) (pi om (meet s t))
+    (le-trans (meet (pi om s) (pi om t)) (pi (meet om om) (meet s t)) (pi om (meet s t))
+       (le-pi-meet om s om t) (le-pi (meet om om) om (meet s t) (meet s t) (le-om (meet om om)) (le-refl (meet s t))))
+    (X.fmeet (pi om s) (pi om t) h1 h2) ;
+
+cod-up (X : Filt) (s t : Ty) (le : Le s t) (h : CodP X s) : CodP X t =
+  X.fup (pi om s) (pi om t) (le-pi om om s t (le-refl om) le) h ;
+
+Dom (X : Filt) : Filt = OmOr[DomP X, dom-meet X, dom-up X].filt ;
+Cod (X : Filt) : Filt = OmOr[CodP X, cod-meet X, cod-up X].filt ;
+Fam (X W : Filt) : Filt = appF (Cod X) W ;
+
+dom-incl (X X' : Filt) (i : Incl X X') : Incl (Dom X) (Dom X') = \ t -> split {
+  inl e -> inl e ;
+  inr h -> inr (i (pi t om) h) } ;
+
+cod-incl (X X' : Filt) (i : Incl X X') : Incl (Cod X) (Cod X') = \ t -> split {
+  inl e -> inl e ;
+  inr h -> inr (i (pi om t) h) } ;
+
+dom-eq (X X' : Filt) (e : FEq X X') : FEq (Dom X) (Dom X') = (dom-incl X X' e.1, dom-incl X' X e.2) ;
+cod-eq (X X' : Filt) (e : FEq X X') : FEq (Cod X) (Cod X') = (cod-incl X X' e.1, cod-incl X' X e.2) ;
+
+fam-eq (X X' W : Filt) (e : FEq X X') : FEq (Fam X W) (Fam X' W) =
+  appF-eq (Cod X) (Cod X') W W (cod-eq X X' e) (feq-refl W) ;
+
+-- Lemma 4.7.1 (a)
+pi-at (A : Filt) (G : Ty -> Filt) (a : Ty) (h : A.mem a) : (piF A G).mem (pi a om) =
+  inr (struct { a = a ; b = om ; le = le-refl (pi a om) ; ina = h ; ents = es-om }) ;
+
+ispi-pi (A : Filt) (G : Ty -> Filt) : IsPi (piF A G) = pi-at A G om A.fom ;
+
+dom-pi-mem (A : Filt) (G : Ty -> Filt) (t : Ty) : (piF A G).mem (pi t om) -> A.mem t = split {
+  inl e -> efq (om-not-pi t om e) ;
+  inr p -> A.fup p.a t (pi-inj p.a p.b t om p.le).1 p.ina } ;
+
+dom-pi-sub (A : Filt) (G : Ty -> Filt) : Incl (Dom (piF A G)) A = \ t -> split {
+  inl e -> om-in A t e ;
+  inr h -> dom-pi-mem A G t h } ;
+
+dom-pi (A : Filt) (G : Ty -> Filt) : FEq (Dom (piF A G)) A =
+  (dom-pi-sub A G, \ t h -> inr (pi-at A G t h)) ;
+
+-- Lemma 4.7.1 (b)
+-- om <= g <= x -> t gives om <= t
+om-app (g x t : Ty) (e : Le om g) (le : Le g (arr x t)) : Le om t =
+  le-trans om i.2.1 t (app-bot om i.1 i.2.1 (le-refl om) i.2.2.1) i.2.2.2.2
+  where { i : InvArr om x t = inv-arr om x t (le-trans om g (arr x t) e le) ; } ;
+
+module FamPi (n : Nat) (B : Tm (suc n)) (rho : Env n) (A W : Filt) {
+  -- the semantic Pi of B over A
+  X : Filt = piF A (fam n B rho) ;
+  T : Filt = sem (suc n) B (extE n rho W) ;
+
+  -- c=: the family part b of an element of X, below x -> t
+  from-pi (x t g : Ty) (inx : W.mem x) (le : Le g (arr x t)) : X.mem (pi om g) -> T.mem t = split {
+    inl e -> efq (om-not-pi om g e) ;
+    inr p -> arg-incl n B rho W x inx t
+      ((fam n B rho x).fup i.2.1 t i.2.2.2.2
+         (Entries[fam n B rho, fam-anti n B rho, EntR A (fam n B rho), \ x' v r -> r.2].sel p.b i.1 i.2.1 i.2.2.1 p.ents
+            x i.2.2.2.1))
+      where { i : InvArr p.b x t = inv-arr p.b x t (le-trans p.b g (arr x t) (pi-inj p.a p.b om g p.le).2 le) ; } } ;
+
+  sub-in (x t g : Ty) (inx : W.mem x) (le : Le g (arr x t)) : (Cod X).mem g -> T.mem t = split {
+    inl e -> om-in T t (om-app g x t e le) ;
+    inr h -> from-pi x t g inx le h } ;
+
+  sub : Incl (Fam X W) T = \ t w -> sub-in w.x t w.g w.inx w.le w.ing ;
+
+  -- =c: continuity in the last variable, then a typed argument below
+  sup-at (hW : HasTy W A) (t : Ty) (c : LastIn n B rho W t) : (Fam X W).mem t =
+    struct { g = arr e.v t ; x = e.v ; ing = inr ing ; inx = e.inA ; le = le-refl (arr e.v t) }
+    where {
+      e : Enl W A c.1 = hW c.1 c.2.1 ;
+      mt : (fam n B rho e.v).mem t = fam-anti n B rho c.1 e.v e.below t c.2.2 ;
+      ing : X.mem (pi om (arr e.v t)) =
+        X.fup (pi e.c (arr e.v t)) (pi om (arr e.v t)) (le-pi e.c om (arr e.v t) (arr e.v t) (le-om e.c) (le-refl (arr e.v t)))
+          (inr (struct { a = e.c ; b = arr e.v t ; le = le-refl (pi e.c (arr e.v t)) ; ina = e.inB ;
+                         ents = es-arr e.v t (struct { a = e.c ; ina = e.inB ; tp = e.tp }, mt) })) ; } ;
+
+  eq (hW : HasTy W A) : FEq (Fam X W) T = (sub, \ t h -> sup-at hW t (cont-last n B rho W t h)) ;
+} ;
+
+------------------------------------------------------------------------
+-- 4.8 the relation
+
+data RF (n : Nat) : U l+ = rty (Y : Filt) (T T' : Tm n) | rtm (X Y : Filt) (T M M' : Tm n) ;
+
+module RelD (n : Nat) (D : Ctx n) {
+
+  -- related arguments at A0, in the domain X
+  Arg (r : RF n -> U l+) (X W : Filt) (A0 P P' : Tm n) : U l+ =
+    sig { hw : HasTy W X ; cv : Der n (jeq D P P' A0) ; rel : r (rtm X W A0 P P') } ;
+
+  FamC (r : RF n -> U l+) (F : Filt) (B0 B1 : Tm (suc n)) (P P' : Tm n) : U l+ =
+    sig { c1 : r (rty F (subst1 n B0 P) (subst1 n B0 P')) ;
+          c2 : r (rty F (subst1 n B1 P) (subst1 n B1 P')) ;
+          c3 : r (rty F (subst1 n B0 P) (subst1 n B1 P')) } ;
+
+  -- the data of a Pi clause, for given reducts Pi A0 B0 and Pi A1 B1
+  PiD (r : RF n -> U l+) (Y : Filt) (A0 : Tm n) (B0 : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n)) : U l+ =
+    sig { cA : Der n (jeq D A0 A1 (uu n)) ; cB : Der (suc n) (jeq (ext n D A0) B0 B1 (uu (suc n))) ;
+          dom : r (rty (Dom Y) A0 A1) ;
+          fam : (W : Filt) -> (P P' : Tm n) -> Arg r (Dom Y) W A0 P P' -> FamC r (Fam Y W) B0 B1 P P' } ;
+
+  PiTy (r : RF n -> U l+) (Y : Filt) (T T' : Tm n) : U l+ =
+    sig { A0 : Tm n ; B0 : Tm (suc n) ; A1 : Tm n ; B1 : Tm (suc n) ;
+          red : Reds n T (pp n A0 B0) ; red' : Reds n T' (pp n A1 B1) ; d : PiD r Y A0 B0 A1 B1 } ;
+
+  -- the data moved along an equation of the reducts (one transport, by pp-dom and pp-cod)
+  pid-l (r : RF n -> U l+) (Y : Filt) (A0 A0' : Tm n) (B0 B0' : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n))
+      (e : Id (Tm n) (pp n A0 B0) (pp n A0' B0')) (d : PiD r Y A0 B0 A1 B1) : PiD r Y A0' B0' A1 B1 =
+    Prelude[l+].subst (Tm n) (\ Z -> PiD r Y (pp-dom n Z) (pp-cod n Z) A1 B1) (pp n A0 B0) (pp n A0' B0') e d ;
+
+  pid-r (r : RF n -> U l+) (Y : Filt) (A0 : Tm n) (B0 : Tm (suc n)) (A1 A1' : Tm n) (B1 B1' : Tm (suc n))
+      (e : Id (Tm n) (pp n A1 B1) (pp n A1' B1')) (d : PiD r Y A0 B0 A1 B1) : PiD r Y A0 B0 A1' B1' =
+    Prelude[l+].subst (Tm n) (\ Z -> PiD r Y A0 B0 (pp-dom n Z) (pp-cod n Z)) (pp n A1 B1) (pp n A1' B1') e d ;
+
+  AppC (r : RF n -> U l+) (F Z : Filt) (B M M' P P' : Tm n) : U l+ =
+    sig { c1 : r (rtm F Z B (app n M P) (app n M P')) ;
+          c2 : r (rtm F Z B (app n M' P) (app n M' P')) ;
+          c3 : r (rtm F Z B (app n M P) (app n M' P')) } ;
+
+  PiTm (r : RF n -> U l+) (X Y : Filt) (T M M' : Tm n) : U l+ =
+    (A0 : Tm n) -> (B0 : Tm (suc n)) -> Reds n T (pp n A0 B0) -> (W : Filt) -> (P P' : Tm n) ->
+    Arg r (Dom X) W A0 P P' -> AppC r (Fam X W) (appF Y W) (subst1 n B0 P) M M' P P' ;
+
+  TyStep (r : RF n -> U l+) (Y : Filt) (T T' : Tm n) : U l+ =
+    sig { lo : r (rty Y T T') ;
+          un : Y.mem univ -> Reds n T (uu n) * Reds n T' (uu n) ;
+          pc : IsPi Y -> PiTy r Y T T' } ;
+
+  TmStep (r : RF n -> U l+) (X Y : Filt) (T M M' : Tm n) : U l+ =
+    sig { lo : r (rtm X Y T M M') ;
+          un : X.mem univ -> TyStep r Y M M' ;
+          pc : IsPi X -> PiTm r X Y T M M' } ;
+
+  Rel : Nat -> RF n -> U l+ = split {
+    zero -> \ j -> Top ;
+    suc N | r -> split {
+      rty Y T T' -> TyStep r Y T T' ;
+      rtm X Y T M M' -> TmStep r X Y T M M' } } ;
+
+  TyR (N : Nat) (Y : Filt) (T T' : Tm n) : U l+ = Rel N (rty Y T T') ;
+  TmR (N : Nat) (X Y : Filt) (T M M' : Tm n) : U l+ = Rel N (rtm X Y T M M') ;
+
+  ----------------------------------------------------------------------
+  -- L0: the witnesses up to ==
+
+  L0Ty (N : Nat) : U l+ = (Y Y' : Filt) -> FEq Y Y' -> (T T' : Tm n) -> TyR N Y T T' -> TyR N Y' T T' ;
+  L0Tm (N : Nat) : U l+ =
+    (X X' Y Y' : Filt) -> FEq X X' -> FEq Y Y' -> (T M M' : Tm n) -> TmR N X Y T M M' -> TmR N X' Y' T M M' ;
+  L0 (N : Nat) : U l+ = L0Ty N * L0Tm N ;
+
+  arg-eq (N : Nat) (h : L0 N) (X X' W : Filt) (e : FEq X X') (A0 P P' : Tm n) (a : Arg (Rel N) X W A0 P P') :
+      Arg (Rel N) X' W A0 P P' =
+    struct { hw = hasty-conv W X X' a.hw e.1 ; cv = a.cv ; rel = h.2 X X' W W e (feq-refl W) A0 P P' a.rel } ;
+
+  famc-eq (N : Nat) (h : L0 N) (F F' : Filt) (e : FEq F F') (B0 B1 : Tm (suc n)) (P P' : Tm n)
+      (c : FamC (Rel N) F B0 B1 P P') : FamC (Rel N) F' B0 B1 P P' =
+    struct { c1 = h.1 F F' e (subst1 n B0 P) (subst1 n B0 P') c.c1 ;
+             c2 = h.1 F F' e (subst1 n B1 P) (subst1 n B1 P') c.c2 ;
+             c3 = h.1 F F' e (subst1 n B0 P) (subst1 n B1 P') c.c3 } ;
+
+  appc-eq (N : Nat) (h : L0 N) (F F' Z Z' : Filt) (eF : FEq F F') (eZ : FEq Z Z') (B M M' P P' : Tm n)
+      (c : AppC (Rel N) F Z B M M' P P') : AppC (Rel N) F' Z' B M M' P P' =
+    struct { c1 = h.2 F F' Z Z' eF eZ B (app n M P) (app n M P') c.c1 ;
+             c2 = h.2 F F' Z Z' eF eZ B (app n M' P) (app n M' P') c.c2 ;
+             c3 = h.2 F F' Z Z' eF eZ B (app n M P) (app n M' P') c.c3 } ;
+
+  pity-eq (N : Nat) (h : L0 N) (Y Y' : Filt) (e : FEq Y Y') (T T' : Tm n) (p : PiTy (Rel N) Y T T') :
+      PiTy (Rel N) Y' T T' =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A1 ; B1 = p.B1 ; red = p.red ; red' = p.red' ;
+             d = struct {
+               cA = p.d.cA ; cB = p.d.cB ;
+               dom = h.1 (Dom Y) (Dom Y') (dom-eq Y Y' e) p.A0 p.A1 p.d.dom ;
+               fam = \ W P P' a ->
+                 famc-eq N h (Fam Y W) (Fam Y' W) (fam-eq Y Y' W e) p.B0 p.B1 P P'
+                   (p.d.fam W P P' (arg-eq N h (Dom Y') (Dom Y) W (dom-eq Y' Y (feq-sym Y Y' e)) p.A0 P P' a)) } } ;
+
+  l0ty-step (N : Nat) (h : L0 N) : L0Ty (suc N) = \ Y Y' e T T' t ->
+    struct { lo = h.1 Y Y' e T T' t.lo ;
+             un = \ u -> t.un (e.2 univ u) ;
+             pc = \ p -> pity-eq N h Y Y' e T T' (t.pc (e.2 (pi om om) p)) } ;
+
+  l0tm-step (N : Nat) (h : L0 N) (hty : L0Ty (suc N)) : L0Tm (suc N) = \ X X' Y Y' eX eY T M M' t ->
+    struct { lo = h.2 X X' Y Y' eX eY T M M' t.lo ;
+             un = \ u -> hty Y Y' eY M M' (t.un (eX.2 univ u)) ;
+             pc = \ p A0 B0 rT W P P' a ->
+               appc-eq N h (Fam X W) (Fam X' W) (appF Y W) (appF Y' W) (fam-eq X X' W eX)
+                 (appF-eq Y Y' W W eY (feq-refl W)) (subst1 n B0 P) M M' P P'
+                 (t.pc (eX.2 (pi om om) p) A0 B0 rT W P P'
+                    (arg-eq N h (Dom X') (Dom X) W (dom-eq X' X (feq-sym X X' eX)) A0 P P' a)) } ;
+
+  l0 : (N : Nat) -> L0 N = split {
+    zero -> (\ Y Y' e T T' t -> tt, \ X X' Y Y' eX eY T M M' t -> tt) ;
+    suc N | h -> (l0ty-step N h, l0tm-step N h (l0ty-step N h)) } ;
+
+  ----------------------------------------------------------------------
+  -- L1: a trivial element
+
+  Triv (Y : Filt) : U l = (t : Ty) -> Y.mem t -> Le om t ;
+
+  triv-app (Y W : Filt) (h : Triv Y) : Triv (appF Y W) = \ t w -> om-app w.g w.x t (h w.g w.ing) w.le ;
+
+  l1ty : (N : Nat) -> (Y : Filt) -> Triv Y -> (T T' : Tm n) -> TyR N Y T T' = split {
+    zero -> \ Y h T T' -> tt ;
+    suc N | ih -> \ Y h T T' ->
+      struct { lo = ih Y h T T' ;
+               un = \ u -> absurd (Reds n T (uu n) * Reds n T' (uu n)) (om-not-univ (h univ u)) ;
+               pc = \ p -> Prelude[l+].absurd (PiTy (Rel N) Y T T') (om-not-pi om om (h (pi om om) p)) } } ;
+
+  l1tm : (N : Nat) -> (X Y : Filt) -> Triv Y -> (T M M' : Tm n) -> TmR N X Y T M M' = split {
+    zero -> \ X Y h T M M' -> tt ;
+    suc N | ih -> \ X Y h T M M' ->
+      struct { lo = ih X Y h T M M' ;
+               un = \ u -> l1ty (suc N) Y h M M' ;
+               pc = \ p A0 B0 rT W P P' a ->
+                 struct { c1 = ih (Fam X W) (appF Y W) (triv-app Y W h) (subst1 n B0 P) (app n M P) (app n M P') ;
+                          c2 = ih (Fam X W) (appF Y W) (triv-app Y W h) (subst1 n B0 P) (app n M' P) (app n M' P') ;
+                          c3 = ih (Fam X W) (appF Y W) (triv-app Y W h) (subst1 n B0 P) (app n M P) (app n M' P') } } } ;
+
+  ----------------------------------------------------------------------
+  -- L7: head expansion
+
+  l7ty : (N : Nat) -> (Y : Filt) -> (T T' T1 T1' : Tm n) -> Reds n T T1 -> Reds n T' T1' ->
+      TyR N Y T1 T1' -> TyR N Y T T' = split {
+    zero -> \ Y T T' T1 T1' r r' t -> tt ;
+    suc N | ih -> \ Y T T' T1 T1' r r' t ->
+      struct { lo = ih Y T T' T1 T1' r r' t.lo ;
+               un = \ u -> (reds-trans n T T1 r (uu n) (t.un u).1, reds-trans n T' T1' r' (uu n) (t.un u).2) ;
+               pc = \ p -> struct {
+                 A0 = (t.pc p).A0 ; B0 = (t.pc p).B0 ; A1 = (t.pc p).A1 ; B1 = (t.pc p).B1 ;
+                 red = reds-trans n T T1 r (pp n (t.pc p).A0 (t.pc p).B0) (t.pc p).red ;
+                 red' = reds-trans n T' T1' r' (pp n (t.pc p).A1 (t.pc p).B1) (t.pc p).red' ;
+                 d = (t.pc p).d } } } ;
+
+  l7tm : (N : Nat) -> (X Y : Filt) -> (T M M' M1 M1' : Tm n) -> Reds n M M1 -> Reds n M' M1' ->
+      TmR N X Y T M1 M1' -> TmR N X Y T M M' = split {
+    zero -> \ X Y T M M' M1 M1' r r' t -> tt ;
+    suc N | ih -> \ X Y T M M' M1 M1' r r' t ->
+      struct { lo = ih X Y T M M' M1 M1' r r' t.lo ;
+               un = \ u -> l7ty (suc N) Y M M' M1 M1' r r' (t.un u) ;
+               pc = \ p A0 B0 rT W P P' a -> struct {
+                 c1 = ih (Fam X W) (appF Y W) (subst1 n B0 P) (app n M P) (app n M P') (app n M1 P) (app n M1 P')
+                        (reds-app n M M1 r P) (reds-app n M M1 r P') (t.pc p A0 B0 rT W P P' a).c1 ;
+                 c2 = ih (Fam X W) (appF Y W) (subst1 n B0 P) (app n M' P) (app n M' P') (app n M1' P) (app n M1' P')
+                        (reds-app n M' M1' r' P) (reds-app n M' M1' r' P') (t.pc p A0 B0 rT W P P' a).c2 ;
+                 c3 = ih (Fam X W) (appF Y W) (subst1 n B0 P) (app n M P) (app n M' P') (app n M1 P) (app n M1' P')
+                        (reds-app n M M1 r P) (reds-app n M' M1' r' P') (t.pc p A0 B0 rT W P P' a).c3 } } } ;
+
+  ----------------------------------------------------------------------
+  -- L8: at a universe, terms are related as types
+
+  l8 (N : Nat) (X Y : Filt) (T M M' : Tm n) (u : X.mem univ) (t : TmR (suc N) X Y T M M') : TyR (suc N) Y M M' =
+    t.un u ;
+} ;

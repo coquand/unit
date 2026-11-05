@@ -1,0 +1,317 @@
+-- RelC.seg: the relation at compact witnesses (step 4b; NOTE-4.txt
+-- 4.14.1 and the first laws of 4.14.2).
+--   RC, module RelCD  the relation in a context D: Rel N by recursion on
+--                     the fuel N, with the clauses TyC, TmC (4.14.1); the
+--                     arguments are the arrow selections of the witness
+--   M  (mono)         monotone in the witness, at every fuel
+--   L1 (l1)           om-like witnesses are related, at every fuel
+--   F  (fmove)        enough fuel: md w < a, b give Rel a <=> Rel b
+--   TyR, TmR          the relation at the canonical fuel md w + 1, and
+--                     its unfolding (tyr-unfold, tmr-unfold)
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Syntax[l] ; open Reduction[l] ;
+
+data RC (n : Nat) : U l = rty (c : Ty) (T T' : Tm n) | rtm (u : Ty) (T M M' : Tm n) ;
+
+-- the witness of a judgement of the relation
+wit (n : Nat) : RC n -> Ty = split {
+  rty c T T' -> c ;
+  rtm u T M M' -> u } ;
+
+-- x is a part of a part of w when it is a part of a part of w
+part-part (w v x : Ty) (h1 : LeN (md x) (pred (md v))) (h2 : LeN (md v) (pred (md w))) : LeN (md x) (pred (md w)) =
+  leN-trans (md x) (pred (md v)) (pred (md w)) h1
+    (leN-trans (pred (md v)) (md v) (pred (md w)) (leN-pred-self (md v)) h2) ;
+
+-- a part of a witness of positive depth m <= a has depth < a
+part-fuel1 : (m x a : Nat) -> LeN (suc zero) m -> LeN x (pred m) -> LeN m a -> LeN (suc x) a = split {
+  zero -> \ x a hm -> efq hm ;
+  suc m -> \ x a hm hx ha -> leN-trans (suc x) (suc m) a hx ha } ;
+
+-- c <= pi A phi for a pi selection of a type with a pi component
+psel-up (c f g A phi : Ty) (hp : Sel c (pi f g)) (q : PSel c A phi) : Le c (pi A phi) =
+  le-trans c (meet c (pi om om)) (pi A phi)
+    (le-meet c c (pi om om) (le-refl c)
+       (le-trans c (pi f g) (pi om om) (sel-le c (pi f g) hp) (pi-le-om f g)))
+    (psel-le c A phi q) ;
+
+module RelCD (n : Nat) (D : Ctx n) {
+
+  ----------------------------------------------------------------------
+  -- the clauses, for the relation r at the parts
+
+  -- related arguments at the key d, at the type A0
+  Arg (r : RC n -> U l) (d : Ty) (A0 P P' : Tm n) : U l =
+    sig { cd : Cons d ; cv : Der n (jeq D P P' A0) ; rel : r (rtm d A0 P P') } ;
+
+  FamC (r : RC n -> U l) (y : Ty) (B0 B1 : Tm (suc n)) (P P' : Tm n) : U l =
+    sig { c1 : r (rty y (subst1 n B0 P) (subst1 n B0 P')) ;
+          c2 : r (rty y (subst1 n B1 P) (subst1 n B1 P')) ;
+          c3 : r (rty y (subst1 n B0 P) (subst1 n B1 P')) } ;
+
+  -- the data of a Pi clause at the pi selection (A, phi), for given reducts
+  PiD (r : RC n -> U l) (A phi : Ty) (A0 : Tm n) (B0 : Tm (suc n)) (A1 : Tm n) (B1 : Tm (suc n)) : U l =
+    sig { cA : Der n (jeq D A0 A1 (uu n)) ; cB : Der (suc n) (jeq (ext n D A0) B0 B1 (uu (suc n))) ;
+          dom : r (rty A A0 A1) ;
+          fam : (d y : Ty) -> ASel phi d y -> (P P' : Tm n) -> Arg r d A0 P P' -> FamC r y B0 B1 P P' } ;
+
+  PiTy (r : RC n -> U l) (A phi : Ty) (T T' : Tm n) : U l =
+    sig { A0 : Tm n ; B0 : Tm (suc n) ; A1 : Tm n ; B1 : Tm (suc n) ;
+          red : Reds n T (pp n A0 B0) ; red' : Reds n T' (pp n A1 B1) ; d : PiD r A phi A0 B0 A1 B1 } ;
+
+  AppC (r : RC n -> U l) (t : Ty) (B M M' P P' : Tm n) : U l =
+    sig { c1 : r (rtm t B (app n M P) (app n M P')) ;
+          c2 : r (rtm t B (app n M' P) (app n M' P')) ;
+          c3 : r (rtm t B (app n M P) (app n M' P')) } ;
+
+  -- the clause at Pi: applications at the selections of the witness
+  FunC (r : RC n -> U l) (u : Ty) (T M M' : Tm n) : U l =
+    (A0 : Tm n) -> (B0 : Tm (suc n)) -> Reds n T (pp n A0 B0) -> (d t : Ty) -> ASel u d t ->
+    (P P' : Tm n) -> Arg r d A0 P P' -> AppC r t (subst1 n B0 P) M M' P P' ;
+
+  TyC (r : RC n -> U l) (c : Ty) (T T' : Tm n) : U l =
+    sig { un : Sel c univ -> Reds n T (uu n) * Reds n T' (uu n) ;
+          pc : (f g A phi : Ty) -> Sel c (pi f g) -> PSel c A phi -> PiTy r A phi T T' } ;
+
+  -- an element of U is a type: the first component
+  TmC (r : RC n -> U l) (u : Ty) (T M M' : Tm n) : U l =
+    sig { ty : TyC r u M M' ; fn : FunC r u T M M' } ;
+
+  Rel : Nat -> RC n -> U l = split {
+    zero -> \ j -> Top ;
+    suc N | r -> split {
+      rty c T T' -> TyC r c T T' ;
+      rtm u T M M' -> TmC r u T M M' } } ;
+
+  ----------------------------------------------------------------------
+  -- M: monotone in the witness
+
+  Mono (r : RC n -> U l) : U l =
+    sig { ty : (c c' : Ty) -> Le c c' -> (T T' : Tm n) -> r (rty c T T') -> r (rty c' T T') ;
+          tm : (u u' : Ty) -> Le u u' -> (T M M' : Tm n) -> r (rtm u T M M') -> r (rtm u' T M M') } ;
+
+  arg-mono (r : RC n -> U l) (hm : Mono r) (d d' : Ty) (le : Le d d') (A0 P P' : Tm n)
+      (a : Arg r d A0 P P') : Arg r d' A0 P P' =
+    struct { cd = cons-down d d' le a.cd ; cv = a.cv ; rel = hm.tm d d' le A0 P P' a.rel } ;
+
+  famc-mono (r : RC n -> U l) (hm : Mono r) (y y' : Ty) (le : Le y y') (B0 B1 : Tm (suc n)) (P P' : Tm n)
+      (c : FamC r y B0 B1 P P') : FamC r y' B0 B1 P P' =
+    struct { c1 = hm.ty y y' le (subst1 n B0 P) (subst1 n B0 P') c.c1 ;
+             c2 = hm.ty y y' le (subst1 n B1 P) (subst1 n B1 P') c.c2 ;
+             c3 = hm.ty y y' le (subst1 n B0 P) (subst1 n B1 P') c.c3 } ;
+
+  appc-mono (r : RC n -> U l) (hm : Mono r) (t t' : Ty) (le : Le t t') (B M M' P P' : Tm n)
+      (c : AppC r t B M M' P P') : AppC r t' B M M' P P' =
+    struct { c1 = hm.tm t t' le B (app n M P) (app n M P') c.c1 ;
+             c2 = hm.tm t t' le B (app n M' P) (app n M' P') c.c2 ;
+             c3 = hm.tm t t' le B (app n M P) (app n M' P') c.c3 } ;
+
+  -- a selection (d', y') of phi' >= phi gives one (d, y) of phi, d' <= d, y <= y'
+  sel-below (phi phi' d' y' : Ty) (le : Le phi phi') (q : ASel phi' d' y') : InvArr phi d' y' =
+    inv-arr phi d' y' (le-trans phi phi' (arr d' y') le (asel-le phi' d' y' q)) ;
+
+  -- the family part of a Pi clause moves up along phi <= phi'
+  FamP (r : RC n -> U l) (phi : Ty) (A0 : Tm n) (B0 B1 : Tm (suc n)) : U l =
+    (d y : Ty) -> ASel phi d y -> (P P' : Tm n) -> Arg r d A0 P P' -> FamC r y B0 B1 P P' ;
+
+  famp-mono (r : RC n -> U l) (hm : Mono r) (phi phi' : Ty) (hphi : Le phi phi') (A0 : Tm n) (B0 B1 : Tm (suc n))
+      (fam : FamP r phi A0 B0 B1) (d' y' : Ty) (q : ASel phi' d' y') (P P' : Tm n) (a : Arg r d' A0 P P') :
+      FamC r y' B0 B1 P P' =
+    famc-mono r hm w.2.1 y' w.2.2.2.2 B0 B1 P P'
+      (fam w.1 w.2.1 w.2.2.1 P P' (arg-mono r hm d' w.1 w.2.2.2.1 A0 P P' a))
+    where { w : InvArr phi d' y' = sel-below phi phi' d' y' hphi q ; } ;
+
+  pity-mono (r : RC n -> U l) (hm : Mono r) (A phi A' phi' : Ty) (hA : Le A A') (hphi : Le phi phi')
+      (T T' : Tm n) (p : PiTy r A phi T T') : PiTy r A' phi' T T' =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A1 ; B1 = p.B1 ; red = p.red ; red' = p.red' ;
+             d = struct {
+               cA = p.d.cA ; cB = p.d.cB ;
+               dom = hm.ty A A' hA p.A0 p.A1 p.d.dom ;
+               fam = famp-mono r hm phi phi' hphi p.A0 p.B0 p.B1 p.d.fam } } ;
+
+  pc-mono (r : RC n -> U l) (hm : Mono r) (c c' : Ty) (le : Le c c') (T T' : Tm n)
+      (pc : (f g A phi : Ty) -> Sel c (pi f g) -> PSel c A phi -> PiTy r A phi T T')
+      (f g A phi : Ty) (hp : Sel c' (pi f g)) (q : PSel c' A phi) : PiTy r A phi T T' =
+    pity-mono r hm w.2.2.1 w.2.2.2.1 A phi w.2.2.2.2.2.2.1 w.2.2.2.2.2.2.2 T T'
+      (pc w.1 w.2.1 w.2.2.1 w.2.2.2.1 w.2.2.2.2.1 w.2.2.2.2.2.1)
+    where { w : InvPi c A phi = inv-pi c A phi (le-trans c c' (pi A phi) le (psel-up c' f g A phi hp q)) ; } ;
+
+  tyc-mono (r : RC n -> U l) (hm : Mono r) (c c' : Ty) (le : Le c c') (T T' : Tm n)
+      (t : TyC r c T T') : TyC r c' T T' =
+    struct { un = \ hu -> t.un (inv-univ c (le-trans c c' univ le (sel-le c' univ hu))) ;
+             pc = pc-mono r hm c c' le T T' t.pc } ;
+
+  fun-mono-at (r : RC n -> U l) (hm : Mono r) (u u' : Ty) (le : Le u u') (T M M' : Tm n)
+      (fn : FunC r u T M M') (A0 : Tm n) (B0 : Tm (suc n)) (rT : Reds n T (pp n A0 B0)) (d' t' : Ty)
+      (q : ASel u' d' t') (P P' : Tm n) (a : Arg r d' A0 P P') : AppC r t' (subst1 n B0 P) M M' P P' =
+    appc-mono r hm w.2.1 t' w.2.2.2.2 (subst1 n B0 P) M M' P P'
+      (fn A0 B0 rT w.1 w.2.1 w.2.2.1 P P' (arg-mono r hm d' w.1 w.2.2.2.1 A0 P P' a))
+    where { w : InvArr u d' t' = sel-below u u' d' t' le q ; } ;
+
+  fun-mono (r : RC n -> U l) (hm : Mono r) (u u' : Ty) (le : Le u u') (T M M' : Tm n)
+      (fn : FunC r u T M M') : FunC r u' T M M' =
+    \ A0 B0 rT d' t' q P P' a -> fun-mono-at r hm u u' le T M M' fn A0 B0 rT d' t' q P P' a ;
+
+  tmc-mono (r : RC n -> U l) (hm : Mono r) (u u' : Ty) (le : Le u u') (T M M' : Tm n)
+      (t : TmC r u T M M') : TmC r u' T M M' =
+    struct { ty = tyc-mono r hm u u' le M M' t.ty ; fn = fun-mono r hm u u' le T M M' t.fn } ;
+
+  mono : (N : Nat) -> Mono (Rel N) = split {
+    zero -> struct { ty = \ c c' le T T' t -> tt ; tm = \ u u' le T M M' t -> tt } ;
+    suc N | hm -> struct { ty = tyc-mono (Rel N) hm ; tm = tmc-mono (Rel N) hm } } ;
+
+  ----------------------------------------------------------------------
+  -- L1: om-like witnesses
+
+  OmRel (r : RC n -> U l) : U l = (j : RC n) -> Le om (wit n j) -> r j ;
+
+  tyc-om (r : RC n -> U l) (c : Ty) (e : Le om c) (T T' : Tm n) : TyC r c T T' =
+    struct { un = \ hu -> efq (om-not-univ (le-trans om c univ e (sel-le c univ hu))) ;
+             pc = \ f g A phi hp q -> absurd (PiTy r A phi T T') (om-not-pi f g (le-trans om c (pi f g) e (sel-le c (pi f g) hp))) } ;
+
+  -- AppC at a witness where r holds
+  appc-all (r : RC n -> U l) (t : Ty) (h : (T M M' : Tm n) -> r (rtm t T M M')) (B M M' P P' : Tm n) :
+      AppC r t B M M' P P' =
+    struct { c1 = h B (app n M P) (app n M P') ;
+             c2 = h B (app n M' P) (app n M' P') ;
+             c3 = h B (app n M P) (app n M' P') } ;
+
+  -- the selection values of an om-like witness are om-like
+  fun-om (r : RC n -> U l) (hr : OmRel r) (u : Ty) (e : Le om u) (T M M' : Tm n) : FunC r u T M M' =
+    \ A0 B0 rT d t q P P' a -> appc-all r t (\ T1 M1 M1' -> hr (rtm t T1 M1 M1') (app-bot u d t e q))
+      (subst1 n B0 P) M M' P P' ;
+
+  l1 : (N : Nat) -> OmRel (Rel N) = split {
+    zero -> \ j e -> tt ;
+    suc N | hr -> split {
+      rty c T T' -> \ e -> tyc-om (Rel N) c e T T' ;
+      rtm u T M M' -> \ e -> struct { ty = tyc-om (Rel N) u e M M' ; fn = fun-om (Rel N) hr u e T M M' } } } ;
+
+  ----------------------------------------------------------------------
+  -- F: enough fuel
+
+  -- r and r' agree at the parts of w
+  Parts (w : Ty) (r r' : RC n -> U l) : U l = (j : RC n) -> LeN (md (wit n j)) (pred (md w)) -> Iff (r j) (r' j) ;
+
+  famp-map (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (phi : Ty) (hphi : LeN (md phi) (pred (md w)))
+      (A0 : Tm n) (B0 B1 : Tm (suc n)) (fam : FamP r phi A0 B0 B1) (d y : Ty) (q : ASel phi d y) (P P' : Tm n)
+      (a : Arg r' d A0 P P') : FamC r' y B0 B1 P P' =
+    struct { c1 = (h (rty y (subst1 n B0 P) (subst1 n B0 P')) hy).1 c.c1 ;
+             c2 = (h (rty y (subst1 n B1 P) (subst1 n B1 P')) hy).1 c.c2 ;
+             c3 = (h (rty y (subst1 n B0 P) (subst1 n B1 P')) hy).1 c.c3 }
+    where {
+      hy : LeN (md y) (pred (md w)) = part-part w phi y (asel-md phi d y q).2 hphi ;
+      c : FamC r y B0 B1 P P' =
+        fam d y q P P'
+          (struct { cd = a.cd ; cv = a.cv ;
+                    rel = (h (rtm d A0 P P') (part-part w phi d (asel-md phi d y q).1 hphi)).2 a.rel }) ; } ;
+
+  pity-map (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (A phi : Ty)
+      (hA : LeN (md A) (pred (md w))) (hphi : LeN (md phi) (pred (md w))) (T T' : Tm n)
+      (p : PiTy r A phi T T') : PiTy r' A phi T T' =
+    struct { A0 = p.A0 ; B0 = p.B0 ; A1 = p.A1 ; B1 = p.B1 ; red = p.red ; red' = p.red' ;
+             d = struct {
+               cA = p.d.cA ; cB = p.d.cB ;
+               dom = (h (rty A p.A0 p.A1) hA).1 p.d.dom ;
+               fam = famp-map w r r' h phi hphi p.A0 p.B0 p.B1 p.d.fam } } ;
+
+  tyc-map (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (T T' : Tm n) (t : TyC r w T T') : TyC r' w T T' =
+    struct { un = t.un ;
+             pc = \ f g A phi hp q ->
+               pity-map w r r' h A phi (psel-md w A phi q).1 (psel-md w A phi q).2 T T' (t.pc f g A phi hp q) } ;
+
+  fun-map-at (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (T M M' : Tm n) (t : FunC r w T M M')
+      (A0 : Tm n) (B0 : Tm (suc n)) (rT : Reds n T (pp n A0 B0)) (d t' : Ty) (q : ASel w d t') (P P' : Tm n)
+      (a : Arg r' d A0 P P') : AppC r' t' (subst1 n B0 P) M M' P P' =
+      struct { c1 = (h (rtm t' (subst1 n B0 P) (app n M P) (app n M P')) (asel-md w d t' q).2).1 c.c1 ;
+               c2 = (h (rtm t' (subst1 n B0 P) (app n M' P) (app n M' P')) (asel-md w d t' q).2).1 c.c2 ;
+               c3 = (h (rtm t' (subst1 n B0 P) (app n M P) (app n M' P')) (asel-md w d t' q).2).1 c.c3 }
+      where {
+        c : AppC r t' (subst1 n B0 P) M M' P P' =
+          t A0 B0 rT d t' q P P'
+            (struct { cd = a.cd ; cv = a.cv ; rel = (h (rtm d A0 P P') (asel-md w d t' q).1).2 a.rel }) ; } ;
+
+  fun-map (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (T M M' : Tm n) (t : FunC r w T M M') : FunC r' w T M M' =
+    \ A0 B0 rT d t' q P P' a -> fun-map-at w r r' h T M M' t A0 B0 rT d t' q P P' a ;
+
+  parts-sym (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') : Parts w r' r = \ j hj -> ((h j hj).2, (h j hj).1) ;
+
+  -- at depth 0: no pi component, and the selection values are om-only
+  tyc-zero (w : Ty) (z : LeN (md w) zero) (r r' : RC n -> U l) (T T' : Tm n) (t : TyC r w T T') : TyC r' w T T' =
+    struct { un = t.un ; pc = \ f g A phi hp q -> absurd (PiTy r' A phi T T') (nopi-zero w f g z hp) } ;
+
+  fun-zero (w : Ty) (z : LeN (md w) zero) (r' : RC n -> U l) (hr : OmRel r') (T M M' : Tm n) : FunC r' w T M M' =
+    \ A0 B0 rT d t q P P' a ->
+      appc-all r' t (\ T1 M1 M1' -> hr (rtm t T1 M1 M1') (les-le om t (omonly-les t t (les-refl t) (asel-zero w d t q z))))
+        (subst1 n B0 P) M M' P P' ;
+
+  -- the clauses agree when r, r' agree at the parts
+  tyc-iff (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (T T' : Tm n) : Iff (TyC r w T T') (TyC r' w T T') =
+    (tyc-map w r r' h T T', tyc-map w r' r (parts-sym w r r' h) T T') ;
+
+  tmc-iff (w : Ty) (r r' : RC n -> U l) (h : Parts w r r') (T M M' : Tm n) : Iff (TmC r w T M M') (TmC r' w T M M') =
+    (\ t -> struct { ty = tyc-map w r r' h M M' t.ty ; fn = fun-map w r r' h T M M' t.fn },
+     \ t -> struct { ty = tyc-map w r' r (parts-sym w r r' h) M M' t.ty ;
+                     fn = fun-map w r' r (parts-sym w r r' h) T M M' t.fn }) ;
+
+  -- at depth 0, when r and r' hold at om-like witnesses
+  tmc-zero (w : Ty) (z : LeN (md w) zero) (r r' : RC n -> U l) (hr : OmRel r) (hr' : OmRel r') (T M M' : Tm n) :
+      Iff (TmC r w T M M') (TmC r' w T M M') =
+    (\ t -> struct { ty = tyc-zero w z r r' M M' t.ty ; fn = fun-zero w z r' hr' T M M' },
+     \ t -> struct { ty = tyc-zero w z r' r M M' t.ty ; fn = fun-zero w z r hr T M M' }) ;
+
+  -- the clauses at w, by the depth of w
+  Agree (w : Ty) (r r' : RC n -> U l) : U l = LeN (suc zero) (md w) -> Parts w r r' ;
+
+  tyc-by (w : Ty) (r r' : RC n -> U l) (ag : Agree w r r') (T T' : Tm n) :
+      Plus (LeN (md w) zero) (LeN (suc zero) (md w)) -> Iff (TyC r w T T') (TyC r' w T T') = split {
+    inl z -> (tyc-zero w z r r' T T', tyc-zero w z r' r T T') ;
+    inr p -> tyc-iff w r r' (ag p) T T' } ;
+
+  tmc-by (w : Ty) (r r' : RC n -> U l) (hr : OmRel r) (hr' : OmRel r') (ag : Agree w r r') (T M M' : Tm n) :
+      Plus (LeN (md w) zero) (LeN (suc zero) (md w)) -> Iff (TmC r w T M M') (TmC r' w T M M') = split {
+    inl z -> tmc-zero w z r r' hr hr' T M M' ;
+    inr p -> tmc-iff w r r' (ag p) T M M' } ;
+
+  -- Lemma F
+  FMove (a b : Nat) : U l =
+    (j : RC n) -> LeN (suc (md (wit n j))) a -> LeN (suc (md (wit n j))) b -> Iff (Rel a j) (Rel b j) ;
+
+  -- the parts of w are below the fuel
+  agree-fuel (w : Ty) (a b : Nat) (ih : FMove a b) (ha : LeN (md w) a) (hb : LeN (md w) b) : Agree w (Rel a) (Rel b) =
+    \ p j hj -> ih j (part-fuel1 (md w) (md (wit n j)) a p hj ha) (part-fuel1 (md w) (md (wit n j)) b p hj hb) ;
+
+  fmove-step (a b : Nat) (ih : FMove a b) : FMove (suc a) (suc b) = split {
+    rty c T T' -> \ ha hb -> tyc-by c (Rel a) (Rel b) (agree-fuel c a b ih ha hb) T T' (depth-case (md c)) ;
+    rtm u T M M' -> \ ha hb ->
+      tmc-by u (Rel a) (Rel b) (l1 a) (l1 b) (agree-fuel u a b ih ha hb) T M M' (depth-case (md u)) } ;
+
+  fmove : (a b : Nat) -> FMove a b = split {
+    zero -> \ b j ha hb -> efq ha ;
+    suc a | ra -> split {
+      zero -> \ j ha hb -> efq hb ;
+      suc b -> fmove-step a b (ra b) } } ;
+
+  ----------------------------------------------------------------------
+  -- the relation at the canonical fuel, and its unfolding
+
+  Can (j : RC n) : U l = Rel (suc (md (wit n j))) j ;
+
+  TyR (c : Ty) (T T' : Tm n) : U l = Can (rty c T T') ;
+  TmR (u : Ty) (T M M' : Tm n) : U l = Can (rtm u T M M') ;
+
+  can-om : OmRel Can = \ j e -> l1 (suc (md (wit n j))) j e ;
+
+  -- at the parts of w, Rel (md w) agrees with Can
+  agree-can (w : Ty) : Agree w (Rel (md w)) Can =
+    \ p j hj -> fmove (md w) (suc (md (wit n j))) j
+      (part-fuel1 (md w) (md (wit n j)) (md w) p hj (leN-refl (md w))) (leN-refl (md (wit n j))) ;
+
+  tyr-unfold (c : Ty) (T T' : Tm n) : Iff (TyR c T T') (TyC Can c T T') =
+    tyc-by c (Rel (md c)) Can (agree-can c) T T' (depth-case (md c)) ;
+
+  tmr-unfold (u : Ty) (T M M' : Tm n) : Iff (TmR u T M M') (TmC Can u T M M') =
+    tmc-by u (Rel (md u)) Can (l1 (md u)) can-om (agree-can u) T M M' (depth-case (md u)) ;
+} ;

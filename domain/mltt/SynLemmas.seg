@@ -1,0 +1,271 @@
+-- SynLemmas.seg: the equations on terms (step 4a; NOTE-4.txt section 4.1).
+--   TravLaws K   for any kit: E0 trav-ext (pointwise equal substitutions),
+--                E1 trav-ren (a traversal after a renaming)
+--   E2 ren-sub, wk-ren      a renaming after a substitution
+--   E3 sub-sub, wk-sub      a substitution after a substitution
+--   E4 sub-id, sub-id-pt    the identity substitution
+--   D1 sub1-wk, D2 sub-subst1, D3 ren-subst1, D4 subst1-var0
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ;
+
+------------------------------------------------------------------------
+-- congruences of the constructors
+
+cong-pp (n : Nat) (A A' : Tm n) (B B' : Tm (suc n)) (eA : Id (Tm n) A A') (eB : Id (Tm (suc n)) B B') :
+    Id (Tm n) (pp n A B) (pp n A' B') =
+  trans (Tm n) (pp n A B) (pp n A' B) (pp n A' B')
+    (ap (Tm n) (Tm n) (\ X -> pp n X B) A A' eA) (ap (Tm (suc n)) (Tm n) (\ Y -> pp n A' Y) B B' eB) ;
+
+cong-lam (n : Nat) (A A' : Tm n) (M M' : Tm (suc n)) (eA : Id (Tm n) A A') (eM : Id (Tm (suc n)) M M') :
+    Id (Tm n) (lam n A M) (lam n A' M') =
+  trans (Tm n) (lam n A M) (lam n A' M) (lam n A' M')
+    (ap (Tm n) (Tm n) (\ X -> lam n X M) A A' eA) (ap (Tm (suc n)) (Tm n) (\ Y -> lam n A' Y) M M' eM) ;
+
+cong-app (n : Nat) (M M' N N' : Tm n) (eM : Id (Tm n) M M') (eN : Id (Tm n) N N') :
+    Id (Tm n) (app n M N) (app n M' N') =
+  trans (Tm n) (app n M N) (app n M' N) (app n M' N')
+    (ap (Tm n) (Tm n) (\ X -> app n X N) M M' eM) (ap (Tm n) (Tm n) (\ Y -> app n M' Y) N N' eN) ;
+
+------------------------------------------------------------------------
+-- E0, E1 for any kit
+
+module TravLaws (K : Kit) {
+  module T = Trav[K] ;
+
+  PtEq (m n : Nat) (s s' : Fin m -> K.V n) : U l = (i : Fin m) -> Id (K.V n) (s i) (s' i) ;
+
+  lift-ext (m n : Nat) (s s' : Fin m -> K.V n) (e : PtEq m n s s') :
+      PtEq (suc m) (suc n) (T.lift m n s) (T.lift m n s') = split {
+    none -> refl (K.vz n) ;
+    some i -> ap (K.V n) (K.V (suc n)) (\ v -> K.wkv n v) (s i) (s' i) (e i) } ;
+
+  -- E0
+  trav-ext : (m : Nat) -> (M : Tm m) -> (n : Nat) -> (s s' : Fin m -> K.V n) -> PtEq m n s s' ->
+      Id (Tm n) (T.trav m M n s) (T.trav m M n s') = split {
+    var m i -> \ n s s' e -> ap (K.V n) (Tm n) (\ v -> K.vr n v) (s i) (s' i) (e i) ;
+    uu m -> \ n s s' e -> refl (uu n) ;
+    pp m A B | rA rB -> \ n s s' e ->
+      cong-pp n (T.trav m A n s) (T.trav m A n s')
+        (T.trav (suc m) B (suc n) (T.lift m n s)) (T.trav (suc m) B (suc n) (T.lift m n s'))
+        (rA n s s' e) (rB (suc n) (T.lift m n s) (T.lift m n s') (lift-ext m n s s' e)) ;
+    lam m A M | rA rM -> \ n s s' e ->
+      cong-lam n (T.trav m A n s) (T.trav m A n s')
+        (T.trav (suc m) M (suc n) (T.lift m n s)) (T.trav (suc m) M (suc n) (T.lift m n s'))
+        (rA n s s' e) (rM (suc n) (T.lift m n s) (T.lift m n s') (lift-ext m n s s' e)) ;
+    app m M N | rM rN -> \ n s s' e ->
+      cong-app n (T.trav m M n s) (T.trav m M n s') (T.trav m N n s) (T.trav m N n s')
+        (rM n s s' e) (rN n s s' e) } ;
+
+  -- a step under a binder: an equation to a traversal, then E0
+  bind-step (m n : Nat) (B : Tm m) (L : Tm n) (s s' : Fin m -> K.V n)
+      (h : Id (Tm n) L (T.trav m B n s)) (e : PtEq m n s s') : Id (Tm n) L (T.trav m B n s') =
+    trans (Tm n) L (T.trav m B n s) (T.trav m B n s') h (trav-ext m B n s s' e) ;
+
+  -- E1: lift s . liftR r = lift (s . r), by definition at each variable
+  lift-ren (m k n : Nat) (r : Fin m -> Fin k) (s : Fin k -> K.V n) :
+      PtEq (suc m) (suc n) (\ i -> T.lift k n s (Ren.lift m k r i)) (T.lift m n (\ i -> s (r i))) = split {
+    none -> refl (K.vz n) ;
+    some i -> refl (K.wkv n (s (r i))) } ;
+
+  trav-ren : (m : Nat) -> (M : Tm m) -> (k : Nat) -> (r : Fin m -> Fin k) -> (n : Nat) -> (s : Fin k -> K.V n) ->
+      Id (Tm n) (T.trav k (Ren.trav m M k r) n s) (T.trav m M n (\ i -> s (r i))) = split {
+    var m i -> \ k r n s -> refl (K.vr n (s (r i))) ;
+    uu m -> \ k r n s -> refl (uu n) ;
+    pp m A B | rA rB -> \ k r n s ->
+      cong-pp n (T.trav k (Ren.trav m A k r) n s) (T.trav m A n (\ i -> s (r i)))
+        (T.trav (suc k) (Ren.trav (suc m) B (suc k) (Ren.lift m k r)) (suc n) (T.lift k n s))
+        (T.trav (suc m) B (suc n) (T.lift m n (\ i -> s (r i))))
+        (rA k r n s)
+        (bind-step (suc m) (suc n) B (T.trav (suc k) (Ren.trav (suc m) B (suc k) (Ren.lift m k r)) (suc n) (T.lift k n s))
+           (\ i -> T.lift k n s (Ren.lift m k r i)) (T.lift m n (\ i -> s (r i)))
+           (rB (suc k) (Ren.lift m k r) (suc n) (T.lift k n s)) (lift-ren m k n r s)) ;
+    lam m A M | rA rM -> \ k r n s ->
+      cong-lam n (T.trav k (Ren.trav m A k r) n s) (T.trav m A n (\ i -> s (r i)))
+        (T.trav (suc k) (Ren.trav (suc m) M (suc k) (Ren.lift m k r)) (suc n) (T.lift k n s))
+        (T.trav (suc m) M (suc n) (T.lift m n (\ i -> s (r i))))
+        (rA k r n s)
+        (bind-step (suc m) (suc n) M (T.trav (suc k) (Ren.trav (suc m) M (suc k) (Ren.lift m k r)) (suc n) (T.lift k n s))
+           (\ i -> T.lift k n s (Ren.lift m k r i)) (T.lift m n (\ i -> s (r i)))
+           (rM (suc k) (Ren.lift m k r) (suc n) (T.lift k n s)) (lift-ren m k n r s)) ;
+    app m M N | rM rN -> \ k r n s ->
+      cong-app n (T.trav k (Ren.trav m M k r) n s) (T.trav m M n (\ i -> s (r i)))
+        (T.trav k (Ren.trav m N k r) n s) (T.trav m N n (\ i -> s (r i)))
+        (rM k r n s) (rN k r n s) } ;
+} ;
+
+module RL = TravLaws[renK] ;
+module SL = TravLaws[subK] ;
+
+------------------------------------------------------------------------
+-- E2: a renaming after a substitution
+
+-- WR: both sides are ren (fs . r) N by E1
+wk-ren (n k : Nat) (r : Fin n -> Fin k) (N : Tm n) :
+    Id (Tm (suc k)) (Ren.trav (suc n) (wk n N) (suc k) (Ren.lift n k r)) (wk k (Ren.trav n N k r)) =
+  trans (Tm (suc k)) (Ren.trav (suc n) (wk n N) (suc k) (Ren.lift n k r))
+    (Ren.trav n N (suc k) (\ i -> fs k (r i))) (wk k (Ren.trav n N k r))
+    (RL.trav-ren n N (suc n) (\ i -> fs n i) (suc k) (Ren.lift n k r))
+    (sym (Tm (suc k)) (wk k (Ren.trav n N k r)) (Ren.trav n N (suc k) (\ i -> fs k (r i)))
+       (RL.trav-ren n N k r (suc k) (\ i -> fs k i))) ;
+
+ren-sub-lift (m n k : Nat) (s : Fin m -> Tm n) (r : Fin n -> Fin k) :
+    SL.PtEq (suc m) (suc k) (\ i -> Ren.trav (suc n) (Sub.lift m n s i) (suc k) (Ren.lift n k r))
+      (Sub.lift m k (\ i -> Ren.trav n (s i) k r)) = split {
+  none -> refl (var (suc k) (fz k)) ;
+  some i -> wk-ren n k r (s i) } ;
+
+ren-sub : (m : Nat) -> (M : Tm m) -> (n : Nat) -> (s : Fin m -> Tm n) -> (k : Nat) -> (r : Fin n -> Fin k) ->
+    Id (Tm k) (Ren.trav n (Sub.trav m M n s) k r) (Sub.trav m M k (\ i -> Ren.trav n (s i) k r)) = split {
+  var m i -> \ n s k r -> refl (Ren.trav n (s i) k r) ;
+  uu m -> \ n s k r -> refl (uu k) ;
+  pp m A B | rA rB -> \ n s k r ->
+    cong-pp k (Ren.trav n (Sub.trav m A n s) k r) (Sub.trav m A k (\ i -> Ren.trav n (s i) k r))
+      (Ren.trav (suc n) (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (suc k) (Ren.lift n k r))
+      (Sub.trav (suc m) B (suc k) (Sub.lift m k (\ i -> Ren.trav n (s i) k r)))
+      (rA n s k r)
+      (SL.bind-step (suc m) (suc k) B (Ren.trav (suc n) (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (suc k) (Ren.lift n k r))
+         (\ i -> Ren.trav (suc n) (Sub.lift m n s i) (suc k) (Ren.lift n k r)) (Sub.lift m k (\ i -> Ren.trav n (s i) k r))
+         (rB (suc n) (Sub.lift m n s) (suc k) (Ren.lift n k r)) (ren-sub-lift m n k s r)) ;
+  lam m A M | rA rM -> \ n s k r ->
+    cong-lam k (Ren.trav n (Sub.trav m A n s) k r) (Sub.trav m A k (\ i -> Ren.trav n (s i) k r))
+      (Ren.trav (suc n) (Sub.trav (suc m) M (suc n) (Sub.lift m n s)) (suc k) (Ren.lift n k r))
+      (Sub.trav (suc m) M (suc k) (Sub.lift m k (\ i -> Ren.trav n (s i) k r)))
+      (rA n s k r)
+      (SL.bind-step (suc m) (suc k) M (Ren.trav (suc n) (Sub.trav (suc m) M (suc n) (Sub.lift m n s)) (suc k) (Ren.lift n k r))
+         (\ i -> Ren.trav (suc n) (Sub.lift m n s i) (suc k) (Ren.lift n k r)) (Sub.lift m k (\ i -> Ren.trav n (s i) k r))
+         (rM (suc n) (Sub.lift m n s) (suc k) (Ren.lift n k r)) (ren-sub-lift m n k s r)) ;
+  app m M N | rM rN -> \ n s k r ->
+    cong-app k (Ren.trav n (Sub.trav m M n s) k r) (Sub.trav m M k (\ i -> Ren.trav n (s i) k r))
+      (Ren.trav n (Sub.trav m N n s) k r) (Sub.trav m N k (\ i -> Ren.trav n (s i) k r))
+      (rM n s k r) (rN n s k r) } ;
+
+------------------------------------------------------------------------
+-- E3: a substitution after a substitution
+
+-- WS: both sides are sub (wk . s) N, by E1 and E2
+wk-sub (n k : Nat) (s : Fin n -> Tm k) (N : Tm n) :
+    Id (Tm (suc k)) (Sub.trav (suc n) (wk n N) (suc k) (Sub.lift n k s)) (wk k (Sub.trav n N k s)) =
+  trans (Tm (suc k)) (Sub.trav (suc n) (wk n N) (suc k) (Sub.lift n k s))
+    (Sub.trav n N (suc k) (\ i -> wk k (s i))) (wk k (Sub.trav n N k s))
+    (SL.trav-ren n N (suc n) (\ i -> fs n i) (suc k) (Sub.lift n k s))
+    (sym (Tm (suc k)) (wk k (Sub.trav n N k s)) (Sub.trav n N (suc k) (\ i -> wk k (s i)))
+       (ren-sub n N k s (suc k) (\ i -> fs k i))) ;
+
+sub-sub-lift (m n k : Nat) (s1 : Fin m -> Tm n) (s2 : Fin n -> Tm k) :
+    SL.PtEq (suc m) (suc k) (\ i -> Sub.trav (suc n) (Sub.lift m n s1 i) (suc k) (Sub.lift n k s2))
+      (Sub.lift m k (\ i -> Sub.trav n (s1 i) k s2)) = split {
+  none -> refl (var (suc k) (fz k)) ;
+  some i -> wk-sub n k s2 (s1 i) } ;
+
+sub-sub : (m : Nat) -> (M : Tm m) -> (n : Nat) -> (s1 : Fin m -> Tm n) -> (k : Nat) -> (s2 : Fin n -> Tm k) ->
+    Id (Tm k) (Sub.trav n (Sub.trav m M n s1) k s2) (Sub.trav m M k (\ i -> Sub.trav n (s1 i) k s2)) = split {
+  var m i -> \ n s1 k s2 -> refl (Sub.trav n (s1 i) k s2) ;
+  uu m -> \ n s1 k s2 -> refl (uu k) ;
+  pp m A B | rA rB -> \ n s1 k s2 ->
+    cong-pp k (Sub.trav n (Sub.trav m A n s1) k s2) (Sub.trav m A k (\ i -> Sub.trav n (s1 i) k s2))
+      (Sub.trav (suc n) (Sub.trav (suc m) B (suc n) (Sub.lift m n s1)) (suc k) (Sub.lift n k s2))
+      (Sub.trav (suc m) B (suc k) (Sub.lift m k (\ i -> Sub.trav n (s1 i) k s2)))
+      (rA n s1 k s2)
+      (SL.bind-step (suc m) (suc k) B (Sub.trav (suc n) (Sub.trav (suc m) B (suc n) (Sub.lift m n s1)) (suc k) (Sub.lift n k s2))
+         (\ i -> Sub.trav (suc n) (Sub.lift m n s1 i) (suc k) (Sub.lift n k s2)) (Sub.lift m k (\ i -> Sub.trav n (s1 i) k s2))
+         (rB (suc n) (Sub.lift m n s1) (suc k) (Sub.lift n k s2)) (sub-sub-lift m n k s1 s2)) ;
+  lam m A M | rA rM -> \ n s1 k s2 ->
+    cong-lam k (Sub.trav n (Sub.trav m A n s1) k s2) (Sub.trav m A k (\ i -> Sub.trav n (s1 i) k s2))
+      (Sub.trav (suc n) (Sub.trav (suc m) M (suc n) (Sub.lift m n s1)) (suc k) (Sub.lift n k s2))
+      (Sub.trav (suc m) M (suc k) (Sub.lift m k (\ i -> Sub.trav n (s1 i) k s2)))
+      (rA n s1 k s2)
+      (SL.bind-step (suc m) (suc k) M (Sub.trav (suc n) (Sub.trav (suc m) M (suc n) (Sub.lift m n s1)) (suc k) (Sub.lift n k s2))
+         (\ i -> Sub.trav (suc n) (Sub.lift m n s1 i) (suc k) (Sub.lift n k s2)) (Sub.lift m k (\ i -> Sub.trav n (s1 i) k s2))
+         (rM (suc n) (Sub.lift m n s1) (suc k) (Sub.lift n k s2)) (sub-sub-lift m n k s1 s2)) ;
+  app m M N | rM rN -> \ n s1 k s2 ->
+    cong-app k (Sub.trav n (Sub.trav m M n s1) k s2) (Sub.trav m M k (\ i -> Sub.trav n (s1 i) k s2))
+      (Sub.trav n (Sub.trav m N n s1) k s2) (Sub.trav m N k (\ i -> Sub.trav n (s1 i) k s2))
+      (rM n s1 k s2) (rN n s1 k s2) } ;
+
+------------------------------------------------------------------------
+-- E4: the identity substitution
+
+idS (n : Nat) : Fin n -> Tm n = \ i -> var n i ;
+
+lift-id (m : Nat) : SL.PtEq (suc m) (suc m) (Sub.lift m m (idS m)) (idS (suc m)) = split {
+  none -> refl (var (suc m) (fz m)) ;
+  some i -> refl (var (suc m) (fs m i)) } ;
+
+sub-id : (m : Nat) -> (M : Tm m) -> Id (Tm m) (Sub.trav m M m (idS m)) M = split {
+  var m i -> refl (var m i) ;
+  uu m -> refl (uu m) ;
+  pp m A B | rA rB ->
+    cong-pp m (Sub.trav m A m (idS m)) A (Sub.trav (suc m) B (suc m) (Sub.lift m m (idS m))) B rA
+      (trans (Tm (suc m)) (Sub.trav (suc m) B (suc m) (Sub.lift m m (idS m))) (Sub.trav (suc m) B (suc m) (idS (suc m))) B
+         (SL.trav-ext (suc m) B (suc m) (Sub.lift m m (idS m)) (idS (suc m)) (lift-id m)) rB) ;
+  lam m A M | rA rM ->
+    cong-lam m (Sub.trav m A m (idS m)) A (Sub.trav (suc m) M (suc m) (Sub.lift m m (idS m))) M rA
+      (trans (Tm (suc m)) (Sub.trav (suc m) M (suc m) (Sub.lift m m (idS m))) (Sub.trav (suc m) M (suc m) (idS (suc m))) M
+         (SL.trav-ext (suc m) M (suc m) (Sub.lift m m (idS m)) (idS (suc m)) (lift-id m)) rM) ;
+  app m M N | rM rN -> cong-app m (Sub.trav m M m (idS m)) M (Sub.trav m N m (idS m)) N rM rN } ;
+
+-- a substitution equal to the identity at each variable
+sub-id-pt (m : Nat) (M : Tm m) (s : Fin m -> Tm m) (e : SL.PtEq m m s (idS m)) : Id (Tm m) (Sub.trav m M m s) M =
+  trans (Tm m) (Sub.trav m M m s) (Sub.trav m M m (idS m)) M (SL.trav-ext m M m s (idS m) e) (sub-id m M) ;
+
+------------------------------------------------------------------------
+-- consequences
+
+-- D1: (wk e)[a] = e; sub1 a . fs = var by definition
+sub1-wk (n : Nat) (e a : Tm n) : Id (Tm n) (subst1 n (wk n e) a) e =
+  trans (Tm n) (subst1 n (wk n e) a) (Sub.trav n e n (idS n)) e
+    (SL.trav-ren n e (suc n) (\ i -> fs n i) n (sub1 n a)) (sub-id n e) ;
+
+-- D2: sub s (B[a]) = (sub (liftS s) B)[sub s a]
+sub-subst1-pt (m n : Nat) (s : Fin m -> Tm n) (a : Tm m) :
+    SL.PtEq (suc m) n (\ i -> Sub.trav m (sub1 m a i) n s)
+      (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n (Sub.trav m a n s))) = split {
+  none -> refl (Sub.trav m a n s) ;
+  some i -> sym (Tm n) (subst1 n (wk n (s i)) (Sub.trav m a n s)) (s i) (sub1-wk n (s i) (Sub.trav m a n s)) } ;
+
+sub-subst1 (m n : Nat) (s : Fin m -> Tm n) (B : Tm (suc m)) (a : Tm m) :
+    Id (Tm n) (Sub.trav m (subst1 m B a) n s) (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (Sub.trav m a n s)) =
+  trans (Tm n) (Sub.trav m (subst1 m B a) n s)
+    (Sub.trav (suc m) B n (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n (Sub.trav m a n s))))
+    (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (Sub.trav m a n s))
+    (SL.bind-step (suc m) n B (Sub.trav m (subst1 m B a) n s)
+       (\ i -> Sub.trav m (sub1 m a i) n s)
+       (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n (Sub.trav m a n s)))
+       (sub-sub (suc m) B m (sub1 m a) n s) (sub-subst1-pt m n s a))
+    (sym (Tm n) (subst1 n (Sub.trav (suc m) B (suc n) (Sub.lift m n s)) (Sub.trav m a n s))
+       (Sub.trav (suc m) B n (\ i -> Sub.trav (suc n) (Sub.lift m n s i) n (sub1 n (Sub.trav m a n s))))
+       (sub-sub (suc m) B (suc n) (Sub.lift m n s) n (sub1 n (Sub.trav m a n s)))) ;
+
+-- D3: ren r (B[a]) = (ren (liftR r) B)[ren r a]
+ren-subst1-pt (m n : Nat) (r : Fin m -> Fin n) (a : Tm m) :
+    SL.PtEq (suc m) n (\ i -> Ren.trav m (sub1 m a i) n r)
+      (\ i -> sub1 n (Ren.trav m a n r) (Ren.lift m n r i)) = split {
+  none -> refl (Ren.trav m a n r) ;
+  some i -> refl (var n (r i)) } ;
+
+ren-subst1 (m n : Nat) (r : Fin m -> Fin n) (B : Tm (suc m)) (a : Tm m) :
+    Id (Tm n) (Ren.trav m (subst1 m B a) n r) (subst1 n (Ren.trav (suc m) B (suc n) (Ren.lift m n r)) (Ren.trav m a n r)) =
+  trans (Tm n) (Ren.trav m (subst1 m B a) n r)
+    (Sub.trav (suc m) B n (\ i -> sub1 n (Ren.trav m a n r) (Ren.lift m n r i)))
+    (subst1 n (Ren.trav (suc m) B (suc n) (Ren.lift m n r)) (Ren.trav m a n r))
+    (SL.bind-step (suc m) n B (Ren.trav m (subst1 m B a) n r)
+       (\ i -> Ren.trav m (sub1 m a i) n r) (\ i -> sub1 n (Ren.trav m a n r) (Ren.lift m n r i))
+       (ren-sub (suc m) B m (sub1 m a) n r) (ren-subst1-pt m n r a))
+    (sym (Tm n) (subst1 n (Ren.trav (suc m) B (suc n) (Ren.lift m n r)) (Ren.trav m a n r))
+       (Sub.trav (suc m) B n (\ i -> sub1 n (Ren.trav m a n r) (Ren.lift m n r i)))
+       (SL.trav-ren (suc m) B (suc n) (Ren.lift m n r) n (sub1 n (Ren.trav m a n r)))) ;
+
+-- D4: (ren (liftR fs) e)[var 0] = e
+wkl (n : Nat) (e : Tm (suc n)) : Tm (suc (suc n)) = Ren.trav (suc n) e (suc (suc n)) (Ren.lift n (suc n) (\ i -> fs n i)) ;
+
+subst1-var0-pt (n : Nat) :
+    SL.PtEq (suc n) (suc n) (\ i -> sub1 (suc n) (var (suc n) (fz n)) (Ren.lift n (suc n) (\ j -> fs n j) i)) (idS (suc n)) = split {
+  none -> refl (var (suc n) (fz n)) ;
+  some i -> refl (var (suc n) (fs n i)) } ;
+
+subst1-var0 (n : Nat) (e : Tm (suc n)) : Id (Tm (suc n)) (subst1 (suc n) (wkl n e) (var (suc n) (fz n))) e =
+  trans (Tm (suc n)) (subst1 (suc n) (wkl n e) (var (suc n) (fz n)))
+    (Sub.trav (suc n) e (suc n) (\ i -> sub1 (suc n) (var (suc n) (fz n)) (Ren.lift n (suc n) (\ j -> fs n j) i))) e
+    (SL.trav-ren (suc n) e (suc (suc n)) (Ren.lift n (suc n) (\ i -> fs n i)) (suc n) (sub1 (suc n) (var (suc n) (fz n))))
+    (sub-id-pt (suc n) e (\ i -> sub1 (suc n) (var (suc n) (fz n)) (Ren.lift n (suc n) (\ j -> fs n j) i)) (subst1-var0-pt n)) ;
