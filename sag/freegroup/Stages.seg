@@ -1,0 +1,136 @@
+-- Stages.seg: the index category of the colimit, for a type X.
+--
+-- A stage is a code c with a map f : El c -> X; a map of stages (c,f) ->
+-- (d,g) is m : El c -> El d with g o m = f.  Stages have sums, so any two
+-- are below a third; and two parallel maps are made equal by a further
+-- map, by the coequaliser lemma:
+--
+-- Merge.  Let g : El n -> X, and pairs (p i, q i), i : El d, with
+-- g (p i) = g (q i).  There is r : El n -> El n with g o r = g and
+-- r (p i) = r (q i) for all i.
+-- Proof: merge the pairs one at a time, starting from the identity.  To
+-- merge (a, b) after r0, send every z with z = r0 b to r0 a:
+--     r z = s (r0 z),   s z = if z = r0 b then r0 a else z.
+-- Then g o r = g (as g (r0 a) = g a = g b = g (r0 b)), r a = r0 a = r b,
+-- and pairs already merged by r0 stay merged (r factors through r0).
+level l k ;
+constraint l <= k ;
+open Base ; open Prelude[k] ; open Paths[k] ; open Decisions[l] ; open Codes[l] ;
+module DK = Decisions[k] ;
+
+module Stages (X : U k) {
+  Stage : U k = (c : FT) * (El c -> X) ;
+  Over (s t : Stage) : U k = (m : El s.1 -> El t.1) * ((i : El s.1) -> Id X (t.2 (m i)) (s.2 i)) ;
+
+  over-id (s : Stage) : Over s s = (\ i -> i, \ i -> refl (s.2 i)) ;
+
+  copair (a b : FT) (f : El a -> X) (g : El b -> X) : El (fplus a b) -> X = split {
+    inl i -> f i ; inr j -> g j } ;
+  splus (s t : Stage) : Stage = (fplus s.1 t.1, copair s.1 t.1 s.2 t.2) ;
+  over-inl (s t : Stage) : Over s (splus s t) = (\ i -> inl i, \ i -> refl (s.2 i)) ;
+  over-inr (s t : Stage) : Over t (splus s t) = (\ j -> inr j, \ j -> refl (t.2 j)) ;
+
+  sum-map (a b a' b' : FT) (m : El a -> El a') (n : El b -> El b') : El (fplus a b) -> El (fplus a' b') = split {
+    inl i -> inl (m i) ; inr j -> inr (n j) } ;
+  sum-tri (s t s' t' : Stage) (m : Over s s') (n : Over t t')
+    : (i : El (fplus s.1 t.1)) -> Id X ((splus s' t').2 (sum-map s.1 t.1 s'.1 t'.1 m.1 n.1 i)) ((splus s t).2 i) = split {
+    inl i -> m.2 i ; inr j -> n.2 j } ;
+  over-sum (s t s' t' : Stage) (m : Over s s') (n : Over t t') : Over (splus s t) (splus s' t') =
+    (sum-map s.1 t.1 s'.1 t'.1 m.1 n.1, sum-tri s t s' t' m n) ;
+
+  fold (a : FT) : El (fplus a a) -> El a = split { inl i -> i ; inr i -> i } ;
+  fold-tri (s : Stage) : (i : El (fplus s.1 s.1)) -> Id X (s.2 (fold s.1 i)) ((splus s s).2 i) = split {
+    inl i -> refl (s.2 i) ; inr i -> refl (s.2 i) } ;
+  over-fold (s : Stage) : Over (splus s s) s = (fold s.1, fold-tri s) ;
+
+  assoc-l (a b c : FT) : El (fplus a b) -> El (fplus a (fplus b c)) = split {
+    inl i -> inl i ; inr j -> inr (inl j) } ;
+  assoc-map (a b c : FT) : El (fplus (fplus a b) c) -> El (fplus a (fplus b c)) = split {
+    inl ij -> assoc-l a b c ij ; inr k0 -> inr (inr k0) } ;
+  assoc-tri-l (s t u : Stage) : (i : El (fplus s.1 t.1))
+    -> Id X ((splus s (splus t u)).2 (assoc-l s.1 t.1 u.1 i)) ((splus s t).2 i) = split {
+    inl i -> refl (s.2 i) ; inr j -> refl (t.2 j) } ;
+  assoc-tri (s t u : Stage) : (i : El (fplus (fplus s.1 t.1) u.1))
+    -> Id X ((splus s (splus t u)).2 (assoc-map s.1 t.1 u.1 i)) ((splus (splus s t) u).2 i) = split {
+    inl ij -> assoc-tri-l s t u ij ; inr k0 -> refl (u.2 k0) } ;
+  over-assoc (s t u : Stage) : Over (splus (splus s t) u) (splus s (splus t u)) =
+    (assoc-map s.1 t.1 u.1, assoc-tri s t u) ;
+
+  sempty : Stage = (fzero, \ i -> absurd X i) ;
+  over-empty (s : Stage) : Over sempty s =
+    (\ i -> absurd (El s.1) i, \ i -> absurd (Id X (s.2 (absurd (El s.1) i)) (absurd X i)) i) ;
+
+  spoint (x : X) : Stage = (fone, \ i -> x) ;
+  over-point (s : Stage) (i : El s.1) : Over (spoint (s.2 i)) s = (\ u -> i, \ u -> refl (s.2 i)) ;
+
+  ----------------------------------------------------------------------
+  -- the coequaliser lemma
+
+  module Merge (n : FT) (g : El n -> X) {
+    Compat (r : El n -> El n) : U k = (x : El n) -> Id X (g (r x)) (g x) ;
+    Result (d : FT) (p q : El d -> El n) (r0 : El n -> El n) : U k =
+      (r : El n -> El n) * (Compat r
+        * (((x y : El n) -> Id (El n) (r0 x) (r0 y) -> Id (El n) (r x) (r y))
+        * ((i : El d) -> Id (El n) (r (p i)) (r (q i))))) ;
+
+    -- merge one pair (a, b) after r0
+    s (a b : El n) (r0 : El n -> El n) (z : El n) : El n = ite (El n) (eqEl n z (r0 b)) (r0 a) z ;
+
+    s-compat (a b : El n) (gab : Id X (g a) (g b)) (r0 : El n -> El n) (c0 : Compat r0) (x : El n)
+      : Id X (g (s a b r0 (r0 x))) (g x) =
+      DK.cases (\ bb -> Id X (g (ite (El n) bb (r0 a) (r0 x))) (g x)) (eqEl n (r0 x) (r0 b))
+        (\ e -> calc X {
+          g (r0 a) =< c0 a > g a =< gab > g b =< symH (c0 b) > g (r0 b)
+            =< apH g (symH (eqEl-sound n (r0 x) (r0 b) (so-true (eqEl n (r0 x) (r0 b)) e))) > g (r0 x)
+            =< c0 x > g x })
+        (\ e -> c0 x) ;
+
+    s-pair (a b : El n) (r0 : El n -> El n) : Id (El n) (s a b r0 (r0 a)) (s a b r0 (r0 b)) = calc (El n) {
+      ite (El n) (eqEl n (r0 a) (r0 b)) (r0 a) (r0 a)
+        =< ite-same (El n) (r0 a) (eqEl n (r0 a) (r0 b)) >
+      r0 a
+        =< symH (apH (\ bb -> ite (El n) bb (r0 a) (r0 b)) (DiscreteL[disc n].eq-self (r0 b))) >
+      ite (El n) (eqEl n (r0 b) (r0 b)) (r0 a) (r0 b) } ;
+
+    one-pair (p q : El fone -> El n) (r0 : El n -> El n)
+      : (i : El fone) -> Id (El n) (s (p tt) (q tt) r0 (r0 (p i))) (s (p tt) (q tt) r0 (r0 (q i))) = split {
+      tt -> s-pair (p tt) (q tt) r0 } ;
+
+    one (p q : El fone -> El n) (h : (i : El fone) -> Id X (g (p i)) (g (q i)))
+      (r0 : El n -> El n) (c0 : Compat r0) : Result fone p q r0 =
+      (\ x -> s (p tt) (q tt) r0 (r0 x),
+       (s-compat (p tt) (q tt) (h tt) r0 c0,
+        (\ x y e -> apH (s (p tt) (q tt) r0) e,
+         one-pair p q r0))) ;
+
+    plus-pairs (a b : FT) (p q : El (fplus a b) -> El n) (r0 : El n -> El n)
+      (R1 : Result a (\ i -> p (inl i)) (\ i -> q (inl i)) r0)
+      (R2 : Result b (\ j -> p (inr j)) (\ j -> q (inr j)) R1.1)
+      : (i : El (fplus a b)) -> Id (El n) (R2.1 (p i)) (R2.1 (q i)) = split {
+      inl i -> R2.2.2.1 (p (inl i)) (q (inl i)) (R1.2.2.2 i) ;
+      inr j -> R2.2.2.2 j } ;
+
+    plus (a b : FT) (p q : El (fplus a b) -> El n) (r0 : El n -> El n)
+      (R1 : Result a (\ i -> p (inl i)) (\ i -> q (inl i)) r0)
+      (R2 : Result b (\ j -> p (inr j)) (\ j -> q (inr j)) R1.1) : Result (fplus a b) p q r0 =
+      (R2.1, (R2.2.1, (\ x y e -> R2.2.2.1 x y (R1.2.2.1 x y e), plus-pairs a b p q r0 R1 R2))) ;
+
+    Merging (d : FT) : U k = (p q : El d -> El n) -> ((i : El d) -> Id X (g (p i)) (g (q i)))
+      -> (r0 : El n -> El n) -> Compat r0 -> Result d p q r0 ;
+
+    plus-step (a b : FT) (ma : Merging a) (mb : Merging b) : Merging (fplus a b) = \ p q h r0 c0 ->
+      plus a b p q r0 (ma (\ i -> p (inl i)) (\ i -> q (inl i)) (\ i -> h (inl i)) r0 c0)
+        (mb (\ j -> p (inr j)) (\ j -> q (inr j)) (\ j -> h (inr j))
+           (ma (\ i -> p (inl i)) (\ i -> q (inl i)) (\ i -> h (inl i)) r0 c0).1
+           (ma (\ i -> p (inl i)) (\ i -> q (inl i)) (\ i -> h (inl i)) r0 c0).2.1) ;
+
+    merge : (d : FT) -> Merging d = split {
+      fzero -> \ p q h r0 c0 -> (r0, (c0, (\ x y e -> e, \ i -> absurd (Id (El n) (r0 (p i)) (r0 (q i))) i))) ;
+      fone -> \ p q h r0 c0 -> one p q h r0 c0 ;
+      fplus a b | ma mb -> plus-step a b ma mb } ;
+
+    -- the lemma: from the identity
+    coequalise (d : FT) (p q : El d -> El n) (h : (i : El d) -> Id X (g (p i)) (g (q i)))
+      : Result d p q (\ x -> x) = merge d p q h (\ x -> x) (\ x -> refl (g x)) ;
+  } ;
+} ;

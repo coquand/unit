@@ -1,0 +1,225 @@
+-- Codes.seg: codes for finite types.
+--
+-- The finite stages of the colimit are the types El c for codes c built
+-- from 0, 1 and +.  The sum of two stages is then a code, with no
+-- arithmetic on [n].  Each El c is discrete; it is inhabited or empty;
+-- and a decidable predicate on it has a first witness when it has one.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ;
+
+data FT = fzero | fone | fplus (a b : FT) ;
+
+El : FT -> U l = split { fzero -> Empty ; fone -> Top ; fplus a b | ea eb -> Plus ea eb } ;
+
+-- equality on a sum, from equalities on the summands
+eq-plus (A B : U l) (qa : A -> A -> Bool) (qb : B -> B -> Bool) : Plus A B -> Plus A B -> Bool = split {
+  inl x -> split { inl y -> qa x y ; inr y -> false } ;
+  inr x -> split { inl y -> false ; inr y -> qb x y } } ;
+
+eqEl : (c : FT) -> El c -> El c -> Bool = split {
+  fzero -> \ x y -> true ;
+  fone -> \ x y -> true ;
+  fplus a b | qa qb -> eq-plus (El a) (El b) qa qb } ;
+
+eqEl-refl : (c : FT) -> (x : El c) -> so (eqEl c x x) = split {
+  fzero -> \ x -> tt ;
+  fone -> \ x -> tt ;
+  fplus a b | ra rb -> split { inl x -> ra x ; inr y -> rb y } } ;
+
+sound-l (a b : FT) (sa : (x y : El a) -> so (eqEl a x y) -> Id (El a) x y) (x : El a)
+  : (y : El (fplus a b)) -> so (eqEl (fplus a b) (inl x) y) -> Id (El (fplus a b)) (inl x) y = split {
+  inl y -> \ s -> apH (\ z -> inl z) (sa x y s) ;
+  inr y -> \ s -> absurd (Id (El (fplus a b)) (inl x) (inr y)) s } ;
+sound-r (a b : FT) (sb : (x y : El b) -> so (eqEl b x y) -> Id (El b) x y) (x : El b)
+  : (y : El (fplus a b)) -> so (eqEl (fplus a b) (inr x) y) -> Id (El (fplus a b)) (inr x) y = split {
+  inl y -> \ s -> absurd (Id (El (fplus a b)) (inr x) (inl y)) s ;
+  inr y -> \ s -> apH (\ z -> inr z) (sb x y s) } ;
+
+eqEl-sound : (c : FT) -> (x y : El c) -> so (eqEl c x y) -> Id (El c) x y = split {
+  fzero -> \ x y s -> absurd (Id Empty x y) x ;
+  fone -> \ x y s -> isTop x y ;
+  fplus a b | sa sb -> split { inl x -> sound-l a b sa x ; inr x -> sound-r a b sb x } } ;
+
+disc (c : FT) : Discrete = new Discrete[El c, eqEl c, eqEl-refl c, eqEl-sound c] ;
+
+------------------------------------------------------------------------
+-- inhabited or empty
+
+Not (A : U l) : U l = A -> Empty ;
+
+no-plus (a b : FT) (na : Not (El a)) (nb : Not (El b)) : Not (El (fplus a b)) = split {
+  inl x -> na x ; inr y -> nb y } ;
+point-plus-r (a b : FT) (na : Not (El a)) : Plus (El b) (Not (El b)) -> Plus (El (fplus a b)) (Not (El (fplus a b))) = split {
+  inl y -> inl (inr y) ;
+  inr nb -> inr (no-plus a b na nb) } ;
+point-plus (a b : FT) (pb : Plus (El b) (Not (El b))) : Plus (El a) (Not (El a)) -> Plus (El (fplus a b)) (Not (El (fplus a b))) = split {
+  inl x -> inl (inl x) ;
+  inr na -> point-plus-r a b na pb } ;
+
+point : (c : FT) -> Plus (El c) (Not (El c)) = split {
+  fzero -> inr (\ x -> x) ;
+  fone -> inl tt ;
+  fplus a b | pa pb -> point-plus a b pb pa } ;
+
+------------------------------------------------------------------------
+-- a decidable predicate on El c has a witness or none
+
+Witness (c : FT) (p : El c -> Bool) : U l = (y : El c) * so (p y) ;
+None (c : FT) (p : El c -> Bool) : U l = (y : El c) -> so (p y) -> Empty ;
+Decided (c : FT) (p : El c -> Bool) : U l = Plus (Witness c p) (None c p) ;
+
+decide-one (p : El fone -> Bool) : Decided fone p =
+  cases (\ b -> Decided fone p) (p tt)
+    (\ e -> inl (tt, so-true (p tt) e))
+    (\ e -> inr (\ y h -> so-false (p tt) e (substH (\ z -> so (p z)) (isTop y tt) h))) ;
+
+none-plus (a b : FT) (p : El (fplus a b) -> Bool)
+  (na : None a (\ x -> p (inl x))) (nb : None b (\ y -> p (inr y))) : None (fplus a b) p = split {
+  inl x -> na x ; inr y -> nb y } ;
+decide-plus-r (a b : FT) (p : El (fplus a b) -> Bool) (na : None a (\ x -> p (inl x)))
+  : Decided b (\ y -> p (inr y)) -> Decided (fplus a b) p = split {
+  inl w -> inl (inr w.1, w.2) ;
+  inr nb -> inr (none-plus a b p na nb) } ;
+decide-plus (a b : FT) (p : El (fplus a b) -> Bool) (db : Decided b (\ y -> p (inr y)))
+  : Decided a (\ x -> p (inl x)) -> Decided (fplus a b) p = split {
+  inl w -> inl (inl w.1, w.2) ;
+  inr na -> decide-plus-r a b p na db } ;
+
+decide : (c : FT) -> (p : El c -> Bool) -> Decided c p = split {
+  fzero -> \ p -> inr (\ y h -> y) ;
+  fone -> \ p -> decide-one p ;
+  fplus a b | da db -> \ p -> decide-plus a b p (db (\ y -> p (inr y))) (da (\ x -> p (inl x))) } ;
+
+-- the equality of El c is symmetric
+eqEl-sym-f (c : FT) (x y : El c) (e : Id Bool (eqEl c x y) false) : (b : Bool) -> Id Bool (eqEl c y x) b -> Id Bool false b = split {
+  true -> \ e' -> absurd (Id Bool false true)
+    (so-false (eqEl c x y) e (substH (\ z -> so (eqEl c x z))
+      (symH (eqEl-sound c y x (so-true (eqEl c y x) e'))) (eqEl-refl c x))) ;
+  false -> \ e' -> refl false } ;
+eqEl-sym (c : FT) (x y : El c) : Id Bool (eqEl c x y) (eqEl c y x) =
+  cases (\ b -> Id Bool b (eqEl c y x)) (eqEl c x y)
+    (\ e -> symH (DiscreteL[disc c].eq-true y x (symH (eqEl-sound c x y (so-true (eqEl c x y) e)))))
+    (\ e -> eqEl-sym-f c x y e (eqEl c y x) (refl (eqEl c y x))) ;
+-- a decision which is not true is false
+not-so-false : (b : Bool) -> (so b -> Empty) -> Id Bool b false = split {
+  true -> \ n -> absurd (Id Bool true false) (n tt) ; false -> \ n -> refl false } ;
+
+------------------------------------------------------------------------
+-- a first witness, depending only on the predicate (for canonical choices)
+
+Opt (c : FT) : U l = Plus (El c) Top ;
+first-plus-r (a b : FT) : Opt b -> Opt (fplus a b) = split { inl y -> inl (inr y) ; inr u -> inr tt } ;
+first-plus (a b : FT) (ob : Opt b) : Opt a -> Opt (fplus a b) = split { inl x -> inl (inl x) ; inr u -> first-plus-r a b ob } ;
+first : (c : FT) -> (El c -> Bool) -> Opt c = split {
+  fzero -> \ p -> inr tt ;
+  fone -> \ p -> ite (Opt fone) (p tt) (inl tt) (inr tt) ;
+  fplus a b | fa fb -> \ p -> first-plus a b (fb (\ j -> p (inr j))) (fa (\ i -> p (inl i))) } ;
+
+-- what first returns satisfies p (Ok), and it returns something if p holds somewhere (Good)
+Ok (c : FT) (p : El c -> Bool) : Opt c -> U l = split { inl y -> so (p y) ; inr u -> Top } ;
+Good (c : FT) (p : El c -> Bool) : Opt c -> U l = split { inl y -> so (p y) ; inr u -> Empty } ;
+
+ok-one (p : El fone -> Bool) : (b : Bool) -> Id Bool (p tt) b -> Ok fone p (ite (Opt fone) b (inl tt) (inr tt)) = split {
+  true -> \ e -> so-true (p tt) e ; false -> \ e -> tt } ;
+ok-plus-r (a b : FT) (p : El (fplus a b) -> Bool) : (ob : Opt b) -> Ok b (\ j -> p (inr j)) ob -> Ok (fplus a b) p (first-plus-r a b ob) = split {
+  inl y -> \ h -> h ; inr u -> \ h -> tt } ;
+ok-plus (a b : FT) (p : El (fplus a b) -> Bool) (ob : Opt b) (hb : Ok b (\ j -> p (inr j)) ob)
+  : (oa : Opt a) -> Ok a (\ i -> p (inl i)) oa -> Ok (fplus a b) p (first-plus a b ob oa) = split {
+  inl x -> \ h -> h ; inr u -> \ h -> ok-plus-r a b p ob hb } ;
+first-ok : (c : FT) -> (p : El c -> Bool) -> Ok c p (first c p) = split {
+  fzero -> \ p -> tt ;
+  fone -> \ p -> ok-one p (p tt) (refl (p tt)) ;
+  fplus a b | oa ob -> \ p -> ok-plus a b p (first b (\ j -> p (inr j))) (ob (\ j -> p (inr j)))
+    (first a (\ i -> p (inl i))) (oa (\ i -> p (inl i))) } ;
+
+good-one (p : El fone -> Bool) (h : so (p tt)) : (b : Bool) -> Id Bool (p tt) b -> Good fone p (ite (Opt fone) b (inl tt) (inr tt)) = split {
+  true -> \ e -> h ; false -> \ e -> so-false (p tt) e h } ;
+good-plus-l (a b : FT) (p : El (fplus a b) -> Bool) (ob : Opt b)
+  : (oa : Opt a) -> Good a (\ i -> p (inl i)) oa -> Good (fplus a b) p (first-plus a b ob oa) = split {
+  inl x -> \ h -> h ; inr u -> \ h -> absurd (Good (fplus a b) p (first-plus a b ob (inr u))) h } ;
+good-plus-rr (a b : FT) (p : El (fplus a b) -> Bool) : (ob : Opt b) -> Good b (\ j -> p (inr j)) ob -> Good (fplus a b) p (first-plus-r a b ob) = split {
+  inl y -> \ h -> h ; inr u -> \ h -> h } ;
+good-plus-r (a b : FT) (p : El (fplus a b) -> Bool) (ob : Opt b) (hb : Good b (\ j -> p (inr j)) ob)
+  : (oa : Opt a) -> Ok a (\ i -> p (inl i)) oa -> Good (fplus a b) p (first-plus a b ob oa) = split {
+  inl x -> \ h -> h ; inr u -> \ h -> good-plus-rr a b p ob hb } ;
+first-good : (c : FT) -> (p : El c -> Bool) -> (x : El c) -> so (p x) -> Good c p (first c p) = split {
+  fzero -> \ p x h -> x ;
+  fone -> \ p x h -> good-one p (substH (\ z -> so (p z)) (isTop x tt) h) (p tt) (refl (p tt)) ;
+  fplus a b | ga gb -> \ p -> split {
+    inl x -> \ h -> good-plus-l a b p (first b (\ j -> p (inr j))) (first a (\ i -> p (inl i))) (ga (\ i -> p (inl i)) x h) ;
+    inr y -> \ h -> good-plus-r a b p (first b (\ j -> p (inr j))) (gb (\ j -> p (inr j)) y h)
+      (first a (\ i -> p (inl i))) (first-ok a (\ i -> p (inl i))) } } ;
+
+-- the value, with a default
+value (c : FT) (d : El c) : Opt c -> El c = split { inl y -> y ; inr u -> d } ;
+value-good (c : FT) (p : El c -> Bool) (d : El c) : (o : Opt c) -> Good c p o -> so (p (value c d o)) = split {
+  inl y -> \ h -> h ; inr u -> \ h -> absurd (so (p d)) h } ;
+value-default (c : FT) (p : El c -> Bool) (d d' : El c) : (o : Opt c) -> Good c p o -> Id (El c) (value c d o) (value c d' o) = split {
+  inl y -> \ h -> refl y ; inr u -> \ h -> absurd (Id (El c) d d') h } ;
+
+------------------------------------------------------------------------
+-- products and function spaces of codes
+
+times : FT -> FT -> FT = split {
+  fzero -> \ b -> fzero ; fone -> \ b -> b ; fplus a a' | ta ta' -> \ b -> fplus (ta b) (ta' b) } ;
+
+Pair (a b : FT) : U l = El a * El b ;
+proj-plus (a a' b : FT) (pa : El (times a b) -> Pair a b) (pa' : El (times a' b) -> Pair a' b)
+  : El (fplus (times a b) (times a' b)) -> Pair (fplus a a') b = split {
+  inl t -> (inl (pa t).1, (pa t).2) ; inr t -> (inr (pa' t).1, (pa' t).2) } ;
+proj : (a : FT) -> (b : FT) -> El (times a b) -> Pair a b = split {
+  fzero -> \ b t -> absurd (Pair fzero b) t ;
+  fone -> \ b t -> (tt, t) ;
+  fplus a a' | pa pa' -> \ b -> proj-plus a a' b (pa b) (pa' b) } ;
+inj : (a : FT) -> (b : FT) -> El a -> El b -> El (times a b) = split {
+  fzero -> \ b x y -> x ;
+  fone -> \ b x y -> y ;
+  fplus a a' | ia ia' -> \ b -> split { inl x -> \ y -> inl (ia b x y) ; inr x -> \ y -> inr (ia' b x y) } } ;
+proj-inj : (a : FT) -> (b : FT) -> (x : El a) -> (y : El b) -> Id (Pair a b) (proj a b (inj a b x y)) (x, y) = split {
+  fzero -> \ b x y -> absurd (Id (Pair fzero b) (proj fzero b (inj fzero b x y)) (x, y)) x ;
+  fone -> \ b x y -> apH (\ x0 -> (x0, y)) (isTop tt x) ;
+  fplus a a' | pa pa' -> \ b -> split {
+    inl x -> \ y -> apH (\ w -> (inl w.1, w.2)) (pa b x y) ;
+    inr x -> \ y -> apH (\ w -> (inr w.1, w.2)) (pa' b x y) } } ;
+
+-- codes for the functions El a -> El b
+fn : FT -> FT -> FT = split {
+  fzero -> \ b -> fone ; fone -> \ b -> b ; fplus a a' | fa fa' -> \ b -> times (fa b) (fa' b) } ;
+dec-plus (a a' b : FT) (da : El (fn a b) -> El a -> El b) (da' : El (fn a' b) -> El a' -> El b)
+  (t : El (times (fn a b) (fn a' b))) : El (fplus a a') -> El b = split {
+  inl x -> da (proj (fn a b) (fn a' b) t).1 x ; inr x -> da' (proj (fn a b) (fn a' b) t).2 x } ;
+dec : (a : FT) -> (b : FT) -> El (fn a b) -> El a -> El b = split {
+  fzero -> \ b t x -> absurd (El b) x ;
+  fone -> \ b t x -> t ;
+  fplus a a' | da da' -> \ b -> dec-plus a a' b (da b) (da' b) } ;
+enc : (a : FT) -> (b : FT) -> (El a -> El b) -> El (fn a b) = split {
+  fzero -> \ b f -> tt ;
+  fone -> \ b f -> f tt ;
+  fplus a a' | ea ea' -> \ b f -> inj (fn a b) (fn a' b) (ea b (\ x -> f (inl x))) (ea' b (\ x -> f (inr x))) } ;
+dec-enc : (a : FT) -> (b : FT) -> (f : El a -> El b) -> (x : El a) -> Id (El b) (dec a b (enc a b f) x) (f x) = split {
+  fzero -> \ b f x -> absurd (Id (El b) (dec fzero b (enc fzero b f) x) (f x)) x ;
+  fone -> \ b f x -> apH f (isTop tt x) ;
+  fplus a a' | da da' -> \ b f -> split {
+    inl x -> transH
+      (apH (\ w -> dec a b w.1 x) (proj-inj (fn a b) (fn a' b) (enc a b (\ z -> f (inl z))) (enc a' b (\ z -> f (inr z)))))
+      (da b (\ z -> f (inl z)) x) ;
+    inr x -> transH
+      (apH (\ w -> dec a' b w.2 x) (proj-inj (fn a b) (fn a' b) (enc a b (\ z -> f (inl z))) (enc a' b (\ z -> f (inr z)))))
+      (da' b (\ z -> f (inr z)) x) } } ;
+
+------------------------------------------------------------------------
+-- for all, on a finite type
+
+all : (c : FT) -> (El c -> Bool) -> Bool = split {
+  fzero -> \ p -> true ; fone -> \ p -> p tt ;
+  fplus a b | aa ab -> \ p -> and (aa (\ i -> p (inl i))) (ab (\ j -> p (inr j))) } ;
+all-sound : (c : FT) -> (p : El c -> Bool) -> so (all c p) -> (x : El c) -> so (p x) = split {
+  fzero -> \ p h x -> absurd (so (p x)) x ;
+  fone -> \ p h x -> substH (\ z -> so (p z)) (isTop tt x) h ;
+  fplus a b | sa sb -> \ p h -> split {
+    inl x -> sa (\ i -> p (inl i)) (so-and-l (all a (\ i -> p (inl i))) (all b (\ j -> p (inr j))) h) x ;
+    inr y -> sb (\ j -> p (inr j)) (so-and-r (all a (\ i -> p (inl i))) (all b (\ j -> p (inr j))) h) y } } ;
+all-complete : (c : FT) -> (p : El c -> Bool) -> ((x : El c) -> so (p x)) -> so (all c p) = split {
+  fzero -> \ p h -> tt ; fone -> \ p h -> h tt ;
+  fplus a b | ca cb -> \ p h -> so-and (all a (\ i -> p (inl i))) (all b (\ j -> p (inr j)))
+    (ca (\ i -> p (inl i)) (\ i -> h (inl i))) (cb (\ j -> p (inr j)) (\ j -> h (inr j))) } ;

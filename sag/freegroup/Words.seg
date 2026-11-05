@@ -1,0 +1,256 @@
+-- Words.seg: the free group on a discrete type A, by reduced words.
+--
+-- A letter is a or a^-1 (pos a, neg a); a word is a list of letters; it is
+-- reduced if no letter is followed by its inverse.  The letter x acts on
+-- words by
+--     act x nil      = x
+--     act x (y w)    = w        if y = x^-1
+--                    = x y w    otherwise,
+-- and a word u acts by ev u = act x1 o .. o act xn.  The group is the set
+-- of reduced words with u.v = ev u v (van der Waerden's trick: the laws
+-- come from the action).
+--
+--  (C)  act x (act x^-1 w) = w for w reduced              [act-cancel]
+--  (K)  ev (act x r) t = act x (ev r t) for t reduced      [ev-act]
+--  (A)  ev (ev u s) t = ev u (ev s t) for s, t reduced     [ev-ev], by (K)
+--  (N)  ev r nil = r for r reduced                         [ev-id]
+--  (I)  ev (u^-1) (ev u s) = s = ev u (ev (u^-1) s)        [ev-rinv-l, -r], by (C)
+-- where u^-1 is the reversed word of inverses.  Associativity is (A), the
+-- right unit (N), the inverse laws (I) with (A) and (N).
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ;
+
+data List (A : U l) : U l = nil | cons (x : A) (xs : List A) ;
+data Letter (A : U l) : U l = pos (a : A) | neg (a : A) ;
+
+module Free (D : Discrete) {
+  open D ;
+  L : U l = Letter A ;
+  W : U l = List L ;
+
+  inv : L -> L = split { pos a -> neg a ; neg a -> pos a } ;
+  inv-inv : (x : L) -> Id L (inv (inv x)) x = split { pos a -> refl (pos a) ; neg a -> refl (neg a) } ;
+  -- the generator a letter is made of
+  base : L -> A = split { pos a -> a ; neg a -> a } ;
+
+  ----------------------------------------------------------------------
+  -- letters and words are discrete
+
+  eqL : L -> L -> Bool = split {
+    pos a -> split { pos b -> eq a b ; neg b -> false } ;
+    neg a -> split { pos b -> false ; neg b -> eq a b } } ;
+  eqL-refl : (x : L) -> so (eqL x x) = split { pos a -> eq-refl a ; neg a -> eq-refl a } ;
+  eqL-sound-p (a : A) : (y : L) -> so (eqL (pos a) y) -> Id L (pos a) y = split {
+    pos b -> \ s -> apH (\ c -> pos c) (eq-sound a b s) ;
+    neg b -> \ s -> absurd (Id L (pos a) (neg b)) s } ;
+  eqL-sound-n (a : A) : (y : L) -> so (eqL (neg a) y) -> Id L (neg a) y = split {
+    pos b -> \ s -> absurd (Id L (neg a) (pos b)) s ;
+    neg b -> \ s -> apH (\ c -> neg c) (eq-sound a b s) } ;
+  eqL-sound : (x y : L) -> so (eqL x y) -> Id L x y = split {
+    pos a -> eqL-sound-p a ; neg a -> eqL-sound-n a } ;
+  DL : Discrete = new Discrete[L, eqL, eqL-refl, eqL-sound] ;
+
+  eqW : W -> W -> Bool = split {
+    nil -> split { nil -> true ; cons y v -> false } ;
+    cons x u | r -> split { nil -> false ; cons y v -> and (eqL x y) (r v) } } ;
+  eqW-refl : (u : W) -> so (eqW u u) = split {
+    nil -> tt ;
+    cons x u | r -> so-and (eqL x x) (eqW u u) (eqL-refl x) r } ;
+  eqW-sound-c (x : L) (u : W) (r : (v : W) -> so (eqW u v) -> Id W u v)
+    : (v : W) -> so (eqW (cons x u) v) -> Id W (cons x u) v = split {
+    nil -> \ s -> absurd (Id W (cons x u) nil) s ;
+    cons y v -> \ s -> calc W {
+      cons x u =< apH (\ z -> cons z u) (eqL-sound x y (so-and-l (eqL x y) (eqW u v) s)) >
+      cons y u =< apH (\ w -> cons y w) (r v (so-and-r (eqL x y) (eqW u v) s)) >
+      cons y v } } ;
+  eqW-sound : (u v : W) -> so (eqW u v) -> Id W u v = split {
+    nil -> split { nil -> \ s -> refl nil ; cons y v -> \ s -> absurd (Id W nil (cons y v)) s } ;
+    cons x u | r -> eqW-sound-c x u r } ;
+  DW : Discrete = new Discrete[W, eqW, eqW-refl, eqW-sound] ;
+
+  ----------------------------------------------------------------------
+  -- reduced words
+
+  -- x may stand in front of w
+  ok (x : L) : W -> Bool = split { nil -> true ; cons y w -> not (eqL y (inv x)) } ;
+  red : W -> Bool = split { nil -> true ; cons x w | r -> and (ok x w) r } ;
+
+  red-tail (x : L) (w : W) (h : so (red (cons x w))) : so (red w) = so-and-r (ok x w) (red w) h ;
+  red-ok (x : L) (w : W) (h : so (red (cons x w))) : so (ok x w) = so-and-l (ok x w) (red w) h ;
+
+  ----------------------------------------------------------------------
+  -- the action of a letter
+
+  act (x : L) : W -> W = split {
+    nil -> cons x nil ;
+    cons y w -> ite W (eqL y (inv x)) w (cons x (cons y w)) } ;
+
+  act-red (x : L) : (w : W) -> so (red w) -> so (red (act x w)) = split {
+    nil -> \ h -> tt ;
+    cons y w -> \ h -> cases (\ b -> so (red (ite W b w (cons x (cons y w))))) (eqL y (inv x))
+      (\ e -> red-tail y w h)
+      (\ e -> so-and (not (eqL y (inv x))) (red (cons y w)) (not-false (eqL y (inv x)) e) h) } ;
+
+  -- if x may stand in front of w, act x w = x w
+  act-ok (x : L) : (w : W) -> so (ok x w) -> Id W (act x w) (cons x w) = split {
+    nil -> \ h -> refl (cons x nil) ;
+    cons y w -> \ h -> apH (\ b -> ite W b w (cons x (cons y w))) (false-not (eqL y (inv x)) h) } ;
+
+  -- act x (x^-1 w) = w
+  act-head (x : L) (w : W) : Id W (act x (cons (inv x) w)) w =
+    apH (\ b -> ite W b w (cons x (cons (inv x) w))) (DiscreteL[DL].eq-self (inv x)) ;
+
+  -- (C), case w = y w' with y = x
+  act-cancel-eq (x y : L) (w : W) (p : Id L y x) (h : so (red (cons y w))) : Id W (act x w) (cons y w) =
+    transH (act-ok x w (substH (\ z -> so (ok z w)) p (red-ok y w h))) (apH (\ z -> cons z w) (symH p)) ;
+
+  -- (C)  act x (act x^-1 w) = w
+  act-cancel (x : L) : (w : W) -> so (red w) -> Id W (act x (act (inv x) w)) w = split {
+    nil -> \ h -> act-head x nil ;
+    cons y w -> \ h -> cases (\ b -> Id W (act x (ite W b w (cons (inv x) (cons y w)))) (cons y w))
+      (eqL y (inv (inv x)))
+      (\ e -> act-cancel-eq x y w (transH (eqL-sound y (inv (inv x)) (so-true (eqL y (inv (inv x))) e)) (inv-inv x)) h)
+      (\ e -> act-head x (cons y w)) } ;
+
+  -- act x^-1 (act x w) = w
+  act-cancel' (x : L) (w : W) (h : so (red w)) : Id W (act (inv x) (act x w)) w =
+    substH (\ z -> Id W (act (inv x) (act z w)) w) (inv-inv x) (act-cancel (inv x) w h) ;
+
+  ----------------------------------------------------------------------
+  -- the action of a word
+
+  ev : W -> W -> W = split { nil -> \ s -> s ; cons x u | r -> \ s -> act x (r s) } ;
+
+  ev-red : (u s : W) -> so (red s) -> so (red (ev u s)) = split {
+    nil -> \ s h -> h ;
+    cons x u | r -> \ s h -> act-red x (ev u s) (r s h) } ;
+
+  -- (K), case r = y r' with y = x^-1
+  ev-act-eq (x y : L) (r t : W) (p : Id L y (inv x)) (ht : so (red t))
+    : Id W (ev r t) (act x (act y (ev r t))) =
+    symH (substH (\ z -> Id W (act x (act z (ev r t))) (ev r t)) (symH p)
+      (act-cancel x (ev r t) (ev-red r t ht))) ;
+
+  -- (K)  ev (act x r) t = act x (ev r t)
+  ev-act (x : L) : (r t : W) -> so (red t) -> Id W (ev (act x r) t) (act x (ev r t)) = split {
+    nil -> \ t ht -> refl (act x t) ;
+    cons y r -> \ t ht -> cases (\ b -> Id W (ev (ite W b r (cons x (cons y r))) t) (act x (act y (ev r t))))
+      (eqL y (inv x))
+      (\ e -> ev-act-eq x y r t (eqL-sound y (inv x) (so-true (eqL y (inv x)) e)) ht)
+      (\ e -> refl (act x (act y (ev r t)))) } ;
+
+  -- (A)  ev (ev u s) t = ev u (ev s t)
+  ev-ev : (u s t : W) -> so (red t) -> Id W (ev (ev u s) t) (ev u (ev s t)) = split {
+    nil -> \ s t ht -> refl (ev s t) ;
+    cons x u | r -> \ s t ht -> transH (ev-act x (ev u s) t ht) (apH (act x) (r s t ht)) } ;
+
+  -- (N)  ev r nil = r
+  ev-id : (r : W) -> so (red r) -> Id W (ev r nil) r = split {
+    nil -> \ h -> refl nil ;
+    cons x r | ih -> \ h -> transH (apH (act x) (ih (red-tail x r h))) (act-ok x r (red-ok x r h)) } ;
+
+  app : W -> W -> W = split { nil -> \ v -> v ; cons x u | r -> \ v -> cons x (r v) } ;
+  ev-app : (u v s : W) -> Id W (ev (app u v) s) (ev u (ev v s)) = split {
+    nil -> \ v s -> refl (ev v s) ;
+    cons x u | r -> \ v s -> apH (act x) (r v s) } ;
+
+  -- the reversed word of inverses
+  rinv : W -> W = split { nil -> nil ; cons x u | r -> app r (cons (inv x) nil) } ;
+
+  -- (I)
+  ev-rinv-l : (u s : W) -> so (red s) -> Id W (ev (rinv u) (ev u s)) s = split {
+    nil -> \ s h -> refl s ;
+    cons x u | r -> \ s h -> calc W {
+      ev (rinv (cons x u)) (act x (ev u s))
+        =< ev-app (rinv u) (cons (inv x) nil) (act x (ev u s)) >
+      ev (rinv u) (act (inv x) (act x (ev u s)))
+        =< apH (ev (rinv u)) (act-cancel' x (ev u s) (ev-red u s h)) >
+      ev (rinv u) (ev u s)
+        =< r s h >
+      s } } ;
+  ev-rinv-r : (u s : W) -> so (red s) -> Id W (ev u (ev (rinv u) s)) s = split {
+    nil -> \ s h -> refl s ;
+    cons x u | r -> \ s h -> calc W {
+      act x (ev u (ev (rinv (cons x u)) s))
+        =< apH (\ z -> act x (ev u z)) (ev-app (rinv u) (cons (inv x) nil) s) >
+      act x (ev u (ev (rinv u) (act (inv x) s)))
+        =< apH (act x) (r (act (inv x) s) (act-red (inv x) s h)) >
+      act x (act (inv x) s)
+        =< act-cancel x s h >
+      s } } ;
+
+  ----------------------------------------------------------------------
+  -- the group of reduced words
+
+  Red : U l = (w : W) * so (red w) ;
+
+  red-eq (u v : Red) (p : Id W u.1 v.1) : Id Red u v =
+    Sigma-eq W (\ w -> so (red w)) u.1 v.1 u.2 v.2 p (so-prop (red v.1)) ;
+  set : isSet Red = isSet-Sigma W (\ w -> so (red w)) (DiscreteL[DW].set)
+    (\ w -> prop-to-set (so (red w)) (so-prop (red w))) ;
+
+  e : Red = (nil, tt) ;
+  mul (u v : Red) : Red = (ev u.1 v.1, ev-red u.1 v.1 v.2) ;
+  inverse (u : Red) : Red = (ev (rinv u.1) nil, ev-red (rinv u.1) nil tt) ;
+  letter (x : L) : Red = (cons x nil, tt) ;
+  gen (a : A) : Red = letter (pos a) ;
+
+  assoc (u v w : Red) : Id Red (mul (mul u v) w) (mul u (mul v w)) =
+    red-eq (mul (mul u v) w) (mul u (mul v w)) (ev-ev u.1 v.1 w.1 w.2) ;
+  unitl (u : Red) : Id Red (mul e u) u = refl u ;
+  unitr (u : Red) : Id Red (mul u e) u = red-eq (mul u e) u (ev-id u.1 u.2) ;
+  invl (u : Red) : Id Red (mul (inverse u) u) e = red-eq (mul (inverse u) u) e (calc W {
+    ev (ev (rinv u.1) nil) u.1
+      =< ev-ev (rinv u.1) nil u.1 u.2 >
+    ev (rinv u.1) u.1
+      =< apH (ev (rinv u.1)) (symH (ev-id u.1 u.2)) >
+    ev (rinv u.1) (ev u.1 nil)
+      =< ev-rinv-l u.1 nil tt >
+    nil }) ;
+  invr (u : Red) : Id Red (mul u (inverse u)) e =
+    red-eq (mul u (inverse u)) e (ev-rinv-r u.1 nil tt) ;
+
+  -- x u = (x) . u for a reduced word x u
+  cons-mul (x : L) (w : W) (h : so (red (cons x w))) : Id Red (cons x w, h) (mul (letter x) (w, red-tail x w h)) =
+    red-eq (cons x w, h) (mul (letter x) (w, red-tail x w h)) (symH (act-ok x w (red-ok x w h))) ;
+  -- the one-letter word a^-1 is the inverse of a
+  neg-inverse (a : A) : Id Red (letter (neg a)) (inverse (gen a)) =
+    red-eq (letter (neg a)) (inverse (gen a)) (refl (cons (neg a) nil)) ;
+
+  ----------------------------------------------------------------------
+  -- the generators occurring in a word
+
+  Occ (a : A) : W -> U l = split { nil -> Empty ; cons x w | r -> Plus (Id A (base x) a) r } ;
+
+  occ-act-c (x y : L) (w : W) (a : A)
+    : (b : Bool) -> Occ a (ite W b w (cons x (cons y w))) -> Plus (Id A (base x) a) (Occ a (cons y w)) = split {
+    true -> \ o -> inr (inr o) ;
+    false -> \ o -> o } ;
+  occ-act (x : L) (a : A) : (w : W) -> Occ a (act x w) -> Plus (Id A (base x) a) (Occ a w) = split {
+    nil -> \ o -> o ;
+    cons y w -> occ-act-c x y w a (eqL y (inv x)) } ;
+
+  occ-ev-d (x : L) (u s : W) (a : A) : Plus (Occ a u) (Occ a s) -> Plus (Occ a (cons x u)) (Occ a s) = split {
+    inl o -> inl (inr o) ; inr o -> inr o } ;
+  occ-ev-c (x : L) (u s : W) (a : A) (ih : Occ a (ev u s) -> Plus (Occ a u) (Occ a s))
+    : Plus (Id A (base x) a) (Occ a (ev u s)) -> Plus (Occ a (cons x u)) (Occ a s) = split {
+    inl p -> inl (inl p) ;
+    inr o -> occ-ev-d x u s a (ih o) } ;
+  -- a generator occurring in ev u s occurs in u or in s
+  occ-ev (a : A) : (u s : W) -> Occ a (ev u s) -> Plus (Occ a u) (Occ a s) = split {
+    nil -> \ s o -> inr o ;
+    cons x u | r -> \ s o -> occ-ev-c x u s a (r s) (occ-act x a (ev u s) o) } ;
+
+  -- the generators are distinct
+  occ-one (a b : A) : Plus (Id A b a) Empty -> Id A b a = split {
+    inl q -> q ; inr o -> absurd (Id A b a) o } ;
+  gen-inj (a b : A) (p : Id Red (gen a) (gen b)) : Id A a b =
+    symH (occ-one a b (substH (\ u -> Occ a u.1) p (inl (refl a)))) ;
+
+  -- over an empty type there is only the empty word
+  empty-only (n : A -> Empty) : (w : W) -> (h : so (red w)) -> Id Red (w, h) e = split {
+    nil -> \ h -> red-eq (nil, h) e (refl nil) ;
+    cons x w -> \ h -> absurd (Id Red (cons x w, h) e) (n (base x)) } ;
+  empty-prop (n : A -> Empty) : isProp Red = \ u v ->
+    transH (empty-only n u.1 u.2) (symH (empty-only n v.1 v.2)) ;
+} ;

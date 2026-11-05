@@ -1,0 +1,255 @@
+-- Colimit.seg: the free group F(X) on a type X, as the colimit of the free
+-- groups on the stages (c, f : El c -> X).
+--
+-- An element is a stage with a reduced word over it.  Two elements are
+-- related if there is a stage t with maps m, n to t (over X) such that
+-- m u = n v in the free group on t:
+--     Link (s,u) (s',v) = (t : Stage) * (m : s -> t) * (n : s' -> t) * F m u = F n v.
+-- Reflexivity and symmetry are clear.  Transitivity: from (t1, m1, n1)
+-- and (t2, m2, n2), go to t1 + t2 and make the two images of the middle
+-- stage equal by the coequaliser lemma (Stages.Merge): r with r (n1 j) =
+-- r (m2 j); then r m1 u = r n1 v = r m2 v = r n2 w.
+-- F(X) is the quotient by the truncation of Link.
+level l k ;
+constraint l <= k ;
+open Base ; open Prelude[k] ; open Paths[k] ; open Decisions[l] ; open Codes[l] ; 
+module GL = Group[l] ;
+
+module Colimit (I : Interface[l,k].FinFree) (X : U k) {
+  module St = Stages[l,k].Stages[X] ; open St ;
+
+  ----------------------------------------------------------------------
+  -- the free groups on the stages
+
+  Fr (c : FT) : U l = (I.T c).C ;
+  push (a b : FT) (m : El a -> El b) (w : Fr a) : Fr b = I.push a b m w ;
+  push-inv (a b : FT) (m : El a -> El b) (u : Fr a)
+    : Id (Fr b) (push a b m ((I.T a).inv u)) ((I.T b).inv (push a b m u)) =
+    GL.HomL[I.T a, I.T b, push a b m, I.push-mul a b m].inverse u ;
+  push-unit (a b : FT) (m : El a -> El b) : Id (Fr b) (push a b m (I.T a).e) (I.T b).e =
+    GL.HomL[I.T a, I.T b, push a b m, I.push-mul a b m].unit ;
+
+  -- u over a and v over b give u v over a + b
+  pair (a b : FT) (u : Fr a) (v : Fr b) : Fr (fplus a b) =
+    (I.T ((fplus a b))).mul (push a (fplus a b) (\ i -> inl i) u) (push b (fplus a b) (\ j -> inr j) v) ;
+  -- m (u v) = (m o inl) u . (m o inr) v
+  push-pair (a b c : FT) (m : El (fplus a b) -> El c) (u : Fr a) (v : Fr b)
+    : Id (Fr c) (push (fplus a b) c m (pair a b u v))
+        ((I.T c).mul (push a c (\ i -> m (inl i)) u) (push b c (\ j -> m (inr j)) v)) = calc (Fr c) {
+    push (fplus a b) c m (pair a b u v)
+      =< I.push-mul (fplus a b) c m (push a (fplus a b) (\ i -> inl i) u) (push b (fplus a b) (\ j -> inr j) v) >
+    (I.T c).mul (push (fplus a b) c m (push a (fplus a b) (\ i -> inl i) u))
+                     (push (fplus a b) c m (push b (fplus a b) (\ j -> inr j) v))
+      =< apH (\ z -> (I.T c).mul z (push (fplus a b) c m (push b (fplus a b) (\ j -> inr j) v)))
+             (I.push-comp a (fplus a b) c (\ i -> inl i) m u) >
+    (I.T c).mul (push a c (\ i -> m (inl i)) u) (push (fplus a b) c m (push b (fplus a b) (\ j -> inr j) v))
+      =< apH ((I.T c).mul (push a c (\ i -> m (inl i)) u)) (I.push-comp b (fplus a b) c (\ j -> inr j) m v) >
+    (I.T c).mul (push a c (\ i -> m (inl i)) u) (push b c (\ j -> m (inr j)) v) } ;
+
+  ----------------------------------------------------------------------
+  -- elements and links
+
+  Elt : U k = (s : Stage) * Fr s.1 ;
+
+  Link (x y : Elt) : U k = (t : Stage) * ((m : Over x.1 t) * ((n : Over y.1 t)
+    * Id (Fr t.1) (push x.1.1 t.1 m.1 x.2) (push y.1.1 t.1 n.1 y.2))) ;
+
+  link-refl (x : Elt) : Link x x = (x.1, (over-id x.1, (over-id x.1, refl (push x.1.1 x.1.1 (\ i -> i) x.2)))) ;
+  link-sym (x y : Elt) (L : Link x y) : Link y x = (L.1, (L.2.2.1, (L.2.1, symH L.2.2.2))) ;
+  -- a single map of stages
+  link-over (x y : Elt) (m : Over x.1 y.1) (p : Id (Fr y.1.1) (push x.1.1 y.1.1 m.1 x.2) y.2) : Link x y =
+    (y.1, (m, (over-id y.1, calc (Fr y.1.1) {
+      push x.1.1 y.1.1 m.1 x.2 =< p > y.2 =< symH (I.push-id y.1.1 y.2) > push y.1.1 y.1.1 (\ i -> i) y.2 }))) ;
+
+  module Trans (x y z : Elt) (L1 : Link x y) (L2 : Link y z) {
+    t1 : Stage = L1.1 ; m1 : Over x.1 t1 = L1.2.1 ; n1 : Over y.1 t1 = L1.2.2.1 ;
+    t2 : Stage = L2.1 ; m2 : Over y.1 t2 = L2.2.1 ; n2 : Over z.1 t2 = L2.2.2.1 ;
+    t : Stage = splus t1 t2 ;
+    -- the two images of the middle stage in t
+    p (j : El y.1.1) : El t.1 = inl (n1.1 j) ;
+    q (j : El y.1.1) : El t.1 = inr (m2.1 j) ;
+    pq (j : El y.1.1) : Id X (t.2 (p j)) (t.2 (q j)) = calc X {
+      t1.2 (n1.1 j) =< n1.2 j > y.1.2 j =< symH (m2.2 j) > t2.2 (m2.1 j) } ;
+    R : Merge[t.1, t.2].Result y.1.1 p q (\ c -> c) = Merge[t.1, t.2].coequalise y.1.1 p q pq ;
+    ri (c : El t1.1) : El t.1 = R.1 (inl c) ;
+    rr (c : El t2.1) : El t.1 = R.1 (inr c) ;
+    m : Over x.1 t = (\ i -> ri (m1.1 i), \ i -> calc X {
+      t.2 (ri (m1.1 i)) =< R.2.1 (inl (m1.1 i)) > t1.2 (m1.1 i) =< m1.2 i > x.1.2 i }) ;
+    n : Over z.1 t = (\ i -> rr (n2.1 i), \ i -> calc X {
+      t.2 (rr (n2.1 i)) =< R.2.1 (inr (n2.1 i)) > t2.2 (n2.1 i) =< n2.2 i > z.1.2 i }) ;
+    word : Id (Fr t.1) (push x.1.1 t.1 m.1 x.2) (push z.1.1 t.1 n.1 z.2) = calc (Fr t.1) {
+      push x.1.1 t.1 (\ i -> ri (m1.1 i)) x.2
+        =< symH (I.push-comp x.1.1 t1.1 t.1 m1.1 ri x.2) >
+      push t1.1 t.1 ri (push x.1.1 t1.1 m1.1 x.2)
+        =< apH (push t1.1 t.1 ri) L1.2.2.2 >
+      push t1.1 t.1 ri (push y.1.1 t1.1 n1.1 y.2)
+        =< I.push-comp y.1.1 t1.1 t.1 n1.1 ri y.2 >
+      push y.1.1 t.1 (\ j -> ri (n1.1 j)) y.2
+        =< I.push-ext y.1.1 t.1 (\ j -> ri (n1.1 j)) (\ j -> rr (m2.1 j)) R.2.2.2 y.2 >
+      push y.1.1 t.1 (\ j -> rr (m2.1 j)) y.2
+        =< symH (I.push-comp y.1.1 t2.1 t.1 m2.1 rr y.2) >
+      push t2.1 t.1 rr (push y.1.1 t2.1 m2.1 y.2)
+        =< apH (push t2.1 t.1 rr) L2.2.2.2 >
+      push t2.1 t.1 rr (push z.1.1 t2.1 n2.1 z.2)
+        =< I.push-comp z.1.1 t2.1 t.1 n2.1 rr z.2 >
+      push z.1.1 t.1 (\ i -> rr (n2.1 i)) z.2 } ;
+    link : Link x z = (t, (m, (n, word))) ;
+  } ;
+
+  ----------------------------------------------------------------------
+  -- the quotient
+
+  rel (x y : Elt) : U k = Truncation[k].Trunc[Link x y].carrier ;
+  rel-prop (x y : Elt) : isProp (rel x y) = Truncation[k].Trunc[Link x y].proposition ;
+  rel-of (x y : Elt) (L : Link x y) : rel x y = Truncation[k].Trunc[Link x y].inc L ;
+  -- a proposition following from a link follows from the relation
+  rel-elim (x y : Elt) (P : U k) (pP : isProp P) (f : Link x y -> P) (r : rel x y) : P =
+    Truncation[k].Trunc[Link x y].induction @k (\ u -> P) (\ u -> pP) f r ;
+
+  rel-refl (x : Elt) : rel x x = rel-of x x (link-refl x) ;
+  rel-sym (x y : Elt) (r : rel x y) : rel y x =
+    rel-elim x y (rel y x) (rel-prop y x) (\ L -> rel-of y x (link-sym x y L)) r ;
+  rel-trans (x y z : Elt) (r1 : rel x y) (r2 : rel y z) : rel x z =
+    rel-elim x y (rel x z) (rel-prop x z) (\ L1 ->
+      rel-elim y z (rel x z) (rel-prop x z) (\ L2 -> rel-of x z (Trans[x, y, z, L1, L2].link)) r2) r1 ;
+
+  module Q = Quotient[k].Quot[Elt, rel, rel-prop, rel-refl, rel-sym, rel-trans] ;
+  F : U k = Q.Q ;
+  related (x y : Elt) (L : Link x y) : Id F (Q.inc x) (Q.inc y) = Q.relates x y (rel-of x y L) ;
+
+  ----------------------------------------------------------------------
+  -- the operations on representatives
+
+  emul (x y : Elt) : Elt = (splus x.1 y.1, pair x.1.1 y.1.1 x.2 y.2) ;
+  eunit : Elt = (sempty, (I.T fzero).e) ;
+  einv (x : Elt) : Elt = (x.1, (I.T x.1.1).inv x.2) ;
+
+  pair-cong (a b : FT) (u u' : Fr a) (v v' : Fr b) (p : Id (Fr a) u u') (q : Id (Fr b) v v')
+    : Id (Fr (fplus a b)) (pair a b u v) (pair a b u' v') = calc (Fr (fplus a b)) {
+    pair a b u v =< apH (\ z -> pair a b z v) p > pair a b u' v =< apH (pair a b u') q > pair a b u' v' } ;
+
+  -- (m + n) (u v) = (m u) (n v)
+  push-sum (a b a' b' : FT) (m : El a -> El a') (n : El b -> El b') (u : Fr a) (v : Fr b)
+    : Id (Fr (fplus a' b')) (push (fplus a b) (fplus a' b') (sum-map a b a' b' m n) (pair a b u v))
+        (pair a' b' (push a a' m u) (push b b' n v)) = calc (Fr (fplus a' b')) {
+    push (fplus a b) (fplus a' b') (sum-map a b a' b' m n) (pair a b u v)
+      =< push-pair a b (fplus a' b') (sum-map a b a' b' m n) u v >
+    (I.T ((fplus a' b'))).mul (push a (fplus a' b') (\ i -> inl (m i)) u) (push b (fplus a' b') (\ j -> inr (n j)) v)
+      =< apH (\ z -> (I.T ((fplus a' b'))).mul z (push b (fplus a' b') (\ j -> inr (n j)) v))
+             (symH (I.push-comp a a' (fplus a' b') m (\ i -> inl i) u)) >
+    (I.T ((fplus a' b'))).mul (push a' (fplus a' b') (\ i -> inl i) (push a a' m u)) (push b (fplus a' b') (\ j -> inr (n j)) v)
+      =< apH ((I.T ((fplus a' b'))).mul (push a' (fplus a' b') (\ i -> inl i) (push a a' m u)))
+             (symH (I.push-comp b b' (fplus a' b') n (\ j -> inr j) v)) >
+    pair a' b' (push a a' m u) (push b b' n v) } ;
+
+  link-mul (x x' y y' : Elt) (L1 : Link x x') (L2 : Link y y') : Link (emul x y) (emul x' y') =
+    (splus L1.1 L2.1, (over-sum x.1 y.1 L1.1 L2.1 L1.2.1 L2.2.1, (over-sum x'.1 y'.1 L1.1 L2.1 L1.2.2.1 L2.2.2.1,
+      calc (Fr (fplus L1.1.1 L2.1.1)) {
+        push (fplus x.1.1 y.1.1) (fplus L1.1.1 L2.1.1) (sum-map x.1.1 y.1.1 L1.1.1 L2.1.1 L1.2.1.1 L2.2.1.1) (pair x.1.1 y.1.1 x.2 y.2)
+          =< push-sum x.1.1 y.1.1 L1.1.1 L2.1.1 L1.2.1.1 L2.2.1.1 x.2 y.2 >
+        pair L1.1.1 L2.1.1 (push x.1.1 L1.1.1 L1.2.1.1 x.2) (push y.1.1 L2.1.1 L2.2.1.1 y.2)
+          =< pair-cong L1.1.1 L2.1.1 (push x.1.1 L1.1.1 L1.2.1.1 x.2) (push x'.1.1 L1.1.1 L1.2.2.1.1 x'.2)
+               (push y.1.1 L2.1.1 L2.2.1.1 y.2) (push y'.1.1 L2.1.1 L2.2.2.1.1 y'.2) L1.2.2.2 L2.2.2.2 >
+        pair L1.1.1 L2.1.1 (push x'.1.1 L1.1.1 L1.2.2.1.1 x'.2) (push y'.1.1 L2.1.1 L2.2.2.1.1 y'.2)
+          =< symH (push-sum x'.1.1 y'.1.1 L1.1.1 L2.1.1 L1.2.2.1.1 L2.2.2.1.1 x'.2 y'.2) >
+        push (fplus x'.1.1 y'.1.1) (fplus L1.1.1 L2.1.1) (sum-map x'.1.1 y'.1.1 L1.1.1 L2.1.1 L1.2.2.1.1 L2.2.2.1.1) (pair x'.1.1 y'.1.1 x'.2 y'.2) }))) ;
+
+  link-inv (x x' : Elt) (L : Link x x') : Link (einv x) (einv x') =
+    (L.1, (L.2.1, (L.2.2.1, calc (Fr L.1.1) {
+      push x.1.1 L.1.1 L.2.1.1 ((I.T x.1.1).inv x.2)
+        =< push-inv x.1.1 L.1.1 L.2.1.1 x.2 >
+      (I.T L.1.1).inv (push x.1.1 L.1.1 L.2.1.1 x.2)
+        =< apH ((I.T L.1.1).inv) L.2.2.2 >
+      (I.T L.1.1).inv (push x'.1.1 L.1.1 L.2.2.1.1 x'.2)
+        =< symH (push-inv x'.1.1 L.1.1 L.2.2.1.1 x'.2) >
+      push x'.1.1 L.1.1 L.2.2.1.1 ((I.T x'.1.1).inv x'.2) }))) ;
+
+  -- the group laws hold up to links
+  link-assoc (x y z : Elt) : Link (emul (emul x y) z) (emul x (emul y z)) =
+    link-over (emul (emul x y) z) (emul x (emul y z)) (over-assoc x.1 y.1 z.1) (calc (Fr (fplus x.1.1 (fplus y.1.1 z.1.1))) {
+      push (fplus (fplus x.1.1 y.1.1) z.1.1) (fplus x.1.1 (fplus y.1.1 z.1.1)) (assoc-map x.1.1 y.1.1 z.1.1)
+        (pair (fplus x.1.1 y.1.1) z.1.1 (pair x.1.1 y.1.1 x.2 y.2) z.2)
+        =< push-pair (fplus x.1.1 y.1.1) z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (assoc-map x.1.1 y.1.1 z.1.1)
+             (pair x.1.1 y.1.1 x.2 y.2) z.2 >
+      (I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul
+        (push (fplus x.1.1 y.1.1) (fplus x.1.1 (fplus y.1.1 z.1.1)) (assoc-l x.1.1 y.1.1 z.1.1) (pair x.1.1 y.1.1 x.2 y.2))
+        (push z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inr c)) z.2)
+        =< apH (\ w -> (I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul w (push z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inr c)) z.2))
+             (push-pair x.1.1 y.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (assoc-l x.1.1 y.1.1 z.1.1) x.2 y.2) >
+      (I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul
+        ((I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul
+          (push x.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inl c) x.2)
+          (push y.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inl c)) y.2))
+        (push z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inr c)) z.2)
+        =< (I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).assoc
+             (push x.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inl c) x.2)
+             (push y.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inl c)) y.2)
+             (push z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inr c)) z.2) >
+      (I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul
+        (push x.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inl c) x.2)
+        ((I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul
+          (push y.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inl c)) y.2)
+          (push z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr (inr c)) z.2))
+        =< apH ((I.T ((fplus x.1.1 (fplus y.1.1 z.1.1)))).mul (push x.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inl c) x.2))
+             (symH (push-pair y.1.1 z.1.1 (fplus x.1.1 (fplus y.1.1 z.1.1)) (\ c -> inr c) y.2 z.2)) >
+      pair x.1.1 (fplus y.1.1 z.1.1) x.2 (pair y.1.1 z.1.1 y.2 z.2) }) ;
+
+  unitl-map (c : FT) : El (fplus fzero c) -> El c = split { inl i -> absurd (El c) i ; inr j -> j } ;
+  unitl-tri (s : Stage) : (i : El (fplus fzero s.1)) -> Id X (s.2 (unitl-map s.1 i)) ((splus sempty s).2 i) = split {
+    inl i -> absurd (Id X (s.2 (unitl-map s.1 (inl i))) (absurd X i)) i ; inr j -> refl (s.2 j) } ;
+  unitr-map (c : FT) : El (fplus c fzero) -> El c = split { inl i -> i ; inr j -> absurd (El c) j } ;
+  unitr-tri (s : Stage) : (i : El (fplus s.1 fzero)) -> Id X (s.2 (unitr-map s.1 i)) ((splus s sempty).2 i) = split {
+    inl i -> refl (s.2 i) ; inr j -> absurd (Id X (s.2 (unitr-map s.1 (inr j))) (absurd X j)) j } ;
+
+  link-unitl (x : Elt) : Link (emul eunit x) x =
+    link-over (emul eunit x) x (unitl-map x.1.1, unitl-tri x.1) (calc (Fr x.1.1) {
+      push (fplus fzero x.1.1) x.1.1 (unitl-map x.1.1) (pair fzero x.1.1 (I.T fzero).e x.2)
+        =< push-pair fzero x.1.1 x.1.1 (unitl-map x.1.1) (I.T fzero).e x.2 >
+      (I.T x.1.1).mul (push fzero x.1.1 (\ i -> unitl-map x.1.1 (inl i)) (I.T fzero).e) (push x.1.1 x.1.1 (\ j -> j) x.2)
+        =< apH (\ z -> (I.T x.1.1).mul z (push x.1.1 x.1.1 (\ j -> j) x.2)) (push-unit fzero x.1.1 (\ i -> unitl-map x.1.1 (inl i))) >
+      (I.T x.1.1).mul (I.T x.1.1).e (push x.1.1 x.1.1 (\ j -> j) x.2)
+        =< (I.T x.1.1).unitl (push x.1.1 x.1.1 (\ j -> j) x.2) >
+      push x.1.1 x.1.1 (\ j -> j) x.2
+        =< I.push-id x.1.1 x.2 >
+      x.2 }) ;
+  link-unitr (x : Elt) : Link (emul x eunit) x =
+    link-over (emul x eunit) x (unitr-map x.1.1, unitr-tri x.1) (calc (Fr x.1.1) {
+      push (fplus x.1.1 fzero) x.1.1 (unitr-map x.1.1) (pair x.1.1 fzero x.2 (I.T fzero).e)
+        =< push-pair x.1.1 fzero x.1.1 (unitr-map x.1.1) x.2 (I.T fzero).e >
+      (I.T x.1.1).mul (push x.1.1 x.1.1 (\ j -> j) x.2) (push fzero x.1.1 (\ i -> unitr-map x.1.1 (inr i)) (I.T fzero).e)
+        =< apH ((I.T x.1.1).mul (push x.1.1 x.1.1 (\ j -> j) x.2)) (push-unit fzero x.1.1 (\ i -> unitr-map x.1.1 (inr i))) >
+      (I.T x.1.1).mul (push x.1.1 x.1.1 (\ j -> j) x.2) (I.T x.1.1).e
+        =< (I.T x.1.1).unitr (push x.1.1 x.1.1 (\ j -> j) x.2) >
+      push x.1.1 x.1.1 (\ j -> j) x.2
+        =< I.push-id x.1.1 x.2 >
+      x.2 }) ;
+
+  -- (u^-1 over s) (u over s) folds to u^-1 u = e over s
+  fold-pair (c : FT) (u v : Fr c) : Id (Fr c) (push (fplus c c) c (fold c) (pair c c u v)) ((I.T c).mul u v) =
+    calc (Fr c) {
+      push (fplus c c) c (fold c) (pair c c u v)
+        =< push-pair c c c (fold c) u v >
+      (I.T c).mul (push c c (\ i -> i) u) (push c c (\ i -> i) v)
+        =< apH (\ w -> (I.T c).mul w (push c c (\ i -> i) v)) (I.push-id c u) >
+      (I.T c).mul u (push c c (\ i -> i) v)
+        =< apH ((I.T c).mul u) (I.push-id c v) >
+      (I.T c).mul u v } ;
+  link-invl (x : Elt) : Link (emul (einv x) x) eunit =
+    (x.1, (over-fold x.1, (over-empty x.1, calc (Fr x.1.1) {
+      push (fplus x.1.1 x.1.1) x.1.1 (fold x.1.1) (pair x.1.1 x.1.1 ((I.T x.1.1).inv x.2) x.2)
+        =< fold-pair x.1.1 ((I.T x.1.1).inv x.2) x.2 >
+      (I.T x.1.1).mul ((I.T x.1.1).inv x.2) x.2
+        =< (I.T x.1.1).invl x.2 >
+      (I.T x.1.1).e
+        =< symH (push-unit fzero x.1.1 (over-empty x.1).1) >
+      push fzero x.1.1 (over-empty x.1).1 (I.T fzero).e }))) ;
+  link-invr (x : Elt) : Link (emul x (einv x)) eunit =
+    (x.1, (over-fold x.1, (over-empty x.1, calc (Fr x.1.1) {
+      push (fplus x.1.1 x.1.1) x.1.1 (fold x.1.1) (pair x.1.1 x.1.1 x.2 ((I.T x.1.1).inv x.2))
+        =< fold-pair x.1.1 x.2 ((I.T x.1.1).inv x.2) >
+      (I.T x.1.1).mul x.2 ((I.T x.1.1).inv x.2)
+        =< (I.T x.1.1).invr x.2 >
+      (I.T x.1.1).e
+        =< symH (push-unit fzero x.1.1 (over-empty x.1).1) >
+      push fzero x.1.1 (over-empty x.1).1 (I.T fzero).e }))) ;
+} ;

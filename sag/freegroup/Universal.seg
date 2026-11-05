@@ -1,0 +1,117 @@
+-- Universal.seg: the universal property of the free group on a discrete
+-- type A, for groups G of any universe k above that of A.
+--
+-- For f : A -> G, Phi (x1 .. xn) = f(x1) .. f(xn) (with f(a^-1) = f(a)^-1).
+--   Phi (act x r) = f(x) Phi(r)                 [Phi-act], as f(x) f(x^-1) = e
+--   Phi (ev u s) = Phi(u) Phi(s)                [Phi-ev]
+-- so Phi is a homomorphism on reduced words extending f.  A homomorphism
+-- psi extending f agrees with Phi, by induction on reduced words: x w is
+-- the product of the letter x and w, and psi(a^-1) = psi(a)^-1.
+-- Naturality: Phi_f (F s u) = Phi_{f o s} (u).
+level l k ;
+constraint l <= k ;
+open Base ; open Prelude[k] ; open Paths[k] ; open Group[k] ; open Words[l] ;
+module DL = Decisions[l] ; module DK = Decisions[k] ;
+
+module UP (D : DL.Discrete) (G : Grp) (f : D.A -> G.C) {
+  module S = Free[D] ;
+  fL : S.L -> G.C = split { pos a -> f a ; neg a -> G.inv (f a) } ;
+  Phi : S.W -> G.C = split { nil -> G.e ; cons x u | r -> G.mul (fL x) r } ;
+
+  fL-cancel : (x : S.L) -> Id G.C (G.mul (fL x) (fL (S.inv x))) G.e = split {
+    pos a -> G.invr (f a) ; neg a -> G.invl (f a) } ;
+
+  Phi-act-eq (x y : S.L) (r : S.W) (p : Id S.L y (S.inv x))
+    : Id G.C (Phi r) (G.mul (fL x) (G.mul (fL y) (Phi r))) = symH (calc G.C {
+    G.mul (fL x) (G.mul (fL y) (Phi r))
+      =< apH (\ z -> G.mul (fL x) (G.mul (fL z) (Phi r))) p >
+    G.mul (fL x) (G.mul (fL (S.inv x)) (Phi r))
+      =< symH (G.assoc (fL x) (fL (S.inv x)) (Phi r)) >
+    G.mul (G.mul (fL x) (fL (S.inv x))) (Phi r)
+      =< apH (\ z -> G.mul z (Phi r)) (fL-cancel x) >
+    G.mul G.e (Phi r)
+      =< G.unitl (Phi r) >
+    Phi r }) ;
+
+  Phi-act (x : S.L) : (r : S.W) -> Id G.C (Phi (S.act x r)) (G.mul (fL x) (Phi r)) = split {
+    nil -> refl (G.mul (fL x) G.e) ;
+    cons y r -> DK.cases
+      (\ b -> Id G.C (Phi (DL.ite S.W b r (cons x (cons y r)))) (G.mul (fL x) (G.mul (fL y) (Phi r))))
+      (S.eqL y (S.inv x))
+      (\ e -> Phi-act-eq x y r (S.eqL-sound y (S.inv x) (DL.so-true (S.eqL y (S.inv x)) e)))
+      (\ e -> refl (G.mul (fL x) (G.mul (fL y) (Phi r)))) } ;
+
+  Phi-ev : (u s : S.W) -> Id G.C (Phi (S.ev u s)) (G.mul (Phi u) (Phi s)) = split {
+    nil -> \ s -> symH (G.unitl (Phi s)) ;
+    cons x u | r -> \ s -> calc G.C {
+      Phi (S.act x (S.ev u s))
+        =< Phi-act x (S.ev u s) >
+      G.mul (fL x) (Phi (S.ev u s))
+        =< apH (G.mul (fL x)) (r s) >
+      G.mul (fL x) (G.mul (Phi u) (Phi s))
+        =< symH (G.assoc (fL x) (Phi u) (Phi s)) >
+      G.mul (G.mul (fL x) (Phi u)) (Phi s) } } ;
+
+  lift (u : S.Red) : G.C = Phi u.1 ;
+  lift-mul (u v : S.Red) : Id G.C (lift (S.mul u v)) (G.mul (lift u) (lift v)) = Phi-ev u.1 v.1 ;
+  lift-gen (a : D.A) : Id G.C (lift (S.gen a)) (f a) = G.unitr (f a) ;
+
+  module Unique (psi : S.Red -> G.C)
+    (hom : (u v : S.Red) -> Id G.C (psi (S.mul u v)) (G.mul (psi u) (psi v)))
+    (gen : (a : D.A) -> Id G.C (psi (S.gen a)) (f a)) {
+    unit : Id G.C (psi S.e) G.e = GrpL[G].idem (psi S.e) (symH (hom S.e S.e)) ;
+    inverse (u : S.Red) : Id G.C (psi (S.inverse u)) (G.inv (psi u)) =
+      GrpL[G].inv-unique (psi u) (psi (S.inverse u)) (calc G.C {
+        G.mul (psi u) (psi (S.inverse u)) =< symH (hom u (S.inverse u)) >
+        psi (S.mul u (S.inverse u)) =< apH psi (S.invr u) >
+        psi S.e =< unit >
+        G.e }) ;
+    letter : (x : S.L) -> Id G.C (psi (S.letter x)) (fL x) = split {
+      pos a -> gen a ;
+      neg a -> calc G.C {
+        psi (S.letter (neg a)) =< apH psi (S.neg-inverse a) >
+        psi (S.inverse (S.gen a)) =< inverse (S.gen a) >
+        G.inv (psi (S.gen a)) =< apH G.inv (gen a) >
+        G.inv (f a) } } ;
+    agrees : (w : S.W) -> (h : DL.so (S.red w)) -> Id G.C (psi (w, h)) (Phi w) = split {
+      nil -> \ h -> calc G.C {
+        psi (nil, h) =< apH psi (S.red-eq (nil, h) S.e (refl nil)) >
+        psi S.e =< unit >
+        G.e } ;
+      cons x w | r -> \ h -> calc G.C {
+        psi (cons x w, h)
+          =< apH psi (S.cons-mul x w h) >
+        psi (S.mul (S.letter x) (w, S.red-tail x w h))
+          =< hom (S.letter x) (w, S.red-tail x w h) >
+        G.mul (psi (S.letter x)) (psi (w, S.red-tail x w h))
+          =< apH (\ z -> G.mul z (psi (w, S.red-tail x w h))) (letter x) >
+        G.mul (fL x) (psi (w, S.red-tail x w h))
+          =< apH (G.mul (fL x)) (r (S.red-tail x w h)) >
+        G.mul (fL x) (Phi w) } } ;
+    unique (u : S.Red) : Id G.C (psi u) (lift u) = agrees u.1 u.2 ;
+  } ;
+} ;
+
+-- Phi_f (F s u) = Phi_{f o s} (u)
+module Natural (D E : DL.Discrete) (s : D.A -> E.A) (G : Grp) (f : E.A -> G.C) {
+  module M = Functor[l].Map[D, E, s] ;
+  module U1 = UP[E, G, f] ; module U2 = UP[D, G, \ a -> f (s a)] ;
+  fL-map : (x : M.S.L) -> Id G.C (U1.fL (M.mapL x)) (U2.fL x) = split {
+    pos a -> refl (f (s a)) ; neg a -> refl (G.inv (f (s a))) } ;
+  Phi-map : (u : M.S.W) -> Id G.C (U1.Phi (M.mapW u)) (U2.Phi u) = split {
+    nil -> refl G.e ;
+    cons x u | r -> calc G.C {
+      G.mul (U1.fL (M.mapL x)) (U1.Phi (M.mapW u))
+        =< apH (\ z -> G.mul z (U1.Phi (M.mapW u))) (fL-map x) >
+      G.mul (U2.fL x) (U1.Phi (M.mapW u))
+        =< apH (G.mul (U2.fL x)) r >
+      G.mul (U2.fL x) (U2.Phi u) } } ;
+  lift-fmap (u : M.S.Red) : Id G.C (U1.lift (M.fmap u)) (U2.lift u) = calc G.C {
+    U1.Phi (M.T.ev (M.mapW u.1) nil)
+      =< U1.Phi-ev (M.mapW u.1) nil >
+    G.mul (U1.Phi (M.mapW u.1)) G.e
+      =< G.unitr (U1.Phi (M.mapW u.1)) >
+    U1.Phi (M.mapW u.1)
+      =< Phi-map u.1 >
+    U2.Phi u.1 } ;
+} ;

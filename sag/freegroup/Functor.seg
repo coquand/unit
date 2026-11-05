@@ -1,0 +1,124 @@
+-- Functor.seg: a map s : A -> B of discrete types gives a homomorphism
+-- F s of free groups, F s u = the reduced form of s applied to u; F is a
+-- functor, and the generators of F s u come from those of u.
+--
+--  (K') ev (s (act x r)) t = act (s x) (ev (s r) t) for t reduced: as (K),
+--       since s (x^-1) = (s x)^-1;
+--  then ev (s (ev u v)) t = ev (s u) (ev (s v) t), so F s is a
+--  homomorphism by (A); F (t o s) = F t o F s by the same with t.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open Decisions[l] ; open Words[l] ;
+
+module Map (D E : Discrete) (s : D.A -> E.A) {
+  module S = Free[D] ; module T = Free[E] ;
+  mapL : S.L -> T.L = split { pos a -> pos (s a) ; neg a -> neg (s a) } ;
+  mapW : S.W -> T.W = split { nil -> nil ; cons x u | r -> cons (mapL x) r } ;
+  map-inv : (x : S.L) -> Id T.L (mapL (S.inv x)) (T.inv (mapL x)) = split {
+    pos a -> refl (neg (s a)) ; neg a -> refl (pos (s a)) } ;
+  map-base : (x : S.L) -> Id E.A (T.base (mapL x)) (s (S.base x)) = split {
+    pos a -> refl (s a) ; neg a -> refl (s a) } ;
+
+  -- (K'), case r = y r' with y = x^-1
+  ev-map-act-eq (x y : S.L) (r : S.W) (t : T.W) (p : Id S.L y (S.inv x)) (ht : so (T.red t))
+    : Id T.W (T.ev (mapW r) t) (T.act (mapL x) (T.act (mapL y) (T.ev (mapW r) t))) =
+    symH (substH (\ z -> Id T.W (T.act (mapL x) (T.act z (T.ev (mapW r) t))) (T.ev (mapW r) t))
+      (symH (calc T.L { mapL y =< apH mapL p > mapL (S.inv x) =< map-inv x > T.inv (mapL x) }))
+      (T.act-cancel (mapL x) (T.ev (mapW r) t) (T.ev-red (mapW r) t ht))) ;
+
+  ev-map-act (x : S.L) : (r : S.W) -> (t : T.W) -> so (T.red t)
+    -> Id T.W (T.ev (mapW (S.act x r)) t) (T.act (mapL x) (T.ev (mapW r) t)) = split {
+    nil -> \ t ht -> refl (T.act (mapL x) t) ;
+    cons y r -> \ t ht -> cases
+      (\ b -> Id T.W (T.ev (mapW (ite S.W b r (cons x (cons y r)))) t) (T.act (mapL x) (T.act (mapL y) (T.ev (mapW r) t))))
+      (S.eqL y (S.inv x))
+      (\ e -> ev-map-act-eq x y r t (S.eqL-sound y (S.inv x) (so-true (S.eqL y (S.inv x)) e)) ht)
+      (\ e -> refl (T.act (mapL x) (T.act (mapL y) (T.ev (mapW r) t)))) } ;
+
+  ev-map : (u v : S.W) -> (t : T.W) -> so (T.red t)
+    -> Id T.W (T.ev (mapW (S.ev u v)) t) (T.ev (mapW u) (T.ev (mapW v) t)) = split {
+    nil -> \ v t ht -> refl (T.ev (mapW v) t) ;
+    cons x u | r -> \ v t ht -> calc T.W {
+      T.ev (mapW (S.act x (S.ev u v))) t
+        =< ev-map-act x (S.ev u v) t ht >
+      T.act (mapL x) (T.ev (mapW (S.ev u v)) t)
+        =< apH (T.act (mapL x)) (r v t ht) >
+      T.act (mapL x) (T.ev (mapW u) (T.ev (mapW v) t)) } } ;
+
+  fmap (u : S.Red) : T.Red = (T.ev (mapW u.1) nil, T.ev-red (mapW u.1) nil tt) ;
+
+  fmap-mul (u v : S.Red) : Id T.Red (fmap (S.mul u v)) (T.mul (fmap u) (fmap v)) =
+    T.red-eq (fmap (S.mul u v)) (T.mul (fmap u) (fmap v)) (calc T.W {
+      T.ev (mapW (S.ev u.1 v.1)) nil
+        =< ev-map u.1 v.1 nil tt >
+      T.ev (mapW u.1) (T.ev (mapW v.1) nil)
+        =< symH (T.ev-ev (mapW u.1) nil (T.ev (mapW v.1) nil) (T.ev-red (mapW v.1) nil tt)) >
+      T.ev (T.ev (mapW u.1) nil) (T.ev (mapW v.1) nil) }) ;
+  fmap-letter (x : S.L) : Id T.Red (fmap (S.letter x)) (T.letter (mapL x)) = refl (T.letter (mapL x)) ;
+
+  -- a generator occurring in s u is s a for a generator a of u
+  Pre (b : E.A) : U l = (a : D.A) * Id E.A (s a) b ;
+  occ-map-c (b : E.A) (x : S.L) (u : S.W) (r : T.Occ b (mapW u) -> Pre b)
+    : Plus (Id E.A (T.base (mapL x)) b) (T.Occ b (mapW u)) -> Pre b = split {
+    inl p -> (S.base x, calc E.A { s (S.base x) =< symH (map-base x) > T.base (mapL x) =< p > b }) ;
+    inr o -> r o } ;
+  occ-map (b : E.A) : (u : S.W) -> T.Occ b (mapW u) -> Pre b = split {
+    nil -> \ o -> absurd (Pre b) o ;
+    cons x u | r -> occ-map-c b x u r } ;
+  occ-fmap-c (b : E.A) (u : S.W) : Plus (T.Occ b (mapW u)) (T.Occ b nil) -> Pre b = split {
+    inl o -> occ-map b u o ; inr o -> absurd (Pre b) o } ;
+  occ-fmap (b : E.A) (u : S.Red) (o : T.Occ b (fmap u).1) : Pre b =
+    occ-fmap-c b u.1 (T.occ-ev b (mapW u.1) nil o) ;
+} ;
+
+-- F (t o s) = F t o F s
+module Comp (D1 D2 D3 : Discrete) (s : D1.A -> D2.A) (t : D2.A -> D3.A) {
+  module M1 = Map[D1, D2, s] ; module M2 = Map[D2, D3, t] ; module M = Map[D1, D3, \ a -> t (s a)] ;
+  mapL-comp : (x : M1.S.L) -> Id M.T.L (M2.mapL (M1.mapL x)) (M.mapL x) = split {
+    pos a -> refl (pos (t (s a))) ; neg a -> refl (neg (t (s a))) } ;
+  mapW-comp : (u : M1.S.W) -> Id M.T.W (M2.mapW (M1.mapW u)) (M.mapW u) = split {
+    nil -> refl nil ;
+    cons x u | r -> calc M.T.W {
+      cons (M2.mapL (M1.mapL x)) (M2.mapW (M1.mapW u))
+        =< apH (\ y -> cons y (M2.mapW (M1.mapW u))) (mapL-comp x) >
+      cons (M.mapL x) (M2.mapW (M1.mapW u))
+        =< apH (\ w -> cons (M.mapL x) w) r >
+      cons (M.mapL x) (M.mapW u) } } ;
+  fmap-comp (u : M1.S.Red) : Id M.T.Red (M2.fmap (M1.fmap u)) (M.fmap u) =
+    M.T.red-eq (M2.fmap (M1.fmap u)) (M.fmap u) (calc M.T.W {
+      M.T.ev (M2.mapW (M2.S.ev (M1.mapW u.1) nil)) nil
+        =< M2.ev-map (M1.mapW u.1) nil nil tt >
+      M.T.ev (M2.mapW (M1.mapW u.1)) nil
+        =< apH (\ w -> M.T.ev w nil) (mapW-comp u.1) >
+      M.T.ev (M.mapW u.1) nil }) ;
+} ;
+
+-- F id = id
+module Ident (D : Discrete) {
+  module M = Map[D, D, \ a -> a] ;
+  mapL-id : (x : M.S.L) -> Id M.S.L (M.mapL x) x = split { pos a -> refl (pos a) ; neg a -> refl (neg a) } ;
+  mapW-id : (u : M.S.W) -> Id M.S.W (M.mapW u) u = split {
+    nil -> refl nil ;
+    cons x u | r -> calc M.S.W {
+      cons (M.mapL x) (M.mapW u) =< apH (\ y -> cons y (M.mapW u)) (mapL-id x) >
+      cons x (M.mapW u) =< apH (\ w -> cons x w) r >
+      cons x u } } ;
+  fmap-id (u : M.S.Red) : Id M.S.Red (M.fmap u) u = M.S.red-eq (M.fmap u) u (calc M.S.W {
+    M.S.ev (M.mapW u.1) nil =< apH (\ w -> M.S.ev w nil) (mapW-id u.1) >
+    M.S.ev u.1 nil =< M.S.ev-id u.1 u.2 >
+    u.1 }) ;
+} ;
+
+-- F s depends only on the values of s
+module Ext (D E : Discrete) (s s' : D.A -> E.A) (h : (a : D.A) -> Id E.A (s a) (s' a)) {
+  module M = Map[D, E, s] ; module M' = Map[D, E, s'] ;
+  mapL-ext : (x : M.S.L) -> Id M.T.L (M.mapL x) (M'.mapL x) = split {
+    pos a -> apH (\ b -> pos b) (h a) ; neg a -> apH (\ b -> neg b) (h a) } ;
+  mapW-ext : (u : M.S.W) -> Id M.T.W (M.mapW u) (M'.mapW u) = split {
+    nil -> refl nil ;
+    cons x u | r -> calc M.T.W {
+      cons (M.mapL x) (M.mapW u) =< apH (\ y -> cons y (M.mapW u)) (mapL-ext x) >
+      cons (M'.mapL x) (M.mapW u) =< apH (\ w -> cons (M'.mapL x) w) r >
+      cons (M'.mapL x) (M'.mapW u) } } ;
+  fmap-ext (u : M.S.Red) : Id M.T.Red (M.fmap u) (M'.fmap u) =
+    M.T.red-eq (M.fmap u) (M'.fmap u) (apH (\ w -> M.T.ev w nil) (mapW-ext u.1)) ;
+} ;

@@ -1,0 +1,92 @@
+-- FinSum.seg: finite sums over codes in an abelian group (Torsor.Ab).
+--   sum 0 g = 0,  sum 1 g = g tt,  sum (a+b) g = sum a (g o inl) + sum b (g o inr).
+-- Linearity, Fubini (sum-swap), and the delta rule
+--   sum_i (if i = w then h i else 0) = h w,
+-- all by induction on the code.
+level l j ;
+constraint l <= j ;
+open Base ; open Prelude[j] ; open Paths[j] ; open Codes[l] ;
+module DJ = Decisions[j] ;
+
+module Sums (G : Torsor[j].Ab) {
+  open G ;
+  -- (x + y) + (z + w) = (x + z) + (y + w)
+  interchange (x y z w : A) : Id A (add (add x y) (add z w)) (add (add x z) (add y w)) = calc A {
+    add (add x y) (add z w) =< assoc x y (add z w) >
+    add x (add y (add z w)) =< apH (add x) (symH (assoc y z w)) >
+    add x (add (add y z) w) =< apH (\ t -> add x (add t w)) (comm y z) >
+    add x (add (add z y) w) =< apH (add x) (assoc z y w) >
+    add x (add z (add y w)) =< symH (assoc x z (add y w)) >
+    add (add x z) (add y w) } ;
+  add-cong (x x' y y' : A) (p : Id A x x') (q : Id A y y') : Id A (add x y) (add x' y') = calc A {
+    add x y =< apH (\ t -> add t y) p > add x' y =< apH (add x') q > add x' y' } ;
+
+  sum : (c : FT) -> (El c -> A) -> A = split {
+    fzero -> \ g -> o ;
+    fone -> \ g -> g tt ;
+    fplus a b | sa sb -> \ g -> add (sa (\ i -> g (inl i))) (sb (\ i -> g (inr i))) } ;
+
+  sum-ext : (c : FT) -> (g h : El c -> A) -> ((i : El c) -> Id A (g i) (h i)) -> Id A (sum c g) (sum c h) = split {
+    fzero -> \ g h p -> refl o ;
+    fone -> \ g h p -> p tt ;
+    fplus a b | ea eb -> \ g h p -> add-cong (sum a (\ i -> g (inl i))) (sum a (\ i -> h (inl i)))
+      (sum b (\ i -> g (inr i))) (sum b (\ i -> h (inr i)))
+      (ea (\ i -> g (inl i)) (\ i -> h (inl i)) (\ i -> p (inl i)))
+      (eb (\ i -> g (inr i)) (\ i -> h (inr i)) (\ i -> p (inr i))) } ;
+
+  sum-zero : (c : FT) -> Id A (sum c (\ i -> o)) o = split {
+    fzero -> refl o ;
+    fone -> refl o ;
+    fplus a b | za zb -> transH (add-cong (sum a (\ i -> o)) o (sum b (\ i -> o)) o za zb) (unitr o) } ;
+
+  sum-add : (c : FT) -> (g h : El c -> A) -> Id A (sum c (\ i -> add (g i) (h i))) (add (sum c g) (sum c h)) = split {
+    fzero -> \ g h -> symH (unitr o) ;
+    fone -> \ g h -> refl (add (g tt) (h tt)) ;
+    fplus a b | sa sb -> \ g h -> transH
+      (add-cong (sum a (\ i -> add (g (inl i)) (h (inl i)))) (add (sum a (\ i -> g (inl i))) (sum a (\ i -> h (inl i))))
+                (sum b (\ i -> add (g (inr i)) (h (inr i)))) (add (sum b (\ i -> g (inr i))) (sum b (\ i -> h (inr i))))
+                (sa (\ i -> g (inl i)) (\ i -> h (inl i))) (sb (\ i -> g (inr i)) (\ i -> h (inr i))))
+      (interchange (sum a (\ i -> g (inl i))) (sum a (\ i -> h (inl i))) (sum b (\ i -> g (inr i))) (sum b (\ i -> h (inr i)))) } ;
+
+  -- Fubini
+  sum-swap (d : FT) : (c : FT) -> (g : El c -> El d -> A)
+    -> Id A (sum c (\ i -> sum d (g i))) (sum d (\ q -> sum c (\ i -> g i q))) = split {
+    fzero -> \ g -> symH (sum-zero d) ;
+    fone -> \ g -> refl (sum d (g tt)) ;
+    fplus a b | sa sb -> \ g -> transH
+      (add-cong (sum a (\ i -> sum d (g (inl i)))) (sum d (\ q -> sum a (\ i -> g (inl i) q)))
+                (sum b (\ i -> sum d (g (inr i)))) (sum d (\ q -> sum b (\ i -> g (inr i) q)))
+                (sa (\ i -> g (inl i))) (sb (\ i -> g (inr i))))
+      (symH (sum-add d (\ q -> sum a (\ i -> g (inl i) q)) (\ q -> sum b (\ i -> g (inr i) q)))) } ;
+
+  -- if-then-else with 0
+  ite-add : (b : Bool) -> (x y : A) -> Id A (DJ.ite A b (add x y) o) (add (DJ.ite A b x o) (DJ.ite A b y o)) = split {
+    true -> \ x y -> refl (add x y) ; false -> \ x y -> symH (unitr o) } ;
+  ite-sum (c : FT) (g : El c -> A) : (b : Bool) -> Id A (DJ.ite A b (sum c g) o) (sum c (\ i -> DJ.ite A b (g i) o)) = split {
+    true -> refl (sum c g) ; false -> symH (sum-zero c) } ;
+  ite-ite (x : A) : (b1 b2 : Bool) -> Id A (DJ.ite A b1 (DJ.ite A b2 x o) o) (DJ.ite A b2 (DJ.ite A b1 x o) o) = split {
+    true -> \ b2 -> refl (DJ.ite A b2 x o) ; false -> \ b2 -> symH (DJ.ite-same A o b2) } ;
+
+  -- the delta rule
+  delta-l (a b : FT) (da : (w : El a) -> (h : El a -> A) -> Id A (sum a (\ i -> DJ.ite A (eqEl a i w) (h i) o)) (h w))
+    (w : El a) (h : El (fplus a b) -> A)
+    : Id A (sum (fplus a b) (\ i -> DJ.ite A (eqEl (fplus a b) i (inl w)) (h i) o)) (h (inl w)) = transH
+    (add-cong (sum a (\ i -> DJ.ite A (eqEl a i w) (h (inl i)) o)) (h (inl w)) (sum b (\ i -> o)) o
+       (da w (\ i -> h (inl i))) (sum-zero b))
+    (unitr (h (inl w))) ;
+  delta-r (a b : FT) (db : (w : El b) -> (h : El b -> A) -> Id A (sum b (\ i -> DJ.ite A (eqEl b i w) (h i) o)) (h w))
+    (w : El b) (h : El (fplus a b) -> A)
+    : Id A (sum (fplus a b) (\ i -> DJ.ite A (eqEl (fplus a b) i (inr w)) (h i) o)) (h (inr w)) = transH
+    (add-cong (sum a (\ i -> o)) o (sum b (\ i -> DJ.ite A (eqEl b i w) (h (inr i)) o)) (h (inr w))
+       (sum-zero a) (db w (\ i -> h (inr i))))
+    (Torsor[j].AbL[G].unitl (h (inr w))) ;
+  delta : (c : FT) -> (w : El c) -> (h : El c -> A) -> Id A (sum c (\ i -> DJ.ite A (eqEl c i w) (h i) o)) (h w) = split {
+    fzero -> \ w h -> absurd (Id A o (h w)) w ;
+    fone -> \ w h -> apH h (isTop tt w) ;
+    fplus a b | da db -> split { inl w -> delta-l a b da w ; inr w -> delta-r a b db w } } ;
+  -- the same with the equality the other way round
+  delta' (c : FT) (w : El c) (h : El c -> A) : Id A (sum c (\ i -> DJ.ite A (eqEl c w i) (h i) o)) (h w) = transH
+    (sum-ext c (\ i -> DJ.ite A (eqEl c w i) (h i) o) (\ i -> DJ.ite A (eqEl c i w) (h i) o)
+       (\ i -> apH (\ bb -> DJ.ite A bb (h i) o) (eqEl-sym c w i)))
+    (delta c w h) ;
+} ;
