@@ -4,7 +4,7 @@ filters of domain/mltt.  domain/mltt (owned by another session) is
 imported READ-ONLY through symlinks; nothing there is edited.  No
 parameters, no postulates.  Not committed.
 
-CHECK.  seg All.seg: 1353 declarations (with domain/mltt), 0 failed, 0.22 s.
+CHECK.  seg All.seg: 1374 declarations (with domain/mltt), 0 failed, 0.22 s.
 
 Proj.seg (156 lines)
   Meets P f      f is a meet of elements satisfying P
@@ -58,4 +58,8 @@ step 4; uncommitted there at the time of writing).
                every argument filter V, in appF W V)
   The right sides quantify over filters, so they are in U l+.
 
-Not done: the paper's eta example (needs a base type; MLTT_eta has none).
+EtaU.seg (45 lines): the paper's example after Corollary 4 (El (N -> N)
+= continuous functions El N -> El N) with U in place of N.  UU = Pi U
+(x |-> U) is a type (UU-type); for W consistent, EtaU[W, cW]:
+  eta       p UU W = lam U (x |-> p U (W x))   (ProjLam at A = G x = U)
+  fix-to, fix-from   HasTy W UU iff W = lam U (x |-> p U (W x)).
