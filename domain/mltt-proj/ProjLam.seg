@@ -1,0 +1,99 @@
+-- ProjLam.seg: Coquand-Huber Prop. 1, the clause of a function (a
+-- generalised eta):
+--
+--   p (Pi A G) W = lam A (x |-> p (G x) (app W (prin x)))
+--
+-- for G antitone; the inclusion (>=) also needs A and every G x to be types
+-- and W, G x consistent (as for the semantics of terms).
+--
+-- lam-app-sub: lam A (x |-> app W (prin x)) <= W for every W: an entry
+-- x -> v with g <= x' -> v, g in W and x <= x' gives x -> v in W.
+-- (<=)  An element of p (Pi A G) W is above a meet of elements w of W with
+-- w : c, c in Pi A G; by generation such a w is om-like or a lambda f of
+-- type Pi(A1, phi1) with A1 in A.  Each entry x -> v of f has x : A1 and
+-- v : y with phi1 <= x -> y, so y is in G x (selection lemma), and v is
+-- in app W (prin x) with w itself as the function: x -> v is an entry of
+-- the right side.
+-- (>=)  By the rule lam (Sound.sound-lam), an element of the right side is
+-- above an element of it of a type in Pi A G; that element is in W by
+-- lam-app-sub.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Filter[l] ; open Sound[l] ; open Proj[l] ; open ProjPi[l] ;
+
+-- the application of W to x, for every x
+appAt (W : Filt) (x : Ty) : Filt = appF W (prin x) ;
+
+-- lam A (x |-> app W (prin x)) <= W
+lam-app-entry (A W : Filt) (f0 x v : Ty) (r : EntR A (appAt W) x v) (le : Le f0 (arr x v)) : W.mem (arr x v) =
+  W.fup r.2.g (arr x v) (le-trans r.2.g (arr r.2.x v) (arr x v) r.2.le (le-arr r.2.x x v v r.2.inx (le-refl v))) r.2.ing ;
+
+lam-app-sub (A W : Filt) : Incl (lamF A (appAt W)) W =
+  \ t w -> W.fup w.f t w.le
+    (ents-in W (EntR A (appAt W)) w.f (lam-app-entry A W w.f) w.f w.ents (le-refl w.f)) ;
+
+-- p B Y is of type B, for Y consistent and B a type
+proj-hasty (B Y : Filt) (cY : ConsF Y) (hB : TyU B) : HasTy (projF B Y) B =
+  Collapse[B, projF B Y, \ t m -> cY t (proj-sub B Y t m), hB].proj-hasTy (proj-idem2 B Y) ;
+
+module LamClause (A : Filt) (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x')) (W : Filt) {
+
+  P : Filt = piF A G ;
+  H (x : Ty) : Filt = projF (G x) (appAt W x) ;
+  lhs : Filt = projF P W ;
+  rhs : Filt = lamF A H ;
+
+  -- (<=), at one entry x -> v of a lambda f below w, of type Pi(A1, phi1)
+  entry (w f A1 phi1 : Ty) (inW : W.mem w) (lw : Le w f) (pin : PiIn A G A1 phi1)
+      (x v : Ty) (r : ValR A1 phi1 x v) (le : Le f (arr x v)) : EntR A H x v =
+    (struct { a = A1 ; ina = pin.inA1 ; tp = r.tx },
+     proj-typed (G x) (appAt W x) v
+       (struct { inX = struct { g = w ; x = x ; ing = inW ; inx = le-refl x ; le = le-trans w f (arr x v) lw le } ;
+                 ty = struct { a = r.y ; ina = yin ; tp = r.tv } }))
+    where {
+      i : InvArr pin.b x r.y = inv-arr pin.b x r.y (le-trans pin.b phi1 (arr x r.y) pin.leb r.le) ;
+      yin : (G x).mem r.y =
+        (G x).fup i.2.1 r.y i.2.2.2.2
+          (Entries[G, anti, EntR A G, \ y u q -> q.2].sel pin.b i.1 i.2.1 i.2.2.1 pin.ents x i.2.2.2.1) ; } ;
+
+  -- (<=), one element w of W of a type c in Pi A G, by its shape
+  at-shape (w c : Ty) (inW : W.mem w) (inP : P.mem c) : Shape w c -> rhs.mem w = split {
+    sh-bot e h -> rhs.fup om w e rhs.fom ;
+    sh-univ e1 e2 -> absurd (rhs.mem w) (pi-univ-clash A G c e2.1 inP) ;
+    sh-pi A' phi e1 e2 h1 h2 cp -> absurd (rhs.mem w) (pi-univ-clash A G c e2.1 inP) ;
+    sh-lam A1 phi1 f e1 e2 h1 h2 cf ->
+      struct { f = f ; le = e1.2 ;
+               ents = lift-ents (ValR A1 phi1) (EntR A H) f
+                        (entry w f A1 phi1 inW e1.1 (pi-in-pi A G c A1 phi1 e2.1 inP)) f
+                        (ent-vals f A1 phi1 h2) (le-refl f) } } ;
+
+  at-typed (w : Ty) (h : TIn P W w) : rhs.mem w = at-shape w h.ty.a h.inX h.ty.ina (shape w h.ty.a h.ty.tp) ;
+
+  sub1 : Incl lhs rhs = \ t q -> rhs.fup q.f t q.le (meets-in rhs (TIn P W) at-typed q.f q.ms) ;
+
+  -- (>=)
+  module Back (hA : TyU A) (hG : (x : Ty) -> TyIn A x -> TyU (G x))
+      (gc : (x : Ty) -> Cons x -> ConsF (G x)) (cW : ConsF W) {
+
+    capp (x : Ty) (cx : Cons x) : ConsF (appAt W x) = appF-cons W (prin x) cW (prin-cons x cx) ;
+    hH (x : Ty) (h : TyIn A x) : HasTy (H x) (G x) =
+      proj-hasty (G x) (appAt W x) (capp x (tp-cons x h.a h.tp)) (hG x h) ;
+    antiH (x x' : Ty) (le : Le x' x) : Incl (H x) (H x') =
+      proj-mono (G x) (G x') (appAt W x) (appAt W x') (anti x x' le)
+        (appF-mono W W (prin x) (prin x') (incl-refl W) (prin-anti x' x le)) ;
+    gcH (x : Ty) (cx : Cons x) : ConsF (H x) = \ t m -> capp x cx t (proj-sub (G x) (appAt W x) t m) ;
+    cR : ConsF rhs = OpCons[A, H, antiH, gcH].lamc ;
+    cL : ConsF (lamF A G) = OpCons[A, G, anti, gc].lamc ;
+
+    rhs-in : Incl rhs W =
+      incl-trans rhs (lamF A (appAt W)) W
+        (lamF-mono A A H (appAt W) (incl-refl A) (\ x h -> proj-sub (G x) (appAt W x))) (lam-app-sub A W) ;
+
+    sub2 : Incl rhs lhs =
+      \ t m -> enl-proj P W t (enl-incl rhs W P rhs-in t (sound-lam A H G hA hH hG cR cL t m)) ;
+
+    -- Coquand-Huber Prop. 1: p (Pi A G) W = lam A (x |-> p (G x) (W x))
+    eq : FEq lhs rhs = (sub1, sub2) ;
+  } ;
+} ;

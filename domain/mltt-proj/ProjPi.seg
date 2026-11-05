@@ -1,0 +1,136 @@
+-- ProjPi.seg: Coquand-Huber Prop. 1, the clause of a product at the
+-- universe:
+--
+--   p U (Pi A G) = Pi (p U A) (x |-> p U (G x))
+--
+-- for G antitone, A consistent and G x consistent at consistent x (as for
+-- the semantics of terms: Sem.fam-anti, sem-cons).
+--
+-- (<=)  An element of p U (Pi A G) is above a meet of elements w of
+-- Pi A G with w : U; it suffices to treat one.  By generation, w is om-like
+-- or w = Pi(A', phi) with A' : U and phi a family of entries x -> v with
+-- x : A', v : y and (om -> U) <= x -> y.  Then a <= A', b <= phi for the
+-- pi a b <= w given by Pi A G, so A' is in A, hence in p U A; U <= y (the
+-- codomains of om -> U are above U: asel-cod), so v : U; and v is in G x
+-- by the selection lemma (Entries.sel) at b <= phi <= x -> v.
+-- (>=)  The right side is a product of a type and of a family of types
+-- (p U of a consistent filter is a type: Proj.Collapse), so by the rule Pi
+-- (Sound.sound-pi) its elements are above elements of it of type U, which
+-- are in Pi A G (p U is below the identity).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Types[l] ; open Consistency[l] ; open Typing[l] ;
+open Filter[l] ; open Sound[l] ; open Proj[l] ;
+
+------------------------------------------------------------------------
+-- the codomains of om -> U are above U
+
+CodU : Ty -> U l = split {
+  om -> Top ; univ -> Top ; pi s t -> Top ;
+  arr a b -> Le univ b ;
+  meet r1 r2 | c1 c2 -> c1 * c2 } ;
+
+asel-cod : (r d t : Ty) -> ASel r d t -> CodU r -> Le univ t = split {
+  as-none r -> \ c -> le-om univ ;
+  as-here a b -> \ c -> c ;
+  as-l r1 r2 d t h | rh -> \ c -> rh c.1 ;
+  as-r r1 r2 d t h | rh -> \ c -> rh c.2 ;
+  as-meet r d1 t1 d2 t2 h1 h2 | r1 r2 -> \ c -> le-meet univ t1 t2 (r1 c) (r2 c) } ;
+
+-- (om -> U) <= x -> y gives U <= y
+univ-cod (x y : Ty) (le : Le (arr om univ) (arr x y)) : Le univ y =
+  le-trans univ i.2.1 y (asel-cod (arr om univ) i.1 i.2.1 i.2.2.1 (le-refl univ)) i.2.2.2.2
+  where { i : InvArr (arr om univ) x y = inv-arr (arr om univ) x y le ; } ;
+
+------------------------------------------------------------------------
+-- the entries of a typed family, with their values
+
+ValR (A phi x v : Ty) : U l = sig { tx : Tp (el x A) ; y : Ty ; le : Le phi (arr x y) ; tv : Tp (el v y) } ;
+ValsQ (f A phi : Ty) : U l = EntS (ValR A phi) f ;
+
+ent-vals-by : (J : Form) -> Tp J -> ByForm ElTop ValsQ J = split {
+  t-bot u a e h -> tt ;
+  t-univ u a e1 e2 -> tt ;
+  t-pi u a A phi e1 e2 h1 h2 c -> tt ;
+  t-lam u a A phi f e1 e2 h1 h2 c -> tt ;
+  en-om A phi -> es-om ;
+  en-arr x v y A phi h1 le h2 -> es-arr x v (struct { tx = h1 ; y = y ; le = le ; tv = h2 }) ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> es-meet f1 f2 r1 r2 } ;
+
+ent-vals (f A phi : Ty) (h : Tp (ent f A phi)) : EntS (ValR A phi) f = ent-vals-by (ent f A phi) h ;
+
+-- entries of a part of f0, knowing that f0 is below each of them
+lift-ents (R R' : Ty -> Ty -> U l) (f0 : Ty) (h : (x v : Ty) -> R x v -> Le f0 (arr x v) -> R' x v) :
+    (f : Ty) -> EntS R f -> Le f0 f -> EntS R' f = split {
+  es-om -> \ le -> es-om ;
+  es-arr x v r -> \ le -> es-arr x v (h x v r le) ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> \ le -> es-meet f1 f2 (r1 (le-split-l f0 f1 f2 le)) (r2 (le-split-r f0 f1 f2 le)) } ;
+
+-- an inclusion moves the element side of an enlargement
+enl-incl (A A' B : Filt) (i : Incl A A') (t : Ty) (e : Enl A B t) : Enl A' B t =
+  struct { v = e.v ; below = e.below ; inA = i e.v e.inA ; c = e.c ; inB = e.inB ; tp = e.tp } ;
+
+-- a type of U is in p U X when it is in X
+proj-univ-in (X : Filt) (a : Ty) (h : X.mem a) (ha : Tp (el a univ)) : (projF univF X).mem a =
+  proj-typed univF X a (struct { inX = h ; ty = struct { a = univ ; ina = univ-in-univF ; tp = ha } }) ;
+
+------------------------------------------------------------------------
+
+module PiClause (A : Filt) (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x'))
+    (cA : ConsF A) (gc : (x : Ty) -> Cons x -> ConsF (G x)) {
+
+  pA : Filt = projF univF A ;
+  pG (x : Ty) : Filt = projF univF (G x) ;
+  rhs : Filt = piF pA pG ;
+  lhs : Filt = projF univF (piF A G) ;
+
+  -- (<=), at one entry of the family phi of a w = Pi(A', phi) above pi a b
+  entry (A' phi b : Ty) (inA' : pA.mem A') (ents : EntS (EntR A G) b) (lb : Le b phi)
+      (x v : Ty) (r : ValR A' (arr om univ) x v) (le : Le phi (arr x v)) : EntR pA pG x v =
+    (struct { a = A' ; ina = inA' ; tp = r.tx },
+     proj-univ-in (G x) v
+       ((G x).fup i.2.1 v i.2.2.2.2
+          (Entries[G, anti, EntR A G, \ y u q -> q.2].sel b i.1 i.2.1 i.2.2.1 ents x i.2.2.2.1))
+       (tp-univ v r.y r.tv (univ-cod x r.y r.le)))
+    where { i : InvArr b x v = inv-arr b x v (le-trans b phi (arr x v) lb le) ; } ;
+
+  -- (<=), one element w of Pi A G with w : U, by its shape
+  at-pi (w : Ty) (p : PiW A G w) : Shape w univ -> rhs.mem w = split {
+    sh-bot e h -> inl e ;
+    sh-univ e1 e2 -> absurd (rhs.mem w) (pi-not-univ p.a p.b (le-trans (pi p.a p.b) w univ p.le e1.1)) ;
+    sh-pi A' phi e1 e2 h1 h2 c ->
+      inr (struct { a = A' ; b = phi ; le = e1.2 ; ina = inA' ;
+                    ents = lift-ents (ValR A' (arr om univ)) (EntR pA pG) phi
+                             (entry A' phi p.b inA' p.ents j.2) phi (ent-vals phi A' (arr om univ) h2) (le-refl phi) })
+      where {
+        j : Le p.a A' * Le p.b phi = pi-inj p.a p.b A' phi (le-trans (pi p.a p.b) w (pi A' phi) p.le e1.1) ;
+        inA' : pA.mem A' = proj-univ-in A A' (A.fup p.a A' j.1 p.ina) h1 ; } ;
+    sh-lam A1 phi1 f e1 e2 h1 h2 c -> absurd (rhs.mem w) (univ-not-pi A1 phi1 e2.1) } ;
+
+  at-elem (w : Ty) : (piF A G).mem w -> Tp (el w univ) -> rhs.mem w = split {
+    inl e -> \ hu -> inl e ;
+    inr p -> \ hu -> at-pi w p (shape w univ hu) } ;
+
+  at-typed (w : Ty) (h : TIn univF (piF A G) w) : rhs.mem w = at-elem w h.inX (tp-univ w h.ty.a h.ty.tp h.ty.ina) ;
+
+  sub1 : Incl lhs rhs = \ t q -> rhs.fup q.f t q.le (meets-in rhs (TIn univF (piF A G)) at-typed q.f q.ms) ;
+
+  -- (>=)
+  cpA : ConsF pA = \ t m -> cA t (proj-sub univF A t m) ;
+  hpA : TyU pA = Collapse[univF, pA, cpA, univ-hasty].proj-hasTy (proj-idem2 univF A) ;
+  gcP (x : Ty) (cx : Cons x) : ConsF (pG x) = \ t m -> gc x cx t (proj-sub univF (G x) t m) ;
+  hpG (x : Ty) (h : TyIn pA x) : TyU (pG x) =
+    Collapse[univF, pG x, gcP x (tp-cons x h.a h.tp), univ-hasty].proj-hasTy (proj-idem2 univF (G x)) ;
+  antiP (x x' : Ty) (le : Le x' x) : Incl (pG x) (pG x') =
+    proj-mono univF univF (G x) (G x') (incl-refl univF) (anti x x' le) ;
+  cP : ConsF rhs = OpCons[pA, pG, antiP, gcP].pic cpA ;
+
+  rhs-in : Incl rhs (piF A G) =
+    piF-mono pA A pG G (proj-sub univF A) (\ x h -> proj-sub univF (G x)) ;
+
+  sub2 : Incl rhs lhs =
+    \ t m -> enl-proj univF (piF A G) t (enl-incl rhs (piF A G) univF rhs-in t (sound-pi pA pG hpA hpG cP t m)) ;
+
+  -- Coquand-Huber Prop. 1: p U (Pi A G) = Pi (p U A) (p U o G)
+  eq : FEq lhs rhs = (sub1, sub2) ;
+} ;
