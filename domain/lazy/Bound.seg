@@ -1,0 +1,203 @@
+-- Bound.seg: a memory bounded by N, and freshness of N.
+--
+-- Funarg.Fresh mu a asks that a is free and occurs in no cell of mu.  In a
+-- run of the evaluator this is discharged by an invariant: mu is bounded
+-- by N when every component of a cell (alists included) is below N and
+-- every cell at or above N is free.  Then
+--
+--   * N is fresh in mu (bounded-fresh): mu N is free, and N, not being
+--     below N, occurs in no cell;
+--   * writing at p < N a cell whose components are below N keeps the bound
+--     (bounded-upd);
+--   * allocating at N a cell whose components are below N gives the bound
+--     N+1 (bounded-alloc);
+--   * a memory given by a list of cells, all below the length N of the
+--     list, is bounded by N (bounded-list).
+--
+-- So allocation at the first free address, as in the paper, is always
+-- fresh: this is the structural content of "no dangling pointers".  It is
+-- not consistency of the memory.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open Syntax[l] ; open Funarg[l] ;
+
+------------------------------------------------------------------------
+-- p < N, as a Boolean
+
+ltB (p N : Nat) : Bool = leb (suc p) N ;
+
+lt-zero : (p : Nat) -> IsT (ltB p zero) -> Empty = split { zero -> \ h -> h ; suc p -> \ h -> h } ;
+
+-- below N means different from N
+lt-ne : (p N : Nat) -> IsT (ltB p N) -> IsF (eqN p N) = split {
+  zero -> split { zero -> \ h -> efq h ; suc N -> \ h -> tt } ;
+  suc p | r -> split { zero -> \ h -> efq h ; suc N -> \ h -> r N h } } ;
+
+lt-irr : (N : Nat) -> IsF (ltB N N) = split { zero -> tt ; suc N | r -> r } ;
+
+lt-suc : (p N : Nat) -> IsT (ltB p N) -> IsT (ltB p (suc N)) = split {
+  zero -> \ N h -> tt ;
+  suc p | r -> split { zero -> \ h -> efq h ; suc N -> \ h -> r N h } } ;
+
+lt-self : (N : Nat) -> IsT (ltB N (suc N)) = split { zero -> tt ; suc N | r -> r } ;
+
+-- below N+1 and different from N means below N
+lt-suc-inv : (p N : Nat) -> IsF (eqN p N) -> IsT (ltB p (suc N)) -> IsT (ltB p N) = split {
+  zero -> split { zero -> \ ne h -> efq ne ; suc N -> \ ne h -> tt } ;
+  suc p | r -> split { zero -> \ ne h -> efq (lt-zero p h) ; suc N -> \ ne h -> r N ne h } } ;
+
+nlt-suc-case (p N : Nat) (f : IsF (ltB p (suc N))) : Plus (IsT (ltB p N)) (IsF (ltB p N)) -> IsF (ltB p N) = split {
+  inl h -> efq (IsT-IsF (ltB p (suc N)) (lt-suc p N h) f) ;
+  inr g -> g } ;
+
+nlt-suc (p N : Nat) (f : IsF (ltB p (suc N))) : IsF (ltB p N) = nlt-suc-case p N f (bool-dec (ltB p N)) ;
+
+------------------------------------------------------------------------
+-- Boolean conjunction
+
+and-l : (x y : Bool) -> IsT (and x y) -> IsT x = split { true -> \ y h -> tt ; false -> \ y h -> efq h } ;
+and-r : (x y : Bool) -> IsT (and x y) -> IsT y = split { true -> \ y h -> h ; false -> \ y h -> efq h } ;
+andI : (x y : Bool) -> IsT x -> IsT y -> IsT (and x y) = split { true -> \ y hx hy -> hy ; false -> \ y hx hy -> efq hx } ;
+
+------------------------------------------------------------------------
+-- the components of a cell are below N
+
+belowTh (N : Nat) : Alist -> Bool = split {
+  anil -> true ;
+  acons x q th | r -> and (ltB q N) r } ;
+
+below (N : Nat) : Cell -> Bool = split {
+  evar x -> true ; equote a -> true ;
+  econs p q -> and (ltB p N) (ltB q N) ;
+  ecar p -> ltB p N ; ecdr p -> ltB p N ; eatom p -> ltB p N ;
+  eeq p q -> and (ltB p N) (ltB q N) ;
+  eif p q r -> and (ltB p N) (and (ltB q N) (ltB r N)) ;
+  eapp p q -> and (ltB p N) (ltB q N) ;
+  elam x p -> ltB p N ; elabel x p -> ltB p N ;
+  efunarg p th -> and (ltB p N) (belowTh N th) ;
+  eplus p q -> and (ltB p N) (ltB q N) ;
+  efree -> true } ;
+
+-- two components below N
+ne2 (p q N : Nat) (h : IsT (and (ltB p N) (ltB q N))) : IsF (eqN p N) * IsF (eqN q N) =
+  (lt-ne p N (and-l (ltB p N) (ltB q N) h), lt-ne q N (and-r (ltB p N) (ltB q N) h)) ;
+
+suc2 (p q N : Nat) (h : IsT (and (ltB p N) (ltB q N))) : IsT (and (ltB p (suc N)) (ltB q (suc N))) =
+  andI (ltB p (suc N)) (ltB q (suc N)) (lt-suc p N (and-l (ltB p N) (ltB q N) h)) (lt-suc q N (and-r (ltB p N) (ltB q N) h)) ;
+
+belowTh-notocc (N : Nat) : (th : Alist) -> IsT (belowTh N th) -> NotOccTh N th = split {
+  anil -> \ h -> tt ;
+  acons x q th | r -> \ h -> (lt-ne q N (and-l (ltB q N) (belowTh N th) h), r (and-r (ltB q N) (belowTh N th) h)) } ;
+
+belowTh-suc (N : Nat) : (th : Alist) -> IsT (belowTh N th) -> IsT (belowTh (suc N) th) = split {
+  anil -> \ h -> tt ;
+  acons x q th | r -> \ h -> andI (ltB q (suc N)) (belowTh (suc N) th)
+      (lt-suc q N (and-l (ltB q N) (belowTh N th) h)) (r (and-r (ltB q N) (belowTh N th) h)) } ;
+
+-- a cell below N does not contain N
+below-notocc (N : Nat) : (c : Cell) -> IsT (below N c) -> NotOcc N c = split {
+  evar x -> \ h -> tt ; equote a -> \ h -> tt ;
+  econs p q -> ne2 p q N ;
+  ecar p -> lt-ne p N ; ecdr p -> lt-ne p N ; eatom p -> lt-ne p N ;
+  eeq p q -> ne2 p q N ;
+  eif p q r -> \ h -> (lt-ne p N (and-l (ltB p N) (and (ltB q N) (ltB r N)) h),
+                       ne2 q r N (and-r (ltB p N) (and (ltB q N) (ltB r N)) h)) ;
+  eapp p q -> ne2 p q N ;
+  elam x p -> lt-ne p N ; elabel x p -> lt-ne p N ;
+  efunarg p th -> \ h -> (lt-ne p N (and-l (ltB p N) (belowTh N th) h), belowTh-notocc N th (and-r (ltB p N) (belowTh N th) h)) ;
+  eplus p q -> ne2 p q N ;
+  efree -> \ h -> tt } ;
+
+-- below N gives below N+1
+below-suc (N : Nat) : (c : Cell) -> IsT (below N c) -> IsT (below (suc N) c) = split {
+  evar x -> \ h -> tt ; equote a -> \ h -> tt ;
+  econs p q -> suc2 p q N ;
+  ecar p -> lt-suc p N ; ecdr p -> lt-suc p N ; eatom p -> lt-suc p N ;
+  eeq p q -> suc2 p q N ;
+  eif p q r -> \ h -> andI (ltB p (suc N)) (and (ltB q (suc N)) (ltB r (suc N)))
+      (lt-suc p N (and-l (ltB p N) (and (ltB q N) (ltB r N)) h)) (suc2 q r N (and-r (ltB p N) (and (ltB q N) (ltB r N)) h)) ;
+  eapp p q -> suc2 p q N ;
+  elam x p -> lt-suc p N ; elabel x p -> lt-suc p N ;
+  efunarg p th -> \ h -> andI (ltB p (suc N)) (belowTh (suc N) th)
+      (lt-suc p N (and-l (ltB p N) (belowTh N th) h)) (belowTh-suc N th (and-r (ltB p N) (belowTh N th) h)) ;
+  eplus p q -> suc2 p q N ;
+  efree -> \ h -> tt } ;
+
+------------------------------------------------------------------------
+-- bounded memories
+
+-- the condition at one address p holding the cell c
+BAt (N p : Nat) (c : Cell) : U l = (IsT (ltB p N) -> IsT (below N c)) * (IsF (ltB p N) -> Id Cell c efree) ;
+
+Bounded (N : Nat) (mu : Nat -> Cell) : U l = (p : Nat) -> BAt N p (mu p) ;
+
+fresh-at (N : Nat) (mu : Nat -> Cell) (b : Bounded N mu) (p : Nat) :
+    Plus (IsT (ltB p N)) (IsF (ltB p N)) -> NotOcc N (mu p) = split {
+  inl h -> below-notocc N (mu p) ((b p).1 h) ;
+  inr h -> subst Cell (NotOcc N) efree (mu p) (sym Cell (mu p) efree ((b p).2 h)) tt } ;
+
+-- N is fresh in a memory bounded by N
+bounded-fresh (N : Nat) (mu : Nat -> Cell) (b : Bounded N mu) : Fresh mu N =
+  ((b N).2 (lt-irr N), \ p -> fresh-at N mu b p (bool-dec (ltB p N))) ;
+
+-- moving the condition along an equation of cells, and along q = p
+bat-cell (N q : Nat) (c d : Cell) (e : Id Cell c d) (h : BAt N q c) : BAt N q d = subst Cell (BAt N q) c d e h ;
+
+bat-addr (N : Nat) (mu : Nat -> Cell) (p q : Nat) (e : Id Nat p q) (h : BAt N p (mu p)) : BAt N q (mu q) =
+  subst Nat (\ z -> BAt N z (mu z)) p q e h ;
+
+upd-case (N : Nat) (mu : Nat -> Cell) (p : Nat) (c : Cell) (b : Bounded N mu)
+    (hp : IsT (ltB p N)) (hc : IsT (below N c)) (q : Nat) :
+    Plus (IsT (eqN q p)) (IsF (eqN q p)) -> BAt N q (upd mu p c q) = split {
+  inl e -> bat-addr N (upd mu p c) p q (sym Nat q p (eqN-sound q p e))
+      (bat-cell N p c (upd mu p c p) (sym Cell (upd mu p c p) c (upd-hit mu p c))
+        (\ h -> hc, \ f -> efq (IsT-IsF (ltB p N) hp f))) ;
+  inr ne -> bat-cell N q (mu q) (upd mu p c q) (sym Cell (upd mu p c q) (mu q) (upd-miss mu p c q ne)) (b q) } ;
+
+-- writing below the bound
+bounded-upd (N : Nat) (mu : Nat -> Cell) (p : Nat) (c : Cell) (b : Bounded N mu)
+    (hp : IsT (ltB p N)) (hc : IsT (below N c)) : Bounded N (upd mu p c) =
+  \ q -> upd-case N mu p c b hp hc q (bool-dec (eqN q p)) ;
+
+-- the condition at q /= N passes from N to N+1
+bat-suc (N q : Nat) (c : Cell) (ne : IsF (eqN q N)) (h : BAt N q c) : BAt (suc N) q c =
+  (\ k -> below-suc N c (h.1 (lt-suc-inv q N ne k)), \ f -> h.2 (nlt-suc q N f)) ;
+
+alloc-case (N : Nat) (mu : Nat -> Cell) (c : Cell) (b : Bounded N mu) (hc : IsT (below N c)) (q : Nat) :
+    Plus (IsT (eqN q N)) (IsF (eqN q N)) -> BAt (suc N) q (upd mu N c q) = split {
+  inl e -> bat-addr (suc N) (upd mu N c) N q (sym Nat q N (eqN-sound q N e))
+      (bat-cell (suc N) N c (upd mu N c N) (sym Cell (upd mu N c N) c (upd-hit mu N c))
+        (\ h -> below-suc N c hc, \ f -> efq (IsT-IsF (ltB N (suc N)) (lt-self N) f))) ;
+  inr ne -> bat-cell (suc N) q (mu q) (upd mu N c q) (sym Cell (upd mu N c q) (mu q) (upd-miss mu N c q ne))
+      (bat-suc N q (mu q) ne (b q)) } ;
+
+-- allocating at the bound
+bounded-alloc (N : Nat) (mu : Nat -> Cell) (c : Cell) (b : Bounded N mu) (hc : IsT (below N c)) :
+    Bounded (suc N) (upd mu N c) =
+  \ q -> alloc-case N mu c b hc q (bool-dec (eqN q N)) ;
+
+------------------------------------------------------------------------
+-- memories given by a list of cells
+
+data Cells = cnil | ccons (c : Cell) (cs : Cells) ;
+
+nth : Cells -> Nat -> Cell = split {
+  cnil -> \ n -> efree ;
+  ccons c cs | r -> split { zero -> c ; suc n -> r n } } ;
+
+len : Cells -> Nat = split { cnil -> zero ; ccons c cs | r -> suc r } ;
+
+allBelow (N : Nat) : Cells -> Bool = split {
+  cnil -> true ;
+  ccons c cs | r -> and (below N c) r } ;
+
+-- the cells of the list are below N; the address is compared with the length
+list-at (N : Nat) : (cs : Cells) -> (p : Nat) -> IsT (allBelow N cs) ->
+    (IsT (ltB p (len cs)) -> IsT (below N (nth cs p))) * (IsF (ltB p (len cs)) -> Id Cell (nth cs p) efree) = split {
+  cnil -> \ p h -> (\ k -> efq (lt-zero p k), \ f -> refl efree) ;
+  ccons c cs | r -> split {
+    zero -> \ h -> (\ k -> and-l (below N c) (allBelow N cs) h, \ f -> efq f) ;
+    suc p -> \ h -> r p (and-r (below N c) (allBelow N cs) h) } } ;
+
+bounded-list (cs : Cells) (h : IsT (allBelow (len cs) cs)) : Bounded (len cs) (nth cs) =
+  \ p -> list-at (len cs) cs p h ;

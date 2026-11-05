@@ -6,7 +6,8 @@ Status: implemented (5 November 2026), see §10.
 ## 1. Aim
 
 Add indexed inductive families, as in Coquand and Paulin-Mohring,
-*Inductively defined types* (COLOG-88, LNCS 417, 1990), keeping Unit's
+*Inductively defined types* (COLOG-88, LNCS 417, 1990), and Dybjer,
+*Inductive families* (Formal Aspects of Computing 6, 1994), keeping Unit's
 discipline: recursion only through the eliminators, written as `split`
 with recursive results; no unification, no pattern matching on `refl`,
 no mutual or nested types. Motivation: syntax indexed by scope, typing

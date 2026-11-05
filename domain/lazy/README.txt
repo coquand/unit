@@ -1,15 +1,15 @@
 domain/lazy: the lazy evaluator of Henderson and Morris ("A Lazy Evaluator",
 POPL 1976), by intersection types -- doc/lazy-intersection.tex in Unit, with
 indexed inductive families (doc/INDEXED.md).  No axioms, no Theory
-parameter, no postulates, no holes.  Not committed.
+parameter, no postulates, no holes.  Committed locally (df09d63, e6c280a).
 
 The Agda ~/DOMAIN/LAZY was used only for the syntax of Hyper-Pure LISP, the
 memory and the rules (Syntax/Heap, Syntax/Step) and for Example 4; its domain
 layer (finite elements, stage-stratified order, consistency proof) is
 replaced by the types of the note.
 
-CHECK.  ./segc domain/lazy all: 14 modules, 0 failed;
-seg All.seg: 694 declarations, 0 failed, 0.09 s.  Max --opened: 30
+CHECK.  ./segc domain/lazy all: 16 modules, 0 failed;
+seg All.seg: 823 declarations, 0 failed, 0.10 s.  Max --opened: 30
 (Example4.round2: memory lookups); outside Example4, 18 (Step.step-inv).
 Agda 2.9.0 on ~/DOMAIN/LAZY (copy in the scratchpad, clean, one run):
 2.2 s real, --profile=modules total 2,085 ms (ObsConsistent 806 ms,
@@ -27,7 +27,10 @@ FILES (lines)                       note / Agda
   Funarg.seg     262  Theorem 4.1: [Fc]/[Fd] = allocation + rewrite
   Step.seg        82  Step (Agda Syntax/Step + st-F), Theorem 4.1 (step-inv, alloc-inv)
   Eval.seg       322  section 5: Ev (the procedure Eval), Corollary 5.1
-  Example4.seg   132  Example 4 (Agda Example4)
+  Bound.seg      203  memories bounded by N: N is fresh (bounded-fresh), kept by
+                      rewrites below N and allocation at N; list memories
+  Example4.seg   128  Example 4 (Agda Example4): the observation alpha : 1
+  Example4Run.seg 217 Example 4: the paper's run, example4-halts
   Base.seg, Prelude.seg: symlinks to ../../core.
 
 MAIN STATEMENTS
@@ -62,6 +65,9 @@ MAIN STATEMENTS
       initial memory, through two unfoldings of the LABEL, round1/round2);
       example4-atom : Ev mu zero nu -> Id Cell (nu zero) (equote a) -> Id Atom a (num n1);
       example4-not-pair, example4-not-fun.
+  Example 4, the run (Example4Run): example4-halts :
+      (nu : Nat -> Cell) * (Ev mu zero nu * Id Cell (nu zero) (equote (num n1))).
+  Freshness (Bound): bounded-fresh (N mu) : Bounded N mu -> Fresh mu N.
 
 INDEXED FAMILIES
   Le, Sel, PSel, ASel, Les (2-3 indices), Lookup (alist, variable, address),
@@ -140,8 +146,13 @@ CORRECTIONS / DEVIATIONS WITH RESPECT TO THE NOTE (now incorporated in the note)
     copies are of evaluated cells (values), so no allocation hits it.  The
     statements hold in every environment, not only the empty one.
  9. Example 4: the observation derivation (as in the Agda) and its
-    consequences through Corollary 5.1; the paper's two-page evaluator run
-    (a concrete Ev derivation with fresh-cell proofs) is NOT formalised.
+    consequences through Corollary 5.1, and the paper's run
+    (Example4Run.example4-run : Ev mu 0 h21, h21 0 = (QUOTE 1) by refl;
+    14 allocations, 21 rewrites, ported from the trace of unit-indexed/lazy).
+    Each allocation is at the first free address and fresh by
+    Bound.bounded-fresh: the initial memory is bounded by 17 (bounded-list),
+    each rewrite writes a cell below the bound (bounded-upd), each
+    allocation raises it by one (bounded-alloc).
 10. Section 8 of the note: the observation relation is one indexed family,
     but the FUNARG premises ("for each binding") need a function field
     indexed by the bindings; rule instances are therefore separated from
