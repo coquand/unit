@@ -162,8 +162,9 @@ Owen Milner formulated the Sính invariant in homotopy type theory.
 - [`postnikov-morphisms-overview.pdf`](doc/postnikov-morphisms-overview.pdf):
   arbitrary pointed maps between Postnikov triples, the isomorphism of
   homotopy precategories, and both sphere arguments redone on the triple
-  side (David Wärn's strategy): a high-level account. The detailed proof,
-  with the declaration correspondence:
+  side (David Wärn's strategy): the mathematical argument, with at the end
+  what is formalised. The detailed proof, with the declaration
+  correspondence:
   [`postnikov-morphisms.pdf`](doc/postnikov-morphisms.pdf).
 - [`zmt-proof.pdf`](doc/zmt-proof.pdf): Zariski's main theorem by
   finite section lifting, and its formalisation;
