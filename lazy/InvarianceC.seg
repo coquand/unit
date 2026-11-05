@@ -1,0 +1,120 @@
+-- The two projection rewrite rules preserve every observation.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ;
+open Transfer[l] ; open ObsGeneration[l] ; open ObsProducts[l] ;
+open SameCell[l] ; open UpdateTransfer[l] ;
+
+ProjectionExpr (nu : Heap) (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote c -> Top ;
+  econs p q -> Top ;
+  ecar p -> (x y : Addr) -> Id (Maybe Expr) (nu p) (just (econs x y)) -> Obs nu x rho a ;
+  ecdr p -> (x y : Addr) -> Id (Maybe Expr) (nu p) (just (econs x y)) -> Obs nu y rho a ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+ProjectionResult (nu : Heap) (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> ProjectionExpr nu rho a e } ;
+projectionAt (mu nu : Heap) (p : Addr) (rho : Env) (a : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : ProjectionExpr nu rho a e) :
+    ProjectionResult nu rho a (mu p) =
+  subst (Maybe Expr) (ProjectionResult nu rho a) (just e) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+projectionLocal (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu nu p rho a -> ProjectionResult nu rho a (mu p) = split {
+  atVar p rho x eq -> projectionAt mu nu p rho (lookupEnv rho x) (evar x) eq (tt) ;
+  atQuote p rho a eq -> projectionAt mu nu p rho (at a) (equote a) eq (tt) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> projectionAt mu nu p rho (prod a b) (econs p1 p2) eq (tt) ;
+  atCar p q rho a b eq o -> projectionAt mu nu p rho (a) (ecar q) eq (\ x y pair -> (consInversion nu q x y rho a b pair o).fst) ;
+  atCdr p q rho a b eq o -> projectionAt mu nu p rho (b) (ecdr q) eq (\ x y pair -> (consInversion nu q x y rho a b pair o).snd) ;
+  atAtomT p q rho eq o -> projectionAt mu nu p rho (at T) (eatom q) eq (tt) ;
+  atAtomNil p q rho eq o -> projectionAt mu nu p rho (at NIL) (eatom q) eq (tt) ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> projectionAt mu nu p rho (at T) (eeq p1 p2) eq (tt) ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> projectionAt mu nu p rho (at NIL) (eeq p1 p2) eq (tt) ;
+  atIfT p p0 p1 p2 rho a eq oc o -> projectionAt mu nu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> projectionAt mu nu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atApp p pf px rho a b eq ofun ox -> projectionAt mu nu p rho (b) (eapp pf px) eq (tt) ;
+  atLam p pb rho x a b eq o -> projectionAt mu nu p rho (arr a b) (elam x pb) eq (tt) ;
+  atLabel p pb rho x a b eq rec body -> projectionAt mu nu p rho (b) (elabel x pb) eq (tt) ;
+  atFunarg p pb th rho bs a eq args body -> projectionAt mu nu p rho (a) (efunarg pb th) eq (tt) ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> projectionAt mu nu p rho (at (num (plus m n))) (eplus p1 p2) eq (tt) } ;
+
+carLocal (mu nu : Heap) (p q x y : Addr) (rho : Env) (a : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (ecar q)))
+    (pair : Id (Maybe Expr) (nu q) (just (econs x y))) (d : Local mu nu p rho a) : Obs nu x rho a =
+  subst (Maybe Expr) (ProjectionResult nu rho a) (mu p) (just (ecar q)) root
+    (projectionLocal mu nu p rho a d) x y pair ;
+cdrLocal (mu nu : Heap) (p q x y : Addr) (rho : Env) (a : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (ecdr q)))
+    (pair : Id (Maybe Expr) (nu q) (just (econs x y))) (d : Local mu nu p rho a) : Obs nu y rho a =
+  subst (Maybe Expr) (ProjectionResult nu rho a) (mu p) (just (ecdr q)) root
+    (projectionLocal mu nu p rho a d) x y pair ;
+
+carObservation (mu : Heap) (p q x y : Addr) (rho : Env)
+    (root : Id (Maybe Expr) (mu p) (just (ecar q)))
+    (pair : Id (Maybe Expr) (mu q) (just (econs x y))) (a : Ty) (o : Obs mu p rho a) : Obs mu x rho a =
+  foldGenerated mu p rho (Obs mu x rho) (obsTop x rho)
+    (\ t u h k -> obsMeet x rho t u h k) (\ t u le d -> obsSub x rho t u d le)
+    (\ t d -> carLocal mu mu p q x y rho t root pair d)
+    a (obsGeneration mu p rho a o) ;
+cdrObservation (mu : Heap) (p q x y : Addr) (rho : Env)
+    (root : Id (Maybe Expr) (mu p) (just (ecdr q)))
+    (pair : Id (Maybe Expr) (mu q) (just (econs x y))) (a : Ty) (o : Obs mu p rho a) : Obs mu y rho a =
+  foldGenerated mu p rho (Obs mu y rho) (obsTop y rho)
+    (\ t u h k -> obsMeet y rho t u h k) (\ t u le d -> obsSub y rho t u d le)
+    (\ t d -> cdrLocal mu mu p q x y rho t root pair d)
+    a (obsGeneration mu p rho a o) ;
+
+-- No distinctness between the selected cell and the rewritten root is
+-- assumed. writeSame and the self-premise conversion handle that case.
+module Car (mu : Heap) (p q x y : Addr) (e : Expr)
+    (root : Id (Maybe Expr) (mu p) (just (ecar q)))
+    (pair : Id (Maybe Expr) (mu q) (just (econs x y)))
+    (value : Id (Maybe Expr) (mu x) (just e)) {
+  nu : Heap = upd mu p e ;
+  pairNew : Id (Maybe Expr) (nu q) (just (econs x y)) =
+    readUnchanged mu p q (ecar q) (econs x y) e root pair (\ bad -> bad) ;
+  selected : Id (Maybe Expr) (nu x) (nu p) =
+    pathTrans (Maybe Expr) (nu x) (just e) (nu p) (writeSame mu p x e value)
+      (pathSym (Maybe Expr) (nu p) (just e) (upd-hit mu p e)) ;
+  localForward (rho : Env) (a : Ty) (d : Local mu nu p rho a) : Obs nu p rho a =
+    sameCell nu x p rho a selected (carLocal mu nu p q x y rho a root pairNew d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p e localForward ;
+  localBackward (rho : Env) (a : Ty) (d : Local nu mu p rho a) : Obs mu p rho a =
+    obsCar p q rho a omega root
+      (obsCons q x y rho a omega pair
+        (moveLocal nu mu p rho a d x
+          (pathTrans (Maybe Expr) (nu p) (just e) (mu x) (upd-hit mu p e)
+            (pathSym (Maybe Expr) (mu x) (just e) value))
+          (carObservation mu p q x y rho root pair)) (obsTop y rho)) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p e localBackward ;
+} ;
+
+module Cdr (mu : Heap) (p q x y : Addr) (e : Expr)
+    (root : Id (Maybe Expr) (mu p) (just (ecdr q)))
+    (pair : Id (Maybe Expr) (mu q) (just (econs x y)))
+    (value : Id (Maybe Expr) (mu y) (just e)) {
+  nu : Heap = upd mu p e ;
+  pairNew : Id (Maybe Expr) (nu q) (just (econs x y)) =
+    readUnchanged mu p q (ecdr q) (econs x y) e root pair (\ bad -> bad) ;
+  selected : Id (Maybe Expr) (nu y) (nu p) =
+    pathTrans (Maybe Expr) (nu y) (just e) (nu p) (writeSame mu p y e value)
+      (pathSym (Maybe Expr) (nu p) (just e) (upd-hit mu p e)) ;
+  localForward (rho : Env) (a : Ty) (d : Local mu nu p rho a) : Obs nu p rho a =
+    sameCell nu y p rho a selected (cdrLocal mu nu p q x y rho a root pairNew d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p e localForward ;
+  localBackward (rho : Env) (a : Ty) (d : Local nu mu p rho a) : Obs mu p rho a =
+    obsCdr p q rho omega a root
+      (obsCons q x y rho omega a pair (obsTop x rho)
+        (moveLocal nu mu p rho a d y
+          (pathTrans (Maybe Expr) (nu p) (just e) (mu y) (upd-hit mu p e)
+            (pathSym (Maybe Expr) (mu y) (just e) value))
+          (cdrObservation mu p q x y rho root pair))) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p e localBackward ;
+} ;

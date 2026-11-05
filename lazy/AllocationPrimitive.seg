@@ -1,0 +1,80 @@
+-- A primitive with allocated operands becomes one captured old primitive.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ; open HeapSupport[l] ;
+open ObservationRules[l] ; open AllocationBackCore[l] ; open AllocationOrigins[l] ;
+
+captureMap1 (mu : Heap) (p pb : Addr) (rho : Env) (th : Alist) (a b : Ty)
+    (c : Captured[mu, p, rho, th, a])
+    (f : (eta : Env) -> Obs mu p eta a -> Obs mu pb eta b) : Captured[mu, pb, rho, th, b] =
+  mkCaptured mu pb rho th b c.env c.observed (f (appendEnv c.env rho) c.body) ;
+captureMap2With (mu : Heap) (p q pb : Addr) (rho : Env) (th : Alist) (a b t : Ty)
+    (c : Captured[mu, p, rho, th, a]) (d : Captured[mu, q, rho, th, b])
+    (f : (eta : Env) -> Obs mu p eta a -> Obs mu q eta b -> Obs mu pb eta t)
+    (m : Merged[mu, rho, th, c.env, d.env]) : Captured[mu, pb, rho, th, t] =
+  mkCaptured mu pb rho th t m.env m.observed
+    (f (appendEnv m.env rho)
+      (obsStrengthen mu p (appendEnv c.env rho) (appendEnv m.env rho) a (m.left rho) c.body)
+      (obsStrengthen mu q (appendEnv d.env rho) (appendEnv m.env rho) b (m.right rho) d.body)) ;
+captureMap2 (mu : Heap) (p q pb : Addr) (rho : Env) (th : Alist) (a b t : Ty)
+    (c : Captured[mu, p, rho, th, a]) (d : Captured[mu, q, rho, th, b])
+    (f : (eta : Env) -> Obs mu p eta a -> Obs mu q eta b -> Obs mu pb eta t) : Captured[mu, pb, rho, th, t] =
+  captureMap2With mu p q pb rho th a b t c d f (mergeBindings mu rho th c.env d.env c.observed d.observed) ;
+
+capturePrimitive (mu nu : Heap) (th : Alist) :
+    (p : Addr) -> (e : Maybe Expr) -> (rho : Env) -> (a : Ty) -> Rule (BackResult mu nu) p e rho a ->
+    (h : OriginMaybe mu nu th e) -> AlistClosed (InDom mu) th -> (pb : Addr) ->
+    Id (Maybe Expr) (mu pb) (just (originOf mu nu th e h)) -> Captured[mu, pb, rho, th, a] = split {
+  rVar p rho x -> \ h closed root eq -> absurd (Captured[mu, root, rho, th, lookupEnv rho x]) h ;
+  rQuote p rho a -> \ h closed root eq -> absurd (Captured[mu, root, rho, th, at a]) h ;
+  rCons p p1 p2 rho a b o1 o2 -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.address pb rho th (a) (b) (prod a b)
+      (captureOperand mu nu rho th (a) p1 h.fst closed o1)
+      (captureOperand mu nu rho th (b) p2 h.snd closed o2)
+      (\ eta oa ob -> obsCons pb h.fst.address h.snd.address eta a b eq oa ob) ;
+  rCar p q rho a b o -> \ h closed pb eq ->
+    captureMap1 mu h.address pb rho th (prod a b) (a)
+      (captureOperand mu nu rho th (prod a b) q h closed o) (\ eta oa -> obsCar pb h.address eta a b eq oa) ;
+  rCdr p q rho a b o -> \ h closed pb eq ->
+    captureMap1 mu h.address pb rho th (prod a b) (b)
+      (captureOperand mu nu rho th (prod a b) q h closed o) (\ eta oa -> obsCdr pb h.address eta a b eq oa) ;
+  rAtomT p q rho o -> \ h closed pb eq ->
+    captureMap1 mu h.address pb rho th (atomTop) (at T)
+      (captureOperand mu nu rho th (atomTop) q h closed o) (\ eta oa -> obsAtomT pb h.address eta eq oa) ;
+  rAtomNil p q rho o -> \ h closed pb eq ->
+    captureMap1 mu h.address pb rho th (prod omega omega) (at NIL)
+      (captureOperand mu nu rho th (prod omega omega) q h closed o) (\ eta oa -> obsAtomNil pb h.address eta eq oa) ;
+  rEqT p p1 p2 rho a b same o1 o2 -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.address pb rho th (at a) (at b) (at T)
+      (captureOperand mu nu rho th (at a) p1 h.fst closed o1)
+      (captureOperand mu nu rho th (at b) p2 h.snd closed o2)
+      (\ eta oa ob -> obsEqT pb h.fst.address h.snd.address eta a b eq same oa ob) ;
+  rEqNil p p1 p2 rho a b different o1 o2 -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.address pb rho th (at a) (at b) (at NIL)
+      (captureOperand mu nu rho th (at a) p1 h.fst closed o1)
+      (captureOperand mu nu rho th (at b) p2 h.snd closed o2)
+      (\ eta oa ob -> obsEqNil pb h.fst.address h.snd.address eta a b eq different oa ob) ;
+  rIfT p p0 p1 p2 rho a oc o -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.fst.address pb rho th (at T) (a) (a)
+      (captureOperand mu nu rho th (at T) p0 h.fst closed oc)
+      (captureOperand mu nu rho th (a) p1 h.snd.fst closed o)
+      (\ eta oa ob -> obsIfT pb h.fst.address h.snd.fst.address h.snd.snd.address eta a eq oa ob) ;
+  rIfNil p p0 p1 p2 rho a oc o -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.snd.address pb rho th (at NIL) (a) (a)
+      (captureOperand mu nu rho th (at NIL) p0 h.fst closed oc)
+      (captureOperand mu nu rho th (a) p2 h.snd.snd closed o)
+      (\ eta oa ob -> obsIfNil pb h.fst.address h.snd.fst.address h.snd.snd.address eta a eq oa ob) ;
+  rApp p pf px rho a b ofun ox -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.address pb rho th (arr a b) (a) (b)
+      (captureOperand mu nu rho th (arr a b) pf h.fst closed ofun)
+      (captureOperand mu nu rho th (a) px h.snd closed ox)
+      (\ eta oa ob -> obsApp pb h.fst.address h.snd.address eta a b eq oa ob) ;
+  rLam p pb rho x a b o -> \ h closed root eq -> absurd (Captured[mu, root, rho, th, arr a b]) h ;
+  rLabel p pb rho x a b rec body -> \ h closed root eq -> absurd (Captured[mu, root, rho, th, b]) h ;
+  rFunarg p pb theta rho bs a args body -> \ h closed root eq -> absurd (Captured[mu, root, rho, th, a]) h ;
+  rPlus p p1 p2 rho m n o1 o2 -> \ h closed pb eq ->
+    captureMap2 mu h.fst.address h.snd.address pb rho th (at (num m)) (at (num n)) (at (num (plus m n)))
+      (captureOperand mu nu rho th (at (num m)) p1 h.fst closed o1)
+      (captureOperand mu nu rho th (at (num n)) p2 h.snd closed o2)
+      (\ eta oa ob -> obsPlus pb h.fst.address h.snd.address eta m n eq oa ob)  } ;

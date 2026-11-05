@@ -1,0 +1,226 @@
+-- The paper's lazy demand schedule, as a positive big-step relation.
+-- A derivation is a terminating execution, not a fuel-bounded search.
+-- Recursive demands evaluate selected cells in situ before copying them.
+-- Guards are checked again after recursive calls: on circular heaps a
+-- demand may revisit an address. Every accepted run is a rewrite trace.
+level l ;
+open Base ; open Prelude[l] ; open Memory[l] ; open MemoryLemmas[l] ; open Rewrites[l] ;
+
+data Terminal (mu : Heap) : (p : Addr) -> U l =
+    valueQuote (p : Addr) (a : Atom) (eq : Id (Maybe Expr) (mu p) (just (equote a))) : Terminal mu p
+  | valueCons (p q r : Addr) (eq : Id (Maybe Expr) (mu p) (just (econs q r))) : Terminal mu p
+  | valueClosure (p body : Addr) (th : Alist) (x : Var) (pb : Addr)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (lambda : Id (Maybe Expr) (mu body) (just (elam x pb))) : Terminal mu p ;
+
+data Evaluates : (mu : Heap) -> (p : Addr) -> (nu : Heap) -> U l =
+    evalValue (mu : Heap) (p : Addr) (value : Terminal mu p) : Evaluates mu p mu
+  | evalCar (mu mu1 mu2 : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (ecar q)))
+      (pairDemand : Evaluates mu q mu1)
+      (pair : Id (Maybe Expr) (mu1 q) (just (econs a b)))
+      (valueDemand : Evaluates mu1 a mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (ecar q)))
+      (pair2 : Id (Maybe Expr) (mu2 q) (just (econs a b)))
+      (value : Id (Maybe Expr) (mu2 a) (just e)) : Evaluates mu p (upd mu2 p e)
+  | evalCdr (mu mu1 mu2 : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (ecdr q)))
+      (pairDemand : Evaluates mu q mu1)
+      (pair : Id (Maybe Expr) (mu1 q) (just (econs a b)))
+      (valueDemand : Evaluates mu1 b mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (ecdr q)))
+      (pair2 : Id (Maybe Expr) (mu2 q) (just (econs a b)))
+      (value : Id (Maybe Expr) (mu2 b) (just e)) : Evaluates mu p (upd mu2 p e)
+  | evalAtomT (mu mu1 : Heap) (p q : Addr) (a : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (demand : Evaluates mu q mu1)
+      (root1 : Id (Maybe Expr) (mu1 p) (just (eatom q)))
+      (value : Id (Maybe Expr) (mu1 q) (just (equote a))) : Evaluates mu p (upd mu1 p (equote T))
+  | evalAtomNil (mu mu1 : Heap) (p q a b : Addr)
+      (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (demand : Evaluates mu q mu1)
+      (root1 : Id (Maybe Expr) (mu1 p) (just (eatom q)))
+      (value : Id (Maybe Expr) (mu1 q) (just (econs a b))) : Evaluates mu p (upd mu1 p (equote NIL))
+  | evalEq (mu mu1 mu2 : Heap) (p q r : Addr) (a b : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (eeq q r)))
+      (leftDemand : Evaluates mu q mu1) (rightDemand : Evaluates mu1 r mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (eeq q r)))
+      (left : Id (Maybe Expr) (mu2 q) (just (equote a)))
+      (right : Id (Maybe Expr) (mu2 r) (just (equote b))) :
+      Evaluates mu p (upd mu2 p (equote (choose Atom T NIL (atomEq a b))))
+  | evalIfT (mu mu1 mu2 : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (eif q a b)))
+      (testDemand : Evaluates mu q mu1)
+      (test : Id (Maybe Expr) (mu1 q) (just (equote T)))
+      (valueDemand : Evaluates mu1 a mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (eif q a b)))
+      (test2 : Id (Maybe Expr) (mu2 q) (just (equote T)))
+      (value : Id (Maybe Expr) (mu2 a) (just e)) : Evaluates mu p (upd mu2 p e)
+  | evalIfNil (mu mu1 mu2 : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (eif q a b)))
+      (testDemand : Evaluates mu q mu1)
+      (test : Id (Maybe Expr) (mu1 q) (just (equote NIL)))
+      (valueDemand : Evaluates mu1 b mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (eif q a b)))
+      (test2 : Id (Maybe Expr) (mu2 q) (just (equote NIL)))
+      (value : Id (Maybe Expr) (mu2 b) (just e)) : Evaluates mu p (upd mu2 p e)
+  | evalPlus (mu mu1 mu2 : Heap) (p q r : Addr) (m n : Nat)
+      (root : Id (Maybe Expr) (mu p) (just (eplus q r)))
+      (leftDemand : Evaluates mu q mu1) (rightDemand : Evaluates mu1 r mu2)
+      (root2 : Id (Maybe Expr) (mu2 p) (just (eplus q r)))
+      (left : Id (Maybe Expr) (mu2 q) (just (equote (num m))))
+      (right : Id (Maybe Expr) (mu2 r) (just (equote (num n)))) :
+      Evaluates mu p (upd mu2 p (equote (num (plus m n))))
+  | evalFa (mu mu1 : Heap) (p body q : Addr) (th : Alist) (x : Var) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (variable : Id (Maybe Expr) (mu body) (just (evar x))) (lookup : AlistLookup th x q)
+      (demand : Evaluates mu q mu1)
+      (root1 : Id (Maybe Expr) (mu1 p) (just (efunarg body th)))
+      (variable1 : Id (Maybe Expr) (mu1 body) (just (evar x)))
+      (value : Id (Maybe Expr) (mu1 q) (just e)) : Evaluates mu p (upd mu1 p e)
+  | evalFb (mu : Heap) (p body : Addr) (th : Alist) (a : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (quote : Id (Maybe Expr) (mu body) (just (equote a))) : Evaluates mu p (upd mu p (equote a))
+  | evalG (mu mu1 nu : Heap) (p pf pl pb px : Addr) (th : Alist) (x : Var)
+      (root : Id (Maybe Expr) (mu p) (just (eapp pf px)))
+      (demand : Evaluates mu pf mu1)
+      (root1 : Id (Maybe Expr) (mu1 p) (just (eapp pf px)))
+      (closure : Id (Maybe Expr) (mu1 pf) (just (efunarg pl th)))
+      (lambda : Id (Maybe Expr) (mu1 pl) (just (elam x pb)))
+      (bodyDemand : Evaluates (upd mu1 p (efunarg pb (cons (mkPair Nat Nat x px) th))) p nu) :
+      Evaluates mu p nu
+  | evalL (mu nu : Heap) (p body pb : Addr) (th : Alist) (x : Var)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (label : Id (Maybe Expr) (mu body) (just (elabel x pb)))
+      (demand : Evaluates (upd mu p (efunarg pb (cons (mkPair Nat Nat x p) th))) p nu) : Evaluates mu p nu
+  | evalFc (mu nu : Heap) (p body a b q r : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (app : Id (Maybe Expr) (mu body) (just (eapp a b)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (different : Apart q r)
+      (demand : Evaluates (alloc2 mu p (eapp q r) q r a b th) p nu) : Evaluates mu p nu
+  | evalFUnary (op : Unary) (mu nu : Heap) (p body a q : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (unaryExpr op a))) (fq : Fresh mu q)
+      (demand : Evaluates (alloc1 mu p (unaryExpr op q) q a th) p nu) : Evaluates mu p nu
+  | evalFBinary (op : Binary) (mu nu : Heap) (p body a b q r : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (binaryExpr op a b)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (different : Apart q r)
+      (demand : Evaluates (alloc2 mu p (binaryExpr op q r) q r a b th) p nu) : Evaluates mu p nu
+  | evalFIf (mu nu : Heap) (p body a b c q r s : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (eif a b c)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s)
+      (qr : Apart q r) (qs : Apart q s) (rs : Apart r s)
+      (demand : Evaluates (alloc3 mu p (eif q r s) q r s a b c th) p nu) : Evaluates mu p nu ;
+
+oneStep (mu nu : Heap) (d : Step mu nu) : Trace mu nu = more mu nu nu d (done nu) ;
+finishStep (mu mu1 nu : Heap) (r : Trace mu mu1) (d : Step mu1 nu) : Trace mu nu =
+  traceAppend mu mu1 r nu (oneStep mu1 nu d) ;
+finishTwo (mu mu1 mu2 nu : Heap) (r : Trace mu mu1) (s : Trace mu1 mu2) (d : Step mu2 nu) : Trace mu nu =
+  finishStep mu mu2 nu (traceAppend mu mu1 r mu2 s) d ;
+
+evalTrace : (mu : Heap) -> (p : Addr) -> (nu : Heap) -> Evaluates mu p nu -> Trace mu nu = split {
+  evalValue mu p value -> done mu ;
+  evalCar mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value | rp rv ->
+    finishTwo mu mu1 mu2 (upd mu2 p e) rp rv (stCar mu2 p q a b e root2 pair2 value) ;
+  evalCdr mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value | rp rv ->
+    finishTwo mu mu1 mu2 (upd mu2 p e) rp rv (stCdr mu2 p q a b e root2 pair2 value) ;
+  evalAtomT mu mu1 p q a root demand root1 value | r ->
+    finishStep mu mu1 (upd mu1 p (equote T)) r (stAtomT mu1 p q a root1 value) ;
+  evalAtomNil mu mu1 p q a b root demand root1 value | r ->
+    finishStep mu mu1 (upd mu1 p (equote NIL)) r (stAtomNil mu1 p q a b root1 value) ;
+  evalEq mu mu1 mu2 p q r a b root leftDemand rightDemand root2 left right | rl rr ->
+    finishTwo mu mu1 mu2 (upd mu2 p (equote (choose Atom T NIL (atomEq a b)))) rl rr (stEq mu2 p q r a b root2 left right) ;
+  evalIfT mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value | rt rv ->
+    finishTwo mu mu1 mu2 (upd mu2 p e) rt rv (stIfT mu2 p q a b e root2 test2 value) ;
+  evalIfNil mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value | rt rv ->
+    finishTwo mu mu1 mu2 (upd mu2 p e) rt rv (stIfNil mu2 p q a b e root2 test2 value) ;
+  evalPlus mu mu1 mu2 p q r m n root leftDemand rightDemand root2 left right | rl rr ->
+    finishTwo mu mu1 mu2 (upd mu2 p (equote (num (plus m n)))) rl rr (stPlus mu2 p q r m n root2 left right) ;
+  evalFa mu mu1 p body q th x e root variable lookup demand root1 variable1 value | r ->
+    finishStep mu mu1 (upd mu1 p e) r (stFa mu1 p body q th x e root1 variable1 lookup value) ;
+  evalFb mu p body th a root quote -> oneStep mu (upd mu p (equote a)) (stFb mu p body th a root quote) ;
+  evalG mu mu1 nu p pf pl pb px th x root demand root1 closure lambda bodyDemand | rf rb ->
+    traceAppend mu mu1 rf nu
+      (more mu1 (upd mu1 p (efunarg pb (cons (mkPair Nat Nat x px) th))) nu
+        (stG mu1 p pf pl pb px th x root1 closure lambda) rb) ;
+  evalL mu nu p body pb th x root label demand | r ->
+    more mu (upd mu p (efunarg pb (cons (mkPair Nat Nat x p) th))) nu (stL mu p body pb th x root label) r ;
+  evalFc mu nu p body a b q r th root app fq fr different demand | d ->
+    more mu (alloc2 mu p (eapp q r) q r a b th) nu (stFc mu p body a b q r th root app fq fr different) d ;
+  evalFUnary op mu nu p body a q th root form fq demand | d ->
+    more mu (alloc1 mu p (unaryExpr op q) q a th) nu (stFUnary op mu p body a q th root form fq) d ;
+  evalFBinary op mu nu p body a b q r th root form fq fr different demand | d ->
+    more mu (alloc2 mu p (binaryExpr op q r) q r a b th) nu
+      (stFBinary op mu p body a b q r th root form fq fr different) d ;
+  evalFIf mu nu p body a b c q r s th root form fq fr fs qr qs rs demand | d ->
+    more mu (alloc3 mu p (eif q r s) q r s a b c th) nu
+      (stFIf mu p body a b c q r s th root form fq fr fs qr qs rs) d } ;
+
+-- A successful run really ends in one of the three terminal shapes.
+IsLambdaExpr : Expr -> U l = split {
+  evar x -> Empty ; equote a -> Empty ; econs p q -> Empty ; ecar p -> Empty ; ecdr p -> Empty ;
+  eatom p -> Empty ; eeq p q -> Empty ; eif p q r -> Empty ; eapp p q -> Empty ;
+  elam x p -> Top ; elabel x p -> Empty ; efunarg p th -> Empty ; eplus p q -> Empty } ;
+IsLambdaCell : Maybe Expr -> U l = split { nothing -> Empty ; just e -> IsLambdaExpr e } ;
+NoLambda (mu : Heap) (p : Addr) : U l =
+  (x : Var) -> (body : Addr) -> Id (Maybe Expr) (mu p) (just (elam x body)) -> Empty ;
+notLambdaFrom (mu : Heap) (p : Addr) (old : Expr)
+    (root : Id (Maybe Expr) (mu p) (just old)) (bad : IsLambdaExpr old -> Empty) : NoLambda mu p =
+  \ x body lambda -> bad
+    (subst (Maybe Expr) IsLambdaCell (mu p) (just old) root
+      (subst (Maybe Expr) IsLambdaCell (just (elam x body)) (mu p)
+        (pathSym (Maybe Expr) (mu p) (just (elam x body)) lambda) tt)) ;
+
+lambdaAddressDifferent (mu : Heap) (p body : Addr) (x : Var) (pb : Addr)
+    (lambda : Id (Maybe Expr) (mu body) (just (elam x pb)))
+    (noLambda : NoLambda mu p) (same : Id Nat body p) : Empty =
+  noLambda x pb
+    (pathTrans (Maybe Expr) (mu p) (mu body) (just (elam x pb))
+      (ap Nat (Maybe Expr) mu p body (pathSym Nat body p same)) lambda) ;
+terminalWriteClosure (mu : Heap) (p body : Addr) (th : Alist) (x : Var) (pb : Addr)
+    (lambda : Id (Maybe Expr) (mu body) (just (elam x pb)))
+    (noLambda : NoLambda mu p) : Terminal (upd mu p (efunarg body th)) p =
+  valueClosure p body th x pb (upd-hit mu p (efunarg body th))
+    (pathTrans (Maybe Expr) (upd mu p (efunarg body th) body) (mu body) (just (elam x pb))
+      (upd-miss mu p body (efunarg body th) (lambdaAddressDifferent mu p body x pb lambda noLambda)) lambda) ;
+
+terminalCopy (mu : Heap) (p : Addr) (e : Expr) (noLambda : NoLambda mu p) :
+    (q : Addr) -> Terminal mu q -> Id (Maybe Expr) (mu q) (just e) -> Terminal (upd mu p e) p = split {
+  valueQuote q a eq -> \ value ->
+    subst Expr (\ f -> Terminal (upd mu p f) p) (equote a) e
+      (contentsEq (mu q) (equote a) e eq value) (valueQuote p a (upd-hit mu p (equote a))) ;
+  valueCons q a b eq -> \ value ->
+    subst Expr (\ f -> Terminal (upd mu p f) p) (econs a b) e
+      (contentsEq (mu q) (econs a b) e eq value) (valueCons p a b (upd-hit mu p (econs a b))) ;
+  valueClosure q body th x pb root lambda -> \ value ->
+    subst Expr (\ f -> Terminal (upd mu p f) p) (efunarg body th) e
+      (contentsEq (mu q) (efunarg body th) e root value)
+      (terminalWriteClosure mu p body th x pb lambda noLambda) } ;
+
+evalTerminal : (mu : Heap) -> (p : Addr) -> (nu : Heap) -> Evaluates mu p nu -> Terminal nu p = split {
+  evalValue mu p value -> value ;
+  evalCar mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value | rp rv ->
+    terminalCopy mu2 p e (notLambdaFrom mu2 p (ecar q) root2 (\ bad -> bad)) a rv value ;
+  evalCdr mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value | rp rv ->
+    terminalCopy mu2 p e (notLambdaFrom mu2 p (ecdr q) root2 (\ bad -> bad)) b rv value ;
+  evalAtomT mu mu1 p q a root demand root1 value -> valueQuote p T (upd-hit mu1 p (equote T)) ;
+  evalAtomNil mu mu1 p q a b root demand root1 value -> valueQuote p NIL (upd-hit mu1 p (equote NIL)) ;
+  evalEq mu mu1 mu2 p q r a b root leftDemand rightDemand root2 left right ->
+    valueQuote p (choose Atom T NIL (atomEq a b)) (upd-hit mu2 p (equote (choose Atom T NIL (atomEq a b)))) ;
+  evalIfT mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value | rt rv ->
+    terminalCopy mu2 p e (notLambdaFrom mu2 p (eif q a b) root2 (\ bad -> bad)) a rv value ;
+  evalIfNil mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value | rt rv ->
+    terminalCopy mu2 p e (notLambdaFrom mu2 p (eif q a b) root2 (\ bad -> bad)) b rv value ;
+  evalPlus mu mu1 mu2 p q r m n root leftDemand rightDemand root2 left right ->
+    valueQuote p (num (plus m n)) (upd-hit mu2 p (equote (num (plus m n)))) ;
+  evalFa mu mu1 p body q th x e root variable lookup demand root1 variable1 value | r ->
+    terminalCopy mu1 p e (notLambdaFrom mu1 p (efunarg body th) root1 (\ bad -> bad)) q r value ;
+  evalFb mu p body th a root quote -> valueQuote p a (upd-hit mu p (equote a)) ;
+  evalG mu mu1 nu p pf pl pb px th x root demand root1 closure lambda bodyDemand | rf rb -> rb ;
+  evalL mu nu p body pb th x root label demand | r -> r ;
+  evalFc mu nu p body a b q r th root app fq fr different demand | d -> d ;
+  evalFUnary op mu nu p body a q th root form fq demand | d -> d ;
+  evalFBinary op mu nu p body a b q r th root form fq fr different demand | d -> d ;
+  evalFIf mu nu p body a b c q r s th root form fq fr fs qr qs rs demand | d -> d } ;

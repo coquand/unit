@@ -1,0 +1,87 @@
+-- General pair-component inversion, in both directions.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+
+-- firstTy/secondTy take the meet of every pair component projection;
+-- nonpair components contribute omega. The empty case records that
+-- these omega contributions really carry no extra information.
+data ProductSummary : (rho : Ty) -> U l =
+    productEmpty (rho : Ty) (absent : hasPair rho -> Empty)
+      (first : Le omega (firstTy rho)) (second : Le omega (secondTy rho)) : ProductSummary rho
+  | productExists (rho : Ty) (bound : Le rho (prod (firstTy rho) (secondTy rho))) : ProductSummary rho ;
+
+noEither (A B : U l) (na : A -> Empty) (nb : B -> Empty) : Either A B -> Empty = split {
+  inl a -> na a ; inr b -> nb b } ;
+
+emptyProducts (a b : Ty) (na : hasPair a -> Empty) (nb : hasPair b -> Empty)
+    (fa : Le omega (firstTy a)) (sa : Le omega (secondTy a))
+    (fb : Le omega (firstTy b)) (sb : Le omega (secondTy b)) : ProductSummary (meet a b) =
+  productEmpty (meet a b) (noEither (hasPair a) (hasPair b) na nb)
+    (meetIntro omega (firstTy a) (firstTy b) fa fb)
+    (meetIntro omega (secondTy a) (secondTy b) sa sb) ;
+
+leftProduct (a b : Ty) (pa : Le a (prod (firstTy a) (secondTy a)))
+    (fb : Le omega (firstTy b)) (sb : Le omega (secondTy b)) : ProductSummary (meet a b) =
+  productExists (meet a b)
+    (leTrans (meet a b) (prod (firstTy a) (secondTy a)) (prod (firstTy (meet a b)) (secondTy (meet a b)))
+      (leTrans (meet a b) a (prod (firstTy a) (secondTy a)) (meetLeft a b) pa)
+      (prodMono (firstTy a) (firstTy (meet a b)) (secondTy a) (secondTy (meet a b))
+        (meetIntro (firstTy a) (firstTy a) (firstTy b) (leRefl (firstTy a))
+          (leTrans (firstTy a) omega (firstTy b) (leTop (firstTy a)) fb))
+        (meetIntro (secondTy a) (secondTy a) (secondTy b) (leRefl (secondTy a))
+          (leTrans (secondTy a) omega (secondTy b) (leTop (secondTy a)) sb)))) ;
+rightProduct (a b : Ty) (fa : Le omega (firstTy a)) (sa : Le omega (secondTy a))
+    (pb : Le b (prod (firstTy b) (secondTy b))) : ProductSummary (meet a b) =
+  productExists (meet a b)
+    (leTrans (meet a b) (prod (firstTy b) (secondTy b)) (prod (firstTy (meet a b)) (secondTy (meet a b)))
+      (leTrans (meet a b) b (prod (firstTy b) (secondTy b)) (meetRight a b) pb)
+      (prodMono (firstTy b) (firstTy (meet a b)) (secondTy b) (secondTy (meet a b))
+        (meetIntro (firstTy b) (firstTy a) (firstTy b)
+          (leTrans (firstTy b) omega (firstTy a) (leTop (firstTy b)) fa) (leRefl (firstTy b)))
+        (meetIntro (secondTy b) (secondTy a) (secondTy b)
+          (leTrans (secondTy b) omega (secondTy a) (leTop (secondTy b)) sa) (leRefl (secondTy b))))) ;
+bothProducts (a b : Ty) (pa : Le a (prod (firstTy a) (secondTy a)))
+    (pb : Le b (prod (firstTy b) (secondTy b))) : ProductSummary (meet a b) =
+  productExists (meet a b)
+    (leTrans (meet a b) (meet (prod (firstTy a) (secondTy a)) (prod (firstTy b) (secondTy b)))
+      (prod (firstTy (meet a b)) (secondTy (meet a b)))
+      (meetMono a b (prod (firstTy a) (secondTy a)) (prod (firstTy b) (secondTy b)) pa pb)
+      (prodMeet (firstTy a) (secondTy a) (firstTy b) (secondTy b))) ;
+
+emptyMeetSummary (a : Ty) (na : hasPair a -> Empty)
+    (fa : Le omega (firstTy a)) (sa : Le omega (secondTy a)) :
+    (b : Ty) -> ProductSummary b -> ProductSummary (meet a b) = split {
+  productEmpty b nb fb sb -> emptyProducts a b na nb fa sa fb sb ;
+  productExists b pb -> rightProduct a b fa sa pb } ;
+existsMeetSummary (a : Ty) (pa : Le a (prod (firstTy a) (secondTy a))) :
+    (b : Ty) -> ProductSummary b -> ProductSummary (meet a b) = split {
+  productEmpty b nb fb sb -> leftProduct a b pa fb sb ;
+  productExists b pb -> bothProducts a b pa pb } ;
+meetSummary : (a : Ty) -> ProductSummary a -> (b : Ty) -> ProductSummary b -> ProductSummary (meet a b) = split {
+  productEmpty a na fa sa -> emptyMeetSummary a na fa sa ;
+  productExists a pa -> existsMeetSummary a pa } ;
+
+productSummary : (rho : Ty) -> ProductSummary rho = split {
+  omega -> productEmpty omega (\ h -> h) (leRefl omega) (leRefl omega) ;
+  atomTop -> productEmpty atomTop (\ h -> h) (leRefl omega) (leRefl omega) ;
+  at a -> productEmpty (at a) (\ h -> h) (leRefl omega) (leRefl omega) ;
+  prod a b -> productExists (prod a b) (leRefl (prod a b)) ;
+  arr a b -> productEmpty (arr a b) (\ h -> h) (leRefl omega) (leRefl omega) ;
+  meet a b | ra rb -> meetSummary a ra b rb } ;
+
+summaryBound : (rho : Ty) -> ProductSummary rho -> hasPair rho -> Le rho (prod (firstTy rho) (secondTy rho)) = split {
+  productEmpty rho absent first second -> \ h -> absurd (Le rho (prod (firstTy rho) (secondTy rho))) (absent h) ;
+  productExists rho bound -> \ h -> bound } ;
+pairComponents (rho : Ty) (h : hasPair rho) : Le rho (prod (firstTy rho) (secondTy rho)) =
+  summaryBound rho (productSummary rho) h ;
+
+pairCharacterise (rho a b : Ty) (d : Le rho (prod a b)) :
+    Pair[hasPair rho, Pair[Le (firstTy rho) a, Le (secondTy rho) b]] =
+  mkPair (hasPair rho) (Pair[Le (firstTy rho) a, Le (secondTy rho) b])
+    (pairPresent rho a b d)
+    (mkPair (Le (firstTy rho) a) (Le (secondTy rho) b)
+      (firstMono rho (prod a b) d) (secondMono rho (prod a b) d)) ;
+pairComplete (rho a b : Ty) (h : hasPair rho) (first : Le (firstTy rho) a) (second : Le (secondTy rho) b) :
+    Le rho (prod a b) =
+  leTrans rho (prod (firstTy rho) (secondTy rho)) (prod a b)
+    (pairComponents rho h) (prodMono (firstTy rho) a (secondTy rho) b first second) ;

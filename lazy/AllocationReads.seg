@@ -1,0 +1,76 @@
+-- Readback after allocation. Freshness is used only to exclude aliases
+-- with old defined addresses; pairwise Apart excludes new-new aliases.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Memory[l] ; open MemoryLemmas[l] ;
+open Rewrites[l] ; open HeapSupport[l] ;
+
+freshDisjoint (mu : Heap) (fresh old : Addr) (free : Fresh mu fresh) (d : InDom mu old)
+    (eq : Id Nat old fresh) : Empty =
+  freshNotDefined mu fresh free (subst Nat (InDom mu) old fresh eq d) ;
+
+apartNoPath (p q : Addr) (different : Apart p q) (eq : Id Nat p q) : Empty =
+  subst Bool Truth (eqN p q) false different
+    (subst Nat (\ r -> Truth (eqN p r)) p q eq
+      (subst Bool Truth true (eqN p p) (pathSym Bool (eqN p p) true (eqN-refl p)) tt)) ;
+
+alloc1RootRead (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist)
+    (dp : InDom mu p) (fq : Fresh mu q) : Id (Maybe Expr) (alloc1 mu p e q a th p) (just e) =
+  pathTrans (Maybe Expr) (alloc1 mu p e q a th p) (upd mu p e p) (just e)
+    (upd-miss (upd mu p e) q p (efunarg a th) (freshDisjoint mu q p fq dp)) (upd-hit mu p e) ;
+alloc1NewRead (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist) :
+    Id (Maybe Expr) (alloc1 mu p e q a th q) (just (efunarg a th)) =
+  upd-hit (upd mu p e) q (efunarg a th) ;
+alloc1OldRead (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist)
+    (fq : Fresh mu q) (z : Addr) (dz : InDom mu z) (np : Id Nat z p -> Empty) :
+    Id (Maybe Expr) (alloc1 mu p e q a th z) (mu z) =
+  pathTrans (Maybe Expr) (alloc1 mu p e q a th z) (upd mu p e z) (mu z)
+    (upd-miss (upd mu p e) q z (efunarg a th) (freshDisjoint mu q z fq dz)) (upd-miss mu p z e np) ;
+
+alloc2RootRead (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist)
+    (dp : InDom mu p) (fq : Fresh mu q) (fr : Fresh mu r) :
+    Id (Maybe Expr) (alloc2 mu p e q r a b th p) (just e) =
+  pathTrans (Maybe Expr) (alloc2 mu p e q r a b th p) (alloc1 mu p e q a th p) (just e)
+    (upd-miss (alloc1 mu p e q a th) r p (efunarg b th) (freshDisjoint mu r p fr dp))
+    (alloc1RootRead mu p e q a th dp fq) ;
+alloc2LeftRead (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) (qr : Apart q r) :
+    Id (Maybe Expr) (alloc2 mu p e q r a b th q) (just (efunarg a th)) =
+  pathTrans (Maybe Expr) (alloc2 mu p e q r a b th q) (alloc1 mu p e q a th q) (just (efunarg a th))
+    (upd-miss (alloc1 mu p e q a th) r q (efunarg b th) (apartNoPath q r qr))
+    (alloc1NewRead mu p e q a th) ;
+alloc2RightRead (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) :
+    Id (Maybe Expr) (alloc2 mu p e q r a b th r) (just (efunarg b th)) =
+  upd-hit (alloc1 mu p e q a th) r (efunarg b th) ;
+alloc2OldRead (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist)
+    (fq : Fresh mu q) (fr : Fresh mu r) (z : Addr) (dz : InDom mu z) (np : Id Nat z p -> Empty) :
+    Id (Maybe Expr) (alloc2 mu p e q r a b th z) (mu z) =
+  pathTrans (Maybe Expr) (alloc2 mu p e q r a b th z) (alloc1 mu p e q a th z) (mu z)
+    (upd-miss (alloc1 mu p e q a th) r z (efunarg b th) (freshDisjoint mu r z fr dz))
+    (alloc1OldRead mu p e q a th fq z dz np) ;
+
+alloc3RootRead (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist)
+    (dp : InDom mu p) (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s) :
+    Id (Maybe Expr) (alloc3 mu p e q r s a b c th p) (just e) =
+  pathTrans (Maybe Expr) (alloc3 mu p e q r s a b c th p) (alloc2 mu p e q r a b th p) (just e)
+    (upd-miss (alloc2 mu p e q r a b th) s p (efunarg c th) (freshDisjoint mu s p fs dp))
+    (alloc2RootRead mu p e q r a b th dp fq fr) ;
+alloc3FirstRead (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist)
+    (qr : Apart q r) (qs : Apart q s) :
+    Id (Maybe Expr) (alloc3 mu p e q r s a b c th q) (just (efunarg a th)) =
+  pathTrans (Maybe Expr) (alloc3 mu p e q r s a b c th q) (alloc2 mu p e q r a b th q) (just (efunarg a th))
+    (upd-miss (alloc2 mu p e q r a b th) s q (efunarg c th) (apartNoPath q s qs))
+    (alloc2LeftRead mu p e q r a b th qr) ;
+alloc3SecondRead (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) (rs : Apart r s) :
+    Id (Maybe Expr) (alloc3 mu p e q r s a b c th r) (just (efunarg b th)) =
+  pathTrans (Maybe Expr) (alloc3 mu p e q r s a b c th r) (alloc2 mu p e q r a b th r) (just (efunarg b th))
+    (upd-miss (alloc2 mu p e q r a b th) s r (efunarg c th) (apartNoPath r s rs))
+    (alloc2RightRead mu p e q r a b th) ;
+alloc3ThirdRead (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) :
+    Id (Maybe Expr) (alloc3 mu p e q r s a b c th s) (just (efunarg c th)) =
+  upd-hit (alloc2 mu p e q r a b th) s (efunarg c th) ;
+alloc3OldRead (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist)
+    (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s)
+    (z : Addr) (dz : InDom mu z) (np : Id Nat z p -> Empty) :
+    Id (Maybe Expr) (alloc3 mu p e q r s a b c th z) (mu z) =
+  pathTrans (Maybe Expr) (alloc3 mu p e q r s a b c th z) (alloc2 mu p e q r a b th z) (mu z)
+    (upd-miss (alloc2 mu p e q r a b th) s z (efunarg c th) (freshDisjoint mu s z fs dz))
+    (alloc2OldRead mu p e q r a b th fq fr z dz np) ;

@@ -1,0 +1,141 @@
+-- Supported backward transfer for allocation. Fresh cells are interpreted
+-- as captured source observations, not as observations of undefined cells.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ; open HeapSupport[l] ; open ObservationRules[l] ;
+
+SupportedCaptureE (mu : Heap) (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote a -> Top ;
+  econs p q -> Top ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg pb th -> InDom mu pb -> AlistClosed (InDom mu) th -> Captured[mu, pb, rho, th, a] ;
+  eplus p q -> Top } ;
+SupportedCapture (mu : Heap) (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> SupportedCaptureE mu rho a e } ;
+
+supportedTopE (mu : Heap) (rho : Env) : (e : Expr) -> SupportedCaptureE mu rho omega e = split {
+  evar x -> tt ;
+  equote a -> tt ;
+  econs p q -> tt ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x p -> tt ;
+  efunarg pb th -> \ def closed -> captureTop mu pb rho th ;
+  eplus p q -> tt } ;
+
+supportedMeetE (mu : Heap) (rho : Env) (a b : Ty) : (e : Expr) -> SupportedCaptureE mu rho a e -> SupportedCaptureE mu rho b e -> SupportedCaptureE mu rho (meet a b) e = split {
+  evar x -> \ c d -> tt ;
+  equote a -> \ c d -> tt ;
+  econs p q -> \ c d -> tt ;
+  ecar p -> \ c d -> tt ;
+  ecdr p -> \ c d -> tt ;
+  eatom p -> \ c d -> tt ;
+  eeq p q -> \ c d -> tt ;
+  eif p q r -> \ c d -> tt ;
+  eapp p q -> \ c d -> tt ;
+  elam x p -> \ c d -> tt ;
+  elabel x p -> \ c d -> tt ;
+  efunarg pb th -> \ c d def closed -> captureMeet mu pb rho th a b (c def closed) (d def closed) ;
+  eplus p q -> \ c d -> tt } ;
+
+supportedSubE (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Expr) -> SupportedCaptureE mu rho a e -> SupportedCaptureE mu rho b e = split {
+  evar x -> \ c -> tt ;
+  equote a -> \ c -> tt ;
+  econs p q -> \ c -> tt ;
+  ecar p -> \ c -> tt ;
+  ecdr p -> \ c -> tt ;
+  eatom p -> \ c -> tt ;
+  eeq p q -> \ c -> tt ;
+  eif p q r -> \ c -> tt ;
+  eapp p q -> \ c -> tt ;
+  elam x p -> \ c -> tt ;
+  elabel x p -> \ c -> tt ;
+  efunarg pb th -> \ c def closed -> captureSub mu pb rho th a b le (c def closed) ;
+  eplus p q -> \ c -> tt } ;
+
+supportedTop (mu : Heap) (rho : Env) : (e : Maybe Expr) -> SupportedCapture mu rho omega e = split {
+  nothing -> tt ; just e -> supportedTopE mu rho e } ;
+supportedMeet (mu : Heap) (rho : Env) (a b : Ty) : (e : Maybe Expr) -> SupportedCapture mu rho a e -> SupportedCapture mu rho b e -> SupportedCapture mu rho (meet a b) e = split {
+  nothing -> \ c d -> tt ; just e -> supportedMeetE mu rho a b e } ;
+supportedSub (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Maybe Expr) -> SupportedCapture mu rho a e -> SupportedCapture mu rho b e = split {
+  nothing -> \ c -> tt ; just e -> supportedSubE mu rho a b le e } ;
+
+record BackCell (mu nu : Heap) (p : Addr) (rho : Env) (a : Ty) {
+  old : InDom mu p -> Obs mu p rho a ;
+  captured : SupportedCapture mu rho a (nu p) ;
+} ;
+BackResult (mu nu : Heap) : Query -> U l = split {
+  cell p rho a -> BackCell[mu, nu, p, rho, a] ;
+  bindings rho th bs -> AlistClosed (InDom mu) th -> ObsAlist mu rho th bs } ;
+
+captureRule (mu nu : Heap) : (p : Addr) -> (e : Maybe Expr) -> (rho : Env) -> (a : Ty) ->
+    Rule (BackResult mu nu) p e rho a -> SupportedCapture mu rho a e = split {
+  rVar p rho x -> tt ;
+  rQuote p rho a -> tt ;
+  rCons p p1 p2 rho a b o1 o2 -> tt ;
+  rCar p q rho a b o -> tt ;
+  rCdr p q rho a b o -> tt ;
+  rAtomT p q rho o -> tt ;
+  rAtomNil p q rho o -> tt ;
+  rEqT p p1 p2 rho a b same o1 o2 -> tt ;
+  rEqNil p p1 p2 rho a b different o1 o2 -> tt ;
+  rIfT p p0 p1 p2 rho a oc o -> tt ;
+  rIfNil p p0 p1 p2 rho a oc o -> tt ;
+  rApp p pf px rho a b ofun ox -> tt ;
+  rLam p pb rho x a b o -> tt ;
+  rLabel p pb rho x a b rec body -> tt ;
+  rFunarg p pb th rho bs a args body -> \ def closed -> mkCaptured mu pb rho th a bs (args closed) (body.old def) ;
+  rPlus p p1 p2 rho m n o1 o2 -> tt  } ;
+
+backAlgebra (mu nu : Heap)
+    (oldRule : (p : Addr) -> (rho : Env) -> (a : Ty) -> Rule (BackResult mu nu) p (nu p) rho a -> InDom mu p -> Obs mu p rho a) :
+    Algebra[nu, BackResult mu nu] =
+  mkAlgebra nu (BackResult mu nu)
+    (\ p rho -> mkBackCell mu nu p rho omega (\ def -> obsTop p rho) (supportedTop mu rho (nu p)))
+    (\ p rho a b x y -> mkBackCell mu nu p rho (meet a b)
+      (\ def -> obsMeet p rho a b (x.old def) (y.old def))
+      (supportedMeet mu rho a b (nu p) x.captured y.captured))
+    (\ p rho a b x le -> mkBackCell mu nu p rho b
+      (\ def -> obsSub p rho a b (x.old def) le) (supportedSub mu rho a b le (nu p) x.captured))
+    (\ p rho a r -> mkBackCell mu nu p rho a (oldRule p rho a r) (captureRule mu nu p (nu p) rho a r))
+    (\ rho closed -> oaNil rho)
+    (\ rho x q th bs a head tail closed -> oaCons rho x q th bs a (head.old closed.fst) (tail closed.snd)) ;
+
+backFold (mu nu : Heap)
+    (oldRule : (p : Addr) -> (rho : Env) -> (a : Ty) -> Rule (BackResult mu nu) p (nu p) rho a -> InDom mu p -> Obs mu p rho a) :
+    (j : Query) -> Derive nu j -> BackResult mu nu j =
+  fold nu (BackResult mu nu) (backAlgebra mu nu oldRule) ;
+
+realiseOldRule (mu nu : Heap) (wf : WfHeap mu) :
+    (p : Addr) -> (e : Maybe Expr) -> (rho : Env) -> (a : Ty) -> Rule (BackResult mu nu) p e rho a ->
+    Id (Maybe Expr) e (mu p) -> InDom mu p -> Obs mu p rho a = split {
+  rVar p rho x -> \ sameCell def -> obsVar p rho x (pathSym (Maybe Expr) (just (evar x)) (mu p) sameCell) ;
+  rQuote p rho a -> \ sameCell def -> obsQuote p rho a (pathSym (Maybe Expr) (just (equote a)) (mu p) sameCell) ;
+  rCons p p1 p2 rho a b o1 o2 -> \ sameCell def -> obsCons p p1 p2 rho a b (pathSym (Maybe Expr) (just (econs p1 p2)) (mu p) sameCell) (o1.old (wf p (econs p1 p2) (pathSym (Maybe Expr) (just (econs p1 p2)) (mu p) sameCell)).fst) (o2.old (wf p (econs p1 p2) (pathSym (Maybe Expr) (just (econs p1 p2)) (mu p) sameCell)).snd) ;
+  rCar p q rho a b o -> \ sameCell def -> obsCar p q rho a b (pathSym (Maybe Expr) (just (ecar q)) (mu p) sameCell) (o.old (wf p (ecar q) (pathSym (Maybe Expr) (just (ecar q)) (mu p) sameCell))) ;
+  rCdr p q rho a b o -> \ sameCell def -> obsCdr p q rho a b (pathSym (Maybe Expr) (just (ecdr q)) (mu p) sameCell) (o.old (wf p (ecdr q) (pathSym (Maybe Expr) (just (ecdr q)) (mu p) sameCell))) ;
+  rAtomT p q rho o -> \ sameCell def -> obsAtomT p q rho (pathSym (Maybe Expr) (just (eatom q)) (mu p) sameCell) (o.old (wf p (eatom q) (pathSym (Maybe Expr) (just (eatom q)) (mu p) sameCell))) ;
+  rAtomNil p q rho o -> \ sameCell def -> obsAtomNil p q rho (pathSym (Maybe Expr) (just (eatom q)) (mu p) sameCell) (o.old (wf p (eatom q) (pathSym (Maybe Expr) (just (eatom q)) (mu p) sameCell))) ;
+  rEqT p p1 p2 rho a b same o1 o2 -> \ sameCell def -> obsEqT p p1 p2 rho a b (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell) same (o1.old (wf p (eeq p1 p2) (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell)).fst) (o2.old (wf p (eeq p1 p2) (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell)).snd) ;
+  rEqNil p p1 p2 rho a b different o1 o2 -> \ sameCell def -> obsEqNil p p1 p2 rho a b (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell) different (o1.old (wf p (eeq p1 p2) (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell)).fst) (o2.old (wf p (eeq p1 p2) (pathSym (Maybe Expr) (just (eeq p1 p2)) (mu p) sameCell)).snd) ;
+  rIfT p p0 p1 p2 rho a oc o -> \ sameCell def -> obsIfT p p0 p1 p2 rho a (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell) (oc.old (wf p (eif p0 p1 p2) (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell)).fst) (o.old (wf p (eif p0 p1 p2) (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell)).snd.fst) ;
+  rIfNil p p0 p1 p2 rho a oc o -> \ sameCell def -> obsIfNil p p0 p1 p2 rho a (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell) (oc.old (wf p (eif p0 p1 p2) (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell)).fst) (o.old (wf p (eif p0 p1 p2) (pathSym (Maybe Expr) (just (eif p0 p1 p2)) (mu p) sameCell)).snd.snd) ;
+  rApp p pf px rho a b ofun ox -> \ sameCell def -> obsApp p pf px rho a b (pathSym (Maybe Expr) (just (eapp pf px)) (mu p) sameCell) (ofun.old (wf p (eapp pf px) (pathSym (Maybe Expr) (just (eapp pf px)) (mu p) sameCell)).fst) (ox.old (wf p (eapp pf px) (pathSym (Maybe Expr) (just (eapp pf px)) (mu p) sameCell)).snd) ;
+  rLam p pb rho x a b o -> \ sameCell def -> obsLam p pb rho x a b (pathSym (Maybe Expr) (just (elam x pb)) (mu p) sameCell) (o.old (wf p (elam x pb) (pathSym (Maybe Expr) (just (elam x pb)) (mu p) sameCell))) ;
+  rLabel p pb rho x a b rec body -> \ sameCell def -> obsLabel p pb rho x a b (pathSym (Maybe Expr) (just (elabel x pb)) (mu p) sameCell) (rec.old def) (body.old (wf p (elabel x pb) (pathSym (Maybe Expr) (just (elabel x pb)) (mu p) sameCell))) ;
+  rFunarg p pb th rho bs a args body -> \ sameCell def -> obsFunarg p pb th rho bs a (pathSym (Maybe Expr) (just (efunarg pb th)) (mu p) sameCell) (args (wf p (efunarg pb th) (pathSym (Maybe Expr) (just (efunarg pb th)) (mu p) sameCell)).snd) (body.old (wf p (efunarg pb th) (pathSym (Maybe Expr) (just (efunarg pb th)) (mu p) sameCell)).fst) ;
+  rPlus p p1 p2 rho m n o1 o2 -> \ sameCell def -> obsPlus p p1 p2 rho m n (pathSym (Maybe Expr) (just (eplus p1 p2)) (mu p) sameCell) (o1.old (wf p (eplus p1 p2) (pathSym (Maybe Expr) (just (eplus p1 p2)) (mu p) sameCell)).fst) (o2.old (wf p (eplus p1 p2) (pathSym (Maybe Expr) (just (eplus p1 p2)) (mu p) sameCell)).snd)  } ;

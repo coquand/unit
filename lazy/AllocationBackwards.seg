@@ -1,0 +1,35 @@
+-- Generic backward theorem for distributing FUNARG over a primitive.
+-- The hypotheses describe memory contents/support; none is a semantic law.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ; open HeapSupport[l] ;
+open ObservationRules[l] ; open AllocationBackCore[l] ; open AllocationOrigins[l] ;
+open AllocationPrimitive[l] ;
+
+module BackAllocation (mu nu : Heap) (p pb : Addr) (th : Alist) (newCell : Expr)
+    (origins : OriginShape mu nu th newCell)
+    (source : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (body : Id (Maybe Expr) (mu pb) (just (originExpr mu nu th newCell origins)))
+    (target : Id (Maybe Expr) (nu p) (just newCell))
+    (closed : AlistClosed (InDom mu) th) (wf : WfHeap mu)
+    (agree : (q : Addr) -> InDom mu q -> (Id Nat q p -> Empty) -> Id (Maybe Expr) (nu q) (mu q)) {
+
+  wrap (rho : Env) (a : Ty) (c : Captured[mu, pb, rho, th, a]) : Obs mu p rho a =
+    obsFunarg p pb th rho c.env a source c.observed c.body ;
+  root (rho : Env) (a : Ty) (r : Rule (BackResult mu nu) p (nu p) rho a) : Obs mu p rho a =
+    wrap rho a (capturePrimitive mu nu th p (just newCell) rho a
+      (subst (Maybe Expr) (\ e -> Rule (BackResult mu nu) p e rho a) (nu p) (just newCell) target r)
+      origins closed pb body) ;
+
+  decide (q : Addr) (rho : Env) (a : Ty) (r : Rule (BackResult mu nu) q (nu q) rho a)
+      (dq : InDom mu q) : Either (Id Nat q p) (Id Nat q p -> Empty) -> Obs mu q rho a = split {
+    inl e -> subst Nat (\ z -> Obs mu z rho a) p q (pathSym Nat q p e)
+      (root rho a (subst Nat (\ z -> Rule (BackResult mu nu) z (nu z) rho a) q p e r)) ;
+    inr ne -> realiseOldRule mu nu wf q (nu q) rho a r (agree q dq ne) dq } ;
+  oldRule (q : Addr) (rho : Env) (a : Ty) (r : Rule (BackResult mu nu) q (nu q) rho a)
+      (dq : InDom mu q) : Obs mu q rho a = decide q rho a r dq (decEqNat q p) ;
+  all : (j : Query) -> Derive nu j -> BackResult mu nu j = backFold mu nu oldRule ;
+  backward (q : Addr) (rho : Env) (a : Ty) (dq : InDom mu q) (o : Obs nu q rho a) : Obs mu q rho a =
+    (all (cell q rho a) o).old dq ;
+} ;

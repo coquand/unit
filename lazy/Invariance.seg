@@ -1,0 +1,57 @@
+-- The combined invariance theorem for every rewrite, including allocation.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open Rewrites[l] ; open HeapSupport[l] ;
+open SemanticEquivalence[l] ; open InvarianceC[l] ; open InvarianceAtoms[l] ;
+open InvarianceF[l] ; open InvarianceG[l] ; open InvarianceLFull[l] ;
+open AllocationForward[l] ; open AllocationBackInstances[l] ;
+
+stepInvariant : (mu nu : Heap) -> Step mu nu -> WfHeap mu -> SameObservations[mu, nu] = split {
+  stCar mu p q a b e root pair value -> \ wf -> fromAllQueries mu (upd mu p e)
+    Car[mu,p,q,a,b,e,root,pair,value].forward Car[mu,p,q,a,b,e,root,pair,value].backward ;
+  stCdr mu p q a b e root pair value -> \ wf -> fromAllQueries mu (upd mu p e)
+    Cdr[mu,p,q,a,b,e,root,pair,value].forward Cdr[mu,p,q,a,b,e,root,pair,value].backward ;
+  stAtomT mu p q a root value -> \ wf -> fromAllQueries mu (upd mu p (equote T))
+    AtomT[mu,p,q,a,root,value].forward AtomT[mu,p,q,a,root,value].backward ;
+  stAtomNil mu p q a b root value -> \ wf -> fromAllQueries mu (upd mu p (equote NIL))
+    AtomNil[mu,p,q,a,b,root,value].forward AtomNil[mu,p,q,a,b,root,value].backward ;
+  stEq mu p q r a b root left right -> \ wf -> fromAllQueries mu (upd mu p (equote (choose Atom T NIL (atomEq a b))))
+    EqTest[mu,p,q,r,a,b,root,left,right].forward EqTest[mu,p,q,r,a,b,root,left,right].backward ;
+  stIfT mu p q a b e root test value -> \ wf -> fromAllQueries mu (upd mu p e)
+    IfT[mu,p,q,a,b,e,root,test,value].forward IfT[mu,p,q,a,b,e,root,test,value].backward ;
+  stIfNil mu p q a b e root test value -> \ wf -> fromAllQueries mu (upd mu p e)
+    IfNil[mu,p,q,a,b,e,root,test,value].forward IfNil[mu,p,q,a,b,e,root,test,value].backward ;
+  stPlus mu p q r m n root left right -> \ wf -> fromAllQueries mu (upd mu p (equote (num (plus m n))))
+    Plus[mu,p,q,r,m,n,root,left,right].forward Plus[mu,p,q,r,m,n,root,left,right].backward ;
+  stFa mu p q r th x e root body lookup value -> \ wf -> fromAllQueries mu (upd mu p e)
+    FaStep[mu,p,q,r,th,x,e,root,body,lookup,value].forward FaStep[mu,p,q,r,th,x,e,root,body,lookup,value].backward ;
+  stFb mu p q th a root body -> \ wf -> fromAllQueries mu (upd mu p (equote a))
+    FbStep[mu,p,q,th,a,root,body].forward FbStep[mu,p,q,th,a,root,body].backward ;
+  stL mu p q a th x root body -> \ wf -> fromAllQueries mu (upd mu p (efunarg a (cons (mkPair Nat Nat x p) th)))
+    LStep[mu,p,q,a,th,x,root,body].forward LStep[mu,p,q,a,th,x,root,body].backward ;
+  stG mu p q r a b th x root closure body -> \ wf ->
+    fromAllQueries mu (upd mu p (efunarg a (cons (mkPair Nat Nat x b) th)))
+      (forwardG mu p q r b a th x root closure body)
+      (backwardG mu p q r b a th x root closure body) ;
+  stFc mu p body a b q r th root app fq fr different -> \ wf ->
+    mkSameObservations mu (alloc2 mu p (eapp q r) q r a b th)
+      (\ z old rho t o -> FcForward[mu,p,body,a,b,q,r,th,root,app,fq,fr,different].forward (cell z rho t) o)
+      (\ z old rho t o -> FcBackward[mu,p,body,a,b,q,r,th,root,app,fq,fr,different,wf].backward z rho t old o) ;
+  stFUnary op mu p body a q th root form fq -> \ wf ->
+    mkSameObservations mu (alloc1 mu p (unaryExpr op q) q a th)
+      (\ z old rho t o -> FUnaryForward[op,mu,p,body,a,q,th,root,form,fq].forward (cell z rho t) o)
+      (\ z old rho t o -> UnaryBackward[op,mu,p,body,a,q,th,root,form,fq,wf].backward z rho t old o) ;
+  stFBinary op mu p body a b q r th root form fq fr different -> \ wf ->
+    mkSameObservations mu (alloc2 mu p (binaryExpr op q r) q r a b th)
+      (\ z old rho t o -> FBinaryForward[op,mu,p,body,a,b,q,r,th,root,form,fq,fr,different].forward (cell z rho t) o)
+      (\ z old rho t o -> BinaryBackward[op,mu,p,body,a,b,q,r,th,root,form,fq,fr,different,wf].backward z rho t old o) ;
+  stFIf mu p body a b c q r s th root form fq fr fs qr qs rs -> \ wf ->
+    mkSameObservations mu (alloc3 mu p (eif q r s) q r s a b c th)
+      (\ z old rho t o -> FIfForward[mu,p,body,a,b,c,q,r,s,th,root,form,fq,fr,fs,qr,qs,rs].forward (cell z rho t) o)
+      (\ z old rho t o -> IfBackward[mu,p,body,a,b,c,q,r,s,th,root,form,fq,fr,fs,qr,qs,rs,wf].backward z rho t old o) } ;
+
+traceInvariant : (mu nu : Heap) -> Trace mu nu -> WfHeap mu -> SameObservations[mu, nu] = split {
+  done mu -> \ wf -> sameObservationsRefl mu ;
+  more mu nu xi first rest | ih -> \ wf ->
+    sameObservationsCompose mu nu xi (stepInvariant mu nu first wf)
+      (ih (preserveWF mu nu first wf)) (stepDomain mu nu first) } ;

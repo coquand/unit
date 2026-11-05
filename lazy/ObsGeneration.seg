@@ -1,0 +1,55 @@
+-- The exact one-layer generation lemma, including intersection closure.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ;
+
+data Generated (mu : Heap) (p : Addr) (rho : Env) : (a : Ty) -> U l =
+    genTop : Generated mu p rho omega
+  | genMeet (a b : Ty) (x : Generated mu p rho a) (y : Generated mu p rho b) :
+      Generated mu p rho (meet a b)
+  | genSub (a b : Ty) (x : Generated mu p rho a) (le : Le a b) : Generated mu p rho b
+  | genRule (a : Ty) (rule : Local mu mu p rho a) : Generated mu p rho a ;
+
+GenResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> Generated mu p rho a ; bindings rho th bs -> Top } ;
+
+generation (mu : Heap) : (j : Query) -> Derive mu j -> GenResult mu j = split {
+  obsTop p rho -> genTop ;
+  obsMeet p rho a b oa ob | ra rb -> genMeet a b ra rb ;
+  obsSub p rho a b o le | r -> genSub a b r le ;
+  obsVar p rho x eq -> genRule (lookupEnv rho x) (atVar p rho x eq) ;
+  obsQuote p rho a eq -> genRule (at a) (atQuote p rho a eq) ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> genRule (prod a b) (atCons p p1 p2 rho a b eq o1 o2) ;
+  obsCar p q rho a b eq o -> genRule (a) (atCar p q rho a b eq o) ;
+  obsCdr p q rho a b eq o -> genRule (b) (atCdr p q rho a b eq o) ;
+  obsAtomT p q rho eq o -> genRule (at T) (atAtomT p q rho eq o) ;
+  obsAtomNil p q rho eq o -> genRule (at NIL) (atAtomNil p q rho eq o) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> genRule (at T) (atEqT p p1 p2 rho a b eq same o1 o2) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> genRule (at NIL) (atEqNil p p1 p2 rho a b eq different o1 o2) ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> genRule (a) (atIfT p p0 p1 p2 rho a eq oc o) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> genRule (a) (atIfNil p p0 p1 p2 rho a eq oc o) ;
+  obsApp p pf px rho a b eq ofun ox -> genRule (b) (atApp p pf px rho a b eq ofun ox) ;
+  obsLam p pb rho x a b eq o -> genRule (arr a b) (atLam p pb rho x a b eq o) ;
+  obsLabel p pb rho x a b eq rec body -> genRule (b) (atLabel p pb rho x a b eq rec body) ;
+  obsFunarg p pb th rho bs a eq args body -> genRule (a) (atFunarg p pb th rho bs a eq args body) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> genRule (at (num (plus m n))) (atPlus p p1 p2 rho m n eq o1 o2) ;
+  oaNil rho -> tt ; oaCons rho x q th bs a head tail -> tt } ;
+
+realiseGenerated (mu : Heap) (p : Addr) (rho : Env) : (a : Ty) ->
+    Generated mu p rho a -> Obs mu p rho a = split {
+  genTop -> obsTop p rho ;
+  genMeet a b x y | rx ry -> obsMeet p rho a b rx ry ;
+  genSub a b x le | r -> obsSub p rho a b r le ;
+  genRule a rule -> realiseLocal mu p rho a rule } ;
+
+foldGenerated (mu : Heap) (p : Addr) (rho : Env) (P : Ty -> U l)
+    (z : P omega)
+    (m : (a b : Ty) -> P a -> P b -> P (meet a b))
+    (s : (a b : Ty) -> Le a b -> P a -> P b)
+    (r : (a : Ty) -> Local mu mu p rho a -> P a) :
+    (a : Ty) -> Generated mu p rho a -> P a = split {
+  genTop -> z ; genMeet a b x y | rx ry -> m a b rx ry ;
+  genSub a b x le | rx -> s a b le rx ; genRule a rule -> r a rule } ;
+
+obsGeneration (mu : Heap) (p : Addr) (rho : Env) (a : Ty) (o : Obs mu p rho a) :
+    Generated mu p rho a = generation mu (cell p rho a) o ;

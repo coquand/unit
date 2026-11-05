@@ -1,0 +1,105 @@
+-- A CONS cell cannot acquire an atom or arrow head by intersection/subtyping.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+
+ConsAvoidExpr (k : Head) (t : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote c -> Top ;
+  econs p q -> HasHead k t -> Empty ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+ConsAvoidResult (k : Head) (t : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> ConsAvoidExpr k t e } ;
+consAvoidTopExpr (k : Head) : (e : Expr) -> ConsAvoidExpr k omega e = split {
+  evar x -> tt ;
+  equote c -> tt ;
+  econs p q -> \ bad -> bad ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x p -> tt ;
+  efunarg p th -> tt ;
+  eplus p q -> tt } ;
+consAvoidTop (k : Head) : (v : Maybe Expr) -> ConsAvoidResult k omega v = split {
+  nothing -> tt ; just e -> consAvoidTopExpr k e } ;
+consAvoidMeetExpr (k : Head) (a b : Ty) : (e : Expr) ->
+    ConsAvoidExpr k a e -> ConsAvoidExpr k b e -> ConsAvoidExpr k (meet a b) e = split {
+  evar x -> \ h j -> tt ;
+  equote c -> \ h j -> tt ;
+  econs p q -> \ h j -> eitherOut (HasHead k a) (HasHead k b) Empty h j ;
+  ecar p -> \ h j -> tt ;
+  ecdr p -> \ h j -> tt ;
+  eatom p -> \ h j -> tt ;
+  eeq p q -> \ h j -> tt ;
+  eif p q r -> \ h j -> tt ;
+  eapp p q -> \ h j -> tt ;
+  elam x p -> \ h j -> tt ;
+  elabel x p -> \ h j -> tt ;
+  efunarg p th -> \ h j -> tt ;
+  eplus p q -> \ h j -> tt } ;
+consAvoidMeet (k : Head) (a b : Ty) : (v : Maybe Expr) ->
+    ConsAvoidResult k a v -> ConsAvoidResult k b v -> ConsAvoidResult k (meet a b) v = split {
+  nothing -> \ h j -> tt ; just e -> consAvoidMeetExpr k a b e } ;
+consAvoidSubExpr (k : Head) (a b : Ty) (le : Le a b) : (e : Expr) ->
+    ConsAvoidExpr k a e -> ConsAvoidExpr k b e = split {
+  evar x -> \ h -> tt ;
+  equote c -> \ h -> tt ;
+  econs p q -> \ h hb -> h (heads k a b le hb) ;
+  ecar p -> \ h -> tt ;
+  ecdr p -> \ h -> tt ;
+  eatom p -> \ h -> tt ;
+  eeq p q -> \ h -> tt ;
+  eif p q r -> \ h -> tt ;
+  eapp p q -> \ h -> tt ;
+  elam x p -> \ h -> tt ;
+  elabel x p -> \ h -> tt ;
+  efunarg p th -> \ h -> tt ;
+  eplus p q -> \ h -> tt } ;
+consAvoidSub (k : Head) (a b : Ty) (le : Le a b) : (v : Maybe Expr) ->
+    ConsAvoidResult k a v -> ConsAvoidResult k b v = split {
+  nothing -> \ h -> tt ; just e -> consAvoidSubExpr k a b le e } ;
+consAvoidAt (k : Head) (mu : Heap) (p : Addr) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : ConsAvoidExpr k t e) : ConsAvoidResult k t (mu p) =
+  subst (Maybe Expr) (ConsAvoidResult k t) (just e) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+consAvoidLocal (k : Head) (notPair : HeadEq k pairHead -> Empty) (mu : Heap) :
+    (p : Addr) -> (rho : Env) -> (t : Ty) -> Local mu mu p rho t -> ConsAvoidResult k t (mu p) = split {
+  atVar p rho x eq -> consAvoidAt k mu p (lookupEnv rho x) (evar x) eq tt ;
+  atQuote p rho a eq -> consAvoidAt k mu p (at a) (equote a) eq tt ;
+  atCons p p1 p2 rho a b eq o1 o2 -> consAvoidAt k mu p (prod a b) (econs p1 p2) eq notPair ;
+  atCar p q rho a b eq o -> consAvoidAt k mu p (a) (ecar q) eq tt ;
+  atCdr p q rho a b eq o -> consAvoidAt k mu p (b) (ecdr q) eq tt ;
+  atAtomT p q rho eq o -> consAvoidAt k mu p (at T) (eatom q) eq tt ;
+  atAtomNil p q rho eq o -> consAvoidAt k mu p (at NIL) (eatom q) eq tt ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> consAvoidAt k mu p (at T) (eeq p1 p2) eq tt ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> consAvoidAt k mu p (at NIL) (eeq p1 p2) eq tt ;
+  atIfT p p0 p1 p2 rho a eq oc o -> consAvoidAt k mu p (a) (eif p0 p1 p2) eq tt ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> consAvoidAt k mu p (a) (eif p0 p1 p2) eq tt ;
+  atApp p pf px rho a b eq ofun ox -> consAvoidAt k mu p (b) (eapp pf px) eq tt ;
+  atLam p pb rho x a b eq o -> consAvoidAt k mu p (arr a b) (elam x pb) eq tt ;
+  atLabel p pb rho x a b eq rec body -> consAvoidAt k mu p (b) (elabel x pb) eq tt ;
+  atFunarg p pb th rho bs a eq args body -> consAvoidAt k mu p (a) (efunarg pb th) eq tt ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> consAvoidAt k mu p (at (num (plus m n))) (eplus p1 p2) eq tt } ;
+consAvoidGenerated (k : Head) (notPair : HeadEq k pairHead -> Empty) (mu : Heap) (p : Addr) (rho : Env) :
+    (t : Ty) -> Generated mu p rho t -> ConsAvoidResult k t (mu p) =
+  foldGenerated mu p rho (\ t -> ConsAvoidResult k t (mu p))
+    (consAvoidTop k (mu p)) (\ a b -> consAvoidMeet k a b (mu p))
+    (\ a b le -> consAvoidSub k a b le (mu p)) (consAvoidLocal k notPair mu p rho) ;
+consAvoid (k : Head) (notPair : HeadEq k pairHead -> Empty)
+    (mu : Heap) (p q r : Addr) (rho : Env) (t : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (econs q r))) (o : Obs mu p rho t) : HasHead k t -> Empty =
+  subst (Maybe Expr) (ConsAvoidResult k t) (mu p) (just (econs q r)) eq
+    (consAvoidGenerated k notPair mu p rho t (obsGeneration mu p rho t o)) ;

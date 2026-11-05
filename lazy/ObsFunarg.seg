@@ -1,0 +1,238 @@
+-- A FUNARG observation has one finite choice of captured binding types.
+-- Meets combine two choices using ObsBindings; no consistency is required.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ; open ObsBindings[l] ; open Transfer[l] ;
+
+record Captures (mu : Heap) (rho : Env) (th : Alist) {
+  env : Env ; observed : ObsAlist mu rho th env ;
+} ;
+bottomCaptureCons (mu : Heap) (rho : Env) (th : Alist) (r : Captures[mu, rho, th]) :
+    (b : Pair[Nat, Nat]) -> Captures[mu, rho, cons b th] = split {
+  Pair x q -> mkCaptures mu rho (cons (mkPair Nat Nat x q) th) (ext r.env x omega)
+    (oaCons rho x q th r.env omega (obsTop q rho) r.observed) } ;
+bottomCaptures (mu : Heap) (rho : Env) : (th : Alist) -> Captures[mu, rho, th] = split {
+  nil -> mkCaptures mu rho nil nil (oaNil rho) ;
+  cons b th | r -> bottomCaptureCons mu rho th r b } ;
+
+record Captured (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (a : Ty) {
+  env : Env ; observed : ObsAlist mu rho th env ; body : Obs mu pb (appendEnv env rho) a ;
+} ;
+captureTopWith (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (c : Captures[mu, rho, th]) :
+    Captured[mu, pb, rho, th, omega] =
+  mkCaptured mu pb rho th omega c.env c.observed (obsTop pb (appendEnv c.env rho)) ;
+captureTop (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) : Captured[mu, pb, rho, th, omega] =
+  captureTopWith mu pb rho th (bottomCaptures mu rho th) ;
+captureSub (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (a b : Ty)
+    (le : Le a b) (c : Captured[mu, pb, rho, th, a]) : Captured[mu, pb, rho, th, b] =
+  mkCaptured mu pb rho th b c.env c.observed (obsSub pb (appendEnv c.env rho) a b c.body le) ;
+captureMeetWith (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (a b : Ty)
+    (c : Captured[mu, pb, rho, th, a]) (d : Captured[mu, pb, rho, th, b])
+    (m : Merged[mu, rho, th, c.env, d.env]) : Captured[mu, pb, rho, th, meet a b] =
+  mkCaptured mu pb rho th (meet a b) m.env m.observed
+    (obsMeet pb (appendEnv m.env rho) a b
+      (obsStrengthen mu pb (appendEnv c.env rho) (appendEnv m.env rho) a (m.left rho) c.body)
+      (obsStrengthen mu pb (appendEnv d.env rho) (appendEnv m.env rho) b (m.right rho) d.body)) ;
+captureMeet (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (a b : Ty)
+    (c : Captured[mu, pb, rho, th, a]) (d : Captured[mu, pb, rho, th, b]) : Captured[mu, pb, rho, th, meet a b] =
+  captureMeetWith mu pb rho th a b c d (mergeBindings mu rho th c.env d.env c.observed d.observed) ;
+
+CaptureAtE (mu : Heap) (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote a -> Top ;
+  econs p q -> Top ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg pb th -> Captured[mu, pb, rho, th, a] ;
+  eplus p q -> Top } ;
+CaptureAt (mu : Heap) (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> CaptureAtE mu rho a e } ;
+
+captureTopE (mu : Heap) (rho : Env) : (e : Expr) -> CaptureAtE mu rho omega e = split {
+  evar x -> tt ;
+  equote a -> tt ;
+  econs p q -> tt ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x p -> tt ;
+  efunarg pb th -> captureTop mu pb rho th ;
+  eplus p q -> tt } ;
+
+captureMeetE (mu : Heap) (rho : Env) (a b : Ty) : (e : Expr) -> CaptureAtE mu rho a e -> CaptureAtE mu rho b e -> CaptureAtE mu rho (meet a b) e = split {
+  evar x -> \ c d -> tt ;
+  equote a -> \ c d -> tt ;
+  econs p q -> \ c d -> tt ;
+  ecar p -> \ c d -> tt ;
+  ecdr p -> \ c d -> tt ;
+  eatom p -> \ c d -> tt ;
+  eeq p q -> \ c d -> tt ;
+  eif p q r -> \ c d -> tt ;
+  eapp p q -> \ c d -> tt ;
+  elam x p -> \ c d -> tt ;
+  elabel x p -> \ c d -> tt ;
+  efunarg pb th -> captureMeet mu pb rho th a b ;
+  eplus p q -> \ c d -> tt } ;
+
+captureSubE (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Expr) -> CaptureAtE mu rho a e -> CaptureAtE mu rho b e = split {
+  evar x -> \ c -> tt ;
+  equote a -> \ c -> tt ;
+  econs p q -> \ c -> tt ;
+  ecar p -> \ c -> tt ;
+  ecdr p -> \ c -> tt ;
+  eatom p -> \ c -> tt ;
+  eeq p q -> \ c -> tt ;
+  eif p q r -> \ c -> tt ;
+  eapp p q -> \ c -> tt ;
+  elam x p -> \ c -> tt ;
+  elabel x p -> \ c -> tt ;
+  efunarg pb th -> captureSub mu pb rho th a b le ;
+  eplus p q -> \ c -> tt } ;
+
+captureTopAt (mu : Heap) (rho : Env) : (e : Maybe Expr) -> CaptureAt mu rho omega e = split {
+  nothing -> tt ; just e -> captureTopE mu rho e } ;
+captureMeetAt (mu : Heap) (rho : Env) (a b : Ty) : (e : Maybe Expr) -> CaptureAt mu rho a e -> CaptureAt mu rho b e -> CaptureAt mu rho (meet a b) e = split {
+  nothing -> \ c d -> tt ; just e -> captureMeetE mu rho a b e } ;
+captureSubAt (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Maybe Expr) -> CaptureAt mu rho a e -> CaptureAt mu rho b e = split {
+  nothing -> \ c -> tt ; just e -> captureSubE mu rho a b le e } ;
+CaptureResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> CaptureAt mu rho a (mu p) ; bindings rho th bs -> Top } ;
+
+captureDerivation (mu : Heap) : (j : Query) -> Derive mu j -> CaptureResult mu j = split {
+  obsTop p rho -> captureTopAt mu rho (mu p) ;
+  obsMeet p rho a b oa ob | ra rb -> captureMeetAt mu rho a b (mu p) ra rb ;
+  obsSub p rho a b o le | r -> captureSubAt mu rho a b le (mu p) r ;
+
+  obsVar p rho x eq -> subst (Maybe Expr) (CaptureAt mu rho (lookupEnv rho x)) (just (evar x)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (evar x)) eq) tt ;
+
+  obsQuote p rho a eq -> subst (Maybe Expr) (CaptureAt mu rho (at a)) (just (equote a)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (equote a)) eq) tt ;
+
+  obsCons p p1 p2 rho a b eq o1 o2 -> subst (Maybe Expr) (CaptureAt mu rho (prod a b)) (just (econs p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (econs p1 p2)) eq) tt ;
+
+  obsCar p q rho a b eq o -> subst (Maybe Expr) (CaptureAt mu rho (a)) (just (ecar q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecar q)) eq) tt ;
+
+  obsCdr p q rho a b eq o -> subst (Maybe Expr) (CaptureAt mu rho (b)) (just (ecdr q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecdr q)) eq) tt ;
+
+  obsAtomT p q rho eq o -> subst (Maybe Expr) (CaptureAt mu rho (at T)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+
+  obsAtomNil p q rho eq o -> subst (Maybe Expr) (CaptureAt mu rho (at NIL)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> subst (Maybe Expr) (CaptureAt mu rho (at T)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> subst (Maybe Expr) (CaptureAt mu rho (at NIL)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+
+  obsIfT p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (CaptureAt mu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+
+  obsIfNil p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (CaptureAt mu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+
+  obsApp p pf px rho a b eq ofun ox -> subst (Maybe Expr) (CaptureAt mu rho (b)) (just (eapp pf px)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eapp pf px)) eq) tt ;
+
+  obsLam p pb rho x a b eq o -> subst (Maybe Expr) (CaptureAt mu rho (arr a b)) (just (elam x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elam x pb)) eq) tt ;
+  obsFunarg p pb th rho bs a eq args body -> subst (Maybe Expr) (CaptureAt mu rho a) (just (efunarg pb th)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (efunarg pb th)) eq) (mkCaptured mu pb rho th a bs args body) ;
+
+  obsPlus p p1 p2 rho m n eq o1 o2 -> subst (Maybe Expr) (CaptureAt mu rho (at (num (plus m n)))) (just (eplus p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eplus p1 p2)) eq) tt ;
+  obsLabel p pb rho x a b eq rec body -> subst (Maybe Expr) (CaptureAt mu rho b) (just (elabel x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elabel x pb)) eq) tt ;
+  oaNil rho -> tt ; oaCons rho x q th bs a head tail -> tt } ;
+
+funargInverse (mu : Heap) (p pb : Addr) (rho : Env) (th : Alist) (a : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (efunarg pb th))) (o : Obs mu p rho a) : Captured[mu, pb, rho, th, a] =
+  subst (Maybe Expr) (CaptureAt mu rho a) (mu p) (just (efunarg pb th)) eq
+    (captureDerivation mu (cell p rho a) o) ;
+
+-- One primitive FUNARG rule can be inverted even when its premises are
+-- observations in a different memory (the common transfer lemma).
+captureLocal (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu nu p rho a -> CaptureAt nu rho a (mu p) = split {
+
+
+  atVar p rho x eq -> subst (Maybe Expr) (CaptureAt nu rho (lookupEnv rho x)) (just (evar x)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (evar x)) eq) tt ;
+
+
+  atQuote p rho a eq -> subst (Maybe Expr) (CaptureAt nu rho (at a)) (just (equote a)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (equote a)) eq) tt ;
+
+
+  atCons p p1 p2 rho a b eq o1 o2 -> subst (Maybe Expr) (CaptureAt nu rho (prod a b)) (just (econs p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (econs p1 p2)) eq) tt ;
+
+
+  atCar p q rho a b eq o -> subst (Maybe Expr) (CaptureAt nu rho (a)) (just (ecar q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecar q)) eq) tt ;
+
+
+  atCdr p q rho a b eq o -> subst (Maybe Expr) (CaptureAt nu rho (b)) (just (ecdr q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecdr q)) eq) tt ;
+
+
+  atAtomT p q rho eq o -> subst (Maybe Expr) (CaptureAt nu rho (at T)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+
+
+  atAtomNil p q rho eq o -> subst (Maybe Expr) (CaptureAt nu rho (at NIL)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+
+
+  atEqT p p1 p2 rho a b eq same o1 o2 -> subst (Maybe Expr) (CaptureAt nu rho (at T)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+
+
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> subst (Maybe Expr) (CaptureAt nu rho (at NIL)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+
+
+  atIfT p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (CaptureAt nu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+
+
+  atIfNil p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (CaptureAt nu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+
+
+  atApp p pf px rho a b eq ofun ox -> subst (Maybe Expr) (CaptureAt nu rho (b)) (just (eapp pf px)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eapp pf px)) eq) tt ;
+
+
+  atLam p pb rho x a b eq o -> subst (Maybe Expr) (CaptureAt nu rho (arr a b)) (just (elam x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elam x pb)) eq) tt ;
+
+  atFunarg p pb th rho bs a eq args body -> subst (Maybe Expr) (CaptureAt nu rho a) (just (efunarg pb th)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (efunarg pb th)) eq) (mkCaptured nu pb rho th a bs args body) ;
+
+
+  atPlus p p1 p2 rho m n eq o1 o2 -> subst (Maybe Expr) (CaptureAt nu rho (at (num (plus m n)))) (just (eplus p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eplus p1 p2)) eq) tt ;
+
+  atLabel p pb rho x a b eq rec body -> subst (Maybe Expr) (CaptureAt nu rho b) (just (elabel x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elabel x pb)) eq) tt  } ;
+
+localFunargInverse (mu nu : Heap) (p pb : Addr) (rho : Env) (th : Alist) (a : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (efunarg pb th))) (o : Local mu nu p rho a) : Captured[nu, pb, rho, th, a] =
+  subst (Maybe Expr) (CaptureAt nu rho a) (mu p) (just (efunarg pb th)) eq
+    (captureLocal mu nu p rho a o) ;

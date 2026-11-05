@@ -1,0 +1,112 @@
+-- Product observations can be projected through arbitrary intersections
+-- and subsumption. The cell-indexed motive makes all other forms trivial.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+
+ConsExpr (mu : Heap) (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote c -> Top ;
+  econs p q -> Pair[Obs mu p rho (firstTy a), Obs mu q rho (secondTy a)] ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+ConsResult (mu : Heap) (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> ConsExpr mu rho a e } ;
+consTopExpr (mu : Heap) (rho : Env) : (e : Expr) -> ConsExpr mu rho omega e = split {
+  evar x -> tt ;
+  equote c -> tt ;
+  econs p q -> mkPair (Obs mu p rho omega) (Obs mu q rho omega) (obsTop p rho) (obsTop q rho) ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x p -> tt ;
+  efunarg p th -> tt ;
+  eplus p q -> tt } ;
+consTop (mu : Heap) (rho : Env) : (v : Maybe Expr) -> ConsResult mu rho omega v = split {
+  nothing -> tt ; just e -> consTopExpr mu rho e } ;
+consMeetExpr (mu : Heap) (rho : Env) (a b : Ty) : (e : Expr) ->
+    ConsExpr mu rho a e -> ConsExpr mu rho b e -> ConsExpr mu rho (meet a b) e = split {
+  evar x -> \ h k -> tt ;
+  equote c -> \ h k -> tt ;
+  econs p q -> \ h k -> mkPair (Obs mu p rho (meet (firstTy a) (firstTy b))) (Obs mu q rho (meet (secondTy a) (secondTy b))) (obsMeet p rho (firstTy a) (firstTy b) h.fst k.fst) (obsMeet q rho (secondTy a) (secondTy b) h.snd k.snd) ;
+  ecar p -> \ h k -> tt ;
+  ecdr p -> \ h k -> tt ;
+  eatom p -> \ h k -> tt ;
+  eeq p q -> \ h k -> tt ;
+  eif p q r -> \ h k -> tt ;
+  eapp p q -> \ h k -> tt ;
+  elam x p -> \ h k -> tt ;
+  elabel x p -> \ h k -> tt ;
+  efunarg p th -> \ h k -> tt ;
+  eplus p q -> \ h k -> tt } ;
+consMeet (mu : Heap) (rho : Env) (a b : Ty) : (v : Maybe Expr) ->
+    ConsResult mu rho a v -> ConsResult mu rho b v -> ConsResult mu rho (meet a b) v = split {
+  nothing -> \ h k -> tt ; just e -> consMeetExpr mu rho a b e } ;
+consSubExpr (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Expr) ->
+    ConsExpr mu rho a e -> ConsExpr mu rho b e = split {
+  evar x -> \ h -> tt ;
+  equote c -> \ h -> tt ;
+  econs p q -> \ h -> mkPair (Obs mu p rho (firstTy b)) (Obs mu q rho (secondTy b)) (obsSub p rho (firstTy a) (firstTy b) h.fst (firstMono a b le)) (obsSub q rho (secondTy a) (secondTy b) h.snd (secondMono a b le)) ;
+  ecar p -> \ h -> tt ;
+  ecdr p -> \ h -> tt ;
+  eatom p -> \ h -> tt ;
+  eeq p q -> \ h -> tt ;
+  eif p q r -> \ h -> tt ;
+  eapp p q -> \ h -> tt ;
+  elam x p -> \ h -> tt ;
+  elabel x p -> \ h -> tt ;
+  efunarg p th -> \ h -> tt ;
+  eplus p q -> \ h -> tt } ;
+consSub (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (v : Maybe Expr) ->
+    ConsResult mu rho a v -> ConsResult mu rho b v = split {
+  nothing -> \ h -> tt ; just e -> consSubExpr mu rho a b le e } ;
+
+consAt (mu : Heap) (p : Addr) (rho : Env) (a : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : ConsExpr mu rho a e) :
+    ConsResult mu rho a (mu p) =
+  subst (Maybe Expr) (ConsResult mu rho a) (just e) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+consLocal (mu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu mu p rho a -> ConsResult mu rho a (mu p) = split {
+  atVar p rho x eq -> consAt mu p rho (lookupEnv rho x) (evar x) eq (tt) ;
+  atQuote p rho a eq -> consAt mu p rho (at a) (equote a) eq (tt) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> consAt mu p rho (prod a b) (econs p1 p2) eq (mkPair (Obs mu p1 rho a) (Obs mu p2 rho b) o1 o2) ;
+  atCar p q rho a b eq o -> consAt mu p rho (a) (ecar q) eq (tt) ;
+  atCdr p q rho a b eq o -> consAt mu p rho (b) (ecdr q) eq (tt) ;
+  atAtomT p q rho eq o -> consAt mu p rho (at T) (eatom q) eq (tt) ;
+  atAtomNil p q rho eq o -> consAt mu p rho (at NIL) (eatom q) eq (tt) ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> consAt mu p rho (at T) (eeq p1 p2) eq (tt) ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> consAt mu p rho (at NIL) (eeq p1 p2) eq (tt) ;
+  atIfT p p0 p1 p2 rho a eq oc o -> consAt mu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> consAt mu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atApp p pf px rho a b eq ofun ox -> consAt mu p rho (b) (eapp pf px) eq (tt) ;
+  atLam p pb rho x a b eq o -> consAt mu p rho (arr a b) (elam x pb) eq (tt) ;
+  atLabel p pb rho x a b eq rec body -> consAt mu p rho (b) (elabel x pb) eq (tt) ;
+  atFunarg p pb th rho bs a eq args body -> consAt mu p rho (a) (efunarg pb th) eq (tt) ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> consAt mu p rho (at (num (plus m n))) (eplus p1 p2) eq (tt) } ;
+
+consGenerated (mu : Heap) (p : Addr) (rho : Env) : (a : Ty) ->
+    Generated mu p rho a -> ConsResult mu rho a (mu p) =
+  foldGenerated mu p rho (\ a -> ConsResult mu rho a (mu p))
+    (consTop mu rho (mu p))
+    (\ a b -> consMeet mu rho a b (mu p))
+    (\ a b le -> consSub mu rho a b le (mu p))
+    (consLocal mu p rho) ;
+
+consInversion (mu : Heap) (p q r : Addr) (rho : Env) (a b : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (econs q r))) (o : Obs mu p rho (prod a b)) :
+    Pair[Obs mu q rho a, Obs mu r rho b] =
+  subst (Maybe Expr) (ConsResult mu rho (prod a b)) (mu p) (just (econs q r)) eq
+    (consGenerated mu p rho (prod a b) (obsGeneration mu p rho (prod a b) o)) ;

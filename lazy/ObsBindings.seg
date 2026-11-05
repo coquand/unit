@@ -1,0 +1,108 @@
+-- Inversion and finite meets of observations of one association list.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+
+record BindingHead (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env) {
+  entryType : Ty ; tailEnv : Env ;
+  shape : Id Env bs (ext tailEnv x entryType) ;
+  entry : Obs mu q rho entryType ;
+  rest : ObsAlist mu rho th tailEnv ;
+} ;
+BindingView (mu : Heap) (rho : Env) : Alist -> Env -> U l = split {
+  nil -> \ bs -> Id Env bs nil ;
+  cons b th -> \ bs -> BindingHead[mu, rho, b.fst, b.snd, th, bs] } ;
+BindingResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> Top ; bindings rho th bs -> BindingView mu rho th bs } ;
+
+viewBindings (mu : Heap) : (j : Query) -> Derive mu j -> BindingResult mu j = split {
+  obsTop p rho -> tt ;
+  obsMeet p rho a b oa ob -> tt ;
+  obsSub p rho a b o le -> tt ;
+  obsVar p rho x eq -> tt ;
+  obsQuote p rho a eq -> tt ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> tt ;
+  obsCar p q rho a b eq o -> tt ;
+  obsCdr p q rho a b eq o -> tt ;
+  obsAtomT p q rho eq o -> tt ;
+  obsAtomNil p q rho eq o -> tt ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> tt ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> tt ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> tt ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> tt ;
+  obsApp p pf px rho a b eq ofun ox -> tt ;
+  obsLam p pb rho x a b eq o -> tt ;
+  obsLabel p pb rho x a b eq rec body -> tt ;
+  obsFunarg p pb th rho bs a eq args body -> tt ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> tt ;
+  oaNil rho -> refl nil ;
+  oaCons rho x q th bs a head tail ->
+    mkBindingHead mu rho x q th (ext bs x a) a bs (refl (ext bs x a)) head tail } ;
+
+bindingHead (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env)
+    (o : ObsAlist mu rho (cons (mkPair Nat Nat x q) th) bs) : BindingHead[mu, rho, x, q, th, bs] =
+  viewBindings mu (bindings rho (cons (mkPair Nat Nat x q) th) bs) o ;
+
+record Merged (mu : Heap) (rho : Env) (th : Alist) (bs cs : Env) {
+  env : Env ;
+  observed : ObsAlist mu rho th env ;
+  left (base : Env) : EnvLe (appendEnv env base) (appendEnv bs base) ;
+  right (base : Env) : EnvLe (appendEnv env base) (appendEnv cs base) ;
+} ;
+
+mergeNil (mu : Heap) (rho cs : Env) (e : Id Env cs nil) : Merged[mu, rho, nil, nil, cs] =
+  mkMerged mu rho nil nil cs nil (oaNil rho) (\ base -> envRefl base)
+    (\ base -> subst Env (\ zs -> EnvLe base (appendEnv zs base)) nil cs (pathSym Env cs nil e) (envRefl base)) ;
+
+mergeCons (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env) (a : Ty)
+    (head : Obs mu q rho a) (cs : Env) (v : BindingHead[mu, rho, x, q, th, cs])
+    (m : Merged[mu, rho, th, bs, v.tailEnv]) :
+    Merged[mu, rho, cons (mkPair Nat Nat x q) th, ext bs x a, cs] =
+  mkMerged mu rho (cons (mkPair Nat Nat x q) th) (ext bs x a) cs
+    (ext m.env x (meet a v.entryType))
+    (oaCons rho x q th m.env (meet a v.entryType) (obsMeet q rho a v.entryType head v.entry) m.observed)
+    (\ base -> extMono (appendEnv m.env base) (appendEnv bs base) x (meet a v.entryType) a
+      (m.left base) (meetLeft a v.entryType))
+    (\ base -> subst Env (\ zs -> EnvLe (ext (appendEnv m.env base) x (meet a v.entryType)) (appendEnv zs base))
+      (ext v.tailEnv x v.entryType) cs (pathSym Env cs (ext v.tailEnv x v.entryType) v.shape)
+      (extMono (appendEnv m.env base) (appendEnv v.tailEnv base) x (meet a v.entryType) v.entryType
+        (m.right base) (meetRight a v.entryType))) ;
+
+mergeConsAt (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env) (a : Ty)
+    (head : Obs mu q rho a)
+    (ih : (cs : Env) -> ObsAlist mu rho th cs -> Merged[mu, rho, th, bs, cs])
+    (cs : Env) (v : BindingHead[mu, rho, x, q, th, cs]) :
+    Merged[mu, rho, cons (mkPair Nat Nat x q) th, ext bs x a, cs] =
+  mergeCons mu rho x q th bs a head cs v (ih v.tailEnv v.rest) ;
+
+MergeResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> Top ;
+  bindings rho th bs -> (cs : Env) -> ObsAlist mu rho th cs -> Merged[mu, rho, th, bs, cs] } ;
+
+mergeDerivations (mu : Heap) : (j : Query) -> Derive mu j -> MergeResult mu j = split {
+  obsTop p rho -> tt ;
+  obsMeet p rho a b oa ob -> tt ;
+  obsSub p rho a b o le -> tt ;
+  obsVar p rho x eq -> tt ;
+  obsQuote p rho a eq -> tt ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> tt ;
+  obsCar p q rho a b eq o -> tt ;
+  obsCdr p q rho a b eq o -> tt ;
+  obsAtomT p q rho eq o -> tt ;
+  obsAtomNil p q rho eq o -> tt ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> tt ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> tt ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> tt ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> tt ;
+  obsApp p pf px rho a b eq ofun ox -> tt ;
+  obsLam p pb rho x a b eq o -> tt ;
+  obsLabel p pb rho x a b eq rec body -> tt ;
+  obsFunarg p pb th rho bs a eq args body -> tt ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> tt ;
+  oaNil rho -> \ cs o -> mergeNil mu rho cs (viewBindings mu (bindings rho nil cs) o) ;
+  oaCons rho x q th bs a head tail | rh rt -> \ cs o ->
+    mergeConsAt mu rho x q th bs a head rt cs (bindingHead mu rho x q th cs o) } ;
+
+mergeBindings (mu : Heap) (rho : Env) (th : Alist) (bs cs : Env)
+    (o : ObsAlist mu rho th bs) (p : ObsAlist mu rho th cs) : Merged[mu, rho, th, bs, cs] =
+  mergeDerivations mu (bindings rho th bs) o cs p ;

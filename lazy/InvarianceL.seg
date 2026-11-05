@@ -1,0 +1,141 @@
+-- The circular LABEL rule: forward observation preservation.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ;
+open ObsEnvironment[l] ; open Transfer[l] ;
+
+-- A label observation can be unfolded through any matching circular cell.
+LabelActionE (mu : Heap) (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote a -> Top ;
+  econs p q -> Top ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x pb -> (p0 : Addr) -> (rho0 bs : Env) -> (th : Alist) ->
+      EnvLe (appendEnv bs rho0) rho -> ObsAlist mu rho0 th bs ->
+      Id (Maybe Expr) (mu p0) (just (efunarg pb (cons (mkPair Nat Nat x p0) th))) ->
+      Obs mu p0 rho0 a ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+LabelAction (mu : Heap) (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> LabelActionE mu rho a e } ;
+
+labelTopE (mu : Heap) (rho : Env) : (e : Expr) -> LabelActionE mu rho omega e = split {
+  evar x -> tt ;
+  equote a -> tt ;
+  econs p q -> tt ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x pb -> \ p0 rho0 bs th h oa qp -> obsTop p0 rho0 ;
+  efunarg p th -> tt ;
+  eplus p q -> tt } ;
+
+labelMeetE (mu : Heap) (rho : Env) (a b : Ty) : (e : Expr) ->
+    LabelActionE mu rho a e -> LabelActionE mu rho b e -> LabelActionE mu rho (meet a b) e = split {
+  evar x -> \ ra rb -> tt ;
+  equote a -> \ ra rb -> tt ;
+  econs p q -> \ ra rb -> tt ;
+  ecar p -> \ ra rb -> tt ;
+  ecdr p -> \ ra rb -> tt ;
+  eatom p -> \ ra rb -> tt ;
+  eeq p q -> \ ra rb -> tt ;
+  eif p q r -> \ ra rb -> tt ;
+  eapp p q -> \ ra rb -> tt ;
+  elam x p -> \ ra rb -> tt ;
+  elabel x pb -> \ ra rb p0 rho0 bs th h oa qp -> obsMeet p0 rho0 a b (ra p0 rho0 bs th h oa qp) (rb p0 rho0 bs th h oa qp) ;
+  efunarg p th -> \ ra rb -> tt ;
+  eplus p q -> \ ra rb -> tt } ;
+
+labelSubE (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Expr) ->
+    LabelActionE mu rho a e -> LabelActionE mu rho b e = split {
+  evar x -> \ ra -> tt ;
+  equote a -> \ ra -> tt ;
+  econs p q -> \ ra -> tt ;
+  ecar p -> \ ra -> tt ;
+  ecdr p -> \ ra -> tt ;
+  eatom p -> \ ra -> tt ;
+  eeq p q -> \ ra -> tt ;
+  eif p q r -> \ ra -> tt ;
+  eapp p q -> \ ra -> tt ;
+  elam x p -> \ ra -> tt ;
+  elabel x pb -> \ ra p0 rho0 bs th h oa qp -> obsSub p0 rho0 a b (ra p0 rho0 bs th h oa qp) le ;
+  efunarg p th -> \ ra -> tt ;
+  eplus p q -> \ ra -> tt } ;
+
+labelTop (mu : Heap) (rho : Env) : (e : Maybe Expr) -> LabelAction mu rho omega e = split {
+  nothing -> tt ; just e -> labelTopE mu rho e } ;
+labelMeet (mu : Heap) (rho : Env) (a b : Ty) : (e : Maybe Expr) ->
+    LabelAction mu rho a e -> LabelAction mu rho b e -> LabelAction mu rho (meet a b) e = split {
+  nothing -> \ ra rb -> tt ; just e -> labelMeetE mu rho a b e } ;
+labelSub (mu : Heap) (rho : Env) (a b : Ty) (le : Le a b) : (e : Maybe Expr) ->
+    LabelAction mu rho a e -> LabelAction mu rho b e = split {
+  nothing -> \ ra -> tt ; just e -> labelSubE mu rho a b le e } ;
+
+LabelResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> LabelAction mu rho a (mu p) ; bindings rho th bs -> Top } ;
+
+labelStep (mu : Heap) (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (elabel x pb)))
+    (rec : LabelAction mu rho a (mu p)) (body : Obs mu pb (ext rho x a) b) :
+    LabelAction mu rho b (mu p) =
+  subst (Maybe Expr) (LabelAction mu rho b) (just (elabel x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elabel x pb)) eq)
+    (\ p0 rho0 bs th h oa qp -> obsFunarg p0 pb (cons (mkPair Nat Nat x p0) th) rho0 (ext bs x a) b qp
+      (oaCons rho0 x p0 th bs a
+        ((subst (Maybe Expr) (LabelAction mu rho a) (mu p) (just (elabel x pb)) eq rec) p0 rho0 bs th h oa qp) oa)
+      (obsStrengthen mu pb (ext rho x a) (ext (appendEnv bs rho0) x a) b
+        (extMono (appendEnv bs rho0) rho x a a h (leRefl a)) body)) ;
+
+unfoldLabels (mu : Heap) : (j : Query) -> Derive mu j -> LabelResult mu j = split {
+  obsTop p rho -> labelTop mu rho (mu p) ;
+  obsMeet p rho a b oa ob | ra rb -> labelMeet mu rho a b (mu p) ra rb ;
+  obsSub p rho a b o le | r -> labelSub mu rho a b le (mu p) r ;
+  obsVar p rho x eq -> subst (Maybe Expr) (LabelAction mu rho (lookupEnv rho x)) (just (evar x)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (evar x)) eq) tt ;
+  obsQuote p rho a eq -> subst (Maybe Expr) (LabelAction mu rho (at a)) (just (equote a)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (equote a)) eq) tt ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> subst (Maybe Expr) (LabelAction mu rho (prod a b)) (just (econs p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (econs p1 p2)) eq) tt ;
+  obsCar p q rho a b eq o -> subst (Maybe Expr) (LabelAction mu rho (a)) (just (ecar q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecar q)) eq) tt ;
+  obsCdr p q rho a b eq o -> subst (Maybe Expr) (LabelAction mu rho (b)) (just (ecdr q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecdr q)) eq) tt ;
+  obsAtomT p q rho eq o -> subst (Maybe Expr) (LabelAction mu rho (at T)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+  obsAtomNil p q rho eq o -> subst (Maybe Expr) (LabelAction mu rho (at NIL)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> subst (Maybe Expr) (LabelAction mu rho (at T)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> subst (Maybe Expr) (LabelAction mu rho (at NIL)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (LabelAction mu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (LabelAction mu rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+  obsApp p pf px rho a b eq ofun ox -> subst (Maybe Expr) (LabelAction mu rho (b)) (just (eapp pf px)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eapp pf px)) eq) tt ;
+  obsLam p pb rho x a b eq o -> subst (Maybe Expr) (LabelAction mu rho (arr a b)) (just (elam x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elam x pb)) eq) tt ;
+  obsFunarg p pb th rho bs a eq args body -> subst (Maybe Expr) (LabelAction mu rho (a)) (just (efunarg pb th)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (efunarg pb th)) eq) tt ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> subst (Maybe Expr) (LabelAction mu rho (at (num (plus m n)))) (just (eplus p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eplus p1 p2)) eq) tt ;
+  obsLabel p pb rho x a b eq rec body | rr rb -> labelStep mu p pb rho x a b eq rr body ;
+  oaNil rho -> tt ; oaCons rho x q th bs a head tail -> tt } ;
+
+labelUnfold (mu : Heap) (pl p0 pb : Addr) (x : Var) (rho bs : Env) (th : Alist) (a : Ty)
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb)))
+    (qp : Id (Maybe Expr) (mu p0) (just (efunarg pb (cons (mkPair Nat Nat x p0) th))))
+    (oa : ObsAlist mu rho th bs) (o : Obs mu pl (appendEnv bs rho) a) : Obs mu p0 rho a =
+  (subst (Maybe Expr) (LabelAction mu (appendEnv bs rho) a) (mu pl) (just (elabel x pb)) ql
+    (unfoldLabels mu (cell pl (appendEnv bs rho) a) o)) p0 rho bs th (envRefl (appendEnv bs rho)) oa qp ;

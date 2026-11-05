@@ -1,0 +1,64 @@
+-- Lambda generation uses the filter interpretation of arrow subtyping.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Arrow[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ; open MemoryLemmas[l] ;
+
+IsLamExpr : Expr -> U l = split {
+  evar x -> Empty ; equote a -> Empty ; econs p q -> Empty ; ecar p -> Empty ; ecdr p -> Empty ;
+  eatom p -> Empty ; eeq p q -> Empty ; eif p q r -> Empty ; eapp p q -> Empty ;
+  elam x p -> Top ; elabel x p -> Empty ; efunarg p th -> Empty ; eplus p q -> Empty } ;
+lamClash (v : Maybe Expr) (e : Expr) (x : Var) (pb : Addr)
+    (qe : Id (Maybe Expr) v (just e)) (ql : Id (Maybe Expr) v (just (elam x pb))) : IsLamExpr e =
+  subst Expr IsLamExpr (elam x pb) e
+    (pathSym Expr e (elam x pb) (contentsEq v e (elam x pb) qe ql)) tt ;
+
+LamAt (mu : Heap) (rho : Env) (input out : Ty) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Top ; econs p q -> Top ; ecar p -> Top ; ecdr p -> Top ;
+  eatom p -> Top ; eeq p q -> Top ; eif p q r -> Top ; eapp p q -> Top ;
+  elam x p -> Obs mu p (ext rho x input) out ; elabel x p -> Top ; efunarg p th -> Top ; eplus p q -> Top } ;
+
+LamTest (mu : Heap) (input : Ty) (p : Addr) (rho : Env) (out : Ty) : U l =
+  (x : Var) -> (pb : Addr) -> Id (Maybe Expr) (mu p) (just (elam x pb)) ->
+    ArrowTest input (Obs mu pb (ext rho x input)) out ;
+
+lamImpossible (mu : Heap) (input : Ty) (p : Addr) (rho : Env) (out : Ty)
+    (e : Expr) (qe : Id (Maybe Expr) (mu p) (just e)) (ne : IsLamExpr e -> Empty) : LamTest mu input p rho out =
+  \ x pb q -> absurd (ArrowTest input (Obs mu pb (ext rho x input)) out) (ne (lamClash (mu p) e x pb qe q)) ;
+
+LamResult (mu : Heap) (input : Ty) : Query -> U l = split {
+  cell p rho out -> LamTest mu input p rho out ; bindings rho th bs -> Top } ;
+
+lambdaTest (mu : Heap) (input : Ty) : (j : Query) -> Derive mu j -> LamResult mu input j = split {
+  obsTop p rho -> \ x pb q -> tt ;
+  obsMeet p rho a b oa ob | ra rb -> \ x pb q ->
+    mkPair (ArrowTest input (Obs mu pb (ext rho x input)) a)
+      (ArrowTest input (Obs mu pb (ext rho x input)) b) (ra x pb q) (rb x pb q) ;
+  obsSub p rho a b o le | r -> \ x pb q ->
+    arrowPreserve input (Obs mu pb (ext rho x input)) (obsTop pb (ext rho x input))
+      (\ c d oc od -> obsMeet pb (ext rho x input) c d oc od)
+      (\ c d cd oc -> obsSub pb (ext rho x input) c d oc cd) a b le (r x pb q) ;
+  obsVar p rho x eq -> lamImpossible mu input p rho (lookupEnv rho x) (evar x) eq (\ h -> h) ;
+  obsQuote p rho a eq -> lamImpossible mu input p rho (at a) (equote a) eq (\ h -> h) ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> lamImpossible mu input p rho (prod a b) (econs p1 p2) eq (\ h -> h) ;
+  obsCar p q rho a b eq o -> lamImpossible mu input p rho a (ecar q) eq (\ h -> h) ;
+  obsCdr p q rho a b eq o -> lamImpossible mu input p rho b (ecdr q) eq (\ h -> h) ;
+  obsAtomT p q rho eq o -> lamImpossible mu input p rho (at T) (eatom q) eq (\ h -> h) ;
+  obsAtomNil p q rho eq o -> lamImpossible mu input p rho (at NIL) (eatom q) eq (\ h -> h) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> lamImpossible mu input p rho (at T) (eeq p1 p2) eq (\ h -> h) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> lamImpossible mu input p rho (at NIL) (eeq p1 p2) eq (\ h -> h) ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> lamImpossible mu input p rho a (eif p0 p1 p2) eq (\ h -> h) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> lamImpossible mu input p rho a (eif p0 p1 p2) eq (\ h -> h) ;
+  obsApp p pf px rho a b eq ofun ox -> lamImpossible mu input p rho b (eapp pf px) eq (\ h -> h) ;
+  obsLam p pb rho x a b eq o -> \ y qb q low ->
+    subst Expr (LamAt mu rho input b) (elam x pb) (elam y qb)
+      (contentsEq (mu p) (elam x pb) (elam y qb) eq q)
+      (obsStrengthen mu pb (ext rho x a) (ext rho x input) b
+        (extMono rho rho x input a (envRefl rho) low) o) ;
+  obsLabel p pb rho x a b eq rec body -> lamImpossible mu input p rho b (elabel x pb) eq (\ h -> h) ;
+  obsFunarg p pb th rho bs a eq args body -> lamImpossible mu input p rho a (efunarg pb th) eq (\ h -> h) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> lamImpossible mu input p rho (at (num (plus m n))) (eplus p1 p2) eq (\ h -> h) ;
+  oaNil rho -> tt ; oaCons rho x q th bs a head tail -> tt } ;
+
+lambdaInverse (mu : Heap) (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (elam x pb))) (o : Obs mu p rho (arr a b)) :
+    Obs mu pb (ext rho x a) b = lambdaTest mu a (cell p rho (arr a b)) o x pb eq (leRefl a) ;

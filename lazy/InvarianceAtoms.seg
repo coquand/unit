@@ -1,0 +1,247 @@
+-- Atomic tests, equality, conditionals and PLUS preserve all observations.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ; open AtomInverse[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+open ObsQuotes[l] ; open ObsPrimitives[l] ; open ObsConsHead[l] ; open SameCell[l] ; open UpdateTransfer[l] ;
+
+obsRetype (mu : Heap) (p : Addr) (rho : Env) (t u : Ty)
+    (eq : Id Ty t u) (o : Obs mu p rho u) : Obs mu p rho t =
+  subst Ty (Obs mu p rho) u t (pathSym Ty t u eq) o ;
+
+atomQuoteCase (nu : Heap) (p q : Addr) (rho : Env) (t : Ty) (a : Atom)
+    (root : Id (Maybe Expr) (nu p) (just (equote T)))
+    (value : Id (Maybe Expr) (nu q) (just (equote a))) : AtomPrem nu q rho t -> Obs nu p rho t = split {
+  inl h -> obsRetype nu p rho t (at T) h.fst (obsQuote p rho T root) ;
+  inr h -> absurd (Obs nu p rho t)
+    (pairPresent (at a) omega omega (quoteInversion nu q rho a (prod omega omega) value h.snd)) } ;
+atomPairCase (nu : Heap) (p q x y : Addr) (rho : Env) (t : Ty)
+    (root : Id (Maybe Expr) (nu p) (just (equote NIL)))
+    (value : Id (Maybe Expr) (nu q) (just (econs x y))) : AtomPrem nu q rho t -> Obs nu p rho t = split {
+  inl h -> absurd (Obs nu p rho t) (consAvoid atomHead (\ bad -> bad) nu q x y rho atomTop value h.snd tt) ;
+  inr h -> obsRetype nu p rho t (at NIL) h.fst (obsQuote p rho NIL root) } ;
+
+module AtomT (mu : Heap) (p q : Addr) (a : Atom)
+    (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+    (value : Id (Maybe Expr) (mu q) (just (equote a))) {
+  nu : Heap = upd mu p (equote T) ;
+  valueNew : Id (Maybe Expr) (nu q) (just (equote a)) =
+    readUnchanged mu p q (eatom q) (equote a) (equote T) root value (\ bad -> bad) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    atomQuoteCase nu p q rho t a (upd-hit mu p (equote T)) valueNew
+      (primitiveInversion mu nu p rho t (eatom q) root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p (equote T) localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsSub p rho (at T) t
+      (obsAtomT p q rho root (obsSub q rho (at a) atomTop (obsQuote q rho a value) (atomBelow a)))
+      (primitiveInversion nu mu p rho t (equote T) (upd-hit mu p (equote T)) d) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p (equote T) localBackward ;
+} ;
+
+module AtomNil (mu : Heap) (p q x y : Addr)
+    (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+    (value : Id (Maybe Expr) (mu q) (just (econs x y))) {
+  nu : Heap = upd mu p (equote NIL) ;
+  valueNew : Id (Maybe Expr) (nu q) (just (econs x y)) =
+    readUnchanged mu p q (eatom q) (econs x y) (equote NIL) root value (\ bad -> bad) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    atomPairCase nu p q x y rho t (upd-hit mu p (equote NIL)) valueNew
+      (primitiveInversion mu nu p rho t (eatom q) root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p (equote NIL) localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsSub p rho (at NIL) t
+      (obsAtomNil p q rho root (obsCons q x y rho omega omega value (obsTop x rho) (obsTop y rho)))
+      (primitiveInversion nu mu p rho t (equote NIL) (upd-hit mu p (equote NIL)) d) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p (equote NIL) localBackward ;
+} ;
+
+isTrueAtom : Atom -> U l = split { T -> Top ; NIL -> Empty ; num n -> Empty ; sym n -> Empty } ;
+trueNotNil (e : Id Atom T NIL) : Empty = subst Atom isTrueAtom T NIL e tt ;
+
+ifTrueCase (nu : Heap) (q r s : Addr) (rho : Env) (t : Ty)
+    (test : Id (Maybe Expr) (nu q) (just (equote T))) : IfPrem nu q r s rho t -> Obs nu r rho t = split {
+  inl h -> h.snd ;
+  inr h -> absurd (Obs nu r rho t)
+    (trueNotNil (atomEquality T NIL (quoteInversion nu q rho T (at NIL) test h.fst))) } ;
+ifFalseCase (nu : Heap) (q r s : Addr) (rho : Env) (t : Ty)
+    (test : Id (Maybe Expr) (nu q) (just (equote NIL))) : IfPrem nu q r s rho t -> Obs nu s rho t = split {
+  inl h -> absurd (Obs nu s rho t)
+    (trueNotNil (pathSym Atom NIL T (atomEquality NIL T (quoteInversion nu q rho NIL (at T) test h.fst)))) ;
+  inr h -> h.snd } ;
+
+ifTrueLocal (mu nu : Heap) (p q r s : Addr) (rho : Env) (t : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (nu q) (just (equote T))) (d : Local mu nu p rho t) : Obs nu r rho t =
+  ifTrueCase nu q r s rho t test (primitiveInversion mu nu p rho t (eif q r s) root d) ;
+ifFalseLocal (mu nu : Heap) (p q r s : Addr) (rho : Env) (t : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (nu q) (just (equote NIL))) (d : Local mu nu p rho t) : Obs nu s rho t =
+  ifFalseCase nu q r s rho t test (primitiveInversion mu nu p rho t (eif q r s) root d) ;
+
+ifTrueObservation (mu : Heap) (p q r s : Addr) (rho : Env)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (mu q) (just (equote T))) (t : Ty) (o : Obs mu p rho t) : Obs mu r rho t =
+  foldGenerated mu p rho (Obs mu r rho) (obsTop r rho)
+    (\ a b h k -> obsMeet r rho a b h k) (\ a b le d -> obsSub r rho a b d le)
+    (\ a d -> ifTrueLocal mu mu p q r s rho a root test d) t (obsGeneration mu p rho t o) ;
+ifFalseObservation (mu : Heap) (p q r s : Addr) (rho : Env)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (mu q) (just (equote NIL))) (t : Ty) (o : Obs mu p rho t) : Obs mu s rho t =
+  foldGenerated mu p rho (Obs mu s rho) (obsTop s rho)
+    (\ a b h k -> obsMeet s rho a b h k) (\ a b le d -> obsSub s rho a b d le)
+    (\ a d -> ifFalseLocal mu mu p q r s rho a root test d) t (obsGeneration mu p rho t o) ;
+
+module IfT (mu : Heap) (p q r s : Addr) (e : Expr)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (mu q) (just (equote T)))
+    (value : Id (Maybe Expr) (mu r) (just e)) {
+  nu : Heap = upd mu p e ;
+  testNew : Id (Maybe Expr) (nu q) (just (equote T)) =
+    readUnchanged mu p q (eif q r s) (equote T) e root test (\ bad -> bad) ;
+  selected : Id (Maybe Expr) (nu r) (nu p) =
+    pathTrans (Maybe Expr) (nu r) (just e) (nu p) (writeSame mu p r e value)
+      (pathSym (Maybe Expr) (nu p) (just e) (upd-hit mu p e)) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    sameCell nu r p rho t selected (ifTrueLocal mu nu p q r s rho t root testNew d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p e localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsIfT p q r s rho t root (obsQuote q rho T test)
+      (moveLocal nu mu p rho t d r
+        (pathTrans (Maybe Expr) (nu p) (just e) (mu r) (upd-hit mu p e)
+          (pathSym (Maybe Expr) (mu r) (just e) value))
+        (ifTrueObservation mu p q r s rho root test)) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p e localBackward ;
+} ;
+
+module IfNil (mu : Heap) (p q r s : Addr) (e : Expr)
+    (root : Id (Maybe Expr) (mu p) (just (eif q r s)))
+    (test : Id (Maybe Expr) (mu q) (just (equote NIL)))
+    (value : Id (Maybe Expr) (mu s) (just e)) {
+  nu : Heap = upd mu p e ;
+  testNew : Id (Maybe Expr) (nu q) (just (equote NIL)) =
+    readUnchanged mu p q (eif q r s) (equote NIL) e root test (\ bad -> bad) ;
+  selected : Id (Maybe Expr) (nu s) (nu p) =
+    pathTrans (Maybe Expr) (nu s) (just e) (nu p) (writeSame mu p s e value)
+      (pathSym (Maybe Expr) (nu p) (just e) (upd-hit mu p e)) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    sameCell nu s p rho t selected (ifFalseLocal mu nu p q r s rho t root testNew d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p e localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsIfNil p q r s rho t root (obsQuote q rho NIL test)
+      (moveLocal nu mu p rho t d s
+        (pathTrans (Maybe Expr) (nu p) (just e) (mu s) (upd-hit mu p e)
+          (pathSym (Maybe Expr) (mu s) (just e) value))
+        (ifFalseObservation mu p q r s rho root test)) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p e localBackward ;
+} ;
+
+numberPart : Atom -> Nat = split { T -> zero ; NIL -> zero ; num n -> n ; sym n -> zero } ;
+numInject (m n : Nat) (e : Id Atom (num m) (num n)) : Id Nat m n =
+  ap Atom Nat numberPart (num m) (num n) e ;
+numberObserved (mu : Heap) (p : Addr) (rho : Env) (m n : Nat)
+    (value : Id (Maybe Expr) (mu p) (just (equote (num m))))
+    (o : Obs mu p rho (at (num n))) : Id Nat m n =
+  numInject m n (atomEquality (num m) (num n) (quoteInversion mu p rho (num m) (at (num n)) value o)) ;
+plusCong (m n r s : Nat) (a : Id Nat m r) (b : Id Nat n s) : Id Nat (plus m n) (plus r s) =
+  pathTrans Nat (plus m n) (plus r n) (plus r s)
+    (ap Nat Nat (\ x -> plus x n) m r a) (ap Nat Nat (plus r) n s b) ;
+plusQuote (mu : Heap) (p : Addr) (rho : Env) (m n r s : Nat)
+    (a : Id Nat m r) (b : Id Nat n s)
+    (root : Id (Maybe Expr) (mu p) (just (equote (num (plus m n))))) : Obs mu p rho (at (num (plus r s))) =
+  subst Nat (\ k -> Obs mu p rho (at (num k))) (plus m n) (plus r s) (plusCong m n r s a b)
+    (obsQuote p rho (num (plus m n)) root) ;
+plusCase (nu : Heap) (p q r : Addr) (rho : Env) (t : Ty) (m n : Nat)
+    (root : Id (Maybe Expr) (nu p) (just (equote (num (plus m n)))))
+    (left : Id (Maybe Expr) (nu q) (just (equote (num m))))
+    (right : Id (Maybe Expr) (nu r) (just (equote (num n))))
+    (h : PlusPrem[nu,q,r,rho,t]) : Obs nu p rho t =
+  obsRetype nu p rho t (at (num (plus h.leftNum h.rightNum))) h.result
+    (plusQuote nu p rho m n h.leftNum h.rightNum
+      (numberObserved nu q rho m h.leftNum left h.leftObs)
+      (numberObserved nu r rho n h.rightNum right h.rightObs) root) ;
+
+module Plus (mu : Heap) (p q r : Addr) (m n : Nat)
+    (root : Id (Maybe Expr) (mu p) (just (eplus q r)))
+    (left : Id (Maybe Expr) (mu q) (just (equote (num m))))
+    (right : Id (Maybe Expr) (mu r) (just (equote (num n)))) {
+  answer : Atom = num (plus m n) ;
+  nu : Heap = upd mu p (equote answer) ;
+  leftNew : Id (Maybe Expr) (nu q) (just (equote (num m))) =
+    readUnchanged mu p q (eplus q r) (equote (num m)) (equote answer) root left (\ bad -> bad) ;
+  rightNew : Id (Maybe Expr) (nu r) (just (equote (num n))) =
+    readUnchanged mu p r (eplus q r) (equote (num n)) (equote answer) root right (\ bad -> bad) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    plusCase nu p q r rho t m n (upd-hit mu p (equote answer)) leftNew rightNew
+      (primitiveInversion mu nu p rho t (eplus q r) root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p (equote answer) localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsSub p rho (at answer) t
+      (obsPlus p q r rho m n root (obsQuote q rho (num m) left) (obsQuote r rho (num n) right))
+      (primitiveInversion nu mu p rho t (equote answer) (upd-hit mu p (equote answer)) d) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p (equote answer) localBackward ;
+} ;
+
+atomTestCong (a b c d : Atom) (ac : Id Atom a c) (bd : Id Atom b d) : Id Bool (atomEq a b) (atomEq c d) =
+  pathTrans Bool (atomEq a b) (atomEq c b) (atomEq c d)
+    (ap Atom Bool (\ x -> atomEq x b) a c ac) (ap Atom Bool (atomEq c) b d bd) ;
+eqAnswerTrue : (b : Bool) -> Truth b -> Id Atom (choose Atom T NIL b) T = split {
+  false -> \ bad -> absurd (Id Atom NIL T) bad ; true -> \ ok -> refl T } ;
+eqAnswerFalse : (b : Bool) -> (Truth b -> Empty) -> Id Atom (choose Atom T NIL b) NIL = split {
+  false -> \ ok -> refl NIL ; true -> \ bad -> absurd (Id Atom T NIL) (bad tt) } ;
+quoteRetype (nu : Heap) (p : Addr) (rho : Env) (t : Ty) (a b : Atom)
+    (root : Id (Maybe Expr) (nu p) (just (equote a)))
+    (ab : Id Atom a b) (tb : Id Ty t (at b)) : Obs nu p rho t =
+  obsRetype nu p rho t (at b) tb
+    (subst Atom (\ c -> Obs nu p rho (at c)) a b ab (obsQuote p rho a root)) ;
+eqCase (nu : Heap) (p : Addr) (rho : Env) (t : Ty) (a b c d : Atom)
+    (root : Id (Maybe Expr) (nu p) (just (equote (choose Atom T NIL (atomEq a b)))) )
+    (tests : Id Bool (atomEq c d) (atomEq a b)) :
+    Either (Pair[Truth (atomEq c d), Id Ty t (at T)])
+           (Pair[Truth (atomEq c d) -> Empty, Id Ty t (at NIL)]) -> Obs nu p rho t = split {
+  inl h -> quoteRetype nu p rho t (choose Atom T NIL (atomEq a b)) T root
+    (eqAnswerTrue (atomEq a b) (subst Bool Truth (atomEq c d) (atomEq a b) tests h.fst)) h.snd ;
+  inr h -> quoteRetype nu p rho t (choose Atom T NIL (atomEq a b)) NIL root
+    (eqAnswerFalse (atomEq a b) (\ v -> h.fst
+      (subst Bool Truth (atomEq a b) (atomEq c d) (pathSym Bool (atomEq c d) (atomEq a b) tests) v))) h.snd } ;
+
+eqObservedCase (nu : Heap) (p q r : Addr) (rho : Env) (t : Ty) (a b : Atom)
+    (root : Id (Maybe Expr) (nu p) (just (equote (choose Atom T NIL (atomEq a b)))))
+    (left : Id (Maybe Expr) (nu q) (just (equote a)))
+    (right : Id (Maybe Expr) (nu r) (just (equote b)))
+    (h : EqPrem[nu,q,r,rho,t]) : Obs nu p rho t =
+  eqCase nu p rho t a b h.leftAtom h.rightAtom root
+    (pathSym Bool (atomEq a b) (atomEq h.leftAtom h.rightAtom)
+      (atomTestCong a b h.leftAtom h.rightAtom
+        (atomEquality a h.leftAtom (quoteInversion nu q rho a (at h.leftAtom) left h.leftObs))
+        (atomEquality b h.rightAtom (quoteInversion nu r rho b (at h.rightAtom) right h.rightObs)))) h.answer ;
+
+eqObservation (mu : Heap) (p q r : Addr) (rho : Env) (a b : Atom)
+    (root : Id (Maybe Expr) (mu p) (just (eeq q r)))
+    (left : Id (Maybe Expr) (mu q) (just (equote a)))
+    (right : Id (Maybe Expr) (mu r) (just (equote b))) :
+    (test : Bool) -> Id Bool (atomEq a b) test -> Obs mu p rho (at (choose Atom T NIL test)) = split {
+  false -> \ eq -> obsEqNil p q r rho a b root
+    (\ same -> subst Bool Truth (atomEq a b) false eq same) (obsQuote q rho a left) (obsQuote r rho b right) ;
+  true -> \ eq -> obsEqT p q r rho a b root
+    (subst Bool Truth true (atomEq a b) (pathSym Bool (atomEq a b) true eq) tt)
+    (obsQuote q rho a left) (obsQuote r rho b right) } ;
+
+module EqTest (mu : Heap) (p q r : Addr) (a b : Atom)
+    (root : Id (Maybe Expr) (mu p) (just (eeq q r)))
+    (left : Id (Maybe Expr) (mu q) (just (equote a)))
+    (right : Id (Maybe Expr) (mu r) (just (equote b))) {
+  answer : Atom = choose Atom T NIL (atomEq a b) ;
+  nu : Heap = upd mu p (equote answer) ;
+  leftNew : Id (Maybe Expr) (nu q) (just (equote a)) =
+    readUnchanged mu p q (eeq q r) (equote a) (equote answer) root left (\ bad -> bad) ;
+  rightNew : Id (Maybe Expr) (nu r) (just (equote b)) =
+    readUnchanged mu p r (eeq q r) (equote b) (equote answer) root right (\ bad -> bad) ;
+  localForward (rho : Env) (t : Ty) (d : Local mu nu p rho t) : Obs nu p rho t =
+    eqObservedCase nu p q r rho t a b (upd-hit mu p (equote answer)) leftNew rightNew
+      (primitiveInversion mu nu p rho t (eeq q r) root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p (equote answer) localForward ;
+  localBackward (rho : Env) (t : Ty) (d : Local nu mu p rho t) : Obs mu p rho t =
+    obsSub p rho (at answer) t
+      (eqObservation mu p q r rho a b root left right (atomEq a b) (refl (atomEq a b)))
+      (primitiveInversion nu mu p rho t (equote answer) (upd-hit mu p (equote answer)) d) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p (equote answer) localBackward ;
+} ;

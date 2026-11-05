@@ -1,0 +1,161 @@
+-- Arrow inversion by a filter interpretation. This avoids a second
+-- subtyping algorithm and a transitivity/cut-elimination theorem.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+
+-- For a fixed argument type, observe the result obligations of every
+-- arrow component. Non-arrow components contribute no obligations.
+ArrowTest (input : Ty) (P : Ty -> U l) : Ty -> U l = split {
+  omega -> Top ; atomTop -> Top ; at a -> Top ; prod a b -> Top ;
+  arr a b -> Le input a -> P b ;
+  meet a b | ra rb -> Pair[ra, rb] } ;
+
+-- P is a filter of possible results: top, meet, and subsumption.
+arrowPreserve (input : Ty) (P : Ty -> U l)
+    (pt : P omega)
+    (pm : (a b : Ty) -> P a -> P b -> P (meet a b))
+    (pu : (a b : Ty) -> Le a b -> P a -> P b) :
+    (a b : Ty) -> Le a b -> ArrowTest input P a -> ArrowTest input P b = split {
+  leRefl a -> \ h -> h ;
+  leTrans a b c p q | rp rq -> \ h -> rq (rp h) ;
+  meetLeft a b -> \ h -> h.fst ;
+  meetRight a b -> \ h -> h.snd ;
+  meetIntro r a b p q | rp rq -> \ h ->
+    mkPair (ArrowTest input P a) (ArrowTest input P b) (rp h) (rq h) ;
+  leTop a -> \ h -> tt ;
+  atomBelow a -> \ h -> tt ;
+  prodMono a c b d p q -> \ h -> tt ;
+  prodMeet a b c d -> \ h -> tt ;
+  arrMono a c b d p q -> \ h low -> pu b d q (h (leTrans input c a low p)) ;
+  arrMeet a b c -> \ h low -> pm b c (h.fst low) (h.snd low) ;
+  arrTop a -> \ h low -> pt } ;
+
+arrowBeta (input : Ty) (P : Ty -> U l)
+    (pt : P omega)
+    (pm : (a b : Ty) -> P a -> P b -> P (meet a b))
+    (pu : (a b : Ty) -> Le a b -> P a -> P b)
+    (rho out : Ty) (d : Le rho (arr input out))
+    (h : ArrowTest input P rho) : P out =
+  arrowPreserve input P pt pm pu rho (arr input out) d h (leRefl input) ;
+
+-- Membership among top-level arrow components, without flattening lists.
+data ArrowIn : (rho a b : Ty) -> U l =
+    arrowHere (a b : Ty) : ArrowIn (arr a b) a b
+  | arrowLeft (r s a b : Ty) (d : ArrowIn r a b) : ArrowIn (meet r s) a b
+  | arrowRight (r s a b : Ty) (d : ArrowIn s a b) : ArrowIn (meet r s) a b ;
+
+arrowProject : (rho a b : Ty) -> ArrowIn rho a b -> Le rho (arr a b) = split {
+  arrowHere a b -> leRefl (arr a b) ;
+  arrowLeft r s a b d | rd -> leTrans (meet r s) r (arr a b) (meetLeft r s) rd ;
+  arrowRight r s a b d | rd -> leTrans (meet r s) s (arr a b) (meetRight r s) rd } ;
+
+-- A finite selection of applicable codomains, closed under meet and
+-- upward comparison. resultTop is the empty selection. Its use is
+-- necessary for arrow targets with uninformative codomain.
+data Results (rho input : Ty) : (out : Ty) -> U l =
+    resultTop : Results rho input omega
+  | resultOne (a b : Ty) (entry : ArrowIn rho a b) (low : Le input a) : Results rho input b
+  | resultMeet (a b : Ty) (p : Results rho input a) (q : Results rho input b) : Results rho input (meet a b)
+  | resultUp (a b : Ty) (p : Results rho input a) (le : Le a b) : Results rho input b ;
+
+resultTest (rho input : Ty) : (t : Ty) ->
+    ((a b : Ty) -> ArrowIn t a b -> ArrowIn rho a b) ->
+    ArrowTest input (Results rho input) t = split {
+  omega -> \ embed -> tt ; atomTop -> \ embed -> tt ; at a -> \ embed -> tt ;
+  prod a b -> \ embed -> tt ;
+  arr a b -> \ embed low -> resultOne a b (embed a b (arrowHere a b)) low ;
+  meet a b | ra rb -> \ embed ->
+    mkPair (ArrowTest input (Results rho input) a) (ArrowTest input (Results rho input) b)
+      (ra (\ c d entry -> embed c d (arrowLeft a b c d entry)))
+      (rb (\ c d entry -> embed c d (arrowRight a b c d entry))) } ;
+
+-- General beta-soundness: every arrow subtype has a finite codomain
+-- derivation from its applicable arrow components.
+arrowResults (rho input out : Ty) (d : Le rho (arr input out)) : Results rho input out =
+  arrowBeta input (Results rho input) resultTop
+    (\ a b p q -> resultMeet a b p q)
+    (\ a b le p -> resultUp a b p le)
+    rho out d (resultTest rho input rho (\ a b entry -> entry)) ;
+
+-- Conversely, a result derivation is sufficient when the source is
+-- known to have an arrow component (the separated-sum shape condition).
+resultsArrow (rho input : Ty) (shape : Le rho (arr input omega)) :
+    (out : Ty) -> Results rho input out -> Le rho (arr input out) = split {
+  resultTop -> shape ;
+  resultOne a b entry low -> leTrans rho (arr a b) (arr input b)
+    (arrowProject rho a b entry) (arrMono a input b b low (leRefl b)) ;
+  resultMeet a b p q | rp rq -> leTrans rho (meet (arr input a) (arr input b)) (arr input (meet a b))
+    (meetIntro rho (arr input a) (arr input b) rp rq) (arrMeet input a b) ;
+  resultUp a b p le | rp -> leTrans rho (arr input a) (arr input b)
+    rp (arrMono input input a b (leRefl input) le) } ;
+
+-- Nonempty finite selections, represented as binary meet trees. Leaves
+-- record actual source components and the required domain comparisons.
+data Pick (rho input : Ty) : (out : Ty) -> U l =
+    pickOne (a b : Ty) (entry : ArrowIn rho a b) (low : Le input a) : Pick rho input b
+  | pickMeet (a b : Ty) (p : Pick rho input a) (q : Pick rho input b) : Pick rho input (meet a b) ;
+
+data Cover (rho input : Ty) : (out : Ty) -> U l =
+    coverTop (out : Ty) (p : Le omega out) : Cover rho input out
+  | coverPick (out bound : Ty) (entries : Pick rho input bound) (p : Le bound out) : Cover rho input out ;
+
+coverTopMeet (rho input a : Ty) (p : Le omega a) :
+    (b : Ty) -> Cover rho input b -> Cover rho input (meet a b) = split {
+  coverTop b q -> coverTop (meet a b) (meetIntro omega a b p q) ;
+  coverPick b bound entries q -> coverPick (meet a b) bound entries
+    (meetIntro bound a b (leTrans bound omega a (leTop bound) p) q) } ;
+
+coverPickMeet (rho input a bound : Ty) (entries : Pick rho input bound) (p : Le bound a) :
+    (b : Ty) -> Cover rho input b -> Cover rho input (meet a b) = split {
+  coverTop b q -> coverPick (meet a b) bound entries
+    (meetIntro bound a b p (leTrans bound omega b (leTop bound) q)) ;
+  coverPick b bound2 entries2 q -> coverPick (meet a b) (meet bound bound2)
+    (pickMeet bound bound2 entries entries2) (meetMono bound bound2 a b p q) } ;
+
+coverMeet (rho input : Ty) : (a : Ty) -> Cover rho input a ->
+    (b : Ty) -> Cover rho input b -> Cover rho input (meet a b) = split {
+  coverTop a p -> coverTopMeet rho input a p ;
+  coverPick a bound entries p -> coverPickMeet rho input a bound entries p } ;
+
+coverUp (rho input : Ty) : (a : Ty) -> Cover rho input a -> (b : Ty) -> Le a b -> Cover rho input b = split {
+  coverTop a p -> \ b q -> coverTop b (leTrans omega a b p q) ;
+  coverPick a bound entries p -> \ b q -> coverPick b bound entries (leTrans bound a b p q) } ;
+
+resultsCover (rho input : Ty) : (out : Ty) -> Results rho input out -> Cover rho input out = split {
+  resultTop -> coverTop omega (leRefl omega) ;
+  resultOne a b entry low -> coverPick b b (pickOne a b entry low) (leRefl b) ;
+  resultMeet a b p q | rp rq -> coverMeet rho input a rp b rq ;
+  resultUp a b p le | rp -> coverUp rho input a rp b le } ;
+
+arrowSelection (rho input out : Ty) (d : Le rho (arr input out)) : Cover rho input out =
+  resultsCover rho input out (arrowResults rho input out d) ;
+
+record Selected (rho input out : Ty) {
+  bound : Ty ;
+  entries : Pick rho input bound ;
+  below : Le bound out ;
+} ;
+
+nontrivialCover (rho input : Ty) : (out : Ty) -> Cover rho input out ->
+    (Le omega out -> Empty) -> Selected[rho, input, out] = split {
+  coverTop out p -> \ nt -> absurd (Selected[rho, input, out]) (nt p) ;
+  coverPick out bound entries p -> \ nt -> mkSelected rho input out bound entries p } ;
+
+-- The informative-codomain clause of the note's beta-soundness theorem.
+nontrivialSelection (rho input out : Ty) (nt : Le omega out -> Empty)
+    (d : Le rho (arr input out)) : Selected[rho, input, out] =
+  nontrivialCover rho input out (arrowSelection rho input out d) nt ;
+
+pickResults (rho input : Ty) : (out : Ty) -> Pick rho input out -> Results rho input out = split {
+  pickOne a b entry low -> resultOne a b entry low ;
+  pickMeet a b p q | rp rq -> resultMeet a b rp rq } ;
+
+coverResults (rho input : Ty) : (out : Ty) -> Cover rho input out -> Results rho input out = split {
+  coverTop out p -> resultUp omega out resultTop p ;
+  coverPick out bound entries p -> resultUp bound out (pickResults rho input bound entries) p } ;
+
+mapArrowTest (input : Ty) (P Q : Ty -> U l) (f : (a : Ty) -> P a -> Q a) :
+    (t : Ty) -> ArrowTest input P t -> ArrowTest input Q t = split {
+  omega -> \ h -> tt ; atomTop -> \ h -> tt ; at a -> \ h -> tt ; prod a b -> \ h -> tt ;
+  arr a b -> \ h low -> f b (h low) ;
+  meet a b | ra rb -> \ h -> mkPair (ArrowTest input Q a) (ArrowTest input Q b) (ra h.fst) (rb h.snd) } ;

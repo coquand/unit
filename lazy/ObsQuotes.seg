@@ -1,0 +1,111 @@
+-- Variables and quoted atoms generate principal filters of types.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+
+PrincipalExpr (rho : Env) (a : Ty) : Expr -> U l = split {
+  evar x -> Le (lookupEnv rho x) a ;
+  equote c -> Le (at c) a ;
+  econs p q -> Top ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> Top ;
+  elabel x p -> Top ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+PrincipalResult (rho : Env) (a : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> PrincipalExpr rho a e } ;
+principalTopExpr (rho : Env) : (e : Expr) -> PrincipalExpr rho omega e = split {
+  evar x -> leTop (lookupEnv rho x) ;
+  equote c -> leTop (at c) ;
+  econs p q -> tt ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> tt ;
+  elabel x p -> tt ;
+  efunarg p th -> tt ;
+  eplus p q -> tt } ;
+principalTop (rho : Env) : (v : Maybe Expr) -> PrincipalResult rho omega v = split {
+  nothing -> tt ; just e -> principalTopExpr rho e } ;
+principalMeetExpr (rho : Env) (a b : Ty) : (e : Expr) ->
+    PrincipalExpr rho a e -> PrincipalExpr rho b e -> PrincipalExpr rho (meet a b) e = split {
+  evar x -> \ h k -> meetIntro (lookupEnv rho x) a b h k ;
+  equote c -> \ h k -> meetIntro (at c) a b h k ;
+  econs p q -> \ h k -> tt ;
+  ecar p -> \ h k -> tt ;
+  ecdr p -> \ h k -> tt ;
+  eatom p -> \ h k -> tt ;
+  eeq p q -> \ h k -> tt ;
+  eif p q r -> \ h k -> tt ;
+  eapp p q -> \ h k -> tt ;
+  elam x p -> \ h k -> tt ;
+  elabel x p -> \ h k -> tt ;
+  efunarg p th -> \ h k -> tt ;
+  eplus p q -> \ h k -> tt } ;
+principalMeet (rho : Env) (a b : Ty) : (v : Maybe Expr) ->
+    PrincipalResult rho a v -> PrincipalResult rho b v -> PrincipalResult rho (meet a b) v = split {
+  nothing -> \ h k -> tt ; just e -> principalMeetExpr rho a b e } ;
+principalSubExpr (rho : Env) (a b : Ty) (le : Le a b) : (e : Expr) ->
+    PrincipalExpr rho a e -> PrincipalExpr rho b e = split {
+  evar x -> \ h -> leTrans (lookupEnv rho x) a b h le ;
+  equote c -> \ h -> leTrans (at c) a b h le ;
+  econs p q -> \ h -> tt ;
+  ecar p -> \ h -> tt ;
+  ecdr p -> \ h -> tt ;
+  eatom p -> \ h -> tt ;
+  eeq p q -> \ h -> tt ;
+  eif p q r -> \ h -> tt ;
+  eapp p q -> \ h -> tt ;
+  elam x p -> \ h -> tt ;
+  elabel x p -> \ h -> tt ;
+  efunarg p th -> \ h -> tt ;
+  eplus p q -> \ h -> tt } ;
+principalSub (rho : Env) (a b : Ty) (le : Le a b) : (v : Maybe Expr) ->
+    PrincipalResult rho a v -> PrincipalResult rho b v = split {
+  nothing -> \ h -> tt ; just e -> principalSubExpr rho a b le e } ;
+
+principalAt (mu : Heap) (p : Addr) (rho : Env) (a : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : PrincipalExpr rho a e) :
+    PrincipalResult rho a (mu p) =
+  subst (Maybe Expr) (PrincipalResult rho a) (just e) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+principalLocal (mu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu mu p rho a -> PrincipalResult rho a (mu p) = split {
+  atVar p rho x eq -> principalAt mu p rho (lookupEnv rho x) (evar x) eq (leRefl (lookupEnv rho x)) ;
+  atQuote p rho a eq -> principalAt mu p rho (at a) (equote a) eq (leRefl (at a)) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> principalAt mu p rho (prod a b) (econs p1 p2) eq (tt) ;
+  atCar p q rho a b eq o -> principalAt mu p rho (a) (ecar q) eq (tt) ;
+  atCdr p q rho a b eq o -> principalAt mu p rho (b) (ecdr q) eq (tt) ;
+  atAtomT p q rho eq o -> principalAt mu p rho (at T) (eatom q) eq (tt) ;
+  atAtomNil p q rho eq o -> principalAt mu p rho (at NIL) (eatom q) eq (tt) ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> principalAt mu p rho (at T) (eeq p1 p2) eq (tt) ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> principalAt mu p rho (at NIL) (eeq p1 p2) eq (tt) ;
+  atIfT p p0 p1 p2 rho a eq oc o -> principalAt mu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> principalAt mu p rho (a) (eif p0 p1 p2) eq (tt) ;
+  atApp p pf px rho a b eq ofun ox -> principalAt mu p rho (b) (eapp pf px) eq (tt) ;
+  atLam p pb rho x a b eq o -> principalAt mu p rho (arr a b) (elam x pb) eq (tt) ;
+  atLabel p pb rho x a b eq rec body -> principalAt mu p rho (b) (elabel x pb) eq (tt) ;
+  atFunarg p pb th rho bs a eq args body -> principalAt mu p rho (a) (efunarg pb th) eq (tt) ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> principalAt mu p rho (at (num (plus m n))) (eplus p1 p2) eq (tt) } ;
+principalGenerated (mu : Heap) (p : Addr) (rho : Env) : (a : Ty) ->
+    Generated mu p rho a -> PrincipalResult rho a (mu p) =
+  foldGenerated mu p rho (\ a -> PrincipalResult rho a (mu p))
+    (principalTop rho (mu p)) (\ a b -> principalMeet rho a b (mu p))
+    (\ a b le -> principalSub rho a b le (mu p)) (principalLocal mu p rho) ;
+
+quoteInversion (mu : Heap) (p : Addr) (rho : Env) (a : Atom) (t : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (equote a))) (o : Obs mu p rho t) : Le (at a) t =
+  subst (Maybe Expr) (PrincipalResult rho t) (mu p) (just (equote a)) eq
+    (principalGenerated mu p rho t (obsGeneration mu p rho t o)) ;
+varInversion (mu : Heap) (p : Addr) (rho : Env) (x : Var) (t : Ty)
+    (eq : Id (Maybe Expr) (mu p) (just (evar x))) (o : Obs mu p rho t) : Le (lookupEnv rho x) t =
+  subst (Maybe Expr) (PrincipalResult rho t) (mu p) (just (evar x)) eq
+    (principalGenerated mu p rho t (obsGeneration mu p rho t o)) ;

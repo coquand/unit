@@ -1,0 +1,114 @@
+-- The seven Henderson--Morris graph rewrite rules, plus PLUS.
+-- This is the raw rewrite relation. Semantic preservation of allocation
+-- additionally requires that old cells do not point to the fresh cells.
+level l ;
+open Base ; open Prelude[l] ; open Memory[l] ;
+
+Fresh (mu : Heap) (p : Addr) : U l = Id (Maybe Expr) (mu p) nothing ;
+Apart (p q : Addr) : U l = Id Bool (eqN p q) false ;
+
+data AlistLookup : (th : Alist) -> (x : Var) -> (p : Addr) -> U l =
+    alHere (x : Var) (p : Addr) (th : Alist) :
+      AlistLookup (cons (mkPair Nat Nat x p) th) x p
+  | alThere (y : Var) (q : Addr) (th : Alist) (x : Var) (p : Addr)
+      (different : Apart y x) (rest : AlistLookup th x p) :
+      AlistLookup (cons (mkPair Nat Nat y q) th) x p ;
+
+data Unary = carOp | cdrOp | atomOp ;
+data Binary = consOp | eqOp | plusOp ;
+unaryExpr : Unary -> Addr -> Expr = split {
+  carOp -> \ p -> ecar p ; cdrOp -> \ p -> ecdr p ; atomOp -> \ p -> eatom p } ;
+binaryExpr : Binary -> Addr -> Addr -> Expr = split {
+  consOp -> \ p q -> econs p q ; eqOp -> \ p q -> eeq p q ; plusOp -> \ p q -> eplus p q } ;
+
+-- The root update is followed by allocation, as in the paper.
+alloc1 (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist) : Heap =
+  upd (upd mu p e) q (efunarg a th) ;
+alloc2 (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) : Heap =
+  upd (alloc1 mu p e q a th) r (efunarg b th) ;
+alloc3 (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) : Heap =
+  upd (alloc2 mu p e q r a b th) s (efunarg c th) ;
+
+data Step : (mu nu : Heap) -> U l =
+    stCar (mu : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (ecar q)))
+      (pair : Id (Maybe Expr) (mu q) (just (econs a b)))
+      (value : Id (Maybe Expr) (mu a) (just e)) : Step mu (upd mu p e)
+  | stCdr (mu : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (ecdr q)))
+      (pair : Id (Maybe Expr) (mu q) (just (econs a b)))
+      (value : Id (Maybe Expr) (mu b) (just e)) : Step mu (upd mu p e)
+  | stAtomT (mu : Heap) (p q : Addr) (a : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (value : Id (Maybe Expr) (mu q) (just (equote a))) : Step mu (upd mu p (equote T))
+  | stAtomNil (mu : Heap) (p q a b : Addr)
+      (root : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (value : Id (Maybe Expr) (mu q) (just (econs a b))) : Step mu (upd mu p (equote NIL))
+  | stEq (mu : Heap) (p q r : Addr) (a b : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (eeq q r)))
+      (left : Id (Maybe Expr) (mu q) (just (equote a)))
+      (right : Id (Maybe Expr) (mu r) (just (equote b))) :
+      Step mu (upd mu p (equote (choose Atom T NIL (atomEq a b))))
+  | stIfT (mu : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (eif q a b)))
+      (test : Id (Maybe Expr) (mu q) (just (equote T)))
+      (value : Id (Maybe Expr) (mu a) (just e)) : Step mu (upd mu p e)
+  | stIfNil (mu : Heap) (p q a b : Addr) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (eif q a b)))
+      (test : Id (Maybe Expr) (mu q) (just (equote NIL)))
+      (value : Id (Maybe Expr) (mu b) (just e)) : Step mu (upd mu p e)
+  | stPlus (mu : Heap) (p q r : Addr) (m n : Nat)
+      (root : Id (Maybe Expr) (mu p) (just (eplus q r)))
+      (left : Id (Maybe Expr) (mu q) (just (equote (num m))))
+      (right : Id (Maybe Expr) (mu r) (just (equote (num n)))) :
+      Step mu (upd mu p (equote (num (plus m n))))
+  | stFa (mu : Heap) (p q r : Addr) (th : Alist) (x : Var) (e : Expr)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg q th)))
+      (body : Id (Maybe Expr) (mu q) (just (evar x)))
+      (lookup : AlistLookup th x r)
+      (value : Id (Maybe Expr) (mu r) (just e)) : Step mu (upd mu p e)
+  | stFb (mu : Heap) (p q : Addr) (th : Alist) (a : Atom)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg q th)))
+      (body : Id (Maybe Expr) (mu q) (just (equote a))) : Step mu (upd mu p (equote a))
+  | stG (mu : Heap) (p q r a b : Addr) (th : Alist) (x : Var)
+      (root : Id (Maybe Expr) (mu p) (just (eapp q b)))
+      (closure : Id (Maybe Expr) (mu q) (just (efunarg r th)))
+      (body : Id (Maybe Expr) (mu r) (just (elam x a))) :
+      Step mu (upd mu p (efunarg a (cons (mkPair Nat Nat x b) th)))
+  | stL (mu : Heap) (p q a : Addr) (th : Alist) (x : Var)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg q th)))
+      (body : Id (Maybe Expr) (mu q) (just (elabel x a))) :
+      Step mu (upd mu p (efunarg a (cons (mkPair Nat Nat x p) th)))
+  | stFc (mu : Heap) (p body a b q r : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (app : Id (Maybe Expr) (mu body) (just (eapp a b)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (different : Apart q r) :
+      Step mu (alloc2 mu p (eapp q r) q r a b th)
+  | stFUnary (op : Unary) (mu : Heap) (p body a q : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (unaryExpr op a)))
+      (fq : Fresh mu q) : Step mu (alloc1 mu p (unaryExpr op q) q a th)
+  | stFBinary (op : Binary) (mu : Heap) (p body a b q r : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (binaryExpr op a b)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (different : Apart q r) :
+      Step mu (alloc2 mu p (binaryExpr op q r) q r a b th)
+  | stFIf (mu : Heap) (p body a b c q r s : Addr) (th : Alist)
+      (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+      (form : Id (Maybe Expr) (mu body) (just (eif a b c)))
+      (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s)
+      (qr : Apart q r) (qs : Apart q s) (rs : Apart r s) :
+      Step mu (alloc3 mu p (eif q r s) q r s a b c th) ;
+
+-- A finite execution is an indexed derivation, not an unverified list.
+data Trace : (mu nu : Heap) -> U l =
+    done (mu : Heap) : Trace mu mu
+  | more (mu nu rho : Heap) (first : Step mu nu) (rest : Trace nu rho) : Trace mu rho ;
+
+traceAppend : (mu nu : Heap) -> Trace mu nu ->
+    (rho : Heap) -> Trace nu rho -> Trace mu rho = split {
+  done mu -> \ rho tail -> tail ;
+  more mu nu rho first rest | r -> \ last tail -> more mu nu last first (r last tail) } ;
+
+traceLength : (mu nu : Heap) -> Trace mu nu -> Nat = split {
+  done mu -> zero ; more mu nu rho first rest | r -> suc r } ;

@@ -1,0 +1,80 @@
+-- Application of a captured lambda, proved by interpreting every arrow
+-- obligation directly at the destination cell. Intersections can choose
+-- different captures: their resulting observations meet at the destination.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Arrow[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open ObsEnvironment[l] ; open ObsLambda[l] ;
+
+record ArrowCapture (mu : Heap) (rho : Env) (pl : Addr) (th : Alist) (out : Ty) {
+  env : Env ; args : ObsAlist mu rho th env ; body : Obs mu pl (appendEnv env rho) out ;
+} ;
+ArrowCaptureAt (mu : Heap) (rho : Env) (out : Ty) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Top ; econs p q -> Top ; ecar p -> Top ; ecdr p -> Top ;
+  eatom p -> Top ; eeq p q -> Top ; eif p q r -> Top ; eapp p q -> Top ;
+  elam x p -> Top ; elabel x p -> Top ; efunarg pl th -> ArrowCapture[mu, rho, pl, th, out] ; eplus p q -> Top } ;
+
+applyArrowCapture (mu : Heap) (input : Ty) (target argument : Addr) (rho : Env) (out : Ty)
+    (pl : Addr) (th : Alist) (x : Var) (pb : Addr)
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (dest : Id (Maybe Expr) (mu target) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))))
+    (arg : Obs mu argument rho input) (cap : ArrowCapture[mu, rho, pl, th, out]) :
+    ArrowTest input (Obs mu target rho) out =
+  mapArrowTest input (Obs mu pb (ext (appendEnv cap.env rho) x input)) (Obs mu target rho)
+    (\ a body -> obsFunarg target pb (cons (mkPair Nat Nat x argument) th) rho (ext cap.env x input) a dest
+      (oaCons rho x argument th cap.env input arg cap.args) body) out
+    (lambdaTest mu input (cell pl (appendEnv cap.env rho) out) cap.body x pb lam) ;
+
+ClosureTest (mu : Heap) (input : Ty) (target argument p : Addr) (rho : Env) (out : Ty) : U l =
+  (pl : Addr) -> (th : Alist) -> (x : Var) -> (pb : Addr) ->
+    Id (Maybe Expr) (mu p) (just (efunarg pl th)) ->
+    Id (Maybe Expr) (mu pl) (just (elam x pb)) ->
+    Id (Maybe Expr) (mu target) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))) ->
+    Obs mu argument rho input -> ArrowTest input (Obs mu target rho) out ;
+
+closureImpossible (mu : Heap) (input : Ty) (target argument p : Addr) (rho : Env) (out : Ty)
+    (e : Expr) (qe : Id (Maybe Expr) (mu p) (just e)) (ne : IsFunargExpr e -> Empty) :
+    ClosureTest mu input target argument p rho out =
+  \ pl th x pb q lam dest arg -> absurd (ArrowTest input (Obs mu target rho) out)
+    (ne (funargClash (mu p) e pl th qe q)) ;
+
+ClosureResult (mu : Heap) (input : Ty) (target argument : Addr) : Query -> U l = split {
+  cell p rho out -> ClosureTest mu input target argument p rho out ; bindings rho th bs -> Top } ;
+
+closureTest (mu : Heap) (input : Ty) (target argument : Addr) :
+    (j : Query) -> Derive mu j -> ClosureResult mu input target argument j = split {
+  obsTop p rho -> \ pl th x pb q lam dest arg -> tt ;
+  obsMeet p rho a b oa ob | ra rb -> \ pl th x pb q lam dest arg ->
+    mkPair (ArrowTest input (Obs mu target rho) a) (ArrowTest input (Obs mu target rho) b)
+      (ra pl th x pb q lam dest arg) (rb pl th x pb q lam dest arg) ;
+  obsSub p rho a b o le | r -> \ pl th x pb q lam dest arg ->
+    arrowPreserve input (Obs mu target rho) (obsTop target rho)
+      (\ c d oc od -> obsMeet target rho c d oc od)
+      (\ c d cd oc -> obsSub target rho c d oc cd) a b le (r pl th x pb q lam dest arg) ;
+  obsVar p rho x eq -> closureImpossible mu input target argument p rho (lookupEnv rho x) (evar x) eq (\ h -> h) ;
+  obsQuote p rho a eq -> closureImpossible mu input target argument p rho (at a) (equote a) eq (\ h -> h) ;
+  obsCons p p1 p2 rho a b eq o1 o2 -> closureImpossible mu input target argument p rho (prod a b) (econs p1 p2) eq (\ h -> h) ;
+  obsCar p q rho a b eq o -> closureImpossible mu input target argument p rho a (ecar q) eq (\ h -> h) ;
+  obsCdr p q rho a b eq o -> closureImpossible mu input target argument p rho b (ecdr q) eq (\ h -> h) ;
+  obsAtomT p q rho eq o -> closureImpossible mu input target argument p rho (at T) (eatom q) eq (\ h -> h) ;
+  obsAtomNil p q rho eq o -> closureImpossible mu input target argument p rho (at NIL) (eatom q) eq (\ h -> h) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 -> closureImpossible mu input target argument p rho (at T) (eeq p1 p2) eq (\ h -> h) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 -> closureImpossible mu input target argument p rho (at NIL) (eeq p1 p2) eq (\ h -> h) ;
+  obsIfT p p0 p1 p2 rho a eq oc o -> closureImpossible mu input target argument p rho a (eif p0 p1 p2) eq (\ h -> h) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o -> closureImpossible mu input target argument p rho a (eif p0 p1 p2) eq (\ h -> h) ;
+  obsApp p pf px rho a b eq ofun ox -> closureImpossible mu input target argument p rho b (eapp pf px) eq (\ h -> h) ;
+  obsLam p pb rho x a b eq o -> closureImpossible mu input target argument p rho (arr a b) (elam x pb) eq (\ h -> h) ;
+  obsLabel p pb rho x a b eq rec body -> closureImpossible mu input target argument p rho b (elabel x pb) eq (\ h -> h) ;
+  obsFunarg p pc tc rho bs a eq args body -> \ pl th x pb q lam dest arg ->
+    applyArrowCapture mu input target argument rho a pl th x pb lam dest arg
+      (subst Expr (ArrowCaptureAt mu rho a) (efunarg pc tc) (efunarg pl th)
+        (contentsEq (mu p) (efunarg pc tc) (efunarg pl th) eq q)
+        (mkArrowCapture mu rho pc tc a bs args body)) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 -> closureImpossible mu input target argument p rho (at (num (plus m n))) (eplus p1 p2) eq (\ h -> h) ;
+  oaNil rho -> tt ; oaCons rho x q th bs a head tail -> tt } ;
+
+closureApply (mu : Heap) (target pf pl argument pb : Addr) (rho : Env) (th : Alist) (x : Var) (a b : Ty)
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (dest : Id (Maybe Expr) (mu target) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))))
+    (ofun : Obs mu pf rho (arr a b)) (arg : Obs mu argument rho a) : Obs mu target rho b =
+  closureTest mu a target argument (cell pf rho (arr a b)) ofun pl th x pb closure lam dest arg (leRefl a) ;

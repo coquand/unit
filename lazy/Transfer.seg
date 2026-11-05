@@ -1,0 +1,129 @@
+-- One syntax rule with source cell contents and target-memory premises.
+-- It is independent of recursive transfer and admits arbitrary memories.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ;
+
+data Local (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) -> U l =
+    atVar (p : Addr) (rho : Env) (x : Var)
+      (eq : Id (Maybe Expr) (mu p) (just (evar x))) : Local mu nu p rho (lookupEnv rho x)
+  | atQuote (p : Addr) (rho : Env) (a : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (equote a))) : Local mu nu p rho (at a)
+  | atCons (p p1 p2 : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (econs p1 p2)))
+      (o1 : Derive nu (cell p1 rho a)) (o2 : Derive nu (cell p2 rho b)) :
+      Local mu nu p rho (prod a b)
+  | atCar (p q : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (ecar q)))
+      (o : Derive nu (cell q rho (prod a b))) : Local mu nu p rho a
+  | atCdr (p q : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (ecdr q)))
+      (o : Derive nu (cell q rho (prod a b))) : Local mu nu p rho b
+  | atAtomT (p q : Addr) (rho : Env)
+      (eq : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (o : Derive nu (cell q rho atomTop)) : Local mu nu p rho (at T)
+  | atAtomNil (p q : Addr) (rho : Env)
+      (eq : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (o : Derive nu (cell q rho (prod omega omega))) : Local mu nu p rho (at NIL)
+  | atEqT (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (eeq p1 p2)))
+      (same : Truth (atomEq a b))
+      (o1 : Derive nu (cell p1 rho (at a))) (o2 : Derive nu (cell p2 rho (at b))) :
+      Local mu nu p rho (at T)
+  | atEqNil (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (eeq p1 p2)))
+      (different : Truth (atomEq a b) -> Empty)
+      (o1 : Derive nu (cell p1 rho (at a))) (o2 : Derive nu (cell p2 rho (at b))) :
+      Local mu nu p rho (at NIL)
+  | atIfT (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eif p0 p1 p2)))
+      (oc : Derive nu (cell p0 rho (at T))) (o : Derive nu (cell p1 rho a)) :
+      Local mu nu p rho a
+  | atIfNil (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eif p0 p1 p2)))
+      (oc : Derive nu (cell p0 rho (at NIL))) (o : Derive nu (cell p2 rho a)) :
+      Local mu nu p rho a
+  | atApp (p pf px : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eapp pf px)))
+      (ofun : Derive nu (cell pf rho (arr a b))) (ox : Derive nu (cell px rho a)) :
+      Local mu nu p rho b
+  | atLam (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (elam x pb)))
+      (o : Derive nu (cell pb (ext rho x a) b)) : Local mu nu p rho (arr a b)
+  | atLabel (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (elabel x pb)))
+      (rec : Derive nu (cell p rho a)) (body : Derive nu (cell pb (ext rho x a) b)) :
+      Local mu nu p rho b
+  | atFunarg (p pb : Addr) (th : Alist) (rho bs : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+      (args : Derive nu (bindings rho th bs)) (body : Derive nu (cell pb (appendEnv bs rho) a)) :
+      Local mu nu p rho a
+  | atPlus (p p1 p2 : Addr) (rho : Env) (m n : Nat)
+      (eq : Id (Maybe Expr) (mu p) (just (eplus p1 p2)))
+      (o1 : Derive nu (cell p1 rho (at (num m)))) (o2 : Derive nu (cell p2 rho (at (num n)))) :
+      Local mu nu p rho (at (num (plus m n))) ;
+
+realiseLocal (mu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu mu p rho a -> Obs mu p rho a = split {
+  atVar p rho x eq -> obsVar p rho x eq ;
+  atQuote p rho a eq -> obsQuote p rho a eq ;
+  atCons p p1 p2 rho a b eq o1 o2 -> obsCons p p1 p2 rho a b eq o1 o2 ;
+  atCar p q rho a b eq o -> obsCar p q rho a b eq o ;
+  atCdr p q rho a b eq o -> obsCdr p q rho a b eq o ;
+  atAtomT p q rho eq o -> obsAtomT p q rho eq o ;
+  atAtomNil p q rho eq o -> obsAtomNil p q rho eq o ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> obsEqT p p1 p2 rho a b eq same o1 o2 ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> obsEqNil p p1 p2 rho a b eq different o1 o2 ;
+  atIfT p p0 p1 p2 rho a eq oc o -> obsIfT p p0 p1 p2 rho a eq oc o ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> obsIfNil p p0 p1 p2 rho a eq oc o ;
+  atApp p pf px rho a b eq ofun ox -> obsApp p pf px rho a b eq ofun ox ;
+  atLam p pb rho x a b eq o -> obsLam p pb rho x a b eq o ;
+  atLabel p pb rho x a b eq rec body -> obsLabel p pb rho x a b eq rec body ;
+  atFunarg p pb th rho bs a eq args body -> obsFunarg p pb th rho bs a eq args body ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> obsPlus p p1 p2 rho m n eq o1 o2 } ;
+
+copyLocal (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) ->
+    Local mu nu p rho a -> Id (Maybe Expr) (mu p) (nu p) -> Obs nu p rho a = split {
+  atVar p rho x eq -> \ agree -> obsVar p rho x (pathTrans (Maybe Expr) (nu p) (mu p) (just (evar x)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) ;
+  atQuote p rho a eq -> \ agree -> obsQuote p rho a (pathTrans (Maybe Expr) (nu p) (mu p) (just (equote a)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> \ agree -> obsCons p p1 p2 rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (econs p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o1 o2 ;
+  atCar p q rho a b eq o -> \ agree -> obsCar p q rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (ecar q)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o ;
+  atCdr p q rho a b eq o -> \ agree -> obsCdr p q rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (ecdr q)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o ;
+  atAtomT p q rho eq o -> \ agree -> obsAtomT p q rho (pathTrans (Maybe Expr) (nu p) (mu p) (just (eatom q)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o ;
+  atAtomNil p q rho eq o -> \ agree -> obsAtomNil p q rho (pathTrans (Maybe Expr) (nu p) (mu p) (just (eatom q)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> \ agree -> obsEqT p p1 p2 rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (eeq p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) same o1 o2 ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> \ agree -> obsEqNil p p1 p2 rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (eeq p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) different o1 o2 ;
+  atIfT p p0 p1 p2 rho a eq oc o -> \ agree -> obsIfT p p0 p1 p2 rho a (pathTrans (Maybe Expr) (nu p) (mu p) (just (eif p0 p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) oc o ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> \ agree -> obsIfNil p p0 p1 p2 rho a (pathTrans (Maybe Expr) (nu p) (mu p) (just (eif p0 p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) oc o ;
+  atApp p pf px rho a b eq ofun ox -> \ agree -> obsApp p pf px rho a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (eapp pf px)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) ofun ox ;
+  atLam p pb rho x a b eq o -> \ agree -> obsLam p pb rho x a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (elam x pb)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o ;
+  atLabel p pb rho x a b eq rec body -> \ agree -> obsLabel p pb rho x a b (pathTrans (Maybe Expr) (nu p) (mu p) (just (elabel x pb)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) rec body ;
+  atFunarg p pb th rho bs a eq args body -> \ agree -> obsFunarg p pb th rho bs a (pathTrans (Maybe Expr) (nu p) (mu p) (just (efunarg pb th)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) args body ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> \ agree -> obsPlus p p1 p2 rho m n (pathTrans (Maybe Expr) (nu p) (mu p) (just (eplus p1 p2)) (pathSym (Maybe Expr) (mu p) (nu p) agree) eq) o1 o2 } ;
+
+-- The common transfer theorem: preservation of one syntax layer suffices.
+-- No coherence, consistency or approximation index is involved.
+transfer (mu nu : Heap)
+    (local : (p : Addr) -> (rho : Env) -> (a : Ty) -> Local mu nu p rho a -> Obs nu p rho a) :
+    (j : Query) -> Derive mu j -> Derive nu j = split {
+  obsTop p rho -> obsTop p rho ;
+  obsMeet p rho a b oa ob | ra rb -> obsMeet p rho a b ra rb ;
+  obsSub p rho a b o le | r -> obsSub p rho a b r le ;
+  obsVar p rho x eq -> local p rho (lookupEnv rho x) (atVar p rho x eq) ;
+  obsQuote p rho a eq -> local p rho (at a) (atQuote p rho a eq) ;
+  obsCons p p1 p2 rho a b eq o1 o2 | r0 r1 -> local p rho (prod a b) (atCons p p1 p2 rho a b eq r0 r1) ;
+  obsCar p q rho a b eq o | r0 -> local p rho (a) (atCar p q rho a b eq r0) ;
+  obsCdr p q rho a b eq o | r0 -> local p rho (b) (atCdr p q rho a b eq r0) ;
+  obsAtomT p q rho eq o | r0 -> local p rho (at T) (atAtomT p q rho eq r0) ;
+  obsAtomNil p q rho eq o | r0 -> local p rho (at NIL) (atAtomNil p q rho eq r0) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 | r0 r1 -> local p rho (at T) (atEqT p p1 p2 rho a b eq same r0 r1) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 | r0 r1 -> local p rho (at NIL) (atEqNil p p1 p2 rho a b eq different r0 r1) ;
+  obsIfT p p0 p1 p2 rho a eq oc o | r0 r1 -> local p rho (a) (atIfT p p0 p1 p2 rho a eq r0 r1) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o | r0 r1 -> local p rho (a) (atIfNil p p0 p1 p2 rho a eq r0 r1) ;
+  obsApp p pf px rho a b eq ofun ox | r0 r1 -> local p rho (b) (atApp p pf px rho a b eq r0 r1) ;
+  obsLam p pb rho x a b eq o | r0 -> local p rho (arr a b) (atLam p pb rho x a b eq r0) ;
+  obsLabel p pb rho x a b eq rec body | r0 r1 -> local p rho (b) (atLabel p pb rho x a b eq r0 r1) ;
+  obsFunarg p pb th rho bs a eq args body | r0 r1 -> local p rho (a) (atFunarg p pb th rho bs a eq r0 r1) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 | r0 r1 -> local p rho (at (num (plus m n))) (atPlus p p1 p2 rho m n eq r0 r1) ;
+  oaNil rho -> oaNil rho ;
+  oaCons rho x q th bs a head tail | rh rt -> oaCons rho x q th bs a rh rt } ;

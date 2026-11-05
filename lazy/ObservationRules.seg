@@ -1,0 +1,128 @@
+-- One observation rule, polynomial in an arbitrary premise predicate.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ;
+
+data Rule (P : Query -> U l) : (p : Addr) -> (e : Maybe Expr) -> (rho : Env) -> (a : Ty) -> U l =
+    rVar (p : Addr) (rho : Env) (x : Var)
+       : Rule P p (just (evar x)) rho (lookupEnv rho x)
+  | rQuote (p : Addr) (rho : Env) (a : Atom)
+       : Rule P p (just (equote a)) rho (at a)
+  | rCons (p p1 p2 : Addr) (rho : Env) (a b : Ty)
+      
+      (o1 : P (cell p1 rho a)) (o2 : P (cell p2 rho b)) :
+      Rule P p (just (econs p1 p2)) rho (prod a b)
+  | rCar (p q : Addr) (rho : Env) (a b : Ty)
+      
+      (o : P (cell q rho (prod a b))) : Rule P p (just (ecar q)) rho a
+  | rCdr (p q : Addr) (rho : Env) (a b : Ty)
+      
+      (o : P (cell q rho (prod a b))) : Rule P p (just (ecdr q)) rho b
+  | rAtomT (p q : Addr) (rho : Env)
+      
+      (o : P (cell q rho atomTop)) : Rule P p (just (eatom q)) rho (at T)
+  | rAtomNil (p q : Addr) (rho : Env)
+      
+      (o : P (cell q rho (prod omega omega))) : Rule P p (just (eatom q)) rho (at NIL)
+  | rEqT (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      
+      (same : Truth (atomEq a b))
+      (o1 : P (cell p1 rho (at a))) (o2 : P (cell p2 rho (at b))) :
+      Rule P p (just (eeq p1 p2)) rho (at T)
+  | rEqNil (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      
+      (different : Truth (atomEq a b) -> Empty)
+      (o1 : P (cell p1 rho (at a))) (o2 : P (cell p2 rho (at b))) :
+      Rule P p (just (eeq p1 p2)) rho (at NIL)
+  | rIfT (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      
+      (oc : P (cell p0 rho (at T))) (o : P (cell p1 rho a)) :
+      Rule P p (just (eif p0 p1 p2)) rho a
+  | rIfNil (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      
+      (oc : P (cell p0 rho (at NIL))) (o : P (cell p2 rho a)) :
+      Rule P p (just (eif p0 p1 p2)) rho a
+  | rApp (p pf px : Addr) (rho : Env) (a b : Ty)
+      
+      (ofun : P (cell pf rho (arr a b))) (ox : P (cell px rho a)) :
+      Rule P p (just (eapp pf px)) rho b
+  | rLam (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      
+      (o : P (cell pb (ext rho x a) b)) : Rule P p (just (elam x pb)) rho (arr a b)
+  | rLabel (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      
+      (rec : P (cell p rho a)) (body : P (cell pb (ext rho x a) b)) :
+      Rule P p (just (elabel x pb)) rho b
+  | rFunarg (p pb : Addr) (th : Alist) (rho bs : Env) (a : Ty)
+      
+      (args : P (bindings rho th bs)) (body : P (cell pb (appendEnv bs rho) a)) :
+      Rule P p (just (efunarg pb th)) rho a
+  | rPlus (p p1 p2 : Addr) (rho : Env) (m n : Nat)
+      
+      (o1 : P (cell p1 rho (at (num m)))) (o2 : P (cell p2 rho (at (num n)))) :
+      Rule P p (just (eplus p1 p2)) rho (at (num (plus m n))) ;
+
+record Algebra (mu : Heap) (P : Query -> U l) {
+  top (p : Addr) (rho : Env) : P (cell p rho omega) ;
+  meetRule (p : Addr) (rho : Env) (a b : Ty) : P (cell p rho a) -> P (cell p rho b) -> P (cell p rho (meet a b)) ;
+  sub (p : Addr) (rho : Env) (a b : Ty) : P (cell p rho a) -> Le a b -> P (cell p rho b) ;
+  primitive (p : Addr) (rho : Env) (a : Ty) : Rule P p (mu p) rho a -> P (cell p rho a) ;
+  bnil (rho : Env) : P (bindings rho nil nil) ;
+  bcons (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env) (a : Ty) :
+    P (cell q rho a) -> P (bindings rho th bs) -> P (bindings rho (cons (mkPair Nat Nat x q) th) (ext bs x a)) ;
+} ;
+
+fold (mu : Heap) (P : Query -> U l) (alg : Algebra[mu, P]) : (j : Query) -> Derive mu j -> P j = split {
+  obsTop p rho -> alg.top p rho ;
+  obsMeet p rho a b oa ob | ra rb -> alg.meetRule p rho a b ra rb ;
+  obsSub p rho a b o le | r -> alg.sub p rho a b r le ;
+  obsVar p rho x eq -> alg.primitive p rho (lookupEnv rho x)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (lookupEnv rho x)) (just (evar x)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (evar x)) eq) (rVar p rho x)) ;
+  obsQuote p rho a eq -> alg.primitive p rho (at a)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at a)) (just (equote a)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (equote a)) eq) (rQuote p rho a)) ;
+  obsCons p p1 p2 rho a b eq o1 o2 | r0 r1 -> alg.primitive p rho (prod a b)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (prod a b)) (just (econs p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (econs p1 p2)) eq) (rCons p p1 p2 rho a b r0 r1)) ;
+  obsCar p q rho a b eq o | r0 -> alg.primitive p rho (a)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (a)) (just (ecar q)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (ecar q)) eq) (rCar p q rho a b r0)) ;
+  obsCdr p q rho a b eq o | r0 -> alg.primitive p rho (b)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (b)) (just (ecdr q)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (ecdr q)) eq) (rCdr p q rho a b r0)) ;
+  obsAtomT p q rho eq o | r0 -> alg.primitive p rho (at T)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at T)) (just (eatom q)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) (rAtomT p q rho r0)) ;
+  obsAtomNil p q rho eq o | r0 -> alg.primitive p rho (at NIL)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at NIL)) (just (eatom q)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) (rAtomNil p q rho r0)) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 | r0 r1 -> alg.primitive p rho (at T)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at T)) (just (eeq p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) (rEqT p p1 p2 rho a b same r0 r1)) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 | r0 r1 -> alg.primitive p rho (at NIL)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at NIL)) (just (eeq p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) (rEqNil p p1 p2 rho a b different r0 r1)) ;
+  obsIfT p p0 p1 p2 rho a eq oc o | r0 r1 -> alg.primitive p rho (a)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (a)) (just (eif p0 p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) (rIfT p p0 p1 p2 rho a r0 r1)) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o | r0 r1 -> alg.primitive p rho (a)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (a)) (just (eif p0 p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) (rIfNil p p0 p1 p2 rho a r0 r1)) ;
+  obsApp p pf px rho a b eq ofun ox | r0 r1 -> alg.primitive p rho (b)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (b)) (just (eapp pf px)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eapp pf px)) eq) (rApp p pf px rho a b r0 r1)) ;
+  obsLam p pb rho x a b eq o | r0 -> alg.primitive p rho (arr a b)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (arr a b)) (just (elam x pb)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (elam x pb)) eq) (rLam p pb rho x a b r0)) ;
+  obsLabel p pb rho x a b eq rec body | r0 r1 -> alg.primitive p rho (b)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (b)) (just (elabel x pb)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (elabel x pb)) eq) (rLabel p pb rho x a b r0 r1)) ;
+  obsFunarg p pb th rho bs a eq args body | r0 r1 -> alg.primitive p rho (a)
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (a)) (just (efunarg pb th)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (efunarg pb th)) eq) (rFunarg p pb th rho bs a r0 r1)) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 | r0 r1 -> alg.primitive p rho (at (num (plus m n)))
+    (subst (Maybe Expr) (\ e -> Rule P p e rho (at (num (plus m n)))) (just (eplus p1 p2)) (mu p)
+      (pathSym (Maybe Expr) (mu p) (just (eplus p1 p2)) eq) (rPlus p p1 p2 rho m n r0 r1)) ;
+  oaNil rho -> alg.bnil rho ;
+  oaCons rho x q th bs a head tail | rh rt -> alg.bcons rho x q th bs a rh rt } ;

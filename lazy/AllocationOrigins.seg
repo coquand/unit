@@ -1,0 +1,41 @@
+-- The old operand represented by a newly allocated FUNARG cell.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ; open HeapSupport[l] ;
+open ObservationRules[l] ; open AllocationBackCore[l] ;
+
+record Origin (mu nu : Heap) (th : Alist) (q : Addr) {
+  address : Addr ;
+  defined : InDom mu address ;
+  equation : Id (Maybe Expr) (nu q) (just (efunarg address th)) ;
+} ;
+OriginShape (mu nu : Heap) (th : Alist) : Expr -> U l = split {
+  evar x -> Empty ; equote a -> Empty ;
+  econs p q -> Pair[Origin[mu, nu, th, p], Origin[mu, nu, th, q]] ;
+  ecar p -> Origin[mu, nu, th, p] ; ecdr p -> Origin[mu, nu, th, p] ; eatom p -> Origin[mu, nu, th, p] ;
+  eeq p q -> Pair[Origin[mu, nu, th, p], Origin[mu, nu, th, q]] ;
+  eif p q r -> Pair[Origin[mu, nu, th, p], Pair[Origin[mu, nu, th, q], Origin[mu, nu, th, r]]] ;
+  eapp p q -> Pair[Origin[mu, nu, th, p], Origin[mu, nu, th, q]] ;
+  elam x p -> Empty ; elabel x p -> Empty ; efunarg p bs -> Empty ;
+  eplus p q -> Pair[Origin[mu, nu, th, p], Origin[mu, nu, th, q]] } ;
+
+originExpr (mu nu : Heap) (th : Alist) : (e : Expr) -> OriginShape mu nu th e -> Expr = split {
+  evar x -> absurd Expr ; equote a -> absurd Expr ;
+  econs p q -> \ h -> econs h.fst.address h.snd.address ;
+  ecar p -> \ h -> ecar h.address ; ecdr p -> \ h -> ecdr h.address ; eatom p -> \ h -> eatom h.address ;
+  eeq p q -> \ h -> eeq h.fst.address h.snd.address ;
+  eif p q r -> \ h -> eif h.fst.address h.snd.fst.address h.snd.snd.address ;
+  eapp p q -> \ h -> eapp h.fst.address h.snd.address ;
+  elam x p -> absurd Expr ; elabel x p -> absurd Expr ; efunarg p bs -> absurd Expr ;
+  eplus p q -> \ h -> eplus h.fst.address h.snd.address } ;
+OriginMaybe (mu nu : Heap) (th : Alist) : Maybe Expr -> U l = split {
+  nothing -> Empty ; just e -> OriginShape mu nu th e } ;
+originOf (mu nu : Heap) (th : Alist) : (e : Maybe Expr) -> OriginMaybe mu nu th e -> Expr = split {
+  nothing -> absurd Expr ; just e -> originExpr mu nu th e } ;
+
+captureOperand (mu nu : Heap) (rho : Env) (th : Alist) (a : Ty) (q : Addr)
+    (h : Origin[mu, nu, th, q]) (closed : AlistClosed (InDom mu) th) (r : BackCell[mu, nu, q, rho, a]) :
+    Captured[mu, h.address, rho, th, a] =
+  (subst (Maybe Expr) (SupportedCapture mu rho a) (nu q) (just (efunarg h.address th)) h.equation r.captured)
+    h.defined closed ;

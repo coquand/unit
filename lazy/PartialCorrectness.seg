@@ -1,0 +1,54 @@
+-- Partial correctness in the intersection semantics, for the actual
+-- demand-scheduled evaluator. Invariance applies to every old cell.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open AtomInverse[l] ;
+open Memory[l] ; open Observations[l] ; open Rewrites[l] ; open Eval[l] ;
+open HeapSupport[l] ; open SemanticEquivalence[l] ; open Invariance[l] ; open FinalForms[l] ;
+
+terminalDefined (mu : Heap) : (p : Addr) -> Terminal mu p -> InDom mu p = split {
+  valueQuote p a eq -> defined mu p (equote a) eq ;
+  valueCons p q r eq -> defined mu p (econs q r) eq ;
+  valueClosure p body th x pb root lambda -> defined mu p (efunarg body th) root } ;
+evalDefined : (mu : Heap) -> (p : Addr) -> (nu : Heap) -> Evaluates mu p nu -> InDom mu p = split {
+  evalValue mu p value -> terminalDefined mu p value ;
+  evalCar mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value -> defined mu p (ecar q) root ;
+  evalCdr mu mu1 mu2 p q a b e root pairDemand pair valueDemand root2 pair2 value -> defined mu p (ecdr q) root ;
+  evalAtomT mu mu1 p q a root demand root1 value -> defined mu p (eatom q) root ;
+  evalAtomNil mu mu1 p q a b root demand root1 value -> defined mu p (eatom q) root ;
+  evalEq mu mu1 mu2 p q r a b root leftDemand rightDemand root2 left right -> defined mu p (eeq q r) root ;
+  evalIfT mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value -> defined mu p (eif q a b) root ;
+  evalIfNil mu mu1 mu2 p q a b e root testDemand test valueDemand root2 test2 value -> defined mu p (eif q a b) root ;
+  evalPlus mu mu1 mu2 p q r m n root leftDemand rightDemand root2 left right -> defined mu p (eplus q r) root ;
+  evalFa mu mu1 p body q th x e root variable lookup demand root1 variable1 value -> defined mu p (efunarg body th) root ;
+  evalFb mu p body th a root quote -> defined mu p (efunarg body th) root ;
+  evalG mu mu1 nu p pf pl pb px th x root demand root1 closure lambda bodyDemand -> defined mu p (eapp pf px) root ;
+  evalL mu nu p body pb th x root label demand -> defined mu p (efunarg body th) root ;
+  evalFc mu nu p body a b q r th root app fq fr different demand -> defined mu p (efunarg body th) root ;
+  evalFUnary op mu nu p body a q th root form fq demand -> defined mu p (efunarg body th) root ;
+  evalFBinary op mu nu p body a b q r th root form fq fr different demand -> defined mu p (efunarg body th) root ;
+  evalFIf mu nu p body a b c q r s th root form fq fr fs qr qs rs demand -> defined mu p (efunarg body th) root } ;
+
+evaluationInvariant (mu : Heap) (p : Addr) (nu : Heap) (run : Evaluates mu p nu) (wf : WfHeap mu) :
+    SameObservations[mu, nu] = traceInvariant mu nu (evalTrace mu p nu run) wf ;
+partialCorrectness (mu : Heap) (p : Addr) (nu : Heap) (run : Evaluates mu p nu) (wf : WfHeap mu) :
+    Pair[Terminal nu p, SameObservations[mu, nu]] =
+  mkPair (Terminal nu p) (SameObservations[mu, nu]) (evalTerminal mu p nu run) (evaluationInvariant mu p nu run wf) ;
+
+quotedSound (mu : Heap) (p : Addr) (nu : Heap) (run : Evaluates mu p nu) (wf : WfHeap mu)
+    (rho : Env) (a : Atom) (value : Id (Maybe Expr) (nu p) (just (equote a)))
+    (t : Ty) (o : Obs mu p rho t) : Le (at a) t =
+  quoteSound nu p rho a value t
+    ((evaluationInvariant mu p nu run wf).forward p (evalDefined mu p nu run) rho t o) ;
+quotedComplete (mu : Heap) (p : Addr) (nu : Heap) (run : Evaluates mu p nu) (wf : WfHeap mu)
+    (rho : Env) (a : Atom) (value : Id (Maybe Expr) (nu p) (just (equote a)))
+    (t : Ty) (le : Le (at a) t) : Obs mu p rho t =
+  (evaluationInvariant mu p nu run wf).backward p (evalDefined mu p nu run) rho t
+    (quoteComplete nu p rho a value t le) ;
+
+-- If two terminating runs return quoted atoms, the atoms agree.
+quotedResultsUnique (mu : Heap) (p : Addr) (nu xi : Heap)
+    (left : Evaluates mu p nu) (right : Evaluates mu p xi) (wf : WfHeap mu)
+    (a b : Atom) (qa : Id (Maybe Expr) (nu p) (just (equote a)))
+    (qb : Id (Maybe Expr) (xi p) (just (equote b))) : Id Atom a b =
+  atomEquality a b (quotedSound mu p nu left wf emptyEnv a qa (at b)
+    (quotedComplete mu p xi right wf emptyEnv b qb (at b) (leRefl (at b)))) ;

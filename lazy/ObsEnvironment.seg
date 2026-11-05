@@ -1,0 +1,68 @@
+-- Strengthening environments uses only positive subtyping derivations.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open Observations[l] ;
+
+EnvLe (delta rho : Env) : U l = (x : Var) -> Le (lookupEnv delta x) (lookupEnv rho x) ;
+envRefl (rho : Env) : EnvLe rho rho = \ x -> leRefl (lookupEnv rho x) ;
+
+chooseLe (a b c d : Ty) (ac : Le a c) (bd : Le b d) :
+    (v : Bool) -> Le (ifBool Ty a b v) (ifBool Ty c d v) = split {
+  true -> ac ; false -> bd } ;
+
+extMono (delta rho : Env) (x : Var) (a b : Ty) (h : EnvLe delta rho) (ab : Le a b) :
+    EnvLe (ext delta x a) (ext rho x b) = \ y ->
+  chooseLe a (lookupEnv delta y) b (lookupEnv rho y) ab (h y) (eqN x y) ;
+
+appendMono (delta rho : Env) (h : EnvLe delta rho) :
+    (bs : Env) -> EnvLe (appendEnv bs delta) (appendEnv bs rho) = split {
+  nil -> h ;
+  cons b bs | r -> extMono (appendEnv bs delta) (appendEnv bs rho) b.fst b.snd b.snd r (leRefl b.snd) } ;
+
+ChangeResult (mu : Heap) : Query -> U l = split {
+  cell p rho a -> (delta : Env) -> EnvLe delta rho -> Obs mu p delta a ;
+  bindings rho th bs -> (delta : Env) -> EnvLe delta rho -> ObsAlist mu delta th bs } ;
+
+strengthen (mu : Heap) : (j : Query) -> Derive mu j -> ChangeResult mu j = split {
+  obsTop p rho -> \ delta h -> obsTop p delta ;
+  obsMeet p rho a b oa ob | ra rb -> \ delta h -> obsMeet p delta a b (ra delta h) (rb delta h) ;
+  obsSub p rho a b o le | r -> \ delta h -> obsSub p delta a b (r delta h) le ;
+  obsVar p rho x eq -> \ delta h -> obsSub p delta (lookupEnv delta x) (lookupEnv rho x)
+    (obsVar p delta x eq) (h x) ;
+  obsQuote p rho a eq -> \ delta h -> obsQuote p delta a eq ;
+  obsCons p p1 p2 rho a b eq o1 o2 | r1 r2 -> \ delta h ->
+    obsCons p p1 p2 delta a b eq (r1 delta h) (r2 delta h) ;
+  obsCar p q rho a b eq o | r -> \ delta h -> obsCar p q delta a b eq (r delta h) ;
+  obsCdr p q rho a b eq o | r -> \ delta h -> obsCdr p q delta a b eq (r delta h) ;
+  obsAtomT p q rho eq o | r -> \ delta h -> obsAtomT p q delta eq (r delta h) ;
+  obsAtomNil p q rho eq o | r -> \ delta h -> obsAtomNil p q delta eq (r delta h) ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 | r1 r2 -> \ delta h ->
+    obsEqT p p1 p2 delta a b eq same (r1 delta h) (r2 delta h) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 | r1 r2 -> \ delta h ->
+    obsEqNil p p1 p2 delta a b eq different (r1 delta h) (r2 delta h) ;
+  obsIfT p p0 p1 p2 rho a eq oc o | rc r -> \ delta h ->
+    obsIfT p p0 p1 p2 delta a eq (rc delta h) (r delta h) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o | rc r -> \ delta h ->
+    obsIfNil p p0 p1 p2 delta a eq (rc delta h) (r delta h) ;
+  obsApp p pf px rho a b eq ofun ox | rf rx -> \ delta h ->
+    obsApp p pf px delta a b eq (rf delta h) (rx delta h) ;
+  obsLam p pb rho x a b eq o | r -> \ delta h ->
+    obsLam p pb delta x a b eq (r (ext delta x a) (extMono delta rho x a a h (leRefl a))) ;
+  obsLabel p pb rho x a b eq rec body | rr rb -> \ delta h ->
+    obsLabel p pb delta x a b eq (rr delta h)
+      (rb (ext delta x a) (extMono delta rho x a a h (leRefl a))) ;
+  obsFunarg p pb th rho bs a eq args body | ra rb -> \ delta h ->
+    obsFunarg p pb th delta bs a eq (ra delta h)
+      (rb (appendEnv bs delta) (appendMono delta rho h bs)) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 | r1 r2 -> \ delta h ->
+    obsPlus p p1 p2 delta m n eq (r1 delta h) (r2 delta h) ;
+  oaNil rho -> \ delta h -> oaNil delta ;
+  oaCons rho x q th bs a head tail | rh rt -> \ delta h ->
+    oaCons delta x q th bs a (rh delta h) (rt delta h) } ;
+
+obsStrengthen (mu : Heap) (p : Addr) (rho delta : Env) (a : Ty)
+    (h : EnvLe delta rho) (o : Obs mu p rho a) : Obs mu p delta a =
+  strengthen mu (cell p rho a) o delta h ;
+alistStrengthen (mu : Heap) (rho delta : Env) (th : Alist) (bs : Env)
+    (h : EnvLe delta rho) (o : ObsAlist mu rho th bs) : ObsAlist mu delta th bs =
+  strengthen mu (bindings rho th bs) o delta h ;

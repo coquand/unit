@@ -1,0 +1,252 @@
+-- Forward [Fc]/[Fd]: distribute one captured environment over a primitive.
+-- Its observations are shared by all newly allocated FUNARG cells.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ;
+open Transfer[l] ; open ObsGeneration[l] ; open ObsFunarg[l] ;
+open UpdateTransfer[l] ; open Rewrites[l] ; open HeapSupport[l] ; open AllocationReads[l] ;
+
+DistExpr (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote c -> Top ;
+  econs a b -> (q r : Addr) -> Id (Maybe Expr) (nu target) (just (econs q r)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) -> Obs nu target rho t ;
+  ecar a -> (q : Addr) -> Id (Maybe Expr) (nu target) (just (ecar q)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Obs nu target rho t ;
+  ecdr a -> (q : Addr) -> Id (Maybe Expr) (nu target) (just (ecdr q)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Obs nu target rho t ;
+  eatom a -> (q : Addr) -> Id (Maybe Expr) (nu target) (just (eatom q)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Obs nu target rho t ;
+  eeq a b -> (q r : Addr) -> Id (Maybe Expr) (nu target) (just (eeq q r)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) -> Obs nu target rho t ;
+  eif a b c -> (q r s : Addr) -> Id (Maybe Expr) (nu target) (just (eif q r s)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) -> Id (Maybe Expr) (nu s) (just (efunarg c th)) -> Obs nu target rho t ;
+  eapp a b -> (q r : Addr) -> Id (Maybe Expr) (nu target) (just (eapp q r)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) -> Obs nu target rho t ;
+  elam x a -> Top ;
+  elabel x a -> Top ;
+  efunarg a th0 -> Top ;
+  eplus a b -> (q r : Addr) -> Id (Maybe Expr) (nu target) (just (eplus q r)) -> Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) -> Obs nu target rho t } ;
+DistResult (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> DistExpr nu target rho bs th t e } ;
+distTopExpr (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) : (e : Expr) -> DistExpr nu target rho bs th omega e = split {
+  evar x -> tt ;
+  equote c -> tt ;
+  econs a b -> \ q r root readq readr -> obsTop target rho ;
+  ecar a -> \ q root readq -> obsTop target rho ;
+  ecdr a -> \ q root readq -> obsTop target rho ;
+  eatom a -> \ q root readq -> obsTop target rho ;
+  eeq a b -> \ q r root readq readr -> obsTop target rho ;
+  eif a b c -> \ q r s root readq readr reads -> obsTop target rho ;
+  eapp a b -> \ q r root readq readr -> obsTop target rho ;
+  elam x a -> tt ;
+  elabel x a -> tt ;
+  efunarg a th0 -> tt ;
+  eplus a b -> \ q r root readq readr -> obsTop target rho } ;
+distTop (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) : (v : Maybe Expr) -> DistResult nu target rho bs th omega v = split {
+  nothing -> tt ; just e -> distTopExpr nu target rho bs th e } ;
+distMeetExpr (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t u : Ty) : (e : Expr) -> DistExpr nu target rho bs th t e -> DistExpr nu target rho bs th u e -> DistExpr nu target rho bs th (meet t u) e = split {
+  evar x -> \ h k -> tt ;
+  equote c -> \ h k -> tt ;
+  econs a b -> \ h k q r root readq readr -> obsMeet target rho t u (h q r root readq readr) (k q r root readq readr) ;
+  ecar a -> \ h k q root readq -> obsMeet target rho t u (h q root readq) (k q root readq) ;
+  ecdr a -> \ h k q root readq -> obsMeet target rho t u (h q root readq) (k q root readq) ;
+  eatom a -> \ h k q root readq -> obsMeet target rho t u (h q root readq) (k q root readq) ;
+  eeq a b -> \ h k q r root readq readr -> obsMeet target rho t u (h q r root readq readr) (k q r root readq readr) ;
+  eif a b c -> \ h k q r s root readq readr reads -> obsMeet target rho t u (h q r s root readq readr reads) (k q r s root readq readr reads) ;
+  eapp a b -> \ h k q r root readq readr -> obsMeet target rho t u (h q r root readq readr) (k q r root readq readr) ;
+  elam x a -> \ h k -> tt ;
+  elabel x a -> \ h k -> tt ;
+  efunarg a th0 -> \ h k -> tt ;
+  eplus a b -> \ h k q r root readq readr -> obsMeet target rho t u (h q r root readq readr) (k q r root readq readr) } ;
+distMeet (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t u : Ty) : (v : Maybe Expr) -> DistResult nu target rho bs th t v -> DistResult nu target rho bs th u v -> DistResult nu target rho bs th (meet t u) v = split {
+  nothing -> \ h k -> tt ; just e -> distMeetExpr nu target rho bs th t u e } ;
+distSubExpr (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t u : Ty) (le : Le t u) : (e : Expr) -> DistExpr nu target rho bs th t e -> DistExpr nu target rho bs th u e = split {
+  evar x -> \ h -> tt ;
+  equote c -> \ h -> tt ;
+  econs a b -> \ h q r root readq readr -> obsSub target rho t u (h q r root readq readr) le ;
+  ecar a -> \ h q root readq -> obsSub target rho t u (h q root readq) le ;
+  ecdr a -> \ h q root readq -> obsSub target rho t u (h q root readq) le ;
+  eatom a -> \ h q root readq -> obsSub target rho t u (h q root readq) le ;
+  eeq a b -> \ h q r root readq readr -> obsSub target rho t u (h q r root readq readr) le ;
+  eif a b c -> \ h q r s root readq readr reads -> obsSub target rho t u (h q r s root readq readr reads) le ;
+  eapp a b -> \ h q r root readq readr -> obsSub target rho t u (h q r root readq readr) le ;
+  elam x a -> \ h -> tt ;
+  elabel x a -> \ h -> tt ;
+  efunarg a th0 -> \ h -> tt ;
+  eplus a b -> \ h q r root readq readr -> obsSub target rho t u (h q r root readq readr) le } ;
+distSub (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t u : Ty) (le : Le t u) : (v : Maybe Expr) -> DistResult nu target rho bs th t v -> DistResult nu target rho bs th u v = split {
+  nothing -> \ h -> tt ; just e -> distSubExpr nu target rho bs th t u le e } ;
+distAt (nu : Heap) (target body : Addr) (rho bs : Env) (th : Alist) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (nu body) (just e)) (h : DistExpr nu target rho bs th t e) : DistResult nu target rho bs th t (nu body) =
+  subst (Maybe Expr) (DistResult nu target rho bs th t) (just e) (nu body)
+    (pathSym (Maybe Expr) (nu body) (just e) eq) h ;
+wrap (nu : Heap) (q a : Addr) (rho bs : Env) (th : Alist) (t : Ty)
+    (read : Id (Maybe Expr) (nu q) (just (efunarg a th)))
+    (oa : ObsAlist nu rho th bs) (o : Obs nu a (appendEnv bs rho) t) : Obs nu q rho t =
+  obsFunarg q a th rho bs t read oa o ;
+
+distLocal (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (oa : ObsAlist nu rho th bs) :
+    (body : Addr) -> (delta : Env) -> (t : Ty) -> Local nu nu body delta t ->
+    Id Env delta (appendEnv bs rho) -> DistResult nu target rho bs th t (nu body) = split {
+  atVar body delta x eq -> \ envEq -> distAt nu target body rho bs th (lookupEnv delta x) (evar x) eq tt ;
+  atQuote body delta a eq -> \ envEq -> distAt nu target body rho bs th (at a) (equote a) eq tt ;
+  atCons body a b delta t u eq o1 o2 -> \ envEq -> distAt nu target body rho bs th (prod t u) (econs a b) eq (\ q r root readq readr -> obsCons target q r rho t u root (wrap nu q a rho bs th (t) readq oa (subst Env (\ env -> Obs nu a env (t)) delta (appendEnv bs rho) envEq o1)) (wrap nu r b rho bs th (u) readr oa (subst Env (\ env -> Obs nu b env (u)) delta (appendEnv bs rho) envEq o2))) ;
+  atCar body a delta t u eq o -> \ envEq -> distAt nu target body rho bs th (t) (ecar a) eq (\ q root readq -> obsCar target q rho t u root (wrap nu q a rho bs th (prod t u) readq oa (subst Env (\ env -> Obs nu a env (prod t u)) delta (appendEnv bs rho) envEq o))) ;
+  atCdr body a delta t u eq o -> \ envEq -> distAt nu target body rho bs th (u) (ecdr a) eq (\ q root readq -> obsCdr target q rho t u root (wrap nu q a rho bs th (prod t u) readq oa (subst Env (\ env -> Obs nu a env (prod t u)) delta (appendEnv bs rho) envEq o))) ;
+  atAtomT body a delta eq o -> \ envEq -> distAt nu target body rho bs th (at T) (eatom a) eq (\ q root readq -> obsAtomT target q rho root (wrap nu q a rho bs th (atomTop) readq oa (subst Env (\ env -> Obs nu a env (atomTop)) delta (appendEnv bs rho) envEq o))) ;
+  atAtomNil body a delta eq o -> \ envEq -> distAt nu target body rho bs th (at NIL) (eatom a) eq (\ q root readq -> obsAtomNil target q rho root (wrap nu q a rho bs th (prod omega omega) readq oa (subst Env (\ env -> Obs nu a env (prod omega omega)) delta (appendEnv bs rho) envEq o))) ;
+  atEqT body a b delta x y eq same o1 o2 -> \ envEq -> distAt nu target body rho bs th (at T) (eeq a b) eq (\ q r root readq readr -> obsEqT target q r rho x y root same (wrap nu q a rho bs th (at x) readq oa (subst Env (\ env -> Obs nu a env (at x)) delta (appendEnv bs rho) envEq o1)) (wrap nu r b rho bs th (at y) readr oa (subst Env (\ env -> Obs nu b env (at y)) delta (appendEnv bs rho) envEq o2))) ;
+  atEqNil body a b delta x y eq different o1 o2 -> \ envEq -> distAt nu target body rho bs th (at NIL) (eeq a b) eq (\ q r root readq readr -> obsEqNil target q r rho x y root different (wrap nu q a rho bs th (at x) readq oa (subst Env (\ env -> Obs nu a env (at x)) delta (appendEnv bs rho) envEq o1)) (wrap nu r b rho bs th (at y) readr oa (subst Env (\ env -> Obs nu b env (at y)) delta (appendEnv bs rho) envEq o2))) ;
+  atIfT body a b c delta t eq oc o -> \ envEq -> distAt nu target body rho bs th (t) (eif a b c) eq (\ q r s root readq readr reads -> obsIfT target q r s rho t root (wrap nu q a rho bs th (at T) readq oa (subst Env (\ env -> Obs nu a env (at T)) delta (appendEnv bs rho) envEq oc)) (wrap nu r b rho bs th (t) readr oa (subst Env (\ env -> Obs nu b env (t)) delta (appendEnv bs rho) envEq o))) ;
+  atIfNil body a b c delta t eq oc o -> \ envEq -> distAt nu target body rho bs th (t) (eif a b c) eq (\ q r s root readq readr reads -> obsIfNil target q r s rho t root (wrap nu q a rho bs th (at NIL) readq oa (subst Env (\ env -> Obs nu a env (at NIL)) delta (appendEnv bs rho) envEq oc)) (wrap nu s c rho bs th (t) reads oa (subst Env (\ env -> Obs nu c env (t)) delta (appendEnv bs rho) envEq o))) ;
+  atApp body a b delta t u eq ofun ox -> \ envEq -> distAt nu target body rho bs th (u) (eapp a b) eq (\ q r root readq readr -> obsApp target q r rho t u root (wrap nu q a rho bs th (arr t u) readq oa (subst Env (\ env -> Obs nu a env (arr t u)) delta (appendEnv bs rho) envEq ofun)) (wrap nu r b rho bs th (t) readr oa (subst Env (\ env -> Obs nu b env (t)) delta (appendEnv bs rho) envEq ox))) ;
+  atLam body pb delta x t u eq o -> \ envEq -> distAt nu target body rho bs th (arr t u) (elam x pb) eq tt ;
+  atLabel body pb delta x t u eq rec o -> \ envEq -> distAt nu target body rho bs th (u) (elabel x pb) eq tt ;
+  atFunarg body pb th0 delta bs0 t eq args o -> \ envEq -> distAt nu target body rho bs th (t) (efunarg pb th0) eq tt ;
+  atPlus body a b delta m n eq o1 o2 -> \ envEq -> distAt nu target body rho bs th (at (num (plus m n))) (eplus a b) eq (\ q r root readq readr -> obsPlus target q r rho m n root (wrap nu q a rho bs th (at (num m)) readq oa (subst Env (\ env -> Obs nu a env (at (num m))) delta (appendEnv bs rho) envEq o1)) (wrap nu r b rho bs th (at (num n)) readr oa (subst Env (\ env -> Obs nu b env (at (num n))) delta (appendEnv bs rho) envEq o2))) } ;
+
+distribute (nu : Heap) (target body : Addr) (rho bs : Env) (th : Alist) (t : Ty) (e : Expr)
+    (source : Id (Maybe Expr) (nu body) (just e)) (oa : ObsAlist nu rho th bs)
+    (o : Obs nu body (appendEnv bs rho) t) : DistExpr nu target rho bs th t e =
+  subst (Maybe Expr) (DistResult nu target rho bs th t) (nu body) (just e) source
+    (foldGenerated nu body (appendEnv bs rho) (\ a -> DistResult nu target rho bs th a (nu body))
+      (distTop nu target rho bs th (nu body))
+      (\ a b -> distMeet nu target rho bs th a b (nu body))
+      (\ a b le -> distSub nu target rho bs th a b le (nu body))
+      (\ a d -> distLocal nu target rho bs th oa body (appendEnv bs rho) a d (refl (appendEnv bs rho)))
+      t (obsGeneration nu body (appendEnv bs rho) t o)) ;
+
+localDefined (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (t : Ty) -> Local mu nu p rho t -> InDom mu p = split {
+  atVar p rho x eq -> defined mu p (evar x) eq ;
+  atQuote p rho a eq -> defined mu p (equote a) eq ;
+  atCons p p1 p2 rho a b eq o1 o2 -> defined mu p (econs p1 p2) eq ;
+  atCar p q rho a b eq o -> defined mu p (ecar q) eq ;
+  atCdr p q rho a b eq o -> defined mu p (ecdr q) eq ;
+  atAtomT p q rho eq o -> defined mu p (eatom q) eq ;
+  atAtomNil p q rho eq o -> defined mu p (eatom q) eq ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> defined mu p (eeq p1 p2) eq ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> defined mu p (eeq p1 p2) eq ;
+  atIfT p p0 p1 p2 rho a eq oc o -> defined mu p (eif p0 p1 p2) eq ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> defined mu p (eif p0 p1 p2) eq ;
+  atApp p pf px rho a b eq ofun ox -> defined mu p (eapp pf px) eq ;
+  atLam p pb rho x a b eq o -> defined mu p (elam x pb) eq ;
+  atLabel p pb rho x a b eq rec body -> defined mu p (elabel x pb) eq ;
+  atFunarg p pb th rho bs a eq args body -> defined mu p (efunarg pb th) eq ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> defined mu p (eplus p1 p2) eq } ;
+
+definedDecision (mu nu : Heap) (root p : Addr) (rho : Env) (t : Ty)
+    (agree : (q : Addr) -> InDom mu q -> (Id Nat q root -> Empty) -> Id (Maybe Expr) (nu q) (mu q))
+    (local : (rho : Env) -> (t : Ty) -> Local mu nu root rho t -> Obs nu root rho t)
+    (d : Local mu nu p rho t) : Either (Id Nat p root) (Id Nat p root -> Empty) -> Obs nu p rho t = split {
+  inl eq -> subst Nat (\ q -> Obs nu q rho t) root p (pathSym Nat p root eq)
+    (local rho t (subst Nat (\ q -> Local mu nu q rho t) p root eq d)) ;
+  inr ne -> copyLocal mu nu p rho t d
+    (pathSym (Maybe Expr) (nu p) (mu p) (agree p (localDefined mu nu p rho t d) ne)) } ;
+
+definedTransfer (mu nu : Heap) (root : Addr)
+    (agree : (q : Addr) -> InDom mu q -> (Id Nat q root -> Empty) -> Id (Maybe Expr) (nu q) (mu q))
+    (local : (rho : Env) -> (t : Ty) -> Local mu nu root rho t -> Obs nu root rho t) :
+    (j : Query) -> Derive mu j -> Derive nu j =
+  transfer mu nu (\ p rho t d -> definedDecision mu nu root p rho t agree local d (decEqNat p root)) ;
+
+allocatedForward (mu nu : Heap) (p pb : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (agree : (q : Addr) -> InDom mu q -> (Id Nat q p -> Empty) -> Id (Maybe Expr) (nu q) (mu q))
+    (mapped : (rho : Env) -> (t : Ty) -> Captured[nu,pb,rho,th,t] -> Obs nu p rho t) :
+    (j : Query) -> Derive mu j -> Derive nu j =
+  definedTransfer mu nu p agree
+    (\ rho t d -> mapped rho t (localFunargInverse mu nu p pb rho th t root d)) ;
+
+module FcForward (mu : Heap) (p pb a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (form : Id (Maybe Expr) (mu pb) (just (eapp a b)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (qr : Apart q r) {
+  nu : Heap = alloc2 mu p (eapp q r) q r a b th ;
+  source : Id (Maybe Expr) (nu pb) (just (eapp a b)) =
+    pathTrans (Maybe Expr) (nu pb) (mu pb) (just (eapp a b))
+      (alloc2OldRead mu p (eapp q r) q r a b th fq fr pb (defined mu pb (eapp a b) form)
+        (differentCells mu p pb (efunarg pb th) (eapp a b) root form (\ bad -> bad))) form ;
+  target : Id (Maybe Expr) (nu p) (just (eapp q r)) =
+    alloc2RootRead mu p (eapp q r) q r a b th (defined mu p (efunarg pb th) root) fq fr ;
+  left : Id (Maybe Expr) (nu q) (just (efunarg a th)) = alloc2LeftRead mu p (eapp q r) q r a b th qr ;
+  right : Id (Maybe Expr) (nu r) (just (efunarg b th)) = alloc2RightRead mu p (eapp q r) q r a b th ;
+  mapped (rho : Env) (t : Ty) (c : Captured[nu,pb,rho,th,t]) : Obs nu p rho t =
+    distribute nu p pb rho c.env th t (eapp a b) source c.observed c.body q r target left right ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j =
+    allocatedForward mu nu p pb th root (alloc2OldRead mu p (eapp q r) q r a b th fq fr) mapped ;
+} ;
+
+unaryClash (pb : Addr) (th : Alist) (a : Addr) : (op : Unary) ->
+    Truth (eqN (exprTag (efunarg pb th)) (exprTag (unaryExpr op a))) -> Empty = split {
+  carOp -> \ bad -> bad ; cdrOp -> \ bad -> bad ; atomOp -> \ bad -> bad } ;
+binaryClash (pb : Addr) (th : Alist) (a b : Addr) : (op : Binary) ->
+    Truth (eqN (exprTag (efunarg pb th)) (exprTag (binaryExpr op a b))) -> Empty = split {
+  consOp -> \ bad -> bad ; eqOp -> \ bad -> bad ; plusOp -> \ bad -> bad } ;
+
+distUnaryApply (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t : Ty) (a q : Addr) :
+    (op : Unary) -> Id (Maybe Expr) (nu target) (just (unaryExpr op q)) ->
+    Id (Maybe Expr) (nu q) (just (efunarg a th)) ->
+    DistExpr nu target rho bs th t (unaryExpr op a) -> Obs nu target rho t = split {
+  carOp -> \ root read h -> h q root read ;
+  cdrOp -> \ root read h -> h q root read ;
+  atomOp -> \ root read h -> h q root read } ;
+distBinaryApply (nu : Heap) (target : Addr) (rho bs : Env) (th : Alist) (t : Ty) (a b q r : Addr) :
+    (op : Binary) -> Id (Maybe Expr) (nu target) (just (binaryExpr op q r)) ->
+    Id (Maybe Expr) (nu q) (just (efunarg a th)) -> Id (Maybe Expr) (nu r) (just (efunarg b th)) ->
+    DistExpr nu target rho bs th t (binaryExpr op a b) -> Obs nu target rho t = split {
+  consOp -> \ root left right h -> h q r root left right ;
+  eqOp -> \ root left right h -> h q r root left right ;
+  plusOp -> \ root left right h -> h q r root left right } ;
+
+module FUnaryForward (op : Unary) (mu : Heap) (p pb a q : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (form : Id (Maybe Expr) (mu pb) (just (unaryExpr op a))) (fq : Fresh mu q) {
+  nu : Heap = alloc1 mu p (unaryExpr op q) q a th ;
+  source : Id (Maybe Expr) (nu pb) (just (unaryExpr op a)) =
+    pathTrans (Maybe Expr) (nu pb) (mu pb) (just (unaryExpr op a))
+      (alloc1OldRead mu p (unaryExpr op q) q a th fq pb (defined mu pb (unaryExpr op a) form)
+        (differentCells mu p pb (efunarg pb th) (unaryExpr op a) root form (unaryClash pb th a op))) form ;
+  target : Id (Maybe Expr) (nu p) (just (unaryExpr op q)) =
+    alloc1RootRead mu p (unaryExpr op q) q a th (defined mu p (efunarg pb th) root) fq ;
+  argument : Id (Maybe Expr) (nu q) (just (efunarg a th)) = alloc1NewRead mu p (unaryExpr op q) q a th ;
+  mapped (rho : Env) (t : Ty) (c : Captured[nu,pb,rho,th,t]) : Obs nu p rho t =
+    distUnaryApply nu p rho c.env th t a q op target argument
+      (distribute nu p pb rho c.env th t (unaryExpr op a) source c.observed c.body) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j =
+    allocatedForward mu nu p pb th root (alloc1OldRead mu p (unaryExpr op q) q a th fq) mapped ;
+} ;
+
+module FBinaryForward (op : Binary) (mu : Heap) (p pb a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (form : Id (Maybe Expr) (mu pb) (just (binaryExpr op a b)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (qr : Apart q r) {
+  nu : Heap = alloc2 mu p (binaryExpr op q r) q r a b th ;
+  source : Id (Maybe Expr) (nu pb) (just (binaryExpr op a b)) =
+    pathTrans (Maybe Expr) (nu pb) (mu pb) (just (binaryExpr op a b))
+      (alloc2OldRead mu p (binaryExpr op q r) q r a b th fq fr pb (defined mu pb (binaryExpr op a b) form)
+        (differentCells mu p pb (efunarg pb th) (binaryExpr op a b) root form (binaryClash pb th a b op))) form ;
+  target : Id (Maybe Expr) (nu p) (just (binaryExpr op q r)) =
+    alloc2RootRead mu p (binaryExpr op q r) q r a b th (defined mu p (efunarg pb th) root) fq fr ;
+  left : Id (Maybe Expr) (nu q) (just (efunarg a th)) = alloc2LeftRead mu p (binaryExpr op q r) q r a b th qr ;
+  right : Id (Maybe Expr) (nu r) (just (efunarg b th)) = alloc2RightRead mu p (binaryExpr op q r) q r a b th ;
+  mapped (rho : Env) (t : Ty) (c : Captured[nu,pb,rho,th,t]) : Obs nu p rho t =
+    distBinaryApply nu p rho c.env th t a b q r op target left right
+      (distribute nu p pb rho c.env th t (binaryExpr op a b) source c.observed c.body) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j =
+    allocatedForward mu nu p pb th root (alloc2OldRead mu p (binaryExpr op q r) q r a b th fq fr) mapped ;
+} ;
+
+module FIfForward (mu : Heap) (p pb a b c q r s : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (form : Id (Maybe Expr) (mu pb) (just (eif a b c)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s)
+    (qr : Apart q r) (qs : Apart q s) (rs : Apart r s) {
+  nu : Heap = alloc3 mu p (eif q r s) q r s a b c th ;
+  source : Id (Maybe Expr) (nu pb) (just (eif a b c)) =
+    pathTrans (Maybe Expr) (nu pb) (mu pb) (just (eif a b c))
+      (alloc3OldRead mu p (eif q r s) q r s a b c th fq fr fs pb (defined mu pb (eif a b c) form)
+        (differentCells mu p pb (efunarg pb th) (eif a b c) root form (\ bad -> bad))) form ;
+  target : Id (Maybe Expr) (nu p) (just (eif q r s)) =
+    alloc3RootRead mu p (eif q r s) q r s a b c th (defined mu p (efunarg pb th) root) fq fr fs ;
+  first : Id (Maybe Expr) (nu q) (just (efunarg a th)) = alloc3FirstRead mu p (eif q r s) q r s a b c th qr qs ;
+  second : Id (Maybe Expr) (nu r) (just (efunarg b th)) = alloc3SecondRead mu p (eif q r s) q r s a b c th rs ;
+  third : Id (Maybe Expr) (nu s) (just (efunarg c th)) = alloc3ThirdRead mu p (eif q r s) q r s a b c th ;
+  mapped (rho : Env) (t : Ty) (cap : Captured[nu,pb,rho,th,t]) : Obs nu p rho t =
+    distribute nu p pb rho cap.env th t (eif a b c) source cap.observed cap.body q r s target first second third ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j =
+    allocatedForward mu nu p pb th root (alloc3OldRead mu p (eif q r s) q r s a b c th fq fr fs) mapped ;
+} ;

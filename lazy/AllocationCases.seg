@@ -1,0 +1,108 @@
+-- Concrete origin witnesses for the allocating rewrite rules.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Rewrites[l] ; open HeapSupport[l] ;
+open AllocationReads[l] ; open AllocationOrigins[l] ;
+
+unaryOrigin (mu nu : Heap) (th : Alist) : (op : Unary) -> (q : Addr) -> Origin[mu, nu, th, q] ->
+    OriginShape mu nu th (unaryExpr op q) = split {
+  carOp -> \ q h -> h ; cdrOp -> \ q h -> h ; atomOp -> \ q h -> h } ;
+unaryOriginExpr (mu nu : Heap) (th : Alist) : (op : Unary) -> (q : Addr) -> (h : Origin[mu, nu, th, q]) ->
+    Id Expr (originExpr mu nu th (unaryExpr op q) (unaryOrigin mu nu th op q h)) (unaryExpr op h.address) = split {
+  carOp -> \ q h -> refl (ecar h.address) ;
+  cdrOp -> \ q h -> refl (ecdr h.address) ;
+  atomOp -> \ q h -> refl (eatom h.address) } ;
+binaryOrigin (mu nu : Heap) (th : Alist) : (op : Binary) -> (q r : Addr) ->
+    Pair[Origin[mu, nu, th, q], Origin[mu, nu, th, r]] -> OriginShape mu nu th (binaryExpr op q r) = split {
+  consOp -> \ q r h -> h ; eqOp -> \ q r h -> h ; plusOp -> \ q r h -> h } ;
+binaryOriginExpr (mu nu : Heap) (th : Alist) : (op : Binary) -> (q r : Addr) ->
+    (h : Pair[Origin[mu, nu, th, q], Origin[mu, nu, th, r]]) ->
+    Id Expr (originExpr mu nu th (binaryExpr op q r) (binaryOrigin mu nu th op q r h)) (binaryExpr op h.fst.address h.snd.address) = split {
+  consOp -> \ q r h -> refl (econs h.fst.address h.snd.address) ;
+  eqOp -> \ q r h -> refl (eeq h.fst.address h.snd.address) ;
+  plusOp -> \ q r h -> refl (eplus h.fst.address h.snd.address) } ;
+
+module FcOrigins (mu : Heap) (p pb a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (body : Id (Maybe Expr) (mu pb) (just (eapp a b)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (qr : Apart q r) (wf : WfHeap mu) {
+  fresh : Expr = eapp q r ;
+  nu : Heap = alloc2 mu p fresh q r a b th ;
+  left : Origin[mu, nu, th, q] = mkOrigin mu nu th q a (wf pb (eapp a b) body).fst
+    (alloc2LeftRead mu p fresh q r a b th qr) ;
+  right : Origin[mu, nu, th, r] = mkOrigin mu nu th r b (wf pb (eapp a b) body).snd
+    (alloc2RightRead mu p fresh q r a b th) ;
+  shape : OriginShape mu nu th fresh = mkPair (Origin[mu, nu, th, q]) (Origin[mu, nu, th, r]) left right ;
+  sourceRead : Id (Maybe Expr) (mu pb) (just (originExpr mu nu th fresh shape)) = body ;
+  newRead : Id (Maybe Expr) (nu p) (just fresh) =
+    alloc2RootRead mu p fresh q r a b th (defined mu p (efunarg pb th) root) fq fr ;
+  closed : AlistClosed (InDom mu) th = (wf p (efunarg pb th) root).snd ;
+  agreement : (z : Addr) -> InDom mu z -> (Id Nat z p -> Empty) -> Id (Maybe Expr) (nu z) (mu z) =
+    alloc2OldRead mu p fresh q r a b th fq fr ;
+} ;
+
+module UnaryOrigins (op : Unary) (mu : Heap) (p pb a q : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (body : Id (Maybe Expr) (mu pb) (just (unaryExpr op a)))
+    (fq : Fresh mu q) (wf : WfHeap mu) {
+  fresh : Expr = unaryExpr op q ;
+  nu : Heap = alloc1 mu p fresh q a th ;
+  source : Origin[mu, nu, th, q] = mkOrigin mu nu th q a
+    (unarySupport (InDom mu) op a (wf pb (unaryExpr op a) body))
+    (alloc1NewRead mu p fresh q a th) ;
+  shape : OriginShape mu nu th fresh = unaryOrigin mu nu th op q source ;
+  sourceRead : Id (Maybe Expr) (mu pb) (just (originExpr mu nu th fresh shape)) =
+    pathTrans (Maybe Expr) (mu pb) (just (unaryExpr op a)) (just (originExpr mu nu th fresh shape)) body
+      (ap Expr (Maybe Expr) (\ e -> just e) (unaryExpr op a) (originExpr mu nu th fresh shape)
+        (pathSym Expr (originExpr mu nu th fresh shape) (unaryExpr op a) (unaryOriginExpr mu nu th op q source))) ;
+  newRead : Id (Maybe Expr) (nu p) (just fresh) =
+    alloc1RootRead mu p fresh q a th (defined mu p (efunarg pb th) root) fq ;
+  closed : AlistClosed (InDom mu) th = (wf p (efunarg pb th) root).snd ;
+  agreement : (z : Addr) -> InDom mu z -> (Id Nat z p -> Empty) -> Id (Maybe Expr) (nu z) (mu z) =
+    alloc1OldRead mu p fresh q a th fq ;
+} ;
+
+module BinaryOrigins (op : Binary) (mu : Heap) (p pb a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (body : Id (Maybe Expr) (mu pb) (just (binaryExpr op a b)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (qr : Apart q r) (wf : WfHeap mu) {
+  fresh : Expr = binaryExpr op q r ;
+  nu : Heap = alloc2 mu p fresh q r a b th ;
+  source : Pair[InDom mu a, InDom mu b] = binarySupport (InDom mu) op a b (wf pb (binaryExpr op a b) body) ;
+  left : Origin[mu, nu, th, q] = mkOrigin mu nu th q a source.fst (alloc2LeftRead mu p fresh q r a b th qr) ;
+  right : Origin[mu, nu, th, r] = mkOrigin mu nu th r b source.snd (alloc2RightRead mu p fresh q r a b th) ;
+  pair : Pair[Origin[mu, nu, th, q], Origin[mu, nu, th, r]] =
+    mkPair (Origin[mu, nu, th, q]) (Origin[mu, nu, th, r]) left right ;
+  shape : OriginShape mu nu th fresh = binaryOrigin mu nu th op q r pair ;
+  sourceRead : Id (Maybe Expr) (mu pb) (just (originExpr mu nu th fresh shape)) =
+    pathTrans (Maybe Expr) (mu pb) (just (binaryExpr op a b)) (just (originExpr mu nu th fresh shape)) body
+      (ap Expr (Maybe Expr) (\ e -> just e) (binaryExpr op a b) (originExpr mu nu th fresh shape)
+        (pathSym Expr (originExpr mu nu th fresh shape) (binaryExpr op a b) (binaryOriginExpr mu nu th op q r pair))) ;
+  newRead : Id (Maybe Expr) (nu p) (just fresh) =
+    alloc2RootRead mu p fresh q r a b th (defined mu p (efunarg pb th) root) fq fr ;
+  closed : AlistClosed (InDom mu) th = (wf p (efunarg pb th) root).snd ;
+  agreement : (z : Addr) -> InDom mu z -> (Id Nat z p -> Empty) -> Id (Maybe Expr) (nu z) (mu z) =
+    alloc2OldRead mu p fresh q r a b th fq fr ;
+} ;
+
+module IfOrigins (mu : Heap) (p pb a b c q r s : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (body : Id (Maybe Expr) (mu pb) (just (eif a b c)))
+    (fq : Fresh mu q) (fr : Fresh mu r) (fs : Fresh mu s)
+    (qr : Apart q r) (qs : Apart q s) (rs : Apart r s) (wf : WfHeap mu) {
+  fresh : Expr = eif q r s ;
+  nu : Heap = alloc3 mu p fresh q r s a b c th ;
+  source : Pair[InDom mu a, Pair[InDom mu b, InDom mu c]] = wf pb (eif a b c) body ;
+  first : Origin[mu, nu, th, q] = mkOrigin mu nu th q a source.fst (alloc3FirstRead mu p fresh q r s a b c th qr qs) ;
+  second : Origin[mu, nu, th, r] = mkOrigin mu nu th r b source.snd.fst (alloc3SecondRead mu p fresh q r s a b c th rs) ;
+  third : Origin[mu, nu, th, s] = mkOrigin mu nu th s c source.snd.snd (alloc3ThirdRead mu p fresh q r s a b c th) ;
+  shape : OriginShape mu nu th fresh = mkPair (Origin[mu, nu, th, q])
+    (Pair[Origin[mu, nu, th, r], Origin[mu, nu, th, s]]) first
+      (mkPair (Origin[mu, nu, th, r]) (Origin[mu, nu, th, s]) second third) ;
+  sourceRead : Id (Maybe Expr) (mu pb) (just (originExpr mu nu th fresh shape)) = body ;
+  newRead : Id (Maybe Expr) (nu p) (just fresh) =
+    alloc3RootRead mu p fresh q r s a b c th (defined mu p (efunarg pb th) root) fq fr fs ;
+  closed : AlistClosed (InDom mu) th = (wf p (efunarg pb th) root).snd ;
+  agreement : (z : Addr) -> InDom mu z -> (Id Nat z p -> Empty) -> Id (Maybe Expr) (nu z) (mu z) =
+    alloc3OldRead mu p fresh q r s a b c th fq fr fs ;
+} ;

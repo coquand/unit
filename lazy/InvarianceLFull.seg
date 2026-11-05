@@ -1,0 +1,66 @@
+-- Both directions of the circular rewrite, including every memory cell.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ;
+open ObsEnvironment[l] ; open Transfer[l] ; open ObsBindings[l] ;
+open ObsFunarg[l] ; open InvarianceL[l] ; open UpdateTransfer[l] ;
+
+foldLabelMerged (mu : Heap) (p pl pb : Addr) (x : Var) (th : Alist)
+    (qp : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb)))
+    (rho bs : Env) (a : Ty) (body : Obs mu pb (appendEnv bs rho) a)
+    (v : BindingHead[mu, rho, x, p, th, bs])
+    (c : Captured[mu, pl, rho, th, v.entryType])
+    (m : Merged[mu, rho, th, v.tailEnv, c.env]) : Obs mu p rho a =
+  obsFunarg p pl th rho m.env a qp m.observed
+    (obsLabel pl pb (appendEnv m.env rho) x v.entryType a ql
+      (obsStrengthen mu pl (appendEnv c.env rho) (appendEnv m.env rho) v.entryType (m.right rho) c.body)
+      (obsStrengthen mu pb (ext (appendEnv v.tailEnv rho) x v.entryType)
+        (ext (appendEnv m.env rho) x v.entryType) a
+        (extMono (appendEnv m.env rho) (appendEnv v.tailEnv rho) x v.entryType v.entryType (m.left rho) (leRefl v.entryType))
+        (subst Env (\ zs -> Obs mu pb (appendEnv zs rho) a) bs (ext v.tailEnv x v.entryType) v.shape body))) ;
+
+foldLabelCaptured (mu : Heap) (p pl pb : Addr) (x : Var) (th : Alist)
+    (qp : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb)))
+    (rho bs : Env) (a : Ty) (body : Obs mu pb (appendEnv bs rho) a)
+    (v : BindingHead[mu, rho, x, p, th, bs])
+    (c : Captured[mu, pl, rho, th, v.entryType]) : Obs mu p rho a =
+  foldLabelMerged mu p pl pb x th qp ql rho bs a body v c
+    (mergeBindings mu rho th v.tailEnv c.env v.rest c.observed) ;
+
+foldLabelHead (mu : Heap) (p pl pb : Addr) (x : Var) (th : Alist)
+    (qp : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb)))
+    (rho bs : Env) (a : Ty) (body : Obs mu pb (appendEnv bs rho) a)
+    (v : BindingHead[mu, rho, x, p, th, bs]) : Obs mu p rho a =
+  foldLabelCaptured mu p pl pb x th qp ql rho bs a body v
+    (funargInverse mu p pl rho th v.entryType qp v.entry) ;
+
+foldLabel (mu : Heap) (p pl pb : Addr) (x : Var) (th : Alist)
+    (qp : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb)))
+    (rho : Env) (a : Ty) (c : Captured[mu, pb, rho, cons (mkPair Nat Nat x p) th, a]) : Obs mu p rho a =
+  foldLabelHead mu p pl pb x th qp ql rho c.env a c.body
+    (bindingHead mu rho x p th c.env c.observed) ;
+
+module LStep (mu : Heap) (p pl pb : Addr) (th : Alist) (x : Var)
+    (qp : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (ql : Id (Maybe Expr) (mu pl) (just (elabel x pb))) {
+  fresh : Expr = efunarg pb (cons (mkPair Nat Nat x p) th) ;
+  nu : Heap = upd mu p fresh ;
+  nuP : Id (Maybe Expr) (nu p) (just fresh) = upd-hit mu p fresh ;
+  nuL : Id (Maybe Expr) (nu pl) (just (elabel x pb)) =
+    readUnchanged mu p pl (efunarg pl th) (elabel x pb) fresh qp ql (\ bad -> bad) ;
+
+  forwardCaptured (rho : Env) (a : Ty) (c : Captured[nu, pl, rho, th, a]) : Obs nu p rho a =
+    labelUnfold nu pl p pb x rho c.env th a nuL nuP c.observed c.body ;
+  localForward (rho : Env) (a : Ty) (d : Local mu nu p rho a) : Obs nu p rho a =
+    forwardCaptured rho a (localFunargInverse mu nu p pl rho th a qp d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p fresh localForward ;
+
+  localBackward (rho : Env) (a : Ty) (d : Local nu mu p rho a) : Obs mu p rho a =
+    foldLabel mu p pl pb x th qp ql rho a
+      (localFunargInverse nu mu p pb rho (cons (mkPair Nat Nat x p) th) a nuP d) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p fresh localBackward ;
+} ;

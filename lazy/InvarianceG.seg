@@ -1,0 +1,159 @@
+-- Both directions of graph beta reduction [G], at every cell.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Arrow[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsLambda[l] ; open ObsClosure[l] ; open ObsBindings[l] ; open Transfer[l] ; open UpdateTransfer[l] ;
+
+GForwardE (nu : Heap) (p : Addr) (rho : Env) (out : Ty) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Top ; econs p q -> Top ; ecar p -> Top ; ecdr p -> Top ;
+  eatom p -> Top ; eeq p q -> Top ; eif p q r -> Top ;
+  eapp pf argument -> (pl pb : Addr) -> (th : Alist) -> (x : Var) ->
+    Id (Maybe Expr) (nu pf) (just (efunarg pl th)) ->
+    Id (Maybe Expr) (nu pl) (just (elam x pb)) ->
+    Id (Maybe Expr) (nu p) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))) -> Obs nu p rho out ;
+  elam x p -> Top ; elabel x p -> Top ; efunarg p th -> Top ; eplus p q -> Top } ;
+GForwardAt (nu : Heap) (p : Addr) (rho : Env) (out : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> GForwardE nu p rho out e } ;
+
+gRebuildWith (mu : Heap) (p pf pl argument pb : Addr) (rho : Env) (th : Alist) (x : Var) (out : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (cap : ArrowCapture[mu, rho, pb, cons (mkPair Nat Nat x argument) th, out])
+    (v : BindingHead[mu, rho, x, argument, th, cap.env]) : Obs mu p rho out =
+  obsApp p pf argument rho v.entryType out root
+    (obsFunarg pf pl th rho v.tailEnv (arr v.entryType out) closure v.rest
+      (obsLam pl pb (appendEnv v.tailEnv rho) x v.entryType out lam
+        (subst Env (\ bs -> Obs mu pb (appendEnv bs rho) out) cap.env (ext v.tailEnv x v.entryType) v.shape cap.body)))
+    v.entry ;
+gRebuild (mu : Heap) (p pf pl argument pb : Addr) (rho : Env) (th : Alist) (x : Var) (out : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (cap : ArrowCapture[mu, rho, pb, cons (mkPair Nat Nat x argument) th, out]) : Obs mu p rho out =
+  gRebuildWith mu p pf pl argument pb rho th x out root closure lam cap
+    (bindingHead mu rho x argument th cap.env cap.args) ;
+
+GBackwardE (mu : Heap) (p : Addr) (rho : Env) (out : Ty) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Top ; econs p q -> Top ; ecar p -> Top ; ecdr p -> Top ;
+  eatom p -> Top ; eeq p q -> Top ; eif p q r -> Top ; eapp p q -> Top ;
+  elam x p -> Top ; elabel x p -> Top ;
+  efunarg pb full -> (pf pl argument : Addr) -> (th : Alist) -> (x : Var) ->
+    Id Alist full (cons (mkPair Nat Nat x argument) th) ->
+    Id (Maybe Expr) (mu p) (just (eapp pf argument)) ->
+    Id (Maybe Expr) (mu pf) (just (efunarg pl th)) ->
+    Id (Maybe Expr) (mu pl) (just (elam x pb)) -> Obs mu p rho out ;
+  eplus p q -> Top } ;
+GBackwardAt (mu : Heap) (p : Addr) (rho : Env) (out : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> GBackwardE mu p rho out e } ;
+
+gForwardLayer (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (out : Ty) ->
+    Local mu nu p rho out -> GForwardAt nu p rho out (mu p) = split {
+  atVar p rho x eq -> subst (Maybe Expr) (GForwardAt nu p rho (lookupEnv rho x)) (just (evar x)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (evar x)) eq) tt ;
+  atQuote p rho a eq -> subst (Maybe Expr) (GForwardAt nu p rho (at a)) (just (equote a)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (equote a)) eq) tt ;
+  atCons p p1 p2 rho a b eq o1 o2 -> subst (Maybe Expr) (GForwardAt nu p rho (prod a b)) (just (econs p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (econs p1 p2)) eq) tt ;
+  atCar p q rho a b eq o -> subst (Maybe Expr) (GForwardAt nu p rho (a)) (just (ecar q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecar q)) eq) tt ;
+  atCdr p q rho a b eq o -> subst (Maybe Expr) (GForwardAt nu p rho (b)) (just (ecdr q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (ecdr q)) eq) tt ;
+  atAtomT p q rho eq o -> subst (Maybe Expr) (GForwardAt nu p rho (at T)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+  atAtomNil p q rho eq o -> subst (Maybe Expr) (GForwardAt nu p rho (at NIL)) (just (eatom q)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eatom q)) eq) tt ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> subst (Maybe Expr) (GForwardAt nu p rho (at T)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> subst (Maybe Expr) (GForwardAt nu p rho (at NIL)) (just (eeq p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eeq p1 p2)) eq) tt ;
+  atIfT p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (GForwardAt nu p rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (GForwardAt nu p rho (a)) (just (eif p0 p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eif p0 p1 p2)) eq) tt ;
+  atApp p pf px rho a b eq ofun ox -> subst (Maybe Expr) (GForwardAt nu p rho (b)) (just (eapp pf px)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eapp pf px)) eq) (\ pl pb th x closure lam dest -> closureApply nu p pf pl px pb rho th x a b closure lam dest ofun ox) ;
+  atLam p pb rho x a b eq o -> subst (Maybe Expr) (GForwardAt nu p rho (arr a b)) (just (elam x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elam x pb)) eq) tt ;
+  atLabel p pb rho x a b eq rec body -> subst (Maybe Expr) (GForwardAt nu p rho (b)) (just (elabel x pb)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (elabel x pb)) eq) tt ;
+  atFunarg p pb th rho bs a eq args body -> subst (Maybe Expr) (GForwardAt nu p rho (a)) (just (efunarg pb th)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (efunarg pb th)) eq) tt ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> subst (Maybe Expr) (GForwardAt nu p rho (at (num (plus m n)))) (just (eplus p1 p2)) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just (eplus p1 p2)) eq) tt } ;
+
+gBackwardLayer (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (out : Ty) ->
+    Local nu mu p rho out -> GBackwardAt mu p rho out (nu p) = split {
+  atVar p rho x eq -> subst (Maybe Expr) (GBackwardAt mu p rho (lookupEnv rho x)) (just (evar x)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (evar x)) eq) tt ;
+  atQuote p rho a eq -> subst (Maybe Expr) (GBackwardAt mu p rho (at a)) (just (equote a)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (equote a)) eq) tt ;
+  atCons p p1 p2 rho a b eq o1 o2 -> subst (Maybe Expr) (GBackwardAt mu p rho (prod a b)) (just (econs p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (econs p1 p2)) eq) tt ;
+  atCar p q rho a b eq o -> subst (Maybe Expr) (GBackwardAt mu p rho (a)) (just (ecar q)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (ecar q)) eq) tt ;
+  atCdr p q rho a b eq o -> subst (Maybe Expr) (GBackwardAt mu p rho (b)) (just (ecdr q)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (ecdr q)) eq) tt ;
+  atAtomT p q rho eq o -> subst (Maybe Expr) (GBackwardAt mu p rho (at T)) (just (eatom q)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eatom q)) eq) tt ;
+  atAtomNil p q rho eq o -> subst (Maybe Expr) (GBackwardAt mu p rho (at NIL)) (just (eatom q)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eatom q)) eq) tt ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> subst (Maybe Expr) (GBackwardAt mu p rho (at T)) (just (eeq p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eeq p1 p2)) eq) tt ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> subst (Maybe Expr) (GBackwardAt mu p rho (at NIL)) (just (eeq p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eeq p1 p2)) eq) tt ;
+  atIfT p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (GBackwardAt mu p rho (a)) (just (eif p0 p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eif p0 p1 p2)) eq) tt ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> subst (Maybe Expr) (GBackwardAt mu p rho (a)) (just (eif p0 p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eif p0 p1 p2)) eq) tt ;
+  atApp p pf px rho a b eq ofun ox -> subst (Maybe Expr) (GBackwardAt mu p rho (b)) (just (eapp pf px)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eapp pf px)) eq) tt ;
+  atLam p pb rho x a b eq o -> subst (Maybe Expr) (GBackwardAt mu p rho (arr a b)) (just (elam x pb)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (elam x pb)) eq) tt ;
+  atLabel p pb rho x a b eq rec body -> subst (Maybe Expr) (GBackwardAt mu p rho (b)) (just (elabel x pb)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (elabel x pb)) eq) tt ;
+  atFunarg p pb th rho bs a eq args body -> subst (Maybe Expr) (GBackwardAt mu p rho (a)) (just (efunarg pb th)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (efunarg pb th)) eq) (\ pf pl argument tail x shape root closure lam -> gRebuild mu p pf pl argument pb rho tail x a root closure lam
+      (subst Alist (\ full -> ArrowCapture[mu, rho, pb, full, a]) th (cons (mkPair Nat Nat x argument) tail) shape
+        (mkArrowCapture mu rho pb th a bs args body))) ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> subst (Maybe Expr) (GBackwardAt mu p rho (at (num (plus m n)))) (just (eplus p1 p2)) (nu p)
+    (pathSym (Maybe Expr) (nu p) (just (eplus p1 p2)) eq) tt } ;
+
+gForwardLocal (mu nu : Heap) (p pf pl argument pb : Addr) (th : Alist) (x : Var)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (nu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (nu pl) (just (elam x pb)))
+    (dest : Id (Maybe Expr) (nu p) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))))
+    (rho : Env) (out : Ty) (d : Local mu nu p rho out) : Obs nu p rho out =
+  (subst (Maybe Expr) (GForwardAt nu p rho out) (mu p) (just (eapp pf argument)) root
+    (gForwardLayer mu nu p rho out d)) pl pb th x closure lam dest ;
+
+gBackwardLocal (mu nu : Heap) (p pf pl argument pb : Addr) (th : Alist) (x : Var)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (dest : Id (Maybe Expr) (nu p) (just (efunarg pb (cons (mkPair Nat Nat x argument) th))))
+    (rho : Env) (out : Ty) (d : Local nu mu p rho out) : Obs mu p rho out =
+  (subst (Maybe Expr) (GBackwardAt mu p rho out) (nu p)
+    (just (efunarg pb (cons (mkPair Nat Nat x argument) th))) dest
+    (gBackwardLayer mu nu p rho out d)) pf pl argument th x (refl (cons (mkPair Nat Nat x argument) th)) root closure lam ;
+
+forwardG (mu : Heap) (p pf pl argument pb : Addr) (th : Alist) (x : Var)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb))) :
+    (j : Query) -> Derive mu j -> Derive (upd mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))) j =
+  updateForward mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))
+    (gForwardLocal mu (upd mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))) p pf pl argument pb th x root
+      (readUnchanged mu p pf (eapp pf argument) (efunarg pl th) (efunarg pb (cons (mkPair Nat Nat x argument) th)) root closure (\ bad -> bad))
+      (readUnchanged mu p pl (eapp pf argument) (elam x pb) (efunarg pb (cons (mkPair Nat Nat x argument) th)) root lam (\ bad -> bad))
+      (upd-hit mu p (efunarg pb (cons (mkPair Nat Nat x argument) th)))) ;
+
+backwardG (mu : Heap) (p pf pl argument pb : Addr) (th : Alist) (x : Var)
+    (root : Id (Maybe Expr) (mu p) (just (eapp pf argument)))
+    (closure : Id (Maybe Expr) (mu pf) (just (efunarg pl th)))
+    (lam : Id (Maybe Expr) (mu pl) (just (elam x pb))) :
+    (j : Query) -> Derive (upd mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))) j -> Derive mu j =
+  updateBackward mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))
+    (gBackwardLocal mu (upd mu p (efunarg pb (cons (mkPair Nat Nat x argument) th))) p pf pl argument pb th x root closure lam
+      (upd-hit mu p (efunarg pb (cons (mkPair Nat Nat x argument) th)))) ;

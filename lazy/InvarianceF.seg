@@ -1,0 +1,147 @@
+-- Lookup [Fa] and quoted atoms [Fb], including first-binding shadowing.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open ObsEnvironment[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ; open ObsQuotes[l] ; open Transfer[l] ;
+open UpdateTransfer[l] ; open SameCell[l] ; open Rewrites[l] ;
+
+lookupHit (rho : Env) (x : Var) (a : Ty) : Id Ty (lookupEnv (ext rho x a) x) a =
+  ap Bool Ty (\ b -> ifBool Ty a (lookupEnv rho x) b) (eqN x x) true (eqN-refl x) ;
+lookupMiss (rho : Env) (y : Var) (a : Ty) (x : Var) (apart : Apart y x) :
+    Id Ty (lookupEnv (ext rho y a) x) (lookupEnv rho x) =
+  ap Bool Ty (\ b -> ifBool Ty a (lookupEnv rho x) b) (eqN y x) false apart ;
+
+lookupHere (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env)
+    (v : BindingHead[mu, rho, x, q, th, bs]) : Obs mu q rho (lookupEnv (appendEnv bs rho) x) =
+  subst Env (\ cs -> Obs mu q rho (lookupEnv (appendEnv cs rho) x)) (ext v.tailEnv x v.entryType) bs
+    (pathSym Env bs (ext v.tailEnv x v.entryType) v.shape)
+    (subst Ty (Obs mu q rho) v.entryType (lookupEnv (ext (appendEnv v.tailEnv rho) x v.entryType) x)
+      (pathSym Ty (lookupEnv (ext (appendEnv v.tailEnv rho) x v.entryType) x) v.entryType
+        (lookupHit (appendEnv v.tailEnv rho) x v.entryType)) v.entry) ;
+
+lookupThere (mu : Heap) (rho : Env) (y : Var) (r : Addr) (th : Alist) (x : Var) (q : Addr)
+    (apart : Apart y x) (bs : Env) (v : BindingHead[mu, rho, y, r, th, bs])
+    (o : Obs mu q rho (lookupEnv (appendEnv v.tailEnv rho) x)) : Obs mu q rho (lookupEnv (appendEnv bs rho) x) =
+  subst Env (\ cs -> Obs mu q rho (lookupEnv (appendEnv cs rho) x)) (ext v.tailEnv y v.entryType) bs
+    (pathSym Env bs (ext v.tailEnv y v.entryType) v.shape)
+    (subst Ty (Obs mu q rho) (lookupEnv (appendEnv v.tailEnv rho) x)
+      (lookupEnv (ext (appendEnv v.tailEnv rho) y v.entryType) x)
+      (pathSym Ty (lookupEnv (ext (appendEnv v.tailEnv rho) y v.entryType) x)
+        (lookupEnv (appendEnv v.tailEnv rho) x) (lookupMiss (appendEnv v.tailEnv rho) y v.entryType x apart)) o) ;
+lookupThereWith (mu : Heap) (rho : Env) (y : Var) (r : Addr) (th : Alist) (x : Var) (q : Addr)
+    (apart : Apart y x)
+    (ih : (cs : Env) -> ObsAlist mu rho th cs -> Obs mu q rho (lookupEnv (appendEnv cs rho) x))
+    (bs : Env) (v : BindingHead[mu, rho, y, r, th, bs]) : Obs mu q rho (lookupEnv (appendEnv bs rho) x) =
+  lookupThere mu rho y r th x q apart bs v (ih v.tailEnv v.rest) ;
+
+bindingLookup (mu : Heap) (rho : Env) : (th : Alist) -> (x : Var) -> (q : Addr) -> AlistLookup th x q ->
+    (bs : Env) -> ObsAlist mu rho th bs -> Obs mu q rho (lookupEnv (appendEnv bs rho) x) = split {
+  alHere x q th -> \ bs o -> lookupHere mu rho x q th bs (bindingHead mu rho x q th bs o) ;
+  alThere y r th x q apart rest | ih -> \ bs o ->
+    lookupThereWith mu rho y r th x q apart ih bs (bindingHead mu rho y r th bs o) } ;
+
+record LookupCapture (mu : Heap) (rho : Env) (th : Alist) (x : Var) (a : Ty) {
+  env : Env ; observed : ObsAlist mu rho th env ; bound : Le (lookupEnv (appendEnv env rho) x) a ;
+} ;
+fillHere (mu : Heap) (rho : Env) (x : Var) (q : Addr) (th : Alist) (a : Ty)
+    (o : Obs mu q rho a) (c : Captures[mu, rho, th]) : LookupCapture[mu, rho, cons (mkPair Nat Nat x q) th, x, a] =
+  mkLookupCapture mu rho (cons (mkPair Nat Nat x q) th) x a (ext c.env x a)
+    (oaCons rho x q th c.env a o c.observed)
+    (subst Ty (\ t -> Le t a) a (lookupEnv (ext (appendEnv c.env rho) x a) x)
+      (pathSym Ty (lookupEnv (ext (appendEnv c.env rho) x a) x) a (lookupHit (appendEnv c.env rho) x a)) (leRefl a)) ;
+fillThere (mu : Heap) (rho : Env) (y : Var) (r : Addr) (th : Alist) (x : Var) (a : Ty)
+    (apart : Apart y x) (c : LookupCapture[mu, rho, th, x, a]) :
+    LookupCapture[mu, rho, cons (mkPair Nat Nat y r) th, x, a] =
+  mkLookupCapture mu rho (cons (mkPair Nat Nat y r) th) x a (ext c.env y omega)
+    (oaCons rho y r th c.env omega (obsTop r rho) c.observed)
+    (subst Ty (\ t -> Le t a) (lookupEnv (appendEnv c.env rho) x)
+      (lookupEnv (ext (appendEnv c.env rho) y omega) x)
+      (pathSym Ty (lookupEnv (ext (appendEnv c.env rho) y omega) x)
+        (lookupEnv (appendEnv c.env rho) x) (lookupMiss (appendEnv c.env rho) y omega x apart)) c.bound) ;
+
+fillLookup (mu : Heap) (rho : Env) (a : Ty) :
+    (th : Alist) -> (x : Var) -> (q : Addr) -> AlistLookup th x q ->
+    Obs mu q rho a -> LookupCapture[mu, rho, th, x, a] = split {
+  alHere x q th -> \ o -> fillHere mu rho x q th a o (bottomCaptures mu rho th) ;
+  alThere y r th x q apart rest | ih -> \ o -> fillThere mu rho y r th x a apart (ih o) } ;
+
+extractLookup (mu : Heap) (pv q : Addr) (rho : Env) (th : Alist) (x : Var) (a : Ty)
+    (var : Id (Maybe Expr) (mu pv) (just (evar x))) (lookup : AlistLookup th x q)
+    (c : Captured[mu, pv, rho, th, a]) : Obs mu q rho a =
+  obsSub q rho (lookupEnv (appendEnv c.env rho) x) a
+    (bindingLookup mu rho th x q lookup c.env c.observed)
+    (varInversion mu pv (appendEnv c.env rho) x a var c.body) ;
+
+introduceLookup (mu : Heap) (p pv : Addr) (rho : Env) (th : Alist) (x : Var) (a : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pv th)))
+    (var : Id (Maybe Expr) (mu pv) (just (evar x)))
+    (c : LookupCapture[mu, rho, th, x, a]) : Obs mu p rho a =
+  obsFunarg p pv th rho c.env a root c.observed
+    (obsSub pv (appendEnv c.env rho) (lookupEnv (appendEnv c.env rho) x) a
+      (obsVar pv (appendEnv c.env rho) x var) c.bound) ;
+
+module FaStep (mu : Heap) (p pv q : Addr) (th : Alist) (x : Var) (e : Expr)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pv th)))
+    (var : Id (Maybe Expr) (mu pv) (just (evar x)))
+    (lookup : AlistLookup th x q) (value : Id (Maybe Expr) (mu q) (just e)) {
+  nu : Heap = upd mu p e ;
+  nuP : Id (Maybe Expr) (nu p) (just e) = upd-hit mu p e ;
+  nuQ : Id (Maybe Expr) (nu q) (just e) = writeSame mu p q e value ;
+  nuVar : Id (Maybe Expr) (nu pv) (just (evar x)) =
+    readUnchanged mu p pv (efunarg pv th) (evar x) e root var (\ bad -> bad) ;
+  same : Id (Maybe Expr) (nu q) (nu p) =
+    pathTrans (Maybe Expr) (nu q) (just e) (nu p) nuQ (pathSym (Maybe Expr) (nu p) (just e) nuP) ;
+  forwardCaptured (rho : Env) (a : Ty) (c : Captured[nu, pv, rho, th, a]) : Obs nu p rho a =
+    sameCell nu q p rho a same (extractLookup nu pv q rho th x a nuVar lookup c) ;
+  localForward (rho : Env) (a : Ty) (d : Local mu nu p rho a) : Obs nu p rho a =
+    forwardCaptured rho a (localFunargInverse mu nu p pv rho th a root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p e localForward ;
+
+  extract (rho : Env) (a : Ty) (o : Obs mu p rho a) : Obs mu q rho a =
+    extractLookup mu pv q rho th x a var lookup (funargInverse mu p pv rho th a root o) ;
+  introduce (rho : Env) (a : Ty) (o : Obs mu q rho a) : Obs mu p rho a =
+    introduceLookup mu p pv rho th x a root var (fillLookup mu rho a th x q lookup o) ;
+  sourceSame : Id (Maybe Expr) (nu p) (mu q) =
+    pathTrans (Maybe Expr) (nu p) (just e) (mu q) nuP (pathSym (Maybe Expr) (mu q) (just e) value) ;
+  localBackward (rho : Env) (a : Ty) (d : Local nu mu p rho a) : Obs mu p rho a =
+    introduce rho a (moveLocal nu mu p rho a d q sourceSame (extract rho)) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p e localBackward ;
+} ;
+
+quoteCaptured (mu : Heap) (pb : Addr) (rho : Env) (th : Alist) (a : Atom) (out : Ty)
+    (quoted : Id (Maybe Expr) (mu pb) (just (equote a)))
+    (c : Captured[mu, pb, rho, th, out]) : Le (at a) out =
+  quoteInversion mu pb (appendEnv c.env rho) a out quoted c.body ;
+
+introduceQuote (mu : Heap) (p pb : Addr) (rho : Env) (th : Alist) (a : Atom) (out : Ty)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (quoted : Id (Maybe Expr) (mu pb) (just (equote a))) (le : Le (at a) out)
+    (c : Captures[mu, rho, th]) : Obs mu p rho out =
+  obsFunarg p pb th rho c.env out root c.observed
+    (obsSub pb (appendEnv c.env rho) (at a) out (obsQuote pb (appendEnv c.env rho) a quoted) le) ;
+
+module FbStep (mu : Heap) (p pb : Addr) (th : Alist) (a : Atom)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+    (quoted : Id (Maybe Expr) (mu pb) (just (equote a))) {
+  nu : Heap = upd mu p (equote a) ;
+  nuP : Id (Maybe Expr) (nu p) (just (equote a)) = upd-hit mu p (equote a) ;
+  nuQ : Id (Maybe Expr) (nu pb) (just (equote a)) = writeSame mu p pb (equote a) quoted ;
+  forwardCaptured (rho : Env) (out : Ty) (c : Captured[nu, pb, rho, th, out]) : Obs nu p rho out =
+    obsSub p rho (at a) out (obsQuote p rho a nuP) (quoteCaptured nu pb rho th a out nuQ c) ;
+  localForward (rho : Env) (out : Ty) (d : Local mu nu p rho out) : Obs nu p rho out =
+    forwardCaptured rho out (localFunargInverse mu nu p pb rho th out root d) ;
+  forward : (j : Query) -> Derive mu j -> Derive nu j = updateForward mu p (equote a) localForward ;
+
+  extract (rho : Env) (out : Ty) (o : Obs mu p rho out) : Obs mu pb rho out =
+    obsSub pb rho (at a) out (obsQuote pb rho a quoted)
+      (quoteCaptured mu pb rho th a out quoted (funargInverse mu p pb rho th out root o)) ;
+  introduce (rho : Env) (out : Ty) (o : Obs mu pb rho out) : Obs mu p rho out =
+    introduceQuote mu p pb rho th a out root quoted
+      (quoteInversion mu pb rho a out quoted o) (bottomCaptures mu rho th) ;
+  sourceSame : Id (Maybe Expr) (nu p) (mu pb) =
+    pathTrans (Maybe Expr) (nu p) (just (equote a)) (mu pb) nuP
+      (pathSym (Maybe Expr) (mu pb) (just (equote a)) quoted) ;
+  localBackward (rho : Env) (out : Ty) (d : Local nu mu p rho out) : Obs mu p rho out =
+    introduce rho out (moveLocal nu mu p rho out d pb sourceSame (extract rho)) ;
+  backward : (j : Query) -> Derive nu j -> Derive mu j = updateBackward mu p (equote a) localBackward ;
+} ;

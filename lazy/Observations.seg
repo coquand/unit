@@ -1,0 +1,98 @@
+-- Positive least-fixed-point observations, including circular memories.
+-- Binding observations are a second query sort of the same family.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Memory[l] ;
+
+data Query : U l = cell (p : Addr) (rho : Env) (a : Ty)
+                 | bindings (rho : Env) (th : Alist) (bs : Env) ;
+
+data Derive (mu : Heap) : (j : Query) -> U l =
+    obsTop (p : Addr) (rho : Env) : Derive mu (cell p rho omega)
+  | obsMeet (p : Addr) (rho : Env) (a b : Ty)
+      (oa : Derive mu (cell p rho a)) (ob : Derive mu (cell p rho b)) :
+      Derive mu (cell p rho (meet a b))
+  | obsSub (p : Addr) (rho : Env) (a b : Ty)
+      (o : Derive mu (cell p rho a)) (le : Le a b) : Derive mu (cell p rho b)
+  | obsVar (p : Addr) (rho : Env) (x : Var)
+      (eq : Id (Maybe Expr) (mu p) (just (evar x))) : Derive mu (cell p rho (lookupEnv rho x))
+  | obsQuote (p : Addr) (rho : Env) (a : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (equote a))) : Derive mu (cell p rho (at a))
+  | obsCons (p p1 p2 : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (econs p1 p2)))
+      (o1 : Derive mu (cell p1 rho a)) (o2 : Derive mu (cell p2 rho b)) :
+      Derive mu (cell p rho (prod a b))
+  | obsCar (p q : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (ecar q)))
+      (o : Derive mu (cell q rho (prod a b))) : Derive mu (cell p rho a)
+  | obsCdr (p q : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (ecdr q)))
+      (o : Derive mu (cell q rho (prod a b))) : Derive mu (cell p rho b)
+  | obsAtomT (p q : Addr) (rho : Env)
+      (eq : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (o : Derive mu (cell q rho atomTop)) : Derive mu (cell p rho (at T))
+  | obsAtomNil (p q : Addr) (rho : Env)
+      (eq : Id (Maybe Expr) (mu p) (just (eatom q)))
+      (o : Derive mu (cell q rho (prod omega omega))) : Derive mu (cell p rho (at NIL))
+  | obsEqT (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (eeq p1 p2)))
+      (same : Truth (atomEq a b))
+      (o1 : Derive mu (cell p1 rho (at a))) (o2 : Derive mu (cell p2 rho (at b))) :
+      Derive mu (cell p rho (at T))
+  | obsEqNil (p p1 p2 : Addr) (rho : Env) (a b : Atom)
+      (eq : Id (Maybe Expr) (mu p) (just (eeq p1 p2)))
+      (different : Truth (atomEq a b) -> Empty)
+      (o1 : Derive mu (cell p1 rho (at a))) (o2 : Derive mu (cell p2 rho (at b))) :
+      Derive mu (cell p rho (at NIL))
+  | obsIfT (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eif p0 p1 p2)))
+      (oc : Derive mu (cell p0 rho (at T))) (o : Derive mu (cell p1 rho a)) :
+      Derive mu (cell p rho a)
+  | obsIfNil (p p0 p1 p2 : Addr) (rho : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eif p0 p1 p2)))
+      (oc : Derive mu (cell p0 rho (at NIL))) (o : Derive mu (cell p2 rho a)) :
+      Derive mu (cell p rho a)
+  | obsApp (p pf px : Addr) (rho : Env) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (eapp pf px)))
+      (ofun : Derive mu (cell pf rho (arr a b))) (ox : Derive mu (cell px rho a)) :
+      Derive mu (cell p rho b)
+  | obsLam (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (elam x pb)))
+      (o : Derive mu (cell pb (ext rho x a) b)) : Derive mu (cell p rho (arr a b))
+  | obsLabel (p pb : Addr) (rho : Env) (x : Var) (a b : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (elabel x pb)))
+      (rec : Derive mu (cell p rho a)) (body : Derive mu (cell pb (ext rho x a) b)) :
+      Derive mu (cell p rho b)
+  | obsFunarg (p pb : Addr) (th : Alist) (rho bs : Env) (a : Ty)
+      (eq : Id (Maybe Expr) (mu p) (just (efunarg pb th)))
+      (args : Derive mu (bindings rho th bs)) (body : Derive mu (cell pb (appendEnv bs rho) a)) :
+      Derive mu (cell p rho a)
+  | obsPlus (p p1 p2 : Addr) (rho : Env) (m n : Nat)
+      (eq : Id (Maybe Expr) (mu p) (just (eplus p1 p2)))
+      (o1 : Derive mu (cell p1 rho (at (num m)))) (o2 : Derive mu (cell p2 rho (at (num n)))) :
+      Derive mu (cell p rho (at (num (plus m n))))
+  | oaNil (rho : Env) : Derive mu (bindings rho nil nil)
+  | oaCons (rho : Env) (x : Var) (q : Addr) (th : Alist) (bs : Env) (a : Ty)
+      (head : Derive mu (cell q rho a)) (tail : Derive mu (bindings rho th bs)) :
+      Derive mu (bindings rho (cons (mkPair Nat Nat x q) th) (ext bs x a)) ;
+
+Obs (mu : Heap) (p : Addr) (rho : Env) (a : Ty) : U l = Derive mu (cell p rho a) ;
+ObsAlist (mu : Heap) (rho : Env) (th : Alist) (bs : Env) : U l = Derive mu (bindings rho th bs) ;
+Observes (mu : Heap) (p : Addr) (a : Ty) : U l = Obs mu p emptyEnv a ;
+
+-- Every derivation is finite even when the underlying memory is cyclic.
+height (mu : Heap) : (j : Query) -> Derive mu j -> Nat = split {
+  obsTop p rho -> zero ; obsMeet p rho a b oa ob | ra rb -> suc (plus ra rb) ;
+  obsSub p rho a b o le | r -> suc r ; obsVar p rho x eq -> suc zero ;
+  obsQuote p rho a eq -> suc zero ; obsCons p p1 p2 rho a b eq o1 o2 | r1 r2 -> suc (plus r1 r2) ;
+  obsCar p q rho a b eq o | r -> suc r ; obsCdr p q rho a b eq o | r -> suc r ;
+  obsAtomT p q rho eq o | r -> suc r ; obsAtomNil p q rho eq o | r -> suc r ;
+  obsEqT p p1 p2 rho a b eq same o1 o2 | r1 r2 -> suc (plus r1 r2) ;
+  obsEqNil p p1 p2 rho a b eq different o1 o2 | r1 r2 -> suc (plus r1 r2) ;
+  obsIfT p p0 p1 p2 rho a eq oc o | rc r -> suc (plus rc r) ;
+  obsIfNil p p0 p1 p2 rho a eq oc o | rc r -> suc (plus rc r) ;
+  obsApp p pf px rho a b eq ofun ox | rf rx -> suc (plus rf rx) ;
+  obsLam p pb rho x a b eq o | r -> suc r ;
+  obsLabel p pb rho x a b eq rec body | rr rb -> suc (plus rr rb) ;
+  obsFunarg p pb th rho bs a eq args body | ra rb -> suc (plus ra rb) ;
+  obsPlus p p1 p2 rho m n eq o1 o2 | r1 r2 -> suc (plus r1 r2) ;
+  oaNil rho -> zero ; oaCons rho x q th bs a head tail | rh rt -> suc (plus rh rt) } ;

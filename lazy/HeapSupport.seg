@@ -1,0 +1,240 @@
+-- Well-formed memories: every pointer in a defined cell is defined.
+-- This is a support condition for allocation, not semantic consistency.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Memory[l] ; open MemoryLemmas[l] ; open Rewrites[l] ;
+
+AlistClosed (P : Addr -> U l) : Alist -> U l = split {
+  nil -> Top ; cons b th | r -> Pair[P b.snd, r] } ;
+ExprClosed (P : Addr -> U l) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Top ; econs p q -> Pair[P p, P q] ;
+  ecar p -> P p ; ecdr p -> P p ; eatom p -> P p ;
+  eeq p q -> Pair[P p, P q] ; eif p q r -> Pair[P p, Pair[P q, P r]] ;
+  eapp p q -> Pair[P p, P q] ; elam x p -> P p ; elabel x p -> P p ;
+  efunarg p th -> Pair[P p, AlistClosed P th] ; eplus p q -> Pair[P p, P q] } ;
+Defined (v : Maybe Expr) : U l = Sigma[Expr, \ e -> Id (Maybe Expr) v (just e)] ;
+InDom (mu : Heap) (p : Addr) : U l = Defined (mu p) ;
+ClosedHeap (P : Addr -> U l) (mu : Heap) : U l =
+  (p : Addr) -> (e : Expr) -> Id (Maybe Expr) (mu p) (just e) -> ExprClosed P e ;
+WfHeap (mu : Heap) : U l = ClosedHeap (InDom mu) mu ;
+
+defined (mu : Heap) (p : Addr) (e : Expr) (eq : Id (Maybe Expr) (mu p) (just e)) : InDom mu p =
+  mkSigma Expr (\ f -> Id (Maybe Expr) (mu p) (just f)) e eq ;
+
+mapAlistClosed (P Q : Addr -> U l) (f : (p : Addr) -> P p -> Q p) :
+    (th : Alist) -> AlistClosed P th -> AlistClosed Q th = split {
+  nil -> \ h -> tt ; cons b th | r -> \ h -> mkPair (Q b.snd) (AlistClosed Q th) (f b.snd h.fst) (r h.snd) } ;
+mapExprClosed (P Q : Addr -> U l) (f : (p : Addr) -> P p -> Q p) :
+    (e : Expr) -> ExprClosed P e -> ExprClosed Q e = split {
+  evar x -> \ h -> tt ; equote a -> \ h -> tt ;
+  econs p q -> \ h -> mkPair (Q p) (Q q) (f p h.fst) (f q h.snd) ;
+  ecar p -> f p ; ecdr p -> f p ; eatom p -> f p ;
+  eeq p q -> \ h -> mkPair (Q p) (Q q) (f p h.fst) (f q h.snd) ;
+  eif p q r -> \ h -> mkPair (Q p) (Pair[Q q, Q r]) (f p h.fst)
+    (mkPair (Q q) (Q r) (f q h.snd.fst) (f r h.snd.snd)) ;
+  eapp p q -> \ h -> mkPair (Q p) (Q q) (f p h.fst) (f q h.snd) ;
+  elam x p -> f p ; elabel x p -> f p ;
+  efunarg p th -> \ h -> mkPair (Q p) (AlistClosed Q th) (f p h.fst) (mapAlistClosed P Q f th h.snd) ;
+  eplus p q -> \ h -> mkPair (Q p) (Q q) (f p h.fst) (f q h.snd) } ;
+mapClosedHeap (P Q : Addr -> U l) (f : (p : Addr) -> P p -> Q p) (mu : Heap)
+    (h : ClosedHeap P mu) : ClosedHeap Q mu = \ p e eq -> mapExprClosed P Q f e (h p e eq) ;
+
+IsFree : Maybe Expr -> U l = split { nothing -> Top ; just e -> Empty } ;
+nothingNotJust (e : Expr) (q : Id (Maybe Expr) nothing (just e)) : Empty =
+  subst (Maybe Expr) IsFree nothing (just e) q tt ;
+freshNotDefined (mu : Heap) (p : Addr) (fresh : Fresh mu p) (d : InDom mu p) : Empty =
+  nothingNotJust d.fst
+    (pathTrans (Maybe Expr) nothing (mu p) (just d.fst) (pathSym (Maybe Expr) (mu p) nothing fresh) d.snd) ;
+
+updatedDefined (v : Maybe Expr) (e : Expr) (d : Defined v) :
+    (b : Bool) -> Defined (ifBool (Maybe Expr) (just e) v b) = split {
+  true -> mkSigma Expr (\ f -> Id (Maybe Expr) (just e) (just f)) e (refl (just e)) ; false -> d } ;
+updateDomain (mu : Heap) (p : Addr) (e : Expr) (q : Addr) (d : InDom mu q) : InDom (upd mu p e) q =
+  updatedDefined (mu q) e d (eqN q p) ;
+updateHitDomain (mu : Heap) (p : Addr) (e : Expr) : InDom (upd mu p e) p = defined (upd mu p e) p e (upd-hit mu p e) ;
+
+closedUpdateCase (P : Addr -> U l) (v : Maybe Expr) (e : Expr) (he : ExprClosed P e)
+    (old : (f : Expr) -> Id (Maybe Expr) v (just f) -> ExprClosed P f) :
+    (b : Bool) -> (f : Expr) -> Id (Maybe Expr) (ifBool (Maybe Expr) (just e) v b) (just f) -> ExprClosed P f = split {
+  true -> \ f eq -> subst Expr (ExprClosed P) e f (contentsEq (just e) e f (refl (just e)) eq) he ;
+  false -> old } ;
+closedUpdate (P : Addr -> U l) (mu : Heap) (p : Addr) (e : Expr)
+    (old : ClosedHeap P mu) (he : ExprClosed P e) : ClosedHeap P (upd mu p e) =
+  \ q f eq -> closedUpdateCase P (mu q) e he (old q) (eqN q p) f eq ;
+
+updateWF (mu : Heap) (p : Addr) (e : Expr) (wf : WfHeap mu)
+    (he : ExprClosed (InDom (upd mu p e)) e) : WfHeap (upd mu p e) =
+  closedUpdate (InDom (upd mu p e)) mu p e (mapClosedHeap (InDom mu) (InDom (upd mu p e)) (updateDomain mu p e) mu wf) he ;
+updateOldWF (mu : Heap) (p : Addr) (e : Expr) (wf : WfHeap mu) (he : ExprClosed (InDom mu) e) : WfHeap (upd mu p e) =
+  updateWF mu p e wf (mapExprClosed (InDom mu) (InDom (upd mu p e)) (updateDomain mu p e) e he) ;
+
+alloc1Domain (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist)
+    (z : Addr) (d : InDom mu z) : InDom (alloc1 mu p e q a th) z =
+  updateDomain (upd mu p e) q (efunarg a th) z (updateDomain mu p e z d) ;
+alloc2Domain (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist)
+    (z : Addr) (d : InDom mu z) : InDom (alloc2 mu p e q r a b th) z =
+  updateDomain (alloc1 mu p e q a th) r (efunarg b th) z (alloc1Domain mu p e q a th z d) ;
+alloc3Domain (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist)
+    (z : Addr) (d : InDom mu z) : InDom (alloc3 mu p e q r s a b c th) z =
+  updateDomain (alloc2 mu p e q r a b th) s (efunarg c th) z (alloc2Domain mu p e q r a b th z d) ;
+
+alloc1New (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist) : InDom (alloc1 mu p e q a th) q =
+  updateHitDomain (upd mu p e) q (efunarg a th) ;
+alloc2Left (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) : InDom (alloc2 mu p e q r a b th) q =
+  updateDomain (alloc1 mu p e q a th) r (efunarg b th) q (alloc1New mu p e q a th) ;
+alloc2Right (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) : InDom (alloc2 mu p e q r a b th) r =
+  updateHitDomain (alloc1 mu p e q a th) r (efunarg b th) ;
+alloc3First (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) : InDom (alloc3 mu p e q r s a b c th) q =
+  updateDomain (alloc2 mu p e q r a b th) s (efunarg c th) q (alloc2Left mu p e q r a b th) ;
+alloc3Second (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) : InDom (alloc3 mu p e q r s a b c th) r =
+  updateDomain (alloc2 mu p e q r a b th) s (efunarg c th) r (alloc2Right mu p e q r a b th) ;
+alloc3Third (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) : InDom (alloc3 mu p e q r s a b c th) s =
+  updateHitDomain (alloc2 mu p e q r a b th) s (efunarg c th) ;
+
+wfAlloc1 (mu : Heap) (p : Addr) (e : Expr) (q a : Addr) (th : Alist) (wf : WfHeap mu)
+    (root : ExprClosed (InDom (alloc1 mu p e q a th)) e)
+    (arg : ExprClosed (InDom (alloc1 mu p e q a th)) (efunarg a th)) : WfHeap (alloc1 mu p e q a th) =
+  closedUpdate (InDom (alloc1 mu p e q a th)) (upd mu p e) q (efunarg a th)
+    (closedUpdate (InDom (alloc1 mu p e q a th)) mu p e
+      (mapClosedHeap (InDom mu) (InDom (alloc1 mu p e q a th)) (alloc1Domain mu p e q a th) mu wf) root) arg ;
+wfAlloc2 (mu : Heap) (p : Addr) (e : Expr) (q r a b : Addr) (th : Alist) (wf : WfHeap mu)
+    (root : ExprClosed (InDom (alloc2 mu p e q r a b th)) e)
+    (left : ExprClosed (InDom (alloc2 mu p e q r a b th)) (efunarg a th))
+    (right : ExprClosed (InDom (alloc2 mu p e q r a b th)) (efunarg b th)) : WfHeap (alloc2 mu p e q r a b th) =
+  closedUpdate (InDom (alloc2 mu p e q r a b th)) (alloc1 mu p e q a th) r (efunarg b th)
+    (closedUpdate (InDom (alloc2 mu p e q r a b th)) (upd mu p e) q (efunarg a th)
+      (closedUpdate (InDom (alloc2 mu p e q r a b th)) mu p e
+        (mapClosedHeap (InDom mu) (InDom (alloc2 mu p e q r a b th)) (alloc2Domain mu p e q r a b th) mu wf) root) left) right ;
+wfAlloc3 (mu : Heap) (p : Addr) (e : Expr) (q r s a b c : Addr) (th : Alist) (wf : WfHeap mu)
+    (root : ExprClosed (InDom (alloc3 mu p e q r s a b c th)) e)
+    (first : ExprClosed (InDom (alloc3 mu p e q r s a b c th)) (efunarg a th))
+    (second : ExprClosed (InDom (alloc3 mu p e q r s a b c th)) (efunarg b th))
+    (third : ExprClosed (InDom (alloc3 mu p e q r s a b c th)) (efunarg c th)) : WfHeap (alloc3 mu p e q r s a b c th) =
+  closedUpdate (InDom (alloc3 mu p e q r s a b c th)) (alloc2 mu p e q r a b th) s (efunarg c th)
+    (closedUpdate (InDom (alloc3 mu p e q r s a b c th)) (alloc1 mu p e q a th) r (efunarg b th)
+      (closedUpdate (InDom (alloc3 mu p e q r s a b c th)) (upd mu p e) q (efunarg a th)
+        (closedUpdate (InDom (alloc3 mu p e q r s a b c th)) mu p e
+          (mapClosedHeap (InDom mu) (InDom (alloc3 mu p e q r s a b c th)) (alloc3Domain mu p e q r s a b c th) mu wf) root) first) second) third ;
+
+unaryClosed (P : Addr -> U l) : (op : Unary) -> (a : Addr) -> P a -> ExprClosed P (unaryExpr op a) = split {
+  carOp -> \ a h -> h ; cdrOp -> \ a h -> h ; atomOp -> \ a h -> h } ;
+unarySupport (P : Addr -> U l) : (op : Unary) -> (a : Addr) -> ExprClosed P (unaryExpr op a) -> P a = split {
+  carOp -> \ a h -> h ; cdrOp -> \ a h -> h ; atomOp -> \ a h -> h } ;
+binaryClosed (P : Addr -> U l) : (op : Binary) -> (a b : Addr) -> Pair[P a, P b] -> ExprClosed P (binaryExpr op a b) = split {
+  consOp -> \ a b h -> h ; eqOp -> \ a b h -> h ; plusOp -> \ a b h -> h } ;
+binarySupport (P : Addr -> U l) : (op : Binary) -> (a b : Addr) -> ExprClosed P (binaryExpr op a b) -> Pair[P a, P b] = split {
+  consOp -> \ a b h -> h ; eqOp -> \ a b h -> h ; plusOp -> \ a b h -> h } ;
+
+preserveFc (mu : Heap) (p body a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+    (app : Id (Maybe Expr) (mu body) (just (eapp a b))) (wf : WfHeap mu) :
+    WfHeap (alloc2 mu p (eapp q r) q r a b th) =
+  wfAlloc2 mu p (eapp q r) q r a b th wf
+    (mkPair (P q) (P r) (alloc2Left mu p (eapp q r) q r a b th) (alloc2Right mu p (eapp q r) q r a b th))
+    (mkPair (P a) (AlistClosed P th) (embed a source.fst) args)
+    (mkPair (P b) (AlistClosed P th) (embed b source.snd) args)
+ where {
+  P : Addr -> U l = InDom (alloc2 mu p (eapp q r) q r a b th) ;
+  embed : (z : Addr) -> InDom mu z -> P z = alloc2Domain mu p (eapp q r) q r a b th ;
+  source : Pair[InDom mu a, InDom mu b] = wf body (eapp a b) app ;
+  args : AlistClosed P th = mapAlistClosed (InDom mu) P embed th (wf p (efunarg body th) root).snd ;
+ } ;
+
+preserveFUnary (op : Unary) (mu : Heap) (p body a q : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+    (form : Id (Maybe Expr) (mu body) (just (unaryExpr op a))) (wf : WfHeap mu) :
+    WfHeap (alloc1 mu p (unaryExpr op q) q a th) =
+  wfAlloc1 mu p (unaryExpr op q) q a th wf
+    (unaryClosed P op q (alloc1New mu p (unaryExpr op q) q a th))
+    (mkPair (P a) (AlistClosed P th) (embed a source) args)
+ where {
+  P : Addr -> U l = InDom (alloc1 mu p (unaryExpr op q) q a th) ;
+  embed : (z : Addr) -> InDom mu z -> P z = alloc1Domain mu p (unaryExpr op q) q a th ;
+  source : InDom mu a = unarySupport (InDom mu) op a (wf body (unaryExpr op a) form) ;
+  args : AlistClosed P th = mapAlistClosed (InDom mu) P embed th (wf p (efunarg body th) root).snd ;
+ } ;
+
+preserveFBinary (op : Binary) (mu : Heap) (p body a b q r : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+    (form : Id (Maybe Expr) (mu body) (just (binaryExpr op a b))) (wf : WfHeap mu) :
+    WfHeap (alloc2 mu p (binaryExpr op q r) q r a b th) =
+  wfAlloc2 mu p (binaryExpr op q r) q r a b th wf
+    (binaryClosed P op q r
+      (mkPair (P q) (P r) (alloc2Left mu p (binaryExpr op q r) q r a b th) (alloc2Right mu p (binaryExpr op q r) q r a b th)))
+    (mkPair (P a) (AlistClosed P th) (embed a source.fst) args)
+    (mkPair (P b) (AlistClosed P th) (embed b source.snd) args)
+ where {
+  P : Addr -> U l = InDom (alloc2 mu p (binaryExpr op q r) q r a b th) ;
+  embed : (z : Addr) -> InDom mu z -> P z = alloc2Domain mu p (binaryExpr op q r) q r a b th ;
+  source : Pair[InDom mu a, InDom mu b] = binarySupport (InDom mu) op a b (wf body (binaryExpr op a b) form) ;
+  args : AlistClosed P th = mapAlistClosed (InDom mu) P embed th (wf p (efunarg body th) root).snd ;
+ } ;
+
+preserveFIf (mu : Heap) (p body a b c q r s : Addr) (th : Alist)
+    (root : Id (Maybe Expr) (mu p) (just (efunarg body th)))
+    (form : Id (Maybe Expr) (mu body) (just (eif a b c))) (wf : WfHeap mu) :
+    WfHeap (alloc3 mu p (eif q r s) q r s a b c th) =
+  wfAlloc3 mu p (eif q r s) q r s a b c th wf
+    (mkPair (P q) (Pair[P r, P s]) (alloc3First mu p (eif q r s) q r s a b c th)
+      (mkPair (P r) (P s) (alloc3Second mu p (eif q r s) q r s a b c th) (alloc3Third mu p (eif q r s) q r s a b c th)))
+    (mkPair (P a) (AlistClosed P th) (embed a source.fst) args)
+    (mkPair (P b) (AlistClosed P th) (embed b source.snd.fst) args)
+    (mkPair (P c) (AlistClosed P th) (embed c source.snd.snd) args)
+ where {
+  P : Addr -> U l = InDom (alloc3 mu p (eif q r s) q r s a b c th) ;
+  embed : (z : Addr) -> InDom mu z -> P z = alloc3Domain mu p (eif q r s) q r s a b c th ;
+  source : Pair[InDom mu a, Pair[InDom mu b, InDom mu c]] = wf body (eif a b c) form ;
+  args : AlistClosed P th = mapAlistClosed (InDom mu) P embed th (wf p (efunarg body th) root).snd ;
+ } ;
+
+preserveWF : (mu nu : Heap) -> Step mu nu -> WfHeap mu -> WfHeap nu = split {
+  stCar mu p q a b e root pair value -> \ wf -> updateOldWF mu p e wf (wf a e value) ;
+  stCdr mu p q a b e root pair value -> \ wf -> updateOldWF mu p e wf (wf b e value) ;
+  stAtomT mu p q a root value -> \ wf -> updateOldWF mu p (equote T) wf tt ;
+  stAtomNil mu p q a b root value -> \ wf -> updateOldWF mu p (equote NIL) wf tt ;
+  stEq mu p q r a b root left right -> \ wf -> updateOldWF mu p (equote (choose Atom T NIL (atomEq a b))) wf tt ;
+  stIfT mu p q a b e root test value -> \ wf -> updateOldWF mu p e wf (wf a e value) ;
+  stIfNil mu p q a b e root test value -> \ wf -> updateOldWF mu p e wf (wf b e value) ;
+  stPlus mu p q r m n root left right -> \ wf -> updateOldWF mu p (equote (num (plus m n))) wf tt ;
+  stFa mu p q r th x e root body lookup value -> \ wf -> updateOldWF mu p e wf (wf r e value) ;
+  stFb mu p q th a root body -> \ wf -> updateOldWF mu p (equote a) wf tt ;
+  stG mu p q r a b th x root closure body -> \ wf ->
+    updateOldWF mu p (efunarg a (cons (mkPair Nat Nat x b) th)) wf
+      (mkPair (InDom mu a) (AlistClosed (InDom mu) (cons (mkPair Nat Nat x b) th))
+        (wf r (elam x a) body)
+        (mkPair (InDom mu b) (AlistClosed (InDom mu) th)
+          (wf p (eapp q b) root).snd (wf q (efunarg r th) closure).snd)) ;
+  stL mu p q a th x root body -> \ wf ->
+    updateOldWF mu p (efunarg a (cons (mkPair Nat Nat x p) th)) wf
+      (mkPair (InDom mu a) (AlistClosed (InDom mu) (cons (mkPair Nat Nat x p) th))
+        (wf q (elabel x a) body)
+        (mkPair (InDom mu p) (AlistClosed (InDom mu) th)
+          (defined mu p (efunarg q th) root) (wf p (efunarg q th) root).snd)) ;
+  stFc mu p body a b q r th root app fq fr different -> preserveFc mu p body a b q r th root app ;
+  stFUnary op mu p body a q th root form fq -> preserveFUnary op mu p body a q th root form ;
+  stFBinary op mu p body a b q r th root form fq fr different -> preserveFBinary op mu p body a b q r th root form ;
+  stFIf mu p body a b c q r s th root form fq fr fs qr qs rs -> preserveFIf mu p body a b c q r s th root form } ;
+
+traceWF : (mu nu : Heap) -> Trace mu nu -> WfHeap mu -> WfHeap nu = split {
+  done mu -> \ wf -> wf ;
+  more mu nu rho first rest | ih -> \ wf -> ih (preserveWF mu nu first wf) } ;
+
+stepDomain : (mu nu : Heap) -> Step mu nu -> (z : Addr) -> InDom mu z -> InDom nu z = split {
+  stCar mu p q a b e root pair value -> updateDomain mu p e ;
+  stCdr mu p q a b e root pair value -> updateDomain mu p e ;
+  stAtomT mu p q a root value -> updateDomain mu p (equote T) ;
+  stAtomNil mu p q a b root value -> updateDomain mu p (equote NIL) ;
+  stEq mu p q r a b root left right -> updateDomain mu p (equote (choose Atom T NIL (atomEq a b))) ;
+  stIfT mu p q a b e root test value -> updateDomain mu p e ;
+  stIfNil mu p q a b e root test value -> updateDomain mu p e ;
+  stPlus mu p q r m n root left right -> updateDomain mu p (equote (num (plus m n))) ;
+  stFa mu p q r th x e root body lookup value -> updateDomain mu p e ;
+  stFb mu p q th a root body -> updateDomain mu p (equote a) ;
+  stG mu p q r a b th x root closure body -> updateDomain mu p (efunarg a (cons (mkPair Nat Nat x b) th)) ;
+  stL mu p q a th x root body -> updateDomain mu p (efunarg a (cons (mkPair Nat Nat x p) th)) ;
+  stFc mu p body a b q r th root app fq fr different -> alloc2Domain mu p (eapp q r) q r a b th ;
+  stFUnary op mu p body a q th root form fq -> alloc1Domain mu p (unaryExpr op q) q a th ;
+  stFBinary op mu p body a b q r th root form fq fr different -> alloc2Domain mu p (binaryExpr op q r) q r a b th ;
+  stFIf mu p body a b c q r s th root form fq fr fs qr qs rs -> alloc3Domain mu p (eif q r s) q r s a b c th } ;
+traceDomain : (mu nu : Heap) -> Trace mu nu -> (z : Addr) -> InDom mu z -> InDom nu z = split {
+  done mu -> \ z d -> d ;
+  more mu nu rho first rest | ih -> \ z d -> ih z (stepDomain mu nu first z d) } ;

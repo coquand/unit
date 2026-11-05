@@ -1,0 +1,77 @@
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Memory[l] ;
+
+pred : Nat -> Nat = split { zero -> zero ; suc n -> n } ;
+isZero : Nat -> U l = split { zero -> Top ; suc n -> Empty } ;
+zeroNotSuc (n : Nat) (e : Id Nat zero (suc n)) : Empty =
+  subst Nat isZero zero (suc n) e tt ;
+sucInj (m n : Nat) (e : Id Nat (suc m) (suc n)) : Id Nat m n =
+  ap Nat Nat pred (suc m) (suc n) e ;
+liftDecision (m n : Nat) : Either (Id Nat m n) (Id Nat m n -> Empty) ->
+    Either (Id Nat (suc m) (suc n)) (Id Nat (suc m) (suc n) -> Empty) = split {
+  inl e -> inl (ap Nat Nat (\ k -> suc k) m n e) ;
+  inr ne -> inr (\ e -> ne (sucInj m n e)) } ;
+decEqNat : (m n : Nat) -> Either (Id Nat m n) (Id Nat m n -> Empty) = split {
+  zero -> split { zero -> inl (refl zero) ; suc n -> inr (zeroNotSuc n) } ;
+  suc m | r -> split {
+    zero -> inr (\ e -> zeroNotSuc m (pathSym Nat (suc m) zero e)) ;
+    suc n -> liftDecision m n (r n) } } ;
+
+eqN-false : (m n : Nat) -> (Id Nat m n -> Empty) -> Id Bool (eqN m n) false = split {
+  zero -> split { zero -> \ ne -> absurd (Id Bool true false) (ne (refl zero)) ;
+                  suc n -> \ ne -> refl false } ;
+  suc m | r -> split { zero -> \ ne -> refl false ;
+    suc n -> \ ne -> r n (\ e -> ne (ap Nat Nat (\ k -> suc k) m n e)) } } ;
+upd-miss (mu : Heap) (p0 p : Addr) (e : Expr) (ne : Id Nat p p0 -> Empty) :
+    Id (Maybe Expr) (upd mu p0 e p) (mu p) =
+  ap Bool (Maybe Expr) (\ b -> ifBool (Maybe Expr) (just e) (mu p) b)
+    (eqN p p0) false (eqN-false p p0 ne) ;
+
+unJust (d : Expr) : Maybe Expr -> Expr = split { nothing -> d ; just e -> e } ;
+contentsEq (v : Maybe Expr) (e f : Expr)
+    (qe : Id (Maybe Expr) v (just e)) (qf : Id (Maybe Expr) v (just f)) : Id Expr e f =
+  ap (Maybe Expr) Expr (unJust e) (just e) (just f)
+    (pathTrans (Maybe Expr) (just e) v (just f) (pathSym (Maybe Expr) v (just e) qe) qf) ;
+
+IsLabelExpr : Expr -> U l = split {
+  evar x -> Empty ; equote a -> Empty ; econs p q -> Empty ; ecar p -> Empty ; ecdr p -> Empty ;
+  eatom p -> Empty ; eeq p q -> Empty ; eif p q r -> Empty ; eapp p q -> Empty ;
+  elam x p -> Empty ; elabel x p -> Top ; efunarg p th -> Empty ; eplus p q -> Empty } ;
+IsLabel : Maybe Expr -> U l = split { nothing -> Empty ; just e -> IsLabelExpr e } ;
+labelClash (v : Maybe Expr) (e : Expr) (x : Var) (pb : Addr)
+    (qe : Id (Maybe Expr) v (just e)) (ql : Id (Maybe Expr) v (just (elabel x pb))) : IsLabelExpr e =
+  subst (Maybe Expr) IsLabel v (just e) qe
+    (subst (Maybe Expr) IsLabel (just (elabel x pb)) v
+      (pathSym (Maybe Expr) v (just (elabel x pb)) ql) tt) ;
+
+labelVar : Expr -> Var = split {
+  evar x -> zero ; equote a -> zero ; econs p q -> zero ; ecar p -> zero ; ecdr p -> zero ;
+  eatom p -> zero ; eeq p q -> zero ; eif p q r -> zero ; eapp p q -> zero ;
+  elam x p -> zero ; elabel x p -> x ; efunarg p th -> zero ; eplus p q -> zero } ;
+labelBody : Expr -> Addr = split {
+  evar x -> zero ; equote a -> zero ; econs p q -> zero ; ecar p -> zero ; ecdr p -> zero ;
+  eatom p -> zero ; eeq p q -> zero ; eif p q r -> zero ; eapp p q -> zero ;
+  elam x p -> zero ; elabel x p -> p ; efunarg p th -> zero ; eplus p q -> zero } ;
+labelVarEq (x y : Var) (p q : Addr) (e : Id Expr (elabel x p) (elabel y q)) : Id Nat x y =
+  ap Expr Nat labelVar (elabel x p) (elabel y q) e ;
+labelBodyEq (x y : Var) (p q : Addr) (e : Id Expr (elabel x p) (elabel y q)) : Id Nat p q =
+  ap Expr Nat labelBody (elabel x p) (elabel y q) e ;
+
+IsFunargExpr : Expr -> U l = split {
+  evar x -> Empty ; equote a -> Empty ; econs p q -> Empty ; ecar p -> Empty ; ecdr p -> Empty ;
+  eatom p -> Empty ; eeq p q -> Empty ; eif p q r -> Empty ; eapp p q -> Empty ;
+  elam x p -> Empty ; elabel x p -> Empty ; efunarg p th -> Top ; eplus p q -> Empty } ;
+IsFunarg : Maybe Expr -> U l = split { nothing -> Empty ; just e -> IsFunargExpr e } ;
+funargClash (v : Maybe Expr) (e : Expr) (pb : Addr) (th : Alist)
+    (qe : Id (Maybe Expr) v (just e)) (qf : Id (Maybe Expr) v (just (efunarg pb th))) : IsFunargExpr e =
+  subst (Maybe Expr) IsFunarg v (just e) qe
+    (subst (Maybe Expr) IsFunarg (just (efunarg pb th)) v
+      (pathSym (Maybe Expr) v (just (efunarg pb th)) qf) tt) ;
+funargBody : Expr -> Addr = split {
+  evar x -> zero ; equote a -> zero ; econs p q -> zero ; ecar p -> zero ; ecdr p -> zero ;
+  eatom p -> zero ; eeq p q -> zero ; eif p q r -> zero ; eapp p q -> zero ;
+  elam x p -> zero ; elabel x p -> zero ; efunarg p th -> p ; eplus p q -> zero } ;
+funargArgs : Expr -> Alist = split {
+  evar x -> nil ; equote a -> nil ; econs p q -> nil ; ecar p -> nil ; ecdr p -> nil ;
+  eatom p -> nil ; eeq p q -> nil ; eif p q r -> nil ; eapp p q -> nil ;
+  elam x p -> nil ; elabel x p -> nil ; efunarg p th -> th ; eplus p q -> nil } ;

@@ -1,0 +1,53 @@
+-- The observable result of each final form, in any environment.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+open Memory[l] ; open Observations[l] ; open ObsQuotes[l] ; open ObsValueHeads[l] ;
+open ObsBindings[l] ; open ObsFunarg[l] ;
+
+quoteSound (mu : Heap) (p : Addr) (rho : Env) (a : Atom)
+    (value : Id (Maybe Expr) (mu p) (just (equote a))) (t : Ty) (o : Obs mu p rho t) : Le (at a) t =
+  quoteInversion mu p rho a t value o ;
+quoteComplete (mu : Heap) (p : Addr) (rho : Env) (a : Atom)
+    (value : Id (Maybe Expr) (mu p) (just (equote a))) (t : Ty) (le : Le (at a) t) : Obs mu p rho t =
+  obsSub p rho (at a) t (obsQuote p rho a value) le ;
+
+pairShape (mu : Heap) (p q r : Addr) (rho : Env)
+    (value : Id (Maybe Expr) (mu p) (just (econs q r))) : Obs mu p rho (prod omega omega) =
+  obsCons p q r rho omega omega value (obsTop q rho) (obsTop r rho) ;
+pairNoAtom (mu : Heap) (p q r : Addr) (rho : Env) (a : Atom)
+    (value : Id (Maybe Expr) (mu p) (just (econs q r))) (o : Obs mu p rho (at a)) : Empty =
+  valueAvoid atomHead mu p rho (at a) (econs q r) value o (\ bad -> bad) tt ;
+pairNoArrow (mu : Heap) (p q r : Addr) (rho : Env) (a b : Ty)
+    (value : Id (Maybe Expr) (mu p) (just (econs q r))) (o : Obs mu p rho (arr a b)) : Empty =
+  valueAvoid arrowHead mu p rho (arr a b) (econs q r) value o (\ bad -> bad) tt ;
+
+closureShapeCaptured (mu : Heap) (p pl pb : Addr) (rho : Env) (th : Alist) (x : Var)
+    (closure : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (c : Captures[mu, rho, th]) : Obs mu p rho (arr omega omega) =
+  obsFunarg p pl th rho c.env (arr omega omega) closure c.observed
+    (obsLam pl pb (appendEnv c.env rho) x omega omega lambda
+      (obsTop pb (ext (appendEnv c.env rho) x omega))) ;
+closureShape (mu : Heap) (p pl pb : Addr) (rho : Env) (th : Alist) (x : Var)
+    (closure : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb))) : Obs mu p rho (arr omega omega) =
+  closureShapeCaptured mu p pl pb rho th x closure lambda (bottomCaptures mu rho th) ;
+
+closureAvoidCaptured (k : Head) (notArrow : HeadEq k arrowHead -> Empty)
+    (mu : Heap) (pl pb : Addr) (rho : Env) (th : Alist) (x : Var) (t : Ty)
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb)))
+    (c : Captured[mu, pl, rho, th, t]) : HasHead k t -> Empty =
+  valueAvoid k mu pl (appendEnv c.env rho) t (elam x pb) lambda c.body notArrow ;
+closureAvoid (k : Head) (notArrow : HeadEq k arrowHead -> Empty)
+    (mu : Heap) (p pl pb : Addr) (rho : Env) (th : Alist) (x : Var) (t : Ty)
+    (closure : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb))) (o : Obs mu p rho t) : HasHead k t -> Empty =
+  closureAvoidCaptured k notArrow mu pl pb rho th x t lambda (funargInverse mu p pl rho th t closure o) ;
+closureNoAtom (mu : Heap) (p pl pb : Addr) (rho : Env) (th : Alist) (x : Var) (a : Atom)
+    (closure : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb))) (o : Obs mu p rho (at a)) : Empty =
+  closureAvoid atomHead (\ bad -> bad) mu p pl pb rho th x (at a) closure lambda o tt ;
+closureNoPair (mu : Heap) (p pl pb : Addr) (rho : Env) (th : Alist) (x : Var) (a b : Ty)
+    (closure : Id (Maybe Expr) (mu p) (just (efunarg pl th)))
+    (lambda : Id (Maybe Expr) (mu pl) (just (elam x pb))) (o : Obs mu p rho (prod a b)) : Empty =
+  closureAvoid pairHead (\ bad -> bad) mu p pl pb rho th x (prod a b) closure lambda o tt ;

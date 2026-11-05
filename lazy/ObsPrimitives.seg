@@ -1,0 +1,68 @@
+-- Shape-directed extraction of one primitive observation rule.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+
+AtomPrem (nu : Heap) (q : Addr) (rho : Env) (t : Ty) : U l =
+  Either (Pair[Id Ty t (at T), Obs nu q rho atomTop])
+         (Pair[Id Ty t (at NIL), Obs nu q rho (prod omega omega)]) ;
+record EqPrem (nu : Heap) (q r : Addr) (rho : Env) (t : Ty) {
+  leftAtom : Atom ; rightAtom : Atom ;
+  leftObs : Obs nu q rho (at leftAtom) ; rightObs : Obs nu r rho (at rightAtom) ;
+  answer : Either (Pair[Truth (atomEq leftAtom rightAtom), Id Ty t (at T)])
+                  (Pair[Truth (atomEq leftAtom rightAtom) -> Empty, Id Ty t (at NIL)]) ;
+} ;
+IfPrem (nu : Heap) (q r s : Addr) (rho : Env) (t : Ty) : U l =
+  Either (Pair[Obs nu q rho (at T), Obs nu r rho t])
+         (Pair[Obs nu q rho (at NIL), Obs nu s rho t]) ;
+record PlusPrem (nu : Heap) (q r : Addr) (rho : Env) (t : Ty) {
+  leftNum : Nat ; rightNum : Nat ;
+  leftObs : Obs nu q rho (at (num leftNum)) ; rightObs : Obs nu r rho (at (num rightNum)) ;
+  result : Id Ty t (at (num (plus leftNum rightNum))) ;
+} ;
+
+PrimitiveExpr (nu : Heap) (rho : Env) (t : Ty) : Expr -> U l = split {
+  evar x -> Top ; equote a -> Le (at a) t ; econs p q -> Top ;
+  ecar p -> Top ; ecdr p -> Top ; eatom q -> AtomPrem nu q rho t ;
+  eeq q r -> EqPrem[nu,q,r,rho,t] ; eif q r s -> IfPrem nu q r s rho t ;
+  eapp p q -> Top ; elam x p -> Top ; elabel x p -> Top ;
+  efunarg p th -> Top ; eplus q r -> PlusPrem[nu,q,r,rho,t] } ;
+PrimitiveResult (nu : Heap) (rho : Env) (t : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> PrimitiveExpr nu rho t e } ;
+primitiveAt (mu nu : Heap) (p : Addr) (rho : Env) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : PrimitiveExpr nu rho t e) :
+    PrimitiveResult nu rho t (mu p) =
+  subst (Maybe Expr) (PrimitiveResult nu rho t) (just e) (mu p)
+    (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+
+primitiveLocal (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (t : Ty) ->
+    Local mu nu p rho t -> PrimitiveResult nu rho t (mu p) = split {
+  atVar p rho x eq -> primitiveAt mu nu p rho (lookupEnv rho x) (evar x) eq tt ;
+  atQuote p rho a eq -> primitiveAt mu nu p rho (at a) (equote a) eq (leRefl (at a)) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> primitiveAt mu nu p rho (prod a b) (econs p1 p2) eq tt ;
+  atCar p q rho a b eq o -> primitiveAt mu nu p rho a (ecar q) eq tt ;
+  atCdr p q rho a b eq o -> primitiveAt mu nu p rho b (ecdr q) eq tt ;
+  atAtomT p q rho eq o -> primitiveAt mu nu p rho (at T) (eatom q) eq
+    (inl (mkPair (Id Ty (at T) (at T)) (Obs nu q rho atomTop) (refl (at T)) o)) ;
+  atAtomNil p q rho eq o -> primitiveAt mu nu p rho (at NIL) (eatom q) eq
+    (inr (mkPair (Id Ty (at NIL) (at NIL)) (Obs nu q rho (prod omega omega)) (refl (at NIL)) o)) ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> primitiveAt mu nu p rho (at T) (eeq p1 p2) eq
+    (mkEqPrem nu p1 p2 rho (at T) a b o1 o2
+      (inl (mkPair (Truth (atomEq a b)) (Id Ty (at T) (at T)) same (refl (at T))))) ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> primitiveAt mu nu p rho (at NIL) (eeq p1 p2) eq
+    (mkEqPrem nu p1 p2 rho (at NIL) a b o1 o2
+      (inr (mkPair (Truth (atomEq a b) -> Empty) (Id Ty (at NIL) (at NIL)) different (refl (at NIL))))) ;
+  atIfT p p0 p1 p2 rho a eq oc o -> primitiveAt mu nu p rho a (eif p0 p1 p2) eq
+    (inl (mkPair (Obs nu p0 rho (at T)) (Obs nu p1 rho a) oc o)) ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> primitiveAt mu nu p rho a (eif p0 p1 p2) eq
+    (inr (mkPair (Obs nu p0 rho (at NIL)) (Obs nu p2 rho a) oc o)) ;
+  atApp p pf px rho a b eq ofun ox -> primitiveAt mu nu p rho b (eapp pf px) eq tt ;
+  atLam p pb rho x a b eq o -> primitiveAt mu nu p rho (arr a b) (elam x pb) eq tt ;
+  atLabel p pb rho x a b eq rec body -> primitiveAt mu nu p rho b (elabel x pb) eq tt ;
+  atFunarg p pb th rho bs a eq args body -> primitiveAt mu nu p rho a (efunarg pb th) eq tt ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> primitiveAt mu nu p rho (at (num (plus m n))) (eplus p1 p2) eq
+    (mkPlusPrem nu p1 p2 rho (at (num (plus m n))) m n o1 o2 (refl (at (num (plus m n))))) } ;
+
+primitiveInversion (mu nu : Heap) (p : Addr) (rho : Env) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (d : Local mu nu p rho t) : PrimitiveExpr nu rho t e =
+  subst (Maybe Expr) (PrimitiveResult nu rho t) (mu p) (just e) eq (primitiveLocal mu nu p rho t d) ;

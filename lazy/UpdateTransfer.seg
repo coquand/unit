@@ -1,0 +1,94 @@
+-- Turn a local proof at the changed cell into a proof at every cell.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ;
+open Memory[l] ; open MemoryLemmas[l] ; open Observations[l] ; open Transfer[l] ;
+
+atDecision (mu nu : Heap) (p0 p : Addr) (rho : Env) (a : Ty)
+    (agree : (q : Addr) -> (Id Nat q p0 -> Empty) -> Id (Maybe Expr) (mu q) (nu q))
+    (local : (rho : Env) -> (a : Ty) -> Local mu nu p0 rho a -> Obs nu p0 rho a)
+    (d : Local mu nu p rho a) : Either (Id Nat p p0) (Id Nat p p0 -> Empty) -> Obs nu p rho a = split {
+  inl e -> subst Nat (\ q -> Obs nu q rho a) p0 p (pathSym Nat p p0 e)
+    (local rho a (subst Nat (\ q -> Local mu nu q rho a) p p0 e d)) ;
+  inr ne -> copyLocal mu nu p rho a d (agree p ne) } ;
+
+transferAt (mu nu : Heap) (p0 : Addr)
+    (agree : (p : Addr) -> (Id Nat p p0 -> Empty) -> Id (Maybe Expr) (mu p) (nu p))
+    (local : (rho : Env) -> (a : Ty) -> Local mu nu p0 rho a -> Obs nu p0 rho a) :
+    (j : Query) -> Derive mu j -> Derive nu j =
+  transfer mu nu (\ p rho a d -> atDecision mu nu p0 p rho a agree local d (decEqNat p p0)) ;
+
+updateForward (mu : Heap) (p : Addr) (e : Expr)
+    (local : (rho : Env) -> (a : Ty) -> Local mu (upd mu p e) p rho a -> Obs (upd mu p e) p rho a) :
+    (j : Query) -> Derive mu j -> Derive (upd mu p e) j =
+  transferAt mu (upd mu p e) p
+    (\ q ne -> pathSym (Maybe Expr) (upd mu p e q) (mu q) (upd-miss mu p q e ne)) local ;
+
+updateBackward (mu : Heap) (p : Addr) (e : Expr)
+    (local : (rho : Env) -> (a : Ty) -> Local (upd mu p e) mu p rho a -> Obs mu p rho a) :
+    (j : Query) -> Derive (upd mu p e) j -> Derive mu j =
+  transferAt (upd mu p e) mu p (\ q ne -> upd-miss mu p q e ne) local ;
+
+-- A cell already equal to e remains so after writing e elsewhere,
+-- including the case in which the two addresses coincide.
+writeSameCase (v : Maybe Expr) (e : Expr) (eq : Id (Maybe Expr) v (just e)) :
+    (b : Bool) -> Id (Maybe Expr) (ifBool (Maybe Expr) (just e) v b) (just e) = split {
+  true -> refl (just e) ; false -> eq } ;
+writeSame (mu : Heap) (p q : Addr) (e : Expr) (eq : Id (Maybe Expr) (mu q) (just e)) :
+    Id (Maybe Expr) (upd mu p e q) (just e) = writeSameCase (mu q) e eq (eqN q p) ;
+
+natEqTrue : (n : Nat) -> Truth (eqN n n) = split { zero -> tt ; suc n | r -> r } ;
+exprTag : Expr -> Nat = split {
+  evar x -> zero ; equote a -> suc zero ; econs p q -> suc (suc zero) ;
+  ecar p -> suc (suc (suc zero)) ; ecdr p -> suc (suc (suc (suc zero))) ;
+  eatom p -> suc (suc (suc (suc (suc zero)))) ;
+  eeq p q -> suc (suc (suc (suc (suc (suc zero))))) ;
+  eif p q r -> suc (suc (suc (suc (suc (suc (suc zero)))))) ;
+  eapp p q -> suc (suc (suc (suc (suc (suc (suc (suc zero))))))) ;
+  elam x p -> suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))) ;
+  elabel x p -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))) ;
+  efunarg p th -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero)))))))))) ;
+  eplus p q -> suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc zero))))))))))) } ;
+
+tagPath (e f : Expr) (eq : Id Expr e f) : Truth (eqN (exprTag e) (exprTag f)) =
+  subst Expr (\ x -> Truth (eqN (exprTag e) (exprTag x))) e f eq (natEqTrue (exprTag e)) ;
+differentCells (mu : Heap) (p q : Addr) (e f : Expr)
+    (ep : Id (Maybe Expr) (mu p) (just e)) (eq : Id (Maybe Expr) (mu q) (just f))
+    (clash : Truth (eqN (exprTag e) (exprTag f)) -> Empty)
+    (same : Id Nat q p) : Empty =
+  clash (tagPath e f (contentsEq (mu p) e f ep
+    (pathTrans (Maybe Expr) (mu p) (mu q) (just f)
+      (ap Nat (Maybe Expr) mu p q (pathSym Nat q p same)) eq))) ;
+
+readUnchanged (mu : Heap) (p q : Addr) (old kept fresh : Expr)
+    (root : Id (Maybe Expr) (mu p) (just old)) (value : Id (Maybe Expr) (mu q) (just kept))
+    (clash : Truth (eqN (exprTag old) (exprTag kept)) -> Empty) :
+    Id (Maybe Expr) (upd mu p fresh q) (just kept) =
+  pathTrans (Maybe Expr) (upd mu p fresh q) (mu q) (just kept)
+    (upd-miss mu p q fresh (differentCells mu p q old kept root value clash)) value ;
+
+-- Move one generating rule to an equal cell. LABEL is the only rule
+-- whose premises refer to the generating address itself; convert that
+-- premise explicitly. All other premises keep their original addresses.
+moveRead (mu nu : Heap) (p q : Addr) (e : Expr)
+    (same : Id (Maybe Expr) (mu p) (nu q))
+    (eq : Id (Maybe Expr) (mu p) (just e)) : Id (Maybe Expr) (nu q) (just e) =
+  pathTrans (Maybe Expr) (nu q) (mu p) (just e) (pathSym (Maybe Expr) (mu p) (nu q) same) eq ;
+moveLocal (mu nu : Heap) : (p : Addr) -> (rho : Env) -> (a : Ty) -> Local mu nu p rho a ->
+    (q : Addr) -> Id (Maybe Expr) (mu p) (nu q) ->
+    ((t : Ty) -> Obs nu p rho t -> Obs nu q rho t) -> Obs nu q rho a = split {
+  atVar p rho x eq -> \ q same self -> obsVar q rho x (moveRead mu nu p q (evar x) same eq) ;
+  atQuote p rho a eq -> \ q same self -> obsQuote q rho a (moveRead mu nu p q (equote a) same eq) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> \ q same self -> obsCons q p1 p2 rho a b (moveRead mu nu p q (econs p1 p2) same eq) o1 o2 ;
+  atCar p p1 rho a b eq o -> \ q same self -> obsCar q p1 rho a b (moveRead mu nu p q (ecar p1) same eq) o ;
+  atCdr p p1 rho a b eq o -> \ q same self -> obsCdr q p1 rho a b (moveRead mu nu p q (ecdr p1) same eq) o ;
+  atAtomT p p1 rho eq o -> \ q same self -> obsAtomT q p1 rho (moveRead mu nu p q (eatom p1) same eq) o ;
+  atAtomNil p p1 rho eq o -> \ q same self -> obsAtomNil q p1 rho (moveRead mu nu p q (eatom p1) same eq) o ;
+  atEqT p p1 p2 rho a b eq sameAtom o1 o2 -> \ q same self -> obsEqT q p1 p2 rho a b (moveRead mu nu p q (eeq p1 p2) same eq) sameAtom o1 o2 ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> \ q same self -> obsEqNil q p1 p2 rho a b (moveRead mu nu p q (eeq p1 p2) same eq) different o1 o2 ;
+  atIfT p p0 p1 p2 rho a eq oc o -> \ q same self -> obsIfT q p0 p1 p2 rho a (moveRead mu nu p q (eif p0 p1 p2) same eq) oc o ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> \ q same self -> obsIfNil q p0 p1 p2 rho a (moveRead mu nu p q (eif p0 p1 p2) same eq) oc o ;
+  atApp p pf px rho a b eq ofun ox -> \ q same self -> obsApp q pf px rho a b (moveRead mu nu p q (eapp pf px) same eq) ofun ox ;
+  atLam p pb rho x a b eq o -> \ q same self -> obsLam q pb rho x a b (moveRead mu nu p q (elam x pb) same eq) o ;
+  atLabel p pb rho x a b eq rec body -> \ q same self -> obsLabel q pb rho x a b (moveRead mu nu p q (elabel x pb) same eq) (self a rec) body ;
+  atFunarg p pb th rho bs a eq args body -> \ q same self -> obsFunarg q pb th rho bs a (moveRead mu nu p q (efunarg pb th) same eq) args body ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> \ q same self -> obsPlus q p1 p2 rho m n (moveRead mu nu p q (eplus p1 p2) same eq) o1 o2 } ;

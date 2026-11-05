@@ -1,0 +1,103 @@
+-- Head separation for final values, proved independently of consistency.
+level l ;
+open Base ; open Prelude[l] ; open Types ; open Subtyping[l] ; open Shape[l] ;
+open Memory[l] ; open Observations[l] ; open Transfer[l] ; open ObsGeneration[l] ;
+
+AvoidExpr (k : Head) (t : Ty) : Expr -> U l = split {
+  evar x -> Top ;
+  equote c -> (HeadEq k atomHead -> Empty) -> HasHead k t -> Empty ;
+  econs p q -> (HeadEq k pairHead -> Empty) -> HasHead k t -> Empty ;
+  ecar p -> Top ;
+  ecdr p -> Top ;
+  eatom p -> Top ;
+  eeq p q -> Top ;
+  eif p q r -> Top ;
+  eapp p q -> Top ;
+  elam x p -> (HeadEq k arrowHead -> Empty) -> HasHead k t -> Empty ;
+  elabel x p -> Top ;
+  efunarg p th -> Top ;
+  eplus p q -> Top } ;
+AvoidResult (k : Head) (t : Ty) : Maybe Expr -> U l = split {
+  nothing -> Top ; just e -> AvoidExpr k t e } ;
+avoidTopExpr (k : Head) : (e : Expr) -> AvoidExpr k omega e = split {
+  evar x -> tt ;
+  equote c -> \ ne bad -> bad ;
+  econs p q -> \ ne bad -> bad ;
+  ecar p -> tt ;
+  ecdr p -> tt ;
+  eatom p -> tt ;
+  eeq p q -> tt ;
+  eif p q r -> tt ;
+  eapp p q -> tt ;
+  elam x p -> \ ne bad -> bad ;
+  elabel x p -> tt ;
+  efunarg p th -> tt ;
+  eplus p q -> tt } ;
+avoidTop (k : Head) : (v : Maybe Expr) -> AvoidResult k omega v = split {
+  nothing -> tt ; just e -> avoidTopExpr k e } ;
+avoidMeetExpr (k : Head) (a b : Ty) : (e : Expr) ->
+    AvoidExpr k a e -> AvoidExpr k b e -> AvoidExpr k (meet a b) e = split {
+  evar x -> \ f g -> tt ;
+  equote c -> \ f g ne -> eitherOut (HasHead k a) (HasHead k b) Empty (f ne) (g ne) ;
+  econs p q -> \ f g ne -> eitherOut (HasHead k a) (HasHead k b) Empty (f ne) (g ne) ;
+  ecar p -> \ f g -> tt ;
+  ecdr p -> \ f g -> tt ;
+  eatom p -> \ f g -> tt ;
+  eeq p q -> \ f g -> tt ;
+  eif p q r -> \ f g -> tt ;
+  eapp p q -> \ f g -> tt ;
+  elam x p -> \ f g ne -> eitherOut (HasHead k a) (HasHead k b) Empty (f ne) (g ne) ;
+  elabel x p -> \ f g -> tt ;
+  efunarg p th -> \ f g -> tt ;
+  eplus p q -> \ f g -> tt } ;
+avoidMeet (k : Head) (a b : Ty) : (v : Maybe Expr) ->
+    AvoidResult k a v -> AvoidResult k b v -> AvoidResult k (meet a b) v = split {
+  nothing -> \ f g -> tt ; just e -> avoidMeetExpr k a b e } ;
+avoidSubExpr (k : Head) (a b : Ty) (le : Le a b) : (e : Expr) ->
+    AvoidExpr k a e -> AvoidExpr k b e = split {
+  evar x -> \ f -> tt ;
+  equote c -> \ f ne hb -> f ne (heads k a b le hb) ;
+  econs p q -> \ f ne hb -> f ne (heads k a b le hb) ;
+  ecar p -> \ f -> tt ;
+  ecdr p -> \ f -> tt ;
+  eatom p -> \ f -> tt ;
+  eeq p q -> \ f -> tt ;
+  eif p q r -> \ f -> tt ;
+  eapp p q -> \ f -> tt ;
+  elam x p -> \ f ne hb -> f ne (heads k a b le hb) ;
+  elabel x p -> \ f -> tt ;
+  efunarg p th -> \ f -> tt ;
+  eplus p q -> \ f -> tt } ;
+avoidSub (k : Head) (a b : Ty) (le : Le a b) : (v : Maybe Expr) ->
+    AvoidResult k a v -> AvoidResult k b v = split {
+  nothing -> \ f -> tt ; just e -> avoidSubExpr k a b le e } ;
+avoidAt (k : Head) (mu : Heap) (p : Addr) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (h : AvoidExpr k t e) : AvoidResult k t (mu p) =
+  subst (Maybe Expr) (AvoidResult k t) (just e) (mu p) (pathSym (Maybe Expr) (mu p) (just e) eq) h ;
+avoidLocal (k : Head) (mu : Heap) : (p : Addr) -> (rho : Env) -> (t : Ty) ->
+    Local mu mu p rho t -> AvoidResult k t (mu p) = split {
+  atVar p rho x eq -> avoidAt k mu p (lookupEnv rho x) (evar x) eq (tt) ;
+  atQuote p rho a eq -> avoidAt k mu p (at a) (equote a) eq (\ ne h -> ne h) ;
+  atCons p p1 p2 rho a b eq o1 o2 -> avoidAt k mu p (prod a b) (econs p1 p2) eq (\ ne h -> ne h) ;
+  atCar p q rho a b eq o -> avoidAt k mu p (a) (ecar q) eq (tt) ;
+  atCdr p q rho a b eq o -> avoidAt k mu p (b) (ecdr q) eq (tt) ;
+  atAtomT p q rho eq o -> avoidAt k mu p (at T) (eatom q) eq (tt) ;
+  atAtomNil p q rho eq o -> avoidAt k mu p (at NIL) (eatom q) eq (tt) ;
+  atEqT p p1 p2 rho a b eq same o1 o2 -> avoidAt k mu p (at T) (eeq p1 p2) eq (tt) ;
+  atEqNil p p1 p2 rho a b eq different o1 o2 -> avoidAt k mu p (at NIL) (eeq p1 p2) eq (tt) ;
+  atIfT p p0 p1 p2 rho a eq oc o -> avoidAt k mu p (a) (eif p0 p1 p2) eq (tt) ;
+  atIfNil p p0 p1 p2 rho a eq oc o -> avoidAt k mu p (a) (eif p0 p1 p2) eq (tt) ;
+  atApp p pf px rho a b eq ofun ox -> avoidAt k mu p (b) (eapp pf px) eq (tt) ;
+  atLam p pb rho x a b eq o -> avoidAt k mu p (arr a b) (elam x pb) eq (\ ne h -> ne h) ;
+  atLabel p pb rho x a b eq rec body -> avoidAt k mu p (b) (elabel x pb) eq (tt) ;
+  atFunarg p pb th rho bs a eq args body -> avoidAt k mu p (a) (efunarg pb th) eq (tt) ;
+  atPlus p p1 p2 rho m n eq o1 o2 -> avoidAt k mu p (at (num (plus m n))) (eplus p1 p2) eq (tt) } ;
+avoidGenerated (k : Head) (mu : Heap) (p : Addr) (rho : Env) :
+    (t : Ty) -> Generated mu p rho t -> AvoidResult k t (mu p) =
+  foldGenerated mu p rho (\ t -> AvoidResult k t (mu p))
+    (avoidTop k (mu p)) (\ a b -> avoidMeet k a b (mu p))
+    (\ a b le -> avoidSub k a b le (mu p)) (avoidLocal k mu p rho) ;
+valueAvoid (k : Head) (mu : Heap) (p : Addr) (rho : Env) (t : Ty) (e : Expr)
+    (eq : Id (Maybe Expr) (mu p) (just e)) (o : Obs mu p rho t) : AvoidExpr k t e =
+  subst (Maybe Expr) (AvoidResult k t) (mu p) (just e) eq
+    (avoidGenerated k mu p rho t (obsGeneration mu p rho t o)) ;
