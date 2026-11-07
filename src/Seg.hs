@@ -1,4 +1,4 @@
-{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE MagicHash, PatternSynonyms #-}
 -- Seg.hs -- a dependent type theory checked in a context of UNIT
 -- declarations, with AUTOMATH/Wang segments as the module system and the
 -- universe system of bcde.pdf (BCDE4: Russell, cumulative, level- and
@@ -419,7 +419,9 @@ data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Unit], modEnv :: Env
 data Clos  = Clos Name Code Env
 data LClos = LClos Name Code Env
 
-data Code = CExp Exp | CBody Body | CData Id DataDecl Int
+-- (CBody: the rest of a definition body, with the type of the lambda whose
+-- body it is, so that the splits below know their types)
+data Code = CExp Exp | CBody Body Val | CData Id DataDecl Int
 
 data Elim = EApp Val | EFst | ESnd | EProj Name | ELApp Lvl
 
@@ -428,23 +430,19 @@ data Elim = EApp Val | EFst | ESnd | EProj Name | ELApp Lvl
 
 data Val
   = VU Lvl
-  | VGen Int                                -- a generic variable
-  | VConst Id [Val]                         -- a rigid constant (parameter, PN)
-  | VRef Unit Env                           -- the closure < f ; eta > of an
+  -- EXPERIMENT (typed neutrals): the heads of neutral values carry their
+  -- type, lazily (noType when it is not known); an elimination of a typed
+  -- head has a type computed from it (typeOfNe).  The type is never
+  -- compared, printed or read back.
+  | VGenT Int Val                           -- a generic variable, its type
+  | VConstT Id [Val] Val                    -- a rigid constant (parameter, PN), its type
+  | VRefT Unit Env Val                      -- the closure < f ; eta > of an
                                             -- access to a definition: the unit
                                             -- as written and the environment
-                                            -- of its group.  Nothing else: its
+                                            -- of its group, and its type.
+                                            -- Nothing else: its
                                             -- body is evaluated when the head
                                             -- is needed, under the lock
-  | VVar Name Mod [(Name, Val)]             -- a variable of record type: itself, with
-                                            -- its record and the head parameters its
-                                            -- type gives (for its derived members);
-                                            -- a fixed field is NOT a value here (§4:
-                                            -- it is elaborated where t.x is checked)
-                                            -- (was: a declared variable of record type:
-                                            -- itself, with the fields its type
-                                            -- fixes ( c : M[x := e]  gives
-                                            -- c.x = e )
   | VLvl Lvl                                -- a level, inside dynamic parts
   | VApp Val Val
   | VLam Clos
@@ -452,9 +450,9 @@ data Val
   | VCon Name [Val]
   | VSum Id [Val] Tel [ConDecl] Env     -- the indices of the
                                             -- instance: the index names in Env
-  | VSplit Id [Val] Int [Val] [Branch] Env
+  | VSplitT Id [Val] Int [Val] [Branch] Env Val
                                             -- the number k of indices it absorbs
-                                            -- and those absorbed so far
+                                            -- and those absorbed so far; its type
   | VSig Val Clos
   | VPair Val Val
   | VFst Val
@@ -471,6 +469,26 @@ data Val
   | VInst Mod Env                           -- an element  new R[..] : the record
                                             -- and the environment of its
                                             -- parameters and fields
+
+-- the typed forms seen without their type, and built with no type known
+pattern VGen :: Int -> Val
+pattern VGen i <- VGenT i _ where VGen i = VGenT i noType
+
+pattern VConst :: Id -> [Val] -> Val
+pattern VConst i d <- VConstT i d _ where VConst i d = VConstT i d noType
+
+pattern VRef :: Unit -> Env -> Val
+pattern VRef u r <- VRefT u r _
+
+pattern VSplit :: Id -> [Val] -> Int -> [Val] -> [Branch] -> Env -> Val
+pattern VSplit t d k is bs r <- VSplitT t d k is bs r _
+
+{-# COMPLETE VU, VGen, VConst, VRef, VLvl, VApp, VLam, VPi, VCon, VSum, VSplit, VSig, VPair,
+             VFst, VSnd, VProj, VId, VRefl, VIdJ, VLPi, VLLam, VLApp, VCPi, VSegT, VInst #-}
+
+-- no type known (a variable of the read-back, of a matching, ...)
+noType :: Val
+noType = VConstT "%notype" [] noType
 
 ------------------------------------------------------------------------
 -- 3.  Evaluation (lock-agnostic)
@@ -532,17 +550,36 @@ lcapp (LClos x c r) l = evalCode (ELvl r x l) c
 evalCode :: Env -> Code -> Val
 evalCode r c = case c of
   CExp e       -> eval r e
-  CBody b      -> evalBody r b
+  CBody b t    -> evalBodyT r b (codAt t (lookupBound r))
   CData o dd k -> dataAt r o dd (k + 1)
+
+-- the variable or level a closure has just bound (its argument)
+lookupBound :: Env -> Either Lvl Val
+lookupBound r = case r of
+  EVar _ _ v -> Right v
+  ELvl _ _ l -> Left l
+  _          -> error "lookupBound"
 
 -- the body of a definition in an environment
 evalBody :: Env -> Body -> Val
-evalBody r b = case b of
+evalBody r b = evalBodyT r b noType
+
+-- the same, knowing its type (lazy): a split records it
+evalBodyT :: Env -> Body -> Val -> Val
+evalBodyT r b t = case b of
   BExp e          -> eval r e
-  BLam x b'       -> VLam (Clos x (CBody b') r)
-  BLLam x b'      -> VLLam (LClos x (CBody b') r)
-  BLet i x a v b' -> evalBody (mkGroup r [UDef i x a (BExp v)]) b'
-  BSplit t k bs   -> VSplit t (dynVals r) k [] bs r
+  BLam x b'       -> VLam (Clos x (CBody b' t) r)
+  BLLam x b'      -> VLLam (LClos x (CBody b' t) r)
+  BLet i x a v b' -> evalBodyT (mkGroup r [UDef i x a (BExp v)]) b' t
+  BSplit s k bs   -> VSplitT s (dynVals r) k [] bs r t
+
+-- the codomain of a (level) product type at an argument; noType when the
+-- type is not known to be one
+codAt :: Val -> Either Lvl Val -> Val
+codAt t a = case (whnfType t, a) of
+  (VPi _ f, Right v) -> capp f v
+  (VLPi f, Left l)   -> lcapp f l
+  _                  -> noType
 
 -- a data type o in an environment binding its first k binders: the
 -- remaining binders, then the sum
@@ -560,14 +597,14 @@ dataAt r o dd k = case drop k (dataBinders dd) of
 app :: Val -> Val -> Val
 app (VLam f) v = capp f v
 -- a split on an indexed family first absorbs the k indices (INDEXED.md 5)
-app (VSplit t d k is bs r) v | length is < k = VSplit t d k (is ++ [v]) bs r
-app f@(VSplit t _ k is bs r) v = case v of
+app (VSplitT t d k is bs r ty) v | length is < k = VSplitT t d k (is ++ [v]) bs r ty
+app f@(VSplitT t _ k is bs r _) v = case v of
   VCon c vs -> case branchOf c bs of
-    Just (xs, rs, b) -> evalBody (recBind t c f (bindIdx t is (bindAll r xs vs)) xs vs rs) b
+    Just (xs, rs, b) -> evalBodyT (recBind t c f (bindIdx t is (bindAll r xs vs)) xs vs rs) b (codAt (splitType f) (Right v))
     Nothing | k < 0 -> VApp f v         -- not annotated (its definition failed)
             | otherwise -> error ("split: no branch for " ++ c)
   -- a record: the branch applied to its fields (beta for the eliminator)
-  _ | Just vs <- recordFields v, [(_, xs, _, b)] <- bs -> evalBody (bindAll r xs vs) b
+  _ | Just vs <- recordFields v, [(_, xs, _, b)] <- bs -> evalBodyT (bindAll r xs vs) b (codAt (splitType f) (Right v))
   _ -> VApp f v
 app u v = VApp u v
 
@@ -595,8 +632,15 @@ recVal t c f r0 xs vs (RecR j n es _)
 -- a split with no index absorbed
 splitBase :: Val -> Val
 splitBase v = case v of
-  VSplit t d k _ bs r -> VSplit t d k [] bs r
+  VSplitT t d k _ bs r ty -> VSplitT t d k [] bs r ty
   _ -> v
+
+-- the type of a split, at the indices it absorbed (it records its type
+-- with none absorbed)
+splitType :: Val -> Val
+splitType v = case v of
+  VSplitT _ _ _ is _ _ ty -> foldl (\t i -> codAt t (Right i)) ty is
+  _ -> noType
 
 -- in a branch of a split on an indexed family, the indices it absorbed
 -- (for the read-back of a split or sum nested in the branch)
@@ -612,15 +656,73 @@ vsnd (VPair _ v)       = v
 vsnd w                 = VSnd w
 
 vproj :: Val -> Name -> Val
-vproj w@(VVar _ md fs) l
-  | isDerived md l       = memberAt md fs w l
-  -- EXPERIMENT (record eta): a field the variable's type fixes is its value
-  | l `elem` recordFieldNames md, Just v <- lookup l fs = v
-  | otherwise            = VProj w l
 vproj w@(VInst m r) l
   | isDerived m l        = memberAt m [ (h, lookupDyn r h) | h <- recordHeads m ] w l
   | otherwise            = lookupMember r l
-vproj w l                = VProj w l
+-- EXPERIMENT (typed neutrals): the one rule.  A neutral whose type is a
+-- record type: a derived member is computed from the parameters the type
+-- gives, and a field (or head parameter) the type fixes is its value
+vproj w l = fromMaybe (VProj w l) (projNe w l)
+
+-- the projection of a neutral, when its type computes it
+projNe :: Val -> Name -> Maybe Val
+projNe w l = case recordTypeOf w of
+  Just (md, fs)
+    | isDerived md l                 -> Just (memberAt md fs w l)
+    | Just v <- lookup l fs, notLvl v -> Just v
+  _                                  -> Nothing
+ where notLvl v = case v of { VLvl _ -> False; _ -> True }
+
+-- the record type of a neutral value, when its type is known to be one
+recordTypeOf :: Val -> Maybe (Mod, [(Name, Val)])
+recordTypeOf w = case typeOfNe w of
+  Just t | VSegT md fs <- whnfType t -> Just (md, fs)
+  _ -> Nothing
+
+-- The type of a neutral value (an elimination of a typed head), computed
+-- from the type its head carries; Nothing when it is not known.  Only the
+-- outer form of each type is computed, and only when asked.
+typeOfNe :: Val -> Maybe Val
+typeOfNe v = case v of
+  VGenT _ t       -> known t
+  VConstT _ _ t   -> known t
+  VRefT _ _ t     -> known t
+  VSplitT{}       -> known (splitType v)
+  VApp f a        -> typeOfNe f >>= \t -> known (codAt t (Right a))
+  VLApp f l       -> typeOfNe f >>= \t -> known (codAt t (Left l))
+  VFst p          -> typeOfNe p >>= \t -> case whnfType t of
+                       VSig a _ -> Just a
+                       _        -> Nothing
+  VSnd p          -> typeOfNe p >>= \t -> case whnfType t of
+                       VSig _ f -> Just (capp f (vfst p))
+                       _        -> Nothing
+  VProj p l       -> recordTypeOf p >>= \(md, fs) -> fieldType md fs p l
+  VIdJ _ _ c _ y p -> Just (app (app c y) p)
+  _               -> Nothing
+ where
+  known t = case t of
+    VConstT "%notype" _ _ -> Nothing
+    _                     -> Just t
+
+-- the type of the member l of an element t of the record type R[fs]: a
+-- derived member at t (the fixed fields bound to their values), a field
+-- or head parameter in the instance at t's fields
+fieldType :: Mod -> [(Name, Val)] -> Val -> Name -> Maybe Val
+fieldType md fs t l = case memberUnit (modUnits md) l of
+  Just (UDef _ _ ty _) | isDerived md l -> Just (eval (selfEnvFixed md fs fs t) ty)
+  Just (UDef _ _ ty _) -> Just (eval r ty)
+  Just (UPar _ _ ty)   -> Just (eval r ty)
+  _                    -> Nothing
+ where
+  r = case t of
+    VInst _ r' -> r'
+    _ -> instUnits (modEnv md) (modUnits md)
+           [ fromMaybe (vproj t p) (lookup p fs) | p <- paramNames (modUnits md) ]
+
+-- the outer form of a type: every definition unfolded (reading a type is
+-- not an opening of a proof: not counted, whatever the lock)
+whnfType :: Val -> Val
+whnfType = whnfC False (const True)
 
 lapp :: Val -> Lvl -> Val
 lapp (VLLam f) l        = lcapp f l
@@ -693,7 +795,7 @@ dynVals = map snd . dynOf
 -- nothing is opened
 mkRef :: Unit -> Env -> Val
 mkRef u r | isNewDef u = unfoldRef u r
-          | otherwise  = VRef u r
+          | otherwise  = VRefT u r (maybe noType (eval r) (defType u))
 
 isNewDef :: Unit -> Bool
 isNewDef (UDef _ _ _ (BExp b)) = go [] b
@@ -711,7 +813,7 @@ isNewDef _ = False
 
 -- the body of a definition, evaluated in its environment
 unfoldRef :: Unit -> Env -> Val
-unfoldRef (UDef _ _ _ b) r = evalBody r b
+unfoldRef (UDef _ _ a b) r = evalBodyT r b (eval r a)
 unfoldRef (UData i _ dd) r = dataAt r (dataOcc i dd) dd 0
 unfoldRef _ _                = error "unfoldRef: not a definition"
 
@@ -1070,10 +1172,7 @@ whnfC c u v = case v of
     p'        -> vsnd p'
   VProj p l -> case whnfC c u p of
     i@(VInst _ _) -> whnfC c u (vproj i l)
-    w@(VVar{}) -> case vproj w l of
-                    VProj{} -> VProj w l
-                    a       -> whnfC c u a
-    p'         -> vproj p' l
+    p' -> maybe (VProj p' l) (whnfC c u) (projNe p' l)
   VLApp t l -> case whnfC c u t of
     VLLam cl -> whnfC c u (lcapp cl l)
     t'       -> VLApp t' l
@@ -1161,7 +1260,6 @@ eqVal u v = case (u, v) of
   (VGen i, VGen j)                 -> i == j
   (VLvl l, VLvl m)                 -> l == m
   (VConst i d, VConst j e)         -> i == j && eqVals d e
-  (VVar x _ _, VVar y _ _)         -> x == y
   (VRef u r, VRef u' r')           -> defId u == defId u' && eqEnvs r r'
   (VApp a b, VApp a' b')           -> eqVal a a' && eqVal b b'
   (VLam f, VLam g)                 -> eqClos f g
@@ -1230,7 +1328,6 @@ conv' c u1 u2 = case (u1, u2) of
   (VLvl l, VLvl m)             -> eqLvl th l m
   (VGen i, VGen j)             -> i == j
   (VConst i d1, VConst j d2)   -> i == j && convs c d1 d2
-  (VVar x _ _, VVar y _ _)     -> x == y
   (VLam _, _)                  -> etaEq
   (_, VLam _)                  -> etaEq
   (VLLam _, _)                 -> letaEq
@@ -1324,7 +1421,6 @@ rb full s k v0 = case (if full then whnf s v0 else v0) of
   VLvl l        -> Var (showLvl l)
   VGen i        -> Var ("#" ++ show i)
   VConst i d    -> Var (shortId i ++ dynS d)
-  VVar x _ _    -> Var (if take 2 x == "%v" then '#' : drop 2 x else x)
   -- a definition with its dynamic part: the values of the variables of its
   -- environment, outermost first (for a member of a segment: its parameters)
   VRef u r      -> Var (qualName (defId u) ++ dynB [ v | (x, v) <- reverse (dynOf r), not (ambient x v) ])
@@ -1527,22 +1623,7 @@ ev cx = eval (cxEnv cx)
 extVar :: Cx -> Name -> Val -> (Cx, Val)
 extVar cx x t = (cx { cxK = k + 1, cxEnv = EVar (cxEnv cx) x v, cxTys = (x, t) : cxTys cx }, v)
  where k = cxK cx
-       v = etaV t (VGen k)
-
--- A fresh variable of record type is itself (no eta for records), with
--- its record and the parameters its type gives, which its derived members
--- need.  A fixed field is not a value here: c.x is written as the fixed
--- value where it is checked (RECORDS.md §4).  Finding whether the type is
--- a record type is work of the checker, not an opening of the proof, so
--- its unfoldings are not counted (--opened).
-etaV :: Val -> Val -> Val
-etaV t v = case (whnfC False (const True) t, v) of
-  (VSegT md fs, VGen k) -> VVar (freshVarName k) md fs
-  _ -> v
-
--- the name of the fresh variable k when it has a segment type
-freshVarName :: Int -> Name
-freshVarName k = "%v" ++ show k
+       v = VGenT k t           -- it carries its type
 
 -- extend by a level variable, bound to a fresh generic level
 extLvl :: Cx -> Name -> (Cx, Lvl)
@@ -1766,18 +1847,9 @@ infer cx e = case e of
   Proj a l -> do
     t <- inferD cx a
     case force cx t of
-      VSegT md fs | isDerived md l, Just (UDef _ _ ty _) <- memberUnit (modUnits md) l ->
-        Right (eval (selfEnvFixed md fs fs (ev cx a)) ty)
-      VSegT md fs -> do
-        let v = ev cx a
-            r = case v of
-              VInst _ r' -> r'
-              _ -> instUnits (modEnv md) (modUnits md)
-                     [ fromMaybe (vproj v p) (lookup p fs) | p <- paramNames (modUnits md) ]
-        case memberUnit (modUnits md) l of
-          Just (UDef _ _ ty _) -> Right (eval r ty)
-          Just (UPar _ _ ty)     -> Right (eval r ty)
-          _ -> failWith ("no member " ++ l ++ " in " ++ showV cx t)
+      VSegT md fs -> case fieldType md fs (ev cx a) l of
+        Just ty -> Right ty
+        Nothing -> failWith ("no member " ++ l ++ " in " ++ showV cx t)
       t' -> failWith ("not a record: " ++ pretty a ++ " : " ++ showV cx t')
   Mem m as l a -> do
     -- R[ps].d at a: R[ps] must be the record of a's type (the same
@@ -2143,7 +2215,7 @@ peelIndexed cx0 ls t0 = go cx0 [] t0
 
 -- a fresh variable of type a, not bound to a name
 freshIdx :: Cx -> Val -> (Cx, Val)
-freshIdx cx a = (cx { cxK = cxK cx + 1 }, etaV a (VGen (cxK cx)))
+freshIdx cx a = (cx { cxK = cxK cx + 1 }, VGenT (cxK cx) a)
 
 -- the type of a split applied to values: the motive at indices and element
 motiveAt :: Cx -> Val -> [Val] -> Val
@@ -2378,14 +2450,9 @@ checkUnitsF cx (u : us) = case u of
     let fa = inCtx ("in the type of " ++ x) (fillT cx a0)
         a  = either (const (unfilledHoles a0)) id fa
         va = ev cx a
-        -- a declared variable is not bound in the environment: it is
-        -- itself (Wang: ()(x) = x), so it is never part of a dynamic part
-        -- (a variable of segment type is bound to itself with the fields
-        -- its type fixes,  c : M[x := e]  gives  c.x = e ; not dynamic;
-        -- as in etaV, the test is not counted as an opening)
-        cx' = cx { cxEnv = case whnfC False (const True) va of
-                             VSegT md fs -> EDecl (cxEnv cx) x (VVar x md fs)
-                             _          -> cxEnv cx
+        -- a declared variable is bound to itself (Wang: ()(x) = x),
+        -- carrying its type; never part of a dynamic part
+        cx' = cx { cxEnv = EDecl (cxEnv cx) x (VConstT x [] va)
                  , cxTys = (x, va) : cxTys cx
                  , cxPSorts = (x, inferSort cx a) : cxPSorts cx }
         (cx'', evs, us') = checkUnitsF cx' us
@@ -2772,7 +2839,9 @@ fillI cx e
                                  Nothing -> Left ("the parameter " ++ p ++ " of the record is not known"))
                              (paramNames (headUnits md))
                 retype (Right (Mem me args l a'))
-              _ | VVar{} <- ev cx a' -> retype (Right (Proj a' l))
+              -- a neutral whose type gives its record: the projection
+              -- itself computes the member
+              _ | Just _ <- projNe (ev cx a') l -> retype (Right (Proj a' l))
                 | otherwise ->
                     failWith ("the member " ++ l ++ " of " ++ pretty a' ++ ": its record "
                               ++ shortId (modId md) ++ " cannot be named here (bring it into scope)")
@@ -3156,7 +3225,6 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
   sameHead k hp ht sols = case (hp, ht) of
     (VGen i, VGen j) | i == j -> Just sols
     (VConst a [], VConst b []) | a == b && not (isHoleV hp) -> Just sols
-    (VVar a _ _, VVar b _ _) | a == b -> Just sols
     (VRef u _, VRef u' _) | defId u == defId u' -> Just (go k hp ht sols)
     (VProj a l, VProj b l') | l == l' && not (isHoleV a) -> Just (go k a b sols)
     (VFst a, VFst b) | not (isHoleV a) -> Just (go k a b sols)
@@ -3213,7 +3281,6 @@ scopeOf cx = go (cxEnv cx) (QScope [] [] True ((cc cx) { ccOpen = False }) (cxK 
     EDef r' _ _ _ -> go r' sc
   addVar' x v sc = case v of
     VGen i     -> sc { scGens = scGens sc ++ [(i, x)] }
-    VVar n _ _ | take 2 n == "%v" -> sc { scGens = scGens sc ++ [(read (drop 2 n), x)] }
     -- a variable bound to an element built by new (a fixed field bound in
     -- a record branch): the element is written as the variable
     VInst m r  -> let sc1 = sc { scEtas = scEtas sc ++ [(v, x)] }
@@ -3378,8 +3445,6 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
 quoteWith :: QScope -> Val -> Maybe Exp
 quoteWith sc v0 = case v0 of
   VGen i -> fmap Var (lookup i (scGens sc))
-  VVar x _ _ | take 2 x == "%v" -> fmap Var (lookup (read (drop 2 x)) (scGens sc))
-           | otherwise -> Just (Var x)
   VConst i [] | Set.member i (scDecls sc) -> Just (Var i)   -- a declared variable in scope
   VU l -> fmap U (qLvl l)
   VLvl _ -> Nothing
