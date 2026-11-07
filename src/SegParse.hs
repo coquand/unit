@@ -97,8 +97,6 @@ data R
   | RHid R                                   -- {e}: a hidden argument given
   | RHole                                    -- _ : an argument to be inferred
   | RSplit Int [(Name, [Name], [Name], RBody)]   -- c xs | rs -> e  (rs: recursive results)
-  | RRec [(Name, R)]
-  | RStruct [(Name, R)]
   | RId R R R | RRefl R | RIdJ R R R R R R
   | RSuc R | RMax R R
   | RLPi [Name] R | RCPi [RCs] R | RLLam [Name] R
@@ -928,13 +926,6 @@ resE0 rs r = case spine r [] of
                       -- the positions are given by the filling pass, from the data type
                       Right (c, (xs, [ RecR (-1) (-1) y | y <- ys ], b'))) bs
       Right (Split (rsPath rs ++ "split#" ++ show o) bs')
-    -- Construction binds fields in order, but projection looks up a
-    -- label. Repeated labels would give those operations different types.
-    RRec fs -> do dupCheck (map fst fs)
-                  fs' <- resFields rs fs
-                  Right (named rs (Rec fs'))
-    RStruct fs -> do dupCheck (map fst fs)
-                     fmap Struct (mapM (\(l, e) -> do e' <- resE rs e; Right (l, e')) fs)
     RId a x y -> do a' <- resE rs a; x' <- resE rs x; y' <- resE rs y; Right (Id a' x' y')
     RRefl a -> fmap Refl (resE rs a)
     RIdJ a x c d y p -> do
@@ -955,19 +946,6 @@ resE0 rs r = case spine r [] of
     _ -> Nothing
   spine (RApp a b) as = spine a (b : as)
   spine h as          = (h, as)
-
--- a sig occurrence (Half/Gofer): its internal name is given by numberUnits,
--- from the declaration it occurs in and its position
-named :: RS -> Exp -> Exp
-named _ e = Named "" e
-
-resFields :: RS -> [(Name, R)] -> Rz Tel
-resFields _ [] = Right []
-resFields rs ((l, a) : fs) = do
-  either (\m -> Left ("sig field: " ++ m)) Right (fresh rs l)   -- labels are not renamed
-  a' <- resE rs a
-  fs' <- resFields (bindS rs [(l, SVar)]) fs
-  Right ((l, a') : fs')
 
 resBody :: RS -> RBody -> Rz Exp
 resBody rs (RBody e []) = resE rs e
@@ -1393,7 +1371,6 @@ numE0 pre e = snd (numE pre 0 e)
 
 numE :: String -> Int -> Exp -> (Int, Exp)
 numE pre n e = case e of
-  Named _ a -> let (n', a') = numE pre (n + 1) a in (n', Named (pre ++ "#" ++ show n) a')
   U _          -> (n, e)
   Var _        -> (n, e)
   Hole         -> (n, e)
@@ -1412,9 +1389,6 @@ numE pre n e = case e of
   Pair a b     -> two Pair a b
   Fst a        -> one Fst a
   Snd a        -> one Snd a
-  Rec tel      -> let (n', tel') = numTel n tel in (n', Rec tel')
-  Struct fs    -> let (n', fs') = mapL (\m (l, a) -> let (m', a') = numE pre m a in (m', (l, a'))) n fs
-                  in (n', Struct fs')
   Proj a l     -> one (\a' -> Proj a' l) a
   ProjU a l    -> one (\a' -> ProjU a' l) a
   Mem m as l a -> one (\a' -> Mem m as l a') a      -- never in source
@@ -1498,12 +1472,11 @@ mapExp :: (Exp -> Exp) -> Exp -> Exp
 mapExp f e = case e of
   App a b -> App (f a) (f b); Lam x b -> Lam x (f b); Pi x a b -> Pi x (f a) (f b)
   Sig x a b -> Sig x (f a) (f b); Pair a b -> Pair (f a) (f b); Fst a -> Fst (f a); Snd a -> Snd (f a)
-  Con c as -> Con c (map f as); Rec t -> Rec [ (l, f a) | (l, a) <- t ]
-  Struct fs -> Struct [ (l, f a) | (l, a) <- fs ]; Proj a l -> Proj (f a) l; ProjU a l -> ProjU (f a) l
+  Con c as -> Con c (map f as)
+  Proj a l -> Proj (f a) l; ProjU a l -> ProjU (f a) l
   Id a x y -> Id (f a) (f x) (f y); Refl a -> Refl (f a)
   IdJ a x c d y p -> IdJ (f a) (f x) (f c) (f d) (f y) (f p)
   LPi x a -> LPi x (f a); LLam x a -> LLam x (f a); LApp a l -> LApp (f a) l; CPi cs a -> CPi cs (f a)
-  Named i a -> Named i (f a)
   _ -> e
 
 -- the data types and splits in a record body, at any position.  Data
@@ -1563,9 +1536,9 @@ splitReport = concatMap unit
   subExps e = case e of
     App a b -> [a, b]; Lam _ b -> [b]; Pi _ a b -> [a, b]; Sig _ a b -> [a, b]
     Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]; Con _ as -> as
-    Rec t -> map snd t; Struct fs -> map snd fs; Proj a _ -> [a]; ProjU a _ -> [a]
+    Proj a _ -> [a]; ProjU a _ -> [a]
     Id a x y -> [a, x, y]; Refl a -> [a]; IdJ a x c d y p -> [a, x, c, d, y, p]
-    LPi _ a -> [a]; LLam _ a -> [a]; LApp a _ -> [a]; CPi _ a -> [a]; Named _ a -> [a]
+    LPi _ a -> [a]; LLam _ a -> [a]; LApp a _ -> [a]; CPi _ a -> [a]
     SegT _ fs -> [ a | (_, ATm a) <- fs ]
     _ -> []
 
@@ -1613,9 +1586,9 @@ shadowReport = units "" S.empty
     MApp a as -> mexp w sc a ++ concat [ expr w sc e | ATm e <- as ]
   subs e = case e of
     App a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]; Con _ as -> as
-    Rec t -> map snd t; Struct fs -> map snd fs; Proj a _ -> [a]; ProjU a _ -> [a]
+    Proj a _ -> [a]; ProjU a _ -> [a]
     Id a x y -> [a, x, y]; Refl a -> [a]; IdJ a x c d y p -> [a, x, c, d, y, p]
-    LApp a _ -> [a]; CPi _ a -> [a]; Named _ a -> [a]
+    LApp a _ -> [a]; CPi _ a -> [a]
     _ -> []
 
 ------------------------------------------------------------------------
@@ -1677,8 +1650,6 @@ binderE pre e0 = snd (go M.empty 0 e0)
     Pair a b     -> two Pair a b
     Fst a        -> one Fst a
     Snd a        -> one Snd a
-    Rec tel      -> let (n1, tel') = mapL (\k (l, a) -> let (k', a') = go ren k a in (k', (l, a'))) n tel in (n1, Rec tel')
-    Struct fs    -> let (n1, fs') = mapL (\k (l, a) -> let (k', a') = go ren k a in (k', (l, a'))) n fs in (n1, Struct fs')
     Proj a l     -> one (\a' -> Proj a' l) a
     ProjU a l    -> one (\a' -> ProjU a' l) a
     Mem m as l a -> one (\a' -> Mem m as l a') a      -- never in source
@@ -1690,7 +1661,6 @@ binderE pre e0 = snd (go M.empty 0 e0)
                         (n2, fs') = mapL (\k (x, a) -> let (k', a') = goA ren k a in (k', (x, a'))) n1 fs
                     in (n2, SegT m' fs')
     New m        -> let (n1, m') = goM ren n m in (n1, New m')
-    Named i a    -> one (Named i) a
     Hole         -> (n, Hole)
    where
     one f a = let (n1, a') = go ren n a in (n1, f a')
@@ -1816,7 +1786,7 @@ surveyRecords rus = do
     _ -> concatMap expUses (subE e)
   subE e = case e of
     App a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]; Con _ as -> as
-    Rec t -> map snd t; Struct fs -> map snd fs; Proj a _ -> [a]; ProjU a _ -> [a]
+    Proj a _ -> [a]; ProjU a _ -> [a]
     Id a x y -> [a, x, y]; Refl a -> [a]; IdJ a x c d y p -> [a, x, c, d, y, p]
-    LApp a _ -> [a]; CPi _ a -> [a]; Named _ a -> [a]
+    LApp a _ -> [a]; CPi _ a -> [a]
     _ -> []
