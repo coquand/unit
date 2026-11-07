@@ -19,7 +19,7 @@ import qualified Data.Set as Set
 
 subExps :: Exp -> [Exp]
 subExps e = case e of
-  App a b -> [a, b]; Lam _ b -> [b]; Pi _ a b -> [a, b]
+  App a b -> [a, b]; Lam _ _ b -> [b]; Pi _ a b -> [a, b]
   Let _ _ a v b -> [a, v, b]
   Con _ as -> as
   Sig _ a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]

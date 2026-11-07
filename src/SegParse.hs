@@ -723,13 +723,13 @@ piB bs b = foldr f b bs
 
 lamB :: [Bind] -> Exp -> Exp
 lamB bs b = foldr f b bs
- where f (BVar x _) e = Lam x e
+ where f (BVar x a) e = Lam x a e
        f (BLvl x) e   = LLam x e
        f (BCs _) e    = e
 
 lamBB :: [Bind] -> Body -> Body
 lamBB bs b = foldr f b bs
- where f (BVar x _) e = bLam x e
+ where f (BVar x a) e = bLam x a e
        f (BLvl x) e   = bLLam x e
        f (BCs _) e    = e
 
@@ -878,7 +878,7 @@ resE0 rs r = case spine r [] of
     RApp a b -> do a' <- resE rs a; b' <- resE rs b; Right (App a' b')
     RLApp a l -> do a' <- resE rs a; l' <- resLv rs l; Right (LApp a' l')
     RLam xs b -> do b' <- resE (bindS rs [ (x, SVar) | x <- xs ]) b
-                    Right (foldr Lam b' xs)
+                    Right (foldr (\x -> Lam x Hole) b' xs)
     RLLam xs b -> do b' <- resE (bindS rs [ (x, SLvl) | x <- xs ]) b
                      Right (foldr LLam b' xs)
     RLPi xs b -> do b' <- resE (bindS rs [ (x, SLvl) | x <- xs ]) b
@@ -979,7 +979,7 @@ resBodyB rs (RBody e us) = do
 resB :: RS -> R -> Rz Body
 resB rs r = case r of
   RLam xs b -> do b' <- resB (bindS rs [ (x, SVar) | x <- xs ]) b
-                  Right (foldr bLam b' xs)
+                  Right (foldr (\x -> bLam x Hole) b' xs)
   RLLam xs b -> do b' <- resB (bindS rs [ (x, SLvl) | x <- xs ]) b
                    Right (foldr bLLam b' xs)
   RLet us b -> do (us', rs') <- resLocal rs us
@@ -991,7 +991,7 @@ resB rs r = case r of
                     dupCheck (filter (/= "_") (xs ++ ys))
                     b' <- resBodyB (bindS rs [ (x, SVar) | x <- xs ++ ys ]) b
                     -- the positions are given by the filling pass, from the data type
-                    Right (c, xs, [ RecR (-1) (-1) [] y | y <- ys ], b')) bs
+                    Right (c, xs, [ RecR (-1) (-1) [] [] y | y <- ys ], b')) bs
     -- the number of indices: 0 unless a label (or no label) may be of an
     -- indexed family; then the filling pass decides (-1)
     let ls = [ c | (c, _, _, _) <- bs ]
@@ -1555,7 +1555,7 @@ shadowReport = units "" S.empty
   new w sc x = [ w ++ ": " ++ x ++ (if S.member ('%' : x) sc then " (a level)" else " (a variable)") | x /= "_", S.member x sc ]
   binds w sc xs k = concat [ new w sc x | x <- xs ] ++ k (foldr S.insert sc xs)
   expr w sc e = case e of
-    Lam x b      -> binds w sc [x] (\sc' -> expr w sc' b)
+    Lam x d b    -> expr w sc d ++ binds w sc [x] (\sc' -> expr w sc' b)
     Pi x a b     -> expr w sc a ++ binds w sc [x] (\sc' -> expr w sc' b)
     Sig x a b    -> expr w sc a ++ binds w sc [x] (\sc' -> expr w sc' b)
     LPi x a      -> binds w sc [x] (\sc' -> expr w (S.insert ('%' : x) sc') a)
@@ -1635,7 +1635,7 @@ binderB pre ren n b = case b of
                                       let (xs', ren', k1) = foldl (\(acc, r, kk) x -> let (x', r', kk') = binderBind pre r kk x in (acc ++ [x'], r', kk')) ([], ren, k) xs
                                           (ys', ren'', k1') = foldl (\(acc, r, kk) x -> let (x', r', kk') = binderBind pre r kk x in (acc ++ [x'], r', kk')) ([], ren', k1) (recNames rs)
                                           (k2, b'') = binderB pre ren'' k1' b'
-                                      in (k2, (c, xs', [ RecR j m es y | (RecR j m es _, y) <- zip rs ys' ], b''))) n bs
+                                      in (k2, (c, xs', [ RecR j m ds es y | (RecR j m ds es _, y) <- zip rs ys' ], b''))) n bs
                     in (n1, BSplit t sk bs')
 
 -- a data declaration: its parameters and indices are bound in order
@@ -1679,7 +1679,7 @@ binderGo pre = go
     Var x        -> (n, Var (M.findWithDefault x x ren))
     U l          -> (n, U (lv ren l))
     App a b      -> two App a b
-    Lam x b      -> let (x', ren', n1) = bind ren n x; (n2, b') = go ren' n1 b in (n2, Lam x' b')
+    Lam x d b    -> let (n1, d') = go ren n d; (x', ren', n2) = bind ren n1 x; (n3, b') = go ren' n2 b in (n3, Lam x' d' b')
     Pi x a b     -> let (n1, a') = go ren n a; (x', ren', n2) = bind ren n1 x; (n3, b') = go ren' n2 b in (n3, Pi x' a' b')
     Sig x a b    -> let (n1, a') = go ren n a; (x', ren', n2) = bind ren n1 x; (n3, b') = go ren' n2 b in (n3, Sig x' a' b')
     LPi x a      -> let (x', ren', n1) = bind ren n x; (n2, a') = go ren' n1 a in (n2, LPi x' a')
@@ -1815,7 +1815,7 @@ surveyRecords rus = do
     New m -> ("new", m) : through m
     Acc m _ -> modUses m
     Let _ _ a v b -> expUses a ++ expUses v ++ expUses b
-    Lam _ b -> expUses b
+    Lam _ d b -> expUses d ++ expUses b
     Pi _ a b -> expUses a ++ expUses b
     Sig _ a b -> expUses a ++ expUses b
     LPi _ a -> expUses a
