@@ -653,9 +653,9 @@ vproj :: Val -> Name -> Val
 vproj w@(VInst m r) l
   | isDerived m l        = memberAt m [ (h, lookupDyn r h) | h <- recordHeads m ] w l
   | otherwise            = lookupMember r l
--- EXPERIMENT (typed neutrals): the one rule.  A neutral whose type is a
--- record type: a derived member is computed from the parameters the type
--- gives, and a field (or head parameter) the type fixes is its value
+-- The one rule for records: on a neutral whose type is a record type, a
+-- derived member is computed from the parameters the type gives, and a
+-- field (or head parameter) the type fixes is its value
 vproj w l = fromMaybe (VProj w l) (projNe w l)
 
 -- the projection of a neutral, when its type computes it
@@ -1341,7 +1341,7 @@ eqLClos (LClos x _ r) (LClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
 conv' :: CC -> Val -> Val -> Bool
 conv' c u1 u2 = convS c u1 u2 || unitEta u1 u2
 
--- EXPERIMENT: eta for a record with no field left (none, or all fixed by
+-- eta for a record with no field left (none, or all fixed by
 -- the type): two neutrals of that record type are equal
 unitEta :: Val -> Val -> Bool
 unitEta u1 u2 = case (recordTypeOf u1, recordTypeOf u2) of
@@ -1363,11 +1363,11 @@ convS c u1 u2 = case (u1, u2) of
   (VPair a b, w)               -> conv c a (vfst w) && conv c b (vsnd w)
   (w, VPair a b)               -> conv c (vfst w) a && conv c (vsnd w) b
   -- two elements built by new: the same record, convertible parameters
-  -- and fields (new is the constructor; no eta)
+  -- and fields
   (VInst m1 r1, VInst m2 r2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && and [ conv c (lookupDyn r1 x) (lookupDyn r2 x) | x <- paramNames (modUnits m1) ]
-  -- EXPERIMENT: eta for records, as for pairs: an element built by new
-  -- against any other value, field by field (untyped: new names the record)
+  -- eta for records, as for pairs: an element built by new against any
+  -- other value, field by field
   (VInst m r, w) | SRecord _ <- modKind m -> and [ conv c (lookupDyn r x) (vproj w x) | x <- recordFieldNames m ]
   (w, VInst m r) | SRecord _ <- modKind m -> and [ conv c (vproj w x) (lookupDyn r x) | x <- recordFieldNames m ]
   (VSegT m1 f1, VSegT m2 f2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
