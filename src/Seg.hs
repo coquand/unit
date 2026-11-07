@@ -476,10 +476,25 @@ data Val
 
 -- A hole of the filling pass (a hidden argument not yet known), while it
 -- evaluates partly filled terms: the one value whose type is not known.
--- Its type is a hole too, and so is the type of any elimination of it
--- (typeOfNe), so it never has a record type.
+-- Its type is a hole too, so it never has a record type.
 holeVal :: Val
 holeVal = VConst "_unfilled" holeVal
+
+-- The one exception when evaluation asks for a part of a type (the domain
+-- or codomain of a product): a type that is a placeholder of the filling
+-- pass (a hole, a hidden argument not yet solved, or an application of
+-- one).  Then the part asked for is a hole too.  Any other type is an
+-- internal error.
+ofHole :: String -> Val -> Val
+ofHole fn t
+  | isPlaceholder (headOf t) = holeVal
+  | otherwise = error ("internal: " ++ fn ++ ": the type  " ++ prettyAt 8 (rb False Set.empty 900 t)
+                       ++ "  does not have the form its use needs")
+ where
+  headOf v = case v of { VApp f _ -> headOf f; VLApp f _ -> headOf f; _ -> v }
+  isPlaceholder v = case v of
+    VConst n _ -> n == "_unfilled" || take 1 n == "?"
+    _          -> False
 
 ------------------------------------------------------------------------
 -- 3.  Evaluation (lock-agnostic)
@@ -562,18 +577,17 @@ evalBody r b t = case b of
   BSplit s k bs   -> VSplit s (dynVals r) k [] bs r t
 
 -- the domain of a product type, and its codomain at an argument (or at a
--- level, for a level product).  Only a hole is not a product here: then
--- they are holes too
+-- level, for a level product)
 domOf :: Val -> Val
 domOf t = case whnfType t of
   VPi a _ -> a
-  _       -> holeVal
+  t'      -> ofHole "domOf" t'
 
 codAt :: Val -> Either Lvl Val -> Val
 codAt t a = case (whnfType t, a) of
   (VPi _ f, Right v) -> capp f v
   (VLPi f, Left l)   -> lcapp f l
-  _                  -> holeVal
+  (t', _)            -> ofHole "codAt" t'
 
 -- a data type o in an environment binding its first k binders: the
 -- remaining binders, then the sum
@@ -667,49 +681,42 @@ projNe w l = case recordTypeOf w of
   _                                  -> Nothing
  where notLvl v = case v of { VLvl _ -> False; _ -> True }
 
--- the record type of a neutral value, when its type is known to be one
+-- the record type of a neutral value, when its type is one
 recordTypeOf :: Val -> Maybe (Mod, [(Name, Val)])
-recordTypeOf w
-  | isNeutral w, VSegT md fs <- whnfType (typeOfNe w) = Just (md, fs)
-  | otherwise = Nothing
+recordTypeOf w = case fmap whnfType (typeOfNe w) of
+  Just (VSegT md fs) -> Just (md, fs)
+  _                  -> Nothing
 
--- a neutral value: eliminations of a variable, a declared variable, an
--- access to a definition or a split
-isNeutral :: Val -> Bool
-isNeutral v = case v of
-  VGen{}         -> True
-  VConst{}       -> True
-  VRef{}         -> True
-  VSplit{}       -> True
-  VApp f _       -> isNeutral f
-  VLApp f _      -> isNeutral f
-  VFst p         -> isNeutral p
-  VSnd p         -> isNeutral p
-  VProj p _      -> isNeutral p
-  VIdJ _ _ _ _ _ p -> isNeutral p
-  _              -> False
-
--- The type of a neutral value, computed from the type its head carries.
--- Only the outer form of each type is computed, and only when asked.
-typeOfNe :: Val -> Val
+-- The type of a neutral value (an elimination of a variable, a declared
+-- variable, an access to a definition or a split), computed from the type
+-- its head carries; only the outer form of each type is computed, and only
+-- when asked.  Nothing for a value that is not neutral, and for a neutral
+-- that is not well typed: one whose head's type does not have the form
+-- the elimination needs.  Such a neutral arises only in a comparison of
+-- values of different types (conversion is untyped: eta for pairs takes
+-- the projections of a value of another type, before the comparison
+-- fails) and around a hole of the filling pass.
+typeOfNe :: Val -> Maybe Val
 typeOfNe v = case v of
-  VGen _ t        -> t
-  VConst _ t      -> t
-  VRef _ _ t      -> t
-  VSplit{}        -> splitType v
-  VApp f a        -> codAt (typeOfNe f) (Right a)
-  VLApp f l       -> codAt (typeOfNe f) (Left l)
-  VFst p          -> case whnfType (typeOfNe p) of
-                       VSig a _ -> a
-                       _        -> holeVal
-  VSnd p          -> case whnfType (typeOfNe p) of
-                       VSig _ f -> capp f (vfst p)
-                       _        -> holeVal
-  VProj p l       -> case whnfType (typeOfNe p) of
-                       VSegT md fs -> fromMaybe holeVal (fieldType md fs p l)
-                       _           -> holeVal
-  VIdJ _ _ c _ y p -> app (app c y) p
-  _               -> error "typeOfNe: not a neutral value"
+  VGen _ t        -> Just t
+  VConst _ t      -> Just t
+  VRef _ _ t      -> Just t
+  VSplit{}        -> Just (splitType v)
+  VApp f a        -> typeOfNe f >>= \t -> case whnfType t of
+                       VPi _ g -> Just (capp g a)
+                       _       -> Nothing
+  VLApp f l       -> typeOfNe f >>= \t -> case whnfType t of
+                       VLPi g -> Just (lcapp g l)
+                       _      -> Nothing
+  VFst p          -> typeOfNe p >>= \t -> case whnfType t of
+                       VSig a _ -> Just a
+                       _        -> Nothing
+  VSnd p          -> typeOfNe p >>= \t -> case whnfType t of
+                       VSig _ g -> Just (capp g (vfst p))
+                       _        -> Nothing
+  VProj p l       -> recordTypeOf p >>= \(md, fs) -> fieldType md fs p l
+  VIdJ _ _ c _ y p -> Just (app (app c y) p)
+  _               -> Nothing
 
 -- the type of the member l of an element t of the record type R[fs]: a
 -- derived member at t (the fixed fields bound to their values), a field
@@ -2775,15 +2782,17 @@ fillLet cx i x a v = do
   Right (a', v', enterLet cx i x a' v')
 
 -- The domain of a lambda, when not written: the domain it is checked
--- against, read back (lazily: it is computed only when a type is asked
--- of the bound variable).  Where it cannot be written in scope it stays a
--- hole: the variable's type is then not known (a hole).  A written domain
--- is the parameter's type of the definition (the same binder as in its
--- type), so a domain needs no check.
+-- against, read back.  It is read back lazily, only when a type is asked
+-- of the bound variable (reading back every domain at once costs about a
+-- tenth of the checking time); so a domain that cannot be written in scope
+-- is reported when it is needed, as an error of the declaration being
+-- checked then.  A written domain is the parameter's type of the
+-- definition (the same binder as in its type), so a domain needs no check.
 fillDomain :: Cx -> Exp -> Val -> Exp
 fillDomain cx d a
   | not (hasHole d) = d
-  | otherwise = fromMaybe Hole (quote cx a)
+  | otherwise = fromMaybe (error ("the domain of a lambda cannot be written here: " ++ quoteBlame cx a))
+                          (quote cx a)
 
 -- fill in checking mode
 fillC :: Cx -> Exp -> Val -> Res Exp
@@ -3562,8 +3571,10 @@ quoteWith sc v0 = case v0 of
     _ -> App <$> q f <*> q a
   VPi a f -> binder a (\x b -> Pi x <$> q a <*> b) f
   VSig a f -> binder a (\x b -> Sig x <$> q a <*> b) f
-  -- (the domain lazily, a hole where it cannot be written: fillDomain)
-  VLam a f -> binder a (\x b -> Lam x (fromMaybe Hole (q a)) <$> b) f
+  -- (the domain lazily, an error when needed if it cannot be written: as
+  -- in fillDomain)
+  VLam a f -> binder a (\x b -> Lam x (fromMaybe (error "the domain of a lambda cannot be written here")
+                                                 (q a)) <$> b) f
   VId a x y -> Id <$> q a <*> q x <*> q y
   VRefl a -> Refl <$> q a
   VCon c as -> Con c <$> mapM q as
