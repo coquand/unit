@@ -1343,6 +1343,9 @@ resolveProgramWith term rus = do
   case splitReport us' of
     [] -> Right ()
     bad -> Left (unlines ("a split or a data type must be the body of a definition of a segment, not of a let or where (after its lambdas and the branches of its splits):" : map ("  in " ++) (take 10 bad)))
+  case recordReport us' of
+    [] -> Right ()
+    bad -> Left (unlines ("a record contains no data type, no split and no record (as no module, level or constraint):" : map ("  in " ++) (take 10 bad)))
   if not term then Right us' else do
     case termErrors us' us' of
       [] -> Right ()
@@ -1354,6 +1357,7 @@ resolveProgramWith term rus = do
 failsTerm :: [Unit] -> Unit -> Unit
 failsTerm whole u = case u of
   UDir (DFails vs) -> case [ "#placement: a split or a data type in " ++ m | m <- splitReport vs ]
+                           ++ [ "#placement: in a record: " ++ m | m <- recordReport vs ]
                            ++ [ "#termination: " ++ m | m <- termErrors whole vs ] of
     [] -> UDir (DFails (map (failsTerm whole) vs))
     (m : _) -> UDir (DFails [UDir (DNormal (Var m))])
@@ -1501,6 +1505,21 @@ mapExp f e = case e of
   LPi x a -> LPi x (f a); LLam x a -> LLam x (f a); LApp a l -> LApp (f a) l; CPi cs a -> CPi cs (f a)
   Named i a -> Named i (f a)
   _ -> e
+
+-- the data types and splits in a record body, at any position.  Data
+-- types, records and splits are compared by name; a record body holds
+-- none of them (nested records are rejected by the parser).
+recordReport :: [Unit] -> [String]
+recordReport = concatMap unit
+ where
+  unit u = case u of
+    UMod _ _ (SRecord _) us -> concatMap inRec us
+    UMod _ _ _ us -> concatMap unit us
+    _ -> []
+  inRec u = case u of
+    UDef i _ a b -> splitReport [UPar i "" a, UPar i "" b]
+    UPar i _ a   -> splitReport [UPar i "" a]
+    _            -> []
 
 -- the splits and sums that are not at a definition position
 splitReport :: [Unit] -> [String]
