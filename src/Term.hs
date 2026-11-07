@@ -20,10 +20,8 @@ import qualified Data.Set as Set
 subExps :: Exp -> [Exp]
 subExps e = case e of
   App a b -> [a, b]; Lam _ b -> [b]; Pi _ a b -> [a, b]
-  Let us b -> concat [ [a, t] | UDef _ _ a t <- us ] ++ [b]
-  Sum _ ix cs -> map snd ix ++ [ a | (_, tel, es) <- cs, a <- map snd tel ++ es ]
+  Let _ _ a v b -> [a, v, b]
   Con _ as -> as
-  Split _ _ bs -> [ b | (_, (_, _, b)) <- bs ]
   Sig _ a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]
   Proj a _ -> [a]; ProjU a _ -> [a]
   Id a x y -> [a, x, y]; Refl a -> [a]; IdJ a x c d y p -> [a, x, c, d, y, p]
@@ -45,38 +43,16 @@ occurs ids e = case e of
   Var x -> Set.member x ids
   _     -> any (occurs ids) (subExps e)
 
--- the definitions of a list of units, by groups (consecutive definitions),
--- everywhere: in modules, records, lets, instances and directives
+-- the definitions of a list of units, by groups (consecutive
+-- definitions), in the segments: a data type is a declaration of a segment
+-- (never in a let, an instance argument or a directive); a #fails block is
+-- not entered (failsTerm: it fails as a whole)
 groups :: [Unit] -> [[Unit]]
 groups [] = []
 groups us@(u : rest) = case u of
-  UDef{} -> let (g, rest') = span isGroupUnit us
-            in g : concatMap inUnit g ++ groups rest'
-  _ -> inUnit u ++ groups rest
- where
-  inUnit v = case v of
-    UDef _ _ a b -> inExp a ++ inExp b
-    UPar _ _ a -> inExp a
-    UMod _ _ _ vs -> groups vs
-    -- the arguments of an instance (module N = M[..], open M[..]) and the
-    -- terms of directives may contain lets with data types; a #fails
-    -- block is not entered (failsTerm: it fails as a whole)
-    UInst _ _ m -> concatMap inExp (mexps m)
-    UDir (DNormal e) -> inExp e
-    UDir (DType e) -> inExp e
-    UDir (DConv a b) -> inExp a ++ inExp b
-    _ -> []
-  inExp e = case e of
-    Let vs b -> groups vs ++ inExp b
-    _ -> concatMap inExp (subExps e)
-
--- the body of a data definition: its number of indices and constructors
-dataBody :: Exp -> Maybe (Int, [(Name, Tel, [Exp])])
-dataBody e = case e of
-  Lam _ b -> dataBody b
-  LLam _ b -> dataBody b
-  Sum _ ix cs -> Just (length ix, cs)
-  _ -> Nothing
+  _ | isGroupUnit u -> let (g, rest') = span isGroupUnit us in g : groups rest'
+  UMod _ _ _ vs -> groups vs ++ groups rest
+  _ -> groups rest
 
 ------------------------------------------------------------------------
 -- Positivity
@@ -87,22 +63,11 @@ positivityReport us =
   | g <- groups us
   , let ids = dataIds g
   , not (Set.null ids)
-  , UDef i x _ b <- g, Just (k, cs) <- [dataBody b]
-  , let ps = dataParams k b
+  , UData i x _ ps _ ix cs <- g
+  , let k = length ix
   , (c, tel, es) <- cs
   , (f, msg) <- [ (Just f, msg) | (f, t) <- tel, Just msg <- [fieldError i ps k t] ]
                 ++ [ (Nothing, shortName i ++ " occurs in an index") | any (occurs (Set.singleton i)) es ] ]
-
--- the parameters of a data definition (its lambdas, but those of its k
--- indices): terms and levels
-dataParams :: Int -> Exp -> [Either Name Name]
-dataParams k e0 = take (length all' - k) all'
- where
-  all' = go e0
-  go e = case e of
-    Lam x b -> Left x : go b
-    LLam x b -> Right x : go b
-    _ -> []
 
 -- PRIMREC.md 2: a field mentions its data type d only as  d ps  or
 -- (ys : Psi) -> d ps , Psi not mentioning d, ps exactly the parameters;
@@ -135,11 +100,10 @@ fieldError d ps k t
     _ -> (e, acc)
 
 dataIds :: [Unit] -> Set.Set Id
-dataIds g = Set.fromList [ i | UDef i _ _ b <- g, Just _ <- [dataBody b] ]
+dataIds g = Set.fromList [ i | UData i _ _ _ _ _ _ <- g ]
 
 ------------------------------------------------------------------------
 -- Enforcement: the errors of the units  part  of the program  whole
 
 termErrors :: [Unit] -> [Unit] -> [String]
 termErrors _ part = positivityReport part
-
