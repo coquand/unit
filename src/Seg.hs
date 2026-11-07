@@ -1469,11 +1469,8 @@ rb full s k v0 = case (if full then whnf s v0 else v0) of
   -- a variable bound to itself (a parameter of the whole file): not shown
   ambient x v = case v of
     VLvl l    -> latoms l == [(x, 0)]
-    -- (a declared variable of record type is shown, as when it was a
-    -- separate form of value)
-    VConstT c [] t -> c == x && not (isRecordType t)
+    VConst c [] -> c == x
     _         -> False
-  isRecordType t = case recordTypeOf (VConstT "" [] t) of { Just _ -> True; Nothing -> False }
   rbTel _ [] _ = []
   rbTel j ((l, a) : tel) r = (l, rb full s j (eval r a)) : rbTel (j+1) tel (EVar r l (VGen j))
 
@@ -2832,16 +2829,7 @@ fillI cx e
       ProjU a l -> do
         (a', ta) <- fillI cx a
         case force cx ta of
-          -- a field (or head parameter) the type fixes: its value (§4)
-          -- (its type is the field's type, from the projection: the value
-          -- itself may not be inferable, e.g. a constructor)
-          VSegT _ fs | Just v <- lookup l fs, notLvl v, Just e' <- quote cx v -> do
-            t <- inferD cx (Proj a' l)
-            -- the term written back must have the field's type (it is
-            -- found by comparing values, which does not see types)
-            case check cx e' t of
-              Right () -> Right (e', t)
-              Left _   -> Right (Proj a' l, t)
+          -- (a field the type fixes: the projection computes its value)
           VSegT md fs | isDerived md l ->
             case quote cx (VSegT md []) of
               Just (SegT me _) -> do
@@ -2891,7 +2879,6 @@ fillI cx e
                      ++ "\n  (give a type, or the arguments as {e})")
  where
   retype r = do e' <- r; t <- inferD cx e'; Right (e', t)
-  notLvl v = case v of { VLvl _ -> False; _ -> True }
 
 fillArg :: Cx -> Arg -> Res Arg
 fillArg cx (ATm a)
