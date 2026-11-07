@@ -1322,7 +1322,17 @@ eqLClos :: LClos -> LClos -> Bool
 eqLClos (LClos x _ r) (LClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
 
 conv' :: CC -> Val -> Val -> Bool
-conv' c u1 u2 = case (u1, u2) of
+conv' c u1 u2 = convS c u1 u2 || unitEta u1 u2
+
+-- EXPERIMENT: eta for a record with no field left (none, or all fixed by
+-- the type): two neutrals of that record type are equal
+unitEta :: Val -> Val -> Bool
+unitEta u1 u2 = case (recordTypeOf u1, recordTypeOf u2) of
+  (Just (m1, f1), Just (m2, _)) -> modId m1 == modId m2 && all (`elem` map fst f1) (recordFieldNames m1)
+  _ -> False
+
+convS :: CC -> Val -> Val -> Bool
+convS c u1 u2 = case (u1, u2) of
   (VRef u1 r1, VRef u2 r2) -> defId u1 == defId u2 && convs c (dynVals r1) (dynVals r2)
   (VU l, VU m)                 -> eqLvl th l m
   (VLvl l, VLvl m)             -> eqLvl th l m
