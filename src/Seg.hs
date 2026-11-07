@@ -614,6 +614,8 @@ vsnd w                 = VSnd w
 vproj :: Val -> Name -> Val
 vproj w@(VVar _ md fs) l
   | isDerived md l       = memberAt md fs w l
+  -- EXPERIMENT (record eta): a field the variable's type fixes is its value
+  | l `elem` recordFieldNames md, Just v <- lookup l fs = v
   | otherwise            = VProj w l
 vproj w@(VInst m r) l
   | isDerived m l        = memberAt m [ (h, lookupDyn r h) | h <- recordHeads m ] w l
@@ -1240,6 +1242,10 @@ conv' c u1 u2 = case (u1, u2) of
   -- and fields (new is the constructor; no eta)
   (VInst m1 r1, VInst m2 r2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && and [ conv c (lookupDyn r1 x) (lookupDyn r2 x) | x <- paramNames (modUnits m1) ]
+  -- EXPERIMENT: eta for records, as for pairs: an element built by new
+  -- against any other value, field by field (untyped: new names the record)
+  (VInst m r, w) | SRecord _ <- modKind m -> and [ conv c (lookupDyn r x) (vproj w x) | x <- recordFieldNames m ]
+  (w, VInst m r) | SRecord _ <- modKind m -> and [ conv c (vproj w x) (lookupDyn r x) | x <- recordFieldNames m ]
   (VSegT m1 f1, VSegT m2 f2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && map fst f1 == map fst f2
                                   && convs c (map snd f1) (map snd f2)
