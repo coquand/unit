@@ -25,14 +25,13 @@ subExps e = case e of
   Con _ as -> as
   Split _ _ bs -> [ b | (_, (_, _, b)) <- bs ]
   Sig _ a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]
-  Rec t -> map snd t; Struct fs -> map snd fs; Proj a _ -> [a]; ProjU a _ -> [a]
+  Proj a _ -> [a]; ProjU a _ -> [a]
   Id a x y -> [a, x, y]; Refl a -> [a]; IdJ a x c d y p -> [a, x, c, d, y, p]
   LPi _ a -> [a]; LLam _ a -> [a]; LApp a _ -> [a]; CPi _ a -> [a]
   Acc m _ -> mexps m
   SegT m fs -> mexps m ++ [ a | (_, ATm a) <- fs ]
   New m -> mexps m
   Mem m as _ a -> mexps m ++ [ x | ATm x <- as ] ++ [a]
-  Named _ a -> [a]
   _ -> []
 
 mexps :: MExp -> [Exp]

@@ -144,8 +144,6 @@ data Exp
   | Pair Exp Exp
   | Fst Exp
   | Snd Exp
-  | Rec Tel                                  -- sig { l : A ; .. }
-  | Struct [(Name, Exp)]                     -- struct { l = e ; .. }
   | Proj Exp Name                            -- e.l
   | Id Exp Exp Exp
   | Refl Exp
@@ -165,8 +163,6 @@ data Exp
                                              -- otherwise a projection (below)
   | Mem MExp [Arg] Name Exp                  -- R[ps].d at the element e: the
                                              -- derived member d (filling pass)
-  | Named Id Exp                             -- a sig occurrence with its
-                                             -- internal name
   | Hole                                     -- a hidden argument, filled
                                              -- before the core sees the term
   | Unfilled                                 -- a hole whose filling failed
@@ -266,7 +262,6 @@ unfilledHoles e = case e of
   Con c as -> Con c (map go as)
   Split i k bs -> Split i k [ (c, (xs, [ RecR j n (map go es) y | RecR j n es y <- rs ], go b)) | (c, (xs, rs, b)) <- bs ]
   Sig x a b -> Sig x (go a) (go b); Pair a b -> Pair (go a) (go b); Fst a -> Fst (go a); Snd a -> Snd (go a)
-  Rec t -> Rec [ (l, go a) | (l, a) <- t ]; Struct fs -> Struct [ (l, go a) | (l, a) <- fs ]
   Proj a l -> Proj (go a) l; ProjU a l -> ProjU (go a) l
   Id a x y -> Id (go a) (go x) (go y); Refl a -> Refl (go a)
   IdJ a x c d y p -> IdJ (go a) (go x) (go c) (go d) (go y) (go p)
@@ -275,7 +270,6 @@ unfilledHoles e = case e of
   SegT m fs -> SegT (unfilledM m) [ (x, arg a) | (x, a) <- fs ]
   New m -> New (unfilledM m)
   Mem m as x a -> Mem (unfilledM m) (map arg as) x (go a)
-  Named i a -> Named i (go a)
   _ -> e
  where
   go = unfilledHoles
@@ -300,7 +294,6 @@ renameVars ren e = case e of
   Con c as -> Con c (map go as)
   Split i k bs -> Split i k [ (c, (xs, [ RecR j n (map go es) y | RecR j n es y <- rs ], go b)) | (c, (xs, rs, b)) <- bs ]
   Sig x a b -> Sig x (go a) (go b); Pair a b -> Pair (go a) (go b); Fst a -> Fst (go a); Snd a -> Snd (go a)
-  Rec t -> Rec [ (l, go a) | (l, a) <- t ]; Struct fs -> Struct [ (l, go a) | (l, a) <- fs ]
   Proj a l -> Proj (go a) l; ProjU a l -> ProjU (go a) l
   Id a x y -> Id (go a) (go x) (go y); Refl a -> Refl (go a)
   IdJ a x c d y p -> IdJ (go a) (go x) (go c) (go d) (go y) (go p)
@@ -309,7 +302,6 @@ renameVars ren e = case e of
   SegT m fs -> SegT (mexp m) [ (x, arg a) | (x, a) <- fs ]
   New m -> New (mexp m)
   Mem m as x a -> Mem (mexp m) (map arg as) x (go a)
-  Named i a -> Named i (go a)
   _ -> e
  where
   go = renameVars ren
@@ -344,10 +336,8 @@ data LClos = LClos Name Exp Env
 
 data Elim = EApp Val | EFst | ESnd | EProj Name | ELApp Lvl
 
--- Sigma and record types are compared BY NAME (Half, Cederquist 7.1;
--- Gofer's is_intensional): the internal name of the occurrence, the names
--- and the values of the variables it depends on.  Never by their fields.
-type SName = Maybe (Id, [Val])
+-- Sigma types are compared structurally; declared records (VSegT, VInst)
+-- by their declaration and dynamic part.
 
 data Val
   = VU Lvl
@@ -378,13 +368,10 @@ data Val
   | VSplit Id [Val] Int [Val] [(Name, ([Name], [RecR], Exp))] Env
                                             -- the number k of indices it absorbs
                                             -- and those absorbed so far
-  | VSig SName Val Clos                     -- SName: the internal name
-                                            -- of its occurrence, if any
+  | VSig Val Clos
   | VPair Val Val
   | VFst Val
   | VSnd Val
-  | VRec SName Tel Env
-  | VStruct [(Name, Val)]
   | VProj Val Name
   | VId Val Val Val
   | VRefl Val
@@ -425,18 +412,10 @@ eval r e = case e of
   Sum t ix cs -> VSum t (dynVals r) ix cs r
   Con c as     -> VCon c (map (eval r) as)
   Split t k bs -> VSplit t (dynVals r) k [] bs r
-  Sig x a b    -> VSig Nothing (eval r a) (Clos x b r)
+  Sig x a b    -> VSig (eval r a) (Clos x b r)
   Pair a b     -> VPair (eval r a) (eval r b)
   Fst a        -> vfst (eval r a)
   Snd a        -> vsnd (eval r a)
-  Rec tel      -> VRec Nothing tel r
-  Named i e    -> let d  = dynVals r
-                      nm = Just (i, d)
-                  in case eval r e of
-                       VSig _ a f  -> VSig nm a f
-                       VRec _ t r' -> VRec nm t r'
-                       v           -> v
-  Struct fs    -> VStruct [ (l, eval r a) | (l, a) <- fs ]
   Proj a l     -> vproj (eval r a) l
   Id a x y     -> VId (eval r a) (eval r x) (eval r y)
   Refl a       -> VRefl (eval r a)
@@ -524,7 +503,6 @@ vsnd (VPair _ v)       = v
 vsnd w                 = VSnd w
 
 vproj :: Val -> Name -> Val
-vproj (VStruct fs) l     = fromMaybe (error ("no field " ++ l)) (lookup l fs)
 vproj w@(VVar _ md fs) l
   | isDerived md l       = memberAt md fs w l
   | otherwise            = VProj w l
@@ -542,11 +520,10 @@ vidj _ _ _ d _ (VRefl _) = d
 vidj a x c d y p         = VIdJ a x c d y p
 
 -- the fields of a constructed record (not its head parameters, which its
--- type gives), or the fields of a struct
+-- type gives)
 recordFields :: Val -> Maybe [Val]
 recordFields v = case v of
   VInst m r   -> Just [ lookupDyn r p | p <- recordFieldNames m ]
-  VStruct fs  -> Just (map snd fs)
   _           -> Nothing
 
 bindAll :: Env -> [Name] -> [Val] -> Env
@@ -975,7 +952,6 @@ whnfC c u v = case v of
     VPair _ b -> whnfC c u b
     p'        -> vsnd p'
   VProj p l -> case whnfC c u p of
-    VStruct fs -> whnfC c u (fromMaybe (error ("no field " ++ l)) (lookup l fs))
     i@(VInst _ _) -> whnfC c u (vproj i l)
     w@(VVar{}) -> case vproj w l of
                     VProj{} -> VProj w l
@@ -1073,16 +1049,13 @@ eqVal u v = case (u, v) of
   (VApp a b, VApp a' b')           -> eqVal a a' && eqVal b b'
   (VLam f, VLam g)                 -> eqClos f g
   (VPi a f, VPi b g)               -> eqVal a b && eqClos f g
-  (VSig (Just (i, d)) _ _, VSig (Just (j, e)) _ _) -> i == j && eqVals d e
-  (VSig _ a f, VSig _ b g)         -> eqVal a b && eqClos f g
-  (VRec (Just (i, d)) _ _, VRec (Just (j, e)) _ _) -> i == j && eqVals d e
+  (VSig a f, VSig b g)         -> eqVal a b && eqClos f g
   (VCon c as, VCon d bs)           -> c == d && eqVals as bs
   (VSum t d _ _ _, VSum t' d' _ _ _) -> t == t' && eqVals d d'
   (VSplit t d _ is _ _, VSplit t' d' _ is' _ _) -> t == t' && eqVals d d' && eqVals is is'
   (VPair a b, VPair a' b')         -> eqVal a a' && eqVal b b'
   (VFst a, VFst b)                 -> eqVal a b
   (VSnd a, VSnd b)                 -> eqVal a b
-  (VStruct fs, VStruct gs)         -> map fst fs == map fst gs && eqVals (map snd fs) (map snd gs)
   (VProj a l, VProj b m)           -> l == m && eqVal a b
   (VId a x y, VId b x' y')         -> eqVal a b && eqVal x x' && eqVal y y'
   (VRefl a, VRefl b)               -> eqVal a b
@@ -1155,16 +1128,8 @@ conv' c u1 u2 = case (u1, u2) of
   (VSegT m1 f1, VSegT m2 f2)   -> modId m1 == modId m2 && convs c (modDyn m1) (modDyn m2)
                                   && map fst f1 == map fst f2
                                   && convs c (map snd f1) (map snd f2)
-  (VStruct fs, VStruct gs)     -> map fst fs == map fst gs
-                                  && and (zipWith (conv c) (map snd fs) (map snd gs))
   (VPi a f, VPi b g)           -> conv c a b && conv c' (capp f x) (capp g x)
-  -- by name: the same occurrence and the same values of its dependencies
-  -- records are nominal: the same occurrence with equal dynamic parts
-  (VSig (Just (i, d1)) _ _, VSig (Just (j, d2)) _ _) -> i == j && convs c d1 d2
-  (VRec (Just (i, d1)) _ _, VRec (Just (j, d2)) _ _) -> i == j && convs c d1 d2
-  -- an unnamed one (the inner part of a Sigma chain): structurally
-  (VSig _ a f, VSig _ b g)     -> conv c a b && conv c' (capp f x) (capp g x)
-  (VRec _ t1 r1, VRec _ t2 r2) -> convTel c t1 r1 t2 r2
+  (VSig a f, VSig b g)     -> conv c a b && conv c' (capp f x) (capp g x)
   (VLPi f, VLPi g)             -> conv cl (lcapp f lx) (lcapp g lx)
   (VCPi cs a, VCPi ds b)       -> equivCs th cs ds && conv (withCs cs) a b
   (VCPi cs a, w)               -> all (validCstr th) cs && conv c a w
@@ -1248,12 +1213,10 @@ rb full s k v0 = case (if full then whnf s v0 else v0) of
   VCon c vs     -> Con c (map go vs)
   VSum t _ _ _ _ -> Var (shortId t)
   VSplit t _ _ is _ _ -> foldl App (Var (shortId t)) (map go is)
-  VSig _ a f    -> Sig (nm k) (go a) (rb full s (k+1) (capp f (VGen k)))
+  VSig a f    -> Sig (nm k) (go a) (rb full s (k+1) (capp f (VGen k)))
   VPair a b     -> Pair (go a) (go b)
   VFst a        -> Fst (go a)
   VSnd a        -> Snd (go a)
-  VRec _ tel r  -> Rec (rbTel k tel r)
-  VStruct fs    -> Struct [ (l, go a) | (l, a) <- fs ]
   VProj a l     -> Proj (go a) l
   VId a x y     -> Id (go a) (go x) (go y)
   VRefl a       -> Refl (go a)
@@ -1358,8 +1321,6 @@ prettyAt lim = pr 0 lim
   go d n (Fst a)     = paren (d > 11) (pr 11 (n-1) a ++ ".1")
   go d n (Snd a)     = paren (d > 11) (pr 11 (n-1) a ++ ".2")
   go d n (Proj a l)  = paren (d > 11) (pr 11 (n-1) a ++ "." ++ l)
-  go _ n (Rec tel)   = "sig { " ++ semiSep [ l ++ " : " ++ pr 0 (n-1) a | (l, a) <- tel ] ++ " }"
-  go _ n (Struct fs) = "struct { " ++ semiSep [ l ++ " = " ++ pr 0 (n-1) a | (l, a) <- fs ] ++ " }"
   go d n (Con c as)
     | null as        = c
     | otherwise      = paren (d > 10) (c ++ concatMap ((' ' :) . pr 11 (n-1)) as)
@@ -1372,7 +1333,6 @@ prettyAt lim = pr 0 lim
   go _ _ (SegT m fs)  = pm m ++ "[" ++ commaSep [ x ++ " := " ++ parg a | (x, a) <- fs ] ++ "]"
   go d _ (New m)      = paren (d > 10) ("new " ++ pm m)
   go _ _ Hole         = "_"
-  go d n (Named _ a) = pr d n a
   go d n (ProjU a l)  = paren (d > 11) (pr 11 (n-1) a ++ "." ++ l)
   go d n (Mem _ _ l a) = paren (d > 11) (pr 11 (n-1) a ++ "." ++ l)
   paren True  t = "(" ++ t ++ ")"
@@ -1512,7 +1472,6 @@ checkType cx e = case e of
   CPi cs b -> do vs <- mapM (checkCs cx) cs
                  checkType (addCs cx vs) b
   SegT m fs -> do _ <- checkSegT cx m fs; ok
-  Named _ e' -> checkType cx e'
   Let us b -> do cx' <- checkLocal cx us
                  checkType cx' b
   _ -> do t <- inferD cx e
@@ -1572,10 +1531,8 @@ checkW cx e t0 = case (e, t) of
                          check (fst (extVar cx x (ev cx a))) b t
   (Sig x a b, VU _) -> do check cx a t
                           check (fst (extVar cx x (ev cx a))) b t
-  (Rec tel, VU _) -> checkTelIn cx tel t
-  (Pair a b, VSig _ ta f) -> do check cx a ta
-                                check cx b (capp f (ev cx a))
-  (Struct fs, VRec _ tel r) -> checkStruct cx fs tel r
+  (Pair a b, VSig ta f) -> do check cx a ta
+                              check cx b (capp f (ev cx a))
   (Refl a, VId ta x y) -> do
     check cx a ta
     let va = ev cx a
@@ -1609,7 +1566,6 @@ checkW cx e t0 = case (e, t) of
                   ++ showV cx d ++ " are " ++ unwords (recordFieldNames md)
                   ++ " (its parameters are given by the type)")
       _ -> failWith ("split on a non-sum type " ++ showV cx d)
-  (Named _ e', _) -> check cx e' t0
   (Let us b, _) -> do cx' <- checkLocal cx us
                       check cx' b t
   _ -> checkInfer cx e t0
@@ -1677,8 +1633,6 @@ infer cx e = case e of
   Sig x a b -> do la <- inferSort cx a
                   lb <- inferSort (fst (extVar cx x (ev cx a))) b
                   Right (VU (lmax la lb))
-  Rec tel -> do ls <- inferTel cx tel
-                Right (VU (foldr lmax lzero ls))
   Id a x y -> do
     l <- inferSort cx a
     let va = ev cx a
@@ -1703,17 +1657,16 @@ infer cx e = case e of
   Fst a -> do
     t <- inferD cx a
     case force cx t of
-      VSig _ ta _ -> Right ta
+      VSig ta _ -> Right ta
       t' -> failWith ("not a pair: " ++ pretty a ++ " : " ++ showV cx t')
   Snd a -> do
     t <- inferD cx a
     case force cx t of
-      VSig _ _ cl -> Right (capp cl (vfst (ev cx a)))
+      VSig _ cl -> Right (capp cl (vfst (ev cx a)))
       t' -> failWith ("not a pair: " ++ pretty a ++ " : " ++ showV cx t')
   Proj a l -> do
     t <- inferD cx a
     case force cx t of
-      VRec _ tel r -> fieldType cx (ev cx a) tel r l
       VSegT md fs | isDerived md l, Just (UDef _ _ ty _) <- memberUnit (modUnits md) l ->
         Right (eval (selfEnvFixed md fs fs (ev cx a)) ty)
       VSegT md fs -> do
@@ -1727,7 +1680,6 @@ infer cx e = case e of
           Just (UPar _ _ ty)     -> Right (eval r ty)
           _ -> failWith ("no member " ++ l ++ " in " ++ showV cx t)
       t' -> failWith ("not a record: " ++ pretty a ++ " : " ++ showV cx t')
-  Named _ e' -> infer cx e'
   Mem m as l a -> do
     -- R[ps].d at a: R[ps] must be the record of a's type (the same
     -- declaration, module instance and head parameters)
@@ -1852,36 +1804,11 @@ checkMotive cx c va vx = case c of
           _ -> failWith "J: the motive takes two arguments"
       _ -> failWith "J: the motive is not a function"
 
-inferTel :: Cx -> Tel -> Res [Lvl]
-inferTel _ [] = Right []
-inferTel cx ((x, a) : tel) = do
-  l  <- inferSort cx a
-  ls <- inferTel (fst (extVar cx x (ev cx a))) tel
-  Right (l : ls)
-
 checkTelIn :: Cx -> Tel -> Val -> Res ()
 checkTelIn _ [] _ = ok
 checkTelIn cx ((x, a) : tel) t = do
   check cx a t
   checkTelIn (fst (extVar cx x (ev cx a))) tel t
-
-checkStruct :: Cx -> [(Name, Exp)] -> Tel -> Env -> Res ()
-checkStruct cx fs tel r
-  | map fst fs /= map fst tel =
-      failWith ("struct fields " ++ unwords (map fst fs) ++ " do not match " ++ unwords (map fst tel))
-  | otherwise = go fs tel r
- where
-  go [] [] _ = ok
-  go ((l, e) : fs') ((_, a) : tel') r' = do
-    check cx e (eval r' a)
-    go fs' tel' (EVar r' l (ev cx e))
-  go _ _ _ = failWith "struct: field mismatch"
-
-fieldType :: Cx -> Val -> Tel -> Env -> Name -> Res Val
-fieldType _ _ [] _ l = failWith ("no field " ++ l)
-fieldType cx v ((l', a) : tel) r l
-  | l == l'   = Right (eval r a)
-  | otherwise = fieldType cx v tel (EVar r l' (vproj v l')) l
 
 checkArgs :: Cx -> [Exp] -> Tel -> Env -> Res ()
 checkArgs _ [] [] _ = ok
@@ -1917,12 +1844,6 @@ recordBranch cx d xs = case d of
       (UInst{}, _) -> go c (mkGroup r [u]) us ys
       _ -> go c r us ys
     go _ _ _ _ = Nothing
-  VRec (Just _) tel r | length xs == length tel -> go cx r tel xs []
-   where
-    go c _ [] [] acc = Just (c, VStruct (reverse acc))
-    go c rr ((l, a) : t) (y : ys) acc =
-      let (c', g) = extVar c y (eval rr a) in go c' (EVar rr l g) t ys ((l, g) : acc)
-    go _ _ _ _ _ = Nothing
   _ -> Nothing
 
 checkSplit :: Cx -> Id -> [(Name, ([Name], [RecR], Exp))] -> [(Name, Tel)] -> Env -> Clos -> Res ()
@@ -2410,7 +2331,6 @@ hasHole e = case e of
   Hole         -> True
   ProjU _ _    -> True
   Mem _ _ _ a  -> hasHole a
-  Named _ a  -> hasHole a
   App a b      -> hasHole a || hasHole b
   Lam _ b      -> hasHole b
   Pi _ a b     -> hasHole a || hasHole b
@@ -2424,8 +2344,6 @@ hasHole e = case e of
   Pair a b     -> hasHole a || hasHole b
   Fst a        -> hasHole a
   Snd a        -> hasHole a
-  Rec tel      -> any (hasHole . snd) tel
-  Struct fs    -> any (hasHole . snd) fs
   Proj a _     -> hasHole a
   Id a x y     -> any hasHole [a, x, y]
   Refl a       -> hasHole a
@@ -2458,7 +2376,6 @@ fillC cx e t0
   | not (hasHole e) = Right e
   | otherwise = case (e, t) of
       (_, VCPi cs a) -> fillC (addCs cx cs) e a
-      (Named i e', _) -> fmap (Named i) (fillC cx e' t0)
       (Lam x b, VPi a f) -> let (cx', v) = extVar cx x a in fmap (Lam x) (fillC cx' b (capp f v))
       (LLam x b, VLPi f) -> let (cx', l) = extLvl cx x in fmap (LLam x) (fillC cx' b (lcapp f l))
       (Pi x a b, VU _) -> do a' <- fillC cx a t
@@ -2467,15 +2384,13 @@ fillC cx e t0
       (Sig x a b, VU _) -> do a' <- fillC cx a t
                               b' <- fillC (fst (extVar cx x (ev cx a'))) b t
                               Right (Sig x a' b')
-      (Rec tel, VU _) -> fmap Rec (fillTelIn cx tel t)
       (Sum i ix cs, VU _) -> fmap (Sum i ix) (mapM (\(c, tel, es) -> do
                                  tel' <- fillTelIn cx tel t
                                  es' <- fillTargets tel' ix es
                                  Right (c, tel', es')) cs)
-      (Pair a b, VSig _ ta f) -> do a' <- fillC cx a ta
-                                    b' <- fillC cx b (capp f (ev cx a'))
-                                    Right (Pair a' b')
-      (Struct fs, VRec _ tel r) -> fmap Struct (fillStruct fs tel r)
+      (Pair a b, VSig ta f) -> do a' <- fillC cx a ta
+                                  b' <- fillC cx b (capp f (ev cx a'))
+                                  Right (Pair a' b')
       (Con c as, VSum _ _ _ cs r) -> case conOf c cs of
         Just (tel, _) -> fmap (Con c) (fillArgs as tel r)
         Nothing  -> Right e
@@ -2497,12 +2412,6 @@ fillC cx e t0
         | otherwise -> fmap fst (fillI cx e)
  where
   t = force cx t0
-  fillStruct [] _ _ = Right []
-  fillStruct ((l, a) : fs) ((_, ta) : tel) r = do
-    a' <- fillC cx a (eval r ta)
-    rest <- fillStruct fs tel (EVar r l (ev cx a'))
-    Right ((l, a') : rest)
-  fillStruct fs _ _ = Right fs
   fillArgs [] _ _ = Right []
   fillArgs (a : as) ((x, ta) : tel) r = do
     a' <- fillC cx a (eval r ta)
@@ -2584,7 +2493,6 @@ fillT :: Cx -> Exp -> Res Exp
 fillT cx e
   | not (hasHole e) = Right e
   | otherwise = case e of
-      Named i e' -> fmap (Named i) (fillT cx e')
       Pi x a b -> do a' <- fillT cx a
                      b' <- fillT (fst (extVar cx x (ev cx a'))) b
                      Right (Pi x a' b')
@@ -2603,7 +2511,6 @@ fillI cx e
   | not (hasHole e) = do t <- inferD cx e; Right (e, t)
   | otherwise = case e of
       _ | isApp e -> fillSpine cx e Nothing
-      Named{} -> retype (fillT cx e)
       Pi{}   -> retype (fillT cx e)
       Sig{}  -> retype (fillT cx e)
       Id a x y -> do
@@ -2916,7 +2823,7 @@ fillSpine cx e mexp = do
     VConst c _ -> isPH (VConst c [])
     VApp f a -> ph n f || ph n a
     VPi a f -> ph n a || ph (n - 1) (capp f (VGen (-1)))
-    VSig _ a f -> ph n a || ph (n - 1) (capp f (VGen (-1)))
+    VSig a f -> ph n a || ph (n - 1) (capp f (VGen (-1)))
     VId a x y -> ph n a || ph n x || ph n y
     VRef _ r -> any (ph n) (dynVals r)
     VSegT _ fs -> any (ph n . snd) fs
@@ -2959,7 +2866,7 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
       Just _ | k == cxK cx -> ('!' : n, t) : sols
              | otherwise -> sols
     (VPi a f, VPi b g)     -> under k f g (go k a b sols)
-    (VSig _ a f, VSig _ b g) -> under k f g (go k a b sols)
+    (VSig a f, VSig b g) -> under k f g (go k a b sols)
     (VId a x y, VId b x' y') -> go k y y' (go k x x' (go k a b sols))
     (VRefl a, VRefl b)     -> go k a b sols
     -- an application: the arguments are matched only under the same
@@ -3005,7 +2912,6 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
     VPi{} -> True
     VSig{} -> True
     VU{} -> True
-    VRec{} -> True
     VSum{} -> True
     VSegT{} -> True
     VLPi{} -> True
@@ -3174,7 +3080,6 @@ freeNamesE e0 = go [] e0
     Lam x b      -> go (x : bs) b
     Pi x a b     -> go bs a ++ go (x : bs) b
     Sig x a b    -> go bs a ++ go (x : bs) b
-    Named _ a  -> go bs a
     Let us b     -> let bs' = [ unitName u | u <- us ] ++ bs
                     in concat [ go bs' a ++ go bs' t | UDef _ _ a t <- us ] ++ go bs' b
     Sum _ ix cs -> tel bs ix ++ concat [ tel bs t ++ concatMap (go (map fst t ++ bs)) es | (_, t, es) <- cs ]
@@ -3183,8 +3088,6 @@ freeNamesE e0 = go [] e0
     Pair a b     -> go bs a ++ go bs b
     Fst a        -> go bs a
     Snd a        -> go bs a
-    Rec t        -> tel bs t
-    Struct fs    -> concatMap (go bs . snd) fs
     Proj a _     -> go bs a
     ProjU a _    -> go bs a
     Mem m as _ a -> me bs m ++ concatMap (arg bs) as ++ go bs a
@@ -3229,7 +3132,7 @@ quoteBlame cx v0 = go (scopeOf cx) v0
     VApp f a -> [f, a]
     VInst m r -> [ lookupDyn r x | x <- termParams (modUnits m) ]
     VPi a _ -> [a]
-    VSig _ a _ -> [a]
+    VSig a _ -> [a]
     VId a x y -> [a, x, y]
     VPair a b -> [a, b]
     VFst a -> [a]
@@ -3304,14 +3207,7 @@ quoteWith sc v0 = case v0 of
               | otherwise -> Nothing
     _ -> App <$> q f <*> q a
   VPi a f -> binder (\x b -> Pi x <$> q a <*> b) f
-  VSig (Just (i, _)) a (Clos x e r)
-    | freeHere (filter (/= x) (freeNamesE e)) r ->
-        (\a' -> Named i (Sig x a' e)) <$> q a
-    | otherwise -> Nothing
-  VRec (Just (i, _)) t r
-    | freeHere (freeNamesE (Rec t)) r -> Just (Named i (Rec t))
-    | otherwise -> Nothing
-  VSig Nothing a f -> binder (\x b -> Sig x <$> q a <*> b) f
+  VSig a f -> binder (\x b -> Sig x <$> q a <*> b) f
   VLam f -> binder (\x b -> Lam x <$> b) f
   VId a x y -> Id <$> q a <*> q x <*> q y
   VRefl a -> Refl <$> q a

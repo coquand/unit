@@ -46,7 +46,7 @@ Let `record R (ps : P) { x1 : A1 ; … ; xn : An }` with definitions `d` between
 - **Derived members.** `t.d` is represented as the definition `d` of `R` applied to the element `t`: `R.d[ps] t`. It is a definition like any other: it follows the lock strategy, and its accesses are compared by rules 1 and 2. Unless locked, it unfolds to `d`'s body with each field `xi` set to `t.xi`, whether `t` is built by `new` or neutral. So for `d = value`, an unlocked `p.d` unfolds to `p.value` for any `p`. On `new R[ps, v]` the projections then compute to `v`.
 - **Elimination.** `split { R x1 … xn -> b }` on `t : R[ps]`. It binds the fields only; the parameters are those of the type. With motive `C : R[ps] -> U l'`, the branch is checked as `b : C (new R[ps, x1, …, xn])`. β: on `new R[ps, v]` it gives `b` with `x := v`. On a neutral it is stuck.
 - **No η.** `t` and `new R[ps, t.x1, …, t.xn]` are not convertible. They are equal in `Id`, by the eliminator (`pty-eta`).
-- **`sig` and `struct`.** `sig { fields }` is a record without head parameters declared at its occurrence; `struct { … }` is `new` of it.
+- **No anonymous records.** `sig { fields }` and `struct { … }` were removed (2 November 2026): every record is declared with `record`, and its elements are built with `new`. A record type with parameters is a definition whose value fixes fields, e.g. `isEquiv (A B : U l) (f : A -> B) : U l = IsEquiv[A, B, f]`.
 
 ## 4. Partially fixed record types `R[ps][x := e]`
 
