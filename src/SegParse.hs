@@ -1101,15 +1101,15 @@ resDef' rs local u = case u of
                       Just tg | k == 0 -> Left ("the constructor " ++ c ++ " has a target, but " ++ x ++ " has no indices")
                               | otherwise -> do tg' <- resE rsC tg
                                                 targetIdx x i bs k c tg'
-                    Right (c, tel', es)) ls
-    Right (UData i x (piB bs ty') [ p | b <- bs, Just p <- [param b] ] i ix ls')
+                    Right (ConDecl c tel' es)) ls
+    Right (UData i x (DataDecl (map param bs) ix (piRest ty') ls'))
   _ -> Left "not a definition"
  where
   idOf x o = rsPath rs ++ x ++ (if local then "#" ++ show o else "")
   param b = case b of
-    BVar y _ -> Just (Left y)
-    BLvl y   -> Just (Right y)
-    BCs _    -> Nothing
+    BVar y a -> PTerm y a
+    BLvl y   -> PLevel y
+    BCs cs   -> PCstr cs
 
 labelsOf :: [RUnit] -> [(Name, Int)]
 labelsOf us = concat [ [ (c, sum (map width tel)) | (c, tel, _) <- ls ] | RData _ _ _ _ ls <- us ]
@@ -1121,6 +1121,12 @@ piTel :: Exp -> [(Name, Exp)]
 piTel e = case e of
   Pi y a b -> (y, a) : piTel b
   _ -> []
+
+-- what follows them
+piRest :: Exp -> Exp
+piRest e = case e of
+  Pi _ _ b -> piRest b
+  _ -> e
 
 -- the target  D ps es  of a constructor: D applied to exactly its
 -- parameters, then to k index expressions (returned)
@@ -1511,8 +1517,6 @@ pathUnits = map unit
  where
   unit u = case u of
     UDef i x a b -> UDef i x a (pathB i [] b)
-    UData i x a ps _ ix cs ->
-      UData i x a ps (pathId i ([ either (\y -> ["v", y]) (\y -> ["l", y]) p | p <- ps ] ++ [ ["v", y] | (y, _) <- ix ])) ix cs
     UMod i x k us -> UMod i x k (pathUnits us)
     UDir (DFails vs) -> UDir (DFails (pathUnits vs))
     _               -> u
@@ -1525,9 +1529,6 @@ pathB i p b = case b of
   BLet j x a v b' -> BLet j x a v (pathB i p b')
   BSplit _ k bs  -> BSplit (pathId i p) k [ (c, xs, rs, pathB i (p ++ [("c" : c : xs)]) b') | (c, xs, rs, b') <- bs ]
 
--- the id of the split or sum at a path in a definition
-pathId :: Id -> [[String]] -> Id
-pathId i p = i ++ "\0" ++ show p
 
 ------------------------------------------------------------------------
 -- No shadowing between variables and levels (Wang).  The dependencies of
@@ -1544,7 +1545,7 @@ shadowReport = units "" S.empty
     UPar i x a      -> new i sc x ++ expr i sc a ++ units w (S.insert x sc) us
     ULvl x          -> new w sc x ++ units w (S.insert ('%' : x) (S.insert x sc)) us
     UDef i _ a b  -> expr i sc a ++ body i sc b ++ units w sc us
-    UData i _ a ps _ ix cs -> expr i sc a ++ dataB i sc (ps ++ [ Left y | (y, _) <- ix ]) cs ++ units w sc us
+    UData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
     UMod i _ _ vs -> units i sc vs ++ units w sc us
     UInst i _ m     -> mexp i sc m ++ units w sc us
     UDir (DFails _) -> units w sc us
@@ -1572,9 +1573,10 @@ shadowReport = units "" S.empty
     BSplit _ _ bs -> concat [ binds w sc (xs ++ recNames rs) (\sc' -> body w sc' b') | (_, xs, rs, b') <- bs ]
   -- a data type: its parameters and indices (as lambdas), then its labels
   dataB w sc ps cs = case ps of
-    Left x : ps'  -> binds w sc [x] (\sc' -> dataB w sc' ps' cs)
-    Right x : ps' -> binds w sc [x] (\sc' -> dataB w (S.insert ('%' : x) sc') ps' cs)
-    [] -> concat [ tel w sc t ++ concat [ expr w (foldr S.insert sc (map fst t)) e | e <- es ] | (_, t, es) <- cs ]
+    PTerm x _ : ps' -> binds w sc [x] (\sc' -> dataB w sc' ps' cs)
+    PLevel x : ps'  -> binds w sc [x] (\sc' -> dataB w (S.insert ('%' : x) sc') ps' cs)
+    PCstr _ : ps'   -> dataB w sc ps' cs
+    [] -> concat [ tel w sc t ++ concat [ expr w (foldr S.insert sc (map fst t)) e | e <- es ] | ConDecl _ t es <- cs ]
   tel _ _ [] = []
   tel w sc ((x, a) : t) = new w sc x ++ expr w sc a ++ tel w (S.insert x sc) t
   mexp w sc m = case m of
@@ -1602,8 +1604,7 @@ binderUnits = map unit
  where
   unit u = case u of
     UDef i x a b   -> UDef i x (binderE (i ++ ":") a) (snd (binderB (i ++ "=") M.empty 0 b))
-    UData i x a ps t ix cs -> let (ps', ix', cs') = binderData (i ++ "=") ps ix cs
-                              in UData i x (binderE (i ++ ":") a) ps' t ix' cs'
+    UData i x dd   -> UData i x (binderData (i ++ "=") dd)
     UPar i x a     -> UPar i x (binderE (i ++ ":") a)
     UMod i x k us  -> UMod i x k (binderUnits us)
     UInst i x m    -> UInst i x (binderM (i ++ "=") m)
@@ -1637,23 +1638,32 @@ binderB pre ren n b = case b of
                                       in (k2, (c, xs', [ RecR j m es y | (RecR j m es _, y) <- zip rs ys' ], b''))) n bs
                     in (n1, BSplit t sk bs')
 
--- a data type: its parameters and indices are bound as lambdas; the
--- indices are named as bound, their types renamed; a target is in the
--- scope of the fields (kept)
-binderData :: String -> [Either Name Name] -> Tel -> [(Name, Tel, [Exp])]
-           -> ([Either Name Name], Tel, [(Name, Tel, [Exp])])
-binderData pre ps ix cs = (ps', ix', cs')
+-- a data declaration: its parameters and indices are bound in order
+-- (as by its type and its lambdas, one renaming); a target is in the scope
+-- of the fields (kept)
+binderData :: String -> DataDecl -> DataDecl
+binderData pre dd = DataDecl ps' ix' srt' cs'
  where
-  step (acc, ren, n) p = let (x', ren', n') = binderBind pre ren n (either id id p)
-                         in (acc ++ [either (const (Left x')) (const (Right x')) p], ren', n')
-  (ps', ren1, n1) = foldl step ([], M.empty, 0) ps
-  (_, ren2, n2) = foldl step ([], ren1, n1) [ Left y | (y, _) <- ix ]
-  (n3, ix') = mapL (\k (y, a) -> let (k', a') = binderGo pre ren2 k a in (k', (M.findWithDefault y y ren2, a'))) n2 ix
-  (_, cs') = mapL (\k (c, tel, es) ->
+  stepP (acc, ren, n) p = case p of
+    PTerm x a -> let (n1, a') = binderGo pre ren n a; (x', ren', n2) = binderBind pre ren n1 x in (acc ++ [PTerm x' a'], ren', n2)
+    PLevel x  -> let (x', ren', n1) = binderBind pre ren n x in (acc ++ [PLevel x'], ren', n1)
+    PCstr cs  -> (acc ++ [PCstr [ Cs (binderLv ren l) r (binderLv ren m) | Cs l r m <- cs ]], ren, n)
+  (ps', ren1, n1) = foldl stepP ([], M.empty, 0) (ddParams dd)
+  stepI (acc, ren, n) (y, a) = let (n1, a') = binderGo pre ren n a; (y', ren', n2) = binderBind pre ren n1 y in (acc ++ [(y', a')], ren', n2)
+  (ix', ren2, n2) = foldl stepI ([], ren1, n1) (ddIndices dd)
+  (n3, srt') = binderGo pre ren2 n2 (ddSort dd)
+  (_, cs') = mapL (\k (ConDecl c tel es) ->
                     let (k', tel') = binderTel pre ren2 k tel
                         ren' = foldr M.delete ren2 (map fst tel)
                         (k'', es') = mapL (binderGo pre ren') k' es
-                    in (k'', (c, tel', es'))) n3 cs
+                    in (k'', ConDecl c tel' es')) n3 (ddCons dd)
+
+binderLv :: M.Map Name Name -> Lv -> Lv
+binderLv ren l = case l of
+  LV x     -> LV (M.findWithDefault x x ren)
+  LSuc m   -> LSuc (binderLv ren m)
+  LMax a b -> LMax (binderLv ren a) (binderLv ren b)
+  LZero    -> LZero
 
 -- a constructor telescope: its names are kept (they are its fields)
 binderTel :: String -> M.Map Name Name -> Int -> Tel -> (Int, Tel)
@@ -1778,8 +1788,7 @@ surveyRecords rus = do
   isPrefixOfS a b = take (length a) b == a
   unitUses u = case u of
     UDef _ _ a b -> expUses a ++ bodyUses b
-    UData _ _ a _ _ ix cs -> expUses a ++ concat [ expUses t | (_, t) <- ix ]
-                             ++ concat [ expUses t | (_, tel, es) <- cs, t <- map snd tel ++ es ]
+    UData _ _ dd -> expUses (dataType dd) ++ concat [ expUses t | ConDecl _ tel es <- ddCons dd, t <- map snd tel ++ es ]
     UPar _ _ a -> expUses a
     UMod _ _ _ vs -> concatMap unitUses vs
     UInst _ _ m -> modUses m

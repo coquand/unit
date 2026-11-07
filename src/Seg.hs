@@ -92,14 +92,7 @@ data SegKind = SModule | SRecord [Name]     -- a record: its head parameters
 
 data Unit
   = UDef  Id Name Exp Body           -- id, name, type, body
-  | UData Id Name Exp [Either Name Name] Id Tel [(Name, Tel, [Exp])]
-                                     -- a data type: id, name, type, its
-                                     -- parameters (Left a term, Right a
-                                     -- level), the id of its occurrence
-                                     -- d_L (with its path), its indices (the
-                                     -- names the declaration binds after the
-                                     -- parameters, their types), labels:
-                                     -- fields and target indices
+  | UData Id Name DataDecl           -- a data type
   | UPar  Id Name Exp                -- a parameter / primitive notion
   | ULvl  Name                       -- a level variable
   | UCstr [Cs]                       -- constraints
@@ -109,10 +102,52 @@ data Unit
   | UDir  Directive
   deriving (Eq, Show)
 
+-- A data declaration  data D (params) : (indices) -> S = labels .  Its
+-- type is computed (dataType); its occurrence d_L (the sum, named by the
+-- declaration and the path of its binders) too (dataOcc).
+data DataDecl = DataDecl
+  { ddParams  :: [Param]
+  , ddIndices :: Tel                 -- an index named %ix.. was written _
+  , ddSort    :: Exp                 -- the universe after the indices
+  , ddCons    :: [ConDecl] }
+  deriving (Eq, Show)
+
+data Param = PTerm Name Exp | PLevel Name | PCstr [Cs]
+  deriving (Eq, Show)
+
+-- a constructor: its fields and, for an indexed family, its target indices
+data ConDecl = ConDecl { cdName :: Name, cdFields :: Tel, cdTarget :: [Exp] }
+  deriving (Eq, Show)
+
+-- the type of a data declaration
+dataType :: DataDecl -> Exp
+dataType dd = foldr param (foldr index (ddSort dd) (ddIndices dd)) (ddParams dd)
+ where
+  param p e = case p of
+    PTerm x a -> Pi x a e
+    PLevel x  -> LPi x e
+    PCstr cs  -> CPi cs e
+  index (y, a) e = Pi (if take 3 y == "%ix" then "_" else y) a e
+
+-- the binders of a data declaration (as lambdas): its parameters, then its
+-- indices
+dataBinders :: DataDecl -> [Param]
+dataBinders dd = [ p | p <- ddParams dd, notCs p ] ++ [ PTerm y a | (y, a) <- ddIndices dd ]
+ where notCs p = case p of { PCstr _ -> False; _ -> True }
+
+-- the occurrence d_L of the data type i: the declaration and the path of
+-- its binders (mTT10 section 5), as for a split
+dataOcc :: Id -> DataDecl -> Id
+dataOcc i dd = pathId i [ case p of { PLevel x -> ["l", x]; PTerm x _ -> ["v", x]; PCstr _ -> [] } | p <- dataBinders dd ]
+
+-- the id of the split or sum at a path in a definition
+pathId :: Id -> [[String]] -> Id
+pathId i p = i ++ "\0" ++ show p
+
 unitIdOf :: Unit -> Id
 unitIdOf u = case u of
   UDef i _ _ _ -> i
-  UData i _ _ _ _ _ _ -> i
+  UData i _ _ -> i
   UMod i _ _ _ -> i
   UInst i _ _    -> i
   UPar i _ _     -> i
@@ -121,7 +156,7 @@ unitIdOf u = case u of
 unitName :: Unit -> Name
 unitName u = case u of
   UDef _ x _ _ -> x
-  UData _ x _ _ _ _ _ -> x
+  UData _ x _ -> x
   UPar _ x _     -> x
   ULvl x         -> x
   UMod _ x _ _ -> x
@@ -222,13 +257,13 @@ recNames :: [RecR] -> [Name]
 recNames rs = [ y | RecR _ _ _ y <- rs ]
 
 -- the constructors of a sum: their fields and target indices
-conOf :: Name -> [(Name, Tel, [Exp])] -> Maybe (Tel, [Exp])
-conOf c cs = case [ (t, es) | (c', t, es) <- cs, c' == c ] of
+conOf :: Name -> [ConDecl] -> Maybe (Tel, [Exp])
+conOf c cs = case [ (t, es) | ConDecl c' t es <- cs, c' == c ] of
   (x : _) -> Just x
   []      -> Nothing
 
-conNames :: [(Name, Tel, [Exp])] -> [Name]
-conNames cs = [ c | (c, _, _) <- cs ]
+conNames :: [ConDecl] -> [Name]
+conNames cs = map cdName cs
 
 -- the last k explicit arguments of an application (the indices of a
 -- field type  d ps es )
@@ -322,8 +357,8 @@ unfilledBody b = case b of
   BSplit i k bs -> BSplit i k [ (c, xs, [ RecR j n (map unfilledHoles es) y | RecR j n es y <- rs ], unfilledBody b')
                               | (c, xs, rs, b') <- bs ]
 
-unfilledCon :: (Name, Tel, [Exp]) -> (Name, Tel, [Exp])
-unfilledCon (c, tel, es) = (c, [ (x, unfilledHoles a) | (x, a) <- tel ], map unfilledHoles es)
+unfilledCon :: ConDecl -> ConDecl
+unfilledCon (ConDecl c tel es) = ConDecl c [ (x, unfilledHoles a) | (x, a) <- tel ] (map unfilledHoles es)
 
 unfilledM :: MExp -> MExp
 unfilledM m = case m of
@@ -377,11 +412,14 @@ data Ent = EVal Val | EMod Mod
 data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Unit], modEnv :: Env
                , modInst :: Maybe Env, modKind :: SegKind }
 
--- a closure: of a term, or of the binder of a definition body or a data
--- declaration (the rest of the declaration, as a function of the
--- environment); both are compared by binder and environment (eqClos)
-data Clos  = Clos Name Exp Env | KClos Name (Env -> Val) Env
-data LClos = LClos Name Exp Env | LKClos Name (Env -> Val) Env
+-- a closure: a binder, its code and an environment; compared by binder
+-- and environment (eqClos).  The code: a term, the rest of a definition
+-- body, or the rest of a data declaration after its first k binders (the
+-- declaration's occurrence d_L computed once)
+data Clos  = Clos Name Code Env
+data LClos = LClos Name Code Env
+
+data Code = CExp Exp | CBody Body | CData Id DataDecl Int
 
 data Elim = EApp Val | EFst | ESnd | EProj Name | ELApp Lvl
 
@@ -412,7 +450,7 @@ data Val
   | VLam Clos
   | VPi Val Clos
   | VCon Name [Val]
-  | VSum Id [Val] Tel [(Name, Tel, [Exp])] Env     -- the indices of the
+  | VSum Id [Val] Tel [ConDecl] Env     -- the indices of the
                                             -- instance: the index names in Env
   | VSplit Id [Val] Int [Val] [Branch] Env
                                             -- the number k of indices it absorbs
@@ -455,11 +493,11 @@ eval r e = case e of
   U l          -> VU (evalLv r l)
   Var x        -> lookupVal r x
   App a b      -> app (eval r a) (eval r b)
-  Lam x b      -> VLam (Clos x b r)
-  Pi x a b     -> VPi (eval r a) (Clos x b r)
+  Lam x b      -> VLam (Clos x (CExp b) r)
+  Pi x a b     -> VPi (eval r a) (Clos x (CExp b) r)
   Let i x a v b -> eval (mkGroup r [UDef i x a (BExp v)]) b
   Con c as     -> VCon c (map (eval r) as)
-  Sig x a b    -> VSig (eval r a) (Clos x b r)
+  Sig x a b    -> VSig (eval r a) (Clos x (CExp b) r)
   Pair a b     -> VPair (eval r a) (eval r b)
   Fst a        -> vfst (eval r a)
   Snd a        -> vsnd (eval r a)
@@ -468,8 +506,8 @@ eval r e = case e of
   Refl a       -> VRefl (eval r a)
   IdJ a x c d y p ->
     vidj (eval r a) (eval r x) (eval r c) (eval r d) (eval r y) (eval r p)
-  LPi x a      -> VLPi (LClos x a r)
-  LLam x a     -> VLLam (LClos x a r)
+  LPi x a      -> VLPi (LClos x (CExp a) r)
+  LLam x a     -> VLLam (LClos x (CExp a) r)
   LApp a l     -> lapp (eval r a) (evalLv r l)
   CPi cs a     -> VCPi (map (evalCs r) cs) (eval r a)
   Acc m x      -> lookupMember (instOf (evalMod r m)) x
@@ -486,29 +524,34 @@ eval r e = case e of
   Unfilled     -> error "a hidden argument was not filled (its definition failed)"
 
 capp :: Clos -> Val -> Val
-capp (Clos x b r) v = eval (EVar r x v) b
-capp (KClos x k r) v = k (EVar r x v)
+capp (Clos x c r) v = evalCode (EVar r x v) c
 
 lcapp :: LClos -> Lvl -> Val
-lcapp (LClos x b r) l = eval (ELvl r x l) b
-lcapp (LKClos x k r) l = k (ELvl r x l)
+lcapp (LClos x c r) l = evalCode (ELvl r x l) c
+
+evalCode :: Env -> Code -> Val
+evalCode r c = case c of
+  CExp e       -> eval r e
+  CBody b      -> evalBody r b
+  CData o dd k -> dataAt r o dd (k + 1)
 
 -- the body of a definition in an environment
 evalBody :: Env -> Body -> Val
 evalBody r b = case b of
   BExp e          -> eval r e
-  BLam x b'       -> VLam (KClos x (\r' -> evalBody r' b') r)
-  BLLam x b'      -> VLLam (LKClos x (\r' -> evalBody r' b') r)
+  BLam x b'       -> VLam (Clos x (CBody b') r)
+  BLLam x b'      -> VLLam (LClos x (CBody b') r)
   BLet i x a v b' -> evalBody (mkGroup r [UDef i x a (BExp v)]) b'
   BSplit t k bs   -> VSplit t (dynVals r) k [] bs r
 
--- a data type in an environment: its parameters and indices, then the sum
-evalData :: Env -> [Either Name Name] -> Id -> Tel -> [(Name, Tel, [Exp])] -> Val
-evalData r0 ps t ix cs = go r0 (ps ++ [ Left x | (x, _) <- ix ])
- where
-  go r [] = VSum t (dynVals r) ix cs r
-  go r (Left x : bs) = VLam (KClos x (\r' -> go r' bs) r)
-  go r (Right x : bs) = VLLam (LKClos x (\r' -> go r' bs) r)
+-- a data type o in an environment binding its first k binders: the
+-- remaining binders, then the sum
+dataAt :: Env -> Id -> DataDecl -> Int -> Val
+dataAt r o dd k = case drop k (dataBinders dd) of
+  []             -> VSum o (dynVals r) (ddIndices dd) (ddCons dd) r
+  PLevel x : _   -> VLLam (LClos x (CData o dd k) r)
+  PTerm x _ : _  -> VLam (Clos x (CData o dd k) r)
+  PCstr _ : _    -> error "dataAt: a constraint is not a binder"
 
 -- Elimination.  An access to a definition is a closure < f ; eta >; an
 -- elimination of it is an ordinary neutral form, until whnf computes the
@@ -607,7 +650,7 @@ mkGroup r us = rho
   rho = EDef r us ents (fragOf rho us ents)
   entry u = case u of
     UDef _ x _ _  -> [(x, EVal (mkRef u rho))]
-    UData _ x _ _ _ _ _ -> [(x, EVal (mkRef u rho))]
+    UData _ x _ -> [(x, EVal (mkRef u rho))]
     UMod i x k mus -> [(x, EMod (Mod i (dynVals rho) mus rho
                                    (if hasParams mus then Nothing
                                     else Just (instUnits rho mus [])) k))]
@@ -616,7 +659,7 @@ mkGroup r us = rho
 
 defId :: Unit -> Id
 defId (UDef i _ _ _) = i
-defId (UData i _ _ _ _ _ _) = i
+defId (UData i _ _) = i
 defId _                = ""
 
 -- the dynamic part of an environment: the values of its variables and
@@ -667,7 +710,7 @@ isNewDef _ = False
 -- the body of a definition, evaluated in its environment
 unfoldRef :: Unit -> Env -> Val
 unfoldRef (UDef _ _ _ b) r = evalBody r b
-unfoldRef (UData _ _ _ ps t ix cs) r = evalData r ps t ix cs
+unfoldRef (UData i _ dd) r = dataAt r (dataOcc i dd) dd 0
 unfoldRef _ _                = error "unfoldRef: not a definition"
 
 isGroupUnit :: Unit -> Bool
@@ -680,7 +723,7 @@ isGroupUnit u = case u of
 defType :: Unit -> Maybe Exp
 defType u = case u of
   UDef _ _ a _          -> Just a
-  UData _ _ a _ _ _ _   -> Just a
+  UData _ _ dd          -> Just (dataType dd)
   _                     -> Nothing
 
 hasParams :: [Unit] -> Bool
@@ -1174,13 +1217,9 @@ eqSp s t = length s == length t && and (zipWith e s t)
 
 eqClos :: Clos -> Clos -> Bool
 eqClos (Clos x _ r) (Clos y _ r') = x == y && hasCodeId x && eqEnvs r r'   -- the same occurrence
-eqClos (KClos x _ r) (KClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
-eqClos _ _ = False
 
 eqLClos :: LClos -> LClos -> Bool
 eqLClos (LClos x _ r) (LClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
-eqLClos (LKClos x _ r) (LKClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
-eqLClos _ _ = False
 
 conv' :: CC -> Val -> Val -> Bool
 conv' c u1 u2 = case (u1, u2) of
@@ -1465,7 +1504,7 @@ ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
   go us = concatMap one us
   one u = case u of
     UDef i _ _ _ -> [i]
-    UData i _ _ _ _ _ _ -> [i]
+    UData i _ _ -> [i]
     UMod _ _ _ vs -> go vs
     _ -> []
 
@@ -1916,7 +1955,7 @@ checkBody cx b t0 = case b of
                       else checkSplitI cx si n bs t
            | k > 0 -> failWith "split: annotated with indices, but not on an indexed family (internal)"
    Right _ -> case d of
-    VSum st _ [] cs r -> checkSplit cx st bs [ (c, tel) | (c, tel, _) <- cs ] r f
+    VSum st _ [] cs r -> checkSplit cx st bs [ (c, tel) | ConDecl c tel _ <- cs ] r f
     VSum{} -> failWith ("split: " ++ unwords (branchLabels bs) ++ " are not the constructors of the indexed family "
                         ++ showV cx dom)
     d -> case bs of
@@ -1935,17 +1974,17 @@ checkBody cx b t0 = case b of
 
 -- A data declaration: its parameters and indices against its type, then
 -- the fields and targets of its constructors in the universe
-checkData :: Cx -> [Either Name Name] -> Tel -> [(Name, Tel, [Exp])] -> Val -> Res ()
-checkData cx0 ps0 ix cs = go cx0 (ps0 ++ [ Left x | (x, _) <- ix ])
+checkData :: Cx -> DataDecl -> Val -> Res ()
+checkData cx0 dd = go cx0 (dataBinders dd)
  where
   go cx bs t0
     | VCPi cs' a <- whnfFolded t0 = go (addCs cx cs') bs a
     | otherwise = case (bs, force cx t0) of
-        (Left x : bs', VPi a f) -> let (cx', v) = extVar cx x a in go cx' bs' (capp f v)
-        (Right x : bs', VLPi f) -> let (cx', l) = extLvl cx x in go cx' bs' (lcapp f l)
-        ([], t@(VU _)) -> mapM_ (\(c, tel, es) -> do
+        (PTerm x _ : bs', VPi a f) -> let (cx', v) = extVar cx x a in go cx' bs' (capp f v)
+        (PLevel x : bs', VLPi f) -> let (cx', l) = extLvl cx x in go cx' bs' (lcapp f l)
+        ([], t@(VU _)) -> mapM_ (\(ConDecl c tel es) -> do
                               checkTelIn cx tel t
-                              checkTargets cx c tel ix es) cs
+                              checkTargets cx c tel (ddIndices dd) es) (ddCons dd)
         _ -> failWith "the data type does not have the type of its parameters and indices"
 
 -- a body, printed (diagnostics)
@@ -2111,7 +2150,7 @@ motiveAt cx t (v : vs) = case force cx t of
 -- the type (i1 : I1) .. (ik : Ik) -> (x : D ..) -> P written as products
 motiveLam :: Cx -> Int -> Val -> Maybe Val
 motiveLam cx k t = case force cx t of
-  VPi _ (Clos z b r) -> fmap (\b' -> VLam (Clos z b' r)) (lams k b)
+  VPi _ (Clos z (CExp b) r) -> fmap (\b' -> VLam (Clos z (CExp b') r)) (lams k b)
   _ -> Nothing
  where
   lams :: Int -> Exp -> Maybe Exp
@@ -2132,7 +2171,7 @@ checkSplitI cx si k bs t = case peelGens cx k t of
         [] -> mapM_ (branch cxI st cs r) cs
     _ -> failWith "split: not on an indexed family (internal)"
  where
-  branch cxI st _ r (c, tel, es) = case branchOf c bs of
+  branch cxI st _ r (ConDecl c tel es) = case branchOf c bs of
     Nothing -> failWith ("split: missing the branch for " ++ c)
     Just (xs, rs, body) -> do
       (cx', vs) <- openTel cxI xs tel r
@@ -2369,7 +2408,8 @@ checkUnitsF cx (u : us) = case u of
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         (cx2, evs, us') = checkUnitsF cx1 us
     in (cx2, Event x (fmap (const []) (fm >> checkMod cx m)) : evs, u' : us')
-  _ | isGroupUnit u ->
+  -- a group of definitions and data types
+  _ ->
     let (g0, rest) = span isGroupUnit (u : us)
         (g, cx1, ferrss) = fillGroupE cx g0
         evs1 = [ Event (unitName u0) (fmap (const []) (do
@@ -2380,9 +2420,9 @@ checkUnitsF cx (u : us) = case u of
                      UDef _ x a b -> do
                        inCtx ("in the type of " ++ x) (checkType cx1 a)
                        inCtx ("in the definition of " ++ x) (checkBody cx1 b (ev cx1 a))
-                     UData _ x a ps _ ix cs -> do
-                       inCtx ("in the type of " ++ x) (checkType cx1 a)
-                       inCtx ("in the definition of " ++ x) (checkData cx1 ps ix cs (ev cx1 a))
+                     UData _ x dd -> do
+                       inCtx ("in the type of " ++ x) (checkType cx1 (dataType dd))
+                       inCtx ("in the definition of " ++ x) (checkData cx1 dd (ev cx1 (dataType dd)))
                      _ -> Right ()))
                | (u0, gu, ferrs) <- zip3 g0 g ferrss ]
         (cx2, evs2, us') = checkUnitsF cx1 rest
@@ -2498,7 +2538,7 @@ fillBody cx b t0 = case b of
    Right n | n > 0 -> fillSplitI i n bs
    Right _ | k /= 0 -> let b0 = BSplit i 0 bs in if bodyHole b0 then fillBody cx b0 t0 else Right b0
    Right _ -> case d of
-    VSum st _ [] cs r -> fmap (BSplit i 0) (mapM (fillBranch st [ (c, tel) | (c, tel, _) <- cs ] r f) bs)
+    VSum st _ [] cs r -> fmap (BSplit i 0) (mapM (fillBranch st [ (c, tel) | ConDecl c tel _ <- cs ] r f) bs)
     VSum{} -> Right (BSplit i 0 bs)
     _ -> case bs of
       [(c, xs, rs, b')] | Just (cx', el) <- recordBranch cx d xs ->
@@ -2551,20 +2591,45 @@ annotateRecs d c tel rs
  where shapes = [ (j, n) | (j, (_, ta)) <- zip [0 ..] tel, Just n <- [recShape d ta] ]
 
 -- a data declaration, filled: its constructors (fields and targets)
-fillData :: Cx -> [Either Name Name] -> Tel -> [(Name, Tel, [Exp])] -> Val -> Res [(Name, Tel, [Exp])]
-fillData cx0 ps0 ix cs t00
-  | not (any (hasHole . snd) ix || any (\(_, tel, es) -> any (hasHole . snd) tel || any hasHole es) cs) = Right cs
-  | otherwise = go cx0 (ps0 ++ [ Left x | (x, _) <- ix ]) t00
+fillData :: Cx -> DataDecl -> Val -> Res [ConDecl]
+fillData cx0 dd t00
+  | not (any (hasHole . snd) ix || any (\(ConDecl _ tel es) -> any (hasHole . snd) tel || any hasHole es) cs) = Right cs
+  | otherwise = go cx0 (dataBinders dd) t00
  where
+  ix = ddIndices dd
+  cs = ddCons dd
   go cx bs t0 = case (bs, force cx t0) of
     (_, VCPi cs' a) -> go (addCs cx cs') bs a
-    (Left x : bs', VPi a f) -> let (cx', v) = extVar cx x a in go cx' bs' (capp f v)
-    (Right x : bs', VLPi f) -> let (cx', l) = extLvl cx x in go cx' bs' (lcapp f l)
-    ([], t@(VU _)) -> mapM (\(c, tel, es) -> do
+    (PTerm x _ : bs', VPi a f) -> let (cx', v) = extVar cx x a in go cx' bs' (capp f v)
+    (PLevel x : bs', VLPi f) -> let (cx', l) = extLvl cx x in go cx' bs' (lcapp f l)
+    ([], t@(VU _)) -> mapM (\(ConDecl c tel es) -> do
                              tel' <- fillTelIn cx tel t
                              es' <- fillTargets cx tel' ix es
-                             Right (c, tel', es')) cs
+                             Right (ConDecl c tel' es')) cs
     _ -> failWith "cannot infer the hidden arguments in the data type (give a type, or the arguments as {e})"
+
+-- the declaration with the types of a filled copy of its type (the same
+-- shape); its shape (binders, labels) is the declaration's own, seen
+-- without forcing the filling
+withTypes :: DataDecl -> Exp -> DataDecl
+withTypes dd ty = dd { ddParams = [ param j p | (j, p) <- zip [0 ..] (ddParams dd) ]
+                     , ddIndices = [ (y, snd (fis !! j)) | (j, (y, _)) <- zip [0 ..] (ddIndices dd) ]
+                     , ddSort = srt }
+ where
+  (fps, fis, srt) = split (ddParams dd) ty
+  param j p = case p of
+    PTerm x _ -> PTerm x (case fps !! j of { PTerm _ a -> a; _ -> error "withTypes" })
+    _ -> p
+  split ps t = case (ps, t) of
+    (PTerm x _ : ps', Pi _ a b) -> let (q, i, s) = split ps' b in (PTerm x a : q, i, s)
+    (PLevel x : ps', LPi _ b)   -> let (q, i, s) = split ps' b in (PLevel x : q, i, s)
+    (PCstr cs : ps', CPi _ b)   -> let (q, i, s) = split ps' b in (PCstr cs : q, i, s)
+    ([], _) -> let (i, s) = indices (ddIndices dd) t in ([], i, s)
+    _ -> error "withTypes: the filled type has another shape"
+  indices ix t = case (ix, t) of
+    ((y, _) : ix', Pi _ a b) -> let (i, s) = indices ix' b in ((y, a) : i, s)
+    ([], _) -> ([], t)
+    _ -> error "withTypes: the filled type has another shape"
 
 -- the targets of a constructor, in the scope of its fields
 fillTargets :: Cx -> Tel -> Tel -> [Exp] -> Res [Exp]
@@ -2815,11 +2880,13 @@ fillGroupE cx us = (us', cx1, map (snd . snd) res)
     -- the declaration filled in the knot keeps its shape (parameters,
     -- indices, labels), seen without forcing the filling: a hidden argument
     -- of a field solved by the data type itself is then found, not looped on
-    UData i x a ps t ix cs ->
-      let ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
+    UData i x dd ->
+      let a = dataType dd
+          ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
           a' = either (const (unfilledHoles a)) id ta
-          tb = inCtx ("in the definition of " ++ x) (fillData cx1 { cxDataFill = [i] } ps ix cs (ev cx1 a'))
-      in (UData i x a' ps t ix (either (const (map unfilledCon cs)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+          dd' = withTypes dd a'
+          tb = inCtx ("in the definition of " ++ x) (fillData cx1 { cxDataFill = [i] } dd' (ev cx1 a'))
+      in (UData i x dd' { ddCons = either (const (map unfilledCon (ddCons dd))) id tb }, [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
     _ -> (u, [])
   us'  = [ fst r | (_, r) <- res ]
   cx1  = enterGroup cx us'

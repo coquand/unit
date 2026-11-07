@@ -63,9 +63,10 @@ positivityReport us =
   | g <- groups us
   , let ids = dataIds g
   , not (Set.null ids)
-  , UData i x _ ps _ ix cs <- g
-  , let k = length ix
-  , (c, tel, es) <- cs
+  , UData i x dd <- g
+  , let k = length (ddIndices dd)
+        ps = [ q | p <- ddParams dd, q <- case p of { PTerm y _ -> [Left y]; PLevel y -> [Right y]; PCstr _ -> [] } ]
+  , ConDecl c tel es <- ddCons dd
   , (f, msg) <- [ (Just f, msg) | (f, t) <- tel, Just msg <- [fieldError i ps k t] ]
                 ++ [ (Nothing, shortName i ++ " occurs in an index") | any (occurs (Set.singleton i)) es ] ]
 
@@ -100,7 +101,7 @@ fieldError d ps k t
     _ -> (e, acc)
 
 dataIds :: [Unit] -> Set.Set Id
-dataIds g = Set.fromList [ i | UData i _ _ _ _ _ _ <- g ]
+dataIds g = Set.fromList [ i | UData i _ _ <- g ]
 
 ------------------------------------------------------------------------
 -- Enforcement: the errors of the units  part  of the program  whole
