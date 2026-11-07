@@ -420,14 +420,10 @@ expr3 ts = case ts of
                            (bs, r2) <- branches r1
                            ((), r3) <- sym "}" r2
                            Right (RSplit (occ ts) bs, r3)
-  TId "sig" : rest  -> do ((), r1) <- sym "{" rest
-                          (fs, r2) <- fields ":" r1
-                          ((), r3) <- sym "}" r2
-                          Right (RRec fs, r3)
-  TId "struct" : rest -> do ((), r1) <- sym "{" rest
-                            (fs, r2) <- fields "=" r1
-                            ((), r3) <- sym "}" r2
-                            Right (RStruct fs, r3)
+  -- anonymous records are not part of the language: a record is declared
+  -- (record R { .. }) and its elements are built by new R[..]
+  TId "sig" : _    -> Left "sig { .. } is not part of the language: declare a record (record R { .. })"
+  TId "struct" : _ -> Left "struct { .. } is not part of the language: build an element with new R[..]"
   TSym "(" : rest   -> do (e, r1)  <- expr rest
                           (es, r2) <- manyP (\t -> do ((), t') <- sym "," t; expr t') r1
                           ((), r3) <- sym ")" r2
@@ -459,19 +455,6 @@ calcChain a x steps = case steps of
   go x0 ((p, y) : rest) =
     RIdJ a y (RLam ["%w", "%r"] (RId a x0 (RVar "%w"))) p (lastPt rest) (go y rest)
   lastPt = snd . last
-
-fields :: String -> P [(Name, R)]
-fields sep ts
-  | isSym "}" ts = Right ([], ts)
-  | otherwise = do
-      (l, r1) <- ident ts
-      ((), r2) <- sym sep r1
-      (a, r3) <- expr r2
-      if isSym ";" r3
-        then do ((), r4) <- sym ";" r3
-                (fs, r5) <- fields sep r4
-                Right ((l, a) : fs, r5)
-        else Right ([(l, a)], r3)
 
 -- c x1 .. xn -> e   or   c x1 .. xn | r1 .. rk -> e  (the recursive results)
 branches :: P [(Name, [Name], [Name], RBody)]
