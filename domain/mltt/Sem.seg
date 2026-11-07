@@ -119,7 +119,8 @@ sem-cons : (n : Nat) -> (M : Tm n) -> (rho : Env n) -> ConsEnv n rho -> ConsF (s
 -- Lemma 3.6: continuity
 
 -- a compact approximation of rho
-Apx (n : Nat) (rho : Env n) : U l = sig { k : Fin n -> Ty ; ink : (i : Fin n) -> (rho i).mem (k i) } ;
+record ApxR { n : Nat ; rho : Env n ; k : Fin n -> Ty ; ink : (i : Fin n) -> (rho i).mem (k i) ; } ;
+Apx (n : Nat) (rho : Env n) : U l = ApxR[n, rho] ;
 
 penv (n : Nat) (k : Fin n -> Ty) : Env n = \ i -> prin (k i) ;
 
@@ -129,10 +130,10 @@ LeK (n : Nat) (k k' : Fin n -> Ty) : U l = (i : Fin n) -> Le (k' i) (k i) ;
 penv-incl (n : Nat) (k k' : Fin n -> Ty) (h : LeK n k k') : EnvIncl n (penv n k) (penv n k') =
   \ i -> prin-anti (k' i) (k i) (h i) ;
 
-apx-top (n : Nat) (rho : Env n) : Apx n rho = struct { k = \ i -> om ; ink = \ i -> (rho i).fom } ;
+apx-top (n : Nat) (rho : Env n) : Apx n rho = new ApxR[n, rho, k := \ i -> om, ink := \ i -> (rho i).fom] ;
 
 apx-meet (n : Nat) (rho : Env n) (a b : Apx n rho) : Apx n rho =
-  struct { k = \ i -> meet (a.k i) (b.k i) ; ink = \ i -> (rho i).fmeet (a.k i) (b.k i) (a.ink i) (b.ink i) } ;
+  new ApxR[n, rho, k := \ i -> meet (a.k i) (b.k i), ink := \ i -> (rho i).fmeet (a.k i) (b.k i) (a.ink i) (b.ink i)] ;
 
 apx-meet-l (n : Nat) (rho : Env n) (a b : Apx n rho) : LeK n a.k (apx-meet n rho a b).k =
   \ i -> le-meet-l (a.k i) (b.k i) ;
@@ -192,7 +193,7 @@ bindq-mono (n : Nat) (A : Tm n) (B : Tm (suc n)) (k k' : Fin n -> Ty) (h : LeK n
 
 -- an approximation of the body, restricted to the old variables
 apx-tail (n : Nat) (rho : Env n) (X : Filt) (a : Apx (suc n) (extE n rho X)) : Apx n rho =
-  struct { k = \ i -> a.k (fs n i) ; ink = \ i -> a.ink (fs n i) } ;
+  new ApxR[n, rho, k := \ i -> a.k (fs n i), ink := \ i -> a.ink (fs n i)] ;
 
 -- the body: the value at the new variable is below x
 body-incl (n : Nat) (rho : Env n) (x : Ty) (a : Apx (suc n) (extE n rho (prin x))) :
@@ -210,7 +211,7 @@ bind-entry (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
    (tyin-mono (sem n A (penv n p.1.k)) (sem n A (penv n (apx-meet n rho p.1 q).k))
       (sem-mono n A (penv n p.1.k) (penv n (apx-meet n rho p.1 q).k)
          (penv-incl n p.1.k (apx-meet n rho p.1 q).k (apx-meet-l n rho p.1 q)))
-      x (struct { a = e.1.a ; ina = p.2 ; tp = e.1.tp }),
+      x (new TyInR[sem n A (penv n p.1.k), x, a := e.1.a, ina := p.2, tp := e.1.tp]),
     sem-mono (suc n) B (penv (suc n) w.1.k) (extE n (penv n (apx-meet n rho p.1 q).k) (prin x))
       (\ i -> incl-trans (penv (suc n) w.1.k i) (extE n (penv n q.k) (prin x) i)
                 (extE n (penv n (apx-meet n rho p.1 q).k) (prin x) i)
@@ -239,12 +240,12 @@ cont-pi (n : Nat) (A : Tm n) (B : Tm (suc n)) (rho : Env n)
     (rB : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) B rho').mem t -> ApxIn (suc n) B rho' t)
     (t : Ty) (w : PiW (sem n A rho) (fam n B rho) t) : ApxIn n (pp n A B) rho t =
   (apx-meet n rho p.1 q.1,
-   inr (struct {
-     a = w.a ; b = w.b ; le = w.le ;
-     ina = sem-mono n A (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
-             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.a p.2 ;
-     ents = ents-map (BindQ n A B q.1.k) (BindQ n A B (apx-meet n rho p.1 q.1).k)
-              (bindq-mono n A B q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.b q.2 }))
+   inr (new PiWR[sem n A (penv n (apx-meet n rho p.1 q.1).k), fam n B (penv n (apx-meet n rho p.1 q.1).k), t,
+     a := w.a, b := w.b, le := w.le,
+     ina := sem-mono n A (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.a p.2,
+     ents := ents-map (BindQ n A B q.1.k) (BindQ n A B (apx-meet n rho p.1 q.1).k)
+              (bindq-mono n A B q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.b q.2]))
   where {
     p : ApxIn n A rho w.a = rA w.a w.ina ;
     q : (a : Apx n rho) * EntS (BindQ n A B a.k) w.b = bind-ents n A B rho rA rB w.b w.ents ; } ;
@@ -260,7 +261,7 @@ cont-lam (n : Nat) (A : Tm n) (M : Tm (suc n)) (rho : Env n)
     (rA : (t : Ty) -> (sem n A rho).mem t -> ApxIn n A rho t)
     (rM : (rho' : Env (suc n)) -> (t : Ty) -> (sem (suc n) M rho').mem t -> ApxIn (suc n) M rho' t)
     (t : Ty) (w : LamW (sem n A rho) (fam n M rho) t) : ApxIn n (lam n A M) rho t =
-  (q.1, struct { f = w.f ; le = w.le ; ents = q.2 })
+  (q.1, new LamWR[sem n A (penv n q.1.k), fam n M (penv n q.1.k), t, f := w.f, le := w.le, ents := q.2])
   where { q : (a : Apx n rho) * EntS (BindQ n A M a.k) w.f = bind-ents n A M rho rA rM w.f w.ents ; } ;
 
 cont-app (n : Nat) (M N : Tm n) (rho : Env n)
@@ -268,20 +269,20 @@ cont-app (n : Nat) (M N : Tm n) (rho : Env n)
     (rN : (t : Ty) -> (sem n N rho).mem t -> ApxIn n N rho t)
     (t : Ty) (w : AppW (sem n M rho) (sem n N rho) t) : ApxIn n (app n M N) rho t =
   (apx-meet n rho p.1 q.1,
-   struct {
-     g = w.g ; x = w.x ;
-     ing = sem-mono n M (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
-             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.g p.2 ;
-     inx = sem-mono n N (penv n q.1.k) (penv n (apx-meet n rho p.1 q.1).k)
-             (penv-incl n q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.x q.2 ;
-     le = w.le })
+   new AppWR[sem n M (penv n (apx-meet n rho p.1 q.1).k), sem n N (penv n (apx-meet n rho p.1 q.1).k), t,
+     g := w.g, x := w.x,
+     ing := sem-mono n M (penv n p.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n p.1.k (apx-meet n rho p.1 q.1).k (apx-meet-l n rho p.1 q.1)) w.g p.2,
+     inx := sem-mono n N (penv n q.1.k) (penv n (apx-meet n rho p.1 q.1).k)
+             (penv-incl n q.1.k (apx-meet n rho p.1 q.1).k (apx-meet-r n rho p.1 q.1)) w.x q.2,
+     le := w.le])
   where {
     p : ApxIn n M rho w.g = rM w.g w.ing ;
     q : ApxIn n N rho w.x = rN w.x w.inx ; } ;
 
 -- Lemma 3.6
 cont : (n : Nat) -> (M : Tm n) -> (rho : Env n) -> (t : Ty) -> (sem n M rho).mem t -> ApxIn n M rho t = split {
-  var n i -> \ rho t h -> (struct { k = pt n i t ; ink = pt-in n rho i t h }, pt-self n i t) ;
+  var n i -> \ rho t h -> (new ApxR[n, rho, k := pt n i t, ink := pt-in n rho i t h], pt-self n i t) ;
   uu n -> \ rho t h -> (apx-top n rho, h) ;
   pp n A B | rA rB -> \ rho -> cont-pi-by n A B rho (rA rho) rB ;
   lam n A M | rA rM -> \ rho -> cont-lam n A M rho (rA rho) rM ;

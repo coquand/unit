@@ -57,7 +57,7 @@ module AdeqB (n : Nat) (D : Ctx n) {
       ((mono (suc (max (md u) (md u')))).tm u u' le T M M'
          (to-fuel (rtm u T M M') (suc (max (md u) (md u'))) (leN-max-l (md u) (md u')) t)) ;
 
-  cmono : Mono Can = struct { ty = cmono-ty ; tm = cmono-tm } ;
+  cmono : Mono Can = new MonoR[Can, ty := cmono-ty, tm := cmono-tm] ;
 
   cl2 (u : Ty) (T M M' : Tm n) (t : TmR u T M M') : TmR u T M M =
     (laws (suc (md u))).dtm u T M M' t ;
@@ -101,24 +101,25 @@ module AdeqB (n : Nat) (D : Ctx n) {
   VarR (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (i : Fin m) (u : Ty) : U l =
     TmR u (Sub.trav m (lookup m G i) n s) (s i) (s' i) * TmR u (Sub.trav m (lookup m G i) n s') (s i) (s' i) ;
 
-  RelS (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) : U l =
-    sig { ok : SubOk m n G D s ; ok' : SubOk m n G D s' ; eq : SubEq m n G D s s' ; eq' : SubEq m n G D s' s ;
-          vr : (i : Fin m) -> (u c : Ty) -> (rho i).mem u -> (sem m (lookup m G i) rho).mem c -> Tp (el u c) ->
-               VarR m G rho s s' i u } ;
+  record RelSR { m : Nat ; G : Ctx m ; rho : Env m ; s : Fin m -> Tm n ; s' : Fin m -> Tm n ;
+    ok : SubOk m n G D s ; ok' : SubOk m n G D s' ; eq : SubEq m n G D s s' ; eq' : SubEq m n G D s' s ;
+    vr : (i : Fin m) -> (u c : Ty) -> (rho i).mem u -> (sem m (lookup m G i) rho).mem c -> Tp (el u c) ->
+         VarR m G rho s s' i u ; } ;
+  RelS (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) : U l = RelSR[m, G, rho, s, s'] ;
 
   rels-sym (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') : RelS m G rho s' s =
-    struct { ok = rs.ok' ; ok' = rs.ok ; eq = rs.eq' ; eq' = rs.eq ;
-             vr = \ i u c mu mc hc ->
+    new RelSR[m, G, rho, s', s, ok := rs.ok', ok' := rs.ok, eq := rs.eq', eq' := rs.eq,
+             vr := \ i u c mu mc hc ->
                (cl4 u c hc (Sub.trav m (lookup m G i) n s') (s i) (s' i) (rs.vr i u c mu mc hc).2,
-                cl4 u c hc (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1) } ;
+                cl4 u c hc (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1)] ;
 
   rels-diag (m : Nat) (G : Ctx m) (rho : Env m) (s s' : Fin m -> Tm n) (rs : RelS m G rho s s') : RelS m G rho s s =
-    struct { ok = rs.ok ; ok' = rs.ok ;
-             eq = \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i) ;
-             eq' = \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i) ;
-             vr = \ i u c mu mc hc ->
+    new RelSR[m, G, rho, s, s, ok := rs.ok, ok' := rs.ok,
+             eq := \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i),
+             eq' := \ i -> eq-refl n D (s i) (Sub.trav m (lookup m G i) n s) (rs.ok i),
+             vr := \ i u c mu mc hc ->
                (cl2 u (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1,
-                cl2 u (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1) } ;
+                cl2 u (Sub.trav m (lookup m G i) n s) (s i) (s' i) (rs.vr i u c mu mc hc).1)] ;
 
   -- the related arguments for the new variable, at both types
   ArgR (m : Nat) (A : Tm m) (rho : Env m) (X : Filt) (s s' : Fin m -> Tm n) (P P' : Tm n) : U l =
@@ -169,9 +170,10 @@ module AdeqB (n : Nat) (D : Ctx n) {
       (rs : RelS m G rho s s') (eP : Der n (jeq D P P' (Sub.trav m A n s))) (eP' : Der n (jeq D P' P (Sub.trav m A n s')))
       (hP : ArgR m A rho X s s' P P') :
       RelS (suc m) (ext m G A) (extE m rho X) (consS m n s P) (consS m n s' P') =
-    struct { ok = ext-ok m G A s P rs.ok (eq-pre n (jeq D P P' (Sub.trav m A n s)) eP).1 ;
-             ok' = ext-ok m G A s' P' rs.ok' (eq-pre n (jeq D P' P (Sub.trav m A n s')) eP').1 ;
-             eq = ext-eq m G A s s' P P' rs.eq eP ;
-             eq' = ext-eq m G A s' s P' P rs.eq' eP' ;
-             vr = ext-vr m G A rho X s s' P P' rs hP } ;
+    new RelSR[suc m, ext m G A, extE m rho X, consS m n s P, consS m n s' P',
+             ok := ext-ok m G A s P rs.ok (eq-pre n (jeq D P P' (Sub.trav m A n s)) eP).1,
+             ok' := ext-ok m G A s' P' rs.ok' (eq-pre n (jeq D P' P (Sub.trav m A n s')) eP').1,
+             eq := ext-eq m G A s s' P P' rs.eq eP,
+             eq' := ext-eq m G A s' s P' P rs.eq' eP',
+             vr := ext-vr m G A rho X s s' P P' rs hP] ;
 } ;
