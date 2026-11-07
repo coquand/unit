@@ -958,9 +958,9 @@ isDerived md l = case (modKind md, memberUnit (modUnits md) l) of
 selfEnv :: Mod -> [(Name, Val)] -> Val -> Env
 selfEnv md heads t = selfEnvFixed md heads [] t
 
--- the same, with the fields a type fixes bound to their values: only for
--- computing TYPES (of derived members at  t : R[ps][x := e] ), never values,
--- so that fixed fields never enter equality (RECORDS.md §4)
+-- the same, with the fields a type fixes bound to their values: for
+-- computing the TYPES of derived members at  t : R[ps][x := e]  (for a
+-- neutral t its projections give the same values: vproj)
 selfEnvFixed :: Mod -> [(Name, Val)] -> [(Name, Val)] -> Val -> Env
 selfEnvFixed md heads fixed t = go (modEnv md) False (modUnits md)
  where
@@ -1469,8 +1469,11 @@ rb full s k v0 = case (if full then whnf s v0 else v0) of
   -- a variable bound to itself (a parameter of the whole file): not shown
   ambient x v = case v of
     VLvl l    -> latoms l == [(x, 0)]
-    VConst c [] -> c == x
+    -- (a declared variable of record type is shown, as when it was a
+    -- separate form of value)
+    VConstT c [] t -> c == x && not (isRecordType t)
     _         -> False
+  isRecordType t = case recordTypeOf (VConstT "" [] t) of { Just _ -> True; Nothing -> False }
   rbTel _ [] _ = []
   rbTel j ((l, a) : tel) r = (l, rb full s j (eval r a)) : rbTel (j+1) tel (EVar r l (VGen j))
 
@@ -2822,9 +2825,9 @@ fillI cx e
       Fst a  -> do (a', _) <- fillI cx a; retype (Right (Fst a'))
       Snd a  -> do (a', _) <- fillI cx a; retype (Right (Snd a'))
       Proj a l -> do (a', _) <- fillI cx a; retype (Right (Proj a' l))
-      -- a derived member of a record element  t.d : evaluation is untyped,
-      -- so it is written with its record and head parameters,  R[ps].d at t
-      -- (RECORDS.md §3); on a variable of record type, which carries its
+      -- a derived member of a record element  t.d : it is written with its
+      -- record and head parameters,  R[ps].d at t  (RECORDS.md §3); when
+      -- the record cannot be named, on a neutral whose type gives its
       -- record, the projection itself computes the same value
       ProjU a l -> do
         (a', ta) <- fillI cx a
