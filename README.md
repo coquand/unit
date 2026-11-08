@@ -140,7 +140,7 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 
 ## Documents (`doc/`)
 
-- [`unit.pdf`](doc/unit.pdf): Unit, its uniform treatment of definitions
+- [`unit1.pdf`](doc/unit1.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
 - [`lazy-intersection.pdf`](doc/lazy-intersection.pdf): the lazy
   evaluator of Henderson and Morris by intersection types, the informal
