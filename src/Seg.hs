@@ -1346,13 +1346,19 @@ eqLClos :: LClos -> LClos -> Bool
 eqLClos (LClos x _ r) (LClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
 
 conv' :: CC -> Val -> Val -> Bool
-conv' c u1 u2 = convS c u1 u2 || unitEta u1 u2
+conv' c u1 u2 = convS c u1 u2 || unitEta c u1 u2
 
--- eta for a record with no field left (none, or all fixed by
--- the type): two neutrals of that record type are equal
-unitEta :: Val -> Val -> Bool
-unitEta u1 u2 = case (recordTypeOf u1, recordTypeOf u2) of
-  (Just (m1, f1), Just (m2, _)) -> modId m1 == modId m2 && all (`elem` map fst f1) (recordFieldNames m1)
+-- eta for two neutrals whose types fix every non-manifest field of the
+-- same record: their fields compute to the fixed values, which are
+-- compared (eta on neutrals in general would loop: e.x ~ e'.x comes
+-- back to e ~ e')
+unitEta :: CC -> Val -> Val -> Bool
+unitEta c u1 u2 = case (recordTypeOf u1, recordTypeOf u2) of
+  (Just (m1, f1), Just (m2, f2))
+    | modId m1 == modId m2, allFixed f1, allFixed f2 ->
+        and [ conv c (vproj u1 x) (vproj u2 x) | x <- fs ]
+   where fs = recordFieldNames m1
+         allFixed f = all (`elem` map fst f) fs
   _ -> False
 
 convS :: CC -> Val -> Val -> Bool
