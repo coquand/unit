@@ -1,0 +1,62 @@
+-- Search only below the degree of a supplied monic annihilator. At each
+-- stage positive separation gives either a monic relation or a functional
+-- killing the earlier powers and taking the next power to 1.
+-- In the latter case, a unit leading coefficient in an annihilating
+-- polynomial gives a span witness by normalization. Applying the functional
+-- then gives 1=0, which proves that coefficient zero as well. The weak
+-- coefficient decision is eliminated only into this equality proposition.
+-- Lowering the bound now proves that all smaller relations vanish.
+-- At the final stage the supplied relation itself is minimal. Thus no
+-- nonzero assumption, global equality decision, or false branch is needed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (weak : (a : k.R) -> Tr.Trunc[Plus (Id k.R a k.z) (RL[k].unit a)].carrier)
+ (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+ (basis : TraceBasis[l].Over[k,setk,S].Basis[n]) (x : S.ring.R) {
+ module Min = MinimalPolynomial[l].Over[k,setk,S,n,basis,x] ;
+ module P = Min.P ; module Raw = Min.Raw ; module Bound = Min.Bound ;
+ module Separation = MereLinearSeparation[l].Over[k,weak] ;
+ module Advance (m : Nat) (old : Min.NoRoots m) {
+  module Sep = Separation.At[n,m,P.vectors m,basis.coordinate P.At[m].target] ;
+  module Separated (f : Sep.F.Functional) {
+   module Coefficient (p : Raw.P) (bound : Bound.Bound (suc m) p) (root : P.Root p) {
+    collapse (u : RL[k].unit (Raw.coef p m)) : Id k.R k.o k.z =
+     Sep.F.On[f].overlap Min.Normalize[m,p,bound,root,u].power-witness ;
+    choose : Plus (Id k.R (Raw.coef p m) k.z) (RL[k].unit (Raw.coef p m)) ->
+     Id k.R (Raw.coef p m) k.z = split {
+     inl hz -> hz ;
+     inr u -> ZeroProduct[l].Collapse[k,collapse u].zero (Raw.coef p m) } ;
+    zero : Id k.R (Raw.coef p m) k.z =
+     TC.rec (Plus (Id k.R (Raw.coef p m) k.z) (RL[k].unit (Raw.coef p m)))
+      @l (Id k.R (Raw.coef p m) k.z) (setk (Raw.coef p m) k.z) choose (weak (Raw.coef p m)) ;
+   } ;
+   no-roots : Min.NoRoots (suc m) = \ p bound root ->
+    old p (Bound.lower-bound m p bound Coefficient[p,bound,root].zero) root ;
+  } ;
+  choose : Sep.Result -> Min.State (suc m) = split {
+   inl w -> inl (new Min.Minimal[m,P.At[m].Relation[w].lower,
+    P.At[m].Relation[w].length,P.At[m].Relation[w].root,old]) ;
+   inr f -> inr Separated[f].no-roots } ;
+  result : Tr.Trunc[Min.State (suc m)].carrier =
+   TC.map Sep.Result (Min.State (suc m)) choose Sep.theorem ;
+ } ;
+ step (m : Nat) : Min.State m -> Tr.Trunc[Min.State (suc m)].carrier = split {
+  inl f -> Tr.Trunc[Min.State (suc m)].inc (inl f) ;
+  inr old -> Advance[m,old].result } ;
+ search : (m : Nat) -> Tr.Trunc[Min.State m].carrier = split {
+  zero -> Tr.Trunc[Min.State zero].inc (inr (\ p bound root -> bound)) ;
+  suc m | ih -> TC.bind (Min.State m) (Min.State (suc m)) (step m) ih } ;
+ finish (lower : Raw.P) (root : P.Root (Min.HI.monic-list lower)) :
+  Min.State (Raw.plen lower) -> Min.Minimal = split {
+  inl f -> f ;
+  inr no -> new Min.Minimal[Raw.plen lower,lower,refl (Raw.plen lower),root,no] } ;
+ from-annihilator (lower : Raw.P) (root : P.Root (Min.HI.monic-list lower)) :
+  Tr.Trunc[Min.Minimal].carrier =
+  TC.map (Min.State (Raw.plen lower)) Min.Minimal (finish lower root) (search (Raw.plen lower)) ;
+ lift (h : Min.IM.IntegralWitness x) : Tr.Trunc[Min.Minimal].carrier =
+  from-annihilator h.1
+   (trans (FiniteSpanIntegral[l].MonicWitness[k,S.ring,setk,S.set,S.iota,x].monic-value h.1) h.2) ;
+ theorem : Tr.Trunc[Min.Minimal].carrier =
+  TC.bind (Min.IM.IntegralWitness x) Min.Minimal lift (Min.Integral.integral Min.finite x) ;
+} ;

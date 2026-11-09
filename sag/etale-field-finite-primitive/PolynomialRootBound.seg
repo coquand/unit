@@ -1,6 +1,7 @@
--- A polynomial of degree <n with n distinct roots in a discrete field
--- is zero. Synthetic division removes the last root and lowers the bound.
--- The nonvanishing corollary returns an actual index by finite search.
+-- A polynomial of degree <n vanishing on n scalars with pairwise unit
+-- differences is zero. Synthetic division removes the last root and
+-- lowers the bound. The exact field theorem and nonvanishing search
+-- remain as specializations of this positive root-bound theorem.
 level l ; open Ring[l] ; open Presentations[l] ;
 module Pr = Prelude[l] ;
 tag (n : Nat) : Fin (suc n) -> Nat = split { inl i -> zero ; inr t -> suc zero } ;
@@ -55,12 +56,16 @@ module Over (A : CRing) {
    =< ap (mul inv.1) h > mul inv.1 z =< L.mul-zero inv.1 > z } ;
  Injective (n : Nat) (x : Fin n -> R) : U l =
   (i j : Fin n) -> Id R (x i) (x j) -> Id (Fin n) i j ;
- module Field (inverse : (a : R) -> Not (Id R a z) -> L.unit a) {
+ -- Unit differences, rather than injectivity, are the positive datum
+ -- needed by synthetic division. This remains meaningful when 1=0.
+ Separated (n : Nat) (x : Fin n -> R) : U l =
+  (i j : Fin n) -> Not (Id (Fin n) i j) -> L.unit (add (x i) (neg (x j))) ;
+ module Units {
   module Step (n : Nat)
-   (ih : (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Injective n x ->
+   (ih : (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Separated n x ->
     ((i : Fin n) -> Id R (P.ev p (x i)) z) -> P.peq p nil)
    (p : P.P) (bound : Bound.Bound (suc n) p) (x : Fin (suc n) -> R)
-   (injective : Injective (suc n) x) (roots : (i : Fin (suc n)) -> Id R (P.ev p (x i)) z) {
+   (separated : Separated (suc n) x) (roots : (i : Fin (suc n)) -> Id R (P.ev p (x i)) z) {
    a : R = x (inr tt) ;
    f : P.P = Bound.cut (suc n) p ;
    same : P.peq p f = Bound.cut-equal (suc n) p bound ;
@@ -70,22 +75,27 @@ module Over (A : CRing) {
    lower-bound : Bound.Bound n quotient =
     \ k -> trans (ap (P.coef quotient) (ap (\ d -> plus d k) (sym length))) (M.coef-beyond quotient k) ;
    factorisation : P.peq f (P.mulXa a quotient) = P.root-factor a f (f-roots (inr tt)) ;
-   apart (i : Fin n) : Not (Id R (add (x (inl i)) (neg a)) z) =
-    \ h -> old-not-last n i (injective (inl i) (inr tt) (sub-zero (x (inl i)) a h)) ;
    quotient-root (i : Fin n) : Id R (P.ev quotient (x (inl i))) z =
-    unit-zero (add (x (inl i)) (neg a)) (P.ev quotient (x (inl i))) (inverse _ (apart i))
+    unit-zero (add (x (inl i)) (neg a)) (P.ev quotient (x (inl i))) (separated (inl i) (inr tt) (old-not-last n i))
      (trans (sym (ev-mulXa a quotient (x (inl i))))
       (trans (sym (ev-resp f (P.mulXa a quotient) factorisation (x (inl i)))) (f-roots (inl i)))) ;
-   old-injective : Injective n (\ i -> x (inl i)) =
-    \ i j h -> ap (old-retraction n i) (injective (inl i) (inl j) h) ;
-   quotient-zero : P.peq quotient nil = ih quotient lower-bound (\ i -> x (inl i)) old-injective quotient-root ;
+   old-separated : Separated n (\ i -> x (inl i)) =
+    \ i j h -> separated (inl i) (inl j) (\ eq -> h (ap (old-retraction n i) eq)) ;
+   quotient-zero : P.peq quotient nil = ih quotient lower-bound (\ i -> x (inl i)) old-separated quotient-root ;
    result : P.peq p nil = P.peq-trans p f nil same
     (P.peq-trans f (P.mulXa a quotient) nil factorisation (P.mulXa-peq a quotient nil quotient-zero)) ;
   } ;
-  theorem : (n : Nat) (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Injective n x ->
+  theorem : (n : Nat) (p : P.P) -> Bound.Bound n p -> (x : Fin n -> R) -> Separated n x ->
    ((i : Fin n) -> Id R (P.ev p (x i)) z) -> P.peq p nil = split {
-    zero -> \ p bound x injective roots -> bound ;
-    suc n | ih -> \ p bound x injective roots -> Step[n,ih,p,bound,x,injective,roots].result } ;
+    zero -> \ p bound x separated roots -> bound ;
+    suc n | ih -> \ p bound x separated roots -> Step[n,ih,p,bound,x,separated,roots].result } ;
+ } ;
+ module Field (inverse : (a : R) -> Not (Id R a z) -> L.unit a) {
+  separated (n : Nat) (x : Fin n -> R) (injective : Injective n x) : Separated n x =
+   \ i j h -> inverse (add (x i) (neg (x j))) (\ eq -> h (injective i j (sub-zero (x i) (x j) eq))) ;
+  theorem (n : Nat) (p : P.P) (bound : Bound.Bound n p) (x : Fin n -> R) (injective : Injective n x)
+   (roots : (i : Fin n) -> Id R (P.ev p (x i)) z) : P.peq p nil =
+   Units.theorem n p bound x (separated n x injective) roots ;
   module Search (zero-dec : (a : R) -> Plus (Id R a z) (Not (Id R a z))) {
    AllZero (n : Nat) (v : Fin n -> R) : U l = (i : Fin n) -> Id R (v i) z ;
    Nonzero (n : Nat) (v : Fin n -> R) : U l = (i : Fin n) * Not (Id R (v i) z) ;

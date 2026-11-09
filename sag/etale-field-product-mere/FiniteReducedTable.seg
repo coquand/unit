@@ -1,0 +1,100 @@
+-- Verify a finite ring table through a map to a reduced ring.
+-- Its indices have decidable equality, but their images need not.
+-- Each ring equation is checked by relative reflection. To check
+-- reducedness, decide the square-zero equation on finite indices;
+-- ambient reducedness then reflects the required zero equation.
+-- Any failed verification retains Bot as an explicit alternative.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module FS = FiniteScan[l] ;
+module Over (k : CRing) (Bot : U l) (n : Nat) (v : Fin n -> k.R)
+ (reflect : (i j : Fin n) -> Id k.R (v i) (v j) -> Plus (Id (Fin n) i j) Bot)
+ (z o : Fin n) (add mul : Fin n -> Fin n -> Fin n) (neg : Fin n -> Fin n)
+ (zero-image : Id k.R (v z) k.z) (one-image : Id k.R (v o) k.o)
+ (add-image : (a b : Fin n) -> Id k.R (v (add a b)) (k.add (v a) (v b)))
+ (mul-image : (a b : Fin n) -> Id k.R (v (mul a b)) (k.mul (v a) (v b)))
+ (neg-image : (a : Fin n) -> Id k.R (v (neg a)) (k.neg (v a)))
+ (reducedS : (a : k.R) -> Id k.R (k.mul a a) k.z -> Id k.R a k.z) {
+ module Index = FinitePermutationFold[l].Index ;
+ Eq (a b : Fin n) : U l = Id (Fin n) a b ;
+ AddA : U l = (a b c : Fin n) -> Eq (add a (add b c)) (add (add a b) c) ;
+ AddC : U l = (a b : Fin n) -> Eq (add a b) (add b a) ;
+ AddZ : U l = (a : Fin n) -> Eq (add a z) a ;
+ AddN : U l = (a : Fin n) -> Eq (add a (neg a)) z ;
+ MulA : U l = (a b c : Fin n) -> Eq (mul a (mul b c)) (mul (mul a b) c) ;
+ MulC : U l = (a b : Fin n) -> Eq (mul a b) (mul b a) ;
+ MulO : U l = (a : Fin n) -> Eq (mul a o) a ;
+ Dist : U l = (a b c : Fin n) -> Eq (mul a (add b c)) (add (mul a b) (mul a c)) ;
+ Reduced : U l = (a : Fin n) -> Eq (mul a a) z -> Eq a z ;
+ record Verified {
+  addA : AddA ; addC : AddC ; addZ : AddZ ; addN : AddN ;
+  mulA : MulA ; mulC : MulC ; mulO : MulO ; dist : Dist ; reduced : Reduced ;
+ } ;
+ addA-image (a b c : Fin n) : Id k.R (v (add a (add b c))) (v (add (add a b) c)) =
+  trans (add-image a (add b c))
+   (trans (ap (k.add (v a)) (add-image b c))
+    (trans (k.addA (v a) (v b) (v c))
+     (sym (trans (add-image (add a b) c) (ap (\ x -> k.add x (v c)) (add-image a b)))))) ;
+ addC-image (a b : Fin n) : Id k.R (v (add a b)) (v (add b a)) =
+  trans (add-image a b) (trans (k.addC (v a) (v b)) (sym (add-image b a))) ;
+ addZ-image (a : Fin n) : Id k.R (v (add a z)) (v a) =
+  trans (add-image a z) (trans (ap (k.add (v a)) zero-image) (k.addZ (v a))) ;
+ addN-image (a : Fin n) : Id k.R (v (add a (neg a))) (v z) =
+  trans (add-image a (neg a)) (trans (ap (k.add (v a)) (neg-image a)) (trans (k.addN (v a)) (sym zero-image))) ;
+ mulA-image (a b c : Fin n) : Id k.R (v (mul a (mul b c))) (v (mul (mul a b) c)) =
+  trans (mul-image a (mul b c))
+   (trans (ap (k.mul (v a)) (mul-image b c))
+    (trans (k.mulA (v a) (v b) (v c))
+     (sym (trans (mul-image (mul a b) c) (ap (\ x -> k.mul x (v c)) (mul-image a b)))))) ;
+ mulC-image (a b : Fin n) : Id k.R (v (mul a b)) (v (mul b a)) =
+  trans (mul-image a b) (trans (k.mulC (v a) (v b)) (sym (mul-image b a))) ;
+ mulO-image (a : Fin n) : Id k.R (v (mul a o)) (v a) =
+  trans (mul-image a o) (trans (ap (k.mul (v a)) one-image) (k.mulO (v a))) ;
+ dist-image (a b c : Fin n) : Id k.R (v (mul a (add b c))) (v (add (mul a b) (mul a c))) =
+  trans (mul-image a (add b c))
+   (trans (ap (k.mul (v a)) (add-image b c))
+    (trans (k.dist (v a) (v b) (v c))
+     (sym (trans (add-image (mul a b) (mul a c))
+      (cong2 k.R k.add _ _ _ _ (mul-image a b) (mul-image a c)))))) ;
+ -- Finite verification of equations with one, two or three indices.
+ unary (left right : Fin n -> Fin n) (images : (a : Fin n) -> Id k.R (v (left a)) (v (right a))) :
+  Plus ((a : Fin n) -> Eq (left a) (right a)) Bot =
+  FS.scan n (\ a -> Eq (left a) (right a)) Bot (\ a -> reflect (left a) (right a) (images a)) ;
+ binary (left right : Fin n -> Fin n -> Fin n)
+  (images : (a b : Fin n) -> Id k.R (v (left a b)) (v (right a b))) :
+  Plus ((a b : Fin n) -> Eq (left a b) (right a b)) Bot =
+  FS.scan n (\ a -> (b : Fin n) -> Eq (left a b) (right a b)) Bot (\ a -> unary (left a) (right a) (images a)) ;
+ ternary (left right : Fin n -> Fin n -> Fin n -> Fin n)
+  (images : (a b c : Fin n) -> Id k.R (v (left a b c)) (v (right a b c))) :
+  Plus ((a b c : Fin n) -> Eq (left a b c) (right a b c)) Bot =
+  FS.scan n (\ a -> (b c : Fin n) -> Eq (left a b c) (right a b c)) Bot (\ a -> binary (left a) (right a) (images a)) ;
+ reduced-case (a : Fin n) : Plus (Eq (mul a a) z) (Not (Eq (mul a a) z)) -> Plus (Eq (mul a a) z -> Eq a z) Bot = split {
+  inl h -> FS.map (Eq a z) (Eq (mul a a) z -> Eq a z) Bot (\ p h -> p)
+   (reflect a z (trans (reducedS (v a) (trans (sym (mul-image a a)) (trans (ap v h) zero-image))) (sym zero-image))) ;
+  inr no -> inl (\ h -> efq (no h)) } ;
+ Laws : U l = AddA * AddC * AddZ * AddN * MulA * MulC * MulO * Dist * Reduced ;
+ laws : Plus Laws Bot =
+  FS.join AddA (AddC * AddZ * AddN * MulA * MulC * MulO * Dist * Reduced) Bot
+    (ternary (\ a b c -> add a (add b c)) (\ a b c -> add (add a b) c) addA-image)
+    (    FS.join AddC (AddZ * AddN * MulA * MulC * MulO * Dist * Reduced) Bot
+      (binary add (\ a b -> add b a) addC-image)
+      (      FS.join AddZ (AddN * MulA * MulC * MulO * Dist * Reduced) Bot
+        (unary (\ a -> add a z) (\ a -> a) addZ-image)
+        (        FS.join AddN (MulA * MulC * MulO * Dist * Reduced) Bot
+          (unary (\ a -> add a (neg a)) (\ a -> z) addN-image)
+          (          FS.join MulA (MulC * MulO * Dist * Reduced) Bot
+            (ternary (\ a b c -> mul a (mul b c)) (\ a b c -> mul (mul a b) c) mulA-image)
+            (            FS.join MulC (MulO * Dist * Reduced) Bot
+              (binary mul (\ a b -> mul b a) mulC-image)
+              (              FS.join MulO (Dist * Reduced) Bot
+                (unary (\ a -> mul a o) (\ a -> a) mulO-image)
+                (                FS.join Dist (Reduced) Bot
+                  (ternary (\ a b c -> mul a (add b c)) (\ a b c -> add (mul a b) (mul a c)) dist-image)
+                  (FS.scan n (\ a -> Eq (mul a a) z -> Eq a z) Bot (\ a -> reduced-case a (Index.decide n (mul a a) z)))))))))) ;
+ pack (d : Laws) : Verified = new Verified[d.1,d.2.1,d.2.2.1,d.2.2.2.1,d.2.2.2.2.1,d.2.2.2.2.2.1,d.2.2.2.2.2.2.1,d.2.2.2.2.2.2.2.1,d.2.2.2.2.2.2.2.2] ;
+ theorem : Plus Verified Bot = FS.map Laws Verified Bot pack laws ;
+ module Given (h : Verified) {
+  ring : CRing = mkCRing (Fin n) z o add mul neg h.addA h.addC h.addZ h.addN h.mulA h.mulC h.mulO h.dist ;
+  set : Pr.isSet ring.R = FiniteTableReflection[l].Discrete[Fin n,Index.decide n].set ;
+  hom : RingHom[l].Hom ring k = (v,one-image,add-image,mul-image) ;
+ } ;
+} ;

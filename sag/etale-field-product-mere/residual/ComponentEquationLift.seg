@@ -1,0 +1,105 @@
+-- Lift the finite equations of a product component through a merely
+-- surjective map. Polynomial coefficients and the three distinguished
+-- elements are lifted only finitely, under truncation. Every equality
+-- is sent to the supplied explicit clearing witness; it is never
+-- reflected as an equality in the source ring. This is the algebraic
+-- lifting step, independent of a prime or a basis of the residue algebra.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A K : CRing) (setK : Pr.isSet K.R) (f : H.Hom A K)
+ (coefficients : (c : K.R) -> Tr.Trunc[(a : A.R) * Id K.R (f.1 a) c].carrier)
+ (B : CRing) (setB : Pr.isSet B.R) (iB : H.Hom A B)
+ (T : CRing) (setT : Pr.isSet T.R) (eta : H.Hom B T)
+ (onto : (c : T.R) -> Tr.Trunc[(b : B.R) * Id T.R (eta.1 b) c].carrier)
+ (iC : H.Hom K T) (square : (a : A.R) -> Id T.R (eta.1 (iB.1 a)) (iC.1 (f.1 a)))
+ (Witness : B.R -> U l) (clear : (b : B.R) -> Id T.R (eta.1 b) T.z -> Tr.Trunc[Witness b].carrier) {
+ module CK = Algebras[l].Over[K,setK] ;
+ algebra : CK.Algebra = CK.mkAlgebra T setT iC ;
+ module Components = ProductComponent[l].Over[K,setK] ;
+ module Lists = FiniteListLifting[l].Over[A,K,f,coefficients] ;
+ module St = SelectedFactorStatement[l].Over[K,setK].At[algebra] ;
+ Rep (c : T.R) : U l = (b : B.R) * Id T.R (eta.1 b) c ;
+ difference (b c : B.R) : Id T.R (eta.1 (B.add b (B.neg c))) (T.add (eta.1 b) (T.neg (eta.1 c))) =
+  trans (eta.2.2.1 b (B.neg c)) (ap (T.add (eta.1 b)) (H.negation B T eta c)) ;
+ clear-family (r : Nat) (bs : Fin r -> B.R) (eq : (i : Fin r) -> Id T.R (eta.1 (bs i)) T.z) :
+  Tr.Trunc[(i : Fin r) -> Witness (bs i)].carrier = AffineFinite[l].choice r (\ i -> Witness (bs i)) (\ i -> clear (bs i) (eq i)) ;
+ module Given (c : Components.Component[algebra]) (r : Nat) (bs : Fin r -> B.R) {
+  module Component = Components.At[algebra,c] ;
+  full : List K.R = Component.H.RK.monic Component.Mon.lower ;
+  reps (i : Fin r) : List K.R = Component.representation (eta.1 (bs i)) ;
+   record Elements {
+    eps : B.R ; eps-image : Id T.R (eta.1 eps) Component.R.support ;
+    x : B.R ; x-image : Id T.R (eta.1 x) Component.generator ;
+    w : B.R ; w-image : Id T.R (eta.1 w) Component.inverse ;
+   } ;
+   elements : Tr.Trunc[Elements].carrier =
+    TC.map2 (Rep Component.R.support)
+     ((Rep Component.generator) * (Rep Component.inverse)) Elements
+     (\ e xw -> new Elements[e.1,e.2,xw.1.1,xw.1.2,xw.2.1,xw.2.2])
+     (onto Component.R.support)
+     (TC.map2 (Rep Component.generator) (Rep Component.inverse)
+      ((Rep Component.generator) * (Rep Component.inverse)) (\ x w -> (x,w))
+      (onto Component.generator) (onto Component.inverse)) ;
+   record Polynomials {
+    p : List A.R ; p-image : Id (List K.R) (Lists.P.map p) full ;
+    cs : Fin r -> List A.R ;
+    cs-image (i : Fin r) : Id (List K.R) (Lists.P.map (cs i)) (reps i) ;
+   } ;
+   polynomials : Tr.Trunc[Polynomials].carrier =
+    TC.map2 (Lists.Rep full) ((i : Fin r) -> Lists.Rep (reps i)) Polynomials
+     (\ p cs -> new Polynomials[p.1,p.2,\ i -> (cs i).1,\ i -> (cs i).2])
+     (Lists.lists full) (Lists.family r reps) ;
+   module Raw (el : Elements) (pol : Polynomials) {
+    module V = PolynomialNaturality[l].Values[A,K,B,T,f,iB,iC,eta,square,el.x] ;
+    module D = PolynomialNaturality[l].Derivatives[A,K,B,T,setB,setT,f,iB,iC,eta,square,el.x] ;
+    -- Both derivative presentations use the same source dual evaluation.
+    source-slope (p : List A.R) : Id B.R (D.bvalue p).2
+     (CornerHorner[l].DualValues[A,B,setB,iB,el.x].slope p) = refl (D.bvalue p).2 ;
+    value (p : List A.R) (cp : List K.R) (eq : Id (List K.R) (Lists.P.map p) cp) :
+     Id T.R (eta.1 (V.HB.horner p)) (St.value Component.generator cp) =
+     trans (V.value p)
+      (trans (ap (\ x -> MonicReduce[l].Horner[K,T,iC,x].horner (Lists.P.map p)) el.x-image)
+       (ap (St.value Component.generator) eq)) ;
+    slope (p : List A.R) (cp : List K.R) (eq : Id (List K.R) (Lists.P.map p) cp) :
+     Id T.R (eta.1 (D.bvalue p).2) (St.slope Component.generator cp) =
+     trans (D.slope p)
+      (trans (ap (\ x -> (MonicReduce[l].Horner[K,D.D.DC.ring,D.ci,(x,T.o)].horner (Lists.P.map p)).2) el.x-image)
+       (ap (St.slope Component.generator) eq)) ;
+    root-element : B.R = B.mul el.eps (V.HB.horner pol.p) ;
+    sep-element : B.R = B.mul el.eps (B.add (B.mul (D.bvalue pol.p).2 el.w) (B.neg B.o)) ;
+    gen-element (i : Fin r) : B.R = B.mul el.eps (B.add (bs i) (B.neg (V.HB.horner (pol.cs i)))) ;
+    root-zero : Id T.R (eta.1 root-element) T.z =
+     trans (eta.2.2.2 el.eps (V.HB.horner pol.p))
+      (trans (cong2 T.R T.mul _ _ _ _ el.eps-image (value pol.p full pol.p-image)) Component.root) ;
+    sep-value : Id T.R (eta.1 (B.add (B.mul (D.bvalue pol.p).2 el.w) (B.neg B.o)))
+     (T.add (T.mul (St.slope Component.generator full) Component.inverse) (T.neg T.o)) =
+     trans (difference (B.mul (D.bvalue pol.p).2 el.w) B.o)
+      (cong2 T.R T.add _ _ _ _
+       (trans (eta.2.2.2 (D.bvalue pol.p).2 el.w)
+        (cong2 T.R T.mul _ _ _ _ (slope pol.p full pol.p-image) el.w-image))
+       (ap T.neg eta.2.1)) ;
+    sep-zero : Id T.R (eta.1 sep-element) T.z =
+     trans (eta.2.2.2 el.eps (B.add (B.mul (D.bvalue pol.p).2 el.w) (B.neg B.o)))
+      (trans (cong2 T.R T.mul _ _ _ _ el.eps-image sep-value) Component.separable) ;
+    gen-zero (i : Fin r) : Id T.R (eta.1 (gen-element i)) T.z =
+     trans (eta.2.2.2 el.eps (B.add (bs i) (B.neg (V.HB.horner (pol.cs i)))))
+      (trans (cong2 T.R T.mul _ _ _ _ el.eps-image
+       (trans (difference (bs i) (V.HB.horner (pol.cs i)))
+        (ap (\ a -> T.add (eta.1 (bs i)) (T.neg a)) (value (pol.cs i) (reps i) (pol.cs-image i)))))
+       (Component.generates (eta.1 (bs i)))) ;
+    Witnesses : U l = Witness root-element * Witness sep-element * ((i : Fin r) -> Witness (gen-element i)) ;
+    witnesses : Tr.Trunc[Witnesses].carrier =
+     TC.map2 (Witness root-element) (Witness sep-element * ((i : Fin r) -> Witness (gen-element i))) Witnesses
+      (\ a b -> (a,b)) (clear root-element root-zero)
+      (TC.map2 (Witness sep-element) ((i : Fin r) -> Witness (gen-element i))
+       (Witness sep-element * ((i : Fin r) -> Witness (gen-element i))) (\ a b -> (a,b))
+       (clear sep-element sep-zero) (clear-family r gen-element gen-zero)) ;
+   } ;
+   Result : U l = (el : Elements) * (pol : Polynomials) * Raw[el,pol].Witnesses ;
+   from-pol (el : Elements) (pol : Polynomials) : Tr.Trunc[Result].carrier =
+    TC.map Raw[el,pol].Witnesses Result (\ w -> (el,pol,w)) Raw[el,pol].witnesses ;
+   from-elements (el : Elements) : Tr.Trunc[Result].carrier = TC.bind Polynomials Result (from-pol el) polynomials ;
+   theorem : Tr.Trunc[Result].carrier = TC.bind Elements Result from-elements elements ;
+
+ } ;
+} ;

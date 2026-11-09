@@ -1,0 +1,94 @@
+-- Bridges to actual quotient polynomials and StandardEtale's derivative.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module V = MonicRescalingValues[l] ;
+module Polynomials (A : CRing) (setA : Pr.isSet A.R) {
+ module X = PolynomialRing[l].Extension[A,setA] ; module Ls = V.Lists[A] ;
+ monic (lower : List A.R) : X.Carrier = X.include (Ls.monic lower) ;
+ module At (B : CRing) (setB : Pr.isSet B.R) (h : H.Hom A B) (x : B.R) {
+  module SE = StandardEtale[l].Over[A,setA] ; module P = SE.At[B,setB,h,x] ;
+  module Val = V.Values[A,B,h,x] ; module L = RL[B] ;
+  val-cons (a : A.R) (p : List A.R) :
+   Id B.R (P.value (X.include (cons a p))) (B.add (h.1 a) (B.mul x (P.value (X.include p)))) =
+   trans (ap P.value (X.horner a p))
+    (trans (P.ev.2.2.1 (X.constant a) (X.mulQ X.variable (X.include p)))
+     (cong2 B.R B.add _ _ _ _ (P.UP.on-constants a)
+      (trans (P.ev.2.2.2 X.variable (X.include p))
+       (ap (\ z -> B.mul z (P.value (X.include p))) P.UP.on-variable)))) ;
+  der-add (p q : X.Carrier) : Id B.R (P.derivative (X.addQ p q))
+   (B.add (P.derivative p) (P.derivative q)) = ap (\ z -> z.2) (P.evd.2.2.1 p q) ;
+  der-mul (p q : X.Carrier) : Id B.R (P.derivative (X.mulQ p q))
+   (B.add (B.mul (P.value p) (P.derivative q)) (B.mul (P.derivative p) (P.value q))) =
+   trans (ap (\ z -> z.2) (P.evd.2.2.2 p q))
+    (cong2 B.R B.add _ _ _ _
+     (ap (\ z -> B.mul z (P.derivative q)) (P.value-first p))
+     (ap (B.mul (P.derivative p)) (P.value-first q))) ;
+  der-constant (a : A.R) : Id B.R (P.derivative (X.constant a)) B.z =
+   ap (\ z -> z.2) (P.UPe.on-constants a) ;
+  der-variable : Id B.R (P.derivative X.variable) B.o = ap (\ z -> z.2) P.UPe.on-variable ;
+  der-cons (a : A.R) (p : List A.R) : Id B.R (P.derivative (X.include (cons a p)))
+   (B.add (B.mul x (P.derivative (X.include p))) (P.value (X.include p))) =
+   trans (ap P.derivative (X.horner a p))
+    (trans (der-add (X.constant a) (X.mulQ X.variable (X.include p)))
+     (trans (cong2 B.R B.add _ _ _ _ (der-constant a)
+      (trans (der-mul X.variable (X.include p))
+       (cong2 B.R B.add _ _ _ _
+        (ap (\ z -> B.mul z (P.derivative (X.include p))) P.UP.on-variable)
+        (trans (ap (\ z -> B.mul z (P.value (X.include p))) der-variable) (L.one-left (P.value (X.include p)))))))
+      (L.zl (B.add (B.mul x (P.derivative (X.include p))) (P.value (X.include p)))))) ;
+  value : (p : List A.R) -> Id B.R (P.value (monic p)) (Val.value p) = split {
+   nil -> trans (P.UP.on-constants A.o) h.2.1 ;
+   cons a p | ih -> trans (val-cons a (Ls.monic p)) (ap (\ z -> B.add (h.1 a) (B.mul x z)) ih) } ;
+  derivative : (p : List A.R) -> Id B.R (P.derivative (monic p)) (Val.derivative p) = split {
+   nil -> der-constant A.o ;
+   cons a p | ih -> trans (der-cons a (Ls.monic p))
+    (cong2 B.R B.add _ _ _ _ (ap (B.mul x) ih) (value p)) } ;
+ } ;
+} ;
+module Over (A B : CRing) (setA : Pr.isSet A.R) (setB : Pr.isSet B.R) (h : H.Hom A B) (u : A.R) {
+ module R = V.Over[A,B,h,u] ; module PA = Polynomials[A,setA] ; module PB = Polynomials[B,setB] ;
+ module At (x : B.R) {
+  module Original = PB.At[B,setB,H.identity B,x] ;
+  module Scaled = PA.At[B,setB,h,B.mul R.scale x] ;
+  value (p : List B.R) (w : R.Numerators p) :
+   Id B.R (Scaled.P.value (PA.monic (R.lower p w)))
+    (B.mul (R.BP.power R.scale (len p)) (Original.P.value (PB.monic p))) =
+   trans (Scaled.value (R.lower p w))
+    (trans (R.At[x].value p w)
+     (ap (B.mul (R.BP.power R.scale (len p))) (sym (Original.value p)))) ;
+  derivative (p : List B.R) (w : R.Numerators p) :
+   Id B.R (B.mul R.scale (Scaled.P.derivative (PA.monic (R.lower p w))))
+    (B.mul (R.BP.power R.scale (len p)) (Original.P.derivative (PB.monic p))) =
+   trans (ap (B.mul R.scale) (Scaled.derivative (R.lower p w)))
+    (trans (R.At[x].derivative p w)
+     (ap (B.mul (R.BP.power R.scale (len p))) (sym (Original.derivative p)))) ;
+  positive-derivative (unit : RL[B].unit R.scale) (a : B.R) (p : List B.R) (w : R.Numerators (cons a p)) :
+   Id B.R (Scaled.P.derivative (PA.monic (R.lower (cons a p) w)))
+    (B.mul (R.BP.power R.scale (len p)) (Original.P.derivative (PB.monic (cons a p)))) =
+   trans (Scaled.derivative (R.lower (cons a p) w))
+    (trans (R.At[x].positive-derivative unit a p w)
+     (ap (B.mul (R.BP.power R.scale (len p))) (sym (Original.derivative (cons a p))))) ;
+ } ;
+ module WithUnit (unit : RL[B].unit R.scale) {
+  module X = PB.X ; module XP = AffinePowers[l].Over[X.ring] ; module XL = RL[X.ring] ;
+  composite : H.Hom A X.ring = H.compose A B X.ring X.inclusion h ;
+  module Mapped = MonicRescalingMap[l].Over[A,B,X.ring,h,X.inclusion,u] ;
+  inverse-variable : X.Carrier = X.ring.mul (X.constant unit.1) X.variable ;
+  variable : Id X.Carrier (X.ring.mul (X.constant R.scale) inverse-variable) X.variable =
+   trans (X.ring.mulA (X.constant R.scale) (X.constant unit.1) X.variable)
+    (trans (ap (\ z -> X.ring.mul z X.variable)
+     (trans (sym (X.inclusion.2.2.2 R.scale unit.1))
+      (trans (ap X.constant unit.2) X.inclusion.2.1))) (XL.one-left X.variable)) ;
+  module Change = PB.At[X.ring,X.set,X.inclusion,inverse-variable] ;
+  module Image = PA.At[X.ring,X.set,composite,X.variable] ;
+  Statement (p : List B.R) (lower : List A.R) : U l =
+   Id X.Carrier (Image.P.value (PA.monic lower))
+    (X.ring.mul (X.constant (R.BP.power R.scale (len p))) (Change.P.value (PB.monic p))) ;
+  polynomial (p : List B.R) (w : R.Numerators p) : Statement p (R.lower p w) =
+   trans (Image.value (R.lower p w))
+    (trans (ap (\ z -> V.Values[A,X.ring,composite,z].value (R.lower p w)) (sym variable))
+     (trans (Mapped.At[inverse-variable].value p w)
+      (cong2 X.Carrier X.ring.mul _ _ _ _
+       (sym (AffinePowers[l].power-map B X.ring X.inclusion R.scale (len p)))
+       (sym (Change.value p))))) ;
+ } ;
+} ;

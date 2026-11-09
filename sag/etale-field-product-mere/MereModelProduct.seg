@@ -1,0 +1,61 @@
+-- Refine a finite reduced coefficient model at every element. Each
+-- nonzero model corner is a finite field with a primitive element over
+-- the coefficient field. Map its polynomial representatives to the
+-- ambient corner; they represent the projected ambient basis and hence
+-- generate that corner. Weak Gaussian elimination and minimality give
+-- its separable monic presentation. Glue every piece, including zero
+-- image corners; no injectivity of either model map is required.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (weak : (a : k.R) -> Tr.Trunc[Plus (Id k.R a k.z) (RL[k].unit a)].carrier)
+ (S : Algebras[l].Over[k,setk].Algebra) (n : Nat)
+ (basis : TraceBasis[l].Over[k,setk,S].Basis[n])
+ (reduced : (a : S.ring.R) -> Id S.ring.R (S.ring.mul a a) S.ring.z -> Id S.ring.R a S.ring.z)
+ (nondegenerate : (a : S.ring.R) -> ((b : S.ring.R) ->
+  Id k.R (TraceBasis[l].Over[k,setk,S].At[n,basis].trace (S.ring.mul a b)) k.z) -> Id S.ring.R a S.ring.z)
+ (K : CRing) (setK : Pr.isSet K.R) (dec : (a : K.R) -> Plus (Id K.R a K.z) (RL[K].unit a))
+ (rho : H.Hom K k) (B : Algebras[l].Over[K,setK].Algebra)
+ (equal : (a b : B.ring.R) -> Plus (Id B.ring.R a b) (Not (Id B.ring.R a b)))
+ (m : Nat) (enumerate : Fin m -> B.ring.R) (cover : (a : B.ring.R) -> (i : Fin m) * Id B.ring.R (enumerate i) a)
+ (reducedB : (a : B.ring.R) -> Id B.ring.R (B.ring.mul a a) B.ring.z -> Id B.ring.R a B.ring.z)
+ (hom : H.Hom B.ring S.ring) (commutes : (a : K.R) -> Id S.ring.R (hom.1 (B.iota.1 a)) (S.iota.1 (rho.1 a)))
+ (preimage : Fin n -> B.ring.R) (image : (i : Fin n) -> Id S.ring.R (hom.1 (preimage i)) (basis.vector i)) {
+ module Mapped = MappedProducts[l].Over[k,setk,S,B.ring,B.set,hom] ; module Refine = Mapped.Refine ;
+ module Target = ProductPresentation[l].Over[k,setk] ; module Mono = MonogenicPresentation[l].Over[k,setk] ;
+ restricted : Algebras[l].Over[B.ring,B.set].Algebra = Algebras[l].Over[B.ring,B.set].mkAlgebra S.ring S.set hom ;
+ module Piece (e : B.ring.R) (he : Refine.Square e)
+  (resolved : (i : Fin m) -> Refine.Resolved e (enumerate i)) {
+  module Finite = FiniteResolvedField[l].Over[B.ring,B.set,equal,m,enumerate,cover,e,he,resolved] ; module F = Finite.F ;
+  module Relative = IdempotentAlgebraFactor[l].Over[B.ring,B.set,restricted,e,he] ;
+  module Corner = MereCornerMonogenic[l].Over[k,setk,weak,S,n,basis,reduced,nondegenerate,hom.1 e,Mapped.square e he] ;
+  module Nonzero (nonzero : Not (Id B.ring.R e B.ring.z)) {
+   coefficient : H.Hom K F.ring = H.compose K B.ring F.ring F.projection B.iota ;
+   module Primitive = FiniteFieldPrimitive[l].Over[K,F.ring,F.set,coefficient,Finite.field,Finite.nonzero nonzero] ;
+   primitive : Primitive.Data = Primitive.theorem Finite.size Finite.values Finite.injective Finite.onto ;
+   constants (a : K.R) : Id Corner.F.Carrier (Relative.iota.1 (coefficient.1 a)) (Corner.R.iota.1 (rho.1 a)) =
+    trans (Relative.square (B.iota.1 a)) (ap Corner.F.project (commutes a)) ;
+   module Values = HornerCoefficientChange[l].Over[K,k,F.ring,Corner.F.ring,rho,coefficient,Corner.R.iota,Relative.iota,constants,primitive.gamma] ;
+   generator (i : Fin n) : F.Carrier = F.project (preimage i) ;
+   representation (i : Fin n) : List k.R = Values.map (primitive.representation (generator i)).1 ;
+   equation (i : Fin n) : Id Corner.F.Carrier (Values.Target.horner (representation i)) (Corner.F.project (basis.vector i)) =
+    trans (sym (Values.value (primitive.representation (generator i)).1))
+     (trans (ap Relative.function (primitive.representation (generator i)).2)
+      (trans (Relative.square (preimage i)) (ap Corner.F.project (image i)))) ;
+   theorem : Mapped.Result e he = TC.map (Mono.At[Corner.R.algebra]) (Target.At[Corner.R.algebra])
+    (Target.monogenic Corner.R.algebra) Corner.Lists[Relative.function primitive.gamma,representation,equation].theorem ;
+  } ;
+  zero (h : Id B.ring.R e B.ring.z) : Mapped.Result e he =
+   Tr.Trunc[Target.At[Corner.R.algebra]].inc
+    ZeroProduct[l].Over[k,setk].At[Corner.R.algebra,Corner.F.eq _ _ (trans (ap hom.1 h) (H.zero B.ring S.ring hom))].theorem ;
+  cases : Plus (Id B.ring.R e B.ring.z) (Not (Id B.ring.R e B.ring.z)) -> Mapped.Result e he = split {
+   inl h -> zero h ; inr h -> Nonzero[h].theorem } ;
+  theorem : Mapped.Result e he = cases (equal e B.ring.z) ;
+ } ;
+ module Build = Refine.Into[Mapped.Result,Mapped.glue] ;
+ regular : Refine.Reg.Regular = EnumeratedReducedRegular[l].Over[K,setK,dec,B,m,enumerate,cover,reducedB].theorem ;
+ pieces : Mapped.Result B.ring.o (B.ring.mulO B.ring.o) = Build.theorem
+  (\ e he -> Tr.Trunc[Target.At[Mapped.P.algebra (hom.1 e) (Mapped.square e he)]].proposition)
+  regular m enumerate (\ e he resolved -> Piece[e,he,resolved].theorem) B.ring.o (B.ring.mulO B.ring.o) ;
+ theorem : Tr.Trunc[Target.At[S]].carrier = Mapped.whole pieces ;
+} ;

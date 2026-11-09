@@ -1,0 +1,85 @@
+-- Strong primality + positive free-list induction + primewise charts
+-- produce a finite certified cover with an explicit unit equation.
+-- Certificates may contain algebras (U(l+)); no resizing is used.
+level l ; open Ring[l] ; open Bar[l] ; open Presentations[l] ;
+module Big = Truncation[l+] ; module BTC = TruncationCombinators[l+] ;
+module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (Certificate : A.R -> U l+) {
+ open A ;
+ module M = IdealPowers[l] ; module SP = ModSpan[l].Over[A,M.regular A] ;
+ module LS = Comb[l].Lists[A,M.regular A] ;
+ module CS = Comb[l].Sums[A,M.regular A] ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ module F = FiniteSpanCover[l].Over[A] ;
+ module P = StrongPrimality[l].Over[A] ;
+ module FL = LargeFreeLists[l].Over[A] ;
+ All : List R -> U l+ = split {
+  nil -> Top ; cons h hs | ih -> Certificate h * ih } ;
+ all-app : (h k : List R) -> All h -> All k -> All (app h k) = split {
+  nil -> \ k gh gk -> gk ;
+  cons a h | ih -> \ k gh gk -> (gh.1,ih k gh.2 gk) } ;
+ all-at : (hs : List R) -> All hs -> (i : Fin (len hs)) -> Certificate (LS.elem hs i) = split {
+  nil -> \ gh i -> LargeFreeLists[l].big-absurd (Certificate (LS.elem nil i)) i ;
+  cons a hs | ih -> \ gh -> split { inl i -> ih gh.2 i ; inr t -> gh.1 } } ;
+ -- Auxiliary entries s need not themselves carry certificates.
+ Witness (s : List R) : U l+ = (hs : List R) * All hs * SP.In (app s hs) o ;
+ Covered (s : List R) : U l+ = Big.Trunc[Witness s].carrier ;
+ prop (s : List R) : Prelude[l+].isProp (Covered s) = Big.Trunc[Witness s].proposition ;
+ Hit (s : List R) : U l+ = (h : R) * Certificate h * Not (P.Mem s h) ;
+ Pointwise : U l+ = (s : List R) -> P.Prime s -> Big.Trunc[Hit s].carrier ;
+ Cover : U l+ = (n : Nat) * (h c : Fin n -> R) *
+  ((i : Fin n) -> Certificate (h i)) * Id R (S.lin n h c) o ;
+ unit-witness (s : List R) (w : SP.In s o) : Witness s =
+  (nil,tt,F.empty-right s o w) ;
+ unit (s : List R) : P.Mem s o -> Covered s =
+  TC.rec (SP.In s o) @l+ (Covered s) (prop s)
+   (\ w -> Big.Trunc[Witness s].inc (unit-witness s w)) ;
+ retain (s : List R) (h : R) (cert : Certificate h) (w : Witness (cons h s)) : Witness s =
+  (cons h w.1,(cert,w.2.1),F.keep h s w.1 o w.2.2) ;
+ prime-branch (s : List R)
+  (next : (h : R) -> Not (SP.In s h) -> Covered (cons h s)) (hit : Hit s) : Covered s =
+  BTC.map (Witness (cons hit.1 s)) (Witness s) (retain s hit.1 hit.2.1)
+   (next hit.1 (\ w -> hit.2.2 (P.S.mm s hit.1 w))) ;
+ split-witness (s : List R) (a b : R) (ab : SP.In s (mul a b))
+  (ha : Witness (cons a s)) (hb : Witness (cons b s)) : Witness s =
+  (app ha.1 hb.1,all-app ha.1 hb.1 ha.2.1 hb.2.1,
+   F.join (app s (app ha.1 hb.1)) a b (F.left s (app ha.1 hb.1) (mul a b) ab)
+    (F.extend a (app s ha.1) (app s (app ha.1 hb.1)) (F.union-left s ha.1 hb.1) o ha.2.2)
+    (F.extend b (app s hb.1) (app s (app ha.1 hb.1)) (F.union-right s ha.1 hb.1) o hb.2.2)) ;
+ split-branch (s : List R)
+  (next : (h : R) -> Not (SP.In s h) -> Covered (cons h s)) (w : P.Split s) : Covered s =
+  BTC.bind2 (Witness (cons w.1 s)) (Witness (cons w.2.1 s)) (Witness s)
+   (\ ha hb -> TC.rec (SP.In s (mul w.1 w.2.1)) @l+ (Covered s) (prop s)
+    (\ ab -> Big.Trunc[Witness s].inc (split-witness s w.1 w.2.1 ab ha hb)) w.2.2.2.2)
+   (next w.1 (\ h -> w.2.2.1 (P.S.mm s w.1 h)))
+   (next w.2.1 (\ h -> w.2.2.2.1 (P.S.mm s w.2.1 h))) ;
+ lin-comb : (n : Nat) (h c : Fin n -> R) -> Id R (S.lin n h c) (CS.comb n c h) = split {
+  zero -> \ h c -> refl z ;
+  suc n | ih -> \ h c -> cong2 R add _ _ _ _ (mulC (h (inr tt)) (c (inr tt)))
+   (ih (\ i -> h (inl i)) (\ i -> c (inl i))) } ;
+ extract (w : Witness nil) : Cover =
+  (len w.1,LS.elem w.1,(LS.in-fam w.1 o w.2.2).1,all-at w.1 w.2.1,
+   trans (lin-comb (len w.1) (LS.elem w.1) (LS.in-fam w.1 o w.2.2).1)
+    (LS.in-fam w.1 o w.2.2).2) ;
+ module Given (test : P.Test) (pointwise : Pointwise) {
+  proper-case (s : List R)
+   (next : (h : R) -> Not (SP.In s h) -> Covered (cons h s)) :
+   Plus (P.Prime s) (P.Split s) -> Covered s = split {
+   inl p -> BTC.bind (Hit s) (Witness s) (prime-branch s next) (pointwise s p) ;
+   inr w -> split-branch s next w } ;
+  cases (s : List R)
+   (next : (h : R) -> Not (SP.In s h) -> Covered (cons h s)) : P.Outcome s -> Covered s = split {
+   inl w -> unit s w ; inr w -> proper-case s next w } ;
+  step (s : List R) (free : SP.Free s)
+   (next : (h : R) -> Not (SP.In s h) -> Covered (cons h s)) : Covered s =
+   TC.rec (P.Outcome s) @l+ (Covered s) (prop s) (cases s next) (test s) ;
+  from-fl (fl : FL.FL) : Big.Trunc[Cover].carrier =
+   BTC.map (Witness nil) Cover extract (fl Covered prop step nil tt) ;
+  from-noeth (K0 : U l) (noeth : Truncation[l].Trunc[CodedNoeth[l].NP K0 A].carrier) :
+   Big.Trunc[Cover].carrier =
+   TC.rec (CodedNoeth[l].NP K0 A) @l+ Big.Trunc[Cover].carrier Big.Trunc[Cover].proposition
+    (\ np -> from-fl (FL.from-coded K0 np)) noeth ;
+  theorem (K0 : U l) (cfn : CFN[l].CFN[K0,A]) : Big.Trunc[Cover].carrier =
+   from-noeth K0 cfn.noeth ;
+ } ;
+} ;

@@ -1,0 +1,75 @@
+-- Deduplicate a finite list with merely relative equality decisions.
+-- Keep actual representatives of every input entry. Distinct retained
+-- indices have equal values only if Bot holds. No assertion of actual
+-- injectivity or unique representatives is made, even when Bot holds.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (X : U l) (setX : Pr.isSet X) (Bot : U l)
+ (equal : (a b : X) -> Tr.Trunc[Plus (Id X a b) (Id X a b -> Bot)].carrier) {
+ module D = FiniteDistinct[l].Over[X,setX] ; module Index = FinitePermutationFold[l].Index ;
+ Fresh (n : Nat) (v : Fin n -> X) (x : X) : U l = (i : Fin n) -> Id X (v i) x -> Bot ;
+ Lookup (n : Nat) (v : Fin n -> X) (x : X) : U l = Plus (D.Member n v x) (Fresh n v x) ;
+ append-result (n : Nat) (v : Fin (suc n) -> X) (x : X) (h : Id X (v (inr tt)) x -> Bot) :
+  Lookup n (\ i -> v (inl i)) x -> Lookup (suc n) v x = split {
+  inl a -> inl (inl a.1,a.2) ;
+  inr no -> inr (AffineFinite[l].section n (\ i -> Id X (v i) x -> Bot) no h) } ;
+ last (n : Nat) (v : Fin (suc n) -> X) (x : X) (old : Lookup n (\ i -> v (inl i)) x) :
+  Plus (Id X (v (inr tt)) x) (Id X (v (inr tt)) x -> Bot) -> Lookup (suc n) v x = split {
+  inl h -> inl (inr tt,h) ; inr h -> append-result n v x h old } ;
+ lookup : (n : Nat) (v : Fin n -> X) (x : X) -> Tr.Trunc[Lookup n v x].carrier = split {
+  zero -> \ v x -> Tr.Trunc[Lookup zero v x].inc (inr (\ i -> efq i)) ;
+  suc n | ih -> \ v x -> TC.map2 (Lookup n (\ i -> v (inl i)) x)
+   (Plus (Id X (v (inr tt)) x) (Id X (v (inr tt)) x -> Bot)) (Lookup (suc n) v x)
+   (last n v x) (ih (\ i -> v (inl i)) x) (equal (v (inr tt)) x) } ;
+ Separated (n : Nat) (v : Fin n -> X) : U l =
+  (i j : Fin n) -> Not (Id (Fin n) i j) -> Id X (v i) (v j) -> Bot ;
+ record Enumeration (n : Nat) (v : Fin n -> X) {
+  size : Nat ; vector : Fin size -> X ; separated : Separated size vector ;
+  represents (i : Fin n) : D.Member size vector (v i) ;
+  retained (i : Fin size) : D.Member n v (vector i) ;
+ } ;
+ initial (v : Fin zero -> X) : Enumeration[zero,v] =
+  mkEnumeration zero v zero (\ i -> efq i) (\ i -> efq i) (\ i -> efq i) (\ i -> efq i) ;
+ module Step (n : Nat) (v : Fin (suc n) -> X) (old : Enumeration[n,\ i -> v (inl i)]) {
+  keep (m : D.Member old.size old.vector (v (inr tt))) : Enumeration[suc n,v] =
+   mkEnumeration (suc n) v old.size old.vector old.separated
+    (AffineFinite[l].section n (\ i -> D.Member old.size old.vector (v i)) old.represents m)
+    (\ i -> (inl (old.retained i).1,(old.retained i).2)) ;
+  module Add (fresh : Fresh old.size old.vector (v (inr tt))) {
+   vector : Fin (suc old.size) -> X = snoc (Fin old.size) X old.vector (v (inr tt)) ;
+   separated : Separated (suc old.size) vector = split {
+    inl i -> split {
+     inl j -> \ different h -> old.separated i j (\ p -> different (ap (\ a -> inl a) p)) h ;
+     inr t -> \ different h -> fresh i h } ;
+    inr t -> split {
+     inl j -> \ different h -> fresh j (sym h) ;
+     inr u -> \ different h -> efq (different (ap (\ a -> inr a) (AffineFinite[l].top-eq t u))) } } ;
+   represents : (i : Fin (suc n)) -> D.Member (suc old.size) vector (v i) =
+    AffineFinite[l].section n (\ i -> D.Member (suc old.size) vector (v i))
+     (\ i -> (inl (old.represents i).1,(old.represents i).2)) (inr tt,refl (v (inr tt))) ;
+   retained : (i : Fin (suc old.size)) -> D.Member (suc n) v (vector i) =
+    AffineFinite[l].section old.size (\ i -> D.Member (suc n) v (vector i))
+     (\ i -> (inl (old.retained i).1,(old.retained i).2)) (inr tt,refl (v (inr tt))) ;
+   result : Enumeration[suc n,v] = mkEnumeration (suc n) v (suc old.size) vector separated represents retained ;
+  } ;
+  result : Lookup old.size old.vector (v (inr tt)) -> Enumeration[suc n,v] = split {
+   inl m -> keep m ; inr fresh -> Add[fresh].result } ;
+  theorem : Tr.Trunc[Enumeration[suc n,v]].carrier =
+   TC.map (Lookup old.size old.vector (v (inr tt))) Enumeration[suc n,v] result (lookup old.size old.vector (v (inr tt))) ;
+ } ;
+ dedup : (n : Nat) (v : Fin n -> X) -> Tr.Trunc[Enumeration[n,v]].carrier = split {
+  zero -> \ v -> Tr.Trunc[Enumeration[zero,v]].inc (initial v) ;
+  suc n | ih -> \ v -> TC.bind Enumeration[n,\ i -> v (inl i)] Enumeration[suc n,v]
+   (\ old -> Step[n,v,old].theorem) (ih (\ i -> v (inl i))) } ;
+ module Given (n : Nat) (v : Fin n -> X) (d : Enumeration[n,v]) {
+  reflect-case (i j : Fin d.size) (h : Id X (d.vector i) (d.vector j)) :
+   Plus (Id (Fin d.size) i j) (Not (Id (Fin d.size) i j)) -> Plus (Id (Fin d.size) i j) Bot = split {
+   inl p -> inl p ; inr no -> inr (d.separated i j no h) } ;
+  reflect (i j : Fin d.size) (h : Id X (d.vector i) (d.vector j)) : Plus (Id (Fin d.size) i j) Bot =
+   reflect-case i j h (Index.decide d.size i j) ;
+  lift (x : X) (w : D.Member n v x) : D.Member d.size d.vector x =
+   ((d.represents w.1).1,trans (d.represents w.1).2 w.2) ;
+  cover (onto : (x : X) -> Tr.Trunc[D.Member n v x].carrier) (x : X) : Tr.Trunc[D.Member d.size d.vector x].carrier =
+   TC.map (D.Member n v x) (D.Member d.size d.vector x) (lift x) (onto x) ;
+ } ;
+} ;

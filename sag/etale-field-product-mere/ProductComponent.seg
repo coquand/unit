@@ -1,0 +1,131 @@
+-- Product-to-component adapter, without a prime or a nonzero base.
+-- A leaf is retained with its actual monic quotient and corner retract.
+-- At a binary node the two support idempotents add to the parent's
+-- support. Scan both children under truncation: either a leaf is outside
+-- q, or both supports belong to q and hence so does the parent support.
+-- At the root the support is 1, so the latter case gives Bot. No
+-- multiplication property of q is used in this finite selection.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R) {
+ module C = Algebras[l].Over[k,setk] ; module P = ProductPresentation[l].Over[k,setk] ;
+ module M = MonogenicPresentation[l].Over[k,setk] ; module A = AlgebraCorner[l].Over[k,setk] ;
+ -- The two existing monic-list interfaces append the same final 1.
+ monic-list : (p : List k.R) -> Id (List k.R) (FrobeniusPolynomial[l].Coefficients[k].monic p)
+  (SelectedFactorStatement[l].Over[k,setk].monic p) = split {
+   nil -> refl (cons k.o nil) ; cons a p | ih -> ap (\ q -> cons a q) ih } ;
+ record Component (S : C.Algebra) {
+  lower : List k.R ;
+  separable : RL[(M.quotient lower).ring].unit (M.derivative lower) ;
+  corner : A.Retract[S,M.quotient lower] ;
+ } ;
+ module At (S : C.Algebra) (c : Component[S]) {
+  module Q = MonicBasisUniversal[l].Over[k,setk].At[c.lower] ;
+  module R = A.At[S,Q.Q,c.corner] ;
+  generator : S.ring.R = c.corner.section Q.x ;
+  module H = CornerHorner[l].Over[k,k,Q.Q.ring,S.ring,Q.Q.set,S.set,
+   RingHom[l].identity k,Q.Q.iota,S.iota,c.corner.section,R.support,
+   c.corner.zero,c.corner.add,c.corner.mul,refl R.support,R.constants] ;
+  module Ho = H.At[Q.x] ;
+  module Reps = MonicRepresentatives[l].Over[k,setk,c.lower] ;
+  -- Every element of the component has an actual polynomial representative.
+  representation (a : S.ring.R) : List k.R = H.map (Reps.representative (c.corner.projection.1.1 a)) ;
+  generates (a : S.ring.R) : Id S.ring.R
+   (S.ring.mul R.support (S.ring.add a (S.ring.neg (Ho.VS.Ho.horner (representation a))))) S.ring.z =
+    Ho.represents a (c.corner.projection.1.1 a) (R.restriction a)
+     (Reps.representative (c.corner.projection.1.1 a))
+     (Reps.Map[Q.Q,C.identity Q.Q].value (c.corner.projection.1.1 a)) ;
+  -- Monic equation and derivative inverse on this support. Keeping the
+  -- coefficient map visible makes this also usable under base change.
+  module Mon = Ho.Monic[c.lower] ;
+  root : Id S.ring.R (S.ring.mul R.support (Ho.VS.Ho.horner (H.RK.monic Mon.lower))) S.ring.z =
+   Mon.root (trans (ap Ho.VF.Ho.horner (monic-list c.lower)) (trans (MonicValueNaturality[l].Over[k,setk].Horner[Q.Q,Q.x].equation c.lower) Q.root)) ;
+  inverse : S.ring.R = c.corner.section c.separable.1 ;
+  source-slope : Id Q.Q.ring.R (Ho.VF.slope (H.RF.monic c.lower)) (M.derivative c.lower) =
+   trans (ap Ho.VF.slope (monic-list c.lower))
+    (MonicSlopeNaturality[l].Over[k,setk].Ordinary[Q.Q,Q.x].slope c.lower) ;
+  source-inverse : Id Q.Q.ring.R (Q.Q.ring.mul (Ho.VF.slope (H.RF.monic c.lower)) c.separable.1) Q.Q.ring.o =
+   trans (ap (\ d -> Q.Q.ring.mul d c.separable.1) source-slope) c.separable.2 ;
+  separable : Id S.ring.R
+   (S.ring.mul R.support (S.ring.add (S.ring.mul (Ho.VS.slope (H.RK.monic Mon.lower)) inverse) (S.ring.neg S.ring.o))) S.ring.z =
+    Mon.separable c.separable.1 source-inverse ;
+ } ;
+ module Branch (S : C.Algebra) (t u : P.Shape) (r : A.Retract[S,P.algebra (pair t u)]) {
+   module B = A.Pair[P.algebra t,P.algebra u] ;
+   left : A.Retract[S,P.algebra t] = A.compose S B.P.algebra (P.algebra t) r B.left ;
+   right : A.Retract[S,P.algebra u] = A.compose S B.P.algebra (P.algebra u) r B.right ;
+   sum-parent : Id S.ring.R
+    (S.ring.add (left.section (P.algebra t).ring.o) (right.section (P.algebra u).ring.o))
+    (r.section B.P.ring.o) =
+     trans (sym (r.add (B.left.section (P.algebra t).ring.o) (B.right.section (P.algebra u).ring.o))) (ap r.section B.sum-one) ;
+ } ;
+ -- Keep the finite family parenthesised, just like ProductPresentation.
+ Leaves : P.Shape -> U l = split { single lower -> Top ; pair t u | a b -> Plus a b } ;
+ module Family (S : C.Algebra) {
+  sum : (t : P.Shape) -> (Leaves t -> S.ring.R) -> S.ring.R = split {
+   single lower -> \ f -> f tt ;
+   pair t u | ft fu -> \ f -> S.ring.add (ft (\ i -> f (inl i))) (fu (\ i -> f (inr i))) } ;
+  components : (t : P.Shape) -> P.Separable t -> A.Retract[S,P.algebra t] -> Leaves t -> Component[S] = split {
+   single lower -> \ sep r i -> new Component[S,lower,sep,r] ;
+   pair t u | ft fu -> \ sep r -> split {
+    inl i -> ft sep.1 Branch[S,t,u,r].left i ;
+    inr i -> fu sep.2 Branch[S,t,u,r].right i } } ;
+  support (t : P.Shape) (sep : P.Separable t) (r : A.Retract[S,P.algebra t]) (i : Leaves t) : S.ring.R =
+   At[S,components t sep r i].R.support ;
+  sum-support : (t : P.Shape) -> (sep : P.Separable t) -> (r : A.Retract[S,P.algebra t]) ->
+   Id S.ring.R (sum t (support t sep r)) (r.section (P.algebra t).ring.o) = split {
+    single lower -> \ sep r -> refl (r.section (M.quotient lower).ring.o) ;
+    pair t u | ft fu -> \ sep r -> trans
+    (cong2 S.ring.R S.ring.add _ _ _ _ (ft sep.1 Branch[S,t,u,r].left) (fu sep.2 Branch[S,t,u,r].right))
+    Branch[S,t,u,r].sum-parent } ;
+  module Given (p : P.At[S]) {
+   corner : A.Retract[S,P.algebra p.shape] = A.from-iso S (P.algebra p.shape) p.isomorphism ;
+   sum-one : Id S.ring.R (sum p.shape (support p.shape p.separable corner)) S.ring.o =
+    trans (sum-support p.shape p.separable corner) p.isomorphism.forward.1.2.1 ;
+  } ;
+ } ;
+ module Select (S : C.Algebra) (q : S.ring.R -> U l)
+  (q-add : (a b : S.ring.R) -> q a -> q b -> q (S.ring.add a b))
+  (Bot : U l) (q-proper : q S.ring.o -> Bot)
+  (decide : (a : S.ring.R) -> Tr.Trunc[Plus (q a) (q a -> Bot)].carrier) {
+  Selected : U l = (c : Component[S]) * (q (At[S,c].R.support) -> Bot) ;
+  Result : U l = Plus Bot Selected ;
+  Scan (t : P.Shape) (r : A.Retract[S,P.algebra t]) : U l =
+   Plus (q (r.section (P.algebra t).ring.o)) Selected ;
+  module Leaf (lower : List k.R) (sep : P.Separable (single lower))
+   (r : A.Retract[S,P.algebra (single lower)]) {
+   component : Component[S] = new Component[S,lower,sep,r] ;
+   choose : Plus (q (r.section (M.quotient lower).ring.o)) (q (r.section (M.quotient lower).ring.o) -> Bot) -> Scan (single lower) r = split {
+    inl h -> inl h ; inr out -> inr (component,out) } ;
+   theorem : Tr.Trunc[Scan (single lower) r].carrier =
+    TC.map (Plus (q (r.section (M.quotient lower).ring.o)) (q (r.section (M.quotient lower).ring.o) -> Bot))
+     (Scan (single lower) r) choose (decide (r.section (M.quotient lower).ring.o)) ;
+  } ;
+  module Merge (t u : P.Shape) (r : A.Retract[S,P.algebra (pair t u)]) {
+   module B = Branch[S,t,u,r] ;
+   combine : Scan t B.left -> Scan u B.right -> Scan (pair t u) r = split {
+    inl a -> split { inl b -> inl (subst q B.sum-parent (q-add _ _ a b)) ; inr c -> inr c } ;
+    inr c -> \ b -> inr c } ;
+  } ;
+  scan : (t : P.Shape) -> (sep : P.Separable t) -> (r : A.Retract[S,P.algebra t]) -> Tr.Trunc[Scan t r].carrier = split {
+   single lower -> \ sep r -> Leaf[lower,sep,r].theorem ;
+   pair t u | ft fu -> \ sep r ->
+    TC.map2 (Scan t Branch[S,t,u,r].left) (Scan u Branch[S,t,u,r].right) (Scan (pair t u) r)
+     Merge[t,u,r].combine (ft sep.1 Branch[S,t,u,r].left) (fu sep.2 Branch[S,t,u,r].right) } ;
+  -- If all leaf supports lie in q, their finite sum lies in q.
+  sum-in : (t : P.Shape) -> (f : Leaves t -> S.ring.R) -> ((i : Leaves t) -> q (f i)) -> q (Family[S].sum t f) = split {
+   single lower -> \ f h -> h tt ;
+   pair t u | ft fu -> \ f h -> q-add _ _ (ft (\ i -> f (inl i)) (\ i -> h (inl i)))
+    (fu (\ i -> f (inr i)) (\ i -> h (inr i))) } ;
+  module Given (p : P.At[S]) {
+   corner : A.Retract[S,P.algebra p.shape] = A.from-iso S (P.algebra p.shape) p.isomorphism ;
+   all-in (h : (i : Leaves p.shape) -> q (Family[S].support p.shape p.separable corner i)) : Bot =
+    q-proper (subst q Family[S].Given[p].sum-one (sum-in p.shape (Family[S].support p.shape p.separable corner) h)) ;
+   finish : Scan p.shape corner -> Result = split {
+    inl h -> inl (q-proper (subst q p.isomorphism.forward.1.2.1 h)) ; inr c -> inr c } ;
+   theorem : Tr.Trunc[Result].carrier = TC.map (Scan p.shape corner) Result finish (scan p.shape p.separable corner) ;
+  } ;
+  theorem (p : Tr.Trunc[P.At[S]].carrier) : Tr.Trunc[Result].carrier =
+   TC.bind P.At[S] Result (\ c -> Given[c].theorem) p ;
+ } ;
+} ;

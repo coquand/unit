@@ -1,0 +1,75 @@
+-- Monic rescaling from a single common denominator. No localisation,
+-- inverse, injectivity or degree decision is used in this file.
+level l ; open Ring[l] ; open Presentations[l] ;
+module H = RingHom[l] ;
+module Lists (A : CRing) {
+ monic : List A.R -> List A.R = split {
+  nil -> cons A.o nil ; cons a p | ih -> cons a ih } ;
+ leading : (p : List A.R) -> Id A.R (Poly[l].PolyR[A].coef (monic p) (len p)) A.o = split {
+  nil -> refl A.o ; cons a p | ih -> ih } ;
+ above : (p : List A.R) (n : Nat) ->
+  Id A.R (Poly[l].PolyR[A].coef (monic p) (plus (suc (len p)) n)) A.z = split {
+  nil -> \ n -> refl A.z ; cons a p | ih -> ih } ;
+} ;
+module Values (A B : CRing) (h : H.Hom A B) (x : B.R) {
+ value : List A.R -> B.R = split {
+  nil -> B.o ; cons a p | ih -> B.add (h.1 a) (B.mul x ih) } ;
+ derivative : List A.R -> B.R = split {
+  nil -> B.z ; cons a p | ih -> B.add (B.mul x ih) (value p) } ;
+} ;
+module Over (A B : CRing) (h : H.Hom A B) (u : A.R) {
+ module AP = AffinePowers[l].Over[A] ; module BP = AffinePowers[l].Over[B] ;
+ module L = RL[B] ;
+ scale : B.R = h.1 u ;
+ Numerators : List B.R -> U l = split {
+  nil -> Top ;
+  cons a p | ih -> ((b : A.R) * Id B.R (h.1 b) (B.mul scale a)) * ih } ;
+ lower : (p : List B.R) -> Numerators p -> List A.R = split {
+  nil -> \ w -> nil ;
+  cons a p | ih -> \ w -> cons (A.mul (AP.power u (len p)) w.1.1) (ih w.2) } ;
+ degree : (p : List B.R) (w : Numerators p) -> Id Nat (len (lower p w)) (len p) = split {
+  nil -> \ w -> refl zero ; cons a p | ih -> \ w -> ap (\ n -> suc n) (ih w.2) } ;
+ coefficient (a : B.R) (n : Nat) (b : A.R) (hb : Id B.R (h.1 b) (B.mul scale a)) :
+  Id B.R (h.1 (A.mul (AP.power u n) b)) (B.mul (BP.power scale (suc n)) a) =
+  trans (h.2.2.2 (AP.power u n) b)
+   (trans (cong2 B.R B.mul _ _ _ _ (AffinePowers[l].power-map A B h u n) hb)
+    (trans (L.mul-swap (BP.power scale n) scale a) (B.mulA scale (BP.power scale n) a))) ;
+ module At (x : B.R) {
+  module Original = Values[B,B,H.identity B,x] ;
+  module Scaled = Values[A,B,h,B.mul scale x] ;
+  value : (p : List B.R) (w : Numerators p) ->
+   Id B.R (Scaled.value (lower p w)) (B.mul (BP.power scale (len p)) (Original.value p)) = split {
+   nil -> \ w -> sym (B.mulO B.o) ;
+   cons a p | ih -> \ w ->
+    trans (cong2 B.R B.add _ _ _ _ (coefficient a (len p) w.1.1 w.1.2)
+     (trans (ap (B.mul (B.mul scale x)) (ih w.2))
+      (L.mul-four scale x (BP.power scale (len p)) (Original.value p))))
+     (sym (B.dist (BP.power scale (suc (len p))) a (B.mul x (Original.value p)))) } ;
+  -- u * Ptilde'(u*x) = u^d * P'(x), also for d=0.
+  derivative : (p : List B.R) (w : Numerators p) ->
+   Id B.R (B.mul scale (Scaled.derivative (lower p w)))
+    (B.mul (BP.power scale (len p)) (Original.derivative p)) = split {
+   nil -> \ w -> trans (L.mul-zero scale) (sym (L.mul-zero B.o)) ;
+   cons a p | ih -> \ w ->
+    trans (B.dist scale (B.mul (B.mul scale x) (Scaled.derivative (lower p w.2))) (Scaled.value (lower p w.2)))
+     (trans (cong2 B.R B.add _ _ _ _
+      (trans (L.mul-swap scale (B.mul scale x) (Scaled.derivative (lower p w.2)))
+       (trans (ap (B.mul (B.mul scale x)) (ih w.2))
+        (L.mul-four scale x (BP.power scale (len p)) (Original.derivative p))))
+      (trans (ap (B.mul scale) (value p w.2)) (B.mulA scale (BP.power scale (len p)) (Original.value p))))
+      (sym (B.dist (BP.power scale (suc (len p))) (B.mul x (Original.derivative p)) (Original.value p)))) } ;
+  cancel (unit : L.unit scale) (a b : B.R) (e : Id B.R (B.mul scale a) (B.mul scale b)) : Id B.R a b =
+   calc B.R { a =< sym (L.one-left a) > B.mul B.o a
+    =< ap (\ c -> B.mul c a) (sym (trans (B.mulC unit.1 scale) unit.2)) > B.mul (B.mul unit.1 scale) a
+    =< sym (B.mulA unit.1 scale a) > B.mul unit.1 (B.mul scale a)
+    =< ap (B.mul unit.1) e > B.mul unit.1 (B.mul scale b)
+    =< B.mulA unit.1 scale b > B.mul (B.mul unit.1 scale) b
+    =< ap (\ c -> B.mul c b) (trans (B.mulC unit.1 scale) unit.2) > B.mul B.o b
+    =< L.one-left b > b } ;
+  positive-derivative (unit : L.unit scale) (a : B.R) (p : List B.R) (w : Numerators (cons a p)) :
+   Id B.R (Scaled.derivative (lower (cons a p) w))
+    (B.mul (BP.power scale (len p)) (Original.derivative (cons a p))) =
+   cancel unit _ _ (trans (derivative (cons a p) w)
+    (sym (B.mulA scale (BP.power scale (len p)) (Original.derivative (cons a p))))) ;
+ } ;
+} ;

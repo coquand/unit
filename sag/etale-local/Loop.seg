@@ -1,6 +1,6 @@
 -- The loop Q_0, Q_1, .. of zmt2-revised.tex Section 1, remainder version
 -- (HANDOFF-LOOP.md).  A local ring with residually discrete maximal ideal
--- m (dec, rad), B an A-algebra, y in B, W in A[X] (a coefficient list)
+-- m (dec, and rad in Run), B an A-algebra, y in B, W in A[X] (a coefficient list)
 -- with W(y) in m R[y], and a monic relation y^e0 = V_e0 a0.
 -- Theorem: there are a monic relation y^e = V_e a (e <= e0), U in A[X]
 -- and c with c_i in m for i < e such that, in A[X],
@@ -11,6 +11,10 @@
 -- V_e c = W(y) is in m R[y].  Scan c (LoopStep): if every c_i is in m,
 -- stop.  Otherwise LoopStep.Normalise and LoopNakayama give a monic
 -- relation of degree d < e and W(y) in m R[y] at degree d; recurse.
+-- rad is used once per step, to see that det M = 1 - (1 - det M) is a
+-- unit.  It is assumed only up to an answer in a falsum Bot
+-- (rad : a in m -> 1 - a a unit, or Bot; Bot = Empty is the local ring),
+-- and the theorem is then Result or Bot (Run[Bot,rad].theorem).
 level l ; open Ring[l] ;
 module Pr = Prelude[l] ; module Ps = Presentations[l] ;
 module H = RingHom[l] ;
@@ -18,7 +22,6 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
  (m-add : (a c : A.R) -> m a -> m c -> m (A.add a c))
  (m-scale : (a c : A.R) -> m c -> m (A.mul a c))
  (dec : (a : A.R) -> Plus (m a) (RL[A].unit a))
- (rad : (a : A.R) -> m a -> RL[A].unit (A.add A.o (A.neg a)))
  (B : CRing) (setB : Pr.isSet B.R) (iota : H.Hom A B) (y : B.R) (W : List A.R) {
  open B ;
  module L = RL[B] ;
@@ -65,13 +68,16 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
  stop0 (a : Nat -> A.R) (rel : Id R (pw zero) (MP.V zero a)) : Result =
   (zero,a,rel,Wx,\ i -> A.z,tt,times-one RX.ring Wx) ;
 
- Statement (f : Nat) : U l = (e : Nat) (a : Nat -> A.R) -> Id R (pw e) (MP.V e a) -> MP.InM e Wy -> LoopStep[l].Le e f -> Result ;
+ -- the recursion, with rad up to Bot
+ module Run (Bot : U l) (rad : (a : A.R) -> m a -> Plus (RL[A].unit (A.add A.o (A.neg a))) Bot) {
+ Outcome : U l = Plus Result Bot ;
+ Statement (f : Nat) : U l = (e : Nat) (a : Nat -> A.R) -> Id R (pw e) (MP.V e a) -> MP.InM e Wy -> LoopStep[l].Le e f -> Outcome ;
 
  module Step (f : Nat) (r : Statement f) (e' : Nat) (a : Nat -> A.R) (rel : Id R (pw (suc e')) (MP.V (suc e') a))
   (w : MP.InM (suc e') Wy) (le : LoopStep[l].Le (suc e') (suc f)) {
   module MR = MonicReduce[l].Over[A,RX.ring,RX.inclusion,RX.variable,e',a] ;
   module LS = LoopStep[l].Over[A,m,m-zero,m-add,m-scale,dec,B,iota,y,e',a,rel] ;
-  module LN = LoopNakayama[l].Over[A,setA,m,m-zero,m-add,m-scale,dec,rad,B,setB,iota,y,e',a,rel] ;
+  module LN = LoopNakayama[l].Over[A,setA,m,m-zero,m-add,m-scale,dec,B,setB,iota,y,e',a,rel] ;
   red : MR.Reduction Wx = MR.reduce W ;
   u : RX.Carrier = red.1 ;
   c : Nat -> A.R = red.2.1 ;
@@ -88,23 +94,39 @@ module Over (A : CRing) (setA : Pr.isSet A.R) (m : A.R -> U l) (m-zero : m A.z)
   module Continue (fd : LS.Found (suc e') c) {
    module N = LS.Normalise[c,w',fd] ;
    module LNA = LN.At[N.d,N.beta,N.x',N.x'-in,N.relation] ;
-   result : Result = r N.d LNA.new-a LNA.new-rel (LNA.transfer-in Wy w) (LoopStep[l].le-trans N.d e' f fd.2.1 le) ;
+   -- det M is a unit, or an answer in Bot
+   module Go (du : RL[A].unit LNA.detA) {
+    module LNU = LNA.Unit[du] ;
+    result : Outcome = r N.d LNU.new-a LNU.new-rel (LNU.transfer-in Wy w) (LoopStep[l].le-trans N.d e' f fd.2.1 le) ;
+   } ;
+   go : Plus (RL[A].unit (A.add A.o (A.neg LNA.one-minus))) Bot -> Outcome = split {
+    inl u -> Go[LNA.det-from u].result ;
+    inr b -> inr b } ;
+   result : Outcome = go (rad LNA.one-minus LNA.one-minus-m) ;
   } ;
-  dispatch : LS.Scan (suc e') c -> Result = split {
-   inl b -> (suc e',a,rel,u,c,b,red.2.2) ;
+  dispatch : LS.Scan (suc e') c -> Outcome = split {
+   inl b -> inl (suc e',a,rel,u,c,b,red.2.2) ;
    inr fd -> Continue[fd].result } ;
-  result : Result = dispatch (LS.scan (suc e') c) ;
+  result : Outcome = dispatch (LS.scan (suc e') c) ;
  } ;
 
  at-zero : Statement zero = split {
-  zero -> \ a rel w le -> stop0 a rel ;
+  zero -> \ a rel w le -> inl (stop0 a rel) ;
   suc e' -> \ a rel w le -> efq le } ;
  at-suc (f : Nat) (r : Statement f) : Statement (suc f) = split {
-  zero -> \ a rel w le -> stop0 a rel ;
+  zero -> \ a rel w le -> inl (stop0 a rel) ;
   suc e' -> \ a rel w le -> Step[f,r,e',a,rel,w,le].result } ;
  loop : (f : Nat) -> Statement f = split { zero -> at-zero ; suc f | r -> at-suc f r } ;
 
- -- the theorem
- theorem (e0 : Nat) (a0 : Nat -> A.R) (rel0 : Id R (pw e0) (MP.V e0 a0)) (w0 : MP.InM e0 Wy) : Result =
+ -- the theorem: a Result, or an answer in Bot
+ theorem (e0 : Nat) (a0 : Nat -> A.R) (rel0 : Id R (pw e0) (MP.V e0 a0)) (w0 : MP.InM e0 Wy) : Outcome =
   loop e0 e0 a0 rel0 w0 (LoopStep[l].le-refl e0) ;
+ } ;
+ -- the local ring: rad holds, Bot = Empty
+ module Local (rad : (a : A.R) -> m a -> RL[A].unit (A.add A.o (A.neg a))) {
+  module RE = Run[Empty,\ a h -> inl (rad a h)] ;
+  strict : RE.Outcome -> Result = split { inl r -> r ; inr e -> efq e } ;
+  theorem (e0 : Nat) (a0 : Nat -> A.R) (rel0 : Id R (pw e0) (MP.V e0 a0)) (w0 : MP.InM e0 Wy) : Result =
+   strict (RE.theorem e0 a0 rel0 w0) ;
+ } ;
 } ;

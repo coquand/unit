@@ -1,0 +1,79 @@
+-- Bounded closure with positive differences. Each failed finite closure
+-- test gives a new scalar whose differences from all old entries are
+-- units. Append it and spend one unit of fuel. A successful test gives
+-- actual finite operation tables and zero-or-inverse witnesses. Starting
+-- empty, M+1 failures give M+1 unit-separated candidates. All finite
+-- choices remain under truncation; no global equality test is extracted.
+-- The closed table is not yet a finite field or a product certificate.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FS = FiniteScan[l] ; module Fuel = BoundedFiniteClosure[l] ;
+module Over (k : CRing) (setk : Pr.isSet k.R)
+ (weak : (a : k.R) -> Tr.Trunc[Plus (Id k.R a k.z) (RL[k].unit a)].carrier)
+ (t : Nat) (coefficients : Fin t -> k.R) {
+ module Lookup = MereSeparatedLookup[l].Over[k,setk,weak] ;
+ module RB = PolynomialRootBound[l].Over[k] ;
+ module At (n : Nat) (v : Fin n -> k.R) {
+  In (x : k.R) : U l = Lookup.FD.Member n v x ;
+  Missing : U l = (x : k.R) * Lookup.Apart n v x ;
+  OneLaw (f : k.R -> k.R) : U l = (i : Fin n) -> In (f (v i)) ;
+  TwoLaw (f : k.R -> k.R -> k.R) : U l = (i j : Fin n) -> In (f (v i) (v j)) ;
+  Coeffs : U l = (i : Fin t) -> In (coefficients i) ;
+  Inverse (i : Fin n) : U l = Plus (Id k.R (v i) k.z) ((j : Fin n) * Id k.R (k.mul (v i) (v j)) k.o) ;
+  record Closed {
+   zero : In k.z ; one : In k.o ; coefficients-in : Coeffs ;
+   negation : OneLaw k.neg ; addition : TwoLaw k.add ; multiplication : TwoLaw k.mul ;
+   inversion : (i : Fin n) -> Inverse i ;
+  } ;
+  test-case (x : k.R) : Lookup.Result n v x -> Plus (In x) Missing = split {
+   inl w -> inl w ; inr h -> inr (x,h) } ;
+  test (x : k.R) : Tr.Trunc[Plus (In x) Missing].carrier =
+   TC.map (Lookup.Result n v x) (Plus (In x) Missing) (test-case x) (Lookup.lookup n v x) ;
+  unary (f : k.R -> k.R) : Tr.Trunc[Plus (OneLaw f) Missing].carrier =
+   FS.mere n (\ i -> In (f (v i))) Missing (\ i -> test (f (v i))) ;
+  row (f : k.R -> k.R -> k.R) (i : Fin n) : Tr.Trunc[Plus ((j : Fin n) -> In (f (v i) (v j))) Missing].carrier =
+   FS.mere n (\ j -> In (f (v i) (v j))) Missing (\ j -> test (f (v i) (v j))) ;
+  binary (f : k.R -> k.R -> k.R) : Tr.Trunc[Plus (TwoLaw f) Missing].carrier =
+   FS.mere n (\ i -> (j : Fin n) -> In (f (v i) (v j))) Missing (row f) ;
+  coeffs : Tr.Trunc[Plus Coeffs Missing].carrier = FS.mere t (\ i -> In (coefficients i)) Missing (\ i -> test (coefficients i)) ;
+  inverse-found (i : Fin n) (u : RL[k].unit (v i)) : Plus (In u.1) Missing -> Plus (Inverse i) Missing = split {
+   inl w -> inl (inr (w.1,trans (ap (k.mul (v i)) w.2) u.2)) ;
+   inr h -> inr h } ;
+  inverse-case (i : Fin n) : Plus (Id k.R (v i) k.z) (RL[k].unit (v i)) -> Tr.Trunc[Plus (Inverse i) Missing].carrier = split {
+   inl h -> Tr.Trunc[Plus (Inverse i) Missing].inc (inl (inl h)) ;
+   inr u -> TC.map (Plus (In u.1) Missing) (Plus (Inverse i) Missing) (inverse-found i u) (test u.1) } ;
+  inversion (i : Fin n) : Tr.Trunc[Plus (Inverse i) Missing].carrier =
+   TC.bind (Plus (Id k.R (v i) k.z) (RL[k].unit (v i))) (Plus (Inverse i) Missing) (inverse-case i) (weak (v i)) ;
+  inverses : Tr.Trunc[Plus ((i : Fin n) -> Inverse i) Missing].carrier = FS.mere n Inverse Missing inversion ;
+  ClosureData : U l = In k.z * In k.o * Coeffs * OneLaw k.neg * TwoLaw k.add * TwoLaw k.mul * ((i : Fin n) -> Inverse i) ;
+  pack (d : ClosureData) : Closed = new Closed[d.1,d.2.1,d.2.2.1,d.2.2.2.1,d.2.2.2.2.1,d.2.2.2.2.2.1,d.2.2.2.2.2.2] ;
+  tables : Tr.Trunc[Plus ClosureData Missing].carrier =
+   FS.mere-join (In k.z) (In k.o * Coeffs * OneLaw k.neg * TwoLaw k.add * TwoLaw k.mul * ((i : Fin n) -> Inverse i)) Missing (test k.z)
+    (FS.mere-join (In k.o) (Coeffs * OneLaw k.neg * TwoLaw k.add * TwoLaw k.mul * ((i : Fin n) -> Inverse i)) Missing (test k.o)
+     (FS.mere-join Coeffs (OneLaw k.neg * TwoLaw k.add * TwoLaw k.mul * ((i : Fin n) -> Inverse i)) Missing coeffs
+      (FS.mere-join (OneLaw k.neg) (TwoLaw k.add * TwoLaw k.mul * ((i : Fin n) -> Inverse i)) Missing (unary k.neg)
+       (FS.mere-join (TwoLaw k.add) (TwoLaw k.mul * ((i : Fin n) -> Inverse i)) Missing (binary k.add)
+        (FS.mere-join (TwoLaw k.mul) ((i : Fin n) -> Inverse i) Missing (binary k.mul) inverses))))) ;
+  check : Tr.Trunc[Plus Closed Missing].carrier =
+   TC.map (Plus ClosureData Missing) (Plus Closed Missing) (FS.map ClosureData Closed Missing pack) tables ;
+ } ;
+ ClosedData : U l = (n : Nat) * (v : Fin n -> k.R) * RB.Separated n v * At[n,v].Closed ;
+ Many (n : Nat) : U l = (v : Fin n -> k.R) * RB.Separated n v ;
+ module Step (fuel : Nat)
+  (ih : (n : Nat) (v : Fin n -> k.R) -> RB.Separated n v -> Tr.Trunc[Plus (Many (Fuel.growth fuel n)) ClosedData].carrier)
+  (n : Nat) (v : Fin n -> k.R) (separated : RB.Separated n v) {
+  module Here = At[n,v] ;
+  choose : Plus Here.Closed Here.Missing -> Tr.Trunc[Plus (Many (Fuel.growth (suc fuel) n)) ClosedData].carrier = split {
+   inl c -> Tr.Trunc[Plus (Many (Fuel.growth (suc fuel) n)) ClosedData].inc (inr (n,v,separated,c)) ;
+   inr h -> ih (suc n) Lookup.Append[n,v,separated,h.1,h.2].vector Lookup.Append[n,v,separated,h.1,h.2].theorem } ;
+  result : Tr.Trunc[Plus (Many (Fuel.growth (suc fuel) n)) ClosedData].carrier =
+   TC.bind (Plus Here.Closed Here.Missing) (Plus (Many (Fuel.growth (suc fuel) n)) ClosedData) choose Here.check ;
+ } ;
+ run : (fuel n : Nat) (v : Fin n -> k.R) -> RB.Separated n v -> Tr.Trunc[Plus (Many (Fuel.growth fuel n)) ClosedData].carrier = split {
+  zero -> \ n v h -> Tr.Trunc[Plus (Many n) ClosedData].inc (inl (v,h)) ;
+  suc fuel | ih -> \ n v h -> Step[fuel,ih,n,v,h].result } ;
+ theorem (M : Nat) : Tr.Trunc[Plus (Many (suc M)) ClosedData].carrier =
+  TC.map (Plus (Many (Fuel.growth (suc M) zero)) ClosedData) (Plus (Many (suc M)) ClosedData)
+   (FS.map (Many (Fuel.growth (suc M) zero)) (Many (suc M)) ClosedData (\ w -> subst Many (Fuel.growth-zero (suc M)) w))
+   (run (suc M) zero (\ i -> efq i) (\ i j h -> efq i)) ;
+} ;

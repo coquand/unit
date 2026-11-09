@@ -1,0 +1,91 @@
+-- A finite ring mapping to a reduced ring has a finite reduced image
+-- model, up to the relative falsum Bot. Deduplicate its mapped values;
+-- retained origins lift every table entry back to the source. Apply
+-- source operations there, and return to the retained table. Verification
+-- uses equality of finite indices only. The resulting map to the ambient
+-- ring need not be injective. A finite coefficient ring lifts through
+-- the model after a further finite verification of the homomorphism laws.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module H = RingHom[l] ; module FS = FiniteScan[l] ;
+module Over (A S : CRing) (setS : Pr.isSet S.R) (f : H.Hom A S)
+ (N : Nat) (values : Fin N -> A.R) (cover : (a : A.R) -> (i : Fin N) * Id A.R (values i) a)
+ (Bot : U l) (equal : (a b : S.R) -> Tr.Trunc[Plus (Id S.R a b) (Id S.R a b -> Bot)].carrier)
+ (reduced : (a : S.R) -> Id S.R (S.mul a a) S.z -> Id S.R a S.z) {
+ module Dedup = MereFiniteDedup[l].Over[S.R,setS,Bot,equal] ;
+ image (i : Fin N) : S.R = f.1 (values i) ;
+ module At (d : Dedup.Enumeration[N,image]) {
+  module Reflection = Dedup.Given[N,image,d] ;
+  representative (a : A.R) : Dedup.D.Member d.size d.vector (f.1 a) =
+   Reflection.lift (f.1 a) ((cover a).1,ap f.1 (cover a).2) ;
+  index (a : A.R) : Fin d.size = (representative a).1 ;
+  index-image (a : A.R) : Id S.R (d.vector (index a)) (f.1 a) = (representative a).2 ;
+  lift (i : Fin d.size) : A.R = values (d.retained i).1 ;
+  lift-image (i : Fin d.size) : Id S.R (f.1 (lift i)) (d.vector i) = (d.retained i).2 ;
+  z : Fin d.size = index A.z ; o : Fin d.size = index A.o ;
+  add (i j : Fin d.size) : Fin d.size = index (A.add (lift i) (lift j)) ;
+  mul (i j : Fin d.size) : Fin d.size = index (A.mul (lift i) (lift j)) ;
+  neg (i : Fin d.size) : Fin d.size = index (A.neg (lift i)) ;
+  zero-image : Id S.R (d.vector z) S.z = trans (index-image A.z) (H.zero A S f) ;
+  one-image : Id S.R (d.vector o) S.o = trans (index-image A.o) f.2.1 ;
+  add-image (i j : Fin d.size) : Id S.R (d.vector (add i j)) (S.add (d.vector i) (d.vector j)) =
+   trans (index-image (A.add (lift i) (lift j)))
+    (trans (f.2.2.1 (lift i) (lift j)) (cong2 S.R S.add _ _ _ _ (lift-image i) (lift-image j))) ;
+  mul-image (i j : Fin d.size) : Id S.R (d.vector (mul i j)) (S.mul (d.vector i) (d.vector j)) =
+   trans (index-image (A.mul (lift i) (lift j)))
+    (trans (f.2.2.2 (lift i) (lift j)) (cong2 S.R S.mul _ _ _ _ (lift-image i) (lift-image j))) ;
+  neg-image (i : Fin d.size) : Id S.R (d.vector (neg i)) (S.neg (d.vector i)) =
+   trans (index-image (A.neg (lift i))) (trans (H.negation A S f (lift i)) (ap S.neg (lift-image i))) ;
+  module Table = FiniteReducedTable[l].Over[S,Bot,d.size,d.vector,Reflection.reflect,z,o,add,mul,neg,
+   zero-image,one-image,add-image,mul-image,neg-image,reduced] ;
+  module Coefficients (K : CRing) (alpha : H.Hom K A) (m : Nat) (v : Fin m -> K.R)
+   (covers : (a : K.R) -> (i : Fin m) * Id K.R (v i) a) {
+   scalar (a : K.R) : Fin d.size = index (alpha.1 a) ;
+   ScalarAdd : U l = (a b : K.R) -> Table.Eq (scalar (K.add a b)) (add (scalar a) (scalar b)) ;
+   ScalarMul : U l = (a b : K.R) -> Table.Eq (scalar (K.mul a b)) (mul (scalar a) (scalar b)) ;
+   ScalarOne : U l = Table.Eq (scalar K.o) o ;
+   record Laws { one : ScalarOne ; addition : ScalarAdd ; multiplication : ScalarMul ; } ;
+   rho : H.Hom K S = H.compose K A S f alpha ;
+   scalar-one-image : Id S.R (d.vector (scalar K.o)) (d.vector o) =
+    trans (index-image (alpha.1 K.o)) (trans rho.2.1 (sym one-image)) ;
+   scalar-add-image (a b : K.R) : Id S.R (d.vector (scalar (K.add a b))) (d.vector (add (scalar a) (scalar b))) =
+    trans (index-image (alpha.1 (K.add a b)))
+     (trans (rho.2.2.1 a b)
+      (sym (trans (add-image (scalar a) (scalar b))
+       (cong2 S.R S.add _ _ _ _ (index-image (alpha.1 a)) (index-image (alpha.1 b)))))) ;
+   scalar-mul-image (a b : K.R) : Id S.R (d.vector (scalar (K.mul a b))) (d.vector (mul (scalar a) (scalar b))) =
+    trans (index-image (alpha.1 (K.mul a b)))
+     (trans (rho.2.2.2 a b)
+      (sym (trans (mul-image (scalar a) (scalar b))
+       (cong2 S.R S.mul _ _ _ _ (index-image (alpha.1 a)) (index-image (alpha.1 b)))))) ;
+   extend (P : K.R -> U l) (p : (i : Fin m) -> P (v i)) (a : K.R) : P a =
+    subst P (covers a).2 (p (covers a).1) ;
+   binary (P : K.R -> K.R -> U l) (p : (i j : Fin m) -> P (v i) (v j)) : (a b : K.R) -> P a b =
+    extend (\ a -> (b : K.R) -> P a b) (\ i -> extend (P (v i)) (p i)) ;
+   verify (left right : K.R -> K.R -> Fin d.size)
+    (images : (a b : K.R) -> Id S.R (d.vector (left a b)) (d.vector (right a b))) :
+    Plus ((a b : K.R) -> Table.Eq (left a b) (right a b)) Bot =
+     FS.map ((i j : Fin m) -> Table.Eq (left (v i) (v j)) (right (v i) (v j)))
+      ((a b : K.R) -> Table.Eq (left a b) (right a b)) Bot
+      (binary (\ a b -> Table.Eq (left a b) (right a b)))
+      (FS.scan m (\ i -> (j : Fin m) -> Table.Eq (left (v i) (v j)) (right (v i) (v j))) Bot
+       (\ i -> FS.scan m (\ j -> Table.Eq (left (v i) (v j)) (right (v i) (v j))) Bot
+        (\ j -> Reflection.reflect (left (v i) (v j)) (right (v i) (v j)) (images (v i) (v j))))) ;
+   pack (w : ScalarOne * ScalarAdd * ScalarMul) : Laws = new Laws[w.1,w.2.1,w.2.2] ;
+   theorem : Plus Laws Bot = FS.map (ScalarOne * ScalarAdd * ScalarMul) Laws Bot pack
+    (FS.join ScalarOne (ScalarAdd * ScalarMul) Bot (Reflection.reflect (scalar K.o) o scalar-one-image)
+     (FS.join ScalarAdd ScalarMul Bot (verify (\ a b -> scalar (K.add a b)) (\ a b -> add (scalar a) (scalar b)) scalar-add-image)
+      (verify (\ a b -> scalar (K.mul a b)) (\ a b -> mul (scalar a) (scalar b)) scalar-mul-image))) ;
+   module Given (h : Table.Verified) (laws : Laws) {
+    module B = Table.Given[h] ;
+    hom : H.Hom K B.ring = (scalar,laws.one,laws.addition,laws.multiplication) ;
+    commutes (a : K.R) : Id S.R (B.hom.1 (hom.1 a)) (rho.1 a) = index-image (alpha.1 a) ;
+   } ;
+  } ;
+ } ;
+ Model : U l = (d : Dedup.Enumeration[N,image]) * At[d].Table.Verified ;
+ finish (d : Dedup.Enumeration[N,image]) : Plus At[d].Table.Verified Bot -> Plus Model Bot = split {
+  inl h -> inl (d,h) ; inr b -> inr b } ;
+ theorem : Tr.Trunc[Plus Model Bot].carrier = TC.map Dedup.Enumeration[N,image] (Plus Model Bot)
+  (\ d -> finish d At[d].Table.theorem) (Dedup.dedup N image) ;
+} ;

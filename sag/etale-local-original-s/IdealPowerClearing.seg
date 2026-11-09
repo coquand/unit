@@ -1,0 +1,91 @@
+-- Descend an extended-ideal witness along a map which becomes an
+-- isomorphism after inverting s. Only two concrete consequences are used:
+-- powers clear each numerator, and another power kills each kernel element.
+-- A finite common power clears the coefficients of the ideal witness;
+-- the kernel power then repairs the resulting equality in B. Finally
+-- multiply by s once so that the returned exponent is strictly positive.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module H = RingHom[l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (A : CRing) (I : A.R -> U l) (B E : CRing)
+ (setB : Pr.isSet B.R) (iB : H.Hom A B) (iE : H.Hom A E)
+ (j : H.Hom B E) (commutes : (a : A.R) -> Id E.R (j.1 (iB.1 a)) (iE.1 a)) (s : B.R) {
+ module PB = AffinePowers[l].Over[B] ; module PE = AffinePowers[l].Over[E] ;
+ module WB = IdealWitnesses[l].Over[A,I,B,iB] ; module WE = IdealWitnesses[l].Over[A,I,E,iE] ;
+ module SB = FiniteIdeal[l].Sums[B] ; module SE = FiniteIdeal[l].Sums[E] ;
+ module LB = RL[B] ; module LE = RL[E] ; module HS = ZMTCertificate[l].HomSums[B,E,j] ;
+ ClearAt (e : E.R) (N : Nat) : U l = (b : B.R) * Id E.R (E.mul (PE.power (j.1 s) N) e) (j.1 b) ;
+ Cleared (e : E.R) : U l = (N : Nat) * ClearAt e N ;
+ Killed (b : B.R) : U l = (N : Nat) * Id B.R (B.mul (PB.power s N) b) B.z ;
+ PowerWitness (b : B.R) : U l = (N : Nat) * WB.Wit (B.mul (PB.power s N) b) ;
+ -- The exponent is suc predecessor, so positivity is part of its shape.
+ PositiveWitness (b : B.R) : U l = (predecessor : Nat) * WB.Wit (B.mul (PB.power s (suc predecessor)) b) ;
+ advance (e : E.R) (N d : Nat) (w : ClearAt e N) : ClearAt e (plus N d) =
+  (B.mul (PB.power s d) w.1,
+   trans (ap (\ t -> E.mul t e) (PE.power-add (j.1 s) N d))
+    (trans (ap (\ t -> E.mul t e) (E.mulC (PE.power (j.1 s) N) (PE.power (j.1 s) d)))
+     (trans (sym (E.mulA (PE.power (j.1 s) d) (PE.power (j.1 s) N) e))
+      (trans (ap (E.mul (PE.power (j.1 s) d)) w.2)
+       (trans (ap (\ t -> E.mul t (j.1 w.1)) (sym (AffinePowers[l].power-map B E j s d)))
+        (sym (j.2.2.2 (PB.power s d) w.1))))))) ;
+ positive (b : B.R) (w : PowerWitness b) : PositiveWitness b =
+  (w.1,WB.ie-eq _ _ (B.mulA s (PB.power s w.1) b)
+   (WB.ie-mul s (B.mul (PB.power s w.1) b) w.2)) ;
+ module Given
+  (clear : (e : E.R) -> Tr.Trunc[Cleared e].carrier)
+  (kernel : (b : B.R) -> Id E.R (j.1 b) E.z -> Tr.Trunc[Killed b].carrier) {
+  module Witness (b : B.R) (w : WE.Wit (j.1 b)) {
+   Common : U l = (N : Nat) * ((i : Fin w.u) -> ClearAt (w.w i) N) ;
+   common : Tr.Trunc[Common].carrier =
+    CommonPower[l].common-fin w.u (\ i N -> ClearAt (w.w i) N)
+     (\ i N d -> advance (w.w i) N d) (\ i -> clear (w.w i)) ;
+   module At (c : Common) {
+    N : Nat = c.1 ; coefficients (i : Fin w.u) : B.R = (c.2 i).1 ;
+    combination : B.R = SB.lin w.u (\ i -> iB.1 (w.a i)) coefficients ;
+    member : WB.Wit combination = new IdealWitnesses[l].IEWit[A,I,B,iB,combination,w.u,w.a,w.ina,coefficients,refl combination] ;
+    image-combination : Id E.R (j.1 combination) (E.mul (PE.power (j.1 s) N) (j.1 b)) =
+     trans (HS.lin-natural w.u (\ i -> iB.1 (w.a i)) coefficients)
+      (trans (SE.sum-cong w.u
+       (\ i -> E.mul (j.1 (iB.1 (w.a i))) (j.1 (coefficients i)))
+       (\ i -> E.mul (iE.1 (w.a i)) (E.mul (PE.power (j.1 s) N) (w.w i)))
+       (\ i -> cong2 E.R E.mul _ _ _ _ (commutes (w.a i)) (sym (c.2 i).2)))
+       (trans (SE.lin-scale w.u (\ i -> iE.1 (w.a i)) w.w (PE.power (j.1 s) N))
+        (ap (E.mul (PE.power (j.1 s) N)) (sym w.eq)))) ;
+    scaled : B.R = B.mul (PB.power s N) b ;
+    image : Id E.R (j.1 scaled) (j.1 combination) =
+     trans (j.2.2.2 (PB.power s N) b)
+      (trans (ap (\ t -> E.mul t (j.1 b)) (AffinePowers[l].power-map B E j s N))
+       (sym image-combination)) ;
+    difference : B.R = B.add scaled (B.neg combination) ;
+    killed : Id E.R (j.1 difference) E.z =
+     trans (j.2.2.1 scaled (B.neg combination))
+      (trans (ap (E.add (j.1 scaled)) (H.negation B E j combination))
+       (trans (ap (\ a -> E.add a (E.neg (j.1 combination))) image) (E.addN (j.1 combination)))) ;
+    module Repair (k : Killed difference) {
+     exponent : Nat = plus k.1 N ;
+     equal : Id B.R (B.mul (PB.power s k.1) scaled) (B.mul (PB.power s k.1) combination) =
+      FormallyEtale[l].Units[B,setB].sub-zero _ _
+       (trans (sym (trans (B.dist (PB.power s k.1) scaled (B.neg combination))
+        (ap (B.add (B.mul (PB.power s k.1) scaled)) (LB.mul-neg (PB.power s k.1) combination)))) k.2) ;
+     power-equation : Id B.R (B.mul (PB.power s exponent) b) (B.mul (PB.power s k.1) combination) =
+      trans (ap (\ a -> B.mul a b) (PB.power-add s k.1 N))
+       (trans (sym (B.mulA (PB.power s k.1) (PB.power s N) b)) equal) ;
+     result : PowerWitness b =
+      (exponent,WB.ie-eq _ _ (sym power-equation) (WB.ie-mul (PB.power s k.1) combination member)) ;
+    } ;
+    result : Tr.Trunc[PowerWitness b].carrier =
+     TC.map (Killed difference) (PowerWitness b) (\ k -> Repair[k].result) (kernel difference killed) ;
+   } ;
+   result : Tr.Trunc[PowerWitness b].carrier = TC.bind Common (PowerWitness b) (\ c -> At[c].result) common ;
+  } ;
+  theorem (b : B.R) (h : Tr.Trunc[WE.Wit (j.1 b)].carrier) : Tr.Trunc[PositiveWitness b].carrier =
+   TC.bind (WE.Wit (j.1 b)) (PositiveWitness b)
+    (\ w -> TC.map (PowerWitness b) (PositiveWitness b) (positive b) Witness[b,w].result) h ;
+ } ;
+ -- Injectivity is sufficient, and the actual ZMT subalgebra has it.
+ module Injective (injective : (b c : B.R) -> Id E.R (j.1 b) (j.1 c) -> Id B.R b c) {
+  kernel (b : B.R) (h : Id E.R (j.1 b) E.z) : Tr.Trunc[Killed b].carrier =
+   Tr.Trunc[Killed b].inc (zero,trans (LB.one-left b)
+    (injective b B.z (trans h (sym (H.zero B E j))))) ;
+ } ;
+} ;

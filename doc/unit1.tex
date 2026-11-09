@@ -29,8 +29,7 @@
 We present \sys, a type checker for dependent type theory with a module
 system in the tradition of \textsc{Automath} and a uniform treatment of
 definitions. There is no unification, no instance search and no
-tactics, and there is one uniform unfolding policy, without priorities
-for particular definitions or choices adapted to the problem, so the
+tactics, and there is one uniform unfolding policy, so the
 work of checking can be observed and compared with the informal proof. With \sys\ we have
 checked a model of univalent type theory, synthetic algebraic geometry
 (schemes, the \'etale topology, Severi--Brauer varieties), synthetic Stone duality with its
@@ -94,7 +93,7 @@ complexities are necessary in the proof language and in the checker.
 This paper presents such a system, \sys; the checker and all the
 developments are available at \url{https://github.com/coquand/unit}.
 Section~\ref{sec:checker} describes its language. Its module system
-follows the segments of \textsc{Automath}: a record is a list of
+is inspired by the work on segments in \textsc{Automath}: a record is a list of
 parameters and definitions, a module a list of declarations of every
 kind, and to use a theorem stated in a context one gives an instance of
 the context; the body is neither copied nor checked again.
@@ -110,61 +109,52 @@ developments checked, with tables of times and unfoldings.
 % ======================================================================
 \section{The language}\label{sec:checker}
 
-\subsection{Units and segments}
+\subsection{Declarations and modules}
 
-A \emph{unit} is a declaration. There are two basic ones,
+The core of \sys\ is inspired by \textsc{Automath}: a text is a list of
+declarations,
 \[
 \begin{array}{ll}
 x\,(\Delta) : A & \text{a parameter}\\
-x\,(\Delta) : A = t & \text{a definition}
+x\,(\Delta) : A = t & \text{a definition}\\
+\kw{level}\ a,\quad \kw{constraint}\ \psi & \text{levels and constraints}\\
+\kw{module}\ M\,(\Delta)\,\{\,\vec u\,\} & \text{a module}\\
+\kw{module}\ N = M[\vec a],\quad \kw{open}\ M & \text{an instance, an opening}
 \end{array}
 \]
-A \emph{record} $\kw{record}\ R\,(\Delta)\,\{\,\vec u\,\}$ is a named
-list of basic units: its fields, the parameters, and definitions. A
-\emph{module} $\kw{module}\ M\,(\Delta)\,\{\,\vec u\,\}$ is a named list
-of units of every kind: the basic ones and
-\[
-\begin{array}{ll}
-\kw{data}\ D\,(\Delta) = c_1(\Delta_1)\mid\dots & \text{a data type}\\
-f\,(\Delta) : A = \kw{split}\,\{\dots\} & \text{a definition by cases}\\
-\kw{record}\ R\,(\Delta)\,\{\,\vec u\,\},\quad \kw{module}\ M\,(\Delta)\,\{\,\vec u\,\} & \text{records and modules}\\
-\kw{module}\ N = M[\vec a] & \text{an instance}\\
-\kw{level}\ a,\quad \kw{constraint}\ \psi & \text{levels and constraints}
-\end{array}
-\]
-A file is a module. Both lists may also contain the directives
-\kw{open}\ $M$, \kw{opaque}\ $f$ and \kw{transparent}\ $f$. Data types,
-definitions by cases and records are compared by name, so they are
-declarations, never terms. Terms are those of a dependent type theory
-with typed abstraction $\lambda(x:A).\,t$, $\Pi$, $\Sigma$, an identity
-type with its eliminator $J$, cumulative universes \kw{U}\,$l$ indexed
-by level expressions, and products over levels and over constraints
+A file is a module. Terms are those of a dependent type theory with
+typed abstraction $\lambda(x:A).\,t$, $\Pi$, $\Sigma$, an identity type
+with its eliminator $J$, cumulative universes \kw{U}\,$l$ indexed by
+level expressions, and products over levels and over constraints
 between levels~\cite{BCDE}.
 
-A list of units is checked in order, each unit in the context of the
-units before it, and then added to it; a definition stays a definition,
-with its body available for computation. The scope is sequential, as in
-the block structure of \textsc{Automath}, and, as in
+A list of declarations is checked in order, each in the context of the
+declarations before it, and then added to it; a definition stays a
+definition, with its body available for computation. The scope is
+sequential, as in \textsc{Automath}, and, as in
 $\Lambda\Delta$~\cite{LD}, a context contains definitions as well as
-declarations, in any order. A definition enters the context with its
-type and its body, not with its proof of correctness, so each
-declaration can be checked separately, with its own time budget, as a
-reader accepts a lemma and reads on. This serves diagnosis only: a
-development is accepted when all its declarations check.
+parameters, in any order. A definition enters the context with its type
+and its body, not with its proof of correctness, so each declaration can
+be checked separately, with its own time budget, as a reader accepts a
+lemma and reads on. This serves diagnosis only: a development is
+accepted when all its declarations check.
 
-A record or module is a \emph{segment}; its parameters are its units
-without a body. It is checked once, with its parameters unknown. An
-instance $M[\vec a]$ checks each $a_i$ against the type of the $i$th
-parameter with the earlier ones substituted; nothing of the body is
-checked again. A record type $R[\vec p]$ gives the parameters of the
-header, and \kw{new}\,$R[\vec p,\vec v]$ gives the fields. Fixing a
-field, $R[\vec p][x:=e]$, gives the type of the elements whose field $x$
-is $e$, and for every such element the field $x$ computes to $e$
-(Section~\ref{sec:values}). A hypothesis can be a parameter of a whole
-development and be discharged by one instance; nothing is postulated.
-The model of univalent type theory below assumes function
-extensionality and univalence as two parameters, and one instance,
-which checks two arguments, gives it under univalence alone.
+A module is a \emph{segment}, a notion inspired by the work on
+segments in \textsc{Automath}~\cite{Seg}; its
+parameters are its declarations without a body. It is checked once,
+with its parameters unknown. An instance $M[\vec a]$ checks each $a_i$
+against the type of the $i$th parameter with the earlier ones
+substituted; nothing of the body is copied or checked again. There are no
+types of modules: a module is not a term, it cannot be a parameter or
+the value of a definition, and there are no signatures as in ML; it is
+used only through its instances and \kw{open}. A structure that is
+passed as an argument is an element of a record type
+(Section~\ref{sec:structures}). A
+hypothesis can be a parameter of a whole development and be discharged
+by one instance; nothing is postulated. The model of univalent type
+theory below assumes function extensionality and univalence as two
+parameters, and one instance, which checks two arguments, gives it under
+univalence alone.
 
 \paragraph{Classical logic.} In the same way, \sys\ can be used for
 classical mathematics. Excluded middle for propositions,
@@ -172,7 +162,7 @@ classical mathematics. Excluded middle for propositions,
 \kw{lem} : (P : \U\ b) \to \kw{isProp}\ P \to P + (P\to\bot)\quad
 \text{for every level } b,
 \]
-is the parameter of the segment \kw{Cl} of \texttt{core/CClassical.seg},
+is the parameter of the module \kw{Cl} of \texttt{core/CClassical.seg},
 and the four files of the simplicial set instance that need it are
 imported inside it.
 It is used at one point. The fillers built constructively are uniform
@@ -192,6 +182,39 @@ of the theorems that use them, the assumptions of a development are
 explicit, and a file can only be used where they are given
 (Section~\ref{sec:results}).
 
+\subsection{Opacity}
+
+Two more declarations control unfolding: \kw{opaque}~$f$ declares that
+from this point on $f$ is not unfolded, and \kw{transparent}~$f$ undoes
+it. These declarations were introduced in the implementation of
+\texttt{cubicaltt}~\cite{cubicaltt}; locking definitions comes from
+unpublished work of Barras on a module system based on
+opacity~\cite{Barras}, followed by Wang~\cite{Wang}. The strategy is a parameter of the run:
+evaluation builds the same values whatever the strategy. Making a
+definition opaque can only make fewer terms convertible, so an
+\kw{opaque} declaration never makes an incorrect proof correct. Its use
+is the mathematical one: once a construction is characterised by lemmas,
+the rest of the development uses the lemmas.
+
+\subsection{Records and data types}
+
+A record is a module whose parameters are its fields:
+\[
+\begin{array}{ll}
+\kw{record}\ R\,(\Delta)\,\{\,\vec u\,\} & \text{a record}\\
+\kw{data}\ D\,(\Delta) = c_1(\Delta_1)\mid\dots & \text{a data type}\\
+f\,(\Delta) : A = \kw{split}\,\{\dots\} & \text{a definition by cases}
+\end{array}
+\]
+The body of a record contains only parameters, its fields, and
+definitions. A record type $R[\vec p]$ gives the parameters of the
+header, and \kw{new}\,$R[\vec p,\vec v]$ gives the fields. Fixing a
+field, $R[\vec p][x:=e]$, gives the type of the elements whose field $x$
+is $e$, and for every such element the field $x$ computes to $e$
+(Section~\ref{sec:values}). Records, data types and definitions by
+cases are compared by name, so they are declarations, never terms; they
+occur in modules, not in records.
+
 Data types are strictly positive. There is no recursion by name: a
 function out of a data type is a \kw{split}, and a branch names, after
 its pattern variables, the recursive results, which are hypotheses like
@@ -204,7 +227,7 @@ This is primitive recursion at higher types, as in G\"odel's system T,
 written as the inductive case expressions of Burstall~\cite{Burstall},
 where termination follows from the scope rules.
 
-\subsection{Structures without instance search}\label{sec:structures}
+\subsection{Mathematical structures as records}\label{sec:structures}
 
 Proof assistants commonly find structure arguments by instance
 synthesis, or solve unification problems on record projections by
@@ -249,16 +272,17 @@ introduced little repetition.
 
 \section{Definitions}\label{sec:defs}
 
-The main difference between \sys\ and other systems is its treatment of
-definitions. Frege had no definitional equality for defining notions:
+The main difference between proof systems based on dependent type theory
+and other systems is their treatment of definitions. Frege had no definitional equality for defining notions:
 in the \emph{Begriffsschrift}~\cite{Frege} a definition is a judgement
 of identity of content, and each use of it is a step citing it. In HOL
 too every use of a definition is an explicit step, a rewrite with its
 defining theorem, and objective type theory~\cite{OTT} does the same for
 computation rules: $\beta$ and the computation of the identity
 eliminator hold only propositionally, with explicit witnesses, so each
-use is a transport written in the term. In \textsc{Automath} and in
-\sys\ the uses of a definition are silent: they are expressed by
+use is a transport written in the term. In \textsc{Automath}, and in
+the systems based on dependent type theory that followed it, the uses
+of a definition are silent: they are expressed by
 convertibility, and, as in de Bruijn's $\Lambda\Delta$~\cite{LD}, a
 definition is a declaration of the same kind as an abstraction and can
 occur anywhere in a context. An informal text is in between: it says
@@ -271,19 +295,19 @@ the first lemmas of the \emph{Begriffsschrift} translated into
 \textsc{Automath} notation, type checking felt similar to what one does
 when trying to understand a proof.
 
-\subsection{Definitions as closures}
+\subsection{Values}
 
-Evaluation maps terms to values in an environment. Following
-$\Lambda\Delta$, a definition is not replaced by its body when it is
-declared; it is unfolded only where its body is needed. The use of
-closures comes from~\cite{C96,Wang}, and was used in the implementation
-of \texttt{cubicaltt}~\cite{cubicaltt}, which also introduced
-\kw{opaque} and \kw{transparent}. A use of a definition $f$ evaluates
-to the closure $\langle f;\rho\rangle$ of the unit and the environment
-$\rho$ where it is declared. The \emph{arguments} of a use are the values
-in $\rho$ of all the variables and levels in scope at the declaration. A
-member $M[\vec a].f$ of an instance is $\langle f;\rho,\vec a\rangle$.
-Nothing is copied: $f$ has one identity wherever it is used.
+The checker computes with values. A definition is not replaced by its
+body: a use of a definition $f$ is a value of its own,
+$\langle f;\rho\rangle$, which records $f$ and the values $\rho$ of the
+variables in scope at its declaration, the \emph{arguments} of the use.
+The body is computed only where it is needed. This representation, a
+closure, comes from~\cite{C96,Wang} and was used in the implementation
+of \texttt{cubicaltt}~\cite{cubicaltt}. Computing with values in this way is
+explained, with small implementations, by Kov\'acs~\cite{Kov}. A member $M[\vec a].f$ of an
+instance is $\langle f;\rho,\vec a\rangle$. Nothing is copied: $f$ keeps
+one identity wherever it is used, so two uses of $f$ can be recognised
+as the same by comparing their arguments.
 
 \paragraph{Neutral values carry their type.}\label{sec:values} A value
 that is not an introduction is \emph{neutral}: a variable, a parameter, a
@@ -303,77 +327,52 @@ of $R$ at $e$ is $\langle d;\vec p,e\rangle$, the parameters being those
 the type gives. So $e.x\equiv a$ for every neutral $e : R[\vec p][x:=a]$,
 a variable as well as an application or a projection, by computation.
 
-\kw{opaque f} declares that from this point on $f$ is not unfolded, and
-\kw{transparent f} undoes it.
-The strategy is a parameter of the run:
-evaluation builds the same values whatever the strategy. Making a
-definition opaque can only make fewer terms convertible, so an
-\kw{opaque} declaration never makes an incorrect proof correct. Its use
-is the mathematical one: once a construction is characterised by lemmas,
-the rest of the development uses the lemmas.
-
 \subsection{Conversion}\label{sec:conv}
 
 Definitional equality is generated by $\beta$ (for functions, pairs,
-levels, projections, \kw{split} on a constructor and $J$ on reflexivity),
-the unfolding of definitions, and $\eta$ for functions, pairs and
-records. A data
-type and a \kw{split} are constants, as a definition is in
-$\Lambda\Delta$: a data type is applied to its parameters, and a
-\kw{split} is lifted over the whole context in which it is written, as
-local pattern-matching functions usually are. A \kw{split} computes
-only on a constructor, and two occurrences of the same constant are
-equal when their arguments are, an argument that a branch does not use
-being still an argument. This is part of the declarative equality, not a
-restriction of the algorithm: the algorithm is meant to decide exactly
-this equality, although we give no proof that it does
-(Section~\ref{sec:open}). Two values are compared as follows.
-\begin{enumerate}
-\item \emph{By names.} They are equal if they are strictly equal, that
-  is, equal as represented, two closures $\langle f;\rho\rangle$,
-  $\langle f;\rho'\rangle$ being strictly equal when $\rho$ and $\rho'$
-  are; or if they are eliminations of the same definition $f$ with
-  convertible arguments and spines. The common head is not unfolded;
-  the arguments are compared by conversion, from stage 1, and this
-  may unfold definitions inside them: comparing $f(g(a))$ with $f(b)$
-  may open $g$, never $f$.
-\item \emph{By head steps.} Otherwise the $\beta$-redexes at the head are
-  reduced, without unfolding. If a definition blocks the head of one side
-  only, that side is brought to weak head normal form. If both heads are
-  blocked by definitions, the one declared later is opened by one
-  $\delta$-step. After each step, strict equality is tried.
-\item \emph{By components.} When no head is blocked, the outer forms are
-  compared and their components are compared recursively, each from
-  stage 1.
-\end{enumerate}
-Stage 1 is a reader who recognises the same lemma at the same arguments;
-stage 2 is opening a definition, the $\delta$-step of $\Lambda\Delta$.
-Stage 1 is essential: comparing arguments only strictly, and otherwise
-unfolding, takes more than 30~s on each file of the model tried, against
-1.5--4~s. The strategy is uniform: there is no other choice of what to open, and
-no heuristic depending on the definitions. Sequential scope ensures that
-an earlier declaration's body cannot refer to a later declaration. It
-does not impose this order on instantiated values: if $f(x):=x$ is
-declared before $g:=a$, then $f(g)$ unfolds to $g$. The later-first rule
-is a fixed policy, not a completeness argument. Two heads can also
-reduce to a common expression. If $h:=a$ and then $k:=a$, comparison
-proceeds as
-\[
-  h\mathrel{\sim}k\quad\longmapsto\quad
-  h\mathrel{\sim}a\quad\longmapsto\quad a\mathrel{\sim}a.
-\]
-Accordingly, two \kw{split} values, like two data types, are compared by
-name: by the identity of their code and their convertible environment
-arguments; their branches and motives are never compared;
-two record types are equal when they come from the same declaration with
-equal parameters, and their fields are never compared.
+projections, levels, a \kw{split} on a constructor and $J$ on
+reflexivity), by $\eta$ (for functions, pairs and records), and by
+$\delta$, the unfolding of a definition. Data types, definitions by
+cases and records are compared by name: two of them are equal when they
+come from the same declaration at equal arguments, and their
+constructors, branches or fields are never compared. We give no proof
+that the algorithm below decides exactly this equality
+(Section~\ref{sec:open}).
 
-\paragraph{Eta for records.} As for pairs, an element
-$\kw{new}\,R[\vec p,\vec v]$ is equal to a value $e$ when each field
-$v_i$ is equal to the projection $e.x_i$. Since neutral values keep
-their types (Section~\ref{sec:values}), conversion needs no type
-argument: two neutrals whose type is a record type fixing all its
-fields, in particular a record without fields, are equal.
+Two values are compared in three stages, as a reader would compare
+two expressions.
+\begin{enumerate}
+\item \emph{By names.} If both are uses of the same definition $f$, or
+  the same eliminations of such uses, their arguments are compared, not
+  the body of $f$: comparing $f(g\,a)$ with $f(b)$ may open $g$, never
+  $f$.
+\item \emph{By opening.} Otherwise a definition is opened, by one
+  $\delta$-step: if only one side is a use of a definition, that one; if
+  both are, the one declared later. Then the comparison starts again
+  at stage~1.
+\item \emph{By components.} When neither side is a use of a definition,
+  their outer forms (an abstraction, a product, a pair, a constructor)
+  are compared, and their components are compared from stage~1.
+\end{enumerate}
+Stage~1 is a reader who recognises the same lemma at the same
+arguments; stage~2 is a reader opening a definition. The strategy is
+uniform: there is no priority between definitions and no heuristic.
+Opening the later definition first is a fixed policy: a later definition
+may refer to an earlier one and not conversely, so that, if $h:=a$ and
+then $k:=a$, the comparison goes $h\sim k \mapsto h\sim a\mapsto a\sim a$.
+Stage~1 matters in practice: without it, checking a file of the model
+of univalent type theory takes more than 30~s instead of 1.5--4~s.
+
+\paragraph{Eta for records.} An element of a record type is determined
+by its non-manifest fields, those declared $x : A$; a manifest field,
+declared $x : A = e$, is computed from them. An element
+$\kw{new}\,R[\vec p,\vec v]$ is equal to a value $e$ not of this form
+when each $v_i$ is equal to $e.x_i$. Two neutrals are compared by their
+heads and eliminations, except when their types fix every non-manifest
+field: then their fields compute to the fixed values, and they are equal
+when these are. Conversion is not given the type of what it compares;
+it can decide this case because a neutral carries its type
+(Section~\ref{sec:values}).
 
 \paragraph{The expected type is opened only for introductions.} An elimination (an application, a
 projection) is checked by inferring its type and comparing it with the
@@ -618,10 +617,14 @@ The method was applied to the following developments.
   commutative ring and in every dimension, by lifting finite sections.
   Its application is the local structure of \'etale algebras: an \'etale
   algebra over a residually discrete local ring is standard \'etale near
-  a prime above the maximal ideal. It is checked with ZMT proved, and
-  for a flat unramified algebra by a flatness transfer theorem
-  (21\,057 and 7076 declarations). The field case, the structure of
-  finite \'etale algebras over a discrete field, is still a hypothesis.
+  a prime above the maximal ideal, checked with ZMT proved, and for a
+  flat unramified algebra by a flatness transfer theorem (21\,057 and
+  7076 declarations). Over any commutative ring $A$, a finitely
+  presented, formally \'etale $A$-algebra $E$ is locally standard \'etale:
+  there merely are $h_1,\dots,h_n$ in $E$ with $\sum c_ih_i=1$ and each
+  $E[1/h_i]$ isomorphic to $A[X]_{gf'}/(f)$ with $f$ monic. This includes
+  the field case, the structure of finite \'etale algebras over a
+  discrete field (41\,274 declarations).
 \end{itemize}
 The gcd-domain development now follows the direct content induction of
 Mines--Richman--Ruitenburg (Chapter~IV, \S4, Lemma~4.3), removing the
@@ -674,6 +677,7 @@ Jacobian, flatness & \texttt{sag/etale-flat} & 6\,752 & 2.5 s\\
 qcqs schemes, functor of points & \texttt{sag/qcqs} & 16\,047 & 20.9 s\\
 Zariski main theorem, \'etale & \texttt{sag/etale-local-zmt} & 21\,057 & 14.4 s\\
 flat and unramified & \texttt{sag/etale-flat-unramified} & 7\,076 & 2.6 s\\
+\'etale, locally standard & \texttt{sag/etale-field-product-mere} & 41\,274 & 30.2 s\\
 \bottomrule
 \end{tabular}
 \caption{The developments checked by the current checker, none with a
@@ -711,6 +715,7 @@ Jacobian, flatness & 6\,752 & 4\,817 & 73\,190 & 9 & 8\,910\\
 qcqs schemes, functor of points & 16\,047 & 9\,835 & 282\,932 & 87 & 8\,280\\
 Zariski main theorem, \'etale & 21\,057 & 12\,378 & 414\,805 & 72 & 25\,673\\
 flat and unramified & 7\,076 & 3\,954 & 89\,940 & 8 & 1\,987\\
+\'etale, locally standard & 41\,274 & 24\,820 & 650\,911 & 102 & 25\,673\\
 \bottomrule
 \end{tabular}
 \caption{Unfoldings in checking the developments of
@@ -808,8 +813,8 @@ flat modules.
 $\Lambda\Delta$~\cite{LD} makes definitions part of the typed
 $\lambda$-calculus, with a reduction of their own, and his
 \emph{mathematical vernacular}~\cite{MV} is a language meant to be close
-to the way mathematics is written. The block structure of
-\textsc{Automath} is that of \sys. The theories of \textsc{Half}
+to the way mathematics is written. The declarations and
+modules of \sys\ are inspired by \textsc{Automath}. The theories of \textsc{Half}
 \cite{Ced} are lists of declarations; Wang~\cite{Wang} implements a type
 theory with definitions as closures, which \sys\ follows.
 
@@ -1032,6 +1037,9 @@ the author's responsibility.
   Theoretical Computer Science}, Lecture Notes in Pure and Applied
   Mathematics 106, Marcel Dekker, 1987, 71--92. Reprinted in
   \emph{Selected Papers on Automath}, North-Holland, 1994.
+\bibitem{Seg} N.~G.~de~Bruijn. A namefree lambda calculus with
+  facilities for internal definition of expressions and segments.
+  TH-Report 78-WSK-03, Eindhoven University of Technology, 1978.
 \bibitem{MV} N.~G.~de~Bruijn. The mathematical vernacular, a language
   for mathematics with typed sets. In \emph{Workshop on Programming
   Logic}, Marstrand, 1987. Reprinted in \emph{Selected Papers on
@@ -1061,6 +1069,9 @@ the author's responsibility.
 \bibitem{IA} M.~Inglis and L.~Alcock. Expert and novice approaches to
   reading mathematical proofs. \emph{Journal for Research in Mathematics
   Education} 43, 2012, 358--390.
+\bibitem{Kov} A.~Kov\'acs. \emph{elaboration-zoo}: minimal
+  implementations of dependent type checking and elaboration.
+  \url{https://github.com/AndrasKovacs/elaboration-zoo}.
 \bibitem{Lamport} L.~Lamport. How to write a proof. \emph{American
   Mathematical Monthly} 102, 1995, 600--608.
 \bibitem{SSD} F.~Cherubini, T.~Coquand, F.~Geerligs and H.~Moeneclaey.
