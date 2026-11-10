@@ -460,3 +460,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   hence the metatheory's univalence parameter: NOT a new premise, it is
   the existing metatheory premise of sag-model (LEDGER: Unit with
   univalence and funext as segment parameters; V.seg's one use of univ).
+- 2026-11-10 (canonicity-c2): raw Π structure complete, CPshPiStr.PiC :
+  PiStr on CPCwF (2499e828). Reassignment: the shared uniform-filler lemma
+  goes to canonicity-c2 (it blocks Π's fibrancy); canonicity-45 keeps Σ, Id
+  and the bridge. NF waits for the C-level Id.
