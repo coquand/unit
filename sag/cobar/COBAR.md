@@ -348,11 +348,20 @@ directly at PiT it overran the 10 s limit).  Negative test: dropping prC in Wy.q
 M3a DONE, `CPshPiFibF.seg: PFOf[C].PF[G, A, B, uA, uB].piUFib : LO.UF[G, PiT].UFib`: Pi of uniformly
 fibrant C-types is uniformly fibrant (each direction d: kA := CFill.FillC of A's composition in the
 other direction, kAU := CPshFillU.FU.res, cB / cBU from uB; then CPshPiFibN.comp, CPshPiFibU.ucomp).
-M3b NOT done: the Pi closure on CFibCwF (CwFCl.ClPi), which needs piCl-nat: the structure piUFib is
-natural in the C-substitution, i.e. clSubU of piUFib, transported along PiT-nat, is piUFib of the
-substituted structures.  UFib being (LFib, propositions), this is levelwise: at each x, the base
-law FibCwF.MoveNat at X := PG.piTy x, Y := PD.piTy x, P2 := CPshPiNat's Pf x, then MoveComp.unique
-with, per component, the base's CPiNat (the fibration of Pi A[s] B[s] is the move of that of Pi A B).
+M3b DONE: Pi on the CwF of uniformly fibrant C-types.
+`CPshPiFibS.seg: SOf[C].Sx[D, G, s, A, B, x]`: K, the cartesian map from (Pi_{A[s]} B[lift s])_x to
+(Pi_A B)_x over s_x (transport back along CPshPiNat's Pf x, then the lift, as CPiCart); MN =
+FibCwF.MoveNat for it; `Py.prS`: the (y, f) projection of a total read by K, read in Pi_y, is
+CPiCart's reading at y of the (y, f) projection (trFst, trV-tyTr / tyTr-trV); `Hd[d, kA, cB, kA', cB',
+cmpY].Hn[ncG, ncD].uniq`: the composition of the substituted product at x is the move along K of
+that of the product (MoveComp.unique; componentwise, read in Pi_y: prS, Val.compE on both sides,
+CPiCart's kopMv with cmpY, and the moved data agree, eWs / tsEs, kop-cong).  Negative test:
+dropping prS fails.
+`CPshPiFibC.seg: PiClOf[C]`: piCl := piUFib; `PNat[D, G, A, B, s].Bx[x].base`, the levelwise law
+(MN.law, then uniq in the two directions with cmpY := the two halves of the base's
+CPiNat.PiNat[...].nat at each y; its inputs are clSubU's structures on the nose, no bridging
+equality was needed); `PNat.law` = piCl-nat in the shape of CPshSigFib.SNat.law;
+`FPiC = UF.FCC.ClPi[CPshPiStr.PiC, piCl, piCl-nat]`, so `FPiC.SPi` is the Pi structure of CFibCwF.
 NF waits for the C-level Id (CPshId, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
