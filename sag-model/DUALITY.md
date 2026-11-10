@@ -292,3 +292,10 @@ Sub and El remain arbitrary types.
   P3.3–P3.5 from S3.1–S3.5 (step 3), and E3.
 - 2026-11-10 (canonicity-45): **E2 (Theorem 61, Axiom 3) checks conditionally**: `E2[l,k].Over[R,setR].Thm61[C,S,PI,Dd,MP,T,Md,L58,Nn].theorem61 : IsEqT G0 N (Pi G0 Sp N[p]) R6.lamm` in `unit/sag/duality-levelwise/E2.seg` (51 modules, 0 failed; a broken step fails). Premises: those of Theorem 62 (T2, T3, Mods, P58 = P3.6 pending) and S2.7 (`NS`).
 - 2026-11-10 (canonicity-45): **E3 (Prop 76 at Sp, Axiom 1) checks conditionally**: `E3[l,k].Over[R,setR].Thm76[C,S,PI,Dd,MP,T,Md,L58,Tt].theorem76 : P76[..].Proj T.G0 T.Sp` (Definition 73 for all substitutions), from `P76.prop76` at a general locally representable fibrant A, with Remark 71 constructed (`P76.R71.rep'`, no premise) (`unit/sag/duality-levelwise/E3.seg`, 76 declarations; a broken step fails). Premises: those of Theorem 62 (P58 = P3.6 pending) and S3.7, S3.8 (`TrS`).
+- 2026-11-10 (canonicity-4e): **P3.6 (Prop 58) proved** (`P58.seg`,
+  `prop58`), so it is no longer a premise. `SAGPresheaf.seg`,
+  `PresheafAxioms[..]`: `duality` (Axiom 2), `n-constant` (Axiom 3),
+  `projective` (Axiom 1), all checked, under T2, T3 (S3.5, S3.6, P3.3–P3.5
+  stated, proof pending), Mods, NS (S2.7), TrS (S3.7, S3.8). 56 modules,
+  0 failed. Remaining: P3.3–P3.5 from S3.1–S3.5 (canonicity-45's
+  Transfer.seg is the generic part), and Mods from the model.
