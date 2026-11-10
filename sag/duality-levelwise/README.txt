@@ -17,7 +17,8 @@ no new axioms beyond the named premises:
   SpF    S3.5 and S3.1: G, Sp (hom-type of models <u> -> G), ev
   Mods   S3.10: <-> and G D-modal, G and Sp fibrant
   NS     S2.7: N fibrant, modal, fibres ~ Nat
-  TrS    S3.7/S3.8: the comparison data for Prop 76
+  TrS    S3.7/S3.8: truncation in the model, and Prop 34
+         (El(U Gamma, ||U A||) <-> El(Gamma, ||A||))
 and the ambient axioms of Axioms.seg (function extensionality,
 univalence).  Tier 1 (the algebra) uses no premises.
 
