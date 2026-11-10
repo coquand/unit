@@ -1,33 +1,46 @@
-# Duality in the presheaf model: a conditional verification
+# The SAG axioms in the presheaf model: a conditional verification
 
-Ruling (2026-11-10): the immediate endpoint of the SAG-model work is a
-checked proof of **Theorem 62** of jonas.pdf: duality, that is Axiom 2 in
-PSh(C)_DT. The proof is checked relative to named premises, each with an
-exact statement and a status. Numbering refers to jonas.pdf (Höfer,
+Ruling (2026-11-10): the immediate goal of the SAG-model work is a
+checked proof of the three presheaf axioms of jonas.pdf §6.3 in
+PSh(C)_DT: duality (Axiom 2, **Theorem 62**) first, then constancy of N
+(Axiom 3, **Theorem 61**) and projectivity of spectra (Axiom 1,
+**Prop 76**). The proofs are checked relative to named premises, each with
+an exact statement and a status. Numbering refers to jonas.pdf (Höfer,
 licentiate, `~/COLL/jonas.pdf`): §4 (cobar), §6.4–6.5, Appendix A.
 
 ## 0. What "completed" means, and what is deferred
 
-**Endpoint E1 (this file).** Theorem 62 holds: for every
-u : Pr_{T/G,Dκ} the transposed evaluation ⟨u⟩_{T/G} → G^{Sp(⟨u⟩)} is an
-equivalence in PSh(C)_DT. Every step is checked in Unit, under the
-premises of Section 3. A premise has one of three statuses:
+**Endpoints.** Every step is checked in Unit, under the premises of
+Section 3.
+- **E1 (Axiom 2, Theorem 62).** For every u : Pr_{T/G,Dκ} the transposed
+  evaluation ⟨u⟩_{T/G} → G^{Sp(⟨u⟩)} is an equivalence in PSh(C)_DT.
+- **E2 (Axiom 3, Theorem 61).** For every u : Pr_{T/G,Dκ} the constant
+  map N → N^{Sp(u)} is an equivalence in PSh(C)_DT.
+- **E3 (Axiom 1, Prop 76 at Sp).** Sp(u) is projective (Definition 73).
+
+The axioms quantify over Dκ-presentable algebras; the paper notes they
+are logically equivalent to the versions with a given presentation u,
+which are the ones stated here. A premise has one of three statuses:
 
 - **proved here**: a checked Unit file of this plan;
 - **Unit theorem**: an existing checked Unit file (path given);
 - **semantic**: an assumption about the model, to be instantiated later.
 
-E1 is not a model of SAG and not a model of Unit.
+E1–E3 are not a model of SAG and not a model of Unit.
 
 **Deferred (unchanged, not abandoned).**
-- Axiom 1 (projectivity of Sp, Prop 76 via Prop 34; needs truncation).
-- Axiom 3 (constancy of N, Theorem 61; needs the semantic N = D(ΔN)).
 - The complete-model endpoint of `README.md` / `INTERFACE.md` (M0–M5):
   a checked semantic inhabitant of the interpreted `SAGAxioms.Assumptions`,
   with the Theory parameters discharged. Its definition of "completed" is
   kept as written there. M1 steps 4–6 (`M1.md`) belong to it.
 - S4 (the univalence bridge, `M1.md` "Step 3, S4") stays at its last
-  checked state. It is not extended for E1.
+  checked state. It is not extended for E1–E3.
+
+**Work split (coordinated from canonicity-4e, 2026-11-10).**
+- canonicity-45: Tier 2 (the record T2 in `unit/sag/duality-presheaf`,
+  P2.1–P2.5), then E2 (Theorem 61: Tier 5 below).
+- canonicity-4e: Tier 1 (done), Tier 3 (P3.1–P3.6 on top of T2), Tier 4
+  (E1), then E3 (Tier 6 below).
 
 ## 1. The proof of Theorem 62, as a dependency spine
 
@@ -107,14 +120,15 @@ from S3.1-S3.6 and Tier 1:
 | P3.5 | Construction 57 | over P3.3: Σ_{Pr_{T/G,Dκ}(A)} Sp(A) ≃ Σ_{Pr_{T/A,κ}} Ret_A; **the clause to check exactly**: under this, Remark 46 and P3.4, the evaluation map of Sp is homotopic to ev_{A,u} : Ret_A(u) × ⟨u⟩_{T/A} -> A, (r , y) ↦ r y — not merely some equivalence of objects | P3.2-P3.4, S3.5 |
 | P3.6 | Prop 58 | Sp : Ty(1.Pr_{T/G,Dκ}) is locally homotopy representable: at A and u the representation is ⟨p_u , q_u⟩ : ょ⟨u⟩_{T/A} -> ょA.Sp(u) under P3.5 | P3.5, S3.6, T1.2-T1.5 |
 
-Phrasing of P3.6 for Tier 1. Its base part is literally T1.3 at
-P := ⟨u⟩_{T/A}, p := p_u, ch h := the base change of Lemma 50 along h
-(T1.5), and the levelwise equivalence is `forward` (r ↦ (r p_u, the
-retraction induced by (r, id_B))). The evaluation clause of P3.5, at the
-representing object, is T1.4 ((forward r).2 (h⁺ y) = r y). Caution
-(canonicity-4e): Tier 1's P is presented over R with p arbitrary, the
-paper's ⟨u⟩_{T/A} over A; the comparison is part of S3.6 (Lemma 42 and the
-classifier), nowhere else.
+Phrasing of P3.6 for Tier 1. Its base part is cited at P := ⟨u⟩_{T/A},
+p := p_u directly (Tier 1 now presents over A, commit f81b5c4f):
+RelativeChange.Chosen[A, u, X, px].ch gives the base change of p_u along
+every h (no truncation), Points.Spectrum[A, u, X, px, B].spectrum is
+Hom(⟨u⟩, B) ≃ Σ (h : Hom(A, B)) Solutions(u h, B) with `generators` (the
+solution of r is r on the generators), and Points.Points gives Ret =
+Solutions with `values` and `evaluation`. T1.3/T1.4 (`forward`,
+`evaluation`) are the same statements for a generic p. Ret is pointwise
+(Π b. r (j b) = b), which at sets is the paper's r ∘ p ∼ id.
 
 ### Tier 4: assembly
 
@@ -125,6 +139,25 @@ El_{cSet}(1.C₀.U Pr_{T/G,Dκ}, is-equiv(U(λev))). Proof: at (A , u), P2.5
 with S := ⟨−⟩_{T/G}, P := G (D-modal) reduces to ev_{(⟨u⟩, u p, q)} ∘
 ⟨−⟩_{T/G}(p_u); by P3.4-P3.6 this is homotopic to q_u ∘ p_u⁺; Tier 1
 (T1.2: q_u p_u⁺ ~ id) and 2-out-of-3.
+
+### Tier 5: E2, constancy of N (Theorem 61)
+
+At (A, u): the square of Remark 60 (P2.5) for S := N_DT and
+f := π₁ : N × Sp(u) → N, with the left square given by naturality of
+τ_{ΔN}; the components of τ_{ΔN} are equivalences (S3.4 at ΔN), the right
+side is Lemma 59 (P2.4) at the local representation of Sp (P3.6); by
+2-out-of-3 the component of λπ₁ is an equivalence; S2.6 concludes.
+New premise: S2.7.
+
+### Tier 6: E3, projectivity of Sp (Prop 76)
+
+Being locally homotopy representable is stable under substitution
+(Remark 71, in T2), so it suffices to take P ∈ Ty^DT(Γ.A). The map
+El(Γ, Π_A ∥P∥) → El(Γ, ∥Π_A P∥) is: Π's universal property; Prop 34
+left-to-right; internally to cSet, restriction along (x.γ, γp_γ, q_γ)
+followed by the inverse of Lemma 72 (P2.4) under ∥−∥; Prop 34
+right-to-left. Applied at A := Sp over Pr_{T/G,Dκ} via P3.6.
+New premises: S3.7, S3.8.
 
 ## 3. Premises
 
@@ -149,6 +182,7 @@ a map"), natural in Γ with ext stability under substitution.
 | S2.3 | D on contexts, types and families (DΓ, DA, D̃Q over DB), the unit τ_A : A -> DA, its naturality D f ∘ τ_A = τ_B ∘ f, the comparison τ*_B of D̃Q along τ_B, D-modal := τ_Q is an equivalence; stable under substitution; the horizontal composites of Lemma 67's diagram are isomorphic to Π's functorial action on (τ_{Q b})_b | stability, naturality of τ, the isos: ext; D-modality: path (is-equiv) | P2.2, S2.6 |
 | S2.4 | (Lemma 12 corrected, Prop 13) maps Fib(UΓ, UA) -> Fib(DΓ, DA) and Fib(UΓ, UA) × Fib(UΓ, UB) × El(UΓ, is-equiv(U f)) -> El(DΓ, is-equiv(D f)) | map (into a path: is-equiv) | P2.2 |
 | S2.5 | (Lemma 66) as P2.1 | path (homotopies of the squares suffice) | P2.2 |
+| S2.7 | (§6.5) the natural numbers of PSh(C)_DT are, up to equivalence, N_DT := D(ΔN), the D-modal replacement of the constant presheaf on N, with τ_{ΔN} natural | the equivalence: path; naturality of τ: ext | Tier 5 |
 | S2.6 | (Prop 17) naturally in Γ, for A, B : Ty^D(Γ), f : A -> B: El(UΓ, is-equiv(U f)) <-> El(Γ, is-equiv f) | map (both directions; logical, not an iso), naturality ext | Tier 4 |
 
 S2.5 may become **proved here** (P2.1) if its proof is elementary in the
@@ -168,9 +202,11 @@ All **semantic**. Same Equations legend.
 | S3.3 | (Lemma 54) U preserves dependent products with domain in (κ, El_κ): for I : κ, U(Π_{El_κ I} B) ≃ Π_{El_κ I} U B, natural in Γ | path (an equivalence suffices downstream: P3.3-P3.5 are up to homotopy); naturality: ext | P3.3-P3.5 | semantic |
 | S3.4 | (Lemma 14) Fib(UΓ, UA) -> El(UΓ, is-equiv(U τ_A)); in particular at El_κ in context κ | map (into is-equiv); the strict retraction ε τ = id of its proof is not needed | P3.3, P3.4 | semantic |
 | S3.5 | (Remark 46) G₀(A) := A; U G ≃ G₀ as T-models in PSh(C₀) | G₀ by definition: ext; the equivalence and its preservation of the model structure: path | P3.2, P3.5, Tier 4 | semantic |
-| S3.6 | (Construction 39, Lemma 40, Lemma 42, Remark 38) the small strict category C, C^op ≃ Mod_{T,κ}, κ-presentable A-algebras are κ-presentable, the classifier (Dκ, D̃El_κ); and the comparison of the paper's ⟨u⟩_{T/A} (presented over A) with Tier 1's pushouts (presented over R, p arbitrary) | C's unit and associativity: ext; Lemma 40, Lemma 42: path; the comparison with Tier 1: path | P3.3, P3.6 | semantic |
+| S3.6 | (Construction 39, Lemma 40, Lemma 42, Remark 38) the small strict category C, C^op ≃ Mod_{T,κ}, κ-presentable A-algebras are κ-presentable, smallness, the classifier (Dκ, D̃El_κ). (The over-R / over-A comparison is no longer needed: Tier 1 presents over A.) | C's unit and associativity: ext; Lemma 40, Lemma 42: path | P3.3, P3.6 | semantic |
+| S3.7 | Propositional truncation ∥−∥ in PSh(C)_DT and in cSet_T↓C₀ (types, the truncation map, the universal property into propositions, is-prop), stable under substitution | stability: ext; universal property: map | Tier 6 | semantic |
+| S3.8 | (Prop 34) naturally in Γ, for A ∈ Ty^DT(Γ): El(UΓ, ∥UA∥) <-> El(Γ, ∥A∥) (logical equivalence; its proof uses Theorem 29, Lemma 12 and R) | map (both directions), naturality ext | Tier 6 | semantic |
 
-## 4. After E1
+## 4. After E1–E3
 
 Instantiating Tier 2 and Tier 3 premises at the poset base needs the
 cobar D (S2.3–S2.6), and also algebraic existence and smallness (S3.2,
