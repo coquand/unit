@@ -114,3 +114,11 @@ the C-action commutes strictly, as in Lemma 9.
 Formal shape: a record Up m of the levels n <= m with naturality, faces
 and extension of s; step : Up m -> Up (m+1) extending; u n := the level n
 of the m-th stage for m >= n (levels are never changed once built).
+
+## Status
+
+- Lemma 12 CHECKED (canonicity-45, Lemma12.seg): `L12[C,G,A].lemma12U al : UTriv (D G) (D A)`,
+  with `lemma12 al x : ContrOp ((D G)_x) ((D A)_x)` levelwise. Premises: only `al` (a levelwise
+  ContrOp of A) and the base's CB fields (through PosFull.PB); no new axioms. The uniformity in C is
+  not strict here: it is a second induction on levels (KC), like kunif (KU), using K.rx-fc.
+  Negative tests: dropping W3 in FFS, or rx-fc in KC, fails.
