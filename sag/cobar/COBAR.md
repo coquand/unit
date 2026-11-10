@@ -453,4 +453,9 @@ maps f x : S_x -> T_x, g x : T_x -> S_x of base types (CHtpyOps.NMap) with g aft
 and both commuting with the C-actions, a uniform ContrOp of T gives one of S
 (CLocBoundRetr.Relative + FibYC.RelId at each x; sdF: the moved f-image of a side is the f-image of
 the moved side).  Negative test: dropping fC in sdF fails.
-Not done: (II) the fibres FV / HFib with FibS3's four maps at the C-level, C2, (III).
+(II-a) base part DONE, `CPshFibMaps.seg: RawFib[G, Y, X, al]` (base level): FibS3's ends, YC, FV1,
+HFibId and the four maps toS / frS / embS / prjS RESTATED ONCE on raw data (al a CPartial.PMap, no
+packaged element of a function type; FibS3 itself goes through CwFFv.E); new: fN / gN / mId, core's
+homotopy fibre HFib is a retract of FV1 = Sigma Y Id.
+Not done: (II-a) at the C-level (FV1 as a C-type, fN / gN commute with the C-actions, then U-Rel
+with S := Prop13's HP, T := FV1), (II-b), C2, (III).
