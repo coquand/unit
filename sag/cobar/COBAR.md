@@ -457,31 +457,14 @@ the moved side).  Negative test: dropping fC in sdF fails.
 HFibId and the four maps toS / frS / embS / prjS RESTATED ONCE on raw data (al a CPartial.PMap, no
 packaged element of a function type; FibS3 itself goes through CwFFv.E); new: fN / gN / mId, core's
 homotopy fibre HFib is a retract of FV1 = Sigma Y Id.
-Not done: (II-a) at the C-level (FV1 as a C-type, fN / gN commute with the C-actions, then U-Rel
-with S := Prop13's HP, T := FV1), (II-b), C2, (III).
-
-UFib closure of Id (canonicity-45, 2026-11-10), four layers, each a
-mirror of the base's naturality proof for the C-action (a map of types
-over G.act, not cartesian):
-`CPshPathU.seg`: `PathC[G, A, a, b].PathT : CTy[G]` (CPathFib.PathT at each
-x, the C-action maps the values of a path by A.tE) and `PU[G, A, a, b, d,
-kA, cuA].res`: the path compositions at each x are C-uniform (mirror of
-CPathNat.PathNatC.H: the 3-sieve problem at moved data is the moved
-problem, pt / sd-eq / out by cuA and kop-cong; inpEq; H.val; H.res by the
-readings of the composite paths).  `CPshCoreIdU.seg`: `CoreIdC[G, A, a,
-b].IdT` (CIdFib.IdFib.IdT at each x, the sieve kept) and `IU[G, A, a, b, d,
-dc, kP, cuP].res`: core's Id compositions are C-uniform when the path ones
-are (mirror of CIdNat.IdNatC.H: ptEq, sideV, sideEq, pathEq by cuP and
-kop-cong, famEq by the readings R1 and LO.EL.endLC, val by ttI-ext +
-tpI-ext + dconj-cong).  `CPshIdFibM/T/.seg`: the Yoneda iso of PosIdY (4),
-a cart C_x : IdYT -> core IdT over the identity, commutes with the
-C-actions on readings (taC), hence on end data (sVC), strict fibres (mSC),
-totals of the other end (mTC, split into timed steps: two conversions of
-3 s), so core's uniformity moves to `PosIdY.fib` (YU.Res, as
-CPshUFib.UP.Res with the iso in place of the pull-back cart); `idCl G A a
-b : UF.Cl G (IdC.IdT)`; `INat.law`: the law of substitution for (IdT, idCl)
-from FibIdCen.idTy-nat at each x.  Ten-second rule: the file total
-counts, so the closure is three files (2.3 s, 7.8 s, 6.6 s); the pointwise
-uniformity is stated in UComp's own spelling (the conversion of the SC
-spelling cost 6.9 s).  Negative tests: the cM step of PU's vB, the
-dconj-cong of IU's val, and taC by refl each fail.
+(II-a) C-level DONE, `CPshFibC.seg: FibCOf[C].Fb[G, Y, X, f]` (f : Prop13's CMap[G, Y, X]): the ends
+a0C = f y (natural in C by f.mp-nat) and b0C = x as C-elements over Kc = G.X.Y; IdK = CPshId's IdC
+on them; IdR = the same C-type with its type at x written in RawFib's names; `FVc` = CPshSig's SigC
+over it, FVc.ty x = RawFib's FV1 on the nose; TF (the action on a total, rdR: its readings);
+GC / FC: gN and fN commute with the C-actions (on readings, prX-C); `utHP : UTriv Dc FVc ->
+UTriv Dc HP.PC` by U-Rel (HP = Prop13's homotopy fibre C-type).  Negative test: dropping prX-C in
+FC fails.  Cost note (third checker observation): with the fibre written partly through
+SigC / IdC's own names and partly through RawFib's, four small declarations took 6-10 s or overran;
+written in one vocabulary the file takes 7 s, of which 4 s is the one rewrapping IdR.
+Not done: C2 (contraction => UTriv), (II-b) (EquivOp + CUnif => UTriv of FVc), (III) packaging
+on CFibCwF after CPshIdJ.
