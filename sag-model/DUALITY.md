@@ -446,3 +446,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   develop in a private copy of the tree with its own segc server; install
   in sag/cobar only once checked (a nested term had made the shared server
   spin past the 10 s cutoff — a checker observation, kept by canonicity-c2).
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): **Lemma 54
+  PROVED** (sag/cobar/Lemma54.seg, 502aaf20): for A whose C-action is a
+  bijection on fibres (Cart; ΔK for a base type K is an instance, stable
+  under substitution), the fibre of Π_A B at x over γ is in bijection with
+  the base Π (A_x, B_x) over γ, i.e. U(Π_A B) ≅ Π_{UA} UB levelwise.
+  Premise: fe only. Negative test: dropping cnat-at fails.
+  Checker observation (ten-second rule) filed by canonicity-c2:
+  scratchpad spinning-CPshPiLaws.seg (+ README).
