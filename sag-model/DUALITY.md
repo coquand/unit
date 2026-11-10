@@ -484,3 +484,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   for Π on CFibCwF: piCl-nat (M3b, the C-level analogue of FibCwF.PiN.law).
   Second checker observation (rdC at PiT overran 10 s; generic form
   instant) filed by canonicity-c2.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): **(B) stage 2(c)
+  Π complete on CFibCwF** (CPshPiFibS / CPshPiFibC, 62293935):
+  FPiC.SPi : PiStr of CFibCwF (piCl = piUFib, piCl-nat = PNat.law). No
+  hypothesis left; premises fe, univ via V's extensionality. Next: NF
+  (canonicity-c2), Id fibrancy + J (canonicity-45), then the bridge.
