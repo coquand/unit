@@ -499,3 +499,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   commutes with any commuting map of J-data, generic). Next: the IdJStr
   instance on CFibCwF (CPshIdJ). Bridge (canonicity-c2): C1, U-Rel and the
   fibres (II-a) done; C2 next.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): bridge S3b_C at
+  the raw level (CPshContr C1 / C2, CPshURel, CPshFibMaps, CPshFibC). Ruling
+  on the converse S3a_C: Option C, a new base lemma "a ContrOp of
+  Σ_Y Path gives a ContrOp of Σ_Y YonedaId" (extend the path, take the sieve
+  {f in Q | id in the side's Id-sieve at f}, a dependent conjunction); this
+  is a new argument, not the base's FibS3.A, and shows the latter does not
+  need the path fillers.
