@@ -210,3 +210,13 @@ which the C-layer does not have yet. Plan:
    in x.
 Owner: canonicity-45 after Lemma 16 (Π for C-types is CPshR-style coding);
 canonicity-4e reviews.
+
+Prop 13, INTERNAL form (canonicity-45, Prop13U.seg): `P13U[C,G,A,B,f,fA,fB,ef].prop13U :
+Unif[HPD.GB, HPD.PC, HPD.PC, id, prop13].CUnif`, the C-uniformity of the fibre contractions
+(the paper's element of is-equiv(D f) in PSh(C); "is-equiv is a proposition" gives
+C-compatibility only up to a path, so this is needed, 4e's ruling 2026-11-11).  DfC = D f as
+a CMap over D G (naturality by DM.pc both ways), HPD = its homotopy fibres as a C-type,
+PU.sPC / PU.mSC = Psi commutes with the C-action (refl on points; HPD.rb for the A part),
+PU2.res = the Lemma12F.UFl argument (mTinj, kopMv, lemma12U's CUnif, kop-cong along the
+side equality R).  Negative test: dropping lemma12U's uniformity step fails.
+Corollary 15, internal form: `C15.Main.cor15U` = prop13U at f = tau_A (Cor15.seg).
