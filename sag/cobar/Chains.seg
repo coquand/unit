@@ -1,0 +1,174 @@
+-- Chains.seg (canonicity-45; COBAR.md): chains of composable maps of a
+-- V-small category C, coded in V (for PiS over them), with their faces.
+--
+--   Ch n x z     chains f0 : x0 -> x, f1 : x1 -> x0, ..., fn : z -> x_(n-1)
+--                (n+1 maps) from z to x; the LAST object z is an index, so
+--                that composing two adjacent maps keeps it by typing.
+--                Ch 0 x z = Hom z x ; Ch (n+1) x z = (y , f0 : y -> x , Ch n y z).
+--                chV n x z is its V-code (Ch n x z = Ix (chV n x z)).
+--   comp n k     Ch (n+1) x z -> Ch n x z, composing f_k f_(k+1) (k <= n;
+--                at n = 0 every k is 0)
+--   drop n       Ch (n+1) x z -> (z' : CO) * Ch n x z' * Hom z z': forget the
+--                last map, returning it (last-map)
+--   rx n g       reindexing along g : x' -> x: Ch n x' z -> Ch n x z, f0 |-> g f0
+-- Semisimplicial identities (Unit paths; refl except where associativity
+-- enters):
+--   comp-comp    comp k . comp l = comp (l-1) . comp k      (k < l <= n+1)
+--   comp-drop    drop . comp k   = comp k on the chain of drop, same map (k <= n)
+--   drop-drop    drop . comp (n+1) = drop . drop, the maps composed
+--   rx-id, rx-o, rx-comp, rx-drop   reindexing is functorial and commutes
+--                with the faces
+level a ;
+open Base ;
+open Prelude[a] ;
+open Trees[a] ;
+open Arith[a] ;
+module VA = V[a] ;
+
+module ChainsOf (C : SmallCat[a].SmallCat) {
+ CO : U a = SmallCat[a].Objs[C.obV].Ob ;
+ CH (y x : CO) : U a = SmallCat[a].Homs[C.obV, C.homV].Hom y x ;
+ co (z y x : CO) (f : CH y x) (h : CH z y) : CH z x = C.oC z y x f h ;
+
+ chV : Nat -> CO -> CO -> VA.V = split {
+  zero -> \ x z -> C.homV z x ;
+  suc n | r -> \ x z -> VA.SigV C.obV (\ y -> VA.SigV (C.homV y x) (\ f -> r y z)) } ;
+ Ch (n : Nat) (x z : CO) : U a = VA.Ix (chV n x z) ;
+
+ -- the result of dropping the last map
+ DR (n : Nat) (x z : CO) : U a = (z' : CO) * Ch n x z' * CH z z' ;
+
+ comp : (n : Nat) -> Nat -> (x z : CO) -> Ch (suc n) x z -> Ch n x z = split {
+  zero -> \ k x z c -> co z c.1 x c.2.1 c.2.2 ;
+  suc m | r -> split {
+   zero -> \ x z c -> (c.2.2.1, co c.2.2.1 c.1 x c.2.1 c.2.2.2.1, c.2.2.2.2) ;
+   suc k -> \ x z c -> (c.1, c.2.1, r k c.1 z c.2.2) } } ;
+
+ drop : (n : Nat) -> (x z : CO) -> Ch (suc n) x z -> DR n x z = split {
+  zero -> \ x z c -> (c.1, c.2.1, c.2.2) ;
+  suc m | r -> \ x z c -> ((r c.1 z c.2.2).1, (c.1, c.2.1, (r c.1 z c.2.2).2.1), (r c.1 z c.2.2).2.2) } ;
+
+ rx : (n : Nat) -> (x' x : CO) -> CH x' x -> (z : CO) -> Ch n x' z -> Ch n x z = split {
+  zero -> \ x' x g z c -> co z x' x g c ;
+  suc m -> \ x' x g z c -> (c.1, co c.1 x' x g c.2.1, c.2.2) } ;
+
+ ------------------------------------------------------------------
+ -- comp . comp
+
+ CCTy (n : Nat) : U a = (k l : Nat) -> IsT (ltb k l) -> IsT (leb l (suc n)) -> (x z : CO) (c : Ch (suc (suc n)) x z)
+  -> Id (Ch n x z) (comp n k x z (comp (suc n) l x z c)) (comp n (pred l) x z (comp (suc n) k x z c)) ;
+
+ -- k >= 1 , k < l <= 1 is impossible
+ nb1 : (l1 k1 : Nat) -> IsT (ltb (suc k1) (suc l1)) -> IsT (leb (suc l1) (suc zero)) -> Empty = split {
+  zero -> \ k1 h1 h2 -> false-true h1 ;
+  suc l2 -> \ k1 h1 h2 -> false-true h2 } ;
+ nb : (l k1 : Nat) -> IsT (ltb (suc k1) l) -> IsT (leb l (suc zero)) -> Empty = split {
+  zero -> \ k1 h1 h2 -> false-true h1 ;
+  suc l1 -> nb1 l1 } ;
+
+ -- n = 0 , k = 0 , l = 1: associativity
+ ccA : (l1 : Nat) -> IsT (ltb zero (suc l1)) -> IsT (leb (suc l1) (suc zero)) -> (x z : CO) (c : Ch (suc (suc zero)) x z)
+  -> Id (Ch zero x z) (comp zero zero x z (comp (suc zero) (suc l1) x z c)) (comp zero l1 x z (comp (suc zero) zero x z c)) = split {
+  zero -> \ h1 h2 x z c ->
+   sym (CH z x) (co z c.2.2.1 x (co c.2.2.1 c.1 x c.2.1 c.2.2.2.1) c.2.2.2.2) (co z c.1 x c.2.1 (co z c.2.2.1 c.1 c.2.2.2.1 c.2.2.2.2))
+    (C.oC-assoc z c.2.2.1 c.1 x c.2.1 c.2.2.2.1 c.2.2.2.2) ;
+  suc l2 -> \ h1 h2 x z c -> absurd _ (false-true h2) } ;
+
+ -- n = m+1 , k = 0
+ ccC (m : Nat) : (l1 : Nat) -> IsT (ltb zero (suc l1)) -> IsT (leb (suc l1) (suc (suc m))) -> (x z : CO) (c : Ch (suc (suc (suc m))) x z)
+  -> Id (Ch (suc m) x z) (comp (suc m) zero x z (comp (suc (suc m)) (suc l1) x z c)) (comp (suc m) l1 x z (comp (suc (suc m)) zero x z c)) = split {
+  zero -> \ h1 h2 x z c ->
+   ap (CH c.2.2.2.2.1 x) (Ch (suc m) x z) (\ h -> (c.2.2.2.2.1, h, c.2.2.2.2.2.2))
+    (co c.2.2.2.2.1 c.1 x c.2.1 (co c.2.2.2.2.1 c.2.2.1 c.1 c.2.2.2.1 c.2.2.2.2.2.1))
+    (co c.2.2.2.2.1 c.2.2.1 x (co c.2.2.1 c.1 x c.2.1 c.2.2.2.1) c.2.2.2.2.2.1)
+    (sym (CH c.2.2.2.2.1 x) (co c.2.2.2.2.1 c.2.2.1 x (co c.2.2.1 c.1 x c.2.1 c.2.2.2.1) c.2.2.2.2.2.1)
+       (co c.2.2.2.2.1 c.1 x c.2.1 (co c.2.2.2.2.1 c.2.2.1 c.1 c.2.2.2.1 c.2.2.2.2.2.1))
+       (C.oC-assoc c.2.2.2.2.1 c.2.2.1 c.1 x c.2.1 c.2.2.2.1 c.2.2.2.2.2.1)) ;
+  suc l2 -> \ h1 h2 x z c -> refl (comp (suc m) zero x z (comp (suc (suc m)) (suc (suc l2)) x z c)) } ;
+
+ -- n = m+1 , k = k1+1: under the first map, by induction
+ ccD (m : Nat) (ih : CCTy m) (k1 : Nat) : (l1 : Nat) -> IsT (ltb (suc k1) (suc l1)) -> IsT (leb (suc l1) (suc (suc m)))
+  -> (x z : CO) (c : Ch (suc (suc (suc m))) x z)
+  -> Id (Ch (suc m) x z) (comp (suc m) (suc k1) x z (comp (suc (suc m)) (suc l1) x z c)) (comp (suc m) l1 x z (comp (suc (suc m)) (suc k1) x z c)) = split {
+  zero -> \ h1 h2 x z c -> absurd _ (false-true h1) ;
+  suc l2 -> \ h1 h2 x z c ->
+   ap (Ch m c.1 z) (Ch (suc m) x z) (\ t -> (c.1, c.2.1, t))
+    (comp m k1 c.1 z (comp (suc m) (suc l2) c.1 z c.2.2)) (comp m l2 c.1 z (comp (suc m) k1 c.1 z c.2.2))
+    (ih k1 (suc l2) h1 h2 c.1 z c.2.2) } ;
+
+ comp-comp : (n : Nat) -> CCTy n = split {
+  zero -> split {
+   zero -> split {
+    zero -> \ h1 h2 x z c -> absurd _ (false-true h1) ;
+    suc l1 -> ccA l1 } ;
+   suc k1 -> \ l h1 h2 x z c -> absurd _ (nb l k1 h1 h2) } ;
+  suc m | ih -> split {
+   zero -> split {
+    zero -> \ h1 h2 x z c -> absurd _ (false-true h1) ;
+    suc l1 -> ccC m l1 } ;
+   suc k1 -> split {
+    zero -> \ h1 h2 x z c -> absurd _ (false-true h1) ;
+    suc l1 -> ccD m ih k1 l1 } } } ;
+
+ ------------------------------------------------------------------
+ -- drop . comp
+
+ -- the drop of a chain, with comp k applied to its chain
+ dropComp (n k : Nat) (x z : CO) (c : Ch (suc (suc n)) x z) : DR n x z =
+  ((drop (suc n) x z c).1, comp n k x (drop (suc n) x z c).1 (drop (suc n) x z c).2.1, (drop (suc n) x z c).2.2) ;
+
+ comp-drop : (n k : Nat) -> IsT (leb k n) -> (x z : CO) (c : Ch (suc (suc n)) x z)
+  -> Id (DR n x z) (drop n x z (comp (suc n) k x z c)) (dropComp n k x z c) = split {
+  zero -> split {
+   zero -> \ h x z c -> refl (drop zero x z (comp (suc zero) zero x z c)) ;
+   suc k1 -> \ h x z c -> absurd _ (false-true h) } ;
+  suc m | ih -> split {
+   zero -> \ h x z c -> refl (drop (suc m) x z (comp (suc (suc m)) zero x z c)) ;
+   suc k1 -> \ h x z c ->
+    ap (DR m c.1 z) (DR (suc m) x z) (\ D -> (D.1, (c.1, c.2.1, D.2.1), D.2.2))
+     (drop m c.1 z (comp (suc m) k1 c.1 z c.2.2)) (dropComp m k1 c.1 z c.2.2)
+     (ih k1 h c.1 z c.2.2) } } ;
+
+ -- drop . comp (n+1) = drop . drop, with the maps composed
+ dropDrop (n : Nat) (x z : CO) (c : Ch (suc (suc n)) x z) : DR n x z =
+  ((drop n x (drop (suc n) x z c).1 (drop (suc n) x z c).2.1).1,
+   (drop n x (drop (suc n) x z c).1 (drop (suc n) x z c).2.1).2.1,
+   co z (drop (suc n) x z c).1 (drop n x (drop (suc n) x z c).1 (drop (suc n) x z c).2.1).1
+      (drop n x (drop (suc n) x z c).1 (drop (suc n) x z c).2.1).2.2 (drop (suc n) x z c).2.2) ;
+
+ drop-drop : (n : Nat) -> (x z : CO) (c : Ch (suc (suc n)) x z)
+  -> Id (DR n x z) (drop n x z (comp (suc n) (suc n) x z c)) (dropDrop n x z c) = split {
+  zero -> \ x z c -> refl (drop zero x z (comp (suc zero) (suc zero) x z c)) ;
+  suc m | ih -> \ x z c ->
+   ap (DR m c.1 z) (DR (suc m) x z) (\ D -> (D.1, (c.1, c.2.1, D.2.1), D.2.2))
+    (drop m c.1 z (comp (suc m) (suc m) c.1 z c.2.2)) (dropDrop m c.1 z c.2.2)
+    (ih c.1 z c.2.2) } ;
+
+ ------------------------------------------------------------------
+ -- reindexing
+
+ rx-id : (n : Nat) -> (x z : CO) (c : Ch n x z) -> Id (Ch n x z) (rx n x x (C.idC x) z c) c = split {
+  zero -> \ x z c -> C.oC-idl z x c ;
+  suc m -> \ x z c -> ap (CH c.1 x) (Ch (suc m) x z) (\ f -> (c.1, f, c.2.2)) (co c.1 x x (C.idC x) c.2.1) c.2.1 (C.oC-idl c.1 x c.2.1) } ;
+
+ rx-o : (n : Nat) -> (x'' x' x : CO) (g : CH x' x) (g' : CH x'' x') (z : CO) (c : Ch n x'' z)
+  -> Id (Ch n x z) (rx n x'' x (co x'' x' x g g') z c) (rx n x' x g z (rx n x'' x' g' z c)) = split {
+  zero -> \ x'' x' x g g' z c -> C.oC-assoc z x'' x' x g g' c ;
+  suc m -> \ x'' x' x g g' z c -> ap (CH c.1 x) (Ch (suc m) x z) (\ f -> (c.1, f, c.2.2))
+    (co c.1 x'' x (co x'' x' x g g') c.2.1) (co c.1 x' x g (co c.1 x'' x' g' c.2.1)) (C.oC-assoc c.1 x'' x' x g g' c.2.1) } ;
+
+ rx-comp : (n k : Nat) -> (x' x : CO) (g : CH x' x) (z : CO) (c : Ch (suc n) x' z)
+  -> Id (Ch n x z) (comp n k x z (rx (suc n) x' x g z c)) (rx n x' x g z (comp n k x' z c)) = split {
+  zero -> \ k x' x g z c -> C.oC-assoc z c.1 x' x g c.2.1 c.2.2 ;
+  suc m -> split {
+   zero -> \ x' x g z c -> ap (CH c.2.2.1 x) (Ch (suc m) x z) (\ f -> (c.2.2.1, f, c.2.2.2.2))
+     (co c.2.2.1 c.1 x (co c.1 x' x g c.2.1) c.2.2.2.1) (co c.2.2.1 x' x g (co c.2.2.1 c.1 x' c.2.1 c.2.2.2.1))
+     (C.oC-assoc c.2.2.1 c.1 x' x g c.2.1 c.2.2.2.1) ;
+   suc k1 -> \ x' x g z c -> refl (comp (suc m) (suc k1) x z (rx (suc (suc m)) x' x g z c)) } } ;
+
+ rx-drop : (n : Nat) -> (x' x : CO) (g : CH x' x) (z : CO) (c : Ch (suc n) x' z)
+  -> Id (DR n x z) (drop n x z (rx (suc n) x' x g z c))
+       ((drop n x' z c).1, rx n x' x g (drop n x' z c).1 (drop n x' z c).2.1, (drop n x' z c).2.2) = split {
+  zero -> \ x' x g z c -> refl (drop zero x z (rx (suc zero) x' x g z c)) ;
+  suc m -> \ x' x g z c -> refl (drop (suc m) x z (rx (suc (suc m)) x' x g z c)) } ;
+} ;
