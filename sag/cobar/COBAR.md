@@ -322,3 +322,34 @@ C-presheaves (Pi, Pi-nat, Pi-iso = PiIso, Pi-iso-nat = IN.res: apd-el + the base
 each y).  Negative test: dropping the base Pi-iso-nat fails.
 Premises: fe; univ only through V.seg's extensionality of iterative sets (propV-ext).
 Not done: uniform fibrancy of Pi (waits for the uniform derived filler), NF.
+
+### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
+
+`CPshSig.seg`: `SigOf[C].PSigC : CwF.Formers[l+, CPCwF].SigStr`, the Sigma
+types of C-presheaves on the raw CwF.  `SG[G, A, B].SigC` is the base's
+`SigAB` at each x with the C-action `unflat . B.tE . flat` (a Sigma-total
+flattened to a total of B), so the laws are B's; `SigNatC[D, G, s, A, B]`
+gives Sig-nat (cty-ext2 with the base's SigNat at each x) and Sig-iso-nat
+(the base's iso-nat at each x, transported with `elTrC` + `isSet-PTy`).
+Checker observation (ten-second rule): Sig-iso-nat's statement mentions
+the record's `coerce`, whose type is `subT D (ext D (subT D G A s))
+(subT (ext ..) (ext G A) B (lift ..)) (sec ..)`; converting that against
+the same type in the LOf spelling, nested inside the outer subT, takes
+more than 10 s, although each argument converts alone in under a second
+and the deep term compared with itself is instant.  Remedy: SigNatC
+instantiates `SG` at D with the record's own spelling of A[s] and
+B[lift s], so the SigStr's field types meet the instance syntactically;
+the file checks in 4 s.  Minimal input kept in canonicity-45's scratchpad
+(slow-conversion-probe.txt).  Negative test: dropping the B.tE-pt step of
+SigC's tE-pt fails.
+
+`CPshFillU.seg` (the shared lemma for Sigma, Id and Pi): `FillUOf[C].FU[G, A,
+d, kk, cu].res` — the derived fillers `CFill.FillC[G.ob x, A.ty x, d, kk
+x].fill` of a C-uniform family of compositions kk (cu : LO.UF[G, A].UComp
+(src d) (tgt d) kk) are C-uniform, as `P.Unif[SF.TVC, SF.SFC, SF.SFC,
+pmap-id, fill].CUnif`; pointwise form `fill-C`.  Mirror of CFillMove for
+the C-action (not cartesian): the problem at a point moves (PMC: pt,
+sd-eq, out through cu and kop-cong), restriction commutes with the
+C-action of sides (inpEq).  Negative test: replacing the inpEq step of
+fill-C by refl fails.  Next: sigCl (CSig.SigFib at each x + the
+C-uniformity of its composite, mirroring CSigNat with FU), then Id.
