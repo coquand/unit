@@ -315,3 +315,40 @@ Sub and El remain arbitrary types.
   T2 (S2.x incl. isSetTy, lam-nat, S2.8), S36 (S3.6), S39 (S3.9), PModF
   (S3.1/S3.2 fibrewise), SpF (S3.1/S3.5 fibrewise, globInv), Mods (S3.10),
   NS (S2.7), TrS (S3.7, S3.8). 62 modules, 0 failed.
+
+## 6. Handoff (2026-11-10)
+
+**State.** `sag/duality-levelwise/T3FromModel.seg`, `PresheafAxiomsM`:
+duality (Thm 62), n-constant (Thm 61), projective (Prop 76) check from
+T2, S36, S39, PModF, SpF, Mods, NS, TrS (§5). README.txt there maps
+files to jonas.pdf. Check: `./segc sag/duality-levelwise all` from unit/.
+
+**Two sessions.** canonicity-4e coordinates (user ruling: "coordinate
+both terminals"); canonicity-45 works. Rules both follow: stop and report
+on any coherence (a 2-cell between law-paths) instead of adding fields;
+only named premises, each with a DUALITY.md row; each session commits
+only its own files/hunks; milestones reported by theorem name; a deliberate
+broken step must fail before a milestone is claimed; reading (A) (§4).
+
+**Rulings this day.** Duality-first, then the three axioms; complete-model
+endpoint deferred; reading (A); isSetTy; syntactic presentations (S3.9).
+
+**Next (agreed with the user).** Check the paper results taken as
+premises:
+1. Prop 17 from T2 (canonicity-45): IsEqT closed under composition /
+   2-out-of-3 (as fields, or IsEqT made concrete via Swan Id / CwFEq),
+   then prop17 / prop17-inv as theorems from Prop 13 (S2.4), modality
+   and naturality of tau.
+2. The concrete cobar D (Definition 10) on sag-model's cubical base
+   (Presheaf.seg, CBase cofibrations incl. [i_k = 0] and unions,
+   CLocBoundContr/CTr trivial fibrancy, connections): Lemma 11, Lemma 12
+   (the one corrected in doc/jonas-model-review.tex), then Lemma 14 and
+   Prop 13; Lemma 54 once PSh(C) is concrete. This checks the paper's
+   lemmas in the external (strict) style; linking them to the reading-(A)
+   premises remains the §4 obligation.
+3. Prop 34 last (needs Theorem 29, Lemmas 31–33).
+
+**Paper remarks found** (to add to doc/jonas-model-review.tex): proof of
+Construction 57, first display has s on both sides (should be s, t);
+Construction 56 writes the presentation (X, R, s, r) instead of
+(X, R, s, t).
