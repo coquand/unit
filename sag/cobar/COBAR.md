@@ -262,3 +262,17 @@ NOT done: the C-naturality of zig = Cat q (Inv p) itself, which needs "CHtpyOps.
 C-action when the homotopies do and the composition is C-uniform" (CPathComp's composite, a Lemma12F.UFl-
 sized generic lemma); under (B) the composition is the C-level fibrancy's.  Recorded as: zig is C-natural
 modulo the uniformity of Cat / Inv.
+
+## (B) PSh(C)Fib as a CwF instance (canonicity-45, from 2026-11-11; approved by 4e)
+
+Stage 1(i) DONE: `CPCwF.seg: CwFOf[C].CPCwF : CwF.CwF[l+]`, the raw CwF of C-presheaves
+(Ctx = CCtx, Sub = CSub, Ty = CTy, El = CEl, ext = ExtC, p = pPC, subT = subCTy, with cidC,
+coC, nilC, epsC, subCEl, qC, liftC, secC).  `CPshExt.seg`: record extensionality and set-ness
+for CSub / CEl / CTy (csub-ext, cel-ext, cty-ext2 with the actions compared along the paths of
+types; isSet-CSub / isSet-CEl / isSet-CTy; tyTr-same: transport of a total along a path of
+types with equal object parts is the fibre transport, TOb a set).  Every CwF law is the base's
+law at each x: the transport of a C-element / C-substitution along a path of C-types is the
+transport along the base path at each x (elTrC, sbTrC, PTy a set), so subEl-id / subEl-o /
+liftP-id / liftP-o / qP-liftP / qP-secP are the components of the corresponding laws; subT-id /
+subT-o by cty-ext2 with the readings rB (SC.rBtE).  Negative test: dropping rBtE in subT-id's
+action comparison fails.
