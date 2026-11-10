@@ -469,3 +469,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (CPshFillU.FU.res / fill-C), 89993a8c. Checker observation (> 10 s
   nested conversion of the record's coerce spelling) filed in canonicity-45's
   scratchpad (slow-conversion-probe.txt). Next: sigCl, then Id.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): Π's composition
+  at each x with NatComp discharged (CPshPiFib + CPshPiFibN, 58395d64),
+  from C-uniform fillers of A (FU) and C-uniform compositions of B. Left
+  for Π's uniform fibrancy: its C-uniformity (UComp), then the assembly
+  piUFib and Π's closure on CFibCwF.
