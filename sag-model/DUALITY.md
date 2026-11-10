@@ -357,3 +357,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   D on contexts and types and the unit tau (Cobar) by canonicity-45;
   weights P_n with restriction, faces and Unface (Weights) by canonicity-4e.
   Lemma 12 is being formalised by canonicity-45 from COBAR.md's proof.
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Lemma 12,
+  trivial-fibrancy half, PROVED** for the concrete cobar D
+  (sag/cobar/Lemma12.seg, 25f40fac): lemma12 al x : ContrOp (D x) (DA x)
+  and lemma12U al : UTriv (D G) (D A), from levelwise ContrOp of A only
+  (premises: al, the base's CB fields). Negative tests: dropping W3 or
+  K.rx-fc fails. Remaining for Lemma 12: the fibrancy half (by the
+  paper's reduction to trivial fibrancy via Lemma 11, needs UFib on lines).
