@@ -186,3 +186,10 @@ M1 steps 4–5 in full, nor the univalence bridge.
 - Split: Tier 1 by this session; the premise interface (Tiers 2-4, (a) the
   site C as data, (b) D abstract, (c) Theorem 62 in P) drafted by the
   canonicity-45 session in a new directory.
+- 2026-11-10 (later): Tier 1 extended to presentations over A
+  (`Relative`, `RelativeChange`, `Points`; 39 modules, 0 failed, 0.18 s):
+  Lemma 50 at P = <u>_{T/A}, p = p_u with a chosen base change for every
+  h; Ret_B(u.h) = Solutions(u.h, B) with evaluation; and
+  Hom(<u>, B) = (h : Hom(A,B)) * Solutions(u.h, B), r |-> (r p_u, r on
+  the generators).  The over-R/over-A caution of S3.6 is resolved at the
+  base level.
