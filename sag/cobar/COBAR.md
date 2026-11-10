@@ -362,7 +362,18 @@ dropping prS fails.
 CPiNat.PiNat[...].nat at each y; its inputs are clSubU's structures on the nose, no bridging
 equality was needed); `PNat.law` = piCl-nat in the shape of CPshSigFib.SNat.law;
 `FPiC = UF.FCC.ClPi[CPshPiStr.PiC, piCl, piCl-nat]`, so `FPiC.SPi` is the Pi structure of CFibCwF.
-NF waits for the C-level Id (CPshId, canonicity-45).
+NF, raw form DONE, `CPshNF.seg: NFOf[C].NFC[G, A, B, f, g, h].nf : CEl[G, IdC[G, PiT, f, g].IdT]`, for
+f g : CEl[G, PiT] and h : CEl[G.A, IdC[G.A, B, app f, app g].IdT] (canonicity-45's CPshId).
+(A) `LineYC`: a line field Lf x W y j of a C-type, natural in the base (Unat) and in C (UC), with
+ends a0, b0, is an element of Id(a0, b0): the base's FibNF.LineY at each x, C-natural by
+CPshId.rd-C / idC-eq (empty sieves).  (B) `Hx[x].hv` / `hvT`: the value of the path h z at
+(K, id, j), natural in the base (hvT-nat) and in C (hvT-C: rd-C and h.el-nat), with ends app f,
+app g (hvT-0, hvT-1); `LfAt`: the line field of Pi, component (y', f') built by Lemma54's
+KB.AtK.mk from the values hv y' K (.., a1) (j m); UN, UE (ends: CPshPiLaws.Eta's e1-e3), UC.
+Negative test: hvT-C replaced by refl in lfN fails.  Lemma54: AtK moved to the module KB (no
+Cart hypothesis) so that NF can use its constructor mk.
+Not done: NF on CFibCwF (the instance at the fibrant Pi and Id), which waits for the Id closure
+and J on CFibCwF (CPshIdJ, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
 
