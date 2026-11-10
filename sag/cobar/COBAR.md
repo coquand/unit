@@ -396,3 +396,24 @@ FibCwF.SigN.law at each x (fibTrC + isSet-PTy + sigSnd, as clSubU-id);
 `FSigC = UF.FCC.ClSig[PSigC, sigCl, law]`, so `FSigC.SSig` is the SigStr of
 the CwF of fibrant C-types CFibCwF.  Negative test: replacing the
 composite-agreement step kE-eq of H.res by refl fails.  Stage 2(a) done.
+
+### (B) stage 2(b): Id (canonicity-45, 2026-11-10)
+
+`CPshId.seg`: `IdOf[C].IdC[G, A, a, b].IdT : CTy[G]`, Swan's identity type
+in Yoneda form (PosIdY.IdY) as a C-type, with `IdT.ty x = IdY[G.ob x, A.ty
+x, a.el x, b.el x].IdYT` on the nose.  The C-action along f : y -> x sends an
+element at (X, g) to the element at (X, g f) whose readings are A.tE of its
+readings (module TC: uY by fromE along A.tE-pt and G.act's naturality;
+natY, mv as PosIdY.Tact) and whose sieve is its sieve; `rd-C`, `sieve-C`
+and `idC-eq` (= tpY-ext: point, readings and sieve determine an element)
+describe it completely; the laws tE-id, tE-o are idC-eq with A.tE-id,
+A.tE-o on readings.  `IdNatC[D, G, s, A, a, b].nat` : Id(a , b)[s] =
+Id(a[s] , b[s]) as C-types (the Id at D instantiated at the record's
+spelling of A[s], a[s], b[s]): the base's IdYNat.nat at each x, the
+actions compared on readings (IdYNat.tr-rd through CSub.SubE.mV-inj) and
+sieves (tr-sq).  `ReflC[G, A, a].reflC : CEl[G, IdT]`: FibIdRd.ReflY at each
+x, C-natural by readings and a.el-nat.  Negative test: dropping the point
+transport (pi) in reflC's naturality fails.  Next: the UFib closure (the
+Id compositions are C-uniform: path layer, core-Id layer, Yoneda iso, as
+in the design note), then J with JNatT (generic, for any commuting map of
+J-data and any uniform family of compositions).
