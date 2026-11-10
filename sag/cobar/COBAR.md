@@ -255,3 +255,10 @@ Negative tests: the wrong end (meet at 1) in p's start, or dropping cat-junction
 outer top face, fail.  No new axioms beyond the named premises (al, CB).
 NOT done (ruling (C)): the C-naturality of zig and the uniform EquivOp of tauD, which
 need "uniform EquivOp is invariant under a C-natural homotopy" = (B).
+C-naturality (ruling (C), 2026-11-11): the lines p, q ARE natural in C: `L16.LC[x',x,gC,X,z,V,f,j].pC / qC`
+(the value of the line at z moved along gC is the value at the moved point; MWC = the moved double
+reading is the double reading of the moved element, by rx-cat and the reading of a coerced D-element).
+NOT done: the C-naturality of zig = Cat q (Inv p) itself, which needs "CHtpyOps.Cat / Inv commute with a
+C-action when the homotopies do and the composition is C-uniform" (CPathComp's composite, a Lemma12F.UFl-
+sized generic lemma); under (B) the composition is the C-level fibrancy's.  Recorded as: zig is C-natural
+modulo the uniformity of Cat / Inv.
