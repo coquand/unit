@@ -7,7 +7,8 @@ RESULT.  T3FromModel.PresheafAxiomsM: duality (Axiom 2, Thm 62),
 n-constant (Axiom 3, Thm 61), projective (Axiom 1, Prop 76), with
 no new axioms beyond the named premises:
   T2     S2.1-S2.8: the presheaf CwF, site, Pi, the cobar D, local
-         representability, modal Pi (record fields of T2.seg)
+         representability, modal Pi (record fields of T2.seg); S2.6 is
+         isoT (an iso is an equivalence), Prop 17 being proved
   S36    S3.6: the site's objects are R-algebras, an object for each
          presented algebra (Construction 39, Lemma 42)
   S39    S3.9: N, List, Expr_G levelwise; points of G0 = syntactic
@@ -15,7 +16,7 @@ no new axioms beyond the named premises:
   PModF  S3.1/S3.2: presented models in families, fibrewise reading of
          the model structure of <-> over G0 (ModelD of Transfer2 inside)
   SpF    S3.5 and S3.1: G, Sp (hom-type of models <u> -> G), ev
-  Mods   S3.10: <-> and G D-modal, G and Sp fibrant
+  Mods   S3.10: <-> and G D-modal, G, Sp and <-> fibrant
   NS     S2.7: N fibrant, modal, fibres ~ Nat
   TrS    S3.7/S3.8: truncation in the model, and Prop 34
          (El(U Gamma, ||U A||) <-> El(Gamma, ||A||))
@@ -62,7 +63,8 @@ Tier 3, levelwise characterisation
   Transfer                 Lemma 52 generic: WCat, Adj, transfer, Yoneda iso, coequalisers [Lemma 52]
   Transfer2                presented models: FamB, ModelD, PresTr.brEq [Lemma 52, Cor 53]
   BrFromModel              S39, PModF; brE, brE-nat (P3.4) [Construction 56]
-  OnFibNat                 maps of types on fibres commute with restriction (pairO, postNat)
+  OnFibNat                 maps of types on fibres commute with restriction (pairO, postNat, postPath)
+  Prop17                   prop17, prop17-inv from isoT, Lemma 67, post-eq [Prop 17]
   SpFromModel              SpF; spE, spE-eq, ev-clause (P3.5) [Construction 57]
   SpNat                    spE-nat (P3.5)
   P58Lemmas, P58           Sp locally representable [Prop 58]

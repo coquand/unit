@@ -117,7 +117,7 @@ from S3.1-S3.6 and Tier 1:
 |---|---|---|---|
 | P3.1 | Construction 51 | Mod(UΓ)(U A, B) ≅ Mod(Γ)(A, R B) over Remark 7's iso, natural in Γ, up to homotopy in A, B | S3.1 |
 | P3.2 | Lemma 52, Cor 53 | U preserves free T-models, coproducts and coequalisers of T-models up to equivalence; U sends G-algebras to G₀-algebras and their free / coproduct / coequaliser constructions to those of G₀-algebras | S3.1, S3.2, S3.5, P3.1 |
-| P3.3 | Construction 55, syntactic form (ruling 2026-11-10) | G₀ is the context of syntactic presentations (n : N) * List(Expr_G(Fin n)); its points at x are Tier 1's presentations over alg x, compatibly with restriction (u ↦ u·h). Follows from S3.9. (The paper's Construction 55 is the polynomial-presentation analogue; polynomial presentations have no map back to syntax without choice, so the syntactic form, which SAGAxioms.seg uses, is taken.) | S3.10 | (`E1.Mods`) ⟨−⟩_{T/G} and G are D-modal over G₀, G and Sp are fibrant (paper: G is DT-modal by Theorem 29 and Remark 46; presented models are colimits in PSh(C)_DT; hom-types of models into a modal type are fibrant) | path (D-modality, is-equiv) | E1–E3 | semantic |
+| P3.3 | Construction 55, syntactic form (ruling 2026-11-10) | G₀ is the context of syntactic presentations (n : N) * List(Expr_G(Fin n)); its points at x are Tier 1's presentations over alg x, compatibly with restriction (u ↦ u·h). Follows from S3.9. (The paper's Construction 55 is the polynomial-presentation analogue; polynomial presentations have no map back to syntax without choice, so the syntactic form, which SAGAxioms.seg uses, is taken.) | S3.10 | (`E1.Mods`) ⟨−⟩_{T/G} and G are D-modal over G₀, G, Sp and ⟨−⟩_{T/G} (`Br-fib`, for Prop 17) are fibrant (paper: G is DT-modal by Theorem 29 and Remark 46; presented models are colimits in PSh(C)_DT; hom-types of models into a modal type are fibrant) | path (D-modality, is-equiv) | E1–E3 | semantic |
 | S3.9 |
 | P3.4 | Construction 56 | over P3.3: Σ_{Pr_{T/G,Dκ}(A)} ⟨−⟩_{T/G}(A) ≃ Σ_{Pr_{T/A,κ}} ⟨−⟩_{T/A}, fibrewise an equivalence of T-models | P3.2, P3.3, S3.4 |
 | P3.5 | Construction 57 | over P3.3: Σ_{Pr_{T/G,Dκ}(A)} Sp(A) ≃ Σ_{Pr_{T/A,κ}} Ret_A; **the clause to check exactly**: under this, Remark 46 and P3.4, the evaluation map of Sp is homotopic to ev_{A,u} : Ret_A(u) × ⟨u⟩_{T/A} -> A, (r , y) ↦ r y — not merely some equivalence of objects | P3.2-P3.4, S3.5 |
@@ -166,7 +166,7 @@ end before the deepest step:
 
 Statement (E1), internal to PSh(C)_DT: for u : Pr_{T/G,Dκ}, the
 transposed evaluation λev : ⟨u⟩_{T/G} -> G^{Sp(⟨u⟩_{T/G})} is an
-equivalence. Externalised form actually proved (via S2.6):
+equivalence. Externalised form actually proved (via Prop 17, `Prop17.seg`):
 El_{cSet}(1.C₀.U Pr_{T/G,Dκ}, is-equiv(U(λev))). Proof: at (A , u), P2.5
 with S := ⟨−⟩_{T/G}, P := G (D-modal) reduces to ev_{(⟨u⟩, u p, q)} ∘
 ⟨−⟩_{T/G}(p_u); by P3.4-P3.6 this is homotopic to q_u ∘ p_u⁺; Tier 1
@@ -178,7 +178,7 @@ At (A, u): the square of Remark 60 (P2.5) for S := N_DT and
 f := π₁ : N × Sp(u) → N, with the left square given by naturality of
 τ_{ΔN}; the components of τ_{ΔN} are equivalences (S3.4 at ΔN), the right
 side is Lemma 59 (P2.4) at the local representation of Sp (P3.6); by
-2-out-of-3 the component of λπ₁ is an equivalence; S2.6 concludes.
+2-out-of-3 the component of λπ₁ is an equivalence; Prop 17 (`Prop17.seg`) concludes.
 New premise: S2.7.
 
 ### Tier 6: E3, projectivity of Sp (Prop 76)
@@ -209,12 +209,12 @@ obligation, §4); **map** = a function into is-equiv, natural in Γ.
 
 | # | Statement | Equations | Consumers |
 |---|---|---|---|
-| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty with **isSetTy** (types form a set: the homotopical shadow of judgemental type equalities, as in 2LTT; constrains instantiation, §4; used only through `TE.teAny`, by `Lemma72.lpt-ext` and the exchange of Remark 60), substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift), lam-nat (lam stable under substitution, as a TE) | ext | everything in Tier 2 |
+| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty with **isSetTy** (types form a set: the homotopical shadow of judgemental type equalities, as in 2LTT; constrains instantiation, §4; used only through `TE.teAny`, by `Lemma72.lpt-ext` and the exchange of Remark 60), substitution, subt-id (terms along the identity, the law matching subT-id; added 2026-11-10 for Prop 17), ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift), lam-nat (lam stable under substitution, as a TE) | ext | everything in Tier 2 |
 | S2.2 | `DS`: Fib and Fib-sub; internal equivalences IsEqC (context maps), IsEqT (maps of types); restr-eq: precomposition with an internal equivalence is an equivalence on elements of a fibrant type (Rijke 13.4.1 through PSh(C)(1,−)); post-eq: an internal equivalence of types acts as an equivalence on elements (PSh(C)(D,−) preserves equivalences) | map | P2.2 |
 | S2.3 | `DS`: D on contexts / substitutions (DC, DSb), tauC and tau-nat, D~ on types (DT) and elements (De), DT-sub, De-sub (left square of Lemma 67), tauT and hc-tau (horizontal composite = action of τ_Q), Modal := IsEqT τ_Q, Modal-sub, DT-fib | ext; Modal: map | P2.2 |
 | S2.4 | (Lemma 12 corrected, Prop 13) `DS.D-eq`: a levelwise equivalence of contexts is sent by D to an internal equivalence | map | P2.2 |
 | S2.5 | dropped: Lemma 66 is P2.1, proved in Unit (2-out-of-6) | — | — |
-| S2.6 | (Prop 17) `DS.prop17`, `prop17-inv`: for D-modal A, B and m : A → B, LEqT m ↔ IsEqT m | map | Tiers 4, 5 |
+| S2.6 | `DS.isoT`: a map of types with a two-sided inverse (composition n.m = postAt n p m, identity q) is an IsEqT (an iso is an equivalence). Replaces the former premise Prop 17, which is now proved (`duality-levelwise/Prop17.seg`: prop17 from isoT, Lemma 67 and D-eq; prop17-inv from post-eq), with A, B fibrant as extra hypotheses | map | Tiers 4, 5 (through Prop 17) |
 | S2.7 | (§6.5) the natural numbers N_DT of PSh(C)_DT over 1.Pr: record `E2.Over.NS` — N, N-fib, N-modal, nE : fibres ≃ ℕ, nE-nat : restriction is the identity on ℕ (the levelwise content of N_DT = D(ΔN) with τ_{ΔN} natural, its components equivalences by Lemma 14) | nE: map (Unit equivalences); nE-nat: ext | Tier 5 |
 | S2.8 | `ModPi`: Fib-Pi, Modal-Pi (D-modal fibrant types closed under Π; paper §2.2.2, §5) | map | Tiers 4, 5 |
 
