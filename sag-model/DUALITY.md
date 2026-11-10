@@ -40,7 +40,9 @@ E1–E3 are not a model of SAG and not a model of Unit.
 - canonicity-45: Tier 2 (the record T2 in `unit/sag/duality-presheaf`,
   P2.1–P2.5), then E2 (Theorem 61: Tier 5 below).
 - canonicity-4e: Tier 1 (done), Tier 3 (P3.1–P3.6 on top of T2), Tier 4
-  (E1), then E3 (Tier 6 below).
+  (E1, done conditionally).
+- Reassigned 2026-11-10 after E2: canonicity-45 takes E3 (Tier 6);
+  canonicity-4e takes P3.6, then Tier 3 step 3 (P3.3–P3.5 from S3.1–S3.5).
 
 ## 1. The proof of Theorem 62, as a dependency spine
 
