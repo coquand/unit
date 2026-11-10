@@ -448,4 +448,9 @@ each x + CUnif of the fibre ContrOps (Prop13U's shape).
 x = the extension of the empty side, natural in C by uniformity (emp); ctr = the Connect line
 field (FibContr.CO at each x), natural in C by uniformity and a side-ext on the Connect side
 (UCm: vE, sdE, valC), then CPshNF.LineYC.  Negative test: dropping cnat in vE fails.
-Not done: C2 (contraction => UTriv), (II), (III).
+(II) U-Rel DONE, `CPshURel.seg: URelOf[C].URel[D, S, T, f, g, mId, fC, gC, ut].utS : UTriv D S`: for
+maps f x : S_x -> T_x, g x : T_x -> S_x of base types (CHtpyOps.NMap) with g after f the identity
+and both commuting with the C-actions, a uniform ContrOp of T gives one of S
+(CLocBoundRetr.Relative + FibYC.RelId at each x; sdF: the moved f-image of a side is the f-image of
+the moved side).  Negative test: dropping fC in sdF fails.
+Not done: (II) the fibres FV / HFib with FibS3's four maps at the C-level, C2, (III).
