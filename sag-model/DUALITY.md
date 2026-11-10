@@ -130,6 +130,35 @@ Solutions with `values` and `evaluation`. T1.3/T1.4 (`forward`,
 `evaluation`) are the same statements for a generic p. Ret is pointwise
 (Π b. r (j b) = b), which at sets is the paper's r ∘ p ∼ id.
 
+#### Tier 3 in reading (A): the interface T3 and the order of work
+
+U is "take fibres" (T2's `Der.Pts`: points pts Γ x, fibres fib Γ A x g).
+The tree is `unit/sag/duality-levelwise` (symlinks to T2 and Tier 1,
+read-only). The work runs in three steps, so that E1 is checked end to
+end before the deepest step:
+
+1. **The record T3 (statement level).** Over T2's model, with R-algebras
+   from Tier 1:
+   - from S3.6: alg : Ob -> Algebra with Hom y x ≃ Hom(alg x, alg y),
+     and an object ⟨u⟩ of C for every presentation u over alg x;
+   - from P3.3: a context Γ₀ (= 1.Pr_{T/G,Dκ}) whose points at x are
+     the presentations over alg x, compatible with restriction (u ↦ u·h);
+   - from P3.4: a type Br over Γ₀ whose fibre at u is the carrier of the
+     presented algebra ⟨u⟩ (Tier 1's X), with restriction acting as h⁺;
+   - from S3.5: a type Gt whose fibre at x is alg x;
+   - from P3.5: a type Sp whose fibre at u is Points.Ret, and ev over
+     Γ₀.Sp whose action on fibres is (r , y) ↦ r y (**the clause**);
+   - Br and Gt D-modal, and Sp fibrant.
+2. **P3.6 and Tier 4 from T3, proved.** These are the local
+   representation of Sp from Tier 1 (`Points.Spectrum`,
+   `RelativeChange.Chosen`), and E1 from P2.4, P2.5, Prop 17 and
+   Modal-Pi. After this step, E1 is checked relative to T2 + T3.
+3. **T3 from S3.1–S3.5 (P3.1–P3.5 proved).** This is the generic
+   transfer along U ⊣ R (left adjoints preserve objects given by
+   universal properties: free, coproduct, coequaliser), then the
+   fibrewise identifications. Until this step is done, P3.3–P3.5 have
+   status *stated, proof pending*.
+
 ### Tier 4: assembly
 
 Statement (E1), internal to PSh(C)_DT: for u : Pr_{T/G,Dκ}, the
