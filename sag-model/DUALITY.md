@@ -206,7 +206,7 @@ obligation, §4); **map** = a function into is-equiv, natural in Γ.
 
 | # | Statement | Equations | Consumers |
 |---|---|---|---|
-| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty, substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift) | ext | everything in Tier 2 |
+| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty with **isSetTy** (types form a set: the homotopical shadow of judgemental type equalities, as in 2LTT; constrains instantiation, §4; used only through `TE.teAny`, by `Lemma72.lpt-ext` and the exchange of Remark 60), substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift) | ext | everything in Tier 2 |
 | S2.2 | `DS`: Fib and Fib-sub; internal equivalences IsEqC (context maps), IsEqT (maps of types); restr-eq: precomposition with an internal equivalence is an equivalence on elements of a fibrant type (Rijke 13.4.1 through PSh(C)(1,−)); post-eq: an internal equivalence of types acts as an equivalence on elements (PSh(C)(D,−) preserves equivalences) | map | P2.2 |
 | S2.3 | `DS`: D on contexts / substitutions (DC, DSb), tauC and tau-nat, D~ on types (DT) and elements (De), DT-sub, De-sub (left square of Lemma 67), tauT and hc-tau (horizontal composite = action of τ_Q), Modal := IsEqT τ_Q, Modal-sub, DT-fib | ext; Modal: map | P2.2 |
 | S2.4 | (Lemma 12 corrected, Prop 13) `DS.D-eq`: a levelwise equivalence of contexts is sent by D to an internal equivalence | map | P2.2 |
@@ -272,3 +272,11 @@ Sub and El remain arbitrary types.
   the generators).  The over-R/over-A caution of S3.6 is resolved at the
   base level.
 - 2026-11-10 (canonicity-45): Tier 2 checks in `unit/sag/duality-presheaf` (10 modules, 0 failed): T2 records; P2.1 Lemma 66, P2.2 Lemma 67 (context maps), P2.3 Prop 69, P2.4 Lemma 72 proved. P2.5 (Remark 60) and E2 next.
+- 2026-11-10 (canonicity-4e): Tier 3 step 1 done: `T3.seg` (record T3,
+  statement level: S3.5, S3.6, P3.3–P3.5 with the evaluation clause;
+  status of P3.3–P3.5: stated, proof pending). `Core.seg`: the heart of
+  Theorem 62 in the model, proved: at every point g of 1.Pr, the fibre
+  composite b ↦ G(ev(q_g, b|_{p_O})) equals objIso ∘ brE, hence is an
+  equivalence (q_u ∘ p_u⁺ = id read in the model). Remaining for E1:
+  P3.6 (the levelwise-equivalence field of the local representation of
+  Sp), and the assembly with remark60-eq, Lemma 72, Prop 17, Modal-Pi.
