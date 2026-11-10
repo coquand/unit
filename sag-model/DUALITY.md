@@ -198,27 +198,22 @@ New premises: S3.7, S3.8.
 
 ### Tier 2 (all **semantic**, to be instantiated at the poset base)
 
-Equations column: **ext** = external (judgemental) equality of the CwF,
-stated with `Id` of the metatheory on contexts / types / elements;
-**path** = an internal identification (Swan Id or a homotopy); **map** =
-an external function between types of structures (the paper's "there is
-a map"), natural in Γ with ext stability under substitution.
+Reading (A) (agreed 2026-11-10): internal to cSet, Unit being its
+internal language, as Tier 1. Fields of the records of
+`unit/sag/duality-presheaf/T2.seg`. Equations legend: **ext** now means a
+Unit Id, an internal path (the strict version is an instantiation
+obligation, §4); **map** = a function into is-equiv, natural in Γ.
 
 | # | Statement | Equations | Consumers |
 |---|---|---|---|
-| S2.1 | PSh(C) over a small strict category C internal to the base (unit, associativity: ext): contexts, types, elements, substitution, Π (β, η), Σ, Id, the representables ょx and the context extensions ょx.Aγ, all strictly stable under substitution | ext (all CwF laws, Π-β and η: Remark 60's square is strict) | everything in Tier 2 |
-| S2.2 | Fibrant, levelwise fibrant, homogeneously fibrant types; levelwise equivalence (U f an equivalence, pointwise); homotopy; Π over any domain with homogeneously fibrant codomain is homogeneously fibrant; functorial action of Π on a family of maps respects homotopies; precomposition with an equivalence between fibrant types induces an equivalence of Π-types with fibrant codomain (Rijke 13.4.1) | definitions: ext; the two invariance statements: path (internal equivalences) | P2.1, P2.2 |
-| S2.3 | D on contexts, types and families (DΓ, DA, D̃Q over DB), the unit τ_A : A -> DA, its naturality D f ∘ τ_A = τ_B ∘ f, the comparison τ*_B of D̃Q along τ_B, D-modal := τ_Q is an equivalence; stable under substitution; the horizontal composites of Lemma 67's diagram are isomorphic to Π's functorial action on (τ_{Q b})_b | stability, naturality of τ, the isos: ext; D-modality: path (is-equiv) | P2.2, S2.6 |
-| S2.4 | (Lemma 12 corrected, Prop 13) maps Fib(UΓ, UA) -> Fib(DΓ, DA) and Fib(UΓ, UA) × Fib(UΓ, UB) × El(UΓ, is-equiv(U f)) -> El(DΓ, is-equiv(D f)) | map (into a path: is-equiv) | P2.2 |
-| S2.5 | (Lemma 66) as P2.1 | path (homotopies of the squares suffice) | P2.2 |
+| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty, substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift) | ext | everything in Tier 2 |
+| S2.2 | `DS`: Fib and Fib-sub; internal equivalences IsEqC (context maps), IsEqT (maps of types); restr-eq: precomposition with an internal equivalence is an equivalence on elements of a fibrant type (Rijke 13.4.1 through PSh(C)(1,−)); post-eq: an internal equivalence of types acts as an equivalence on elements (PSh(C)(D,−) preserves equivalences) | map | P2.2 |
+| S2.3 | `DS`: D on contexts / substitutions (DC, DSb), tauC and tau-nat, D~ on types (DT) and elements (De), DT-sub, De-sub (left square of Lemma 67), tauT and hc-tau (horizontal composite = action of τ_Q), Modal := IsEqT τ_Q, Modal-sub, DT-fib | ext; Modal: map | P2.2 |
+| S2.4 | (Lemma 12 corrected, Prop 13) `DS.D-eq`: a levelwise equivalence of contexts is sent by D to an internal equivalence | map | P2.2 |
+| S2.5 | dropped: Lemma 66 is P2.1, proved in Unit (2-out-of-6) | — | — |
+| S2.6 | (Prop 17) `DS.prop17`, `prop17-inv`: for D-modal A, B and m : A → B, LEqT m ↔ IsEqT m | map | Tiers 4, 5 |
 | S2.7 | (§6.5) the natural numbers of PSh(C)_DT are, up to equivalence, N_DT := D(ΔN), the D-modal replacement of the constant presheaf on N, with τ_{ΔN} natural | the equivalence: path; naturality of τ: ext | Tier 5 |
-| S2.6 | (Prop 17) naturally in Γ, for A, B : Ty^D(Γ), f : A -> B: El(UΓ, is-equiv(U f)) <-> El(Γ, is-equiv f) | map (both directions; logical, not an iso), naturality ext | Tier 4 |
-
-S2.5 may become **proved here** (P2.1) if its proof is elementary in the
-record; then S2.5 is dropped, not kept beside P2.1.
-Consistency check (canonicity-4e): D = id makes S2.1-S2.5 provable for
-plain presheaves; S2.6 then fails for non-discrete C, so the D = id check
-covers S2.6 only with C discrete.
+| S2.8 | `ModPi`: Fib-Pi, Modal-Pi (D-modal fibrant types closed under Π; paper §2.2.2, §5) | map | Tiers 4, 5 |
 
 ### Tier 3
 
@@ -255,6 +250,11 @@ premises themselves: (i) the internal–external passage (an
 interpretation of these Unit statements in cSet); (ii) the strict laws
 of the model supply the paths (by refl), and every place where a proof
 would need a 2-cell between law-paths is reported, not assumed.
+The one such report so far is resolved by the named premise
+PCwF.isSetTy (types of the model form a set; S2.1, ruling 2026-11-10),
+the homotopical form of judgemental type equality as in two-level type
+theory. It constrains instantiation: Ty(Γ) is not a univalent universe;
+Sub and El remain arbitrary types.
 
 ## 5. Status
 
@@ -271,3 +271,4 @@ would need a 2-cell between law-paths is reported, not assumed.
   Hom(<u>, B) = (h : Hom(A,B)) * Solutions(u.h, B), r |-> (r p_u, r on
   the generators).  The over-R/over-A caution of S3.6 is resolved at the
   base level.
+- 2026-11-10 (canonicity-45): Tier 2 checks in `unit/sag/duality-presheaf` (10 modules, 0 failed): T2 records; P2.1 Lemma 66, P2.2 Lemma 67 (context maps), P2.3 Prop 69, P2.4 Lemma 72 proved. P2.5 (Remark 60) and E2 next.
