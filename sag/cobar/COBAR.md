@@ -482,5 +482,15 @@ extension of the image of s and ph the dependent conjunction (CId.DCL, the const
 uses for its ph) of s's sieve with the sieves of the Id parts of s; p* is constant on ph (Cc);
 kside by DCL.dc-at, kunif by DCL.dc-restr.  So the base's S3a does not need the path fillers.
 Negative test: the sieve equation dc-at replaced by refl fails.
-Not done: the C-uniformity of contrFV ((II-b) at the C-level: UTriv HP => UTriv FVc), (III)
-packaging on CFibCwF after CPshIdJ.
+(II-b) C-level DONE, `CPshFibC.seg: Fb[G, Y, X, f].SA[ut].utFV : UTriv Dc FVc` from
+ut : UTriv Dc HP.PC: at each x CPshIdExt's contrFV; uniform in C by sdP (the image in HP of the
+moved side is the moved image: GC), eHP (HP's uniformity), then the extension in FVc has the same
+point (Pt), readings (Qr) and sieve (Qs: the C-action keeps sieves, CId.dconj-cong).  Negative
+test: dropping eHP in Qr fails.
+So at the RAW level both directions of the bridge are checked, for f : CMap[G, Y, X]:
+  S3b: a centre and a contraction of FVc over G.X (FVc uniformly fibrant) => UTriv FVc (C2)
+       => UTriv HP.PC (utHP), i.e. EquivOp at each x + CUnif (Prop13U's shape);
+  S3a: UTriv HP.PC => UTriv FVc (SA.utFV) => a centre and a contraction of FVc (C1).
+Not done: (III) packaging on CFibCwF (El of isContr / Kr on CFibCwF <=> centre + contraction, the
+map as an element of the function type <=> CMap), which waits for canonicity-45's PIdJ; then the
+invariance statement for Lemma 16.
