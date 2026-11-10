@@ -122,3 +122,39 @@ of the m-th stage for m >= n (levels are never changed once built).
   ContrOp of A) and the base's CB fields (through PosFull.PB); no new axioms. The uniformity in C is
   not strict here: it is a second induction on levels (KC), like kunif (KU), using K.rx-fc.
   Negative tests: dropping W3 in FFS, or rx-fc in KC, fails.
+
+## Plan: Lemma 14 (U τ_A is an equivalence), at a component x
+
+Input: fibrancy of DA at x (Lemma12F.fibD, levelwise suffices).
+- ε : (DA)_x γ -> A_x γ, u |-> u at (n = 0, chain id_x : Ch 0 x x, weight (1)).
+  ε τ = id strictly (τ at the identity chain and weight (1)).
+- τ ε ~ id: two lines in (DA)_x over the constant line at γ, i.e.
+    q_{f0..fn}(i) at j = u_{id,f0..fn}(j, i)            (j=0: face d_0, = u_{f..}(i); j=1: (1, i))
+    p_{f0..fn}(i) at j = u_{id,f0..fn}(1, j ∧ i)        (j=0: (1,0,..,0) = top faces, = u_id(1) f0..fn;
+                                                         j=1: (1, i))
+  Each is an element of DA over stage X × I, so its D-equations are checked
+  pointwise (faces of (j, i), (1, j ∧ i) by Weights + K.fc).
+  Then compose p · q⁻¹ with fibD at x.
+- New weights operations (Weights.seg, canonicity-4e): cons j i : P_(n+1)
+  (prepend a coordinate, in P when j = 1 or i in P), cons-face (d_0 (cons 0 i)
+  = ...), meet j i (coordinatewise min with the connection cI true), and the
+  face laws of cons / meet. Chains: prepend id (K.consId) with its faces.
+- Output: U τ_A is bi-invertible at x (strict retraction ε, homotopy section
+  p · q⁻¹), stated with the base's path types.
+
+## Plan: Prop 13 (Df is an equivalence when U f is)
+
+Input: f : A -> B over Γ (C-types), Fib of A and B levelwise, U f an
+equivalence levelwise.
+- P := homotopy fibre of f, a C-type over Γ.B (Σ over A, path type in B):
+  needs Σ and path types of C-types (CPshL has lines; Σ pointwise).
+- Levelwise: U f an equivalence of fibrant types => U P trivially fibrant
+  (base fact: equivalences have contractible fibres, then ContrOp;
+  sag-model FibContr / FibHt / S3).
+- lemma12U on P: UTriv (D(Γ.B)) (D P).
+- Lemma 11 for homotopy fibres: Psi from the homotopy fibre of D f to D P,
+  in CMove.Mv's shape, following Lemma11L's PsiL / PsiPt / PS / BK patterns.
+- Hence the homotopy fibres of D f are trivially fibrant, so D f is an
+  equivalence (at each x: ContrOp of fibres => contractible fibres =>
+  equivalence, FibContr; is-equiv is a proposition, so compatibility in C
+  is automatic).
