@@ -489,3 +489,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   FPiC.SPi : PiStr of CFibCwF (piCl = piUFib, piCl-nat = PNat.law). No
   hypothesis left; premises fe, univ via V's extensionality. Next: NF
   (canonicity-c2), Id fibrancy + J (canonicity-45), then the bridge.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): NF for C-types,
+  raw form (CPshNF.NFC.nf, 7ef00e6b), with the generic LineYC (a natural
+  line field of a C-type is an element of its Id). Fibrant instance waits
+  for CPshIdJ.
