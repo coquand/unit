@@ -177,3 +177,16 @@ BK.bkMv) moves it by CMove.Mv.  Levelwise in x; the uniform form (D f an
 equivalence in PSh(C)) is not done.  EquivOp is the base equivalence
 (sag-model S3 relates it to is-equiv).  No new axioms beyond the named
 premises.
+
+Corollary 15 (canonicity-45, Cor15.seg + QinvEq.seg): `C15[C,G,A].Main[al].cor15 x :
+EquivOp (D tau_A at x)` for A levelwise fibrant (al), where tau_A : A -> DAC is a CMap
+(DAC = D A over G, DCTy pulled back along tau by subCTy; naturality in C by tot-rx and
+A.tE-o) and DAC is levelwise fibrant by Lemma 12 along tau (CFibSub).  It is Prop 13 at
+f = tau_A with ef from Lemma 14.  QinvEq.seg is the base-level bridge needed for ef:
+`QE[G,A,B,f,g,eta,eps].qinvEq : EquivOp f` from a core quasi-inverse (NMaps f, g and
+HT homotopies g f ~ id, f g ~ id) between fibrant types, through the CwF of fibrant
+types: FunOf (an NMap as lam of its reading), AppW (the value of app (wkF w) a at a
+point, by CwFOv.bodNat and FibIdRd.elTr), HtpyOf (a homotopy as an element of EQ.Htpy
+by FibNF.LineY), CwFS4.kOf (Escardo), FibS3 S3b, and CHFibCart.moveEq (bod (lam fP) = f
+by app-lam).  Negative tests: dropping A.tE-o in tauA's naturality, or the app-lam
+retargeting, fails.  No new axioms beyond the named premises.
