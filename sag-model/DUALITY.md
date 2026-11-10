@@ -229,8 +229,8 @@ All **semantic**. Same Equations legend.
 | S3.4 | (Lemma 14) Fib(UΓ, UA) -> El(UΓ, is-equiv(U τ_A)); in particular at El_κ in context κ | map (into is-equiv); the strict retraction ε τ = id of its proof is not needed | P3.3, P3.4 | semantic |
 | S3.5 | (Remark 46) G₀(A) := A; U G ≃ G₀ as T-models in PSh(C₀) | G₀ by definition: ext; the equivalence and its preservation of the model structure: path | P3.2, P3.5, Tier 4 | semantic |
 | S3.6 | (Construction 39, Lemma 40, Lemma 42, Remark 38) the small strict category C, C^op ≃ Mod_{T,κ}, κ-presentable A-algebras are κ-presentable, smallness, the classifier (Dκ, D̃El_κ). (The over-R / over-A comparison is no longer needed: Tier 1 presents over A.) | C's unit and associativity: ext; Lemma 40, Lemma 42: path | P3.3, P3.6 | semantic |
-| S3.7 | Propositional truncation ∥−∥ in PSh(C)_DT and in cSet_T↓C₀ (types, the truncation map, the universal property into propositions, is-prop), stable under substitution | stability: ext; universal property: map | Tier 6 | semantic |
-| S3.8 | (Prop 34) naturally in Γ, for A ∈ Ty^DT(Γ): El(UΓ, ∥UA∥) <-> El(Γ, ∥A∥) (logical equivalence; its proof uses Theorem 29, Lemma 12 and R) | map (both directions), naturality ext | Tier 6 | semantic |
+| S3.7 | Propositional truncation Tr of the model, stable under substitution: record `E3.TrS` (Tr, Tr-sub); Unit truncation is `Truncation[l]` (Theory parameters, as Tier 1) | stability: ext | Tier 6 | semantic |
+| S3.8 | (Prop 34) `E3.TrS.prop34-l` / `prop34-r`: for A fibrant and D-modal over G, El(G, Tr A) <-> the Unit function giving at each point g of G at x an element of the Unit truncation of the fibre of A at g (reading (A): El(UΓ, ∥UA∥)) | map (both directions) | Tier 6 | semantic |
 
 ## 4. After E1–E3
 
@@ -291,3 +291,4 @@ Sub and El remain arbitrary types.
   model) and the assembly. Next: P3.6 proof (replaces `P58`), then
   P3.3–P3.5 from S3.1–S3.5 (step 3), and E3.
 - 2026-11-10 (canonicity-45): **E2 (Theorem 61, Axiom 3) checks conditionally**: `E2[l,k].Over[R,setR].Thm61[C,S,PI,Dd,MP,T,Md,L58,Nn].theorem61 : IsEqT G0 N (Pi G0 Sp N[p]) R6.lamm` in `unit/sag/duality-levelwise/E2.seg` (51 modules, 0 failed; a broken step fails). Premises: those of Theorem 62 (T2, T3, Mods, P58 = P3.6 pending) and S2.7 (`NS`).
+- 2026-11-10 (canonicity-45): **E3 (Prop 76 at Sp, Axiom 1) checks conditionally**: `E3[l,k].Over[R,setR].Thm76[C,S,PI,Dd,MP,T,Md,L58,Tt].theorem76 : P76[..].Proj T.G0 T.Sp` (Definition 73 for all substitutions), from `P76.prop76` at a general locally representable fibrant A, with Remark 71 constructed (`P76.R71.rep'`, no premise) (`unit/sag/duality-levelwise/E3.seg`, 76 declarations; a broken step fails). Premises: those of Theorem 62 (P58 = P3.6 pending) and S3.7, S3.8 (`TrS`).
