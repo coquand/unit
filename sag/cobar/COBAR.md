@@ -311,4 +311,14 @@ inverse phi |-> B.tE f . phi . back).  Instances: constCtx / constTy / cartConst
 with identity C-actions), CartSub (stability under C-substitution), `Delta[G0, K, G, s].lemma54K`
 (the paper's Lemma 54, Delta K over any C-context).  Negative test: dropping cnat-at in inv-cmp
 fails.  Premises: fe (and univ only through V's extensionality in propV-ext, not yet used).
-Not done: Pi-nat (stability of Pi under C-substitution), uniform fibrancy of Pi, NF.
+`CPshPiNat.seg: NatOf[C].N[D, G, s, A, B].PiT-nat : Id (CTy[D]) (subCTy D G s (Pi_A B))
+(Pi_{A[s]} B[lift s])`.  tr b y f = b y f moved along s.sb-nat, then along the base Pi-nat at y
+(a path of types, tyTr); TV.res: the values of tr b, read in G, are the values of b; natTo /
+natFrom: b is natural in C iff tr b is; codes equal by SigV-cong and propV-ext; Pf x by ty-ext2
+(PW: the base actions agree componentwise); QQ: the C-actions agree (transports of one component
+along paths of points).  Negative test: cnat-at replaced by refl in natTo fails.
+`CPshPiStr.seg: StrOf[C].PiC : CwF.Formers[l+, CPCwF].PiStr`, the Pi structure on the raw CwF of
+C-presheaves (Pi, Pi-nat, Pi-iso = PiIso, Pi-iso-nat = IN.res: apd-el + the base's Pi-iso-nat at
+each y).  Negative test: dropping the base Pi-iso-nat fails.
+Premises: fe; univ only through V.seg's extensionality of iterative sets (propV-ext).
+Not done: uniform fibrancy of Pi (waits for the uniform derived filler), NF.
