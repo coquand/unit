@@ -432,3 +432,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-10: (B) stage 1(i) checked (6815674b): CPCwF, the raw CwF of
   C-presheaves (every law the base's at each x), CPshExt (record
   extensionality). Stage 1(ii) (ClCwF at UFib) in progress.
+- 2026-11-10: (B) stage 1(ii) checked (4f7ca84c): CFibCwF, the CwF of
+  uniformly fibrant C-types (ClCwF at UFib; uniform fibrations are stable
+  under C-substitution, module UP). Next: Sigma.
