@@ -167,3 +167,13 @@ lines (u at (n+1, consId c, W i) for the weights ConsP (j g) i and
 consOne (meetC (j g) i)); the composition of B is lemma12F's fibD along tau.
 p's j = 0 end is P0.R, by induction on n through u's top equations
 (TopOne) and tE-o / tot-drop.  No new axioms beyond the named premises.
+
+Prop 13 (canonicity-45, Prop13.seg, a0dc0734): `P13Of.Main.prop13 x :
+EquivOp (D f at x)` for f : A -> B a CMap with ef : EquivOp (U f) levelwise
+(fA, fB taken as in the paper, unused by the proof).  The homotopy fibre P
+of f is a C-type over G.B (HP.PC); lemma12U on (G.B, P) with LTriv = ef;
+Psi from the fibres of D f to D P (PSI: sP, mS, mSnat, mTinj, BK.bk,
+BK.bkMv) moves it by CMove.Mv.  Levelwise in x; the uniform form (D f an
+equivalence in PSh(C)) is not done.  EquivOp is the base equivalence
+(sag-model S3 relates it to is-equiv).  No new axioms beyond the named
+premises.
