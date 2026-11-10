@@ -321,7 +321,27 @@ along paths of points).  Negative test: cnat-at replaced by refl in natTo fails.
 C-presheaves (Pi, Pi-nat, Pi-iso = PiIso, Pi-iso-nat = IN.res: apd-el + the base's Pi-iso-nat at
 each y).  Negative test: dropping the base Pi-iso-nat fails.
 Premises: fe; univ only through V.seg's extensionality of iterative sets (propV-ext).
-Not done: uniform fibrancy of Pi (waits for the uniform derived filler), NF.
+Uniform fibrancy of Pi, in progress (canonicity-c2).
+M1 DONE, `CPshPiFib.seg: FibOf[C].Fr[G, A, B, x, e, e'].Cp[cT].Wn[nc].comp`: the composition of
+(Pi_A B)_x from compositions cT y f of the components T y f = (base Pi at y)[act f] over G_x and
+the hypothesis NatComp (module parameter nc; the component composites are natural in C).
+al y f = the projection (a PMap over G_x), CMapLine moves points / lines / sides, kside / kunif
+componentwise (tot-extC, endM-rd).
+M2 started, `CPshPiFibN.seg: NOf[C].Nd[G, A, B, x, d, kA, cB]`: cT y f := CFibSub's MoveComp.move
+of CPi.PiC[G_y, A_y, B_y, d, kA y, cB y].comp; `Val.compE`: the component (y, f) of the composite
+is, as a total of Pi_y, (xT, CopX.cop) at the moved data (wY, pY) (kopMv, sVE).
+M2 plan for NatComp (the C-direction analogue of CPiNat.PM and of CPshFillU.PMC), with the extra
+hypotheses kAU (the fillers kA are C-uniform at the end tgt d) and cBU (UComp of cB):
+ L1 bridge CPiE.apW <-> valAt, and C-naturality of apW on the projections of a total of Pi (cnat-at);
+ L2 the reverse A-filler moves: Prob_z.La = A.tE g (Prob_y.La), from kAU at the empty side
+    (the moved empty side is empty; the points xA move by G.act-o and the definition of aM);
+ L3 the start of the B-problem moves (tv-eq: L2 for the line, L1 for the end);
+ L4 its side moves (side-extH; SB.pv is opaque: use pv-pt, pv-lev, and L1 on the values of ApL);
+ L5 B.tE g (rdB (wB, bB)) at y = rdB (wB, bB) at z: CPshFillU's rdC for B, cBU, kop-cong with L3, L4;
+ L6 the value of kcomp y f at (h, a) is rdB (wB, bB) of Prob at the restricted data (compE,
+    CopX.cop-val, Prob.value-E);
+ then NatComp, and UComp of the compositions (two moves of one base composition, kopMv).
+M3: piUFib and the Pi closure on CFibCwF.  NF waits for the C-level Id (CPshId, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
 
