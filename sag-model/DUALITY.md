@@ -371,3 +371,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   for lines, as a CMove.Mv transfer). Premises: levelwise Fib of A and the
   base's CB fields. Next: Lemma 14 (lines p, q; ConsId, Weights.ConsP /
   consOne / meetC ready), Prop 13.
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Lemma 14 PROVED**
+  for the concrete cobar D (sag/cobar/Lemma14.seg, f81f7f93):
+  L14.lemma14 al x : U τ_A is a quasi-inverse equivalence at every x, for A
+  levelwise fibrant (ε at the identity chain and weight (1); the paper's
+  lines p, q; composition from Lemma 12). Negative test: swapping
+  meet-zero / meet-one is rejected. Next: Prop 13.
