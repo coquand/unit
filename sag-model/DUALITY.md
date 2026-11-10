@@ -377,3 +377,14 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   levelwise fibrant (ε at the identity chain and weight (1); the paper's
   lines p, q; composition from Lemma 12). Negative test: swapping
   meet-zero / meet-one is rejected. Next: Prop 13.
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Prop 13 PROVED**
+  for the concrete cobar D (sag/cobar/Prop13.seg, a0dc0734): if U f is an
+  equivalence levelwise (EquivOp, the base's contractible-fibres notion,
+  related to internal is-equiv by sag-model S3), then D f is an EquivOp at
+  every x (lemma12U on the homotopy fibre, moved along a Psi for fibres).
+  Output levelwise; the paper's internal is-equiv in PSh(C) follows since
+  is-equiv is a proposition (compatibility in C automatic). Negative test:
+  breaking fibL-nat is rejected.
+  Of the paper results taken as premises, now checked for the concrete D:
+  Prop 17 (abstract, from Prop 13), Lemma 9, Lemma 12, Lemma 14, Prop 13.
+  Not checked: Lemma 54, Prop 34.
