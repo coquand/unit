@@ -327,20 +327,19 @@ M1 DONE, `CPshPiFib.seg: FibOf[C].Fr[G, A, B, x, e, e'].Cp[cT].Wn[nc].comp`: the
 the hypothesis NatComp (module parameter nc; the component composites are natural in C).
 al y f = the projection (a PMap over G_x), CMapLine moves points / lines / sides, kside / kunif
 componentwise (tot-extC, endM-rd).
-M2 started, `CPshPiFibN.seg: NOf[C].Nd[G, A, B, x, d, kA, cB]`: cT y f := CFibSub's MoveComp.move
-of CPi.PiC[G_y, A_y, B_y, d, kA y, cB y].comp; `Val.compE`: the component (y, f) of the composite
-is, as a total of Pi_y, (xT, CopX.cop) at the moved data (wY, pY) (kopMv, sVE).
-M2 plan for NatComp (the C-direction analogue of CPiNat.PM and of CPshFillU.PMC), with the extra
-hypotheses kAU (the fillers kA are C-uniform at the end tgt d) and cBU (UComp of cB):
- L1 bridge CPiE.apW <-> valAt, and C-naturality of apW on the projections of a total of Pi (cnat-at);
- L2 the reverse A-filler moves: Prob_z.La = A.tE g (Prob_y.La), from kAU at the empty side
-    (the moved empty side is empty; the points xA move by G.act-o and the definition of aM);
- L3 the start of the B-problem moves (tv-eq: L2 for the line, L1 for the end);
- L4 its side moves (side-extH; SB.pv is opaque: use pv-pt, pv-lev, and L1 on the values of ApL);
- L5 B.tE g (rdB (wB, bB)) at y = rdB (wB, bB) at z: CPshFillU's rdC for B, cBU, kop-cong with L3, L4;
- L6 the value of kcomp y f at (h, a) is rdB (wB, bB) of Prob at the restricted data (compE,
-    CopX.cop-val, Prob.value-E);
- then NatComp, and UComp of the compositions (two moves of one base composition, kopMv).
+M2, NatComp DONE, `CPshPiFibN.seg: NOf[C].Nd[G, A, B, x, d, kA, cB].NC[kAU, cBU].natComp : Cq.NatComp`
+and `.comp`, the composition of (Pi_A B)_x from src d to tgt d, with cT y f := CFibSub's
+MoveComp.move of CPi.PiC[G_y, A_y, B_y, d, kA y, cB y].comp, kAU = the fillers kA are C-uniform at
+the end tgt d, cBU = UComp of cB.  Steps: Val.compE (the component (y, f) of the composite is the
+base composite CopX.cop at the moved data: kopMv, sVE); Val.VK.res (its value at (h, a0) is
+rdB (wB, bB) of CPi.Prob at the restricted data); At2.LaC (the reverse A-line moves along g: kAU at
+the empty side); At2.ptB (the point of the B-problem moves: LaC, and CPshPiAp.apC at the start,
+which is the projection of the start of the line of (Pi_A B)_x, Q0); At2.SdV / sdB (its side
+moves: pv-pt, pv-lev, apC on the values of ApL, the line of the side being the projection of the
+line of p, QLy / QLz); At2.Core (CPshFillU's rdC for B, cBU, kop-cong).  `CPshPiAp.seg`: the
+bridge apW-valAt between CPiE.apW and valAt, and apC (naturality in C of application).
+Negative test: apC replaced by refl in SdV fails.
+Not done in M2: the C-uniformity (UComp) of these compositions.
 M3: piUFib and the Pi closure on CFibCwF.  NF waits for the C-level Id (CPshId, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
@@ -373,3 +372,14 @@ sd-eq, out through cu and kop-cong), restriction commutes with the
 C-action of sides (inpEq).  Negative test: replacing the inpEq step of
 fill-C by refl fails.  Next: sigCl (CSig.SigFib at each x + the
 C-uniformity of its composite, mirroring CSigNat with FU), then Id.
+
+`CPshSigFib.seg`: `SigFibOf[C].sigCl G A B : UF.Cl G (SG.SigC)` — Sigma of
+uniformly fibrant C-types is uniformly fibrant: CSig.SigFib at each x,
+and `SU[G, A, B, d, kA, cuA, kB, cuB].res` (the Sigma composite is
+C-uniform; mirror of CSigNat.SigNatC.H for the C-action: the A fillers by
+CPshFillU.FU.fill-C, the B composites by cuB, the readings of the Sigma
+composites by tt-ext).  `SNat.law` is CwFCl.ClSig's law, the base's
+FibCwF.SigN.law at each x (fibTrC + isSet-PTy + sigSnd, as clSubU-id);
+`FSigC = UF.FCC.ClSig[PSigC, sigCl, law]`, so `FSigC.SSig` is the SigStr of
+the CwF of fibrant C-types CFibCwF.  Negative test: replacing the
+composite-agreement step kE-eq of H.res by refl fails.  Stage 2(a) done.
