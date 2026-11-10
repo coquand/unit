@@ -206,7 +206,7 @@ obligation, §4); **map** = a function into is-equiv, natural in Γ.
 
 | # | Statement | Equations | Consumers |
 |---|---|---|---|
-| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty with **isSetTy** (types form a set: the homotopical shadow of judgemental type equalities, as in 2LTT; constrains instantiation, §4; used only through `TE.teAny`, by `Lemma72.lpt-ext` and the exchange of Remark 60), substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift) | ext | everything in Tier 2 |
+| S2.1 | `PCwF`: contexts, Sub and El as Unit types (no isSet), Ty with **isSetTy** (types form a set: the homotopical shadow of judgemental type equalities, as in 2LTT; constrains instantiation, §4; used only through `TE.teAny`, by `Lemma72.lpt-ext` and the exchange of Remark 60), substitution, ext, p, q, pair, p-pair, q-pair (over wkp), pair-eta; `Site`: C, yo x, yoH, its functor laws and yoH-eq (Yoneda: Hom(y, x) ≃ Sub(yo y, yo x)); `PiS`: Π, lam / app inverse (app-lam, lam-app), Pi-nat (along lift), lam-nat (lam stable under substitution, as a TE) | ext | everything in Tier 2 |
 | S2.2 | `DS`: Fib and Fib-sub; internal equivalences IsEqC (context maps), IsEqT (maps of types); restr-eq: precomposition with an internal equivalence is an equivalence on elements of a fibrant type (Rijke 13.4.1 through PSh(C)(1,−)); post-eq: an internal equivalence of types acts as an equivalence on elements (PSh(C)(D,−) preserves equivalences) | map | P2.2 |
 | S2.3 | `DS`: D on contexts / substitutions (DC, DSb), tauC and tau-nat, D~ on types (DT) and elements (De), DT-sub, De-sub (left square of Lemma 67), tauT and hc-tau (horizontal composite = action of τ_Q), Modal := IsEqT τ_Q, Modal-sub, DT-fib | ext; Modal: map | P2.2 |
 | S2.4 | (Lemma 12 corrected, Prop 13) `DS.D-eq`: a levelwise equivalence of contexts is sent by D to an internal equivalence | map | P2.2 |
@@ -280,3 +280,11 @@ Sub and El remain arbitrary types.
   equivalence (q_u ∘ p_u⁺ = id read in the model). Remaining for E1:
   P3.6 (the levelwise-equivalence field of the local representation of
   Sp), and the assembly with remark60-eq, Lemma 72, Prop 17, Modal-Pi.
+- 2026-11-10 (canonicity-45): **P2.1-P2.5 proved** (Lemma 66, Lemma 67, Prop 69, Lemma 72 with lpt-ext, Remark 60 in both forms) in `unit/sag/duality-presheaf` (12 modules, 0 failed). Premises added on the way, all S2.1: q-pair, pair-eta, Pi-nat, lam-nat, isSetTy (used only through TE.teAny), Site.yoH-eq; S2.8 ModPi. No other coherence field. Next: E2 (Tier 5).
+- 2026-11-10 (canonicity-4e): **E1 checked conditionally.**
+  `duality-levelwise/E1.seg`, `E1.Over.Thm62[C,S,PI,Dd,MP,T,Md,L58].theorem62
+  : IsEqT G0 Br (Π Sp G) (λ ev)`. Premises: T2 (S2.x), T3 (P3.3–P3.5 stated,
+  S3.5, S3.6), `Mods` (⟨−⟩ and G D-modal, G and Sp fibrant), and `P58.lw`
+  (P3.6, stated, proof pending). Proved here: Core (q_u p_u⁺ = id in the
+  model) and the assembly. Next: P3.6 proof (replaces `P58`), then
+  P3.3–P3.5 from S3.1–S3.5 (step 3), and E3.
