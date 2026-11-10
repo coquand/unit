@@ -117,7 +117,7 @@ from S3.1-S3.6 and Tier 1:
 |---|---|---|---|
 | P3.1 | Construction 51 | Mod(UΓ)(U A, B) ≅ Mod(Γ)(A, R B) over Remark 7's iso, natural in Γ, up to homotopy in A, B | S3.1 |
 | P3.2 | Lemma 52, Cor 53 | U preserves free T-models, coproducts and coequalisers of T-models up to equivalence; U sends G-algebras to G₀-algebras and their free / coproduct / coequaliser constructions to those of G₀-algebras | S3.1, S3.2, S3.5, P3.1 |
-| P3.3 | Construction 55 | Pr_{T/G,Dκ}(A) ≃ Pr_{T/A,κ} | S3.3, S3.4, S3.6, P3.2 |
+| P3.3 | Construction 55, syntactic form (ruling 2026-11-10) | G₀ is the context of syntactic presentations (n : N) * List(Expr_G(Fin n)); its points at x are Tier 1's presentations over alg x, compatibly with restriction (u ↦ u·h). Follows from S3.9. (The paper's Construction 55 is the polynomial-presentation analogue; polynomial presentations have no map back to syntax without choice, so the syntactic form, which SAGAxioms.seg uses, is taken.) | S3.9 |
 | P3.4 | Construction 56 | over P3.3: Σ_{Pr_{T/G,Dκ}(A)} ⟨−⟩_{T/G}(A) ≃ Σ_{Pr_{T/A,κ}} ⟨−⟩_{T/A}, fibrewise an equivalence of T-models | P3.2, P3.3, S3.4 |
 | P3.5 | Construction 57 | over P3.3: Σ_{Pr_{T/G,Dκ}(A)} Sp(A) ≃ Σ_{Pr_{T/A,κ}} Ret_A; **the clause to check exactly**: under this, Remark 46 and P3.4, the evaluation map of Sp is homotopic to ev_{A,u} : Ret_A(u) × ⟨u⟩_{T/A} -> A, (r , y) ↦ r y — not merely some equivalence of objects | P3.2-P3.4, S3.5 |
 | P3.6 | Prop 58 | Sp : Ty(1.Pr_{T/G,Dκ}) is locally homotopy representable: at A and u the representation is ⟨p_u , q_u⟩ : ょ⟨u⟩_{T/A} -> ょA.Sp(u) under P3.5 | P3.5, S3.6, T1.2-T1.5 |
@@ -229,6 +229,7 @@ All **semantic**. Same Equations legend.
 | S3.4 | (Lemma 14) Fib(UΓ, UA) -> El(UΓ, is-equiv(U τ_A)); in particular at El_κ in context κ | map (into is-equiv); the strict retraction ε τ = id of its proof is not needed | P3.3, P3.4 | semantic |
 | S3.5 | (Remark 46) G₀(A) := A; U G ≃ G₀ as T-models in PSh(C₀) | G₀ by definition: ext; the equivalence and its preservation of the model structure: path | P3.2, P3.5, Tier 4 | semantic |
 | S3.6 | (Construction 39, Lemma 40, Lemma 42, Remark 38) the small strict category C, C^op ≃ Mod_{T,κ}, κ-presentable A-algebras are κ-presentable, smallness, the classifier (Dκ, D̃El_κ). (The over-R / over-A comparison is no longer needed: Tier 1 presents over A.) | C's unit and associativity: ext; Lemma 40, Lemma 42: path | P3.3, P3.6 | semantic |
+| S3.9 | (ruling 2026-11-10) the inductive types N, List and Expr_G(V) of PSh(C)_DT (V finite) are computed levelwise up to equivalence: at a point of a representable yo x, Expr_G(Fin n) is Expr over alg x, natural in x (u ↦ u·h); and G0's points are syntactic presentations | the equivalence: path; naturality: ext | P3.3 | semantic |
 | S3.7 | Propositional truncation Tr of the model, stable under substitution: record `E3.TrS` (Tr, Tr-sub); Unit truncation is `Truncation[l]` (Theory parameters, as Tier 1) | stability: ext | Tier 6 | semantic |
 | S3.8 | (Prop 34) `E3.TrS.prop34-l` / `prop34-r`: for A fibrant and D-modal over G, El(G, Tr A) <-> the Unit function giving at each point g of G at x an element of the Unit truncation of the fibre of A at g (reading (A): El(UΓ, ∥UA∥)) | map (both directions) | Tier 6 | semantic |
 
