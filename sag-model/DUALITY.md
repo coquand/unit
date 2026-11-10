@@ -435,3 +435,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-10: (B) stage 1(ii) checked (4f7ca84c): CFibCwF, the CwF of
   uniformly fibrant C-types (ClCwF at UFib; uniform fibrations are stable
   under C-substitution, module UP). Next: Sigma.
+- 2026-11-10: third session canonicity-c2 joins: (B) stage 2(c), Pi for
+  C-presheaves (factored as R of the base Pi cut by C-naturality; files
+  CPshPi*, CPshNF), then Lemma 54 with ΔK constant in C but a base type
+  (cubical set) K, i.e. (Π_ΔK B)_x ≅ base Π_K B_x. canonicity-45 does Sigma,
+  Id and the bridge.
