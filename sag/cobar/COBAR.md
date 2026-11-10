@@ -437,3 +437,15 @@ transport (pi) in reflC's naturality fails.  Next: the UFib closure (the
 Id compositions are C-uniform: path layer, core-Id layer, Yoneda iso, as
 in the design note), then J with JNatT (generic, for any commuting map of
 J-data and any uniform family of compositions).
+
+The S3 bridge at the C-level (canonicity-c2, from 2026-11-11; route approved by 4e): port FibS3's
+three ingredients instead of reading the internal element through nested formers.  (I) raw
+internal contractibility (a centre c : CEl[G, T] and a contraction ctr : CEl[G.T, Id(c[p], q)]) <=>
+UTriv G T; (II) the fibres FV / HFib and the generic transfer U-Rel; (III) packaging on CFibCwF
+after CPshIdJ.  Final statements S3a_C / S3b_C: internal equivalence on CFibCwF <=> EquivOp at
+each x + CUnif of the fibre ContrOps (Prop13U's shape).
+(I) C1 DONE, `CPshContr.seg: CtrOf[C].C1[G, T, ut].c / .ctr` (UTriv => centre and contraction): c at
+x = the extension of the empty side, natural in C by uniformity (emp); ctr = the Connect line
+field (FibContr.CO at each x), natural in C by uniformity and a side-ext on the Connect side
+(UCm: vE, sdE, valC), then CPshNF.LineYC.  Negative test: dropping cnat in vE fails.
+Not done: C2 (contraction => UTriv), (II), (III).
