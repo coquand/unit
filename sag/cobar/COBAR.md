@@ -220,3 +220,18 @@ PU.sPC / PU.mSC = Psi commutes with the C-action (refl on points; HPD.rb for the
 PU2.res = the Lemma12F.UFl argument (mTinj, kopMv, lemma12U's CUnif, kop-cong along the
 side equality R).  Negative test: dropping lemma12U's uniformity step fails.
 Corollary 15, internal form: `C15.Main.cor15U` = prop13U at f = tau_A (Cor15.seg).
+
+## Lemma 16: why the zig-zag (2026-11-11)
+
+Lemma 14's inverse eps (read at the identity chain and weight (1)) is NOT natural in
+C: eps(u.g) = u_g(1) while eps(u).g = u_id(1).g, the two corners (0,1) and (1,0) of
+u_(id,g), equal only up to the line t |-> u_(id,g)(1,t) . t |-> u_(id,g)(t,1).  So U tau_A
+has a levelwise inverse but tau_A has no inverse in PSh(C); Lemma 16 (tau_DA an
+equivalence in PSh(C)) needs the zig-zag D tau_A ~ tau_DA with D tau_A a genuine
+morphism (Cor 15) and the internal invariance of is-equiv under homotopy.
+Ruling (4e, 2026-11-11): (C) build the C-natural zig-zag K and the levelwise Lemma 16
+(Lemma 14 at DAC + QinvEq); the uniform Lemma 16 is recorded as conditional on the
+named statement "uniform EquivOp is invariant under a C-natural homotopy" (the
+internal invariance of is-equiv in PSh(C)Fib), to be discharged by (B): PSh(C)Fib as
+a CwF instance (C-level Sigma, Pi, Id with uniform fibrancy + an S3-style bridge),
+which also gives Lemma 54 its Pi.  (A) (hand-made path algebra on fibres) is ruled out.
