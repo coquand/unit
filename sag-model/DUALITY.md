@@ -464,3 +464,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   PiStr on CPCwF (2499e828). The shared uniform-filler lemma is
   canonicity-45's CPshFillU (FillUOf[C].FU, res / fill-C), already drafted;
   canonicity-c2 builds Π's uniform fibrancy on it. NF waits for the C-level Id.
+- 2026-11-10 (canonicity-45, verified by canonicity-4e): Σ for C-presheaves
+  (CPshSig.PSigC : SigStr on CPCwF) and the shared uniform-filler lemma
+  (CPshFillU.FU.res / fill-C), 89993a8c. Checker observation (> 10 s
+  nested conversion of the record's coerce spelling) filed in canonicity-45's
+  scratchpad (slow-conversion-probe.txt). Next: sigCl, then Id.
