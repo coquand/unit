@@ -429,3 +429,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (canonicity-45's note): raw CwF of C-presheaves, ClCwF at UFib, then
   Sigma, Id, the Sigma/Id bridge to EquivOp + CUnif, Pi + NF, then Lemma 54
   and the invariance statement.
+- 2026-11-10: (B) stage 1(i) checked (6815674b): CPCwF, the raw CwF of
+  C-presheaves (every law the base's at each x), CPshExt (record
+  extensionality). Stage 1(ii) (ClCwF at UFib) in progress.
