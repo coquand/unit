@@ -212,7 +212,7 @@ obligation, §4); **map** = a function into is-equiv, natural in Γ.
 | S2.4 | (Lemma 12 corrected, Prop 13) `DS.D-eq`: a levelwise equivalence of contexts is sent by D to an internal equivalence | map | P2.2 |
 | S2.5 | dropped: Lemma 66 is P2.1, proved in Unit (2-out-of-6) | — | — |
 | S2.6 | (Prop 17) `DS.prop17`, `prop17-inv`: for D-modal A, B and m : A → B, LEqT m ↔ IsEqT m | map | Tiers 4, 5 |
-| S2.7 | (§6.5) the natural numbers of PSh(C)_DT are, up to equivalence, N_DT := D(ΔN), the D-modal replacement of the constant presheaf on N, with τ_{ΔN} natural | the equivalence: path; naturality of τ: ext | Tier 5 |
+| S2.7 | (§6.5) the natural numbers N_DT of PSh(C)_DT over 1.Pr: record `E2.Over.NS` — N, N-fib, N-modal, nE : fibres ≃ ℕ, nE-nat : restriction is the identity on ℕ (the levelwise content of N_DT = D(ΔN) with τ_{ΔN} natural, its components equivalences by Lemma 14) | nE: map (Unit equivalences); nE-nat: ext | Tier 5 |
 | S2.8 | `ModPi`: Fib-Pi, Modal-Pi (D-modal fibrant types closed under Π; paper §2.2.2, §5) | map | Tiers 4, 5 |
 
 ### Tier 3
@@ -288,3 +288,4 @@ Sub and El remain arbitrary types.
   (P3.6, stated, proof pending). Proved here: Core (q_u p_u⁺ = id in the
   model) and the assembly. Next: P3.6 proof (replaces `P58`), then
   P3.3–P3.5 from S3.1–S3.5 (step 3), and E3.
+- 2026-11-10 (canonicity-45): **E2 (Theorem 61, Axiom 3) checks conditionally**: `E2[l,k].Over[R,setR].Thm61[C,S,PI,Dd,MP,T,Md,L58,Nn].theorem61 : IsEqT G0 N (Pi G0 Sp N[p]) R6.lamm` in `unit/sag/duality-levelwise/E2.seg` (51 modules, 0 failed; a broken step fails). Premises: those of Theorem 62 (T2, T3, Mods, P58 = P3.6 pending) and S2.7 (`NS`).
