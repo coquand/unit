@@ -352,3 +352,8 @@ premises:
 Construction 57, first display has s on both sides (should be s, t);
 Construction 56 writes the presentation (X, R, s, r) instead of
 (X, R, s, t).
+- 2026-11-10 (cobar D, sag/cobar): presheaf layer over C (CPshC), R and
+  Lemma 9 (CPshR), E and eta, chains of C (Chains, last object indexed),
+  D on contexts and types and the unit tau (Cobar) by canonicity-45;
+  weights P_n with restriction, faces and Unface (Weights) by canonicity-4e.
+  Lemma 12 is being formalised by canonicity-45 from COBAR.md's proof.
