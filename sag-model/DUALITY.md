@@ -478,3 +478,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Σ complete** (CPshSigFib, 0abb461e): Σ of uniformly fibrant C-types is
   uniformly fibrant; FSigC.SSig is CFibCwF's SigStr. Id (CPshId, C-level
   Yoneda Id) in progress.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): **Π of uniformly
+  fibrant C-types is uniformly fibrant** (CPshPiFibF.piUFib, with
+  CPshPiFibU.ucomp, b9408810 / acedfb15), no hypothesis left. Remaining
+  for Π on CFibCwF: piCl-nat (M3b, the C-level analogue of FibCwF.PiN.law).
+  Second checker observation (rdC at PiT overran 10 s; generic form
+  instant) filed by canonicity-c2.
