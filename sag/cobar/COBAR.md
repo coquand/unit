@@ -494,3 +494,86 @@ So at the RAW level both directions of the bridge are checked, for f : CMap[G, Y
 Not done: (III) packaging on CFibCwF (El of isContr / Kr on CFibCwF <=> centre + contraction, the
 map as an element of the function type <=> CMap), which waits for canonicity-45's PIdJ; then the
 invariance statement for Lemma 16.
+
+## Plan: Prop 34 (propositional truncation is computed levelwise), design note (canonicity-c2, 2026-11-11)
+
+No code.  Source: jonas.pdf §5 (Theorem 21 to Prop 36) and §2.3.
+
+Statement.  Naturally in Γ, for A in Ty^DT(Γ): El^T(UΓ, ∥UA∥) <-> El^DT(Γ, ∥A∥).  With the ruling
+T = id (sag-model README: no choice is used) this is El^Fib(UΓ, ∥UA∥) <-> El^D(Γ, ∥A∥) for A D-modal,
+which is DUALITY.md's premise S3.8 (`E3.TrS.prop34-l / prop34-r`), stated there in reading (A) over the
+premise S3.7 (a truncation Tr of the model, stable under substitution).
+
+What the paper's proof uses, and what we have.
+1. §5.1 (Theorem 21, Lemmas 23-25: T lifts levelwise, Assumption 4 on C1): VACUOUS for T = id.  Nothing
+   to do; Assumption 4 is not needed.
+2. Theorem 29 (DT is a descent data operation on PSh(C)Fib; modal types).  For T = id: D τ_A and τ_DA are
+   equivalences in PSh(C)Fib, for A fibrant.
+   HAVE: D on contexts and types and τ (Cobar), Lemma 12 in the paper's form (Lemma12F.lemma12F: D of a
+   levelwise fibrant type is uniformly fibrant) and its trivial half uniform (lemma12U), Lemma 14, Prop 13
+   and Cor 15 in the internal (uniform) form (prop13U, cor15U: so D τ_A is done), Lemma 16 levelwise with
+   the C-natural zig-zag, Prop 17 abstractly (duality-presheaf).
+   MISSING: (a) Lemma 16 in the uniform form = the invariance statement (uniform EquivOp is invariant
+   under a C-natural homotopy), planned through the S3 bridge (both directions checked at the raw level:
+   CPshContr, CPshURel, CPshFibMaps, CPshIdExt, CPshFibC) and its packaging on CFibCwF, which waits for
+   CPshIdJ; (b) D as a LEX OPERATION on CFibCwF, i.e. its action on C-substitutions and elements and
+   (DA)σ = D(Aσ); I found DC (contexts), DT (types) and Prop13's DF (maps of types) in the tree, but no
+   stability of D under C-substitution: to check with canonicity-45 / write.
+3. Lemma 31 (RA is D-modal for A levelwise fibrant over UΓ), Lemma 32 and Prop 33 (for T = id, Prop 33 is
+   Lemma 31).  HAVE: R on contexts and types with its reindexing C-action and Lemma 9 for trivial
+   fibrancy (CPshR), the unit η on contexts (CPshR.EU), Lemma 14.
+   MISSING: (c) R on fibrant types (UFib of R A from levelwise Fib of A; the C-action being reindexing,
+   as lemma9 but for compositions); (d) the adjunction on elements El(UΓ, A) = El(Γ, RA) and on maps and
+   homotopies (R commutes with the identity type up to the needed map); (e) "a type whose unit has a left
+   inverse is modal" for a descent data operation, a generic CwF lemma (not found in duality-presheaf).
+4. Truncation in both models, with the universal property into (modal) propositions.  This is the real
+   gap.
+   BASE.  unit/core has CTrunc* (32 files, 2811 lines): the truncation presheaf for the poset model with
+   inc, the seeded extension, paths between every pair, the recursor, dependent elimination into fibrant
+   propositions with the inc rule.  Its own header says: "composition on truncation and substitution
+   stability of the type construction remain unproved.  This is not yet a complete CwF former", and
+   LEDGER.md row 8 says CTrunc* was built for the old cofibrations and is not reused; replacement
+   (cavrep Construction 53) is "todo in Unit".  So the base does NOT have ∥-∥ as a fibrant type former
+   stable under substitution over PosFull, which Prop 34 needs on its left side.
+   C-LEVEL.  Needed: Tr A : CTy[Γ] for A uniformly fibrant, with (i) its type at x; if the base
+   truncation is strictly functorial in maps of types over maps of contexts (CTruncMorphism / CTruncNat
+   suggest it is, by construction), then Tr A at x := the base truncation of A_x and the C-action is that
+   functoriality, with tE-id / tE-o strict (they cannot come from the eliminator, which gives them only up
+   to a path, and truncation's fibres are sets of codes, not strict propositions); (ii) uniform fibrancy:
+   the base composition of the truncation commutes with the C-action; (iii) inc, the proof of
+   propositionality, and elimination into uniformly fibrant propositions as C-elements, natural in C;
+   (iv) stability under C-substitution (S3.7), from the base's.  Then the truncation of the inner model:
+   ∥A∥^D := D (Tr A) (LEDGER row 8: "image in the inner model = Σ b. D‖fib b‖"), with elimination into
+   D-modal propositions.
+5. Prop 34 itself, given 2-4.  Left to right: U∥A∥ is a proposition with a map from UA, so an element of
+   ∥UA∥ makes U∥A∥ contractible levelwise; Lemma 12 (lemma12U: D of a levelwise trivially fibrant type
+   is uniformly trivially fibrant) and the modality of ∥A∥ give a centre.  Right to left: by 3,
+   El^Fib(UΓ, ∥UA∥) <-> El^D(Γ, R∥UA∥); R∥UA∥ is a modal proposition; the map A -> RUA -> R∥UA∥ and the
+   universal property of ∥A∥.
+
+Size estimate (T = id; lines of .seg, by comparison with what was written for Π and the bridge, about
+3500 lines in 20 files).
+ - 2(b) D as a lex operation on CFibCwF, and Theorem 29 packaged: 300-600, after CPshIdJ and the bridge's
+   packaging.
+ - 3(c)-(e) R on fibrant types, the adjunction, Lemma 31 / Prop 33: 500-800.
+ - 4 C-level truncation over a base truncation given as an interface (type former with strict
+   functoriality, fibrancy, inc, is-prop, elimination, strict substitution stability): 600-1000; the
+   inner-model truncation D . Tr with modal elimination: 200-300.
+ - 5 Prop 34: 300-400.
+ Total 2000-3000 lines WITHOUT the base truncation.  The base truncation itself, as a complete fibrant
+ former over PosFull's cofibrations with strict substitution stability, is at least as much again
+ (CTrunc* is 2811 lines and stops before composition and substitution stability), or the general
+ replacement of cavrep §3.4, larger still.
+
+Options for the decision.
+ (P1) Prop 34 CONDITIONAL on one named base-level premise: a record "TruncStr" on the base's fibrant CwF
+      (the interface of point 4, BASE) replacing the two C-level premises S3.7 and S3.8 by one premise
+      about the cubical base only.  Everything else (2-5) proved.  About 2000-3000 lines.
+ (P2) Also build the base truncation (finish CTrunc* over PosFull: composition, substitution stability,
+      strict functoriality).  A separate project of the size of this whole stage.
+ (P3) Defer Prop 34: keep S3.7 / S3.8 as semantic premises, and spend the effort on finishing the
+      bridge's packaging, the invariance statement for Lemma 16 and Theorem 29 (items 2(a), 2(b)), which
+      Prop 34 needs anyway and which also close the uniform form of Lemma 16.
+ Recommendation: (P3) first (it is a prerequisite of the others and waits only for CPshIdJ), then (P1).
+ Dependencies on other sessions: CPshIdJ (canonicity-45) for 2(a); whether D's stability under
+ C-substitution exists (to ask canonicity-45, the author of Cobar.seg).
