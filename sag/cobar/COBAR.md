@@ -286,3 +286,29 @@ C-actions, by sb-nat and SC.rBtE; msideC; then mTinj, kopMv, A's uniformity, kop
 (LFib a set, the uniformity halves propositions); clSubU-id / clSubU-o = the base's FibClL laws at
 each x (fibTrC: the transport of a uniform fibration along a path of C-types is the base transport
 at each x, PTy a set; sigSnd).  Negative test: dropping A's uniformity step in UP.Res fails.
+
+Stage 2(c), Pi (canonicity-c2, from 2026-11-10).
+`CPshPi.seg: PiOf[C].PiC[G, A, B].PiT : CTy[G]`, the C-type Pi_A B = eta^* R of the base
+products (PresheafPi) of (A_y, B_y), cut by naturality in C.  Fibre `At[x, X, gm].PiIx` =
+(b : Comp) * CNat b, with b y f in the base product at act f gm; code piO = SigV (CPshR.Prod ..)
+(propV (CNat b)), propV the truth value of a proposition (propV-ext by extensionality of V).
+Base action Act (componentwise), C-action CAct (reindexing b y (g f)).  Method: one normal form,
+`valAt b y f Y h w` = the value of b y f at stage h and at a TOTAL w of A_y (valAt-cong: it
+depends on f, h, w only), `tot-ext` (totals of Pi are equal when their points and values are),
+and the value lemmas valAct-at (h becomes k h), valRix-at (f becomes g f), cnat-at (B.tE g: f
+becomes f g, w becomes A.tE g w).  Negative test: dropping co-idl in tE-id fails.
+`CPshPiLaws.seg: PiLawOf[C].L[G, A, B]`: the restriction to identities `resT x X wP w` (the value
+of a total wP of Pi at f = id_x, h = id_X and w; shared with the Sigma / Id bridge), res-C,
+res-B (it commutes with the C-actions and the base actions), val-res (every value is a
+restriction of the moved total), valNat-at (base naturality of values); `App[t].app`,
+`Lam[v].lam`, beta, eta, `PiIso : Iso (CEl[G, PiT]) (CEl[G.A, B])`.  Negative test: dropping the
+unit-law step in res-C fails.  Writing note: VR.res as one nested term made the checker spin;
+with named steps it takes 0.3 s (WRITING.md rule 4).
+`Lemma54.seg: L54Of[C].M[G, A, B, ca].lemma54 x X gm`: for A cartesian (`Cart[G, A]`: the
+C-action of A is a bijection on fibres), the fibre of Pi_A B at x is in bijection with the fibre
+of the base product of A_x, B_x (cmpE = the component at id_x, natural in the base by cmp-B;
+inverse phi |-> B.tE f . phi . back).  Instances: constCtx / constTy / cartConst (a base type
+with identity C-actions), CartSub (stability under C-substitution), `Delta[G0, K, G, s].lemma54K`
+(the paper's Lemma 54, Delta K over any C-context).  Negative test: dropping cnat-at in inv-cmp
+fails.  Premises: fe (and univ only through V's extensionality in propV-ext, not yet used).
+Not done: Pi-nat (stability of Pi under C-substitution), uniform fibrancy of Pi, NF.
