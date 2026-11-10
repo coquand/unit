@@ -473,5 +473,14 @@ composition along the homotopy read from ctr (FibHt.YH, CLocBoundRetr.Correct); 
 moves), T's UComp e0 e1 and CPshPiFibU's RdG.rdC.  Negative test: dropping tC fails.
 So, at the raw level, S3b_C holds: a centre and a contraction of FVc over G.X give (C2) UTriv of
 FVc, hence (utHP) UTriv of Prop13's HP, i.e. EquivOp at each x + CUnif.
-Not done: (II-b) (EquivOp + CUnif => UTriv of FVc, for S3a_C), (III) packaging on CFibCwF after
-CPshIdJ (canonicity-45: Id's closure CPshIdFib is in; the IdJStr PIdJ is still to come).
+(II-b) base lemma DONE (ruling of 4e: Option C), `CPshIdExt.seg: IdExt[G, Y, X, al, eop].contrI /
+.contrFV` (base level): a ContrOp of core's homotopy fibre Sigma Y Path gives one of
+HFibId = Sigma Y IdOver, hence of FV1 = Sigma Y YonedaId (a retract of HFibId).  NEW ARGUMENT, not
+the base's: FibS3's S3a goes through the equivalence Id -> Path (CIdEquiv, with the fillers of the
+path type) and FibC2; here the extension of a side s is (y*, (p*, ph)) with (y*, p*) eop's
+extension of the image of s and ph the dependent conjunction (CId.DCL, the construction CIdEquiv
+uses for its ph) of s's sieve with the sieves of the Id parts of s; p* is constant on ph (Cc);
+kside by DCL.dc-at, kunif by DCL.dc-restr.  So the base's S3a does not need the path fillers.
+Negative test: the sieve equation dc-at replaced by refl fails.
+Not done: the C-uniformity of contrFV ((II-b) at the C-level: UTriv HP => UTriv FVc), (III)
+packaging on CFibCwF after CPshIdJ.
