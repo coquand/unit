@@ -506,3 +506,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   {f in Q | id in the side's Id-sieve at f}, a dependent conjunction); this
   is a new argument, not the base's FibS3.A, and shows the latter does not
   need the path fillers.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): **bridge, both
+  directions at the raw level** (CPshIdExt: the new lemma contrI / contrFV;
+  CPshFibC.SA.utFV), no J used. Remaining: packaging on CFibCwF and the
+  Lemma 16 invariance, after canonicity-45's PIdJ. Meanwhile canonicity-c2
+  plans Prop 34 (design note only).
