@@ -339,7 +339,12 @@ moves: pv-pt, pv-lev, apC on the values of ApL, the line of the side being the p
 line of p, QLy / QLz); At2.Core (CPshFillU's rdC for B, cBU, kop-cong).  `CPshPiAp.seg`: the
 bridge apW-valAt between CPiE.apW and valAt, and apC (naturality in C of application).
 Negative test: apC replaced by refl in SdV fails.
-Not done in M2: the C-uniformity (UComp) of these compositions.
+M2, UComp DONE, `CPshPiFibU.seg: UOf[C].Ud[G, A, B, d, kA, cB, kAU, cBU].ucomp :
+LO.UF[G, PiT].UComp (src d) (tgt d) comp`: the component (y, f') of the composite at x, moved along
+g : x' -> x, is its component (y, g f') (prC, G.act-o); both it and the component (y, f') of the
+composite at x' are the base composite of Pi_y (compE) at data which agree (eWg for the points,
+tsEg for the sides), so kop-cong applies.  RdG: the reading lemma for an abstract C-type (stated
+directly at PiT it overran the 10 s limit).  Negative test: dropping prC in Wy.q1 fails.
 M3: piUFib and the Pi closure on CFibCwF.  NF waits for the C-level Id (CPshId, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
