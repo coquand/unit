@@ -276,3 +276,13 @@ transport along the base path at each x (elTrC, sbTrC, PTy a set), so subEl-id /
 liftP-id / liftP-o / qP-liftP / qP-secP are the components of the corresponding laws; subT-id /
 subT-o by cty-ext2 with the readings rB (SC.rBtE).  Negative test: dropping rBtE in subT-id's
 action comparison fails.
+
+Stage 1(ii) DONE: `CPshUFib.seg: UFibOf[C].CFibCwF : CwF.CwF[l+]`, the CwF of fibrant C-types =
+CwFCl.ClCwF at Cl := UFib (CPshL.UF: levelwise compositions commuting with the C-action).
+clSubU (UFib along a CSub) = CFibSub.FibSub at each x, with the uniformity of the moved family
+proved in the Lemma12F.UFl pattern through the cartesian map of the substitution (UP: sVC / mSC /
+mTC = the point map, the strict-fibre map and the map of totals of the other end commute with the
+C-actions, by sb-nat and SC.rBtE; msideC; then mTinj, kopMv, A's uniformity, kop-cong).  isSet-UFib
+(LFib a set, the uniformity halves propositions); clSubU-id / clSubU-o = the base's FibClL laws at
+each x (fibTrC: the transport of a uniform fibration along a path of C-types is the base transport
+at each x, PTy a set; sigSnd).  Negative test: dropping A's uniformity step in UP.Res fails.
