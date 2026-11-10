@@ -466,5 +466,12 @@ UTriv Dc HP.PC` by U-Rel (HP = Prop13's homotopy fibre C-type).  Negative test: 
 FC fails.  Cost note (third checker observation): with the fibre written partly through
 SigC / IdC's own names and partly through RawFib's, four small declarations took 6-10 s or overran;
 written in one vocabulary the file takes 7 s, of which 4 s is the one rewrapping IdR.
-Not done: C2 (contraction => UTriv), (II-b) (EquivOp + CUnif => UTriv of FVc), (III) packaging
-on CFibCwF after CPshIdJ.
+(I) C2 DONE, `CPshContr.seg: CtrOf[C].C2[G, T, c, ctr].ut : UTriv G T.1` (T uniformly fibrant, c a
+centre, ctr a contraction): at x, the extension by c relative to the constant map, corrected by T's
+composition along the homotopy read from ctr (FibHt.YH, CLocBoundRetr.Correct); uniform in C by tC
+(the homotopy's values move: CPshId.rd-C, ctr natural in C), wpC / sdC (the problem of Correct
+moves), T's UComp e0 e1 and CPshPiFibU's RdG.rdC.  Negative test: dropping tC fails.
+So, at the raw level, S3b_C holds: a centre and a contraction of FVc over G.X give (C2) UTriv of
+FVc, hence (utHP) UTriv of Prop13's HP, i.e. EquivOp at each x + CUnif.
+Not done: (II-b) (EquivOp + CUnif => UTriv of FVc, for S3a_C), (III) packaging on CFibCwF after
+CPshIdJ (canonicity-45: Id's closure CPshIdFib is in; the IdJStr PIdJ is still to come).
