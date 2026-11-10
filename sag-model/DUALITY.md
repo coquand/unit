@@ -424,3 +424,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   uniform form: C-naturality of K (p, q by reindexing; Cat / Inv of
   homotopies uniform in C, which falls under (B)) and the invariance
   statement of the ruling. Next: (B), PSh(C)Fib as a CwF instance.
+- 2026-11-10: Lemma 16's lines p, q are natural in C (ea814b0d); K's
+  C-naturality modulo the uniformity of Cat / Inv. (B) design approved
+  (canonicity-45's note): raw CwF of C-presheaves, ClCwF at UFib, then
+  Sigma, Id, the Sigma/Id bridge to EquivOp + CUnif, Pi + NF, then Lemma 54
+  and the invariance statement.
