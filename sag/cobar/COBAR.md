@@ -158,3 +158,12 @@ equivalence levelwise.
   equivalence (at each x: ContrOp of fibres => contractible fibres =>
   equivalence, FibContr; is-equiv is a proposition, so compatibility in C
   is automatic).
+
+Lemma 14 (canonicity-45, Lemma14.seg, f81f7f93): `L14.lemma14 al x : QInv x`
+for A levelwise fibrant: over G_x, with B = D A pulled back along tau,
+eps_A (u at (0, x, id, X, id, (1))), eps tau ~ id (Ret on Rf) and
+tau eps ~ id = Cat p (Inv q), where q : id ~ m and p : tau eps ~ m are MW
+lines (u at (n+1, consId c, W i) for the weights ConsP (j g) i and
+consOne (meetC (j g) i)); the composition of B is lemma12F's fibD along tau.
+p's j = 0 end is P0.R, by induction on n through u's top equations
+(TopOne) and tE-o / tot-drop.  No new axioms beyond the named premises.
