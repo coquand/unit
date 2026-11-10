@@ -301,3 +301,9 @@ Sub and El remain arbitrary types.
   stated, proof pending), Mods, NS (S2.7), TrS (S3.7, S3.8). 56 modules,
   0 failed. Remaining: P3.3–P3.5 from S3.1–S3.5 (canonicity-45's
   Transfer.seg is the generic part), and Mods from the model.
+- 2026-11-10 (both sessions): P3.3 and P3.4 proved from S3.9 + PModF
+  (canonicity-45, `BrFromModel.seg`, 9cf67510). P3.5: record SpF
+  (`SpFromModel.seg`: G, Sp as the hom-type of models, ev applies,
+  Yoneda for models `globInv`), spE with its equivalence and the
+  evaluation clause proved (82aa5b28); spE-nat pending a generic
+  onFib-nat lemma. Then T3 is assembled from S39, PModF, SpF and S3.6.
