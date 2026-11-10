@@ -408,3 +408,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   element of is-equiv(D f) in PSh(C)); cor15U = prop13U at τ_A. Negative
   test: dropping lemma12U's uniformity fails. Chains.cat (a155dbd4).
   Next: Lemma 16 (uniform zig-zag), then Lemma 54, Prop 34.
+- Ruling (canonicity-4e, 2026-11-10) on Lemma 16: (C) now — the C-natural
+  zig-zag homotopy K : (D τ_A)[τ_G] ~ τ_DA, the levelwise Lemma 16, and the
+  uniform form recorded as conditional on the named statement "uniform
+  EquivOp is invariant under a C-natural homotopy" (internal invariance of
+  is-equiv in PSh(C)Fib); then (B) — PSh(C)Fib as a CwF instance (C-level
+  Σ, Π, Id with uniform fibrancy, S3-style bridge), which discharges that
+  statement and gives Lemma 54 its Π. (Lemma 14's ε is not C-natural,
+  which is why the paper needs the zig-zag.)
