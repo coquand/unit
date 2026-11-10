@@ -235,3 +235,23 @@ named statement "uniform EquivOp is invariant under a C-natural homotopy" (the
 internal invariance of is-equiv in PSh(C)Fib), to be discharged by (B): PSh(C)Fib as
 a CwF instance (C-level Sigma, Pi, Id with uniform fibrancy + an S3-style bridge),
 which also gives Lemma 54 its Pi.  (A) (hand-made path algebra on fibres) is ruled out.
+
+Lemma 16 (canonicity-45, Lemma16.seg): the zig-zag homotopy and the levelwise statement.
+`L16[C,G,A].Main[al].zig x : HT[G_x, DAC_x, B2_x, dTau x, tauD x]` with B2 x = (D DAC)[tau_G]
+at x, dTau = D tau_A pulled back along tau_G (a natural map DAC_x -> B2_x by DF.DN's
+argument at the points tau gm), tauD = Lemma 14's tauN at DAC.  zig = Cat q (Inv p),
+composed with Lemma 12 at DAC along tau (fB2), where p : tauD ~ M and q : dTau ~ M are
+the paper's lines (meets with t on the left, resp. right block of a concatenated weight)
+and M u is the bridge u_(cat c' c)(cat j' i).  Machinery: MW2 = the double reading of u at
+(cat c' c, Wf (j'|g') i) for a weight family Wf with laws Wres / WfaceL / WfaceR (right
+faces with the transport along plus-suc, Weights.catFR by 4e), as an element of B2_x:
+inner equations by comp-back / drop-cat, outer by cat-left / cat-junction (the C-action
+of DA); MWN2 (base naturality), LN2 / LP2 (lines -> homotopy), MWEq2; the ends by the
+front induction (Front: m+1 faces at 0, cat-front) and the back induction (BK.Back: n+1
+top faces, drop-cat / drop-cat0, catZeroTop, zerosTop); the three families WfCat, WfML,
+WfMR with their laws from catC-res / catFL / catFR / MeetFace.
+`Main[al].lemma16 x : EquivOp (tauD x)` = Lemma 14 at DAC + QinvEq (levelwise Lemma 16).
+Negative tests: the wrong end (meet at 1) in p's start, or dropping cat-junction in the
+outer top face, fail.  No new axioms beyond the named premises (al, CB).
+NOT done (ruling (C)): the C-naturality of zig and the uniform EquivOp of tauD, which
+need "uniform EquivOp is invariant under a C-natural homotopy" = (B).
