@@ -388,3 +388,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Of the paper results taken as premises, now checked for the concrete D:
   Prop 17 (abstract, from Prop 13), Lemma 9, Lemma 12, Lemma 14, Prop 13.
   Not checked: Lemma 54, Prop 34.
+- 2026-11-10 (canonicity-45): **Corollary 15 PROVED** (sag/cobar/Cor15.seg,
+  c79bb0e2): D τ_A is an EquivOp at every x, for A levelwise fibrant
+  (Lemma 14 + Lemma 12 + Prop 13; QinvEq: a quasi-inverse between fibrant
+  types gives EquivOp, through the CwF of fibrant types). Next: Lemma 16
+  (τ_DA an equivalence, the zig-zag on D² A), then Lemma 54.
