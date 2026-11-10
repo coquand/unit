@@ -416,3 +416,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Σ, Π, Id with uniform fibrancy, S3-style bridge), which discharges that
   statement and gives Lemma 54 its Π. (Lemma 14's ε is not C-natural,
   which is why the paper needs the zig-zag.)
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Lemma 16,
+  ruling (C) form** (sag/cobar/Lemma16.seg, 2e663103): the zig-zag
+  homotopy K : (D τ_A)[τ_G] ~ τ_DA at each x (double reading over
+  concatenated chains and weights; negative tests on the meet end and on
+  cat-junction), and lemma16 x : EquivOp τ_DA levelwise. Owed for the
+  uniform form: C-naturality of K (p, q by reindexing; Cat / Inv of
+  homotopies uniform in C, which falls under (B)) and the invariance
+  statement of the ruling. Next: (B), PSh(C)Fib as a CwF instance.
