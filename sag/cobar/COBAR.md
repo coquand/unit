@@ -190,3 +190,23 @@ point, by CwFOv.bodNat and FibIdRd.elTr), HtpyOf (a homotopy as an element of EQ
 by FibNF.LineY), CwFS4.kOf (Escardo), FibS3 S3b, and CHFibCart.moveEq (bod (lam fP) = f
 by app-lam).  Negative tests: dropping A.tE-o in tauA's naturality, or the app-lam
 retargeting, fails.  No new axioms beyond the named premises.
+
+## Plan: Lemma 54 (U preserves Π with domain in κ), concrete form
+
+Lemma 54 has content only for the general Π of PSh(C) (internal to cSet),
+which the C-layer does not have yet. Plan:
+1. Π for C-types (CPi.seg): for A : CTy[G], B : CTy[ExtC G A],
+   (Π_A B)_x at stage X over γ = families b over (y, f : y -> x, Y, h : Y -> X,
+   a in A_y(Y, act f (γ h))) with values in B_y(Y, (act f (γ h), a)),
+   natural in (f, h) (an end over C/x and the base); coded like CPshR's
+   Prod plus CLine.FC's naturality. C-action: precompose f. Then lam / app
+   with β, η, and stability under C-substitution (the CwF laws of Π).
+2. Constant domain: ΔK for an external finite set K (V-coded Fin n), the
+   C-type with A_y = K at every stage and identity actions.
+3. Lemma 54: (Π_{ΔK} B)_x ≅ Π_{k : K} B_x(k), by restriction to f = id_x,
+   h = id_X; the inverse uses naturality (a family over (f, h, k) is
+   determined by its values at the identities, since ΔK's action is the
+   identity). Stated as a fibrewise bijection (as lemma11-lines), natural
+   in x.
+Owner: canonicity-45 after Lemma 16 (Π for C-types is CPshR-style coding);
+canonicity-4e reviews.
