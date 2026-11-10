@@ -402,3 +402,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - Ruling (canonicity-4e, 2026-11-10): the paper's lemmas in their full
   strength, i.e. uniform in C: uniform Prop 13 and Corollary 15, then
   Lemma 16 by the zig-zag with its C-uniformity (needed for S2.4's link).
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Prop 13 and
+  Corollary 15 in the internal (uniform) form PROVED** (sag/cobar/Prop13U.seg,
+  a86d53d1): prop13U : CUnif of the fibre contractions of D f (the paper's
+  element of is-equiv(D f) in PSh(C)); cor15U = prop13U at τ_A. Negative
+  test: dropping lemma12U's uniformity fails. Chains.cat (a155dbd4).
+  Next: Lemma 16 (uniform zig-zag), then Lemma 54, Prop 34.
