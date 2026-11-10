@@ -364,3 +364,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (premises: al, the base's CB fields). Negative tests: dropping W3 or
   K.rx-fc fails. Remaining for Lemma 12: the fibrancy half (by the
   paper's reduction to trivial fibrancy via Lemma 11, needs UFib on lines).
+- 2026-11-10 (canonicity-45, checked by canonicity-4e): **Lemma 12 PROVED
+  in the paper's form** for the concrete cobar D: Lemma12F.lemma12F :
+  UFib (D G) (D A) from levelwise Fib of A (f604e9a6), via the trivial half,
+  CLine's Fill = ContrOp of the strict fibre, and lemma11-lines (Lemma 11
+  for lines, as a CMove.Mv transfer). Premises: levelwise Fib of A and the
+  base's CB fields. Next: Lemma 14 (lines p, q; ConsId, Weights.ConsP /
+  consOne / meetC ready), Prop 13.
