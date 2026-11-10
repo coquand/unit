@@ -474,3 +474,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   from C-uniform fillers of A (FU) and C-uniform compositions of B. Left
   for Π's uniform fibrancy: its C-uniformity (UComp), then the assembly
   piUFib and Π's closure on CFibCwF.
+- 2026-11-10 (canonicity-45, verified by canonicity-4e): **(B) stage 2(a)
+  Σ complete** (CPshSigFib, 0abb461e): Σ of uniformly fibrant C-types is
+  uniformly fibrant; FSigC.SSig is CFibCwF's SigStr. Id (CPshId, C-level
+  Yoneda Id) in progress.
