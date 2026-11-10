@@ -345,7 +345,15 @@ g : x' -> x, is its component (y, g f') (prC, G.act-o); both it and the componen
 composite at x' are the base composite of Pi_y (compE) at data which agree (eWg for the points,
 tsEg for the sides), so kop-cong applies.  RdG: the reading lemma for an abstract C-type (stated
 directly at PiT it overran the 10 s limit).  Negative test: dropping prC in Wy.q1 fails.
-M3: piUFib and the Pi closure on CFibCwF.  NF waits for the C-level Id (CPshId, canonicity-45).
+M3a DONE, `CPshPiFibF.seg: PFOf[C].PF[G, A, B, uA, uB].piUFib : LO.UF[G, PiT].UFib`: Pi of uniformly
+fibrant C-types is uniformly fibrant (each direction d: kA := CFill.FillC of A's composition in the
+other direction, kAU := CPshFillU.FU.res, cB / cBU from uB; then CPshPiFibN.comp, CPshPiFibU.ucomp).
+M3b NOT done: the Pi closure on CFibCwF (CwFCl.ClPi), which needs piCl-nat: the structure piUFib is
+natural in the C-substitution, i.e. clSubU of piUFib, transported along PiT-nat, is piUFib of the
+substituted structures.  UFib being (LFib, propositions), this is levelwise: at each x, the base
+law FibCwF.MoveNat at X := PG.piTy x, Y := PD.piTy x, P2 := CPshPiNat's Pf x, then MoveComp.unique
+with, per component, the base's CPiNat (the fibration of Pi A[s] B[s] is the move of that of Pi A B).
+NF waits for the C-level Id (CPshId, canonicity-45).
 
 ### (B) stage 2(a): Sigma (canonicity-45, 2026-11-10)
 
