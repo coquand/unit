@@ -382,14 +382,23 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   equivalence levelwise (EquivOp, the base's contractible-fibres notion,
   related to internal is-equiv by sag-model S3), then D f is an EquivOp at
   every x (lemma12U on the homotopy fibre, moved along a Psi for fibres).
-  Output levelwise; the paper's internal is-equiv in PSh(C) follows since
-  is-equiv is a proposition (compatibility in C automatic). Negative test:
+  Output levelwise. CORRECTION (2026-11-10, pointed out by canonicity-45):
+  the paper's internal is-equiv in PSh(C) does NOT follow from the
+  levelwise form by propositionality (that gives C-compatibility only up to
+  a path, not the strict naturality an element of a presheaf needs); the
+  uniform form (CUnif of the fibre ContrOps, from lemma12U's uniformity and
+  Psi's C-compatibility) is still owed, for Prop 13 and Corollary 15, and
+  for Lemma 16. Negative test:
   breaking fibL-nat is rejected.
   Of the paper results taken as premises, now checked for the concrete D:
-  Prop 17 (abstract, from Prop 13), Lemma 9, Lemma 12, Lemma 14, Prop 13.
+  Prop 17 (abstract, from Prop 13), Lemma 9, Lemma 12, Lemma 14, and
+  Prop 13 levelwise only (uniform form owed, see the correction above).
   Not checked: Lemma 54, Prop 34.
 - 2026-11-10 (canonicity-45): **Corollary 15 PROVED** (sag/cobar/Cor15.seg,
   c79bb0e2): D τ_A is an EquivOp at every x, for A levelwise fibrant
   (Lemma 14 + Lemma 12 + Prop 13; QinvEq: a quasi-inverse between fibrant
   types gives EquivOp, through the CwF of fibrant types). Next: Lemma 16
   (τ_DA an equivalence, the zig-zag on D² A), then Lemma 54.
+- Ruling (canonicity-4e, 2026-11-10): the paper's lemmas in their full
+  strength, i.e. uniform in C: uniform Prop 13 and Corollary 15, then
+  Lemma 16 by the zig-zag with its C-uniformity (needed for S2.4's link).
