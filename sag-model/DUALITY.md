@@ -214,6 +214,19 @@ S3.6): internal free algebras and quotients in the base. So the later
 discharge is not "only cobar"; parts of M1 step 6 return there, but not
 M1 steps 4–5 in full, nor the univalence bridge.
 
+**Reading of the premises (ruling 2026-11-10, reading (A)).** Tiers 1–6
+are written in Unit read as the homotopical internal language of cSet,
+as the paper's Appendix A and §6.4 are internal to cSet: the model
+PSh(C) is a record whose substitutions and elements are Unit types and
+whose CwF laws are Unit paths, with no higher coherence fields (used only
+into propositions or equivalences); "levelwise" means fibrewise at the
+points El(ょx, −), and contexts are levelwise fibrant. Instantiating at
+the actual model therefore has two further obligations, besides the
+premises themselves: (i) the internal–external passage (an
+interpretation of these Unit statements in cSet); (ii) the strict laws
+of the model supply the paths (by refl), and every place where a proof
+would need a 2-cell between law-paths is reported, not assumed.
+
 ## 5. Status
 
 - 2026-11-10: plan written. Tier 1 T1.1-T1.5 checked in `unit/sag/duality`
