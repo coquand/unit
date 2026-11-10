@@ -440,3 +440,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CPshPi*, CPshNF), then Lemma 54 with ΔK constant in C but a base type
   (cubical set) K, i.e. (Π_ΔK B)_x ≅ base Π_K B_x. canonicity-45 does Sigma,
   Id and the bridge.
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): Pi for C-types
+  (CPshPi.PiT) and its laws (CPshPiLaws: lam / app / beta / eta, PiIso,
+  the shared restriction map resT). Rule for all sessions from now on:
+  develop in a private copy of the tree with its own segc server; install
+  in sag/cobar only once checked (a nested term had made the shared server
+  spin past the 10 s cutoff — a checker observation, kept by canonicity-c2).
