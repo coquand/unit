@@ -493,3 +493,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   raw form (CPshNF.NFC.nf, 7ef00e6b), with the generic LineYC (a natural
   line field of a C-type is an element of its Id). Fibrant instance waits
   for CPshIdJ.
+- 2026-11-10 (canonicity-45, verified by canonicity-4e): **Id's uniform
+  fibrancy complete** (CPshPathU, CPshCoreIdU, CPshIdFibM/T/, 559e22ee:
+  idCl and its substitution law) and **JNatT** (CPshJNatT, a8462853: J
+  commutes with any commuting map of J-data, generic). Next: the IdJStr
+  instance on CFibCwF (CPshIdJ). Bridge (canonicity-c2): C1, U-Rel and the
+  fibres (II-a) done; C2 next.
