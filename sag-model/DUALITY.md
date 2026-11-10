@@ -307,3 +307,11 @@ Sub and El remain arbitrary types.
   Yoneda for models `globInv`), spE with its equivalence and the
   evaluation clause proved (82aa5b28); spE-nat pending a generic
   onFib-nat lemma. Then T3 is assembled from S39, PModF, SpF and S3.6.
+- 2026-11-10 (canonicity-4e): **T3 is no longer a premise.**
+  `T3FromModel.seg`: `Build[..].t3 : T3` from S36 (site), S39, PModF,
+  SpF; P3.3–P3.5 proved (BrFromModel, SpFromModel, SpNat by
+  canonicity-45, 2e9e49cb). `PresheafAxiomsM[C,S,PI,Dd,MP,alg,homAlg,St,
+  P,PM,F,Md,Nn,Tt]`: `duality`, `n-constant`, `projective`. Premises now:
+  T2 (S2.x incl. isSetTy, lam-nat, S2.8), S36 (S3.6), S39 (S3.9), PModF
+  (S3.1/S3.2 fibrewise), SpF (S3.1/S3.5 fibrewise, globInv), Mods (S3.10),
+  NS (S2.7), TrS (S3.7, S3.8). 62 modules, 0 failed.
