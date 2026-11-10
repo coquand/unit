@@ -43,3 +43,23 @@ on [i_k = 0] for each k (by (1), from level m) and on φ; glue these sides
 (CPartial.Join over φ ∨ ⋁_k [i_k = 0]) and extend with α at x_(m+1). The
 compatibility of the sides on overlaps is the cosemisimplicial identity.
 Uniformity (commuting with restriction) holds because α does.
+
+## Coding plan for D (canonicity-4e, 2026-11-10)
+
+canonicity-45's layer (approved): option (b), C-indexed families of base
+presheaves (CCtx: ob x : PCtx, act f : PSub), CTy likewise, LFib/LTriv
+levelwise (pure reuse of Lines.Fib / ContrOp at each x), UTriv/CUnif
+uniform in C via mapside; C at level a.
+
+D_x from existing presheaf formers (Psh: Sigma, extensional Id, Pi), so
+that naturality in the base direction is free:
+
+    (DΓ)_x = Σ (u : Π_{n : N} Π_{ch : Ch_n(x)} Π_{i : P_n} Γ_{last ch})
+               . (face equations (1) as Id types)
+
+with N and Ch_n(x) (chains of length n+1 ending at x) constant presheaves
+(V-codes: natV, SigV over C's obV/homV), and P_n a base presheaf: at stage
+J, i : Fin(n+1) -> Hom J Iv with Lands J J (bigU J (n+1) (k |-> pre J Iv
+(i k) (ptS e1))) (idH J); Lands is a proposition, so its proofs code by a
+fixed code. Faces ∂_k: insert ptH J e0 at k; membership by bigU-in after
+bigU-out.
