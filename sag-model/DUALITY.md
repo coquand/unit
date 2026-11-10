@@ -454,3 +454,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Premise: fe only. Negative test: dropping cnat-at fails.
   Checker observation (ten-second rule) filed by canonicity-c2:
   scratchpad spinning-CPshPiLaws.seg (+ README).
+- 2026-11-10 (canonicity-c2, verified by canonicity-4e): Pi-nat for
+  C-types (CPshPiNat.seg, e9c7ebe8): Π is stable under C-substitution.
+  Uses V's extensionality (propV-ext, coding CNat by its truth value),
+  hence the metatheory's univalence parameter: NOT a new premise, it is
+  the existing metatheory premise of sag-model (LEDGER: Unit with
+  univalence and funext as segment parameters; V.seg's one use of univ).
