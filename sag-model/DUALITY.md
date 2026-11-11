@@ -1001,3 +1001,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   RULING (4e): state Lemma 59 as quasi-inverse data (ev, inv, H1, H2) with
   internal Id-homotopies at G0 over the copy's context; no EquivOp packaging,
   no restriction of fibration structures to the poset kit. ~400-500 remaining.
+- 2026-11-12 Lemma 59: H1, H2 as internal Id at G0 over Sy (points at copy y),
+  ev / inv lifted by transport along z = y (+~100 lines), since the axioms'
+  levelwise proofs live at G0 over U Γ.
