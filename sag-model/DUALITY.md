@@ -888,3 +888,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   internal levelwise isProp); CTotKL2 (b25fc427: KL from a levelwise element).
   Verified by 4e. Modality of Tr needs "U preserves propositions" (or U (R B)
   levelwise prop): after (c).
+- 2026-11-11 (c2) U preserves propositions (c067a650, CTotUProp1-3) and THE
+  MODALITY OF Tr (48abba21, CTotTrMod.modal : Equiv Tr (D Tr)[tau], from both
+  being propositions + r + tau). Verified by 4e: 4/0. Next (c2): (c), h-sets.
