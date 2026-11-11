@@ -730,3 +730,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Voevodsky class: small), so A_x stays at a+1; C0 at a+2 (to be checked
   against IC). Plan note (B4: "~_x a set of the metatheory") to be corrected.
   45 sends the recursion's shape before CMorX.
+- 2026-11-11 (45, 83b6a374) ring laws of A_x at all elements (CAlgFun, CAlgLaw,
+  CAlgLaws, CAlgLaws3). Verified by 4e: 4/0, 10.91 s. Consequences of the
+  non-constant C0: (2) vertical level IC[a, l], l = a+ (C0, C1 at a+; ~18
+  files re-levelled, go); (3a) A_x and its ring structure over a context with
+  x : El G C0 (go); (3b) codes for truncations over a context (asked of c2).
+  Object shape: 45's layered recursion vs 4e's flat form (predicate pairs
+  S, T on Term with a propositional validity field; x.u = concatenation),
+  45 to compare.
