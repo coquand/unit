@@ -786,3 +786,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 Lemma 12 at the total site, level 0 complete (c2, f9f7deb1;
   CTotL12ch, CTotL12a-f, ~1,000 lines, no 2-cell). Verified by 4e: 7/0.
   Next: face pieces, Join, step; uniformity; lemma12.
+- 2026-11-11 (45, c31c6301) THE INTERNAL CATEGORY C: CPresCode (objects:
+  presentations, coded), CMorX (Höfer's maps A_s -> A_t at each stage, data
+  for add, mul, phi r; strict composition), CMorXC.CatOf.IC : CIntCat[a, a+].IC
+  (C = algebras^op; res = id, cart = id on constant objects). Verified by 4e:
+  3/0. addO / mulO (A_x's operations) are parameters until c2's closed
+  eliminator with beta. Next (45): Lemma 14 / Prop 13 interfaces against
+  L12T; Prop 58 statement (merely).
