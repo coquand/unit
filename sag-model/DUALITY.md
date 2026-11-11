@@ -647,3 +647,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   D on maps), CobarIT (D on types). Step 4 at 1,770 lines. canonicity-c2
   switched to GrothCB (the base structure at the total site), which Lemma
   12's trivial-fibration half needs; then SliceCB, then the rest of Q.
+- 2026-11-11 FINDING (canonicity-45, confirmed): C has no STRICT terminal
+  object (maps out of the initial algebra are unique only up to internal
+  paths), so the interval of the total site is not representable; in
+  jonas.pdf it is the presheaf (J, y) |-> Hom(J, Iv), only cylinders being
+  representable. RULING in principle: generalise CB to an interval
+  presheaf (option iii); core uses the interval object in 121 of 282 files,
+  so canonicity-c2 measures the closure needed at the total site first.
