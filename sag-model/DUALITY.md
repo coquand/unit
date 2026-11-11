@@ -972,3 +972,5 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   left (zig built). C-generic parts (16a, c-e) separated from concrete ones
   (16f-l). Next (45): instances at yo F1 and Delta N, non-dependent Lemma 66 /
   67, Lemma 59 for G^{Sp u} and N_D^{Sp u} (sizes first).
+- 2026-11-11 Lemma 16 committed (45, dbd38e08, shared 622/0). Verified by 4e:
+  CTotL16a-l, CTotC15, CPreI 14/0.
