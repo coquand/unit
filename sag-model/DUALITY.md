@@ -807,3 +807,13 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Lemma 14 at the total site, CTotL14*); c2: lemma12F + generic CTotPsi
   (read families over total maps at cartesian lifts), which 45's Prop 13 Psi
   instantiates. 45 does Lemma 14 with lemma12F as a parameter first.
+- 2026-11-11 LEMMA 12 AT THE TOTAL SITE COMPLETE (c2): fibration half
+  49c42ccf (CTotL12Fib, CTotL12Fib2.lemma12F, CTotLvl..4, Lemma 11 for lines
+  CTotPsi..22); trivial half 603a3d9d. Verified by 4e: CTotL12Fib,
+  CTotL12Fib2, CTotL12n ok (the CTotPsi* / CTotLvl* batch queued behind the
+  server). LEMMA 14 AT THE TOTAL SITE (45): CTotL14a-h, lemma14 at lemma12F, no
+  parameter left (h committing). 45 also: CBridge, CAppRd (d0771b0d), CSemOp,
+  CSubst, CFreeMaps (f83b6ea0), CGen (yo F1, G, evG), CDProd (D on products,
+  N_D) - verified 4e (with CMorX, CTotL14a-c) 14/0. Next: c2 QE1 (elim1/beta,
+  setQ, elim2, ElimP3, ElimP1, setQi, setW), then r, modality, KL; 45 the
+  data of the free maps, bridge instances, comparison, G's operations.
