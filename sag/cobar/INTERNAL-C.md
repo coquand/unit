@@ -191,3 +191,33 @@ and removes nothing: R1's own new items (Lemma 2.1(1), Gröbner normal forms
 with derivations) are of the size of item 2 alone.  Nothing is started.
 The first two steps, in this order: the pilot of §5 (it decides the plan's
 size) and c2's truncation + Prop_U (everything else needs them).
+
+## 8. The pilot's result (2026-11-11)
+
+Files: `CCyl.seg` (the cylinder record of a site, 40 lines, poset instance
+from CPosC's products), `CConst.seg` (constant types Delta E over any
+context with their fibrancy, 95 lines: every line of a constant type is
+the restriction of one line over the cylinder, so sides are constant and
+the composite is the given end), `CPilotRing.seg` (175 lines, of which 20
+are natural-number lemmas): an h-set ring over a context of the base CwF
+(carrier, operations as elements of function types, laws as Id-elements
+for all elements over the context, Id a proposition), coefficient lists
+over a metatheory ring with the zero-padded coefficientwise congruence,
+the evaluation ev p = sum phi(p_i) r^i by METATHEORY recursion over the
+constant domain, its respect for the congruence (padding + pointwise
+agreement, laws chained by CwFPth.transM / symM, congruences by apM on
+the body of the partial application, first-argument congruence through
+commutativity), and the universal map out of the quotient against the
+quotient's interface as module parameters (Q, inc, elim into h-sets for a
+constant domain and relation, its computation rule).  Check times 0.08 s,
+0.21 s, 0.37 s.  Compared with the Unit development it mirrors (Tier 1's
+PolynomialRing.peq and the evaluation of coefficient lists, about 70
+lines), the factor is 2.5, not 3-6: the metatheory recursion over the
+constant domain removes all internal induction, and the laws-as-elements
+style costs one explicit middle term per step (the checker does not infer
+transM's endpoints through apM).  Revised size of step 2 (base algebra):
+1,500-2,500 lines.  What the quotient must provide, now fixed by use:
+elim for a constant domain and a constant relation stated externally
+(f : E -> El G B, respects : (p q) -> rel p q -> El G (Id (f p) (f q))),
+its computation rule as an Id-element, and elim2; the h-set hypothesis in
+the form "Id-elements between two elements are equal".
