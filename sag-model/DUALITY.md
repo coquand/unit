@@ -997,3 +997,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   inverse built (CL59b-e, private / shared check: generic D s^{-1} for a
   context map with U s a levelwise equivalence). Remaining: two homotopies +
   QinvEq, ~300-400 lines.
+- 2026-11-12 (45, 07173425, shared 631/0) Lemma 59: both maps (ev, inv) exist.
+  RULING (4e): state Lemma 59 as quasi-inverse data (ev, inv, H1, H2) with
+  internal Id-homotopies at G0 over the copy's context; no EquivOp packaging,
+  no restriction of fibration structures to the poset kit. ~400-500 remaining.
