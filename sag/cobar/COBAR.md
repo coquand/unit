@@ -903,14 +903,29 @@ Open: elim into h-sets (with beta as an Id-element; built on elimP through the p
 ## The base at the total site (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 4)
 
 CGrothBase.GrothOf[C].GB : CBase.CB at CTotCat's TotCat (8851b7c3).  Sieves of (I, x) are sieves of I;
-Lands (pre h Q) g is Lands Q (h g) by refl (lands-pre-refl), as on posets.  As committed it takes the interval
-as the object (Iv, term Iv), which needs IC's term / bang.  The real C has no strict terminal object
-(canonicity-45), so this instance is NOT to be used at the real C.  Ruling 4e: the interval becomes a presheaf
-IvP in CB (every use of Iv in the CB members is a map INTO Iv: 786 occurrences, all of that form).  The rewrite
-exists in a private copy and checks (345 modules, 0 failed; no file over 10 s); there GB needs neither term
-nor bang.  NOT installed: the 44 rewritten generic files are core files (sag-model symlinks into unit/core,
-read-only by sag-model's README), and core has two more instances of CB (CPosInst, CDeltaBase).  Awaiting a
-ruling.  SliceCB is dropped.
+Lands (pre h Q) g is Lands Q (h g) by refl (lands-pre-refl), as on posets.  The interval is a PRESHEAF
+of the base (ruling 4e; CB fields ivV, IvP, ivA, ptH, endS; installed in unit/core with the user's go-ahead,
+1fd0fe1e), so GB needs neither a terminal object nor IC's term / bang.  Levels a vl l (0d43c526, with
+canonicity-45's 03bef1e8): the internal category's objects and maps are coded at the vertical level vl, GB =
+CBase[vl].CB, the interval code through TC.embV.  The fibrant CwF at the total site is the generated segment
+CFibSeg[vl].FB (fibCwF-T, fibPi-T, fibSig-T, fibId-T, nf-T, contr-T, Tr0-T, contrTr-T; tools/mkseg.py).
+
+## U, R and the truncation at the total site (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 5)
+
+G1 = GrothOf[C] (total site), G0 = GrothOf[disc] (levelwise site, canonicity-45's CDisc), fn : G0 -> G1.
+  CRestr.Restr[Cs, Ds, F]      U: rC, rS, rT, rE (restriction along a functor)
+  CRan.Ran[Cs, Ds, F].Ty[G, B] R on types: RB (elements are natural families b Y m p e), toR / ofR / of-to / to-of
+  CTotR.TotR[C].L9[G, B]       Lemma 9: KO[al].contrR, a levelwise contraction of B gives one of R B
+  CTotRFib .. CTotRFib8        RFib8[C].fibR G B fb: R of a levelwise fibration is a fibration (componentwise
+                               transfer of Comp e e'; R does not commute strictly with the type of lines)
+  CTotUExt                     UExt[C].FI.XG[G]: restriction of lines along fn is a bijection (extV, rho-ext,
+                               ext-rho), through CDisc's factorisation Fact / Ini (vertical, then levelwise)
+  CTotUFib .. CTotUFib4        UFib4[C].fibU G A fb: U of a fibration of the total site is a levelwise fibration
+  CTotRSeed                    RSeed[C].SO[G, B, op].opR: R transfers the seeded extension operation
+  CTotTr                       TotTr[C].Tr[G, A]: Tr := R (Tr0 (U A)), a type of fibCwF-T; contrTr (contractible
+                               over itself); inc (unit); sec (a levelwise element of Tr0 (U A) gives an element)
+Open: the eliminator of Tr into propositions (on demand); (vi) the retraction D (R B) -> R B and the Key Lemma.
+Slowest files: CTotUFib3 6.4 s, CTotUFib4 5.6 s, CTotUFib2 4.1 s.
 
 ## D over the total site and the inputs of A_x (canonicity-45, 2026-11-11; SIMPLIFIED.md steps 4 and 2b)
 
