@@ -815,4 +815,7 @@ and untranspose for s_*.  CTruncSeed.Seed.seed : ||A||[ev src] -> ||A||[ev tgt] 
 relative contractibility structure of B[p] over G.B;  CTruncFib.TrComp.comp : the composition of ||A||
 (CMove.Mv to that structure at (target end , seed));
 CTruncFib.truncFib : CL.Lines[G, A].Fib -> CL.Lines[G, ||A||].Fib.   FIBRANCY DONE.
-Strict stability Tr0-nat is DROPPED (ruling 4e).  Remaining: (4) packaging on FibCwF (inc, prop, elim with fibId's Id).
+Strict stability Tr0-nat is DROPPED (ruling 4e).
+CTruncCwF.TrOf[G, A]: Tr0 : FC.STy G; incE (the unit as an element over G.A); rcTr / contrTr (over
+G.Tr0 A the weakened truncation is contractible: ContrOp, and an element of the internal isContr);
+El[B, p].elim / beta (core's elimination into fibrant propositions).   ITEM 1 DONE.
