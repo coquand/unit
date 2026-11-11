@@ -880,3 +880,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   a natural map (D P)[tau] -> P and a levelwise ContrOp of U P (Lemma 12
   trivial half, section of a ContrOp, tau pullback). Next (c2): D preserves
   propositions / h-sets, modality of Tr, KL from a levelwise element, (c).
+- 2026-11-11 D PRESERVES PROPOSITIONS (c2, 338c0e4f; CwFPropNoU, CTotDProp1-3):
+  isPropD from a levelwise ContrOp of A over G.A (Lemma 12 trivial half moved
+  along Pair.phi). Verified by 4e: 4/0. h-sets: needs D(Id_A) vs Id_{D A}
+  comparison (after the modality of Tr and (c)).
