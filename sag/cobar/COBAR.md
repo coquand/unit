@@ -772,3 +772,15 @@ record `DS` of sag/duality-presheaf/T2.seg.
    (B) M8-M11, M12-M14 to assign.  Negative tests: M1 (drop the levelwise structure of A from
    lemma12F's input: must fail), M5 (break the CUnif pointwise condition), M7 (desc1 with the
    wrong unit, eta (DT A) in place of Dm (eta A): must fail).
+
+Theorem 29 part (A), files (canonicity-45, 2026-11-11): `CPshDT` (Dbar A = (D A)[tau], Dbar-sub =
+DAC-sub, Dbar-fib = Lemma12F along tau, eta = Cor15.tauA, record DescentOp on the raw CwF with Cl as a
+predicate: maps of types are Prop13's CMaps and "f is an equivalence" is a UTriv of Prop13.HP[.., f].PC);
+`Prop13U.DfOf[C, G, A, B, f].DfC` (D f as a CMap, no fibrancy hypotheses); `CPshMapSub.subCMap` (a CMap
+pulled back along a C-substitution, reading lemma MS.rd); `CPshUTrivSub.subUTriv` (a UTriv pulled back:
+CFibSub.moveContr at x, kopMv, side-extH); `CPshEqSub.subEqU` (a UTriv of HP pulled back: the base's
+CHSub / CHFibCart at x, the fibre type of the substituted map being HP's type of the pulled-back CMap
+on the nose, so no comparison of fibre types; mSC: HCart's comparison map commutes with HP's action).
+Known gap, recorded on request of 4e: the paper's Lemma 12 is "naturally in Gamma", i.e. the fibration
+structures of D A are stable under substitution on the nose; not proved (nothing uses it), which is why
+the record is on the raw CwF.  Negative tests: one step of nat / res dropped in each pullback file fails.
