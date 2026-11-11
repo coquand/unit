@@ -965,3 +965,5 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (~1,300-1,700 lines) recorded as optional. Arith[vl] vs Arith[a] arities:
   cheapest fix (instantiate Chains at Arith[a] if consumers allow, else
   transport). CTotL16b (weights) checks privately.
+- 2026-11-11 (c2) (K): reading lemma CCmpU1-7 checks privately; remaining (U)
+  4-6 files, (E) 3, (K) 1-2 (HomT a set, generic in s, t): 9-11 files.
