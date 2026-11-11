@@ -809,7 +809,10 @@ CTruncPush.Push[D, G, s, P].pushTy : the pushforward s_* P of a type along a map
 CTruncPushAlg.PushOp[D, G, s, P].Op[kP].op : a seeded extension operation on s_* P from one on P
 (Side form: PS.side the projected side, kop, Sd.res = kside, Un.res = kunif); PushAlg.algebra in the
 algebra form of the recursor.  DONE.
-Plan (strict stability Tr0-nat is DROPPED, ruling 4e): (1) done, above; (2) the recursor
-of Tr_G A into s_* (Tr_D (A[s])) gives the lax comparison (Tr_G A)[s] -> Tr_D (A[s]); (3) fibrancy:
-s = evaluation of lines at an end, the image of the base point is the seed, the tube the partial
-element, the composite is ext; (4) packaging on FibCwF (inc, prop, elim with fibId's Id).
+CTruncSubOp.SubOp.op : the operation is stable under substitution.  CTruncPushAdj.Tp / Ut : transpose
+and untranspose for s_*.  CTruncSeed.Seed.seed : ||A||[ev src] -> ||A||[ev tgt] over the lines of G
+(transport of A, inc, transpose, the recursor, untranspose).  CTruncFib.OpRC.rc : the operation as a
+relative contractibility structure of B[p] over G.B;  CTruncFib.TrComp.comp : the composition of ||A||
+(CMove.Mv to that structure at (target end , seed));
+CTruncFib.truncFib : CL.Lines[G, A].Fib -> CL.Lines[G, ||A||].Fib.   FIBRANCY DONE.
+Strict stability Tr0-nat is DROPPED (ruling 4e).  Remaining: (4) packaging on FibCwF (inc, prop, elim with fibId's Id).
