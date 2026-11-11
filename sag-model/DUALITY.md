@@ -592,3 +592,14 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Sp, G^Sp, their modality, levelwise => internal equivalence for modal
   types). Design note (canonicity-45 with c2) rewritten as this minimal
   route.
+- 2026-11-11 CORRECTION (errata2.pdf, Coquand-Höfer-Sattler erratum to the
+  SAG paper): the argument "C = C_const (constant fp k-algebras) for a
+  fixed ring k" (canonicity-4e, -45, -c2) is WRONG in general. Δ(L[X]/q),
+  the constant presheaf on a metatheory set quotient, need not be the h-set
+  quotient (ΔL)[X]/q of the cubical model (levelwise problem); strict
+  coherence is a second problem, solved by the cobar relativisation
+  (erratum Lemma 2.1). Constant C + D works when presented algebras have
+  normal forms with derivations (erratum Lemma 2.2; k = Z, a discrete field
+  or fp over Z, by constructive Gröbner bases). The general case is
+  jonas.pdf's internal C, which avoids metatheory set quotients. Route
+  choice pending with the user.
