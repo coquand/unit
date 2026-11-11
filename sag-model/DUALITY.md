@@ -861,3 +861,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   existence by elim2; data propositional since A is a set), then bridge
   internal isContr -> EquivOp (FibHt / FibContr layer). Same for Lemma 59.
   (A) idEq dropped. 45's order: (d)(i), this, (d)(ii)-(v).
+- 2026-11-11 QUOTIENT ELIMINATORS COMPLETE (c2, QE1): set-ness (Hedberg-Kraus,
+  e5cf7c12), elimP1 (2dfbc935), elim1 / beta by unique choice (2e0fb362), Fun
+  A B a set (60647d67), elim2 / beta (e45484d1), ext1 / ext2 (0ffd9f4b),
+  elimP3 (76816711). Parameters: pe, NF, the truncation instance only.
+  Verified by 4e: 19 modules 19/0, 6.51 s. (A) idEq dropped. Next (c2): (C)
+  contexts as types over 1, then r, D-modality of Tr, KL.
