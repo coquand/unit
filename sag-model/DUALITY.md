@@ -654,3 +654,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   representable. RULING in principle: generalise CB to an interval
   presheaf (option iii); core uses the interval object in 121 of 282 files,
   so canonicity-c2 measures the closure needed at the total site first.
+- 2026-11-11 (canonicity-c2 measurement): core uses the interval object
+  ONLY as a codomain (786/786 occurrences are maps into Iv), so the
+  interval-presheaf generalisation of CB is a mechanical rewrite (49 member
+  files + CBase), done first in a private copy, then installed in place.
+  RULING: at the total site identity types are Path types (generic), not
+  Swan Id (whose poset version needs the conjunction cofibration); only the
+  packaged pieces actually consumed at ∫C are re-parametrised.
