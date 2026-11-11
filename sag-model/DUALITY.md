@@ -904,3 +904,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (E) existence, internal algebra in the poset fibrant CwF -> assigned to c2
   after (c) and the h-set comparison. 45: plumbing (moveEq to codes, (P1),
   hookup into Prop 13 / CGops) with the EquivOp as parameter, then (d).
+- 2026-11-11 (c2) (c) the eliminator of Tr into D-modal propositions
+  (CTotElim5.elim; levelwise prop-ness derived by UP3), checks, commit after
+  the shared run. h-sets: only G and N_D needed (not the general "D preserves
+  h-sets"); c2 to compare a specific route with the path half of Lemma 11.
