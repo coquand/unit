@@ -953,3 +953,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   same kind as the zig's p, q, and it needs more transfer than the zig. Plan:
   transfer of EquivOp along homotopies (generated G-version), then the zig at
   the total site reusing CTotL14e-g. 1,000-1,300 lines.
+- 2026-11-11 (45) Cor 15 committed (630f12f6). HtpyEq / GHtpyEq: EquivOp moves
+  along homotopies (in check). CTotL16a: Lemma 16 at the total site from the
+  zig homotopy as a parameter (private). Only open piece of Lemma 16: the zig.
+  c2: (U)/(E)/(K) internally (code-level copairing ruled out).
