@@ -696,3 +696,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   21 serves only T_C (§5), outside our route. Item 5 order: generic Tr0, CTotU
   (restriction along 45's functor ∫C0 → ∫C), CTotR + adjunction, fibrancy,
   CTotTr, KL.
+- 2026-11-11 Generic truncation (c2, 5a02d28c): the 37 truncation files
+  generated in FB (28 unchanged, 26 lands-pre patches in tools/patches.json).
+  CGrothBase has Tr0-T, contrTr-T at the total site of any IC. Verified by 4e:
+  57 modules (CFibSeg, CGrothBase, 18 G-interface, 37 GCTrunc*) 57/0, 16.76 s.
+  Tr stays R Tr0 U (ruling); Tr0-T -> R Tr0 U comparison available if needed.
