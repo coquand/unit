@@ -710,3 +710,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CCyl over IvP. Verified by 4e: CDisc CIntCat CVert CCyl CConstLam CConst
   6/0. Batch overruns of CPshFvC2, CPshInvC, CTruncAtBase under load ~34 (45
   re-running). Next (45): CRelResp, CClsEqC (derivations give equal classes).
+- 2026-11-11 (45, e12506ca) CClsEqC.clsEqC: a derivation t ~ t' gives Id-equal
+  classes in A_x; CRelResp.rsRel: Rel gives Id of evaluations in an h-set ring.
+  Verified by 4e: 2/0 (CClsEqC 4.37 s). GFibIdCen 6 s at load 5, 14-15 s at
+  load 30+: load, not a defect; no split for now. Next (45): CAlgX (ring
+  structure of A_x, elim2 / set-ness as parameters), then HRing[nil], C's maps.
