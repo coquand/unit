@@ -908,3 +908,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (CTotElim5.elim; levelwise prop-ness derived by UP3), checks, commit after
   the shared run. h-sets: only G and N_D needed (not the general "D preserves
   h-sets"); c2 to compare a specific route with the path half of Lemma 11.
+- 2026-11-11 h-sets: general route via PATH types accepted (isSet (D A) from
+  isProp Path_{D A}, Lemma 11 for lines packaged as a move, U of paths, DP4;
+  3-4 files, +1 Id ~ Path bridge if missing). Specific route was not shorter.
