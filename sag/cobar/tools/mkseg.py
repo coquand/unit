@@ -27,6 +27,9 @@ def base_fields(path='CBase.seg'):
     return out,names
 
 MEM="FibClL FibCwF PosId PosJNat PosIdY PosIdYFib PosIdYJ FibIdRd FibIdCen FibId FibNF CLocBoundContr CLocBoundRetr FibContr FibHt FibYC FibC2 FibS3".split()
+# the truncation layer (SAG 8.3 normal forms, pushforward, fibrancy, packaging)
+TRUNC="CTruncRaw CTruncCode CTruncGood CTruncLaws CTruncType CTruncExt CTruncNat CTruncAlg CTruncGraph CTruncGraphNat CTruncRec CTruncRecExt CTrunc CTruncSeeded CTruncIsProp CTruncFinal CTruncEmpty CTruncEta CTruncHom CTruncUnique CTruncMorphism CTruncSection CTruncInd CTruncTransport CTruncSeededBack CTruncLift CTruncElim CTruncHProp CTruncFromProp CTruncElimProp CTruncPush CTruncPushAlg CTruncSubOp CTruncPushAdj CTruncSeed CTruncFib CTruncCwF".split()
+MEM=MEM+TRUNC
 def gen(name):
     import ivrw
     t=open(name+'.seg').read()
@@ -45,6 +48,12 @@ def gen(name):
     t,n2=ivrw.rewrite(t)
     t=re.sub(r"([A-Za-z0-9]+\.)piH ([A-Za-z0-9'.]+) Iv(?![A-Za-z0-9'_\-])",r'\1piI \2',t)
     if name=='CLocBoundContr': t=fixLBC(t)
+    if name=='CTruncIsProp': t=fixLBC(t)
+    if name in ('CTruncPush','CTruncType','CTruncPushAdj'):
+        # local variables e0 / e1 clash with the segment's fields
+        for a_,b_ in [('e0','eq0'),('e1','eq1')]:
+            t=re.sub(r"(?<![A-Za-z0-9'._\-])"+a_+r"(?![A-Za-z0-9'_\-])",b_,t)
+    t=applyPatches(name,t)
     if name=='CLocBoundRetr': t=fixLBR(t)
     t=t.replace('dconjC','dconj').replace('dc-inC','dc-in').replace('dc-outC','dc-out')
     return t
@@ -58,6 +67,14 @@ def fixLBR(t):
     sub("(EK.PT.rside Y X h P0.w P0.LS.side) P1.LS.side (refl (PB.pre Y X h s.pQ)) vp ;","(EK.PT.rside Y X h P0.w P0.LS.side) P1.LS.side (refl (PB.pre Y X h s.pQ))\n        (\\ Z f i0 j -> vp Z f (PB.lands-pre Z Y X h s.pQ f i0) j) ;")
     return t
 
+def applyPatches(name,t):
+    # patches.json: per file, [old, new, count]: uses of lands-pre / pre-lands where the
+    # poset files use that landing in a restricted sieve is landing of the composite
+    import json,os
+    db=json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'patches.json')))
+    for old,new,c in db.get(name,[]):
+        assert t.count(old)==c,(name,old[:60],t.count(old)); t=t.replace(old,new)
+    return t
 def fixLBC(t):
     def sub(old,new,c=1):
         nonlocal t
