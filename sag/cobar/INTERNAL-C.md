@@ -1,221 +1,193 @@
-# The presheaf layer with C internal to the base: design note for the minimal route
+# The presheaf layer with C internal to the base (route R2): design note
 
-canonicity-45, 2026-11-11.  Source: jonas.pdf Assumption 2 and §3.1-3.2 (the
-Grothendieck construction, "Assumption 1 on the base descends to C"), §4, §6.
-Requested by canonicity-4e after the user's ruling: do not rebuild the
-full C-level layer; define the generic model G concretely over the total
-category of C and check the SAG axioms for it, duality first.
+canonicity-45, 2026-11-11, revised after the user's decision (R2, no
+premise record) and the erratum errata2.pdf.  Sources: jonas.pdf
+Assumption 2, §3.1-3.2, §4, §6; errata2.pdf §1-2; SAG.pdf §8.3 for
+truncation.  Everything below is for T = k-algebras over a metatheory ring
+k (constant operation types), kappa = finite types, base modality T = id.
 
-## 1. The site, and whether the base stack instantiates at it
+## 0. Why constant C fails, and what R2 replaces it by
 
-**The base stack is generic in its site.**  `core/CBase.seg` defines the
-record `CB`: a V-coded small category (obV, homV, idH, compH, strict laws),
-an interval OBJECT `Iv` with end points `ptH X e : Hom X Iv` natural in X,
-connections, and a sieve classifier `Phi` (pre, Lands a proposition and its
-laws, emptyS, topS, the point sieves `ptS e : Phi Iv` with lands-pt /
-pt-lands / pt-disj, decidable `allS`, finite unions `bigU`, and `forallS`
-along interval lines, on families of sieves `PhiL`).  `PosFull[a].PB` is
-its instance at the posets, and EVERY file of core (lines, fillers,
-compositions, the fibrant CwF with Sigma / Pi / Id / Glue / the universe,
-FibNF, FibContr, FibHt, FibS3, CHSub, CHFibCart, CCart, CMove, ...) takes
-the base only through PB.  So the question has a positive answer in
-principle: give `CB` at the total category of C and the whole fibrancy
-stack, the CwF of fibrant types and the contractibility / equivalence facts
-of the bridge exist there, with "uniform in C" being ordinary fibrancy
-(the vertical maps are maps of the site).
+The h-set quotient of a constant type Delta E by a constant relation is not
+Delta(E / ~) (errata2 §1.1): a presheaf map out of Delta(E / ~) into an
+h-set model A must send equal points to equal points, while the evaluation
+of terms respects ~ only up to paths in A.  Voevodsky's quotient
+Q(A, R) := image of A -> (A -> Prop), i.e. Sigma (P : A -> Prop) ||Sigma
+(a : A) (R a = P)||, does not have this defect: its points at a stage carry
+the truncation's witnesses, and the eliminator into an h-set B needs only
+that the map A -> B be path-constant on R (B an h-set, truncation
+eliminating into the proposition "the image is determined").  So the
+objects of the paper's C (kappa-presentable models) are h-set quotients IN
+THE CUBICAL MODEL, genuinely non-constant presheaves, and C is an internal
+category.  R2 builds exactly this, with Prop and truncation in the base and
+no HIT: quotients are Voevodsky's.
 
-**The internal category, as data (record IC).**  C internal to the poset
-base is, externally, for each base object I a small category C_I with
-V-coded objects and morphisms, for each base map u : J -> I a restriction
-functor u^* : C_I -> C_J, strictly functorial in u (id^* = id, (uv)^* =
-v^* u^*) and preserving identities and composition strictly, and (for the
-interval, below) a terminal object t_I of each C_I with u^* t_I = t_J.
-Strictness is exactly the paper's: an internal category in cSet is a strict
-category object, externally a strict functor from the base to Cat.
+## 1. The site (unchanged from the first version)
 
-**CB at the total category (GrothCB).**  Objects (I, x), x in C_I;
-Hom((J, y), (I, x)) = Sigma (u : Hom J I) Hom_{C_J}(y, u^* x), V-coded as
-a SigV; id = (id, id); (u, f) . (v, g) = (uv, v^* f . g); the laws from the
-base's and IC's strictness.  Interval: Iv := (Iv_base, t), so that
-Hom((I, x), Iv) = Sigma (u : Hom I Iv_base) Hom(x, t) with the second
-component unique (terminal): ptH, ptH-nat, the connections and their laws
-are the base's on the first component, uniqueness of the second gives
-lands-pt.  Sieves: Phi (I, x) := Phi I, pre along (u, f) := pre along u,
-Lands through the projection; empty / top / point sieves, bigU, allS by
-projection.  forallS X L for L : PhiL (I, x): every map into (I, x) factors
-as a cartesian map (u, id) after a vertical one (id, f), and PhiL's own
-naturality says that L at (u, f) is L at the cartesian lift (u, id)
-restricted along the vertical part, where pre is the identity; so
-forallS (I, x) L := forallS_base I (L at the cartesian lifts), and
-lands-forall / forall-lands are the base's.  Estimate 400-700 lines, all
-fields by projection; canonicity-c2 has offered to write it.
+`core/CBase.CB` is a record (V-coded category, interval object with end
+points and connections, sieve classifier with empty / top / point sieves,
+finite unions, decidable allS, forallS along lines); `PosFull.PB` is one
+instance and all of core takes the base through it.  So the fibrancy
+stack, the CwF of fibrant types (Sigma, Pi, Swan Id, Glue, the universe
+CUniv with its univalence data CUa*, c2's truncation once CB-generic),
+FibNF, FibContr, FibHt, FibS3, CHSub, CHFibCart exist at ANY CB-site.
+Two new instances: the total category of C (GrothCB: objects (I, x), maps
+(u, f : y -> res u x), Iv := (Iv_base, t) with t a restriction-stable
+terminal object, sieves by projection, forallS through cartesian lifts)
+and the slices of the base over I (SliceCB, interval the cylinder) for the
+levelwise notions, with the functor (J, u) |-> (J, res u x) and a generic
+pullback of presheaves / types / fibrancy along a functor of sites.  c2's
+displayed record IC (obD, homD over a base map, idD, compD, laws in the
+total hom, res / cart / fact / fact-eq / fact-uniq, term / bang /
+bang-uniq) is the input of GrothCB; §3 below says where its instance comes
+from.  "Uniform in C" is plain fibrancy at the total site; "levelwise" is
+fibrancy at the slices.
 
-**The slices, for the levelwise notions (SliceCB).**  The paper's
-"levelwise" (U : PSh(C) -> PSh(C0), levelwise fibrant / trivially fibrant /
-equivalence) is fibrancy of the restriction of a type to the cartesian maps
-over a point: at (I, x), to the slice category of the base over I, through
-the functor (J, u : J -> I) |-> (J, u^* x), w |-> (w, id).  The slice is
-itself a CB-site: interval (I x Iv_base, pr1) (the base's cylinder), whose
-maps from (J, u) are the maps J -> Iv_base; sieves Phi (J, u) := Phi J, the
-point sieves pulled back along pr2.  Estimate 300-500 lines, plus 300-500
-for the two site functors (slice -> total, total -> base) and the pullback
-of presheaves, types and fibrancy structures along a functor of sites (one
-generic module).  With this, "levelwise fibrant", "levelwise equivalence"
-and "fibrant over the total category" are ONE definition (CB-fibrancy,
-CEquiv.EquivOp) at two sites, and the levelwise inputs of Lemmas 12, 14,
-16 and Prop 13 are stated in the base's own vocabulary.
+## 2. Where quotients are needed (question 1)
 
-**Slice versus total, decided per use.**  Total category: everything
-global (contexts, types, fibrancy, Sigma / Pi / Id, D, the equivalences
-asserted by the axioms).  Slices: only the levelwise HYPOTHESES (the input
-of Lemma 12; the levelwise equivalence of Prop 13 / Prop 17; Lemma 14's
-output "tau is a levelwise equivalence").  D's own definition needs a third
-notion, "vertical maps at a fixed stage" (chains in C_I), which IC gives
-directly.
+- **Free models F X**, X : kappa (finite): the quotient of the type of
+  terms over X by derivability in T.  For k-algebras the terms over a
+  model A can be taken, as Tier 1 does (RawLaws / PolynomialRing), as
+  coefficient lists: List (A x Monomials) = Sigma (n : N) (Fin n -> A x
+  N^X), so no inductive type former beyond the constant types Delta N,
+  Delta (Fin n) of metatheory sets is needed in the base CwF; the
+  relation ~ is the ring congruence, proposition-valued.  One Voevodsky
+  quotient per X.  Needed by: C's objects and homs (through presented
+  models), Construction 44 (the operations of F1 are elements of Fn),
+  Lemma 43, Lemma 42, Lemma 50, Prop 58.
+- **Presented models <X | s = t>** (Def 37): the coequaliser F R => F X;
+  as in Tier 1 (PresentationExistence: "the carrier is the quotient of
+  expression syntax"), ONE quotient of the term type by the congruence
+  generated by the theory and the relations, so presented models cost no
+  more than free ones.  Relative presentations over A (terms with
+  coefficients in A) are the same with A in the coefficient lists.
+- **Construction 39's objects**: see §4: we take presentations as objects,
+  so no truncation and no universe of models is needed for C0; the homs
+  Sigma (h : <u> -> <v>) Pi_o Pi_{u, v} ((o_u u = v) -> (o_v (h u) = h v))
+  are Pi / Sigma / Id over the quotients, no quotient of their own.
+- **Lemma 42** (a presentable algebra over a presentable algebra is
+  presentable): concatenation of presentations (Tier 1's FinSum) and one
+  comparison of a quotient of a quotient with a quotient: quotients and
+  their effectiveness (Q(A, R)'s path type is R), no new one.
+- **G = D(yo F1)**: no quotient (yo F1 is representable); its T-model
+  structure is Construction 44 (elements of Fn) transported by
+  functoriality of D . yo, with Lemma 43 up to levelwise equivalence.
+- **<u>_{T/G}**, the free G-algebra on u in PSh(total)_D: the inner model's
+  free algebra, i.e. the D-modal reflection of the Voevodsky quotient, AT
+  THE TOTAL SITE, of the type of terms over G and the generators by the
+  congruence; D of it is fibrant (Lemma 12) and modal (Lemma 16), and its
+  fibres are <u>_{T/A} by Lemma 52 (proved as in the paper, from Lemma 14
+  and the base quotients' universal property).  This is the ONLY quotient
+  formed at the total site.
+- **N_D = D(Delta N)**, Sp, G^Sp: none.
 
-## 2. The concrete presheaves the axioms mention
+## 3. Where they live (question 2)
 
-With the ruling T = id (sag-model README), PSh(C)_DT is PSh(total)_D.
+All the algebra lives in the BASE's fibrant CwF (PosFull): the types F X,
+<u>, the relative <u>_{T/A} over the context Pr of presentations, Lemma
+42, Construction 44, Lemma 50, Prop 58's base part, formed in the empty
+context or over Pr.  "At stage I" is substitution along the representable
+y I (the slice): nothing is constructed at the slices by hand.  C0 and C1
+are then TYPES of the base CwF (C0 over 1, C1 over C0 x C0), hence
+presheaves whose fibres at every stage are V-codes (PTy's tob is a W.V
+code): this is what IC's obD / homD are, and it removes the V-coding
+caveat of the earlier notes.  The total site uses the base only through
+C0, C1 (for IC) and, for <u>_{T/G}, through its own Prop and truncation.
+So c2's truncation is needed twice from one CB-generic construction: at
+the base (Voevodsky images) and at the total site (<u>_{T/G}); Prop_U :=
+Sigma (X : U) isProp X with propositional univalence (from CUa) likewise.
 
-- **Pr**, the context of presentations: at (I, A), the kappa-presentations
-  over the model A at stage I; **G0** (Remark 46): at (I, A) the fibre A
-  itself; both given by IC and Tier 1 (sag/duality, syntactic
-  presentations after the 2026-11-10 ruling).
-- **G := D(yo F1)** (Construction 45): yo F1 is representable over the
-  total category, hence a strict presheaf; D of it is a presheaf with a
-  T-model structure (Lemma 43: D . yo preserves finite products up to
-  levelwise equivalence; concretely the operations of F1 give the
-  operations of G by functoriality of D . yo, and the equations hold up to
-  paths, which is all a T-model structure asks).  Fibre at (I, A): by
-  Lemma 14, tau : yo F1 -> G is a levelwise equivalence, so G(I, A) ~ Mod(F1,
-  A) ~ A.
-- **<u> := D(<u>_syn)**, where <u>_syn over Pr is the STRICT presheaf of
-  syntactically presented G0-algebras (terms over A and the generators of
-  u modulo the congruence; strictly functorial in A because substitution
-  of terms is).  <u>_syn is levelwise a T-modal h-set, so D of it is
-  fibrant (Lemma 12) and D-modal (Lemma 16), with fibre ~ <u>_{T/A}
-  (Lemma 14).  This replaces the paper's free G-algebra in the inner model
-  (which would need HITs there) by the modal replacement D of a concrete
-  strict presheaf: the same object up to equivalence, by Lemma 52.
-- **Sp(<u>) := Sigma (r : Mod_T(<u>, G)) (r . h ~ id)** and **G^Sp := Pi
-  Sp G**, formed in the fibrant CwF over the total category (Sigma, Pi,
-  Id, hom-types of T-models as Sigma / Pi / Id).  D-modal: Sigma / Pi / Id
-  of D-modal types are D-modal (generic for any reflective subuniverse,
-  once tau has its universal property; or Lemma 11's product half).
-  Fibres: Lemma 54 (U preserves Pi with small domain), Lemma 59 = Lemma 72
-  (proved generically in duality-presheaf), Prop 58 (Sp locally homotopy
-  representable, Constructions 55-57).
-- **N_D := D(Delta N)** for Axiom 3, fibres by Lemma 14.
+## 4. Replacement (question 3)
 
-Fibrancy is needed only of these (and of the D-images: Lemma 12).
+Not in the tree, and not provable cheaply: Rijke's proof (the join
+construction) uses pushouts or sequential colimits and univalence; an
+external proof in the poset model would be a new theorem about CUniv
+(a small code for the image at every stage).  It is AVOIDED by two
+choices.  (a) Level shift: Q(A, R) is a type at the level of A -> Prop_U,
+one above A; we never put a quotient inside a universe, so no second
+universe is needed; the base CwF at GPre[l+] has all these types, and the
+site and the model live one level up (CB at level a+ for the objects of
+the total category), while kappa and Dkappa stay at the lower level, so
+the axioms' quantification is unchanged.  (b) Objects of C := presentations
+(the syntactic skeleton of the 2026-11-10 ruling: n, m and s, t : Fin m ->
+F (Fin n)), morphisms := Construction 39's morphisms between the presented
+models, composition strict as there.  This category is equivalent (fully
+faithful, essentially surjective) to Construction 39's classifying one by
+Lemma 40's argument, and it avoids both the universe of models and
+Remark 38's smallness, which is the only place jonas.pdf uses replacement.
+Note that C0 is still a non-constant presheaf (its points at a stage are
+maps Fin m -> F_n at that stage, F_n a quotient), as the erratum requires.
+Tier 1's Quotient.seg derives quotients FROM replacement only to keep them
+small; the base version drops smallness.
 
-## 3. What "the axiom holds in the model" requires
+## 5. The algebra of Tier 1 in the base (question 4)
 
-**Axiom 2 (Theorem 62).**  (a) <u> and G^Sp are fibrant and D-modal (above).
-(b) Prop 17: a levelwise equivalence between D-modal types is an
-equivalence: by Prop 13 (D of a levelwise equivalence is an equivalence)
-and the naturality square of tau, 2-out-of-3 (generic, CEquiv at the total
-site).  (c) The evaluation map ev : <u> -> G^Sp is a levelwise
-equivalence: this is sag/duality's content at the fibres (Tier 1) through
-the fibre identifications of §2 (Lemma 14, Lemma 54, Lemma 59, Prop 58):
-Tier 3 / Tier 4 of DUALITY.md.  (a) and (b) are the new concrete content;
-(c) is where the present semantic premises live.
+Sizes of the Unit development: sag/presentations 1,367 lines, sag/tensor
+841, sag/duality 517 (2,725 in all); the subset the model needs
+(presentations, PresentationExistence, PresentedAlgebra, Quotient,
+Pushout, Tensor, FinSum, BaseChange, Representability, Presented,
+Relative, RelativeChange, Points) is 1,213 lines, resting on about 600
+lines of ring / polynomial basics.  Its foundation is funext, propUA,
+truncation and replacement; univalence proper is not used by these files.
 
-**Axiom 3 (Theorem 61).**  The same with N_D, lambda pi_1 and Lemma 14.
+It cannot be "run inside the base's CwF" as checked text: that would need
+an interpretation of Unit's (set-level) language into core's CwF, i.e. an
+elaborator from Unit syntax (modules, records, split, levels, the Theory
+parameters mapped to funext / propUA / truncation / level-shifted
+quotients) to CwF terms.  This is the "model of type theory" check the
+user set aside; as a project it is of the size of the checker's kernel.
+It is the only way to reuse Tier 1 verbatim, and it would also make Tier
+2's generic files semantic for free; I do not recommend it now.
 
-**Axiom 1 (Prop 76).**  Local representability of Sp (Prop 58) and the
-generic Prop 76 (Tier 6, checked conditionally), over the total category.
+What remains is to REDO the 1,800 lines, with Tier 1's proofs as the
+guide, in the external style of sag/cobar (statements at each stage I and
+each X : Ob, through core's TyL / Sig / Pi / Id lemmas) over a small
+set-level toolkit written once: constant types Delta E of metatheory
+sets with Delta N and Delta (Fin n), Prop_U with propUA, the Voevodsky
+quotient Q(A, R) with its eliminator into h-sets and effectiveness, finite
+sums and lists as Sigma (n : N) (Fin n -> -).  The blow-up from Unit's
+direct style to this style, in this tree, has been 3 to 6 times: 6,000 to
+11,000 lines, each file under the ten-second rule.  This is the dominant
+cost of R2 and its critical path.  A pilot should come first: F_1
+(polynomials in one variable over k, as Q(lists, ~)) with its universal
+property into an h-set ring of the base, about 400 lines, to measure the
+factor before the plan is fixed.
 
-## 4. Which general results are then used, and which are dropped
+## 6. Revised order, sizes, split (question 5)
 
-Used: Lemma 12 (D preserves fibrancy; its output is now a single
-fibrancy structure over the total site, the former "uniform half" being
-part of it), Lemma 14 (tau levelwise equivalence: fibres of D X), Prop 13
-(D of a levelwise equivalence), Cor 15 and Lemma 16 (tau_{D X} an
-equivalence: D-modality of D X, needed for G, <u>, N_D), Prop 17 (generic
-from Prop 13), Lemma 54, Lemma 59 (= 72, done), Prop 58, Prop 76 (done
-conditionally); Sigma / Pi / Id of the fibrant CwF over the total category
-(free from core at GrothCB); modality of Sigma / Pi / Id (generic).
+0. Base toolkit (level l+): constant types and Delta N / Delta (Fin n)
+   [45, 150-300]; Prop_U and propUA from CUniv / CUa [c2, 200-400];
+   truncation fibrant at a CB-site [c2, in progress]; Voevodsky quotient
+   with eliminator and effectiveness [c2, 600-1,000]; lists / finite sums
+   [45, 300].  1,300-2,000.
+1. The algebra in the base CwF, external style, after the pilot: T-model
+   structures on h-sets of the base; coefficient lists over a model; F_n
+   with evaluation; presented models over A; Lemma 42; Construction 44;
+   tensor presentations and Lemma 50; Prop 58's base part and
+   Construction 57's evaluation.  [45; 6,000-11,000; can be split by file
+   groups once the pilot fixes the idiom.]
+2. C as IC: the generic module "IC from an internal category" (C0 a type
+   over 1, C1 over C0 x C0, idC, compC strict; res / cart / fact are the
+   presheaf restrictions, strict) and its instance at presentations.
+   [45, 300-500 + instance 300.]
+3. GrothCB, SliceCB, site functors, pullbacks.  [c2 the sites, 45 the
+   pullbacks; 1,000-1,700.]
+4. D over the total site (chains at a stage), tau, D on substitutions and
+   elements; Lemma 12; Lemma 14; Prop 13; Cor 15; Lemma 16 [45,
+   4,500-5,500]; Prop 17, modality of Sigma / Pi / Id, Lemma 54 [c2,
+   1,000-1,500].
+5. G := D(yo F1) with its T-model structure (Constructions 44-45, Lemma 43
+   up to levelwise equivalence) [45, 500-800]; <u>_{T/G} as the D-modal
+   reflection of the total-site quotient, with Lemma 52 [45, 800-1,500];
+   Sp, G^Sp [c2, 300]; Prop 58 at the total site from the base part and
+   Lemma 50 (Constructions 55-57) [45, 1,000-1,500]; Axiom 2 by Prop 17,
+   Lemma 59 (done) and Remark 60 [45, 500].
+6. N_D and Axiom 3 [500]; Prop 76 (done) at Prop 58, Axiom 1 [300].
 
-Dropped: Theorem 29 as a statement about ALL types (the DescentOp record;
-only desc2 at the three specific types is used, and desc1 only inside Lemma
-16's proof), Lemma 11 (unless chosen for modality of Pi), the uniform-fibrancy
-layer and the bridge (CPshContr / URel / FibC / S3C / NF / InvC: replaced by
-FibContr, FibHt, FibS3, FibNF at the total site), CPshPi* (replaced by
-fibPi at the total site), part (B), Prop 34's C-level truncation beyond
-what c2's design keeps.
-
-## 5. What carries over, what is rewritten, sizes (lines of .seg)
-
-Unchanged: core (PosFull and all of CB's clients), the generic CwF files
-(CwF*, SwanId, FibId*, PosIdY*, CwFQP, CwFKrInv, CwFPth), duality-presheaf
-and duality-levelwise (generic in the CwF), the V-code tools c2 listed
-(PiNat's top-level lemmas, IdV-ext, eqs3-cong).
-
-Rewritten on the new index (same proofs, one more stage index; the
-C-uniformity halves disappear into the site):
-- Chains / Weights (weights are base-level and carry over; chains become
-  chains at a stage with the cartesian action) and Cobar's D with tau, D on
-  substitutions and elements (CPshDSub): 1,200-1,500.
-- Lemma 12 (Lemma11L's Psi, Lemma12's inductive extension, CMove at the
-  new site): 900-1,200.
-- Lemma 14, Prop 13 (with Prop13U absorbed), Cor 15, Lemma 16 (the zig-zag
-  lines are base lines at the total site: FibNF's LineY directly, no
-  C-level LineYC): 2,000-2,500.
-- Prop 17 and modality of Sigma / Pi / Id: 400-700 (generic in the CwF).
-- Lemma 54 at the total site (c2): 500.
-Replaced by core at the new site (no port): CPshC, CPshL, CPshExt, CPCwF,
-CPshUFib, CPshSig*, CPshId*, CPshIdJ*, CPshJNatT, CPshPi*, CPshFillU,
-CPshContr, CPshURel, CPshFibMaps, CPshIdExt, CPshFibC, CPshContrC, CPshFvC*,
-CPshS3C, CPshNF*, CPshMapC, CPshInvC, CPshDT, CPshMapSub, CPshUTrivSub,
-CPshEqSub, CPshDesc, CPshL16U, CPshEtaNat (they stay as the constant-C
-case).
-New: IC, GrothCB, SliceCB, the site functors and pullbacks: 1,000-1,700.
-The concrete objects of §2 and the assembly of §3: 1,500-2,500 for G, <u>,
-Sp, G^Sp, N_D and the axioms from the levelwise premise; Prop 58 and
-Constructions 55-57 over the total site, if proved rather than assumed,
-2,000-3,000 more.
-
-Total for Axiom 2 with the fibre computations as premises: about
-7,000-10,000 lines; the model-theoretic part (the site, D, Lemmas 12-16,
-Prop 13, Prop 17) about 5,500-7,000 of them.  Axioms 3 and 1 afterwards:
-500 and 300.
-
-## 6. The one thing this route cannot make concrete
-
-The internal category C of Construction 39 (kappa-presentable T-models in
-h-sets of cSet) externalises to C0(I) = presentations by small types AT
-STAGE I and C1 = maps of models over the slices: its objects and morphisms
-are presheaf-level constructions (free models and quotients of h-sets over
-the slices), which Tier 1 (sag/duality) only provides INTERNALLY, Unit being
-read as the internal language.  Building C concretely would mean redoing
-Tier 1 as presheaf constructions over the slices (cubical quotients /
-HITs), out of scope.  So IC (C with its strict laws and terminal object), G0,
-Pr, <u>_syn and the levelwise equivalences of Tiers 1 and 3 enter as the
-fields of one record (the "concrete site" premise), and the layer proves
-the axioms for every instance.  The gain over DUALITY.md's present
-premises is precise: the whole of S2 (D, tau, Fib, IsEqT, D-eq, DT-fib,
-Modal, isoT, restr-eq / post-eq, which c2 found uninstantiable with El :=
-CEl) disappears, replaced by the concrete D over the total site and the
-proved Lemmas 12-16 / Prop 13 / Prop 17; the premises left are Tier 1's
-fibre computations and Tier 3's Lemma 54 / Prop 58 (or their proofs).
-
-## 7. Minimal list of results, in dependency order, and a split
-
-0. IC (record), GrothCB, SliceCB, site functors and pullbacks.  [c2: GrothCB,
-   SliceCB; 45: IC and the pullback module]
-1. Representables over the total site; Pr, G0, <u>_syn, N as presheaves
-   from IC and the premise record.  [45]
-2. Chains and weights at a stage; D on contexts / types / substitutions /
-   elements, tau; D of a representable.  [45]
-3. Lemma 12.  [45]
-4. Lemma 14, Prop 13, Cor 15, Lemma 16.  [45]
-5. Prop 17; modality of Sigma / Pi / Id (reflective-subuniverse argument
-   from desc2 at the type, or Lemma 11's product half); Lemma 54.  [c2]
-6. G, <u>, Sp, G^Sp; their fibrancy and D-modality; Axiom 2 from the
-   levelwise premise.  [45 with c2 on Sp / G^Sp]
-7. N_D and Axiom 3; Prop 58 and Axiom 1 (c2's Prop 34 design stays, re-based
-   on this layer, for the truncation).
-Nothing of 0-7 is started; the first code is IC and GrothCB, since every
-later size depends on whether CB's fields go through by projection as
-claimed in §1.
+Total R2: 17,000-28,000 lines, of which the algebra in the base (1) and the
+cobar layer (4) are two thirds.  Compared with R1 (constant C under the
+erratum's normal-form hypothesis), R2 adds 2-4 and the toolkit's quotients
+and removes nothing: R1's own new items (Lemma 2.1(1), Gröbner normal forms
+with derivations) are of the size of item 2 alone.  Nothing is started.
+The first two steps, in this order: the pilot of §5 (it decides the plan's
+size) and c2's truncation + Prop_U (everything else needs them).
