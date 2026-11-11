@@ -993,3 +993,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   representation interface (uniform version ~1,000-1,300 not needed). The
   axioms eliminate "merely γ = image of a syntactic u" inside their Tr0 goals;
   u constant, objects constant, so cube-uniformity is automatic. ~600-700.
+- 2026-11-12 Lemma 59 at fixed (y, u) (45): ev committed (17252136, CL59a);
+  inverse built (CL59b-e, private / shared check: generic D s^{-1} for a
+  context map with U s a levelwise equivalence). Remaining: two homotopies +
+  QinvEq, ~300-400 lines.
