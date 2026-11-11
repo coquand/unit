@@ -876,3 +876,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   elimPH / ext1H for 45 (fed7f506); r : (D (R B))[tau] -> R B with r . tauA =
   id (3494f167, CTotRr). Verification queued (server busy). Next (c2):
   D-modality of Tr, KL (form (b)), eliminator (c).
+- 2026-11-11 KEY LEMMA (c2, acd51e87): CTotKL.sec : a section of P over G from
+  a natural map (D P)[tau] -> P and a levelwise ContrOp of U P (Lemma 12
+  trivial half, section of a ContrOp, tau pullback). Next (c2): D preserves
+  propositions / h-sets, modality of Tr, KL from a levelwise element, (c).
