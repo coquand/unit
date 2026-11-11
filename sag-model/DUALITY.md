@@ -720,3 +720,13 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   atCls (846c9add). Verified by 4e: CTotR, CwFQuotElimP 2/0. Lines do NOT
   commute strictly with R (only a currying iso); Fib half by componentwise
   transfer of Comp e e' along rho (only the "to" direction), 400-500 lines.
+- 2026-11-11 CORRECTION (45, ruling 4e): C0 is NOT constant. Def 48 / Prop 58
+  need x.γ for γ a presentation whose relations are STAGE elements of A_x[Y]
+  (elements of a base quotient, only merely classes of terms). Ruling: objects
+  = iterated presentations with internal relations, by recursion on length:
+  C0_{r+1} = Σ (x : C0_r) Σ (n,m) (Fin m -> A_x[Y_1..Y_n])^2; x.u =
+  concatenation (strict). A_x := Q(ΔTerm_{N(x)}, R_x), R_x = truncated
+  derivation trees whose equation leaves carry "t' ∈ s" (membership in a
+  Voevodsky class: small), so A_x stays at a+1; C0 at a+2 (to be checked
+  against IC). Plan note (B4: "~_x a set of the metatheory") to be corrected.
+  45 sends the recursion's shape before CMorX.
