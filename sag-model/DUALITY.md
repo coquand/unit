@@ -884,3 +884,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   isPropD from a levelwise ContrOp of A over G.A (Lemma 12 trivial half moved
   along Pair.phi). Verified by 4e: 4/0. h-sets: needs D(Id_A) vs Id_{D A}
   comparison (after the modality of Tr and (c)).
+- 2026-11-11 (c2) CTotDProp4 (77520e5f: D preserves propositions from an
+  internal levelwise isProp); CTotKL2 (b25fc427: KL from a levelwise element).
+  Verified by 4e. Modality of Tr needs "U preserves propositions" (or U (R B)
+  levelwise prop): after (c).
