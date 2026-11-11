@@ -758,3 +758,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   SAG.pdf §8.3, bridge to core's CTrunc, code former tr : U -> U; 1,100-1,500
   lines). Note: core's CTrunc stores context locations in its trees, so it is
   neither small over large contexts nor strictly stable; SAG.pdf's is both.
+- 2026-11-11 Vertical level in: 45's 03bef1e8 (CIntCat[a, vl], cobar layer at
+  [a, vl, l], base codes embedded) and c2's 0d43c526 (site files at vl);
+  shared run 431/0. 45's 391ba9a9: CDisc.Fact / Cancel / Ini (factorisation
+  of total maps, for U preserving fibrations). Verified by 4e: 10 key modules
+  10/0. Next (45): CMorX, IC instance, universal map of A_x, Prop 58 (merely).
