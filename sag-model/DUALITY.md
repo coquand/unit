@@ -840,3 +840,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   EquivOp (U f) -> EquivOp (D f), any f between types over any total context;
   d committed 286264ac, e-o (Psi on HFib, ~900 lines) in shared check.
   Next (45): discharge CGops's inv with prop13, then (d)(i)-(v).
+- 2026-11-11 Using Prop 13 for G's operations needs (A) identity EquivOp,
+  (B) F2 = F1 + F1 in C (levelwise inverse of the comparison), (C) contexts
+  as types over 1, (D) the inverse map out of an EquivOp. With (C) the type
+  form of Prop 13 suffices everywhere (G's ops, Lemma 59, Cor 15 / Lemma 16).
+  Split: c2 does (C), (A) right after QE1 (before r / modality / KL); 45 does
+  (D) (CEqCen, checks privately), (B), inv, then (d)(i)-(v).
