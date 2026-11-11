@@ -772,3 +772,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   transferred through R, CTotRSeed), inc, sec (levelwise element -> element).
   Verified by 4e: 2/0. Next (c2, (vi)): (a) r and D-modality of Tr A; (b) KL;
   (c) Prop 34 right-to-left as the eliminator into D-modal propositions.
+- 2026-11-11 Lemma 12 at the total site moved to c2 (45's queue is the
+  critical path). Interface: L12T[C, G, A].lemma12 : levelwise ContrOp (U G)
+  (U A) at GrothOf[disc] -> ContrOp (D G) (D A) at the total site. Port NOT
+  mechanical (restriction moves objects and chains); c2's estimate for the
+  trivial half 2,000-2,500 lines; reports at level 0, the step, lemma12.
+  Lemma 12 is needed for: G fibrant, D (Tr A) a proposition (modality), KL.
