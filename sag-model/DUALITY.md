@@ -641,3 +641,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   univalence UaContr (CwFUaEq); the remaining link is the base instance of
   UaContr (S4, LEDGER row 7, unfinished). To be finished so the axioms carry
   no hypothesis; canonicity-c2 measures S4 after Q.
+- 2026-11-11 (canonicity-45, verified): the cobar construction D over the
+  total site of an INTERNAL category (4554edd5): CIntCat (split displayed
+  internal category), CVert, CTotCat, CobarI (D on contexts, tau natural,
+  D on maps), CobarIT (D on types). Step 4 at 1,770 lines. canonicity-c2
+  switched to GrothCB (the base structure at the total site), which Lemma
+  12's trivial-fibration half needs; then SliceCB, then the rest of Q.
