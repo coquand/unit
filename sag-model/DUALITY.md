@@ -987,3 +987,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Sp(u), G^{Sp u}, N_D^{Sp u}, the five propositions of S1-S2 + projectivity.
 - 2026-11-12 Axiom statements (c2): 5-7 files; Pr := Σ (n m : ΔN) (G[X_n])^m
   internal (literal to SAG). After (K).
+- 2026-11-12 RULING (4e) Lemma 59: per y and per SYNTACTIC u (metatheory
+  parameters), an internal equivalence of closed types of the copy y:
+  U(Π_{Sp u} Q)|_y ≃ U(Q)|_{y.u}; one rho, one D rho^{-1}; no strictly stable
+  representation interface (uniform version ~1,000-1,300 not needed). The
+  axioms eliminate "merely γ = image of a syntactic u" inside their Tr0 goals;
+  u constant, objects constant, so cube-uniformity is automatic. ~600-700.
