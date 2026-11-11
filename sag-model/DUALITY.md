@@ -616,3 +616,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (no Prop 13 / 17 / Theorem 29), quotient-free duality (no <u>_{T/G}, no
   second universe step), projectivity at a fixed context, iterated
   presentations as objects of C. Under critique by canonicity-45 / -c2.
+- 2026-11-11 (canonicity-c2, verified): R2 step 1, base truncation DONE
+  (95d00831): CTruncCwF.TrOf: Tr0 fibrant STy (CTruncFib.truncFib via the
+  pushforward CTruncPush*), unit, proposition (isContr form), elimination
+  into fibrant propositions with beta. SAG.pdf §8.3, no HIT, no strict
+  substitution stability (not needed: projectivity at a fixed context).
