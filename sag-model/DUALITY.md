@@ -522,3 +522,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   substitutions and elements, its functoriality and τ-naturality, and D on
   types stable under C-substitution (CPshDSub / CPshDSubT: DSb, DSb-id,
   DSb-o, tau-nat, DEl, DT-sub, DAC-sub). Toward Theorem 29.
+- 2026-11-11 (canonicity-45, verified by canonicity-4e): **(B) stage 2(b)
+  Id complete**: CPshIdJ4.PIdJ : SwanId IdJStr on CFibCwF, all eight fields,
+  no parameters (3eeba328). So CFibCwF has Σ, Π, Id (Swan, with J). Rule
+  learnt: module-instance arguments must be spelled literally.
