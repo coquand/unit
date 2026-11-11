@@ -585,3 +585,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (duality, constancy of N, projectivity): D, Lemmas 12, 14, 16, Prop 13,
   Theorem 29, Lemma 54, Prop 34, and the CwF structure they use. The
   constant-C results stay in the tree as the CRS case.
+- 2026-11-11 USER REFOCUS: no need to check that PSh(∫C)_D is a full model
+  of type theory. Goal: define the generic k-algebra G concretely over ∫C
+  and check the SAG axioms for it (duality first, then N, projectivity),
+  using only what these statements need (the concrete presheaves G, <u>,
+  Sp, G^Sp, their modality, levelwise => internal equivalence for modal
+  types). Design note (canonicity-45 with c2) rewritten as this minimal
+  route.
