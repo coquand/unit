@@ -900,3 +900,39 @@ exists in a private copy and checks (345 modules, 0 failed; no file over 10 s); 
 nor bang.  NOT installed: the 44 rewritten generic files are core files (sag-model symlinks into unit/core,
 read-only by sag-model's README), and core has two more instances of CB (CPosInst, CDeltaBase).  Awaiting a
 ruling.  SliceCB is dropped.
+
+## D over the total site and the inputs of A_x (canonicity-45, 2026-11-11; SIMPLIFIED.md steps 4 and 2b)
+
+Step 4, the cobar construction over the total site of an internal category C (CIntCat.IC, the displayed
+record agreed with c2, with the split cleavage cart-id / cart-comp added for the cobar layer):
+  CVert      the vertical category at a stage J (VCat J : SmallCat), restriction rmap of vertical maps along
+             base maps (rmap-id / rmap-comp / rmap-o), the vertical part vpart of a total map (vpart-id /
+             vpart-o), the total-hom calculus (TH-tr, cmpL / cmpR, vpart-eq, rmap-eq, cc-tr).
+  CChainsF   the chain map of a functor between small categories (chF, with comp / drop / rx / tot).
+  CChainsT   chains at a stage: head transports trCh, restriction rCh along base maps, the action's
+             reindexing rxM; RR (rCh commutes with rxM up to the base's associativity), RxId / RxO (the two
+             laws), tot-rCh / tot-rxM.
+  CTPsh      presheaves over the total site in displayed form (TCtx / TSub); CTotCat: the total category as a
+             SmallCat (c2's site for GrothCB), the projection functor, cartT / factT with the universal
+             property on total homs, toP / ofP.
+  CobarI     DOfI[C].DC[G]: D G (families over (n, J, u : J -> I, z, c : Ch_J n (res u x) z, i) with the
+             three equations), the action along total maps (Act; natPath / facePath / Top.dEq), act-id /
+             act-o through the slice paths idPath / oPath, DCtx : TCtx; the unit tau with TauNat; DS.DSub
+             (D on maps).  CobarIT: DTI.DTy (D on types, as Presheaf's PTy in e-form over toP DCtx), DEl (D on
+             terms).  Lemma12I: UD.uf / UA.uf, the uniform face equations at the total site.
+  Pending there: Lemma 12's second half, Lemma 14, Prop 13, Cor 15, Lemma 16 need the fibrancy layers at the
+  total site (CPartial, CLine, CFill, CMove, CEquiv, CHtpyOps, CFibSub and the packaged FibCwF, FibClL,
+  FibNF, FibContr, FibHt, FibYC, FibS3 with a Path-type IdJStr), i.e. c2's interval-presheaf CB.  The
+  levelwise site is the discrete C0 once GB needs no terminal objects (C0+ otherwise).
+Step 2b, the inputs of the presented algebra A_x for the Voevodsky quotient (CwFQuot.Quot.Q at nil):
+  CConstLam  metatheory families over a constant type as elements: pack / pack-beta / packN (presheaf
+             level), lamC / lamC-beta (fibrant CwF, Fun (Delta E) B through app), constOf (elements of
+             Delta E over nil are constants).
+  CRelPack   PropOf (isContr of the weakening -> PU.isProp); Rel[R, encK, x]: Tm = Delta Term_x at level a+,
+             ct t, the relation r : Fun Tm (Fun Tm PropU) packaging CRelCode's closed codes with their
+             propositionality, r-beta, relT-ct (Rel (ct t) (ct u) = Dec (code t u)), reflR for eff.
+  CTermEval  Eval[R, x, G, Rg, phi, .., val]: ev of terms into an h-set ring with a coefficient homomorphism,
+             Resp[hyp].resp / evP (derivations to Id-elements).
+  Waiting on c2: elim (closed shape, with beta), elim2, elimP (internal), set-ness of Qt, and the
+  elimination of Dec (code t u) into a level-a+ proposition (ElimUp in CwF form); then the ring structure of
+  A_x, its universal map, and C's morphisms.
