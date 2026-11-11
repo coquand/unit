@@ -628,3 +628,116 @@ rely on unfolding inside module-instance arguments — spell them literally
 written out) so that two instances meet syntactically; every change of
 spelling is one opaque lemma (2–6 s each) and a file holds at most two.
 Negative test: J-nat's pointwise step by refl fails.
+
+## Plan: Theorem 29 (T = id), design note (canonicity-45, 2026-11-11)
+
+No code.  Source: jonas.pdf §2.3 (Definition 4, footnotes 7-8), §4.2.2 (Lemmas 14, 16,
+Corollary 15), Theorem 29; consumer: unit/sag-model/DUALITY.md rows S2.2-S2.4, S2.6, i.e. the
+record `DS` of sag/duality-presheaf/T2.seg.
+
+1. The statement we instantiate.  With T = id (sag-model README) the lex operation DT is
+   D-bar A := (D A)[tau_G] (the paper's "DA := (DA)alpha", §2.3), on the CwF of uniformly
+   fibrant C-types CFibCwF.  Theorem 29 then says three things.
+   (i)   D-bar lifts to fibrant types (the paper's Prop 26, which for T = id is Lemma 12):
+         A uniformly fibrant over G  =>  D-bar A uniformly fibrant over G.
+   (ii)  D-bar is a descent data operation (Definition 4): D-bar tau_A and tau_{D-bar A} are
+         equivalences for every A in Ty^Fib(G), where tau_A : A -> D-bar A is the unit.
+   (iii) The "furthermore" (is-equiv(pi_A) <-> is-equiv(tau_A) x is-equiv(theta_UA)) is the
+         tautology is-equiv(tau_A) <-> is-equiv(tau_A) x 1 for T = id, and "DT-modal = D-modal"
+         is a definition.  Nothing to check; the modal types are Ty^D(G) = {A fibrant, tau_A an
+         equivalence}.
+   Definition 4 presupposes a LEX OPERATION, which the paper obtains from the pointed
+   pseudomorphism (footnote 8: D-bar on maps of types as D-tilde b := (D b)[down][alpha+]).
+   We take the lex operation DIRECTLY, with the action on maps of types given levelwise
+   (Prop13U.DfC: D f as a CMap, f applied to every value), so the comparison map
+   <Dp, Dq> : D(G.A) -> DG.DA of a pseudomorphism (footnote 7) is NOT needed for Theorem 29.
+   Neither is Lemma 11: its path-type half exists in the form Lemma 12 uses (Lemma11L, D of the
+   lines), its product half is needed only for the inner model's Pi (ModPi, S2.8), see 5.
+
+2. The definition, as a record.  There is none in the tree (the only `Descent` is étale-flat's).
+   Proposed: `DescentOp` on CFibCwF, with the bridge's internal equivalence of a map of types
+   (S3a_C / S3b_C final form, COBAR.md "The S3 bridge": a centre and a contraction of
+   FVc = Sigma_y Id(f y, x) over G.X, equivalently EquivOp at each x + CUnif) as the notion
+   IsEqT.  Fields:
+     DT      (G) (A : STy G) : STy G                                   D-bar on fibrant types
+     DT-sub  (DT A)[s] = DT (A[s])                                      as STy (Cl included)
+     Dm      (m : Map G A B) : Map G (DT A) (DT B)                       D-bar on maps of types
+     eta     (A) : Map G A (DT A)                                        tau_A
+     eta-nat eta (A[s]) = (eta A)[s]  (transported along DT-sub)
+     desc1   (A) : IsEqT G (DT A) (DT (DT A)) (Dm (eta A))
+     desc2   (A) : IsEqT G (DT A) (DT (DT A)) (eta (DT A))
+   Map G A B = CEl[G.A, B[p]] (T2's Der.Map).  The consumer record `DS` (T2.seg, on a PCwF;
+   CFibCwF qualifies: isSet-CTy + isSet-UFib give isSetTy) asks for MORE than Definition 4 and
+   not for desc1 / desc2: DC, DSb, tauC, tau-nat, DT (the family action over DC G), De, DT-sub,
+   De-sub, tauT, hc-tau, Modal := IsEqT tau_Q, Modal-sub, DT-fib, D-eq, isoT, restr-eq, post-eq.
+   Theorem 29 proper is the DescentOp instance; the DS instance is the natural next packaging
+   (its D-specific fields are listed in 4(B)); desc1 / desc2 feed Prop 34 (Lemma 31 / Prop 33)
+   and the inner model.
+
+3. What is in the tree (checked).
+   D on contexts / types / substitutions / elements, functoriality, tau natural (Cobar, CPshDSub:
+   DSb, DSb-id, DSb-o, tau-nat, DEl); (D A)[D s] = D (A[s]) and (DAC A)[s] = DAC (A[s]) (CPshDSubT:
+   DT-sub, DAC-sub); D of a levelwise fibrant type uniformly fibrant over D G (Lemma12F.lemma12F)
+   and the trivial half (lemma12U); tau_A as a CMap (Cor15.tauA); D f as a CMap (Prop13U.DfC);
+   Prop 13 uniform (Prop13U.prop13U: EquivOp at each x + CUnif of the fibre ContrOps of D f over
+   D G, for U f an EquivOp); Cor 15 uniform (Cor15.cor15U: the same for D tau_A over D G); Lemma
+   16 levelwise (Lemma16.lemma16: EquivOp of tau_DAC at each x by the zig-zag K and Lemma 12 at
+   DAC); the raw bridge both ways (CPshContr C1 / C2, CPshURel, CPshFibMaps, CPshIdExt, CPshFibC).
+
+4. Missing pieces, with sizes (lines of .seg; each < 10 s per file by the spelling rule).
+   (A) For Definition 4 (Theorem 29 proper).
+   M1  DT: D-bar A as an STy: (DAC A.1, clSubU G (D G) tau (DCTy) (lemma12F from A.2 read
+       levelwise)).  Lemma12F takes a levelwise fibration structure al; A.2.1 x gives it.  60-100.
+   M2  DT-sub on STy: DAC-sub for the type, isSet-UFib / ufib-eq for the closure.  40-60.
+   M3  eta as a Map (CEl[G.A, (DT A)[p]]) from Cor15.tauA (a CMap), and eta-nat: tau_A[s] =
+       tau_{A[s]} (missing: like DAC-sub, the value component unchanged, equation codes by
+       IdV-ext).  Needs the generic Map <-> CMap conversion of the packaging (III) (a Map read at
+       x is a PMap over G_x, natural in C by el-nat; and back): if c2's packaging does not
+       provide it, 80 lines here.  100-150 + conversion.
+   M4  Dm: from Prop13U.DfC (D f as a CMap over D G) pulled back along tau_G (a CMap pulled back
+       along a C-substitution: missing, 40-60), then CMap -> Map.  80-120.
+   M5  desc1: cor15U is a uniform EquivOp of D tau_A OVER D G (Prop13U's shape over
+       HPD.GB = (D G).D(DAC)); D-bar tau_A is its pullback along tau_G.  Missing: a uniform EquivOp
+       (Unif.CUnif) is stable under pullback along a C-substitution (the fibre C-type and its
+       ContrOps reindexed; the CUnif condition is pointwise, so this is a restatement).  60-100.
+       Then the bridge S3a (c2: SA.utFV, C1) and the packaging (III) give the internal form.
+   M6  desc2: Lemma 16 in the UNIFORM form = c2's invariance statement (uniform EquivOp invariant
+       under a C-natural homotopy, applied to K : D-bar tau_A ~ tau_{D-bar A}), then S3a and
+       packaging.  c2's item; what Theorem 29 needs from it is exactly: UTriv of the fibres of
+       tau_{DAC} over G.DAC (Prop13U's shape), given cor15U's for D-bar tau_A and Lemma16's
+       levelwise K.  Sent to c2 with this note.
+   M7  The record DescentOp and the instance.  60-100.
+   Total (A), my side: 500-700 lines, after the packaging's Map <-> CMap and the internal IsEqT
+   are fixed by c2 (I will write against the raw form, centre + contraction of FVc, if the
+   packaging is not there when M5 is reached).
+   (B) For the DS instance (Tier 2 consumer), beyond (A).
+   M8  De-sub (the left square of Lemma 67): (DEl a)[D s] = DEl (a[s]) transported along
+       DT-sub; same method as DSb-o / DT-sub (values unchanged, equations props).  80-120.
+   M9  hc-tau: restricting DEl a along tau_G is tau_A's action on a: strict by Definition 10
+       ((Da)(tau gamma)_{f}(i) = a(gamma f) = (tau_A a)_{f}(i)), one el-ext.  40-80.
+   M10 Modal-sub: IsEqT stable under substitution (raw form: the centre and contraction of FVc
+       reindexed, with CPshFibC's FVc[s] = FVc of the reindexed map) + eta-nat (M3).  60-100.
+   M11 DT-fib = M1; tau-nat, DSb, DC, DT, De, DT-sub exist.
+   M12 D-eq (Prop 13 for a levelwise equivalence of CONTEXTS T -> G, output an internal
+       equivalence of contexts IsEqC): a context map is not a map of types; either re-run
+       Prop13's PSI on contexts (D of the homotopy fibre of s, moved from lemma12U) or reduce to
+       Prop 13 over the terminal context (a CCtx as a CTy over 1).  To measure: 200-400.
+   M13 isoT (a map of types with a two-sided inverse is an IsEqT): at x the base's quasi-inverse
+       argument (Cor15's ef through QinvEq.QE), uniform in C, then S3a.  150-300.
+   M14 restr-eq, post-eq (S2.2, Rijke 13.4.1 through PSh(C)(1, -)): from the internal
+       equivalence to an equivalence on El(D, -): from the uniform centre of the fibre of f at
+       each point, the inverse on elements, C-natural by uniformity; the homotopies likewise.
+       150-300 each.  These are bridge statements, not D's; to assign.
+   Total (B): 900-1500 lines; M12-M14 are the uncertain ones.
+   (C) Not Theorem 29 but adjacent: the comparison <Dp, Dq> : D(G.A) -> DG.DA is an ISOMORPHISM
+   on the nose (Definition 10: a family of pairs with componentwise equations is a pair of
+   families; Sigma commutes with the weighted limit), 200-300 lines when the inner model's Sigma
+   (D-tilde B := (D B)[down][tau+]) or the paper's pseudomorphism form is wanted; the product
+   half of Lemma 11 (D(Pi A B) = Pi (D A) (D-tilde B)) for ModPi (S2.8), 300-500.  Neither is
+   needed for Theorem 29 or for the DS instance.
+
+5. Order.  M1, M2 (immediately; no dependency) -> M3, M4 against c2's Map <-> CMap or my own
+   conversion -> M5 (Unif pullback) -> M7 with desc1; desc2 when c2's invariance lands -> then
+   (B) M8-M11, M12-M14 to assign.  Negative tests: M1 (drop the levelwise structure of A from
+   lemma12F's input: must fail), M5 (break the CUnif pointwise condition), M7 (desc1 with the
+   wrong unit, eta (DT A) in place of Dm (eta A): must fail).
