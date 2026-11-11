@@ -701,3 +701,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CGrothBase has Tr0-T, contrTr-T at the total site of any IC. Verified by 4e:
   57 modules (CFibSeg, CGrothBase, 18 G-interface, 37 GCTrunc*) 57/0, 16.76 s.
   Tr stays R Tr0 U (ruling); Tr0-T -> R Tr0 U comparison available if needed.
+- 2026-11-11 U and R (c2): CRestr (fddd8e1a, restriction along F : Cs -> Ds)
+  and CRan (baacecc8, right Kan extension, strict adjunction on elements toR /
+  ofR / of-to / to-of), generic in F. Verified by 4e: 2/0. Next (c2): fibrancy
+  of R B (ContrOp half first), needs 45's CDisc committed.
