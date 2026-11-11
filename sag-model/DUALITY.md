@@ -628,3 +628,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   not Δ of the metatheory proposition ||Der||: eliminating a metatheory
   truncation into El(G, Id x y) (a set, not a Unit proposition) is the
   erratum's levelwise problem.
+- 2026-11-11 CONSTRAINT (canonicity-c2): without strict substitution
+  stability, the base truncation Tr0_G A has no code in U over a varying
+  context. Allowed: codes of CLOSED truncations (constant families, e.g. the
+  congruence Tr0_1(Δ Proof_x(t, u)) of A_x, by closedCode); truncations
+  never put in a universe (the axioms' outer truncations, the image in Q).
+  If a coded truncation over a varying context is ever needed, the dropped
+  strict stability (700-1,100 lines) must be reconsidered.
