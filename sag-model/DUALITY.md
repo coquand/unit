@@ -544,3 +544,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (titled "doc/duality-presheaf: base ring k"), which swept in c2's staged
   files; the content is c2's and checked. Lemma 16 uniform: canonicity-45
   instantiates Zig with the C-natural lines (desc2).
+- 2026-11-11 user decision: after Theorem 29 part (A), do part (B)
+  (instantiate T2's DS record from the concrete D: De-sub, hc-tau,
+  Modal-sub, D-eq, isoT, restr-eq, post-eq), then Prop 34 conditional on a
+  base truncation interface.
