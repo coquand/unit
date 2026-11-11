@@ -635,3 +635,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   never put in a universe (the axioms' outer truncations, the image in Q).
   If a coded truncation over a varying context is ever needed, the dropped
   strict stability (700-1,100 lines) must be reconsidered.
+- 2026-11-11 RULING (canonicity-4e): propositional extensionality for the
+  base universe (needed by Prop_U and the Voevodsky quotient) enters as ONE
+  module parameter PropExt, discharged generically from the internal
+  univalence UaContr (CwFUaEq); the remaining link is the base instance of
+  UaContr (S4, LEDGER row 7, unfinished). To be finished so the axioms carry
+  no hypothesis; canonicity-c2 measures S4 after Q.
