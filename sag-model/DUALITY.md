@@ -979,3 +979,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   fibrant), CTotL16m (YoMod, NMod). Lemma 59 (non-dependent, levelwise at each
   (y; u, f)): ~550 lines; Lemma 66 uniqueness componentwise from Lemma 14 +
   Q a set (no zig at Sp u), existence via tau_Q^{-1} . D f.
+- 2026-11-12 Lemma 59 (45): parametric (context, levelwise fibrant A, closed
+  modal set Q, local representation as data); internal equivalence read at the
+  point (internal Id, not metatheory equality). AXIOM STATEMENTS assigned to c2
+  after (K): G[X_n] := Σ (s : ΔShape_n) G^{k(s)} (shapes + coefficient
+  vectors, no inductive types in the model), ev by recursion on shapes, Pr,
+  Sp(u), G^{Sp u}, N_D^{Sp u}, the five propositions of S1-S2 + projectivity.
