@@ -534,3 +534,13 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Bridge packaging (III) by canonicity-c2 approved; Lemma 16's homotopy to
   be rebuilt internally (LineYC on the C-natural lines p, q, then PIdJ's
   transitivity / symmetry), removing the Cat / Inv uniformity item.
+- 2026-11-11 (canonicity-c2, verified by canonicity-4e): NF instance on
+  CFibCwF (b2467982); **bridge packaged** (574f6f29: CPshContrC, CPshFvC,
+  CPshFvC2, CPshS3C: S3a / S3b on CFibCwF in Prop13U's shape); **invariance**
+  (CwFKrInv: Kr invariant under Id / homotopy; CPshMapC: CMap <-> CEl;
+  CPshInvC: Inv, InvM, Zig). Attribution note: the invariance files
+  (CwFKrInv, CPshMapC, CPshInvC, the CPshFvC refactor, c2's All.seg /
+  COBAR.md hunks) were committed inside canonicity-4e's commit 376d6c93
+  (titled "doc/duality-presheaf: base ring k"), which swept in c2's staged
+  files; the content is c2's and checked. Lemma 16 uniform: canonicity-45
+  instantiates Zig with the C-natural lines (desc2).
