@@ -661,3 +661,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   RULING: at the total site identity types are Path types (generic), not
   Swan Id (whose poset version needs the conjunction cofibration); only the
   packaged pieces actually consumed at ∫C are re-parametrised.
+- 2026-11-11 USER DECISION: the interval-presheaf rewrite of CB is installed
+  in unit/core IN PLACE (this change only; core otherwise read-only).
+  Rewrite green in canonicity-c2's private copy (345 modules, 0 failed, no
+  file over 10 s; existing instances unchanged in meaning). GrothCB then
+  uses no terminal object. Swan's Id is available at the total site (the
+  DConj record through the projection, 45 lines), so the strict-J toolkit
+  ports; the Fib* / PosId* layer (17 files) is base-generic in substance and
+  becomes a segment FB over CB with shims.
