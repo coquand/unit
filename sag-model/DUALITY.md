@@ -836,3 +836,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   in check. Psi on HFib: specialised copy (constant base line), not a
   generic Psi12-22 (would restate ~2,500 lines); accepted by 4e. c2's QE1
   part 1 e5cf7c12 (setQi, setQ, setW).
+- 2026-11-11 PROP 13 AT THE TOTAL SITE (45): CTotP13o.prop13 : levelwise
+  EquivOp (U f) -> EquivOp (D f), any f between types over any total context;
+  d committed 286264ac, e-o (Psi on HFib, ~900 lines) in shared check.
+  Next (45): discharge CGops's inv with prop13, then (d)(i)-(v).
