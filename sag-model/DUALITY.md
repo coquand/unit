@@ -960,3 +960,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 (c2) CPreI committed (c2cb1990: preI generic in the closed map,
   cmpI). (K) internal: (U) 4-5 files, (E) 3, (K) 1; (U) stated for any
   presentation s, so (d)(2) reuses it.
+- 2026-11-11 RULING (4e): the zig and Lemma 16 for the CONCRETE C only
+  (constant objects: object equations refl), header says so; generic Lemma 16
+  (~1,300-1,700 lines) recorded as optional. Arith[vl] vs Arith[a] arities:
+  cheapest fix (instantiate Chains at Arith[a] if consumers allow, else
+  transport). CTotL16b (weights) checks privately.
