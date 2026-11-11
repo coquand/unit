@@ -571,3 +571,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   paper's Lemma 12 is natural in Γ; the stability of the produced fibration
   structures under substitution on the nose is not proved (not used
   downstream), which is why the record sits on the raw CwF.
+- 2026-11-11 user ruling: part (B) STOPPED (it cannot instantiate T2, see
+  the setoid finding above, so it is not needed). Remaining: Theorem 29
+  part (A) (canonicity-45: M6 uniform Lemma 16, M7; canonicity-c2: η-nat),
+  then Prop 34 conditional on one base truncation-interface premise
+  (canonicity-c2: design note first).
