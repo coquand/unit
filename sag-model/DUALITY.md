@@ -899,3 +899,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   sides as substitutions of ONE Id type. (2) Data as one Π over a closed Σ:
   the Σ's action is CMorX's restriction on the nose. Next (45): the inverse
   from CFreeEval.E, homotopies via elimPH / ext1H, QinvEq, (P1).
+- 2026-11-11 (45, fdc5d39e) HomT <-> CMorX codes complete (alpha, round trips;
+  shared 571/0). Remaining for the comparison's EquivOp: (U) uniqueness and
+  (E) existence, internal algebra in the poset fibrant CwF -> assigned to c2
+  after (c) and the h-set comparison. 45: plumbing (moveEq to codes, (P1),
+  hookup into Prop 13 / CGops) with the EquivOp as parameter, then (d).
