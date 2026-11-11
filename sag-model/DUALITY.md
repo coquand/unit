@@ -526,3 +526,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Id complete**: CPshIdJ4.PIdJ : SwanId IdJStr on CFibCwF, all eight fields,
   no parameters (3eeba328). So CFibCwF has Σ, Π, Id (Swan, with J). Rule
   learnt: module-instance arguments must be spelled literally.
+- 2026-11-11: Theorem 29 design approved (COBAR.md, 8508d980,
+  canonicity-45): part (A) M1-M7 (D-bar on CFibCwF, desc1 from Cor15U,
+  desc2 from the uniform Lemma 16), lex operation taken directly. Part (B)
+  (instantiating T2's DS record from the concrete D: the start of the §4
+  link) deferred for a user decision, together with Prop 34 (P1).
+  Bridge packaging (III) by canonicity-c2 approved; Lemma 16's homotopy to
+  be rebuilt internally (LineYC on the C-natural lines p, q, then PIdJ's
+  transitivity / symmetry), removing the Cat / Inv uniformity item.
