@@ -795,3 +795,19 @@ of the CwF of fibrant C-types by CPshNF.LineYC (module Ln, generic in the line),
 CPshInvC.Zig moves desc1 along q . p^-1; the one identification needed (D-bar tau_A at x is Lemma16's
 dTau x) is alEq, by the reading lemma CPshMapSub.MS.rd.  File times: CPshDesc 1.1 s, CPshL16U 6.4 s.
 Negative test: dropping the C-naturality step mwc in Ln.UC fails.
+
+## The base's propositional truncation (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 1)
+
+In the tree: core's CTrunc* (SAG 8.3: normal forms inc / seeded ext, a V-coded type, the seeded
+extension algebra = "proposition", a path between any two elements, recursor, initiality,
+functoriality, elimination into fibrant propositions) read at the PosFull base: 21 files are core's
+(symlinks), 9 are adapted copies deciding membership in a cofibration through the base's interface
+(CTruncRaw.dec / toL / ofL / decideL, decide-cong2).  They still use one definitional fact of the
+instance: Lands (pre h Q) g is Lands Q (h g) by computation.
+CTruncPush.Push[D, G, s, P].pushTy : the pushforward s_* P of a type along a map of contexts
+(families over the points of D above x.h, natural; restriction reindexes), push-eq, ov-irr, at.
+Plan (strict stability Tr0-nat is DROPPED, ruling 4e): (1) an extension algebra on s_* P from one on
+P (extend pointwise at the pulled-back sieve; natural by the algebra's uniformity); (2) the recursor
+of Tr_G A into s_* (Tr_D (A[s])) gives the lax comparison (Tr_G A)[s] -> Tr_D (A[s]); (3) fibrancy:
+s = evaluation of lines at an end, the image of the base point is the seed, the tube the partial
+element, the composite is ext; (4) packaging on FibCwF (inc, prop, elim with fibId's Id).
