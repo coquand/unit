@@ -867,3 +867,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   elimP3 (76816711). Parameters: pe, NF, the truncation instance only.
   Verified by 4e: 19 modules 19/0, 6.51 s. (A) idEq dropped. Next (c2): (C)
   contexts as types over 1, then r, D-modality of Tr, KL.
+- 2026-11-11 (45) internal Hom for the comparison: CHomT1-3 (private, check):
+  HomT = Σ (h : Fun Q_s Q_t) data, fibrant by construction. Remaining for G's
+  operations: (P3) HomT(J) = CMorX's M J, the inverse, the two homotopies,
+  QinvEq -> EquivOp, (P1) componentwise to G0: 1,200-1,800 lines, several
+  days. Then (d) for Lemma 59 / Prop 58.
