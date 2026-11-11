@@ -495,6 +495,12 @@ Not done: (III) packaging on CFibCwF (El of isContr / Kr on CFibCwF <=> centre +
 map as an element of the function type <=> CMap), which waits for canonicity-45's PIdJ; then the
 invariance statement for Lemma 16.
 
+## NF on CFibCwF (canonicity-c2, 2026-11-11)
+
+Checked: CPshNFC.NFCOf[C].nf, naive function extensionality in the CwF of uniformly fibrant C-types,
+in the argument shape of FibNF.nf (Pi = CPshPiFibC.FPiC.SPi, Id = CPshIdJ4.PIdJ): the raw
+CPshNF.NFC.nf applied to the function of h.  No new axioms.
+
 ## D is stable under C-substitution (canonicity-c2, 2026-11-11; for Theorem 29)
 
 Checked, no new axioms (fe; univ only through V's extensionality, in IdV-ext = CPshPi.propV-ext):
