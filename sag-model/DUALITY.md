@@ -715,3 +715,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Verified by 4e: 2/0 (CClsEqC 4.37 s). GFibIdCen 6 s at load 5, 14-15 s at
   load 30+: load, not a defect; no split for now. Next (45): CAlgX (ring
   structure of A_x, elim2 / set-ness as parameters), then HRing[nil], C's maps.
+- 2026-11-11 (c2) CTotR (e3730cbd): Lemma 9 for internal C, R of a levelwise
+  ContrOp is a ContrOp (contrR); elimP-at / elimP-el (24a14799); incS-sec /
+  atCls (846c9add). Verified by 4e: CTotR, CwFQuotElimP 2/0. Lines do NOT
+  commute strictly with R (only a currying iso); Fib half by componentwise
+  transfer of Comp e e' along rho (only the "to" direction), 400-500 lines.
