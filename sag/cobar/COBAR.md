@@ -806,8 +806,10 @@ functoriality, elimination into fibrant propositions) read at the PosFull base: 
 instance: Lands (pre h Q) g is Lands Q (h g) by computation.
 CTruncPush.Push[D, G, s, P].pushTy : the pushforward s_* P of a type along a map of contexts
 (families over the points of D above x.h, natural; restriction reindexes), push-eq, ov-irr, at.
-Plan (strict stability Tr0-nat is DROPPED, ruling 4e): (1) an extension algebra on s_* P from one on
-P (extend pointwise at the pulled-back sieve; natural by the algebra's uniformity); (2) the recursor
+CTruncPushAlg.PushOp[D, G, s, P].Op[kP].op : a seeded extension operation on s_* P from one on P
+(Side form: PS.side the projected side, kop, Sd.res = kside, Un.res = kunif); PushAlg.algebra in the
+algebra form of the recursor.  DONE.
+Plan (strict stability Tr0-nat is DROPPED, ruling 4e): (1) done, above; (2) the recursor
 of Tr_G A into s_* (Tr_D (A[s])) gives the lax comparison (Tr_G A)[s] -> Tr_D (A[s]); (3) fibrancy:
 s = evaluation of lines at an end, the image of the base point is the seed, the tube the partial
 element, the composite is ext; (4) packaging on FibCwF (inc, prop, elim with fibId's Id).
