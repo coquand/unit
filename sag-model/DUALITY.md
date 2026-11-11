@@ -921,3 +921,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   D cmp an equivalence (Prop 13), inv by CEqCen, G's + and * as constructions
   (CCmpY4.Ops.GO). Open inputs (c2): per y, al, eqal (from (K) via S3b), commH.
   Order (45): (d), Lemma 59, Cor 15 / Lemma 16 at yo F1, G's laws, 0 / 1.
+- 2026-11-11 RULING (4e) on (d): per copy, internal, with the tautological
+  algebra: HomT(x.u, y) ≃ Σ (h : HomT(x, y)) Sol_h(u), Sol_h(u) := Σ (v : Fun
+  (ΔFin m) Q_y) Π_j Id (ev_{u_j}(h∘g, v)) 0, ev_t by METATHEORY recursion on the
+  syntactic term t (u constant; no eliminator, any arity). Inverse by
+  injective (ElimP1 + term induction through the data) + merely surjective
+  (Tr0-chosen representatives, closed substitution packed over ΔTerm^{n+m}).
+  Comparison with Sp_G(u) (G's operations, τ) a separate later lemma.
