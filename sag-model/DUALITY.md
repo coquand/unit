@@ -778,3 +778,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   mechanical (restriction moves objects and chains); c2's estimate for the
   trivial half 2,000-2,500 lines; reports at level 0, the step, lemma12.
   Lemma 12 is needed for: G fibrant, D (Tr A) a proposition (modality), KL.
+- 2026-11-11 Lemma 12 at the total site, full size (c2): fibration half needs
+  Lemma 11 for lines at the total site (port of Lemma11L, 900-1,300 lines) +
+  CMove.Mv + fromFill (100-150); total both halves 3,000-3,800 lines, inside
+  the plan's step 4 (6,700-8,900). Accepted. First slice lemma CTotL12ch
+  checked privately.
