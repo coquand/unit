@@ -678,3 +678,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   versioning sag-model is a user decision. Quotient since: elimP (e8b45173),
   CwFUnpk (ad156e9b), relV-pt (c570073f). Next (c2): FB segment in sag/cobar,
   total-site instance, then Q's elim into h-sets, set-ness, elim2.
+- 2026-11-11 sag-model put under git (b6f6c6c2, user-approved; 205/0).
+- 2026-11-11 FB segment (c2, 8d96c7be): CFibSeg[a].FB over CB's fields + DConj;
+  18 G*.seg generated from the poset files (sag/cobar/tools/mkseg.py, ivrw.py;
+  16 unchanged proofs, 4 hand patches lands-pre in GCLocBound*). Total site:
+  GrothOf[C].FT gives fibCwF-T, fibPi-T, fibSig-T, Swan Id with strict J
+  fibId-T, funext nf-T, contr-T, for any internal C. Universe, univalence,
+  truncation NOT at the total site (transported by R). Verified by 4e: 20/0,
+  14.00 s. Poset files kept as source (no shims). Next (c2): item 5 (R, Tr :=
+  R Tr0 U, KL), plan first; then Q's elim into h-sets, set-ness, elim2.
