@@ -957,3 +957,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   along homotopies (in check). CTotL16a: Lemma 16 at the total site from the
   zig homotopy as a parameter (private). Only open piece of Lemma 16: the zig.
   c2: (U)/(E)/(K) internally (code-level copairing ruled out).
+- 2026-11-11 (c2) CPreI committed (c2cb1990: preI generic in the closed map,
+  cmpI). (K) internal: (U) 4-5 files, (E) 3, (K) 1; (U) stated for any
+  presentation s, so (d)(2) reuses it.
