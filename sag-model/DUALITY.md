@@ -783,3 +783,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CMove.Mv + fromFill (100-150); total both halves 3,000-3,800 lines, inside
   the plan's step 4 (6,700-8,900). Accepted. First slice lemma CTotL12ch
   checked privately.
+- 2026-11-11 Lemma 12 at the total site, level 0 complete (c2, f9f7deb1;
+  CTotL12ch, CTotL12a-f, ~1,000 lines, no 2-cell). Verified by 4e: 7/0.
+  Next: face pieces, Join, step; uniformity; lemma12.
