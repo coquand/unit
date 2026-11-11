@@ -738,3 +738,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   Object shape: 45's layered recursion vs 4e's flat form (predicate pairs
   S, T on Term with a propositional validity field; x.u = concatenation),
   45 to compare.
+- 2026-11-11 (c2) R preserves levelwise fibrations: CTotRFib..CTotRFib8
+  (34106a20 .. 252da550, ~1,050 lines), fibR / compR. Verified by 4e: 8/0.
+  (c2's 9745c32b dropped the CAlg* imports of All.seg; restored e0f6071c.)
+  OPEN (blocks the object shape): the relations R^{<j} and Valid need codes
+  (Prop_U) for truncations of small families over contexts at level a+; c2
+  says its truncation over such contexts is not small. Asked c2: is Tr0 over
+  representables strictly stable along cube maps (=> code former tr : U -> U)?
+  45 writes CObj / CRelI with the code of the truncation as a parameter.
+  c2's site files move to the vertical level l after CTotTr.
