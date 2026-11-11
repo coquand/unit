@@ -495,6 +495,21 @@ Not done: (III) packaging on CFibCwF (El of isContr / Kr on CFibCwF <=> centre +
 map as an element of the function type <=> CMap), which waits for canonicity-45's PIdJ; then the
 invariance statement for Lemma 16.
 
+## The S3 bridge on CFibCwF, packaged (canonicity-c2, 2026-11-11)
+
+Checked, no new axioms.  CF = CFibCwF with FPiC.SPi, FSigC.SSig, PIdJ, NFCOf.nf.
+  CPshContrC.ContrCOf[C]   toUT : El G (isContr G T) -> UTriv G T.1 ;  fromUT : the converse
+  CPshFvC.FvCOf[C].Fv[G, X, Y, r]   al : CMap[G, Y.1, X.1] (the map of r : El G (Fun G Y X), by bod r);
+                           e1v / e1eq: the end of the interface's fibre FVr is CPshFibC's a0C (celTr)
+  CPshFvC2.FvC2Of[C].Fv[G, X, Y, r].fvEq : (QP.FVr G X Y r).1 = CPshFibC.Fb[G, Y.1, X.1, al].FVc
+  CPshS3C.S3COf[C].S3[G, X, Y, r]
+     S3b : El G (Kr G X Y r) -> UTriv (G.X) HP[G, Y.1, X.1, al].PC     (EquivOp at each x + CUnif)
+     S3a : the converse
+Checker note: comparing the generic CwF's names (CwFFv.E at this instance) with the raw names of
+CPshFibC costs about 3 s per comparison; the steps are named so that each compares once, FVr is
+identified with FVd by the generic fvDef (not by unfolding), and the file is split in two.
+Not done: Lemma 16's uniform invariance (next).
+
 ## NF on CFibCwF (canonicity-c2, 2026-11-11)
 
 Checked: CPshNFC.NFCOf[C].nf, naive function extensionality in the CwF of uniformly fibrant C-types,
