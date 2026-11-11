@@ -508,7 +508,23 @@ Checked, no new axioms.  CF = CFibCwF with FPiC.SPi, FSigC.SSig, PIdJ, NFCOf.nf.
 Checker note: comparing the generic CwF's names (CwFFv.E at this instance) with the raw names of
 CPshFibC costs about 3 s per comparison; the steps are named so that each compares once, FVr is
 identified with FVd by the generic fvDef (not by unfolding), and the file is split in two.
-Not done: Lemma 16's uniform invariance (next).
+
+### Lemma 16's invariance: a uniform equivalence structure is invariant under an internal homotopy
+
+Checked, no new axioms.
+  CwFKrInv.KrInv (generic CwF layer)  krTr : El (Id(r , r')) -> El (Kr r) -> El (Kr r')  (CwFTr.trP in
+                           CwFQP's universal family K1);  krHt : the same from a homotopy, by NF
+  CPshMapC.MapCOf[C].M[G, Y, X]   toEl : CMap[G, Y, X] -> CEl[G.Y, X[p]] ;  ofEl : the converse (CPshFvC's al is
+                           ofEl (bod r)) ;  of-to , to-of ;  cmap-ext ;  base: AlOf, ElOf, pmap-ext
+  CPshInvC.InvCOf[C]
+     Inv[G, X, Y, r, r', H].inv : UTriv (G.X) HP[al r].PC -> UTriv (G.X) HP[al r'].PC,
+                           H an element of Id(bod r , bod r') over G.Y
+     InvM[G, X, Y, f, g].inv H : the same for CMaps f , g and H : CEl[G.Y, IdC[G.Y, X[p], toEl f, toEl g].IdT]
+     Zig[G, X, Y, f, m, g].inv Hq Hp : the zig-zag form, Hq : f ~ m, Hp : g ~ m (CwFPth.symM / transM)
+The homotopy is INTERNAL (an element of the C-level Id), so its C-naturality is part of the datum.
+For Lemma 16 (uniform form) it remains to instantiate Zig at f = D tau_A pulled back along tau_G,
+m = the middle map, g = tau_DAC, with Hq , Hp from CPshNF.LineYC at Lemma16's lines q , p (C-natural by
+LC.qC / LC.pC): canonicity-45.
 
 ## NF on CFibCwF (canonicity-c2, 2026-11-11)
 
