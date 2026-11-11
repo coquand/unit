@@ -962,3 +962,25 @@ Step 2b, the inputs of the presented algebra A_x for the Voevodsky quotient (CwF
   Waiting on c2: elim (closed shape, with beta), elim2, elimP (internal), set-ness of Qt, and the
   elimination of Dec (code t u) into a level-a+ proposition (ElimUp in CwF form); then the ring structure of
   A_x, its universal map, and C's morphisms.
+
+## The internal category C of presented algebras (canonicity-45, 2026-11-12; SIMPLIFIED.md step 3)
+
+Construction 39 at the base, the vertical level vl = a+ (CIntCat[a, a+].IC), objects constant.
+  CPresCode  PresCode[R, encK].presV : V[a] with Ix presV = CSyntax.Presentation on the nose (lists of
+             expressions coded as well-founded trees, as CExprCode codes expressions).
+  CMorX      MorOf[R, encK, pe, addO, mulO]: Fn[s, t].MorV J, the maps of algebras A_s -> A_t at the stage
+             J: the fibre of the internal Fun Q_s Q_t at J (a family over the slice with its naturality)
+             and Hoefer's data for add, mul (binary) and the constants phi r (zero = phi 0, one = phi 1;
+             neg = mul (phi (-1)) is derived), valued in the Id fibre AT THE IMAGE POINT, each with its
+             naturality.  Fn.res (the hom presheaf), Idn.idM', Cmp.cmp (composition, the naturality of
+             the composed data through tact-irr / subst lemmas), Fn.mExt (maps with equal families are
+             equal: the naturality parts form a proposition), Fn.rx / rxEq (reindexing along slice maps),
+             CmpF.cmpFP (composition of families).  addO / mulO are module parameters (CAlgX.Ops from
+             c2's elim2).
+  CMorXC     CatOf[..].IC : CIntCat[a, a+].IC: homD J I u y x = Fn[x, y].MorV J (C is the opposite of
+             the algebras), res u x = x, cart = identity, fact h = h; every law by mExt on families that
+             agree on the nose, idr / assoc moving the slice argument along comp-idl / comp-assoc (rxEq).
+             Negative test: idr / assoc with the slice transport replaced by refl fail.
+  Why the data live at the image point: the fibre of the internal type (o (h u) = h v) over the variable
+  h reads h through app, i.e. through transports along the context's act-id (PresheafPi.appFun), so
+  composition there is not strict; at the image point it is composition of functions.

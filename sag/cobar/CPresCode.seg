@@ -1,0 +1,60 @@
+-- CPresCode.seg (canonicity-45; SIMPLIFIED.md step 3): the V-code of the
+-- presentations of a ring R (CSyntax.Over[R].Presentation = (n : Nat) *
+-- List (Expr (Fin n))), the constant type of objects of the internal
+-- category of presented algebras.  Lists of expressions are coded as
+-- well-founded trees (WCode) as CExprCode codes the expressions: shapes
+-- nil (tag 0, no child) and cons (tag 1, payload an expression, one child).
+--   encList n : Enc (List (Expr (Fin n)))      encPres : Enc Presentation
+--   presV : V with Ix presV = Presentation on the nose
+-- No new axioms beyond the named premises (fe, through Encode).
+
+level l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W0 = V[l] ;
+module EN = Encode[l, l] ;
+open Ring[l] ;
+module SX = CSyntax[l] ;
+
+module PresCode (R : CRing) (encK : EN.Enc R.R) {
+ module P = SX.Over[R] ;
+ module ListCode (n : Nat) {
+  module EC = CExprCode[l].ExprCode[R, encK, n] ;
+  E : U l = EC.E ;
+  L : U l = List E ;
+  -- shapes: tag 0 nil (payload Top), tag 1 cons (payload an expression)
+  Pay1 : Nat -> U l = split { zero -> E ; suc t -> Empty } ;
+  Pay : Nat -> U l = split { zero -> Top ; suc t -> Pay1 t } ;
+  encPay1 : (t : Nat) -> EN.Enc (Pay1 t) = split { zero -> EC.encExpr ; suc t -> CExprCode[l].encEmpty } ;
+  encPay : (t : Nat) -> EN.Enc (Pay t) = split { zero -> CExprCode[l].encTop ; suc t -> encPay1 t } ;
+  Shape : U l = (t : Nat) * Pay t ;
+  encShape : EN.Enc Shape = EN.encSig Nat (\ t -> Pay t) (EN.encIx0 W0.natV) (\ t -> encPay t) ;
+  -- arities: 0 for nil, 1 (indexed by Top) for cons
+  Arity : Nat -> U l = split { zero -> Empty ; suc t -> Top } ;
+  encAr : (t : Nat) -> EN.Enc (Arity t) = split { zero -> CExprCode[l].encEmpty ; suc t -> CExprCode[l].encTop } ;
+  module WC = WCode[l].Build[Shape, \ s -> Arity s.1, encShape, \ s -> encAr s.1] ;
+
+  pack : L -> WC.Tree = split {
+   nil -> sup (zero, tt) (\ e -> absurd WC.Tree e) ;
+   cons p ps | r -> sup (suc zero, p) (\ u -> r) } ;
+  un1 : (t : Nat) -> Pay1 t -> (Arity (suc t) -> L) -> L = split {
+   zero -> \ p ch -> cons p (ch tt) ;
+   suc t -> \ e ch -> absurd L e } ;
+  un : (t : Nat) -> Pay t -> (Arity t -> L) -> L = split {
+   zero -> \ u ch -> nil ;
+   suc t -> un1 t } ;
+  unpack : WC.Tree -> L = split { sup s f | ih -> un s.1 s.2 ih } ;
+  roundtrip : (l0 : L) -> Id L (unpack (pack l0)) l0 = split {
+   nil -> refl nil ;
+   cons p ps | ih -> apH {L} {L} (\ w -> cons p w) ih } ;
+  pack-inj (l1 l2 : L) (p : Id WC.Tree (pack l1) (pack l2)) : Id L l1 l2 =
+   transH (symH (roundtrip l1)) (transH (apH {WC.Tree} {L} unpack p) (roundtrip l2)) ;
+  encList : EN.Enc L = EN.encInj L WC.Tree pack pack-inj WC.encoding ;
+ } ;
+ encPres : EN.Enc P.Presentation = EN.encSig Nat (\ n -> P.Equations (SX.Fin n)) (EN.encIx0 W0.natV) (\ n -> ListCode[n].encList) ;
+ presV : W0.V = EN.codeOf P.Presentation encPres ;
+ -- the members of the code are the presentations
+ same (x : W0.Ix presV) : P.Presentation = x ;
+} ;
