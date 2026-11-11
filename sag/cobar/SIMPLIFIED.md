@@ -92,3 +92,28 @@ every A_x at level a+?
 (Q3) Is anything in step 4 still needed beyond what is listed (e.g. for the
 fibres of G^{Sp u} or for the ring structure of G)?
 (Q4) The sizes of 1–5.
+
+## Corrections after criticism (canonicity-c2, accepted)
+
+- KL's hypothesis "levelwise inhabited" means: an ELEMENT of U P over U Γ at
+  each x of C, natural in the cube direction (internal to the base), not a
+  bare choice of points. No naturality in C. P levelwise fibrant; no
+  hypothesis on Γ.
+- Lemma 12 gives a section of D P over D Γ; pull back along τ_Γ and use a
+  C-natural map (D P)[τ_Γ] → P. For P = R B that map is explicit
+  (r: read at the chain of length 0, weight 1, at the identity). So
+  Lemma 31 / D-modality of P is not used.
+- The axioms' propositions are all truncations, with Tr A := R (Tr0 (U A)).
+  A levelwise element of Tr0 gives a global section of R B by the
+  adjunction El(U Γ, B) = El(Γ, R B) alone. KL is then the JUSTIFICATION
+  that R Tr0 U is the truncation of the inner model (elimination into
+  modal propositions); it is proved, but it is not on the axioms'
+  critical path.
+- Levelwise surjectivity of the base quotient is an element of Tr0 over
+  the base context, natural in cubes (the Voevodsky image gives exactly
+  this), never a metatheoretic choice.
+- Step 4 corrected: Lemma 16 not needed; Lemma 12 (both halves) and Lemma
+  14 needed; also needed: R at ∫C with the adjunction, fibrancy and r; D on
+  finite products strictly and on maps (G's operations, G^n); D preserves
+  h-sets (Lemma 12 trivial half on path objects); Π at ∫C for Lemmas
+  54 / 59.
