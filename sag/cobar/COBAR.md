@@ -852,3 +852,26 @@ its decoding (CClosedProp).  Ring.seg is symlinked from sag/polynomial.  The pil
 "Id is a proposition" internally (El G (Id_{Id x y} p q)); its external form was unsatisfiable in the
 model (4e), the same mistake as reading a metatheory truncation into El G (Id x y).  Check times all
 below 0.3 s; the negative tests of these files are the checker's own verification of injectivity.
+
+## The Voevodsky quotient (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 3): design, approved by 4e
+
+Done toward it: CwFPropU (isProp, PropU, PropExtTy = the hypothesis, a module parameter), CwFPropExt.propExt
+(the hypothesis from UaContr, generic; base instance of UaContr = S4, open), CwFTrunc.TruncAt (truncation
+without stability: Tr, inc / incS, trProp, elim), and for canonicity-45's relation the coded closed truncation
+(CClosedCode, CClosedProp, CTruncLevel.ElimUp).
+Plan, generic in a CwF with Pi, Sigma, Swan Id, NF, Un, parameters pe : PropExtTy and tr : TruncAt:
+  data  A : Ty G, r : El G (Fun G A PA) with PA = Fun G A (PropU G) (the relation, curried), and refl / sym /
+        trans of the decoded relation as elements.
+  K = G.PA (variable P); over K.A[p]: ra = app (wkF (wkF r)) q, Pv = the weakened variable;
+  S = Sigma (A[p]) (Id (PA weakened) ra Pv) over K;   Q = Sigma G PA (tr.Tr K S).
+  ONE truncation over ONE context K; all uses substitute that type (inc is an element over K.S).
+  cls : El (G.A) Q[p] (pair of ra0 = app (wkF r) q and inc at (a , refl), through Sig-ov and the substitution
+        extS p ra0 : G.A -> K);
+  cls-eq (pe pointwise + NF + trProp), eff (Id of first components applied at b, transport in Dec, refl of R),
+  surj (a second instance of Tr, over G.Q), isSetQ by the SHORT route (4e): Q embeds in PA since its second
+  component is a proposition, so only "PropU is a set" (Hedberg-style, from pe only) and Pi are needed;
+  elim into h-sets with elim (cls a) = f a as an Id, elim2, elimP (dependent, into propositions over G.Q).
+  Base instance of TruncAt: CTruncCwF.TrOf (trProp from contrTr by "two elements of a contractible type are
+  equal", CwFCC; elim's hypothesis from the Id form to core's Path form by FibHt.YH).
+Files planned: CwFQuot (definitions, cls, cls-eq, eff), CwFQuotSet, CwFQuotElim, CTruncAtBase.  700-1,000 lines.
+After Q and before GrothCB: measure S4's remaining assembly (4e), since the user wants no hypotheses.
