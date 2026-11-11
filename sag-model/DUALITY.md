@@ -603,3 +603,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   or fp over Z, by constructive Gröbner bases). The general case is
   jonas.pdf's internal C, which avoids metatheory set quotients. Route
   choice pending with the user.
+- 2026-11-11 USER DECISION: route R2 (jonas.pdf's internal C, the general
+  case), to check jonas.pdf's main results. h-set quotients in the base are
+  to be CONSTRUCTED from propositional truncation (SAG.pdf §8.3, core's
+  CTrunc*, no HIT) and replacement / a universe of propositions
+  (Voevodsky's impredicative quotient), not assumed. First steps:
+  canonicity-c2 builds the base truncation (BaseTrunc a-d);
+  canonicity-45 revises INTERNAL-C.md for R2 with no premise record.
