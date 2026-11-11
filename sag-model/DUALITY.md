@@ -610,3 +610,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (Voevodsky's impredicative quotient), not assumed. First steps:
   canonicity-c2 builds the base truncation (BaseTrunc a-d);
   canonicity-45 revises INTERNAL-C.md for R2 with no premise record.
+- 2026-11-11: user approved doc/sag-presheaf-plan (7afb66c0) and asked
+  canonicity-4e to proceed AUTONOMOUSLY. Simplified plan
+  sag/cobar/SIMPLIFIED.md (2f0fc081): axioms as propositions + Key Lemma
+  (no Prop 13 / 17 / Theorem 29), quotient-free duality (no <u>_{T/G}, no
+  second universe step), projectivity at a fixed context, iterated
+  presentations as objects of C. Under critique by canonicity-45 / -c2.
