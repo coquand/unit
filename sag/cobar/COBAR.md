@@ -594,3 +594,31 @@ Options for the decision.
  Recommendation: (P3) first (it is a prerequisite of the others and waits only for CPshIdJ), then (P1).
  Dependencies on other sessions: CPshIdJ (canonicity-45) for 2(a); whether D's stability under
  C-substitution exists (to ask canonicity-45, the author of Cobar.seg).
+
+J and the Id structure of the CwF of fibrant C-types (canonicity-45,
+2026-11-11).  `CPshJNatT.seg`: `JNatTOf[C].JNatT[Gc, Dc, CM, y, x, f, jd',
+jd, prEq, lamEq, psiEq, kC', kC, cu, d', d, dEq].jnat` — J commutes with
+the C-action, generic: a C-context Dc over Gc, a C-type CM over Dc, J-data
+(PosJNat.JD) at y and x commuting with Dc.act y x f, compositions with the
+body of UComp at (y, x, f) in place of PosJNat.JNatG's kopMv, starts with
+dEq; the type map CM.tE over Dc.act replaces JNatG's substitution.
+`CPshIdJ4.seg`: `IdJOf[C].PIdJ : CwFId.SwanId[l+, CFibCwF].IdJStr`, from
+twelve small files: Ja (IdT := (IdC.IdT, idCl), IdT-nat := INat.law, rfl :=
+reflC, DRC = SwanId.Der of the record, the derived context at x is
+PosIdYJ's DY on the nose), Jb (the record's centre at x = FibIdCen.DR.cen,
+FibIdRd.elTr with one path of codes on both sides), Jc / Jc2 (the record's
+upS at x = DR.upS, both the lift at a coerced second component, three
+one-time coercions into the base's spelling), Jd (PosIdYJ's J-data commute
+with the C-action: prEq by A.tE-pt, lamEq by readings through io / oi,
+psiEq), J1 (J := PosJNat.JJ at the record's context for the Yoneda data,
+the start transported once to PosIdYJ's centre; el-nat by JNatT; J-beta by
+JJ.beta read back along cenEqY with FibId.betaTr), J2 (rfl-nat: RflNat.pt
+at each x; cen-nat: CN.ptR at each x through cenEqC / upSEqC), J3 / J3p /
+J3b / J3l / J3c (J-nat: PosJNat.JNatG at each x for the record's upS read
+at x, with the base's JNt commutations restated once each; the J's of
+JNatG are the instance's by refl).  Rules learnt (ten-second rule): never
+rely on unfolding inside module-instance arguments — spell them literally
+(no local abbreviations: `(DRC.Dx G A a0).ob x`, the substituted motive
+written out) so that two instances meet syntactically; every change of
+spelling is one opaque lemma (2–6 s each) and a file holds at most two.
+Negative test: J-nat's pointwise step by refl fails.
