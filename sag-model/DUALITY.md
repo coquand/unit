@@ -916,3 +916,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   adjusted: Hedberg-Kraus (CwFHed4) with R = D(Id_A) pulled back (a
   proposition by DP4, reflexive, one map R -> Id_{D A}); D(Id_A) and Id_{D A}
   are not isomorphic. 3-4 files.
+- 2026-11-11 (45) plumbing for G's operations: (P1) CCopy/2/3 (0d621fab,
+  shared 582/0: G0 EquivOp from one per presentation copy), CCmpY..4 in check:
+  D cmp an equivalence (Prop 13), inv by CEqCen, G's + and * as constructions
+  (CCmpY4.Ops.GO). Open inputs (c2): per y, al, eqal (from (K) via S3b), commH.
+  Order (45): (d), Lemma 59, Cor 15 / Lemma 16 at yo F1, G's laws, 0 / 1.
