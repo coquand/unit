@@ -767,3 +767,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   ab20a0e4, 625 lines); lines commute with U (rho is a bijection, via 45's
   CDisc factorisation). Verified by 4e: 5/0. Next (c2): CTotTr (Tr := R Tr0 U
   fibrant, unit, proposition; contraction over G.Tr A via the counit).
+- 2026-11-11 (c2, 0cbcbc44) the model's truncation: CTotTr.Tr = R Tr0 U as a
+  type of fibCwF-T, contrTr (a proposition, via the seeded extension operation
+  transferred through R, CTotRSeed), inc, sec (levelwise element -> element).
+  Verified by 4e: 2/0. Next (c2, (vi)): (a) r and D-modality of Tr A; (b) KL;
+  (c) Prop 34 right-to-left as the eliminator into D-modal propositions.
