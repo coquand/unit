@@ -967,3 +967,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   transport). CTotL16b (weights) checks privately.
 - 2026-11-11 (c2) (K): reading lemma CCmpU1-7 checks privately; remaining (U)
   4-6 files, (E) 3, (K) 1-2 (HomT a set, generic in s, t): 9-11 files.
+- 2026-11-11 LEMMA 16 AT THE TOTAL SITE (45, concrete C, private, shared check
+  running): CTotL16a-l, lemma16 : EquivOp of tau_{(D A)[tau_G]}, no parameter
+  left (zig built). C-generic parts (16a, c-e) separated from concrete ones
+  (16f-l). Next (45): instances at yo F1 and Delta N, non-dependent Lemma 66 /
+  67, Lemma 59 for G^{Sp u} and N_D^{Sp u} (sizes first).
