@@ -846,3 +846,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   form of Prop 13 suffices everywhere (G's ops, Lemma 59, Cor 15 / Lemma 16).
   Split: c2 does (C), (A) right after QE1 (before r / modality / KL); 45 does
   (D) (CEqCen, checks privately), (B), inv, then (d)(i)-(v).
+- 2026-11-11 (B) re-estimated 500-800 lines (45): universal property of the
+  free algebras at every stage (evaluation by elim1, Höfer data by ElimP3 /
+  ElimP1, uniqueness by term induction on classes). 4e: state it for F_n,
+  n metatheoretic, if cheap (gives F0, F1, F2 and (d)'s substitution maps).
