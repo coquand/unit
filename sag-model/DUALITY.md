@@ -850,3 +850,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   free algebras at every stage (evaluation by elim1, Höfer data by ElimP3 /
   ElimP1, uniqueness by term induction on classes). 4e: state it for F_n,
   n metatheoretic, if cheap (gives F0, F1, F2 and (d)'s substitution maps).
+- 2026-11-11 Prop 13 committed (45, 02e9b8ce; shared 530/0). Verified by 4e:
+  CTotP13* 15/0, 17.84 s. 45 now: universal property of F_n (valuations Fin n
+  -> A_x, Höfer data, uniqueness).
