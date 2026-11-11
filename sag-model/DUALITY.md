@@ -974,3 +974,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   67, Lemma 59 for G^{Sp u} and N_D^{Sp u} (sizes first).
 - 2026-11-11 Lemma 16 committed (45, dbd38e08, shared 622/0). Verified by 4e:
   CTotL16a-l, CTotC15, CPreI 14/0.
+- 2026-11-12 G AND N_D ARE D-MODAL (45, fb624f08, shared 626/0): CCopy4-6
+  (per-copy assembly of fibration structures, generic; U(yo F1) levelwise
+  fibrant), CTotL16m (YoMod, NMod). Lemma 59 (non-dependent, levelwise at each
+  (y; u, f)): ~550 lines; Lemma 66 uniqueness componentwise from Lemma 14 +
+  Q a set (no zig at Sp u), existence via tau_Q^{-1} . D f.
