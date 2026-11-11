@@ -40,12 +40,19 @@ module CB {
   ----------------------------------------------------------------------
   -- the interval and its end points
 
-  Iv : Ob ;
+  -- the interval, as a presheaf: IvP X is "the maps from X to [1]" (at a
+  -- base where [1] is an object, Hom X [1]); ivA is restriction
+  ivV (X : Ob) : VB.V ;
+  IvP (X : Ob) : U a = VB.Ix (ivV X) ;
+  ivA (Y X : Ob) (g : Hom Y X) (i : IvP X) : IvP Y ;
+  ivA-id (X : Ob) (i : IvP X) : Id (IvP X) (ivA X X (idH X) i) i ;
+  ivA-comp (L K J : Ob) (g : Hom K J) (h : Hom L K) (i : IvP J)
+    : Id (IvP L) (ivA L K h (ivA K J g i)) (ivA L J (compH L K J g h) i) ;
   IPt : U a ;
   e0 : IPt ;
   e1 : IPt ;
-  ptH (X : Ob) (e : IPt) : Hom X Iv ;
-  ptH-nat (Y X : Ob) (f : Hom Y X) (e : IPt) : Id (Hom Y Iv) (compH Y X Iv (ptH X e) f) (ptH Y e) ;
+  ptH (X : Ob) (e : IPt) : IvP X ;
+  ptH-nat (Y X : Ob) (f : Hom Y X) (e : IPt) : Id (IvP Y) (ivA Y X f (ptH X e)) (ptH Y e) ;
 
   -- the two ends of a direction d: d = true goes from e0 to e1 (one home:
   -- the line layer and the cylinder (Cyl) both use these)
@@ -71,10 +78,12 @@ module CB {
   empty-lands (W X : Ob) (f : Hom W X) (i : Lands W X (emptyS X) f) : Empty ;
   topS (X : Ob) : Phi X ;
   top-lands (W X : Ob) (f : Hom W X) : Lands W X (topS X) f ;
-  ptS (e : IPt) : Phi Iv ;
-  lands-pt (W : Ob) (e : IPt) (g : Hom W Iv) (i : Lands W Iv (ptS e) g) : Id (Hom W Iv) g (ptH W e) ;
-  pt-lands (W : Ob) (e : IPt) : Lands W Iv (ptS e) (ptH W e) ;
-  pt-disj (W : Ob) (g : Hom W Iv) (i : Lands W Iv (ptS e0) g) (i' : Lands W Iv (ptS e1) g) : Empty ;
+  -- endS W i e: the sieve of W where the coordinate i is the point e
+  endS (W : Ob) (i : IvP W) (e : IPt) : Phi W ;
+  end-pre (Y X : Ob) (g : Hom Y X) (i : IvP X) (e : IPt) : Id (Phi Y) (pre Y X g (endS X i e)) (endS Y (ivA Y X g i) e) ;
+  lands-pt (W : Ob) (e : IPt) (g : IvP W) (i : Lands W W (endS W g e) (idH W)) : Id (IvP W) g (ptH W e) ;
+  pt-lands (W : Ob) (e : IPt) : Lands W W (endS W (ptH W e) e) (idH W) ;
+  pt-disj (W : Ob) (g : IvP W) (i : Lands W W (endS W g e0) (idH W)) (i' : Lands W W (endS W g e1) (idH W)) : Empty ;
   -- decidability on the identity
   allS (X : Ob) (Q : Phi X) : Bool ;
   allS-sound (X : Ob) (Q : Phi X) (h : Id Bool (allS X Q) true) : Lands X X Q (idH X) ;
@@ -113,6 +122,20 @@ module CB {
   lands-sub (W X : Ob) (Q Q' : Phi X) (e : Id (Phi X) Q Q') (f : Hom W X) (i : Lands W X Q f) : Lands W X Q' f =
     Paths[a+].substH (\ R -> Lands W X R f) e i ;
 
+  -- landing in an end sieve: the restricted coordinate is the point
+  lands-endS (Y X : Ob) (i : IvP X) (e : IPt) (g : Hom Y X) (l : Lands Y X (endS X i e) g) : Lands Y Y (endS Y (ivA Y X g i) e) (idH Y) =
+    lands-sub Y Y (pre Y X g (endS X i e)) (endS Y (ivA Y X g i) e) (end-pre Y X g i e) (idH Y)
+      (pre-lands Y Y X g (endS X i e) (idH Y)
+         (lands-eq Y X (endS X i e) g (compH Y Y X g (idH Y)) (Paths[a+].symH (comp-idr Y X g)) l)) ;
+  lands-end (Y X : Ob) (i : IvP X) (e : IPt) (g : Hom Y X) (l : Lands Y X (endS X i e) g) : Id (IvP Y) (ivA Y X g i) (ptH Y e) =
+    lands-pt Y e (ivA Y X g i) (lands-endS Y X i e g l) ;
+  end-lands (Y X : Ob) (i : IvP X) (e : IPt) (g : Hom Y X) (p : Id (IvP Y) (ivA Y X g i) (ptH Y e)) : Lands Y X (endS X i e) g =
+    lands-eq Y X (endS X i e) (compH Y Y X g (idH Y)) g (comp-idr Y X g)
+      (lands-pre Y Y X g (endS X i e) (idH Y)
+         (lands-sub Y Y (endS Y (ivA Y X g i) e) (pre Y X g (endS X i e)) (Paths[a+].symH (end-pre Y X g i e)) (idH Y)
+            (Paths[a+].substH (\ k -> Lands Y Y (endS Y k e) (idH Y)) (Paths[a+].symH p) (pt-lands Y e)))) ;
+
+
   ----------------------------------------------------------------------
   -- forall along the interval, on the path object: a line of sieves at X
   -- (a natural family of sieves over (f , j) : W -> X * Iv, i.e. a sieve
@@ -120,13 +143,13 @@ module CB {
   -- holds everywhere.  The forall itself is the parameter segment Fa.
 
   PhiL (X : Ob) : U a =
-    (L : (W : Ob) -> Hom W X -> Hom W Iv -> Phi W)
-    * ((V W : Ob) (g : Hom V W) (f : Hom W X) (j : Hom W Iv)
-       -> Id (Phi V) (pre V W g (L W f j)) (L V (compH V W X f g) (compH V W Iv j g))) ;
+    (L : (W : Ob) -> Hom W X -> IvP W -> Phi W)
+    * ((V W : Ob) (g : Hom V W) (f : Hom W X) (j : IvP W)
+       -> Id (Phi V) (pre V W g (L W f j)) (L V (compH V W X f g) (ivA V W g j))) ;
 
   -- L holds at every (V , f g , j)
   HoldsL (X : Ob) (L : PhiL X) (W : Ob) (f : Hom W X) : U a =
-    (V : Ob) (g : Hom V W) (j : Hom V Iv) -> Lands V V (L.1 V (compH V W X f g) j) (idH V) ;
+    (V : Ob) (g : Hom V W) (j : IvP V) -> Lands V V (L.1 V (compH V W X f g) j) (idH V) ;
 
   -- the line of a sieve of X, constant along the interval
   constL (X : Ob) (Q : Phi X) : PhiL X = (\ W f j -> pre W X f Q, \ V W g f j -> pre-comp V W X g f Q) ;
@@ -135,7 +158,7 @@ module CB {
   restrL (Y X : Ob) (h : Hom Y X) (L : PhiL X) : PhiL Y =
     (\ W f j -> L.1 W (compH W Y X h f) j,
      \ V W g f j -> Paths[a+].transH (L.2 V W g (compH W Y X h f) j)
-                      (Paths[a+].apH (\ k -> L.1 V k (compH V W Iv j g)) (comp-assoc V W Y X h f g))) ;
+                      (Paths[a+].apH (\ k -> L.1 V k (ivA V W g j)) (comp-assoc V W Y X h f g))) ;
 
   -- the sieves of an object form a set (local Hedberg: two sieves landing
   -- the same maps are equal, phi-ext), so a line of sieves is determined by
@@ -158,25 +181,25 @@ module CB {
       (\ W f i -> i, \ W f i -> i), \ Q' r -> phi-ext X Q Q' r.1 r.2].hedberg ;
 
   -- a line of sieves is determined by its sieves
-  phiL-ext (X : Ob) (L L' : PhiL X) (q : (W : Ob) (f : Hom W X) (j : Hom W Iv) -> Id (Phi W) (L.1 W f j) (L'.1 W f j)) : Id (PhiL X) L L' =
-    Prelude[a+].Sigma-eq ((W : Ob) -> Hom W X -> Hom W Iv -> Phi W)
-      (\ MM -> (V W : Ob) (g : Hom V W) (f : Hom W X) (j : Hom W Iv)
-               -> Id (Phi V) (pre V W g (MM W f j)) (MM V (compH V W X f g) (compH V W Iv j g)))
+  phiL-ext (X : Ob) (L L' : PhiL X) (q : (W : Ob) (f : Hom W X) (j : IvP W) -> Id (Phi W) (L.1 W f j) (L'.1 W f j)) : Id (PhiL X) L L' =
+    Prelude[a+].Sigma-eq ((W : Ob) -> Hom W X -> IvP W -> Phi W)
+      (\ MM -> (V W : Ob) (g : Hom V W) (f : Hom W X) (j : IvP W)
+               -> Id (Phi V) (pre V W g (MM W f j)) (MM V (compH V W X f g) (ivA V W g j)))
       L.1 L'.1 L.2 L'.2
-      (Axioms[a+].FunExtLemmas[fe @(a+)].funext Ob (\ W -> Hom W X -> Hom W Iv -> Phi W) L.1 L'.1 (\ W ->
-         Axioms[a+].FunExtLemmas[fe @(a+)].funext (Hom W X) (\ f -> Hom W Iv -> Phi W) (L.1 W) (L'.1 W) (\ f ->
-           Axioms[a+].FunExtLemmas[fe @(a+)].funext (Hom W Iv) (\ j -> Phi W) (L.1 W f) (L'.1 W f) (\ j -> q W f j))))
-      (Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi Ob (\ V -> (W : Ob) (g : Hom V W) (f : Hom W X) (j : Hom W Iv)
-            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g))) (\ V ->
-       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi Ob (\ W -> (g : Hom V W) (f : Hom W X) (j : Hom W Iv)
-            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g))) (\ W ->
-       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (Hom V W) (\ g -> (f : Hom W X) (j : Hom W Iv)
-            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g))) (\ g ->
-       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (Hom W X) (\ f -> (j : Hom W Iv)
-            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g))) (\ f ->
-       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (Hom W Iv) (\ j
-            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g))) (\ j ->
-         isSet-Phi V (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (compH V W Iv j g)))))))) ;
+      (Axioms[a+].FunExtLemmas[fe @(a+)].funext Ob (\ W -> Hom W X -> IvP W -> Phi W) L.1 L'.1 (\ W ->
+         Axioms[a+].FunExtLemmas[fe @(a+)].funext (Hom W X) (\ f -> IvP W -> Phi W) (L.1 W) (L'.1 W) (\ f ->
+           Axioms[a+].FunExtLemmas[fe @(a+)].funext (IvP W) (\ j -> Phi W) (L.1 W f) (L'.1 W f) (\ j -> q W f j))))
+      (Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi Ob (\ V -> (W : Ob) (g : Hom V W) (f : Hom W X) (j : IvP W)
+            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j))) (\ V ->
+       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi Ob (\ W -> (g : Hom V W) (f : Hom W X) (j : IvP W)
+            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j))) (\ W ->
+       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (Hom V W) (\ g -> (f : Hom W X) (j : IvP W)
+            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j))) (\ g ->
+       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (Hom W X) (\ f -> (j : IvP W)
+            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j))) (\ f ->
+       Axioms[a+].FunExtLemmas[fe @(a+)].isProp-Pi (IvP W) (\ j
+            -> Id (Phi V) (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j))) (\ j ->
+         isSet-Phi V (pre V W g (L'.1 W f j)) (L'.1 V (compH V W X f g) (ivA V W g j)))))))) ;
 
   ----------------------------------------------------------------------
   -- finite unions: one sieve
@@ -219,7 +242,7 @@ module CB {
            (lands-forall W Y (restrL Y X h L) f i V g j)))) ;
 
   -- forall of an everywhere-empty line is empty
-  forall-empty (X : Ob) (L : PhiL X) (eE : (W : Ob) (f : Hom W X) (i : Hom W Iv) -> Id (Phi W) (L.1 W f i) (emptyS W))
+  forall-empty (X : Ob) (L : PhiL X) (eE : (W : Ob) (f : Hom W X) (i : IvP W) -> Id (Phi W) (L.1 W f i) (emptyS W))
     : Id (Phi X) (forallS X L) (emptyS X) =
     is-empty X (forallS X L) (\ W f i -> empty-lands W W (idH W)
       (lands-sub W W (L.1 W (compH W W X f (idH W)) (ptH W e0)) (emptyS W) (eE W (compH W W X f (idH W)) (ptH W e0)) (idH W)
@@ -239,27 +262,27 @@ module CB {
   ----------------------------------------------------------------------
   -- the connections of [1] (min / max): cI d W i j
 
-  cI (d : Bool) (W : Ob) (i j : Hom W Iv) : Hom W Iv ;
-  cI-nat (d : Bool) (V W : Ob) (g : Hom V W) (i j : Hom W Iv)
-    : Id (Hom V Iv) (compH V W Iv (cI d W i j) g) (cI d V (compH V W Iv i g) (compH V W Iv j g)) ;
+  cI (d : Bool) (W : Ob) (i j : IvP W) : IvP W ;
+  cI-nat (d : Bool) (V W : Ob) (g : Hom V W) (i j : IvP W)
+    : Id (IvP V) (ivA V W g (cI d W i j)) (cI d V (ivA V W g i) (ivA V W g j)) ;
   -- the end laws, one per direction (an instance states them without
   -- src / tgt, which are defined here)
-  cI-jsrc-t (W : Ob) (i : Hom W Iv) : Id (Hom W Iv) (cI true W i (ptH W e0)) (ptH W e0) ;
-  cI-jsrc-f (W : Ob) (i : Hom W Iv) : Id (Hom W Iv) (cI false W i (ptH W e1)) (ptH W e1) ;
-  cI-jtgt-t (W : Ob) (i : Hom W Iv) : Id (Hom W Iv) (cI true W i (ptH W e1)) i ;
-  cI-jtgt-f (W : Ob) (i : Hom W Iv) : Id (Hom W Iv) (cI false W i (ptH W e0)) i ;
-  cI-isrc-t (W : Ob) (j : Hom W Iv) : Id (Hom W Iv) (cI true W (ptH W e0) j) (ptH W e0) ;
-  cI-isrc-f (W : Ob) (j : Hom W Iv) : Id (Hom W Iv) (cI false W (ptH W e1) j) (ptH W e1) ;
-  cI-itgt-t (W : Ob) (j : Hom W Iv) : Id (Hom W Iv) (cI true W (ptH W e1) j) j ;
-  cI-itgt-f (W : Ob) (j : Hom W Iv) : Id (Hom W Iv) (cI false W (ptH W e0) j) j ;
+  cI-jsrc-t (W : Ob) (i : IvP W) : Id (IvP W) (cI true W i (ptH W e0)) (ptH W e0) ;
+  cI-jsrc-f (W : Ob) (i : IvP W) : Id (IvP W) (cI false W i (ptH W e1)) (ptH W e1) ;
+  cI-jtgt-t (W : Ob) (i : IvP W) : Id (IvP W) (cI true W i (ptH W e1)) i ;
+  cI-jtgt-f (W : Ob) (i : IvP W) : Id (IvP W) (cI false W i (ptH W e0)) i ;
+  cI-isrc-t (W : Ob) (j : IvP W) : Id (IvP W) (cI true W (ptH W e0) j) (ptH W e0) ;
+  cI-isrc-f (W : Ob) (j : IvP W) : Id (IvP W) (cI false W (ptH W e1) j) (ptH W e1) ;
+  cI-itgt-t (W : Ob) (j : IvP W) : Id (IvP W) (cI true W (ptH W e1) j) j ;
+  cI-itgt-f (W : Ob) (j : IvP W) : Id (IvP W) (cI false W (ptH W e0) j) j ;
 
-  cI-jsrc : (d : Bool) (W : Ob) (i : Hom W Iv) -> Id (Hom W Iv) (cI d W i (ptH W (src d))) (ptH W (src d)) = split {
+  cI-jsrc : (d : Bool) (W : Ob) (i : IvP W) -> Id (IvP W) (cI d W i (ptH W (src d))) (ptH W (src d)) = split {
     true -> cI-jsrc-t ; false -> cI-jsrc-f } ;
-  cI-jtgt : (d : Bool) (W : Ob) (i : Hom W Iv) -> Id (Hom W Iv) (cI d W i (ptH W (tgt d))) i = split {
+  cI-jtgt : (d : Bool) (W : Ob) (i : IvP W) -> Id (IvP W) (cI d W i (ptH W (tgt d))) i = split {
     true -> cI-jtgt-t ; false -> cI-jtgt-f } ;
-  cI-isrc : (d : Bool) (W : Ob) (j : Hom W Iv) -> Id (Hom W Iv) (cI d W (ptH W (src d)) j) (ptH W (src d)) = split {
+  cI-isrc : (d : Bool) (W : Ob) (j : IvP W) -> Id (IvP W) (cI d W (ptH W (src d)) j) (ptH W (src d)) = split {
     true -> cI-isrc-t ; false -> cI-isrc-f } ;
-  cI-itgt : (d : Bool) (W : Ob) (j : Hom W Iv) -> Id (Hom W Iv) (cI d W (ptH W (tgt d)) j) j = split {
+  cI-itgt : (d : Bool) (W : Ob) (j : IvP W) -> Id (IvP W) (cI d W (ptH W (tgt d)) j) j = split {
     true -> cI-itgt-t ; false -> cI-itgt-f } ;
 
   ----------------------------------------------------------------------
