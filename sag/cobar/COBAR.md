@@ -984,3 +984,23 @@ Construction 39 at the base, the vertical level vl = a+ (CIntCat[a, a+].IC), obj
   Why the data live at the image point: the fibre of the internal type (o (h u) = h v) over the variable
   h reads h through app, i.e. through transports along the context's act-id (PresheafPi.appFun), so
   composition there is not strict; at the image point it is composition of functions.
+
+## Lemma 59 at a fixed (y, u) (canonicity-45, CL59a-e, 2026-11-12)
+
+Lemma 59 (= jonas.pdf Lemma 72) for our C at a fixed presentation y and a
+fixed syntactic relative presentation u, non-dependent (Q closed, D-modal),
+as quasi-inverse data on the closed types of the copy y (4e's ruling):
+ev : U(Pi_A Q)|_y -> U(Q)|_{y.u} (CL59a, phi |-> phi at (p_u, rho)) and its
+inverse (CL59b-e: psi |-> tau_Q^-1 (D ev' ((D rho)^-1 (tau (f . id, v)),
+tau_Qc (psi . f)))), with the two homotopies as CHtpyOps path homotopies at
+the copy (in progress).  Hypotheses: rho's levelwise equivalence, Q's
+D-modality.
+
+PENDING (decided when the axiom proofs are designed against c2's
+statements, where a G1-side reading may be cheaper): (1) restriction of
+fibration structures from G0 to a copy (the converse of CCopy5's assembly:
+move the copy-restricted G0 line kit to the poset kit, extending poset lines
+to G0 lines by transport along the presentation equation, CCopy3's BK
+pattern), ~200 lines; and the internal-Id form of the homotopies at G0 over
+the copy's context (lift by transport, ~100 lines, needs (1) for the
+codomain U(Q) at y.u).
