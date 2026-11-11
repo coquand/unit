@@ -747,3 +747,14 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   representables strictly stable along cube maps (=> code former tr : U -> U)?
   45 writes CObj / CRelI with the code of the truncation as a parameter.
   c2's site files move to the vertical level l after CTotTr.
+- 2026-11-11 RULING (4e, on 45's proposal; user may reverse): Prop 58 in the
+  MERELY form (||local representation|| at each (x, γ)). All uses (Lemma 59 /
+  72, Remark 60 in Thms 61, 62, Prop 76) have propositional conclusions, so the
+  mere x.γ is eliminated inside the base. C0 = constant syntactic
+  presentations, C1 = internal Construction-39 maps between the internal
+  quotients A_x; step 2 stands; CObj / CRelI and the layered/flat objects of
+  the previous two entries are DROPPED. Homs of IC at level l = a+.
+  Shelved, for Höfer's full Def 48: c2's Route 1 (location-free trees as in
+  SAG.pdf §8.3, bridge to core's CTrunc, code former tr : U -> U; 1,100-1,500
+  lines). Note: core's CTrunc stores context locations in its trees, so it is
+  neither small over large contexts nor strictly stable; SAG.pdf's is both.
