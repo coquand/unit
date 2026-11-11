@@ -940,3 +940,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   maps D Δ -> Q (Lemma 66, non-dependent), then Prop 13. Order (45): Cor 15,
   Lemma 16 at yo F1 and Delta N, non-dependent 66 / 67, Lemma 59. "D-modal" =
   EquivOp of tau_P at the total site. Π at the total site = fibPi-T.
+- 2026-11-11 D PRESERVES H-SETS (c2, 3e42372f; CTotSet1-12, CwFHed5-6):
+  setD : isProp Id_{D A}(x, y) from isProp Id_A over G.A.A (Hedberg). Verified
+  by 4e: 14/0. Next (c2): preI / cmpI / (K) / (U) / (E), then (d)(1)-(3).
