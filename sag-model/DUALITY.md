@@ -705,3 +705,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   and CRan (baacecc8, right Kan extension, strict adjunction on elements toR /
   ofR / of-to / to-of), generic in F. Verified by 4e: 2/0. Next (c2): fibrancy
   of R B (ContrOp half first), needs 45's CDisc committed.
+- 2026-11-11 CDisc (45, f617709b): discrete C0 as an IC, functor fn into C's
+  total category (fnId / fnComp), resC / resS; IC without terminal objects;
+  CCyl over IvP. Verified by 4e: CDisc CIntCat CVert CCyl CConstLam CConst
+  6/0. Batch overruns of CPshFvC2, CPshInvC, CTruncAtBase under load ~34 (45
+  re-running). Next (45): CRelResp, CClsEqC (derivations give equal classes).
