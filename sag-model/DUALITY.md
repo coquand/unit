@@ -669,3 +669,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   DConj record through the projection, 45 lines), so the strict-J toolkit
   ports; the Fib* / PosId* layer (17 files) is base-generic in substance and
   becomes a segment FB over CB with shims.
+- 2026-11-11 INSTALLED (c2, 1fd0fe1e): the interval of CB is a presheaf IvP
+  (user-approved in-place rewrite of core; 62 paths). Verified by 4e: core
+  all 282/0; sag/cobar CGrothBase, CPshIdFibT, CPshIdFibT2 (5.20 s), Lemma14
+  ok. c2 ran sag-model/All 205/0 and sag/cobar/All 356/0 (slowest CPshFibC
+  8.8 s). sag-model's .seg files are not under git: the PosFull / CPosInst
+  shim edits are working-tree only (originals in c2's scratchpad backup-iv/);
+  versioning sag-model is a user decision. Quotient since: elimP (e8b45173),
+  CwFUnpk (ad156e9b), relV-pt (c570073f). Next (c2): FB segment in sag/cobar,
+  total-site instance, then Q's elim into h-sets, set-ness, elim2.
