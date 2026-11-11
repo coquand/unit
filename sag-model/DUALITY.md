@@ -985,3 +985,5 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   after (K): G[X_n] := Σ (s : ΔShape_n) G^{k(s)} (shapes + coefficient
   vectors, no inductive types in the model), ev by recursion on shapes, Pr,
   Sp(u), G^{Sp u}, N_D^{Sp u}, the five propositions of S1-S2 + projectivity.
+- 2026-11-12 Axiom statements (c2): 5-7 files; Pr := Σ (n m : ΔN) (G[X_n])^m
+  internal (literal to SAG). After (K).
