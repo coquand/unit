@@ -784,3 +784,14 @@ on the nose, so no comparison of fibre types; mSC: HCart's comparison map commut
 Known gap, recorded on request of 4e: the paper's Lemma 12 is "naturally in Gamma", i.e. the fibration
 structures of D A are stable under substitution on the nose; not proved (nothing uses it), which is why
 the record is on the raw CwF.  Negative tests: one step of nat / res dropped in each pullback file fails.
+
+THEOREM 29 (T = id) CHECKED (canonicity-45, 2026-11-11): `CPshL16U.L16UOf[C].PDesc : CPshDT.DTOf[C].DescentOp`,
+i.e. D-bar A = (D A)[tau] is a descent data operation on C-types (Definition 4): Dt = Dbar, Dt-sub =
+DAC-sub, Dt-fib = Lemma 12 along tau, unit = tau_A, Dm f = (D f)[tau] (CPshDesc.Dm, from Prop13U.DfOf and
+CPshMapSub), desc1 = Cor15.cor15U pulled back along tau_G (CPshDesc.desc1, by CPshEqSub), desc2 = Lemma 16
+uniform (CPshL16U.L16I.desc2): Lemma16's lines p, q (the double readings LN2.mwe at the weights ML / MR,
+natural in the base by mwe-act, with the ends E0 / E1, natural in C by MWC) are made internal homotopies
+of the CwF of fibrant C-types by CPshNF.LineYC (module Ln, generic in the line), and canonicity-c2's
+CPshInvC.Zig moves desc1 along q . p^-1; the one identification needed (D-bar tau_A at x is Lemma16's
+dTau x) is alEq, by the reading lemma CPshMapSub.MS.rd.  File times: CPshDesc 1.1 s, CPshL16U 6.4 s.
+Negative test: dropping the C-naturality step mwc in Ln.UC fails.
