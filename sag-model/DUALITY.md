@@ -576,3 +576,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   part (A) (canonicity-45: M6 uniform Lemma 16, M7; canonicity-c2: η-nat),
   then Prop 34 conditional on one base truncation-interface premise
   (canonicity-c2: design note first).
+- 2026-11-11 USER DECISION: C must be internal to the base, as in jonas.pdf
+  Assumption 2 (a functor from cubes to Cat; Construction 39's C of fp
+  models in h-sets varies over cubes). sag/cobar so far is the constant-C
+  (Coquand-Ruch-Sattler) case. Redo the presheaf layer over the
+  Grothendieck construction ∫C (C0 a base presheaf, C1 a base family over
+  C0 x C0, strict laws), and ONLY what checking the SAG axioms needs
+  (duality, constancy of N, projectivity): D, Lemmas 12, 14, 16, Prop 13,
+  Theorem 29, Lemma 54, Prop 34, and the CwF structure they use. The
+  constant-C results stay in the tree as the CRS case.
