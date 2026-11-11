@@ -943,3 +943,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 D PRESERVES H-SETS (c2, 3e42372f; CTotSet1-12, CwFHed5-6):
   setD : isProp Id_{D A}(x, y) from isProp Id_A over G.A.A (Hedberg). Verified
   by 4e: 14/0. Next (c2): preI / cmpI / (K) / (U) / (E), then (d)(1)-(3).
+- 2026-11-11 (45) Cor 15 at the total site (CTotC15.cor15: EquivOp of D tau_A),
+  in shared check; CEvT, CSolT committed 60eb0578. Lemma 16 at the total site
+  sized 1,000-1,300 lines (zig homotopy 700-1,000 + transfer 150-250 +
+  instances). 4e asked 45 to check a multiplication route (mu . D tau ~ id,
+  mu . tau_D ~ id + Cor 15) first.
