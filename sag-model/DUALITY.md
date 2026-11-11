@@ -511,3 +511,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CPshFibC.SA.utFV), no J used. Remaining: packaging on CFibCwF and the
   Lemma 16 invariance, after canonicity-45's PIdJ. Meanwhile canonicity-c2
   plans Prop 34 (design note only).
+- 2026-11-11 user decision on Prop 34 (after canonicity-c2's plan in
+  COBAR.md, be548901): P3 then P1. First finish what Prop 34 needs anyway:
+  the bridge's packaging, Lemma 16's invariance (uniform form), and
+  Theorem 29 (D a descent data operation, incl. D stable under
+  C-substitution). Then Prop 34 conditional on ONE base-level premise (a
+  record of the base truncation's interface), replacing S3.7 / S3.8.
+  Building the base truncation itself (P2) is not undertaken.
