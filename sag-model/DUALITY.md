@@ -793,3 +793,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   3/0. addO / mulO (A_x's operations) are parameters until c2's closed
   eliminator with beta. Next (45): Lemma 14 / Prop 13 interfaces against
   L12T; Prop 58 statement (merely).
+- 2026-11-11 Lemma 12 at the total site, the step complete (c2, 56fb71d3;
+  CTotL12g-l: face pieces, compatibilities, Join, step, build : (n) -> Up n;
+  ~2,000 lines, no 2-cell). Verified by 4e: 13 CTotL12* modules 13/0.
+  Remaining trivial half: assembly, kside, kunif, the ContrOp record.
