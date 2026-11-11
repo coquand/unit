@@ -803,3 +803,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (c2): fibration half (Lemma 11 for lines at the total site, Mv, fromFill;
   1,000-1,450), then tau on types, r, D-modality of Tr, KL, eliminator.
   45 starts Lemma 14 / Prop 13 against it.
+- 2026-11-11 Queue (45 + c2, agreed): tau on types -> 45 (first part of
+  Lemma 14 at the total site, CTotL14*); c2: lemma12F + generic CTotPsi
+  (read families over total maps at cartesian lifts), which 45's Prop 13 Psi
+  instantiates. 45 does Lemma 14 with lemma12F as a parameter first.
