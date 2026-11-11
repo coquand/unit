@@ -887,7 +887,18 @@ Checked, each with a negative test:
   Toolkit (generic): CwFMaps (USI.upId, apF, FstF, EvF with values), CwFPropPair.pairPath (Sigma with a
       propositional second component: joined first components give joined elements), CwFPropProp.propProp
       (isProp (isProp A), from NF), CwFPropU.PropU-ov.
-Open: set-ness (PropU a set from pe, then Q), surj, elim / elim2 / elimP, the base instance of TruncAt.
+Also checked since (2026-11-11 later):
+  CTruncAtBase.truncAt: the base's truncation as an instance of TruncAt at FibCwF[a, a+] with FibUniv, FibNF;
+      quot / cls: the quotient instantiated at the base.
+  CTruncLevelCwF.ElimUpP: a decoded closed level-a truncation eliminates into any internal proposition of
+      level a+ (CoreProp: internal isProp gives core's; ElOfN).
+  CwFUnpk: G.(Sigma A B) is a retract of G.A.B (pk, pkUnpk, sect).
+  CwFQuotElimP.elimP G A r P pPr h : El (G.Qt) P, for P a family of propositions over G.Qt and h over G.A at
+      the class map (ClsAt.fstAt: the first component of the class at any point).
+  CwFQuotEq.relV-pt a b : subT (relV a) (sec b) = Rel a b.
+Open: elim into h-sets (with beta as an Id-element; built on elimP through the proposition
+  T q = Sigma (b : B) Pi (a : A) (Id (r a) (fst q) -> Id (f a) b)), set-ness of Qt (Hedberg's argument on Qt
+  with "pointwise equivalent first components"), elim2.  surj is elimP at P := the truncation itself.
 
 ## The base at the total site (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 4)
 
