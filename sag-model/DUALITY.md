@@ -687,3 +687,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   truncation NOT at the total site (transported by R). Verified by 4e: 20/0,
   14.00 s. Poset files kept as source (no shims). Next (c2): item 5 (R, Tr :=
   R Tr0 U, KL), plan first; then Q's elim into h-sets, set-ness, elim2.
+- 2026-11-11 LEVELWISE ruling (4e, after 45's objection): levelwise fibrancy is
+  Höfer's (fibrancy over the discrete C0 = GrothOf[DiscOf[C].disc]), not
+  fibrancy over the Σ_{C0}-context (lines there may move the object; jonas.pdf
+  §5.1, Remark 5.9 of [32]). Theorem 21 (Assumption 4) bridges the two but is
+  NOT used: instead the 37 truncation files are generated generically in FB
+  (c2, 20-40 lands-pre patches) and instantiated at the discrete site. Theorem
+  21 serves only T_C (§5), outside our route. Item 5 order: generic Tr0, CTotU
+  (restriction along 45's functor ∫C0 → ∫C), CTotR + adjunction, fibrancy,
+  CTotTr, KL.
