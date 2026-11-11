@@ -1,0 +1,210 @@
+-- CDerCode.seg (canonicity-45; SIMPLIFIED.md step 2a): V-codes for the
+-- derivation trees of the congruence of a presentation (CSyntax.Over.Der:
+-- Tree, Valid, Proof), so that the constant type of derivations exists in
+-- the base and its base truncation is the congruence of the presented
+-- algebra.  Same method as CExprCode: pack into WCode's W-type (shapes:
+-- a tag 0..14 with its payload, arities 0 / 1 / 2 indexed by Empty / Top
+-- / Bool), unpack, roundtrip, encInj.  Valid d (products, Top and
+-- identities of terms, propositions) and Proof t u (a Sigma over Tree)
+-- are then encoded by encSig / encProp.
+--   DerCode[R, encK, pres].treeV, validV d, proofV t u : W0.V
+-- No new axioms.
+
+level l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W0 = V[l] ;
+module EN = Encode[l, l] ;
+open Ring[l] ;
+module SX = CSyntax[l] ;
+module XC = CExprCode[l] ;
+
+-- encodings of sums (through the dependent pair over Bool)
+pickT (A B : U l) : Bool -> U l = split { true -> A ; false -> B } ;
+PlusS (A B : U l) : U l = (b : Bool) * pickT A B b ;
+toS (A B : U l) : Plus A B -> PlusS A B = split { inl a -> (true, a) ; inr b -> (false, b) } ;
+fromS (A B : U l) : (b : Bool) -> pickT A B b -> Plus A B = split { true -> \ a -> inl a ; false -> \ b -> inr b } ;
+rtS (A B : U l) : (x : Plus A B) -> Id (Plus A B) (fromS A B (toS A B x).1 (toS A B x).2) x = split { inl a -> refl (inl a) ; inr b -> refl (inr b) } ;
+toS-inj (A B : U l) (x y : Plus A B) (p : Id (PlusS A B) (toS A B x) (toS A B y)) : Id (Plus A B) x y =
+ transH (symH (rtS A B x)) (transH (apH {PlusS A B} {Plus A B} (\ z -> fromS A B z.1 z.2) p) (rtS A B y)) ;
+encAB (A B : U l) (eA : EN.Enc A) (eB : EN.Enc B) : (b : Bool) -> EN.Enc (pickT A B b) = split { true -> eA ; false -> eB } ;
+encPlus (A B : U l) (eA : EN.Enc A) (eB : EN.Enc B) : EN.Enc (Plus A B) =
+ EN.encInj (Plus A B) (PlusS A B) (toS A B) (toS-inj A B) (EN.encSig Bool (\ b -> pickT A B b) XC.encBool (\ b -> encAB A B eA eB b)) ;
+
+module DerCode (R : CRing) (encK : EN.Enc R.R) (pres : SX.Over[R].Presentation) {
+ module P = SX.Over[R] ;
+ module D = P.Der[pres] ;
+ module EC = XC.ExprCode[R, encK, pres.1] ;
+ Term : U l = D.Term ;
+ encTerm : EN.Enc Term = EC.encExpr ;
+ setTerm : isSet Term = W0.isSetIx EC.exprV ;
+ encIdT (p q : Term) : EN.Enc (Id Term p q) = EN.encProp (Id Term p q) (setTerm p q) ;
+ encMember (e : Term) : (es : List Term) -> EN.Enc (D.Member e es) = split {
+  nil -> XC.encEmpty ;
+  cons p ps | ih -> encPlus (Id Term e p) (D.Member e ps) (encIdT e p) ih } ;
+ enc2 : EN.Enc (Term * Term) = EN.encSig Term (\ t -> Term) encTerm (\ t -> encTerm) ;
+ enc3 : EN.Enc (Term * Term * Term) = EN.encSig Term (\ t -> Term * Term) encTerm (\ t -> enc2) ;
+ encKK : EN.Enc (R.R * R.R) = EN.encSig R.R (\ a -> R.R) encK (\ a -> encK) ;
+ encEq : EN.Enc ((p : Term) * D.Member p pres.2) = EN.encSig Term (\ p -> D.Member p pres.2) encTerm (\ p -> encMember p pres.2) ;
+
+ -- payloads by tag: 0 reflD (Term) 1 symD (Top) 2 transD (Top) 3 sumD (Top) 4 mulD (Top)
+ -- 5 addAssoc (3) 6 addComm (2) 7 addZero (1) 8 addNeg (1) 9 mulAssoc (3) 10 mulComm (2)
+ -- 11 mulOne (1) 12 distrib (3) 13 coeffAdd (kk) 14 coeffMul (kk) 15 equation (eq)
+ P15 : Nat -> U l = split { zero -> (p : Term) * D.Member p pres.2 ; suc t -> Empty } ;
+ P14 : Nat -> U l = split { zero -> R.R * R.R ; suc t -> P15 t } ;
+ P13 : Nat -> U l = split { zero -> R.R * R.R ; suc t -> P14 t } ;
+ P12 : Nat -> U l = split { zero -> Term * Term * Term ; suc t -> P13 t } ;
+ P11 : Nat -> U l = split { zero -> Term ; suc t -> P12 t } ;
+ P10 : Nat -> U l = split { zero -> Term * Term ; suc t -> P11 t } ;
+ P9 : Nat -> U l = split { zero -> Term * Term * Term ; suc t -> P10 t } ;
+ P8 : Nat -> U l = split { zero -> Term ; suc t -> P9 t } ;
+ P7 : Nat -> U l = split { zero -> Term ; suc t -> P8 t } ;
+ P6 : Nat -> U l = split { zero -> Term * Term ; suc t -> P7 t } ;
+ P5 : Nat -> U l = split { zero -> Term * Term * Term ; suc t -> P6 t } ;
+ P4 : Nat -> U l = split { zero -> Top ; suc t -> P5 t } ;
+ P3 : Nat -> U l = split { zero -> Top ; suc t -> P4 t } ;
+ P2 : Nat -> U l = split { zero -> Top ; suc t -> P3 t } ;
+ P1 : Nat -> U l = split { zero -> Top ; suc t -> P2 t } ;
+ Pay : Nat -> U l = split { zero -> Term ; suc t -> P1 t } ;
+ e15 : (t : Nat) -> EN.Enc (P15 t) = split { zero -> encEq ; suc t -> XC.encEmpty } ;
+ e14 : (t : Nat) -> EN.Enc (P14 t) = split { zero -> encKK ; suc t -> e15 t } ;
+ e13 : (t : Nat) -> EN.Enc (P13 t) = split { zero -> encKK ; suc t -> e14 t } ;
+ e12 : (t : Nat) -> EN.Enc (P12 t) = split { zero -> enc3 ; suc t -> e13 t } ;
+ e11 : (t : Nat) -> EN.Enc (P11 t) = split { zero -> encTerm ; suc t -> e12 t } ;
+ e10 : (t : Nat) -> EN.Enc (P10 t) = split { zero -> enc2 ; suc t -> e11 t } ;
+ e9 : (t : Nat) -> EN.Enc (P9 t) = split { zero -> enc3 ; suc t -> e10 t } ;
+ e8 : (t : Nat) -> EN.Enc (P8 t) = split { zero -> encTerm ; suc t -> e9 t } ;
+ e7 : (t : Nat) -> EN.Enc (P7 t) = split { zero -> encTerm ; suc t -> e8 t } ;
+ e6 : (t : Nat) -> EN.Enc (P6 t) = split { zero -> enc2 ; suc t -> e7 t } ;
+ e5 : (t : Nat) -> EN.Enc (P5 t) = split { zero -> enc3 ; suc t -> e6 t } ;
+ e4 : (t : Nat) -> EN.Enc (P4 t) = split { zero -> XC.encTop ; suc t -> e5 t } ;
+ e3 : (t : Nat) -> EN.Enc (P3 t) = split { zero -> XC.encTop ; suc t -> e4 t } ;
+ e2 : (t : Nat) -> EN.Enc (P2 t) = split { zero -> XC.encTop ; suc t -> e3 t } ;
+ e1 : (t : Nat) -> EN.Enc (P1 t) = split { zero -> XC.encTop ; suc t -> e2 t } ;
+ encPay : (t : Nat) -> EN.Enc (Pay t) = split { zero -> encTerm ; suc t -> e1 t } ;
+ Shape : U l = (t : Nat) * Pay t ;
+ encShape : EN.Enc Shape = EN.encSig Nat (\ t -> Pay t) (EN.encIx0 W0.natV) (\ t -> encPay t) ;
+ -- arities: 0 for tag 0 and tags 5..15, 1 for tag 1, 2 for tags 2, 3, 4
+ A5 : Nat -> U l = split { zero -> Empty ; suc t -> Empty } ;
+ A4 : Nat -> U l = split { zero -> Bool ; suc t -> A5 t } ;
+ A3 : Nat -> U l = split { zero -> Bool ; suc t -> A4 t } ;
+ A2 : Nat -> U l = split { zero -> Bool ; suc t -> A3 t } ;
+ A1 : Nat -> U l = split { zero -> Top ; suc t -> A2 t } ;
+ Arity : Nat -> U l = split { zero -> Empty ; suc t -> A1 t } ;
+ a5 : (t : Nat) -> EN.Enc (A5 t) = split { zero -> XC.encEmpty ; suc t -> XC.encEmpty } ;
+ a4 : (t : Nat) -> EN.Enc (A4 t) = split { zero -> XC.encBool ; suc t -> a5 t } ;
+ a3 : (t : Nat) -> EN.Enc (A3 t) = split { zero -> XC.encBool ; suc t -> a4 t } ;
+ a2 : (t : Nat) -> EN.Enc (A2 t) = split { zero -> XC.encBool ; suc t -> a3 t } ;
+ a1 : (t : Nat) -> EN.Enc (A1 t) = split { zero -> XC.encTop ; suc t -> a2 t } ;
+ encAr : (t : Nat) -> EN.Enc (Arity t) = split { zero -> XC.encEmpty ; suc t -> a1 t } ;
+ module WC = WCode[l].Build[Shape, \ s -> Arity s.1, encShape, \ s -> encAr s.1] ;
+
+ n0 : Nat = zero ; n1 : Nat = suc n0 ; n2 : Nat = suc n1 ; n3 : Nat = suc n2 ; n4 : Nat = suc n3 ;
+ n5 : Nat = suc n4 ; n6 : Nat = suc n5 ; n7 : Nat = suc n6 ; n8 : Nat = suc n7 ; n9 : Nat = suc n8 ;
+ n10 : Nat = suc n9 ; n11 : Nat = suc n10 ; n12 : Nat = suc n11 ; n13 : Nat = suc n12 ; n14 : Nat = suc n13 ; n15 : Nat = suc n14 ;
+ noCh : Empty -> WC.Tree = \ e -> absurd WC.Tree e ;
+ oneCh (d : WC.Tree) : Top -> WC.Tree = \ t -> d ;
+
+ pack : D.Tree -> WC.Tree = split {
+  reflD p -> sup (n0, p) noCh ;
+  symD d | r -> sup (n1, tt) (oneCh r) ;
+  transD d e | rd re -> sup (n2, tt) (XC.pick WC.Tree rd re) ;
+  sumD d e | rd re -> sup (n3, tt) (XC.pick WC.Tree rd re) ;
+  mulD d e | rd re -> sup (n4, tt) (XC.pick WC.Tree rd re) ;
+  addAssoc p q r -> sup (n5, (p, (q, r))) noCh ;
+  addComm p q -> sup (n6, (p, q)) noCh ;
+  addZero p -> sup (n7, p) noCh ;
+  addNeg p -> sup (n8, p) noCh ;
+  mulAssoc p q r -> sup (n9, (p, (q, r))) noCh ;
+  mulComm p q -> sup (n10, (p, q)) noCh ;
+  mulOne p -> sup (n11, p) noCh ;
+  distrib p q r -> sup (n12, (p, (q, r))) noCh ;
+  coeffAdd a b -> sup (n13, (a, b)) noCh ;
+  coeffMul a b -> sup (n14, (a, b)) noCh ;
+  equation p m -> sup (n15, (p, m)) noCh } ;
+
+ -- unpack: by the tag
+ u15 : (t : Nat) -> P15 t -> ((A5 (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc t))))))))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> equation v.1 v.2 ; suc t -> \ e ch -> absurd D.Tree e } ;
+ u14 : (t : Nat) -> P14 t -> ((A5 (suc (suc (suc (suc (suc (suc (suc (suc (suc t)))))))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> coeffMul v.1 v.2 ; suc t -> u15 t } ;
+ u13 : (t : Nat) -> P13 t -> ((A5 (suc (suc (suc (suc (suc (suc (suc (suc t))))))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> coeffAdd v.1 v.2 ; suc t -> u14 t } ;
+ u12 : (t : Nat) -> P12 t -> ((A5 (suc (suc (suc (suc (suc (suc (suc t)))))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> distrib v.1 v.2.1 v.2.2 ; suc t -> u13 t } ;
+ u11 : (t : Nat) -> P11 t -> ((A5 (suc (suc (suc (suc (suc (suc t))))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> mulOne v ; suc t -> u12 t } ;
+ u10 : (t : Nat) -> P10 t -> ((A5 (suc (suc (suc (suc (suc t)))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> mulComm v.1 v.2 ; suc t -> u11 t } ;
+ u9 : (t : Nat) -> P9 t -> ((A5 (suc (suc (suc (suc t))))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> mulAssoc v.1 v.2.1 v.2.2 ; suc t -> u10 t } ;
+ u8 : (t : Nat) -> P8 t -> ((A5 (suc (suc (suc t)))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> addNeg v ; suc t -> u9 t } ;
+ u7 : (t : Nat) -> P7 t -> ((A5 (suc (suc t))) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> addZero v ; suc t -> u8 t } ;
+ u6 : (t : Nat) -> P6 t -> ((A5 (suc t)) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> addComm v.1 v.2 ; suc t -> u7 t } ;
+ u5 : (t : Nat) -> P5 t -> ((A5 t) -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> addAssoc v.1 v.2.1 v.2.2 ; suc t -> u6 t } ;
+ u4 : (t : Nat) -> P4 t -> (A4 t -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> mulD (ch true) (ch false) ; suc t -> u5 t } ;
+ u3 : (t : Nat) -> P3 t -> (A3 t -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> sumD (ch true) (ch false) ; suc t -> u4 t } ;
+ u2 : (t : Nat) -> P2 t -> (A2 t -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> transD (ch true) (ch false) ; suc t -> u3 t } ;
+ u1 : (t : Nat) -> P1 t -> (A1 t -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> symD (ch tt) ; suc t -> u2 t } ;
+ un : (t : Nat) -> Pay t -> (Arity t -> D.Tree) -> D.Tree = split {
+  zero -> \ v ch -> reflD v ; suc t -> u1 t } ;
+ unpack : WC.Tree -> D.Tree = split { sup s f | ih -> un s.1 s.2 ih } ;
+
+ c1 (f : D.Tree -> D.Tree) (a a' : D.Tree) (h : Id D.Tree a a') : Id D.Tree (f a) (f a') = apH {D.Tree} {D.Tree} f h ;
+ c2 (f : D.Tree -> D.Tree -> D.Tree) (a a' b b' : D.Tree) (h : Id D.Tree a a') (k : Id D.Tree b b') : Id D.Tree (f a b) (f a' b') =
+  transH (apH {D.Tree} {D.Tree} (\ x -> f x b) h) (apH {D.Tree} {D.Tree} (f a') k) ;
+
+ roundtrip : (d : D.Tree) -> Id D.Tree (unpack (pack d)) d = split {
+  reflD p -> refl (reflD p) ;
+  symD d | i -> c1 (\ x -> symD x) (unpack (pack d)) d i ;
+  transD d e | i j -> c2 (\ x y -> transD x y) (unpack (pack d)) d (unpack (pack e)) e i j ;
+  sumD d e | i j -> c2 (\ x y -> sumD x y) (unpack (pack d)) d (unpack (pack e)) e i j ;
+  mulD d e | i j -> c2 (\ x y -> mulD x y) (unpack (pack d)) d (unpack (pack e)) e i j ;
+  addAssoc p q r -> refl (addAssoc p q r) ;
+  addComm p q -> refl (addComm p q) ;
+  addZero p -> refl (addZero p) ;
+  addNeg p -> refl (addNeg p) ;
+  mulAssoc p q r -> refl (mulAssoc p q r) ;
+  mulComm p q -> refl (mulComm p q) ;
+  mulOne p -> refl (mulOne p) ;
+  distrib p q r -> refl (distrib p q r) ;
+  coeffAdd a b -> refl (coeffAdd a b) ;
+  coeffMul a b -> refl (coeffMul a b) ;
+  equation p m -> refl (equation p m) } ;
+
+ pack-inj (d d' : D.Tree) (p : Id WC.Tree (pack d) (pack d')) : Id D.Tree d d' =
+  transH (symH (roundtrip d)) (transH (apH {WC.Tree} {D.Tree} unpack p) (roundtrip d')) ;
+ encTree : EN.Enc D.Tree = EN.encInj D.Tree WC.Tree pack pack-inj WC.encoding ;
+ treeV : W0.V = EN.codeOf D.Tree encTree ;
+ setTree : isSet D.Tree = W0.isSetIx treeV ;
+
+ -- validity: products of validities, Top, and identities of terms
+ encValid : (d : D.Tree) -> EN.Enc (D.Valid d) = split {
+  reflD p -> XC.encTop ;
+  symD d | r -> r ;
+  transD d e | rd re -> EN.encSig (D.Valid d) (\ x -> D.Valid e * Id Term (D.ends d).2 (D.ends e).1) rd
+                          (\ x -> EN.encSig (D.Valid e) (\ y -> Id Term (D.ends d).2 (D.ends e).1) re (\ y -> encIdT (D.ends d).2 (D.ends e).1)) ;
+  sumD d e | rd re -> EN.encSig (D.Valid d) (\ x -> D.Valid e) rd (\ x -> re) ;
+  mulD d e | rd re -> EN.encSig (D.Valid d) (\ x -> D.Valid e) rd (\ x -> re) ;
+  addAssoc p q r -> XC.encTop ; addComm p q -> XC.encTop ; addZero p -> XC.encTop ; addNeg p -> XC.encTop ;
+  mulAssoc p q r -> XC.encTop ; mulComm p q -> XC.encTop ; mulOne p -> XC.encTop ; distrib p q r -> XC.encTop ;
+  coeffAdd a b -> XC.encTop ; coeffMul a b -> XC.encTop ; equation p m -> XC.encTop } ;
+ validV (d : D.Tree) : W0.V = EN.codeOf (D.Valid d) (encValid d) ;
+
+ -- proofs of t ~ u
+ encProof (t u : Term) : EN.Enc (D.Proof t u) =
+  EN.encSig D.Tree (\ d -> D.Valid d * Id Term (D.ends d).1 t * Id Term (D.ends d).2 u) encTree
+   (\ d -> EN.encSig (D.Valid d) (\ v -> Id Term (D.ends d).1 t * Id Term (D.ends d).2 u) (encValid d)
+            (\ v -> EN.encSig (Id Term (D.ends d).1 t) (\ x -> Id Term (D.ends d).2 u) (encIdT (D.ends d).1 t) (\ x -> encIdT (D.ends d).2 u))) ;
+ proofV (t u : Term) : W0.V = EN.codeOf (D.Proof t u) (encProof t u) ;
+} ;

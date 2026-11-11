@@ -836,3 +836,19 @@ recursion Raw at level a -> Raw at level a+, both over terminal contexts; it com
 a standalone induction, hence preserves Good); compose.
 Plan (2c): Prop_U := Sigma (c : Cod) isProp (Dec c) on FibCwF[a, a+]; propositional extensionality from
 the universe's univalence in the form available (ContrOp form if the S4 bridge gives no more).
+
+Step 2a of SIMPLIFIED.md (canonicity-45, 2026-11-11): the syntax and its codes.  `CSyntax` (Tier 1's
+expressions Expr (Fin n) over a metatheory ring, equations, presentations; the derivation trees of the
+congruence of a presentation with ends, Valid and Proof t u; proofs as a congruence: refl / sym / trans,
+sumP / mulP, the ring laws and the equations as proofs; relative presentations, the concatenation x.u,
+the embedding of generators, renaming of terms and of derivations with ends, validity and proofs
+preserved).  `CExprCode`, `CDerCode`: V-codes of Expr (Fin n), Tree, Valid d and Proof t u by pack /
+unpack into WCode's W-type (shapes = tag + payload, arities by Empty / Top / Bool), roundtrip, encInj;
+sums through the pair over Bool; propositions by encProp.  `CRelCode`: the congruence in the form the
+Voevodsky quotient takes it (canonicity-c2's ruling: only CLOSED truncations have codes): for metatheory
+x, t, u, the constant type of Proof_x t u over the terminal context (CConst at level a), its truncation
+there (CTruncCwF.Tr0 over nilP), its code over every context (CClosedCode) and the propositionality of
+its decoding (CClosedProp).  Ring.seg is symlinked from sag/polynomial.  The pilot's HRing now states
+"Id is a proposition" internally (El G (Id_{Id x y} p q)); its external form was unsatisfiable in the
+model (4e), the same mistake as reading a metatheory truncation into El G (Id x y).  Check times all
+below 0.3 s; the negative tests of these files are the checker's own verification of injectivity.

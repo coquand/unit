@@ -1,0 +1,100 @@
+-- CExprCode.seg (canonicity-45; SIMPLIFIED.md step 2a): a V-code for
+-- the expression syntax Expr (Fin n) over a metatheory ring k
+-- (CSyntax.Over.Expr, Tier 1's), so that the constant type
+-- of expressions (CConst) exists in the base.  Method as CTruncCode: pack
+-- expressions into the W-type of WCode (shapes: a tag with its payload,
+-- variables / constants / sum / product; arities 0, 0, 2, 2), unpack,
+-- roundtrip, hence an injective encoding (Encode.encInj).
+--   ExprCode[R, encK, n].exprV : W0.V   with  W0.Ix exprV = Expr (Fin n)
+-- The congruence needs no code of its own: Tier 1's Relation is a
+-- proposition (Encode.encProp).  No new axioms beyond Tier 1's
+-- (Truncation is not used here).
+
+level l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W0 = V[l] ;
+module EN = Encode[l, l] ;
+module Ar = Arith[l] ;
+open Ring[l] ;
+module SX = CSyntax[l] ;
+
+pick (A : U l) (x y : A) : Bool -> A = split { true -> x ; false -> y } ;
+
+-- Tier 1's Fin n (Plus-based) injects into Nat
+toNat : (n : Nat) -> SX.Fin n -> Nat = split {
+ zero -> \ e -> absurd Nat e ;
+ suc n | ih -> split { inl v -> suc (ih v) ; inr t -> zero } } ;
+toNat-inj : (n : Nat) (v w : SX.Fin n) -> Id Nat (toNat n v) (toNat n w) -> Id (SX.Fin n) v w = split {
+ zero -> \ e w p -> absurd (Id (SX.Fin zero) e w) e ;
+ suc n | ih -> split {
+  inl v -> split {
+   inl w -> \ p -> apH {SX.Fin n} {SX.Fin (suc n)} (\ u -> inl u) (ih v w (Ar.suc-inj (toNat n v) (toNat n w) p)) ;
+   inr t -> \ p -> absurd (Id (SX.Fin (suc n)) (inl v) (inr t)) (Ar.zero-suc (toNat n v) (symH p)) } ;
+  inr t -> split {
+   inl w -> \ p -> absurd (Id (SX.Fin (suc n)) (inr t) (inl w)) (Ar.zero-suc (toNat n w) p) ;
+   inr t' -> \ p -> apH {Top} {SX.Fin (suc n)} (\ u -> inr u) (isTop t t') } } } ;
+encFin (n : Nat) : EN.Enc (SX.Fin n) = EN.encInj (SX.Fin n) Nat (toNat n) (toNat-inj n) (EN.encIx0 W0.natV) ;
+encTop : EN.Enc Top = EN.encProp Top isTop ;
+encEmpty : EN.Enc Empty = EN.encProp Empty (\ e e' -> absurd (Id Empty e e') e) ;
+encBool : EN.Enc Bool = EN.encIx0 W0.boolV ;
+
+module ExprCode (R : CRing) (encK : EN.Enc R.R) (n : Nat) {
+ module P = SX.Over[R] ;
+ Vs : U l = SX.Fin n ;
+ E : U l = P.Expr Vs ;
+
+ -- shapes: tag 0 variable, 1 constant, 2 sum, 3 product
+ Pay3 : Nat -> U l = split { zero -> Top ; suc t -> Empty } ;
+ Pay2 : Nat -> U l = split { zero -> Top ; suc t -> Pay3 t } ;
+ Pay1 : Nat -> U l = split { zero -> R.R ; suc t -> Pay2 t } ;
+ Pay : Nat -> U l = split { zero -> Vs ; suc t -> Pay1 t } ;
+ encPay3 : (t : Nat) -> EN.Enc (Pay3 t) = split { zero -> encTop ; suc t -> encEmpty } ;
+ encPay2 : (t : Nat) -> EN.Enc (Pay2 t) = split { zero -> encTop ; suc t -> encPay3 t } ;
+ encPay1 : (t : Nat) -> EN.Enc (Pay1 t) = split { zero -> encK ; suc t -> encPay2 t } ;
+ encPay : (t : Nat) -> EN.Enc (Pay t) = split { zero -> encFin n ; suc t -> encPay1 t } ;
+ Shape : U l = (t : Nat) * Pay t ;
+ encShape : EN.Enc Shape = EN.encSig Nat (\ t -> Pay t) (EN.encIx0 W0.natV) (\ t -> encPay t) ;
+ -- arities: 0, 0, 2, 2 (children indexed by Bool)
+ Ar1 : Nat -> U l = split { zero -> Empty ; suc t -> Bool } ;
+ Arity : Nat -> U l = split { zero -> Empty ; suc t -> Ar1 t } ;
+ encAr1 : (t : Nat) -> EN.Enc (Ar1 t) = split { zero -> encEmpty ; suc t -> encBool } ;
+ encAr : (t : Nat) -> EN.Enc (Arity t) = split { zero -> encEmpty ; suc t -> encAr1 t } ;
+ B (s : Shape) : U l = Arity s.1 ;
+ module WC = WCode[l].Build[Shape, \ s -> B s, encShape, \ s -> encAr s.1] ;
+
+ pack : E -> WC.Tree = split {
+  var v -> sup (zero, v) (\ e -> absurd WC.Tree e) ;
+  cst r -> sup (suc zero, r) (\ e -> absurd WC.Tree e) ;
+  sumE p q | rp rq -> sup (suc (suc zero), tt) (pick WC.Tree rp rq) ;
+  mulE p q | rp rq -> sup (suc (suc (suc zero)), tt) (pick WC.Tree rp rq) } ;
+
+ -- unpack: by the tag, then the payload and the children
+ un3 : (t : Nat) -> Pay3 t -> (Ar1 (suc (suc t)) -> E) -> E = split {
+  zero -> \ u ch -> mulE (ch true) (ch false) ;
+  suc t -> \ e ch -> absurd E e } ;
+ un2 : (t : Nat) -> Pay2 t -> (Ar1 (suc t) -> E) -> E = split {
+  zero -> \ u ch -> sumE (ch true) (ch false) ;
+  suc t -> un3 t } ;
+ un1 : (t : Nat) -> Pay1 t -> (Ar1 t -> E) -> E = split {
+  zero -> \ r ch -> cst r ;
+  suc t -> un2 t } ;
+ un : (t : Nat) -> Pay t -> (Arity t -> E) -> E = split {
+  zero -> \ v ch -> var v ;
+  suc t -> un1 t } ;
+ unpack : WC.Tree -> E = split { sup s f | ih -> un s.1 s.2 ih } ;
+
+ roundtrip : (e : E) -> Id E (unpack (pack e)) e = split {
+  var v -> refl (var v) ;
+  cst r -> refl (cst r) ;
+  sumE p q | ip iq -> P.cong2 Vs (\ x y -> sumE x y) (unpack (pack p)) p (unpack (pack q)) q ip iq ;
+  mulE p q | ip iq -> P.cong2 Vs (\ x y -> mulE x y) (unpack (pack p)) p (unpack (pack q)) q ip iq } ;
+
+ pack-inj (e e' : E) (p : Id WC.Tree (pack e) (pack e')) : Id E e e' =
+  transH (symH (roundtrip e)) (transH (apH {WC.Tree} {E} unpack p) (roundtrip e')) ;
+
+ encExpr : EN.Enc E = EN.encInj E WC.Tree pack pack-inj WC.encoding ;
+ exprV : W0.V = EN.codeOf E encExpr ;
+} ;
