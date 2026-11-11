@@ -1007,3 +1007,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 Lemma 59: the Id form at G0 forces (1) (G0 line kit restricted to
   a copy vs the poset kit, ~200). Ruling: (a) now (path homotopies at the copy,
   ~450); (1) + G0 Id form deferred to the design of the axiom proofs.
+- 2026-11-12 Lemma 59: path homotopies need Kan composition at the copy, so
+  (1) is needed in every form. Ruling: (1) generic now, (2), (3), then the
+  G0 Id lift (~100): ~750-850 lines total for Lemma 59.
