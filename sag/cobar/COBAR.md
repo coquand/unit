@@ -495,6 +495,23 @@ Not done: (III) packaging on CFibCwF (El of isContr / Kr on CFibCwF <=> centre +
 map as an element of the function type <=> CMap), which waits for canonicity-45's PIdJ; then the
 invariance statement for Lemma 16.
 
+## D is stable under C-substitution (canonicity-c2, 2026-11-11; for Theorem 29)
+
+Checked, no new axioms (fe; univ only through V's extensionality, in IdV-ext = CPshPi.propV-ext):
+  CPshDSub.DSubOf[C]
+    S[De, G, s].DSb       D s : CSub[D De, D G], s applied to every value of a family
+    DSb-id, DSb-o         D of the identity, D of a composite
+    S[De, G, s].tau-nat   D s o tau = tau o s
+    El[G, A, el].DEl      D on elements: CEl[G, A] -> CEl[D G, D A]
+  CPshDSubT.DSubTOf[C].T[De, G, s, A]
+    DT-sub                (D A)[D s] = D (A[s])  as C-types over D De
+    DAC-sub               (DAC A)[s] = DAC (A[s]) for DAC = (D A)[tau] over the context (DAG-is: it is Cor15's DAC)
+Method: the index of a family does not mention the context, so D s reindexes nothing.  For the
+types, the value component has the same code on both sides; the three equation codes are Pi codes
+over the same indices of IdV codes with equivalent truth values (the reading rB of CPshL.SC commutes
+with the actions and is injective over a point), hence equal; the transport keeps the values (sig0).
+Not here (left for Theorem 29's design note): D of a context extension, D(G.A) vs DG.DA.
+
 ## Plan: Prop 34 (propositional truncation is computed levelwise), design note (canonicity-c2, 2026-11-11)
 
 No code.  Source: jonas.pdf §5 (Theorem 21 to Prop 36) and §2.3.
