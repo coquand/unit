@@ -817,3 +817,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   N_D) - verified 4e (with CMorX, CTotL14a-c) 14/0. Next: c2 QE1 (elim1/beta,
   setQ, elim2, ElimP3, ElimP1, setQi, setW), then r, modality, KL; 45 the
   data of the free maps, bridge instances, comparison, G's operations.
+- 2026-11-11 (45, e3f9300c) Lemma 14 at the total site complete (CTotL14h);
+  Höfer data of closed maps (CQCtx, CHomData, CMapsC/C2/I): I1, I2, AddF,
+  MulF, p_u as morphisms of C; CCmp: strict comparison yo F2 -> yo F1 x yo F1.
+  In check: CGops (G's + and * with Prop 13's inverse as parameter).
+  RULING (d): the inverse of yo(x.u) -> yo(x).Sp(u) via "injective + merely
+  surjective between sets => equivalence": choose term representatives
+  internally (Tr0 from surj), closed substitution maps packed over ΔTerm^n,
+  injectivity by ElimP; gives the levelwise equivalence OUTRIGHT (no
+  elimination over non-closed contexts needed).
