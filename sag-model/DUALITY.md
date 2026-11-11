@@ -872,3 +872,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   operations: (P3) HomT(J) = CMorX's M J, the inverse, the two homotopies,
   QinvEq -> EquivOp, (P1) componentwise to G0: 1,200-1,800 lines, several
   days. Then (d) for Lemma 59 / Prop 58.
+- 2026-11-11 (c2) (C) contexts as types over 1 (d79bb994, CTotCtxTy);
+  elimPH / ext1H for 45 (fed7f506); r : (D (R B))[tau] -> R B with r . tauA =
+  id (3494f167, CTotRr). Verification queued (server busy). Next (c2):
+  D-modality of Tr, KL (form (b)), eliminator (c).
