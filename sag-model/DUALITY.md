@@ -928,3 +928,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   injective (ElimP1 + term induction through the data) + merely surjective
   (Tr0-chosen representatives, closed substitution packed over ΔTerm^{n+m}).
   Comparison with Sp_G(u) (G's operations, τ) a separate later lemma.
+- 2026-11-11 G's operations committed as constructions (45, 942e8ee2, shared
+  586/0), parametric in c2's (al, eqal, commH). (d): CEvT, CSolT in check.
+  Split: c2 after h-sets: cmpI / (K) / (U) / (E), then (d)(1)-(3) (evaluation
+  of classes, uniqueness, mere surjectivity); 45: Lemma 59 (local
+  representation as parameter), Cor 15 / Lemma 16 at yo F1, Sol vs Sp_G, (d)'s
+  plumbing.
