@@ -911,3 +911,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 h-sets: general route via PATH types accepted (isSet (D A) from
   isProp Path_{D A}, Lemma 11 for lines packaged as a move, U of paths, DP4;
   3-4 files, +1 Id ~ Path bridge if missing). Specific route was not shorter.
+- 2026-11-11 THE ELIMINATOR OF Tr INTO D-MODAL PROPOSITIONS (c2, b0f84058,
+  CTotElim1-5): Prop 34 right-to-left. Verified by 4e: 5/0. h-sets route
+  adjusted: Hedberg-Kraus (CwFHed4) with R = D(Id_A) pulled back (a
+  proposition by DP4, reflexive, one map R -> Id_{D A}); D(Id_A) and Id_{D A}
+  are not isomorphic. 3-4 files.
