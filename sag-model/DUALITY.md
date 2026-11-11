@@ -948,3 +948,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   sized 1,000-1,300 lines (zig homotopy 700-1,000 + transfer 150-250 +
   instances). 4e asked 45 to check a multiplication route (mu . D tau ~ id,
   mu . tau_D ~ id + Cor 15) first.
+- 2026-11-11 Lemma 16: multiplication route checked and REJECTED (45): a
+  natural mu is the zig's bridge M itself, its two laws need homotopies of the
+  same kind as the zig's p, q, and it needs more transfer than the zig. Plan:
+  transfer of EquivOp along homotopies (generated G-version), then the zig at
+  the total site reusing CTotL14e-g. 1,000-1,300 lines.
