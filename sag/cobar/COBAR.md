@@ -819,3 +819,20 @@ Strict stability Tr0-nat is DROPPED (ruling 4e).
 CTruncCwF.TrOf[G, A]: Tr0 : FC.STy G; incE (the unit as an element over G.A); rcTr / contrTr (over
 G.Tr0 A the weakened truncation is contractible: ContrOp, and an element of the internal isContr);
 El[B, p].elim / beta (core's elimination into fibrant propositions).   ITEM 1 DONE.
+
+## Prop_U and closed codes (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 2)
+
+Done (2a): CClosedCode.Closed[T0, c]: code G (the constant code of a closed level-a fibrant type over any
+context), DecT G (its decoding in FibCwF[a, a+]), toDec / fromDec (same elements), tg / dec-nat (the
+decoding's action is T0's), elUp.  A truncation over a varying context has NO code (it would force strict
+stability); only closed ones do.
+Plan (2b), for T = the level-a truncation of a closed type P0: Dec is a proposition, has the unit, and
+eliminates into LARGE (level a+) propositions over G.  Two levels meet here (codes are level a, the
+ambient CwF is level a+).  Route: (i) the contractibility structure of Dec[p] over G.Dec at level a+ by
+CMove.Mv (it is level-polymorphic) from the level-a OpRC.rc; FibContr gives the internal isContr;
+(ii) elimination into a large proposition B over G: the level-a+ truncation T+ of the lifted type has
+core's recursor into B's algebra; a map Dec -> T+ is the level lift of raw trees (liftRaw: structural
+recursion Raw at level a -> Raw at level a+, both over terminal contexts; it commutes with restriction by
+a standalone induction, hence preserves Good); compose.
+Plan (2c): Prop_U := Sigma (c : Cod) isProp (Dec c) on FibCwF[a, a+]; propositional extensionality from
+the universe's univalence in the form available (ContrOp form if the S4 bridge gives no more).
