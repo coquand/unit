@@ -518,3 +518,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   C-substitution). Then Prop 34 conditional on ONE base-level premise (a
   record of the base truncation's interface), replacing S3.7 / S3.8.
   Building the base truncation itself (P2) is not undertaken.
+- 2026-11-11 (canonicity-c2, verified by canonicity-4e): D on
+  substitutions and elements, its functoriality and τ-naturality, and D on
+  types stable under C-substitution (CPshDSub / CPshDSubT: DSb, DSb-id,
+  DSb-o, tau-nat, DEl, DT-sub, DAC-sub). Toward Theorem 29.
