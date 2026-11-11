@@ -891,3 +891,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 (c2) U preserves propositions (c067a650, CTotUProp1-3) and THE
   MODALITY OF Tr (48abba21, CTotTrMod.modal : Equiv Tr (D Tr)[tau], from both
   being propositions + r + tau). Verified by 4e: 4/0. Next (c2): (c), h-sets.
+- 2026-11-11 (45) (P3) done: HomT(I) <-> CMorX's M I (beta, alpha, both round
+  trips, naturality), the cart for moveEq; beta committed 89a4e066 (shared
+  562/0), CHomT9-16 in check / private. LESSONS: (1) Swan's Id here is the
+  Yoneda Id (PosIdY.IdYT), whose fibres depend on the context's action, so
+  Id types over different contexts never convert (10 s overruns): build both
+  sides as substitutions of ONE Id type. (2) Data as one Π over a closed Σ:
+  the Σ's action is CMorX's restriction on the nose. Next (45): the inverse
+  from CFreeEval.E, homotopies via elimPH / ext1H, QinvEq, (P1).
