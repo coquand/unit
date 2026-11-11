@@ -832,3 +832,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   ORDER (4e): Prop 13 at the total site first (critical for G's operations
   and laws, Cor 15, Lemma 16, Lemma 59), then (d). G0's fibrant CwF =
   GrothOf[disc].FT.
+- 2026-11-11 Prop 13 at the total site (45): c0b4795c (D on maps), CTotP13b-c
+  in check. Psi on HFib: specialised copy (constant base line), not a
+  generic Psi12-22 (would restate ~2,500 lines); accepted by 4e. c2's QE1
+  part 1 e5cf7c12 (setQi, setQ, setW).
