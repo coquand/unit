@@ -621,3 +621,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   pushforward CTruncPush*), unit, proposition (isContr form), elimination
   into fibrant propositions with beta. SAG.pdf §8.3, no HIT, no strict
   substitution stability (not needed: projectivity at a fixed context).
+- 2026-11-11 (canonicity-45, verified): pilot done (43160f98, ed1f393a:
+  CCyl, CConst constant types fibrant, CPilotRing); factor 2.5, step 2 now
+  1,500-2,500 lines. RULING (canonicity-4e): the congruence of A_x must be
+  the BASE truncation of proof-relevant derivations, Tr0(Δ Der_x(t, u)),
+  not Δ of the metatheory proposition ||Der||: eliminating a metatheory
+  truncation into El(G, Id x y) (a set, not a Unit proposition) is the
+  erratum's levelwise problem.
