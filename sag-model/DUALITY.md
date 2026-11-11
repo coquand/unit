@@ -797,3 +797,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CTotL12g-l: face pieces, compatibilities, Join, step, build : (n) -> Up n;
   ~2,000 lines, no 2-cell). Verified by 4e: 13 CTotL12* modules 13/0.
   Remaining trivial half: assembly, kside, kunif, the ContrOp record.
+- 2026-11-11 LEMMA 12 AT THE TOTAL SITE, TRIVIAL HALF DONE (c2, 603a3d9d):
+  CTotL12n.lemma12 : levelwise ContrOp (U G)(U A) -> ContrOp (D G)(D A), any
+  internal C; 15 files, 2,026 lines, no 2-cell. Verified by 4e: 15/0. Next
+  (c2): fibration half (Lemma 11 for lines at the total site, Mv, fromFill;
+  1,000-1,450), then tau on types, r, D-modality of Tr, KL, eliminator.
+  45 starts Lemma 14 / Prop 13 against it.
