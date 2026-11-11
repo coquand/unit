@@ -564,3 +564,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   fields (isoT, Modal-sub, De-sub, hc-tau) as stated, the homotopical ones
   in setoid form (post-eq-h, restr-eq-h: equivalences of (El, internal Id),
   uniform in C) from the S3 bridge.
+- 2026-11-11 (canonicity-45): Theorem 29 (A): M1/M2 (CPshDT: Dbar,
+  Dbar-sub, Dbar-fib, eta, record DescentOp on the RAW CwF with fibrancy as
+  a class), M4 (subCMap), M5 (subUTriv, subEqU), desc1 checking; M6 (Lemma
+  16 via LineYC + Zig) and M7 remain. KNOWN GAP (recorded on purpose): the
+  paper's Lemma 12 is natural in Γ; the stability of the produced fibration
+  structures under substitution on the nose is not proved (not used
+  downstream), which is why the record sits on the raw CwF.
