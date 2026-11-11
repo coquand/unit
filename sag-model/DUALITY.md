@@ -826,3 +826,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   internally (Tr0 from surj), closed substitution maps packed over ΔTerm^n,
   injectivity by ElimP; gives the levelwise equivalence OUTRIGHT (no
   elimination over non-closed contexts needed).
+- 2026-11-11 (45) CInjSurj.contrFib (contractible fibres from propositional +
+  merely inhabited, any context). (d) scoped at several days ((i)-(v): the
+  tautological algebra over G0, yo(x) at G0, Sp(u), forward map, inverse).
+  ORDER (4e): Prop 13 at the total site first (critical for G's operations
+  and laws, Cor 15, Lemma 16, Lemma 59), then (d). G0's fibrant CwF =
+  GrothOf[disc].FT.
