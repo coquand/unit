@@ -853,3 +853,11 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-11 Prop 13 committed (45, 02e9b8ce; shared 530/0). Verified by 4e:
   CTotP13* 15/0, 17.84 s. 45 now: universal property of F_n (valuations Fin n
   -> A_x, Höfer data, uniqueness).
+- 2026-11-11 FINDING (45): yo F2 -> yo F1 x yo F1 is NOT a strict bijection
+  (maps of C out of quotients agree only up to Id; fibres of Q not discrete),
+  so idEq + moveEq cannot give its EquivOp. RULING (4e): as in Höfer's Lemma
+  43, prove it a levelwise equivalence INTERNALLY in the fibrant CwF of the
+  levelwise site (tautological algebra A over G0; uniqueness by elimP + funext,
+  existence by elim2; data propositional since A is a set), then bridge
+  internal isContr -> EquivOp (FibHt / FibContr layer). Same for Lemma 59.
+  (A) idEq dropped. 45's order: (d)(i), this, (d)(ii)-(v).
