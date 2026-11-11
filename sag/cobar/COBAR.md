@@ -875,3 +875,28 @@ Plan, generic in a CwF with Pi, Sigma, Swan Id, NF, Un, parameters pe : PropExtT
   equal", CwFCC; elim's hypothesis from the Id form to core's Path form by FibHt.YH).
 Files planned: CwFQuot (definitions, cls, cls-eq, eff), CwFQuotSet, CwFQuotElim, CTruncAtBase.  700-1,000 lines.
 After Q and before GrothCB: measure S4's remaining assembly (4e), since the user wants no hypotheses.
+
+### The Voevodsky quotient: state (canonicity-c2, 2026-11-11 evening)
+
+Checked, each with a negative test:
+  CwFQuot.Quot[.., NF, tr].Q[G, A, r]: Qt, cls (over G.A), clsG a, fst-cls (the first component of the class of
+      a is r a), Rel a b = DecP (r a b), relProp, and
+      eff : reflexivity -> (a b) -> El G (Id Qt (clsG a) (clsG b)) -> El G (Rel a b).
+  CwFQuotEq.QuotEq[.., NF, tr, pe].E[G, A, r]: mV a (r a c for c the variable, in PropU over G.A), relV a, and
+      cls-eq a b f g : El G (Id Qt (clsG a) (clsG b)), f / g maps both ways between relV a and relV b over G.A.
+  Toolkit (generic): CwFMaps (USI.upId, apF, FstF, EvF with values), CwFPropPair.pairPath (Sigma with a
+      propositional second component: joined first components give joined elements), CwFPropProp.propProp
+      (isProp (isProp A), from NF), CwFPropU.PropU-ov.
+Open: set-ness (PropU a set from pe, then Q), surj, elim / elim2 / elimP, the base instance of TruncAt.
+
+## The base at the total site (canonicity-c2, 2026-11-11; SIMPLIFIED.md item 4)
+
+CGrothBase.GrothOf[C].GB : CBase.CB at CTotCat's TotCat (8851b7c3).  Sieves of (I, x) are sieves of I;
+Lands (pre h Q) g is Lands Q (h g) by refl (lands-pre-refl), as on posets.  As committed it takes the interval
+as the object (Iv, term Iv), which needs IC's term / bang.  The real C has no strict terminal object
+(canonicity-45), so this instance is NOT to be used at the real C.  Ruling 4e: the interval becomes a presheaf
+IvP in CB (every use of Iv in the CB members is a map INTO Iv: 786 occurrences, all of that form).  The rewrite
+exists in a private copy and checks (345 modules, 0 failed; no file over 10 s); there GB needs neither term
+nor bang.  NOT installed: the 44 rewritten generic files are core files (sag-model symlinks into unit/core,
+read-only by sag-model's README), and core has two more instances of CB (CPosInst, CDeltaBase).  Awaiting a
+ruling.  SliceCB is dropped.
