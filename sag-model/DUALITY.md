@@ -548,3 +548,19 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (instantiate T2's DS record from the concrete D: De-sub, hc-tau,
   Modal-sub, D-eq, isoT, restr-eq, post-eq), then Prop 34 conditional on a
   base truncation interface.
+- 2026-11-11 FINDING (canonicity-c2, ruled by canonicity-4e): T2's record
+  DS has NO Unit instance with El := CEl (the concrete external model).
+  T2 is read internally (El a Unit type whose Id is a path); in the
+  concrete model global elements form a SET with strict equality, so a
+  field such as post-eq ("an internal equivalence induces an equivalence
+  on elements") becomes "a bijection", which is false (a contractible
+  fibrant type with two strictly different points). The same holds for
+  every field whose conclusion is an isEquiv or an Id of El-types (or of
+  points, e.g. LocRep's levelwise-equivalence field) that holds only up to
+  homotopy. This is exactly obligation (i) of §4: the link from the
+  concrete model to the duality proof is an INTERPRETATION of the internal
+  reading in cubical sets, not a record instance. Part (B) is therefore
+  reinterpreted (ruling O1): prove the concrete counterparts — strict
+  fields (isoT, Modal-sub, De-sub, hc-tau) as stated, the homotopical ones
+  in setoid form (post-eq-h, restr-eq-h: equivalences of (El, internal Id),
+  uniform in C) from the S3 bridge.
