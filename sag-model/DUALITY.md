@@ -934,3 +934,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   of classes, uniqueness, mere surjectivity); 45: Lemma 59 (local
   representation as parameter), Cor 15 / Lemma 16 at yo F1, Sol vs Sp_G, (d)'s
   plumbing.
+- 2026-11-11 Lemma 59 at the total site needs Lemmas 66, 67, Prop 69 (P2.1-
+  P2.4), none at the total site yet. RULING (4e): only NON-DEPENDENT targets
+  are needed (G^{Sp u}, N_D^{Sp u}: closed D-modal Q); route: maps Δ -> Q ≃
+  maps D Δ -> Q (Lemma 66, non-dependent), then Prop 13. Order (45): Cor 15,
+  Lemma 16 at yo F1 and Delta N, non-dependent 66 / 67, Lemma 59. "D-modal" =
+  EquivOp of tau_P at the total site. Π at the total site = fibPi-T.
