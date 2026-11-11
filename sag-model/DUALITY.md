@@ -763,3 +763,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   shared run 431/0. 45's 391ba9a9: CDisc.Fact / Cancel / Ini (factorisation
   of total maps, for U preserving fibrations). Verified by 4e: 10 key modules
   10/0. Next (45): CMorX, IC instance, universal map of A_x, Prop 58 (merely).
+- 2026-11-11 (c2) U preserves fibrations: CTotUExt .. CTotUFib4 (8bbd6371 ..
+  ab20a0e4, 625 lines); lines commute with U (rho is a bijection, via 45's
+  CDisc factorisation). Verified by 4e: 5/0. Next (c2): CTotTr (Tr := R Tr0 U
+  fibrant, unit, proposition; contraction over G.Tr A via the counit).
