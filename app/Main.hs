@@ -485,7 +485,11 @@ serve f dir o = do
         let (_, evs) = checkUnits (programCx us) us
             toks = Map.fromList [ (x, tokens src) | (x, src) <- texts ]
             nested = Map.fromList [ (x, importsIn src) | (x, src) <- texts ]
-            keys = Map.fromList [ (x, contentKey src) | (x, src) <- texts ]
+            -- the main file's key leaves out its import lines: adding or
+            -- removing a file there dirties that file (new / removed) and
+            -- the files whose predecessors changed (moved), not every file
+            keys = Map.fromList [ (x, if x == baseName f then mainKey src else contentKey src)
+                                | (x, src) <- texts ]
             oldFiles = sFiles old
             first = Map.null (sKeys old)
             textChanged = [ x | (x, k) <- Map.toList keys, Map.lookup x (sKeys old) /= Just k ]
@@ -634,6 +638,15 @@ contentKey src = unlines [ l | l0 <- lines src
          [] -> []
          ('-' : '-' : _) -> []
          (c : cs) -> c : stripC cs
+
+-- The key of the main file: its content key without the lines that are a
+-- single import statement.
+mainKey :: String -> String
+mainKey src = contentKey (unlines [ l | l <- lines src, not (isImport (words l)) ])
+ where isImport ws = case ws of
+         ["import", _, ";"] -> True
+         ["import", m] -> ";" `isSuffixOf` m
+         _ -> False
 
 -- The files imported in a text, including several on one line and those
 -- nested in modules. Parse statements rather than treating lines as units.
