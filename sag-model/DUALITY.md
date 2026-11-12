@@ -1142,3 +1142,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CHtpyAlg at G1 with CCmpY6 and total constants' compatibility) plus the path
   cls q_j = cls 0 through tau; Id fibres are propositions (setD, UP3, FibR,
   setQ), so cE's fibre part is a logical equivalence.
+- 2026-11-12 (45, 11b5c235) total-site E1 up to constants: CLineC (line of
+  codes from UG30's closed Id), CApOp2G, CHtpyAlgG; in check: CLinePre,
+  CCodeH, CCompC, CE1Tot-3. Remaining for rho: total constants, the zero-code
+  step, G1 homotopy -> internal Id, then A = Sp(u), rho, rho1; then cE.
