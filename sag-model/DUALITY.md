@@ -1611,22 +1611,55 @@ up to a path.  This is a *levelwise* assertion on Höfer's discrete-object
 site.  It needs no inverse natural along C-arrows.  `CF3Eval` is evaluation
 into `A_y^3`; composing `CF3HomCmp` with three copies of the checked F1
 evaluation equivalence `CEv8` should identify the two comparisons.
-`CUG30` supplies uniqueness.  The remaining existence
-proof is quotient induction into the proposition "the fibre of e_3 is
-merely inhabited", using `CF3TermCodes` on term representatives and
-`CwFQuotElim5.elimP3`.  Fibre uniqueness then removes the truncation.
+`CUG30` supplies uniqueness.  The existence proof can use quotient
+induction directly into the evaluation fibre, once that fibre is proved a
+proposition; no truncation is needed in the motive.  The term case comes
+from `CF3TermCodes`, and `CwFQuotElim5.elimP3` then gives the section.
 
 Proposition 13 turns `D(e_3) : D(Y_3) -> D(Y_1^3) ~ G^3` into an equivalence.
-The two ternary composites of the *existing* G operation, pulled back
-along `D(e_3)`, are the evaluations of the two F3 terms
-`x1+(x2+x3)` and `(x1+x2)+x3` (and similarly for multiplication).
-This is the operation compatibility of Construction 45.  `CF3OpCompat`,
-`CF3MulCompat` and `CF3CmpCompat` already check the generic endpoints and
-comparison components; the remaining coherence can be phrased as a
-modal Yoneda statement: for D-modal G, maps `D(Y_3) -> G` are determined,
-up to path, by their value at the generic F3 point.  A proof of this
-statement or a direct natural homotopy is still needed; generic point
-calculation alone is not a global homotopy.  `CE1Rel` supplies the
-homotopy between evaluations of the terms from the ring-law derivation.
-Cancel `D(e_3)` to obtain associativity.  This is the proof to formalize
-next, with the F3 evaluation equivalence as the first missing theorem.
+The clean algebraic statement is a three-generator fragment of the
+Lawvere-theory semantics: a term `t` in `F_n` gives a map `Y_n -> Y_1`;
+under the free-generator equivalences and D, interpreting a substituted
+term agrees up to path with composing the corresponding operations.
+For n = 3 this identifies the two ternary composites of the *existing*
+G operation, pulled back along `D(e_3)`, with the interpretations of
+`x1+(x2+x3)` and `(x1+x2)+x3` (similarly for multiplication).
+`CF3OpCompat`, `CF3MulCompat` and `CF3CmpCompat` check generic endpoints
+and comparison components, but the full substitution compatibility is
+not yet checked.  `CE1Rel` supplies the path between the two term
+interpretations from the ring-law derivation.  Cancel `D(e_3)` to obtain
+associativity.  This avoids treating a calculation at the generic point
+alone as a global homotopy.
+
+### F3 evaluation attempt (2026-11-12)
+
+`CF3EvalBeta` now checks the representative case more strongly than the
+previous `CF3TermCodes`: for every triple of terms, it constructs a
+closed internal path from `CF3Eval.ev3` of the term-coded homomorphism to
+the triple of their classes.  It uses a generic one-generator reading
+lemma, the three beta paths, and `CProdSet.PairId` to combine the paths.
+
+`CF3Fibre` defines the evaluation fibre over the actual quotient context
+`nil.Q.Q.Q`, with its natural map to the fibre over `nil.(Q^3)`. For each
+triple of terms, `AtTerms.term` is a checked element of the fibre at the
+triple of classes. It transports the closed path from `CF3EvalBeta.witness`
+through the fibre's dependent identity type, including an explicit equality
+between two associated substitutions that are not definitionally equal.
+The conditional `Elim.section` now gives a section using `elimP3` from
+**only** a proof that the evaluation fibre is a proposition.
+
+`CF3Fibre.FromGen.Use` also checks the precise injectivity interface.
+Given paths for the three generator values of two homomorphisms whose
+evaluations agree, `CUG30` identifies those homomorphisms; `CInjP3` then
+proves that evaluation fibres are propositions; `Elim.section` supplies
+the section. The target `Q_y^3` is a set by two applications of
+`CProdSet2`.
+
+The immediate missing work is to derive the three generator paths from
+the equality in `Q_y^3` stored in `CInjP.H`. This requires projecting an
+internal product identity and aligning the resulting endpoints with
+`CUG20.IdZ` at each generator. It is the remaining injectivity half of
+the free-generator equivalence. The closed representative existence half
+is checked. No contradiction or need for stable truncation has appeared
+in this F3 step. The F3 equivalence, its compatibility with
+precomposition, and associativity of G remain unproved.
