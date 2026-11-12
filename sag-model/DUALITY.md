@@ -1109,3 +1109,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45, 119aa918) CCst4: at a copy, cst r ~ tau(kc). E1's instance
   next (~250): A side Q_y' with strict operations, tau' := tau . beta .
   psi^{-1}, additivity of codes as paths (Kan composition).
+- 2026-11-12 (45, 33c99ae6, shared 732/0) E1 AT A COPY (CE1Copy): evaluation
+  in G at tau'-images = tau' of evaluation in Q_y', all terms; CRestrHT.
+  Parameters left: phi (c2's CEv6), cop / sec (c2's (K)), cTp and the code
+  readings (45).
