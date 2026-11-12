@@ -1407,3 +1407,31 @@ the package of `A_y` as an `HRing`, quotient effectiveness and stable
 truncation elimination in context, and finally conversion to
 `CAxKer`'s bounded coefficient-vector equality. In particular the
 checked multiplication pilot is not a proof of `CAxKer`.
+
+### Variable-context certificate (2026-11-12)
+
+`CFinIntTy` defines the finite cofactor vector as a CwF type over an
+arbitrary context `G`, using nested Sigma types. `CFinIntHead` checks its
+first projection in the generic extension. `CFinIntSplit` generalizes the
+head and tail projections to every substitution `D -> G`; its tail uses
+the CwF's `p-lift-T` and `p-sec-T` paths, not definitional equality.
+`CFinIntPull` transports both ring operations along `Fun-ov` to `D`.
+`CFinIntEval` recursively evaluates a variable cofactor vector in `D`,
+using those operations and projections. At the generic cofactor extension,
+this is an actual CwF element. `CFinIntCertTy` packages its equality with
+`x = y + sum f_i c_i` as an actual Sigma-Id type over `G`. All six modules
+check. This closes the earlier gap in *forming* the internal certificate
+family; it does not establish its ring closure or quotient effectiveness.
+
+The next interface issue is precise. `CPilotRing.HRing[G]` states ring laws
+for elements in `C.El G R` only. A variable cofactor is an element over
+`G.CofT(fs)`, so those laws cannot be instantiated with it. The earlier
+`CFinIntVec` and `CFinIntMul` proofs use only terms in `G`; they do not
+automatically prove closure for `CFinIntCertTy`. The next proof needs
+contextual ring-law schemas for every substitution `D -> G`, or an
+equivalent internal universally quantified ring structure, and must
+connect the constructed `G`/`A_y` operations to that interface. The
+existing `CAxElOps` gives operations on elements in every context but
+does not package their ring laws. The pointwise family `CFinIntEval.lin`
+is used at the generic extension to obtain a genuine term; its separate
+substitution-naturality equation has not been checked.
