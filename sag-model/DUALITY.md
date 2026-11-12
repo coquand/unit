@@ -33,8 +33,9 @@ E1–E3 are not a model of SAG and not a model of Unit.
   a checked semantic inhabitant of the interpreted `SAGAxioms.Assumptions`,
   with the Theory parameters discharged. Its definition of "completed" is
   kept as written there. M1 steps 4–6 (`M1.md`) belong to it.
-- S4 (the univalence bridge, `M1.md` "Step 3, S4") stays at its last
-  checked state. It is not extended for E1–E3.
+- S4 (the univalence bridge, `M1.md` "Step 3, S4"): REOPENED 2026-11-12 to
+  discharge propositional extensionality at the poset base (canonicity-89;
+  see the ledger entry of that date).
 
 **Work split (coordinated from canonicity-4e, 2026-11-10).**
 - canonicity-45: Tier 2 (the record T2 in `unit/sag/duality-presheaf`,
@@ -1201,3 +1202,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45) cE's equivalence without the backward lift: fibres are
   propositions (base equivalence x map of propositions) and inhabited by the
   section fN . h^{-1} (commH), hence contractible. Order: commH, this, ef.
+- 2026-11-12 (89) PropExt at the poset base measured: only uaC0 remains (the
+  generic chain uaC0 -> UaStr -> propExt is checked). 5 files in sag-model/
+  (symlinked): FibUaGm, FibUaHm (main risk), FibUaHk, FibUaC0, FibPropExt;
+  ~450-650 lines. Approved; pe passed at the top-level instantiation, no edits
+  to other sessions' files.
