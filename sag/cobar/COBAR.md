@@ -1019,3 +1019,23 @@ Ingredients:
       ends by lemma B: ev''(phi|f, (f . id, v)) = phi(f, v)).
 OPEN (with the axiom statements): a reading of h1I/h2I at G0 over a context
 of the copy, if the axiom proofs need it there rather than at the copy.
+
+
+## Prop 58: rho's levelwise equivalence (canonicity-45, CRho1-2, 2026-11-12)
+
+The hypothesis ef of Lemma 59 (rho : yo(y.u) -> yo(y).A levelwise an
+equivalence), from per-copy data (4e's ruling: (b), Sp(u) built from G; the
+comparison of Sp(u) with Sol is its own step):
+  CEqCancel   two out of three: equivalence structures of g and g . f give one
+              of f (EqQinv quasi-inverses, CHtpyOps Inv/WL/WR/Cat/Ret, QinvEq.QE);
+              RetEq moves a structure along a pointwise equal map.
+  CRho1       at each copy y' rho's restricted map fy is between fibrant types
+              (CCopy9, CL59g); from T, an equivalence cE : U(yo(y).A)|_{y'} -> T,
+              an equivalence h : U(yo(y.u))|_{y'} -> T and cE . fy = h, fy is an
+              equivalence; the copies assemble (CCopy3.eqG0): RhoC..Fin.ef.
+  CRho2       T = Sigma HX Sol (CSolT) at the copy; h = fwd . alpha with fwd, Kd
+              c2's (d)(1)-(3) (parameters), its structure fwd's (FibS3 S3b) moved
+              along alpha (CHFibCart, as CCmpY2): HSide..Fin2.ef.
+Remaining parameters of Fin2: cE with its structure (the comparison
+U(yo(y).Sp(u))|_{y'} ~ Sigma HX Sol over HX, via tau and Lemma 14, next step) and
+commH (cE . rho = fwd . alpha on codes).
