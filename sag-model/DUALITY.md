@@ -1078,3 +1078,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45, ec2d0837) CApOp2, CHtpyAlg (generic E1). Nullary (U)/(E)
   (Hom(F0, y') contractible) goes to c2 with (E); 45 builds the constants
   with it as a parameter.
+- 2026-11-12 (c2) statements built privately: CAxPow, CAxEv, CAxOps, CAxSp,
+  CAxN (Nsurj, Ninj), CAxProj (Def 73 as a schema over (D, s, P)); install
+  after 45's CNDFib. (A) for duality: a Cyl for the Groth site of CM.IC,
+  CConst / pack as FB members, ΔN and the shape family at G1 (4-6 files),
+  then the duality statements (2 files). 4e reads the statements before
+  reporting them.
