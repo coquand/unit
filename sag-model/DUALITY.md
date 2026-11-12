@@ -1166,3 +1166,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45, 2660255b) commH as a path homotopy (HtpyEq + CEqCancel);
   c2: readings of fwd (26b36cf3). Next (45): cE / ecE / commH per copy
   (500-700 lines), closing Prop 58's ef modulo c2's (d)(1)-(3).
+- 2026-11-12 (c2) (d)(1) fwd, (d)(2) injective, T0 a set, propositional fibres
+  committed (8932383a, 9e8db646, 000beafc). (d)(3) mere surjectivity: (K)'s
+  route FAILS (the substitution hom out of A_{x.u} needs a CLOSED proof that
+  it kills the relations; ours is open). Ruling: function-ring route (target
+  Fun T0 Q_y, everything closed in t : T0), needs Q_y's ring laws at open
+  elements (reusable module), 15-20 files.
