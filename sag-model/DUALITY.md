@@ -1188,3 +1188,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   pushforward functoriality. Revised total 1,600-1,900 lines (cap 2,200 before
   re-asking). Open (4e): propositional extensionality's base instance (CwFS4)
   is still a parameter, the one real assumption left.
+- 2026-11-12 (45) comparison cE for Prop 58: CIdPull, CUnpack, CEqHt, CCeBase,
+  CCeVals committed (8ca26469 .. d276021d). Remaining: the per-equation chain
+  (E1 for psi, generator tuples, CEqHt), HT -> Id, assembly; then ecE, commH.
