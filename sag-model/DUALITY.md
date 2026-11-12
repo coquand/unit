@@ -1068,3 +1068,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   pack, G[X_n] := Σ (d : ΔN) G^{k(n,d)}. N statements and projectivity can be
   per u. Plan: common part + N statements, then (A) (try generating CConst as
   an FB member first), then duality statements, then (E).
+- 2026-11-12 CORRECTION (c2, 45): 4e's c_r := tau(k_r) is NOT strictly natural
+  (k_r natural only up to its constant datum, a path). RULING: constants as
+  the binary operations (Höfer Constr. 44/45, arity 0): yo F0 -> 1 levelwise
+  equivalence (nullary (U)/(E)), D of it an equivalence (Prop 13), EqQinv
+  point of D(yo F0), cst r := D(yo(SubC[F1, F0, cst r])) of it; E1's cst case
+  from the quasi-inverse homotopy. 45: CApOp2, CHtpyAlg (generic E1) in check;
+  CNDFib (N_D fibrant at G1) checked privately.
