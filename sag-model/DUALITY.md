@@ -1113,3 +1113,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   in G at tau'-images = tau' of evaluation in Q_y', all terms; CRestrHT.
   Parameters left: phi (c2's CEv6), cop / sec (c2's (K)), cTp and the code
   readings (45).
+- 2026-11-12 (45) E1 at a copy fully assembled (CE1Fin; CPhi, CFibTc, CTrips,
+  CRead*) except the pairing of codes (cop, sec1, sec2), to be read from c2's
+  (K). Then cE and commH.
