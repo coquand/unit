@@ -1313,3 +1313,48 @@ the total-site Sigma-Id argument to make `cE` injective; `commH` uses the
 base and value readings of CDFw9/10 and propositional equation fibres.
 No existing checked module supplies these conclusions. The temporary
 (d)(3) premise does not imply them.
+
+## Fixed-presentation duality audit (2026-11-12)
+
+`CDualPilot.Fixed` checks the concrete substitution into Lemma 59: `A` is
+`CRhoSig.RS.A` (the actual `Sp(u)` over `yo(y)`), `rho` and `rho1` are its
+constructed representation map, and `Q` is exactly `CAxPow.PowOf.GTy`
+(the `G` used by `CAxSurj` and `CAxKer`). Given `ef` for this `rho` and
+`mQ` for this `G`, `Fixed.Hyp.ev` and `inv`, with the two homotopies inherited
+from `CL59r`, give the evaluation equivalence at the copy. This is a
+checked *conditional* instance of Lemma 59, not either duality axiom.
+`CTotL16m.YoMod.lemma16` proves modality for the alternative presentation
+of `G` as `Bt`; transferring that result to `GTy` through `CGBr` is not
+packaged. A direct unfolded instantiation exceeded the checker's
+10-second declaration limit, so this bridge still needs a small proof.
+
+The apparent short proof of Höfer's Theorem 62 uses more than Proposition
+58 and Lemma 59. Its final 2-out-of-3 square uses Construction 56
+(comparison of the *presented algebra in the model* with the base
+presentation) and Construction 57 (identification of the spectrum's
+evaluation with a retraction). The quotient-free axiom design deliberately
+does not construct that model presented algebra, so the square cannot be
+copied as written. This is the main mismatch between the paper's proof
+and the current code plan; it does not invalidate either approach.
+
+For the fixed-presentation route, the missing comparison is a commutative
+square, up to paths, from bounded coefficient-vector evaluation into
+`G^Sp(u)` to evaluation of the same polynomial in `A_{y.u}`, after
+`CL59r` and the copywise `G_z ≃ A_z` of Lemma 14. The latter equivalence
+may be used only inside the proposition-valued axiom proof, never as a map
+natural in all of `C`. To prove `CAxSurj`, this square must turn quotient
+representatives into bounded coefficients, with the degree inside `Tr`.
+To prove `CAxKer`, quotient effectiveness must be strengthened by a
+relative ideal certificate: an equality of classes in `A_{y.u}` must
+produce a finite sum of the *new* relations with coefficients in `A_y`.
+The old relations of `y` must disappear into equality of coefficients.
+`CertificateInterpretation.seg` checks the pattern for a single relation,
+but no checked lemma has the finite relative conclusion or the exact
+coefficient-vector equality of `CAxKer`.
+
+Thus Proposition 58 alone is not a sufficient temporary assumption for
+the present quotient-free proof. Besides its `ef`, the route still needs
+the modality bridge for the concrete `GTy`, the evaluation comparison,
+bounded representative extraction, and relative ideal effectiveness.
+The previously recorded `pe`, stable truncation, and `G` ring-law work
+also remain prerequisites for the fully concrete theorem.
