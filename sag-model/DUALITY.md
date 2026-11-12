@@ -1513,3 +1513,36 @@ be transported through that square to obtain associativity for every
 triple of `G` elements. Neither the F3 equivalence nor this coherence
 square is checked. Thus associativity of `G` remains open; the assumed
 stable base truncation alone does not close these gaps.
+
+### F3 comparison and operation compatibility (2026-11-12)
+
+The F3 target has been narrowed to the arity actually needed for
+associativity. `CF3OpCompat` and `CF3MulCompat` check that the generic
+F3 paths have endpoints formed from the binary operations already
+chosen on G, rather than newly defined pointwise operations.
+`CF3CmpCompat` checks that the three precomposition components of the
+total-site comparison, followed by tau, are the same generic maps used
+by E1. Thus the operation compatibility holds on the generic F3 point.
+
+`CF3HomCmp` constructs the internal comparison
+`Hom(F3,y) -> Hom(F1,y)^3` using natural precomposition maps; it has no
+equivalence proof yet. `CF3P13` gives the total-site comparison exactly
+the levelwise shape expected by Proposition 13. `CF3Fib` proves
+levelwise fibrancy of the threefold Yoneda product on the discrete-object
+site. `CF3DComp` applies Proposition 13 to a levelwise equivalence
+premise, and `CF3DInv` constructs the resulting homotopy inverse of the
+D-image. These conditional pieces check with no extra premise beyond
+the explicit levelwise-equivalence input.
+
+A possible specialized proof presents F3 as F2 extended by one free
+generator: `CF3Relative` checks `F2.(1,nil) = F3` and instantiates the
+existing relative comparison. Its uniqueness/fibre-proposition half is
+already checked (`CDFwD4.pF`). The equivalence still needs the
+mere-surjectivity term `CDFwD3.MereSurj` for this free extension, plus
+an identification of that relative comparison with the direct F3
+comparison. The general relative-surjectivity code has this term as a
+parameter because its open-context quotient construction awaits the
+stable base truncation. It may be possible to prove this free special
+case directly with the existing three-variable proposition eliminator;
+that proof has not been constructed. Associativity for arbitrary G
+elements remains unproved.
