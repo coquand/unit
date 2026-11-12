@@ -1195,3 +1195,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   8f1e354b; CCeTup .. CHtPair). Next: its EquivOp (QinvEq, or a generic
   "Σ over a base equivalence with a backward map of propositional fibres"),
   then commH.
+- 2026-11-12 New session canonicity-89 (user-started): propositional
+  extensionality at the poset base (pe : PropExtTy via S4 / CwFPropExt from
+  UaContr), the last real assumption. First step: measure and report.
