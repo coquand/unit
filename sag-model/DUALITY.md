@@ -1237,3 +1237,59 @@ sag/cobar/COBAR.md, 89 in sag-model/PROPEXT.md):
   `import CFibEc` and a COBAR.md line; duplicate import removed; 45's commit
   intact). 89: 3da1c045 (PROPEXT.md, no code). Verified by 4e: tree
   consistent, `changed` 22/0. Handover brief: sag-model/HANDOVER.md.
+
+## Conditional duality first pass (2026-11-12)
+
+User chose a first pass with named, temporary premises. The target is the
+*concrete quotient-free duality schema* already stated by CAxSurj and CAxKer,
+for arbitrary metatheory `k`, `n`, and `qs`. In CAxSurj the degree `d` belongs
+inside the truncation. In CAxKer the cofactor family `a` and its bound `e`
+belong inside the truncation. Neither conclusion is a premise.
+
+Temporary premises, to be discharged separately:
+
+1. The precise stable-truncation interface required by open-context quotient
+   elimination: substitution stability, a code former, and elimination into
+   propositions. CTrLF2-6 are checked; the presheaf type, bridge, and open
+   eliminator remain to be built. The first pass may take this interface as
+   a module parameter, keeping the current CTotTr statements fixed.
+2. The poset-base `pe : PropExtTy` instance of PROPEXT.md. Existing axiom
+   statement modules already take `pe` explicitly.
+3. G's ring laws for the operations constructed in CGRing, stated at the
+   total site with their required substitution laws. Evaluation compatibility
+   (E1) is checked and is not included in this premise.
+4. Only Proposition 58's missing (d)(3): for each fixed syntactic relative
+   presentation and each target copy, the map `fwd : HomT(y.u,y') -> T0`
+   of CDFw7-10 is merely surjective. Its map, injectivity, and the
+   proposition-valued fibres are checked; the generic argument from (d)(3)
+   to `Kd` is to be proved, not assumed. The comparison `cE`, its
+   equivalence, and `commH` are also to be proved, not assumed.
+
+Proof order for this pass:
+
+- Finish the comparison `cE` equivalence and `commH` in COBAR.md's route
+  (ii), then obtain the fixed-presentation mere Proposition 58 from the
+  single (d)(3) premise. Check the result at the total site; a levelwise
+  inverse is not used as a total-site map.
+- Prove CAxSurj.Main.P using the local representation and surjectivity of
+  the presented-algebra quotient. Keep the polynomial degree under the
+  truncation while transporting the witness.
+- Prove CAxKer.Main.P by effectiveness of the same quotient followed by
+  a finite-relation derivation-to-cofactor certificate. Generalize the
+  checked single-relation pattern in
+  sag/presentations/CertificateInterpretation.seg; do not assume a kernel
+  certificate. Its coefficient-vector equality must be the one in CAxKer.
+- Check the two results for arbitrary `k`, `n`, and `qs`, and report them
+  explicitly as conditional on premises 1-4. The univalent-algebra
+  equivalence lemma is a separate endpoint for relating this schema to
+  Höfer's equivalence statement.
+
+Baseline: `./segc sag/cobar check CAxSurj CAxKer` passes (2 modules, 0
+failures). No proof of either axiom statement is claimed by this baseline.
+`CDFwD3.seg` now checks the exact type of premise 4 as
+`D3[R,encK,pe,x,u,y].MereSurj`: a truncated fibre over the variable target
+of `fwd`, not an inverse or the local-representation equivalence. Its
+`Assemble[pF,ms].Kd` checks the generic step from that premise and
+propositional fibres to the contractible-fibre datum consumed by CRho2.
+The remaining work here is to instantiate `pF` from (d)(2) and to prove
+`ms` after stable open-context quotient elimination.
