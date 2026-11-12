@@ -1182,3 +1182,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   files untouched), CTrLFTy1-4 (Tr' with its interface, fibrancy rebuilt from
   F), CTrLFSt1-2 (stability as an equality of types; tr : U -> U), CTruncAtS;
   ~1,300-1,400 lines, poset base first. Risk: the bijection's naturality.
+- 2026-11-12 (c2) stable truncation, simplification: location-free normal
+  forms = core's normal forms over the representable y(X) with A[x^]; the
+  presheaf laws of the action need st as an algebra map + core's uniqueness +
+  pushforward functoriality. Revised total 1,600-1,900 lines (cap 2,200 before
+  re-asking). Open (4e): propositional extensionality's base instance (CwFS4)
+  is still a parameter, the one real assumption left.
