@@ -1207,3 +1207,27 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (symlinked): FibUaGm, FibUaHm (main risk), FibUaHk, FibUaC0, FibPropExt;
   ~450-650 lines. Approved; pe passed at the top-level instantiation, no edits
   to other sessions' files.
+
+## PAUSE 2026-11-12 (user's request)
+
+State at the pause (each session records its own detail: c2 and 45 in
+sag/cobar/COBAR.md, 89 in sag-model/PROPEXT.md):
+- Done and verified at the total site of an internal C: Lemmas 9, 11 (lines),
+  12, 14, 16 (concrete C), Prop 13, Cor 15, Prop 34 right-to-left, KL, D
+  preserves propositions and h-sets; the internal C (Construction 39); G =
+  D(yo F1) D-modal set with +, x, constants and tau-compatibility (no assumed
+  inputs); N_D D-modal, fibrant; Lemma 59 at a fixed (y, u); E1 at copies and
+  at the total site; the quotient eliminators (closed); all five axiom
+  STATEMENTS (CAxSurj, CAxKer, CAxN, CAxProj), read against SAG.
+- In progress:
+  * Prop 58 (45): rho constructed; comparison cE built; its equivalence by
+    route (ii) (injectivity at the total site with setD, ~12 files) + commH.
+  * Prop 58 (d)(3) mere surjectivity (c2): waits on the STABLE base
+    truncation (user's choice: SAG §8.3 location-free, 1,600-1,900 lines;
+    step 1 private), then open-context quotient elimination, then (K) route.
+  * Propositional extensionality at the poset base (89): 5 files (uaC0 ->
+    pe), the last real assumption.
+- Not started: G's ring laws; the proofs of the five statements (N first);
+  duality's cofactor extraction; the univalent-algebra equivalence lemma.
+- Resume order: Prop 58 (45, c2), pe (89), then the N axiom's proof (design
+  logged 2026-11-12), G's laws, duality, projectivity.
