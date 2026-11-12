@@ -1,0 +1,91 @@
+-- A derivation in y.u gives a finite ideal certificate for the new
+-- equations, once the old equations vanish in the coefficient ring.
+level a ;
+open Base ;
+open Prelude[a] ;
+open Prelude[a++] ;
+open Paths[a++] ;
+open Ring[a] ;
+module SX = CSyntax[a] ;
+
+module Relative (R B : CRing) (y : SX.Over[R].Presentation)
+ (u : SX.Rel[R].RelPres y) (phi : R.R -> B.R)
+ (val : SX.Over[R].Der[SX.Rel[R].concat y u].Vs -> B.R) {
+ open SX.Over[R] ;
+ module RD = CRelativeDer[a, a].Relative[R, y, u] ;
+ module Dc = RD.Dc ;
+ module Dx = RD.Dx ;
+ module FI = CFiniteIdeal[a].Ideal[B] ;
+ Term : U a = Dc.Term ;
+ ev : Term -> B.R = split {
+  var v -> val v ; cst r -> phi r ;
+  sumE p q | ep eq -> B.add ep eq ;
+  mulE p q | ep eq -> B.mul ep eq } ;
+ fs : List B.R = SX.mapL Term B.R ev u.2 ;
+ member-map (q : Term) : (es : List Term) -> Dc.Member q es
+   -> FI.Member (ev q) (SX.mapL Term B.R ev es) = split {
+  nil -> \ m -> absurd (FI.Member (ev q) (SX.mapL Term B.R ev nil)) m ;
+  cons p ps | ih -> split {
+   inl e -> inl (apH {Term} {B.R} ev e) ;
+   inr m -> inr (ih m) } } ;
+ Cert (p q : Term) : U a = FI.Certificate fs (ev p) (ev q) ;
+
+ module Hyp
+  (phi-add : (r s : R.R) -> Id B.R (phi (R.add r s)) (B.add (phi r) (phi s)))
+  (phi-mul : (r s : R.R) -> Id B.R (phi (R.mul r s)) (B.mul (phi r) (phi s)))
+  (phi-one : Id B.R (phi R.o) B.o)
+  (phi-zero : Id B.R (phi R.z) B.z)
+  (old-zero : (q : Dx.Term) -> Dx.Member q y.2 -> Id B.R (ev (RD.RN.rn q)) B.z) {
+
+  module BL = RL[B] ;
+  phi-neg-one : Id B.R (phi (R.neg R.o)) (B.neg B.o) =
+   BL.neg-uniq B.o (phi (R.neg R.o))
+    (trans (ap (\ t -> B.add t (phi (R.neg R.o))) (sym phi-one))
+      (trans (sym (phi-add R.o (R.neg R.o)))
+        (trans (ap phi (R.addN R.o)) phi-zero))) ;
+  neg-law (p : Term) : Id B.R (B.add (ev p) (B.mul (phi (R.neg R.o)) (ev p))) B.z =
+   trans (ap (\ t -> B.add (ev p) (B.mul t (ev p))) phi-neg-one)
+    (trans (ap (B.add (ev p)) (BL.neg-mul-left B.o (ev p)))
+      (trans (ap (\ t -> B.add (ev p) (B.neg t)) (BL.one-left (ev p)))
+        (B.addN (ev p)))) ;
+
+  eq (p q : Term) (h : Id Term p q) : Cert p q =
+   FI.equal fs (ev p) (ev q) (apH {Term} {B.R} ev h) ;
+  tr (p q r : Term) (h : Cert p q) (k : Cert q r) : Cert p r =
+   FI.transitive fs (ev p) (ev q) (ev r) h k ;
+  sy (p q : Term) (h : Cert p q) : Cert q p = FI.symmetric fs (ev p) (ev q) h ;
+  ad (p p' q q' : Term) (h : Cert p p') (k : Cert q q') : Cert (sumE p q) (sumE p' q') =
+   FI.addition fs (ev p) (ev p') (ev q) (ev q') h k ;
+  ml (p p' q q' : Term) (h : Cert p p') (k : Cert q q') : Cert (mulE p q) (mulE p' q') =
+   FI.multiplication fs (ev p) (ev p') (ev q) (ev q') h k ;
+  aA (p q r : Term) : Cert (sumE p (sumE q r)) (sumE (sumE p q) r) =
+   FI.equal fs _ _ (B.addA (ev p) (ev q) (ev r)) ;
+  cA (p q : Term) : Cert (sumE p q) (sumE q p) =
+   FI.equal fs _ _ (B.addC (ev p) (ev q)) ;
+  zA (p : Term) : Cert (sumE p Dc.zeroE) p =
+   FI.equal fs _ _ (trans (ap (B.add (ev p)) phi-zero) (B.addZ (ev p))) ;
+  nA (p : Term) : Cert (sumE p (Dc.negative p)) Dc.zeroE =
+   FI.equal fs _ _ (trans (neg-law p) (sym phi-zero)) ;
+  aM (p q r : Term) : Cert (mulE p (mulE q r)) (mulE (mulE p q) r) =
+   FI.equal fs _ _ (B.mulA (ev p) (ev q) (ev r)) ;
+  cM (p q : Term) : Cert (mulE p q) (mulE q p) =
+   FI.equal fs _ _ (B.mulC (ev p) (ev q)) ;
+  oM (p : Term) : Cert (mulE p Dc.oneE) p =
+   FI.equal fs _ _ (trans (ap (B.mul (ev p)) phi-one) (B.mulO (ev p))) ;
+  ds (p q r : Term) : Cert (mulE p (sumE q r)) (sumE (mulE p q) (mulE p r)) =
+   FI.equal fs _ _ (B.dist (ev p) (ev q) (ev r)) ;
+  cfA (r s : R.R) : Cert (sumE (cst r) (cst s)) (cst (R.add r s)) =
+   FI.equal fs _ _ (sym (phi-add r s)) ;
+  cfM (r s : R.R) : Cert (mulE (cst r) (cst s)) (cst (R.mul r s)) =
+   FI.equal fs _ _ (sym (phi-mul r s)) ;
+  oldEq (q : Dx.Term) (m : Dx.Member q y.2) : Cert (RD.RN.rn q) Dc.zeroE =
+   FI.equal fs _ _ (trans (old-zero q m) (sym phi-zero)) ;
+  newEq (q : Term) (m : Dc.Member q u.2) : Cert q Dc.zeroE =
+   FI.transitive fs (ev q) B.z (phi R.z)
+    (FI.generator fs (ev q) (member-map q u.2 m))
+    (FI.equal fs B.z (phi R.z) (sym phi-zero)) ;
+  module I = RD.Interpret[Cert, eq, tr, sy, ad, ml, aA, cA, zA, nA,
+    aM, cM, oM, ds, cfA, cfM, oldEq, newEq] ;
+  certificate (p q : Term) (h : Dc.Proof p q) : Cert p q = I.proof p q h ;
+ } ;
+} ;

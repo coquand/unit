@@ -1,0 +1,95 @@
+-- The relative part of a derivation over y.u.  Equations in the
+-- concatenated presentation are either inherited from y or new in u.
+-- The interpreter is independent of the target certificate construction.
+level a l ;
+constraint a <= l ;
+open Base ;
+open Prelude[a] ;
+open Prelude[a++] ;
+open Paths[a++] ;
+open Ring[a] ;
+module SX = CSyntax[a] ;
+
+module Relative (R : Ring[a].CRing) (y : SX.Over[R].Presentation)
+ (u : SX.Rel[R].RelPres y) {
+ open SX.Over[R] ;
+ module Dx = SX.Over[R].Der[y] ;
+ module Dc = SX.Over[R].Der[SX.Rel[R].concat y u] ;
+ module RN = SX.Rel[R].Ren[y, u] ;
+ Term : U a = Dc.Term ;
+ old : List Term = SX.mapL Dx.Term Term RN.rn y.2 ;
+ all : List Term = SX.appL Term old u.2 ;
+
+ lift (p q : Term) (qs ys : List Term) : Plus (Dc.Member p qs) (Dc.Member p ys)
+    -> Plus (Dc.Member p (cons q qs)) (Dc.Member p ys) = split {
+  inl h -> inl (inr h) ; inr h -> inr h } ;
+
+ member-app (p : Term) : (xs ys : List Term) -> Dc.Member p (SX.appL Term xs ys)
+   -> Plus (Dc.Member p xs) (Dc.Member p ys) = split {
+  nil -> \ ys m -> inr m ;
+  cons q qs | ih -> \ ys -> split {
+   inl h -> inl (inl h) ;
+   inr m' -> lift p q qs ys (ih ys m') } } ;
+
+ member-map (p : Term) : (es : List Dx.Term) -> Dc.Member p (SX.mapL Dx.Term Term RN.rn es)
+   -> (q : Dx.Term) * Dx.Member q es * Id Term p (RN.rn q) = split {
+  nil -> \ m -> absurd ((q : Dx.Term) * Dx.Member q nil * Id Term p (RN.rn q)) m ;
+  cons q qs | ih -> split {
+   inl h -> (q, (inl (refl q), h)) ;
+   inr m' -> ((ih m').1, (inr (ih m').2.1, (ih m').2.2)) } } ;
+
+ -- A target relation with congruence operations, the ring-law leaves,
+ -- and two kinds of equation witnesses.  The old leaves are given in y;
+ -- the new leaves are exactly the list u.2.
+ module Interpret (Cert : Term -> Term -> U l)
+  (equal : (p q : Term) -> Id Term p q -> Cert p q)
+  (trans : (p q r : Term) -> Cert p q -> Cert q r -> Cert p r)
+  (sym : (p q : Term) -> Cert p q -> Cert q p)
+  (add : (p p' q q' : Term) -> Cert p p' -> Cert q q' -> Cert (sumE p q) (sumE p' q'))
+  (mul : (p p' q q' : Term) -> Cert p p' -> Cert q q' -> Cert (mulE p q) (mulE p' q'))
+  (assocA : (p q r : Term) -> Cert (sumE p (sumE q r)) (sumE (sumE p q) r))
+  (commA : (p q : Term) -> Cert (sumE p q) (sumE q p))
+  (zeroA : (p : Term) -> Cert (sumE p Dc.zeroE) p)
+  (negA : (p : Term) -> Cert (sumE p (Dc.negative p)) Dc.zeroE)
+  (assocM : (p q r : Term) -> Cert (mulE p (mulE q r)) (mulE (mulE p q) r))
+  (commM : (p q : Term) -> Cert (mulE p q) (mulE q p))
+  (oneM : (p : Term) -> Cert (mulE p Dc.oneE) p)
+  (dist : (p q r : Term) -> Cert (mulE p (sumE q r)) (sumE (mulE p q) (mulE p r)))
+  (coeffA : (r s : R.R) -> Cert (sumE (cst r) (cst s)) (cst (R.add r s)))
+  (coeffM : (r s : R.R) -> Cert (mulE (cst r) (cst s)) (cst (R.mul r s)))
+  (oldEq : (q : Dx.Term) -> Dx.Member q y.2 -> Cert (RN.rn q) Dc.zeroE)
+  (newEq : (q : Term) -> Dc.Member q u.2 -> Cert q Dc.zeroE) {
+
+  eqCase (p : Term) : Plus (Dc.Member p old) (Dc.Member p u.2) -> Cert p Dc.zeroE = split {
+   inl mo -> trans p (RN.rn (member-map p y.2 mo).1) Dc.zeroE
+      (equal p (RN.rn (member-map p y.2 mo).1) (member-map p y.2 mo).2.2)
+      (oldEq (member-map p y.2 mo).1 (member-map p y.2 mo).2.1) ;
+   inr mn -> newEq p mn } ;
+  equation (p : Term) (m : Dc.Member p all) : Cert p Dc.zeroE = eqCase p (member-app p old u.2 m) ;
+
+  sound : (d : Dc.Tree) -> Dc.Valid d -> Cert (Dc.ends d).1 (Dc.ends d).2 = split {
+   reflD p -> \ v -> equal p p (refl p) ;
+   symD d | ih -> \ v -> sym (Dc.ends d).1 (Dc.ends d).2 (ih v) ;
+   transD d e | ih jh -> \ v -> trans (Dc.ends d).1 (Dc.ends d).2 (Dc.ends e).2 (ih v.1)
+    (trans (Dc.ends d).2 (Dc.ends e).1 (Dc.ends e).2
+      (equal (Dc.ends d).2 (Dc.ends e).1 v.2.2) (jh v.2.1)) ;
+   sumD d e | ih jh -> \ v -> add (Dc.ends d).1 (Dc.ends d).2 (Dc.ends e).1 (Dc.ends e).2 (ih v.1) (jh v.2) ;
+   mulD d e | ih jh -> \ v -> mul (Dc.ends d).1 (Dc.ends d).2 (Dc.ends e).1 (Dc.ends e).2 (ih v.1) (jh v.2) ;
+   addAssoc p q r -> \ v -> assocA p q r ;
+   addComm p q -> \ v -> commA p q ;
+   addZero p -> \ v -> zeroA p ;
+   addNeg p -> \ v -> negA p ;
+   mulAssoc p q r -> \ v -> assocM p q r ;
+   mulComm p q -> \ v -> commM p q ;
+   mulOne p -> \ v -> oneM p ;
+   distrib p q r -> \ v -> dist p q r ;
+   coeffAdd r s -> \ v -> coeffA r s ;
+   coeffMul r s -> \ v -> coeffM r s ;
+   equation p m -> \ v -> equation p m } ;
+
+  proof (p q : Term) (h : Dc.Proof p q) : Cert p q =
+   trans p (Dc.ends h.1).1 q (equal p (Dc.ends h.1).1 (symH h.2.2.1))
+    (trans (Dc.ends h.1).1 (Dc.ends h.1).2 q (sound h.1 h.2.1)
+      (equal (Dc.ends h.1).2 q h.2.2.2)) ;
+ } ;
+} ;

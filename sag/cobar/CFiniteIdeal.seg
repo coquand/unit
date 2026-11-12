@@ -1,0 +1,109 @@
+-- Finite ideal certificates in a commutative ring.  The witness is one
+-- multiplier per listed generator, so no choice is needed to combine them.
+level a ;
+open Base ;
+open Prelude[a] ;
+open Paths[a] ;
+open Ring[a] ;
+
+module Ideal (B : CRing) {
+ open B ;
+ module L = RL[B] ;
+ cong2 (p p' q q' : R) (h : Id R p p') (k : Id R q q') : Id R (add p q) (add p' q') =
+  trans (ap (\ t -> add t q) h) (ap (add p') k) ;
+ Cof : List R -> U a = split {
+  nil -> Top ; cons f fs | ih -> R * ih } ;
+ lin : (fs : List R) -> Cof fs -> R = split {
+  nil -> \ cs -> z ;
+  cons f fs | ih -> \ cs -> add (mul f cs.1) (ih cs.2) } ;
+ zero : (fs : List R) -> Cof fs = split {
+  nil -> tt ; cons f fs | ih -> (z, ih) } ;
+ plus : (fs : List R) -> Cof fs -> Cof fs -> Cof fs = split {
+  nil -> \ c d -> tt ;
+  cons f fs | ih -> \ c d -> (add c.1 d.1, ih c.2 d.2) } ;
+ minus : (fs : List R) -> Cof fs -> Cof fs = split {
+  nil -> \ c -> tt ;
+  cons f fs | ih -> \ c -> (neg c.1, ih c.2) } ;
+ scale : (fs : List R) -> Cof fs -> R -> Cof fs = split {
+  nil -> \ c r -> tt ;
+  cons f fs | ih -> \ c r -> (mul c.1 r, ih c.2 r) } ;
+ lin-zero : (fs : List R) -> Id R (lin fs (zero fs)) z = split {
+  nil -> refl z ;
+  cons f fs | ih ->
+   trans (ap (\ t -> add t (lin fs (zero fs))) (L.mul-zero f))
+    (trans (ap (add z) ih) (L.zl z)) } ;
+ lin-plus : (fs : List R) (c d : Cof fs) -> Id R (lin fs (plus fs c d)) (add (lin fs c) (lin fs d)) = split {
+  nil -> \ c d -> sym (addZ z) ;
+  cons f fs | ih -> \ c d ->
+   trans (ap (\ t -> add t (lin fs (plus fs c.2 d.2))) (dist f c.1 d.1))
+    (trans (ap (add (add (mul f c.1) (mul f d.1))) (ih c.2 d.2))
+      (L.swap (mul f c.1) (mul f d.1) (lin fs c.2) (lin fs d.2))) } ;
+ lin-minus : (fs : List R) (c : Cof fs) -> Id R (lin fs (minus fs c)) (neg (lin fs c)) = split {
+  nil -> \ c -> sym L.neg-zero ;
+  cons f fs | ih -> \ c ->
+   trans (ap (\ t -> add t (lin fs (minus fs c.2))) (L.mul-neg f c.1))
+    (trans (ap (add (neg (mul f c.1))) (ih c.2))
+      (sym (L.neg-add (mul f c.1) (lin fs c.2)))) } ;
+ lin-scale : (fs : List R) (c : Cof fs) (r : R) -> Id R (lin fs (scale fs c r)) (mul (lin fs c) r) = split {
+  nil -> \ c r -> sym (L.zero-mul r) ;
+  cons f fs | ih -> \ c r ->
+   trans (ap (\ t -> add t (lin fs (scale fs c.2 r))) (mulA f c.1 r))
+    (trans (ap (add (mul (mul f c.1) r)) (ih c.2 r))
+      (sym (L.dist-left (mul f c.1) (lin fs c.2) r))) } ;
+
+ Member (q : R) : List R -> U a = split {
+  nil -> Empty ; cons f fs | ih -> Plus (Id R q f) ih } ;
+ basis (q : R) : (fs : List R) -> Member q fs -> Cof fs = split {
+  nil -> \ m -> absurd (Cof nil) m ;
+  cons f fs | ih -> split {
+   inl e -> (o, zero fs) ;
+   inr m -> (z, ih m) } } ;
+ lin-basis (q : R) : (fs : List R) (m : Member q fs) -> Id R (lin fs (basis q fs m)) q = split {
+  nil -> \ m -> absurd (Id R (lin nil (basis q nil m)) q) m ;
+  cons f fs | ih -> split {
+   inl e -> trans (ap (add (mul f o)) (lin-zero fs))
+     (trans (addZ (mul f o)) (trans (mulO f) (sym e))) ;
+   inr m -> trans (ap (\ t -> add t (lin fs (basis q fs m))) (L.mul-zero f))
+     (trans (L.zl (lin fs (basis q fs m))) (ih m)) } } ;
+
+ Certificate (fs : List R) (x y : R) : U a =
+  (c : Cof fs) * Id R x (add y (lin fs c)) ;
+ equal (fs : List R) (x y : R) (h : Id R x y) : Certificate fs x y =
+  (zero fs, trans h (sym (trans (ap (add y) (lin-zero fs)) (addZ y)))) ;
+ reflexive (fs : List R) (x : R) : Certificate fs x x = equal fs x x (refl x) ;
+ symmetric (fs : List R) (x y : R) (h : Certificate fs x y) : Certificate fs y x =
+  (minus fs h.1, sym (calc R {
+   add x (lin fs (minus fs h.1))
+    =< ap (\ t -> add t (lin fs (minus fs h.1))) h.2 > add (add y (lin fs h.1)) (lin fs (minus fs h.1))
+    =< ap (add (add y (lin fs h.1))) (lin-minus fs h.1) > add (add y (lin fs h.1)) (neg (lin fs h.1))
+    =< L.add-neg-cancel y (lin fs h.1) > y })) ;
+ transitive (fs : List R) (x y w : R) (h : Certificate fs x y) (k : Certificate fs y w) : Certificate fs x w =
+  (plus fs k.1 h.1, calc R {
+   x =< h.2 > add y (lin fs h.1)
+    =< ap (\ t -> add t (lin fs h.1)) k.2 > add (add w (lin fs k.1)) (lin fs h.1)
+    =< sym (addA w (lin fs k.1) (lin fs h.1)) > add w (add (lin fs k.1) (lin fs h.1))
+    =< ap (add w) (sym (lin-plus fs k.1 h.1)) > add w (lin fs (plus fs k.1 h.1)) }) ;
+ addition (fs : List R) (x y u v : R) (h : Certificate fs x y) (k : Certificate fs u v)
+   : Certificate fs (add x u) (add y v) =
+  (plus fs h.1 k.1, calc R {
+   add x u =< cong2 x (add y (lin fs h.1)) u (add v (lin fs k.1)) h.2 k.2 > add (add y (lin fs h.1)) (add v (lin fs k.1))
+    =< L.swap y (lin fs h.1) v (lin fs k.1) > add (add y v) (add (lin fs h.1) (lin fs k.1))
+    =< ap (add (add y v)) (sym (lin-plus fs h.1 k.1)) > add (add y v) (lin fs (plus fs h.1 k.1)) }) ;
+ multiplication (fs : List R) (x y u v : R) (h : Certificate fs x y) (k : Certificate fs u v)
+   : Certificate fs (mul x u) (mul y v) =
+  (plus fs (scale fs k.1 y) (scale fs h.1 u), calc R {
+   mul x u =< ap (\ t -> mul t u) h.2 > mul (add y (lin fs h.1)) u
+    =< L.dist-left y (lin fs h.1) u > add (mul y u) (mul (lin fs h.1) u)
+    =< ap (\ t -> add (mul y t) (mul (lin fs h.1) u)) k.2 > add (mul y (add v (lin fs k.1))) (mul (lin fs h.1) u)
+    =< ap (\ t -> add t (mul (lin fs h.1) u)) (dist y v (lin fs k.1)) > add (add (mul y v) (mul y (lin fs k.1))) (mul (lin fs h.1) u)
+    =< sym (addA (mul y v) (mul y (lin fs k.1)) (mul (lin fs h.1) u)) > add (mul y v) (add (mul y (lin fs k.1)) (mul (lin fs h.1) u))
+    =< ap (\ t -> add (mul y v) (add t (mul (lin fs h.1) u))) (mulC y (lin fs k.1)) > add (mul y v) (add (mul (lin fs k.1) y) (mul (lin fs h.1) u))
+    =< ap (\ t -> add (mul y v) (add t (mul (lin fs h.1) u))) (sym (lin-scale fs k.1 y))
+     > add (mul y v) (add (lin fs (scale fs k.1 y)) (mul (lin fs h.1) u))
+    =< ap (\ t -> add (mul y v) (add (lin fs (scale fs k.1 y)) t)) (sym (lin-scale fs h.1 u))
+     > add (mul y v) (add (lin fs (scale fs k.1 y)) (lin fs (scale fs h.1 u)))
+    =< ap (\ t -> add (mul y v) t) (sym (lin-plus fs (scale fs k.1 y) (scale fs h.1 u)))
+     > add (mul y v) (lin fs (plus fs (scale fs k.1 y) (scale fs h.1 u))) }) ;
+ generator (fs : List R) (q : R) (m : Member q fs) : Certificate fs q z =
+  (basis q fs m, trans (sym (L.zl q)) (ap (add z) (sym (lin-basis q fs m)))) ;
+} ;
