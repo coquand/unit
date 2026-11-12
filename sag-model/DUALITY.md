@@ -1133,3 +1133,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   equivalence; generic CMsElim (eliminate a truncation at its native base into
   a proposition, then substitute) and CSEl; F1 instance CEv7/8 (1ac63fe4).
   Next (c2): duality kernel statement, then (d)(1)-(3).
+- 2026-11-12 (45, 8db1a3c3, shared 783/0) G'S OPERATIONS COMMITTED with no
+  assumed inputs: CCop, CE1Done, CAlEq, CGRing.GR. Next (45): cE for Prop 58
+  (identity on the base code + internal implications Sp ⇔ Sol by E1 and tau'
+  an equivalence on fibres at the copy).
