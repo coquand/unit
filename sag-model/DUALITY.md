@@ -1032,3 +1032,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   strict cart: (1) with the E side as a parameter, then the comparison Sol ≃
   Sp_G per copy as its own step (tau + Lemma 14 inverse, op-compatibility of
   tau as a lemma reused by G's laws), coordinated with c2's Pr / Sp.
+- 2026-11-12 (45) Prop 58 plumbing built privately: CEqCancel (2-out-of-3 for
+  EquivOp), CRho1-2 (rho's ef from cE and fwd / Kd, assembled per copy). Sp(u)
+  interface agreed with c2: SpU = Σ (v : G^n) Π_j Id (ev_qj(gY, v)) 0, gY_i =
+  tau . yo(iota_i). G's operations re-instantiated with EqQinv's quasi-inverse
+  of D cmp (carries the path needed for tau's op-compatibility).
