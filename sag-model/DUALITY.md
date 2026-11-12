@@ -1172,3 +1172,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   it kills the relations; ours is open). Ruling: function-ring route (target
   Fun T0 Q_y, everything closed in t : T0), needs Q_y's ring laws at open
   elements (reusable module), 15-20 files.
+- 2026-11-12 USER DECISION: the FULL FIX of the truncation (SAG.pdf §8.3
+  location-free, strictly stable, code former tr : U -> U, bridge to the 37
+  existing files), ~1,100-1,500 lines, then open-context quotient elimination
+  and (d)(3) by the (K) route (~25-30 files in all). Alternative weighed: the
+  comparison map st only (~10-12 files, no codes). c2 plans first.
