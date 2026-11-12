@@ -1580,3 +1580,26 @@ comparison `CF3HomCmp.cmpI` through the checked `CEv8` equivalence.
 The quotient eliminator already works for proposition-valued families;
 this argument has not established any need for substitution stability of
 truncation, and it does not assume it.
+
+### Associativity: alternative conceptual route (unproved)
+
+The F3 comparison remains an open equivalence obligation. A potentially
+smaller proof avoids it. Define the underlying-algebra presheaf `A` on the
+**total** site ∫C by `A(K,y) = A_y(K)`; an arrow acts by base restriction
+followed by the underlying function of the C-morphism. `CMorX` composes
+these underlying functions, while its operation data supplies naturality
+paths for addition and multiplication. The quotient ring laws (`CAxRingLaws`
+and `CAxAssocTarget`) give associativity at every `(K,y)`; since the fibres
+are h-sets, the law paths should be coherent along all C-arrows by proof
+irrelevance of identity proofs. This requires a checked total-site
+construction, not just the discrete-site statement of Remark 46.
+
+Evaluation at the free generator should give a natural equivalence
+`yo(F1) ≃ A` on ∫C. `CEv8` checks the equivalence at a fixed presentation;
+the missing work is naturality along C-morphisms and assembly at the total
+site. Identify the existing F2-derived operations on `yo(F1)` with the
+operations transported across this equivalence. Then Lemma 11 and
+Proposition 13 transfer the algebra and its associativity path through D
+to the existing G. This would use the F1 free-model universal property
+and the already checked F2 comparison, avoiding a new F3 equivalence.
+No theorem about G follows from this note yet.
