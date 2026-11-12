@@ -1054,3 +1054,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   read as a type, fibrant at G1). Comparison cE: proof parts by an INTERNAL
   implication between the equation types (natural by construction), not
   pointwise choices; ~650-800 lines.
+- 2026-11-12 (c2, a7459d01, shared 683/0) (U) for cmpI: CCmpU1,5,6,9-30,
+  maps out of F2 with equal composites are equal. Next (c2, reordered): axiom
+  statements, then (E) (12-20 files), (K), (d)(1)-(3).
