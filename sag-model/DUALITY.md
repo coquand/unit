@@ -1562,3 +1562,21 @@ of classes of terms to arbitrary triples of quotient elements, as a
 *mere* fibre inhabitant in the internal three-variable context. This is
 exactly where the currently absent F3 levelwise equivalence must be
 proved; the term-representative witness alone is insufficient.
+
+`CF3Eval` now checks the natural evaluation map
+`HomT(F3,y) -> Q_y^3` by evaluating a homomorphism at each of the three
+generators and pairing the resulting natural maps. This is the evaluation
+map in Lemma 43's free-model universal property. An attempted direct
+conversion between `CEvT`'s recursive valuation context and `CQCtx`'s
+three-variable context exceeded the checker's per-declaration limit; the
+componentwise map avoids that conversion entirely. No equivalence is
+claimed yet. The next concrete obligations are: form the truncation of
+its fibre as a proposition-valued motive over `CQCtx.G3`, prove that the
+untruncated fibre is a proposition using `CUG30` and the set-ness lemmas,
+give the term-triple fibre witness using
+`CF3TermCodes.Triple.beta1/2/3`, and apply `CwFQuotElim5.elimP3` to the
+truncation of that fibre. Finally identify evaluation with the direct
+comparison `CF3HomCmp.cmpI` through the checked `CEv8` equivalence.
+The quotient eliminator already works for proposition-valued families;
+this argument has not established any need for substitution stability of
+truncation, and it does not assume it.
