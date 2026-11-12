@@ -1546,3 +1546,12 @@ stable base truncation. It may be possible to prove this free special
 case directly with the existing three-variable proposition eliminator;
 that proof has not been constructed. Associativity for arbitrary G
 elements remains unproved.
+
+`CF3TermCodes` checks the required term-representative case: a triple
+of terms in `A_y` determines a C-morphism `F3 -> y`, natural in the base
+stage, with its three generator values equal to the three term classes.
+The outstanding existence step is to extend this witness from triples
+of classes of terms to arbitrary triples of quotient elements, as a
+*mere* fibre inhabitant in the internal three-variable context. This is
+exactly where the currently absent F3 levelwise equivalence must be
+proved; the term-representative witness alone is insufficient.
