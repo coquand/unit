@@ -1581,25 +1581,52 @@ The quotient eliminator already works for proposition-valued families;
 this argument has not established any need for substitution stability of
 truncation, and it does not assume it.
 
-### Associativity: alternative conceptual route (unproved)
+### Associativity: total-site quotient route (rejected after formalization test)
 
-The F3 comparison remains an open equivalence obligation. A potentially
-smaller proof avoids it. Define the underlying-algebra presheaf `A` on the
-**total** site ∫C by `A(K,y) = A_y(K)`; an arrow acts by base restriction
-followed by the underlying function of the C-morphism. `CMorX` composes
-these underlying functions, while its operation data supplies naturality
-paths for addition and multiplication. The quotient ring laws (`CAxRingLaws`
-and `CAxAssocTarget`) give associativity at every `(K,y)`; since the fibres
-are h-sets, the law paths should be coherent along all C-arrows by proof
-irrelevance of identity proofs. This requires a checked total-site
-construction, not just the discrete-site statement of Remark 46.
+`CAssocUnderlying` checks the first part of the proposed route: the values `A_y(I)`
+form a presheaf on the full total site, and evaluation at the generator
+gives a total-site natural map `yo(F1) -> A`.  Its action uses the underlying
+function of a C-map after restriction, and its composition law uses that
+function's naturality.  The earlier concern about naturality of the
+evaluation map is resolved.
 
-Evaluation at the free generator should give a natural equivalence
-`yo(F1) ≃ A` on ∫C. `CEv8` checks the equivalence at a fixed presentation;
-the missing work is naturality along C-morphisms and assembly at the total
-site. Identify the existing F2-derived operations on `yo(F1)` with the
-operations transported across this equivalence. Then Lemma 11 and
-Proposition 13 transfer the algebra and its associativity path through D
-to the existing G. This would use the F1 free-model universal property
-and the already checked F2 comparison, avoiding a new F3 equivalence.
-No theorem about G follows from this note yet.
+The proposed pointwise algebra structure on `A` does **not** follow.  A
+C-map preserves addition and multiplication by an internal path (the
+`CMorX.Fn.Bin` datum), whereas a `CTPsh.TSub` operation requires a
+metatheoretic equality for its naturality along each total-site arrow.
+Setness makes the operation-preservation path unique but does not turn it
+into a metatheoretic equality.  Consequently pointwise addition on `A_y`
+cannot be used as a total-site presheaf map by this construction, and
+Lemma 11 cannot simply apply D to it.  The checked `yo(F1) -> A` map is
+useful, but this route does not prove associativity of the existing G.
+
+### Associativity: corrected conceptual proof
+
+Use the free three-generator object and the universal property that
+Construction 44/45 actually needs.  Let `Y_n = yo(F_n)`, and let
+`e_3 : Y_3 -> Y_1^3` evaluate a homomorphism at the three free generators.
+For each fixed target presentation y, `e_3` is an equivalence: a triple
+of values in `A_y` gives a homomorphism from the free algebra `F3`, unique
+up to a path.  This is a *levelwise* assertion on Höfer's discrete-object
+site.  It needs no inverse natural along C-arrows.  `CF3Eval` is evaluation
+into `A_y^3`; composing `CF3HomCmp` with three copies of the checked F1
+evaluation equivalence `CEv8` should identify the two comparisons.
+`CUG30` supplies uniqueness.  The remaining existence
+proof is quotient induction into the proposition "the fibre of e_3 is
+merely inhabited", using `CF3TermCodes` on term representatives and
+`CwFQuotElim5.elimP3`.  Fibre uniqueness then removes the truncation.
+
+Proposition 13 turns `D(e_3) : D(Y_3) -> D(Y_1^3) ~ G^3` into an equivalence.
+The two ternary composites of the *existing* G operation, pulled back
+along `D(e_3)`, are the evaluations of the two F3 terms
+`x1+(x2+x3)` and `(x1+x2)+x3` (and similarly for multiplication).
+This is the operation compatibility of Construction 45.  `CF3OpCompat`,
+`CF3MulCompat` and `CF3CmpCompat` already check the generic endpoints and
+comparison components; the remaining coherence can be phrased as a
+modal Yoneda statement: for D-modal G, maps `D(Y_3) -> G` are determined,
+up to path, by their value at the generic F3 point.  A proof of this
+statement or a direct natural homotopy is still needed; generic point
+calculation alone is not a global homotopy.  `CE1Rel` supplies the
+homotopy between evaluations of the terms from the ring-law derivation.
+Cancel `D(e_3)` to obtain associativity.  This is the proof to formalize
+next, with the F3 evaluation equivalence as the first missing theorem.
