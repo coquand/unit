@@ -1044,3 +1044,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   eliminating "merely γ = image of a syntactic u", then (B) at the copy
   (const_y : N_D|_y -> (Π_{SpU} N_D)|_y; ev . const = restriction; Lemma 59 +
   2-out-of-3), then (C) a short per-copy assembly of elements.
+- 2026-11-12 Comparison Sp_G ≃ Sol per copy (45): E1 (ev^G at tau = tau of
+  ev^A, induction on terms), E2 (tau . eps ~ id at the copy), cE, its
+  quasi-inverse, commH: ~500-650. RULING: G's constants c_r := tau(k_r), k_r
+  the global element of yo F1 sending the generator to cls (cst r) (no F0
+  detour for 0, 1, phi r).
