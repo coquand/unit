@@ -1100,3 +1100,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CORRECTION requested: CAxProj must quantify over D-MODAL P only (Def 73 is
   in the inner model; Lemma 59 needs Q modal). Kernel statement after (E).
   Constants cV, cN and (al, eqal, commH) still parameters.
+- 2026-11-12 (c2) projectivity fixed (6864ce41: P D-modal, mP). Generic (U)
+  for any presentation (CUG13-30) and CUF0 (Hom(F0, y) contractible, cF0) in
+  shared check; next (E) for cmpI, then (K).
