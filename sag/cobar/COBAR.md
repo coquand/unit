@@ -985,22 +985,37 @@ Construction 39 at the base, the vertical level vl = a+ (CIntCat[a, a+].IC), obj
   h reads h through app, i.e. through transports along the context's act-id (PresheafPi.appFun), so
   composition there is not strict; at the image point it is composition of functions.
 
-## Lemma 59 at a fixed (y, u) (canonicity-45, CL59a-e, 2026-11-12)
+## Lemma 59 at a fixed (y, u) (canonicity-45, CL59a-r, 2026-11-12)
 
 Lemma 59 (= jonas.pdf Lemma 72) for our C at a fixed presentation y and a
 fixed syntactic relative presentation u, non-dependent (Q closed, D-modal),
-as quasi-inverse data on the closed types of the copy y (4e's ruling):
-ev : U(Pi_A Q)|_y -> U(Q)|_{y.u} (CL59a, phi |-> phi at (p_u, rho)) and its
-inverse (CL59b-e: psi |-> tau_Q^-1 (D ev' ((D rho)^-1 (tau (f . id, v)),
-tau_Qc (psi . f)))), with the two homotopies as CHtpyOps path homotopies at
-the copy (in progress).  Hypotheses: rho's levelwise equivalence, Q's
-D-modality.
-
-PENDING (decided when the axiom proofs are designed against c2's
-statements, where a G1-side reading may be cheaper): (1) restriction of
-fibration structures from G0 to a copy (the converse of CCopy5's assembly:
-move the copy-restricted G0 line kit to the poset kit, extending poset lines
-to G0 lines by transport along the presentation equation, CCopy3's BK
-pattern), ~200 lines; and the internal-Id form of the homotopies at G0 over
-the copy's context (lift by transport, ~100 lines, needs (1) for the
-codomain U(Q) at y.u).
+as quasi-inverse data on the closed types of the copy y (4e's ruling),
+assembled in CL59r.L59[..].Data[A, rho, rho1, Q].Hyp[ef, mQ]:
+  ev : U(Pi_A Q)|_y -> U(Q)|_{y.u}   phi |-> phi at (p_u, rho id)       (CL59a)
+  inv                               psi |-> tau_Q^-1 (c2 (D ev' (c1 ((D rho)^-1 (tau (f . id, v)),
+                                    tau_Qc (psi . f)))))                (CL59b-e)
+  h1 : ev . inv ~ id, h2 : inv . ev ~ id   CHtpyOps path homotopies at the copy
+  h1I, h2I                           the same as elements of the internal Htpy
+                                     (Pi x Id(f x, x)) in the CwF of fibrant types
+Hypotheses: ef, rho's levelwise equivalence (G0); mQ, Q's D-modality (G1).
+Ingredients:
+  (1) fibration structures restrict from G0 to a copy (CCopy7-8); the closed
+      types of the copies are fibrant (CL59f).
+  EqQinv / GEqQinv: an equivalence structure of any PMap between fibrant types
+      gives a natural quasi-inverse with path homotopies (FibS3 S3a -> Kr ->
+      CwFS4 centre -> CwFDer.fibRet, read back through the Swan Id readings).
+  D(yo(y.u)), D(yo(y).A) fibrant (Lemma 12F from CCopy9 / CL59g), B2Q by
+      Cor 15 (CL59h); the inverse uses these quasi-inverses (CL59e.HypI).
+  CTotTauDM: D f (tau a) = tau (f a).
+  h1 (CL59j-k): the path of D rho's g f ~ id pushed through the composite,
+      the identity Psi' = tau_Q^-1 tau_Q, tau_Q's homotopy at the copy, Kan
+      composition in U(Q)|_{y.u}.
+  h2 (CL59l-q): over the context Om of the Pi-elements at the copy, with
+      ev''(phi, e) = phi(e) (CPiE.apW): M1 = ev'' (inv . ev) is the composite
+      over Om at D rho (D rho)^-1 (tau e) by D-functoriality (CL59n: the
+      pointwise identity ev(phi) . n = ev''(phi, rho n)); the path of D rho's
+      f g ~ id, tau_Q's homotopy, Kan composition of Q over Om at the total
+      site (CL59o-p); read back at the copy as paths of Pi-elements (CL59q,
+      ends by lemma B: ev''(phi|f, (f . id, v)) = phi(f, v)).
+OPEN (with the axiom statements): a reading of h1I/h2I at G0 over a context
+of the copy, if the axiom proofs need it there rather than at the copy.
