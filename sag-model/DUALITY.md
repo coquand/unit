@@ -1146,3 +1146,12 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   codes from UG30's closed Id), CApOp2G, CHtpyAlgG; in check: CLinePre,
   CCodeH, CCompC, CE1Tot-3. Remaining for rho: total constants, the zero-code
   step, G1 homotopy -> internal Id, then A = Sp(u), rho, rho1; then cE.
+- 2026-11-12 CHECKER FIX (4e, user-approved, d67086f1): the server's main-file
+  key leaves out import lines, so adding files to All.seg no longer rechecks
+  everything (test: 1 module, 0.63 s instead of 282). Servers restarted on the
+  new binary (sag/cobar; core / sag-model stopped, restart on next use); one
+  last full recheck on the first `changed` (old baseline key format).
+- 2026-11-12 (45) ef737461 (total-site E1 complete, CE1Zero, CHtIdG),
+  fcd283aa (CSpA, CSpA2: A = Sp(u) along gY; CEvCong; CRhoOld; CRhoId).
+  Verified by 4e: 5/0. Remaining for rho: derivations q_j = 0, ev match,
+  retyping into c2's EqT, Σ assembly, rho1; then cE.
