@@ -1155,3 +1155,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   fcd283aa (CSpA, CSpA2: A = Sp(u) along gY; CEvCong; CRhoOld; CRhoId).
   Verified by 4e: 5/0. Remaining for rho: derivations q_j = 0, ev match,
   retyping into c2's EqT, Σ assembly, rho1; then cE.
+- 2026-11-12 (c2, ccf4d0c7) DUALITY KERNEL STATEMENT (CAxKer, CAxPoly, CAxPack):
+  over Pr.(c).(d).(h : ev_u(d, c) = 0): || Σ a e. trunc_d c = Σ_i trunc_e(a_i) *
+  q_i || on coefficient vectors (convolution product, G's operations). READ by
+  4e: correct form of "ker ev_u ⊆ (q)". All five statements now stated.
+  Next (c2): Prop 58's (d)(1)-(3).
