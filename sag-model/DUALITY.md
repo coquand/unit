@@ -1089,3 +1089,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CAxDelta (ΔN fibrant at G1). Duality: SURJ now (G[X_n] := Σ (d : ΔN) Π (α :
   ΔMon_n). (|α| ≤ d) -> G); KERNEL after (E)/(K) (needs G[X]'s ring structure
   on coefficient vectors, 6-10 files).
+- 2026-11-12 (45) CNDFib committed (3fc8d296: N_D fibrant at G1). Constants
+  (private): CContrEq (contractible type -> closed type equivalence), CCst2
+  (yo F0 -> 1 levelwise equivalence per copy, Prop 13), parametric in c2's
+  cF0 (isContr HomT(F0, y)). Next: point of D(yo F0), cst r, compatibility.
