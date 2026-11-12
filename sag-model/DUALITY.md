@@ -1093,3 +1093,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   (private): CContrEq (contractible type -> closed type equivalence), CCst2
   (yo F0 -> 1 levelwise equivalence per copy, Prop 13), parametric in c2's
   cF0 (isContr HomT(F0, y)). Next: point of D(yo F0), cst r, compatibility.
+- 2026-11-12 STATEMENTS committed (c2): 39547ee6 (CAxPow, CAxEv, CAxOps,
+  CAxSp, CAxN, CAxProj), cb4e889f (CFibSeg + GCConst, GCConstLam), 8cdce29b
+  (CGrothCyl, CAxDelta, CAxMon, CAxElOps, CAxSurj). READ by 4e against SAG /
+  jonas: Sp(u), B^{Sp u}, Nsurj / Ninj, duality surjectivity correct.
+  CORRECTION requested: CAxProj must quantify over D-MODAL P only (Def 73 is
+  in the inner model; Lemma 59 needs Q modal). Kernel statement after (E).
+  Constants cV, cN and (al, eqal, commH) still parameters.
