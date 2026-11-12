@@ -1037,3 +1037,10 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   interface agreed with c2: SpU = Σ (v : G^n) Π_j Id (ev_qj(gY, v)) 0, gY_i =
   tau . yo(iota_i). G's operations re-instantiated with EqQinv's quasi-inverse
   of D cmp (carries the path needed for tau's op-compatibility).
+- 2026-11-12 (45, 26d34f61, shared 655/0) CCmpY5 (G's ops from EqQinv),
+  CTauOps, CCmpY6 (tau compatible with + and * up to paths). N axiom design:
+  statements are two Tr types at the total site (S2), sections via
+  CTotTr.sec from levelwise Tr0 elements over U Γ, built per copy after
+  eliminating "merely γ = image of a syntactic u", then (B) at the copy
+  (const_y : N_D|_y -> (Π_{SpU} N_D)|_y; ev . const = restriction; Lemma 59 +
+  2-out-of-3), then (C) a short per-copy assembly of elements.
