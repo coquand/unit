@@ -1177,3 +1177,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   existing files), ~1,100-1,500 lines, then open-context quotient elimination
   and (d)(3) by the (K) route (~25-30 files in all). Alternative weighed: the
   comparison map st only (~10-12 files, no codes). c2 plans first.
+- 2026-11-12 Full-fix plan (c2, approved): CTrLF1-3 (location-free trees,
+  good, code), CTrLFBij1-3 (natural bijection with core's good trees; core's
+  files untouched), CTrLFTy1-4 (Tr' with its interface, fibrancy rebuilt from
+  F), CTrLFSt1-2 (stability as an equality of types; tr : U -> U), CTruncAtS;
+  ~1,300-1,400 lines, poset base first. Risk: the bijection's naturality.
