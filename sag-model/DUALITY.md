@@ -1160,3 +1160,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   q_i || on coefficient vectors (convolution product, G's operations). READ by
   4e: correct form of "ker ev_u ⊆ (q)". All five statements now stated.
   Next (c2): Prop 58's (d)(1)-(3).
+- 2026-11-12 (45, 806e425f + CRhoSig) PROP 58's DATA CONSTRUCTED: A = Sp(u)
+  along gY, rho, rho1 (CRhoPt, CRhoTel-3, CRhoSig); CRho1's Data instantiated.
+  Remaining for Prop 58: cE (comparison, per copy) + c2's fwd / Kd.
