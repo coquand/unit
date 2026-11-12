@@ -1057,3 +1057,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (c2, a7459d01, shared 683/0) (U) for cmpI: CCmpU1,5,6,9-30,
   maps out of F2 with equal composites are equal. Next (c2, reordered): axiom
   statements, then (E) (12-20 files), (K), (d)(1)-(3).
+- 2026-11-12 RULING (4e): axiom statements per METATHEORY u = (n, m, shapes)
+  (external schema), as Tr types over contexts of G-powers: the total site has
+  no fibrant constant types (ΔE only at the poset base). Internal ∀ over the
+  model's naturals = later step (needs ΔE fibrant at the total site + "N_D's
+  elements are merely numerals" via KL). N_D fibrant at G1 by Lemma 12F on
+  ΔN's G0 fibration (45).
