@@ -1385,3 +1385,25 @@ truncation, after which the certificate must be converted to the exact
 bounded coefficient-vector equality of `CAxKer`. These are separate
 unchecked obligations; the pilot establishes the finite algebra and the
 old/new equation classification, not duality.
+
+### Internal-path multiplication pilot (2026-11-12)
+
+`CFinIntPilot` proves multiplication closure for a principal-ideal
+certificate over an arbitrary fixed `CPilotRing.HRing` in the base CwF;
+every ring law is an internal Id-element. `CFinIntVec` constructs finite
+cofactor vectors and proves that their linear combination respects
+vector addition and scaling, again by internal paths. `CFinIntMul` proves
+the finite multiplication rule: from paths `x = y + L(c)` and
+`u = v + L(d)`, it builds the cofactor vector `y*d + u*c` and a path
+`x*u = y*v + L(y*d + u*c)`. All three files check. This resolves the
+specific risk that the metatheory certificate proof cannot be repeated
+with CwF paths; no strict ring law is assumed.
+
+The `Cert` in this pilot is a metatheory pair of a vector of *global CwF
+elements* and an internal path. It is not yet a CwF type over the variable
+context. The full relative algebra lemma still needs that internal
+certificate family, its other closure laws and equation generators,
+the package of `A_y` as an `HRing`, quotient effectiveness and stable
+truncation elimination in context, and finally conversion to
+`CAxKer`'s bounded coefficient-vector equality. In particular the
+checked multiplication pilot is not a proof of `CAxKer`.
