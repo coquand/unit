@@ -1103,3 +1103,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (c2) projectivity fixed (6864ce41: P D-modal, mP). Generic (U)
   for any presentation (CUG13-30) and CUF0 (Hom(F0, y) contractible, cF0) in
   shared check; next (E) for cmpI, then (K).
+- 2026-11-12 G'S CONSTANTS committed (45, 8ee2188a: CContrEq, CCst2, CCst3),
+  unconditional with c2's cF0 (4b629d42). HomT(F1, y') ≃ Q_y' assigned to c2
+  (F1 instance of its (K) route); 45 takes it as a parameter.
