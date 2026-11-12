@@ -1124,3 +1124,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45) E1 at a copy complete privately (CCop, CE1Done), commit
   after c2's CCmpK30-32. Next: al / eqal / commH from c2's (K) (G's operations
   unconditional), then cE and commH for Prop 58.
+- 2026-11-12 (45, private, commit after c2's CCmpK3 / K30-32) G'S OPERATIONS
+  UNCONDITIONAL: CAlEq (al = cmpI, eqal from c2's cop, commH by beta . alpha
+  = id), CGRing (G's +, x, constants with tau-compatibility and E1 at every
+  copy, no assumed inputs). G's RING LAWS themselves still to do (after Prop
+  58). Next (45): cE and commH for Prop 58.
