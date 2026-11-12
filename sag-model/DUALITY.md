@@ -1084,3 +1084,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   CConst / pack as FB members, ΔN and the shape family at G1 (4-6 files),
   then the duality statements (2 files). 4e reads the statements before
   reporting them.
+- 2026-11-12 (c2, private) constant types at the total site: CGrothCyl
+  (cylinders for the Groth site of any IC), GCConst / GCConstLam (FB members),
+  CAxDelta (ΔN fibrant at G1). Duality: SURJ now (G[X_n] := Σ (d : ΔN) Π (α :
+  ΔMon_n). (|α| ≤ d) -> G); KERNEL after (E)/(K) (needs G[X]'s ring structure
+  on coefficient vectors, 6-10 files).
