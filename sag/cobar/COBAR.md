@@ -1039,3 +1039,13 @@ comparison of Sp(u) with Sol is its own step):
 Remaining parameters of Fin2: cE with its structure (the comparison
 U(yo(y).Sp(u))|_{y'} ~ Sigma HX Sol over HX, via tau and Lemma 14, next step) and
 commH (cE . rho = fwd . alpha on codes).
+  CCmpY5      G's operations with EqQinv's quasi-inverse of D cmp (4e's ruling (i);
+              D(yo F2), D(yo F1 x yo F1) fibrant by Lemma 12F, yo F1 x yo F1
+              levelwise as a Sigma of CCopy6's): Ops2[..].GO (add, mul), the
+              instance c2's CAxEv uses.
+  CTauOps     tau commutes with D on context maps and with D's pairing (on the
+              nose); D's index maps do not depend on the context (tmapEq).
+  CCmpY6      tau's compatibility with an operation op (add, mul) up to paths:
+              for w in yo F2 with cmp w = (a, b), op (tau a, tau b) ~ tau (w . io),
+              a CHtpyOps homotopy of maps yo F2 -> G read over the terminal
+              context (CtxTy's Y1T): Cp6[..].addCompat, mulCompat.
