@@ -1027,3 +1027,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   D-modal). Verified by 4e: CL59l-r 7/0. G0 reading deferred to the axiom
   proofs. Next (45): (d) plumbing (ef for rho; Sol vs Sp_G), design of the N
   axiom proof, then G's laws / 0 / 1.
+- 2026-11-12 Prop 58's ef for rho (45): per copy y', domain moved to
+  HomT(y.u, y') by alpha; E side = Sp_G(u) (G-based, as c2 builds it), so no
+  strict cart: (1) with the E side as a parameter, then the comparison Sol ≃
+  Sp_G per copy as its own step (tau + Lemma 14 inverse, op-compatibility of
+  tau as a lemma reused by G's laws), coordinated with c2's Pr / Sp.
