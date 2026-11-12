@@ -1063,3 +1063,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   model's naturals = later step (needs ΔE fibrant at the total site + "N_D's
   elements are merely numerals" via KL). N_D fibrant at G1 by Lemma 12F on
   ΔN's G0 fibration (45).
+- 2026-11-12 Correction (c2): duality cannot be a schema over shapes (the
+  polynomial's degree is inside the truncation); needs (A) ΔE fibrant at G1 +
+  pack, G[X_n] := Σ (d : ΔN) G^{k(n,d)}. N statements and projectivity can be
+  per u. Plan: common part + N statements, then (A) (try generating CConst as
+  an FB member first), then duality statements, then (E).
