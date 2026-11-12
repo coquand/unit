@@ -1015,3 +1015,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   argument is NOT natural along C-maps (levelwise centres); H2 by
   D-functoriality instead (ev'' and D rho . (D rho)^-1 ~ id, tau_Q^-1 . tau_Q
   ~ id, both G1-natural); generic lemma "CEqCen inverse . al ~ id". ~600 left.
+- 2026-11-12 (45) EqQinv / GEqQinv (private): an EquivOp gives a quasi-inverse
+  with path homotopies, any base. Lemma 59 remaining: G1 fibrancy of D yo(y.u)
+  and D(yo(y).A) (~250; CCopy6.YoF generalised to any F), H1 / H2 / lift (~350).
