@@ -1435,3 +1435,28 @@ existing `CAxElOps` gives operations on elements in every context but
 does not package their ring laws. The pointwise family `CFinIntEval.lin`
 is used at the generic extension to obtain a genuine term; its separate
 substitution-naturality equation has not been checked.
+
+### Ring-law source audit (2026-11-12)
+
+`CAxLawLift` checks the transfer for addition associativity: if the
+operation on each total-site fibre `GV X` satisfies associativity for
+arbitrary fibre elements, then `Presheaf.el-ext` and `CwFInt.idOfEq`
+produce an internal Id-path over *every* context. Thus no further
+contextual coherence proof is needed once the fibre law is available.
+The module does not prove its stagewise-law parameter.
+
+Tracing the constructed operation locates the missing source law.
+`CGRing.GR.GO` uses `CCmpY5.Ops2`, whose `CGops` operation is the cobar
+image of the free-algebra map composed with a homotopical inverse of the
+product comparison. `CCmpY6` proves compatibility with `tau`, and
+`CE1Done` proves polynomial evaluation compatibility at each copy.
+Neither proves associativity for arbitrary elements of `GV X`.
+`CAlgLaws3` proves associativity of the presented quotient `A_x` at
+global CwF sections; it cannot be directly applied to arbitrary values
+at one cube stage. A possible next proof first obtains stagewise quotient
+ring laws by eliminating the mere representatives from `CQSurj` into
+propositional identity fibres, then transfers these laws to `G` at a
+fixed copy using `CL14C` and `CE1Done`. This use of Lemma 14 is inside
+the proposition-valued law proof, not a total-site map. Only then can
+`CAxLawLift` package the contextual law. The first stagewise quotient
+associativity proof remains unchecked; no G ring law is claimed here.
