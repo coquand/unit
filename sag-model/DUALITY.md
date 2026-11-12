@@ -1487,3 +1487,29 @@ index to construct a path between the two bracketings in `G`.
 replace that second path construction. The stable-truncation black box
 does not itself supply either transfer. No `G` associativity theorem has
 been checked.
+
+### Generic triple equation for G (2026-11-12)
+
+`CFree3Assoc` constructs the free presentation `F3`, both substitutions
+`F2 -> F3` representing the left and right bracketings, and their
+syntactic addition and multiplication associativity derivations. It
+checks the corresponding paths in `A_F3`. `CE1Rel` proves the general
+fact that a derivation between terms of any presentation induces a
+homotopy between their evaluations in `G` on the generic points of its
+Yoneda object. Instantiating it at `F3` gives checked addition and
+multiplication associativity homotopies on `yo(F3)`.
+
+`CFree3Assoc.Free3Comparison` also defines the natural total-site map
+`yo(F3) -> (yo(F1) x yo(F1)) x yo(F1)` from the three generator maps.
+The remaining theorem is that this map is a *levelwise equivalence* in
+Höfer's sense. The existing `CCmpK*`/`CCmpY*` proof establishes this only
+for `yo(F2) -> yo(F1)^2` and is specialized to two generators; no
+general free-presentation comparison lemma is present. After proving the
+F3 equivalence, Proposition 13 and Lemma 11 can transfer it to `D`.
+One must then prove the coherence square identifying the two iterated
+operations defined using the binary comparison's homotopy inverse with
+the term evaluations along the F3 comparison. The generic homotopy can
+be transported through that square to obtain associativity for every
+triple of `G` elements. Neither the F3 equivalence nor this coherence
+square is checked. Thus associativity of `G` remains open; the assumed
+stable base truncation alone does not close these gaps.
