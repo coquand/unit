@@ -1163,3 +1163,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45, 806e425f + CRhoSig) PROP 58's DATA CONSTRUCTED: A = Sp(u)
   along gY, rho, rho1 (CRhoPt, CRhoTel-3, CRhoSig); CRho1's Data instantiated.
   Remaining for Prop 58: cE (comparison, per copy) + c2's fwd / Kd.
+- 2026-11-12 (45, 2660255b) commH as a path homotopy (HtpyEq + CEqCancel);
+  c2: readings of fwd (26b36cf3). Next (45): cE / ecE / commH per copy
+  (500-700 lines), closing Prop 58's ef modulo c2's (d)(1)-(3).
