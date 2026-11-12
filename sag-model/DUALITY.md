@@ -1018,3 +1018,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45) EqQinv / GEqQinv (private): an EquivOp gives a quasi-inverse
   with path homotopies, any base. Lemma 59 remaining: G1 fibrancy of D yo(y.u)
   and D(yo(y).A) (~250; CCopy6.YoF generalised to any F), H1 / H2 / lift (~350).
+- 2026-11-12 (45, 35082fa3, shared 642/0) Lemma 59 H1 : ev . inv ~ id at the
+  copy (CL59k); EqQinv / GEqQinv, CCopy9 (yo F levelwise fibrant, any F),
+  CL59g-h, CTotTauDM. H2 in progress (CL59l-m private), then the G0 Id lift.
