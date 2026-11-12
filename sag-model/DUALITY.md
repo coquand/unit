@@ -1021,3 +1021,9 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45, 35082fa3, shared 642/0) Lemma 59 H1 : ev . inv ~ id at the
   copy (CL59k); EqQinv / GEqQinv, CCopy9 (yo F levelwise fibrant, any F),
   CL59g-h, CTotTauDM. H2 in progress (CL59l-m private), then the G0 Id lift.
+- 2026-11-12 LEMMA 59 COMPLETE at fixed (y, u) (45, 35082fa3 + dc046362,
+  shared 649/0): CL59r.L59 gives ev, inv, path homotopies h1, h2 and their
+  internal forms at the copy, from ef (rho a levelwise equivalence) and mQ (Q
+  D-modal). Verified by 4e: CL59l-r 7/0. G0 reading deferred to the axiom
+  proofs. Next (45): (d) plumbing (ef for rho; Sol vs Sp_G), design of the N
+  axiom proof, then G's laws / 0 / 1.
