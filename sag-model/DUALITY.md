@@ -1116,3 +1116,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45) E1 at a copy fully assembled (CE1Fin; CPhi, CFibTc, CTrips,
   CRead*) except the pairing of codes (cop, sec1, sec2), to be read from c2's
   (K). Then cE and commH.
+- 2026-11-12 (c2) (K) for cmpI: injectivity, propositional fibres, the fibre
+  element over nil.HTT.S1.S2 (CCmpK3-18, in check). Truncation not stable
+  under substitution: merely-a-class eliminated at its native base into
+  Π-motives that are propositions; to be packaged as a generic lemma (recurs
+  in (d)(3) and the axiom proofs).
