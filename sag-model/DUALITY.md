@@ -1129,3 +1129,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   = id), CGRing (G's +, x, constants with tau-compatibility and E1 at every
   copy, no assumed inputs). G's RING LAWS themselves still to do (after Prop
   58). Next (45): cE and commH for Prop 58.
+- 2026-11-12 (c2, 65956474) (K) FOR cmpI COMMITTED: the comparison's internal
+  equivalence; generic CMsElim (eliminate a truncation at its native base into
+  a proposition, then substitute) and CSEl; F1 instance CEv7/8 (1ac63fe4).
+  Next (c2): duality kernel statement, then (d)(1)-(3).
