@@ -1010,3 +1010,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 Lemma 59: path homotopies need Kan composition at the copy, so
   (1) is needed in every form. Ruling: (1) generic now, (2), (3), then the
   G0 Id lift (~100): ~750-850 lines total for Lemma 59.
+- 2026-11-12 (45, dae33c46, shared 633/0) restriction of fibration structures
+  G0 -> copy (CCopy7, CCopy8, FibR). Lemma 59 H2: 4e's componentwise
+  argument is NOT natural along C-maps (levelwise centres); H2 by
+  D-functoriality instead (ev'' and D rho . (D rho)^-1 ~ id, tau_Q^-1 . tau_Q
+  ~ id, both G1-natural); generic lemma "CEqCen inverse . al ~ id". ~600 left.
