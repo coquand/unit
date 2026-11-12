@@ -1293,3 +1293,7 @@ of `fwd`, not an inverse or the local-representation equivalence. Its
 propositional fibres to the contractible-fibre datum consumed by CRho2.
 The remaining work here is to instantiate `pF` from (d)(2) and to prove
 `ms` after stable open-context quotient elimination.
+CDIn9's checked `pF` is stated for the function `FunOf fwdN`, while
+CDFwD3 uses CDFw8's `lam t0`. Identify these maps by an explicit path
+before moving `pF`; asking the checker to identify their fibres by
+unfolding exceeds the per-declaration time cap.
