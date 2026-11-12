@@ -1083,3 +1083,32 @@ NEXT STEP (step 2 rest -> 4):
   Then: open-context quotient elimination (elimP/elim1) at the stable truncation, then (d)(3) by the
   (K) route, then deliver Kd/cop/ret/secR to canonicity-45.  Budget: 1,600-1,900 lines total
   (stop and report if > 2,200); CTrLF2-6 are 454 lines.
+
+## Prop 58's comparison cE: state at the pause (canonicity-45, 2026-11-12)
+
+Done (module checks; no new axioms):
+  CHtSub, CPsiC, CPsiQ   tau' = tau . phi : Q_y' -> G is a homotopy equivalence at each copy
+                         (psi = eval . eps_T, epsQ, etaT).
+  CPsiOps, CPsiOps2      psi preserves +, x, constants up to homotopy; E1 for psi.
+  CIdPull, CUnpack, CEqHt  A's equations read as homotopies at each copy (total-site Id ->
+                         homotopy over a closed copy).
+  CCeBase, CCeVals, CEvAt, CCeOld, CHtPair, CCeTup, CCeVar, CCeEq, CCeEq2, CCeEq3,
+  CHtIdP, CCeId, CCeAsm  cE : NMap[Cp.D, Cp.C1.Yy.Ay, Cp.Tw.1] (CCeAsm.AS.cE), cE0 over nil on
+                         Ec = closed copy of yo(y).A (Ec has Yy.Ay's fibres and action).
+  CFibEc                 Ec fibrant over nil (FE.fbEc, EcS).
+
+Next (4e's ruling, route (ii)): ecE by "propositional fibres + section":
+  1. reverse of CIdPull for closed Y1T types: a path at the copy -> a total-site IdY element
+     (a total-site map into (I,y') is cart after vertical; DCtx acts along the vertical code);
+  2. Id of Q-values -> Id of G-values at the copy through tau' (CPsiQ);
+  3. at the total site: Id_E((d,v,p),(d,v',p')) from Id of codes and of values, the equation
+     components by c2's CTotSet12.ST12.setD (G a set at G1), via the generic Sigma-Id toolkit
+     (sag-model CwFSig / CwFPair / CwFPP at G1.fibCwF-T);
+  4. back to the copy (CIdPull / CRestrHT) and injectivity of cE0 in CInjP's form (T0 a set, CDSet3);
+  5. done: CFibEc;
+  6. section g = fN . h^{-1} (eh from c2's Kd, commH), CInjSurj.ContrFib, FibS3 S3b, move to D
+     (CHFibCart, as CRho2's Fw).
+  commH (cE . fN ~ h = fwd . alpha) first: base by c2's CDFw9.rdH and CRead's ba; values by
+  CCeOld's argument generalised to the presentation y.u (new generators) and c2's CDFw10.rdV;
+  equation components by propositionality of c2's RelProd (Q a set) as an internal Id, read
+  by PRd. Then Fin2's ef by CRho2.Fin2 with c2's fwd / Kd.
