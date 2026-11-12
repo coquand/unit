@@ -1075,3 +1075,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   point of D(yo F0), cst r := D(yo(SubC[F1, F0, cst r])) of it; E1's cst case
   from the quasi-inverse homotopy. 45: CApOp2, CHtpyAlg (generic E1) in check;
   CNDFib (N_D fibrant at G1) checked privately.
+- 2026-11-12 (45, ec2d0837) CApOp2, CHtpyAlg (generic E1). Nullary (U)/(E)
+  (Hom(F0, y') contractible) goes to c2 with (E); 45 builds the constants
+  with it as a parameter.
