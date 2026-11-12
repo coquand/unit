@@ -1137,3 +1137,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   assumed inputs: CCop, CE1Done, CAlEq, CGRing.GR. Next (45): cE for Prop 58
   (identity on the base code + internal implications Sp ⇔ Sol by E1 and tau'
   an equivalence on fibres at the copy).
+- 2026-11-12 RULING (4e) for Prop 58's data: 45 builds A = Sp(u) along gY
+  (c2's CAxSp), rho, rho1; rho's Id part needs E1 at the TOTAL site (generic
+  CHtpyAlg at G1 with CCmpY6 and total constants' compatibility) plus the path
+  cls q_j = cls 0 through tau; Id fibres are propositions (setD, UP3, FibR,
+  setQ), so cE's fibre part is a logical equivalence.
