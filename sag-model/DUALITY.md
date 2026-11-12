@@ -1436,27 +1436,30 @@ does not package their ring laws. The pointwise family `CFinIntEval.lin`
 is used at the generic extension to obtain a genuine term; its separate
 substitution-naturality equation has not been checked.
 
-### Ring-law source audit (2026-11-12)
+### Ring-law source audit and correction (2026-11-12)
 
-`CAxLawLift` checks the transfer for addition associativity: if the
-operation on each total-site fibre `GV X` satisfies associativity for
-arbitrary fibre elements, then `Presheaf.el-ext` and `CwFInt.idOfEq`
-produce an internal Id-path over *every* context. Thus no further
-contextual coherence proof is needed once the fibre law is available.
-The module does not prove its stagewise-law parameter.
-
-Tracing the constructed operation locates the missing source law.
 `CGRing.GR.GO` uses `CCmpY5.Ops2`, whose `CGops` operation is the cobar
-image of the free-algebra map composed with a homotopical inverse of the
+image of a free-algebra map composed with a homotopical inverse of the
 product comparison. `CCmpY6` proves compatibility with `tau`, and
 `CE1Done` proves polynomial evaluation compatibility at each copy.
-Neither proves associativity for arbitrary elements of `GV X`.
-`CAlgLaws3` proves associativity of the presented quotient `A_x` at
-global CwF sections; it cannot be directly applied to arbitrary values
-at one cube stage. A possible next proof first obtains stagewise quotient
-ring laws by eliminating the mere representatives from `CQSurj` into
-propositional identity fibres, then transfers these laws to `G` at a
-fixed copy using `CL14C` and `CE1Done`. This use of Lemma 14 is inside
-the proposition-valued law proof, not a total-site map. Only then can
-`CAxLawLift` package the contextual law. The first stagewise quotient
-associativity proof remains unchecked; no G ring law is claimed here.
+Neither proves associativity for arbitrary elements of `G`.
+`CAlgLaws3` proves the quotient laws for global CwF sections of `A_x`;
+it cannot directly be applied to variable elements over an extension.
+
+An attempted `CAxLawLift` transferred *external equality* of values at
+each total-site stage into an internal path. It typechecked but its
+premise was too strong: the available algebra laws and comparison
+compatibilities are internal paths, and a D-modal h-set need not have
+literal equality of stage values. The module was removed. The proper
+target is an internal Id-path over the generic triple context for the
+two associative expressions, followed by substitution into other
+contexts. This must use homotopical comparison data throughout.
+
+The fixed-stage `CQSurj` route is not yet established either. Its mere
+representative lives in the base's non-stable truncation. Eliminating
+that truncation with two additional variable quotient elements in
+context would require the substitution-stable truncation and open-context
+quotient elimination still in progress. It may be possible to prove a
+copywise proposition directly using a different pointwise eliminator,
+but no checked module currently supplies one. Hence this pilot identifies
+an actual dependency, not a stagewise associativity proof.
