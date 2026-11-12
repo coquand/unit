@@ -1540,12 +1540,19 @@ existing relative comparison. Its uniqueness/fibre-proposition half is
 already checked (`CDFwD4.pF`). The equivalence still needs the
 mere-surjectivity term `CDFwD3.MereSurj` for this free extension, plus
 an identification of that relative comparison with the direct F3
-comparison. The general relative-surjectivity code has this term as a
-parameter because its open-context quotient construction awaits the
-stable base truncation. It may be possible to prove this free special
-case directly with the existing three-variable proposition eliminator;
-that proof has not been constructed. Associativity for arbitrary G
-elements remains unproved.
+comparison. **This relative route is broader than Lemma 43 and is not
+the intended proof of the free F3 case.** Its general missing premise
+must not be counted as a stable-truncation dependency for F3. Lemma 43
+uses the universal property of the free model directly: evaluation on
+the three generators is an equivalence of hom-types. In this code,
+`CEvT` already evaluates terms at an arbitrary finite valuation and
+`CUG30` gives uniqueness of homs from any presentation once their
+generator values agree. The missing part is to package existence for
+arbitrary triples of quotient values, likely by proposition-valued
+three-variable quotient induction, and prove it is the same comparison
+as `CF3HomCmp`. No mathematical obstacle or stable-truncation premise
+has been identified for this free special case. Associativity for
+arbitrary G elements remains unproved.
 
 `CF3TermCodes` checks the required term-representative case: a triple
 of terms in `A_y` determines a C-morphism `F3 -> y`, natural in the base
