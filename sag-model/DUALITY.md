@@ -1463,3 +1463,27 @@ quotient elimination still in progress. It may be possible to prove a
 copywise proposition directly using a different pointwise eliminator,
 but no checked module currently supplies one. Hence this pilot identifies
 an actual dependency, not a stagewise associativity proof.
+
+### Internal associativity of the presented quotient (2026-11-12)
+
+`CAxAssocTarget` now checks the internal addition and multiplication
+associativity paths of `A_x` over `nil.Qt.Qt.Qt`. It constructs both
+bracketings as natural CwF elements at this one level, proves their Id
+type is a proposition using the quotient's h-set proof, reads their
+values at triples of term classes through `CAppRd`, and applies the
+already checked `CwFQuotElim5.elimP3` to `CAlgX`'s class-level laws.
+`CAxRingLaws` also instantiates the existing global-element laws with
+the actual quotient eliminators. Both modules check. This particular
+open-context proof needs no new truncation premise: `elimP3` already
+provides the required induction for the closed presented quotient.
+
+This does **not** prove associativity for `G = D(yo F1)`. The missing
+transfer has two path-level parts. First, identify precomposition with
+`AddF`/`MulF` on `yo F1` with the local operation on each `A_y`, using
+the free-map evaluation and comparison paths. Second, use the homotopy
+inverse of `D cmp` and the natural internal `A_y` law at every cobar
+index to construct a path between the two bracketings in `G`.
+`CobarI.DC.ob-eq` takes strict equality of components, so it cannot
+replace that second path construction. The stable-truncation black box
+does not itself supply either transfer. No `G` associativity theorem has
+been checked.
