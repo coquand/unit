@@ -1121,3 +1121,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   under substitution: merely-a-class eliminated at its native base into
   Π-motives that are propositions; to be packaged as a generic lemma (recurs
   in (d)(3) and the axiom proofs).
+- 2026-11-12 (45) E1 at a copy complete privately (CCop, CE1Done), commit
+  after c2's CCmpK30-32. Next: al / eqal / commH from c2's (K) (G's operations
+  unconditional), then cE and commH for Prop 58.
