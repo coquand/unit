@@ -1297,3 +1297,19 @@ CDIn9's checked `pF` is stated for the function `FunOf fwdN`, while
 CDFwD3 uses CDFw8's `lam t0`. Identify these maps by an explicit path
 before moving `pF`; asking the checker to identify their fibres by
 unfolding exceeds the per-declaration time cap.
+
+2026-11-12 first-pass milestone: CDFwEq proves the explicit equality of
+`FunOf fwdN` and `lam t0` (body extensionality, then `lam` congruence).
+CInjFibBridge identifies CInjP's fibre with CwFQP's fibre once, generically
+in the two types and the natural map. CDFwD4 transports CDIn9's
+propositional-fibre proof along the map equality and derives `Kd` from the
+single named mere-surjectivity premise. C58D3 supplies `fwd` and `Kd` at
+every target copy for CRho2. All four modules check. This closes the
+previous map-comparison issue, but not Prop 58 or duality.
+
+The next Prop 58 obligation is still `cE`'s equivalence and `commH`.
+COBAR.md's route (ii) needs a reverse of CIdPull for a closed type, then
+the total-site Sigma-Id argument to make `cE` injective; `commH` uses the
+base and value readings of CDFw9/10 and propositional equation fibres.
+No existing checked module supplies these conclusions. The temporary
+(d)(3) premise does not imply them.
