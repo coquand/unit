@@ -1198,3 +1198,6 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 New session canonicity-89 (user-started): propositional
   extensionality at the poset base (pe : PropExtTy via S4 / CwFPropExt from
   UaContr), the last real assumption. First step: measure and report.
+- 2026-11-12 (45) cE's equivalence without the backward lift: fibres are
+  propositions (base equivalence x map of propositions) and inhabited by the
+  section fN . h^{-1} (commH), hence contractible. Order: commH, this, ef.
