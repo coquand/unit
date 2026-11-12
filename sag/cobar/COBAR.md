@@ -1049,3 +1049,37 @@ commH (cE . rho = fwd . alpha on codes).
               for w in yo F2 with cmp w = (a, b), op (tau a, tau b) ~ tau (w . io),
               a CHtpyOps homotopy of maps yo F2 -> G read over the terminal
               context (CtxTy's Y1T): Cp6[..].addCompat, mulCompat.
+## Stable (location-free) truncation, SAG 8.3: state at PAUSE (canonicity-c2, 2026-11-12)
+
+The user chose the full fix: a truncation strictly stable under substitution, with code former
+tr : U -> U and a bridge to the CTrunc* files. Route taken: STRUCTURAL REBASING of core's normal
+forms (good trees of the sag/cobar CTruncRaw copy, which decides by dec/decideL), not the
+(i) st-as-algebra-map / (ii) uniqueness / (iii) pushforward-functoriality route: (i)-(iii) were found
+heavy (st preserving ext needs the PushOp side and round-trip bookkeeping) and are superseded by
+rebasing, which gives functoriality on the nose up to Id of trees.
+
+Committed (all check, < 0.4 s each):
+  CTrLF2  Reb[D,G,s,A,B,psi,psiN]: rebasing rb of a good tree over (G,A) rooted at s d into a tree
+          over (D,B) rooted at d, for a family map psi : A[s] -> B natural (psiN); transports tV/tQ/tA/tL,
+          their loop/composition lemmas, rbIrr, rbCong, leaf case of the commutation (CmLeaf).
+  CTrLF3  CmN: node case of "rebasing commutes with restriction" (decideL-ind; boundary branch by
+          decideL-yes + Lands irrelevance; other branch by decideL-no + node-cong).
+  CTrLF4  G4: cm (commutation for every good tree, stated with at), rootRb, goodRb (rebased trees are
+          good), rbE on normal forms TrEl, rbRes (rbE commutes with tr-res).
+  CTrLF5  Cmp: rebasing along tau after s = rebasing along s.tau with the composite family map (cmpRb).
+  CTrLF6  Idn: rebasing along idS with the identity family map is the identity (idRb, via relN).
+Private (scratchpad, not committed): CTruncSt (weak map Tr(G,A)[s] -> Tr(D,A[s]) via the recursor),
+CTrLF1 (LF[G,A]: AX X x = A[x^], tobV X x = normal forms over (yP X, AX X x) at (X, id), Act with the
+transport PA : AX X x [yH f] = AX Y y); CQOpen/CQOpen3 (function-ring route, paused).
+
+NEXT STEP (step 2 rest -> 4):
+  (a) LF action: in CTrLF1.Act replace the recursor map r2 by CTrLF4.rbE along yH Y X f with
+      B = A[x^][yH f], psi = id, psiN = tact-irr; then subst along PA.  tid from CTrLF6.idRb
+      (+ yH id = idS), to from CTrLF5.cmpRb (+ yH (f.g) = yH f . yH g); lift to TrEl via GoodSets.tr-eq.
+  (b) step 3: Tr' as a presheaf type with interface (inc, op, recursor, ElimProp, contrTr, fib from the
+      LF op) — bridge Tr' ~ TA.Tr levelwise (at (X,x) both are normal forms; rebase along x^).
+  (c) step 4: stability Id (Tr'(G,A)[s]) (Tr'(D,A[s])) by sub-ext + ap (AX of A[s] at d is AX of A at s d
+      up to P1), and the code former tr : U -> U; step 5: CTruncAtS instance.
+  Then: open-context quotient elimination (elimP/elim1) at the stable truncation, then (d)(3) by the
+  (K) route, then deliver Kd/cop/ret/secR to canonicity-45.  Budget: 1,600-1,900 lines total
+  (stop and report if > 2,200); CTrLF2-6 are 454 lines.
