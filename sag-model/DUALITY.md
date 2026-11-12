@@ -1049,3 +1049,8 @@ Construction 56 writes the presentation (X, R, s, r) instead of
   quasi-inverse, commH: ~500-650. RULING: G's constants c_r := tau(k_r), k_r
   the global element of yo F1 sending the generator to cls (cst r) (no F0
   detour for 0, 1, phi r).
+- 2026-11-12 (45) 4a4bdf37 (CCopyH: restriction of maps / homotopies to a
+  copy; CL14C: Lemma 14 for yo F1 per copy), 04ebcdaa (CGBr: c2's context G
+  read as a type, fibrant at G1). Comparison cE: proof parts by an INTERNAL
+  implication between the equation types (natural by construction), not
+  pointwise choices; ~650-800 lines.
