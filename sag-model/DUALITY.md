@@ -1191,3 +1191,7 @@ Construction 56 writes the presentation (X, R, s, r) instead of
 - 2026-11-12 (45) comparison cE for Prop 58: CIdPull, CUnpack, CEqHt, CCeBase,
   CCeVals committed (8ca26469 .. d276021d). Remaining: the per-equation chain
   (E1 for psi, generator tuples, CEqHt), HT -> Id, assembly; then ecE, commH.
+- 2026-11-12 (45) Prop 58's comparison cE built at every copy (CCeAsm,
+  8f1e354b; CCeTup .. CHtPair). Next: its EquivOp (QinvEq, or a generic
+  "Σ over a base equivalence with a backward map of propositional fibres"),
+  then commH.
