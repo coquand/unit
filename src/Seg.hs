@@ -81,7 +81,7 @@ data Arg = ATm Exp | ALv Lv
 data MExp = MVar Name | MSub MExp Name | MApp MExp [Arg]
   deriving (Eq, Show)
 
-data Directive = DNormal Exp | DType Exp | DFails [Decl] | DConv Exp Exp
+data Directive = DNormal Exp | DType Exp | DFails [Item] | DConv Exp Exp
   deriving (Eq, Show)
 
 -- A module is a list of units with parameters (its body-less units, head
@@ -112,17 +112,27 @@ data Decl
                                      -- (written by the filling pass as products),
                                      -- the number of indices it absorbs, its
                                      -- branches
-  | DMod  Id Name [Decl]             -- a module: its parameters and body
-  | DRecord Id Name [Decl] [Decl]    -- record R Gamma { Delta }: its head Gamma
+  | DMod  Id Name [Item]             -- a module: its parameters and body
+  | DRecord Id Name [Decl] [Item]    -- record R Gamma { Delta }: its head Gamma
                                      -- (parameters, levels, constraints) and its
                                      -- body Delta (fields [x : A], derived members
                                      -- [x : A = e])
   | DInst Id Name MExp               -- module N = M[args]
   | DLvl  Name                       -- a level variable
   | DCstr [Cs]                       -- constraints
-  | DLock [Id]                       -- (a command) the lock strategy from here on
-  | DDir  Directive                  -- (a command) a directive
   deriving (Eq, Show)
+
+-- The items of a program or a segment body: its declarations, and two
+-- commands to the checker, which follow the order of the program
+data Item
+  = IDecl Decl
+  | ILock [Id]                       -- the lock strategy from here on
+  | IDir Directive                   -- a directive: #normal, #type, #conv, #fails
+  deriving (Eq, Show)
+
+-- the declarations among items
+itemDecls :: [Item] -> [Decl]
+itemDecls its = [ d | IDecl d <- its ]
 
 -- A data declaration  data D (params) : (indices) -> S = labels .  Its
 -- type is computed (dataType); its occurrence d_L (the sum, named by the
@@ -191,22 +201,26 @@ unitName u = case u of
 
 -- a segment declaration seen uniformly: its id, name, kind and units
 -- (for a record, its head then its body)
-segParts :: Decl -> Maybe (Id, Name, SegKind, [Decl])
+segParts :: Decl -> Maybe (Id, Name, SegKind, [Item])
 segParts d = case d of
   DMod i x us -> Just (i, x, SModule, us)
-  DRecord i x hs bs -> Just (i, x, SRecord [ y | u <- hs, y <- headName u ], hs ++ bs)
+  DRecord i x hs bs -> Just (i, x, SRecord [ y | u <- hs, y <- headName u ], map IDecl hs ++ bs)
   _ -> Nothing
  where headName u = case u of { DVar _ y _ -> [y]; DLvl y -> [y]; _ -> [] }
 
 -- the segment declaration of these parts
-mkSeg :: Id -> Name -> SegKind -> [Decl] -> Decl
+mkSeg :: Id -> Name -> SegKind -> [Item] -> Decl
 mkSeg i x k us = case k of
   SModule -> DMod i x us
-  SRecord hs -> let (h, b) = span inHead us in DRecord i x h b
-   where inHead u = case u of { DVar _ y _ -> y `elem` hs; DLvl y -> y `elem` hs; DCstr _ -> True; _ -> False }
+  SRecord hs -> let (h, b) = span inHead us in DRecord i x (itemDecls h) b
+   where inHead u = case u of
+           IDecl (DVar _ y _) -> y `elem` hs
+           IDecl (DLvl y) -> y `elem` hs
+           IDecl (DCstr _) -> True
+           _ -> False
 
 -- the units of a segment declaration, transformed
-mapSeg :: ([Decl] -> [Decl]) -> Decl -> Decl
+mapSeg :: ([Item] -> [Item]) -> Decl -> Decl
 mapSeg f d = case segParts d of
   Just (i, x, k, us) -> mkSeg i x k (f us)
   Nothing -> d
@@ -633,7 +647,7 @@ declEnt :: Decl -> Env -> Ent
 declEnt d r = case d of
   DDef i x a b    -> EVal (mkRef (DDef i x a b) r)
   DData i x dd    -> EVal (mkRef (DData i x dd) r)
-  _ | Just (i, _, k, mus) <- segParts d -> EMod (Mod i (dynVals r) mus r
+  _ | Just (i, _, k, its) <- segParts d -> let mus = itemDecls its in EMod (Mod i (dynVals r) mus r
                              (if hasParams mus then Nothing else Just (instUnits r mus [])) k)
   DInst _ _ m     -> EMod (evalMod r m)
   DSplit{}        -> EVal (splitAtCtx r d 0)
@@ -1909,8 +1923,8 @@ emptyCx = Cx 0 eNil [] emptyTheory Set.empty [] [] [] Map.empty []
 
 -- the context for checking a program: empty, with the order of its
 -- definitions
-programCx :: [Decl] -> Cx
-programCx us = emptyCx { cxRank = ranksOf us }
+programCx :: [Item] -> Cx
+programCx us = emptyCx { cxRank = ranksOf (itemDecls us) }
 
 -- the definitions of a program numbered in order, through the bodies of
 -- modules and records (definitions local to a let have no rank)
@@ -1922,7 +1936,7 @@ ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
     DDef i _ _ _ -> [i]
     DSplit i _ _ _ _ _ _ -> [i]
     DData i _ _ -> [i]
-    _ | Just (_, _, _, vs) <- segParts u -> go vs
+    _ | Just (_, _, _, vs) <- segParts u -> go (itemDecls vs)
     _ -> []
 
 cc :: Cx -> CC
@@ -2763,14 +2777,25 @@ prettyCs (Cs l r m) = plv False l ++ (case r of REq -> " = "; RLe -> " <= "; RLt
 
 data Event = Event { evLabel :: String, evResult :: Res [String] }
 
-checkUnits :: Cx -> [Decl] -> (Cx, [Event])
+checkUnits :: Cx -> [Item] -> (Cx, [Event])
 checkUnits cx us = let (cx', evs, _) = checkUnitsF cx us in (cx', evs)
 
 -- the same, also returning the units with their hidden arguments filled:
 -- a segment is built from its FILLED units, since its instances evaluate them
-checkUnitsF :: Cx -> [Decl] -> (Cx, [Event], [Decl])
+checkUnitsF :: Cx -> [Item] -> (Cx, [Event], [Item])
 checkUnitsF cx [] = (cx, [], [])
-checkUnitsF cx (u : us) = case u of
+checkUnitsF cx (it : us) = case it of
+  ILock s -> keep it (checkUnitsF cx { cxLocks = Set.fromList s } us)
+  IDir d ->
+    let (cx', evs, us') = checkUnitsF cx us
+    in (cx', Event "#" (fillDir cx d >>= runDirective cx) : evs, it : us')
+  IDecl u -> checkDeclF cx u us
+ where
+  keep v (c, e, vs) = (c, e, v : vs)
+
+-- a declaration, then the items after it
+checkDeclF :: Cx -> Decl -> [Item] -> (Cx, [Event], [Item])
+checkDeclF cx u us = case u of
   DLvl x ->
     let cx' = cx { cxTh = addVar x (cxTh cx)
                  , cxLvls = x : cxLvls cx }
@@ -2778,13 +2803,13 @@ checkUnitsF cx (u : us) = case u of
   DCstr cs ->
     case mapM (checkCs cx) cs of
       Left msg -> let (cx', evs, us') = checkUnitsF cx us
-                  in (cx', Event "constraint" (Left msg) : evs, u : us')
+                  in (cx', Event "constraint" (Left msg) : evs, IDecl u : us')
       Right vs ->
         let cx' = addCs cx vs
             note = [ "warning: the context now has a loop (everything collapses)"
                    | thLoop (cxTh cx'), not (thLoop (cxTh cx)) ]
             (cx'', evs, us') = checkUnitsF cx' us
-        in (cx'', Event "constraint" (Right note) : evs, u : us')
+        in (cx'', Event "constraint" (Right note) : evs, IDecl u : us')
   DVar i x a0 ->
     let fa = inCtx ("in the type of " ++ x) (fillT cx a0)
         a  = either (const (unfilledHoles a0)) id fa
@@ -2796,11 +2821,7 @@ checkUnitsF cx (u : us) = case u of
                  , cxPSorts = (x, inferSort cx a) : cxPSorts cx }
         (cx'', evs, us') = checkUnitsF cx' us
     in (cx'', Event x (fmap (const []) (fa >> inCtx ("in the type of " ++ x) (checkType cx a))) : evs
-       , DVar i x a : us')
-  DLock s -> keep u (checkUnitsF cx { cxLocks = Set.fromList s } us)
-  DDir d ->
-    let (cx', evs, us') = checkUnitsF cx us
-    in (cx', Event "#" (fillDir cx d >>= runDirective cx) : evs, u : us')
+       , IDecl (DVar i x a) : us')
   _ | Just (i, x, k, mus0) <- segParts u ->
     let -- the body is checked in the context where it is declared; its
         -- parameters are rigid there.  Locks set inside persist.  The
@@ -2812,17 +2833,18 @@ checkUnitsF cx (u : us) = case u of
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         cx2 = cx1 { cxLocks = cxLocks cxIn, cxSegSort = (i, cxPSorts cxIn) : cxSegSort cxIn }
         (cx3, evs, us') = checkUnitsF cx2 us
-    in (cx3, [ ev' { evLabel = x ++ "." ++ evLabel ev' } | ev' <- evsIn ] ++ evs, u' : us')
+    in (cx3, [ ev' { evLabel = x ++ "." ++ evLabel ev' } | ev' <- evsIn ] ++ evs, IDecl u' : us')
   DInst i x m0 ->
     let fm = fillM cx m0
         m  = either (const (unfilledM m0)) id fm
         u' = DInst i x m
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         (cx2, evs, us') = checkUnitsF cx1 us
-    in (cx2, Event x (fmap (const []) (fm >> checkMod cx m)) : evs, u' : us')
+    in (cx2, Event x (fmap (const []) (fm >> checkMod cx m)) : evs, IDecl u' : us')
   -- a group of definitions and data types
   _ ->
-    let (g0, rest) = span isGroupUnit (u : us)
+    let (g1, rest) = span isGroupItem (IDecl u : us)
+        g0 = itemDecls g1
         (g, cx1, ferrss) = fillGroupE cx g0
         evs1 = [ Event (unitName u0) (fmap (const []) (do
                    case ferrs of
@@ -2841,9 +2863,10 @@ checkUnitsF cx (u : us) = case u of
                      _ -> Right ()))
                | (u0, gu, ferrs) <- zip3 g0 g ferrss ]
         (cx2, evs2, us') = checkUnitsF cx1 rest
-    in (cx2, evs1 ++ evs2, g ++ us')
+    in (cx2, evs1 ++ evs2, map IDecl g ++ us')
  where
-  keep v (c, e, vs) = (c, e, v : vs)
+  keep v (c, e, vs) = (c, e, IDecl v : vs)
+  isGroupItem i = case i of { IDecl d -> isGroupUnit d; _ -> False }
 
 fillDir :: Cx -> Directive -> Res Directive
 fillDir cx d = case d of

@@ -152,7 +152,7 @@ quoteTestFile f x = do
       Right us -> do
         let (_, _, us') = checkUnitsF (programCx us) us
             (cx, _) = checkUnits (programCx us') us'
-        case [ unitIdOf u | u <- us', unitName u == x, isDefinition u ] of
+        case [ unitIdOf u | u <- itemDecls us', unitName u == x, isDefinition u ] of
           (i : _) -> mapM_ putStrLn (quoteTest cx i)
           [] -> putStrLn ("no definition " ++ x)
 
@@ -182,22 +182,22 @@ expand seen dir = fmap concat . mapM go
                              return [RModule k x tel us']
     _ -> return [u]
 
-adjust :: Opt -> [Decl] -> [Decl]
-adjust o us = DLock (fix []) : map go us
+adjust :: Opt -> [Item] -> [Item]
+adjust o us = ILock (fix []) : map go us
  where
   fix s = nub (oOn o ++ filter (`notElem` oOff o) (if oNone o then [] else s))
-  go u = case u of
-    DLock s -> DLock (fix s)
-    _ | Just _ <- segParts u -> mapSeg (map go) u
-    _ -> u
+  go it = case it of
+    ILock s -> ILock (fix s)
+    IDecl u | Just _ <- segParts u -> IDecl (mapSeg (map go) u)
+    _ -> it
 
 -- parse, expand imports, resolve: the program's units, and the modules
 -- imported by the file (in order) for --each
-loadProgram :: FilePath -> Opt -> IO (Either String ([Decl], [String]))
+loadProgram :: FilePath -> Opt -> IO (Either String ([Item], [String]))
 loadProgram f o = fmap (fmap (\(us, mods, _) -> (us, mods))) (loadFiles f o)
 
 -- the same, with every file spliced in, at any depth, in import order
-loadFiles :: FilePath -> Opt -> IO (Either String ([Decl], [String], [String]))
+loadFiles :: FilePath -> Opt -> IO (Either String ([Item], [String], [String]))
 loadFiles f o = do
   src <- readFile f
   let self = baseName f
@@ -325,7 +325,7 @@ runFile f o
           putStrLn ("unfolds, whole run: " ++ topUnfolds 15 m)
         else return ()
       tt <- secsSince t0
-      let pns = [ x | DVar _ x _ <- us ]
+      let pns = [ x | IDecl (DVar _ x _) <- us ]
       printf "%s: %d declarations%s, %d failed, %.2f s\n" f c
              (if noSel then "" else " (" ++ unwords (oOnly o ++ oOnlyTop o) ++ "; the rest trusted)") n tt
       if null pns then return () else putStrLn ("assuming: " ++ unwords pns)

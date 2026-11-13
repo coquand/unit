@@ -1204,24 +1204,24 @@ allLabels = concatMap go
 
 -- The units of a module body or of the program, in order.  Consecutive
 -- definitions form one mutual group.
-resUnits :: RS -> [RUnit] -> Int -> Rz ([Decl], RS)
+resUnits :: RS -> [RUnit] -> Int -> Rz ([Item], RS)
 resUnits rs [] _ = Right ([], rs)
 resUnits rs (u : us) n = case u of
   RLevel xs -> do
     mapM_ (fresh rs) xs
     (us', rs') <- resUnits (bindS rs [ (x, SLvl) | x <- xs ]) us n
-    Right (map DLvl xs ++ us', rs')
+    Right (map (IDecl . DLvl) xs ++ us', rs')
   RCstr cs -> do
     cs' <- mapM (resCs rs) cs
     (us', rs') <- resUnits rs us n
-    Right (DCstr cs' : us', rs')
+    Right (IDecl (DCstr cs') : us', rs')
   RDef _ x tel a Nothing -> do
     fresh rs x
     (bs, rs1) <- resTel rs tel
     a' <- resE rs1 a
     (us', rs') <- resUnits (withMasks (bindS rs [(x, if null tel then varInfo rs a else SVar)])
                                       [(x, telMask tel)]) us n
-    Right (DVar (rsPath rs ++ x) x (piB bs a') : us', rs')
+    Right (IDecl (DVar (rsPath rs ++ x) x (piB bs a')) : us', rs')
   RModule isRec x tel body -> do
     fresh rs x
     -- a record's body: fields and definitions only
@@ -1245,12 +1245,12 @@ resUnits rs (u : us) n = case u of
           BCs _    -> []
     (bodyUnits, rsBody) <- resUnits rsHead body 0
     -- a record body has no data type and no split
-    case [ unitName v | isRec, v <- bodyUnits, dataOrSplit v ] of
+    case [ unitName v | isRec, v <- itemDecls bodyUnits, dataOrSplit v ] of
       [] -> Right ()
       (y : _) -> Left ("the record " ++ x ++ " contains a data type or a split (" ++ y
                        ++ "): a record has no data type, no split and no record (as no module, level or constraint)")
-    let all' = headUnits ++ bodyUnits
-        mi = ModInfo [ (unitName v, k) | v <- all', Just k <- [paramKind v] ]
+    let all' = map IDecl headUnits ++ bodyUnits
+        mi = ModInfo [ (unitName v, k) | v <- itemDecls all', Just k <- [paramKind v] ]
                      (membersOf rsBody rsHead ++ [ (unitName v, Nothing) | v@(DVar{}) <- headUnits ])
                      (rsPath rs ++ x)
                      [ (y, ps) | (y, _) <- membersOf rsBody rsHead
@@ -1268,7 +1268,7 @@ resUnits rs (u : us) n = case u of
             , Right _ <- resUnits rsAfter [c] n -> c : us
           _ -> us
     (us', rs') <- resUnits rsAfter us2 n
-    Right (mkSeg (rsPath rs ++ x) x ukind all' : us', rs')
+    Right (IDecl (mkSeg (rsPath rs ++ x) x ukind all') : us', rs')
   RModInst x e -> do
     fresh rs x
     case e of
@@ -1281,7 +1281,7 @@ resUnits rs (u : us) n = case u of
     if recArgs then Left ("module " ++ x ++ " = " ++ miPath mi ++ "[..]: a record is not a module") else
      if not (null (miParams mi)) && not (isRecordMI mi) then Left ("module " ++ miPath mi ++ " needs arguments") else do
       (us', rs') <- resUnits (bindS rs [(x, SMod (rsPath rs ++ x) mi)]) us n
-      Right (DInst (rsPath rs ++ x) x m : us', rs')
+      Right (IDecl (DInst (rsPath rs ++ x) x m) : us', rs')
   ROpen _ (RVar c) | Just (SVarS mi) <- look rs c -> do
     let opened = [ (y, SField c) | (y, Nothing) <- miMembers mi, not (M.member y (rsScopeM rs)) ]
     resUnits (withMasks (bindS rs opened) (miMasks mi)) us n
@@ -1303,18 +1303,18 @@ resUnits rs (u : us) n = case u of
           opened = [ (y, SOpen m' (miPath mi) k) | (y, k) <- miMembers mi
                                                   , not (M.member y (rsScopeM rs)) ]
       (us', rs') <- resUnits (withMasks (bindS rs opened) (miMasks mi)) us n
-      Right (pre ++ us', rs')
+      Right (map IDecl pre ++ us', rs')
   RImport x -> Left ("import " ++ x ++ " was not expanded")
   ROpaque e -> lockCmd e (\i s -> i : filter (/= i) s)
   RTransparent e -> lockCmd e (\i s -> filter (/= i) s)
   RTransAll -> do
     (us', rs') <- resUnits rs { rsLocks = [] } us n
-    Right (DLock [] : us', rs')
+    Right (ILock [] : us', rs')
   RNormal e -> directive (fmap DNormal (resE rs e))
   RType e -> directive (fmap DType (resE rs e))
   RConv a b -> directive (do a' <- resE rs a; b' <- resE rs b; Right (DConv a' b'))
   RFails xs -> case resUnits rs xs n of
-    Left msg -> directive (Right (DFails [DDir (DNormal (Var ("#resolution failed: " ++ msg)))]))
+    Left msg -> directive (Right (DFails [IDir (DNormal (Var ("#resolution failed: " ++ msg)))]))
     Right (xs', _) -> directive (Right (DFails xs'))
   _ -> do
     -- consecutive definitions (and data): SEQUENTIAL scope, each sees only
@@ -1329,17 +1329,17 @@ resUnits rs (u : us) n = case u of
     dupCheck names
     (g', rsG) <- sequentialDefs rs False (\_ x -> rsPath rs ++ x) g
     (us', rs') <- resUnits rsG rest n
-    Right (g' ++ us', rs')
+    Right (map IDecl g' ++ us', rs')
  where
   directive me = do
     d <- me
     (us', rs') <- resUnits rs us n
-    Right (DDir d : us', rs')
+    Right (IDir d : us', rs')
   lockCmd e f = do
     i <- lockId rs e
     let s = f i (rsLocks rs)
     (us', rs') <- resUnits rs { rsLocks = s } us n
-    Right (DLock s : us', rs')
+    Right (ILock s : us', rs')
 
 -- a data type, or a definition whose body is a split
 dataOrSplit :: Decl -> Bool
@@ -1470,12 +1470,12 @@ dupCheck (x : xs)
 ------------------------------------------------------------------------
 -- Entry point: resolve and annotate a whole program (imports expanded)
 
-resolveProgram :: [RUnit] -> Either String [Decl]
+resolveProgram :: [RUnit] -> Either String [Item]
 resolveProgram = resolveProgramWith True
 
 -- with  term : the restrictions, positivity and termination (Term) are
 -- enforced: errors of the program, and inside #fails a failure of the block
-resolveProgramWith :: Bool -> [RUnit] -> Either String [Decl]
+resolveProgramWith :: Bool -> [RUnit] -> Either String [Item]
 resolveProgramWith term rus = do
   let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty False (ixLabels rus)
   (us, _) <- resUnits rs0 rus 0
@@ -1485,19 +1485,19 @@ resolveProgramWith term rus = do
     [] -> Right ()
     bad -> Left (unlines ("a variable or level may not have the name of a variable or level in scope (no shadowing):" : map ("  " ++) (take 400 bad)))
   if not term then Right us' else do
-    case termErrors us' us' of
+    case termErrors (itemDecls us') (itemDecls us') of
       [] -> Right ()
       bad -> Left (unlines ("positivity and termination:" : map ("  " ++) (take 20 bad)))
     Right (map (failsTerm us') us')
 
 -- a #fails block rejected by Term fails (as one that does not resolve)
-failsTerm :: [Decl] -> Decl -> Decl
-failsTerm whole u = case u of
-  DDir (DFails vs) -> case [ "#termination: " ++ m | m <- termErrors whole vs ] of
-    [] -> DDir (DFails (map (failsTerm whole) vs))
-    (m : _) -> DDir (DFails [DDir (DNormal (Var m))])
-  _ | Just _ <- segParts u -> mapSeg (map (failsTerm whole)) u
-  _ -> u
+failsTerm :: [Item] -> Item -> Item
+failsTerm whole it = case it of
+  IDir (DFails vs) -> case [ "#termination: " ++ m | m <- termErrors (itemDecls whole) (itemDecls vs) ] of
+    [] -> IDir (DFails (map (failsTerm whole) vs))
+    (m : _) -> IDir (DFails [IDir (DNormal (Var m))])
+  IDecl u | Just _ <- segParts u -> IDecl (mapSeg (map (failsTerm whole)) u)
+  _ -> it
 
 mapL :: (Int -> a -> (Int, b)) -> Int -> [a] -> (Int, [b])
 mapL _ n []       = (n, [])
@@ -1513,14 +1513,14 @@ mapL f n (x : xs) = let (n1, y) = f n x
 -- lambda variables, the constructors of the branches with their pattern
 -- variables), which is how it is read back.  The path is kept in the id.
 
-pathUnits :: [Decl] -> [Decl]
+pathUnits :: [Item] -> [Item]
 pathUnits = map unit
  where
-  unit u = case u of
-    d@(DSplit i _ _ _ _ _ _) -> pathSplit i [] d
-    _ | Just _ <- segParts u -> mapSeg pathUnits u
-    DDir (DFails vs) -> DDir (DFails (pathUnits vs))
-    _               -> u
+  unit it = case it of
+    IDecl d@(DSplit i _ _ _ _ _ _) -> IDecl (pathSplit i [] d)
+    IDecl u | Just _ <- segParts u -> IDecl (mapSeg pathUnits u)
+    IDir (DFails vs) -> IDir (DFails (pathUnits vs))
+    _               -> it
 
 -- a split declaration of the definition i at the path p: its case is
 -- named by the path through its context; a nested split is named by its
@@ -1548,11 +1548,14 @@ pathRhs i p r = case r of
 -- opened members and definitions may be hidden: they are reached through
 -- M.x or by their ids.
 
-shadowReport :: [Decl] -> [String]
+shadowReport :: [Item] -> [String]
 shadowReport = units "" S.empty
  where
   units _ _ [] = []
-  units w sc (u : us) = case u of
+  units w sc (IDir (DFails _) : us) = units w sc us
+  units w sc (IDir d : us) = concat [ expr w sc e | e <- dirExps d ] ++ units w sc us
+  units w sc (ILock _ : us) = units w sc us
+  units w sc (IDecl u : us) = case u of
     DVar i x a      -> new i sc x ++ expr i sc a ++ units w (S.insert x sc) us
     DLvl x          -> new w sc x ++ units w (S.insert ('%' : x) (S.insert x sc)) us
     DDef i _ a b  -> expr i sc a ++ expr i sc b ++ units w sc us
@@ -1560,8 +1563,6 @@ shadowReport = units "" S.empty
     DData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
     _ | Just (i, _, _, vs) <- segParts u -> units i sc vs ++ units w sc us
     DInst i _ m     -> mexp i sc m ++ units w sc us
-    DDir (DFails _) -> units w sc us
-    DDir d          -> concat [ expr w sc e | e <- dirExps d ] ++ units w sc us
     _               -> units w sc us
   dirExps d = case d of { DNormal e -> [e]; DType e -> [e]; DConv a b -> [a, b]; _ -> [] }
   new w sc x = [ w ++ ": " ++ x ++ (if S.member ('%' : x) sc then " (a level)" else " (a variable)") | x /= "_", S.member x sc ]
@@ -1617,9 +1618,17 @@ shadowReport = units "" S.empty
 -- record fields and constructor telescopes keep their names.  The id is
 -- never printed.
 
-binderUnits :: [Decl] -> [Decl]
-binderUnits = map unit
+binderUnits :: [Item] -> [Item]
+binderUnits = map item
  where
+  item it = case it of
+    IDecl u -> IDecl (unit u)
+    IDir d  -> IDir (case d of
+                 DNormal e -> DNormal (binderE "dir" e)
+                 DType e   -> DType (binderE "dir" e)
+                 DConv a b -> DConv (binderE "dir1" a) (binderE "dir2" b)
+                 DFails vs -> DFails (binderUnits vs))
+    ILock _ -> it
   unit u = case u of
     DDef i x a b   -> DDef i x (binderE (i ++ ":") a) (binderE (i ++ "=") b)
     d@(DSplit i _ _ _ _ _ _) -> case snd (binderS (i ++ "=") M.empty 0 d) of
@@ -1629,11 +1638,6 @@ binderUnits = map unit
     DVar i x a     -> DVar i x (binderE (i ++ ":") a)
     _ | Just _ <- segParts u -> mapSeg binderUnits u
     DInst i x m    -> DInst i x (binderM (i ++ "=") m)
-    DDir d         -> DDir (case d of
-                        DNormal e -> DNormal (binderE "dir" e)
-                        DType e   -> DType (binderE "dir" e)
-                        DConv a b -> DConv (binderE "dir1" a) (binderE "dir2" b)
-                        DFails vs -> DFails (binderUnits vs))
     _              -> u
 
 binderE :: String -> Exp -> Exp
@@ -1771,8 +1775,8 @@ surveyRecords :: [RUnit] -> Either String String
 surveyRecords rus = do
   let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty True (ixLabels rus)
   (us, _) <- resUnits rs0 rus 0
-  let segs  = M.fromList [ (i, (k, vs)) | (i, k, vs) <- allSegs us ]
-      insts = M.fromList [ (i, m) | (i, m) <- allInsts us ]
+  let segs  = M.fromList [ (i, (k, vs)) | (i, k, vs) <- allSegs (itemDecls us) ]
+      insts = M.fromList [ (i, m) | (i, m) <- allInsts (itemDecls us) ]
       segOf m = case m of
         MVar i -> chase i
         MApp n _ -> segOf n
@@ -1780,7 +1784,7 @@ surveyRecords rus = do
       chase i | M.member i segs = Just i
               | Just m <- M.lookup i insts = segOf m
               | otherwise = Nothing
-      uses = [ (t, k) | (k, m) <- concatMap unitUses us, Just t <- [segOf m] ]
+      uses = [ (t, k) | (k, m) <- concatMap itemUses us, Just t <- [segOf m] ]
       count t k = length [ () | (t', k') <- uses, t' == t, k' == k ]
       asRecord = S.toList (S.fromList [ t | (t, k) <- uses, k /= "module" ])
       line t = case M.lookup t segs of
@@ -1801,12 +1805,12 @@ surveyRecords rus = do
  where
   allSegs = concatMap seg
   seg u = case u of
-    _ | Just (i, _, k, vs) <- segParts u -> (i, k, vs) : allSegs vs
+    _ | Just (i, _, k, vs) <- segParts u -> (i, k, itemDecls vs) : allSegs (itemDecls vs)
     _ -> []
   allInsts = concatMap inst
   inst u = case u of
     DInst i _ m -> [(i, m)]
-    _ | Just (_, _, _, vs) <- segParts u -> allInsts vs
+    _ | Just (_, _, _, vs) <- segParts u -> allInsts (itemDecls vs)
     _ -> []
   -- the units after the head parameters (and their constraints)
   dropHeads hs vs = case vs of
@@ -1821,18 +1825,21 @@ surveyRecords rus = do
     DCstr _      -> Just "constraint"
     _            -> Nothing
   isPrefixOfS a b = take (length a) b == a
+  itemUses it = case it of
+    IDecl u -> unitUses u
+    IDir d -> case d of
+      DNormal e -> expUses e
+      DType e -> expUses e
+      DConv a b -> expUses a ++ expUses b
+      DFails vs -> concatMap itemUses vs
+    ILock _ -> []
   unitUses u = case u of
     DDef _ _ a b -> expUses a ++ expUses b
     d@DSplit{} -> splitUses d
     DData _ _ dd -> expUses (dataType dd) ++ concat [ expUses t | ConDecl _ tel es <- ddCons dd, t <- map snd tel ++ es ]
     DVar _ _ a -> expUses a
-    _ | Just (_, _, _, vs) <- segParts u -> concatMap unitUses vs
+    _ | Just (_, _, _, vs) <- segParts u -> concatMap itemUses vs
     DInst _ _ m -> modUses m
-    DDir d -> case d of
-      DNormal e -> expUses e
-      DType e -> expUses e
-      DConv a b -> expUses a ++ expUses b
-      DFails vs -> concatMap unitUses vs
     _ -> []
   -- a module expression used as a module: its head, and the segments it
   -- goes through
