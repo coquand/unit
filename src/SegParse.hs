@@ -1000,7 +1000,7 @@ resB rs r = case r of
               _ -> 0
     -- the id is given by pathUnits (the definition and the path)
     let si = rsPath rs ++ "split#" ++ show o
-    Right (RhsSplit (DSplit si si Hole [] si Hole k bs'))
+    Right (RhsSplit (DSplit si si Hole [] Hole k bs'))
   _ -> fmap RhsExp (resE rs r)
 
 -- the definitions of a let or where block, as nested lets
@@ -1517,7 +1517,7 @@ pathUnits :: [Decl] -> [Decl]
 pathUnits = map unit
  where
   unit u = case u of
-    d@(DSplit i _ _ _ _ _ _ _) -> pathSplit i [] d
+    d@(DSplit i _ _ _ _ _ _) -> pathSplit i [] d
     _ | Just _ <- segParts u -> mapSeg pathUnits u
     DDir (DFails vs) -> DDir (DFails (pathUnits vs))
     _               -> u
@@ -1527,17 +1527,17 @@ pathUnits = map unit
 -- occurrence
 pathSplit :: Id -> [[String]] -> Decl -> Decl
 pathSplit i p d = case d of
-  DSplit di x a delta _ ty k bs ->
+  DSplit di x a delta ty k bs ->
     let p' = p ++ concat [ case c of { DVar _ y _ -> [["v", y]]; DLvl y -> [["l", y]]; _ -> [] } | c <- delta ]
-        si = pathId i p'
-    in DSplit di x a delta si ty k [ (c, xs, is, rs, pathRhs i (p' ++ [("c" : c : map fst xs)]) b') | (c, xs, is, rs, b') <- bs ]
+    in DSplit di x a delta ty k [ (c, xs, is, rs, pathRhs i (p' ++ [("c" : c : map fst xs)]) b') | (c, xs, is, rs, b') <- bs ]
   _ -> d
 
 pathRhs :: Id -> [[String]] -> Rhs -> Rhs
 pathRhs i p r = case r of
   RhsExp _ -> r
   RhsSplit d -> case pathSplit i p d of
-    DSplit _ _ a delta si ty k bs -> RhsSplit (DSplit si si a delta si ty k bs)
+    -- a nested split is named by the path that leads to it
+    DSplit _ _ a delta ty k bs -> RhsSplit (DSplit (pathId i p) (pathId i p) a delta ty k bs)
     d' -> RhsSplit d'
 
 
@@ -1556,7 +1556,7 @@ shadowReport = units "" S.empty
     DVar i x a      -> new i sc x ++ expr i sc a ++ units w (S.insert x sc) us
     DLvl x          -> new w sc x ++ units w (S.insert ('%' : x) (S.insert x sc)) us
     DDef i _ a b  -> expr i sc a ++ expr i sc b ++ units w sc us
-    d@(DSplit i _ a _ _ _ _ _) -> expr i sc a ++ split i sc d ++ units w sc us
+    d@(DSplit i _ a _ _ _ _) -> expr i sc a ++ split i sc d ++ units w sc us
     DData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
     _ | Just (i, _, _, vs) <- segParts u -> units i sc vs ++ units w sc us
     DInst i _ m     -> mexp i sc m ++ units w sc us
@@ -1581,7 +1581,7 @@ shadowReport = units "" S.empty
     RhsExp e        -> expr w sc e
     RhsSplit d      -> split w sc d
   split w sc d = case d of
-    DSplit _ _ _ delta _ ty _ bs -> ctx w sc delta ty bs
+    DSplit _ _ _ delta ty _ bs -> ctx w sc delta ty bs
     _ -> []
   ctx w sc delta ty bs = case delta of
     DVar _ x a : ds -> expr w sc a ++ binds w sc [x] (\sc' -> ctx w sc' ds ty bs)
@@ -1622,8 +1622,8 @@ binderUnits = map unit
  where
   unit u = case u of
     DDef i x a b   -> DDef i x (binderE (i ++ ":") a) (binderE (i ++ "=") b)
-    d@(DSplit i _ _ _ _ _ _ _) -> case snd (binderS (i ++ "=") M.empty 0 d) of
-      DSplit _ x a delta si ty k bs -> DSplit i x (binderE (i ++ ":") a) delta si ty k bs
+    d@(DSplit i _ _ _ _ _ _) -> case snd (binderS (i ++ "=") M.empty 0 d) of
+      DSplit _ x a delta ty k bs -> DSplit i x (binderE (i ++ ":") a) delta ty k bs
       d' -> d'
     DData i x dd   -> DData i x (binderData (i ++ "=") dd)
     DVar i x a     -> DVar i x (binderE (i ++ ":") a)
@@ -1654,7 +1654,7 @@ binderB pre ren n b = case b of
 -- a split declaration: its context, then its case
 binderS :: String -> M.Map Name Name -> Int -> Decl -> (Int, Decl)
 binderS pre ren0 n0 d = case d of
-  DSplit i x a delta0 t ty0 sk bs -> ctx ren0 n0 delta0 []
+  DSplit i x a delta0 ty0 sk bs -> ctx ren0 n0 delta0 []
    where
     ctx ren n delta acc = case delta of
       DVar j y b : ds -> let (n1, b') = binderGo pre ren n b; (y', ren', n2) = binderBind pre ren n1 y
@@ -1663,7 +1663,7 @@ binderS pre ren0 n0 d = case d of
       DDef j y b v : ds -> let (n1, b') = binderGo pre ren n b; (n2, v') = binderGo pre ren n1 v
                            in ctx ren n2 ds (acc ++ [DDef j y b' v'])
       c : ds -> ctx ren n ds (acc ++ [c])
-      [] -> let (nn, ty, bs') = cas ren n in (nn, DSplit i x a acc t ty sk bs')
+      [] -> let (nn, ty, bs') = cas ren n in (nn, DSplit i x a acc ty sk bs')
     cas ren n = let (n0', ty) = binderGo pre ren n ty0; (n1, bs') = mapL (\k (c, xs, is, rs, b') ->
                                       let (xs', ren', k1) = foldl (\(acc, r, kk) (x, a) -> let (kk0, a') = binderGo pre r kk a; (x', r', kk') = binderBind pre r kk0 x in (acc ++ [(x', a')], r', kk')) ([], ren, k) xs
                                           (k1i, is') = mapL (binderGo pre ren') k1 is
@@ -1861,7 +1861,7 @@ surveyRecords rus = do
     RhsExp e -> expUses e
     RhsSplit d -> splitUses d
   splitUses d = case d of
-    DSplit _ _ a delta _ ty _ bs -> expUses a ++ concat [ case c of { DVar _ _ t -> expUses t; DDef _ _ t v -> expUses t ++ expUses v; _ -> [] } | c <- delta ]
+    DSplit _ _ a delta ty _ bs -> expUses a ++ concat [ case c of { DVar _ _ t -> expUses t; DDef _ _ t v -> expUses t ++ expUses v; _ -> [] } | c <- delta ]
                                     ++ expUses ty ++ concat [ concatMap (expUses . snd) xs ++ concatMap expUses is ++ bodyUses b' | (_, xs, is, _, b') <- bs ]
     _ -> []
   subE e = case e of
