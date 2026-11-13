@@ -80,7 +80,7 @@ data Arg = ATm Exp | ALv Lv
 data MExp = MVar Name | MSub MExp Name | MApp MExp [Arg]
   deriving (Eq, Show)
 
-data Directive = DNormal Exp | DType Exp | DFails [Unit] | DConv Exp Exp
+data Directive = DNormal Exp | DType Exp | DFails [Decl] | DConv Exp Exp
   deriving (Eq, Show)
 
 -- A module is a list of units with parameters (its body-less units, head
@@ -90,16 +90,23 @@ data Directive = DNormal Exp | DType Exp | DFails [Unit] | DConv Exp Exp
 data SegKind = SModule | SRecord [Name]     -- a record: its head parameters
   deriving (Eq, Show)
 
-data Unit
-  = UDef  Id Name Exp Body           -- id, name, type, body
-  | UData Id Name DataDecl           -- a data type
-  | UPar  Id Name Exp                -- a parameter / primitive notion
-  | ULvl  Name                       -- a level variable
-  | UCstr [Cs]                       -- constraints
-  | UMod  Id Name SegKind [Unit]     -- a module or a record
-  | UInst Id Name MExp               -- module N = M[args]
-  | ULock [Id]                       -- the lock strategy from here on
-  | UDir  Directive
+-- A declaration: static, never a value.  The units of a program or a
+-- segment body are declarations (with two commands, the lock strategy and
+-- a directive); an environment is declarations and the values of the
+-- variables and levels among them.
+data Decl
+  = DVar  Id Name Exp                -- [x : A]: a parameter, or a variable bound by
+                                     -- a lambda or a pattern (its id is its name)
+  | DDef  Id Name Exp Body           -- [x : A = e] (a definition whose id starts with
+                                     -- % is internal: unfolded when accessed)
+  | DData Id Name DataDecl           -- a data type
+  | DSplit Id Exp Int [Branch]       -- [f : T = split ..], absorbing k indices
+  | DMod  Id Name SegKind [Decl]     -- a segment: a module or a record
+  | DInst Id Name MExp               -- module N = M[args]
+  | DLvl  Name                       -- a level variable
+  | DCstr [Cs]                       -- constraints
+  | DLock [Id]                       -- (a command) the lock strategy from here on
+  | DDir  Directive                  -- (a command) a directive
   deriving (Eq, Show)
 
 -- A data declaration  data D (params) : (indices) -> S = labels .  Its
@@ -144,23 +151,23 @@ dataOcc i dd = pathId i [ case p of { PLevel x -> ["l", x]; PTerm x _ -> ["v", x
 pathId :: Id -> [[String]] -> Id
 pathId i p = i ++ "\0" ++ show p
 
-unitIdOf :: Unit -> Id
+unitIdOf :: Decl -> Id
 unitIdOf u = case u of
-  UDef i _ _ _ -> i
-  UData i _ _ -> i
-  UMod i _ _ _ -> i
-  UInst i _ _    -> i
-  UPar i _ _     -> i
+  DDef i _ _ _ -> i
+  DData i _ _ -> i
+  DMod i _ _ _ -> i
+  DInst i _ _    -> i
+  DVar i _ _     -> i
   _              -> ""
 
-unitName :: Unit -> Name
+unitName :: Decl -> Name
 unitName u = case u of
-  UDef _ x _ _ -> x
-  UData _ x _ -> x
-  UPar _ x _     -> x
-  ULvl x         -> x
-  UMod _ x _ _ -> x
-  UInst _ x _    -> x
+  DDef _ x _ _ -> x
+  DData _ x _ -> x
+  DVar _ x _     -> x
+  DLvl x         -> x
+  DMod _ x _ _ -> x
+  DInst _ x _    -> x
   _              -> ""
 
 -- The DYNAMIC part of an access to a definition (bengt.pdf slides 31-33)
@@ -419,21 +426,6 @@ renameVars ren e = case e of
 -- program or segment body, entered together.
 data Env = Env { envDecls :: [Decl], envVals :: [Val], envIndex :: [Frame] }
 
--- A declaration: static, never a value.
-data Decl
-  = DVar   Name Exp                 -- [x : A], bound to a value
-  | DLvl   Name                     -- a level, bound to a value
-  | DPar   Id Name Exp              -- [x : A], declared: the variable itself
-                                    -- (Wang: ()(x) = x), never dynamic
-  | DDef   Id Name Exp Body         -- [x : A = e]: an access is the closure
-                                    -- < x ; rho >, unfolded under the lock
-  | DLet   Name Exp Exp             -- [x : A = e], unfolded when accessed: a
-                                    -- recursive result, a field of %self
-  | DData  Id Name DataDecl         -- a data type
-  | DSplit Id Exp Int [Branch]      -- [f : T = split ...], absorbing k indices
-  | DMod   Id Name SegKind [Unit]   -- a segment: a module or a record
-  | DInst  Id Name MExp             -- module N = M[args]
-
 -- the cache: one frame for a bound variable or level, one for another
 -- declaration, one for the n declarations of a body entered together
 data Frame
@@ -484,10 +476,10 @@ slots (Env _ vs0 fs0) = go fs0 vs0
 eNil :: Env
 eNil = Env [] [] []
 
-
-
+-- [x : A] bound to v (a declared parameter is bound to itself: Wang's
+-- ()(x) = x, mTT10's generic value)
 pushVar :: Env -> Name -> Exp -> Val -> Env
-pushVar (Env ds vs fs) x a v = Env (DVar x a : ds) (v : vs) (FVal x : fs)
+pushVar (Env ds vs fs) x a v = Env (DVar x x a : ds) (v : vs) (FVal x : fs)
 
 pushLvl :: Env -> Name -> Lvl -> Env
 pushLvl (Env ds vs fs) x l = Env (DLvl x : ds) (VLvl l : vs) (FLvl x : fs)
@@ -499,7 +491,7 @@ pushDecl (Env ds vs fs) d = r'
 
 -- the declarations of a body entered together (definitions, data types,
 -- segments, instances), indexed once
-pushUnits :: Env -> [Unit] -> Env
+pushUnits :: Env -> [Decl] -> Env
 pushUnits (Env ds vs fs) us = r'
  where
   decls = concatMap unitDecl us
@@ -507,18 +499,19 @@ pushUnits (Env ds vs fs) us = r'
   ix = Map.fromList ([ (declName d, e) | (d, e) <- es ] ++ [ (declId d, e) | (d, e) <- es ])
   r' = Env (reverse decls ++ ds) vs (FBlock (length decls) ix es : fs)
 
-unitDecl :: Unit -> [Decl]
+unitDecl :: Decl -> [Decl]
 unitDecl u = case u of
-  UDef i x a b   -> [DDef i x a b]
-  UData i x dd   -> [DData i x dd]
-  UMod i x k mus -> [DMod i x k mus]
-  UInst i x m    -> [DInst i x m]
+  DDef i x a b   -> [DDef i x a b]
+  DData i x dd   -> [DData i x dd]
+  DMod i x k mus -> [DMod i x k mus]
+  DInst i x m    -> [DInst i x m]
   _              -> []
 
 declName :: Decl -> Name
 declName d = case d of
-  DVar x _ -> x; DLvl x -> x; DPar _ x _ -> x; DDef _ x _ _ -> x; DLet x _ _ -> x
+  DVar _ x _ -> x; DLvl x -> x; DDef _ x _ _ -> x
   DData _ x _ -> x; DSplit t _ _ _ -> t; DMod _ x _ _ -> x; DInst _ x _ -> x
+  _ -> ""
 
 declId :: Decl -> Id
 declId d = case d of
@@ -528,26 +521,29 @@ declId d = case d of
 -- the meaning of a declaration in an environment that has it (D rho)
 declEnt :: Decl -> Env -> Ent
 declEnt d r = case d of
-  DDef i x a b    -> EVal (mkRef (UDef i x a b) r)
-  DData i x dd    -> EVal (mkRef (UData i x dd) r)
+  DDef i _ _ b | internal i -> EVal (evalBody r b)
+  DDef i x a b    -> EVal (mkRef (DDef i x a b) r)
+  DData i x dd    -> EVal (mkRef (DData i x dd) r)
   DMod i _ k mus  -> EMod (Mod i (dynVals r) mus r
                              (if hasParams mus then Nothing else Just (instUnits r mus [])) k)
   DInst _ _ m     -> EMod (evalMod r m)
-  DPar _ x a      -> EVal (VConst x (eval r a))
-  DLet _ _ e      -> EVal (eval r e)
   DSplit t a k bs -> EVal (VSplit t (dynVals r) k [] bs r (eval r a))
   _               -> error "declEnt: a variable has no meaning apart from its value"
 
--- a declaration bound like a variable (a declared variable, a field of
--- %self, a recursive result): not a definition of the program
+-- an internal definition (a recursive result, a field of %self): its id
+-- starts with %; it is unfolded when accessed, as in mTT10, never locked
+internal :: Id -> Bool
+internal i = take 1 i == "%"
+
+-- a declaration bound like a variable: an internal definition
 varLike :: Decl -> Bool
-varLike d = case d of { DPar{} -> True; DLet{} -> True; _ -> False }
+varLike d = case d of { DDef i _ _ _ -> internal i; _ -> False }
 
 
 -- a segment: its units, the environment where it is declared, its
 -- identity (id and the values of what it depends on), and, once all its
 -- parameters are given, the instance environment
-data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Unit], modEnv :: Env
+data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Decl], modEnv :: Env
                , modInst :: Maybe Env, modKind :: SegKind }
 
 -- a closure: a binder with its type, its code and an environment;
@@ -573,7 +569,7 @@ data Val
   -- carries its domain.  Types are never compared, printed or read back.
   | VGen Int Val                            -- a generic variable, its type
   | VConst Id Val                           -- a declared variable (rigid), its type
-  | VRef Unit Env Val                       -- the closure < f ; eta > of an
+  | VRef Decl Env Val                       -- the closure < f ; eta > of an
                                             -- access to a definition: the unit
                                             -- as written and the environment
                                             -- of its group, and its type.
@@ -764,7 +760,7 @@ branchEnv t c m r0 xs rs = foldl (recDecl xs) r0 rs
     -- reported there); its results are never equal to anything (lazy)
     | j < 0     = pushVar r y Unfilled (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                            ++ ": the split was not annotated (its definition failed)"))
-    | otherwise = pushDecl r (DLet y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j n ds es (xs !! j)))
+    | otherwise = pushDecl r (DDef ('%' : y) y (recTypeExp t c j n m ds es (xs !! j)) (BExp (recExp t c j n ds es (xs !! j))))
 
 -- the recursive result of the field x at position j with n binders (of
 -- domains ds) and indices es
@@ -782,7 +778,7 @@ recDeclared r y = case outer r of
   OVar r' x _ -> x /= y && recDeclared r' y
   OLvl r' _ _ -> recDeclared r' y
   OOne r' d _ -> case d of
-    DLet x _ _ | x == y -> True
+    DDef i x _ _ | x == y, internal i -> True
     _ -> declName d /= y && recDeclared r' y
   OBlock r' _ _ -> recDeclared r' y
 
@@ -886,9 +882,9 @@ typeOfNe v = case v of
 -- or head parameter in the instance at t's fields
 fieldType :: Mod -> [(Name, Val)] -> Val -> Name -> Maybe Val
 fieldType md fs t l = case memberUnit (modUnits md) l of
-  Just (UDef _ _ ty _) | isDerived md l -> Just (eval (selfEnvFixed md fs fs t) ty)
-  Just (UDef _ _ ty _) -> Just (eval r ty)
-  Just (UPar _ _ ty)   -> Just (eval r ty)
+  Just (DDef _ _ ty _) | isDerived md l -> Just (eval (selfEnvFixed md fs fs t) ty)
+  Just (DDef _ _ ty _) -> Just (eval r ty)
+  Just (DVar _ _ ty)   -> Just (eval r ty)
   _                    -> Nothing
  where
   r = case t of
@@ -919,12 +915,12 @@ recordFields v = case v of
 -- consecutive definitions, data types, segments and instances of a body
 -- (mTT10's D rho): nothing is evaluated, an access finds the declaration
 -- (lookupVal); segments and instances are entered once
-mkGroup :: Env -> [Unit] -> Env
+mkGroup :: Env -> [Decl] -> Env
 mkGroup = pushUnits
 
-defId :: Unit -> Id
-defId (UDef i _ _ _) = i
-defId (UData i _ _) = i
+defId :: Decl -> Id
+defId (DDef i _ _ _) = i
+defId (DData i _ _) = i
 defId _                = ""
 
 -- the dynamic part of an environment: the values of its variables and
@@ -956,16 +952,16 @@ dynVals = envVals
 -- constructor  mkM = \params fields. new M[params, fields]  is notation for
 -- new: its access is its body, so applied it is an element at once and
 -- nothing is opened
-mkRef :: Unit -> Env -> Val
+mkRef :: Decl -> Env -> Val
 mkRef u r | isNewDef u = unfoldRef u r
           | otherwise  = VRef u r (eval r (groupUnitType u))
 
 -- the type of a definition or data type
-groupUnitType :: Unit -> Exp
+groupUnitType :: Decl -> Exp
 groupUnitType = fromMaybe (error "groupUnitType: not a definition") . defType
 
-isNewDef :: Unit -> Bool
-isNewDef (UDef _ _ _ (BExp b)) = go [] b
+isNewDef :: Decl -> Bool
+isNewDef (DDef _ _ _ (BExp b)) = go [] b
  where
   go xs e = case e of
     Lam x _ e' -> go (x : xs) e'
@@ -979,40 +975,40 @@ isNewDef (UDef _ _ _ (BExp b)) = go [] b
 isNewDef _ = False
 
 -- the body of a definition, evaluated in its environment
-unfoldRef :: Unit -> Env -> Val
-unfoldRef (UDef _ _ _ b) r = evalBody r b
-unfoldRef (UData i _ dd) r = dataAt r (dataOcc i dd) dd 0
+unfoldRef :: Decl -> Env -> Val
+unfoldRef (DDef _ _ _ b) r = evalBody r b
+unfoldRef (DData i _ dd) r = dataAt r (dataOcc i dd) dd 0
 unfoldRef _ _                = error "unfoldRef: not a definition"
 
-isGroupUnit :: Unit -> Bool
+isGroupUnit :: Decl -> Bool
 isGroupUnit u = case u of
-  UDef{}  -> True
-  UData{} -> True
+  DDef{}  -> True
+  DData{} -> True
   _       -> False
 
 -- the type of a definition or data type
-defType :: Unit -> Maybe Exp
+defType :: Decl -> Maybe Exp
 defType u = case u of
-  UDef _ _ a _          -> Just a
-  UData _ _ dd          -> Just (dataType dd)
+  DDef _ _ a _          -> Just a
+  DData _ _ dd          -> Just (dataType dd)
   _                     -> Nothing
 
-hasParams :: [Unit] -> Bool
+hasParams :: [Decl] -> Bool
 hasParams = any isParam
- where isParam u = case u of { UPar{} -> True; ULvl _ -> True; _ -> False }
+ where isParam u = case u of { DVar{} -> True; DLvl _ -> True; _ -> False }
 
 -- instantiate a module body: parameters bound to the arguments in order,
 -- groups of definitions in between (they may mention earlier parameters,
 -- and later parameter types may mention them)
-instUnits :: Env -> [Unit] -> [Val] -> Env
+instUnits :: Env -> [Decl] -> [Val] -> Env
 instUnits r [] _ = r
 instUnits r (u : us) vs = case (u, vs) of
-  (UPar _ x a, v : vs')       -> instUnits (pushVar r x a v) us vs'
-  (ULvl x, VLvl l : vs')      -> instUnits (pushLvl r x l) us vs'
-  (UPar _ x _, [])            -> error ("missing argument for " ++ x)
-  (ULvl x, _)                 -> error ("missing level argument for " ++ x)
-  (UMod{}, _)                 -> instUnits (mkGroup r [u]) us vs
-  (UInst{}, _)                -> instUnits (mkGroup r [u]) us vs
+  (DVar _ x a, v : vs')       -> instUnits (pushVar r x a v) us vs'
+  (DLvl x, VLvl l : vs')      -> instUnits (pushLvl r x l) us vs'
+  (DVar _ x _, [])            -> error ("missing argument for " ++ x)
+  (DLvl x, _)                 -> error ("missing level argument for " ++ x)
+  (DMod{}, _)                 -> instUnits (mkGroup r [u]) us vs
+  (DInst{}, _)                -> instUnits (mkGroup r [u]) us vs
   _ | isGroupUnit u           -> let (g, rest) = span isGroupUnit (u : us)
                                  in instUnits (mkGroup r g) rest vs
   _                           -> instUnits r us vs
@@ -1110,12 +1106,12 @@ recordFieldNames md = case modKind md of
   SModule    -> []
 
 -- the units of a record's head (its parameters and their constraints)
-headUnits :: Mod -> [Unit]
+headUnits :: Mod -> [Decl]
 headUnits md = [ u | u <- modUnits md, isHead u ]
  where hs = recordHeads md
        isHead u = case u of
-         UPar _ p _ -> p `elem` hs
-         ULvl p     -> p `elem` hs
+         DVar _ p _ -> p `elem` hs
+         DLvl p     -> p `elem` hs
          _          -> False
 
 -- the head parameters of a record
@@ -1127,7 +1123,7 @@ recordHeads md = case modKind md of
 -- a derived member of a record: a definition of its body
 isDerived :: Mod -> Name -> Bool
 isDerived md l = case (modKind md, memberUnit (modUnits md) l) of
-  (SRecord _, Just (UDef{})) -> True
+  (SRecord _, Just (DDef{})) -> True
   _                          -> False
 
 -- The environment of the derived members of a record at the element t:
@@ -1147,21 +1143,21 @@ selfEnvFixed md heads fixed t = go (modEnv md) False (modUnits md)
   hs = recordHeads md
   go r _ [] = r
   go r self (u : us) = case u of
-    UPar _ p a | p `elem` hs -> go (pushVar r p a (headVal p)) self us
-    ULvl p | VLvl l <- headVal p -> go (pushLvl r p l) self us
-    UCstr _ -> go r self us
+    DVar _ p a | p `elem` hs -> go (pushVar r p a (headVal p)) self us
+    DLvl p | VLvl l <- headVal p -> go (pushLvl r p l) self us
+    DCstr _ -> go r self us
     _ | not self -> go (pushVar r "%self" selfType t) True (u : us)
-    UPar _ p a -> go (pushDecl r (DLet p a (fieldOfSelf p fixed))) self us
+    DVar _ p a -> go (pushDecl r (DDef ('%' : p) p a (BExp (fieldOfSelf p fixed)))) self us
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) self rest
     -- an open of a module instance: its arguments see the fields as t.x
-    UInst{} -> go (mkGroup r [u]) self us
+    DInst{} -> go (mkGroup r [u]) self us
     _ -> go r self us
   headVal p = fromMaybe (error ("selfEnv: no head parameter " ++ p)) (lookup p heads)
   -- %self : the record at its head parameters,  R { h = h }
   selfType = SegT (MVar (modId md)) [ (h, arg) | u <- modUnits md, (h, arg) <- headArg u ]
   headArg u = case u of
-    UPar _ h _ | h `elem` hs -> [(h, ATm (Var h))]
-    ULvl h     | h `elem` hs -> [(h, ALv (LV h))]
+    DVar _ h _ | h `elem` hs -> [(h, ATm (Var h))]
+    DLvl h     | h `elem` hs -> [(h, ALv (LV h))]
     _ -> []
   -- a field is %self.p (a field the type fixes: its projection gives the
   -- fixed value, vproj)
@@ -1171,14 +1167,14 @@ memberAt :: Mod -> [(Name, Val)] -> Val -> Name -> Val
 memberAt md heads t l = lookupMember (selfEnv md heads t) l
 
 -- the parameters of a segment, in order
-paramNames :: [Unit] -> [Name]
-paramNames us = [ x | u <- us, x <- case u of { UPar _ y _ -> [y]; ULvl y -> [y]; _ -> [] } ]
+paramNames :: [Decl] -> [Name]
+paramNames us = [ x | u <- us, x <- case u of { DVar _ y _ -> [y]; DLvl y -> [y]; _ -> [] } ]
 
-termParams :: [Unit] -> [Name]
-termParams us = [ x | UPar _ x _ <- us ]
+termParams :: [Decl] -> [Name]
+termParams us = [ x | DVar _ x _ <- us ]
 
 -- the unit declaring a member of a module body (not of its submodules)
-memberUnit :: [Unit] -> Name -> Maybe Unit
+memberUnit :: [Decl] -> Name -> Maybe Decl
 memberUnit us x = case [ u | u <- us, unitName u == x ] of
   (u : _) -> Just u
   []      -> Nothing
@@ -1242,16 +1238,16 @@ distinctOn = unsafePerformIO (newIORef False)
 
 -- a data type: its unfolding exposes its constructors, which is reading
 -- its declaration, not opening a construction (not counted)
-isDataDef :: Unit -> Bool
+isDataDef :: Decl -> Bool
 isDataDef u = case u of
-  UData{} -> True
+  DData{} -> True
   _       -> False
 
 -- The one way a definition is opened: at the head, one at a time.  On a
 -- value in folded weak head normal form, the definition blocking it (if
 -- any, and not locked): the head of an elimination, or of the scrutinee
 -- of a split.
-blockingRef :: Locks -> Val -> Maybe Unit
+blockingRef :: Locks -> Val -> Maybe Decl
 blockingRef s v = case v of
   VRef r _ _ | Set.notMember (defId r) s -> Just r
   VApp f a -> case f of
@@ -1803,19 +1799,19 @@ emptyCx = Cx 0 eNil [] emptyTheory Set.empty [] [] [] Map.empty []
 
 -- the context for checking a program: empty, with the order of its
 -- definitions
-programCx :: [Unit] -> Cx
+programCx :: [Decl] -> Cx
 programCx us = emptyCx { cxRank = ranksOf us }
 
 -- the definitions of a program numbered in order, through the bodies of
 -- modules and records (definitions local to a let have no rank)
-ranksOf :: [Unit] -> Map.Map Id Int
+ranksOf :: [Decl] -> Map.Map Id Int
 ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
  where
   go us = concatMap one us
   one u = case u of
-    UDef i _ _ _ -> [i]
-    UData i _ _ -> [i]
-    UMod _ _ _ vs -> go vs
+    DDef i _ _ _ -> [i]
+    DData i _ _ -> [i]
+    DMod _ _ _ vs -> go vs
     _ -> []
 
 cc :: Cx -> CC
@@ -2105,7 +2101,7 @@ infer cx e = case e of
     md <- checkMod cx m
     case memberUnit (modUnits md) x of
       Just u | Just a <- defType u -> Right (eval (instOf md) a)
-      Just (UPar _ _ a)     -> Right (eval (instOf md) a)
+      Just (DVar _ _ a)     -> Right (eval (instOf md) a)
       _ -> failWith ("no member " ++ x ++ " in the module")
   _ -> failWith ("cannot infer a type for  " ++ pretty e)
 
@@ -2129,7 +2125,7 @@ checkSegT cx m fs = do
  where
   go _ [] = Right []
   go r (u : us) = case u of
-    UPar i x a -> case lookup x fs of
+    DVar i x a -> case lookup x fs of
       Just (ATm e) -> do
         -- the type of a fixed field may mention only fixed fields (and
         -- the head parameters, which are always given)
@@ -2143,21 +2139,21 @@ checkSegT cx m fs = do
         Right ((x, v) : vs)
       Just (ALv _) -> failWith ("the field " ++ x ++ " is not a level")
       Nothing -> go (pushVar r x a (VConst ("?" ++ i) (eval r a))) us
-    ULvl x -> case lookup x fs of
+    DLvl x -> case lookup x fs of
       Just (ALv l) -> do
         checkLv cx l
         let v = evalLv (cxEnv cx) l
         vs <- go (pushLvl r x v) us
         Right ((x, VLvl v) : vs)
       _ -> failWith ("the level parameter " ++ x ++ " of " ++ showM m ++ " must be given")
-    UCstr cs ->
+    DCstr cs ->
       let vs = map (evalCs r) cs
       in if all (validCstr (cxTh cx)) vs then go r us
          else failWith ("the levels do not satisfy the constraint "
                         ++ commaSep [ prettyCs (csToCs c) | c <- vs ])
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest
-    UMod{} -> go (mkGroup r [u]) us
-    UInst{} -> go (mkGroup r [u]) us
+    DMod{} -> go (mkGroup r [u]) us
+    DInst{} -> go (mkGroup r [u]) us
     _ -> go r us
 
 -- the level of a segment's universe at the given levels
@@ -2216,18 +2212,18 @@ recordBranch cx d xs = case d of
     hs = case modKind md of { SRecord h -> h; SModule -> [] }
     go c r [] [] = Just (c, VInst md r, [])
     go c r (u : us) ys = case (u, ys) of
-      (UPar _ p pa, _) | p `elem` hs -> case lookup p fs of
+      (DVar _ p pa, _) | p `elem` hs -> case lookup p fs of
         Just v  -> go c (pushVar r p pa v) us ys
         Nothing -> Nothing
-      (UPar _ p a, y : ys') -> case lookup p fs of
+      (DVar _ p a, y : ys') -> case lookup p fs of
         Just v  -> fmap (withTy c (eval r a)) (go (c { cxEnv = pushVar (cxEnv c) y (typeExp c (eval r a)) v, cxTys = (y, eval r a) : cxTys c }) (pushVar r p a v) us ys')
         Nothing -> let (c', g) = extVar c y (eval r a) in fmap (withTy c (eval r a)) (go c' (pushVar r p a g) us ys')
-      (ULvl p, _) -> case lookup p fs of
+      (DLvl p, _) -> case lookup p fs of
         Just (VLvl l) -> go c (pushLvl r p l) us ys
         _             -> Nothing
       _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go c (mkGroup r g) rest ys
-      (UMod{}, _) -> go c (mkGroup r [u]) us ys
-      (UInst{}, _) -> go c (mkGroup r [u]) us ys
+      (DMod{}, _) -> go c (mkGroup r [u]) us ys
+      (DInst{}, _) -> go c (mkGroup r [u]) us ys
       _ -> go c r us ys
     go _ _ _ _ = Nothing
     withTy c a (c', el, ts) = (c', el, (c, a) : ts)
@@ -2517,7 +2513,7 @@ checkLet cx i x a v = do
   Right (enterLet cx i x a v)
 
 enterLet :: Cx -> Id -> Name -> Exp -> Exp -> Cx
-enterLet cx i x a v = enterGroup cx [UDef i x a (BExp v)]
+enterLet cx i x a v = enterGroup cx [DDef i x a (BExp v)]
 
 inCtx :: String -> Res a -> Res a
 inCtx msg r = case r of
@@ -2526,7 +2522,7 @@ inCtx msg r = case r of
 
 -- enter a mutual group: the members are in the environment and their
 -- types in the context
-enterGroup :: Cx -> [Unit] -> Cx
+enterGroup :: Cx -> [Decl] -> Cx
 enterGroup cx us = cx { cxEnv = r, cxTys = [ (unitIdOf u, eval r a) | u <- us, Just a <- [defType u] ] ++ cxTys cx }
  where r = mkGroup (cxEnv cx) us
 
@@ -2564,7 +2560,7 @@ checkModHead cx m = case m of
 assumed :: Cx -> MExp -> Mod -> Res Mod
 assumed cx m md = case modInst md of
   Just r | not (hasParams (modUnits md)) ->
-    case [ c | UCstr cs <- modUnits md, c <- map (evalCs r) cs
+    case [ c | DCstr cs <- modUnits md, c <- map (evalCs r) cs
              , not (validCstr (cxTh cx) c) ] of
       [] -> Right md
       vs -> failWith ("the module " ++ showM m ++ " assumes the constraint "
@@ -2595,28 +2591,28 @@ showM m = case m of
 
 -- the arguments, against the parameters of the body, which is walked in
 -- order and instantiated as it goes (Wang's checkInst, rule 3.5)
-checkInst :: Cx -> Env -> [Unit] -> [Arg] -> Res Env
+checkInst :: Cx -> Env -> [Decl] -> [Arg] -> Res Env
 checkInst cx r0 us0 as0 = go r0 us0 as0
  where
   go r [] [] = Right r
   go _ [] _  = failWith "too many arguments for the module"
   go r (u : us) as = case (u, as) of
-    (UPar _ x a, ATm e : as') -> do
+    (DVar _ x a, ATm e : as') -> do
       inCtx ("in the argument for " ++ x) (check cx e (eval r a))
       go (pushVar r x a (ev cx e)) us as'
-    (UPar _ x _, _) -> failWith ("the module expects a term argument for " ++ x)
-    (ULvl x, ALv l : as') -> do
+    (DVar _ x _, _) -> failWith ("the module expects a term argument for " ++ x)
+    (DLvl x, ALv l : as') -> do
       checkLv cx l
       go (pushLvl r x (evalLv (cxEnv cx) l)) us as'
-    (ULvl x, _) -> failWith ("the module expects a level argument for " ++ x)
-    (UCstr cs, _) -> do
+    (DLvl x, _) -> failWith ("the module expects a level argument for " ++ x)
+    (DCstr cs, _) -> do
       let vs = map (evalCs r) cs
       if all (validCstr (cxTh cx)) vs then go r us as
         else failWith ("the arguments do not satisfy the constraint "
                        ++ commaSep [ prettyCs (csToCs c) | c <- vs ])
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest as
-    (UMod{}, _) -> go (mkGroup r [u]) us as
-    (UInst{}, _) -> go (mkGroup r [u]) us as
+    (DMod{}, _) -> go (mkGroup r [u]) us as
+    (DInst{}, _) -> go (mkGroup r [u]) us as
     _ -> go r us as
 
 prettyCs :: Cs -> String
@@ -2630,19 +2626,19 @@ prettyCs (Cs l r m) = plv False l ++ (case r of REq -> " = "; RLe -> " <= "; RLt
 
 data Event = Event { evLabel :: String, evResult :: Res [String] }
 
-checkUnits :: Cx -> [Unit] -> (Cx, [Event])
+checkUnits :: Cx -> [Decl] -> (Cx, [Event])
 checkUnits cx us = let (cx', evs, _) = checkUnitsF cx us in (cx', evs)
 
 -- the same, also returning the units with their hidden arguments filled:
 -- a segment is built from its FILLED units, since its instances evaluate them
-checkUnitsF :: Cx -> [Unit] -> (Cx, [Event], [Unit])
+checkUnitsF :: Cx -> [Decl] -> (Cx, [Event], [Decl])
 checkUnitsF cx [] = (cx, [], [])
 checkUnitsF cx (u : us) = case u of
-  ULvl x ->
+  DLvl x ->
     let cx' = cx { cxTh = addVar x (cxTh cx)
                  , cxLvls = x : cxLvls cx }
     in keep u (checkUnitsF cx' us)
-  UCstr cs ->
+  DCstr cs ->
     case mapM (checkCs cx) cs of
       Left msg -> let (cx', evs, us') = checkUnitsF cx us
                   in (cx', Event "constraint" (Left msg) : evs, u : us')
@@ -2652,38 +2648,38 @@ checkUnitsF cx (u : us) = case u of
                    | thLoop (cxTh cx'), not (thLoop (cxTh cx)) ]
             (cx'', evs, us') = checkUnitsF cx' us
         in (cx'', Event "constraint" (Right note) : evs, u : us')
-  UPar i x a0 ->
+  DVar i x a0 ->
     let fa = inCtx ("in the type of " ++ x) (fillT cx a0)
         a  = either (const (unfilledHoles a0)) id fa
         va = ev cx a
         -- a declared variable is bound to itself (Wang: ()(x) = x),
         -- carrying its type; never part of a dynamic part
-        cx' = cx { cxEnv = pushDecl (cxEnv cx) (DPar i x a)
+        cx' = cx { cxEnv = pushVar (cxEnv cx) x a (VConst x va)
                  , cxTys = (x, va) : cxTys cx
                  , cxPSorts = (x, inferSort cx a) : cxPSorts cx }
         (cx'', evs, us') = checkUnitsF cx' us
     in (cx'', Event x (fmap (const []) (fa >> inCtx ("in the type of " ++ x) (checkType cx a))) : evs
-       , UPar i x a : us')
-  ULock s -> keep u (checkUnitsF cx { cxLocks = Set.fromList s } us)
-  UDir d ->
+       , DVar i x a : us')
+  DLock s -> keep u (checkUnitsF cx { cxLocks = Set.fromList s } us)
+  DDir d ->
     let (cx', evs, us') = checkUnitsF cx us
     in (cx', Event "#" (fillDir cx d >>= runDirective cx) : evs, u : us')
-  UMod i x k mus0 ->
+  DMod i x k mus0 ->
     let -- the body is checked in the context where it is declared; its
         -- parameters are rigid there.  Locks set inside persist.  The
         -- universe of the segment as a type is computed from the sorts of
         -- its parameters; the sorts of nested segments are kept (stated
         -- with this segment's level parameters, found in an instance).
         (cxIn, evsIn, mus) = checkUnitsF cx { cxPSorts = [] } mus0
-        u' = UMod i x k mus
+        u' = DMod i x k mus
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         cx2 = cx1 { cxLocks = cxLocks cxIn, cxSegSort = (i, cxPSorts cxIn) : cxSegSort cxIn }
         (cx3, evs, us') = checkUnitsF cx2 us
     in (cx3, [ ev' { evLabel = x ++ "." ++ evLabel ev' } | ev' <- evsIn ] ++ evs, u' : us')
-  UInst i x m0 ->
+  DInst i x m0 ->
     let fm = fillM cx m0
         m  = either (const (unfilledM m0)) id fm
-        u' = UInst i x m
+        u' = DInst i x m
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         (cx2, evs, us') = checkUnitsF cx1 us
     in (cx2, Event x (fmap (const []) (fm >> checkMod cx m)) : evs, u' : us')
@@ -2696,10 +2692,10 @@ checkUnitsF cx (u : us) = case u of
                      (m : _) -> Left m
                      [] -> Right ()
                    case gu of
-                     UDef _ x a b -> do
+                     DDef _ x a b -> do
                        inCtx ("in the type of " ++ x) (checkType cx1 a)
                        inCtx ("in the definition of " ++ x) (checkBody cx1 b (ev cx1 a))
-                     UData _ x dd -> do
+                     DData _ x dd -> do
                        inCtx ("in the type of " ++ x) (checkType cx1 (dataType dd))
                        inCtx ("in the definition of " ++ x) (checkData cx1 dd (ev cx1 (dataType dd)))
                      _ -> Right ()))
@@ -3157,14 +3153,14 @@ fillM cx m = case m of
 -- arguments against the parameters of a segment body, in order, each
 -- filled against its parameter's type (so a lambda gets its expected type);
 -- named arguments (segment types M[x := e]) are matched by name
-fillInst :: Cx -> Env -> [Unit] -> [(Maybe Name, Arg)] -> Res [(Maybe Name, Arg)]
+fillInst :: Cx -> Env -> [Decl] -> [(Maybe Name, Arg)] -> Res [(Maybe Name, Arg)]
 fillInst cx r0 us0 as0 = go r0 us0 as0
  where
   named = any ((/= Nothing) . fst) as0
   go _ [] _ = Right []
   go _ _ [] | not named = Right []
   go r (u : us) as = case u of
-    UPar i x a ->
+    DVar i x a ->
       let (mine, rest) = if named then ([ p | p@(Just y, _) <- as, y == x ], as)
                                   else (take 1 as, drop 1 as)
       in case mine of
@@ -3176,7 +3172,7 @@ fillInst cx r0 us0 as0 = go r0 us0 as0
           more <- go r us rest
           Right ((n, ALv l) : more)
         [] -> go (pushVar r x a (VConst ("?" ++ i) (eval r a))) us rest
-    ULvl x ->
+    DLvl x ->
       let (mine, rest) = if named then ([ p | p@(Just y, _) <- as, y == x ], as)
                                   else (take 1 as, drop 1 as)
       in case mine of
@@ -3186,8 +3182,8 @@ fillInst cx r0 us0 as0 = go r0 us0 as0
         (p : _) -> do more <- go r us rest; Right (p : more)
         [] -> go r us rest
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest as
-    UMod{} -> go (mkGroup r [u]) us as
-    UInst{} -> go (mkGroup r [u]) us as
+    DMod{} -> go (mkGroup r [u]) us as
+    DInst{} -> go (mkGroup r [u]) us as
     _ -> go r us as
 
 -- A mutual group: the filled units are tied in a knot with the context
@@ -3196,26 +3192,26 @@ fillInst cx r0 us0 as0 = go r0 us0 as0
 -- is reported.
 -- the same, with the errors per unit (forced only when that unit's own
 -- event is, so the driver's time budget covers the filling too)
-fillGroupE :: Cx -> [Unit] -> ([Unit], Cx, [[String]])
+fillGroupE :: Cx -> [Decl] -> ([Decl], Cx, [[String]])
 fillGroupE cx us = (us', cx1, map (snd . snd) res)
  where
   res = [ (u, fill u) | u <- us ]
   fill u = case u of
-    UDef i x a b ->
+    DDef i x a b ->
       let ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
           a' = either (const (unfilledHoles a)) id ta
           tb = inCtx ("in the definition of " ++ x) (fillBody cx1 b (ev cx1 a'))
-      in (UDef i x a' (either (const (unfilledBody b)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+      in (DDef i x a' (either (const (unfilledBody b)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
     -- the declaration filled in the knot keeps its shape (parameters,
     -- indices, labels), seen without forcing the filling: a hidden argument
     -- of a field solved by the data type itself is then found, not looped on
-    UData i x dd ->
+    DData i x dd ->
       let a = dataType dd
           ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
           a' = either (const (unfilledHoles a)) id ta
           dd' = withTypes dd a'
           tb = inCtx ("in the definition of " ++ x) (fillData cx1 { cxDataFill = [i] } dd' (ev cx1 a'))
-      in (UData i x dd' { ddCons = either (const (map unfilledCon (ddCons dd))) id tb }, [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+      in (DData i x dd' { ddCons = either (const (map unfilledCon (ddCons dd))) id tb }, [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
     _ -> (u, [])
   us'  = [ fst r | (_, r) <- res ]
   cx1  = enterGroup cx us'
@@ -3511,7 +3507,7 @@ match cx p0 t0 sols0 = go (cxK cx) p0 t0 sols0
   -- under binders: a fresh variable of the value's domain
   under k b f g sols = go (k + 1) (capp f (VGen k b)) (capp g (VGen k b)) sols
 
-pname :: (Name, [Unit], Maybe Env) -> Name
+pname :: (Name, [Decl], Maybe Env) -> Name
 pname (x, _, _) = x
 
 -- Quoting: a value back to a term of the current scope.  Variables are
@@ -3577,10 +3573,10 @@ instancesInScope r = case outer r of
   OBlock r' _ es -> [ (declId d, m) | (d, EMod m) <- es, Just _ <- [modInst m] ] ++ instancesInScope r'
 
 -- the id and name of a unit that is a segment or an alias
-modUnitName :: Unit -> Maybe (Id, Name)
+modUnitName :: Decl -> Maybe (Id, Name)
 modUnitName u = case u of
-  UInst i x _ -> Just (i, x)
-  UMod i x _ _ -> Just (i, x)
+  DInst i x _ -> Just (i, x)
+  DMod i x _ _ -> Just (i, x)
   _           -> Nothing
 
 -- a segment by its id, if it is in scope

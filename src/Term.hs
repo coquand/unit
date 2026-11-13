@@ -47,23 +47,23 @@ occurs ids e = case e of
 -- definitions), in the segments: a data type is a declaration of a segment
 -- (never in a let, an instance argument or a directive); a #fails block is
 -- not entered (failsTerm: it fails as a whole)
-groups :: [Unit] -> [[Unit]]
+groups :: [Decl] -> [[Decl]]
 groups [] = []
 groups us@(u : rest) = case u of
   _ | isGroupUnit u -> let (g, rest') = span isGroupUnit us in g : groups rest'
-  UMod _ _ _ vs -> groups vs ++ groups rest
+  DMod _ _ _ vs -> groups vs ++ groups rest
   _ -> groups rest
 
 ------------------------------------------------------------------------
 -- Positivity
 
-positivityReport :: [Unit] -> [String]
+positivityReport :: [Decl] -> [String]
 positivityReport us =
   [ shortName x ++ "." ++ c ++ ": " ++ msg ++ maybe " in the target" (" in the field " ++) f
   | g <- groups us
   , let ids = dataIds g
   , not (Set.null ids)
-  , UData i x dd <- g
+  , DData i x dd <- g
   , let k = length (ddIndices dd)
         ps = [ q | p <- ddParams dd, q <- case p of { PTerm y _ -> [Left y]; PLevel y -> [Right y]; PCstr _ -> [] } ]
   , ConDecl c tel es <- ddCons dd
@@ -100,11 +100,11 @@ fieldError d ps k t
     LApp a l -> fullSpine a (Right l : acc)
     _ -> (e, acc)
 
-dataIds :: [Unit] -> Set.Set Id
-dataIds g = Set.fromList [ i | UData i _ _ <- g ]
+dataIds :: [Decl] -> Set.Set Id
+dataIds g = Set.fromList [ i | DData i _ _ <- g ]
 
 ------------------------------------------------------------------------
 -- Enforcement: the errors of the units  part  of the program  whole
 
-termErrors :: [Unit] -> [Unit] -> [String]
+termErrors :: [Decl] -> [Decl] -> [String]
 termErrors _ part = positivityReport part

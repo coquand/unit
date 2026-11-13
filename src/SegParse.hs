@@ -1003,15 +1003,15 @@ resB rs r = case r of
   _ -> fmap BExp (resE rs r)
 
 -- the definitions of a let or where block, as nested lets
-letsE :: [Unit] -> Exp -> Exp
-letsE us e = foldr (\u acc -> case u of { UDef i x a (BExp v) -> Let i x a v acc; _ -> acc }) e us
+letsE :: [Decl] -> Exp -> Exp
+letsE us e = foldr (\u acc -> case u of { DDef i x a (BExp v) -> Let i x a v acc; _ -> acc }) e us
 
-letsB :: [Unit] -> Body -> Body
-letsB us b = foldr (\u acc -> case u of { UDef i x a (BExp v) -> bLet i x a v acc; _ -> acc }) b us
+letsB :: [Decl] -> Body -> Body
+letsB us b = foldr (\u acc -> case u of { DDef i x a (BExp v) -> bLet i x a v acc; _ -> acc }) b us
 
 -- a let / where block: definitions only (no data type: a data type is a
 -- declaration of a segment), in sequence
-resLocal :: RS -> [RUnit] -> Rz ([Unit], RS)
+resLocal :: RS -> [RUnit] -> Rz ([Decl], RS)
 resLocal rs us = do
   case [ x | RData _ x _ _ _ <- us ] of
     (x : _) -> Left ("the data type " ++ x ++ " is declared in a let or where: a data type must be declared in a"
@@ -1025,7 +1025,7 @@ resLocal rs us = do
 -- ones (no recursion by name: recursion is by the eliminators, split with
 -- its recursive results); a data type also sees itself, in its fields
 -- only (resDef')
-sequentialDefs :: RS -> Bool -> (Int -> Name -> Id) -> [RUnit] -> Rz ([Unit], RS)
+sequentialDefs :: RS -> Bool -> (Int -> Name -> Id) -> [RUnit] -> Rz ([Decl], RS)
 sequentialDefs rs0 local idOf = go rs0 []
  where
   go r acc [] = Right (reverse acc, r)
@@ -1040,7 +1040,7 @@ sequentialDefs rs0 local idOf = go rs0 []
     v' <- resDef r local v
     go (add r) (v' : acc) vs
 
-resDef :: RS -> Bool -> RUnit -> Rz Unit
+resDef :: RS -> Bool -> RUnit -> Rz Decl
 resDef rs local u = either (\m -> Left ("in " ++ rsPath rs ++ unitNm u ++ ": " ++ m)) Right (resDef' rs local u)
 
 unitNm :: RUnit -> String
@@ -1049,7 +1049,7 @@ unitNm u = case u of
   RData _ x _ _ _ -> x
   _ -> "?"
 
-resDef' :: RS -> Bool -> RUnit -> Rz Unit
+resDef' :: RS -> Bool -> RUnit -> Rz Decl
 resDef' rs local u = case u of
   RDef o x tel a mb -> do
     (bs, rs1) <- resTel rs tel
@@ -1061,10 +1061,10 @@ resDef' rs local u = case u of
       -- case tree
       Just b | local -> do
         b' <- resBody rs1 { rsPath = i ++ "/" } b
-        Right (UDef i x (piB bs a') (BExp (lamB bs b')))
+        Right (DDef i x (piB bs a') (BExp (lamB bs b')))
       Just b -> do
         b' <- resBodyB rs1 { rsPath = i ++ "/" } b
-        Right (UDef i x (piB bs a') (lamBB bs b'))
+        Right (DDef i x (piB bs a') (lamBB bs b'))
   RData o x tel ty ls -> do
     dupCheck [ c | (c, _, _) <- ls ]
     (bs, rs1) <- resTel rs tel
@@ -1102,7 +1102,7 @@ resDef' rs local u = case u of
                               | otherwise -> do tg' <- resE rsC tg
                                                 targetIdx x i bs k c tg'
                     Right (ConDecl c tel' es)) ls
-    Right (UData i x (DataDecl (map param bs) ix (piRest ty') ls'))
+    Right (DData i x (DataDecl (map param bs) ix (piRest ty') ls'))
   _ -> Left "not a definition"
  where
   idOf x o = rsPath rs ++ x ++ (if local then "#" ++ show o else "")
@@ -1203,24 +1203,24 @@ allLabels = concatMap go
 
 -- The units of a module body or of the program, in order.  Consecutive
 -- definitions form one mutual group.
-resUnits :: RS -> [RUnit] -> Int -> Rz ([Unit], RS)
+resUnits :: RS -> [RUnit] -> Int -> Rz ([Decl], RS)
 resUnits rs [] _ = Right ([], rs)
 resUnits rs (u : us) n = case u of
   RLevel xs -> do
     mapM_ (fresh rs) xs
     (us', rs') <- resUnits (bindS rs [ (x, SLvl) | x <- xs ]) us n
-    Right (map ULvl xs ++ us', rs')
+    Right (map DLvl xs ++ us', rs')
   RCstr cs -> do
     cs' <- mapM (resCs rs) cs
     (us', rs') <- resUnits rs us n
-    Right (UCstr cs' : us', rs')
+    Right (DCstr cs' : us', rs')
   RDef _ x tel a Nothing -> do
     fresh rs x
     (bs, rs1) <- resTel rs tel
     a' <- resE rs1 a
     (us', rs') <- resUnits (withMasks (bindS rs [(x, if null tel then varInfo rs a else SVar)])
                                       [(x, telMask tel)]) us n
-    Right (UPar (rsPath rs ++ x) x (piB bs a') : us', rs')
+    Right (DVar (rsPath rs ++ x) x (piB bs a') : us', rs')
   RModule isRec x tel body -> do
     fresh rs x
     -- a record's body: fields and definitions only
@@ -1234,9 +1234,9 @@ resUnits rs (u : us) n = case u of
     let varOf y = maybe SVar id (M.lookup y (rsScopeM rsTel))
     let headUnits = map bindUnit bs
         bindUnit bd = case bd of
-          BVar y a -> UPar (rsPath rsIn ++ y) y a
-          BLvl y   -> ULvl y
-          BCs cs   -> UCstr cs
+          BVar y a -> DVar (rsPath rsIn ++ y) y a
+          BLvl y   -> DLvl y
+          BCs cs   -> DCstr cs
         rsHead = bindS rsIn (concatMap bindScope bs)
         bindScope bd = case bd of
           BVar y _ -> [(y, varOf y)]
@@ -1250,7 +1250,7 @@ resUnits rs (u : us) n = case u of
                        ++ "): a record has no data type, no split and no record (as no module, level or constraint)")
     let all' = headUnits ++ bodyUnits
         mi = ModInfo [ (unitName v, k) | v <- all', Just k <- [paramKind v] ]
-                     (membersOf rsBody rsHead ++ [ (unitName v, Nothing) | v@(UPar{}) <- headUnits ])
+                     (membersOf rsBody rsHead ++ [ (unitName v, Nothing) | v@(DVar{}) <- headUnits ])
                      (rsPath rs ++ x)
                      [ (y, ps) | (y, _) <- membersOf rsBody rsHead
                                , Just ps <- [M.lookup y (rsMasksM rsBody)], PH `elem` ps ]
@@ -1267,7 +1267,7 @@ resUnits rs (u : us) n = case u of
             , Right _ <- resUnits rsAfter [c] n -> c : us
           _ -> us
     (us', rs') <- resUnits rsAfter us2 n
-    Right (UMod (rsPath rs ++ x) x ukind all' : us', rs')
+    Right (DMod (rsPath rs ++ x) x ukind all' : us', rs')
   RModInst x e -> do
     fresh rs x
     case e of
@@ -1280,7 +1280,7 @@ resUnits rs (u : us) n = case u of
     if recArgs then Left ("module " ++ x ++ " = " ++ miPath mi ++ "[..]: a record is not a module") else
      if not (null (miParams mi)) && not (isRecordMI mi) then Left ("module " ++ miPath mi ++ " needs arguments") else do
       (us', rs') <- resUnits (bindS rs [(x, SMod (rsPath rs ++ x) mi)]) us n
-      Right (UInst (rsPath rs ++ x) x m : us', rs')
+      Right (DInst (rsPath rs ++ x) x m : us', rs')
   ROpen _ (RVar c) | Just (SVarS mi) <- look rs c -> do
     let opened = [ (y, SField c) | (y, Nothing) <- miMembers mi, not (M.member y (rsScopeM rs)) ]
     resUnits (withMasks (bindS rs opened) (miMasks mi)) us n
@@ -1297,7 +1297,7 @@ resUnits rs (u : us) n = case u of
             -- within one file, and a nested open with the same name would
             -- shadow an enclosing one
             MApp _ _ -> let nm = "open#" ++ show o ++ "@" ++ map (\c -> if c == '.' then '/' else c) (rsPath rs)
-                        in ([UInst (rsPath rs ++ nm) nm m], MVar (rsPath rs ++ nm))
+                        in ([DInst (rsPath rs ++ nm) nm m], MVar (rsPath rs ++ nm))
             _ -> ([], m)
           opened = [ (y, SOpen m' (miPath mi) k) | (y, k) <- miMembers mi
                                                   , not (M.member y (rsScopeM rs)) ]
@@ -1308,12 +1308,12 @@ resUnits rs (u : us) n = case u of
   RTransparent e -> lockCmd e (\i s -> filter (/= i) s)
   RTransAll -> do
     (us', rs') <- resUnits rs { rsLocks = [] } us n
-    Right (ULock [] : us', rs')
+    Right (DLock [] : us', rs')
   RNormal e -> directive (fmap DNormal (resE rs e))
   RType e -> directive (fmap DType (resE rs e))
   RConv a b -> directive (do a' <- resE rs a; b' <- resE rs b; Right (DConv a' b'))
   RFails xs -> case resUnits rs xs n of
-    Left msg -> directive (Right (DFails [UDir (DNormal (Var ("#resolution failed: " ++ msg)))]))
+    Left msg -> directive (Right (DFails [DDir (DNormal (Var ("#resolution failed: " ++ msg)))]))
     Right (xs', _) -> directive (Right (DFails xs'))
   _ -> do
     -- consecutive definitions (and data): SEQUENTIAL scope, each sees only
@@ -1333,19 +1333,19 @@ resUnits rs (u : us) n = case u of
   directive me = do
     d <- me
     (us', rs') <- resUnits rs us n
-    Right (UDir d : us', rs')
+    Right (DDir d : us', rs')
   lockCmd e f = do
     i <- lockId rs e
     let s = f i (rsLocks rs)
     (us', rs') <- resUnits rs { rsLocks = s } us n
-    Right (ULock s : us', rs')
+    Right (DLock s : us', rs')
 
 -- a data type, or a definition whose body is a split
-dataOrSplit :: Unit -> Bool
+dataOrSplit :: Decl -> Bool
 dataOrSplit u = case u of
-  UData{} -> True
-  UDef _ _ _ (BExp _) -> False
-  UDef{} -> True
+  DData{} -> True
+  DDef _ _ _ (BExp _) -> False
+  DDef{} -> True
   _ -> False
 
 isRecordMI :: ModInfo -> Bool
@@ -1425,10 +1425,10 @@ lockId rs e = case e of
       _ -> Left ("opaque/transparent: no definition " ++ x ++ " in " ++ showM m)
   _ -> Left "opaque/transparent: expected a name"
 
-paramKind :: Unit -> Maybe PKind
+paramKind :: Decl -> Maybe PKind
 paramKind u = case u of
-  UPar{} -> Just PTm
-  ULvl _ -> Just PLv
+  DVar{} -> Just PTm
+  DLvl _ -> Just PLv
   _      -> Nothing
 
 -- the members a module body added to the scope
@@ -1469,12 +1469,12 @@ dupCheck (x : xs)
 ------------------------------------------------------------------------
 -- Entry point: resolve and annotate a whole program (imports expanded)
 
-resolveProgram :: [RUnit] -> Either String [Unit]
+resolveProgram :: [RUnit] -> Either String [Decl]
 resolveProgram = resolveProgramWith True
 
 -- with  term : the restrictions, positivity and termination (Term) are
 -- enforced: errors of the program, and inside #fails a failure of the block
-resolveProgramWith :: Bool -> [RUnit] -> Either String [Unit]
+resolveProgramWith :: Bool -> [RUnit] -> Either String [Decl]
 resolveProgramWith term rus = do
   let rs0 = RS [] (allLabels rus) "" [] [] M.empty M.empty False (ixLabels rus)
   (us, _) <- resUnits rs0 rus 0
@@ -1490,12 +1490,12 @@ resolveProgramWith term rus = do
     Right (map (failsTerm us') us')
 
 -- a #fails block rejected by Term fails (as one that does not resolve)
-failsTerm :: [Unit] -> Unit -> Unit
+failsTerm :: [Decl] -> Decl -> Decl
 failsTerm whole u = case u of
-  UDir (DFails vs) -> case [ "#termination: " ++ m | m <- termErrors whole vs ] of
-    [] -> UDir (DFails (map (failsTerm whole) vs))
-    (m : _) -> UDir (DFails [UDir (DNormal (Var m))])
-  UMod i x k vs -> UMod i x k (map (failsTerm whole) vs)
+  DDir (DFails vs) -> case [ "#termination: " ++ m | m <- termErrors whole vs ] of
+    [] -> DDir (DFails (map (failsTerm whole) vs))
+    (m : _) -> DDir (DFails [DDir (DNormal (Var m))])
+  DMod i x k vs -> DMod i x k (map (failsTerm whole) vs)
   _ -> u
 
 mapL :: (Int -> a -> (Int, b)) -> Int -> [a] -> (Int, [b])
@@ -1512,13 +1512,13 @@ mapL f n (x : xs) = let (n1, y) = f n x
 -- lambda variables, the constructors of the branches with their pattern
 -- variables), which is how it is read back.  The path is kept in the id.
 
-pathUnits :: [Unit] -> [Unit]
+pathUnits :: [Decl] -> [Decl]
 pathUnits = map unit
  where
   unit u = case u of
-    UDef i x a b -> UDef i x a (pathB i [] b)
-    UMod i x k us -> UMod i x k (pathUnits us)
-    UDir (DFails vs) -> UDir (DFails (pathUnits vs))
+    DDef i x a b -> DDef i x a (pathB i [] b)
+    DMod i x k us -> DMod i x k (pathUnits us)
+    DDir (DFails vs) -> DDir (DFails (pathUnits vs))
     _               -> u
 
 pathB :: Id -> [[String]] -> Body -> Body
@@ -1537,19 +1537,19 @@ pathB i p b = case b of
 -- opened members and definitions may be hidden: they are reached through
 -- M.x or by their ids.
 
-shadowReport :: [Unit] -> [String]
+shadowReport :: [Decl] -> [String]
 shadowReport = units "" S.empty
  where
   units _ _ [] = []
   units w sc (u : us) = case u of
-    UPar i x a      -> new i sc x ++ expr i sc a ++ units w (S.insert x sc) us
-    ULvl x          -> new w sc x ++ units w (S.insert ('%' : x) (S.insert x sc)) us
-    UDef i _ a b  -> expr i sc a ++ body i sc b ++ units w sc us
-    UData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
-    UMod i _ _ vs -> units i sc vs ++ units w sc us
-    UInst i _ m     -> mexp i sc m ++ units w sc us
-    UDir (DFails _) -> units w sc us
-    UDir d          -> concat [ expr w sc e | e <- dirExps d ] ++ units w sc us
+    DVar i x a      -> new i sc x ++ expr i sc a ++ units w (S.insert x sc) us
+    DLvl x          -> new w sc x ++ units w (S.insert ('%' : x) (S.insert x sc)) us
+    DDef i _ a b  -> expr i sc a ++ body i sc b ++ units w sc us
+    DData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
+    DMod i _ _ vs -> units i sc vs ++ units w sc us
+    DInst i _ m     -> mexp i sc m ++ units w sc us
+    DDir (DFails _) -> units w sc us
+    DDir d          -> concat [ expr w sc e | e <- dirExps d ] ++ units w sc us
     _               -> units w sc us
   dirExps d = case d of { DNormal e -> [e]; DType e -> [e]; DConv a b -> [a, b]; _ -> [] }
   new w sc x = [ w ++ ": " ++ x ++ (if S.member ('%' : x) sc then " (a level)" else " (a variable)") | x /= "_", S.member x sc ]
@@ -1599,16 +1599,16 @@ shadowReport = units "" S.empty
 -- record fields and constructor telescopes keep their names.  The id is
 -- never printed.
 
-binderUnits :: [Unit] -> [Unit]
+binderUnits :: [Decl] -> [Decl]
 binderUnits = map unit
  where
   unit u = case u of
-    UDef i x a b   -> UDef i x (binderE (i ++ ":") a) (snd (binderB (i ++ "=") M.empty 0 b))
-    UData i x dd   -> UData i x (binderData (i ++ "=") dd)
-    UPar i x a     -> UPar i x (binderE (i ++ ":") a)
-    UMod i x k us  -> UMod i x k (binderUnits us)
-    UInst i x m    -> UInst i x (binderM (i ++ "=") m)
-    UDir d         -> UDir (case d of
+    DDef i x a b   -> DDef i x (binderE (i ++ ":") a) (snd (binderB (i ++ "=") M.empty 0 b))
+    DData i x dd   -> DData i x (binderData (i ++ "=") dd)
+    DVar i x a     -> DVar i x (binderE (i ++ ":") a)
+    DMod i x k us  -> DMod i x k (binderUnits us)
+    DInst i x m    -> DInst i x (binderM (i ++ "=") m)
+    DDir d         -> DDir (case d of
                         DNormal e -> DNormal (binderE "dir" e)
                         DType e   -> DType (binderE "dir" e)
                         DConv a b -> DConv (binderE "dir1" a) (binderE "dir2" b)
@@ -1753,8 +1753,8 @@ surveyRecords rus = do
         Nothing -> t ++ "  (not found)"
         Just (SRecord hs, vs) ->
           let body = dropHeads hs vs
-              fields = [ x | UPar _ x _ <- body ]
-              derived = [ x | UDef _ x _ _ <- body ]
+              fields = [ x | DVar _ x _ <- body ]
+              derived = [ x | DDef _ x _ _ <- body ]
               bad = [ what | v <- body, Just what <- [badUnit v] ]
           in t ++ "\n    head:    " ++ unwords hs
                ++ "\n    fields:  " ++ unwords fields
@@ -1767,33 +1767,33 @@ surveyRecords rus = do
  where
   allSegs = concatMap seg
   seg u = case u of
-    UMod i _ k vs -> (i, k, vs) : allSegs vs
+    DMod i _ k vs -> (i, k, vs) : allSegs vs
     _ -> []
   allInsts = concatMap inst
   inst u = case u of
-    UInst i _ m -> [(i, m)]
-    UMod _ _ _ vs -> allInsts vs
+    DInst i _ m -> [(i, m)]
+    DMod _ _ _ vs -> allInsts vs
     _ -> []
   -- the units after the head parameters (and their constraints)
   dropHeads hs vs = case vs of
-    UPar _ x _ : rest | x `elem` hs -> dropHeads hs rest
-    ULvl x : rest | x `elem` hs -> dropHeads hs rest
-    UCstr _ : rest -> dropHeads hs rest
+    DVar _ x _ : rest | x `elem` hs -> dropHeads hs rest
+    DLvl x : rest | x `elem` hs -> dropHeads hs rest
+    DCstr _ : rest -> dropHeads hs rest
     _ -> vs
   badUnit v = case v of
-    UMod _ x _ _ -> Just ("module/" ++ x)
-    UInst _ x _  -> if "open#" `isPrefixOfS` x then Nothing else Just ("instance/" ++ x)
-    ULvl _       -> Just "level"
-    UCstr _      -> Just "constraint"
+    DMod _ x _ _ -> Just ("module/" ++ x)
+    DInst _ x _  -> if "open#" `isPrefixOfS` x then Nothing else Just ("instance/" ++ x)
+    DLvl _       -> Just "level"
+    DCstr _      -> Just "constraint"
     _            -> Nothing
   isPrefixOfS a b = take (length a) b == a
   unitUses u = case u of
-    UDef _ _ a b -> expUses a ++ bodyUses b
-    UData _ _ dd -> expUses (dataType dd) ++ concat [ expUses t | ConDecl _ tel es <- ddCons dd, t <- map snd tel ++ es ]
-    UPar _ _ a -> expUses a
-    UMod _ _ _ vs -> concatMap unitUses vs
-    UInst _ _ m -> modUses m
-    UDir d -> case d of
+    DDef _ _ a b -> expUses a ++ bodyUses b
+    DData _ _ dd -> expUses (dataType dd) ++ concat [ expUses t | ConDecl _ tel es <- ddCons dd, t <- map snd tel ++ es ]
+    DVar _ _ a -> expUses a
+    DMod _ _ _ vs -> concatMap unitUses vs
+    DInst _ _ m -> modUses m
+    DDir d -> case d of
       DNormal e -> expUses e
       DType e -> expUses e
       DConv a b -> expUses a ++ expUses b
