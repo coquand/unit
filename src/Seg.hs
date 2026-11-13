@@ -576,6 +576,14 @@ pushVar (Env ds vs fs ms) x a v = Env (DVar x x a : ds) (v : vs) (FVal x : fs) m
 pushLvl :: Env -> Name -> Lvl -> Env
 pushLvl (Env ds vs fs ms) x l = Env (DLvl x : ds) (VLvl l : vs) (FLvl x : fs) ms
 
+-- a definition unfolded when accessed, as in mTT10 (v(D rho) = e(D rho)),
+-- not a closure under the lock: a recursive result, a field of %self
+pushLet :: Env -> Decl -> Env
+pushLet (Env ds vs fs ms) d = r'
+ where
+  r' = Env (d : ds) vs (FOne d (EVal (eval r' b)) : fs) ms
+  b = case d of { DDef _ _ _ e -> e; _ -> error "pushLet: not a definition" }
+
 -- one declaration, its meaning computed in the environment that has it
 pushDecl :: Env -> Decl -> Env
 pushDecl (Env ds vs fs ms) d = r'
@@ -623,7 +631,6 @@ declId d = case d of
 -- the meaning of a declaration in an environment that has it (D rho)
 declEnt :: Decl -> Env -> Ent
 declEnt d r = case d of
-  DDef i _ _ b | internal i -> EVal (eval r b)
   DDef i x a b    -> EVal (mkRef (DDef i x a b) r)
   DData i x dd    -> EVal (mkRef (DData i x dd) r)
   _ | Just (i, _, k, mus) <- segParts d -> EMod (Mod i (dynVals r) mus r
@@ -632,14 +639,11 @@ declEnt d r = case d of
   DSplit{}        -> EVal (splitAtCtx r d 0)
   _               -> error "declEnt: a variable has no meaning apart from its value"
 
--- an internal definition (a recursive result, a field of %self): its id
--- starts with %; it is unfolded when accessed, as in mTT10, never locked
-internal :: Id -> Bool
-internal i = take 1 i == "%"
-
--- a declaration bound like a variable: an internal definition
+-- a definition entered alone, bound like a variable for the walks that
+-- collect the bindings (a local definition, a recursive result, a field of
+-- %self; names are unique)
 varLike :: Decl -> Bool
-varLike d = case d of { DDef i _ _ _ -> internal i; _ -> False }
+varLike d = case d of { DDef{} -> True; _ -> False }
 
 
 -- a segment: its units, the environment where it is declared, its
@@ -877,7 +881,7 @@ branchEnv t c m h r0 xs rs = foldl (recDecl xs) r0 rs
     -- reported there); its results are never equal to anything (lazy)
     | j < 0     = pushVar r y Unfilled (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                            ++ ": the split was not annotated (its definition failed)"))
-    | otherwise = pushDecl r (DDef ('%' : y) y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j h n ds es (xs !! j)))
+    | otherwise = pushLet r (DDef y y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j h n ds es (xs !! j)))
 
 -- the recursive result of the field x at position j with n binders (of
 -- domains ds) and indices es
@@ -895,7 +899,7 @@ recDeclared r y = case outer r of
   OVar r' x _ -> x /= y && recDeclared r' y
   OLvl r' _ _ -> recDeclared r' y
   OOne r' d _ -> case d of
-    DDef i x _ _ | x == y, internal i -> True
+    DDef _ x _ _ | x == y -> True
     _ -> declName d /= y && recDeclared r' y
   OBlock r' _ _ -> recDeclared r' y
 
@@ -1253,7 +1257,7 @@ selfEnvFixed md heads fixed t = go (modEnv md) False (modUnits md)
     DLvl p | VLvl l <- headVal p -> go (pushLvl r p l) self us
     DCstr _ -> go r self us
     _ | not self -> go (pushVar r "%self" selfType t) True (u : us)
-    DVar _ p a -> go (pushDecl r (DDef ('%' : p) p a (fieldOfSelf p fixed))) self us
+    DVar _ p a -> go (pushLet r (DDef p p a (fieldOfSelf p fixed))) self us
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) self rest
     -- an open of a module instance: its arguments see the fields as t.x
     DInst{} -> go (mkGroup r [u]) self us
