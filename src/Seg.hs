@@ -484,10 +484,7 @@ slots (Env _ vs0 fs0) = go fs0 vs0
 eNil :: Env
 eNil = Env [] [] []
 
--- a variable whose type is not yet written as syntax (the checker's own
--- binders: to be given their types)
-eVar :: Env -> Name -> Val -> Env
-eVar r x = pushVar r x Hole
+
 
 pushVar :: Env -> Name -> Exp -> Val -> Env
 pushVar (Env ds vs fs) x a v = Env (DVar x a : ds) (v : vs) (FVal x : fs)
@@ -553,11 +550,11 @@ varLike d = case d of { DPar{} -> True; DLet{} -> True; _ -> False }
 data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Unit], modEnv :: Env
                , modInst :: Maybe Env, modKind :: SegKind }
 
--- a closure: a binder, its code and an environment; compared by binder
--- and environment (eqClos).  The code: a term, the rest of a definition
+-- a closure: a binder with its type, its code and an environment;
+-- compared by binder and environment (eqClos).  The code: a term, the rest of a definition
 -- body, or the rest of a data declaration after its first k binders (the
 -- declaration's occurrence d_L computed once)
-data Clos  = Clos Name Code Env
+data Clos  = Clos Name Exp Code Env      -- the binder, its type, the code, the environment
 data LClos = LClos Name Code Env
 
 -- (CBody: the rest of a definition body)
@@ -654,11 +651,11 @@ eval r e = case e of
   U l          -> VU (evalLv r l)
   Var x        -> lookupVal r x
   App a b      -> app (eval r a) (eval r b)
-  Lam x a b    -> VLam (eval r a) (Clos x (CExp b) r)
-  Pi x a b     -> VPi (eval r a) (Clos x (CExp b) r)
+  Lam x a b    -> VLam (eval r a) (Clos x a (CExp b) r)
+  Pi x a b     -> VPi (eval r a) (Clos x a (CExp b) r)
   Let i x a v b -> eval (pushDecl r (DDef i x a (BExp v))) b
   Con c as     -> VCon c (map (eval r) as)
-  Sig x a b    -> VSig (eval r a) (Clos x (CExp b) r)
+  Sig x a b    -> VSig (eval r a) (Clos x a (CExp b) r)
   Pair a b     -> VPair (eval r a) (eval r b)
   Fst a        -> vfst (eval r a)
   Snd a        -> vsnd (eval r a)
@@ -685,7 +682,7 @@ eval r e = case e of
   Unfilled     -> error "a hidden argument was not filled (its definition failed)"
 
 capp :: Clos -> Val -> Val
-capp (Clos x c r) v = evalCode (pushVar r x Hole v) c
+capp (Clos x a c r) v = evalCode (pushVar r x a v) c
 
 lcapp :: LClos -> Lvl -> Val
 lcapp (LClos x c r) l = evalCode (pushLvl r x l) c
@@ -707,7 +704,7 @@ lookupBound r = case outer r of
 evalBody :: Env -> Body -> Val
 evalBody r b = case b of
   BExp e          -> eval r e
-  BLam x a b'     -> VLam (eval r a) (Clos x (CBody b') r)
+  BLam x a b'     -> VLam (eval r a) (Clos x a (CBody b') r)
   BLLam x b'      -> VLLam (LClos x (CBody b') r)
   BLet i x a v b' -> evalBody (pushDecl r (DDef i x a (BExp v))) b'
   -- a split is a declaration [f : T = split ..] (mTT10's B rho, with D rho
@@ -733,7 +730,7 @@ dataAt :: Env -> Id -> DataDecl -> Int -> Val
 dataAt r o dd k = case drop k (dataBinders dd) of
   []             -> VSum o (dynVals r) (ddIndices dd) (ddCons dd) r
   PLevel x : _   -> VLLam (LClos x (CData o dd k) r)
-  PTerm x a : _  -> VLam (eval r a) (Clos x (CData o dd k) r)
+  PTerm x a : _  -> VLam (eval r a) (Clos x a (CData o dd k) r)
   PCstr _ : _    -> error "dataAt: a constraint is not a binder"
 
 -- Elimination.  An access to a definition is a closure < f ; eta >; an
@@ -765,7 +762,7 @@ branchEnv t c m r0 xs rs = foldl (recDecl xs) r0 rs
   recDecl xs r (RecR j n ds es y)
     -- not annotated: the definition did not pass the filling pass (it is
     -- reported there); its results are never equal to anything (lazy)
-    | j < 0     = pushVar r y Hole (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
+    | j < 0     = pushVar r y Unfilled (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                            ++ ": the split was not annotated (its definition failed)"))
     | otherwise = pushDecl r (DLet y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j n ds es (xs !! j)))
 
@@ -918,11 +915,6 @@ recordFields :: Val -> Maybe [Val]
 recordFields v = case v of
   VInst m r   -> Just [ lookupDyn r p | p <- recordFieldNames m ]
   _           -> Nothing
-
-bindAll :: Env -> [Name] -> [Val] -> Env
-bindAll r []       []       = r
-bindAll r (x : xs) (v : vs) = bindAll (pushVar r x Hole v) xs vs
-bindAll _ _        _        = error "split: constructor arity mismatch"
 
 -- consecutive definitions, data types, segments and instances of a body
 -- (mTT10's D rho): nothing is evaluated, an access finds the declaration
@@ -1158,13 +1150,19 @@ selfEnvFixed md heads fixed t = go (modEnv md) False (modUnits md)
     UPar _ p a | p `elem` hs -> go (pushVar r p a (headVal p)) self us
     ULvl p | VLvl l <- headVal p -> go (pushLvl r p l) self us
     UCstr _ -> go r self us
-    _ | not self -> go (pushVar r "%self" Hole t) True (u : us)
+    _ | not self -> go (pushVar r "%self" selfType t) True (u : us)
     UPar _ p a -> go (pushDecl r (DLet p a (fieldOfSelf p fixed))) self us
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) self rest
     -- an open of a module instance: its arguments see the fields as t.x
     UInst{} -> go (mkGroup r [u]) self us
     _ -> go r self us
   headVal p = fromMaybe (error ("selfEnv: no head parameter " ++ p)) (lookup p heads)
+  -- %self : the record at its head parameters,  R { h = h }
+  selfType = SegT (MVar (modId md)) [ (h, arg) | u <- modUnits md, (h, arg) <- headArg u ]
+  headArg u = case u of
+    UPar _ h _ | h `elem` hs -> [(h, ATm (Var h))]
+    ULvl h     | h `elem` hs -> [(h, ALv (LV h))]
+    _ -> []
   -- a field is %self.p (a field the type fixes: its projection gives the
   -- fixed value, vproj)
   fieldOfSelf p _ = Proj (Var "%self") p
@@ -1508,7 +1506,7 @@ eqSp s t = length s == length t && and (zipWith e s t)
          _                   -> False
 
 eqClos :: Clos -> Clos -> Bool
-eqClos (Clos x _ r) (Clos y _ r') = x == y && hasCodeId x && eqEnvs r r'   -- the same occurrence
+eqClos (Clos x _ _ r) (Clos y _ _ r') = x == y && hasCodeId x && eqEnvs r r'   -- the same occurrence
 
 eqLClos :: LClos -> LClos -> Bool
 eqLClos (LClos x _ r) (LClos y _ r') = x == y && hasCodeId x && eqEnvs r r'
@@ -1831,9 +1829,16 @@ ev cx = eval (cxEnv cx)
 
 -- extend by a variable of type t, bound to a fresh generic
 extVar :: Cx -> Name -> Val -> (Cx, Val)
-extVar cx x t = (cx { cxK = k + 1, cxEnv = eVar (cxEnv cx) x v, cxTys = (x, t) : cxTys cx }, v)
+extVar cx x t = (cx { cxK = k + 1, cxEnv = pushVar (cxEnv cx) x (typeExp cx t) v, cxTys = (x, t) : cxTys cx }, v)
  where k = cxK cx
        v = VGen k t           -- it carries its type
+
+-- the type of a fresh variable as a term of the scope: its type read back
+-- (lazily, as a lambda's domain; only when the declaration is read).  In
+-- the filling pass a type may mention a hidden argument not yet solved: it
+-- is then a hole
+typeExp :: Cx -> Val -> Exp
+typeExp cx t = fromMaybe Hole (quote cx t)
 
 -- extend by a level variable, bound to a fresh generic level
 extLvl :: Cx -> Name -> (Cx, Lvl)
@@ -2134,10 +2139,10 @@ checkSegT cx m fs = do
           [] -> ok
         inCtx ("in the field " ++ x) (check cx e (eval r a))
         let v = ev cx e
-        vs <- go (eVar r x v) us
+        vs <- go (pushVar r x a v) us
         Right ((x, v) : vs)
       Just (ALv _) -> failWith ("the field " ++ x ++ " is not a level")
-      Nothing -> go (eVar r x (VConst ("?" ++ i) (eval r a))) us
+      Nothing -> go (pushVar r x a (VConst ("?" ++ i) (eval r a))) us
     ULvl x -> case lookup x fs of
       Just (ALv l) -> do
         checkLv cx l
@@ -2215,7 +2220,7 @@ recordBranch cx d xs = case d of
         Just v  -> go c (pushVar r p pa v) us ys
         Nothing -> Nothing
       (UPar _ p a, y : ys') -> case lookup p fs of
-        Just v  -> fmap (withTy c (eval r a)) (go (c { cxEnv = eVar (cxEnv c) y v, cxTys = (y, eval r a) : cxTys c }) (pushVar r p a v) us ys')
+        Just v  -> fmap (withTy c (eval r a)) (go (c { cxEnv = pushVar (cxEnv c) y (typeExp c (eval r a)) v, cxTys = (y, eval r a) : cxTys c }) (pushVar r p a v) us ys')
         Nothing -> let (c', g) = extVar c y (eval r a) in fmap (withTy c (eval r a)) (go c' (pushVar r p a g) us ys')
       (ULvl p, _) -> case lookup p fs of
         Just (VLvl l) -> go c (pushLvl r p l) us ys
@@ -2349,7 +2354,7 @@ checkTargets cx0 c tel ix es
   go _ [] [] = ok
   go r ((i, ia) : ix') (e : es') = do
     inCtx ("in the target of the constructor " ++ c) (check cxF e (eval r ia))
-    go (eVar r i (ev cxF e)) ix' es'
+    go (pushVar r i ia (ev cxF e)) ix' es'
   go _ _ _ = ok
 
 -- a constructor is checked, not inferred: its target indices, computed
@@ -2486,7 +2491,7 @@ fieldIdx cx0 si c j k fe0 ft0 = go cx0 fe0 ft0 (1 :: Int) []
   go cx fe ft i ds = case ft of
     Pi z a b -> let d = eval fe a
                     (cx', g) = extVar cx (recArg si c j i) d
-                in go cx' (eVar fe z g) b (i + 1) (ds ++ [(cx, d)])
+                in go cx' (pushVar fe z a g) b (i + 1) (ds ++ [(cx, d)])
     _ -> (cx, ds, map (eval fe) (lastArgs k ft))
 
 -- the domains and indices written by the filling pass are the field's
@@ -2598,7 +2603,7 @@ checkInst cx r0 us0 as0 = go r0 us0 as0
   go r (u : us) as = case (u, as) of
     (UPar _ x a, ATm e : as') -> do
       inCtx ("in the argument for " ++ x) (check cx e (eval r a))
-      go (eVar r x (ev cx e)) us as'
+      go (pushVar r x a (ev cx e)) us as'
     (UPar _ x _, _) -> failWith ("the module expects a term argument for " ++ x)
     (ULvl x, ALv l : as') -> do
       checkLv cx l
@@ -2957,7 +2962,7 @@ fillTargets cx tel ix es
   cxF = foldl (\c (x, a) -> fst (extVar c x (ev c a))) cx tel
   go r ((x, ia) : ix') (a : es') = do
     a' <- fillC cxF a (eval r ia)
-    rest <- go (eVar r x (ev cxF a')) ix' es'
+    rest <- go (pushVar r x ia (ev cxF a')) ix' es'
     Right (a' : rest)
   go _ _ es' = Right es'
 
@@ -3165,12 +3170,12 @@ fillInst cx r0 us0 as0 = go r0 us0 as0
       in case mine of
         ((n, ATm e) : _) -> do
           e' <- inCtx ("in the argument for " ++ x) (fillC cx e (eval r a))
-          more <- go (eVar r x (ev cx e')) us rest
+          more <- go (pushVar r x a (ev cx e')) us rest
           Right ((n, ATm e') : more)
         ((n, ALv l) : _) -> do
           more <- go r us rest
           Right ((n, ALv l) : more)
-        [] -> go (eVar r x (VConst ("?" ++ i) (eval r a))) us rest
+        [] -> go (pushVar r x a (VConst ("?" ++ i) (eval r a))) us rest
     ULvl x ->
       let (mine, rest) = if named then ([ p | p@(Just y, _) <- as, y == x ], as)
                                   else (take 1 as, drop 1 as)
@@ -3532,9 +3537,6 @@ scopeOf cx = go (cxEnv cx) (QScope [] [] True ((cc cx) { ccOpen = False }) (cxK 
  where
   go r sc = case outer r of
     ONil -> sc
-    -- the indices a split absorbed (bindIdx) are internal: never a name
-    -- for a variable in a read-back (the index m of  c m : D (suc m) m  is
-    -- the branch variable m, not %ix2)
     OVar r' x v -> go r' (addVar' x v sc)
     OLvl r' x l -> go r' (case latoms l of
                             [(n, 0)] -> sc { scLvls = scLvls sc ++ [(n, x)] }
@@ -3696,8 +3698,9 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
     Right (is, gens, rgens) ->
       let k = k0 + max 0 ki
           rho' = bindPats rho tel gens
-          canonical = evalBody (branchEnv t c (motiveExp (max 0 ki) (splitDeclType rho)) rho' xs rs) b
-          abstract = evalBody (bindAll rho' (recNames rs) rgens) b
+          canonical = evalBody (branchEnv t c m rho' xs rs) b
+          abstract = evalBody (foldl (\e ((y, a), v) -> pushVar e y a v) rho'
+                                     (zip [ (y, recTypeExp t c j n m ds es (xs !! j)) | RecR j n ds es y <- rs ] rgens)) b
           sc = (scopeOf cx) { scGens = zip [k0 ..] [ "i" ++ show j | j <- [1 .. ki] ]
                                        ++ zip [k ..] (xs ++ recNames rs) ++ scGens (scopeOf cx)
                             , scK = k + length xs + length rs }
@@ -3708,11 +3711,11 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
          , "branch " ++ c ++ ", abstract recursive results:   " ++ shw abstract ]
    where
     xs = map fst tel
+    m = motiveExp (max 0 ki) (splitDeclType rho)
     vars = case peelGens cx (max 0 ki) ty of
       (cxI, is, rest) -> case force cxI rest of
         VPi dom _ | VSum _ _ _ cs r <- force cxI dom, Just (tel, _) <- conOf c cs -> do
           (cx', gens) <- openTel cxI xs tel r
-          let m = motiveExp (max 0 ki) (splitDeclType rho)
           cx'' <- if ki > 0 then recCxI cx' t m c ki xs tel r gens rs
                   else recCx cx' t m c xs tel r gens rs
           Right (is, gens, [ lookupVal (cxEnv cx'') y | y <- recNames rs ])
