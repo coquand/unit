@@ -1268,7 +1268,7 @@ resUnits rs (u : us) n = case u of
             , Right _ <- resUnits rsAfter [c] n -> c : us
           _ -> us
     (us', rs') <- resUnits rsAfter us2 n
-    Right (DMod (rsPath rs ++ x) x ukind all' : us', rs')
+    Right (mkSeg (rsPath rs ++ x) x ukind all' : us', rs')
   RModInst x e -> do
     fresh rs x
     case e of
@@ -1496,7 +1496,7 @@ failsTerm whole u = case u of
   DDir (DFails vs) -> case [ "#termination: " ++ m | m <- termErrors whole vs ] of
     [] -> DDir (DFails (map (failsTerm whole) vs))
     (m : _) -> DDir (DFails [DDir (DNormal (Var m))])
-  DMod i x k vs -> DMod i x k (map (failsTerm whole) vs)
+  _ | Just _ <- segParts u -> mapSeg (map (failsTerm whole)) u
   _ -> u
 
 mapL :: (Int -> a -> (Int, b)) -> Int -> [a] -> (Int, [b])
@@ -1518,7 +1518,7 @@ pathUnits = map unit
  where
   unit u = case u of
     d@(DSplit i _ _ _ _ _ _ _) -> pathSplit i [] d
-    DMod i x k us -> DMod i x k (pathUnits us)
+    _ | Just _ <- segParts u -> mapSeg pathUnits u
     DDir (DFails vs) -> DDir (DFails (pathUnits vs))
     _               -> u
 
@@ -1558,7 +1558,7 @@ shadowReport = units "" S.empty
     DDef i _ a b  -> expr i sc a ++ expr i sc b ++ units w sc us
     d@(DSplit i _ a _ _ _ _ _) -> expr i sc a ++ split i sc d ++ units w sc us
     DData i _ dd  -> expr i sc (dataType dd) ++ dataB i sc (dataBinders dd) (ddCons dd) ++ units w sc us
-    DMod i _ _ vs -> units i sc vs ++ units w sc us
+    _ | Just (i, _, _, vs) <- segParts u -> units i sc vs ++ units w sc us
     DInst i _ m     -> mexp i sc m ++ units w sc us
     DDir (DFails _) -> units w sc us
     DDir d          -> concat [ expr w sc e | e <- dirExps d ] ++ units w sc us
@@ -1627,7 +1627,7 @@ binderUnits = map unit
       d' -> d'
     DData i x dd   -> DData i x (binderData (i ++ "=") dd)
     DVar i x a     -> DVar i x (binderE (i ++ ":") a)
-    DMod i x k us  -> DMod i x k (binderUnits us)
+    _ | Just _ <- segParts u -> mapSeg binderUnits u
     DInst i x m    -> DInst i x (binderM (i ++ "=") m)
     DDir d         -> DDir (case d of
                         DNormal e -> DNormal (binderE "dir" e)
@@ -1801,12 +1801,12 @@ surveyRecords rus = do
  where
   allSegs = concatMap seg
   seg u = case u of
-    DMod i _ k vs -> (i, k, vs) : allSegs vs
+    _ | Just (i, _, k, vs) <- segParts u -> (i, k, vs) : allSegs vs
     _ -> []
   allInsts = concatMap inst
   inst u = case u of
     DInst i _ m -> [(i, m)]
-    DMod _ _ _ vs -> allInsts vs
+    _ | Just (_, _, _, vs) <- segParts u -> allInsts vs
     _ -> []
   -- the units after the head parameters (and their constraints)
   dropHeads hs vs = case vs of
@@ -1815,7 +1815,7 @@ surveyRecords rus = do
     DCstr _ : rest -> dropHeads hs rest
     _ -> vs
   badUnit v = case v of
-    DMod _ x _ _ -> Just ("module/" ++ x)
+    _ | Just (_, x, _, _) <- segParts v -> Just ("module/" ++ x)
     DInst _ x _  -> if "open#" `isPrefixOfS` x then Nothing else Just ("instance/" ++ x)
     DLvl _       -> Just "level"
     DCstr _      -> Just "constraint"
@@ -1826,7 +1826,7 @@ surveyRecords rus = do
     d@DSplit{} -> splitUses d
     DData _ _ dd -> expUses (dataType dd) ++ concat [ expUses t | ConDecl _ tel es <- ddCons dd, t <- map snd tel ++ es ]
     DVar _ _ a -> expUses a
-    DMod _ _ _ vs -> concatMap unitUses vs
+    _ | Just (_, _, _, vs) <- segParts u -> concatMap unitUses vs
     DInst _ _ m -> modUses m
     DDir d -> case d of
       DNormal e -> expUses e

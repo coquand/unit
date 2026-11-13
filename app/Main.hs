@@ -188,7 +188,7 @@ adjust o us = DLock (fix []) : map go us
   fix s = nub (oOn o ++ filter (`notElem` oOff o) (if oNone o then [] else s))
   go u = case u of
     DLock s -> DLock (fix s)
-    DMod i x k mus -> DMod i x k (map go mus)
+    _ | Just _ <- segParts u -> mapSeg (map go) u
     _ -> u
 
 -- parse, expand imports, resolve: the program's units, and the modules

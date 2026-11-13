@@ -51,7 +51,7 @@ groups :: [Decl] -> [[Decl]]
 groups [] = []
 groups us@(u : rest) = case u of
   _ | isGroupUnit u -> let (g, rest') = span isGroupUnit us in g : groups rest'
-  DMod _ _ _ vs -> groups vs ++ groups rest
+  _ | Just (_, _, _, vs) <- segParts u -> groups vs ++ groups rest
   _ -> groups rest
 
 ------------------------------------------------------------------------

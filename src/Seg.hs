@@ -110,7 +110,11 @@ data Decl
                                      -- (named by the path), its type T (written by
                                      -- the filling pass as products), the number
                                      -- of indices it absorbs, its branches
-  | DMod  Id Name SegKind [Decl]     -- a segment: a module or a record
+  | DMod  Id Name [Decl]             -- a module: its parameters and body
+  | DRecord Id Name [Decl] [Decl]    -- record R Gamma { Delta }: its head Gamma
+                                     -- (parameters, levels, constraints) and its
+                                     -- body Delta (fields [x : A], derived members
+                                     -- [x : A = e])
   | DInst Id Name MExp               -- module N = M[args]
   | DLvl  Name                       -- a level variable
   | DCstr [Cs]                       -- constraints
@@ -165,7 +169,8 @@ unitIdOf u = case u of
   DDef i _ _ _ -> i
   DSplit i _ _ _ _ _ _ _ -> i
   DData i _ _ -> i
-  DMod i _ _ _ -> i
+  DMod i _ _ -> i
+  DRecord i _ _ _ -> i
   DInst i _ _    -> i
   DVar i _ _     -> i
   _              -> ""
@@ -176,10 +181,33 @@ unitName u = case u of
   DData _ x _ -> x
   DVar _ x _     -> x
   DLvl x         -> x
-  DMod _ x _ _ -> x
+  DMod _ x _ -> x
+  DRecord _ x _ _ -> x
   DInst _ x _    -> x
   DSplit _ x _ _ _ _ _ _ -> x
   _              -> ""
+
+-- a segment declaration seen uniformly: its id, name, kind and units
+-- (for a record, its head then its body)
+segParts :: Decl -> Maybe (Id, Name, SegKind, [Decl])
+segParts d = case d of
+  DMod i x us -> Just (i, x, SModule, us)
+  DRecord i x hs bs -> Just (i, x, SRecord [ y | u <- hs, y <- headName u ], hs ++ bs)
+  _ -> Nothing
+ where headName u = case u of { DVar _ y _ -> [y]; DLvl y -> [y]; _ -> [] }
+
+-- the segment declaration of these parts
+mkSeg :: Id -> Name -> SegKind -> [Decl] -> Decl
+mkSeg i x k us = case k of
+  SModule -> DMod i x us
+  SRecord hs -> let (h, b) = span inHead us in DRecord i x h b
+   where inHead u = case u of { DVar _ y _ -> y `elem` hs; DLvl y -> y `elem` hs; DCstr _ -> True; _ -> False }
+
+-- the units of a segment declaration, transformed
+mapSeg :: ([Decl] -> [Decl]) -> Decl -> Decl
+mapSeg f d = case segParts d of
+  Just (i, x, k, us) -> mkSeg i x k (f us)
+  Nothing -> d
 
 -- the declaration of a definition whose right-hand side is r
 defOfRhs :: Id -> Name -> Exp -> Rhs -> Decl
@@ -543,7 +571,8 @@ unitDecl :: Decl -> [Decl]
 unitDecl u = case u of
   DDef i x a b   -> [DDef i x a b]
   DData i x dd   -> [DData i x dd]
-  DMod i x k mus -> [DMod i x k mus]
+  DMod{} -> [u]
+  DRecord{} -> [u]
   DInst i x m    -> [DInst i x m]
   DSplit{}       -> [u]
   _              -> []
@@ -551,12 +580,12 @@ unitDecl u = case u of
 declName :: Decl -> Name
 declName d = case d of
   DVar _ x _ -> x; DLvl x -> x; DDef _ x _ _ -> x
-  DData _ x _ -> x; DSplit _ x _ _ _ _ _ _ -> x; DMod _ x _ _ -> x; DInst _ x _ -> x
+  DData _ x _ -> x; DSplit _ x _ _ _ _ _ _ -> x; DMod _ x _ -> x; DRecord _ x _ _ -> x; DInst _ x _ -> x
   _ -> ""
 
 declId :: Decl -> Id
 declId d = case d of
-  DDef i _ _ _ -> i; DData i _ _ -> i; DMod i _ _ _ -> i; DInst i _ _ -> i; DSplit i _ _ _ _ _ _ _ -> i
+  DDef i _ _ _ -> i; DData i _ _ -> i; DMod i _ _ -> i; DRecord i _ _ _ -> i; DInst i _ _ -> i; DSplit i _ _ _ _ _ _ _ -> i
   _ -> declName d
 
 -- the meaning of a declaration in an environment that has it (D rho)
@@ -565,7 +594,7 @@ declEnt d r = case d of
   DDef i _ _ b | internal i -> EVal (eval r b)
   DDef i x a b    -> EVal (mkRef (DDef i x a b) r)
   DData i x dd    -> EVal (mkRef (DData i x dd) r)
-  DMod i _ k mus  -> EMod (Mod i (dynVals r) mus r
+  _ | Just (i, _, k, mus) <- segParts d -> EMod (Mod i (dynVals r) mus r
                              (if hasParams mus then Nothing else Just (instUnits r mus [])) k)
   DInst _ _ m     -> EMod (evalMod r m)
   DSplit{}        -> EVal (splitAtCtx r d 0)
@@ -1061,6 +1090,7 @@ instUnits r (u : us) vs = case (u, vs) of
   (DVar _ x _, [])            -> error ("missing argument for " ++ x)
   (DLvl x, _)                 -> error ("missing level argument for " ++ x)
   (DMod{}, _)                 -> instUnits (mkGroup r [u]) us vs
+  (DRecord{}, _)                 -> instUnits (mkGroup r [u]) us vs
   (DInst{}, _)                -> instUnits (mkGroup r [u]) us vs
   _ | isGroupUnit u           -> let (g, rest) = span isGroupUnit (u : us)
                                  in instUnits (mkGroup r g) rest vs
@@ -1865,7 +1895,7 @@ ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
     DDef i _ _ _ -> [i]
     DSplit i _ _ _ _ _ _ _ -> [i]
     DData i _ _ -> [i]
-    DMod _ _ _ vs -> go vs
+    _ | Just (_, _, _, vs) <- segParts u -> go vs
     _ -> []
 
 cc :: Cx -> CC
@@ -2207,6 +2237,7 @@ checkSegT cx m fs = do
                         ++ commaSep [ prettyCs (csToCs c) | c <- vs ])
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest
     DMod{} -> go (mkGroup r [u]) us
+    DRecord{} -> go (mkGroup r [u]) us
     DInst{} -> go (mkGroup r [u]) us
     _ -> go r us
 
@@ -2277,6 +2308,7 @@ recordBranch cx d xs = case d of
         _             -> Nothing
       _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go c (mkGroup r g) rest ys
       (DMod{}, _) -> go c (mkGroup r [u]) us ys
+      (DRecord{}, _) -> go c (mkGroup r [u]) us ys
       (DInst{}, _) -> go c (mkGroup r [u]) us ys
       _ -> go c r us ys
     go _ _ _ _ = Nothing
@@ -2689,6 +2721,7 @@ checkInst cx r0 us0 as0 = go r0 us0 as0
                        ++ commaSep [ prettyCs (csToCs c) | c <- vs ])
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest as
     (DMod{}, _) -> go (mkGroup r [u]) us as
+    (DRecord{}, _) -> go (mkGroup r [u]) us as
     (DInst{}, _) -> go (mkGroup r [u]) us as
     _ -> go r us as
 
@@ -2741,14 +2774,14 @@ checkUnitsF cx (u : us) = case u of
   DDir d ->
     let (cx', evs, us') = checkUnitsF cx us
     in (cx', Event "#" (fillDir cx d >>= runDirective cx) : evs, u : us')
-  DMod i x k mus0 ->
+  _ | Just (i, x, k, mus0) <- segParts u ->
     let -- the body is checked in the context where it is declared; its
         -- parameters are rigid there.  Locks set inside persist.  The
         -- universe of the segment as a type is computed from the sorts of
         -- its parameters; the sorts of nested segments are kept (stated
         -- with this segment's level parameters, found in an instance).
         (cxIn, evsIn, mus) = checkUnitsF cx { cxPSorts = [] } mus0
-        u' = DMod i x k mus
+        u' = mkSeg i x k mus
         cx1 = cx { cxEnv = mkGroup (cxEnv cx) [u'] }
         cx2 = cx1 { cxLocks = cxLocks cxIn, cxSegSort = (i, cxPSorts cxIn) : cxSegSort cxIn }
         (cx3, evs, us') = checkUnitsF cx2 us
@@ -3293,6 +3326,7 @@ fillInst cx r0 us0 as0 = go r0 us0 as0
         [] -> go r us rest
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) rest as
     DMod{} -> go (mkGroup r [u]) us as
+    DRecord{} -> go (mkGroup r [u]) us as
     DInst{} -> go (mkGroup r [u]) us as
     _ -> go r us as
 
@@ -3694,7 +3728,8 @@ instancesInScope r = case outer r of
 modUnitName :: Decl -> Maybe (Id, Name)
 modUnitName u = case u of
   DInst i x _ -> Just (i, x)
-  DMod i x _ _ -> Just (i, x)
+  DMod i x _ -> Just (i, x)
+  DRecord i x _ _ -> Just (i, x)
   _           -> Nothing
 
 -- a segment by its id, if it is in scope
