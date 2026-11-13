@@ -49,6 +49,7 @@ import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
 import qualified Data.Map.Strict as Map
+import qualified Data.Map.Lazy as MapL
 import qualified Data.Set as Set
 import GHC.Exts (reallyUnsafePtrEquality#, isTrue#)
 
@@ -488,7 +489,11 @@ renameVars ren e = case e of
 -- each declaration means, computed once (a segment or an instance is
 -- entered once), and indexed by name and id for the declarations of a
 -- program or segment body, entered together.
-data Env = Env { envDecls :: [Decl], envVals :: [Val], envIndex :: [Frame] }
+data Env = Env { envDecls :: [Decl], envVals :: [Val], envIndex :: [Frame]
+               , envMods :: Map.Map Name Mod }
+-- envMods: the segments in scope by name and id (a cache built lazily and
+-- shared along the environment, lazy in the segments): a segment is found
+-- by one lookup, not by walking the environment
 
 -- the cache: one frame for a bound variable or level, one for another
 -- declaration, one for the n declarations of a body entered together
@@ -509,12 +514,12 @@ data EnvV
   | OBlock Env (Map.Map Name Ent) [(Decl, Ent)]
 
 outer :: Env -> EnvV
-outer (Env ds vs fs) = case (fs, vs) of
+outer (Env ds vs fs _) = case (fs, vs) of
   ([], _)                 -> ONil
-  (FVal x : fs', v : vs') -> OVar (Env (drop 1 ds) vs' fs') x v
-  (FLvl x : fs', v : vs') -> OLvl (Env (drop 1 ds) vs' fs') x (lvlOf v)
-  (FOne d e : fs', _)     -> OOne (Env (drop 1 ds) vs fs') d e
-  (FBlock n m es : fs', _) -> OBlock (Env (drop n ds) vs fs') m es
+  (FVal x : fs', v : vs') -> OVar (Env (drop 1 ds) vs' fs' (modsFrom fs')) x v
+  (FLvl x : fs', v : vs') -> OLvl (Env (drop 1 ds) vs' fs' (modsFrom fs')) x (lvlOf v)
+  (FOne d e : fs', _)     -> OOne (Env (drop 1 ds) vs fs' (modsFrom fs')) d e
+  (FBlock n m es : fs', _) -> OBlock (Env (drop n ds) vs fs' (modsFrom fs')) m es
   _                       -> error "environment: a variable without its value"
  where lvlOf v = case v of { VLvl l -> l; _ -> error "environment: a level bound to a term" }
 
@@ -527,7 +532,7 @@ data Slot
   | LBlock (Map.Map Name Ent) [(Decl, Ent)]
 
 slots :: Env -> [Slot]
-slots (Env _ vs0 fs0) = go fs0 vs0
+slots (Env _ vs0 fs0 _) = go fs0 vs0
  where
   go fs vs = case (fs, vs) of
     (FVal x : fs', v : vs')   -> LVar x v : go fs' vs'
@@ -538,25 +543,40 @@ slots (Env _ vs0 fs0) = go fs0 vs0
     _                         -> error "environment: a variable without its value"
 
 eNil :: Env
-eNil = Env [] [] []
+eNil = Env [] [] [] Map.empty
+
+-- the segments of the frames (for an environment rebuilt by outer)
+modsFrom :: [Frame] -> Map.Map Name Mod
+modsFrom fs = case fs of
+  [] -> Map.empty
+  FOne d (EMod m) : fs' -> MapL.insert (declName d) m (MapL.insert (declId d) m (modsFrom fs'))
+  FBlock _ _ es : fs' -> MapL.union (blockMods es) (modsFrom fs')
+  _ : fs' -> modsFrom fs'
+
+blockMods :: [(Decl, Ent)] -> Map.Map Name Mod
+blockMods es = MapL.fromList (concat [ [(declName d, m), (declId d, m)] | (d, EMod m) <- es ])
 
 -- [x : A] bound to v (a declared parameter is bound to itself: Wang's
 -- ()(x) = x, mTT10's generic value)
 pushVar :: Env -> Name -> Exp -> Val -> Env
-pushVar (Env ds vs fs) x a v = Env (DVar x x a : ds) (v : vs) (FVal x : fs)
+pushVar (Env ds vs fs ms) x a v = Env (DVar x x a : ds) (v : vs) (FVal x : fs) ms
 
 pushLvl :: Env -> Name -> Lvl -> Env
-pushLvl (Env ds vs fs) x l = Env (DLvl x : ds) (VLvl l : vs) (FLvl x : fs)
+pushLvl (Env ds vs fs ms) x l = Env (DLvl x : ds) (VLvl l : vs) (FLvl x : fs) ms
 
 -- one declaration, its meaning computed in the environment that has it
 pushDecl :: Env -> Decl -> Env
-pushDecl (Env ds vs fs) d = r'
- where r' = Env (d : ds) vs (FOne d (declEnt d r') : fs)
+pushDecl (Env ds vs fs ms) d = r'
+ where
+  e = declEnt d r'
+  r' = Env (d : ds) vs (FOne d e : fs) (case e of
+         EMod m -> MapL.insert (declName d) m (MapL.insert (declId d) m ms)
+         _ -> ms)
 
 -- the declarations of a body entered together (definitions, data types,
 -- segments, instances), indexed once
 pushUnits :: Env -> [Decl] -> Env
-pushUnits (Env ds vs fs) us = r'
+pushUnits (Env ds vs fs ms) us = r'
  where
   decls = concatMap unitDecl us
   es = [ (d, blockEnt d r') | d <- decls ]
@@ -565,7 +585,7 @@ pushUnits (Env ds vs fs) us = r'
     DSplit{} -> EVal (mkRef d r)
     _ -> declEnt d r
   ix = Map.fromList ([ (declName d, e) | (d, e) <- es ] ++ [ (declId d, e) | (d, e) <- es ])
-  r' = Env (reverse decls ++ ds) vs (FBlock (length decls) ix es : fs)
+  r' = Env (reverse decls ++ ds) vs (FBlock (length decls) ix es : fs) (MapL.union (blockMods es) ms)
 
 unitDecl :: Decl -> [Decl]
 unitDecl u = case u of
@@ -1159,16 +1179,7 @@ lookupMod r0 x = fromMaybe (error ("unbound module: " ++ x)) (lookupModE r0 x)
 
 -- a segment by its name or id
 lookupModE :: Env -> Name -> Maybe Mod
-lookupModE r0 x = go (slots r0)
- where
-  go [] = Nothing
-  go (sl : rest) = case sl of
-    LOne d e | x == declName d || x == declId d -> case e of { EMod m -> Just m; _ -> error ("not a module: " ++ x) }
-    LBlock m _ -> case Map.lookup x m of
-      Just (EMod md) -> Just md
-      Just _         -> error ("not a module: " ++ x)
-      Nothing        -> go rest
-    _ -> go rest
+lookupModE r x = Map.lookup x (envMods r)
 
 -- the value of a dependency: a variable or a level
 lookupDyn :: Env -> Name -> Val
