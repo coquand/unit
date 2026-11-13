@@ -1524,7 +1524,7 @@ pathUnits = map unit
 pathB :: Id -> [[String]] -> Body -> Body
 pathB i p b = case b of
   BExp _         -> b
-  BLam x b'      -> BLam x (pathB i (p ++ [["v", x]]) b')
+  BLam x a b'    -> BLam x a (pathB i (p ++ [["v", x]]) b')
   BLLam x b'     -> BLLam x (pathB i (p ++ [["l", x]]) b')
   BLet j x a v b' -> BLet j x a v (pathB i p b')
   BSplit _ k bs  -> BSplit (pathId i p) k [ (c, xs, rs, pathB i (p ++ [("c" : c : xs)]) b') | (c, xs, rs, b') <- bs ]
@@ -1567,7 +1567,7 @@ shadowReport = units "" S.empty
     _            -> concatMap (expr w sc) (subs e)
   body w sc b = case b of
     BExp e        -> expr w sc e
-    BLam x b'     -> binds w sc [x] (\sc' -> body w sc' b')
+    BLam x a b'   -> expr w sc a ++ binds w sc [x] (\sc' -> body w sc' b')
     BLLam x b'    -> binds w sc [x] (\sc' -> body w (S.insert ('%' : x) sc') b')
     BLet _ _ a v b' -> expr w sc a ++ expr w sc v ++ body w sc b'
     BSplit _ _ bs -> concat [ binds w sc (xs ++ recNames rs) (\sc' -> body w sc' b') | (_, xs, rs, b') <- bs ]
@@ -1627,7 +1627,7 @@ binderBind pre ren n x
 binderB :: String -> M.Map Name Name -> Int -> Body -> (Int, Body)
 binderB pre ren n b = case b of
   BExp e -> let (n1, e') = binderGo pre ren n e in (n1, BExp e')
-  BLam x b' -> let (x', ren', n1) = binderBind pre ren n x; (n2, b'') = binderB pre ren' n1 b' in (n2, BLam x' b'')
+  BLam x a b' -> let (n0, a') = binderGo pre ren n a; (x', ren', n1) = binderBind pre ren n0 x; (n2, b'') = binderB pre ren' n1 b' in (n2, BLam x' a' b'')
   BLLam x b' -> let (x', ren', n1) = binderBind pre ren n x; (n2, b'') = binderB pre ren' n1 b' in (n2, BLLam x' b'')
   BLet i x a v b' -> let (n1, a') = binderGo pre ren n a; (n2, v') = binderGo pre ren n1 v
                          (n3, b'') = binderB pre ren n2 b' in (n3, BLet i x a' v' b'')
@@ -1823,7 +1823,7 @@ surveyRecords rus = do
     _ -> concatMap expUses (subE e)
   bodyUses b = case b of
     BExp e -> expUses e
-    BLam _ b' -> bodyUses b'
+    BLam _ a b' -> expUses a ++ bodyUses b'
     BLLam _ b' -> bodyUses b'
     BLet _ _ a v b' -> expUses a ++ expUses v ++ bodyUses b'
     BSplit _ _ bs -> concat [ bodyUses b' | (_, _, _, b') <- bs ]

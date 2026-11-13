@@ -214,7 +214,7 @@ data Exp
 -- expression when no split follows).
 data Body
   = BExp Exp
-  | BLam Name Body
+  | BLam Name Exp Body                      -- \ (x : A) -> body, as Lam
   | BLLam Name Body
   | BLet Id Name Exp Exp Body               -- a local definition
   | BSplit Id Int [Branch]                  -- f_B (its occurrence), the number
@@ -237,7 +237,7 @@ branchLabels bs = [ c | (c, _, _, _) <- bs ]
 -- the smart constructors: lambdas and lets stay in the expression when
 -- no split follows
 bLam :: Name -> Exp -> Body -> Body
-bLam x a b = case b of { BExp e -> BExp (Lam x a e); _ -> BLam x b }
+bLam x a b = case b of { BExp e -> BExp (Lam x a e); _ -> BLam x a b }
 
 bLLam :: Name -> Body -> Body
 bLLam x b = case b of { BExp e -> BExp (LLam x e); _ -> BLLam x b }
@@ -354,7 +354,7 @@ unfilledHoles e = case e of
 unfilledBody :: Body -> Body
 unfilledBody b = case b of
   BExp e -> BExp (unfilledHoles e)
-  BLam x b' -> BLam x (unfilledBody b')
+  BLam x a b' -> BLam x (unfilledHoles a) (unfilledBody b')
   BLLam x b' -> BLLam x (unfilledBody b')
   BLet i x a v b' -> BLet i x (unfilledHoles a) (unfilledHoles v) (unfilledBody b')
   BSplit i k bs -> BSplit i k [ (c, xs, [ RecR j n (map unfilledHoles ds) (map unfilledHoles es) y | RecR j n ds es y <- rs ], unfilledBody b')
@@ -571,7 +571,7 @@ lookupBound r = case r of
 evalBody :: Env -> Body -> Val -> Val
 evalBody r b t = case b of
   BExp e          -> eval r e
-  BLam x b'       -> VLam (domOf t) (Clos x (CBody b' t) r)
+  BLam x a b'     -> VLam (eval r a) (Clos x (CBody b' t) r)
   BLLam x b'      -> VLLam (LClos x (CBody b' t) r)
   BLet i x a v b' -> evalBody (mkGroup r [UDef i x a (BExp v)]) b' t
   BSplit s k bs   -> VSplit s (dynVals r) k [] bs r t
@@ -2065,7 +2065,7 @@ checkBody cx b t0 = case b of
   BExp e -> check cx e t0
   -- <psi> t, silently (as check)
   _ | VCPi cs a <- whnfFolded t0 -> checkBody (addCs cx cs) b a
-  BLam x b' | VPi a f <- t -> let (cx', v) = extVar cx x a in checkBody cx' b' (capp f v)
+  BLam x _ b' | VPi a f <- t -> let (cx', v) = extVar cx x a in checkBody cx' b' (capp f v)
   BLLam x b' | VLPi f <- t -> let (cx', l) = extLvl cx x in checkBody cx' b' (lcapp f l)
   BLet i x a v b' -> do cx' <- checkLet cx i x a v
                         checkBody cx' b' t
@@ -2111,7 +2111,7 @@ checkData cx0 dd = go cx0 (dataBinders dd)
 prettyBody :: Body -> String
 prettyBody b = case b of
   BExp e -> pretty e
-  BLam x b' -> "\\ " ++ binderName x ++ " -> " ++ prettyBody b'
+  BLam x _ b' -> "\\ " ++ binderName x ++ " -> " ++ prettyBody b'
   BLLam x b' -> "<" ++ binderName x ++ "> " ++ prettyBody b'
   BLet _ _ _ _ b' -> "let {..} in " ++ prettyBody b'
   BSplit t _ _ -> shortId t
@@ -2641,7 +2641,7 @@ hasHole e = case e of
 bodyHole :: Body -> Bool
 bodyHole b = case b of
   BExp e          -> hasHole e
-  BLam _ b'       -> bodyHole b'
+  BLam _ a b'     -> hasHole a || bodyHole b'
   BLLam _ b'      -> bodyHole b'
   BLet _ _ a v b' -> hasHole a || hasHole v || bodyHole b'
   BSplit _ k bs   -> k < 0 || any (\(_, _, rs, b') -> any (\(RecR j _ _ _ _) -> j < 0) rs || bodyHole b') bs
@@ -2652,7 +2652,7 @@ fillBody cx b t0 = case b of
   BExp e -> fmap BExp (fillC cx e t0)
   _ | not (bodyHole b) -> Right b
   _ | VCPi cs a <- t -> fillBody (addCs cx cs) b a
-  BLam x b' | VPi a f <- t -> let (cx', v) = extVar cx x a in fmap (BLam x) (fillBody cx' b' (capp f v))
+  BLam x d b' | VPi a f <- t -> let (cx', v) = extVar cx x a in fmap (BLam x (fillDomain cx d a)) (fillBody cx' b' (capp f v))
   BLLam x b' | VLPi f <- t -> let (cx', l) = extLvl cx x in fmap (BLLam x) (fillBody cx' b' (lcapp f l))
   BLet i x a v b' -> do (a', v', cx') <- fillLet cx i x a v
                         fmap (BLet i x a' v') (fillBody cx' b' t)
