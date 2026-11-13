@@ -152,9 +152,13 @@ quoteTestFile f x = do
       Right us -> do
         let (_, _, us') = checkUnitsF (programCx us) us
             (cx, _) = checkUnits (programCx us') us'
-        case [ i | DDef i y _ _ <- us', y == x ] of
+        case [ unitIdOf u | u <- us', unitName u == x, isDefinition u ] of
           (i : _) -> mapM_ putStrLn (quoteTest cx i)
           [] -> putStrLn ("no definition " ++ x)
+
+-- a definition or a split declaration
+isDefinition :: Decl -> Bool
+isDefinition u = case u of { DDef{} -> True; DSplit{} -> True; _ -> False }
 
 dirOf :: FilePath -> FilePath
 dirOf p = reverse (dropWhile (/= '/') (reverse p))

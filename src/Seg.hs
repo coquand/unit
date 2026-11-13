@@ -97,10 +97,19 @@ data SegKind = SModule | SRecord [Name]     -- a record: its head parameters
 data Decl
   = DVar  Id Name Exp                -- [x : A]: a parameter, or a variable bound by
                                      -- a lambda or a pattern (its id is its name)
-  | DDef  Id Name Exp Body           -- [x : A = e] (a definition whose id starts with
+  | DDef  Id Name Exp Exp            -- [x : A = e] (a definition whose id starts with
                                      -- % is internal: unfolded when accessed)
   | DData Id Name DataDecl           -- a data type
-  | DSplit Id Exp Int [Branch]       -- [f : T = split ..], absorbing k indices
+  | DSplit Id Name Exp [Decl] Id Exp Int [Branch]
+                                     -- f : A = \ Delta -> split { .. } : the
+                                     -- declaration's id and name (a nested split:
+                                     -- its occurrence), its type A (a hole for a
+                                     -- nested split), its context Delta before the
+                                     -- case (lambdas [x : A], levels, local
+                                     -- definitions), the occurrence f_B of the case
+                                     -- (named by the path), its type T (written by
+                                     -- the filling pass as products), the number
+                                     -- of indices it absorbs, its branches
   | DMod  Id Name SegKind [Decl]     -- a segment: a module or a record
   | DInst Id Name MExp               -- module N = M[args]
   | DLvl  Name                       -- a level variable
@@ -154,6 +163,7 @@ pathId i p = i ++ "\0" ++ show p
 unitIdOf :: Decl -> Id
 unitIdOf u = case u of
   DDef i _ _ _ -> i
+  DSplit i _ _ _ _ _ _ _ -> i
   DData i _ _ -> i
   DMod i _ _ _ -> i
   DInst i _ _    -> i
@@ -168,7 +178,15 @@ unitName u = case u of
   DLvl x         -> x
   DMod _ x _ _ -> x
   DInst _ x _    -> x
+  DSplit _ x _ _ _ _ _ _ -> x
   _              -> ""
+
+-- the declaration of a definition whose right-hand side is r
+defOfRhs :: Id -> Name -> Exp -> Rhs -> Decl
+defOfRhs i x a r = case r of
+  RhsExp e -> DDef i x a e
+  RhsSplit (DSplit _ _ _ delta si ty k bs) -> DSplit i x a delta si ty k bs
+  RhsSplit d -> d
 
 -- The DYNAMIC part of an access to a definition (bengt.pdf slides 31-33)
 -- is the values of all the variables and levels of its environment (dynOf),
@@ -214,33 +232,18 @@ data Exp
   | Unfilled                                 -- a hole whose filling failed
   deriving (Eq, Show)
 
--- The body of a definition of a segment: a case tree.  Its lambdas, its
--- local definitions and its splits, down to expressions.  A split stands
--- only here (never in an expression, a let or a where).  A body with no
--- split is always BExp (the resolver keeps lambdas and lets in the
--- expression when no split follows).
-data Body
-  = BExp Exp
-  | BLam Name Exp Body                      -- \ (x : A) -> body, as Lam
-  | BLLam Name Body
-  | BLet Id Name Exp Exp Body               -- a local definition
-  | BSplit Id Exp Int [Branch]              -- f_B (its occurrence), its type T
-                                            -- (the type the split is checked
-                                            -- against, written by the filling
-                                            -- pass as a lambda's domain), the number
-                                            -- of indices it absorbs (-1: not yet
-                                            -- known, the filling pass decides),
-                                            -- branches
-  deriving (Eq, Show)
-
 -- a branch: its label, the pattern variables with their types (written
 -- in the branch, each in the scope of the previous ones, by the filling
 -- pass, as the domain of a lambda), for a split on an indexed family the
 -- indices of the constructor's target (the indices the split absorbed,
--- written in the branch by the filling pass), the recursive results
-type Branch = (Name, Tel, [Exp], [RecR], Body)
+-- written in the branch by the filling pass), the recursive results, its
+-- right-hand side: an expression or a nested split
+type Branch = (Name, Tel, [Exp], [RecR], Rhs)
 
-branchOf :: Name -> [Branch] -> Maybe ([Name], [RecR], Body)
+data Rhs = RhsExp Exp | RhsSplit Decl
+  deriving (Eq, Show)
+
+branchOf :: Name -> [Branch] -> Maybe ([Name], [RecR], Rhs)
 branchOf c bs = case [ (map fst xs, rs, b) | (c', xs, _, rs, b) <- bs, c' == c ] of
   (x : _) -> Just x
   []      -> Nothing
@@ -254,16 +257,42 @@ branchIdxExps c bs = case [ is | (c', _, is, _, _) <- bs, c' == c ] of
   (is : _) -> is
   []       -> []
 
--- the smart constructors: lambdas and lets stay in the expression when
--- no split follows
-bLam :: Name -> Exp -> Body -> Body
-bLam x a b = case b of { BExp e -> BExp (Lam x a e); _ -> BLam x a b }
+-- the right-hand side of a definition or a branch, built from the inside:
+-- a lambda, a level lambda, a let stay in the expression when no split
+-- follows, and otherwise enter the context of the split
+rLam :: Name -> Exp -> Rhs -> Rhs
+rLam x a r = case r of
+  RhsExp e -> RhsExp (Lam x a e)
+  RhsSplit d -> RhsSplit (splitCtx (DVar x x a) d)
 
-bLLam :: Name -> Body -> Body
-bLLam x b = case b of { BExp e -> BExp (LLam x e); _ -> BLLam x b }
+rLLam :: Name -> Rhs -> Rhs
+rLLam x r = case r of
+  RhsExp e -> RhsExp (LLam x e)
+  RhsSplit d -> RhsSplit (splitCtx (DLvl x) d)
 
-bLet :: Id -> Name -> Exp -> Exp -> Body -> Body
-bLet i x a v b = case b of { BExp e -> BExp (Let i x a v e); _ -> BLet i x a v b }
+rLet :: Id -> Name -> Exp -> Exp -> Rhs -> Rhs
+rLet i x a v r = case r of
+  RhsExp e -> RhsExp (Let i x a v e)
+  RhsSplit d -> RhsSplit (splitCtx (DDef i x a v) d)
+
+splitCtx :: Decl -> Decl -> Decl
+splitCtx c (DSplit i x a delta si ty k bs) = DSplit i x a (c : delta) si ty k bs
+splitCtx _ d = d
+
+-- the parts of a split declaration
+splitBranches :: Decl -> [Branch]
+splitBranches d = case d of { DSplit _ _ _ _ _ _ _ bs -> bs; _ -> [] }
+
+splitTy :: Decl -> Exp
+splitTy d = case d of { DSplit _ _ _ _ _ ty _ _ -> ty; _ -> error "splitTy" }
+
+-- the split applied to the variables of its context: the head of its
+-- recursive calls (mTT10: a definition is recursive, by its name)
+splitHead :: Decl -> Exp
+splitHead d = case d of
+  DSplit i _ _ delta _ _ _ _ -> foldl step (Var i) delta
+  _ -> error "splitHead"
+ where step e c = case c of { DVar _ y _ -> App e (Var y); DLvl y -> LApp e (LV y); _ -> e }
 
 -- The recursive results of a branch (PRIMREC.md): for the field at
 -- position j, with n binders when it is a function field, the result
@@ -365,14 +394,21 @@ unfilledHoles e = case e of
   go = unfilledHoles
   arg a = case a of { ATm x -> ATm (go x); _ -> a }
 
-unfilledBody :: Body -> Body
-unfilledBody b = case b of
-  BExp e -> BExp (unfilledHoles e)
-  BLam x a b' -> BLam x (unfilledHoles a) (unfilledBody b')
-  BLLam x b' -> BLLam x (unfilledBody b')
-  BLet i x a v b' -> BLet i x (unfilledHoles a) (unfilledHoles v) (unfilledBody b')
-  BSplit i ty k bs -> BSplit i (unfilledHoles ty) k [ (c, [ (x, unfilledHoles a) | (x, a) <- xs ], map unfilledHoles is, [ RecR j n (map unfilledHoles ds) (map unfilledHoles es) y | RecR j n ds es y <- rs ], unfilledBody b')
+unfilledRhs :: Rhs -> Rhs
+unfilledRhs r = case r of
+  RhsExp e -> RhsExp (unfilledHoles e)
+  RhsSplit d -> RhsSplit (unfilledSplit d)
+
+unfilledSplit :: Decl -> Decl
+unfilledSplit d = case d of
+  DSplit i x a delta si ty k bs -> DSplit i x a (map ctx delta) si (unfilledHoles ty) k [ (c, [ (x, unfilledHoles a) | (x, a) <- xs ], map unfilledHoles is, [ RecR j n (map unfilledHoles ds) (map unfilledHoles es) y | RecR j n ds es y <- rs ], unfilledRhs b')
                               | (c, xs, is, rs, b') <- bs ]
+  _ -> d
+ where
+  ctx c = case c of
+    DVar j y a -> DVar j y (unfilledHoles a)
+    DDef j y a v -> DDef j y (unfilledHoles a) (unfilledHoles v)
+    _ -> c
 
 unfilledCon :: ConDecl -> ConDecl
 unfilledCon (ConDecl c tel es) = ConDecl c [ (x, unfilledHoles a) | (x, a) <- tel ] (map unfilledHoles es)
@@ -495,7 +531,11 @@ pushUnits :: Env -> [Decl] -> Env
 pushUnits (Env ds vs fs) us = r'
  where
   decls = concatMap unitDecl us
-  es = [ (d, declEnt d r') | d <- decls ]
+  es = [ (d, blockEnt d r') | d <- decls ]
+  -- a definition of the body (a split too) is accessed under the lock
+  blockEnt d r = case d of
+    DSplit{} -> EVal (mkRef d r)
+    _ -> declEnt d r
   ix = Map.fromList ([ (declName d, e) | (d, e) <- es ] ++ [ (declId d, e) | (d, e) <- es ])
   r' = Env (reverse decls ++ ds) vs (FBlock (length decls) ix es : fs)
 
@@ -505,29 +545,30 @@ unitDecl u = case u of
   DData i x dd   -> [DData i x dd]
   DMod i x k mus -> [DMod i x k mus]
   DInst i x m    -> [DInst i x m]
+  DSplit{}       -> [u]
   _              -> []
 
 declName :: Decl -> Name
 declName d = case d of
   DVar _ x _ -> x; DLvl x -> x; DDef _ x _ _ -> x
-  DData _ x _ -> x; DSplit t _ _ _ -> t; DMod _ x _ _ -> x; DInst _ x _ -> x
+  DData _ x _ -> x; DSplit _ x _ _ _ _ _ _ -> x; DMod _ x _ _ -> x; DInst _ x _ -> x
   _ -> ""
 
 declId :: Decl -> Id
 declId d = case d of
-  DDef i _ _ _ -> i; DData i _ _ -> i; DMod i _ _ _ -> i; DInst i _ _ -> i; DSplit t _ _ _ -> t
+  DDef i _ _ _ -> i; DData i _ _ -> i; DMod i _ _ _ -> i; DInst i _ _ -> i; DSplit i _ _ _ _ _ _ _ -> i
   _ -> declName d
 
 -- the meaning of a declaration in an environment that has it (D rho)
 declEnt :: Decl -> Env -> Ent
 declEnt d r = case d of
-  DDef i _ _ b | internal i -> EVal (evalBody r b)
+  DDef i _ _ b | internal i -> EVal (eval r b)
   DDef i x a b    -> EVal (mkRef (DDef i x a b) r)
   DData i x dd    -> EVal (mkRef (DData i x dd) r)
   DMod i _ k mus  -> EMod (Mod i (dynVals r) mus r
                              (if hasParams mus then Nothing else Just (instUnits r mus [])) k)
   DInst _ _ m     -> EMod (evalMod r m)
-  DSplit t a k bs -> EVal (VSplit t (dynVals r) k [] bs r (eval r a))
+  DSplit{}        -> EVal (splitAtCtx r d 0)
   _               -> error "declEnt: a variable has no meaning apart from its value"
 
 -- an internal definition (a recursive result, a field of %self): its id
@@ -553,8 +594,9 @@ data Mod = Mod { modId :: Id, modDyn :: [Val], modUnits :: [Decl], modEnv :: Env
 data Clos  = Clos Name Exp Code Env      -- the binder, its type, the code, the environment
 data LClos = LClos Name Code Env
 
--- (CBody: the rest of a definition body)
-data Code = CExp Exp | CBody Body | CData Id DataDecl Int
+-- (CSplit: the rest of a split declaration after the first n entries of
+-- its context)
+data Code = CExp Exp | CSplit Decl Int | CData Id DataDecl Int
 
 data Elim = EApp Val | EFst | ESnd | EProj Name | ELApp Lvl
 
@@ -583,7 +625,9 @@ data Val
   | VCon Name [Val]
   | VSum Id [Val] Tel [ConDecl] Env     -- the indices of the
                                             -- instance: the index names in Env
-  | VSplit Id [Val] Int [Val] [Branch] Env Val
+  | VSplit Id [Val] Int [Val] Decl Env Val     -- f_B, its dynamic part, the number
+                                            -- of indices, those absorbed, its
+                                            -- declaration, its environment, its type
                                             -- the number k of indices it absorbs
                                             -- and those absorbed so far; its type
                                             -- (with no index absorbed)
@@ -649,7 +693,7 @@ eval r e = case e of
   App a b      -> app (eval r a) (eval r b)
   Lam x a b    -> VLam (eval r a) (Clos x a (CExp b) r)
   Pi x a b     -> VPi (eval r a) (Clos x a (CExp b) r)
-  Let i x a v b -> eval (pushDecl r (DDef i x a (BExp v))) b
+  Let i x a v b -> eval (pushDecl r (DDef i x a v)) b
   Con c as     -> VCon c (map (eval r) as)
   Sig x a b    -> VSig (eval r a) (Clos x a (CExp b) r)
   Pair a b     -> VPair (eval r a) (eval r b)
@@ -686,7 +730,7 @@ lcapp (LClos x c r) l = evalCode (pushLvl r x l) c
 evalCode :: Env -> Code -> Val
 evalCode r c = case c of
   CExp e       -> eval r e
-  CBody b      -> evalBody r b
+  CSplit d n   -> splitAtCtx r d n
   CData o dd k -> dataAt r o dd (k + 1)
 
 -- the variable or level a closure has just bound (its argument)
@@ -696,16 +740,26 @@ lookupBound r = case outer r of
   OLvl _ _ l -> Left l
   _          -> error "lookupBound"
 
--- the body of a definition in an environment
-evalBody :: Env -> Body -> Val
-evalBody r b = case b of
-  BExp e          -> eval r e
-  BLam x a b'     -> VLam (eval r a) (Clos x a (CBody b') r)
-  BLLam x b'      -> VLLam (LClos x (CBody b') r)
-  BLet i x a v b' -> evalBody (pushDecl r (DDef i x a (BExp v))) b'
-  -- a split is a declaration [f : T = split ..] (mTT10's B rho, with D rho
-  -- so that its recursive results find it): its value is its access
-  BSplit s ty k bs -> lookupVal (pushDecl r (DSplit s ty k bs)) s
+-- the right-hand side of a definition or a branch
+evalRhs :: Env -> Rhs -> Val
+evalRhs r rhs = case rhs of
+  RhsExp e -> eval r e
+  -- a nested split is a declaration (mTT10's B rho, with D rho so that
+  -- its recursive results find it): its value is its access
+  RhsSplit d -> lookupVal (pushDecl r d) (declId d)
+
+-- a split declaration in an environment that has it, after the first n
+-- entries of its context: a lambda for a variable, a level lambda for a
+-- level, a local definition declared; then the case
+splitAtCtx :: Env -> Decl -> Int -> Val
+splitAtCtx r d n = case d of
+  DSplit _ _ _ delta si ty k _ -> case drop n delta of
+    [] -> VSplit si (dynVals r) k [] d r (eval r ty)
+    DVar _ y a : _ -> VLam (eval r a) (Clos y a (CSplit d (n + 1)) r)
+    DLvl y : _ -> VLLam (LClos y (CSplit d (n + 1)) r)
+    c@DDef{} : _ -> splitAtCtx (pushDecl r c) d (n + 1)
+    _ : _ -> splitAtCtx r d (n + 1)
+  _ -> error "splitAtCtx: not a split"
 
 -- the domain of a product type, and its codomain at an argument (or at a
 -- level, for a level product)
@@ -736,38 +790,40 @@ dataAt r o dd k = case drop k (dataBinders dd) of
 app :: Val -> Val -> Val
 app (VLam _ f) v = capp f v
 -- a split on an indexed family first absorbs the k indices (INDEXED.md 5)
-app (VSplit t d k is bs r ty) v | length is < k = VSplit t d k (is ++ [v]) bs r ty
-app f@(VSplit t _ k is bs r _) v = case v of
+app (VSplit t d k is sd r ty) v | length is < k = VSplit t d k (is ++ [v]) sd r ty
+app f@(VSplit t _ k _ sd r _) v = case v of
   VCon c vs -> case branchOf c bs of
-    Just (xs, rs, b) -> evalBody (branchEnv t c (motiveExp k (splitDeclType r)) (bindPats r (branchTel c bs) vs) xs rs) b
+    Just (xs, rs, b) -> evalRhs (branchEnv t c (motiveExp k (splitTy sd)) (splitHead sd) (bindPats r (branchTel c bs) vs) xs rs) b
     Nothing | k < 0 -> VApp f v         -- not annotated (its definition failed)
             | otherwise -> error ("split: no branch for " ++ c)
   -- a record: the branch applied to its fields (beta for the eliminator)
-  _ | Just vs <- recordFields v, [(_, xs, _, _, b)] <- bs -> evalBody (bindPats r xs vs) b
+  _ | Just vs <- recordFields v, [(_, xs, _, _, b)] <- bs -> evalRhs (bindPats r xs vs) b
   _ -> VApp f v
+ where bs = splitBranches sd
 app u v = VApp u v
 
 -- the recursive results of a branch (PRIMREC.md 5.2), as declarations:
--- for the field x_j the definition [y = t es x_j], for a function field
--- [y = \ zs -> t es (x_j zs)], where t is the split itself, found by its
--- name (every definition is recursive, mTT10), es the indices of the
--- field; at the positions the filling pass certified
-branchEnv :: Id -> Name -> Exp -> Env -> [Name] -> [RecR] -> Env
-branchEnv t c m r0 xs rs = foldl (recDecl xs) r0 rs
+-- for the field x_j the definition [y = f Delta es x_j], for a function
+-- field [y = \ zs -> f Delta es (x_j zs)], where f Delta is the split
+-- declaration applied to the variables of its context, found by its name
+-- (every definition is recursive, mTT10; the head h), es the indices of
+-- the field; at the positions the filling pass certified
+branchEnv :: Id -> Name -> Exp -> Exp -> Env -> [Name] -> [RecR] -> Env
+branchEnv t c m h r0 xs rs = foldl (recDecl xs) r0 rs
  where
   recDecl xs r (RecR j n ds es y)
     -- not annotated: the definition did not pass the filling pass (it is
     -- reported there); its results are never equal to anything (lazy)
     | j < 0     = pushVar r y Unfilled (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                            ++ ": the split was not annotated (its definition failed)"))
-    | otherwise = pushDecl r (DDef ('%' : y) y (recTypeExp t c j n m ds es (xs !! j)) (BExp (recExp t c j n ds es (xs !! j))))
+    | otherwise = pushDecl r (DDef ('%' : y) y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j h n ds es (xs !! j)))
 
 -- the recursive result of the field x at position j with n binders (of
 -- domains ds) and indices es
-recExp :: Id -> Name -> Int -> Int -> [Exp] -> [Exp] -> Name -> Exp
-recExp t c j n ds es x
-  | n == 0    = App (foldl App (Var t) es) (Var x)
-  | otherwise = foldr (uncurry Lam) (App (foldl App (Var t) es) (foldl App (Var x) (map Var ys))) (zip ys ds)
+recExp :: Id -> Name -> Int -> Exp -> Int -> [Exp] -> [Exp] -> Name -> Exp
+recExp t c j h n ds es x
+  | n == 0    = App (foldl App h es) (Var x)
+  | otherwise = foldr (uncurry Lam) (App (foldl App h es) (foldl App (Var x) (map Var ys))) (zip ys ds)
  where ys = [ recArg t c j i | i <- [1 .. length ds] ]
 
 -- y is declared as a recursive result (a definition), not bound as a
@@ -781,13 +837,6 @@ recDeclared r y = case outer r of
     DDef i x _ _ | x == y, internal i -> True
     _ -> declName d /= y && recDeclared r' y
   OBlock r' _ _ -> recDeclared r' y
-
--- the type of the split declared at the head of an environment (the
--- environment of a split value)
-splitDeclType :: Env -> Exp
-splitDeclType r = case envDecls r of
-  DSplit _ ty _ _ : _ -> ty
-  _ -> error "splitDeclType: not the environment of a split"
 
 -- the pattern variables of a branch bound to the fields
 bindPats :: Env -> Tel -> [Val] -> Env
@@ -803,7 +852,7 @@ branchTel c bs = case [ xs | (c', xs, _, _, _) <- bs, c' == c ] of
 -- a split with no index absorbed
 splitBase :: Val -> Val
 splitBase v = case v of
-  VSplit t d k _ bs r ty -> VSplit t d k [] bs r ty
+  VSplit t d k _ sd r ty -> VSplit t d k [] sd r ty
   _ -> v
 
 -- the type of a split, at the indices it absorbed (it records its type
@@ -920,6 +969,7 @@ mkGroup = pushUnits
 
 defId :: Decl -> Id
 defId (DDef i _ _ _) = i
+defId (DSplit i _ _ _ _ _ _ _) = i
 defId (DData i _ _) = i
 defId _                = ""
 
@@ -961,7 +1011,7 @@ groupUnitType :: Decl -> Exp
 groupUnitType = fromMaybe (error "groupUnitType: not a definition") . defType
 
 isNewDef :: Decl -> Bool
-isNewDef (DDef _ _ _ (BExp b)) = go [] b
+isNewDef (DDef _ _ _ b) = go [] b
  where
   go xs e = case e of
     Lam x _ e' -> go (x : xs) e'
@@ -976,13 +1026,15 @@ isNewDef _ = False
 
 -- the body of a definition, evaluated in its environment
 unfoldRef :: Decl -> Env -> Val
-unfoldRef (DDef _ _ _ b) r = evalBody r b
+unfoldRef (DDef _ _ _ b) r = eval r b
+unfoldRef d@DSplit{} r = splitAtCtx r d 0
 unfoldRef (DData i _ dd) r = dataAt r (dataOcc i dd) dd 0
 unfoldRef _ _                = error "unfoldRef: not a definition"
 
 isGroupUnit :: Decl -> Bool
 isGroupUnit u = case u of
   DDef{}  -> True
+  DSplit{} -> True
   DData{} -> True
   _       -> False
 
@@ -990,6 +1042,7 @@ isGroupUnit u = case u of
 defType :: Decl -> Maybe Exp
 defType u = case u of
   DDef _ _ a _          -> Just a
+  DSplit _ _ a _ _ _ _ _ -> Just a
   DData _ _ dd          -> Just (dataType dd)
   _                     -> Nothing
 
@@ -1147,7 +1200,7 @@ selfEnvFixed md heads fixed t = go (modEnv md) False (modUnits md)
     DLvl p | VLvl l <- headVal p -> go (pushLvl r p l) self us
     DCstr _ -> go r self us
     _ | not self -> go (pushVar r "%self" selfType t) True (u : us)
-    DVar _ p a -> go (pushDecl r (DDef ('%' : p) p a (BExp (fieldOfSelf p fixed)))) self us
+    DVar _ p a -> go (pushDecl r (DDef ('%' : p) p a (fieldOfSelf p fixed))) self us
     _ | isGroupUnit u -> let (g, rest) = span isGroupUnit (u : us) in go (mkGroup r g) self rest
     -- an open of a module instance: its arguments see the fields as t.x
     DInst{} -> go (mkGroup r [u]) self us
@@ -1810,6 +1863,7 @@ ranksOf us0 = Map.fromList (zip (go us0) [0 ..])
   go us = concatMap one us
   one u = case u of
     DDef i _ _ _ -> [i]
+    DSplit i _ _ _ _ _ _ _ -> [i]
     DData i _ _ -> [i]
     DMod _ _ _ vs -> go vs
     _ -> []
@@ -2229,17 +2283,35 @@ recordBranch cx d xs = case d of
     withTy c a (c', el, ts) = (c', el, (c, a) : ts)
   _ -> Nothing
 
--- The body of a definition: its lambdas, its local definitions, its splits
-checkBody :: Cx -> Body -> Val -> Res ()
-checkBody cx b t0 = case b of
-  BExp e -> check cx e t0
-  -- <psi> t, silently (as check)
-  _ | VCPi cs a <- whnfFolded t0 -> checkBody (addCs cx cs) b a
-  BLam x _ b' | VPi a f <- t -> let (cx', v) = extVar cx x a in checkBody cx' b' (capp f v)
-  BLLam x b' | VLPi f <- t -> let (cx', l) = extLvl cx x in checkBody cx' b' (lcapp f l)
-  BLet i x a v b' -> do cx' <- checkLet cx i x a v
-                        checkBody cx' b' t
-  BSplit si ty k bs | VPi dom f <- t -> let d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
+-- The right-hand side of a definition or a branch: an expression, or a
+-- split declaration
+checkRhs :: Cx -> Rhs -> Val -> Res ()
+checkRhs cx rhs t0 = case rhs of
+  RhsExp e -> check cx e t0
+  RhsSplit d -> checkSplitD cx d t0
+
+-- a split declaration: its context (lambdas, levels, local definitions),
+-- then its case
+checkSplitD :: Cx -> Decl -> Val -> Res ()
+checkSplitD cx0 d0 = case d0 of
+  DSplit _ _ _ delta si ty k bs -> go cx0 delta
+   where
+    go cx ds t0
+      -- <psi> t, silently (as check)
+      | VCPi cs a <- whnfFolded t0 = go (addCs cx cs) ds a
+      | otherwise = case (ds, force cx t0) of
+          (DVar _ x _ : ds', VPi a f) -> let (cx', v) = extVar cx x a in go cx' ds' (capp f v)
+          (DLvl x : ds', VLPi f) -> let (cx', l) = extLvl cx x in go cx' ds' (lcapp f l)
+          (DDef i x a v : ds', _) -> do cx' <- checkLet cx i x a v
+                                        go cx' ds' t0
+          ([], t) -> checkCase cx si ty k bs t
+          _ -> failWith ("cannot infer a type for the split  " ++ shortId si)
+  _ -> const (failWith "not a split (internal)")
+
+-- the case of a split, at the type t (forced)
+checkCase :: Cx -> Id -> Exp -> Int -> [Branch] -> Val -> Res ()
+checkCase cx si ty k bs t = case t of
+  VPi dom f -> let d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
    Left msg -> failWith msg
    Right n | n > 0 -> if k /= n then failWith ("split: not annotated with its " ++ show n ++ " indices (internal)")
                       else checkSplitI cx si (motiveExp n ty) n bs t
@@ -2252,15 +2324,13 @@ checkBody cx b t0 = case b of
       -- a record: one branch binding its fields, checked at the canonical
       -- element built from them
       [(_, _, _, _ : _, _)] -> failWith "split on a record: a record has no recursive results"
-      [(_, xs, _, _, b')] | Just (cx', el, _) <- recordBranch cx d (map fst xs) -> checkBody cx' b' (capp f el)
+      [(_, xs, _, _, b')] | Just (cx', el, _) <- recordBranch cx d (map fst xs) -> checkRhs cx' b' (capp f el)
       [(_, xs, _, _, _)] | VSegT md _ <- d, SRecord _ <- modKind md ->
         failWith ("the pattern binds " ++ show (length xs) ++ " variables; the fields of "
                   ++ showV cx d ++ " are " ++ unwords (recordFieldNames md)
                   ++ " (its parameters are given by the type)")
       _ -> failWith ("split on a non-sum type " ++ showV cx d)
-  _ -> failWith ("cannot infer a type for  " ++ prettyBody b)
- where
-  t = force cx t0
+  _ -> failWith ("cannot infer a type for the split  " ++ shortId si)
 
 -- A data declaration: its parameters and indices against its type, then
 -- the fields and targets of its constructors in the universe
@@ -2277,14 +2347,21 @@ checkData cx0 dd = go cx0 (dataBinders dd)
                               checkTargets cx c tel (ddIndices dd) es) (ddCons dd)
         _ -> failWith "the data type does not have the type of its parameters and indices"
 
--- a body, printed (diagnostics)
-prettyBody :: Body -> String
-prettyBody b = case b of
-  BExp e -> pretty e
-  BLam x _ b' -> "\\ " ++ binderName x ++ " -> " ++ prettyBody b'
-  BLLam x b' -> "<" ++ binderName x ++ "> " ++ prettyBody b'
-  BLet _ _ _ _ b' -> "let {..} in " ++ prettyBody b'
-  BSplit t _ _ _ -> shortId t
+-- a right-hand side, printed (diagnostics)
+prettyRhs :: Rhs -> String
+prettyRhs r = case r of
+  RhsExp e -> pretty e
+  RhsSplit d -> prettySplit d
+
+prettySplit :: Decl -> String
+prettySplit d = case d of
+  DSplit _ _ _ delta si _ _ _ -> concatMap ctx delta ++ shortId si
+  _ -> ""
+ where ctx c = case c of
+         DVar _ x _ -> "\\ " ++ binderName x ++ " -> "
+         DLvl x -> "<" ++ binderName x ++ "> "
+         DDef{} -> "let {..} in "
+         _ -> ""
 
 checkSplit :: Cx -> Id -> Exp -> [Branch] -> [(Name, Tel)] -> Env -> Val -> Res ()
 -- every branch is for a constructor of the data type (an unknown one
@@ -2301,7 +2378,7 @@ checkSplitAll cx si m bs ((c, tel) : cs) r mot = case branchOf c bs of
   Just (xs, rs, body) -> do
     (cx', vs) <- openTel cx xs tel r
     cx'' <- recCx cx' si m c xs tel r vs rs
-    case checkBody cx'' body (app mot (VCon c vs)) of
+    case checkRhs cx'' body (app mot (VCon c vs)) of
       Left msg -> failWith ("in the branch  " ++ c ++ "  of the split:\n" ++ msg)
       Right () -> ok
     checkSplitAll cx si m bs cs r mot
@@ -2456,7 +2533,7 @@ checkSplitI cx si m k bs t = case peelGens cx k t of
       let ivs = map (eval (telEnv r tel vs)) es
           cx'' = cx'
       cx3 <- recCxI cx'' si m c k xs tel r vs rs
-      case checkBody cx3 body (motiveAt cxI t (ivs ++ [VCon c vs])) of
+      case checkRhs cx3 body (motiveAt cxI t (ivs ++ [VCon c vs])) of
         Left msg -> failWith ("in the branch  " ++ c ++ "  of the split:\n" ++ msg)
         Right () -> ok
 
@@ -2513,7 +2590,7 @@ checkLet cx i x a v = do
   Right (enterLet cx i x a v)
 
 enterLet :: Cx -> Id -> Name -> Exp -> Exp -> Cx
-enterLet cx i x a v = enterGroup cx [DDef i x a (BExp v)]
+enterLet cx i x a v = enterGroup cx [DDef i x a v]
 
 inCtx :: String -> Res a -> Res a
 inCtx msg r = case r of
@@ -2694,7 +2771,10 @@ checkUnitsF cx (u : us) = case u of
                    case gu of
                      DDef _ x a b -> do
                        inCtx ("in the type of " ++ x) (checkType cx1 a)
-                       inCtx ("in the definition of " ++ x) (checkBody cx1 b (ev cx1 a))
+                       inCtx ("in the definition of " ++ x) (check cx1 b (ev cx1 a))
+                     DSplit _ x a _ _ _ _ _ -> do
+                       inCtx ("in the type of " ++ x) (checkType cx1 a)
+                       inCtx ("in the definition of " ++ x) (checkSplitD cx1 gu (ev cx1 a))
                      DData _ x dd -> do
                        inCtx ("in the type of " ++ x) (checkType cx1 (dataType dd))
                        inCtx ("in the definition of " ++ x) (checkData cx1 dd (ev cx1 (dataType dd)))
@@ -2788,40 +2868,70 @@ hasHole e = case e of
     MSub n _  -> mHole n
     MApp n as -> mHole n || any argHole as
 
--- a body: a split whose recursive results are not yet annotated is
--- filled too, and one whose number of indices is not known (INDEXED.md)
-bodyHole :: Body -> Bool
-bodyHole b = case b of
-  BExp e          -> hasHole e
-  BLam _ a b'     -> hasHole a || bodyHole b'
-  BLLam _ b'      -> bodyHole b'
-  BLet _ _ a v b' -> hasHole a || hasHole v || bodyHole b'
-  BSplit _ ty k bs -> hasHole ty || k < 0 || any (\(_, xs, is, rs, b') -> any (hasHole . snd) xs || any hasHole is || any (\(RecR j _ _ _ _) -> j < 0) rs || bodyHole b') bs
+-- a right-hand side: a split whose recursive results are not yet
+-- annotated is filled too, and one whose number of indices is not known
+-- (INDEXED.md)
+rhsHole :: Rhs -> Bool
+rhsHole r = case r of
+  RhsExp e -> hasHole e
+  RhsSplit d -> splitHole d
 
--- the body of a definition, filled
-fillBody :: Cx -> Body -> Val -> Res Body
-fillBody cx b t0 = case b of
-  BExp e -> fmap BExp (fillC cx e t0)
-  _ | not (bodyHole b) -> Right b
-  _ | VCPi cs a <- t -> fillBody (addCs cx cs) b a
-  BLam x d b' | VPi a f <- t -> let (cx', v) = extVar cx x a in fmap (BLam x (fillDomain cx d a)) (fillBody cx' b' (capp f v))
-  BLLam x b' | VLPi f <- t -> let (cx', l) = extLvl cx x in fmap (BLLam x) (fillBody cx' b' (lcapp f l))
-  BLet i x a v b' -> do (a', v', cx') <- fillLet cx i x a v
-                        fmap (BLet i x a' v') (fillBody cx' b' t)
+splitHole :: Decl -> Bool
+splitHole d = case d of
+  DSplit _ _ _ delta _ ty k bs -> any ctxHole delta || caseHole ty k bs
+  _ -> False
+ where ctxHole c = case c of
+         DVar _ _ a -> hasHole a
+         DDef _ _ a v -> hasHole a || hasHole v
+         _ -> False
+
+caseHole :: Exp -> Int -> [Branch] -> Bool
+caseHole ty k bs = hasHole ty || k < 0 || any (\(_, xs, is, rs, b') -> any (hasHole . snd) xs || any hasHole is || any (\(RecR j _ _ _ _) -> j < 0) rs || rhsHole b') bs
+
+-- the right-hand side of a definition or a branch, filled
+fillRhs :: Cx -> Rhs -> Val -> Res Rhs
+fillRhs cx r t0 = case r of
+  RhsExp e -> fmap RhsExp (fillC cx e t0)
+  RhsSplit d -> fmap RhsSplit (fillSplitD cx d t0)
+
+-- a split declaration, filled: its context (the domains of its lambdas,
+-- its local definitions), then its case
+fillSplitD :: Cx -> Decl -> Val -> Res Decl
+fillSplitD cx0 d0 t00
+  | not (splitHole d0) = Right d0
+  | otherwise = case d0 of
+      DSplit i x a delta si ty0 k bs -> go cx0 delta [] t00
+       where
+        go cx ds acc t0 = case (ds, force cx t0) of
+          (_, VCPi cs a') -> go (addCs cx cs) ds acc a'
+          (DVar j y dd : ds', VPi a' f) -> let (cx', v) = extVar cx y a'
+                                           in go cx' ds' (acc ++ [DVar j y (fillDomain cx dd a')]) (capp f v)
+          (DLvl y : ds', VLPi f) -> let (cx', l) = extLvl cx y in go cx' ds' (acc ++ [DLvl y]) (lcapp f l)
+          (DDef j y b v : ds', _) -> do (b', v', cx') <- fillLet cx j y b v
+                                        go cx' ds' (acc ++ [DDef j y b' v']) t0
+          ([], _) -> fmap (\(ty', k', bs') -> DSplit i x a acc si ty' k' bs') (fillCase cx si ty0 k bs t0)
+          _ -> failWith ("cannot infer the hidden arguments in  " ++ prettySplit d0
+                         ++ "\n  (give a type, or the arguments as {e})")
+      _ -> Right d0
+
+-- the case of a split, filled: its type, the number of indices it
+-- absorbs, its branches
+fillCase :: Cx -> Id -> Exp -> Int -> [Branch] -> Val -> Res (Exp, Int, [Branch])
+fillCase cx i ty0 k bs t0 = case t of
   -- the split's type: the type it is checked against, written (lazily)
-  BSplit i ty0 k bs | VPi dom f <- t -> let ty = splitTypeExp cx 0 ty0 t0; d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
+  VPi dom f -> let ty = splitTypeExp cx 0 ty0 t0; d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
    Left msg -> failWith msg
    Right n | n > 0 -> fillSplitI i (splitTypeExp cx n ty0 t0) n bs
-   Right _ | k /= 0 -> let b0 = BSplit i ty 0 bs in if bodyHole b0 then fillBody cx b0 t0 else Right b0
+   Right _ | k /= 0 -> if caseHole ty 0 bs then fillCase cx i ty 0 bs t0 else Right (ty, 0, bs)
    Right _ -> case d of
-    VSum st _ [] cs r -> fmap (BSplit i ty 0) (mapM (fillBranch i st (motiveExp 0 ty) [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)) bs)
-    VSum{} -> Right (BSplit i ty 0 bs)
+    VSum st _ [] cs r -> fmap ((,,) ty 0) (mapM (fillBranch i st (motiveExp 0 ty) [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)) bs)
+    VSum{} -> Right (ty, 0, bs)
     _ -> case bs of
       [(c, xs, is, rs, b')] | Just (cx', el, ts) <- recordBranch cx d (map fst xs) ->
         let xs' = [ (x, fillDomain c' a v) | ((x, a), (c', v)) <- zip xs ts ]
-        in fmap (\b'' -> BSplit i ty 0 [(c, xs', is, rs, b'')]) (fillBody cx' b' (capp f el))
-      _ -> Right b
-  _ -> failWith ("cannot infer the hidden arguments in  " ++ prettyBody b
+        in fmap (\b'' -> (ty, 0, [(c, xs', is, rs, b'')])) (fillRhs cx' b' (capp f el))
+      _ -> Right (ty, 0, bs)
+  _ -> failWith ("cannot infer the hidden arguments in the split  " ++ shortId i
                  ++ "\n  (give a type, or the arguments as {e})")
  where
   t = force cx t0
@@ -2835,13 +2945,13 @@ fillBody cx b t0 = case b of
                      ds' <- recDoms c j doms
                      Right (RecR j n ds' es y)) rs0
       cx'' <- recCx cx' si m c (map fst xs) tel r vs rs'
-      body' <- fillBody cx'' body (app mot (VCon c vs))
+      body' <- fillRhs cx'' body (app mot (VCon c vs))
       Right (c, patTypes cx xs tel r, [], rs', body')
   -- a split on a family with k indices (checkSplitI): the positions of the
   -- recursive fields and their indices, as terms of the branch
   fillSplitI si ty k bs = case peelGens cx k t of
     (cxI, _, rest) -> case force cxI rest of
-      VPi dom _ | VSum st _ _ cs r <- force cxI dom -> fmap (BSplit si ty k) (mapM (fillBranchI cxI si (motiveExp k ty) k st cs r) bs)
+      VPi dom _ | VSum st _ _ cs r <- force cxI dom -> fmap ((,,) ty k) (mapM (fillBranchI cxI si (motiveExp k ty) k st cs r) bs)
       _ -> failWith "split: not on an indexed family (internal)"
   fillBranchI cxI si m k st cs r (c, xs, is, rs, body) = case conOf c cs of
     Nothing -> Right (c, xs, is, rs, body)
@@ -2861,7 +2971,7 @@ fillBody cx b t0 = case b of
                                                Right (quote cxY v)) vals
                      Right (RecR j n ds' es' y)) rs0
       cx3 <- recCxI cx'' si m c k (map fst xs) tel r vs rs'
-      body' <- fillBody cx3 body (motiveAt cxI t (ivs ++ [VCon c vs]))
+      body' <- fillRhs cx3 body (motiveAt cxI t (ivs ++ [VCon c vs]))
       Right (c, patTypes cxI xs tel r, is', rs', body')
 
 -- the type of a split, written (lazily, as a lambda's domain) as products
@@ -3200,8 +3310,16 @@ fillGroupE cx us = (us', cx1, map (snd . snd) res)
     DDef i x a b ->
       let ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
           a' = either (const (unfilledHoles a)) id ta
-          tb = inCtx ("in the definition of " ++ x) (fillBody cx1 b (ev cx1 a'))
-      in (DDef i x a' (either (const (unfilledBody b)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+          tb = inCtx ("in the definition of " ++ x) (fillC cx1 b (ev cx1 a'))
+      in (DDef i x a' (either (const (unfilledHoles b)) id tb), [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
+    DSplit i x a delta si ty k bs ->
+      let ta = inCtx ("in the type of " ++ x) (fillT cx1 a)
+          a' = either (const (unfilledHoles a)) id ta
+          d = DSplit i x a' delta si ty k bs
+          tb = inCtx ("in the definition of " ++ x) (fillSplitD cx1 d (ev cx1 a'))
+          -- its shape is known without forcing the filling (the knot)
+          ~(DSplit _ _ _ delta' si' ty' k' bs') = either (const (unfilledSplit d)) id tb
+      in (DSplit i x a' delta' si' ty' k' bs', [ m | Left m <- [ta] ] ++ [ m | Left m <- [tb] ])
     -- the declaration filled in the knot keeps its shape (parameters,
     -- indices, labels), seen without forcing the filling: a hidden argument
     -- of a field solved by the data type itself is then found, not looped on
@@ -3682,20 +3800,20 @@ quoteBlame cx v0 = go (scopeOf cx) v0
 -- the read-back must refuse it.
 quoteTest :: Cx -> Id -> [String]
 quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
-  f@(VSplit t _ ki _ bs rho ty) -> concat [ one f t ki rho ty c xs rs b | (c, xs, _, rs@(_ : _), b) <- bs ]
+  f@(VSplit t _ ki _ sd rho ty) -> concat [ one f t ki sd rho ty c xs rs b | (c, xs, _, rs@(_ : _), b) <- splitBranches sd ]
   _ -> ["not a split"]
  where
   k0 = cxK cx
   -- the variables are those of the checking of the branch: at fresh
   -- indices first (a split on an indexed family), then its pattern
   -- variables and its recursive results
-  one f t ki rho ty c tel rs b = case vars of
+  one f t ki sd rho ty c tel rs b = case vars of
     Left msg -> ["branch " ++ c ++ ": " ++ msg]
     Right (is, gens, rgens) ->
       let k = k0 + max 0 ki
           rho' = bindPats rho tel gens
-          canonical = evalBody (branchEnv t c m rho' xs rs) b
-          abstract = evalBody (foldl (\e ((y, a), v) -> pushVar e y a v) rho'
+          canonical = evalRhs (branchEnv t c m (splitHead sd) rho' xs rs) b
+          abstract = evalRhs (foldl (\e ((y, a), v) -> pushVar e y a v) rho'
                                      (zip [ (y, recTypeExp t c j n m ds es (xs !! j)) | RecR j n ds es y <- rs ] rgens)) b
           sc = (scopeOf cx) { scGens = zip [k0 ..] [ "i" ++ show j | j <- [1 .. ki] ]
                                        ++ zip [k ..] (xs ++ recNames rs) ++ scGens (scopeOf cx)
@@ -3707,7 +3825,7 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
          , "branch " ++ c ++ ", abstract recursive results:   " ++ shw abstract ]
    where
     xs = map fst tel
-    m = motiveExp (max 0 ki) (splitDeclType rho)
+    m = motiveExp (max 0 ki) (splitTy sd)
     vars = case peelGens cx (max 0 ki) ty of
       (cxI, is, rest) -> case force cxI rest of
         VPi dom _ | VSum _ _ _ cs r <- force cxI dom, Just (tel, _) <- conOf c cs -> do
@@ -3880,7 +3998,7 @@ quoteWith sc v0 = case v0 of
       ["v", x] -> walk (unf (app v (lookupDyn r x))) rest
       ["l", x] -> walk (unf (lapp v (lookupLvl r x))) rest
       ("c" : c : ys) -> case v of
-        VSplit _ _ _ _ bs _ _ | Just (_, rs, _) <- branchOf c bs ->
+        VSplit _ _ _ _ sd _ _ | bs <- splitBranches sd, Just (_, rs, _) <- branchOf c bs ->
           -- the recursive results on the path are declared as their
           -- definitions (branchEnv), not bound as variables (a branch
           -- being checked): a static test
@@ -3899,7 +4017,7 @@ quoteWith sc v0 = case v0 of
         ["v", x] -> [] : branchIdx (unf (app v (lookupDyn r x))) rest
         ["l", x] -> [] : branchIdx (unf (lapp v (lookupLvl r x))) rest
         ("c" : c : ys) -> case v of
-          VSplit _ _ k _ bs _ _ | k > 0 ->
+          VSplit _ _ k _ sd _ _ | k > 0, bs <- splitBranches sd ->
             let is = map (eval r) (branchIdxExps c bs)
                 v' = foldl app (splitBase v) is
             in is : branchIdx (unf (app v' (VCon c (map (lookupDyn r) ys)))) rest
