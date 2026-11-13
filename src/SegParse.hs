@@ -999,7 +999,7 @@ resB rs r = case r of
               Just ixl | null ls || any (`elem` ixl) ls -> -1
               _ -> 0
     -- the id is given by pathUnits (the definition and the path)
-    Right (BSplit (rsPath rs ++ "split#" ++ show o) k bs')
+    Right (BSplit (rsPath rs ++ "split#" ++ show o) Hole k bs')
   _ -> fmap BExp (resE rs r)
 
 -- the definitions of a let or where block, as nested lets
@@ -1527,7 +1527,7 @@ pathB i p b = case b of
   BLam x a b'    -> BLam x a (pathB i (p ++ [["v", x]]) b')
   BLLam x b'     -> BLLam x (pathB i (p ++ [["l", x]]) b')
   BLet j x a v b' -> BLet j x a v (pathB i p b')
-  BSplit _ k bs  -> BSplit (pathId i p) k [ (c, xs, rs, pathB i (p ++ [("c" : c : map fst xs)]) b') | (c, xs, rs, b') <- bs ]
+  BSplit _ ty k bs -> BSplit (pathId i p) ty k [ (c, xs, rs, pathB i (p ++ [("c" : c : map fst xs)]) b') | (c, xs, rs, b') <- bs ]
 
 
 ------------------------------------------------------------------------
@@ -1570,7 +1570,7 @@ shadowReport = units "" S.empty
     BLam x a b'   -> expr w sc a ++ binds w sc [x] (\sc' -> body w sc' b')
     BLLam x b'    -> binds w sc [x] (\sc' -> body w (S.insert ('%' : x) sc') b')
     BLet _ _ a v b' -> expr w sc a ++ expr w sc v ++ body w sc b'
-    BSplit _ _ bs -> concat [ binds w sc (map fst xs ++ recNames rs) (\sc' -> concatMap (expr w sc' . snd) xs ++ body w sc' b') | (_, xs, rs, b') <- bs ]
+    BSplit _ ty _ bs -> expr w sc ty ++ concat [ binds w sc (map fst xs ++ recNames rs) (\sc' -> concatMap (expr w sc' . snd) xs ++ body w sc' b') | (_, xs, rs, b') <- bs ]
   -- a data type: its parameters and indices (as lambdas), then its labels
   dataB w sc ps cs = case ps of
     PTerm x _ : ps' -> binds w sc [x] (\sc' -> dataB w sc' ps' cs)
@@ -1631,12 +1631,12 @@ binderB pre ren n b = case b of
   BLLam x b' -> let (x', ren', n1) = binderBind pre ren n x; (n2, b'') = binderB pre ren' n1 b' in (n2, BLLam x' b'')
   BLet i x a v b' -> let (n1, a') = binderGo pre ren n a; (n2, v') = binderGo pre ren n1 v
                          (n3, b'') = binderB pre ren n2 b' in (n3, BLet i x a' v' b'')
-  BSplit t sk bs -> let (n1, bs') = mapL (\k (c, xs, rs, b') ->
+  BSplit t ty0 sk bs -> let (n0, ty) = binderGo pre ren n ty0; (n1, bs') = mapL (\k (c, xs, rs, b') ->
                                       let (xs', ren', k1) = foldl (\(acc, r, kk) (x, a) -> let (kk0, a') = binderGo pre r kk a; (x', r', kk') = binderBind pre r kk0 x in (acc ++ [(x', a')], r', kk')) ([], ren, k) xs
                                           (ys', ren'', k1') = foldl (\(acc, r, kk) x -> let (x', r', kk') = binderBind pre r kk x in (acc ++ [x'], r', kk')) ([], ren', k1) (recNames rs)
                                           (k2, b'') = binderB pre ren'' k1' b'
-                                      in (k2, (c, xs', [ RecR j m ds es y | (RecR j m ds es _, y) <- zip rs ys' ], b''))) n bs
-                    in (n1, BSplit t sk bs')
+                                      in (k2, (c, xs', [ RecR j m ds es y | (RecR j m ds es _, y) <- zip rs ys' ], b''))) n0 bs
+                    in (n1, BSplit t ty sk bs')
 
 -- a data declaration: its parameters and indices are bound in order
 -- (as by its type and its lambdas, one renaming); a target is in the scope
@@ -1826,7 +1826,7 @@ surveyRecords rus = do
     BLam _ a b' -> expUses a ++ bodyUses b'
     BLLam _ b' -> bodyUses b'
     BLet _ _ a v b' -> expUses a ++ expUses v ++ bodyUses b'
-    BSplit _ _ bs -> concat [ concatMap (expUses . snd) xs ++ bodyUses b' | (_, xs, _, b') <- bs ]
+    BSplit _ ty _ bs -> expUses ty ++ concat [ concatMap (expUses . snd) xs ++ bodyUses b' | (_, xs, _, b') <- bs ]
   subE e = case e of
     App a b -> [a, b]; Pair a b -> [a, b]; Fst a -> [a]; Snd a -> [a]; Con _ as -> as
     Proj a _ -> [a]; ProjU a _ -> [a]
