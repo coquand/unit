@@ -303,26 +303,34 @@ sumDef = takeWhile (/= '\0')
 recArg :: Id -> Name -> Int -> Int -> Name
 recArg t c j i = "%y" ++ show i ++ "\1" ++ t ++ "/" ++ c ++ "/" ++ show j
 
--- the binders of the TYPE of that result (distinct from the lambda's)
+-- the binders of the TYPE of a recursive result of a function field
+-- (distinct from those of its lambda, recArg)
 recTyArg :: Id -> Name -> Int -> Int -> Name
 recTyArg t c j i = "%z" ++ show i ++ "\1" ++ t ++ "/" ++ c ++ "/" ++ show j
 
-recMot :: Id -> Name -> Int -> Name
-recMot t c j = "%mot" ++ show j ++ "\1" ++ t ++ "/" ++ c
-
-recFld :: Id -> Name -> Int -> Name
-recFld t c j = "%fld" ++ show j ++ "\1" ++ t ++ "/" ++ c
-
--- the type of that result: (ys : Psi) -> mot es (x ys), from the field
--- type (ys : Psi) -> d ps es (k indices), its binders renamed
-recTyExp :: Id -> Name -> Int -> Int -> Exp -> Exp
-recTyExp t c j k ft = go 1 [] ft
+-- the motive of a split of type (i1 : I1) .. (ik : Ik) -> (x : D ..) -> P
+-- (written as products by the filling pass): \ i1 .. ik x -> P
+motiveExp :: Int -> Exp -> Exp
+motiveExp k ty = go (k + 1) ty
  where
-  go i ren e = case e of
-    Pi z a b -> let y = recTyArg t c j i
-                in Pi y (renameVars ren a) (go (i + 1) ((z, y) : ren) b)
-    _ -> App (foldl App (Var (recMot t c j)) (map (renameVars ren) (lastArgs k e)))
-             (foldl App (Var (recFld t c j)) [ Var y | (_, y) <- reverse ren ])
+  go 0 e = e
+  go m e = case e of
+    Pi x a b -> Lam x a (go (m - 1) b)
+    _ -> error "the type of a split is not written as products (internal)"
+
+-- the type of the recursive result of the field x at position j: for
+-- x : d ps es  it is  M es x , for a function field with n binders of
+-- domains ds  it is  (zs : ds) -> M es (x zs) , M the motive
+recTypeExp :: Id -> Name -> Int -> Int -> Exp -> [Exp] -> [Exp] -> Name -> Exp
+recTypeExp t c j n m ds es x
+  | n == 0    = App (foldl App m es) (Var x)
+  | otherwise = foldr (\(z, d) b -> Pi z d b)
+                      (App (foldl App m (map (renameVars ren) es)) (foldl App (Var x) (map Var zs)))
+                      (zip zs (map (renameVars ren) ds))
+ where
+  ys = [ recArg t c j i | i <- [1 .. length ds] ]
+  zs = [ recTyArg t c j i | i <- [1 .. length ds] ]
+  ren = zip ys zs
 
 -- the holes of a term whose filling failed: Unfilled (an error when used),
 -- so that they make no equalities in a run that trusts that definition
@@ -734,7 +742,7 @@ app (VLam _ f) v = capp f v
 app (VSplit t d k is bs r ty) v | length is < k = VSplit t d k (is ++ [v]) bs r ty
 app f@(VSplit t _ k is bs r _) v = case v of
   VCon c vs -> case branchOf c bs of
-    Just (xs, rs, b) -> evalBody (branchEnv t c (bindIdx t is (bindPats r (branchTel c bs) vs)) xs rs) b
+    Just (xs, rs, b) -> evalBody (branchEnv t c (motiveExp k (splitDeclType r)) (bindIdx t is (bindPats r (branchTel c bs) vs)) xs rs) b
     Nothing | k < 0 -> VApp f v         -- not annotated (its definition failed)
             | otherwise -> error ("split: no branch for " ++ c)
   -- a record: the branch applied to its fields (beta for the eliminator)
@@ -747,15 +755,15 @@ app u v = VApp u v
 -- [y = \ zs -> t es (x_j zs)], where t is the split itself, found by its
 -- name (every definition is recursive, mTT10), es the indices of the
 -- field; at the positions the filling pass certified
-branchEnv :: Id -> Name -> Env -> [Name] -> [RecR] -> Env
-branchEnv t c r0 xs rs = foldl (recDecl xs) r0 rs
+branchEnv :: Id -> Name -> Exp -> Env -> [Name] -> [RecR] -> Env
+branchEnv t c m r0 xs rs = foldl (recDecl xs) r0 rs
  where
   recDecl xs r (RecR j n ds es y)
     -- not annotated: the definition did not pass the filling pass (it is
     -- reported there); its results are never equal to anything (lazy)
     | j < 0     = pushVar r y Hole (error ("recursive result " ++ shortName y ++ " of " ++ shortId t
                                            ++ ": the split was not annotated (its definition failed)"))
-    | otherwise = pushDecl r (DLet y Hole (recExp t c j n ds es (xs !! j)))
+    | otherwise = pushDecl r (DLet y (recTypeExp t c j n m ds es (xs !! j)) (recExp t c j n ds es (xs !! j)))
 
 -- the recursive result of the field x at position j with n binders (of
 -- domains ds) and indices es
@@ -776,6 +784,13 @@ recDeclared r y = case outer r of
     DLet x _ _ | x == y -> True
     _ -> declName d /= y && recDeclared r' y
   OBlock r' _ _ -> recDeclared r' y
+
+-- the type of the split declared at the head of an environment (the
+-- environment of a split value)
+splitDeclType :: Env -> Exp
+splitDeclType r = case envDecls r of
+  DSplit _ ty _ _ : _ -> ty
+  _ -> error "splitDeclType: not the environment of a split"
 
 -- the pattern variables of a branch bound to the fields
 bindPats :: Env -> Tel -> [Val] -> Env
@@ -2223,13 +2238,13 @@ checkBody cx b t0 = case b of
   BLLam x b' | VLPi f <- t -> let (cx', l) = extLvl cx x in checkBody cx' b' (lcapp f l)
   BLet i x a v b' -> do cx' <- checkLet cx i x a v
                         checkBody cx' b' t
-  BSplit si _ k bs | VPi dom f <- t -> let d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
+  BSplit si ty k bs | VPi dom f <- t -> let d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
    Left msg -> failWith msg
    Right n | n > 0 -> if k /= n then failWith ("split: not annotated with its " ++ show n ++ " indices (internal)")
-                      else checkSplitI cx si n bs t
+                      else checkSplitI cx si (motiveExp n ty) n bs t
            | k > 0 -> failWith "split: annotated with indices, but not on an indexed family (internal)"
    Right _ -> case d of
-    VSum st _ [] cs r -> checkSplit cx si st bs [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)
+    VSum _ _ [] cs r -> checkSplit cx si (motiveExp 0 ty) bs [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)
     VSum{} -> failWith ("split: " ++ unwords (branchLabels bs) ++ " are not the constructors of the indexed family "
                         ++ showV cx dom)
     d -> case bs of
@@ -2270,31 +2285,31 @@ prettyBody b = case b of
   BLet _ _ _ _ b' -> "let {..} in " ++ prettyBody b'
   BSplit t _ _ _ -> shortId t
 
-checkSplit :: Cx -> Id -> Id -> [Branch] -> [(Name, Tel)] -> Env -> Val -> Res ()
+checkSplit :: Cx -> Id -> Exp -> [Branch] -> [(Name, Tel)] -> Env -> Val -> Res ()
 -- every branch is for a constructor of the data type (an unknown one
 -- would never be checked), and every constructor has its branch
-checkSplit cx si t bs cs r mot
+checkSplit cx si m bs cs r mot
   | (c : _) <- [ c | c <- branchLabels bs, c `notElem` map fst cs ] =
       failWith ("split: " ++ c ++ " is not a constructor of this data type")
-  | otherwise = checkSplitAll cx si t bs cs r mot
+  | otherwise = checkSplitAll cx si m bs cs r mot
 
-checkSplitAll :: Cx -> Id -> Id -> [Branch] -> [(Name, Tel)] -> Env -> Val -> Res ()
+checkSplitAll :: Cx -> Id -> Exp -> [Branch] -> [(Name, Tel)] -> Env -> Val -> Res ()
 checkSplitAll _ _ _ _ [] _ _ = ok
-checkSplitAll cx si t bs ((c, tel) : cs) r mot = case branchOf c bs of
+checkSplitAll cx si m bs ((c, tel) : cs) r mot = case branchOf c bs of
   Nothing -> failWith ("split: missing the branch for " ++ c)
   Just (xs, rs, body) -> do
     (cx', vs) <- openTel cx xs tel r
-    cx'' <- recCx cx' si t c tel r mot vs rs
+    cx'' <- recCx cx' si m c xs tel r vs rs
     case checkBody cx'' body (app mot (VCon c vs)) of
       Left msg -> failWith ("in the branch  " ++ c ++ "  of the split:\n" ++ msg)
       Right () -> ok
-    checkSplitAll cx si t bs cs r mot
+    checkSplitAll cx si m bs cs r mot
 
 -- the recursive results of a branch, as variables of their types: for the
--- field x : d ps the result r : P x, for x : (ys : Psi) -> d ps the result
--- r : (ys : Psi) -> P (x ys), where P is the motive
-recCx :: Cx -> Id -> Id -> Name -> Tel -> Env -> Val -> [Val] -> [RecR] -> Res Cx
-recCx cx0 si t c tel r mot vs = foldl step (Right cx0)
+-- field x : d ps the result r : M x, for x : (ys : Psi) -> d ps the result
+-- r : (ys : Psi) -> M (x ys), where M is the motive (recTypeExp)
+recCx :: Cx -> Id -> Exp -> Name -> [Name] -> Tel -> Env -> [Val] -> [RecR] -> Res Cx
+recCx cx0 si m c xs tel r vs = foldl step (Right cx0)
  where
   step acc (RecR j n ds _ y) = do
     cx <- acc
@@ -2302,9 +2317,7 @@ recCx cx0 si t c tel r mot vs = foldl step (Right cx0)
       if recIdxAgree cx si c j 0 (fieldEnv j) (snd (tel !! j)) ds [] then ok
         else failWith ("split: the domains of the recursive field " ++ show (j + 1) ++ " of " ++ c
                        ++ " are not annotated (internal)")
-      let ty | n == 0 = app mot (vs !! j)
-             | otherwise = eval (eVar (eVar (fieldEnv j) (recFld t c j) (vs !! j)) (recMot t c j) mot)
-                                (recTyExp t c j 0 (snd (tel !! j)))
+      let ty = ev cx (recTypeExp si c j n m ds [] (xs !! j))
       Right (fst (extVar cx y ty))
   -- the environment of the field types before position j
   fieldEnv j = foldl (\e ((z, za), v) -> pushVar e z za v) r (take j (zip tel vs))
@@ -2423,24 +2436,11 @@ motiveAt cx t (v : vs) = case force cx t of
   VPi _ f -> motiveAt cx (capp f v) vs
   w -> w
 
--- the motive as a function of the k indices and the element, read off
--- the type (i1 : I1) .. (ik : Ik) -> (x : D ..) -> P written as products
-motiveLam :: Cx -> Int -> Val -> Maybe Val
-motiveLam cx k t = case force cx t of
-  VPi a (Clos z (CExp b) r) -> fmap (\b' -> VLam a (Clos z (CExp b') r)) (lams k b)
-  _ -> Nothing
- where
-  lams :: Int -> Exp -> Maybe Exp
-  lams 0 e = Just e
-  lams m e = case e of
-    Pi x a e' -> fmap (Lam x a) (lams (m - 1) e')
-    _ -> Nothing
-
 -- a split on a family with k indices: the branch for c xs is checked at
 -- P es (c xs), es the target of c; a recursive result at the indices of
 -- its field
-checkSplitI :: Cx -> Id -> Int -> [Branch] -> Val -> Res ()
-checkSplitI cx si k bs t = case peelGens cx k t of
+checkSplitI :: Cx -> Id -> Exp -> Int -> [Branch] -> Val -> Res ()
+checkSplitI cx si m k bs t = case peelGens cx k t of
   (cxI, _, rest) -> case force cxI rest of
     VPi dom _ | VSum st _ _ cs r <- force cxI dom ->
       case [ c | c <- branchLabels bs, c `notElem` conNames cs ] of
@@ -2454,7 +2454,7 @@ checkSplitI cx si k bs t = case peelGens cx k t of
       (cx', vs) <- openTel cxI xs tel r
       let ivs = map (eval (telEnv r tel vs)) es
           cx'' = cx' { cxEnv = bindIdx si ivs (cxEnv cx') }
-      cx3 <- recCxI cx'' si st c k tel r t vs rs
+      cx3 <- recCxI cx'' si m c k xs tel r vs rs
       case checkBody cx3 body (motiveAt cxI t (ivs ++ [VCon c vs])) of
         Left msg -> failWith ("in the branch  " ++ c ++ "  of the split:\n" ++ msg)
         Right () -> ok
@@ -2463,8 +2463,8 @@ checkSplitI cx si k bs t = case peelGens cx k t of
 -- the field x : d ps es the result  P es x , for x : (ys : Psi) -> d ps es
 -- the result  (ys : Psi) -> P es (x ys) ; the indices the filling pass
 -- wrote (evaluation reads them) must be those of the field
-recCxI :: Cx -> Id -> Id -> Name -> Int -> Tel -> Env -> Val -> [Val] -> [RecR] -> Res Cx
-recCxI cx0 si t c k tel r ty vs = foldl step (Right cx0)
+recCxI :: Cx -> Id -> Exp -> Name -> Int -> [Name] -> Tel -> Env -> [Val] -> [RecR] -> Res Cx
+recCxI cx0 si m c k xs tel r vs = foldl step (Right cx0)
  where
   step acc (RecR j n ds es y) = do
     cx <- acc
@@ -2474,14 +2474,7 @@ recCxI cx0 si t c k tel r ty vs = foldl step (Right cx0)
       if recIdxAgree cx si c j k fe ft ds es then ok
         else failWith ("split: the indices of the recursive field " ++ show (j + 1) ++ " of " ++ c
                        ++ " are not annotated (internal)")
-      rty <- if n == 0 then Right (motiveAt cx ty (map (eval fe) (lastArgs k ft) ++ [vs !! j]))
-             else case motiveLam cx k ty of
-               Just mot -> Right (eval (eVar (eVar fe (recFld t c j) (vs !! j)) (recMot t c j) mot)
-                                       (recTyExp t c j k ft))
-               Nothing -> failWith ("split: the recursive function field " ++ show (j + 1) ++ " of " ++ c
-                                    ++ " needs the type of the split written as products"
-                                    ++ "  (i1 : I1) .. (ik : Ik) -> (x : D ps i1 .. ik) -> P")
-      Right (fst (extVar cx y rty))
+      Right (fst (extVar cx y (ev cx (recTypeExp si c j n m ds es (xs !! j)))))
   fieldEnv j = telEnv r (take j tel) vs
 
 -- the domains of the binders of a field (ys : Psi) -> d ps es (each in
@@ -2815,12 +2808,12 @@ fillBody cx b t0 = case b of
   BLet i x a v b' -> do (a', v', cx') <- fillLet cx i x a v
                         fmap (BLet i x a' v') (fillBody cx' b' t)
   -- the split's type: the type it is checked against, written (lazily)
-  BSplit i ty0 k bs | VPi dom f <- t -> let ty = fillDomain cx ty0 t0; d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
+  BSplit i ty0 k bs | VPi dom f <- t -> let ty = splitTypeExp cx 0 ty0 t0; d = force cx dom in case splitIndices cx k (branchLabels bs) t d of
    Left msg -> failWith msg
-   Right n | n > 0 -> fillSplitI i ty n bs
+   Right n | n > 0 -> fillSplitI i (splitTypeExp cx n ty0 t0) n bs
    Right _ | k /= 0 -> let b0 = BSplit i ty 0 bs in if bodyHole b0 then fillBody cx b0 t0 else Right b0
    Right _ -> case d of
-    VSum st _ [] cs r -> fmap (BSplit i ty 0) (mapM (fillBranch i st [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)) bs)
+    VSum st _ [] cs r -> fmap (BSplit i ty 0) (mapM (fillBranch i st (motiveExp 0 ty) [ (c, tel) | ConDecl c tel _ <- cs ] r (VLam dom f)) bs)
     VSum{} -> Right (BSplit i ty 0 bs)
     _ -> case bs of
       [(c, xs, rs, b')] | Just (cx', el, ts) <- recordBranch cx d (map fst xs) ->
@@ -2831,7 +2824,7 @@ fillBody cx b t0 = case b of
                  ++ "\n  (give a type, or the arguments as {e})")
  where
   t = force cx t0
-  fillBranch si st cs r mot (c, xs, rs, body) = case lookup c cs of
+  fillBranch si st m cs r mot (c, xs, rs, body) = case lookup c cs of
     Nothing -> Right (c, xs, rs, body)
     Just tel -> do
       rs0 <- annotateRecs (sumDef st) c tel rs
@@ -2840,16 +2833,16 @@ fillBody cx b t0 = case b of
                      let (_, doms, _) = fieldIdx cx' si c j 0 (telEnv r (take j tel) vs) (snd (tel !! j))
                      ds' <- recDoms c j doms
                      Right (RecR j n ds' es y)) rs0
-      cx'' <- recCx cx' si st c tel r mot vs rs'
+      cx'' <- recCx cx' si m c (map fst xs) tel r vs rs'
       body' <- fillBody cx'' body (app mot (VCon c vs))
       Right (c, patTypes cx xs tel r, rs', body')
   -- a split on a family with k indices (checkSplitI): the positions of the
   -- recursive fields and their indices, as terms of the branch
   fillSplitI si ty k bs = case peelGens cx k t of
     (cxI, _, rest) -> case force cxI rest of
-      VPi dom _ | VSum st _ _ cs r <- force cxI dom -> fmap (BSplit si ty k) (mapM (fillBranchI cxI si k st cs r) bs)
+      VPi dom _ | VSum st _ _ cs r <- force cxI dom -> fmap (BSplit si ty k) (mapM (fillBranchI cxI si (motiveExp k ty) k st cs r) bs)
       _ -> failWith "split: not on an indexed family (internal)"
-  fillBranchI cxI si k st cs r (c, xs, rs, body) = case conOf c cs of
+  fillBranchI cxI si m k st cs r (c, xs, rs, body) = case conOf c cs of
     Nothing -> Right (c, xs, rs, body)
     Just (tel, es) -> do
       rs0 <- annotateRecs (sumDef st) c tel rs
@@ -2863,9 +2856,25 @@ fillBody cx b t0 = case b of
                                                           ++ show (j + 1) ++ " of " ++ c ++ " cannot be written in the branch"))
                                                Right (quote cxY v)) vals
                      Right (RecR j n ds' es' y)) rs0
-      cx3 <- recCxI cx'' si st c k tel r t vs rs'
+      cx3 <- recCxI cx'' si m c k (map fst xs) tel r vs rs'
       body' <- fillBody cx3 body (motiveAt cxI t (ivs ++ [VCon c vs]))
       Right (c, patTypes cxI xs tel r, rs', body')
+
+-- the type of a split, written (lazily, as a lambda's domain) as products
+-- for its k indices and its argument, so that its motive is a term
+-- (motiveExp)
+splitTypeExp :: Cx -> Int -> Exp -> Val -> Exp
+splitTypeExp cx k d t
+  | not (hasHole d) = d
+  | otherwise = fromMaybe (error ("the type of a split cannot be written here: " ++ quoteBlame cx t))
+                          (go cx (k + 1) t)
+ where
+  go c 0 a = quote c a
+  go c n a = case force c a of
+    VPi dom f -> let x = "h%" ++ show (cxK c)
+                     (c', v) = extVar c x dom
+                 in Pi x <$> quote c dom <*> go c' (n - 1) (capp f v)
+    _ -> Nothing
 
 -- the types of the pattern variables of a branch, written in the branch
 -- (each in the scope of the previous ones; lazily, as a lambda's domain)
@@ -3685,7 +3694,7 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
     Right (is, gens, rgens) ->
       let k = k0 + max 0 ki
           rho' = bindIdx t is (bindPats rho tel gens)
-          canonical = evalBody (branchEnv t c rho' xs rs) b
+          canonical = evalBody (branchEnv t c (motiveExp (max 0 ki) (splitDeclType rho)) rho' xs rs) b
           abstract = evalBody (bindAll rho' (recNames rs) rgens) b
           sc = (scopeOf cx) { scGens = zip [k0 ..] [ "i" ++ show j | j <- [1 .. ki] ]
                                        ++ zip [k ..] (xs ++ recNames rs) ++ scGens (scopeOf cx)
@@ -3699,10 +3708,11 @@ quoteTest cx i = case whnf Set.empty (lookupVal (cxEnv cx) i) of
     xs = map fst tel
     vars = case peelGens cx (max 0 ki) ty of
       (cxI, is, rest) -> case force cxI rest of
-        VPi dom cl | VSum st _ _ cs r <- force cxI dom, Just (tel, _) <- conOf c cs -> do
+        VPi dom _ | VSum _ _ _ cs r <- force cxI dom, Just (tel, _) <- conOf c cs -> do
           (cx', gens) <- openTel cxI xs tel r
-          cx'' <- if ki > 0 then recCxI cx' t st c ki tel r ty gens rs
-                  else recCx cx' t st c tel r (VLam dom cl) gens rs
+          let m = motiveExp (max 0 ki) (splitDeclType rho)
+          cx'' <- if ki > 0 then recCxI cx' t m c ki xs tel r gens rs
+                  else recCx cx' t m c xs tel r gens rs
           Right (is, gens, [ lookupVal (cxEnv cx'') y | y <- recNames rs ])
         _ -> Left "not a split on a data type"
 
