@@ -1,0 +1,89 @@
+-- Arbitrary local generators reduced to numerator generators, then glued.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Cancel (A : CRing) (n : Nat) (gs : Fin n -> A.R) {
+ module G = GeneratedIdeal[l].Over[A,n,gs] ;
+ member (x y : A.R) (u : RL[A].unit x) (h : G.Member (A.mul x y)) : G.Member y =
+  G.equal _ _
+   (trans (A.mulA u.1 x y)
+    (trans (ap (\ t -> A.mul t y) (trans (A.mulC u.1 x) u.2)) (AffinePowers[l].Over[A].one-left y)))
+   (G.scale u.1 (A.mul x y) h) ;
+} ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ;
+ module I = AffineInterface[l].Over[R,setR] ;
+ module Fr = LocalizationFractions[l].Over[R,setR] ;
+ module At (A : C.Algebra) (fp : P.FP A) (m : Nat) (fs : Fin m -> A.ring.R)
+  (ls : (i : Fin m) -> I.LocalizationWitness A (fs i))
+  (ns : Fin m -> Nat) (gs : (i : Fin m) -> Fin (ns i) -> (ls i).1.ring.R)
+  (os : (i j : Fin m) -> I.LocalizationWitness (ls j).1 ((ls j).2.2.1.1.1 (fs i))) {
+  module Local (i : Fin m) {
+   L : C.Algebra = (ls i).1 ;
+   inc : C.Hom A L = (ls i).2.2.1 ;
+   module Pow = AffinePowers[l].Over[L.ring] ;
+   module G = GeneratedIdeal[l].Over[L.ring,ns i,gs i] ;
+  } ;
+  module Overlap (i j : Fin m) {
+   O : C.Algebra = (os i j).1 ;
+   right : C.Hom Local[j].L O = (os i j).2.2.1 ;
+   base : C.Hom A O = C.compose A Local[j].L O right Local[j].inc ;
+   left : C.Hom Local[i].L O = ((ls i).2.2.2.2 O).sec (base,(os i j).2.2.2.1) ;
+   module G = GeneratedIdeal[l].Over[O.ring,ns j,\ k -> right.1.1 (gs j k)] ;
+  } ;
+  Compatible : U l = (i j : Fin m) (k : Fin (ns i)) ->
+   Overlap[i,j].G.Member (Overlap[i,j].left.1.1 (gs i k)) ;
+  Representations : U l = (i : Fin m) (k : Fin (ns i)) -> Fr.Form A (fs i) (ls i) (gs i k) ;
+  representatives : Tr.Trunc[Representations].carrier =
+   AffineFinite[l].choice m (\ i -> (k : Fin (ns i)) -> Fr.Form A (fs i) (ls i) (gs i k))
+    (\ i -> AffineFinite[l].choice (ns i) (\ k -> Fr.Form A (fs i) (ls i) (gs i k))
+     (\ k -> Fr.fractions A fp (fs i) (ls i) (gs i k))) ;
+  Result : U l = (N : Nat) * (hs : Fin N -> A.ring.R) *
+   ((j : Fin m) (a : Local[j].L.ring.R) ->
+    (GeneratedIdeal[l].Over[Local[j].L.ring,N,\ k -> Local[j].inc.1.1 (hs k)].Member a -> Local[j].G.Member a) *
+    (Local[j].G.Member a -> GeneratedIdeal[l].Over[Local[j].L.ring,N,\ k -> Local[j].inc.1.1 (hs k)].Member a)) ;
+  module Normalize (reps : Representations) {
+   numerators (i : Fin m) (k : Fin (ns i)) : A.ring.R = (reps i k).1 ;
+   module Norm = IdealGluing[l].Over[R,setR].At[A,m,fs,ls,ns,numerators,os] ;
+   module Along (i : Fin m) (B : C.Algebra) (h : C.Hom Local[i].L B) {
+    denominator (k : Fin (ns i)) : B.ring.R =
+     h.1.1 (Local[i].Pow.power (Local[i].inc.1.1 (fs i)) (reps i k).2.1) ;
+    unit (k : Fin (ns i)) : RL[B.ring].unit (denominator k) =
+     AffineRing[l].unit-map Local[i].L.ring B.ring h.1
+      (Local[i].Pow.power (Local[i].inc.1.1 (fs i)) (reps i k).2.1)
+      (Local[i].Pow.Units[Local[i].L.set].power-unit (Local[i].inc.1.1 (fs i)) (ls i).2.2.2.1 (reps i k).2.1) ;
+    relation (k : Fin (ns i)) :
+     Id B.ring.R (h.1.1 (Local[i].inc.1.1 (numerators i k))) (B.ring.mul (denominator k) (h.1.1 (gs i k))) =
+     trans (ap h.1.1 (reps i k).2.2)
+      (h.1.2.2.2 (Local[i].Pow.power (Local[i].inc.1.1 (fs i)) (reps i k).2.1) (gs i k)) ;
+    module Old = GeneratedIdeal[l].Over[B.ring,ns i,\ k -> h.1.1 (gs i k)] ;
+    module New = GeneratedIdeal[l].Over[B.ring,ns i,\ k -> h.1.1 (Local[i].inc.1.1 (numerators i k))] ;
+    new-in-old (k : Fin (ns i)) : Old.Member (h.1.1 (Local[i].inc.1.1 (numerators i k))) =
+     Old.equal _ _ (sym (relation k)) (Old.scale (denominator k) (h.1.1 (gs i k)) (Old.generator k)) ;
+    old-in-new (k : Fin (ns i)) : New.Member (h.1.1 (gs i k)) =
+     Cancel[B.ring,ns i,\ k -> h.1.1 (Local[i].inc.1.1 (numerators i k))].member
+      (denominator k) (h.1.1 (gs i k)) (unit k)
+      (New.equal _ _ (relation k) (New.generator k)) ;
+    forward (a : B.ring.R) : New.Member a -> Old.Member a =
+     Old.includes (ns i) (\ k -> h.1.1 (Local[i].inc.1.1 (numerators i k))) new-in-old a ;
+    backward (a : B.ring.R) : Old.Member a -> New.Member a =
+     New.includes (ns i) (\ k -> h.1.1 (gs i k)) old-in-new a ;
+   } ;
+   compatible (agree : Compatible) : Norm.Compatible = \ i j k ->
+    Along[j,Overlap[i,j].O,Overlap[i,j].right].backward _
+     (Overlap[i,j].G.equal _ _ (sym (Along[i,Overlap[i,j].O,Overlap[i,j].left].relation k))
+      (Overlap[i,j].G.scale (Along[i,Overlap[i,j].O,Overlap[i,j].left].denominator k)
+       (Overlap[i,j].left.1.1 (gs i k)) (agree i j k))) ;
+   result (w : Norm.Result) : Result =
+    (w.1,w.2.1,\ j a ->
+     (\ h -> Along[j,Local[j].L,C.identity Local[j].L].forward a ((w.2.2 j a).1 h),
+      \ h -> (w.2.2 j a).2 (Along[j,Local[j].L,C.identity Local[j].L].backward a h))) ;
+   glue (agree : Compatible) : Tr.Trunc[Result].carrier =
+    Tr.Trunc[Norm.Result].induction @l (\ t -> Tr.Trunc[Result].carrier) (\ t -> Tr.Trunc[Result].proposition)
+     (\ w -> Tr.Trunc[Result].inc (result w)) (Norm.glue (compatible agree)) ;
+  } ;
+  glue (agree : Compatible) : Tr.Trunc[Result].carrier =
+   Tr.Trunc[Representations].induction @l (\ t -> Tr.Trunc[Result].carrier) (\ t -> Tr.Trunc[Result].proposition)
+    (\ reps -> Normalize[reps].glue agree) representatives ;
+ } ;
+} ;

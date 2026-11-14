@@ -1,0 +1,239 @@
+-- Tensor product with a projector.  For an A-module P and a projector f of
+-- size L (PROJECTORS),
+--     P (x) f = { c : Fin L -> P | sum_y' f_yy' c_y' = c_y  for all y },
+-- a submodule of P^L (the condition is linear in c).  It is functorial in
+-- P (a linear map preserves the sums), and
+--  (image)  Image (p (x) f) ~ Image p (x) f,  w |-> (y |-> (w_(x,y))_x):
+--           w is fixed by p (x) 1 and by 1 (x) f, because
+--           (p (x) 1)(p (x) f) = p (x) f = (1 (x) f)(p (x) f);
+--  (sum)    P (x) dsum q r ~ P (x) q + P (x) r, by parts: at a left index
+--           the right terms of the condition vanish;
+--  (unit)   P (x) 1 ~ P;
+--  (zero)   P (x) 0 has a single element.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module SM = SerreModule[l] ;
+module SP = SerreModuleProducts[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module PJ = Projectors[l].Over[A,setA] ;
+ module MI = PJ.MI ;
+ module SA = PJ.SA ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ module Of (P : SA.Module) (f : PJ.Projector) {
+  module ML = SA.Laws[P] ;
+  module PS = SerreModuleSums[l].Over[A,P] ;
+  module PL = SP.Over[A,Fin f.size,\ y -> P] ;
+  comb (c : PL.Carrier) (y : Fin f.size) : P.M = PS.sum f.size (\ y' -> P.sm (f.matrix y y') (c y')) ;
+  Member (c : PL.Carrier) : U l = (y : Fin f.size) -> Id P.M (comb c y) (c y) ;
+  member-prop (c : PL.Carrier) : Pr.isProp (Member c) =
+   F.isProp-Pi (Fin f.size) (\ y -> Id P.M (comb c y) (c y)) (\ y -> P.setM _ _) ;
+  Carrier : U l = (c : PL.Carrier) * Member c ;
+  family (c : Carrier) : PL.Carrier = c.1 ;
+  member (c : Carrier) : Member (family c) = c.2 ;
+  ext (c d : Carrier) (h : (y : Fin f.size) -> Id P.M (family c y) (family d y)) : Id Carrier c d =
+   Pr.Sigma-eq PL.Carrier Member (family c) (family d) (member c) (member d) (PL.ext _ _ h) (member-prop (family d)) ;
+  set : Pr.isSet Carrier = Pr.isSet-Sigma PL.Carrier Member PL.product.setM (\ c -> Pr.prop-to-set (Member c) (member-prop c)) ;
+  -- a sum of negatives is the negative of the sum
+  neg-sum (n : Nat) (xs : Fin n -> P.M) : Id P.M (PS.sum n (\ i -> P.mneg (xs i))) (P.mneg (PS.sum n xs)) =
+   ML.neg-unique (PS.sum n xs) (PS.sum n (\ i -> P.mneg (xs i)))
+    (trans (sym (PS.sum-add n xs (\ i -> P.mneg (xs i))))
+     (trans (PS.sum-cong n (\ i -> P.madd (xs i) (P.mneg (xs i))) (\ i -> P.mz) (\ i -> P.maddN (xs i))) (PS.sum-zero n))) ;
+  zero : Carrier = (\ y -> P.mz,\ y ->
+   trans (PS.sum-cong f.size (\ y' -> P.sm (f.matrix y y') P.mz) (\ y' -> P.mz) (\ y' -> ML.sm-zero (f.matrix y y'))) (PS.sum-zero f.size)) ;
+  add (c d : Carrier) : Carrier = (\ y -> P.madd (family c y) (family d y),\ y ->
+   trans (PS.sum-cong f.size (\ y' -> P.sm (f.matrix y y') (P.madd (family c y') (family d y')))
+     (\ y' -> P.madd (P.sm (f.matrix y y') (family c y')) (P.sm (f.matrix y y') (family d y')))
+     (\ y' -> P.smD (f.matrix y y') (family c y') (family d y')))
+    (trans (PS.sum-add f.size (\ y' -> P.sm (f.matrix y y') (family c y')) (\ y' -> P.sm (f.matrix y y') (family d y')))
+     (cong2 P.M P.madd _ _ _ _ (member c y) (member d y)))) ;
+  negative (c : Carrier) : Carrier = (\ y -> P.mneg (family c y),\ y ->
+   trans (PS.sum-cong f.size (\ y' -> P.sm (f.matrix y y') (P.mneg (family c y'))) (\ y' -> P.mneg (P.sm (f.matrix y y') (family c y')))
+     (\ y' -> ML.sm-neg (f.matrix y y') (family c y')))
+    (trans (neg-sum f.size (\ y' -> P.sm (f.matrix y y') (family c y'))) (ap P.mneg (member c y)))) ;
+  scale (a : A.R) (c : Carrier) : Carrier = (\ y -> P.sm a (family c y),\ y ->
+   trans (PS.sum-cong f.size (\ y' -> P.sm (f.matrix y y') (P.sm a (family c y'))) (\ y' -> P.sm a (P.sm (f.matrix y y') (family c y')))
+     (\ y' -> ML.sm-swap (f.matrix y y') a (family c y')))
+    (trans (PS.sum-scale a f.size (\ y' -> P.sm (f.matrix y y') (family c y'))) (ap (P.sm a) (member c y)))) ;
+  twisted : SA.Module = new SA.Module[Carrier,set,zero,add,negative,
+   \ c d e -> ext _ _ (\ y -> P.maddA (family c y) (family d y) (family e y)),
+   \ c d -> ext _ _ (\ y -> P.maddC (family c y) (family d y)),
+   \ c -> ext _ _ (\ y -> P.maddZ (family c y)),
+   \ c -> ext _ _ (\ y -> P.maddN (family c y)),scale,
+   \ a b c -> ext _ _ (\ y -> P.smA a b (family c y)),
+   \ c -> ext _ _ (\ y -> P.smO (family c y)),
+   \ a c d -> ext _ _ (\ y -> P.smD a (family c y) (family d y)),
+   \ a b c -> ext _ _ (\ y -> P.smE a b (family c y))] ;
+ } ;
+
+ -- functoriality in P
+ module Map (P Q : SA.Module) (f : PJ.Projector) (e : MI.Iso[P,Q]) {
+  module TP = Of[P,f] ;
+  module TQ = Of[Q,f] ;
+  module E = MI.Inverse[P,Q,e] ;
+  module FE = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,P,Q,e.hom] ;
+  module FI = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,Q,P,(MI.inverse P Q e).hom] ;
+  forward (c : TP.Carrier) : TQ.Carrier = (\ y -> MI.to e (TP.family c y),\ y ->
+   trans (TQ.PS.sum-cong f.size (\ y' -> Q.sm (f.matrix y y') (MI.to e (TP.family c y'))) (\ y' -> MI.to e (P.sm (f.matrix y y') (TP.family c y')))
+     (\ y' -> sym (MI.to-scale e (f.matrix y y') (TP.family c y'))))
+    (trans (sym (FE.sum-map f.size (\ y' -> P.sm (f.matrix y y') (TP.family c y')))) (ap (MI.to e) (TP.member c y)))) ;
+  backward (c : TQ.Carrier) : TP.Carrier = (\ y -> e.inv (TQ.family c y),\ y ->
+   trans (TP.PS.sum-cong f.size (\ y' -> P.sm (f.matrix y y') (e.inv (TQ.family c y'))) (\ y' -> e.inv (Q.sm (f.matrix y y') (TQ.family c y')))
+     (\ y' -> sym (E.inv-scale (f.matrix y y') (TQ.family c y'))))
+    (trans (sym (FI.sum-map f.size (\ y' -> Q.sm (f.matrix y y') (TQ.family c y')))) (ap e.inv (TQ.member c y)))) ;
+  iso : MI.Iso[TP.twisted,TQ.twisted] = MI.make TP.twisted TQ.twisted forward backward
+   (\ c d -> TQ.ext _ _ (\ y -> MI.to-add e (TP.family c y) (TP.family d y)))
+   (\ a c -> TQ.ext _ _ (\ y -> MI.to-scale e a (TP.family c y)))
+   (\ c -> TQ.ext _ _ (\ y -> e.to-inv (TQ.family c y)))
+   (\ c -> TP.ext _ _ (\ y -> e.inv-to (TP.family c y))) ;
+ } ;
+
+ -- (image)  Image (p (x) f) ~ Image p (x) f
+ module ImageOf (p f : PJ.Projector) {
+  module KR = Kronecker[l].Over[A,setA,p.size,f.size] ;
+  PF : PJ.Projector = PJ.Product[p,f].projector ;
+  module IW = PJ.Image[PF] ;
+  module IP = PJ.Image[p] ;
+  module T = Of[IP.image,f] ;
+  -- (p (x) 1) and (1 (x) f) fix the image of p (x) f
+  absorb (X : KR.MN.Mat) (hX : Id KR.MN.Mat (KR.MN.mmul X PF.matrix) PF.matrix) (w : IW.Carrier) :
+   Id KR.VN.Vec (KR.VN.act X (IW.value w)) (IW.value w) =
+   calc KR.VN.Vec { KR.VN.act X (IW.value w)
+     =< ap (KR.VN.act X) (sym (IW.member w)) > KR.VN.act X (KR.VN.act PF.matrix (IW.value w))
+     =< KR.VN.act-mul X PF.matrix (IW.value w) > KR.VN.act (KR.MN.mmul X PF.matrix) (IW.value w)
+     =< ap (\ Z -> KR.VN.act Z (IW.value w)) hX > KR.VN.act PF.matrix (IW.value w)
+     =< IW.member w > IW.value w } ;
+  left-unit : Id KR.MN.Mat (KR.MN.mmul (KR.kron p.matrix KR.Mn.mone) PF.matrix) PF.matrix =
+   trans (KR.mixed p.matrix p.matrix KR.Mn.mone f.matrix)
+    (trans (ap (\ Z -> KR.kron Z (KR.Mn.mmul KR.Mn.mone f.matrix)) p.idempotent) (ap (KR.kron p.matrix) (KR.Mn.m-one-left f.matrix))) ;
+  right-unit : Id KR.MN.Mat (KR.MN.mmul (KR.kron KR.Mm.mone f.matrix) PF.matrix) PF.matrix =
+   trans (KR.mixed KR.Mm.mone p.matrix f.matrix f.matrix)
+    (trans (ap (\ Z -> KR.kron Z (KR.Mn.mmul f.matrix f.matrix)) (KR.Mm.m-one-left p.matrix)) (ap (KR.kron p.matrix) f.idempotent)) ;
+  column (w : IW.Carrier) (y : Fin f.size) : IP.Carrier = (\ x -> IW.value w (KR.pair x y),
+   IP.V.vec-eq _ _ (\ x -> trans (sym (KR.act-one-right p.matrix (IW.value w) x y))
+    (KR.VN.entry _ _ (absorb (KR.kron p.matrix KR.Mn.mone) left-unit w) (KR.pair x y)))) ;
+  columns (w : IW.Carrier) : T.Carrier = (column w,\ y -> IP.ext _ _ (IP.V.vec-eq _ _ (\ x ->
+   trans (IP.sum-at f.size (\ y' -> IP.image.sm (f.matrix y y') (column w y')) x)
+    (trans (sym (KR.act-one-left f.matrix (IW.value w) x y))
+     (KR.VN.entry _ _ (absorb (KR.kron KR.Mm.mone f.matrix) right-unit w) (KR.pair x y)))))) ;
+  module Join (c : T.Carrier) {
+   w : KR.VN.Vec = \ z -> IP.value (T.family c (KR.second z)) (KR.first z) ;
+   w-at (x : Fin p.size) (y : Fin f.size) : Id A.R (w (KR.pair x y)) (IP.value (T.family c y) x) =
+    ap (\ t -> IP.value (T.family c t.2) t.1) (Pairing[l].unpair-pair f.size p.size x y) ;
+   -- sum_y' f_yy' w_(x',y') = (c_y)_x'
+   inner (x' : Fin p.size) (y : Fin f.size) :
+    Id A.R (S.sum f.size (\ y' -> A.mul (f.matrix y y') (w (KR.pair x' y')))) (IP.value (T.family c y) x') =
+    trans (S.sum-cong f.size (\ y' -> A.mul (f.matrix y y') (w (KR.pair x' y'))) (\ y' -> A.mul (f.matrix y y') (IP.value (T.family c y') x'))
+      (\ y' -> ap (A.mul (f.matrix y y')) (w-at x' y')))
+     (trans (sym (IP.sum-at f.size (\ y' -> IP.image.sm (f.matrix y y') (T.family c y')) x'))
+      (IP.V.entry _ _ (ap IP.value (T.member c y)) x')) ;
+   member : IW.Member w = KR.vec-pairs _ _ (\ x y -> calc A.R { KR.VN.act PF.matrix w (KR.pair x y)
+     =< KR.act-kron p.matrix f.matrix w x y >
+        S.sum p.size (\ x' -> A.mul (p.matrix x x') (S.sum f.size (\ y' -> A.mul (f.matrix y y') (w (KR.pair x' y')))))
+     =< S.sum-cong p.size (\ x' -> A.mul (p.matrix x x') (S.sum f.size (\ y' -> A.mul (f.matrix y y') (w (KR.pair x' y')))))
+         (\ x' -> A.mul (p.matrix x x') (IP.value (T.family c y) x')) (\ x' -> ap (A.mul (p.matrix x x')) (inner x' y)) >
+        IP.V.act p.matrix (IP.value (T.family c y)) x
+     =< IP.V.entry _ _ (IP.member (T.family c y)) x > IP.value (T.family c y) x
+     =< sym (w-at x y) > w (KR.pair x y) }) ;
+   point : IW.Carrier = (w,member) ;
+  } ;
+  iso : MI.Iso[IW.image,T.twisted] = MI.make IW.image T.twisted columns (\ c -> Join[c].point)
+   (\ w w' -> T.ext _ _ (\ y -> IP.ext _ _ (refl (\ x -> A.add (IW.value w (KR.pair x y)) (IW.value w' (KR.pair x y))))))
+   (\ a w -> T.ext _ _ (\ y -> IP.ext _ _ (refl (\ x -> A.mul a (IW.value w (KR.pair x y))))))
+   (\ c -> T.ext _ _ (\ y -> IP.ext _ _ (IP.V.vec-eq _ _ (\ x -> Join[c].w-at x y))))
+   (\ w -> IW.ext _ _ (KR.VN.vec-eq _ _ (\ z -> ap (IW.value w) (KR.pu z)))) ;
+ } ;
+
+ -- (sum)  P (x) dsum q r ~ P (x) q + P (x) r
+ module SumOf (P : SA.Module) (q r : PJ.Projector) {
+  QR : PJ.Projector = PJ.Sum[q,r].projector ;
+  module DS = PJ.Sum[q,r].DS ;
+  module T = Of[P,QR] ;
+  module TQ = Of[P,q] ;
+  module TR = Of[P,r] ;
+  module PS = T.PS ;
+  module ML = T.ML ;
+  module Pair = SP.Pair[A,TQ.twisted,TR.twisted] ;
+  -- a module sum over Fin (m + n)
+  sum-plus (n : Nat) : (m : Nat) (v : Fin (plus m n) -> P.M) ->
+   Id P.M (PS.sum (plus m n) v) (P.madd (PS.sum m (\ i -> v (Blocks[l].injl n m i))) (PS.sum n (\ k -> v (Blocks[l].injr n m k)))) = split {
+   zero -> \ v -> trans (sym (ML.zero-left (PS.sum n v))) (ap (\ t -> P.madd t (PS.sum n v)) (sym (PS.sum-empty (\ i -> v (Blocks[l].injl n zero i))))) ;
+   suc m | ih -> \ v -> trans (PS.sum-step (plus m n) v)
+    (trans (ap (P.madd (v (inr tt))) (ih (\ x -> v (inl x))))
+     (trans (P.maddA (v (inr tt)) (PS.sum m (\ i -> v (inl (Blocks[l].injl n m i)))) (PS.sum n (\ k -> v (inl (Blocks[l].injr n m k)))))
+      (ap (\ t -> P.madd t (PS.sum n (\ k -> v (inl (Blocks[l].injr n m k))))) (sym (PS.sum-step m (\ i -> v (Blocks[l].injl n (suc m) i))))))) } ;
+  -- terms with a zero coefficient
+  vanish (n : Nat) (as : Fin n -> A.R) (h : (j : Fin n) -> Id A.R (as j) A.z) (xs : Fin n -> P.M) :
+   Id P.M (PS.sum n (\ j -> P.sm (as j) (xs j))) P.mz =
+   trans (PS.sum-cong n (\ j -> P.sm (as j) (xs j)) (\ j -> P.mz) (\ j -> trans (ap (\ a -> P.sm a (xs j)) (h j)) (ML.zero-sm (xs j))))
+    (PS.sum-zero n) ;
+  comb-l (c : T.PL.Carrier) (i : Fin q.size) : Id P.M (T.comb c (DS.il i)) (TQ.comb (\ j -> c (DS.il j)) i) =
+   trans (sum-plus r.size q.size (\ y' -> P.sm (QR.matrix (DS.il i) y') (c y')))
+    (trans (ap (P.madd (PS.sum q.size (\ j -> P.sm (QR.matrix (DS.il i) (DS.il j)) (c (DS.il j)))))
+      (vanish r.size (\ j -> QR.matrix (DS.il i) (DS.ir j)) (DS.at-lr q.matrix r.matrix i) (\ j -> c (DS.ir j))))
+     (trans (P.maddZ (PS.sum q.size (\ j -> P.sm (QR.matrix (DS.il i) (DS.il j)) (c (DS.il j)))))
+      (PS.sum-cong q.size _ (\ j -> P.sm (q.matrix i j) (c (DS.il j))) (\ j -> ap (\ a -> P.sm a (c (DS.il j))) (DS.at-ll q.matrix r.matrix i j))))) ;
+  comb-r (c : T.PL.Carrier) (i : Fin r.size) : Id P.M (T.comb c (DS.ir i)) (TR.comb (\ j -> c (DS.ir j)) i) =
+   trans (sum-plus r.size q.size (\ y' -> P.sm (QR.matrix (DS.ir i) y') (c y')))
+    (trans (ap (\ t -> P.madd t (PS.sum r.size (\ j -> P.sm (QR.matrix (DS.ir i) (DS.ir j)) (c (DS.ir j)))))
+      (vanish q.size (\ j -> QR.matrix (DS.ir i) (DS.il j)) (DS.at-rl q.matrix r.matrix i) (\ j -> c (DS.il j))))
+     (trans (ML.zero-left (PS.sum r.size (\ j -> P.sm (QR.matrix (DS.ir i) (DS.ir j)) (c (DS.ir j)))))
+      (PS.sum-cong r.size _ (\ j -> P.sm (r.matrix i j) (c (DS.ir j))) (\ j -> ap (\ a -> P.sm a (c (DS.ir j))) (DS.at-rr q.matrix r.matrix i j))))) ;
+  parts (c : T.Carrier) : Pair.Carrier =
+   ((\ j -> T.family c (DS.il j),\ i -> trans (sym (comb-l (T.family c) i)) (T.member c (DS.il i))),
+    (\ j -> T.family c (DS.ir j),\ i -> trans (sym (comb-r (T.family c) i)) (T.member c (DS.ir i)))) ;
+  choose (u : Fin q.size -> P.M) (v : Fin r.size -> P.M) : DS.Side -> P.M = split { inl i -> u i ; inr i -> v i } ;
+  module Join (y : Pair.Carrier) {
+   u : Fin q.size -> P.M = TQ.family y.1 ;
+   v : Fin r.size -> P.M = TR.family y.2 ;
+   c : T.PL.Carrier = \ x -> choose u v (DS.side x) ;
+   c-l (i : Fin q.size) : Id P.M (c (DS.il i)) (u i) = ap (choose u v) (Blocks[l].side-injl r.size q.size i) ;
+   c-r (i : Fin r.size) : Id P.M (c (DS.ir i)) (v i) = ap (choose u v) (Blocks[l].side-injr r.size q.size i) ;
+   at-join : (e : DS.Side) -> Id P.M (T.comb c (Blocks[l].join q.size r.size e)) (c (Blocks[l].join q.size r.size e)) = split {
+    inl i -> trans (comb-l c i) (trans (TQ.PS.sum-cong q.size (\ j -> P.sm (q.matrix i j) (c (DS.il j))) (\ j -> P.sm (q.matrix i j) (u j)) (\ j -> ap (P.sm (q.matrix i j)) (c-l j)))
+     (trans (TQ.member y.1 i) (sym (c-l i)))) ;
+    inr i -> trans (comb-r c i) (trans (TR.PS.sum-cong r.size (\ j -> P.sm (r.matrix i j) (c (DS.ir j))) (\ j -> P.sm (r.matrix i j) (v j)) (\ j -> ap (P.sm (r.matrix i j)) (c-r j)))
+     (trans (TR.member y.2 i) (sym (c-r i)))) } ;
+   member (x : Fin QR.size) : Id P.M (T.comb c x) (c x) =
+    trans (sym (ap (T.comb c) (Blocks[l].join-side r.size q.size x)))
+     (trans (at-join (DS.side x)) (ap c (Blocks[l].join-side r.size q.size x))) ;
+   point : T.Carrier = (c,member) ;
+  } ;
+  -- a family is put back together from its parts
+  rejoin-at (c : T.PL.Carrier) : (e : DS.Side) ->
+   Id P.M (choose (\ j -> c (DS.il j)) (\ j -> c (DS.ir j)) e) (c (Blocks[l].join q.size r.size e)) = split {
+   inl i -> refl (c (DS.il i)) ; inr i -> refl (c (DS.ir i)) } ;
+  rejoin (c : T.PL.Carrier) (x : Fin QR.size) :
+   Id P.M (choose (\ j -> c (DS.il j)) (\ j -> c (DS.ir j)) (DS.side x)) (c x) =
+   trans (rejoin-at c (DS.side x)) (ap c (Blocks[l].join-side r.size q.size x)) ;
+  iso : MI.Iso[T.twisted,Pair.product] = MI.make T.twisted Pair.product parts (\ y -> Join[y].point)
+   (\ c d -> Pair.ext _ _ (TQ.ext _ _ (\ j -> refl (P.madd (T.family c (DS.il j)) (T.family d (DS.il j)))))
+     (TR.ext _ _ (\ j -> refl (P.madd (T.family c (DS.ir j)) (T.family d (DS.ir j))))))
+   (\ a c -> Pair.ext _ _ (TQ.ext _ _ (\ j -> refl (P.sm a (T.family c (DS.il j))))) (TR.ext _ _ (\ j -> refl (P.sm a (T.family c (DS.ir j))))))
+   (\ y -> Pair.ext _ _ (TQ.ext _ _ (Join[y].c-l)) (TR.ext _ _ (Join[y].c-r)))
+   (\ c -> T.ext _ _ (rejoin (T.family c))) ;
+ } ;
+
+ -- (unit)  P (x) 1 ~ P
+ module UnitOf (P : SA.Module) {
+  module T = Of[P,PJ.oneP] ;
+  module PS = T.PS ;
+  constant-member (x : P.M) : (y : Fin (suc zero)) -> Id P.M (T.comb (\ y' -> x) y) x = split {
+   inl e -> efq e ;
+   inr t -> trans (PS.sum-step zero (\ y' -> P.sm (PJ.oneP.matrix (inr t) y') x))
+    (trans (ap (P.madd (P.sm A.o x)) (PS.sum-empty (\ y' -> P.sm (PJ.oneP.matrix (inr t) (inl y')) x)))
+     (trans (P.maddZ (P.sm A.o x)) (P.smO x))) } ;
+  constant-at (c : T.PL.Carrier) : (y : Fin (suc zero)) -> Id P.M (c (inr tt)) (c y) = split {
+   inl e -> efq e ;
+   inr t -> ap (\ s -> c (inr s)) (MnSums[l].top-eq tt t) } ;
+  iso : MI.Iso[T.twisted,P] = MI.make T.twisted P (\ c -> T.family c (inr tt)) (\ x -> (\ y -> x,constant-member x))
+   (\ c d -> refl (P.madd (T.family c (inr tt)) (T.family d (inr tt))))
+   (\ a c -> refl (P.sm a (T.family c (inr tt))))
+   (\ x -> refl x)
+   (\ c -> T.ext (\ y -> T.family c (inr tt),constant-member (T.family c (inr tt))) c (constant-at (T.family c))) ;
+ } ;
+
+ -- (zero)  P (x) 0 has a single element
+ zero-single (P : SA.Module) : MI.Single Of[P,PJ.zeroP].twisted = \ c ->
+  Of[P,PJ.zeroP].ext c Of[P,PJ.zeroP].zero (\ y -> efq y) ;
+} ;

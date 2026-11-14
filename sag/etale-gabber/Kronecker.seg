@@ -1,0 +1,94 @@
+-- Kronecker products.  For Y in M_m(R) and X in M_n(R), Y (x) X in
+-- M_{times m n}(R) has the entry Y_jj' X_ii' at (pair j i, pair j' i')
+-- (PAIRING).  Hence
+--     ((Y (x) X) w)_(j,i) = sum_j' Y_jj' sum_i' X_ii' w_(j',i'),
+-- the mixed product (Y (x) X)(Y' (x) X') = Y Y' (x) X X' (exchange the
+-- factors of each term, then split the double sum), and 1 (x) 1 = 1 (the
+-- delta at two pairs).  So Kronecker products of inverse pairs are inverse.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (m n : Nat) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ module PS = Pairing[l].Sums[R] ;
+ module Mm = MnAlgebra[l].Over[R,setR,m] ;
+ module Mn = MnAlgebra[l].Over[R,setR,n] ;
+ module MN = MnAlgebra[l].Over[R,setR,Pairing[l].times m n] ;
+ module VN = Vectors[l].Over[R,setR,Pairing[l].times m n] ;
+ module Im = MatrixMap[l].Invertible[R,setR,m] ;
+ module In = MatrixMap[l].Invertible[R,setR,n] ;
+ module IN = MatrixMap[l].Invertible[R,setR,Pairing[l].times m n] ;
+ pair (j : Fin m) (i : Fin n) : Fin (Pairing[l].times m n) = Pairing[l].pair n m j i ;
+ first (x : Fin (Pairing[l].times m n)) : Fin m = (Pairing[l].unpair n m x).1 ;
+ second (x : Fin (Pairing[l].times m n)) : Fin n = (Pairing[l].unpair n m x).2 ;
+ -- every index is a pair
+ pu (x : Fin (Pairing[l].times m n)) : Id (Fin (Pairing[l].times m n)) (pair (first x) (second x)) x =
+  Pairing[l].pair-unpair n m x ;
+ kron (Y : Mm.Mat) (X : Mn.Mat) : MN.Mat = \ x y -> R.mul (Y (first x) (first y)) (X (second x) (second y)) ;
+ kron-at (Y : Mm.Mat) (X : Mn.Mat) (j : Fin m) (i : Fin n) (j' : Fin m) (i' : Fin n) :
+  Id R.R (kron Y X (pair j i) (pair j' i')) (R.mul (Y j j') (X i i')) =
+  trans (ap (\ p -> R.mul (Y p.1 (first (pair j' i'))) (X p.2 (second (pair j' i')))) (Pairing[l].unpair-pair n m j i))
+   (ap (\ q -> R.mul (Y j q.1) (X i q.2)) (Pairing[l].unpair-pair n m j' i')) ;
+ -- vectors and matrices are determined at pairs
+ vec-pairs (w w' : VN.Vec) (h : (j : Fin m) (i : Fin n) -> Id R.R (w (pair j i)) (w' (pair j i))) : Id VN.Vec w w' =
+  VN.vec-eq w w' (\ x -> trans (sym (ap w (pu x))) (trans (h (first x) (second x)) (ap w' (pu x)))) ;
+ mat-pairs (P Q : MN.Mat)
+  (h : (j : Fin m) (i : Fin n) (j' : Fin m) (i' : Fin n) -> Id R.R (P (pair j i) (pair j' i')) (Q (pair j i) (pair j' i'))) :
+  Id MN.Mat P Q =
+  MN.mat-eq P Q (\ x y ->
+   trans (sym (trans (ap (\ z -> P z (pair (first y) (second y))) (pu x)) (ap (P x) (pu y))))
+    (trans (h (first x) (second x) (first y) (second y))
+     (trans (ap (\ z -> Q z (pair (first y) (second y))) (pu x)) (ap (Q x) (pu y))))) ;
+ act-kron (Y : Mm.Mat) (X : Mn.Mat) (w : VN.Vec) (j : Fin m) (i : Fin n) :
+  Id R.R (VN.act (kron Y X) w (pair j i)) (S.sum m (\ j' -> R.mul (Y j j') (S.sum n (\ i' -> R.mul (X i i') (w (pair j' i')))))) =
+  calc R.R { VN.act (kron Y X) w (pair j i)
+    =< PS.sum-pair n m (\ y -> R.mul (kron Y X (pair j i) y) (w y)) >
+       S.sum m (\ j' -> S.sum n (\ i' -> R.mul (kron Y X (pair j i) (pair j' i')) (w (pair j' i'))))
+    =< S.sum-cong m _ _ (\ j' -> S.sum-cong n _ _ (\ i' ->
+        trans (ap (\ t -> R.mul t (w (pair j' i'))) (kron-at Y X j i j' i')) (sym (R.mulA (Y j j') (X i i') (w (pair j' i')))))) >
+       S.sum m (\ j' -> S.sum n (\ i' -> R.mul (Y j j') (R.mul (X i i') (w (pair j' i')))))
+    =< S.sum-cong m _ _ (\ j' -> S.sum-scale (Y j j') n (\ i' -> R.mul (X i i') (w (pair j' i')))) >
+       S.sum m (\ j' -> R.mul (Y j j') (S.sum n (\ i' -> R.mul (X i i') (w (pair j' i'))))) } ;
+ -- 1 (x) X acts on each block, Y (x) 1 on each column
+ module Vm = Vectors[l].Over[R,setR,m] ;
+ module Vn = Vectors[l].Over[R,setR,n] ;
+ act-one-left (X : Mn.Mat) (w : VN.Vec) (j : Fin m) (i : Fin n) :
+  Id R.R (VN.act (kron Mm.mone X) w (pair j i)) (Vn.act X (\ i' -> w (pair j i')) i) =
+  trans (act-kron Mm.mone X w j i) (D.sum-delta m j (\ j' -> S.sum n (\ i' -> R.mul (X i i') (w (pair j' i'))))) ;
+ act-one-right (Y : Mm.Mat) (w : VN.Vec) (j : Fin m) (i : Fin n) :
+  Id R.R (VN.act (kron Y Mn.mone) w (pair j i)) (Vm.act Y (\ j' -> w (pair j' i)) j) =
+  trans (act-kron Y Mn.mone w j i)
+   (S.sum-cong m (\ j' -> R.mul (Y j j') (S.sum n (\ i' -> R.mul (D.delta n i i') (w (pair j' i')))))
+    (\ j' -> R.mul (Y j j') (w (pair j' i)))
+    (\ j' -> ap (R.mul (Y j j')) (D.sum-delta n i (\ i' -> w (pair j' i'))))) ;
+ -- the mixed product
+ mixed-at (Y Y' : Mm.Mat) (X X' : Mn.Mat) (j : Fin m) (i : Fin n) (j' : Fin m) (i' : Fin n) :
+  Id R.R (MN.mmul (kron Y X) (kron Y' X') (pair j i) (pair j' i')) (kron (Mm.mmul Y Y') (Mn.mmul X X') (pair j i) (pair j' i')) =
+  calc R.R { MN.mmul (kron Y X) (kron Y' X') (pair j i) (pair j' i')
+    =< PS.sum-pair n m (\ y -> R.mul (kron Y X (pair j i) y) (kron Y' X' y (pair j' i'))) >
+       S.sum m (\ k -> S.sum n (\ e -> R.mul (kron Y X (pair j i) (pair k e)) (kron Y' X' (pair k e) (pair j' i'))))
+    =< S.sum-cong m _ _ (\ k -> S.sum-cong n _ _ (\ e ->
+        trans (cong2 R.R R.mul _ _ _ _ (kron-at Y X j i k e) (kron-at Y' X' k e j' i'))
+         (L.mul-four (Y j k) (X i e) (Y' k j') (X' e i')))) >
+       S.sum m (\ k -> S.sum n (\ e -> R.mul (R.mul (Y j k) (Y' k j')) (R.mul (X i e) (X' e i'))))
+    =< S.sum-cong m _ _ (\ k -> S.sum-scale (R.mul (Y j k) (Y' k j')) n (\ e -> R.mul (X i e) (X' e i'))) >
+       S.sum m (\ k -> R.mul (R.mul (Y j k) (Y' k j')) (Mn.mmul X X' i i'))
+    =< D.sum-scale-right (Mn.mmul X X' i i') m (\ k -> R.mul (Y j k) (Y' k j')) >
+       R.mul (Mm.mmul Y Y' j j') (Mn.mmul X X' i i')
+    =< sym (kron-at (Mm.mmul Y Y') (Mn.mmul X X') j i j' i') > kron (Mm.mmul Y Y') (Mn.mmul X X') (pair j i) (pair j' i') } ;
+ mixed (Y Y' : Mm.Mat) (X X' : Mn.Mat) :
+  Id MN.Mat (MN.mmul (kron Y X) (kron Y' X')) (kron (Mm.mmul Y Y') (Mn.mmul X X')) =
+  mat-pairs (MN.mmul (kron Y X) (kron Y' X')) (kron (Mm.mmul Y Y') (Mn.mmul X X')) (mixed-at Y Y' X X') ;
+ kron-one : Id MN.Mat (kron Mm.mone Mn.mone) MN.mone =
+  mat-pairs (kron Mm.mone Mn.mone) MN.mone (\ j i j' i' ->
+   trans (kron-at Mm.mone Mn.mone j i j' i') (sym (PS.delta-pair n m j j' i i'))) ;
+ -- (Y (x) X)(Y' (x) X') = 1 when Y Y' = 1 and X X' = 1
+ unit (Y Y' : Mm.Mat) (X X' : Mn.Mat) (hy : Id Mm.Mat (Mm.mmul Y Y') Mm.mone) (hx : Id Mn.Mat (Mn.mmul X X') Mn.mone) :
+  Id MN.Mat (MN.mmul (kron Y X) (kron Y' X')) MN.mone =
+  trans (mixed Y Y' X X')
+   (trans (ap (\ Z -> kron Z (Mn.mmul X X')) hy) (trans (ap (kron Mm.mone) hx) kron-one)) ;
+ kron-inverse (Y Y' : Mm.Mat) (iy : Im.Inverse[Y,Y']) (X X' : Mn.Mat) (ix : In.Inverse[X,X']) :
+  IN.Inverse[kron Y X,kron Y' X'] =
+  new IN.Inverse[kron Y X,kron Y' X',unit Y Y' X X' iy.right ix.right,unit Y' Y X' X iy.left ix.left] ;
+} ;

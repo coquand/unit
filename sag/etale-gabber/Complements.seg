@@ -1,0 +1,120 @@
+-- Complements and zero projectors (PROJECTORS), and their classes in K_0
+-- (K0).
+--  (complement)  For a projector p of size K, 1 - p is a projector:
+--     (1 - p) w = w - p w,  and  p (w - p w) = p w - p p w = 0,
+--   so (1 - p)(1 - p) w = (w - p w) - 0 = w - p w.  For y in Image p and
+--   z in Image (1 - p) one has p z = 0, so p (y + z) = y and
+--   (1 - p)(y + z) = (y + z) - y = z; and p w + (w - p w) = w.  Hence
+--     Image p + Image (1 - p) ~ A^K,   (y, z) |-> y + z,   w |-> (p w, w - p w),
+--   and [p] + [1 - p] = [A^K].
+--  (null)  The zero K x K matrix is a projector; its image has a single
+--   element (w = 0 w = 0), so its class is 0, and padding a projector by
+--   0_n does not change its image (PadRight, PadLeft).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module SP = SerreModuleProducts[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module K = K0[l].Over[A,setA] ;
+ module PJ = K.PJ ;
+ module MI = K.MI ;
+ module L = RL[A] ;
+ module Complement (p : PJ.Projector) {
+  module V = Vectors[l].Over[A,setA,p.size] ;
+  module Mk = V.MR ;
+  module IP = PJ.Image[p] ;
+  matrix : Mk.Mat = Mk.madd Mk.mone (Mk.mneg p.matrix) ;
+  -- (1 - p) w = w - p w
+  act (w : V.Vec) : Id V.Vec (V.act matrix w) (V.vadd w (V.vneg (V.act p.matrix w))) =
+   trans (V.act-madd Mk.mone (Mk.mneg p.matrix) w)
+    (cong2 V.Vec V.vadd _ _ _ _ (V.act-one w) (V.act-mneg p.matrix w)) ;
+  -- p p w = p w
+  twice (w : V.Vec) : Id V.Vec (V.act p.matrix (V.act p.matrix w)) (V.act p.matrix w) =
+   trans (V.act-mul p.matrix p.matrix w) (ap (\ Z -> V.act Z w) p.idempotent) ;
+  -- p (w - p w) = 0
+  kills (w : V.Vec) : Id V.Vec (V.act p.matrix (V.vadd w (V.vneg (V.act p.matrix w)))) V.vzero =
+   calc V.Vec { V.act p.matrix (V.vadd w (V.vneg (V.act p.matrix w)))
+     =< V.act-add p.matrix w (V.vneg (V.act p.matrix w)) >
+        V.vadd (V.act p.matrix w) (V.act p.matrix (V.vneg (V.act p.matrix w)))
+     =< ap (V.vadd (V.act p.matrix w)) (trans (V.act-neg p.matrix (V.act p.matrix w)) (ap V.vneg (twice w))) >
+        V.vadd (V.act p.matrix w) (V.vneg (V.act p.matrix w))
+     =< V.vec-eq _ _ (\ i -> A.addN (V.act p.matrix w i)) > V.vzero } ;
+  idempotent : Id Mk.Mat (Mk.mmul matrix matrix) matrix =
+   V.mat-act (Mk.mmul matrix matrix) matrix (\ w ->
+    calc V.Vec { V.act (Mk.mmul matrix matrix) w
+      =< sym (V.act-mul matrix matrix w) > V.act matrix (V.act matrix w)
+      =< act (V.act matrix w) > V.vadd (V.act matrix w) (V.vneg (V.act p.matrix (V.act matrix w)))
+      =< ap (\ t -> V.vadd (V.act matrix w) (V.vneg (V.act p.matrix t))) (act w) >
+         V.vadd (V.act matrix w) (V.vneg (V.act p.matrix (V.vadd w (V.vneg (V.act p.matrix w)))))
+      =< ap (\ t -> V.vadd (V.act matrix w) (V.vneg t)) (kills w) > V.vadd (V.act matrix w) (V.vneg V.vzero)
+      =< V.vec-eq _ _ (\ i -> trans (ap (A.add (V.act matrix w i)) L.neg-zero) (A.addZ (V.act matrix w i))) >
+         V.act matrix w }) ;
+  projector : PJ.Projector = new PJ.Projector[p.size,matrix,idempotent] ;
+  module IC = PJ.Image[projector] ;
+  -- p z = 0 for z in Image (1 - p)
+  kills-image (z : IC.Carrier) : Id V.Vec (V.act p.matrix (IC.value z)) V.vzero =
+   trans (ap (V.act p.matrix) (trans (sym (IC.member z)) (act (IC.value z)))) (kills (IC.value z)) ;
+
+  -- Image p + Image (1 - p) ~ A^K
+  module T = SP.Pair[A,IP.image,IC.image] ;
+  join (y : T.Carrier) : V.Vec = V.vadd (IP.value y.1) (IC.value y.2) ;
+  parts (w : V.Vec) : T.Carrier = (IP.fix w,IC.fix w) ;
+  -- p (y + z) = y
+  left-join (y : T.Carrier) : Id V.Vec (V.act p.matrix (join y)) (IP.value y.1) =
+   calc V.Vec { V.act p.matrix (join y)
+     =< V.act-add p.matrix (IP.value y.1) (IC.value y.2) > V.vadd (V.act p.matrix (IP.value y.1)) (V.act p.matrix (IC.value y.2))
+     =< cong2 V.Vec V.vadd _ _ _ _ (IP.member y.1) (kills-image y.2) > V.vadd (IP.value y.1) V.vzero
+     =< V.vec-eq _ _ (\ i -> A.addZ (IP.value y.1 i)) > IP.value y.1 } ;
+  -- (1 - p)(y + z) = z
+  right-join (y : T.Carrier) : Id V.Vec (V.act matrix (join y)) (IC.value y.2) =
+   calc V.Vec { V.act matrix (join y)
+     =< act (join y) > V.vadd (join y) (V.vneg (V.act p.matrix (join y)))
+     =< ap (\ t -> V.vadd (join y) (V.vneg t)) (left-join y) > V.vadd (join y) (V.vneg (IP.value y.1))
+     =< V.vec-eq _ _ (\ i -> trans (ap (\ t -> A.add t (A.neg (IP.value y.1 i))) (A.addC (IP.value y.1 i) (IC.value y.2 i)))
+         (L.add-neg-cancel (IC.value y.2 i) (IP.value y.1 i))) > IC.value y.2 } ;
+  -- p w + (w - p w) = w
+  join-parts (w : V.Vec) : Id V.Vec (join (parts w)) w =
+   calc V.Vec { join (parts w)
+     =< ap (V.vadd (V.act p.matrix w)) (act w) > V.vadd (V.act p.matrix w) (V.vadd w (V.vneg (V.act p.matrix w)))
+     =< V.vec-eq _ _ (\ i -> trans (L.add-swap (V.act p.matrix w i) (w i) (A.neg (V.act p.matrix w i)))
+         (trans (ap (A.add (w i)) (A.addN (V.act p.matrix w i))) (A.addZ (w i)))) > w } ;
+  iso : MI.Iso[T.product,K.PJ.FM.free p.size] = MI.make T.product (K.PJ.FM.free p.size) join parts
+   (\ y y' -> V.vec-eq _ _ (\ i -> L.swap (IP.value y.1 i) (IP.value y'.1 i) (IC.value y.2 i) (IC.value y'.2 i)))
+   (\ c y -> V.vec-eq _ _ (\ i -> sym (A.dist c (IP.value y.1 i) (IC.value y.2 i))))
+   join-parts
+   (\ y -> T.ext _ _ (IP.ext _ _ (left-join y)) (IC.ext _ _ (right-join y))) ;
+  -- [p] + [1 - p] = [A^K]
+  class : Id K.K0.R (K.K0.add (K.class p) (K.class projector)) (K.free p.size) =
+   trans (K.class-sum p projector)
+    (K.free-class p.size (K.sum p projector)
+     (MI.compose (K.image (K.sum p projector)) T.product (K.PJ.FM.free p.size) K.PSm.SumImage[p,projector].iso iso)) ;
+ } ;
+
+ module Null (n : Nat) {
+  module V = Vectors[l].Over[A,setA,n] ;
+  idempotent : Id V.MR.Mat (V.MR.mmul V.MR.mzero V.MR.mzero) V.MR.mzero =
+   V.mat-act (V.MR.mmul V.MR.mzero V.MR.mzero) V.MR.mzero (\ w ->
+    trans (sym (V.act-mul V.MR.mzero V.MR.mzero w)) (trans (V.act-mzero (V.act V.MR.mzero w)) (sym (V.act-mzero w)))) ;
+  projector : PJ.Projector = new PJ.Projector[n,V.MR.mzero,idempotent] ;
+  module I = PJ.Image[projector] ;
+  single : MI.Single I.image = \ x -> I.ext x I.zero (trans (sym (I.member x)) (V.act-mzero (I.value x))) ;
+  -- [0_n] = 0
+  class : Id K.K0.R (K.class projector) K.K0.z =
+   trans (K.class-iso projector PJ.zeroP (MI.Singles[I.image,K.image PJ.zeroP,single,K.PSm.zero-single].iso))
+    (sym K.class-zero) ;
+ } ;
+ -- padding by zero: Image (p + 0_n) ~ Image p ~ Image (0_n + p)
+ module PadRight (p : PJ.Projector) (n : Nat) {
+  module SI = K.PSm.SumImage[p,Null[n].projector] ;
+  iso : K.Iso (K.sum p Null[n].projector) p =
+   MI.compose (K.image (K.sum p Null[n].projector)) SI.T.product (K.image p) SI.iso
+    MI.ZeroRight[K.image p,K.image Null[n].projector,Null[n].single].iso ;
+ } ;
+ module PadLeft (n : Nat) (p : PJ.Projector) {
+  module SI = K.PSm.SumImage[Null[n].projector,p] ;
+  module SW = MI.Swap[K.image Null[n].projector,K.image p] ;
+  iso : K.Iso (K.sum Null[n].projector p) p =
+   MI.compose (K.image (K.sum Null[n].projector p)) SI.T.product (K.image p) SI.iso
+    (MI.compose SI.T.product SW.NM.product (K.image p) SW.iso
+     MI.ZeroRight[K.image p,K.image Null[n].projector,Null[n].single].iso) ;
+ } ;
+} ;

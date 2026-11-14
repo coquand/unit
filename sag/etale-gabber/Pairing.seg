@@ -1,0 +1,76 @@
+-- Fin (m n) as pairs.  times (m+1) n = times m n + n, so Fin (times m n)
+-- is m blocks of n indices (BLOCKS: injl, injr, side):
+--     pair j i = the i-th index of the j-th block,   unpair inverse to it.
+-- A sum over Fin (times m n) is the double sum over j, then i, and the
+-- Kronecker delta of times m n at two pairs is the product of the deltas.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+times : Nat -> Nat -> Nat = split { zero -> \ n -> zero ; suc m | r -> \ n -> plus (r n) n } ;
+pair (n : Nat) : (m : Nat) -> Fin m -> Fin n -> Fin (times m n) = split {
+ zero -> \ j i -> efq j ;
+ suc m | r -> split {
+  inl j -> \ i -> Blocks[l].injl n (times m n) (r j i) ;
+  inr t -> \ i -> Blocks[l].injr n (times m n) i } } ;
+unsplit (m n : Nat) (r : Fin (times m n) -> Fin m * Fin n) :
+ Plus (Fin (times m n)) (Fin n) -> Fin (suc m) * Fin n = split {
+ inl y -> (inl (r y).1,(r y).2) ;
+ inr i -> (inr tt,i) } ;
+unpair (n : Nat) : (m : Nat) -> Fin (times m n) -> Fin m * Fin n = split {
+ zero -> \ x -> efq x ;
+ suc m | r -> \ x -> unsplit m n r (Blocks[l].side n (times m n) x) } ;
+unpair-pair (n : Nat) : (m : Nat) (j : Fin m) (i : Fin n) ->
+ Id (Fin m * Fin n) (unpair n m (pair n m j i)) (j,i) = split {
+ zero -> \ j i -> efq j ;
+ suc m | r -> split {
+  inl j -> \ i -> trans (ap (unsplit m n (unpair n m)) (Blocks[l].side-injl n (times m n) (pair n m j i)))
+   (ap (\ p -> (inl p.1,p.2)) (r j i)) ;
+  inr t -> \ i -> trans (ap (unsplit m n (unpair n m)) (Blocks[l].side-injr n (times m n) i))
+   (ap (\ s -> (inr s,i)) (MnSums[l].top-eq tt t)) } } ;
+-- pair after unsplit is join
+join-unsplit (m n : Nat) (r : (y : Fin (times m n)) -> Id (Fin (times m n)) (pair n m (unpair n m y).1 (unpair n m y).2) y) :
+ (e : Plus (Fin (times m n)) (Fin n)) ->
+ Id (Fin (times (suc m) n)) (pair n (suc m) (unsplit m n (unpair n m) e).1 (unsplit m n (unpair n m) e).2)
+  (Blocks[l].join (times m n) n e) = split {
+ inl y -> ap (Blocks[l].injl n (times m n)) (r y) ;
+ inr i -> refl (Blocks[l].injr n (times m n) i) } ;
+pair-unpair (n : Nat) : (m : Nat) (x : Fin (times m n)) ->
+ Id (Fin (times m n)) (pair n m (unpair n m x).1 (unpair n m x).2) x = split {
+ zero -> \ x -> efq x ;
+ suc m | r -> \ x -> trans (join-unsplit m n r (Blocks[l].side n (times m n) x)) (Blocks[l].join-side n (times m n) x) } ;
+
+module Sums (R : CRing) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ module SP = Blocks[l].Sums[R] ;
+ sum-pair (n : Nat) : (m : Nat) (f : Fin (times m n) -> R.R) ->
+  Id R.R (S.sum (times m n) f) (S.sum m (\ j -> S.sum n (\ i -> f (pair n m j i)))) = split {
+  zero -> \ f -> refl R.z ;
+  suc m | r -> \ f -> trans (SP.sum-plus n (times m n) f)
+   (trans (ap (\ t -> R.add t (S.sum n (\ i -> f (Blocks[l].injr n (times m n) i)))) (r (\ y -> f (Blocks[l].injl n (times m n) y))))
+    (R.addC (S.sum m (\ j -> S.sum n (\ i -> f (Blocks[l].injl n (times m n) (pair n m j i)))))
+     (S.sum n (\ i -> f (Blocks[l].injr n (times m n) i))))) } ;
+ -- sum_j a_j sum_i b_i c_ji = sum_i b_i sum_j a_j c_ji
+ swap-sums (m n : Nat) (a : Fin m -> R.R) (b : Fin n -> R.R) (c : Fin m -> Fin n -> R.R) :
+  Id R.R (S.sum m (\ j -> R.mul (a j) (S.sum n (\ i -> R.mul (b i) (c j i)))))
+   (S.sum n (\ i -> R.mul (b i) (S.sum m (\ j -> R.mul (a j) (c j i))))) =
+  calc R.R { S.sum m (\ j -> R.mul (a j) (S.sum n (\ i -> R.mul (b i) (c j i))))
+    =< S.sum-cong m _ _ (\ j -> sym (S.sum-scale (a j) n (\ i -> R.mul (b i) (c j i)))) >
+       S.sum m (\ j -> S.sum n (\ i -> R.mul (a j) (R.mul (b i) (c j i))))
+    =< D.exchange n m (\ j i -> R.mul (a j) (R.mul (b i) (c j i))) >
+       S.sum n (\ i -> S.sum m (\ j -> R.mul (a j) (R.mul (b i) (c j i))))
+    =< S.sum-cong n _ _ (\ i -> S.sum-cong m _ _ (\ j -> L.mul-swap (a j) (b i) (c j i))) >
+       S.sum n (\ i -> S.sum m (\ j -> R.mul (b i) (R.mul (a j) (c j i))))
+    =< S.sum-cong n _ _ (\ i -> S.sum-scale (b i) m (\ j -> R.mul (a j) (c j i))) >
+       S.sum n (\ i -> R.mul (b i) (S.sum m (\ j -> R.mul (a j) (c j i)))) } ;
+ delta-pair (n : Nat) : (m : Nat) (j j' : Fin m) (i i' : Fin n) ->
+  Id R.R (D.delta (times m n) (pair n m j i) (pair n m j' i')) (R.mul (D.delta m j j') (D.delta n i i')) = split {
+  zero -> \ j j' i i' -> efq j ;
+  suc m | r -> split {
+   inl j -> split {
+    inl j' -> \ i i' -> trans (SP.delta-ll n (times m n) (pair n m j i) (pair n m j' i')) (r j j' i i') ;
+    inr t' -> \ i i' -> trans (SP.delta-lr n (times m n) (pair n m j i) i') (sym (L.zero-mul (D.delta n i i'))) } ;
+   inr t -> split {
+    inl j' -> \ i i' -> trans (SP.delta-rl n (times m n) i (pair n m j' i')) (sym (L.zero-mul (D.delta n i i'))) ;
+    inr t' -> \ i i' -> trans (SP.delta-rr n (times m n) i i') (sym (L.one-left (D.delta n i i'))) } } } ;
+} ;

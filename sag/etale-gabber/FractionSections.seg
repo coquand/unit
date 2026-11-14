@@ -1,0 +1,95 @@
+-- Fraction-level 7.1.2, without constructing a quotient.
+-- T(x) can be any set of fractions with the stated representation/equality laws.
+-- The laws are explicit input, not axioms of modules or weak quasi-coherence.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module S = Schemes[l].Over[R,setR] ;
+ module UB = SchemeUniform[l].Over[R,setR,axioms] ;
+ module Choice = SchemeChoice[l].Over[R,setR,axioms] ;
+ module At (X : U l) (scheme : S.Scheme X)
+  (M : X -> U l) (setM : (x : X) -> Pr.isSet (M x))
+  (step : (x : X) -> M x -> M x)
+  (T : X -> U l) (setT : (x : X) -> Pr.isSet (T x))
+  (fraction : (x : X) -> M x -> Nat -> T x) {
+  module Act (x : X) { module A = Iterates[l].On[M x,step x] ; } ;
+  Raise : U l = (x : X) (d k : Nat) (m : M x) ->
+   Id (T x) (fraction x (Act[x].A.power d m) (plus d k)) (fraction x m k) ;
+  Detect : U l = (x : X) (k : Nat) (u v : M x) ->
+   Id (T x) (fraction x u k) (fraction x v k) ->
+   Tr.Trunc[(e : Nat) * Id (M x) (Act[x].A.power e u) (Act[x].A.power e v)].carrier ;
+  module Laws (raise : Raise) (detect : Detect) {
+   normalized (x : X) (k N : Nat) (h : CoefficientBound[l].le k N) (m : M x) :
+    Id (T x) (fraction x (Act[x].A.power (Iterates[l].excess k N h) m) N) (fraction x m k) =
+    trans (ap (fraction x (Act[x].A.power (Iterates[l].excess k N h) m))
+     (sym (Iterates[l].excess-law k N h))) (raise x (Iterates[l].excess k N h) k m) ;
+   module Section (t : (x : X) -> T x) {
+    AtIndex (x : X) (k : Nat) : U l = (m : M x) * Id (T x) (fraction x m k) (t x) ;
+    Rep (x : X) : U l = (k : Nat) * AtIndex x k ;
+    Goal : U l = (k : Nat) * (m : (x : X) -> M x) *
+     ((x : X) -> Id (T x) (fraction x (m x) k) (t x)) ;
+    module Uniform = UB.At[X,scheme,\ x k -> Tr.Trunc[AtIndex x k].carrier,
+     \ x k -> Tr.Trunc[AtIndex x k].proposition,
+     \ x k N h -> Tr.Trunc[AtIndex x k].induction @l
+      (\ z -> Tr.Trunc[AtIndex x N].carrier) (\ z -> Tr.Trunc[AtIndex x N].proposition)
+      (\ a -> Tr.Trunc[AtIndex x N].inc
+       (Act[x].A.power (Iterates[l].excess k N h) a.1,trans (normalized x k N h a.1) a.2))] ;
+    module Fixed (N : Nat) (w : Choice.ImageWitness X (\ x -> AtIndex x N)) {
+     c : S.Cover[X] = w.1 ;
+     us (i : Fin c.size) (x : X) : U l = S.Image X (c.charts i) x ;
+     local (i : Fin c.size) (x : X) (u : us i x) : M x = (w.2 i x u).1 ;
+     module G = LocalSections[l].Over[R,setR,axioms].At[X,scheme,M,setM,step,
+      c.size,us,\ i x -> (c.charts i).open-image x,c.covers,local] ;
+     compatible : G.Compatible = \ i j x u v ->
+      detect x N (local i x u) (local j x v)
+       (trans (w.2 i x u).2 (sym (w.2 j x v).2)) ;
+     module Glued (g : G.Goal) {
+      on-chart (i : Fin c.size) (x : X) (u : us i x) :
+       Id (T x) (fraction x (g.2.1 x) (plus g.1 N)) (t x) =
+       trans (ap (\ m -> fraction x m (plus g.1 N)) (g.2.2 i x u))
+        (trans (raise x g.1 N (local i x u)) (w.2 i x u).2) ;
+      result : Goal = (plus g.1 N,g.2.1,\ x ->
+       Tr.Trunc[(i : Fin c.size) * us i x].induction @l
+        (\ z -> Id (T x) (fraction x (g.2.1 x) (plus g.1 N)) (t x))
+        (\ z -> setT x _ _) (\ u -> on-chart u.1 x u.2) (c.covers x)) ;
+     } ;
+     theorem : Tr.Trunc[Goal].carrier =
+      Tr.Trunc[G.Goal].induction @l (\ z -> Tr.Trunc[Goal].carrier)
+       (\ z -> Tr.Trunc[Goal].proposition) (\ g -> Tr.Trunc[Goal].inc Glued[g].result)
+       (G.theorem compatible) ;
+    } ;
+    from-bound (b : Uniform.Goal) : Tr.Trunc[Goal].carrier =
+     Tr.Trunc[Choice.ImageWitness X (\ x -> AtIndex x b.1)].induction @l
+      (\ z -> Tr.Trunc[Goal].carrier) (\ z -> Tr.Trunc[Goal].proposition)
+      (\ w -> Fixed[b.1,w].theorem)
+      (Choice.theorem-on-images X scheme (\ x -> AtIndex x b.1) b.2) ;
+    theorem (represented : (x : X) -> Tr.Trunc[Rep x].carrier) : Tr.Trunc[Goal].carrier =
+     Tr.Trunc[Uniform.Goal].induction @l (\ z -> Tr.Trunc[Goal].carrier)
+      (\ z -> Tr.Trunc[Goal].proposition) from-bound
+      (Uniform.theorem (\ x -> Tr.Trunc[Rep x].induction @l
+       (\ z -> Tr.Trunc[Uniform.Inhabitant x].carrier) (\ z -> Tr.Trunc[Uniform.Inhabitant x].proposition)
+       (\ r -> Tr.Trunc[Uniform.Inhabitant x].inc (r.1,Tr.Trunc[AtIndex x r.1].inc r.2)) (represented x))) ;
+   } ;
+   module Equal (u v : (x : X) -> M x) (k j : Nat)
+    (p : (x : X) -> Id (T x) (fraction x (u x) k) (fraction x (v x) j)) {
+    module Uniform = UB.At[X,scheme,
+     \ x e -> Id (M x) (Act[x].A.power e (Act[x].A.power j (u x))) (Act[x].A.power e (Act[x].A.power k (v x))),
+     \ x e -> setM x _ _,
+     \ x e E h q -> Act[x].A.raise-equality _ _ e E h q] ;
+    pointwise (x : X) : Tr.Trunc[Uniform.Inhabitant x].carrier =
+     detect x (plus j k) (Act[x].A.power j (u x)) (Act[x].A.power k (v x))
+      (trans (raise x j k (u x)) (trans (p x)
+       (sym (trans (ap (fraction x (Act[x].A.power k (v x))) (Iterates[l].plus-comm j k)) (raise x k j (v x)))))) ;
+    Goal : U l = (e : Nat) * ((x : X) ->
+     Id (M x) (Act[x].A.power (plus e j) (u x)) (Act[x].A.power (plus e k) (v x))) ;
+    theorem : Tr.Trunc[Goal].carrier =
+     Tr.Trunc[Uniform.Goal].induction @l (\ z -> Tr.Trunc[Goal].carrier)
+      (\ z -> Tr.Trunc[Goal].proposition)
+      (\ b -> Tr.Trunc[Goal].inc (b.1,\ x -> trans (Act[x].A.power-add b.1 j (u x))
+       (trans (b.2 x) (sym (Act[x].A.power-add b.1 k (v x))))))
+      (Uniform.theorem pointwise) ;
+   } ;
+  } ;
+ } ;
+} ;

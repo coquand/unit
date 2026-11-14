@@ -1,0 +1,109 @@
+-- The scalar functions on the points of a tower, as input for the
+-- push-forward (sag/gabber-pushforward: SECTIONNONZERO, AFFINESECTIONFRAME
+-- take a not-not inhabited base and an R-frame of the functions on it).
+--  (inhabited) Points of a tower over a not-not inhabited X are not-not
+--             inhabited: a stage adds a root of a monic polynomial, which
+--             not-not exists (ETALEROOTS.not-not-root).
+--  (linear)   An R-linear equivalence phi : R^m -> (X -> R) gives a frame
+--             of rank m of the module X -> R: e_j = phi(delta_j),
+--             c_j(f) = (phi^-1 f)_j (linear since phi is); then
+--             sum_j c_j(f) e_j = phi(sum_j c_j(f) delta_j) = phi(phi^-1 f) = f.
+--  (tower)    Over Top, TOWERFUNCTIONS.expansion at constant coefficient
+--             vectors is such an equivalence, of rank (rank s).
+--  (along)    A frame of Y -> R moves along an equivalence X = Y (to reach
+--             Spec D = Points t, TOWERAFFINE).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module EQ = Equivalences[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module MD = Modules[l].Over[R,setR] ;
+ module FR = Frames[l].Over[R,setR] ;
+ module HM = HomModule[l].Over[R,setR] ;
+ module TW = Towers[l].Over[R,setR] ;
+ module TF = TowerFunctions[l].Over[R,setR,axioms] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ module L = RL[R] ;
+ -- (inhabited)
+ inhabited : (s : Towers[l].Shape) (X : U l) (nn : Not (Not X)) (t : TW.Tower s X) -> Not (Not (TW.Points s X t)) = split {
+  nil -> \ X nn t -> nn ;
+  cons d s | r -> \ X nn t -> r (TW.Next d X t.1)
+   (\ k -> nn (\ x -> EtaleRoots[l].Over[R,setR].Generator[(d,t.1 x)].not-not-root axioms (\ q -> k (x,q)))) t.2 } ;
+ top-inhabited (s : Towers[l].Shape) (t : TW.Tower s Top) : Not (Not (TW.Points s Top t)) =
+  inhabited s Top (\ k -> k tt) t ;
+ -- (linear)
+ Fn (X : U l) : MD.Module = MD.pi X (\ x -> MD.regular) ;
+ pointwise (X : U l) (f g : X -> R.R) : X -> R.R = \ x -> R.add (f x) (g x) ;
+ module Linear (X : U l) (m : Nat) (phi : TF.Vec m -> X -> R.R) (eq : Pr.isEquiv (TF.Vec m) (X -> R.R) phi)
+  (add : (v w : TF.Vec m) -> Id (X -> R.R) (phi (\ i -> R.add (v i) (w i))) (pointwise X (phi v) (phi w)))
+  (scale : (a : R.R) (v : TF.Vec m) -> Id (X -> R.R) (phi (\ i -> R.mul a (v i))) (\ x -> R.mul a (phi v x))) {
+  module SF = ModuleFiniteSums[l].Over[R,setR,Fn X] ;
+  zero : Id (X -> R.R) (phi (\ i -> R.z)) (\ x -> R.z) =
+   trans (ap phi (F.funext (Fin m) (\ i -> R.R) (\ i -> R.z) (\ i -> R.mul R.z R.z) (\ i -> sym (L.zero-mul R.z))))
+    (trans (scale R.z (\ i -> R.z)) (F.funext X (\ x -> R.R) _ _ (\ x -> L.zero-mul (phi (\ i -> R.z) x)))) ;
+  -- phi of a combination
+  combination : (n : Nat) (a : Fin n -> R.R) (v : Fin n -> TF.Vec m) ->
+   Id (X -> R.R) (phi (\ i -> S.sum n (\ j -> R.mul (a j) (v j i)))) (SF.sum n (\ j -> (Fn X).sm (a j) (phi (v j)))) = split {
+   zero -> \ a v -> zero ;
+   suc n | r -> \ a v ->
+    trans (add (\ i -> R.mul (a (inr tt)) (v (inr tt) i)) (\ i -> S.sum n (\ j -> R.mul (a (inl j)) (v (inl j) i))))
+     (cong2 (X -> R.R) (pointwise X) _ _ _ _ (scale (a (inr tt)) (v (inr tt))) (r (\ j -> a (inl j)) (\ j -> v (inl j)))) } ;
+  inverse (f : X -> R.R) : TF.Vec m = eq.sec f ;
+  inverse-add (f g : X -> R.R) : Id (TF.Vec m) (inverse (pointwise X f g)) (\ i -> R.add (inverse f i) (inverse g i)) =
+   EQ.injective (TF.Vec m) (X -> R.R) phi eq _ _
+    (trans (eq.sec-eq (pointwise X f g))
+     (sym (trans (add (inverse f) (inverse g)) (cong2 (X -> R.R) (pointwise X) _ _ _ _ (eq.sec-eq f) (eq.sec-eq g))))) ;
+  inverse-scale (a : R.R) (f : X -> R.R) : Id (TF.Vec m) (inverse (\ x -> R.mul a (f x))) (\ i -> R.mul a (inverse f i)) =
+   EQ.injective (TF.Vec m) (X -> R.R) phi eq _ _
+    (trans (eq.sec-eq (\ x -> R.mul a (f x)))
+     (sym (trans (scale a (inverse f)) (ap (\ h x -> R.mul a (h x)) (eq.sec-eq f))))) ;
+  vector (j : Fin m) : X -> R.R = phi (\ i -> D.delta m i j) ;
+  form (j : Fin m) : HM.At[Fn X,MD.regular].S.E =
+   (\ f -> inverse f j,
+    \ f g -> Pr.happly (Fin m) (\ i -> R.R) _ _ (inverse-add f g) j,
+    \ a f -> Pr.happly (Fin m) (\ i -> R.R) _ _ (inverse-scale a f) j) ;
+  law (f : X -> R.R) : Id (X -> R.R) (SF.sum m (\ j -> (Fn X).sm (inverse f j) (vector j))) f =
+   trans (sym (combination m (\ j -> inverse f j) (\ j i -> D.delta m i j)))
+    (trans (ap phi (F.funext (Fin m) (\ i -> R.R) _ _ (\ i ->
+      trans (S.sum-cong m _ (\ j -> R.mul (D.delta m i j) (inverse f j)) (\ j -> R.mulC (inverse f j) (D.delta m i j)))
+       (D.sum-delta m i (inverse f)))))
+     (eq.sec-eq f)) ;
+  frame : FR.Frame[Fn X,m] = new FR.Frame[Fn X,m,vector := vector,form := form,law := law] ;
+ } ;
+ -- (tower)
+ module Tower (s : Towers[l].Shape) (t : TW.Tower s Top) {
+  X : U l = TW.Points s Top t ;
+  E : TF.Expansion[s,Top,t] = TF.expansion s Top t ;
+  constant : Pr.Equiv (TF.Vec (TF.rank s)) (Top -> TF.Vec (TF.rank s)) =
+   (\ v y -> v,Pr.qinv (TF.Vec (TF.rank s)) (Top -> TF.Vec (TF.rank s)) (\ v y -> v) (\ u -> u tt)
+    (\ u -> F.funext Top (\ y -> TF.Vec (TF.rank s)) _ u
+     (MatrixLeftInverse[l].Over[R,setR,axioms.loc].top-case (\ y -> Id (TF.Vec (TF.rank s)) (u tt) (u y)) (refl (u tt))))
+    (\ v -> refl v)) ;
+  phi (v : TF.Vec (TF.rank s)) : X -> R.R = E.map (\ y -> v) ;
+  equivalence : Pr.Equiv (TF.Vec (TF.rank s)) (X -> R.R) =
+   EQ.compose (TF.Vec (TF.rank s)) (Top -> TF.Vec (TF.rank s)) (X -> R.R) constant (E.map,E.equiv) ;
+  frame : FR.Frame[Fn X,TF.rank s] =
+   Linear[X,TF.rank s,phi,equivalence.2,\ v w -> E.add (\ y -> v) (\ y -> w),\ a v -> E.scale (\ y -> a) (\ y -> v)].frame ;
+ } ;
+ -- (along)
+ module Along (X Y : U l) (e : Pr.Equiv X Y) (m : Nat) (fr : FR.Frame[Fn Y,m]) {
+  module SX = ModuleFiniteSums[l].Over[R,setR,Fn X] ;
+  module SY = ModuleFiniteSums[l].Over[R,setR,Fn Y] ;
+  vector (j : Fin m) (x : X) : R.R = fr.vector j (e.1 x) ;
+  form (j : Fin m) : HM.At[Fn X,MD.regular].S.E =
+   (\ f -> (fr.form j).1 (\ y -> f (e.2.sec y)),
+    \ f g -> (fr.form j).2.1 (\ y -> f (e.2.sec y)) (\ y -> g (e.2.sec y)),
+    \ a f -> (fr.form j).2.2 a (\ y -> f (e.2.sec y))) ;
+  restrict : (n : Nat) (w : Fin n -> Y -> R.R) -> Id (X -> R.R) (SX.sum n (\ j x -> w j (e.1 x))) (\ x -> SY.sum n w (e.1 x)) = split {
+   zero -> \ w -> refl (\ x -> R.z) ;
+   suc n | r -> \ w -> ap (\ h x -> R.add (w (inr tt) (e.1 x)) (h x)) (r (\ j -> w (inl j))) } ;
+  law (f : X -> R.R) : Id (X -> R.R) (SX.sum m (\ j -> (Fn X).sm ((form j).1 f) (vector j))) f =
+   trans (restrict m (\ j -> (Fn Y).sm ((form j).1 f) (fr.vector j)))
+    (F.funext X (\ x -> R.R) _ f (\ x ->
+     trans (Pr.happly Y (\ y -> R.R) _ _ (fr.law (\ y -> f (e.2.sec y))) (e.1 x))
+      (ap f (Pr.sec-ret X Y e.1 e.2 x)))) ;
+  frame : FR.Frame[Fn X,m] = new FR.Frame[Fn X,m,vector := vector,form := form,law := law] ;
+ } ;
+} ;

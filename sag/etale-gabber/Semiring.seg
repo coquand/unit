@@ -1,0 +1,119 @@
+-- Commutative semirings (a set with + and *, both associative, commutative
+-- and unital, * distributing over +, and 0 * x = 0), and the quotient of
+-- a raw semiring by a congruence: operations respecting a proposition-
+-- valued equivalence relation, with the laws holding up to it, descend to
+-- the quotient (QUOTIENT), where the laws hold, since a law between
+-- classes is a proposition and holds at representatives.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+record CSemiring {
+ S : U l ;
+ setS : Pr.isSet S ;
+ zero : S ;
+ one : S ;
+ add : S -> S -> S ;
+ mul : S -> S -> S ;
+ addA (x y z : S) : Id S (add x (add y z)) (add (add x y) z) ;
+ addC (x y : S) : Id S (add x y) (add y x) ;
+ addZ (x : S) : Id S (add x zero) x ;
+ mulA (x y z : S) : Id S (mul x (mul y z)) (mul (mul x y) z) ;
+ mulC (x y : S) : Id S (mul x y) (mul y x) ;
+ mulO (x : S) : Id S (mul x one) x ;
+ dist (x y z : S) : Id S (mul x (add y z)) (add (mul x y) (mul x z)) ;
+ mulZ (x : S) : Id S (mul x zero) zero ;
+} ;
+-- maps of commutative semirings
+record Hom (T T' : CSemiring) {
+ fn : T.S -> T'.S ;
+ map-zero : Id T'.S (fn T.zero) T'.zero ;
+ map-one : Id T'.S (fn T.one) T'.one ;
+ map-add (x y : T.S) : Id T'.S (fn (T.add x y)) (T'.add (fn x) (fn y)) ;
+ map-mul (x y : T.S) : Id T'.S (fn (T.mul x y)) (T'.mul (fn x) (fn y)) ;
+} ;
+
+module FromCongruence (S : U l) (zero one : S) (add mul : S -> S -> S) (rel : S -> S -> U l)
+ (prop : (a b : S) -> Pr.isProp (rel a b)) (rr : (a : S) -> rel a a)
+ (rs : (a b : S) -> rel a b -> rel b a) (rt : (a b c : S) -> rel a b -> rel b c -> rel a c)
+ (add-cong : (a a' b b' : S) -> rel a a' -> rel b b' -> rel (add a b) (add a' b'))
+ (mul-cong : (a a' b b' : S) -> rel a a' -> rel b b' -> rel (mul a b) (mul a' b'))
+ (addA : (x y z : S) -> rel (add x (add y z)) (add (add x y) z))
+ (addC : (x y : S) -> rel (add x y) (add y x))
+ (addZ : (x : S) -> rel (add x zero) x)
+ (mulA : (x y z : S) -> rel (mul x (mul y z)) (mul (mul x y) z))
+ (mulC : (x y : S) -> rel (mul x y) (mul y x))
+ (mulO : (x : S) -> rel (mul x one) x)
+ (dist : (x y z : S) -> rel (mul x (add y z)) (add (mul x y) (mul x z)))
+ (mulZ : (x : S) -> rel (mul x zero) zero) {
+ module Q = Quotient[l].Quot[S,rel,prop,rr,rs,rt] ;
+ Carrier : U l = Q.Q ;
+ class : S -> Carrier = Q.inc ;
+ set : Pr.isSet Carrier = Q.set ;
+ module Binary (op : S -> S -> S) (cong : (a a' b b' : S) -> rel a a' -> rel b b' -> rel (op a b) (op a' b')) {
+  module Right (a : S) {
+   module D = Q.Descend[Carrier,set,\ b -> class (op a b),\ b b' h -> Q.relates _ _ (cong a a b b' (rr a) h)] ;
+  } ;
+  left-respects (a a' : S) (h : rel a a') : Id (Carrier -> Carrier) Right[a].D.map Right[a'].D.map =
+   F.funext Carrier (\ q -> Carrier) _ _
+    (Q.induction @l (\ q -> Id Carrier (Right[a].D.map q) (Right[a'].D.map q)) (\ q -> set _ _)
+     (\ b -> trans (Right[a].D.beta b) (trans (Q.relates _ _ (cong a a' b b h (rr b))) (sym (Right[a'].D.beta b))))) ;
+  module Left = Q.Descend[Carrier -> Carrier,F.isSet-Pi Carrier (\ q -> Carrier) (\ q -> set),\ a -> Right[a].D.map,left-respects] ;
+  operation : Carrier -> Carrier -> Carrier = Left.map ;
+  beta (a b : S) : Id Carrier (operation (class a) (class b)) (class (op a b)) =
+   trans (Pr.happly Carrier (\ q -> Carrier) _ _ (Left.beta a) (class b)) (Right[a].D.beta b) ;
+ } ;
+ module Plus2 = Binary[add,add-cong] ;
+ module Times2 = Binary[mul,mul-cong] ;
+ addQ : Carrier -> Carrier -> Carrier = Plus2.operation ;
+ mulQ : Carrier -> Carrier -> Carrier = Times2.operation ;
+ forall1 (B : Carrier -> U l) (p : (x : Carrier) -> Pr.isProp (B x)) (b : (a : S) -> B (class a)) : (x : Carrier) -> B x =
+  Q.induction @l B p b ;
+ forall2 (B : Carrier -> Carrier -> U l) (p : (x y : Carrier) -> Pr.isProp (B x y))
+  (b : (a c : S) -> B (class a) (class c)) : (x y : Carrier) -> B x y =
+  Q.induction @l (\ x -> (y : Carrier) -> B x y) (\ x -> F.isProp-Pi Carrier (B x) (p x))
+   (\ a -> Q.induction @l (B (class a)) (p (class a)) (b a)) ;
+ forall3 (B : Carrier -> Carrier -> Carrier -> U l) (p : (x y z : Carrier) -> Pr.isProp (B x y z))
+  (b : (a c d : S) -> B (class a) (class c) (class d)) : (x y z : Carrier) -> B x y z =
+  forall2 (\ x y -> (z : Carrier) -> B x y z) (\ x y -> F.isProp-Pi Carrier (B x y) (p x y))
+   (\ a c -> Q.induction @l (B (class a) (class c)) (p (class a) (class c)) (b a c)) ;
+ -- the laws at representatives
+ add2 (a b : S) : Id Carrier (addQ (class a) (class b)) (class (add a b)) = Plus2.beta a b ;
+ mul2 (a b : S) : Id Carrier (mulQ (class a) (class b)) (class (mul a b)) = Times2.beta a b ;
+ addA-at (a b c : S) : Id Carrier (addQ (class a) (addQ (class b) (class c))) (addQ (addQ (class a) (class b)) (class c)) =
+  calc Carrier { addQ (class a) (addQ (class b) (class c))
+    =< ap (addQ (class a)) (add2 b c) > addQ (class a) (class (add b c))
+    =< add2 a (add b c) > class (add a (add b c))
+    =< Q.relates _ _ (addA a b c) > class (add (add a b) c)
+    =< sym (add2 (add a b) c) > addQ (class (add a b)) (class c)
+    =< ap (\ t -> addQ t (class c)) (sym (add2 a b)) > addQ (addQ (class a) (class b)) (class c) } ;
+ mulA-at (a b c : S) : Id Carrier (mulQ (class a) (mulQ (class b) (class c))) (mulQ (mulQ (class a) (class b)) (class c)) =
+  calc Carrier { mulQ (class a) (mulQ (class b) (class c))
+    =< ap (mulQ (class a)) (mul2 b c) > mulQ (class a) (class (mul b c))
+    =< mul2 a (mul b c) > class (mul a (mul b c))
+    =< Q.relates _ _ (mulA a b c) > class (mul (mul a b) c)
+    =< sym (mul2 (mul a b) c) > mulQ (class (mul a b)) (class c)
+    =< ap (\ t -> mulQ t (class c)) (sym (mul2 a b)) > mulQ (mulQ (class a) (class b)) (class c) } ;
+ dist-at (a b c : S) : Id Carrier (mulQ (class a) (addQ (class b) (class c))) (addQ (mulQ (class a) (class b)) (mulQ (class a) (class c))) =
+  calc Carrier { mulQ (class a) (addQ (class b) (class c))
+    =< ap (mulQ (class a)) (add2 b c) > mulQ (class a) (class (add b c))
+    =< mul2 a (add b c) > class (mul a (add b c))
+    =< Q.relates _ _ (dist a b c) > class (add (mul a b) (mul a c))
+    =< sym (add2 (mul a b) (mul a c)) > addQ (class (mul a b)) (class (mul a c))
+    =< cong2 Carrier addQ _ _ _ _ (sym (mul2 a b)) (sym (mul2 a c)) > addQ (mulQ (class a) (class b)) (mulQ (class a) (class c)) } ;
+ semiring : CSemiring = new CSemiring[Carrier,set,class zero,class one,addQ,mulQ,
+  forall3 (\ x y z -> Id Carrier (addQ x (addQ y z)) (addQ (addQ x y) z)) (\ x y z -> set _ _) addA-at,
+  forall2 (\ x y -> Id Carrier (addQ x y) (addQ y x)) (\ x y -> set _ _)
+   (\ a b -> trans (add2 a b) (trans (Q.relates _ _ (addC a b)) (sym (add2 b a)))),
+  forall1 (\ x -> Id Carrier (addQ x (class zero)) x) (\ x -> set _ _)
+   (\ a -> trans (add2 a zero) (Q.relates _ _ (addZ a))),
+  forall3 (\ x y z -> Id Carrier (mulQ x (mulQ y z)) (mulQ (mulQ x y) z)) (\ x y z -> set _ _) mulA-at,
+  forall2 (\ x y -> Id Carrier (mulQ x y) (mulQ y x)) (\ x y -> set _ _)
+   (\ a b -> trans (mul2 a b) (trans (Q.relates _ _ (mulC a b)) (sym (mul2 b a)))),
+  forall1 (\ x -> Id Carrier (mulQ x (class one)) x) (\ x -> set _ _)
+   (\ a -> trans (mul2 a one) (Q.relates _ _ (mulO a))),
+  forall3 (\ x y z -> Id Carrier (mulQ x (addQ y z)) (addQ (mulQ x y) (mulQ x z))) (\ x y z -> set _ _) dist-at,
+  forall1 (\ x -> Id Carrier (mulQ x (class zero)) (class zero)) (\ x -> set _ _)
+   (\ a -> trans (mul2 a zero) (Q.relates _ _ (mulZ a)))] ;
+ -- equal classes are related
+ effective (a b : S) (h : Id Carrier (class a) (class b)) : rel a b = Q.effective a b h ;
+} ;

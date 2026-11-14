@@ -1,0 +1,121 @@
+-- Torsor.seg: propositions and sets, abelian groups (Ab, AbL), and
+-- A-torsor structures (TorBase).  Function extensionality only; SAG
+-- Lemma 7.4.2 on torsors and cocycles, which uses univalence, is in
+-- TorsorCocycles.
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open FunExtUA[l] ;
+module Tr = Truncation[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+
+------------------------------------------------------------------------
+-- propositions and sets
+
+isProp-isContr (X : U l) : isProp (isContr X) = \ c c' ->
+  Sigma-eq X (\ x -> (y : X) -> Id X x y) c.1 c'.1 c.2 c'.2 (pathC X c c.1 c'.1)
+    (FL.isProp-Pi X (\ y -> Id X c'.1 y)
+       (\ y -> prop-to-set X (\ x0 y0 -> pathC X c x0 y0) c'.1 y)) ;
+
+isProp-isSet (X : U l) : isProp (isSet X) = \ s s' ->
+  FL.funext X (\ x -> (y : X) -> isProp (Id X x y)) s s' (\ x ->
+    FL.funext X (\ y -> isProp (Id X x y)) (s x) (s' x) (\ y ->
+      FL.isProp-isProp (Id X x y) (s x y) (s' x y))) ;
+
+-- a subtype of a set is a set
+isSet-sub (X : U l) (Q : X -> U l) (sX : isSet X) (pQ : (x : X) -> isProp (Q x))
+  : isSet ((x : X) * Q x) = \ u v ->
+  retract-prop (Id ((x : X) * Q x) u v)
+    ((p : Id X u.1 v.1) * Id (Q v.1) (subst X Q u.1 v.1 p u.2) v.2)
+    (sPath X Q u v)
+    (\ w -> Sigma-path X Q u.1 v.1 u.2 v.2 w.1 w.2)
+    (rsPath X Q u v)
+    (isProp-Sigma (Id X u.1 v.1) (\ p -> Id (Q v.1) (subst X Q u.1 v.1 p u.2) v.2)
+       (sX u.1 v.1)
+       (\ p -> prop-to-set (Q v.1) (pQ v.1) (subst X Q u.1 v.1 p u.2) v.2)) ;
+
+------------------------------------------------------------------------
+-- abelian groups
+
+record Ab {
+  A : U l ;
+  setA : isSet A ;
+  o : A ;
+  add : A -> A -> A ;
+  inv : A -> A ;
+  assoc (x y w : A) : Id A (add (add x y) w) (add x (add y w)) ;
+  comm (x y : A) : Id A (add x y) (add y x) ;
+  unitr (x : A) : Id A (add x o) x ;
+  invr (x : A) : Id A (add x (inv x)) o ;
+} ;
+
+module AbL (G : Ab) {
+  open G ;
+  unitl (x : A) : Id A (add o x) x = transH (comm o x) (unitr x) ;
+  invl (x : A) : Id A (add (inv x) x) o = transH (comm (inv x) x) (invr x) ;
+
+  -- a + x = y  gives  a = y - x
+  solve (a x y : A) (h : Id A (add a x) y) : Id A a (add y (inv x)) = calc A {
+    a =< symH (unitr a) > add a o
+      =< ap A A (add a) o (add x (inv x)) (symH (invr x)) > add a (add x (inv x))
+      =< symH (assoc a x (inv x)) > add (add a x) (inv x)
+      =< ap A A (\ t -> add t (inv x)) (add a x) y h > add y (inv x) } ;
+
+  -- (w - v) + (v + c) = w + c
+  shift (w v c : A) : Id A (add (add w (inv v)) (add v c)) (add w c) = calc A {
+    add (add w (inv v)) (add v c)
+      =< assoc w (inv v) (add v c) > add w (add (inv v) (add v c))
+      =< ap A A (add w) (add (inv v) (add v c)) (add (add (inv v) v) c)
+            (symH (assoc (inv v) v c)) > add w (add (add (inv v) v) c)
+      =< ap A A (\ t -> add w (add t c)) (add (inv v) v) o (invl v) > add w (add o c)
+      =< ap A A (add w) (add o c) c (unitl c) > add w c } ;
+} ;
+
+------------------------------------------------------------------------
+-- A-torsors
+
+module TorBase (G : Ab) {
+  open G ;
+  open AbL[G] ;
+
+  -- an A-torsor: a set with a free and transitive action, merely inhabited
+  AD (T : U l) (act : A -> T -> T) : U l =
+    (a b : A) (t : T) -> Id T (act (add a b) t) (act a (act b t)) ;
+  ZE (T : U l) (act : A -> T -> T) : U l = (t : T) -> Id T (act o t) t ;
+  FT (T : U l) (act : A -> T -> T) : U l =
+    (t t' : T) -> isContr ((a : A) * Id T (act a t) t') ;
+  Rest3 (T : U l) (act : A -> T -> T) : U l = (ft : FT T act) * Tr.Trunc[T].carrier ;
+  Rest2 (T : U l) (act : A -> T -> T) : U l = (ze : ZE T act) * Rest3 T act ;
+  Rest (T : U l) (act : A -> T -> T) : U l = (ad : AD T act) * Rest2 T act ;
+  Laws (T : U l) (act : A -> T -> T) : U l = (sT : isSet T) * Rest T act ;
+  TorStr (T : U l) : U l = (act : A -> T -> T) * Laws T act ;
+
+  laws-prop (T : U l) (act : A -> T -> T) : isProp (Laws T act) =
+    isProp-Sigma (isSet T) (\ sT -> Rest T act) (isProp-isSet T) (\ sT ->
+    isProp-Sigma (AD T act) (\ x -> Rest2 T act)
+      (FL.isProp-Pi A (\ a -> (b : A) (t : T) -> Id T (act (add a b) t) (act a (act b t))) (\ a ->
+       FL.isProp-Pi A (\ b -> (t : T) -> Id T (act (add a b) t) (act a (act b t))) (\ b ->
+       FL.isProp-Pi T (\ t -> Id T (act (add a b) t) (act a (act b t))) (\ t ->
+         sT (act (add a b) t) (act a (act b t)))))) (\ x ->
+    isProp-Sigma (ZE T act) (\ x' -> Rest3 T act)
+      (FL.isProp-Pi T (\ t -> Id T (act o t) t) (\ t -> sT (act o t) t)) (\ x' ->
+    isProp-Sigma (FT T act) (\ x'' -> Tr.Trunc[T].carrier)
+      (FL.isProp-Pi T (\ t -> (t' : T) -> isContr ((a : A) * Id T (act a t) t')) (\ t ->
+       FL.isProp-Pi T (\ t' -> isContr ((a : A) * Id T (act a t) t')) (\ t' ->
+         isProp-isContr ((a : A) * Id T (act a t) t'))))
+      (\ x'' -> Tr.Trunc[T].proposition)))) ;
+
+  -- the difference t' - t in a torsor: the a with  a . t = t'
+  module D (T : U l) (s : TorStr T) {
+    act : A -> T -> T = s.1 ;
+    ad : AD T act = s.2.2.1 ;
+    ft : FT T act = s.2.2.2.2.1 ;
+    diff (t t' : T) : A = (ft t t').1.1 ;
+    dact (t t' : T) : Id T (act (diff t t') t) t' = (ft t t').1.2 ;
+    uniq (t t' : T) (a : A) (p : Id T (act a t) t') : Id A (diff t t') a =
+      ap ((b : A) * Id T (act b t) t') A (\ w -> w.1) (ft t t').1 (a, p) ((ft t t').2 (a, p)) ;
+  } ;
+
+} ;

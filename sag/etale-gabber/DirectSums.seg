@@ -1,0 +1,116 @@
+-- Block sums over Fin (m + n) (BLOCKS: injl, injr, side, join), for sizes m
+-- and n that may differ.  A vector w has a left part w_l and a right part
+-- w_r and is determined by them (Parts); catv u v has parts u and v.  The
+-- block sum of p (m x m) and q (n x n),
+--     dsum p q = ( p 0 )
+--                ( 0 q ),
+-- acts by parts, (dsum p q) w = catv (p w_l) (q w_r), and
+-- dsum p q . dsum p' q' = dsum (p p') (q q'): an entry of a product is a
+-- sum over the left indices plus a sum over the right ones.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (m n : Nat) {
+ module RLR = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module SP = Blocks[l].Sums[R] ;
+ module Vm = Vectors[l].Over[R,setR,m] ;
+ module Vn = Vectors[l].Over[R,setR,n] ;
+ module V2 = Vectors[l].Over[R,setR,plus m n] ;
+ module Mm = Vm.MR ;
+ module Mn = Vn.MR ;
+ module M2 = V2.MR ;
+ Side : U l = Plus (Fin m) (Fin n) ;
+ il (i : Fin m) : Fin (plus m n) = Blocks[l].injl n m i ;
+ ir (i : Fin n) : Fin (plus m n) = Blocks[l].injr n m i ;
+ side (x : Fin (plus m n)) : Side = Blocks[l].side n m x ;
+ -- parts of vectors
+ lpart (w : V2.Vec) : Vm.Vec = \ i -> w (il i) ;
+ rpart (w : V2.Vec) : Vn.Vec = \ i -> w (ir i) ;
+ choose (u : Vm.Vec) (v : Vn.Vec) : Side -> R.R = split { inl i -> u i ; inr i -> v i } ;
+ catv (u : Vm.Vec) (v : Vn.Vec) : V2.Vec = \ x -> choose u v (side x) ;
+ catv-l (u : Vm.Vec) (v : Vn.Vec) (i : Fin m) : Id R.R (catv u v (il i)) (u i) = ap (choose u v) (Blocks[l].side-injl n m i) ;
+ catv-r (u : Vm.Vec) (v : Vn.Vec) (i : Fin n) : Id R.R (catv u v (ir i)) (v i) = ap (choose u v) (Blocks[l].side-injr n m i) ;
+ module Parts (w w' : V2.Vec) (hl : (i : Fin m) -> Id R.R (w (il i)) (w' (il i)))
+  (hr : (i : Fin n) -> Id R.R (w (ir i)) (w' (ir i))) {
+  at-join : (e : Side) -> Id R.R (w (Blocks[l].join m n e)) (w' (Blocks[l].join m n e)) = split {
+   inl i -> hl i ; inr i -> hr i } ;
+  entry (x : Fin (plus m n)) : Id R.R (w x) (w' x) =
+   trans (sym (ap w (Blocks[l].join-side n m x))) (trans (at-join (side x)) (ap w' (Blocks[l].join-side n m x))) ;
+  equal : Id V2.Vec w w' = V2.vec-eq w w' entry ;
+ } ;
+ lpart-catv (u : Vm.Vec) (v : Vn.Vec) : Id Vm.Vec (lpart (catv u v)) u = Vm.vec-eq (lpart (catv u v)) u (catv-l u v) ;
+ rpart-catv (u : Vm.Vec) (v : Vn.Vec) : Id Vn.Vec (rpart (catv u v)) v = Vn.vec-eq (rpart (catv u v)) v (catv-r u v) ;
+ catv-parts (w : V2.Vec) : Id V2.Vec (catv (lpart w) (rpart w)) w =
+  Parts[catv (lpart w) (rpart w),w,catv-l (lpart w) (rpart w),catv-r (lpart w) (rpart w)].equal ;
+
+ -- the block sum
+ pick (p : Mm.Mat) (q : Mn.Mat) : Side -> Side -> R.R = split {
+  inl i -> split { inl j -> p i j ; inr j -> R.z } ;
+  inr i -> split { inl j -> R.z ; inr j -> q i j } } ;
+ dsum (p : Mm.Mat) (q : Mn.Mat) : M2.Mat = \ x y -> pick p q (side x) (side y) ;
+ at (p : Mm.Mat) (q : Mn.Mat) (e e' : Side) : Id R.R (dsum p q (Blocks[l].join m n e) (Blocks[l].join m n e')) (pick p q e e') =
+  trans (ap (\ s -> pick p q s (side (Blocks[l].join m n e'))) (Blocks[l].side-join m n e)) (ap (pick p q e) (Blocks[l].side-join m n e')) ;
+ at-ll (p : Mm.Mat) (q : Mn.Mat) (i j : Fin m) : Id R.R (dsum p q (il i) (il j)) (p i j) = at p q (inl i) (inl j) ;
+ at-lr (p : Mm.Mat) (q : Mn.Mat) (i : Fin m) (j : Fin n) : Id R.R (dsum p q (il i) (ir j)) R.z = at p q (inl i) (inr j) ;
+ at-rl (p : Mm.Mat) (q : Mn.Mat) (i : Fin n) (j : Fin m) : Id R.R (dsum p q (ir i) (il j)) R.z = at p q (inr i) (inl j) ;
+ at-rr (p : Mm.Mat) (q : Mn.Mat) (i j : Fin n) : Id R.R (dsum p q (ir i) (ir j)) (q i j) = at p q (inr i) (inr j) ;
+ -- a sum over Fin (m + n) whose right terms vanish, or whose left terms vanish
+ sum-left (f : Fin (plus m n) -> R.R) (h : (j : Fin n) -> Id R.R (f (ir j)) R.z) :
+  Id R.R (S.sum (plus m n) f) (S.sum m (\ j -> f (il j))) =
+  trans (SP.sum-plus n m f)
+   (trans (ap (R.add (S.sum m (\ j -> f (il j)))) (trans (S.sum-cong n (\ j -> f (ir j)) (\ j -> R.z) h) (S.sum-zero n)))
+    (R.addZ (S.sum m (\ j -> f (il j))))) ;
+ sum-right (f : Fin (plus m n) -> R.R) (h : (j : Fin m) -> Id R.R (f (il j)) R.z) :
+  Id R.R (S.sum (plus m n) f) (S.sum n (\ j -> f (ir j))) =
+  trans (SP.sum-plus n m f)
+   (trans (ap (\ t -> R.add t (S.sum n (\ j -> f (ir j)))) (trans (S.sum-cong m (\ j -> f (il j)) (\ j -> R.z) h) (S.sum-zero m)))
+    (RLR.zl (S.sum n (\ j -> f (ir j))))) ;
+ -- the action by parts
+ act-l (p : Mm.Mat) (q : Mn.Mat) (w : V2.Vec) (i : Fin m) : Id R.R (V2.act (dsum p q) w (il i)) (Vm.act p (lpart w) i) =
+  trans (sum-left (\ y -> R.mul (dsum p q (il i) y) (w y))
+    (\ j -> trans (ap (\ t -> R.mul t (w (ir j))) (at-lr p q i j)) (RLR.zero-mul (w (ir j)))))
+   (S.sum-cong m (\ j -> R.mul (dsum p q (il i) (il j)) (w (il j))) (\ j -> R.mul (p i j) (w (il j)))
+    (\ j -> ap (\ t -> R.mul t (w (il j))) (at-ll p q i j))) ;
+ act-r (p : Mm.Mat) (q : Mn.Mat) (w : V2.Vec) (i : Fin n) : Id R.R (V2.act (dsum p q) w (ir i)) (Vn.act q (rpart w) i) =
+  trans (sum-right (\ y -> R.mul (dsum p q (ir i) y) (w y))
+    (\ j -> trans (ap (\ t -> R.mul t (w (il j))) (at-rl p q i j)) (RLR.zero-mul (w (il j)))))
+   (S.sum-cong n (\ j -> R.mul (dsum p q (ir i) (ir j)) (w (ir j))) (\ j -> R.mul (q i j) (w (ir j)))
+    (\ j -> ap (\ t -> R.mul t (w (ir j))) (at-rr p q i j))) ;
+ -- the columns of dsum p' q' are catv of columns of p' and zero, or of zero and columns of q'
+ column-l (p : Mm.Mat) (q : Mn.Mat) (j : Fin m) : Id V2.Vec (\ k -> dsum p q k (il j)) (catv (\ k -> p k j) Vn.vzero) =
+  Parts[\ k -> dsum p q k (il j),catv (\ k -> p k j) Vn.vzero,
+   \ i -> trans (at-ll p q i j) (sym (catv-l (\ k -> p k j) Vn.vzero i)),
+   \ i -> trans (at-rl p q i j) (sym (catv-r (\ k -> p k j) Vn.vzero i))].equal ;
+ column-r (p : Mm.Mat) (q : Mn.Mat) (j : Fin n) : Id V2.Vec (\ k -> dsum p q k (ir j)) (catv Vm.vzero (\ k -> q k j)) =
+  Parts[\ k -> dsum p q k (ir j),catv Vm.vzero (\ k -> q k j),
+   \ i -> trans (at-lr p q i j) (sym (catv-l Vm.vzero (\ k -> q k j) i)),
+   \ i -> trans (at-rr p q i j) (sym (catv-r Vm.vzero (\ k -> q k j) i))].equal ;
+ module Product (p p' : Mm.Mat) (q q' : Mn.Mat) {
+  -- column j of the product, j on the left and on the right
+  col-l (j : Fin m) : Id V2.Vec (\ x -> M2.mmul (dsum p q) (dsum p' q') x (il j)) (\ x -> dsum (Mm.mmul p p') (Mn.mmul q q') x (il j)) =
+   Parts[\ x -> M2.mmul (dsum p q) (dsum p' q') x (il j),\ x -> dsum (Mm.mmul p p') (Mn.mmul q q') x (il j),
+    \ i -> trans (act-l p q (\ k -> dsum p' q' k (il j)) i)
+      (trans (ap (\ w -> Vm.act p (lpart w) i) (column-l p' q' j))
+       (trans (ap (\ u -> Vm.act p u i) (lpart-catv (\ k -> p' k j) Vn.vzero)) (sym (at-ll (Mm.mmul p p') (Mn.mmul q q') i j)))),
+    \ i -> trans (act-r p q (\ k -> dsum p' q' k (il j)) i)
+      (trans (ap (\ w -> Vn.act q (rpart w) i) (column-l p' q' j))
+       (trans (ap (\ u -> Vn.act q u i) (rpart-catv (\ k -> p' k j) Vn.vzero))
+        (trans (Vn.entry _ _ (Vn.act-zero q) i) (sym (at-rl (Mm.mmul p p') (Mn.mmul q q') i j)))))].equal ;
+  col-r (j : Fin n) : Id V2.Vec (\ x -> M2.mmul (dsum p q) (dsum p' q') x (ir j)) (\ x -> dsum (Mm.mmul p p') (Mn.mmul q q') x (ir j)) =
+   Parts[\ x -> M2.mmul (dsum p q) (dsum p' q') x (ir j),\ x -> dsum (Mm.mmul p p') (Mn.mmul q q') x (ir j),
+    \ i -> trans (act-l p q (\ k -> dsum p' q' k (ir j)) i)
+      (trans (ap (\ w -> Vm.act p (lpart w) i) (column-r p' q' j))
+       (trans (ap (\ u -> Vm.act p u i) (lpart-catv Vm.vzero (\ k -> q' k j)))
+        (trans (Vm.entry _ _ (Vm.act-zero p) i) (sym (at-lr (Mm.mmul p p') (Mn.mmul q q') i j))))),
+    \ i -> trans (act-r p q (\ k -> dsum p' q' k (ir j)) i)
+      (trans (ap (\ w -> Vn.act q (rpart w) i) (column-r p' q' j))
+       (trans (ap (\ u -> Vn.act q u i) (rpart-catv Vm.vzero (\ k -> q' k j))) (sym (at-rr (Mm.mmul p p') (Mn.mmul q q') i j))))].equal ;
+  entry (x y : Fin (plus m n)) : Id R.R (M2.mmul (dsum p q) (dsum p' q') x y) (dsum (Mm.mmul p p') (Mn.mmul q q') x y) =
+   Parts[\ y -> M2.mmul (dsum p q) (dsum p' q') x y,\ y -> dsum (Mm.mmul p p') (Mn.mmul q q') x y,
+    \ j -> V2.entry _ _ (col-l j) x,\ j -> V2.entry _ _ (col-r j) x].entry y ;
+  product : Id M2.Mat (M2.mmul (dsum p q) (dsum p' q')) (dsum (Mm.mmul p p') (Mn.mmul q q')) =
+   M2.mat-eq (M2.mmul (dsum p q) (dsum p' q')) (dsum (Mm.mmul p p') (Mn.mmul q q')) entry ;
+ } ;
+ dsum-mul (p p' : Mm.Mat) (q q' : Mn.Mat) :
+  Id M2.Mat (M2.mmul (dsum p q) (dsum p' q')) (dsum (Mm.mmul p p') (Mn.mmul q q')) = Product[p,p',q,q'].product ;
+} ;

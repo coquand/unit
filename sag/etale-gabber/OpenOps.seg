@@ -1,0 +1,180 @@
+-- SAG 4.2.2-4.2.4: open propositions are the negations of closed ones,
+-- they contain empty and true, are closed under binary intersection and
+-- union, are double-negation stable, and pull back along maps.
+-- Unions append the two lists; intersections take all products.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+-- an index of Fin (plus m n) comes from the left or from the right
+lift-index (n m : Nat) (w : Fin (plus m n)) :
+ Plus ((i : Fin n) * Id (Fin (plus m n)) (FinSum[l].left n m i) w)
+      ((j : Fin m) * Id (Fin (plus m n)) (FinSum[l].right n m j) w) ->
+ Plus ((i : Fin n) * Id (Fin (plus (suc m) n)) (FinSum[l].left n (suc m) i) (inl w))
+      ((j : Fin (suc m)) * Id (Fin (plus (suc m) n)) (FinSum[l].right n (suc m) j) (inl w)) = split {
+ inl a -> inl (a.1,ap (\ u -> inl u) a.2) ;
+ inr b -> inr (inl b.1,ap (\ u -> inl u) b.2) } ;
+split-index (n : Nat) : (m : Nat) -> (w : Fin (plus m n)) ->
+ Plus ((i : Fin n) * Id (Fin (plus m n)) (FinSum[l].left n m i) w)
+      ((j : Fin m) * Id (Fin (plus m n)) (FinSum[l].right n m j) w) = split {
+ zero -> \ w -> inl (w,refl w) ;
+ suc m | r -> split {
+  inl w -> lift-index n m w (r w) ;
+  inr t -> inr (inr tt,ap (\ u -> inr u) (FinSum[l].top-prop tt t)) } } ;
+-- all products xs_i * ys_j
+prodLen : Nat -> Nat -> Nat = split {
+ zero -> \ m -> zero ; suc n | r -> \ m -> plus m (r m) } ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module CP = ClosedProp[l].Over[R,setR] ;
+ module OP = OpenProp[l].Over[R,setR] ;
+ open OP ;
+ Unit (a : R.R) : U l = RL[R].unit a ;
+ unit-along (a b : R.R) (h : Id R.R a b) (u : Unit a) : Unit b = subst Unit h u ;
+ unit-left (a b : R.R) (u : Unit (R.mul a b)) : Unit a = (R.mul b u.1,trans (R.mulA a b u.1) u.2) ;
+ unit-right (a b : R.R) (u : Unit (R.mul a b)) : Unit b = unit-left b a (unit-along _ _ (R.mulC a b) u) ;
+ unit-mul (a b : R.R) (u : Unit a) (v : Unit b) : Unit (R.mul a b) =
+  (R.mul u.1 v.1,calc R.R {
+   R.mul (R.mul a b) (R.mul u.1 v.1)
+    =< sym (R.mulA a b (R.mul u.1 v.1)) > R.mul a (R.mul b (R.mul u.1 v.1))
+    =< ap (R.mul a) (RL[R].mul-swap b u.1 v.1) > R.mul a (R.mul u.1 (R.mul b v.1))
+    =< R.mulA a u.1 (R.mul b v.1) > R.mul (R.mul a u.1) (R.mul b v.1)
+    =< ap (\ t -> R.mul t (R.mul b v.1)) u.2 > R.mul R.o (R.mul b v.1)
+    =< ap (R.mul R.o) v.2 > R.mul R.o R.o
+    =< R.mulO R.o > R.o }) ;
+ one-unit : Unit R.o = (R.o,R.mulO R.o) ;
+ ------------------------------------------------------------------
+ -- 4.2.3(a),(b)
+ open-empty : Open Empty =
+  Tr.Trunc[Witness Empty].inc (from-iff Empty (\ a b -> efq a) zero (\ i -> R.z) (\ e -> efq e)
+   (TC.rec ((i : Fin zero) * Unit R.z) @l Empty (\ a b -> efq a) (\ w -> w.1))) ;
+ open-top : Open Top =
+  Tr.Trunc[Witness Top].inc (from-iff Top FinSum[l].top-prop (suc zero) (\ i -> R.o)
+   (\ t -> Tr.Trunc[(i : Fin (suc zero)) * Unit R.o].inc (inr tt,one-unit)) (\ u -> tt)) ;
+ ------------------------------------------------------------------
+ -- 4.2.3(d): unions, by appending
+ module Append (n : Nat) (xs : Fin n -> R.R) (m : Nat) (ys : Fin m -> R.R) {
+  W : U l = Fin (plus m n) ;
+  zs : W -> R.R = FinSum[l].cases n R.R xs m ys ;
+  Either : U l = Tr.Trunc[Plus (Units n xs) (Units m ys)].carrier ;
+  pick (w : W) (u : Unit (zs w)) :
+   Plus ((i : Fin n) * Id W (FinSum[l].left n m i) w) ((j : Fin m) * Id W (FinSum[l].right n m j) w) -> Either = split {
+   inl a -> Tr.Trunc[Plus (Units n xs) (Units m ys)].inc (inl (Tr.Trunc[(i : Fin n) * Unit (xs i)].inc
+    (a.1,unit-along _ _ (FinSum[l].cases-left n R.R xs m ys a.1) (subst (\ v -> Unit (zs v)) (sym a.2) u)))) ;
+   inr b -> Tr.Trunc[Plus (Units n xs) (Units m ys)].inc (inr (Tr.Trunc[(j : Fin m) * Unit (ys j)].inc
+    (b.1,unit-along _ _ (FinSum[l].cases-right n R.R xs m ys b.1) (subst (\ v -> Unit (zs v)) (sym b.2) u)))) } ;
+  to (u : Units (plus m n) zs) : Either =
+   TC.rec ((w : W) * Unit (zs w)) @l Either Tr.Trunc[Plus (Units n xs) (Units m ys)].proposition
+    (\ v -> pick v.1 v.2 (split-index n m v.1)) u ;
+  from-left (u : Units n xs) : Units (plus m n) zs =
+   TC.map ((i : Fin n) * Unit (xs i)) ((w : W) * Unit (zs w))
+    (\ v -> (FinSum[l].left n m v.1,unit-along _ _ (sym (FinSum[l].cases-left n R.R xs m ys v.1)) v.2)) u ;
+  from-right (u : Units m ys) : Units (plus m n) zs =
+   TC.map ((j : Fin m) * Unit (ys j)) ((w : W) * Unit (zs w))
+    (\ v -> (FinSum[l].right n m v.1,unit-along _ _ (sym (FinSum[l].cases-right n R.R xs m ys v.1)) v.2)) u ;
+  from-plus : Plus (Units n xs) (Units m ys) -> Units (plus m n) zs = split {
+   inl u -> from-left u ; inr u -> from-right u } ;
+  from (e : Either) : Units (plus m n) zs =
+   TC.rec (Plus (Units n xs) (Units m ys)) @l (Units (plus m n) zs) (units-prop (plus m n) zs) from-plus e ;
+ } ;
+ Or (P Q : U l) : U l = Tr.Trunc[Plus P Q].carrier ;
+ or-map (P Q P1 Q1 : U l) (f : P -> P1) (g : Q -> Q1) : Plus P Q -> Plus P1 Q1 = split {
+  inl p -> inl (f p) ; inr q -> inr (g q) } ;
+ open-or (P Q : U l) (op : Open P) (oq : Open Q) : Open (Or P Q) =
+  TC.map2 (Witness P) (Witness Q) (Witness (Or P Q)) (\ wp wq ->
+   from-iff (Or P Q) Tr.Trunc[Plus P Q].proposition
+    (plus wq.1 wp.1) Append[wp.1,wp.2.1,wq.1,wq.2.1].zs
+    (\ o -> Append[wp.1,wp.2.1,wq.1,wq.2.1].from
+     (TC.map (Plus P Q) (Plus (Units wp.1 wp.2.1) (Units wq.1 wq.2.1))
+      (or-map P Q (Units wp.1 wp.2.1) (Units wq.1 wq.2.1) wp.2.2.1 wq.2.2.1) o))
+    (\ u -> TC.map (Plus (Units wp.1 wp.2.1) (Units wq.1 wq.2.1)) (Plus P Q)
+      (or-map (Units wp.1 wp.2.1) (Units wq.1 wq.2.1) P Q wp.2.2.2.sec wq.2.2.2.sec)
+      (Append[wp.1,wp.2.1,wq.1,wq.2.1].to u))) op oq ;
+ ------------------------------------------------------------------
+ -- 4.2.3(c): intersections, by products
+ prods : (n : Nat) -> (Fin n -> R.R) -> (m : Nat) -> (Fin m -> R.R) -> Fin (prodLen n m) -> R.R = split {
+  zero -> \ xs m ys w -> efq w ;
+  suc n | r -> \ xs m ys -> FinSum[l].cases (prodLen n m) R.R (r (\ i -> xs (inl i)) m ys) m
+   (\ j -> R.mul (xs (inr tt)) (ys j)) } ;
+ Factor (n : Nat) (xs : Fin n -> R.R) (m : Nat) (ys : Fin m -> R.R) (w : Fin (prodLen n m)) : U l =
+  (i : Fin n) * (j : Fin m) * Id R.R (prods n xs m ys w) (R.mul (xs i) (ys j)) ;
+ factor-step (n : Nat) (xs : Fin (suc n) -> R.R) (m : Nat) (ys : Fin m -> R.R)
+  (ih : (w : Fin (prodLen n m)) -> Factor n (\ i -> xs (inl i)) m ys w) (w : Fin (prodLen (suc n) m)) :
+  Plus ((i : Fin (prodLen n m)) * Id (Fin (prodLen (suc n) m)) (FinSum[l].left (prodLen n m) m i) w)
+       ((j : Fin m) * Id (Fin (prodLen (suc n) m)) (FinSum[l].right (prodLen n m) m j) w) ->
+  Factor (suc n) xs m ys w = split {
+  inl a -> (inl (ih a.1).1,(ih a.1).2.1,
+   trans (ap (prods (suc n) xs m ys) (sym a.2))
+    (trans (FinSum[l].cases-left (prodLen n m) R.R (prods n (\ i -> xs (inl i)) m ys) m
+      (\ j -> R.mul (xs (inr tt)) (ys j)) a.1) (ih a.1).2.2)) ;
+  inr b -> (inr tt,b.1,
+   trans (ap (prods (suc n) xs m ys) (sym b.2))
+    (FinSum[l].cases-right (prodLen n m) R.R (prods n (\ i -> xs (inl i)) m ys) m
+     (\ j -> R.mul (xs (inr tt)) (ys j)) b.1)) } ;
+ factor : (n : Nat) -> (xs : Fin n -> R.R) -> (m : Nat) -> (ys : Fin m -> R.R) ->
+  (w : Fin (prodLen n m)) -> Factor n xs m ys w = split {
+  zero -> \ xs m ys w -> efq w ;
+  suc n | r -> \ xs m ys w ->
+   factor-step n xs m ys (r (\ i -> xs (inl i)) m ys) w (split-index (prodLen n m) m w) } ;
+ Pair (n : Nat) (xs : Fin n -> R.R) (m : Nat) (ys : Fin m -> R.R) (i : Fin n) (j : Fin m) : U l =
+  (w : Fin (prodLen n m)) * Id R.R (prods n xs m ys w) (R.mul (xs i) (ys j)) ;
+ pair : (n : Nat) -> (xs : Fin n -> R.R) -> (m : Nat) -> (ys : Fin m -> R.R) ->
+  (i : Fin n) -> (j : Fin m) -> Pair n xs m ys i j = split {
+  zero -> \ xs m ys i -> efq i ;
+  suc n | r -> \ xs m ys -> split {
+   inl i -> \ j -> (FinSum[l].left (prodLen n m) m (r (\ k -> xs (inl k)) m ys i j).1,
+    trans (FinSum[l].cases-left (prodLen n m) R.R (prods n (\ k -> xs (inl k)) m ys) m
+      (\ j -> R.mul (xs (inr tt)) (ys j)) (r (\ k -> xs (inl k)) m ys i j).1)
+     (r (\ k -> xs (inl k)) m ys i j).2) ;
+   inr t -> \ j -> (FinSum[l].right (prodLen n m) m j,
+    trans (FinSum[l].cases-right (prodLen n m) R.R (prods n (\ k -> xs (inl k)) m ys) m
+      (\ j -> R.mul (xs (inr tt)) (ys j)) j)
+     (ap (\ u -> R.mul (xs (inr u)) (ys j)) (FinSum[l].top-prop tt t))) } } ;
+ module Product (n : Nat) (xs : Fin n -> R.R) (m : Nat) (ys : Fin m -> R.R) {
+  zs : Fin (prodLen n m) -> R.R = prods n xs m ys ;
+  Both : U l = Units n xs * Units m ys ;
+  both-prop : Pr.isProp Both = Pr.isProp-Sigma (Units n xs) (\ u -> Units m ys)
+   (units-prop n xs) (\ u -> units-prop m ys) ;
+  to (u : Units (prodLen n m) zs) : Both =
+   TC.rec ((w : Fin (prodLen n m)) * Unit (zs w)) @l Both both-prop
+    (\ v -> (Tr.Trunc[(i : Fin n) * Unit (xs i)].inc ((factor n xs m ys v.1).1,
+       unit-left _ _ (unit-along _ _ (factor n xs m ys v.1).2.2 v.2)),
+     Tr.Trunc[(j : Fin m) * Unit (ys j)].inc ((factor n xs m ys v.1).2.1,
+       unit-right _ _ (unit-along _ _ (factor n xs m ys v.1).2.2 v.2)))) u ;
+  from (b : Both) : Units (prodLen n m) zs =
+   TC.map2 ((i : Fin n) * Unit (xs i)) ((j : Fin m) * Unit (ys j)) ((w : Fin (prodLen n m)) * Unit (zs w))
+    (\ a c -> ((pair n xs m ys a.1 c.1).1,
+     unit-along _ _ (sym (pair n xs m ys a.1 c.1).2) (unit-mul (xs a.1) (ys c.1) a.2 c.2))) b.1 b.2 ;
+ } ;
+ open-and (P Q : U l) (op : Open P) (oq : Open Q) : Open (P * Q) =
+  TC.map2 (Witness P) (Witness Q) (Witness (P * Q)) (\ wp wq ->
+   from-iff (P * Q)
+    (Pr.isProp-Sigma P (\ p -> Q) (open-prop P op) (\ p -> open-prop Q oq))
+    (prodLen wp.1 wq.1) Product[wp.1,wp.2.1,wq.1,wq.2.1].zs
+    (\ pq -> Product[wp.1,wp.2.1,wq.1,wq.2.1].from (wp.2.2.1 pq.1,wq.2.2.1 pq.2))
+    (\ u -> (wp.2.2.2.sec (Product[wp.1,wp.2.1,wq.1,wq.2.1].to u).1,
+             wq.2.2.2.sec (Product[wp.1,wp.2.1,wq.1,wq.2.1].to u).2))) op oq ;
+ ------------------------------------------------------------------
+ -- 4.2.4: preimages
+ preimage (X Y : U l) (f : X -> Y) (S : Y -> U l) (o : OpenSubtype Y S) :
+  OpenSubtype X (\ x -> S (f x)) = \ x -> o (f x) ;
+ ------------------------------------------------------------------
+ module SAG (sqc : Presentations[l].Over[R,setR].SQC) (loc : StandardOpens[l].Over[R,setR].Locality) {
+  module U3 = Units23[l].Over[R,setR,sqc,loc] ;
+  not-prop (P : U l) : Pr.isProp (P -> Empty) = F.isProp-Pi P (\ p -> Empty) (\ p a b -> efq a) ;
+  -- 4.2.2: open = negation of closed
+  NegClosedWitness (Q : U l) : U l = (n : Nat) * (xs : Fin n -> R.R) * OpenProp[l].Iff Q (CP.Zeros n xs -> Empty) ;
+  open-neg-closed (Q : U l) (o : Open Q) : Tr.Trunc[NegClosedWitness Q].carrier =
+   TC.map (Witness Q) (NegClosedWitness Q)
+    (\ w -> (w.1,w.2.1,
+     (\ q -> (U3.nonzero-iff-some-unit w.1 w.2.1).2 (w.2.2.1 q),
+      \ nz -> w.2.2.2.sec ((U3.nonzero-iff-some-unit w.1 w.2.1).1 nz)))) o ;
+  neg-closed-open (Q : U l) (propQ : Pr.isProp Q) (c : Tr.Trunc[NegClosedWitness Q].carrier) : Open Q =
+   TC.map (NegClosedWitness Q) (Witness Q)
+    (\ w -> from-iff Q propQ w.1 w.2.1
+     (\ q -> (U3.nonzero-iff-some-unit w.1 w.2.1).1 (w.2.2.1 q))
+     (\ u -> w.2.2.2 ((U3.nonzero-iff-some-unit w.1 w.2.1).2 u))) c ;
+  -- 4.2.3(e): open propositions are double-negation stable
+  stable (Q : U l) (o : Open Q) (nn : (Q -> Empty) -> Empty) : Q =
+   TC.rec (NegClosedWitness Q) @l Q (open-prop Q o)
+    (\ w -> w.2.2.2 (\ z -> nn (\ q -> w.2.2.1 q z))) (open-neg-closed Q o) ;
+ } ;
+} ;

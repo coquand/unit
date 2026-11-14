@@ -1,0 +1,86 @@
+-- Equivalence with SAG's finite affine-open subtype definition.
+-- The untruncated subtype witness is large; Scheme remains small.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Hi = Prelude[l+] ;
+module Tr = Truncation[l] ; module Tr1 = Truncation[l+] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module M = SchemeMaps[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module S = Schemes[l].Over[R,setR] ;
+ module SA = SmallAffine[l].Over[R,setR] ;
+ module FA = FunctionAlgebra[l].Over[R,setR] ;
+ module OP = OpenProp[l].Over[R,setR] ;
+ Total (X : U l) (sub : X -> U l) : U l = (x : X) * sub x ;
+ Has (X : U l) (n : Nat) (us : Fin n -> X -> U l) (x : X) : U l =
+  Tr.Trunc[(i : Fin n) * us i x].carrier ;
+ record Witness (X : U l) {
+  size : Nat ;
+  subtypes : Fin size -> X -> U l ;
+  opens : (i : Fin size) -> OP.OpenSubtype X (subtypes i) ;
+  affines : (i : Fin size) -> FA.Affine (Total X (subtypes i)) ;
+  covers : (x : X) -> Has X size subtypes x ;
+ } ;
+ Property (X : U l) : U l+ = Tr1.Trunc[Witness[X]].carrier ;
+ chart-affine (X : U l) (c : S.Chart[X]) : FA.Affine (Total X (S.Image X c)) =
+  SA.to-affine (Total X (S.Image X c)) (Tr.Trunc[SA.Witness (Total X (S.Image X c))].inc
+   (c.presentation,Functions[l].inverse (S.Domain X c) (Total X (S.Image X c))
+    M.Embedded[S.Domain X c,X,c.map,c.embedding].equivalence)) ;
+ to-witness (X : U l) (c : S.Cover[X]) : Witness[X] =
+  new Witness[X,c.size,\ i -> S.Image X (c.charts i),
+   \ i -> (c.charts i).open-image,\ i -> chart-affine X (c.charts i),c.covers] ;
+ to-subtypes (X : U l) (s : S.Scheme X) : Property X =
+  Tr.Trunc[S.Cover[X]].induction @(l+) (\ t -> Property X)
+   (\ t -> Tr1.Trunc[Witness[X]].proposition) (\ c -> Tr1.Trunc[Witness[X]].inc (to-witness X c)) s ;
+ module From (X : U l) (w : Witness[X]) {
+  sub (i : Fin w.size) : X -> U l = w.subtypes i ;
+  prop (i : Fin w.size) (x : X) : Pr.isProp (sub i x) = OP.open-prop _ (w.opens i x) ;
+  T (i : Fin w.size) : U l = Total X (sub i) ;
+  small-affine (i : Fin w.size) : SA.Affine (T i) = SA.from-affine (T i) (w.affines i) ;
+  local-set (i : Fin w.size) (x : X) (u : sub i x) : S.AtSet X x =
+   M.Embedded[T i,X,\ a -> a.1,M.Subtype[X,sub i,prop i].embedding].LocalSet[SA.set (T i) (small-affine i),(x,u)].at ;
+  set : Pr.isSet X = \ x ->
+   Tr.Trunc[(i : Fin w.size) * sub i x].induction @l (\ t -> S.AtSet X x) (\ t -> S.at-prop X x)
+    (\ a -> local-set a.1 x a.2) (w.covers x) ;
+  Choices : U l = (i : Fin w.size) -> SA.Witness (T i) ;
+  module Chosen (ps : Choices) {
+   module At (i : Fin w.size) {
+    p : SA.P.Presentation = (ps i).1 ;
+    e : Pr.Equiv (T i) (SA.Sol p) = (ps i).2 ;
+    back : Pr.Equiv (SA.Sol p) (T i) = Functions[l].inverse _ _ e ;
+    map (a : SA.Sol p) : X = (back.1 a).1 ;
+    injective (a b : SA.Sol p) (h : Id X (map a) (map b)) : Id (SA.Sol p) a b =
+     Equivalences[l].injective _ _ back.1 back.2 a b
+      (Pr.Sigma-eq X (sub i) _ _ _ _ h (prop i (map b))) ;
+    embedding : M.Embedding (SA.Sol p) X map = M.injective-embedding _ X set map injective ;
+    to (x : X) (u : M.Image (SA.Sol p) X map x) : sub i x =
+     Tr.Trunc[M.Fiber (SA.Sol p) X map x].induction @l (\ t -> sub i x) (\ t -> prop i x)
+      (\ a -> Pr.subst X (sub i) (map a.1) x a.2 (back.1 a.1).2) u ;
+    from (x : X) (u : sub i x) : M.Image (SA.Sol p) X map x =
+     Tr.Trunc[M.Fiber (SA.Sol p) X map x].inc
+      (e.1 (x,u),Pr.ap (T i) X (\ a -> a.1) _ _ (Pr.sec-ret _ _ e.1 e.2 (x,u))) ;
+    equivalent (x : X) : Pr.Equiv (M.Image (SA.Sol p) X map x) (sub i x) =
+     (to x,Pr.qinv _ _ (to x) (from x) (\ u -> prop i x _ u)
+      (\ u -> M.image-prop _ X map x _ u)) ;
+    chart : S.Chart[X] = new S.Chart[X,p,map,embedding,
+     \ x -> OP.along (M.Image (SA.Sol p) X map x) (sub i x) (equivalent x) (w.opens i x)] ;
+   } ;
+   charts (i : Fin w.size) : S.Chart[X] = At[i].chart ;
+   covers (x : X) : Tr.Trunc[(i : Fin w.size) * S.Image X (charts i) x].carrier =
+    Tr.Trunc[(i : Fin w.size) * sub i x].induction @l
+     (\ t -> Tr.Trunc[(i : Fin w.size) * S.Image X (charts i) x].carrier)
+     (\ t -> Tr.Trunc[(i : Fin w.size) * S.Image X (charts i) x].proposition)
+     (\ a -> Tr.Trunc[(i : Fin w.size) * S.Image X (charts i) x].inc (a.1,At[a.1].from x a.2)) (w.covers x) ;
+   cover : S.Cover[X] = new S.Cover[X,w.size,charts,covers] ;
+  } ;
+  scheme : S.Scheme X =
+   Tr.Trunc[Choices].induction @l (\ t -> S.Scheme X) (\ t -> S.proposition X)
+    (\ ps -> S.from-cover X Chosen[ps].cover)
+    (AffineFinite[l].choice w.size (\ i -> SA.Witness (T i)) small-affine) ;
+ } ;
+ from-subtypes (X : U l) (s : Property X) : S.Scheme X =
+  Tr1.Trunc[Witness[X]].induction @l (\ t -> S.Scheme X) (\ t -> S.proposition X) (\ w -> From[X,w].scheme) s ;
+ -- Actual equivalence of the two proposition-valued definitions.
+ equivalence (X : U l) : Hi.Equiv (S.Scheme X) (Property X) =
+  (to-subtypes X,Hi.qinv _ _ (to-subtypes X) (from-subtypes X)
+   (\ s -> Tr1.Trunc[Witness[X]].proposition _ s) (\ s -> S.proposition X _ s)) ;
+} ;

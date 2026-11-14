@@ -13,6 +13,11 @@ a type, and a module is not.
 The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.
 The projector proof uses [admissible fixed-point induction](https://github.com/coquand/domain-semantics/blob/main/UNIT/IndependentKleeneProjector.seg); in Theorem 4.2, the [independent Unit session](https://github.com/coquand/domain-semantics/blob/main/UNIT/CUSLFpCheck.seg) follows the mathematical passage from finitary projectors to their [compact fixed-point families](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLClosedFamilies.seg).
 
+**A synthetic proof of Gabber's theorem for the étale topology**
+
+The [étale note](doc/etale-gabber.pdf), [root-topology proof](doc/gabber-h2.pdf), and [checked development](sag/etale-gabber) give an internal proof of Gabber's theorem for étale stack gerbes over affine spectra in synthetic algebraic geometry: the sheafifications are constructed, and [Hilbert 90 reduces the étale case to the root topology](sag/etale-gabber/EtaleStacks.seg).
+The [new gluing argument](doc/gabber-recollement.pdf) uses elementary weak cancellation and an explicit clutching correction, avoiding general effectiveness, Bass cancellation, and reduction to noetherian rings; the complete Unit check covers 425 modules.
+
 Recursion is only through the eliminators of data types. A function out of
 a data type is defined by cases on the constructors; in the case of a
 constructor with arguments of the type being defined, the values of the
@@ -24,7 +29,7 @@ Here `r` stands for `plus n m`. A definition is not in scope in its own body,
 so this is the only form of recursion: primitive recursion at higher types,
 as in Hilbert's *On the infinite* (1925) and Gödel's system T.
 
-This repository contains the checker and fourteen developments written with it:
+This repository contains the checker and fifteen developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -32,6 +37,9 @@ This repository contains the checker and fourteen developments written with it:
 - formalisations of results of *A foundation for synthetic algebraic
   geometry* (Cherubini, Coquand, Hutzler) over univalence and Rijke's
   axiom of replacement (`sag/`);
+- a synthetic proof of Gabber's theorem for étale stack gerbes, with
+  constructed sheafifications and a gluing argument using an explicit
+  clutching correction ([`sag/etale-gabber`](sag/etale-gabber));
 - formalisations of *A foundation for synthetic Stone duality* and
   *Cohomology in synthetic Stone duality* (Cherubini, Coquand, Geerligs,
   Moeneclaey), up to Theorem 5.16 and Theorem 3.3.2 (`sag/stone`,
@@ -147,6 +155,11 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 
 - [`unit1.pdf`](doc/unit1.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
+- [`etale-gabber.pdf`](doc/etale-gabber.pdf): Gabber's theorem for étale
+  stack gerbes, internally, reduced by Hilbert 90 to the
+  [root-topology theorem](doc/gabber-h2.pdf); the
+  [gluing argument](doc/gabber-recollement.pdf) uses an explicit clutching
+  correction. The full checked snapshot is [`sag/etale-gabber`](sag/etale-gabber).
 - [`lazy-intersection.pdf`](doc/lazy-intersection.pdf): the lazy
   evaluator of Henderson and Morris by intersection types, the informal
   proof followed by `domain/lazy` and `domain/ideal`.

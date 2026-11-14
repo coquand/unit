@@ -1,0 +1,112 @@
+-- The determinant trick for a module (DESIGN.md §5, step 6).  B a
+-- commutative ring acting on an abelian group V (op b v = b . v); for a
+-- matrix M over B (by columns, as in Determinant.seg) and m : V^n,
+--   sum_j M_ji . m_j = 0 for all i   gives   det M . m_k = 0 ,
+-- by  det M . m_k = sum_j (adj(M) M)_jk . m_j = sum_i adj(M)_ik . (sum_j M_ji . m_j) .
+-- DeterminantTrick.seg is the case V = B; Cayley-Hamilton uses V = an
+-- algebra acted on through evaluation of polynomials.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+
+-- finite sums in an abelian group
+module Sums (V : U l) (vz : V) (vadd : V -> V -> V) (vneg : V -> V)
+ (addA : (x y w : V) -> Id V (vadd x (vadd y w)) (vadd (vadd x y) w))
+ (addC : (x y : V) -> Id V (vadd x y) (vadd y x))
+ (addZ : (x : V) -> Id V (vadd x vz) x)
+ (addN : (x : V) -> Id V (vadd x (vneg x)) vz) {
+ module G = ExteriorAlgebra[l].AG[V,vz,vadd,vneg,addA,addC,addZ,addN] ;
+ vsum : (n : Nat) -> (Ps.Fin n -> V) -> V = split {
+  zero -> \ v -> vz ; suc n | ih -> \ v -> vadd (v (inr tt)) (ih (\ i -> v (inl i))) } ;
+ vsum-cong : (n : Nat) (v w : Ps.Fin n -> V) -> ((i : Ps.Fin n) -> Id V (v i) (w i)) -> Id V (vsum n v) (vsum n w) = split {
+  zero -> \ v w h -> refl vz ;
+  suc n | ih -> \ v w h -> G.cong-add (h (inr tt)) (ih (\ i -> v (inl i)) (\ i -> w (inl i)) (\ i -> h (inl i))) } ;
+ vsum-zero : (n : Nat) -> Id V (vsum n (\ i -> vz)) vz = split {
+  zero -> refl vz ; suc n | ih -> trans (ap (vadd vz) ih) (addZ vz) } ;
+ vsum-add : (n : Nat) (v w : Ps.Fin n -> V) -> Id V (vsum n (\ i -> vadd (v i) (w i))) (vadd (vsum n v) (vsum n w)) = split {
+  zero -> \ v w -> sym (addZ vz) ;
+  suc n | ih -> \ v w ->
+   trans (ap (vadd (vadd (v (inr tt)) (w (inr tt)))) (ih (\ i -> v (inl i)) (\ i -> w (inl i))))
+    (G.swap (v (inr tt)) (w (inr tt)) (vsum n (\ i -> v (inl i))) (vsum n (\ i -> w (inl i)))) } ;
+ exchange (m : Nat) : (n : Nat) (f : Ps.Fin n -> Ps.Fin m -> V) ->
+  Id V (vsum n (\ i -> vsum m (\ j -> f i j))) (vsum m (\ j -> vsum n (\ i -> f i j))) = split {
+  zero -> \ f -> sym (vsum-zero m) ;
+  suc n | ih -> \ f ->
+   trans (ap (vadd (vsum m (\ j -> f (inr tt) j))) (ih (\ i j -> f (inl i) j)))
+    (sym (vsum-add m (\ j -> f (inr tt) j) (\ j -> vsum n (\ i -> f (inl i) j)))) } ;
+ -- an additive map commutes with sums
+ hom-sum (f : V -> V) (fa : (x y : V) -> Id V (f (vadd x y)) (vadd (f x) (f y))) :
+  (n : Nat) (v : Ps.Fin n -> V) -> Id V (f (vsum n v)) (vsum n (\ i -> f (v i))) = split {
+  zero -> \ v -> G.hom-zero f fa ;
+  suc n | ih -> \ v -> trans (fa (v (inr tt)) (vsum n (\ i -> v (inl i)))) (ap (vadd (f (v (inr tt)))) (ih (\ i -> v (inl i)))) } ;
+ -- sum_j delta_jk . y_j = y_k, for a ring acting with 0 . v = 0 and 1 . v = v
+ module Delta (Rg : CRing) (act : Rg.R -> V -> V)
+  (act-zero : (v : V) -> Id V (act Rg.z v) vz) (act-one : (v : V) -> Id V (act Rg.o v) v) {
+  module D = MnSums[l].Over[Rg] ;
+  delta : (n : Nat) (k : Ps.Fin n) (y : Ps.Fin n -> V) -> Id V (vsum n (\ j -> act (D.delta n j k) (y j))) (y k) = split {
+   zero -> \ k y -> efq k ;
+   suc n | ih -> split {
+    inl b -> \ y -> trans (G.cong-add (act-zero (y (inr tt))) (ih b (\ j -> y (inl j)))) (G.zl (y (inl b))) ;
+    inr s -> \ y ->
+     trans (G.cong-add (act-one (y (inr tt)))
+             (trans (vsum-cong n (\ j -> act Rg.z (y (inl j))) (\ j -> vz) (\ j -> act-zero (y (inl j)))) (vsum-zero n)))
+      (trans (addZ (y (inr tt))) (ap (\ x -> y (inr x)) (MnSums[l].top-eq tt s))) } } ;
+ } ;
+} ;
+
+module Over (Bg : CRing) (setB : Pr.isSet Bg.R)
+ (V : U l) (vz : V) (vadd : V -> V -> V) (vneg : V -> V)
+ (addA : (x y w : V) -> Id V (vadd x (vadd y w)) (vadd (vadd x y) w))
+ (addC : (x y : V) -> Id V (vadd x y) (vadd y x))
+ (addZ : (x : V) -> Id V (vadd x vz) x)
+ (addN : (x : V) -> Id V (vadd x (vneg x)) vz)
+ (op : Bg.R -> V -> V)
+ (op-add-r : (b : Bg.R) (v w : V) -> Id V (op b (vadd v w)) (vadd (op b v) (op b w)))
+ (op-add-l : (b b' : Bg.R) (v : V) -> Id V (op (Bg.add b b') v) (vadd (op b v) (op b' v)))
+ (op-mul : (b b' : Bg.R) (v : V) -> Id V (op (Bg.mul b b') v) (op b (op b' v)))
+ (op-one : (v : V) -> Id V (op Bg.o v) v) {
+ module VS = Sums[V,vz,vadd,vneg,addA,addC,addZ,addN] ;
+ module G = VS.G ;
+ module S = FiniteIdeal[l].Sums[Bg] ;
+ module D = MnSums[l].Over[Bg] ;
+ module DT = Determinant[l].Over[Bg,setB] ;
+ module ADJ = Adjugate[l].Over[Bg,setB] ;
+ open ExteriorModel[l].Over[Bg] ;
+
+ op-zero (v : V) : Id V (op Bg.z v) vz =
+  G.add-cancel (op Bg.z v) (op Bg.z v) (trans (sym (op-add-l Bg.z Bg.z v)) (ap (\ b -> op b v) (Bg.addZ Bg.z))) ;
+ module VD = VS.Delta[Bg,op,op-zero,op-one] ;
+ -- (sum_i u_i) . v = sum_i u_i . v
+ op-sum : (n : Nat) (u : Ps.Fin n -> Bg.R) (v : V) -> Id V (op (S.sum n u) v) (VS.vsum n (\ i -> op (u i) v)) = split {
+  zero -> \ u v -> op-zero v ;
+  suc n | ih -> \ u v -> trans (op-add-l (u (inr tt)) (S.sum n (\ i -> u (inl i))) v)
+                          (ap (vadd (op (u (inr tt)) v)) (ih (\ i -> u (inl i)) v)) } ;
+
+ trick (n : Nat) (M : DT.Mat n) (m : Ps.Fin n -> V)
+  (h : (i : Ps.Fin n) -> Id V (VS.vsum n (\ j -> op (M j i) (m j))) vz) (k : Ps.Fin n) :
+  Id V (op (det n M) (m k)) vz =
+  calc V {
+   op (det n M) (m k)
+    =< ap (op (det n M)) (sym (VD.delta n k m)) > op (det n M) (VS.vsum n (\ j -> op (D.delta n j k) (m j)))
+    =< VS.hom-sum (op (det n M)) (op-add-r (det n M)) n (\ j -> op (D.delta n j k) (m j))
+     > VS.vsum n (\ j -> op (det n M) (op (D.delta n j k) (m j)))
+    =< VS.vsum-cong n (\ j -> op (det n M) (op (D.delta n j k) (m j)))
+         (\ j -> op (DT.mmul n (ADJ.adj n M) M j k) (m j))
+         (\ j -> trans (sym (op-mul (det n M) (D.delta n j k) (m j)))
+                  (ap (\ b -> op b (m j)) (sym (ADJ.adj-mul n M j k))))
+     > VS.vsum n (\ j -> op (S.sum n (\ i -> Bg.mul (M j i) (ADJ.adj n M i k))) (m j))
+    =< VS.vsum-cong n (\ j -> op (S.sum n (\ i -> Bg.mul (M j i) (ADJ.adj n M i k))) (m j))
+         (\ j -> VS.vsum n (\ i -> op (ADJ.adj n M i k) (op (M j i) (m j))))
+         (\ j -> trans (op-sum n (\ i -> Bg.mul (M j i) (ADJ.adj n M i k)) (m j))
+                  (VS.vsum-cong n (\ i -> op (Bg.mul (M j i) (ADJ.adj n M i k)) (m j))
+                    (\ i -> op (ADJ.adj n M i k) (op (M j i) (m j)))
+                    (\ i -> trans (ap (\ b -> op b (m j)) (Bg.mulC (M j i) (ADJ.adj n M i k)))
+                             (op-mul (ADJ.adj n M i k) (M j i) (m j)))))
+     > VS.vsum n (\ j -> VS.vsum n (\ i -> op (ADJ.adj n M i k) (op (M j i) (m j))))
+    =< VS.exchange n n (\ j i -> op (ADJ.adj n M i k) (op (M j i) (m j)))
+     > VS.vsum n (\ i -> VS.vsum n (\ j -> op (ADJ.adj n M i k) (op (M j i) (m j))))
+    =< VS.vsum-cong n (\ i -> VS.vsum n (\ j -> op (ADJ.adj n M i k) (op (M j i) (m j)))) (\ i -> vz)
+         (\ i -> trans (sym (VS.hom-sum (op (ADJ.adj n M i k)) (op-add-r (ADJ.adj n M i k)) n (\ j -> op (M j i) (m j))))
+                  (trans (ap (op (ADJ.adj n M i k)) (h i)) (G.hom-zero (op (ADJ.adj n M i k)) (op-add-r (ADJ.adj n M i k)))))
+     > VS.vsum n (\ i -> vz)
+    =< VS.vsum-zero n > vz } ;
+} ;

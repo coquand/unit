@@ -1,0 +1,195 @@
+-- The adjugate (DESIGN.md §5, step 4):  adj(A) A = det A . I .
+-- With A[k <- b] the matrix A with column k replaced by b,
+--   adj(A)_ki = det A[k <- e_i] .
+-- Since det A[k <- b] is linear in b (gen is linear and the product is
+-- bilinear),  (adj(A) A)_kj = sum_i A_ij det A[k <- e_i] = det A[k <- a_j] ,
+-- which is det A for j = k, and 0 for j /= k because a product of
+-- generators with a repeated factor vanishes (generators anticommute and
+-- square to 0).
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module S = FiniteIdeal[l].Sums[Rg] ;
+ module D = MnSums[l].Over[Rg] ;
+ module AL = Alternating[l].Over[Rg,setR] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ module UP = ExteriorUniversal[l].Over[Rg,setR] ;
+ module EC = ExteriorContr[l].Over[Rg,setR] ;
+ module DG = ExteriorDegree[l].Over[Rg,setR] ;
+ module DT = Determinant[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+
+ ---------------------------------------------------------------------
+ -- decidable equality on Fin
+
+ isInl {A : U l} : Plus A Top -> U l = split { inl a -> Top ; inr t -> Empty } ;
+ inl-inr {A : U l} {a : A} {t : Top} (p : Id (Plus A Top) (inl a) (inr t)) : Empty = subst isInl p tt ;
+ fromInl {A : U l} (d : A) : Plus A Top -> A = split { inl a -> a ; inr t -> d } ;
+ inl-inj {A : U l} {a b : A} (p : Id (Plus A Top) (inl a) (inl b)) : Id A a b = ap (fromInl a) p ;
+ Dec (m : Nat) (j k : Ps.Fin m) : U l = Plus (Id (Ps.Fin m) j k) (Not (Id (Ps.Fin m) j k)) ;
+ dec-inl (m : Nat) (j k : Ps.Fin m) : Dec m j k -> Dec (suc m) (inl j) (inl k) = split {
+  inl p -> inl (ap (\ x -> inl x) p) ;
+  inr ne -> inr (\ q -> ne (inl-inj q)) } ;
+ dec-fin : (m : Nat) (j k : Ps.Fin m) -> Dec m j k = split {
+  zero -> \ j k -> efq j ;
+  suc m | r -> split {
+   inl j -> split { inl k -> dec-inl m j k (r j k) ; inr t -> inr (\ q -> inl-inr {Ps.Fin m} q) } ;
+   inr s -> split {
+    inl k -> inr (\ q -> inl-inr {Ps.Fin m} (sym q)) ;
+    inr t -> inl (ap (\ x -> inr x) (MnSums[l].top-eq s t)) } } } ;
+
+ ---------------------------------------------------------------------
+ -- replacing one column
+
+ repl (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (b : AL.Vec n) -> Ps.Fin m -> AL.Vec n = split {
+  zero -> \ u k b j -> u j ;
+  suc m | r -> \ u -> split {
+   inl k -> \ b -> split { inl j -> r (\ i -> u (inl i)) k b j ; inr t -> u (inr t) } ;
+   inr s -> \ b -> split { inl j -> u (inl j) ; inr t -> b } } } ;
+ repl-at (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (b : AL.Vec n) ->
+  Id (AL.Vec n) (repl n m u k b k) b = split {
+  zero -> \ u k b -> efq k ;
+  suc m | r -> \ u -> split { inl k -> \ b -> r (\ i -> u (inl i)) k b ; inr s -> \ b -> refl b } } ;
+ repl-off (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (b : AL.Vec n) (j : Ps.Fin m) ->
+  Not (Id (Ps.Fin m) j k) -> Id (AL.Vec n) (repl n m u k b j) (u j) = split {
+  zero -> \ u k b j ne -> efq k ;
+  suc m | r -> \ u -> split {
+   inl k -> \ b -> split {
+    inl j -> \ ne -> r (\ i -> u (inl i)) k b j (\ p -> ne (ap (\ x -> inl x) p)) ;
+    inr t -> \ ne -> refl (u (inr t)) } ;
+   inr s -> \ b -> split {
+    inl j -> \ ne -> refl (u (inl j)) ;
+    inr t -> \ ne -> efq (ne (ap (\ x -> inr x) (MnSums[l].top-eq t s))) } } } ;
+ repl-self (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k j : Ps.Fin m) ->
+  Id (AL.Vec n) (repl n m u k (u k) j) (u j) = split {
+  zero -> \ u k j -> refl (u j) ;
+  suc m | r -> \ u -> split {
+   inl k -> split { inl j -> r (\ i -> u (inl i)) k j ; inr t -> refl (u (inr t)) } ;
+   inr s -> split { inl j -> refl (u (inl j)) ; inr t -> ap (\ x -> u (inr x)) (MnSums[l].top-eq s t) } } } ;
+
+ ---------------------------------------------------------------------
+ -- the product of generators with column k replaced by b is linear in b
+
+ P (n m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (b : AL.Vec n) : Ext n =
+  eprod n m (\ j -> gen n (repl n m u k b j)) ;
+ repl-add (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (a b : AL.Vec n) ->
+  Id (Ext n) (P n m u k (AL.vadd n a b)) (eadd n (P n m u k a) (P n m u k b)) = split {
+  zero -> \ u k a b -> efq k ;
+  suc m | r -> \ u -> split {
+   inl k -> \ a b -> trans (ap (\ t -> emul n t (gen n (u (inr tt)))) (r (\ i -> u (inl i)) k a b))
+    (EA.dist-right n (P n m (\ i -> u (inl i)) k a) (P n m (\ i -> u (inl i)) k b) (gen n (u (inr tt)))) ;
+   inr s -> \ a b -> trans (ap (emul n (eprod n m (\ j -> gen n (u (inl j))))) (EA.gen-add n a b))
+    (EA.dist-left n (eprod n m (\ j -> gen n (u (inl j)))) (gen n a) (gen n b)) } } ;
+ repl-scale (n : Nat) : (m : Nat) (u : Ps.Fin m -> AL.Vec n) (k : Ps.Fin m) (c : R) (a : AL.Vec n) ->
+  Id (Ext n) (P n m u k (AL.vscale n c a)) (escale n c (P n m u k a)) = split {
+  zero -> \ u k c a -> efq k ;
+  suc m | r -> \ u -> split {
+   inl k -> \ c a -> trans (ap (\ t -> emul n t (gen n (u (inr tt)))) (r (\ i -> u (inl i)) k c a))
+    (EA.scale-mul-left n c (P n m (\ i -> u (inl i)) k a) (gen n (u (inr tt)))) ;
+   inr s -> \ c a -> trans (ap (emul n (eprod n m (\ j -> gen n (u (inl j))))) (EA.gen-scale n c a))
+    (EA.scale-mul-right n c (eprod n m (\ j -> gen n (u (inl j)))) (gen n a)) } } ;
+
+ ---------------------------------------------------------------------
+ -- a repeated factor gives 0
+
+ gen-anti (n : Nat) (a b : AL.Vec n) : Id (Ext n) (emul n (gen n a) (gen n b)) (eneg n (emul n (gen n b) (gen n a))) =
+  AL.In[UP.Lam n].anti n (EC.i n) a b ;
+ -- (i(w 1) ... i(w m)) i(y) = 0  when some w j = y
+ times-repeat (n : Nat) : (m : Nat) (w : Ps.Fin m -> AL.Vec n) (y : AL.Vec n) (j : Ps.Fin m) ->
+  Id (AL.Vec n) (w j) y -> Id (Ext n) (emul n (eprod n m (\ i -> gen n (w i))) (gen n y)) (ezero n) = split {
+  zero -> \ w y j h -> efq j ;
+  suc m | r -> \ w y -> split {
+   inr s -> \ h ->
+    trans (sym (EA.mulA' n (eprod n m (\ i -> gen n (w (inl i)))) (gen n (w (inr tt))) (gen n y)))
+     (trans (ap (emul n (eprod n m (\ i -> gen n (w (inl i)))))
+              (trans (ap (\ t -> emul n (gen n t) (gen n y)) (trans (ap (\ x -> w (inr x)) (MnSums[l].top-eq tt s)) h))
+                     (EA.gen-sq n y)))
+            (EA.mul-zero-r n (eprod n m (\ i -> gen n (w (inl i)))))) ;
+   inl j -> \ h ->
+    trans (sym (EA.mulA' n (eprod n m (\ i -> gen n (w (inl i)))) (gen n (w (inr tt))) (gen n y)))
+     (trans (ap (emul n (eprod n m (\ i -> gen n (w (inl i))))) (gen-anti n (w (inr tt)) y))
+      (trans (EA.mul-neg-r n (eprod n m (\ i -> gen n (w (inl i)))) (emul n (gen n y) (gen n (w (inr tt)))))
+       (trans (ap (eneg n)
+                (trans (EA.mulA' n (eprod n m (\ i -> gen n (w (inl i)))) (gen n y) (gen n (w (inr tt))))
+                 (trans (ap (\ t -> emul n t (gen n (w (inr tt)))) (r (\ i -> w (inl i)) y j h))
+                        (EA.mul-zero-l n (gen n (w (inr tt)))))))
+              EA.At[n].G.neg-zero))) } } ;
+ repeat-zero (n : Nat) : (m : Nat) (w : Ps.Fin m -> AL.Vec n) (j k : Ps.Fin m) ->
+  Not (Id (Ps.Fin m) j k) -> Id (AL.Vec n) (w j) (w k) -> Id (Ext n) (eprod n m (\ i -> gen n (w i))) (ezero n) = split {
+  zero -> \ w j k ne h -> efq j ;
+  suc m | r -> \ w -> split {
+   inl j -> split {
+    inl k -> \ ne h -> trans (ap (\ t -> emul n t (gen n (w (inr tt))))
+                               (r (\ i -> w (inl i)) j k (\ p -> ne (ap (\ x -> inl x) p)) h))
+                        (EA.mul-zero-l n (gen n (w (inr tt)))) ;
+    inr t -> \ ne h -> times-repeat n m (\ i -> w (inl i)) (w (inr tt)) j
+                        (trans h (ap (\ x -> w (inr x)) (MnSums[l].top-eq t tt))) } ;
+   inr s -> split {
+    inl k -> \ ne h -> times-repeat n m (\ i -> w (inl i)) (w (inr tt)) k
+                        (sym (trans (ap (\ x -> w (inr x)) (MnSums[l].top-eq tt s)) h)) ;
+    inr t -> \ ne h -> efq (ne (ap (\ x -> inr x) (MnSums[l].top-eq s t))) } } } ;
+
+ ---------------------------------------------------------------------
+ -- a linear form is determined by its values on the basis
+
+ LinForm (N : Nat) (f : AL.Vec N -> R) : U l =
+  ((a b : AL.Vec N) -> Id R (f (AL.vadd N a b)) (add (f a) (f b))) *
+  ((c : R) (a : AL.Vec N) -> Id R (f (AL.vscale N c a)) (mul c (f a))) ;
+ form-zero (N : Nat) (f : AL.Vec N -> R) (hf : LinForm N f) : Id R (f (\ x -> z)) z =
+  trans (ap f (F.funext (Ps.Fin N) (\ x -> R) (\ x -> z) (AL.vscale N z (\ x -> z)) (\ x -> sym (L.mul-zero z))))
+   (trans (hf.2 z (\ x -> z)) (L.zero-mul (f (\ x -> z)))) ;
+ form-sum (N : Nat) (f : AL.Vec N -> R) (hf : LinForm N f) : (m : Nat) (g : Ps.Fin m -> AL.Vec N) ->
+  Id R (f (\ x -> S.sum m (\ i -> g i x))) (S.sum m (\ i -> f (g i))) = split {
+  zero -> \ g -> form-zero N f hf ;
+  suc m | r -> \ g -> trans (hf.1 (g (inr tt)) (\ x -> S.sum m (\ i -> g (inl i) x)))
+   (ap (add (f (g (inr tt)))) (r (\ i -> g (inl i)))) } ;
+ -- f a = sum_i a_i f(e_i)
+ form-expand (N : Nat) (f : AL.Vec N -> R) (hf : LinForm N f) (a : AL.Vec N) :
+  Id R (f a) (S.sum N (\ i -> mul (a i) (f (D.delta N i)))) =
+  trans (ap f (F.funext (Ps.Fin N) (\ x -> R) a (\ x -> S.sum N (\ i -> mul (a i) (D.delta N i x)))
+                (\ x -> sym (D.sum-delta-right N x a))))
+   (trans (form-sum N f hf N (\ i -> AL.vscale N (a i) (D.delta N i)))
+          (S.sum-cong N (\ i -> f (AL.vscale N (a i) (D.delta N i))) (\ i -> mul (a i) (f (D.delta N i)))
+            (\ i -> hf.2 (a i) (D.delta N i)))) ;
+
+ ---------------------------------------------------------------------
+ -- the adjugate
+
+ top-add : (n : Nat) (x y : Ext n) -> Id R (top n (eadd n x y)) (add (top n x) (top n y)) = split {
+  zero -> \ x y -> refl (add x y) ;
+  suc n | r -> \ x y -> r x.2 y.2 } ;
+ top-zero : (n : Nat) -> Id R (top n (ezero n)) z = split { zero -> refl z ; suc n | r -> r } ;
+ -- b |-> det A[k <- b]
+ colform (n : Nat) (A : DT.Mat n) (k : Ps.Fin n) (b : AL.Vec n) : R = det n (repl n n A k b) ;
+ colform-lin (n : Nat) (A : DT.Mat n) (k : Ps.Fin n) : LinForm n (colform n A k) =
+  (\ a b -> trans (ap (top n) (repl-add n n A k a b)) (top-add n (P n n A k a) (P n n A k b)),
+   \ c a -> trans (ap (top n) (repl-scale n n A k c a)) (DG.top-scale n c (P n n A k a))) ;
+
+ -- adj(A)_ki = det A[k <- e_i]  (column i, row k)
+ adj (n : Nat) (A : DT.Mat n) : DT.Mat n = \ i k -> colform n A k (D.delta n i) ;
+ -- (adj(A) A)_kj = det A[k <- a_j]
+ adj-entry (n : Nat) (A : DT.Mat n) (j k : Ps.Fin n) :
+  Id R (DT.mmul n (adj n A) A j k) (colform n A k (A j)) =
+  sym (form-expand n (colform n A k) (colform-lin n A k) (A j)) ;
+ adj-case (n : Nat) (A : DT.Mat n) (j k : Ps.Fin n) :
+  Dec n j k -> Id R (colform n A k (A j)) (mul (det n A) (D.delta n j k)) = split {
+  inl p -> subst (\ k1 -> Id R (colform n A k1 (A j)) (mul (det n A) (D.delta n j k1))) p
+   (trans (ap (det n) (F.funext (Ps.Fin n) (\ i -> AL.Vec n) (repl n n A j (A j)) A (repl-self n n A j)))
+          (sym (trans (ap (mul (det n A)) (D.delta-diag n j)) (mulO (det n A))))) ;
+  inr ne -> trans (trans (ap (top n) (repeat-zero n n (repl n n A k (A j)) j k ne
+                                       (trans (repl-off n n A k (A j) j ne) (sym (repl-at n n A k (A j))))))
+                         (top-zero n))
+   (sym (trans (ap (mul (det n A)) (D.delta-off n j k ne)) (L.mul-zero (det n A)))) } ;
+ adj-mul (n : Nat) (A : DT.Mat n) (j k : Ps.Fin n) :
+  Id R (DT.mmul n (adj n A) A j k) (mul (det n A) (D.delta n j k)) =
+  trans (adj-entry n A j k) (adj-case n A j k (dec-fin n j k)) ;
+ -- as matrices: adj(A) A = det A . I
+ adj-mul-mat (n : Nat) (A : DT.Mat n) :
+  Id (DT.Mat n) (DT.mmul n (adj n A) A) (\ j k -> mul (det n A) (D.delta n j k)) =
+  F.funext (Ps.Fin n) (\ j -> AL.Vec n) (DT.mmul n (adj n A) A) (\ j k -> mul (det n A) (D.delta n j k))
+   (\ j -> F.funext (Ps.Fin n) (\ k -> R) (DT.mmul n (adj n A) A j) (\ k -> mul (det n A) (D.delta n j k))
+            (adj-mul n A j)) ;
+} ;

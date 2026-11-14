@@ -1,0 +1,79 @@
+-- Finite coordinates of bounded polynomials. The last coordinate is constant.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module P = Poly[l].PolyR[R] ;
+ module B = PolynomialRing[l].Extension[R,setR] ;
+ module Red = MonicReduction[l].Over[R,setR] ;
+ module Bounds = PolynomialBounds[l].Over[R] ;
+ module ET = EtaleTopology[l].Over[R,setR] ;
+ module E = PolynomialFiniteExpansion[l].Over[R,B.ring,setR,RingHom[l].identity B.ring] ;
+ vector (n : Nat) : U l = Fin n -> R.R ;
+ raw : (n : Nat) -> P.P -> vector n = E.coefficients ;
+ index : (n : Nat) -> Fin n -> Nat = split {
+  zero -> \ t -> efq t ;
+  suc n | ih -> snoc (Fin n) Nat (\ t -> suc (ih t)) zero } ;
+ raw-index : (n : Nat) (p : P.P) (t : Fin n) ->
+  Id R.R (raw n p t) (P.coef p (index n t)) = split {
+  zero -> \ p t -> efq t ;
+  suc n | ih -> \ p -> AffineFinite[l].section n
+   (\ t -> Id R.R (raw (suc n) p t) (P.coef p (index (suc n) t)))
+   (\ t -> trans (ih (Bounds.tail p) t) (Bounds.tail-coef p (index n t)))
+   (refl (P.coef p zero)) } ;
+ raw-respects (n : Nat) (p q : P.P) (e : P.peq p q) : Id (vector n) (raw n p) (raw n q) =
+  FL.funext (Fin n) (\ t -> R.R) _ _ (\ t ->
+   trans (raw-index n p t) (trans (e (index n t)) (sym (raw-index n q t)))) ;
+ module Desc (n : Nat) {
+  module D = B.Q.Descend[vector n,FL.isSet-Pi (Fin n) (\ t -> R.R) (\ t -> setR),raw n,raw-respects n] ;
+ } ;
+ coordinates (n : Nat) (b : B.Carrier) : vector n = Desc[n].D.map b ;
+ coordinates-include (n : Nat) (p : P.P) : Id (vector n) (coordinates n (B.include p)) (raw n p) = Desc[n].D.beta p ;
+ coordinates-index (n : Nat) : (b : B.Carrier) (t : Fin n) ->
+  Id R.R (coordinates n b t) (Red.coef b (index n t)) =
+  B.Q.induction @l
+   (\ b -> (t : Fin n) -> Id R.R (coordinates n b t) (Red.coef b (index n t)))
+   (\ b -> FL.isProp-Pi (Fin n) (\ t -> Id R.R (coordinates n b t) (Red.coef b (index n t))) (\ t -> setR _ _))
+   (\ p t -> trans (Pr.happly (Fin n) (\ t -> R.R) _ _ (coordinates-include n p) t)
+    (trans (raw-index n p t) (sym (Red.coef-include p (index n t))))) ;
+ opaque coordinates ;
+ raw-list : (n : Nat) (v : vector n) (t : Fin n) ->
+  Id R.R (raw n (ET.coefficients n v) t) (v t) = split {
+  zero -> \ v t -> efq t ;
+  suc n | ih -> \ v -> AffineFinite[l].section n
+   (\ t -> Id R.R (raw (suc n) (ET.coefficients (suc n) v) t) (v t))
+   (ih (\ t -> v (inl t))) (refl (v (inr tt))) } ;
+ list-raw : (n : Nat) (p : P.P) ->
+  Id P.P (ET.coefficients n (raw n p)) (Bounds.cut n p) = split {
+  zero -> \ p -> refl nil ;
+  suc n | ih -> \ p -> ap (\ q -> cons (P.coef p zero) q) (ih (Bounds.tail p)) } ;
+ expansion (n : Nat) (v : vector n) : B.Carrier = B.include (ET.coefficients n v) ;
+ expansion-bound (n : Nat) (v : vector n) : Red.Bounded n (expansion n v) =
+  \ k -> trans (Red.coef-include (ET.coefficients n v) (plus n k))
+   (trans (ap (P.coef (ET.coefficients n v))
+     (ap (\ m -> plus m k) (sym (ET.coefficients-length n v))))
+    (Mul[l].MulR[R].coef-beyond (ET.coefficients n v) k)) ;
+ coordinates-expansion (n : Nat) (v : vector n) : Id (vector n) (coordinates n (expansion n v)) v =
+  trans (coordinates-include n (ET.coefficients n v))
+   (FL.funext (Fin n) (\ t -> R.R) _ v (raw-list n v)) ;
+ expansion-coordinates (n : Nat) : (b : B.Carrier) -> Red.Bounded n b ->
+  Id B.Carrier (expansion n (coordinates n b)) b =
+  B.Q.induction @l
+   (\ b -> Red.Bounded n b -> Id B.Carrier (expansion n (coordinates n b)) b)
+   (\ b -> FL.isProp-Pi (Red.Bounded n b) (\ h -> Id B.Carrier (expansion n (coordinates n b)) b) (\ h -> B.set _ _))
+   (\ p h -> trans (ap (expansion n) (coordinates-include n p))
+    (trans (ap B.include (list-raw n p))
+     (B.Q.relates (Bounds.cut n p) p
+      (P.peq-sym p (Bounds.cut n p) (Bounds.cut-equal n p
+       (\ k -> trans (sym (Red.coef-include p (plus n k))) (h k))))))) ;
+ opaque expansion ;
+ coordinates-add (n : Nat) (b c : B.Carrier) (t : Fin n) :
+  Id R.R (coordinates n (B.addQ b c) t) (R.add (coordinates n b t) (coordinates n c t)) =
+  trans (coordinates-index n (B.addQ b c) t)
+   (trans (Red.coef-add b c (index n t))
+    (cong2 R.R R.add _ _ _ _ (sym (coordinates-index n b t)) (sym (coordinates-index n c t)))) ;
+ coordinates-scale (n : Nat) (a : R.R) (b : B.Carrier) (t : Fin n) :
+  Id R.R (coordinates n (B.mulQ (B.constant a) b) t) (R.mul a (coordinates n b t)) =
+  trans (coordinates-index n (B.mulQ (B.constant a) b) t)
+   (trans (Red.coef-scale a b (index n t)) (ap (R.mul a) (sym (coordinates-index n b t)))) ;
+} ;

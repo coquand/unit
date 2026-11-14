@@ -1,0 +1,308 @@
+-- A finitely generated projective module over a local ring is free.
+-- The module is a quotient V/N of an A-module V by a submodule N, presented
+-- by generators g_1..g_m and A-linear coordinates co : V -> A^m with
+--   p == sum_t co_t(p) g_t  (mod N)   and   co(p) = 0 for p in N .
+-- (An A-linear retraction onto N gives such coordinates.)  A basis is such
+-- a presentation with co_i(g_j) = delta_ij.  Induction on m: with
+-- c = co_h(g_h) for the head generator h, locality gives
+--  - 1 - c a unit: g_h is a combination of the others; drop it;
+--  - c a unit: split off g_h, i.e. pass to N' = {p | p' in N} with
+--    p' = p - co_h(p) c^-1 g_h (the submodule N + A g_h), presented by the
+--    other generators, and put g_h in front of a basis of V/N'.
+-- Locality is a mere disjunction, so the basis merely exists.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ; module Tr = Truncation[l] ;
+module Over (A : CRing)
+ (V : U l) (vz : V) (vadd : V -> V -> V) (vneg : V -> V)
+ (vaddA : (x y w : V) -> Id V (vadd x (vadd y w)) (vadd (vadd x y) w))
+ (vaddC : (x y : V) -> Id V (vadd x y) (vadd y x))
+ (vaddZ : (x : V) -> Id V (vadd x vz) x)
+ (vaddN : (x : V) -> Id V (vadd x (vneg x)) vz)
+ (sc : A.R -> V -> V)
+ (sc-add-r : (a : A.R) (x y : V) -> Id V (sc a (vadd x y)) (vadd (sc a x) (sc a y)))
+ (sc-add-l : (a b : A.R) (x : V) -> Id V (sc (A.add a b) x) (vadd (sc a x) (sc b x)))
+ (sc-mul : (a b : A.R) (x : V) -> Id V (sc (A.mul a b) x) (sc a (sc b x)))
+ (sc-one : (x : V) -> Id V (sc A.o x) x) {
+ open A ;
+ module AR = RL[A] ;
+ module SA = FiniteIdeal[l].Sums[A] ;
+ module D = MnSums[l].Over[A] ;
+ module VS = ModuleTrick[l].Sums[V,vz,vadd,vneg,vaddA,vaddC,vaddZ,vaddN] ;
+ module G = VS.G ;
+
+ ---------------------------------------------------------------------
+ -- the module
+
+ sub (x y : V) : V = vadd x (vneg y) ;
+ vswap3 (x y w : V) : Id V (vadd x (vadd y w)) (vadd y (vadd x w)) =
+  trans (vaddA x y w) (trans (ap (\ t -> vadd t w) (vaddC x y)) (sym (vaddA y x w))) ;
+ sub-self (x : V) : Id V (sub x x) vz = vaddN x ;
+ sub-zero (x : V) : Id V (sub x vz) x = trans (ap (vadd x) G.neg-zero) (vaddZ x) ;
+ sub-trans (x y w : V) : Id V (vadd (sub x y) (sub y w)) (sub x w) =
+  trans (sym (vaddA x (vneg y) (sub y w)))
+   (ap (vadd x) (trans (vaddA (vneg y) y (vneg w))
+                 (trans (ap (\ t -> vadd t (vneg w)) (trans (vaddC (vneg y) y) (vaddN y))) (G.zl (vneg w))))) ;
+ sub-sym (x y : V) : Id V (vneg (sub x y)) (sub y x) =
+  trans (G.neg-add x (vneg y)) (trans (ap (vadd (vneg x)) (G.neg-neg y)) (vaddC (vneg x) y)) ;
+ sub-add (x y x' y' : V) : Id V (sub (vadd x y) (vadd x' y')) (vadd (sub x x') (sub y y')) =
+  trans (ap (vadd (vadd x y)) (G.neg-add x' y')) (G.swap x y (vneg x') (vneg y')) ;
+ -- (p - y) - w = (p - w) - y
+ sub-swap (p y w : V) : Id V (sub (sub p y) w) (sub (sub p w) y) =
+  trans (sym (vaddA p (vneg y) (vneg w))) (trans (ap (vadd p) (vaddC (vneg y) (vneg w))) (vaddA p (vneg w) (vneg y))) ;
+ -- p - (a + (w - b)) = (p - w) - (a - b)
+ sub-regroup (p a w b : V) : Id V (sub p (vadd a (sub w b))) (sub (sub p w) (sub a b)) =
+  trans (ap (vadd p) (trans (G.neg-add a (sub w b)) (ap (vadd (vneg a)) (sub-sym w b))))
+   (trans (ap (vadd p) (trans (vswap3 (vneg a) b (vneg w))
+                        (trans (ap (vadd b) (vaddC (vneg a) (vneg w))) (sym (vswap3 (vneg w) b (vneg a))))))
+    (trans (vaddA p (vneg w) (vadd b (vneg a))) (ap (vadd (sub p w)) (sym (sub-sym a b))))) ;
+ sc-zero-l (x : V) : Id V (sc z x) vz =
+  G.add-cancel (sc z x) (sc z x) (trans (sym (sc-add-l z z x)) (ap (\ a -> sc a x) (addZ z))) ;
+ sc-zero-r (a : R) : Id V (sc a vz) vz = G.hom-zero (sc a) (sc-add-r a) ;
+ sc-neg (a : R) (x : V) : Id V (sc a (vneg x)) (vneg (sc a x)) = G.hom-neg (sc a) (sc-add-r a) x ;
+ sc-negl (a : R) (x : V) : Id V (sc (neg a) x) (vneg (sc a x)) =
+  G.neg-uniq (sc a x) (sc (neg a) x) (trans (sym (sc-add-l a (neg a) x)) (trans (ap (\ b -> sc b x) (addN a)) (sc-zero-l x))) ;
+ sub-sc (a : R) (x y : V) : Id V (sc a (sub x y)) (sub (sc a x) (sc a y)) =
+  trans (sc-add-r a x (vneg y)) (ap (vadd (sc a x)) (sc-neg a y)) ;
+ -- sc a x - sc b x = sc (a - b) x
+ sc-sub (a b : R) (x : V) : Id V (sub (sc a x) (sc b x)) (sc (add a (neg b)) x) =
+  sym (trans (sc-add-l a (neg b) x) (ap (vadd (sc a x)) (sc-negl b x))) ;
+
+ comb (m : Nat) (c : Ps.Fin m -> R) (g : Ps.Fin m -> V) : V = VS.vsum m (\ t -> sc (c t) (g t)) ;
+ comb-add (m : Nat) (c c' : Ps.Fin m -> R) (g : Ps.Fin m -> V) :
+  Id V (comb m (\ t -> add (c t) (c' t)) g) (vadd (comb m c g) (comb m c' g)) =
+  trans (VS.vsum-cong m (\ t -> sc (add (c t) (c' t)) (g t)) (\ t -> vadd (sc (c t) (g t)) (sc (c' t) (g t)))
+          (\ t -> sc-add-l (c t) (c' t) (g t)))
+   (VS.vsum-add m (\ t -> sc (c t) (g t)) (\ t -> sc (c' t) (g t))) ;
+ comb-sc (a : R) (m : Nat) (c : Ps.Fin m -> R) (g : Ps.Fin m -> V) :
+  Id V (comb m (\ t -> mul a (c t)) g) (sc a (comb m c g)) =
+  trans (VS.vsum-cong m (\ t -> sc (mul a (c t)) (g t)) (\ t -> sc a (sc (c t) (g t))) (\ t -> sc-mul a (c t) (g t)))
+   (sym (VS.hom-sum (sc a) (sc-add-r a) m (\ t -> sc (c t) (g t)))) ;
+ -- linear maps commute with combinations
+ hom-comb (f : V -> V) (f-add : (x y : V) -> Id V (f (vadd x y)) (vadd (f x) (f y)))
+  (f-sc : (a : R) (x : V) -> Id V (f (sc a x)) (sc a (f x))) (m : Nat) (c : Ps.Fin m -> R) (g : Ps.Fin m -> V) :
+  Id V (f (comb m c g)) (comb m c (\ t -> f (g t))) =
+  trans (VS.hom-sum f f-add m (\ t -> sc (c t) (g t)))
+   (VS.vsum-cong m (\ t -> f (sc (c t) (g t))) (\ t -> sc (c t) (f (g t))) (\ t -> f-sc (c t) (g t))) ;
+
+ -- linear forms
+ Lin (f : V -> R) : U l = ((x y : V) -> Id R (f (vadd x y)) (add (f x) (f y))) * ((a : R) (x : V) -> Id R (f (sc a x)) (mul a (f x))) ;
+ lin-zero (f : V -> R) (hf : Lin f) : Id R (f vz) z =
+  AR.add-cancel (f vz) (f vz) (trans (sym (hf.1 vz vz)) (ap f (vaddZ vz))) ;
+ lin-neg (f : V -> R) (hf : Lin f) (x : V) : Id R (f (vneg x)) (neg (f x)) =
+  AR.neg-uniq (f x) (f (vneg x)) (trans (sym (hf.1 x (vneg x))) (trans (ap f (vaddN x)) (lin-zero f hf))) ;
+ lin-sub (f : V -> R) (hf : Lin f) (x y : V) : Id R (f (sub x y)) (add (f x) (neg (f y))) =
+  trans (hf.1 x (vneg y)) (ap (add (f x)) (lin-neg f hf y)) ;
+ -- a - b = 0 and a = 0 give b = 0
+ zero-of-diff (a b : R) (h : Id R (add a (neg b)) z) (ha : Id R a z) : Id R b z =
+  trans (sym (AR.neg-neg b))
+   (trans (ap neg (trans (sym (AR.zl (neg b))) (trans (ap (\ x -> add x (neg b)) (sym ha)) h))) AR.neg-zero) ;
+
+ ---------------------------------------------------------------------
+ -- a submodule, congruence modulo it, presentations and bases
+
+ module Sub (In : V -> U l) (in-zero : In vz)
+  (in-add : (x y : V) -> In x -> In y -> In (vadd x y))
+  (in-sc : (a : R) (x : V) -> In x -> In (sc a x)) {
+  in-eq {x y : V} (h : Id V x y) (hx : In x) : In y = Pr.subst V In x y h hx ;
+  in-neg (x : V) (hx : In x) : In (vneg x) =
+   in-eq (trans (sc-negl o x) (ap vneg (sc-one x))) (in-sc (neg o) x hx) ;
+  Cong (x y : V) : U l = In (sub x y) ;
+  cong-eq (x y : V) (h : Id V x y) : Cong x y =
+   in-eq (trans (sym (sub-self x)) (ap (sub x) h)) in-zero ;
+  cong-trans (x y w : V) (h : Cong x y) (h' : Cong y w) : Cong x w = in-eq (sub-trans x y w) (in-add _ _ h h') ;
+  cong-add (x y x' y' : V) (h : Cong x x') (h' : Cong y y') : Cong (vadd x y) (vadd x' y') =
+   in-eq (sym (sub-add x y x' y')) (in-add _ _ h h') ;
+  cong-sc (a : R) (x y : V) (h : Cong x y) : Cong (sc a x) (sc a y) = in-eq (sub-sc a x y) (in-sc a _ h) ;
+
+  module Size (m : Nat) {
+   record Pres {
+    gen : Ps.Fin m -> V ;
+    co : V -> Ps.Fin m -> R ;
+    co-lin (t : Ps.Fin m) : Lin (\ p -> co p t) ;
+    spans (p : V) : Cong p (comb m (co p) gen) ;
+    kills (p : V) (hp : In p) (t : Ps.Fin m) : Id R (co p t) z ;
+   } ;
+   Basis : U l = (P : Pres) * ((i j : Ps.Fin m) -> Id R (P.co (P.gen j) i) (D.delta m i j)) ;
+  } ;
+  Free : U l = Tr.Trunc[(e : Nat) * Size[e].Basis].carrier ;
+
+  -- no generators: N is everything, and the basis is empty
+  base (P : Size[zero].Pres) : Free =
+   Tr.Trunc[(e : Nat) * Size[e].Basis].inc (zero,(P,\ i j -> efq i)) ;
+
+  -- 1 - c a unit: drop the head generator
+  module Drop (m : Nat) (P : Size[suc m].Pres) (v : R)
+   (hv : Id R (mul (add o (neg (P.co (P.gen (inr tt)) (inr tt)))) v) o) {
+   gh : V = P.gen (inr tt) ;
+   c : R = P.co gh (inr tt) ;
+   gen (t : Ps.Fin m) : V = P.gen (inl t) ;
+   beta (t : Ps.Fin m) : R = mul v (P.co gh (inl t)) ;
+   co (p : V) (t : Ps.Fin m) : R = add (P.co p (inl t)) (mul (P.co p (inr tt)) (beta t)) ;
+   co-lin (t : Ps.Fin m) : Lin (\ p -> co p t) =
+    (\ x y -> trans (Ps.cong2 R add _ _ _ _ ((P.co-lin (inl t)).1 x y)
+                       (trans (ap (\ a -> mul a (beta t)) ((P.co-lin (inr tt)).1 x y))
+                              (AR.dist-left (P.co x (inr tt)) (P.co y (inr tt)) (beta t))))
+               (AR.swap (P.co x (inl t)) (P.co y (inl t)) (mul (P.co x (inr tt)) (beta t)) (mul (P.co y (inr tt)) (beta t))),
+     \ a x -> trans (Ps.cong2 R add _ _ _ _ ((P.co-lin (inl t)).2 a x)
+                       (trans (ap (\ b -> mul b (beta t)) ((P.co-lin (inr tt)).2 a x))
+                              (sym (mulA a (P.co x (inr tt)) (beta t)))))
+               (sym (dist a (P.co x (inl t)) (mul (P.co x (inr tt)) (beta t))))) ;
+   kills (p : V) (hp : In p) (t : Ps.Fin m) : Id R (co p t) z =
+    trans (Ps.cong2 R add _ _ _ _ (P.kills p hp (inl t))
+            (trans (ap (\ a -> mul a (beta t)) (P.kills p hp (inr tt))) (AR.zero-mul (beta t))))
+     (addZ z) ;
+   X : V = comb m (\ t -> P.co gh (inl t)) gen ;
+   -- (1 - c) g_h == X, so g_h == v X
+   step1 : Cong (sub gh (sc c gh)) X =
+    cong-trans (sub gh (sc c gh)) (vadd (vadd (sc c gh) X) (vneg (sc c gh))) X
+     (cong-add gh (vneg (sc c gh)) (vadd (sc c gh) X) (vneg (sc c gh)) (P.spans gh) (cong-eq _ _ (refl (vneg (sc c gh)))))
+     (cong-eq _ _ (trans (ap (\ w -> vadd w (vneg (sc c gh))) (vaddC (sc c gh) X))
+                   (trans (sym (vaddA X (sc c gh) (vneg (sc c gh)))) (trans (ap (vadd X) (vaddN (sc c gh))) (vaddZ X))))) ;
+   e1 : Id V (sub gh (sc c gh)) (sc (add o (neg c)) gh) =
+    trans (ap (\ w -> sub w (sc c gh)) (sym (sc-one gh))) (sc-sub o c gh) ;
+   e2 : Id V gh (sc v (sc (add o (neg c)) gh)) =
+    sym (trans (sym (sc-mul v (add o (neg c)) gh))
+         (trans (ap (\ a -> sc a gh) (trans (mulC v (add o (neg c))) hv)) (sc-one gh))) ;
+   step2 : Cong gh (sc v X) =
+    cong-trans gh (sc v (sc (add o (neg c)) gh)) (sc v X) (cong-eq _ _ e2)
+     (cong-sc v (sc (add o (neg c)) gh) X (in-eq (ap (\ w -> sub w X) e1) step1)) ;
+   Y (p : V) : V = comb m (\ t -> P.co p (inl t)) gen ;
+   regroup (p : V) : Id V (vadd (sc (P.co p (inr tt)) (sc v X)) (Y p)) (comb m (co p) gen) =
+    sym (trans (comb-add m (\ t -> P.co p (inl t)) (\ t -> mul (P.co p (inr tt)) (beta t)) gen)
+         (trans (ap (vadd (Y p)) (trans (comb-sc (P.co p (inr tt)) m beta gen)
+                                  (ap (sc (P.co p (inr tt))) (comb-sc v m (\ t -> P.co gh (inl t)) gen))))
+                (vaddC (Y p) (sc (P.co p (inr tt)) (sc v X))))) ;
+   spans (p : V) : Cong p (comb m (co p) gen) =
+    cong-trans p (vadd (sc (P.co p (inr tt)) gh) (Y p)) (comb m (co p) gen) (P.spans p)
+     (cong-trans (vadd (sc (P.co p (inr tt)) gh) (Y p)) (vadd (sc (P.co p (inr tt)) (sc v X)) (Y p)) (comb m (co p) gen)
+       (cong-add (sc (P.co p (inr tt)) gh) (Y p) (sc (P.co p (inr tt)) (sc v X)) (Y p)
+         (cong-sc (P.co p (inr tt)) gh (sc v X) step2) (cong-eq _ _ (refl (Y p))))
+       (cong-eq _ _ (regroup p))) ;
+   module SZ = Size[m] ;
+   pres : SZ.Pres = new SZ.Pres[gen,co,co-lin,spans,kills] ;
+  } ;
+ } ;
+
+ Statement (m : Nat) : U l+ =
+  (In : V -> U l) (iz : In vz) (ia : (x y : V) -> In x -> In y -> In (vadd x y))
+  (is : (a : R) (x : V) -> In x -> In (sc a x)) (P : Sub[In,iz,ia,is].Size[m].Pres) -> Sub[In,iz,ia,is].Free ;
+
+ -- c a unit, with inverse u: split off the head generator
+ module Split (In : V -> U l) (iz : In vz) (ia : (x y : V) -> In x -> In y -> In (vadd x y))
+  (is : (a : R) (x : V) -> In x -> In (sc a x)) (m : Nat) (P : Sub[In,iz,ia,is].Size[suc m].Pres)
+  (u : R) (hu : Id R (mul (P.co (P.gen (inr tt)) (inr tt)) u) o) {
+  module N = Sub[In,iz,ia,is] ;
+  gh : V = P.gen (inr tt) ;
+  c : R = P.co gh (inr tt) ;
+  -- the coordinate of p along g_h, and p' = p - k(p) g_h
+  k (p : V) : R = mul (P.co p (inr tt)) u ;
+  k-lin : Lin k =
+   (\ x y -> trans (ap (\ a -> mul a u) ((P.co-lin (inr tt)).1 x y)) (AR.dist-left (P.co x (inr tt)) (P.co y (inr tt)) u),
+    \ a x -> trans (ap (\ b -> mul b u) ((P.co-lin (inr tt)).2 a x)) (sym (mulA a (P.co x (inr tt)) u))) ;
+  prime (p : V) : V = sub p (sc (k p) gh) ;
+  prime-add (x y : V) : Id V (prime (vadd x y)) (vadd (prime x) (prime y)) =
+   trans (ap (\ a -> sub (vadd x y) (sc a gh)) (k-lin.1 x y))
+    (trans (ap (sub (vadd x y)) (sc-add-l (k x) (k y) gh)) (sub-add x y (sc (k x) gh) (sc (k y) gh))) ;
+  prime-sc (a : R) (x : V) : Id V (prime (sc a x)) (sc a (prime x)) =
+   trans (ap (\ b -> sub (sc a x) (sc b gh)) (k-lin.2 a x))
+    (trans (ap (sub (sc a x)) (sc-mul a (k x) gh)) (sym (sub-sc a x (sc (k x) gh)))) ;
+  co-h-prime (p : V) : Id R (P.co (prime p) (inr tt)) z =
+   trans (lin-sub (\ q -> P.co q (inr tt)) (P.co-lin (inr tt)) p (sc (k p) gh))
+    (trans (ap (\ b -> add (P.co p (inr tt)) (neg b))
+             (trans ((P.co-lin (inr tt)).2 (k p) gh)
+              (trans (sym (mulA (P.co p (inr tt)) u c))
+               (trans (ap (mul (P.co p (inr tt))) (trans (mulC u c) hu)) (mulO (P.co p (inr tt)))))))
+           (addN (P.co p (inr tt)))) ;
+  k-prime (p : V) : Id R (k (prime p)) z = trans (ap (\ a -> mul a u) (co-h-prime p)) (AR.zero-mul u) ;
+  k-kills (p : V) (hp : In p) : Id R (k p) z = trans (ap (\ a -> mul a u) (P.kills p hp (inr tt))) (AR.zero-mul u) ;
+  prime-of-in (p : V) (hp : In p) : Id V (prime p) p =
+   trans (ap (\ a -> sub p (sc a gh)) (k-kills p hp)) (trans (ap (sub p) (sc-zero-l gh)) (sub-zero p)) ;
+  prime-gh : Id V (prime gh) vz = trans (ap (\ a -> sub gh (sc a gh)) hu) (trans (ap (sub gh) (sc-one gh)) (sub-self gh)) ;
+
+  -- N' = N + A g_h
+  In' (p : V) : U l = In (prime p) ;
+  iz' : In' vz = N.in-eq (sym (prime-of-in vz iz)) iz ;
+  ia' (x y : V) (hx : In' x) (hy : In' y) : In' (vadd x y) = N.in-eq (sym (prime-add x y)) (ia (prime x) (prime y) hx hy) ;
+  is' (a : R) (x : V) (hx : In' x) : In' (sc a x) = N.in-eq (sym (prime-sc a x)) (is a (prime x) hx) ;
+  module N' = Sub[In',iz',ia',is'] ;
+  gen (t : Ps.Fin m) : V = P.gen (inl t) ;
+  co (p : V) (t : Ps.Fin m) : R = P.co (prime p) (inl t) ;
+  co-lin (t : Ps.Fin m) : Lin (\ p -> co p t) =
+   (\ x y -> trans (ap (\ w -> P.co w (inl t)) (prime-add x y)) ((P.co-lin (inl t)).1 (prime x) (prime y)),
+    \ a x -> trans (ap (\ w -> P.co w (inl t)) (prime-sc a x)) ((P.co-lin (inl t)).2 a (prime x))) ;
+  Y (p : V) : V = comb m (co p) gen ;
+  H1 (p : V) : In (sub (prime p) (Y p)) =
+   N.in-eq (ap (sub (prime p))
+             (trans (ap (\ a -> vadd (sc a gh) (Y p)) (co-h-prime p))
+              (trans (ap (\ w -> vadd w (Y p)) (sc-zero-l gh)) (G.zl (Y p)))))
+    (P.spans (prime p)) ;
+  kY (p : V) : Id R (k (Y p)) z =
+   zero-of-diff (k (prime p)) (k (Y p))
+    (trans (sym (lin-sub k k-lin (prime p) (Y p))) (k-kills (sub (prime p) (Y p)) (H1 p))) (k-prime p) ;
+  ksub (p : V) : Id R (k (sub p (Y p))) (k p) =
+   trans (lin-sub k k-lin p (Y p))
+    (trans (ap (\ b -> add (k p) (neg b)) (kY p)) (trans (ap (add (k p)) AR.neg-zero) (addZ (k p)))) ;
+  spans (p : V) : N'.Cong p (comb m (co p) gen) =
+   N.in-eq (trans (sub-swap p (sc (k p) gh) (Y p)) (ap (\ a -> sub (sub p (Y p)) (sc a gh)) (sym (ksub p)))) (H1 p) ;
+  kills (p : V) (hp : In' p) (t : Ps.Fin m) : Id R (co p t) z = P.kills (prime p) hp (inl t) ;
+  module SZ' = N'.Size[m] ;
+  pres : SZ'.Pres = new SZ'.Pres[gen,co,co-lin,spans,kills] ;
+
+  -- g_h in front of a basis of V/N'
+  module Extend (e : Nat) (B' : N'.Size[e].Basis) {
+   module SE = N'.Size[e] ;
+   Q : SE.Pres = B'.1 ;
+   gen2 : Ps.Fin (suc e) -> V = split { inl j -> prime (Q.gen j) ; inr t -> gh } ;
+   co2 (p : V) : Ps.Fin (suc e) -> R = split { inl j -> Q.co p j ; inr t -> k p } ;
+   co2-lin : (i : Ps.Fin (suc e)) -> Lin (\ p -> co2 p i) = split { inl j -> Q.co-lin j ; inr t -> k-lin } ;
+   W (p : V) : V = comb e (Q.co p) Q.gen ;
+   spans2 (p : V) : N.Cong p (comb (suc e) (co2 p) gen2) =
+    N.in-eq
+     (sym (trans (ap (\ w -> sub p (vadd (sc (k p) gh) w)) (sym (hom-comb prime prime-add prime-sc e (Q.co p) Q.gen)))
+           (trans (sub-regroup p (sc (k p) gh) (W p) (sc (k (W p)) gh))
+            (trans (ap (sub (sub p (W p))) (sc-sub (k p) (k (W p)) gh))
+                   (ap (\ a -> sub (sub p (W p)) (sc a gh)) (sym (lin-sub k k-lin p (W p))))))))
+     (Q.spans p) ;
+   kills2 (p : V) (hp : In p) : (i : Ps.Fin (suc e)) -> Id R (co2 p i) z = split {
+    inl j -> Q.kills p (N.in-eq (sym (prime-of-in p hp)) hp) j ;
+    inr t -> k-kills p hp } ;
+   Q-gh (j : Ps.Fin e) : Id R (Q.co gh j) z = Q.kills gh (N.in-eq (sym prime-gh) iz) j ;
+   Q-prime (x : V) (j : Ps.Fin e) : Id R (Q.co (prime x) j) (Q.co x j) =
+    trans (lin-sub (\ q -> Q.co q j) (Q.co-lin j) x (sc (k x) gh))
+     (trans (ap (\ b -> add (Q.co x j) (neg b))
+              (trans ((Q.co-lin j).2 (k x) gh) (trans (ap (mul (k x)) (Q-gh j)) (AR.mul-zero (k x)))))
+      (trans (ap (add (Q.co x j)) AR.neg-zero) (addZ (Q.co x j)))) ;
+   dual2 : (i j : Ps.Fin (suc e)) -> Id R (co2 (gen2 j) i) (D.delta (suc e) i j) = split {
+    inl a -> split { inl b -> trans (Q-prime (Q.gen b) a) (B'.2 a b) ; inr t -> Q-gh a } ;
+    inr s -> split { inl b -> k-prime (Q.gen b) ; inr t -> hu } } ;
+   module NS = N.Size[suc e] ;
+   basis : NS.Basis = (new NS.Pres[gen2,co2,co2-lin,spans2,kills2],dual2) ;
+  } ;
+  close (ih : Statement m) : N.Free =
+   Tr.Trunc[(e : Nat) * N'.Size[e].Basis].induction @l (\ t -> N.Free)
+    (\ t -> Tr.Trunc[(e : Nat) * N.Size[e].Basis].proposition)
+    (\ b -> Tr.Trunc[(e : Nat) * N.Size[e].Basis].inc (suc b.1,Extend[b.1,b.2].basis))
+    (ih In' iz' ia' is' pres) ;
+ } ;
+
+ -- the theorem
+ module Local (loc : (a b : R) -> AR.unit (add a b) -> Tr.Trunc[Plus (AR.unit a) (AR.unit b)].carrier) {
+  module Step (m : Nat) (ih : Statement m) (In : V -> U l) (iz : In vz)
+   (ia : (x y : V) -> In x -> In y -> In (vadd x y)) (is : (a : R) (x : V) -> In x -> In (sc a x))
+   (P : Sub[In,iz,ia,is].Size[suc m].Pres) {
+   module N = Sub[In,iz,ia,is] ;
+   c : R = P.co (P.gen (inr tt)) (inr tt) ;
+   total : AR.unit (add c (add o (neg c))) =
+    (o,trans (mulO (add c (add o (neg c)))) (trans (AR.add-swap c o (neg c)) (trans (ap (add o) (addN c)) (addZ o)))) ;
+   decide : Plus (AR.unit c) (AR.unit (add o (neg c))) -> N.Free = split {
+    inl hu -> Split[In,iz,ia,is,m,P,hu.1,hu.2].close ih ;
+    inr hv -> ih In iz ia is N.Drop[m,P,hv.1,hv.2].pres } ;
+   result : N.Free =
+    Tr.Trunc[Plus (AR.unit c) (AR.unit (add o (neg c)))].induction @l (\ t -> N.Free)
+     (\ t -> Tr.Trunc[(e : Nat) * N.Size[e].Basis].proposition) decide (loc c (add o (neg c)) total) ;
+  } ;
+  free : (m : Nat) -> Statement m = split {
+   zero -> \ In iz ia is P -> Sub[In,iz,ia,is].base P ;
+   suc m | ih -> \ In iz ia is P -> Step[m,ih,In,iz,ia,is,P].result } ;
+ } ;
+} ;

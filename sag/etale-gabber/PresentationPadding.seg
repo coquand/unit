@@ -1,0 +1,90 @@
+-- Embed a presentation with n <= N variables as a closed subtype of R^N.
+-- Unused coordinates are zero: padding the restriction must recover the vector.
+-- There is no bound on the number of equations and no geometric axiom.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ; module CB = CoefficientBound[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ; module P = Presentations[l].Over[R,setR] ;
+ module CP = ClosedProp[l].Over[R,setR] ; module SA = SmallAffine[l].Over[R,setR] ;
+ module RR = AffineRing[l].Laws[R,setR] ; module FS = FinSum[l].Over[R,setR] ;
+ module VP = ClosedLocalPad[l].Over[R,setR] ;
+ Vector (n : Nat) : U l = Fin n -> R.R ;
+ vector-set (n : Nat) : Pr.isSet (Vector n) = F.isSet-Pi (Fin n) (\ i -> R.R) (\ i -> setR) ;
+ take : (n N : Nat) -> CB.le n N -> Vector N -> Vector n = split {
+  zero -> \ N h a -> AffineFinite[l].empty-section (\ i -> R.R) ;
+  suc n | ih -> split {
+   zero -> \ h a -> efq h ;
+   suc N -> \ h a -> AffineFinite[l].section n (\ i -> R.R)
+    (ih N h (\ i -> a (inl i))) (a (inr tt)) } } ;
+ take-pad : (n N : Nat) (h : CB.le n N) (a : Vector n) ->
+  (i : Fin n) -> Id R.R (take n N h (VP.pad n N a h) i) (a i) = split {
+  zero -> \ N h a -> AffineFinite[l].empty-section (\ i -> Id R.R (take zero N h (VP.pad zero N a h) i) (a i)) ;
+  suc n | ih -> split {
+   zero -> \ h a -> efq h ;
+   suc N -> \ h a -> AffineFinite[l].section n
+    (\ i -> Id R.R (take (suc n) (suc N) h (VP.pad (suc n) (suc N) a h) i) (a i))
+    (ih N h (\ i -> a (inl i))) (refl (a (inr tt))) } } ;
+ take-pad-path (n N : Nat) (h : CB.le n N) (a : Vector n) :
+  Id (Vector n) (take n N h (VP.pad n N a h)) a =
+  F.funext (Fin n) (\ i -> R.R) _ a (take-pad n N h a) ;
+ module ClosedProduct (Q S : U l) (q : CP.Witness Q) (s : CP.Witness S) {
+  n : Nat = q.1 ; xs : Fin n -> R.R = q.2.1 ;
+  m : Nat = s.1 ; ys : Fin m -> R.R = s.2.1 ;
+  zs : Fin (plus m n) -> R.R = FinSum[l].cases n R.R xs m ys ;
+  to (u : Q * S) : CP.Zeros (plus m n) zs =
+   FinSum[l].cases-unique n R.R xs m ys (\ i -> R.z) (q.2.2.1 u.1) (s.2.2.1 u.2) ;
+  from (z : CP.Zeros (plus m n) zs) : Q * S =
+   (q.2.2.2.sec (\ i -> trans (sym (FinSum[l].cases-left n R.R xs m ys i)) (z (FinSum[l].left n m i))),
+    s.2.2.2.sec (\ j -> trans (sym (FinSum[l].cases-right n R.R xs m ys j)) (z (FinSum[l].right n m j)))) ;
+  prop : Pr.isProp (Q * S) = Pr.isProp-Sigma Q (\ u -> S)
+   (CP.closed-prop Q (Tr.Trunc[CP.Witness Q].inc q))
+   (\ u -> CP.closed-prop S (Tr.Trunc[CP.Witness S].inc s)) ;
+  witness : CP.Witness (Q * S) = CP.from-iff (Q * S) prop (plus m n) zs to from ;
+ } ;
+ closed-product (Q S : U l) (q : CP.Closed Q) (s : CP.Closed S) : CP.Closed (Q * S) =
+  Tr.Trunc[CP.Witness Q].induction @l (\ t -> CP.Closed (Q * S))
+   (\ t -> Tr.Trunc[CP.Witness (Q * S)].proposition)
+   (\ qw -> Tr.Trunc[CP.Witness S].induction @l (\ t -> CP.Closed (Q * S))
+    (\ t -> Tr.Trunc[CP.Witness (Q * S)].proposition)
+    (\ sw -> Tr.Trunc[CP.Witness (Q * S)].inc ClosedProduct[Q,S,qw,sw].witness) s) q ;
+ closed-top : CP.Closed Top = Tr.Trunc[CP.Witness Top].inc
+  (CP.from-iff Top FinSum[l].top-prop zero (\ i -> R.z)
+   (\ t -> AffineFinite[l].empty-section (\ i -> Id R.R R.z R.z)) (\ z -> tt)) ;
+ scalar-closed (a b : R.R) : CP.Closed (Id R.R a b) = Tr.Trunc[CP.Witness (Id R.R a b)].inc
+  (CP.from-iff (Id R.R a b) (setR a b) (suc zero) (\ i -> R.add a (R.neg b))
+   (\ p i -> trans (ap (\ t -> R.add a (R.neg t)) (sym p)) (R.addN a))
+   (\ z -> RR.difference-zero a b (z (inr tt)))) ;
+ vector-closed (n : Nat) (a b : Vector n) : CP.Closed (Id (Vector n) a b) =
+  Tr.Trunc[CP.Witness (Id (Vector n) a b)].inc
+   (CP.from-iff (Id (Vector n) a b) (vector-set n a b) n (\ i -> R.add (a i) (R.neg (b i)))
+    (\ p i -> trans (ap (\ v -> R.add (a i) (R.neg (v i))) (sym p)) (R.addN (a i)))
+    (\ z -> F.funext (Fin n) (\ i -> R.R) a b (\ i -> RR.difference-zero _ _ (z i)))) ;
+ equations-closed (V : U l) (a : V -> R.R) : (es : P.Equations V) -> CP.Closed (P.Zeros V C.base a es) = split {
+  nil -> closed-top ;
+  cons e es | ih -> closed-product (Id R.R (P.eval V C.base a e) R.z) (P.Zeros V C.base a es)
+   (scalar-closed (P.eval V C.base a e) R.z) ih } ;
+ module Padded (p : P.Presentation) (N : Nat) (h : CB.le p.1 N) {
+  restriction (a : Vector N) : Vector p.1 = take p.1 N h a ;
+  extend (a : Vector p.1) : Vector N = VP.pad p.1 N a h ;
+  Condition (a : Vector N) : U l = P.Zeros (Fin p.1) C.base (restriction a) p.2 * Id (Vector N) (extend (restriction a)) a ;
+  proposition (a : Vector N) : Pr.isProp (Condition a) =
+   Pr.isProp-Sigma (P.Zeros (Fin p.1) C.base (restriction a) p.2)
+    (\ z -> Id (Vector N) (extend (restriction a)) a)
+    (P.zeros-prop (Fin p.1) C.base (restriction a) p.2) (\ z -> vector-set N _ _) ;
+  closed (a : Vector N) : CP.Closed (Condition a) =
+   closed-product (P.Zeros (Fin p.1) C.base (restriction a) p.2) (Id (Vector N) (extend (restriction a)) a)
+    (equations-closed (Fin p.1) (restriction a) p.2) (vector-closed N (extend (restriction a)) a) ;
+  Total : U l = (a : Vector N) * Condition a ;
+  forward (s : SA.Sol p) : Total =
+   (extend s.1,FS.zeros-ext (Fin p.1) C.base s.1 (restriction (extend s.1))
+    (\ i -> sym (take-pad p.1 N h s.1 i)) p.2 s.2,
+    ap extend (take-pad-path p.1 N h s.1)) ;
+  backward (t : Total) : SA.Sol p = (restriction t.1,t.2.1) ;
+  fb (t : Total) : Id Total (forward (backward t)) t =
+   Pr.Sigma-eq (Vector N) Condition _ _ _ _ t.2.2 (proposition t.1) ;
+  bf (s : SA.Sol p) : Id (SA.Sol p) (backward (forward s)) s =
+   P.solutions-ext p C.base _ s (take-pad p.1 N h s.1) ;
+  equivalence : Pr.Equiv (SA.Sol p) Total = (forward,Pr.qinv _ _ forward backward fb bf) ;
+ } ;
+} ;

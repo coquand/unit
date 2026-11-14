@@ -1,0 +1,116 @@
+-- The grading of the model, as a predicate "x has degree k" defined by the
+-- same recursion as L n (Pascal):
+--   Deg 0 0 x = Top ,  Deg 0 (k+1) x = (x = 0) ,
+--   Deg (n+1) k (x0, x1) = Deg n k x0 * Deg n (k-1) x1   (x1 = 0 when k = 0).
+-- Products of m generators have degree m; in degree n the model is free of
+-- rank one on  omega = e_1 ... e_n :  Deg n n x  gives  x = top(x) . omega ,
+-- and degrees above n are 0.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ; module Ps = Presentations[l] ;
+module Over (Rg : CRing) (setR : Pr.isSet Rg.R) {
+ open Rg ;
+ module L = RL[Rg] ;
+ module EA = ExteriorAlgebra[l].Over[Rg,setR] ;
+ open ExteriorModel[l].Over[Rg] ;
+ pair-eq {A B : U l} {x x' : A} {y y' : B} (p : Id A x x') (q : Id B y y') : Id (A * B) (x,y) (x',y') =
+  ExteriorAlgebra[l].pair-eq p q ;
+
+ deg0 : Nat -> R -> U l = split { zero -> \ x -> Top ; suc k -> \ x -> Id R x z } ;
+ shift (n : Nat) (P : Nat -> Ext n -> U l) : Nat -> Ext n -> U l = split {
+  zero -> \ y -> Id (Ext n) y (ezero n) ; suc k -> \ y -> P k y } ;
+ Deg : (n : Nat) -> Nat -> Ext n -> U l = split {
+  zero -> deg0 ;
+  suc n | r -> \ k x -> r k x.1 * shift n r k x.2 } ;
+
+ ---------------------------------------------------------------------
+ -- each degree is closed under 0, +, - and alpha
+
+ deg-zero : (n k : Nat) -> Deg n k (ezero n) = split {
+  zero -> split { zero -> tt ; suc k -> refl z } ;
+  suc n | r -> split { zero -> (r zero,refl (ezero n)) ; suc k -> (r (suc k),r k) } } ;
+ deg-add : (n k : Nat) (x y : Ext n) -> Deg n k x -> Deg n k y -> Deg n k (eadd n x y) = split {
+  zero -> split {
+   zero -> \ x y p q -> tt ;
+   suc k -> \ x y p q -> trans (EA.At[zero].G.cong-add p q) (addZ z) } ;
+  suc n | r -> split {
+   zero -> \ x y p q -> (r zero x.1 y.1 p.1 q.1,trans (EA.At[n].G.cong-add p.2 q.2) (EA.eaddZ n (ezero n))) ;
+   suc k -> \ x y p q -> (r (suc k) x.1 y.1 p.1 q.1,r k x.2 y.2 p.2 q.2) } } ;
+ deg-neg : (n k : Nat) (x : Ext n) -> Deg n k x -> Deg n k (eneg n x) = split {
+  zero -> split {
+   zero -> \ x p -> tt ;
+   suc k -> \ x p -> trans (ap neg p) L.neg-zero } ;
+  suc n | r -> split {
+   zero -> \ x p -> (r zero x.1 p.1,trans (ap (eneg n) p.2) EA.At[n].G.neg-zero) ;
+   suc k -> \ x p -> (r (suc k) x.1 p.1,r k x.2 p.2) } } ;
+ deg-alpha : (n k : Nat) (x : Ext n) -> Deg n k x -> Deg n k (alpha n x) = split {
+  zero -> \ k x p -> p ;
+  suc n | r -> split {
+   zero -> \ x p -> (r zero x.1 p.1,
+    trans (ap (eneg n) (trans (ap (alpha n) p.2) (EA.alpha-zero n))) EA.At[n].G.neg-zero) ;
+   suc k -> \ x p -> (r (suc k) x.1 p.1,deg-neg n k (alpha n x.2) (r k x.2 p.2)) } } ;
+ -- transport along an equality of elements
+ deg-eq (n k : Nat) {x y : Ext n} (h : Id (Ext n) x y) (p : Deg n k y) : Deg n k x = subst (Deg n k) (sym h) p ;
+
+ ---------------------------------------------------------------------
+ -- scalars have degree 0, generators degree 1, and products add degrees
+
+ deg-emb : (n : Nat) (c : R) -> Deg n zero (emb n c) = split {
+  zero -> \ c -> tt ;
+  suc n | r -> \ c -> (r c,refl (ezero n)) } ;
+ deg-gen : (n : Nat) (a : Ps.Fin n -> R) -> Deg n (suc zero) (gen n a) = split {
+  zero -> \ a -> refl z ;
+  suc n | r -> \ a -> (r (\ k -> a (inl k)),deg-emb n (a (inr tt))) } ;
+ -- degree k times degree 0
+ deg-mul0 : (n k : Nat) (x y : Ext n) -> Deg n k x -> Deg n zero y -> Deg n k (emul n x y) = split {
+  zero -> split {
+   zero -> \ x y p q -> tt ;
+   suc k -> \ x y p q -> trans (ap (\ t -> mul t y) p) (L.zero-mul y) } ;
+  suc n | r -> split {
+   zero -> \ x y p q -> (r zero x.1 y.1 p.1 q.1,
+    trans (EA.At[n].G.cong-add (trans (ap (emul n x.1) q.2) (EA.mul-zero-r n x.1))
+                               (trans (ap (\ t -> emul n t (alpha n y.1)) p.2) (EA.mul-zero-l n (alpha n y.1))))
+     (EA.eaddZ n (ezero n))) ;
+   suc k -> \ x y p q -> (r (suc k) x.1 y.1 p.1 q.1,
+    deg-add n k (emul n x.1 y.2) (emul n x.2 (alpha n y.1))
+     (deg-eq n k (trans (ap (emul n x.1) q.2) (EA.mul-zero-r n x.1)) (deg-zero n k))
+     (r k x.2 (alpha n y.1) p.2 (deg-alpha n zero y.1 q.1))) } } ;
+ -- degree k times degree 1
+ deg-mul1 : (n k : Nat) (x y : Ext n) -> Deg n k x -> Deg n (suc zero) y -> Deg n (suc k) (emul n x y) = split {
+  zero -> \ k x y p q -> trans (ap (mul x) q) (L.mul-zero x) ;
+  suc n | r -> split {
+   zero -> \ x y p q -> (r zero x.1 y.1 p.1 q.1,
+    deg-add n zero (emul n x.1 y.2) (emul n x.2 (alpha n y.1)) (deg-mul0 n zero x.1 y.2 p.1 q.2)
+     (deg-eq n zero (trans (ap (\ t -> emul n t (alpha n y.1)) p.2) (EA.mul-zero-l n (alpha n y.1))) (deg-zero n zero))) ;
+   suc k -> \ x y p q -> (r (suc k) x.1 y.1 p.1 q.1,
+    deg-add n (suc k) (emul n x.1 y.2) (emul n x.2 (alpha n y.1)) (deg-mul0 n (suc k) x.1 y.2 p.1 q.2)
+     (r k x.2 (alpha n y.1) p.2 (deg-alpha n (suc zero) y.1 q.1))) } } ;
+ deg-eprod (n : Nat) : (m : Nat) (u : Ps.Fin m -> Ext n) -> ((k : Ps.Fin m) -> Deg n (suc zero) (u k)) ->
+  Deg n m (eprod n m u) = split {
+  zero -> \ u h -> deg-emb n o ;
+  suc m | r -> \ u h -> deg-mul1 n m (eprod n m (\ k -> u (inl k))) (u (inr tt))
+   (r (\ k -> u (inl k)) (\ k -> h (inl k))) (h (inr tt)) } ;
+
+ ---------------------------------------------------------------------
+ -- the top degree
+
+ omega : (n : Nat) -> Ext n = split { zero -> o ; suc n | r -> (ezero n,r) } ;
+ top-omega : (n : Nat) -> Id R (top n (omega n)) o = split { zero -> refl o ; suc n | r -> r } ;
+ top-scale : (n : Nat) (c : R) (x : Ext n) -> Id R (top n (escale n c x)) (mul c (top n x)) = split {
+  zero -> \ c x -> refl (mul c x) ;
+  suc n | r -> \ c x -> r c x.2 } ;
+ -- above the top degree everything is 0
+ deg-high : (n m : Nat) (x : Ext n) -> Deg n (plus n (suc m)) x -> Id (Ext n) x (ezero n) = split {
+  zero -> \ m x p -> p ;
+  suc n | r -> \ m x p -> pair-eq
+   (r (suc m) x.1 (subst (\ k -> Deg n k x.1) (sym (plus-suc n (suc m))) p.1))
+   (r m x.2 p.2) } ;
+ plus-one (n : Nat) : Id Nat (plus n (suc zero)) (suc n) = trans (plus-suc n zero) (ap (\ k -> suc k) (plus-zero n)) ;
+ -- in degree n:  x = top(x) . omega
+ deg-top : (n : Nat) (x : Ext n) -> Deg n n x -> Id (Ext n) x (escale n (top n x) (omega n)) = split {
+  zero -> \ x p -> sym (mulO x) ;
+  suc n | r -> \ x p -> pair-eq
+   (trans (deg-high n zero x.1
+            (subst (\ k -> Deg n k x.1) (sym (plus-one n)) p.1))
+          (sym (EA.escale-zero n (top n x.2))))
+   (r x.2 p.2) } ;
+} ;

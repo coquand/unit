@@ -1,0 +1,84 @@
+-- Clearing denominators in finitely generated ideal membership.
+-- The proof uses a quotient model and a localization model; no choice of
+-- fractions, finite presentation hypothesis, or geometric axiom is needed.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module Map (A B : CRing) (setB : Pr.isSet B.R) (h : RingHom[l].Hom A B)
+ (n : Nat) (fs : Fin n -> A.R) {
+ module IA = GeneratedIdeal[l].Over[A,n,fs] ;
+ module IB = GeneratedIdeal[l].Over[B,n,\ i -> h.1 (fs i)] ;
+ module SA = FiniteIdeal[l].Sums[A] ;
+ module SB = FiniteIdeal[l].Sums[B] ;
+ module SM = StandardOpens[l].SumMap[A,B,h] ;
+ certificate (a : A.R) (w : IA.Witness a) : IB.Witness (h.1 a) =
+  (\ i -> h.1 (w.1 i),trans (ap h.1 w.2)
+   (trans (h.2.2.1 A.z (SA.lin n fs w.1))
+    (cong2 B.R B.add _ _ _ _ (RingHom[l].zero A B h) (SM.combination n fs w.1)))) ;
+ member (a : A.R) : IA.Member a -> IB.Member (h.1 a) =
+  Tr.Trunc[IA.Witness a].induction @l (\ t -> IB.Member (h.1 a))
+   (\ t -> IB.proposition (h.1 a)) (\ w -> Tr.Trunc[IB.Witness (h.1 a)].inc (certificate a w)) ;
+ zero-certificate (kills : (i : Fin n) -> Id B.R (h.1 (fs i)) B.z)
+  (a : A.R) (w : IA.Witness a) : Id B.R (h.1 a) B.z =
+  trans (certificate a w).2
+   (trans (ap (B.add B.z)
+     (trans (SB.sum-cong n (\ i -> B.mul (h.1 (fs i)) (h.1 (w.1 i))) (\ i -> B.z)
+       (\ i -> trans (ap (\ t -> B.mul t (h.1 (w.1 i))) (kills i)) (RL[B].zero-mul (h.1 (w.1 i)))))
+      (SB.sum-zero n)))
+    (B.addZ B.z)) ;
+ zero (kills : (i : Fin n) -> Id B.R (h.1 (fs i)) B.z) (a : A.R) :
+  IA.Member a -> Id B.R (h.1 a) B.z =
+  Tr.Trunc[IA.Witness a].induction @l (\ t -> Id B.R (h.1 a) B.z)
+   (\ t -> setB _ _) (zero-certificate kills a) ;
+} ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ;
+ module I = AffineInterface[l].Over[R,setR] ;
+ module At (A L : C.Algebra) (f : A.ring.R) (inc : C.Hom A L)
+  (loc : I.Localizes A L f inc) (n : Nat) (gs : Fin n -> A.ring.R) {
+  module IA = GeneratedIdeal[l].Over[A.ring,n,gs] ;
+  module IL = GeneratedIdeal[l].Over[L.ring,n,\ i -> inc.1.1 (gs i)] ;
+  module Pow = AffinePowers[l].Over[A.ring] ;
+  module LP = AffinePowers[l].Over[L.ring] ;
+  Witness (a : A.ring.R) : U l = (k : Nat) * IA.Member (A.ring.mul (Pow.power f k) a) ;
+  Saturated (a : A.ring.R) : U l = Tr.Trunc[Witness a].carrier ;
+  module Q = QuotientCertificate[l].Over[R,setR].Model[A,n,gs] ;
+  module B = LocalizationNilpotence[l].Over[R,setR].Model[Q.target,Q.inclusion.1.1 f] ;
+  module Kernel = LocalizationKernel[l].Relative[Q.target.ring,Q.target.set,Q.inclusion.1.1 f] ;
+  toB : C.Hom A B.target = C.compose A Q.target B.target B.inclusion Q.inclusion ;
+  arrow : C.Hom L B.target = (loc.2 B.target).sec (toB,B.inverse) ;
+  beta (a : A.ring.R) : Id B.target.ring.R (arrow.1.1 (inc.1.1 a)) (toB.1.1 a) =
+   Pr.ap (I.LocalData A B.target f) B.target.ring.R (\ d -> d.1.1.1 a) _ _
+    ((loc.2 B.target).sec-eq (toB,B.inverse)) ;
+  kills (i : Fin n) : Id B.target.ring.R (arrow.1.1 (inc.1.1 (gs i))) B.target.ring.z =
+   trans (beta (gs i))
+    (trans (ap B.inclusion.1.1 (Q.kills i)) (RingHom[l].zero Q.target.ring B.target.ring B.inclusion.1)) ;
+  kernel-certificate (a : A.ring.R) (w : Kernel.Witness (Q.inclusion.1.1 a)) :
+   IA.Member (A.ring.mul (Pow.power f w.1) a) =
+   Q.Rel.kernel (A.ring.mul (Pow.power f w.1) a)
+    (trans (Q.inclusion.1.2.2.2 (Pow.power f w.1) a)
+     (trans (ap (\ t -> Q.target.ring.mul t (Q.inclusion.1.1 a))
+       (AffinePowers[l].power-map A.ring Q.target.ring Q.inclusion.1 f w.1)) w.2)) ;
+  clear (a : A.ring.R) (h : IL.Member (inc.1.1 a)) : Saturated a =
+   Tr.Trunc[Kernel.Witness (Q.inclusion.1.1 a)].induction @l (\ t -> Saturated a)
+    (\ t -> Tr.Trunc[Witness a].proposition)
+    (\ w -> Tr.Trunc[Witness a].inc (w.1,kernel-certificate a w))
+    (Kernel.kernel (Q.inclusion.1.1 a)
+     (trans (sym (beta a)) (Map[L.ring,B.target.ring,B.target.set,arrow.1,n,\ i -> inc.1.1 (gs i)].zero
+       kills (inc.1.1 a) h))) ;
+  cancel (x y : L.ring.R) (u : RL[L.ring].unit x) (h : IL.Member (L.ring.mul x y)) : IL.Member y =
+   IL.equal _ _
+    (trans (L.ring.mulA u.1 x y)
+     (trans (ap (\ t -> L.ring.mul t y) (trans (L.ring.mulC u.1 x) u.2)) (LP.one-left y)))
+    (IL.scale u.1 (L.ring.mul x y) h) ;
+  witness-member (a : A.ring.R) (w : Witness a) : IL.Member (inc.1.1 a) =
+   cancel (LP.power (inc.1.1 f) w.1) (inc.1.1 a)
+    (LP.Units[L.set].power-unit (inc.1.1 f) loc.1 w.1)
+    (IL.equal _ _
+     (trans (inc.1.2.2.2 (Pow.power f w.1) a)
+      (ap (\ t -> L.ring.mul t (inc.1.1 a)) (AffinePowers[l].power-map A.ring L.ring inc.1 f w.1)))
+     (Map[A.ring,L.ring,L.set,inc.1,n,gs].member (A.ring.mul (Pow.power f w.1) a) w.2)) ;
+  localize (a : A.ring.R) : Saturated a -> IL.Member (inc.1.1 a) =
+   Tr.Trunc[Witness a].induction @l (\ t -> IL.Member (inc.1.1 a))
+    (\ t -> IL.proposition (inc.1.1 a)) (witness-member a) ;
+ } ;
+} ;

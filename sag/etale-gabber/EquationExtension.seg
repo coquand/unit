@@ -1,0 +1,80 @@
+-- Adjoin finitely many relations to a presented algebra.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ; open P ;
+ append (V : U l) : Equations V -> Equations V -> Equations V = split {
+  nil -> \ ys -> ys ; cons x xs | r -> \ ys -> cons x (r ys) } ;
+ join (V : U l) (B : C.Algebra) (a : V -> B.ring.R) :
+  (xs ys : Equations V) -> Zeros V B a xs -> Zeros V B a ys -> Zeros V B a (append V xs ys) = split {
+  nil -> \ ys hx hy -> hy ; cons x xs | r -> \ ys hx hy -> (hx.1,r ys hx.2 hy) } ;
+ left (V : U l) (B : C.Algebra) (a : V -> B.ring.R) :
+  (xs ys : Equations V) -> Zeros V B a (append V xs ys) -> Zeros V B a xs = split {
+  nil -> \ ys h -> tt ; cons x xs | r -> \ ys h -> (h.1,r ys h.2) } ;
+ right (V : U l) (B : C.Algebra) (a : V -> B.ring.R) :
+  (xs ys : Equations V) -> Zeros V B a (append V xs ys) -> Zeros V B a ys = split {
+  nil -> \ ys h -> h ; cons x xs | r -> \ ys h -> r ys h.2 } ;
+ module Extend (p : Presentation) (A : C.Algebra) (pa : Presents p A)
+  (es : Equations (Fin p.1)) {
+  V : U l = Fin p.1 ;
+  pres : Presentation = (p.1,append V p.2 es) ;
+  module Q = PresentationExistence[l].Over[R,setR,pres] ;
+  algebra : C.Algebra = Q.A.algebra ;
+  fp : FP algebra = Q.finitely-presented ;
+  old : Solutions p algebra =
+   (Q.A.solution.1,left V algebra Q.A.solution.1 p.2 es Q.A.solution.2) ;
+  inclusion : C.Hom A algebra = (pa.2 algebra).sec old ;
+  inclusion-gen (v : V) : Id algebra.ring.R (inclusion.1.1 (pa.1.1 v)) (Q.A.solution.1 v) =
+   Pr.ap (Solutions p algebra) algebra.ring.R (\ s -> s.1 v) _ _ ((pa.2 algebra).sec-eq old) ;
+  module To (B : C.Algebra) {
+   Conditions (h : C.Hom A B) : U l =
+    Zeros V B (\ v -> h.1.1 (pa.1.1 v)) es ;
+   condition-prop (h : C.Hom A B) : Pr.isProp (Conditions h) =
+    zeros-prop V B (\ v -> h.1.1 (pa.1.1 v)) es ;
+   Data : U l = (h : C.Hom A B) * Conditions h ;
+   restrict (s : Solutions pres B) : C.Hom A B =
+    (pa.2 B).sec (s.1,left V B s.1 p.2 es s.2) ;
+   restrict-gen (s : Solutions pres B) : Id (V -> B.ring.R)
+     (\ v -> (restrict s).1.1 (pa.1.1 v)) s.1 =
+    Pr.ap (Solutions p B) (V -> B.ring.R) (\ t -> t.1) _ _
+     ((pa.2 B).sec-eq (s.1,left V B s.1 p.2 es s.2)) ;
+   forward (s : Solutions pres B) : Data =
+    (restrict s,Pr.subst (V -> B.ring.R) (\ a -> Zeros V B a es) _ _
+      (Pr.sym _ _ _ (restrict-gen s)) (right V B s.1 p.2 es s.2)) ;
+   backward (d : Data) : Solutions pres B =
+    ((canonical p A pa.1 B d.1).1,
+     join V B (canonical p A pa.1 B d.1).1 p.2 es (canonical p A pa.1 B d.1).2 d.2) ;
+   fb (d : Data) : Id Data (forward (backward d)) d =
+    Pr.Sigma-eq (C.Hom A B) Conditions _ _ _ _
+     (Equivalences[l].injective (C.Hom A B) (Solutions p B) (canonical p A pa.1 B) (pa.2 B) _ _
+      (solutions-ext p B _ _ (\ v -> Pr.ap (V -> B.ring.R) B.ring.R (\ a -> a v) _ _
+        (restrict-gen (backward d))))) (condition-prop d.1) ;
+   bf (s : Solutions pres B) : Id (Solutions pres B) (backward (forward s)) s =
+    solutions-ext pres B _ _ (\ v -> Pr.ap (V -> B.ring.R) B.ring.R (\ a -> a v) _ _ (restrict-gen s)) ;
+   solutions : Pr.Equiv (Solutions pres B) Data = (forward,Pr.qinv _ _ forward backward fb bf) ;
+   chain : Pr.Equiv (C.Hom algebra B) Data =
+    Equivalences[l].compose _ _ _ (Q.To[B].forward,Q.To[B].universal) solutions ;
+   restriction-law (h : C.Hom algebra B) :
+    Id (C.Hom A B) (chain.1 h).1 (C.compose A algebra B h inclusion) =
+    Equivalences[l].injective _ _ (canonical p A pa.1 B) (pa.2 B) _ _
+     (solutions-ext p B _ _ (\ v ->
+      trans (Pr.ap (V -> B.ring.R) B.ring.R (\ a -> a v) _ _ (restrict-gen (Q.To[B].forward h)))
+       (sym (ap h.1.1 (inclusion-gen v))))) ;
+   canonical-map (h : C.Hom algebra B) : Data =
+    (C.compose A algebra B h inclusion,
+     Pr.subst (C.Hom A B) Conditions _ _ (restriction-law h) (chain.1 h).2) ;
+   universal : Pr.isEquiv (C.Hom algebra B) Data canonical-map =
+    Equivalences[l].homotopy _ _ chain canonical-map (\ h ->
+     Pr.Sigma-eq (C.Hom A B) Conditions _ _ _ _ (Pr.sym _ _ _ (restriction-law h))
+      (condition-prop (chain.1 h).1)) ;
+   equivalence : Pr.Equiv (C.Hom algebra B) Data = (canonical-map,universal) ;
+  } ;
+  equations : To[algebra].Conditions inclusion =
+   Pr.subst (C.Hom A algebra) To[algebra].Conditions _ _
+    (C.ext A algebra (C.compose A algebra algebra (C.identity algebra) inclusion) inclusion
+      (\ a -> refl (inclusion.1.1 a)))
+    (To[algebra].canonical-map (C.identity algebra)).2 ;
+ } ;
+} ;

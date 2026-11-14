@@ -1,0 +1,58 @@
+-- A surjective rectangular matrix has a surjective square submatrix.
+-- Choose a pivot, use the Schur complement, then restore that column.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (loc : StandardOpens[l].Over[R,setR].Locality) {
+ module LR = EtaleLinear[l].Over[R,setR] ;
+ module ES = EtaleSurj[l].Over[R,setR,loc] ;
+ module RS = FiniteIdeal[l].Sums[R] ; module D = MnSums[l].Over[R] ;
+ module L = RL[R] ;
+ entry (m n : Nat) (w : LR.Matrix m (suc n)) (pivot col : Fin m) (row : Fin n) :
+  Id R.R (LR.schur m n w pivot col row)
+   (R.add (R.mul (w pivot (inr tt)) (w col (inl row)))
+    (R.neg (R.mul (w pivot (inl row)) (w col (inr tt))))) =
+  trans (sym (D.sum-delta-right m col (\ j -> LR.schur m n w pivot j row)))
+   (trans (LR.schur-apply m n w pivot (\ j -> D.delta m j col) row)
+    (cong2 R.R R.add _ _ _ _
+     (ap (R.mul (w pivot (inr tt))) (D.sum-delta-right m col (\ j -> w j (inl row))))
+     (ap (\ a -> R.neg (R.mul (w pivot (inl row)) a)) (D.sum-delta-right m col (\ j -> w j (inr tt)))))) ;
+ Selected (m n : Nat) (w : LR.Matrix m n) : U l =
+  (s : Fin n -> Fin m) * LR.Surj n n (\ j k -> w (s j) k) ;
+ Claim (n : Nat) : U l = (m : Nat) (w : LR.Matrix m n) -> LR.Surj m n w -> Tr.Trunc[Selected m n w].carrier ;
+ module Step (n : Nat) (ih : Claim n) (m : Nat) (w : LR.Matrix m (suc n)) (onto : LR.Surj m (suc n) w) {
+  module ChosenPivot (j : Fin m) (unit : L.unit (w j (inr tt))) (reduced : LR.Surj m n (LR.schur m n w j)) {
+   module Chosen (s : Fin n -> Fin m) (small : LR.Surj n n (\ a k -> LR.schur m n w j (s a) k)) {
+    selection : Fin (suc n) -> Fin m = snoc (Fin n) (Fin m) s j ;
+    matrix : LR.Matrix (suc n) (suc n) = \ a k -> w (selection a) k ;
+    red : LR.Matrix (suc n) n = LR.schur (suc n) n matrix (inr tt) ;
+    old (a : Fin n) (k : Fin n) : Id R.R (red (inl a) k) (LR.schur m n w j (s a) k) =
+     trans (entry (suc n) n matrix (inr tt) (inl a) k) (sym (entry m n w j (s a) k)) ;
+    module Solve (v : LR.Vector n) (c : LR.Witness n n (\ a k -> LR.schur m n w j (s a) k) v) {
+     coefficients : LR.Vector (suc n) = snoc (Fin n) R.R c.1 R.z ;
+     result : LR.Witness (suc n) n red v = (coefficients,\ k ->
+      trans (cong2 R.R R.add _ _ _ _ (L.mul-zero (red (inr tt) k))
+        (RS.sum-cong n (\ a -> R.mul (red (inl a) k) (c.1 a))
+         (\ a -> R.mul (LR.schur m n w j (s a) k) (c.1 a))
+         (\ a -> ap (\ u -> R.mul u (c.1 a)) (old a k))))
+       (trans (L.zl (LR.apply n n (\ a row -> LR.schur m n w j (s a) row) c.1 k)) (c.2 k))) ;
+    } ;
+    red-onto : LR.Surj (suc n) n red = \ v ->
+     TC.map (LR.Witness n n (\ a k -> LR.schur m n w j (s a) k) v)
+      (LR.Witness (suc n) n red v) (\ c -> Solve[v,c].result) (small v) ;
+    result : Selected m (suc n) w =
+     (selection,ES.Step[suc n,n,matrix].At[inr tt,unit].backward red-onto) ;
+   } ;
+   result : Tr.Trunc[Selected m (suc n) w].carrier =
+    TC.map (Selected m n (LR.schur m n w j)) (Selected m (suc n) w)
+     (\ z -> Chosen[z.1,z.2].result) (ih m (LR.schur m n w j) reduced) ;
+  } ;
+  theorem : Tr.Trunc[Selected m (suc n) w].carrier =
+   TC.bind ES.Step[m,n,w].PivotCondition (Selected m (suc n) w)
+    (\ z -> ChosenPivot[z.1,z.2.1,z.2.2].result) (ES.Step[m,n,w].forward onto) ;
+ } ;
+ theorem : (n : Nat) -> Claim n = split {
+  zero -> \ m w onto -> Tr.Trunc[Selected m zero w].inc (\ e -> efq e,ES.empty-surj zero (\ a k -> w (efq a) k)) ;
+  suc n | ih -> \ m w onto -> Step[n,ih,m,w,onto].theorem } ;
+ opaque theorem ;
+} ;

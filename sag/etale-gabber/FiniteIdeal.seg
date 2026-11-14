@@ -1,0 +1,87 @@
+-- Explicit coefficient certificates for finitely generated ideals.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Sums (A : CRing) {
+ open A ; open RL[A] ;
+ sum : (n : Nat) -> (Fin n -> R) -> R = split {
+  zero -> \ v -> z ; suc n | ih -> \ v -> add (v (inr tt)) (ih (\ i -> v (inl i))) } ;
+ sum-cong : (n : Nat) (v w : Fin n -> R) -> ((i : Fin n) -> Id R (v i) (w i)) -> Id R (sum n v) (sum n w) = split {
+  zero -> \ v w h -> refl z ; suc n | ih -> \ v w h ->
+   cong2 R add _ _ _ _ (h (inr tt)) (ih (\ i -> v (inl i)) (\ i -> w (inl i)) (\ i -> h (inl i))) } ;
+ sum-zero : (n : Nat) -> Id R (sum n (\ i -> z)) z = split {
+  zero -> refl z ; suc n | ih -> trans (ap (add z) ih) (addZ z) } ;
+ sum-add : (n : Nat) (v w : Fin n -> R) ->
+  Id R (sum n (\ i -> add (v i) (w i))) (add (sum n v) (sum n w)) = split {
+  zero -> \ v w -> sym (addZ z) ;
+  suc n | ih -> \ v w ->
+   trans (ap (add (add (v (inr tt)) (w (inr tt)))) (ih (\ i -> v (inl i)) (\ i -> w (inl i))))
+    (swap (v (inr tt)) (w (inr tt)) (sum n (\ i -> v (inl i))) (sum n (\ i -> w (inl i)))) } ;
+ sum-scale (a : R) : (n : Nat) (v : Fin n -> R) ->
+  Id R (sum n (\ i -> mul a (v i))) (mul a (sum n v)) = split {
+  zero -> \ v -> sym (mul-zero a) ;
+  suc n | ih -> \ v -> trans (ap (add (mul a (v (inr tt)))) (ih (\ i -> v (inl i))))
+   (sym (dist a (v (inr tt)) (sum n (\ i -> v (inl i))))) } ;
+ lin (n : Nat) (fs v : Fin n -> R) : R = sum n (\ i -> mul (fs i) (v i)) ;
+ lin-zero (n : Nat) (fs : Fin n -> R) : Id R (lin n fs (\ i -> z)) z =
+  trans (sum-cong n (\ i -> mul (fs i) z) (\ i -> z) (\ i -> mul-zero (fs i))) (sum-zero n) ;
+ lin-add (n : Nat) (fs v w : Fin n -> R) :
+  Id R (lin n fs (\ i -> add (v i) (w i))) (add (lin n fs v) (lin n fs w)) =
+  trans (sum-cong n (\ i -> mul (fs i) (add (v i) (w i))) (\ i -> add (mul (fs i) (v i)) (mul (fs i) (w i))) (\ i -> dist (fs i) (v i) (w i)))
+   (sum-add n (\ i -> mul (fs i) (v i)) (\ i -> mul (fs i) (w i))) ;
+ lin-scale (n : Nat) (fs v : Fin n -> R) (a : R) :
+  Id R (lin n fs (\ i -> mul a (v i))) (mul a (lin n fs v)) =
+  trans (sum-cong n (\ i -> mul (fs i) (mul a (v i))) (\ i -> mul a (mul (fs i) (v i))) (\ i -> mul-swap (fs i) a (v i))) (sum-scale a n (\ i -> mul (fs i) (v i))) ;
+ lin-neg (n : Nat) (fs v : Fin n -> R) :
+  Id R (lin n fs (\ i -> neg (v i))) (neg (lin n fs v)) =
+  trans (sum-cong n (\ i -> mul (fs i) (neg (v i))) (\ i -> mul (neg o) (mul (fs i) (v i))) (\ i -> trans (mul-neg (fs i) (v i))
+    (sym (trans (mulC (neg o) (mul (fs i) (v i)))
+      (trans (mul-neg (mul (fs i) (v i)) o) (ap neg (mulO (mul (fs i) (v i)))))))))
+   (trans (sum-scale (neg o) n (\ i -> mul (fs i) (v i)))
+    (trans (mulC (neg o) (lin n fs v))
+     (trans (mul-neg (lin n fs v) o) (ap neg (mulO (lin n fs v)))))) ;
+ Coordinates (n : Nat) (fs : Fin n -> R) (a : R) : U l =
+  (v : Fin n -> R) * Id R (lin n fs v) a ;
+ coordinates : (n : Nat) (fs : Fin n -> R) (i : Fin n) -> Coordinates n fs (fs i) = split {
+  zero -> \ fs -> AffineFinite[l].empty-section (\ i -> Coordinates zero fs (fs i)) ;
+  suc n | ih -> \ fs -> AffineFinite[l].section n (\ i -> Coordinates (suc n) fs (fs i))
+   (\ i -> (snoc (Fin n) R (ih (\ j -> fs (inl j)) i).1 z,
+    trans (cong2 R add _ _ _ _ (mul-zero (fs (inr tt))) (ih (\ j -> fs (inl j)) i).2) (zl (fs (inl i)))))
+   (snoc (Fin n) R (\ i -> z) o,
+    trans (cong2 R add _ _ _ _ (mulO (fs (inr tt))) (lin-zero n (\ i -> fs (inl i)))) (addZ (fs (inr tt)))) } ;
+} ;
+module Over (A : CRing) (n : Nat) (fs : Fin n -> A.R) {
+ open A ; open RL[A] ;
+ module S = Sums[A] ;
+ comb (v : Fin n -> R) : R = S.lin n fs v ;
+ Certificate (x y : R) : U l = (v : Fin n -> R) * Id R x (add y (comb v)) ;
+ equal (x y : R) (h : Id R x y) : Certificate x y =
+  (\ i -> z,trans h (sym (trans (ap (add y) (S.lin-zero n fs)) (addZ y)))) ;
+ reflexive (x : R) : Certificate x x = equal x x (refl x) ;
+ symmetric (x y : R) (h : Certificate x y) : Certificate y x =
+  (\ i -> neg (h.1 i),sym (trans (ap (add x) (S.lin-neg n fs h.1))
+   (trans (ap (\ t -> add t (neg (comb h.1))) h.2) (add-neg-cancel y (comb h.1))))) ;
+ transitive (x y w : R) (h : Certificate x y) (k : Certificate y w) : Certificate x w =
+  (\ i -> add (k.1 i) (h.1 i),trans h.2
+   (trans (ap (\ t -> add t (comb h.1)) k.2)
+    (trans (sym (addA w (comb k.1) (comb h.1))) (ap (add w) (sym (S.lin-add n fs k.1 h.1)))))) ;
+ addition (x y u v : R) (h : Certificate x y) (k : Certificate u v) : Certificate (add x u) (add y v) =
+  (\ i -> add (h.1 i) (k.1 i),
+   trans (cong2 R add _ _ _ _ h.2 k.2)
+    (trans (swap y (comb h.1) v (comb k.1)) (ap (add (add y v)) (sym (S.lin-add n fs h.1 k.1))))) ;
+ multiplication (x y u v : R) (h : Certificate x y) (k : Certificate u v) : Certificate (mul x u) (mul y v) =
+  (\ i -> add (mul y (k.1 i)) (mul u (h.1 i)),calc R {
+   mul x u =< ap (\ t -> mul t u) h.2 > mul (add y (comb h.1)) u
+    =< RL[A].dist-left y (comb h.1) u > add (mul y u) (mul (comb h.1) u)
+    =< ap (\ t -> add (mul y t) (mul (comb h.1) u)) k.2 > add (mul y (add v (comb k.1))) (mul (comb h.1) u)
+    =< cong2 R add _ _ _ _ (dist y v (comb k.1)) (mulC (comb h.1) u)
+     > add (add (mul y v) (mul y (comb k.1))) (mul u (comb h.1))
+    =< sym (addA (mul y v) (mul y (comb k.1)) (mul u (comb h.1)))
+     > add (mul y v) (add (mul y (comb k.1)) (mul u (comb h.1)))
+    =< ap (add (mul y v)) (cong2 R add _ _ _ _
+        (sym (S.lin-scale n fs k.1 y)) (sym (S.lin-scale n fs h.1 u)))
+     > add (mul y v) (add (comb (\ i -> mul y (k.1 i))) (comb (\ i -> mul u (h.1 i))))
+    =< ap (add (mul y v)) (sym (S.lin-add n fs (\ i -> mul y (k.1 i)) (\ i -> mul u (h.1 i))))
+     > add (mul y v) (comb (\ i -> add (mul y (k.1 i)) (mul u (h.1 i)))) }) ;
+ generator (i : Fin n) : Certificate (fs i) z =
+  ((S.coordinates n fs i).1,sym (trans (zl (comb (S.coordinates n fs i).1)) (S.coordinates n fs i).2)) ;
+} ;

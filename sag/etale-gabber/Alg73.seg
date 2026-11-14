@@ -1,0 +1,516 @@
+-- Alg73.seg: SAG Lemma 7.3.5, the algebraic part of the vanishing of H^1
+-- on affine schemes.  A is a commutative ring, M an A-module,
+-- f 1 .. f n : A with  sum r k f k = 1.  An element of M_g is written
+-- x / g^p.  Given  s i j = m i j / (f i f j)^N  in M_(f i f j)  such that
+-- s j k - s i k + s i j = 0  in M_(f i f j f k), there are
+-- u i = V i / (f i)^p  with  u i - u j = s i j  in M_(f i f j).
+--
+-- Proof.  (1) Synchronisation: the cocycle condition holds after
+-- multiplying by (f i f j f k)^K i j k; a bound K of the K i j k (a sum)
+-- gives one exponent.  With F i = (f i)^(N+K) and
+-- mu i j = (f i f j)^K m i j  this gives, in M itself,
+--      F i mu j k - F j mu i k + F k mu i j = 0.
+-- (2) The powers F i are again unimodular: sum rho k F k = 1 (geometric
+-- series, by recursion on n).  (3) With  V i = sum rho k mu i k:
+--      F j V i - F i V j = sum rho k (F j mu i k - F i mu j k)
+--                        = sum rho k F k mu i j = mu i j,
+-- which is the statement with p = N + K.  The paper's u i is -V i / F i,
+-- with the convention s i j = u j - u i.
+
+level l ;
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open FinChoice[l] ;
+
+------------------------------------------------------------------------
+-- natural numbers
+
+plusN : Nat -> Nat -> Nat = split {
+  zero -> \ n -> n ;
+  suc m | r -> \ n -> suc (r n) } ;
+plusN-zero : (m : Nat) -> Id Nat (plusN m zero) m = split {
+  zero -> refl zero ;
+  suc m | r -> apH (\ k -> suc k) r } ;
+plusN-suc : (m n : Nat) -> Id Nat (plusN m (suc n)) (suc (plusN m n)) = split {
+  zero -> \ n -> refl (suc n) ;
+  suc m | r -> \ n -> apH (\ k -> suc k) (r n) } ;
+plusN-comm : (m n : Nat) -> Id Nat (plusN m n) (plusN n m) = split {
+  zero -> \ n -> symH (plusN-zero n) ;
+  suc m | r -> \ n -> transH (apH (\ k -> suc k) (r n)) (symH (plusN-suc n m)) } ;
+plusN-assoc : (a b c : Nat) -> Id Nat (plusN (plusN a b) c) (plusN a (plusN b c)) = split {
+  zero -> \ b c -> refl (plusN b c) ;
+  suc a | r -> \ b c -> apH (\ k -> suc k) (r b c) } ;
+
+-- a common bound of finitely many numbers (their sum)
+Bnd (n : Nat) (h : Fin n -> Nat) : U l =
+  (K : Nat) * ((i : Fin n) -> (d : Nat) * Id Nat (plusN d (h i)) K) ;
+bound-step (n : Nat) (h : Fin (suc n) -> Nat) (B : Bnd n (\ i -> h (some i))) : Bnd (suc n) h =
+  (plusN (h none) B.1,
+   combine n (\ i -> (d : Nat) * Id Nat (plusN d (h i)) (plusN (h none) B.1))
+     (B.1, plusN-comm B.1 (h none))
+     (\ i -> (plusN (h none) (B.2 i).1,
+              transH (plusN-assoc (h none) (B.2 i).1 (h (some i))) (apH (plusN (h none)) (B.2 i).2)))) ;
+bound : (n : Nat) (h : Fin n -> Nat) -> Bnd n h = split {
+  zero -> \ h -> (zero, fin-zero (\ i -> (d : Nat) * Id Nat (plusN d (h i)) zero)) ;
+  suc n | r -> \ h -> bound-step n h (r (\ i -> h (some i))) } ;
+
+-- bounds for families indexed by pairs and triples
+Bnd2 (n : Nat) (h : Fin n -> Fin n -> Nat) : U l =
+  (K : Nat) * ((i j : Fin n) -> (d : Nat) * Id Nat (plusN d (h i j)) K) ;
+bound-lift (n : Nat) (I : U l) (h : Fin n -> I -> Nat)
+  (B : (i : Fin n) -> (K : Nat) * ((j : I) -> (d : Nat) * Id Nat (plusN d (h i j)) K))
+  : (K : Nat) * ((i : Fin n) (j : I) -> (d : Nat) * Id Nat (plusN d (h i j)) K) =
+  ((bound n (\ i -> (B i).1)).1,
+   \ i j -> (plusN ((bound n (\ i' -> (B i').1)).2 i).1 ((B i).2 j).1,
+     transH (plusN-assoc ((bound n (\ i' -> (B i').1)).2 i).1 ((B i).2 j).1 (h i j))
+       (transH (apH (plusN ((bound n (\ i' -> (B i').1)).2 i).1) ((B i).2 j).2)
+          ((bound n (\ i' -> (B i').1)).2 i).2))) ;
+bound2 (n : Nat) (h : Fin n -> Fin n -> Nat) : Bnd2 n h =
+  bound-lift n (Fin n) h (\ i -> bound n (h i)) ;
+Bnd3 (n : Nat) (h : Fin n -> Fin n -> Fin n -> Nat) : U l =
+  (K : Nat) * ((i j k : Fin n) -> (d : Nat) * Id Nat (plusN d (h i j k)) K) ;
+bound3-in (n : Nat) (h : Fin n -> Fin n -> Fin n -> Nat) (i : Fin n)
+  : (K : Nat) * ((jk : Fin n * Fin n) -> (d : Nat) * Id Nat (plusN d (h i jk.1 jk.2)) K) =
+  ((bound2 n (h i)).1, \ jk -> (bound2 n (h i)).2 jk.1 jk.2) ;
+bound3 (n : Nat) (h : Fin n -> Fin n -> Fin n -> Nat) : Bnd3 n h =
+  ((bound-lift n (Fin n * Fin n) (\ i jk -> h i jk.1 jk.2) (bound3-in n h)).1,
+   \ i j k -> (bound-lift n (Fin n * Fin n) (\ i' jk -> h i' jk.1 jk.2) (bound3-in n h)).2 i (j, k)) ;
+
+------------------------------------------------------------------------
+-- commutative rings and modules
+
+record CRing {
+  R : U l ;
+  setR : isSet R ;
+  z : R ;
+  o : R ;
+  add : R -> R -> R ;
+  mul : R -> R -> R ;
+  neg : R -> R ;
+  addA (x y w : R) : Id R (add x (add y w)) (add (add x y) w) ;
+  addC (x y : R) : Id R (add x y) (add y x) ;
+  addZ (x : R) : Id R (add x z) x ;
+  addN (x : R) : Id R (add x (neg x)) z ;
+  mulA (x y w : R) : Id R (mul x (mul y w)) (mul (mul x y) w) ;
+  mulC (x y : R) : Id R (mul x y) (mul y x) ;
+  mulO (x : R) : Id R (mul x o) x ;
+  dist (x y w : R) : Id R (mul x (add y w)) (add (mul x y) (mul x w)) ;
+} ;
+
+record Mod (Rg : CRing) {
+  M : U l ;
+  setM : isSet M ;
+  mz : M ;
+  madd : M -> M -> M ;
+  mneg : M -> M ;
+  maddA (x y w : M) : Id M (madd x (madd y w)) (madd (madd x y) w) ;
+  maddC (x y : M) : Id M (madd x y) (madd y x) ;
+  maddZ (x : M) : Id M (madd x mz) x ;
+  maddN (x : M) : Id M (madd x (mneg x)) mz ;
+  sm : Rg.R -> M -> M ;
+  smA (a b : Rg.R) (x : M) : Id M (sm a (sm b x)) (sm (Rg.mul a b) x) ;
+  smO (x : M) : Id M (sm Rg.o x) x ;
+  smD (a : Rg.R) (x y : M) : Id M (sm a (madd x y)) (madd (sm a x) (sm a y)) ;
+  smE (a b : Rg.R) (x : M) : Id M (sm (Rg.add a b) x) (madd (sm a x) (sm b x)) ;
+} ;
+
+module RA (Rg : CRing) {
+  open Rg ;
+  unit (x : R) : U l = (y : R) * Id R (mul x y) o ;
+  zl (x : R) : Id R (add z x) x = transH (addC z x) (addZ x) ;
+  ol (x : R) : Id R (mul o x) x = transH (mulC o x) (mulO x) ;
+  add-cancel (u v : R) (h : Id R (add u v) u) : Id R v z = calc R {
+    v =< symH (addZ v) > add v z
+      =< apH (add v) (symH (addN u)) > add v (add u (neg u))
+      =< addA v u (neg u) > add (add v u) (neg u)
+      =< apH (\ t -> add t (neg u)) (addC v u) > add (add u v) (neg u)
+      =< apH (\ t -> add t (neg u)) h > add u (neg u)
+      =< addN u > z } ;
+  mul-zero (x : R) : Id R (mul x z) z =
+    add-cancel (mul x z) (mul x z) (transH (symH (dist x z z)) (apH (mul x) (addZ z))) ;
+  rdist (a b x : R) : Id R (mul (add a b) x) (add (mul a x) (mul b x)) = calc R {
+    mul (add a b) x =< mulC (add a b) x > mul x (add a b)
+      =< dist x a b > add (mul x a) (mul x b)
+      =< apH (\ t -> add t (mul x b)) (mulC x a) > add (mul a x) (mul x b)
+      =< apH (add (mul a x)) (mulC x b) > add (mul a x) (mul b x) } ;
+  mul-swap (a b w : R) : Id R (mul a (mul b w)) (mul b (mul a w)) = calc R {
+    mul a (mul b w) =< mulA a b w > mul (mul a b) w
+      =< apH (\ t -> mul t w) (mulC a b) > mul (mul b a) w
+      =< symH (mulA b a w) > mul b (mul a w) } ;
+  -- (a b)(c d) = (a c)(b d)
+  mul4 (a b c d : R) : Id R (mul (mul a b) (mul c d)) (mul (mul a c) (mul b d)) = calc R {
+    mul (mul a b) (mul c d) =< symH (mulA a b (mul c d)) > mul a (mul b (mul c d))
+      =< apH (mul a) (mul-swap b c d) > mul a (mul c (mul b d))
+      =< mulA a c (mul b d) > mul (mul a c) (mul b d) } ;
+
+  pw (a : R) : Nat -> R = split { zero -> o ; suc n | r -> mul a r } ;
+  pw-add (a : R) : (m n : Nat) -> Id R (pw a (plusN m n)) (mul (pw a m) (pw a n)) = split {
+    zero -> \ n -> symH (ol (pw a n)) ;
+    suc m | r -> \ n -> transH (apH (mul a) (r n)) (mulA a (pw a m) (pw a n)) } ;
+  pw-mul (a b : R) : (n : Nat) -> Id R (pw (mul a b) n) (mul (pw a n) (pw b n)) = split {
+    zero -> symH (mulO o) ;
+    suc n | r -> transH (apH (mul (mul a b)) r) (mul4 a b (pw a n) (pw b n)) } ;
+  pw-one : (n : Nat) -> Id R (pw o n) o = split {
+    zero -> refl o ;
+    suc n | r -> transH (apH (mul o) r) (mulO o) } ;
+
+  -- inverses
+  unit-pw (a y : R) (h : Id R (mul a y) o) (n : Nat) : Id R (mul (pw a n) (pw y n)) o =
+    transH (symH (pw-mul a y n)) (transH (apH (\ t -> pw t n) h) (pw-one n)) ;
+  inv-uniq (a y y' : R) (h : Id R (mul a y) o) (h' : Id R (mul a y') o) : Id R y y' = calc R {
+    y =< symH (mulO y) > mul y o
+      =< apH (mul y) (symH h') > mul y (mul a y')
+      =< mulA y a y' > mul (mul y a) y'
+      =< apH (\ t -> mul t y') (mulC y a) > mul (mul a y) y'
+      =< apH (\ t -> mul t y') h > mul o y'
+      =< ol y' > y' } ;
+  unit-mul (a b y y' : R) (h : Id R (mul a y) o) (h' : Id R (mul b y') o)
+    : Id R (mul (mul a b) (mul y y')) o =
+    transH (mul4 a b y y') (transH (apH (\ t -> mul t (mul b y')) h)
+      (transH (apH (mul o) h') (mulO o))) ;
+  unit-l (a b w : R) (h : Id R (mul (mul a b) w) o) : Id R (mul a (mul b w)) o =
+    transH (mulA a b w) h ;
+  unit-r (a b w : R) (h : Id R (mul (mul a b) w) o) : Id R (mul b (mul a w)) o =
+    transH (mul-swap b a w) (transH (mulA a b w) h) ;
+} ;
+
+module MA (Rg : CRing) (Md : Mod[Rg]) {
+  open Rg ;
+  open RA[Rg] ;
+  open Md ;
+  mzl (x : M) : Id M (madd mz x) x = transH (maddC mz x) (maddZ x) ;
+  madd-cancel (u v : M) (h : Id M (madd u v) u) : Id M v mz = calc M {
+    v =< symH (maddZ v) > madd v mz
+      =< apH (madd v) (symH (maddN u)) > madd v (madd u (mneg u))
+      =< maddA v u (mneg u) > madd (madd v u) (mneg u)
+      =< apH (\ t -> madd t (mneg u)) (maddC v u) > madd (madd u v) (mneg u)
+      =< apH (\ t -> madd t (mneg u)) h > madd u (mneg u)
+      =< maddN u > mz } ;
+  mneg-uniq (x y : M) (h : Id M (madd x y) mz) : Id M y (mneg x) = calc M {
+    y =< symH (maddZ y) > madd y mz
+      =< apH (madd y) (symH (maddN x)) > madd y (madd x (mneg x))
+      =< maddA y x (mneg x) > madd (madd y x) (mneg x)
+      =< apH (\ t -> madd t (mneg x)) (maddC y x) > madd (madd x y) (mneg x)
+      =< apH (\ t -> madd t (mneg x)) h > madd mz (mneg x)
+      =< mzl (mneg x) > mneg x } ;
+  mneg-z : Id M (mneg mz) mz = symH (mneg-uniq mz mz (maddZ mz)) ;
+  neg-neg (x : M) : Id M (mneg (mneg x)) x =
+    symH (mneg-uniq (mneg x) x (transH (maddC (mneg x) x) (maddN x))) ;
+  -- (p + q) + (r + s) = (p + r) + (q + s)
+  swap4 (p q r s : M) : Id M (madd (madd p q) (madd r s)) (madd (madd p r) (madd q s)) = calc M {
+    madd (madd p q) (madd r s) =< symH (maddA p q (madd r s)) > madd p (madd q (madd r s))
+      =< apH (madd p) (maddA q r s) > madd p (madd (madd q r) s)
+      =< apH (\ t -> madd p (madd t s)) (maddC q r) > madd p (madd (madd r q) s)
+      =< apH (madd p) (symH (maddA r q s)) > madd p (madd r (madd q s))
+      =< maddA p r (madd q s) > madd (madd p r) (madd q s) } ;
+  neg-add (x y : M) : Id M (mneg (madd x y)) (madd (mneg x) (mneg y)) =
+    symH (mneg-uniq (madd x y) (madd (mneg x) (mneg y)) (calc M {
+      madd (madd x y) (madd (mneg x) (mneg y))
+        =< swap4 x y (mneg x) (mneg y) > madd (madd x (mneg x)) (madd y (mneg y))
+        =< apH (\ t -> madd t (madd y (mneg y))) (maddN x) > madd mz (madd y (mneg y))
+        =< mzl (madd y (mneg y)) > madd y (mneg y)
+        =< maddN y > mz })) ;
+  sub (x y : M) : M = madd x (mneg y) ;
+  neg-sub (x y : M) : Id M (mneg (sub x y)) (sub y x) = calc M {
+    mneg (madd x (mneg y)) =< neg-add x (mneg y) > madd (mneg x) (mneg (mneg y))
+      =< apH (madd (mneg x)) (neg-neg y) > madd (mneg x) y
+      =< maddC (mneg x) y > madd y (mneg x) } ;
+  -- x - y + w = 0  gives  y - x = w
+  flip (x y w : M) (h : Id M (madd (sub x y) w) mz) : Id M (sub y x) w =
+    transH (symH (neg-sub x y)) (symH (mneg-uniq (sub x y) w h)) ;
+  sub-self (x : M) : Id M (sub x x) mz = maddN x ;
+  -- x - y = 0  gives  x = y
+  sub-zero (x y : M) (h : Id M (sub x y) mz) : Id M x y = calc M {
+    x =< symH (maddZ x) > madd x mz
+      =< apH (madd x) (symH (transH (maddC (mneg y) y) (maddN y))) > madd x (madd (mneg y) y)
+      =< maddA x (mneg y) y > madd (sub x y) y
+      =< apH (\ t -> madd t y) h > madd mz y
+      =< mzl y > y } ;
+
+  sm-zr (a : R) : Id M (sm a mz) mz =
+    madd-cancel (sm a mz) (sm a mz) (transH (symH (smD a mz mz)) (apH (sm a) (maddZ mz))) ;
+  sm-zl (x : M) : Id M (sm z x) mz =
+    madd-cancel (sm z x) (sm z x) (transH (symH (smE z z x)) (apH (\ t -> sm t x) (addZ z))) ;
+  sm-neg (a : R) (x : M) : Id M (sm a (mneg x)) (mneg (sm a x)) =
+    mneg-uniq (sm a x) (sm a (mneg x))
+      (transH (symH (smD a x (mneg x))) (transH (apH (sm a) (maddN x)) (sm-zr a))) ;
+  sm-sub (a : R) (x y : M) : Id M (sm a (sub x y)) (sub (sm a x) (sm a y)) =
+    transH (smD a x (mneg y)) (apH (madd (sm a x)) (sm-neg a y)) ;
+  sm-swap (a b : R) (x : M) : Id M (sm a (sm b x)) (sm b (sm a x)) =
+    transH (smA a b x) (transH (apH (\ t -> sm t x) (mulC a b)) (symH (smA b a x))) ;
+  -- a unit kills only 0
+  unit-kill (a y : R) (h : Id R (mul a y) o) (x : M) (k : Id M (sm a x) mz) : Id M x mz = calc M {
+    x =< symH (smO x) > sm o x
+      =< apH (\ t -> sm t x) (symH (transH (mulC y a) h)) > sm (mul y a) x
+      =< symH (smA y a x) > sm y (sm a x)
+      =< apH (sm y) k > sm y mz
+      =< sm-zr y > mz } ;
+
+  -- finite sums
+  sumM : (n : Nat) -> (Fin n -> M) -> M = split {
+    zero -> \ h -> mz ;
+    suc n | r -> \ h -> madd (h none) (r (\ i -> h (some i))) } ;
+  sum-ext : (n : Nat) (h h' : Fin n -> M) -> ((i : Fin n) -> Id M (h i) (h' i))
+    -> Id M (sumM n h) (sumM n h') = split {
+    zero -> \ h h' e -> refl mz ;
+    suc n | r -> \ h h' e ->
+      transH (apH (\ t -> madd t (sumM n (\ i -> h (some i)))) (e none))
+        (apH (madd (h' none)) (r (\ i -> h (some i)) (\ i -> h' (some i)) (\ i -> e (some i)))) } ;
+  sum-sm (a : R) : (n : Nat) (h : Fin n -> M) -> Id M (sm a (sumM n h)) (sumM n (\ i -> sm a (h i))) = split {
+    zero -> \ h -> sm-zr a ;
+    suc n | r -> \ h -> transH (smD a (h none) (sumM n (\ i -> h (some i))))
+                          (apH (madd (sm a (h none))) (r (\ i -> h (some i)))) } ;
+  sum-add : (n : Nat) (h h' : Fin n -> M)
+    -> Id M (madd (sumM n h) (sumM n h')) (sumM n (\ i -> madd (h i) (h' i))) = split {
+    zero -> \ h h' -> maddZ mz ;
+    suc n | r -> \ h h' ->
+      transH (swap4 (h none) (sumM n (\ i -> h (some i))) (h' none) (sumM n (\ i -> h' (some i))))
+        (apH (madd (madd (h none) (h' none))) (r (\ i -> h (some i)) (\ i -> h' (some i)))) } ;
+  sum-neg : (n : Nat) (h : Fin n -> M) -> Id M (mneg (sumM n h)) (sumM n (\ i -> mneg (h i))) = split {
+    zero -> \ h -> mneg-z ;
+    suc n | r -> \ h -> transH (neg-add (h none) (sumM n (\ i -> h (some i))))
+                          (apH (madd (mneg (h none))) (r (\ i -> h (some i)))) } ;
+  sum-sub (n : Nat) (h h' : Fin n -> M)
+    : Id M (sub (sumM n h) (sumM n h')) (sumM n (\ i -> sub (h i) (h' i))) =
+    transH (apH (madd (sumM n h)) (sum-neg n h')) (sum-add n h (\ i -> mneg (h' i))) ;
+
+  -- x / g^p = x' / g^p'  in M_g,  and  x / g^p = 0
+  FEq (g : R) (x : M) (p : Nat) (x' : M) (p' : Nat) : U l =
+    (K : Nat) * Id M (sm (pw g K) (sub (sm (pw g p') x) (sm (pw g p) x'))) mz ;
+  Zero (g : R) (x : M) : U l = (K : Nat) * Id M (sm (pw g K) x) mz ;
+  zero-raise (g : R) (x : M) (K d K' : Nat) (h : Id M (sm (pw g K) x) mz)
+    (e : Id Nat (plusN d K) K') : Id M (sm (pw g K') x) mz =
+    substH (\ t -> Id M (sm (pw g t) x) mz) e (calc M {
+      sm (pw g (plusN d K)) x =< apH (\ t -> sm t x) (pw-add g d K) > sm (mul (pw g d) (pw g K)) x
+        =< symH (smA (pw g d) (pw g K) x) > sm (pw g d) (sm (pw g K) x)
+        =< apH (sm (pw g d)) h > sm (pw g d) mz
+        =< sm-zr (pw g d) > mz }) ;
+} ;
+
+-- A as a module over itself, and sums in A
+module Reg (Rg : CRing) {
+  open Rg ;
+  open RA[Rg] ;
+  reg : Mod[Rg] = mkMod Rg R setR z add neg addA addC addZ addN mul mulA ol dist rdist ;
+  sumR (n : Nat) (h : Fin n -> R) : R = MA[Rg,reg].sumM n h ;
+
+  -- a + x = 1  gives  a (1 + x + .. + x^(q-1)) + x^q = 1
+  geo (x : R) : Nat -> R = split { zero -> z ; suc q | r -> add o (mul x r) } ;
+  geo-eq (a x : R) (h : Id R (add a x) o) : (q : Nat) -> Id R (add (mul a (geo x q)) (pw x q)) o = split {
+    zero -> transH (apH (\ t -> add t o) (mul-zero a)) (zl o) ;
+    suc q | r -> calc R {
+      add (mul a (add o (mul x (geo x q)))) (mul x (pw x q))
+        =< apH (\ t -> add t (mul x (pw x q))) (dist a o (mul x (geo x q)))
+        > add (add (mul a o) (mul a (mul x (geo x q)))) (mul x (pw x q))
+        =< symH (addA (mul a o) (mul a (mul x (geo x q))) (mul x (pw x q)))
+        > add (mul a o) (add (mul a (mul x (geo x q))) (mul x (pw x q)))
+        =< apH (\ t -> add (mul a o) (add t (mul x (pw x q)))) (mul-swap a x (geo x q))
+        > add (mul a o) (add (mul x (mul a (geo x q))) (mul x (pw x q)))
+        =< apH (add (mul a o)) (symH (dist x (mul a (geo x q)) (pw x q)))
+        > add (mul a o) (mul x (add (mul a (geo x q)) (pw x q)))
+        =< apH (\ t -> add (mul a o) (mul x t)) r > add (mul a o) (mul x o)
+        =< apH (\ t -> add t (mul x o)) (mulO a) > add a (mul x o)
+        =< apH (add a) (mulO x) > add a x
+        =< h > o } } ;
+
+  -- powers of unimodular elements are unimodular:  u + sum r k f k = 1
+  -- gives  v u + sum rho k (f k)^p = 1,  by recursion on n
+  PowT (n p : Nat) (f : Fin n -> R) (u : R) : U l =
+    (v : R) * (rho : Fin n -> R) * Id R (add (mul v u) (sumR n (\ k -> mul (rho k) (pw (f k) p)))) o ;
+
+  -- the step: a + x = 1 with a = v' u + T, x = v' (r0 f0), then the
+  -- geometric series in x
+  module PowStep (n p : Nat) (f : Fin (suc n) -> R) (r0 u : R)
+    (P : PowT n p (\ k -> f (some k)) (add u (mul r0 (f none)))) {
+    v' : R = P.1 ;
+    T : R = sumR n (\ k -> mul (P.2.1 k) (pw (f (some k)) p)) ;
+    a : R = add (mul v' u) T ;
+    x : R = mul v' (mul r0 (f none)) ;
+    c : R = geo x p ;
+    T' : R = sumR n (\ k -> mul (mul c (P.2.1 k)) (pw (f (some k)) p)) ;
+    A : R = mul (mul c v') u ;
+    B : R = mul (pw (mul v' r0) p) (pw (f none) p) ;
+    hax : Id R (add a x) o = calc R {
+      add (add (mul v' u) T) x =< symH (addA (mul v' u) T x) > add (mul v' u) (add T x)
+        =< apH (add (mul v' u)) (addC T x) > add (mul v' u) (add x T)
+        =< addA (mul v' u) x T > add (add (mul v' u) x) T
+        =< apH (\ t -> add t T) (symH (dist v' u (mul r0 (f none)))) > add (mul v' (add u (mul r0 (f none)))) T
+        =< P.2.2 > o } ;
+    ac : Id R (mul a c) (add A T') = calc R {
+      mul (add (mul v' u) T) c =< rdist (mul v' u) T c > add (mul (mul v' u) c) (mul T c)
+        =< apH (\ t -> add t (mul T c)) (transH (mulC (mul v' u) c) (mulA c v' u)) > add A (mul T c)
+        =< apH (add A) (mulC T c) > add A (mul c T)
+        =< apH (add A) (MA[Rg,reg].sum-sm c n (\ k -> mul (P.2.1 k) (pw (f (some k)) p)))
+        > add A (sumR n (\ k -> mul c (mul (P.2.1 k) (pw (f (some k)) p))))
+        =< apH (add A) (MA[Rg,reg].sum-ext n (\ k -> mul c (mul (P.2.1 k) (pw (f (some k)) p)))
+              (\ k -> mul (mul c (P.2.1 k)) (pw (f (some k)) p))
+              (\ k -> mulA c (P.2.1 k) (pw (f (some k)) p))) > add A T' } ;
+    xp : Id R (pw x p) B =
+      transH (apH (\ t -> pw t p) (mulA v' r0 (f none))) (pw-mul (mul v' r0) (f none) p) ;
+    eq : Id R (add A (add B T')) o = calc R {
+      add A (add B T') =< apH (add A) (addC B T') > add A (add T' B)
+        =< addA A T' B > add (add A T') B
+        =< apH (\ t -> add t B) (symH ac) > add (mul a c) B
+        =< apH (add (mul a c)) (symH xp) > add (mul a c) (pw x p)
+        =< geo-eq a x hax p > o } ;
+  } ;
+  pow-step (n p : Nat) (f : Fin (suc n) -> R) (r0 u : R)
+    (P : PowT n p (\ k -> f (some k)) (add u (mul r0 (f none)))) : PowT (suc n) p f u =
+    (mul PowStep[n,p,f,r0,u,P].c P.1,
+     combine n (\ k -> R) (pw (mul P.1 r0) p) (\ k -> mul PowStep[n,p,f,r0,u,P].c (P.2.1 k)),
+     PowStep[n,p,f,r0,u,P].eq) ;
+
+  powQ (p : Nat) : (n : Nat) (f r : Fin n -> R) (u : R)
+    (h : Id R (add u (sumR n (\ k -> mul (r k) (f k)))) o) -> PowT n p f u = split {
+    zero -> \ f r u h -> (o, (\ k -> z),
+      transH (addZ (mul o u)) (transH (ol u) (transH (symH (addZ u)) h))) ;
+    suc n | rec -> \ f r u h ->
+      pow-step n p f (r none) u
+        (rec (\ k -> f (some k)) (\ k -> r (some k)) (add u (mul (r none) (f none)))
+          (transH (symH (addA u (mul (r none) (f none)) (sumR n (\ k -> mul (r (some k)) (f (some k)))))) h)) } ;
+
+  pow-fin (p n : Nat) (f : Fin n -> R) (P : PowT n p f z)
+    : (rho : Fin n -> R) * Id R (sumR n (\ k -> mul (rho k) (pw (f k) p))) o =
+    (P.2.1, transH (symH (transH (apH (\ t -> add t (sumR n (\ k -> mul (P.2.1 k) (pw (f k) p)))) (mul-zero P.1))
+                              (zl (sumR n (\ k -> mul (P.2.1 k) (pw (f k) p)))))) P.2.2) ;
+  pow-unim (p n : Nat) (f r : Fin n -> R) (h : Id R (sumR n (\ k -> mul (r k) (f k))) o)
+    : (rho : Fin n -> R) * Id R (sumR n (\ k -> mul (rho k) (pw (f k) p))) o =
+    pow-fin p n f (powQ p n f r z (transH (zl (sumR n (\ k -> mul (r k) (f k)))) h)) ;
+} ;
+
+------------------------------------------------------------------------
+-- Lemma 7.3.5
+
+module L735 (Rg : CRing) (Md : Mod[Rg]) {
+  open Rg ;
+  open RA[Rg] ;
+  open Md ;
+  open MA[Rg,Md] ;
+  sumR (n : Nat) (h : Fin n -> R) : R = Reg[Rg].sumR n h ;
+
+  sum-smr (x : M) : (n : Nat) (c : Fin n -> R) -> Id M (sumM n (\ i -> sm (c i) x)) (sm (sumR n c) x) = split {
+    zero -> \ c -> symH (sm-zl x) ;
+    suc n | r -> \ c -> transH (apH (madd (sm (c none) x)) (r (\ i -> c (some i))))
+                          (symH (smE (c none) (sumR n (\ i -> c (some i))) x)) } ;
+
+  -- the computation, in numerator form:  F j V i - F i V j = mu i j
+  module Core (n : Nat) (F rho : Fin n -> R) (mu : Fin n -> Fin n -> M)
+    (unim : Id R (sumR n (\ k -> mul (rho k) (F k))) o)
+    (coc : (i j k : Fin n) -> Id M (madd (sub (sm (F i) (mu j k)) (sm (F j) (mu i k))) (sm (F k) (mu i j))) mz) {
+    V (i : Fin n) : M = sumM n (\ k -> sm (rho k) (mu i k)) ;
+    step (i j k : Fin n) : Id M (sub (sm (F j) (sm (rho k) (mu i k))) (sm (F i) (sm (rho k) (mu j k))))
+                             (sm (mul (rho k) (F k)) (mu i j)) = calc M {
+      sub (sm (F j) (sm (rho k) (mu i k))) (sm (F i) (sm (rho k) (mu j k)))
+        =< apH (\ t -> sub t (sm (F i) (sm (rho k) (mu j k)))) (sm-swap (F j) (rho k) (mu i k))
+        > sub (sm (rho k) (sm (F j) (mu i k))) (sm (F i) (sm (rho k) (mu j k)))
+        =< apH (sub (sm (rho k) (sm (F j) (mu i k)))) (sm-swap (F i) (rho k) (mu j k))
+        > sub (sm (rho k) (sm (F j) (mu i k))) (sm (rho k) (sm (F i) (mu j k)))
+        =< symH (sm-sub (rho k) (sm (F j) (mu i k)) (sm (F i) (mu j k)))
+        > sm (rho k) (sub (sm (F j) (mu i k)) (sm (F i) (mu j k)))
+        =< apH (sm (rho k)) (flip (sm (F i) (mu j k)) (sm (F j) (mu i k)) (sm (F k) (mu i j)) (coc i j k))
+        > sm (rho k) (sm (F k) (mu i j))
+        =< smA (rho k) (F k) (mu i j) > sm (mul (rho k) (F k)) (mu i j) } ;
+    key (i j : Fin n) : Id M (sub (sm (F j) (V i)) (sm (F i) (V j))) (mu i j) = calc M {
+      sub (sm (F j) (V i)) (sm (F i) (V j))
+        =< apH (\ t -> sub t (sm (F i) (V j))) (sum-sm (F j) n (\ k -> sm (rho k) (mu i k)))
+        > sub (sumM n (\ k -> sm (F j) (sm (rho k) (mu i k)))) (sm (F i) (V j))
+        =< apH (sub (sumM n (\ k -> sm (F j) (sm (rho k) (mu i k))))) (sum-sm (F i) n (\ k -> sm (rho k) (mu j k)))
+        > sub (sumM n (\ k -> sm (F j) (sm (rho k) (mu i k)))) (sumM n (\ k -> sm (F i) (sm (rho k) (mu j k))))
+        =< sum-sub n (\ k -> sm (F j) (sm (rho k) (mu i k))) (\ k -> sm (F i) (sm (rho k) (mu j k)))
+        > sumM n (\ k -> sub (sm (F j) (sm (rho k) (mu i k))) (sm (F i) (sm (rho k) (mu j k))))
+        =< sum-ext n (\ k -> sub (sm (F j) (sm (rho k) (mu i k))) (sm (F i) (sm (rho k) (mu j k))))
+              (\ k -> sm (mul (rho k) (F k)) (mu i j)) (step i j)
+        > sumM n (\ k -> sm (mul (rho k) (F k)) (mu i j))
+        =< sum-smr (mu i j) n (\ k -> mul (rho k) (F k)) > sm (sumR n (\ k -> mul (rho k) (F k))) (mu i j)
+        =< apH (\ t -> sm t (mu i j)) unim > sm o (mu i j)
+        =< smO (mu i j) > mu i j } ;
+  } ;
+
+  -- synchronisation:  a^(N+K) (b c)^K = g^K a^N  when  (a b) c = g
+  e1 (N K : Nat) (a b c g : R) (q : Id R (mul (mul a b) c) g)
+    : Id R (mul (pw a (plusN N K)) (pw (mul b c) K)) (mul (pw g K) (pw a N)) = calc R {
+      mul (pw a (plusN N K)) (pw (mul b c) K)
+        =< apH (\ t -> mul t (pw (mul b c) K)) (pw-add a N K) > mul (mul (pw a N) (pw a K)) (pw (mul b c) K)
+        =< apH (mul (mul (pw a N) (pw a K))) (pw-mul b c K) > mul (mul (pw a N) (pw a K)) (mul (pw b K) (pw c K))
+        =< symH (mulA (pw a N) (pw a K) (mul (pw b K) (pw c K))) > mul (pw a N) (mul (pw a K) (mul (pw b K) (pw c K)))
+        =< apH (mul (pw a N)) (mulA (pw a K) (pw b K) (pw c K)) > mul (pw a N) (mul (mul (pw a K) (pw b K)) (pw c K))
+        =< apH (\ t -> mul (pw a N) (mul t (pw c K))) (symH (pw-mul a b K)) > mul (pw a N) (mul (pw (mul a b) K) (pw c K))
+        =< apH (mul (pw a N)) (symH (pw-mul (mul a b) c K)) > mul (pw a N) (pw (mul (mul a b) c) K)
+        =< apH (\ t -> mul (pw a N) (pw t K)) q > mul (pw a N) (pw g K)
+        =< mulC (pw a N) (pw g K) > mul (pw g K) (pw a N) } ;
+  e1m (N K : Nat) (a b c g : R) (q : Id R (mul (mul a b) c) g) (x : M)
+    : Id M (sm (pw a (plusN N K)) (sm (pw (mul b c) K) x)) (sm (pw g K) (sm (pw a N) x)) =
+    transH (smA (pw a (plusN N K)) (pw (mul b c) K) x)
+      (transH (apH (\ t -> sm t x) (e1 N K a b c g q)) (symH (smA (pw g K) (pw a N) x))) ;
+
+  -- s j k - s i k + s i j, over (f i f j f k)^N
+  cnum (n : Nat) (f : Fin n -> R) (N : Nat) (m : Fin n -> Fin n -> M) (i j k : Fin n) : M =
+    madd (sub (sm (pw (f i) N) (m j k)) (sm (pw (f j) N) (m i k))) (sm (pw (f k) N) (m i j)) ;
+  g3 (n : Nat) (f : Fin n -> R) (i j k : Fin n) : R = mul (mul (f i) (f j)) (f k) ;
+
+  module Lemma (n : Nat) (f r : Fin n -> R) (unim : Id R (sumR n (\ k -> mul (r k) (f k))) o)
+    (N : Nat) (m : Fin n -> Fin n -> M)
+    (coc : (i j k : Fin n) -> Zero (g3 n f i j k) (cnum n f N m i j k)) {
+    B : Bnd3 n (\ i j k -> (coc i j k).1) = bound3 n (\ i j k -> (coc i j k).1) ;
+    K : Nat = B.1 ;
+    p : Nat = plusN N K ;
+    F (i : Fin n) : R = pw (f i) p ;
+    mu (i j : Fin n) : M = sm (pw (mul (f i) (f j)) K) (m i j) ;
+    cocK (i j k : Fin n) : Id M (sm (pw (g3 n f i j k) K) (cnum n f N m i j k)) mz =
+      zero-raise (g3 n f i j k) (cnum n f N m i j k) (coc i j k).1 (B.2 i j k).1 K (coc i j k).2 (B.2 i j k).2 ;
+    q2 (i j k : Fin n) : Id R (mul (mul (f j) (f i)) (f k)) (g3 n f i j k) =
+      apH (\ t -> mul t (f k)) (mulC (f j) (f i)) ;
+    q3 (i j k : Fin n) : Id R (mul (mul (f k) (f i)) (f j)) (g3 n f i j k) =
+      transH (symH (mulA (f k) (f i) (f j))) (mulC (f k) (mul (f i) (f j))) ;
+    coc' (i j k : Fin n) : Id M (madd (sub (sm (F i) (mu j k)) (sm (F j) (mu i k))) (sm (F k) (mu i j))) mz = calc M {
+      madd (sub (sm (F i) (mu j k)) (sm (F j) (mu i k))) (sm (F k) (mu i j))
+        =< apH (\ t -> madd (sub t (sm (F j) (mu i k))) (sm (F k) (mu i j)))
+             (e1m N K (f i) (f j) (f k) (g3 n f i j k) (refl (g3 n f i j k)) (m j k))
+        > madd (sub (sm (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k))) (sm (F j) (mu i k))) (sm (F k) (mu i j))
+        =< apH (\ t -> madd (sub (sm (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k))) t) (sm (F k) (mu i j)))
+             (e1m N K (f j) (f i) (f k) (g3 n f i j k) (q2 i j k) (m i k))
+        > madd (sub (sm (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k))) (sm (pw (g3 n f i j k) K) (sm (pw (f j) N) (m i k))))
+               (sm (F k) (mu i j))
+        =< apH (madd (sub (sm (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k))) (sm (pw (g3 n f i j k) K) (sm (pw (f j) N) (m i k)))))
+             (e1m N K (f k) (f i) (f j) (g3 n f i j k) (q3 i j k) (m i j))
+        > madd (sub (sm (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k))) (sm (pw (g3 n f i j k) K) (sm (pw (f j) N) (m i k))))
+               (sm (pw (g3 n f i j k) K) (sm (pw (f k) N) (m i j)))
+        =< apH (\ t -> madd t (sm (pw (g3 n f i j k) K) (sm (pw (f k) N) (m i j))))
+             (symH (sm-sub (pw (g3 n f i j k) K) (sm (pw (f i) N) (m j k)) (sm (pw (f j) N) (m i k))))
+        > madd (sm (pw (g3 n f i j k) K) (sub (sm (pw (f i) N) (m j k)) (sm (pw (f j) N) (m i k))))
+               (sm (pw (g3 n f i j k) K) (sm (pw (f k) N) (m i j)))
+        =< symH (smD (pw (g3 n f i j k) K) (sub (sm (pw (f i) N) (m j k)) (sm (pw (f j) N) (m i k)))
+                    (sm (pw (f k) N) (m i j)))
+        > sm (pw (g3 n f i j k) K) (cnum n f N m i j k)
+        =< cocK i j k > mz } ;
+    rho : Fin n -> R = (Reg[Rg].pow-unim p n f r unim).1 ;
+    module C = Core[n, F, rho, mu, (Reg[Rg].pow-unim p n f r unim).2, coc'] ;
+    V (i : Fin n) : M = C.V i ;
+    key (i j : Fin n) : Id M (sub (sm (F j) (V i)) (sm (F i) (V j))) (mu i j) = C.key i j ;
+    -- V i / (f i)^p - V j / (f j)^p = m i j / (f i f j)^N  in M_(f i f j)
+    result (i j : Fin n)
+      : FEq (mul (f i) (f j)) (sub (sm (pw (f j) p) (V i)) (sm (pw (f i) p) (V j))) p (m i j) N =
+      (zero, calc M {
+        sm o (sub (sm (pw (mul (f i) (f j)) N) (sub (sm (F j) (V i)) (sm (F i) (V j))))
+                  (sm (pw (mul (f i) (f j)) p) (m i j)))
+          =< smO (sub (sm (pw (mul (f i) (f j)) N) (sub (sm (F j) (V i)) (sm (F i) (V j))))
+                      (sm (pw (mul (f i) (f j)) p) (m i j)))
+          > sub (sm (pw (mul (f i) (f j)) N) (sub (sm (F j) (V i)) (sm (F i) (V j))))
+                (sm (pw (mul (f i) (f j)) p) (m i j))
+          =< apH (\ t -> sub (sm (pw (mul (f i) (f j)) N) t) (sm (pw (mul (f i) (f j)) p) (m i j))) (key i j)
+          > sub (sm (pw (mul (f i) (f j)) N) (mu i j)) (sm (pw (mul (f i) (f j)) p) (m i j))
+          =< apH (\ t -> sub t (sm (pw (mul (f i) (f j)) p) (m i j)))
+               (transH (smA (pw (mul (f i) (f j)) N) (pw (mul (f i) (f j)) K) (m i j))
+                  (apH (\ t -> sm t (m i j)) (symH (pw-add (mul (f i) (f j)) N K))))
+          > sub (sm (pw (mul (f i) (f j)) p) (m i j)) (sm (pw (mul (f i) (f j)) p) (m i j))
+          =< sub-self (sm (pw (mul (f i) (f j)) p) (m i j)) > mz }) ;
+  } ;
+
+  lemma-7-3-5 (n : Nat) (f r : Fin n -> R) (unim : Id R (sumR n (\ k -> mul (r k) (f k))) o)
+    (N : Nat) (m : Fin n -> Fin n -> M)
+    (coc : (i j k : Fin n) -> Zero (g3 n f i j k) (cnum n f N m i j k))
+    : (p : Nat) * (V : Fin n -> M) * ((i j : Fin n) ->
+        FEq (mul (f i) (f j)) (sub (sm (pw (f j) p) (V i)) (sm (pw (f i) p) (V j))) p (m i j) N) =
+    (Lemma[n,f,r,unim,N,m,coc].p, Lemma[n,f,r,unim,N,m,coc].V, Lemma[n,f,r,unim,N,m,coc].result) ;
+} ;

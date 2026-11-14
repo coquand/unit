@@ -1,0 +1,78 @@
+-- A finite open cover by schemes flattens to a finite affine open cover.
+-- Only finite choice and open transitivity are used; no choice over X.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module M = SchemeMaps[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module S = Schemes[l].Over[R,setR] ;
+ module OP = OpenProp[l].Over[R,setR] ;
+ module OT = Transitivity[l].Over[R,setR,axioms] ;
+ module At (X : U l) (n : Nat) (us : Fin n -> X -> U l)
+  (opens : (i : Fin n) -> OP.OpenSubtype X (us i))
+  (schemes : (i : Fin n) -> S.Scheme ((x : X) * us i x))
+  (cover : (x : X) -> Tr.Trunc[(i : Fin n) * us i x].carrier) {
+  T (i : Fin n) : U l = (x : X) * us i x ;
+  prop (i : Fin n) (x : X) : Pr.isProp (us i x) = OP.open-prop _ (opens i x) ;
+  local-set (i : Fin n) (x : X) (u : us i x) : S.AtSet X x =
+   M.Embedded[T i,X,\ a -> a.1,M.Subtype[X,us i,prop i].embedding].LocalSet[S.set (T i) (schemes i),(x,u)].at ;
+  set : Pr.isSet X = \ x ->
+   Tr.Trunc[(i : Fin n) * us i x].induction @l (\ t -> S.AtSet X x) (\ t -> S.at-prop X x)
+    (\ a -> local-set a.1 x a.2) (cover x) ;
+  module Lift (i : Fin n) (c : S.Chart[T i]) {
+   A : U l = S.Domain (T i) c ;
+   map (a : A) : X = (c.map a).1 ;
+   injective (a b : A) (h : Id X (map a) (map b)) : Id A a b =
+    M.Embedded[A,T i,c.map,c.embedding].injective a b
+     (Pr.Sigma-eq X (us i) _ _ _ _ h (prop i (map b))) ;
+   embedding : M.Embedding A X map = M.injective-embedding A X set map injective ;
+   Local (x : X) : U l = (u : us i x) * S.Image (T i) c (x,u) ;
+   local-prop (x : X) : Pr.isProp (Local x) =
+    Pr.isProp-Sigma (us i x) (\ u -> S.Image (T i) c (x,u)) (prop i x)
+     (\ u -> M.image-prop A (T i) c.map (x,u)) ;
+   local-open (x : X) : OP.Open (Local x) =
+    OT.sigma (us i x) (opens i x) (\ u -> S.Image (T i) c (x,u)) (\ u -> c.open-image (x,u)) ;
+   to-fiber (x : X) (w : M.Fiber A X map x) : Local x =
+    (Pr.subst X (us i) (map w.1) x w.2 (c.map w.1).2,
+     Tr.Trunc[M.Fiber A (T i) c.map (x,Pr.subst X (us i) (map w.1) x w.2 (c.map w.1).2)].inc
+      (w.1,Pr.Sigma-eq X (us i) _ _ _ _ w.2 (prop i x))) ;
+   to (x : X) (w : M.Image A X map x) : Local x =
+    Tr.Trunc[M.Fiber A X map x].induction @l (\ t -> Local x) (\ t -> local-prop x) (to-fiber x) w ;
+   from (x : X) (w : Local x) : M.Image A X map x =
+    Tr.Trunc[M.Fiber A (T i) c.map (x,w.1)].induction @l (\ t -> M.Image A X map x)
+     (\ t -> M.image-prop A X map x)
+     (\ a -> Tr.Trunc[M.Fiber A X map x].inc (a.1,Pr.ap (T i) X (\ v -> v.1) _ _ a.2)) w.2 ;
+   equivalent (x : X) : Pr.Equiv (M.Image A X map x) (Local x) =
+    (to x,Pr.qinv _ _ (to x) (from x) (\ w -> local-prop x _ w) (\ w -> M.image-prop A X map x _ w)) ;
+   chart : S.Chart[X] =
+    new S.Chart[X,c.presentation,map,embedding,\ x -> OP.along _ _ (equivalent x) (local-open x)] ;
+  } ;
+  Choices : U l = (i : Fin n) -> S.Cover[T i] ;
+  module Chosen (cs : Choices) {
+   ns (i : Fin n) : Nat = (cs i).size ;
+   hs (i : Fin n) (j : Fin (ns i)) : S.Chart[X] = Lift[i,(cs i).charts j].chart ;
+   N : Nat = OpenAffine[l].total n ns ;
+   charts : Fin N -> S.Chart[X] = OpenAffine[l].concat S.Chart[X] n ns hs ;
+   Goal (x : X) : U l = Tr.Trunc[(j : Fin N) * S.Image X (charts j) x].carrier ;
+   pick (x : X) (i : Fin n) (u : us i x) (j : Fin (ns i))
+    (v : S.Image (T i) ((cs i).charts j) (x,u)) : Goal x =
+    Tr.Trunc[(j : Fin N) * S.Image X (charts j) x].inc
+     ((SchemeFinite[l].choose S.Chart[X] n ns hs i j).1,
+      Pr.subst S.Chart[X] (\ c -> S.Image X c x) (hs i j) (charts (SchemeFinite[l].choose S.Chart[X] n ns hs i j).1)
+       (Pr.sym _ _ _ (SchemeFinite[l].choose S.Chart[X] n ns hs i j).2)
+       (Lift[i,(cs i).charts j].from x (u,v))) ;
+   local (x : X) (i : Fin n) (u : us i x) : Goal x =
+    Tr.Trunc[(j : Fin (ns i)) * S.Image (T i) ((cs i).charts j) (x,u)].induction @l
+     (\ t -> Goal x) (\ t -> Tr.Trunc[(j : Fin N) * S.Image X (charts j) x].proposition)
+     (\ a -> pick x i u a.1 a.2) ((cs i).covers (x,u)) ;
+   covers (x : X) : Goal x =
+    Tr.Trunc[(i : Fin n) * us i x].induction @l (\ t -> Goal x)
+     (\ t -> Tr.Trunc[(j : Fin N) * S.Image X (charts j) x].proposition) (\ a -> local x a.1 a.2) (cover x) ;
+   result : S.Cover[X] = new S.Cover[X,N,charts,covers] ;
+  } ;
+  theorem : S.Scheme X =
+   Tr.Trunc[Choices].induction @l (\ t -> S.Scheme X) (\ t -> S.proposition X)
+    (\ cs -> S.from-cover X Chosen[cs].result)
+    (AffineFinite[l].choice n (\ i -> S.Cover[T i]) schemes) ;
+ } ;
+} ;

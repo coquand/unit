@@ -1,0 +1,162 @@
+-- Rational coefficients.  For a commutative ring R:
+--  (integers)  nat k = 1 + ... + 1 (k times), with nat (j + k) = nat j + nat k
+--   and nat (j k) = nat j nat k; (a+1)(b+1) = c+1 with c = a(b+1) + b.
+--  (binomial)  If a a = 0, then (1 + a)^n = 1 + n a: by induction,
+--   (1 + a)(1 + m a) = 1 + m a + a + m a a = 1 + (m + 1) a.
+--  (expansion)  (1 + a)^n = 1 + a (n + a q) for some q (Expand).
+--  (units)  If a^m = 0, 1 + a is a unit (Geometric); a unit plus a
+--   nilpotent is a unit (UnitPlus).
+--  (R (x) Q)  The positive integers nat (k+1) form a multiplicative monoid;
+--   K = R (x) Q is the localisation of R at it (MONOIDLOCALIZATION), with
+--   iota : R -> K, and every positive integer is a unit of K.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module H = RingHom[l] ;
+-- (a+1)(b+1) = (a (b+1) + b) + 1
+times-suc (a b : Nat) : (c : Nat) * Id Nat (Pairing[l].times (suc a) (suc b)) (suc c) =
+ (plus (Pairing[l].times a (suc b)) b,plus-suc (Pairing[l].times a (suc b)) b) ;
+-- c L + L' with L' = L + 1 written as L + D: (k+1)(L+1) = L + (k (L+1) + 1)
+times-split (k L : Nat) : Id Nat (Pairing[l].times (suc k) (suc L)) (plus L (suc (Pairing[l].times k (suc L)))) =
+ trans (plus-comm (Pairing[l].times k (suc L)) (suc L)) (sym (plus-suc L (Pairing[l].times k (suc L)))) ;
+
+module Integers (R : CRing) {
+ module L = RL[R] ;
+ module PR = AffinePowers[l].Over[R] ;
+ nat : Nat -> R.R = split { zero -> R.z ; suc k | r -> R.add r R.o } ;
+ nat-one : Id R.R (nat (suc zero)) R.o = L.zl R.o ;
+ -- (x + y) + 1 = (x + 1) + y
+ shift (x y : R.R) : Id R.R (R.add (R.add x y) R.o) (R.add (R.add x R.o) y) =
+  trans (sym (R.addA x y R.o)) (trans (ap (R.add x) (R.addC y R.o)) (R.addA x R.o y)) ;
+ nat-plus : (j k : Nat) -> Id R.R (nat (plus j k)) (R.add (nat j) (nat k)) = split {
+  zero -> \ k -> sym (L.zl (nat k)) ;
+  suc j | r -> \ k -> trans (ap (\ t -> R.add t R.o) (r k)) (shift (nat j) (nat k)) } ;
+ nat-times : (j k : Nat) -> Id R.R (nat (Pairing[l].times j k)) (R.mul (nat j) (nat k)) = split {
+  zero -> \ k -> sym (L.zero-mul (nat k)) ;
+  suc j | r -> \ k -> calc R.R { nat (plus (Pairing[l].times j k) k)
+    =< nat-plus (Pairing[l].times j k) k > R.add (nat (Pairing[l].times j k)) (nat k)
+    =< ap (\ t -> R.add t (nat k)) (r k) > R.add (R.mul (nat j) (nat k)) (nat k)
+    =< ap (R.add (R.mul (nat j) (nat k))) (sym (L.one-left (nat k))) > R.add (R.mul (nat j) (nat k)) (R.mul R.o (nat k))
+    =< sym (L.dist-left (nat j) R.o (nat k)) > R.mul (R.add (nat j) R.o) (nat k) } } ;
+ -- (binomial)
+ module Binomial (a : R.R) (h : Id R.R (R.mul a a) R.z) {
+  -- a (1 + m a) = a
+  absorb (m : R.R) : Id R.R (R.mul a (R.add R.o (R.mul m a))) a =
+   calc R.R { R.mul a (R.add R.o (R.mul m a))
+     =< R.dist a R.o (R.mul m a) > R.add (R.mul a R.o) (R.mul a (R.mul m a))
+     =< cong2 R.R R.add _ _ _ _ (R.mulO a) (trans (L.mul-swap a m a) (trans (ap (R.mul m) h) (L.mul-zero m))) > R.add a R.z
+     =< R.addZ a > a } ;
+  power : (n : Nat) -> Id R.R (PR.power (R.add R.o a) n) (R.add R.o (R.mul (nat n) a)) = split {
+   zero -> sym (trans (ap (R.add R.o) (L.zero-mul a)) (R.addZ R.o)) ;
+   suc n | r -> calc R.R { R.mul (R.add R.o a) (PR.power (R.add R.o a) n)
+     =< ap (R.mul (R.add R.o a)) r > R.mul (R.add R.o a) (R.add R.o (R.mul (nat n) a))
+     =< L.dist-left R.o a (R.add R.o (R.mul (nat n) a)) >
+        R.add (R.mul R.o (R.add R.o (R.mul (nat n) a))) (R.mul a (R.add R.o (R.mul (nat n) a)))
+     =< cong2 R.R R.add _ _ _ _ (L.one-left (R.add R.o (R.mul (nat n) a))) (absorb (nat n)) >
+        R.add (R.add R.o (R.mul (nat n) a)) a
+     =< sym (R.addA R.o (R.mul (nat n) a) a) > R.add R.o (R.add (R.mul (nat n) a) a)
+     =< ap (R.add R.o) (trans (ap (R.add (R.mul (nat n) a)) (sym (L.one-left a))) (sym (L.dist-left (nat n) R.o a))) >
+        R.add R.o (R.mul (nat (suc n)) a) } } ;
+ } ;
+ -- (expansion)  (1 + a)^n = 1 + a P_n with P_n = n + a q_n
+ module Expand (a : R.R) {
+  P : Nat -> R.R = split { zero -> R.z ; suc n | r -> R.add (R.add r R.o) (R.mul a r) } ;
+  q : Nat -> R.R = split { zero -> R.z ; suc n | r -> R.add r (P n) } ;
+  -- a ((P + 1) + a P) = a P + (a + a (a P))
+  step (p : R.R) : Id R.R (R.mul a (R.add (R.add p R.o) (R.mul a p))) (R.add (R.mul a p) (R.add a (R.mul a (R.mul a p)))) =
+   calc R.R { R.mul a (R.add (R.add p R.o) (R.mul a p))
+     =< R.dist a (R.add p R.o) (R.mul a p) > R.add (R.mul a (R.add p R.o)) (R.mul a (R.mul a p))
+     =< ap (\ w -> R.add w (R.mul a (R.mul a p))) (trans (R.dist a p R.o) (ap (R.add (R.mul a p)) (R.mulO a))) >
+        R.add (R.add (R.mul a p) a) (R.mul a (R.mul a p))
+     =< sym (R.addA (R.mul a p) a (R.mul a (R.mul a p))) > R.add (R.mul a p) (R.add a (R.mul a (R.mul a p))) } ;
+  power-P : (n : Nat) -> Id R.R (PR.power (R.add R.o a) n) (R.add R.o (R.mul a (P n))) = split {
+   zero -> sym (trans (ap (R.add R.o) (L.mul-zero a)) (R.addZ R.o)) ;
+   suc n | r -> calc R.R { R.mul (R.add R.o a) (PR.power (R.add R.o a) n)
+     =< ap (R.mul (R.add R.o a)) r > R.mul (R.add R.o a) (R.add R.o (R.mul a (P n)))
+     =< L.dist-left R.o a (R.add R.o (R.mul a (P n))) >
+        R.add (R.mul R.o (R.add R.o (R.mul a (P n)))) (R.mul a (R.add R.o (R.mul a (P n))))
+     =< cong2 R.R R.add _ _ _ _ (L.one-left (R.add R.o (R.mul a (P n))))
+         (trans (R.dist a R.o (R.mul a (P n))) (ap (\ w -> R.add w (R.mul a (R.mul a (P n)))) (R.mulO a))) >
+        R.add (R.add R.o (R.mul a (P n))) (R.add a (R.mul a (R.mul a (P n))))
+     =< sym (R.addA R.o (R.mul a (P n)) (R.add a (R.mul a (R.mul a (P n))))) >
+        R.add R.o (R.add (R.mul a (P n)) (R.add a (R.mul a (R.mul a (P n)))))
+     =< ap (R.add R.o) (sym (step (P n))) > R.add R.o (R.mul a (P (suc n))) } } ;
+  P-split : (n : Nat) -> Id R.R (P n) (R.add (nat n) (R.mul a (q n))) = split {
+   zero -> sym (trans (ap (R.add R.z) (L.mul-zero a)) (R.addZ R.z)) ;
+   suc n | r -> calc R.R { R.add (R.add (P n) R.o) (R.mul a (P n))
+     =< ap (\ w -> R.add (R.add w R.o) (R.mul a (P n))) r > R.add (R.add (R.add (nat n) (R.mul a (q n))) R.o) (R.mul a (P n))
+     =< ap (\ w -> R.add w (R.mul a (P n))) (shift (nat n) (R.mul a (q n))) >
+        R.add (R.add (nat (suc n)) (R.mul a (q n))) (R.mul a (P n))
+     =< sym (R.addA (nat (suc n)) (R.mul a (q n)) (R.mul a (P n))) > R.add (nat (suc n)) (R.add (R.mul a (q n)) (R.mul a (P n)))
+     =< ap (R.add (nat (suc n))) (sym (R.dist a (q n) (P n))) > R.add (nat (suc n)) (R.mul a (q (suc n))) } } ;
+ } ;
+ -- (geometric series)  if a^m = 0, then 1 + a is a unit, with inverse
+ -- G_m = 1 - a + a^2 - ... (Horner: G_(j+1) = 1 + (-a) G_j), since
+ -- (1 + a) G_j + (-a)^j = 1 by induction
+ module Geometric (a : R.R) (m : Nat) (hm : Id R.R (PR.power a m) R.z) {
+  G : Nat -> R.R = split { zero -> R.z ; suc j | r -> R.add R.o (R.mul (R.neg a) r) } ;
+  claim : (j : Nat) -> Id R.R (R.add (R.mul (R.add R.o a) (G j)) (PR.power (R.neg a) j)) R.o = split {
+   zero -> trans (ap (\ w -> R.add w R.o) (L.mul-zero (R.add R.o a))) (L.zl R.o) ;
+   suc j | r -> calc R.R { R.add (R.mul (R.add R.o a) (R.add R.o (R.mul (R.neg a) (G j)))) (R.mul (R.neg a) (PR.power (R.neg a) j))
+     =< ap (\ w -> R.add w (R.mul (R.neg a) (PR.power (R.neg a) j)))
+         (trans (R.dist (R.add R.o a) R.o (R.mul (R.neg a) (G j)))
+          (cong2 R.R R.add _ _ _ _ (R.mulO (R.add R.o a)) (L.mul-swap (R.add R.o a) (R.neg a) (G j)))) >
+        R.add (R.add (R.add R.o a) (R.mul (R.neg a) (R.mul (R.add R.o a) (G j)))) (R.mul (R.neg a) (PR.power (R.neg a) j))
+     =< sym (R.addA (R.add R.o a) (R.mul (R.neg a) (R.mul (R.add R.o a) (G j))) (R.mul (R.neg a) (PR.power (R.neg a) j))) >
+        R.add (R.add R.o a) (R.add (R.mul (R.neg a) (R.mul (R.add R.o a) (G j))) (R.mul (R.neg a) (PR.power (R.neg a) j)))
+     =< ap (R.add (R.add R.o a)) (trans (sym (R.dist (R.neg a) (R.mul (R.add R.o a) (G j)) (PR.power (R.neg a) j)))
+         (trans (ap (R.mul (R.neg a)) r) (R.mulO (R.neg a)))) > R.add (R.add R.o a) (R.neg a)
+     =< L.add-neg-cancel R.o a > R.o } } ;
+  -- (-a)^m = (-1)^m a^m = 0
+  neg-power : Id R.R (PR.power (R.neg a) m) R.z =
+   calc R.R { PR.power (R.neg a) m
+     =< ap (\ w -> PR.power w m) (sym (trans (L.neg-mul-left R.o a) (ap R.neg (L.one-left a)))) > PR.power (R.mul (R.neg R.o) a) m
+     =< PR.power-mul (R.neg R.o) a m > R.mul (PR.power (R.neg R.o) m) (PR.power a m)
+     =< ap (R.mul (PR.power (R.neg R.o) m)) hm > R.mul (PR.power (R.neg R.o) m) R.z
+     =< L.mul-zero (PR.power (R.neg R.o) m) > R.z } ;
+  unit : L.unit (R.add R.o a) =
+   (G m,trans (sym (R.addZ (R.mul (R.add R.o a) (G m))))
+     (trans (ap (R.add (R.mul (R.add R.o a) (G m))) (sym neg-power)) (claim m))) ;
+ } ;
+ -- a unit plus a nilpotent is a unit: u + v = u (1 + u^-1 v)
+ module UnitPlus (u v : R.R) (hu : L.unit u) (m : Nat) (hv : Id R.R (PR.power v m) R.z) {
+  w : R.R = R.mul hu.1 v ;
+  w-power : Id R.R (PR.power w m) R.z =
+   trans (PR.power-mul hu.1 v m) (trans (ap (R.mul (PR.power hu.1 m)) hv) (L.mul-zero (PR.power hu.1 m))) ;
+  module GW = Geometric[w,m,w-power] ;
+  factor : Id R.R (R.mul u (R.add R.o w)) (R.add u v) =
+   trans (R.dist u R.o w) (cong2 R.R R.add _ _ _ _ (R.mulO u)
+    (trans (R.mulA u hu.1 v) (trans (ap (\ t -> R.mul t v) hu.2) (L.one-left v)))) ;
+  unit : L.unit (R.add u v) =
+   (R.mul hu.1 GW.unit.1,
+    trans (ap (\ t -> R.mul t (R.mul hu.1 GW.unit.1)) (sym factor))
+     (trans (L.mul-four u (R.add R.o w) hu.1 GW.unit.1) (trans (cong2 R.R R.mul _ _ _ _ hu.2 GW.unit.2) (R.mulO R.o)))) ;
+ } ;
+} ;
+
+-- a ring map preserves integers
+module NatMap (R T : CRing) (f : H.Hom R T) {
+ nat-map : (k : Nat) -> Id T.R (f.1 (Integers[R].nat k)) (Integers[T].nat k) = split {
+  zero -> H.zero R T f ;
+  suc k | r -> trans (f.2.2.1 (Integers[R].nat k) R.o) (cong2 T.R T.add _ _ _ _ r f.2.1) } ;
+} ;
+
+module Over (R : CRing) {
+ module I = Integers[R] ;
+ nat : Nat -> R.R = I.nat ;
+ Positive (x : R.R) : U l = (k : Nat) * Id R.R (nat (suc k)) x ;
+ positive-one : Positive R.o = (zero,I.nat-one) ;
+ positive-product (s t : R.R) (hs : Positive s) (ht : Positive t) : Positive (R.mul s t) =
+  ((times-suc hs.1 ht.1).1,
+   trans (ap nat (sym (times-suc hs.1 ht.1).2))
+    (trans (I.nat-times (suc hs.1) (suc ht.1)) (cong2 R.R R.mul _ _ _ _ hs.2 ht.2))) ;
+ positive (k : Nat) : Positive (nat (suc k)) = (k,refl (nat (suc k))) ;
+ module Q = MonoidLocalization[l].Over[R,Positive,positive-one,positive-product] ;
+ K : CRing = Q.ring ;
+ iota : H.Hom R K = Q.inclusion ;
+ -- positive integers are units of K
+ inverse (x : R.R) (hx : Positive x) : K.R = (Q.inverse x hx).1 ;
+ inverse-law (x : R.R) (hx : Positive x) : Id K.R (K.mul (iota.1 x) (inverse x hx)) K.o = (Q.inverse x hx).2 ;
+ unit (x : R.R) (hx : Positive x) : RL[K].unit (iota.1 x) = Q.inverse x hx ;
+ -- rho a s = a / s
+ rho (a s : R.R) (hs : Positive s) : K.R = K.mul (iota.1 a) (inverse s hs) ;
+} ;

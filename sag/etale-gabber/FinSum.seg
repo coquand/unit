@@ -1,0 +1,101 @@
+-- Concatenation of two presentations: the variables of both, the equations
+-- of both renamed along the two inclusions.  Its solutions are pairs of
+-- solutions.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+open Presentations[l] ;
+top-prop : (u v : Top) -> Id Top u v = split { tt -> split { tt -> refl tt } } ;
+-- Fin (plus m n): the n variables of the first presentation at the bottom,
+-- the m variables of the second on top.
+left (n : Nat) : (m : Nat) -> Fin n -> Fin (plus m n) = split {
+ zero -> \ v -> v ; suc m | r -> \ v -> inl (r v) } ;
+right (n : Nat) : (m : Nat) -> Fin m -> Fin (plus m n) = split {
+ zero -> \ v -> absurd (Fin n) v ;
+ suc m | r -> snoc (Fin m) (Fin (plus (suc m) n)) (\ v -> inl (r v)) (inr tt) } ;
+cases (n : Nat) (B : U l) (a : Fin n -> B) : (m : Nat) -> (Fin m -> B) -> Fin (plus m n) -> B = split {
+ zero -> \ b -> a ;
+ suc m | r -> \ b -> snoc (Fin (plus m n)) B (r (\ v -> b (inl v))) (b (inr tt)) } ;
+cases-left (n : Nat) (B : U l) (a : Fin n -> B) : (m : Nat) -> (b : Fin m -> B) ->
+ (v : Fin n) -> Id B (cases n B a m b (left n m v)) (a v) = split {
+ zero -> \ b v -> refl (a v) ;
+ suc m | r -> \ b v -> r (\ w -> b (inl w)) v } ;
+cases-right (n : Nat) (B : U l) (a : Fin n -> B) : (m : Nat) -> (b : Fin m -> B) ->
+ (v : Fin m) -> Id B (cases n B a m b (right n m v)) (b v) = split {
+ zero -> \ b v -> absurd (Id B (cases n B a zero b (right n zero v)) (b v)) v ;
+ suc m | r -> \ b -> split {
+  inl v -> r (\ w -> b (inl w)) v ;
+  inr t -> ap (\ u -> b (inr u)) (top-prop tt t) } } ;
+-- A function on Fin (plus m n) is determined by its two restrictions.
+cases-unique (n : Nat) (B : U l) (a : Fin n -> B) : (m : Nat) -> (b : Fin m -> B) ->
+ (c : Fin (plus m n) -> B) -> ((v : Fin n) -> Id B (a v) (c (left n m v))) ->
+ ((v : Fin m) -> Id B (b v) (c (right n m v))) ->
+ (w : Fin (plus m n)) -> Id B (cases n B a m b w) (c w) = split {
+ zero -> \ b c ha hb w -> ha w ;
+ suc m | r -> \ b c ha hb -> split {
+  inl w -> r (\ u -> b (inl u)) (\ u -> c (inl u)) ha (\ u -> hb (inl u)) w ;
+  inr t -> trans (hb (inr tt)) (ap (\ u -> c (inr u)) (top-prop tt t)) } } ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module P = Presentations[l].Over[R,setR] ; open P ;
+ module C = Algebras[l].Over[R,setR] ;
+ append (V : U l) : Equations V -> Equations V -> Equations V = split {
+  nil -> \ fs -> fs ; cons e es | r -> \ fs -> cons e (r fs) } ;
+ renames (V W : U l) (u : V -> W) : Equations V -> Equations W = split {
+  nil -> nil ; cons e es | r -> cons (rename V W u e) r } ;
+ zeros-first (V : U l) (B : C.Algebra) (a : V -> B.ring.R) : (es fs : Equations V) ->
+  Zeros V B a (append V es fs) -> Zeros V B a es = split {
+  nil -> \ fs z -> tt ; cons e es | r -> \ fs z -> (z.1,r fs z.2) } ;
+ zeros-second (V : U l) (B : C.Algebra) (a : V -> B.ring.R) : (es fs : Equations V) ->
+  Zeros V B a (append V es fs) -> Zeros V B a fs = split {
+  nil -> \ fs z -> z ; cons e es | r -> \ fs z -> r fs z.2 } ;
+ zeros-append (V : U l) (B : C.Algebra) (a : V -> B.ring.R) : (es fs : Equations V) ->
+  Zeros V B a es -> Zeros V B a fs -> Zeros V B a (append V es fs) = split {
+  nil -> \ fs z w -> w ; cons e es | r -> \ fs z w -> (z.1,r fs z.2 w) } ;
+ zeros-down (V W : U l) (u : V -> W) (B : C.Algebra) (b : W -> B.ring.R) : (es : Equations V) ->
+  Zeros W B b (renames V W u es) -> Zeros V B (\ v -> b (u v)) es = split {
+  nil -> \ z -> tt ;
+  cons e es | r -> \ z -> (trans (sym (eval-rename V W u B b e)) z.1,r z.2) } ;
+ zeros-up (V W : U l) (u : V -> W) (B : C.Algebra) (b : W -> B.ring.R) : (es : Equations V) ->
+  Zeros V B (\ v -> b (u v)) es -> Zeros W B b (renames V W u es) = split {
+  nil -> \ z -> tt ;
+  cons e es | r -> \ z -> (trans (eval-rename V W u B b e) z.1,r z.2) } ;
+ zeros-ext (V : U l) (B : C.Algebra) (a a1 : V -> B.ring.R)
+  (h : (v : V) -> Id B.ring.R (a v) (a1 v)) (es : Equations V) (z : Zeros V B a es) : Zeros V B a1 es =
+  subst (\ x -> Zeros V B x es) (F.funext V (\ v -> B.ring.R) a a1 h) z ;
+ tensor (p q : Presentation) : Presentation =
+  (plus q.1 p.1,append (Fin (plus q.1 p.1))
+   (renames (Fin p.1) (Fin (plus q.1 p.1)) (left p.1 q.1) p.2)
+   (renames (Fin q.1) (Fin (plus q.1 p.1)) (right p.1 q.1) q.2)) ;
+ module Split (p q : Presentation) (B : C.Algebra) {
+  V : U l = Fin (plus q.1 p.1) ;
+  Data : U l = Solutions p B * Solutions q B ;
+  inp : Equations V = renames (Fin p.1) V (left p.1 q.1) p.2 ;
+  inq : Equations V = renames (Fin q.1) V (right p.1 q.1) q.2 ;
+  combine (a : Fin p.1 -> B.ring.R) (b : Fin q.1 -> B.ring.R) : V -> B.ring.R =
+   cases p.1 B.ring.R a q.1 b ;
+  forward (s : Solutions (tensor p q) B) : Data =
+   ((\ v -> s.1 (left p.1 q.1 v),zeros-down (Fin p.1) V (left p.1 q.1) B s.1 p.2
+     (zeros-first V B s.1 inp inq s.2)),
+    (\ v -> s.1 (right p.1 q.1 v),zeros-down (Fin q.1) V (right p.1 q.1) B s.1 q.2
+     (zeros-second V B s.1 inp inq s.2))) ;
+  backward (d : Data) : Solutions (tensor p q) B =
+   (combine d.1.1 d.2.1,zeros-append V B (combine d.1.1 d.2.1) inp inq
+    (zeros-up (Fin p.1) V (left p.1 q.1) B (combine d.1.1 d.2.1) p.2
+     (zeros-ext (Fin p.1) B d.1.1 (\ v -> combine d.1.1 d.2.1 (left p.1 q.1 v))
+      (\ v -> sym (cases-left p.1 B.ring.R d.1.1 q.1 d.2.1 v)) p.2 d.1.2))
+    (zeros-up (Fin q.1) V (right p.1 q.1) B (combine d.1.1 d.2.1) q.2
+     (zeros-ext (Fin q.1) B d.2.1 (\ v -> combine d.1.1 d.2.1 (right p.1 q.1 v))
+      (\ v -> sym (cases-right p.1 B.ring.R d.1.1 q.1 d.2.1 v)) q.2 d.2.2))) ;
+  fb (d : Data) : Id Data (forward (backward d)) d =
+   Pr.trans Data _ (d.1,(forward (backward d)).2) d
+    (Pr.ap (Solutions p B) Data (\ x -> (x,(forward (backward d)).2)) _ _
+     (solutions-ext p B _ d.1 (cases-left p.1 B.ring.R d.1.1 q.1 d.2.1)))
+    (Pr.ap (Solutions q B) Data (\ y -> (d.1,y)) _ _
+     (solutions-ext q B _ d.2 (cases-right p.1 B.ring.R d.1.1 q.1 d.2.1))) ;
+  bf (s : Solutions (tensor p q) B) : Id (Solutions (tensor p q) B) (backward (forward s)) s =
+   solutions-ext (tensor p q) B _ s
+    (cases-unique p.1 B.ring.R (forward s).1.1 q.1 (forward s).2.1 s.1
+     (\ v -> refl (s.1 (left p.1 q.1 v))) (\ v -> refl (s.1 (right p.1 q.1 v)))) ;
+  equivalence : Pr.Equiv (Solutions (tensor p q) B) Data = (forward,Pr.qinv _ _ forward backward fb bf) ;
+ } ;
+} ;

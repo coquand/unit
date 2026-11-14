@@ -1,0 +1,102 @@
+-- Projectors: idempotent K x K matrices p over A, and their images
+--     Image p = { x in A^K | p x = x },
+-- an A-submodule of A^K (FREEMODULES): the condition is linear in x.  A
+-- sum in Image p is computed entrywise (sum-at).  The zero projector has
+-- size 0, the unit has size 1; block sums (DIRECTSUMS) and Kronecker
+-- products (KRONECKER) of projectors are projectors, because
+-- dsum p q . dsum p q = dsum (p p) (q q) and (p (x) q)(p (x) q) = p p (x) q q.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module FM = FreeModules[l].Over[A,setA] ;
+ module SA = FM.SA ;
+ module MI = FM.MI ;
+ module S = FiniteIdeal[l].Sums[A] ;
+ record Projector {
+  size : Nat ;
+  matrix : MnAlgebra[l].Over[A,setA,size].Mat ;
+  idempotent : Id MnAlgebra[l].Over[A,setA,size].Mat (MnAlgebra[l].Over[A,setA,size].mmul matrix matrix) matrix ;
+ } ;
+
+ module Image (p : Projector) {
+  module V = Vectors[l].Over[A,setA,p.size] ;
+  module Fr = SerreModuleProducts[l].Over[A,Fin p.size,\ i -> SA.regular setA] ;
+  Member (x : V.Vec) : U l = Id V.Vec (V.act p.matrix x) x ;
+  member-prop (x : V.Vec) : Pr.isProp (Member x) = V.set-vec _ _ ;
+  Carrier : U l = (x : V.Vec) * Member x ;
+  value (x : Carrier) : V.Vec = x.1 ;
+  member (x : Carrier) : Member (value x) = x.2 ;
+  ext (x y : Carrier) (e : Id V.Vec (value x) (value y)) : Id Carrier x y =
+   Pr.Sigma-eq V.Vec Member (value x) (value y) (member x) (member y) e (member-prop (value y)) ;
+  set : Pr.isSet Carrier = Pr.isSet-Sigma V.Vec Member V.set-vec (\ x -> Pr.prop-to-set (Member x) (member-prop x)) ;
+  zero : Carrier = (V.vzero,V.act-zero p.matrix) ;
+  add (x y : Carrier) : Carrier = (V.vadd (value x) (value y),
+   trans (V.act-add p.matrix (value x) (value y)) (cong2 V.Vec V.vadd _ _ _ _ (member x) (member y))) ;
+  negative (x : Carrier) : Carrier = (V.vneg (value x),trans (V.act-neg p.matrix (value x)) (ap V.vneg (member x))) ;
+  scale (a : A.R) (x : Carrier) : Carrier = (V.vscale a (value x),
+   trans (V.act-scale p.matrix a (value x)) (ap (V.vscale a) (member x))) ;
+  image : SA.Module = new SA.Module[Carrier,set,zero,add,negative,
+   \ x y z -> ext _ _ (Fr.product.maddA (value x) (value y) (value z)),
+   \ x y -> ext _ _ (Fr.product.maddC (value x) (value y)),
+   \ x -> ext _ _ (Fr.product.maddZ (value x)),
+   \ x -> ext _ _ (Fr.product.maddN (value x)),scale,
+   \ a b x -> ext _ _ (Fr.product.smA a b (value x)),
+   \ x -> ext _ _ (Fr.product.smO (value x)),
+   \ a x y -> ext _ _ (Fr.product.smD a (value x) (value y)),
+   \ a b x -> ext _ _ (Fr.product.smE a b (value x))] ;
+  -- p x is in the image
+  fix (x : V.Vec) : Carrier =
+   (V.act p.matrix x,trans (V.act-mul p.matrix p.matrix x) (ap (\ Z -> V.act Z x) p.idempotent)) ;
+  -- sums in the image, entrywise
+  module PS = SerreModuleSums[l].Over[A,image] ;
+  sum-at : (k : Nat) (xs : Fin k -> Carrier) (x : Fin p.size) ->
+   Id A.R (value (PS.sum k xs) x) (S.sum k (\ i -> value (xs i) x)) = split {
+   zero -> \ xs x -> ap (\ t -> value t x) (PS.sum-empty xs) ;
+   suc k | r -> \ xs x -> trans (ap (\ t -> value t x) (PS.sum-step k xs))
+    (ap (A.add (value (xs (inr tt)) x)) (r (\ i -> xs (inl i)) x)) } ;
+ } ;
+
+ -- the zero and unit projectors
+ module MZ = MnAlgebra[l].Over[A,setA,zero] ;
+ module M1 = MnAlgebra[l].Over[A,setA,suc zero] ;
+ zeroP : Projector = new Projector[zero,MZ.mzero,MZ.mat-eq (MZ.mmul MZ.mzero MZ.mzero) MZ.mzero (\ i j -> efq i)] ;
+ oneP : Projector = new Projector[suc zero,M1.mone,M1.m-one-left M1.mone] ;
+ -- block sums and Kronecker products
+ module Sum (p q : Projector) {
+  module DS = DirectSums[l].Over[A,setA,p.size,q.size] ;
+  projector : Projector = new Projector[plus p.size q.size,DS.dsum p.matrix q.matrix,
+   trans (DS.dsum-mul p.matrix p.matrix q.matrix q.matrix)
+    (trans (ap (\ X -> DS.dsum X (DS.Mn.mmul q.matrix q.matrix)) p.idempotent) (ap (DS.dsum p.matrix) q.idempotent))] ;
+ } ;
+ module Product (p q : Projector) {
+  module KR = Kronecker[l].Over[A,setA,p.size,q.size] ;
+  projector : Projector = new Projector[Pairing[l].times p.size q.size,KR.kron p.matrix q.matrix,
+   trans (KR.mixed p.matrix p.matrix q.matrix q.matrix)
+    (trans (ap (\ X -> KR.kron X (KR.Mn.mmul q.matrix q.matrix)) p.idempotent) (ap (KR.kron p.matrix) q.idempotent))] ;
+ } ;
+ -- projectors of one size with equal matrices have isomorphic images
+ module Equal (n : Nat) (X Y : MnAlgebra[l].Over[A,setA,n].Mat)
+  (hX : Id MnAlgebra[l].Over[A,setA,n].Mat (MnAlgebra[l].Over[A,setA,n].mmul X X) X)
+  (hY : Id MnAlgebra[l].Over[A,setA,n].Mat (MnAlgebra[l].Over[A,setA,n].mmul Y Y) Y)
+  (e : Id MnAlgebra[l].Over[A,setA,n].Mat X Y) {
+  module IX = Image[new Projector[n,X,hX]] ;
+  module IY = Image[new Projector[n,Y,hY]] ;
+  to (x : IX.Carrier) : IY.Carrier = (IX.value x,trans (ap (\ Z -> IX.V.act Z (IX.value x)) (sym e)) (IX.member x)) ;
+  from (y : IY.Carrier) : IX.Carrier = (IY.value y,trans (ap (\ Z -> IX.V.act Z (IY.value y)) e) (IY.member y)) ;
+  iso : MI.Iso[IX.image,IY.image] = MI.make IX.image IY.image to from
+   (\ x y -> IY.ext (to (IX.add x y)) (IY.add (to x) (to y)) (refl (IX.V.vadd (IX.value x) (IX.value y))))
+   (\ a x -> IY.ext (to (IX.scale a x)) (IY.scale a (to x)) (refl (IX.V.vscale a (IX.value x))))
+   (\ y -> IY.ext (to (from y)) y (refl (IY.value y)))
+   (\ x -> IX.ext (from (to x)) x (refl (IX.value x))) ;
+ } ;
+ -- the unit projector of size K; its image is A^K (1 x = x for every x)
+ module Free (K : Nat) {
+  module MK = MnAlgebra[l].Over[A,setA,K] ;
+  projector : Projector = new Projector[K,MK.mone,MK.m-one-left MK.mone] ;
+  module I = Image[projector] ;
+  iso : MI.Iso[I.image,FM.free K] = MI.make I.image (FM.free K) I.value (\ x -> (x,I.V.act-one x))
+   (\ x y -> refl (I.V.vadd (I.value x) (I.value y))) (\ a x -> refl (I.V.vscale a (I.value x)))
+   (\ x -> refl x) (\ x -> I.ext (I.value x,I.V.act-one (I.value x)) x (refl (I.value x))) ;
+ } ;
+} ;

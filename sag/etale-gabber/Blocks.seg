@@ -1,0 +1,218 @@
+-- Block matrices.  The index set Fin (m + n) is the sum of Fin m and Fin n:
+--   injl : Fin m -> Fin (m + n),  injr : Fin n -> Fin (m + n),
+--   side : Fin (m + n) -> Fin m + Fin n,  join = [injl, injr],
+-- with side (join e) = e and join (side x) = x, and a sum over Fin (m + n)
+-- is the sum over Fin m plus the sum over Fin n (sum-plus).
+-- A (2M) x (2M) matrix is given by four M x M blocks,
+--   blk a b c d = ( a b )
+--                 ( c d ),
+-- two matrices are equal when their four blocks are (block-eq), and
+--   blk a b c d . blk a' b' c' d' = blk (aa'+bc') (ab'+bd') (ca'+dc') (cb'+dd')
+-- (block-mul): the sum over Fin (M + M) splits as the sum over the left
+-- columns plus the sum over the right ones.  The unit is blk 1 0 0 1, and
+-- a ring map acts on each block (map-blk).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+injl (n : Nat) : (m : Nat) -> Fin m -> Fin (plus m n) = split {
+ zero -> \ i -> efq i ;
+ suc m | r -> split { inl i -> inl (r i) ; inr t -> inr t } } ;
+injr (n : Nat) : (m : Nat) -> Fin n -> Fin (plus m n) = split {
+ zero -> \ k -> k ;
+ suc m | r -> \ k -> inl (r k) } ;
+shiftL (m n : Nat) : Plus (Fin m) (Fin n) -> Plus (Fin (suc m)) (Fin n) = split {
+ inl i -> inl (inl i) ; inr k -> inr k } ;
+side (n : Nat) : (m : Nat) -> Fin (plus m n) -> Plus (Fin m) (Fin n) = split {
+ zero -> \ k -> inr k ;
+ suc m | r -> split { inl x -> shiftL m n (r x) ; inr t -> inl (inr t) } } ;
+join (m n : Nat) : Plus (Fin m) (Fin n) -> Fin (plus m n) = split {
+ inl i -> injl n m i ; inr k -> injr n m k } ;
+side-injl (n : Nat) : (m : Nat) (i : Fin m) -> Id (Plus (Fin m) (Fin n)) (side n m (injl n m i)) (inl i) = split {
+ zero -> \ i -> efq i ;
+ suc m | r -> split { inl i -> ap (shiftL m n) (r i) ; inr t -> refl (inl (inr t)) } } ;
+side-injr (n : Nat) : (m : Nat) (k : Fin n) -> Id (Plus (Fin m) (Fin n)) (side n m (injr n m k)) (inr k) = split {
+ zero -> \ k -> refl (inr k) ;
+ suc m | r -> \ k -> ap (shiftL m n) (r k) } ;
+side-join (m n : Nat) : (e : Plus (Fin m) (Fin n)) -> Id (Plus (Fin m) (Fin n)) (side n m (join m n e)) e = split {
+ inl i -> side-injl n m i ; inr k -> side-injr n m k } ;
+join-shiftL (m n : Nat) : (e : Plus (Fin m) (Fin n)) ->
+ Id (Fin (plus (suc m) n)) (join (suc m) n (shiftL m n e)) (inl (join m n e)) = split {
+ inl i -> refl (inl (injl n m i)) ; inr k -> refl (inl (injr n m k)) } ;
+join-side (n : Nat) : (m : Nat) (x : Fin (plus m n)) -> Id (Fin (plus m n)) (join m n (side n m x)) x = split {
+ zero -> \ x -> refl x ;
+ suc m | r -> split {
+  inl x -> trans (join-shiftL m n (side n m x)) (ap (\ y -> inl y) (r x)) ;
+  inr t -> refl (inr t) } } ;
+module Sums (R : CRing) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ -- sum over m + n = sum over m + sum over n
+ sum-plus (n : Nat) : (m : Nat) (v : Fin (plus m n) -> R.R) ->
+  Id R.R (S.sum (plus m n) v) (R.add (S.sum m (\ i -> v (injl n m i))) (S.sum n (\ k -> v (injr n m k)))) = split {
+  zero -> \ v -> sym (L.zl (S.sum n v)) ;
+  suc m | r -> \ v -> trans (ap (R.add (v (inr tt))) (r (\ x -> v (inl x))))
+   (R.addA (v (inr tt)) (S.sum m (\ i -> v (inl (injl n m i)))) (S.sum n (\ k -> v (inl (injr n m k))))) } ;
+ sum-neg : (n : Nat) (v : Fin n -> R.R) -> Id R.R (S.sum n (\ i -> R.neg (v i))) (R.neg (S.sum n v)) = split {
+  zero -> \ v -> sym L.neg-zero ;
+  suc n | r -> \ v -> trans (ap (R.add (R.neg (v (inr tt)))) (r (\ i -> v (inl i))))
+   (sym (L.neg-add (v (inr tt)) (S.sum n (\ i -> v (inl i))))) } ;
+ -- the Kronecker delta of m + n on the four blocks
+ delta-ll (n : Nat) : (m : Nat) (i j : Fin m) -> Id R.R (D.delta (plus m n) (injl n m i) (injl n m j)) (D.delta m i j) = split {
+  zero -> \ i j -> efq i ;
+  suc m | r -> split {
+   inl i -> split { inl j -> r i j ; inr t -> refl R.z } ;
+   inr s -> split { inl j -> refl R.z ; inr t -> refl R.o } } } ;
+ delta-rr (n : Nat) : (m : Nat) (k k' : Fin n) -> Id R.R (D.delta (plus m n) (injr n m k) (injr n m k')) (D.delta n k k') = split {
+  zero -> \ k k' -> refl (D.delta n k k') ;
+  suc m | r -> \ k k' -> r k k' } ;
+ delta-lr (n : Nat) : (m : Nat) (i : Fin m) (k : Fin n) -> Id R.R (D.delta (plus m n) (injl n m i) (injr n m k)) R.z = split {
+  zero -> \ i k -> efq i ;
+  suc m | r -> split { inl i -> \ k -> r i k ; inr t -> \ k -> refl R.z } } ;
+ delta-rl (n : Nat) : (m : Nat) (k : Fin n) (i : Fin m) -> Id R.R (D.delta (plus m n) (injr n m k) (injl n m i)) R.z = split {
+  zero -> \ k i -> efq i ;
+  suc m | r -> \ k -> split { inl i -> r k i ; inr t -> refl R.z } } ;
+} ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (M : Nat) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module SP = Sums[R] ;
+ module MM = MnAlgebra[l].Over[R,setR,M] ;
+ module M2 = MnAlgebra[l].Over[R,setR,plus M M] ;
+ Side : U l = Plus (Fin M) (Fin M) ;
+ il (i : Fin M) : Fin (plus M M) = injl M M i ;
+ ir (i : Fin M) : Fin (plus M M) = injr M M i ;
+ -- matrix identities on M x M blocks
+ mul-zero-right (x : MM.Mat) : Id MM.Mat (MM.mmul x MM.mzero) MM.mzero =
+  MM.mat-eq (MM.mmul x MM.mzero) MM.mzero (\ i j ->
+   trans (S.sum-cong M (\ k -> R.mul (x i k) R.z) (\ k -> R.z) (\ k -> L.mul-zero (x i k))) (S.sum-zero M)) ;
+ mul-zero-left (x : MM.Mat) : Id MM.Mat (MM.mmul MM.mzero x) MM.mzero =
+  MM.mat-eq (MM.mmul MM.mzero x) MM.mzero (\ i j ->
+   trans (S.sum-cong M (\ k -> R.mul R.z (x k j)) (\ k -> R.z) (\ k -> L.zero-mul (x k j))) (S.sum-zero M)) ;
+ mul-neg-left (x y : MM.Mat) : Id MM.Mat (MM.mmul (MM.mneg x) y) (MM.mneg (MM.mmul x y)) =
+  MM.mat-eq (MM.mmul (MM.mneg x) y) (MM.mneg (MM.mmul x y)) (\ i j ->
+   trans (S.sum-cong M (\ k -> R.mul (R.neg (x i k)) (y k j)) (\ k -> R.neg (R.mul (x i k) (y k j)))
+     (\ k -> L.neg-mul-left (x i k) (y k j)))
+    (SP.sum-neg M (\ k -> R.mul (x i k) (y k j)))) ;
+ mul-neg-right (x y : MM.Mat) : Id MM.Mat (MM.mmul x (MM.mneg y)) (MM.mneg (MM.mmul x y)) =
+  MM.mat-eq (MM.mmul x (MM.mneg y)) (MM.mneg (MM.mmul x y)) (\ i j ->
+   trans (S.sum-cong M (\ k -> R.mul (x i k) (R.neg (y k j))) (\ k -> R.neg (R.mul (x i k) (y k j)))
+     (\ k -> L.mul-neg (x i k) (y k j)))
+    (SP.sum-neg M (\ k -> R.mul (x i k) (y k j)))) ;
+ neg-add-left (x : MM.Mat) : Id MM.Mat (MM.madd (MM.mneg x) x) MM.mzero =
+  trans (MM.m-addC (MM.mneg x) x) (MM.m-addN x) ;
+ zero-add (x : MM.Mat) : Id MM.Mat (MM.madd MM.mzero x) x =
+  trans (MM.m-addC MM.mzero x) (MM.m-addZ x) ;
+ neg-neg (x : MM.Mat) : Id MM.Mat (MM.mneg (MM.mneg x)) x =
+  MM.mat-eq (MM.mneg (MM.mneg x)) x (\ i j -> L.neg-neg (x i j)) ;
+
+ -- the four blocks
+ pick (a b c d : MM.Mat) : Side -> Side -> R.R = split {
+  inl i -> split { inl j -> a i j ; inr j -> b i j } ;
+  inr i -> split { inl j -> c i j ; inr j -> d i j } } ;
+ blk (a b c d : MM.Mat) : M2.Mat = \ x y -> pick a b c d (side M M x) (side M M y) ;
+ at (a b c d : MM.Mat) (e e' : Side) : Id R.R (blk a b c d (join M M e) (join M M e')) (pick a b c d e e') =
+  trans (ap (\ s -> pick a b c d s (side M M (join M M e'))) (side-join M M e)) (ap (pick a b c d e) (side-join M M e')) ;
+ at-ll (a b c d : MM.Mat) (i j : Fin M) : Id R.R (blk a b c d (il i) (il j)) (a i j) = at a b c d (inl i) (inl j) ;
+ at-lr (a b c d : MM.Mat) (i j : Fin M) : Id R.R (blk a b c d (il i) (ir j)) (b i j) = at a b c d (inl i) (inr j) ;
+ at-rl (a b c d : MM.Mat) (i j : Fin M) : Id R.R (blk a b c d (ir i) (il j)) (c i j) = at a b c d (inr i) (inl j) ;
+ at-rr (a b c d : MM.Mat) (i j : Fin M) : Id R.R (blk a b c d (ir i) (ir j)) (d i j) = at a b c d (inr i) (inr j) ;
+ blk-cong (a b c d a' b' c' d' : MM.Mat) (p : Id MM.Mat a a') (q : Id MM.Mat b b') (r : Id MM.Mat c c')
+  (s : Id MM.Mat d d') : Id M2.Mat (blk a b c d) (blk a' b' c' d') =
+  trans (ap (\ t -> blk t b c d) p) (trans (ap (\ t -> blk a' t c d) q)
+   (trans (ap (\ t -> blk a' b' t d) r) (ap (blk a' b' c') s))) ;
+ opaque blk ;
+ -- equality by blocks
+ entry-path (P : M2.Mat) (x x' y y' : Fin (plus M M)) (p : Id (Fin (plus M M)) x x')
+  (q : Id (Fin (plus M M)) y y') : Id R.R (P x y) (P x' y') =
+  trans (ap (\ z -> P z y) p) (ap (P x') q) ;
+ module Equal (P Q : M2.Mat)
+  (ll : (i j : Fin M) -> Id R.R (P (il i) (il j)) (Q (il i) (il j)))
+  (lr : (i j : Fin M) -> Id R.R (P (il i) (ir j)) (Q (il i) (ir j)))
+  (rl : (i j : Fin M) -> Id R.R (P (ir i) (il j)) (Q (ir i) (il j)))
+  (rr : (i j : Fin M) -> Id R.R (P (ir i) (ir j)) (Q (ir i) (ir j))) {
+  at-join : (e e' : Side) -> Id R.R (P (join M M e) (join M M e')) (Q (join M M e) (join M M e')) = split {
+   inl i -> split { inl j -> ll i j ; inr j -> lr i j } ;
+   inr i -> split { inl j -> rl i j ; inr j -> rr i j } } ;
+  entry (x y : Fin (plus M M)) : Id R.R (P x y) (Q x y) =
+   trans (sym (entry-path P (join M M (side M M x)) x (join M M (side M M y)) y (join-side M M x) (join-side M M y)))
+    (trans (at-join (side M M x) (side M M y))
+     (entry-path Q (join M M (side M M x)) x (join M M (side M M y)) y (join-side M M x) (join-side M M y))) ;
+  equal : Id M2.Mat P Q = M2.mat-eq P Q entry ;
+ } ;
+ -- an entry of a product: left columns, then right columns
+ mul-at (P Q : M2.Mat) (x y : Fin (plus M M)) (p q r s : Fin M -> R.R)
+  (hp : (k : Fin M) -> Id R.R (P x (il k)) (p k)) (hq : (k : Fin M) -> Id R.R (Q (il k) y) (q k))
+  (hr : (k : Fin M) -> Id R.R (P x (ir k)) (r k)) (hs : (k : Fin M) -> Id R.R (Q (ir k) y) (s k)) :
+  Id R.R (M2.mmul P Q x y) (R.add (S.sum M (\ k -> R.mul (p k) (q k))) (S.sum M (\ k -> R.mul (r k) (s k)))) =
+  trans (SP.sum-plus M M (\ k -> R.mul (P x k) (Q k y)))
+   (cong2 R.R R.add _ _ _ _
+    (S.sum-cong M (\ k -> R.mul (P x (il k)) (Q (il k) y)) (\ k -> R.mul (p k) (q k))
+     (\ k -> cong2 R.R R.mul _ _ _ _ (hp k) (hq k)))
+    (S.sum-cong M (\ k -> R.mul (P x (ir k)) (Q (ir k) y)) (\ k -> R.mul (r k) (s k))
+     (\ k -> cong2 R.R R.mul _ _ _ _ (hr k) (hs k)))) ;
+ module Product (a b c d a' b' c' d' : MM.Mat) {
+  P : M2.Mat = blk a b c d ;
+  Q : M2.Mat = blk a' b' c' d' ;
+  e : MM.Mat = MM.madd (MM.mmul a a') (MM.mmul b c') ;
+  f : MM.Mat = MM.madd (MM.mmul a b') (MM.mmul b d') ;
+  g : MM.Mat = MM.madd (MM.mmul c a') (MM.mmul d c') ;
+  h : MM.Mat = MM.madd (MM.mmul c b') (MM.mmul d d') ;
+  ll (i j : Fin M) : Id R.R (M2.mmul P Q (il i) (il j)) (blk e f g h (il i) (il j)) =
+   trans (mul-at P Q (il i) (il j) (a i) (\ k -> a' k j) (b i) (\ k -> c' k j)
+     (at-ll a b c d i) (\ k -> at-ll a' b' c' d' k j) (at-lr a b c d i) (\ k -> at-rl a' b' c' d' k j))
+    (sym (at-ll e f g h i j)) ;
+  lr (i j : Fin M) : Id R.R (M2.mmul P Q (il i) (ir j)) (blk e f g h (il i) (ir j)) =
+   trans (mul-at P Q (il i) (ir j) (a i) (\ k -> b' k j) (b i) (\ k -> d' k j)
+     (at-ll a b c d i) (\ k -> at-lr a' b' c' d' k j) (at-lr a b c d i) (\ k -> at-rr a' b' c' d' k j))
+    (sym (at-lr e f g h i j)) ;
+  rl (i j : Fin M) : Id R.R (M2.mmul P Q (ir i) (il j)) (blk e f g h (ir i) (il j)) =
+   trans (mul-at P Q (ir i) (il j) (c i) (\ k -> a' k j) (d i) (\ k -> c' k j)
+     (at-rl a b c d i) (\ k -> at-ll a' b' c' d' k j) (at-rr a b c d i) (\ k -> at-rl a' b' c' d' k j))
+    (sym (at-rl e f g h i j)) ;
+  rr (i j : Fin M) : Id R.R (M2.mmul P Q (ir i) (ir j)) (blk e f g h (ir i) (ir j)) =
+   trans (mul-at P Q (ir i) (ir j) (c i) (\ k -> b' k j) (d i) (\ k -> d' k j)
+     (at-rl a b c d i) (\ k -> at-lr a' b' c' d' k j) (at-rr a b c d i) (\ k -> at-rr a' b' c' d' k j))
+    (sym (at-rr e f g h i j)) ;
+  product : Id M2.Mat (M2.mmul P Q) (blk e f g h) =
+   Equal[M2.mmul P Q,blk e f g h,ll,lr,rl,rr].equal ;
+ } ;
+ block-mul (a b c d a' b' c' d' : MM.Mat) :
+  Id M2.Mat (M2.mmul (blk a b c d) (blk a' b' c' d'))
+   (blk (MM.madd (MM.mmul a a') (MM.mmul b c')) (MM.madd (MM.mmul a b') (MM.mmul b d'))
+        (MM.madd (MM.mmul c a') (MM.mmul d c')) (MM.madd (MM.mmul c b') (MM.mmul d d'))) =
+  Product[a,b,c,d,a',b',c',d'].product ;
+ -- the unit
+ module One {
+  I : M2.Mat = blk MM.mone MM.mzero MM.mzero MM.mone ;
+  ll (i j : Fin M) : Id R.R (I (il i) (il j)) (M2.mone (il i) (il j)) =
+   trans (at-ll MM.mone MM.mzero MM.mzero MM.mone i j) (sym (SP.delta-ll M M i j)) ;
+  lr (i j : Fin M) : Id R.R (I (il i) (ir j)) (M2.mone (il i) (ir j)) =
+   trans (at-lr MM.mone MM.mzero MM.mzero MM.mone i j) (sym (SP.delta-lr M M i j)) ;
+  rl (i j : Fin M) : Id R.R (I (ir i) (il j)) (M2.mone (ir i) (il j)) =
+   trans (at-rl MM.mone MM.mzero MM.mzero MM.mone i j) (sym (SP.delta-rl M M i j)) ;
+  rr (i j : Fin M) : Id R.R (I (ir i) (ir j)) (M2.mone (ir i) (ir j)) =
+   trans (at-rr MM.mone MM.mzero MM.mzero MM.mone i j) (sym (SP.delta-rr M M i j)) ;
+  one : Id M2.Mat I M2.mone = Equal[I,M2.mone,ll,lr,rl,rr].equal ;
+ } ;
+ blk-one : Id M2.Mat (blk MM.mone MM.mzero MM.mzero MM.mone) M2.mone = One.one ;
+} ;
+module Map (X Y : CRing) (setX : Pr.isSet X.R) (setY : Pr.isSet Y.R) (f : RingHom[l].Hom X Y) (M : Nat) {
+ module BX = Over[X,setX,M] ;
+ module BY = Over[Y,setY,M] ;
+ module MM = MatrixMap[l].Over[X,Y,setX,setY,f,M] ;
+ module M2 = MatrixMap[l].Over[X,Y,setX,setY,f,plus M M] ;
+ module Entry (a b c d : BX.MM.Mat) {
+  ll (i j : Fin M) : Id Y.R (M2.map (BX.blk a b c d) (BX.il i) (BX.il j)) (BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d) (BY.il i) (BY.il j)) =
+   trans (ap f.1 (BX.at-ll a b c d i j)) (sym (BY.at-ll (MM.map a) (MM.map b) (MM.map c) (MM.map d) i j)) ;
+  lr (i j : Fin M) : Id Y.R (M2.map (BX.blk a b c d) (BX.il i) (BX.ir j)) (BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d) (BY.il i) (BY.ir j)) =
+   trans (ap f.1 (BX.at-lr a b c d i j)) (sym (BY.at-lr (MM.map a) (MM.map b) (MM.map c) (MM.map d) i j)) ;
+  rl (i j : Fin M) : Id Y.R (M2.map (BX.blk a b c d) (BX.ir i) (BX.il j)) (BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d) (BY.ir i) (BY.il j)) =
+   trans (ap f.1 (BX.at-rl a b c d i j)) (sym (BY.at-rl (MM.map a) (MM.map b) (MM.map c) (MM.map d) i j)) ;
+  rr (i j : Fin M) : Id Y.R (M2.map (BX.blk a b c d) (BX.ir i) (BX.ir j)) (BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d) (BY.ir i) (BY.ir j)) =
+   trans (ap f.1 (BX.at-rr a b c d i j)) (sym (BY.at-rr (MM.map a) (MM.map b) (MM.map c) (MM.map d) i j)) ;
+ } ;
+ map-blk (a b c d : BX.MM.Mat) :
+  Id BY.M2.Mat (M2.map (BX.blk a b c d)) (BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d)) =
+  BY.Equal[M2.map (BX.blk a b c d),BY.blk (MM.map a) (MM.map b) (MM.map c) (MM.map d),
+   Entry[a,b,c,d].ll,Entry[a,b,c,d].lr,Entry[a,b,c,d].rl,Entry[a,b,c,d].rr].equal ;
+} ;

@@ -1,0 +1,83 @@
+-- Frames of Hom(P, Q).  If P has the frame (e_a, c_a) of rank r and Q the
+-- frame (f_b, d_b) of rank s (FRAMES), then Hom(P, Q) (HOMMODULE) has the
+-- frame of rank r s indexed by the pairs (a,b) (PAIRING):
+--     vectors  the elementary maps  m |-> c_a(m) f_b,
+--     forms    phi |-> d_b(phi(e_a)),
+-- since for phi : P -> Q and m in P
+--     sum_(a,b) d_b(phi(e_a)) c_a(m) f_b = sum_a c_a(m) sum_b d_b(phi(e_a)) f_b
+--                                         = sum_a c_a(m) phi(e_a) = phi(m).
+-- Frames move along equalities of modules (transport), and a mere frame of
+-- P and of Q gives a mere frame of Hom(P, Q).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ;
+ module FR = Frames[l].Over[R,setR] ;
+ module HM = HomModule[l].Over[R,setR] ;
+ hom (P Q : MD.Module) : MD.Module = HM.At[P,Q].carrier ;
+ module Of (P Q : MD.Module) (r s : Nat) (fp : FR.Frame[P,r]) (fq : FR.Frame[Q,s]) {
+  module H = HM.At[P,Q] ;
+  module SQ = ModuleFiniteSums[l].Over[R,setR,Q] ;
+  module LP = ModuleSumLaws[l].Over[R,setR,P] ;
+  module LQ = ModuleSumLaws[l].Over[R,setR,Q] ;
+  module MQ = Alg73[l].MA[MD.ring,Q] ;
+  module SH = ModuleFiniteSums[l].Over[R,setR,H.carrier] ;
+  e (a : Fin r) : P.M = fp.vector a ;
+  c (a : Fin r) : FR.HM.At[P,MD.regular].S.E = fp.form a ;
+  f (b : Fin s) : Q.M = fq.vector b ;
+  d (b : Fin s) : FR.HM.At[Q,MD.regular].S.E = fq.form b ;
+  N : Nat = Pairing[l].times r s ;
+  index (k : Fin N) : Fin r * Fin s = Pairing[l].unpair s r k ;
+  elementary (p : Fin r * Fin s) : H.S.E =
+   (\ m -> Q.sm ((c p.1).1 m) (f p.2),
+    \ m m' -> trans (ap (\ t -> Q.sm t (f p.2)) ((c p.1).2.1 m m'))
+     (Q.smE ((c p.1).1 m) ((c p.1).1 m') (f p.2)),
+    \ t m -> trans (ap (\ y -> Q.sm y (f p.2)) ((c p.1).2.2 t m))
+     (sym (Q.smA t ((c p.1).1 m) (f p.2)))) ;
+  coordinate (p : Fin r * Fin s) : FR.HM.At[H.carrier,MD.regular].S.E =
+   (\ phi -> (d p.2).1 (phi.1 (e p.1)),
+    \ phi psi -> (d p.2).2.1 (phi.1 (e p.1)) (psi.1 (e p.1)),
+    \ t phi -> (d p.2).2.2 t (phi.1 (e p.1))) ;
+  term (phi : H.S.E) (m : P.M) (p : Fin r * Fin s) : Q.M =
+   Q.sm ((coordinate p).1 phi) ((elementary p).1 m) ;
+  -- the sum over b at a fixed a
+  inner (phi : H.S.E) (m : P.M) (a : Fin r) :
+   Id Q.M (SQ.sum s (\ b -> term phi m (index (Pairing[l].pair s r a b)))) (Q.sm ((c a).1 m) (phi.1 (e a))) =
+   trans (SQ.congruent s (\ b -> term phi m (index (Pairing[l].pair s r a b)))
+     (\ b -> Q.sm ((c a).1 m) (Q.sm ((d b).1 (phi.1 (e a))) (f b)))
+     (\ b -> trans (ap (term phi m) (Pairing[l].unpair-pair s r a b))
+      (MQ.sm-swap ((d b).1 (phi.1 (e a))) ((c a).1 m) (f b))))
+    (trans (sym (LQ.scale-sum ((c a).1 m) s (\ b -> Q.sm ((d b).1 (phi.1 (e a))) (f b))))
+     (ap (Q.sm ((c a).1 m)) (fq.law (phi.1 (e a))))) ;
+  law-at (phi : H.S.E) (m : P.M) : Id Q.M (SQ.sum N (\ k -> term phi m (index k))) (phi.1 m) =
+   trans (LQ.sum-pair s r (\ k -> term phi m (index k)))
+    (trans (SQ.congruent r (\ a -> SQ.sum s (\ b -> term phi m (index (Pairing[l].pair s r a b))))
+      (\ a -> phi.1 (P.sm ((c a).1 m) (e a)))
+      (\ a -> trans (inner phi m a) (sym (phi.2.2 ((c a).1 m) (e a)))))
+     (trans (sym (LP.Map[Q,phi.1,DescentSubmodules[l].Over[MD.ring].Lin[P,Q,phi].map-z,phi.2.1].sum r
+        (\ a -> P.sm ((c a).1 m) (e a))))
+      (ap phi.1 (fp.law m)))) ;
+  -- evaluation at m of a sum of maps
+  module Ev (m : P.M) {
+   module V = ModuleSumLaws[l].Over[R,setR,H.carrier].Map[Q,\ g -> g.1 m,
+    refl Q.mz,\ u v -> refl (Q.madd (u.1 m) (v.1 m))] ;
+  } ;
+  combination (phi : H.S.E) : H.S.E =
+   SH.sum N (\ k -> H.carrier.sm ((coordinate (index k)).1 phi) (elementary (index k))) ;
+  law (phi : H.S.E) : Id H.S.E (combination phi) phi =
+   H.ext (combination phi) phi (\ m ->
+    trans (Ev[m].V.sum N (\ k -> H.carrier.sm ((coordinate (index k)).1 phi) (elementary (index k))))
+     (law-at phi m)) ;
+  frame : FR.Frame[H.carrier,N] =
+   new FR.Frame[H.carrier,N,\ k -> elementary (index k),\ k -> coordinate (index k),law] ;
+ } ;
+ -- frames move along equalities of modules
+ transport (P Q : MD.Module) (eq : Id MD.Module P Q) (r : Nat) (fr : Tr.Trunc[FR.Frame[P,r]].carrier) :
+  Tr.Trunc[FR.Frame[Q,r]].carrier =
+  idJ MD.Module P (\ N p -> Tr.Trunc[FR.Frame[N,r]].carrier) fr Q eq ;
+ hom-frames (P Q : MD.Module) (r s : Nat)
+  (fp : Tr.Trunc[FR.Frame[P,r]].carrier) (fq : Tr.Trunc[FR.Frame[Q,s]].carrier) :
+  Tr.Trunc[FR.Frame[hom P Q,Pairing[l].times r s]].carrier =
+  TC.map2 (FR.Frame[P,r]) (FR.Frame[Q,s]) (FR.Frame[hom P Q,Pairing[l].times r s])
+   (\ a b -> Of[P,Q,r,s,a,b].frame) fp fq ;
+} ;

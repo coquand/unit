@@ -1,0 +1,89 @@
+-- A basis identifies the endomorphism algebra with the matrix algebra.
+-- A basis is supplied as a frame (e_j,c_j) with c_i(e_j)=delta_ij.
+-- The matrix of f has entries c_i(f(e_j)). Conversely, reconstruct the
+-- j-th column of a matrix A as sum_i A_ij e_i, and send x to the sum of
+-- c_j(x) times these columns. Linearity follows from linearity of c_j.
+-- Taking coordinates recovers A by the dual equations; applying the
+-- reconstructed matrix of f recovers f by the frame reconstruction law.
+-- Expanding g(e_j) in the basis proves coord(f g)=coord(f) coord(g).
+-- No locality or SAG assumptions occur here.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ;
+ module EN = ModuleEnd[l].Over[R,setR] ;
+ module FR = Frames[l].Over[R,setR] ;
+ module AS = AlgSIP[l].Over[R,setR] ;
+ module RS = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ module At (M : MD.Module) (n : Nat) (frame : FR.Frame[M,n])
+  (dual : (i j : Fin n) -> Id R.R ((frame.form i).1 (frame.vector j)) (D.delta n i j)) {
+  module E = EN.At[M] ;
+  module MN = MnAlgebra[l].Over[R,setR,n] ;
+  module MS = ModuleFiniteSums[l].Over[R,setR,M] ;
+  module ML = ModuleSumLaws[l].Over[R,setR,M] ;
+  coordinate (f : E.H.S.E) (i j : Fin n) : R.R = (frame.form i).1 (f.1 (frame.vector j)) ;
+  column (A : MN.Mat) (j : Fin n) : M.M = MS.sum n (\ i -> M.sm (A i j) (frame.vector i)) ;
+  action (A : MN.Mat) (x : M.M) : M.M = MS.sum n (\ j -> M.sm ((frame.form j).1 x) (column A j)) ;
+  action-add (A : MN.Mat) (x y : M.M) : Id M.M (action A (M.madd x y)) (M.madd (action A x) (action A y)) =
+   trans (MS.congruent n (\ j -> M.sm ((frame.form j).1 (M.madd x y)) (column A j))
+    (\ j -> M.madd (M.sm ((frame.form j).1 x) (column A j)) (M.sm ((frame.form j).1 y) (column A j)))
+    (\ j -> trans (ap (\ a -> M.sm a (column A j)) ((frame.form j).2.1 x y))
+     (M.smE ((frame.form j).1 x) ((frame.form j).1 y) (column A j))))
+    (ML.sum-add n (\ j -> M.sm ((frame.form j).1 x) (column A j)) (\ j -> M.sm ((frame.form j).1 y) (column A j))) ;
+  action-scale (A : MN.Mat) (a : R.R) (x : M.M) : Id M.M (action A (M.sm a x)) (M.sm a (action A x)) =
+   trans (MS.congruent n (\ j -> M.sm ((frame.form j).1 (M.sm a x)) (column A j))
+    (\ j -> M.sm a (M.sm ((frame.form j).1 x) (column A j)))
+    (\ j -> trans (ap (\ c -> M.sm c (column A j)) ((frame.form j).2.2 a x))
+     (sym (M.smA a ((frame.form j).1 x) (column A j)))))
+    (sym (ML.scale-sum a n (\ j -> M.sm ((frame.form j).1 x) (column A j)))) ;
+  matrix-action (A : MN.Mat) : E.H.S.E = (action A,action-add A,action-scale A) ;
+  column-coordinate (A : MN.Mat) (i j : Fin n) : Id R.R ((frame.form i).1 (column A j)) (A i j) =
+   trans (FR.Form[M,frame.form i].sum n (\ k -> M.sm (A k j) (frame.vector k)))
+    (trans (RS.sum-cong n _ (\ k -> R.mul (D.delta n i k) (A k j))
+     (\ k -> trans ((frame.form i).2.2 (A k j) (frame.vector k))
+      (trans (ap (R.mul (A k j)) (dual i k)) (R.mulC (A k j) (D.delta n i k)))))
+     (D.sum-delta n i (\ k -> A k j))) ;
+  action-coordinate (A : MN.Mat) (x : M.M) (i : Fin n) :
+   Id R.R ((frame.form i).1 (action A x)) (RS.sum n (\ j -> R.mul (A i j) ((frame.form j).1 x))) =
+   trans (FR.Form[M,frame.form i].sum n (\ j -> M.sm ((frame.form j).1 x) (column A j)))
+    (RS.sum-cong n _ _ (\ j -> trans ((frame.form i).2.2 ((frame.form j).1 x) (column A j))
+     (trans (ap (R.mul ((frame.form j).1 x)) (column-coordinate A i j)) (R.mulC ((frame.form j).1 x) (A i j))))) ;
+  coordinate-action (A : MN.Mat) : Id MN.Mat (coordinate (matrix-action A)) A =
+   MN.mat-eq _ _ (\ i j -> trans (action-coordinate A (frame.vector j) i)
+    (trans (RS.sum-cong n _ (\ k -> R.mul (A i k) (D.delta n k j))
+     (\ k -> ap (R.mul (A i k)) (dual k j))) (D.sum-delta-right n j (A i)))) ;
+  column-end (f : E.H.S.E) (j : Fin n) : Id M.M (column (coordinate f) j) (f.1 (frame.vector j)) =
+   frame.law (f.1 (frame.vector j)) ;
+  module Linear (f : E.H.S.E) {
+   module L = DescentSubmodules[l].Over[MD.ring].Lin[M,M,f] ;
+   module Map = ML.Map[M,f.1,L.map-z,f.2.1] ;
+   reconstruct (x : M.M) : Id M.M (action (coordinate f) x) (f.1 x) =
+    trans (MS.congruent n (\ j -> M.sm ((frame.form j).1 x) (column (coordinate f) j))
+     (\ j -> M.sm ((frame.form j).1 x) (f.1 (frame.vector j)))
+      (\ j -> ap (M.sm ((frame.form j).1 x)) (column-end f j)))
+     (trans (sym (Map.combination f.2.2 n (\ j -> (frame.form j).1 x) frame.vector))
+      (ap f.1 (frame.law x))) ;
+  } ;
+  action-end (f : E.H.S.E) : Id E.H.S.E (matrix-action (coordinate f)) f =
+   E.H.ext _ f (Linear[f].reconstruct) ;
+  equivalence : Pr.Equiv E.H.S.E MN.Mat =
+   (coordinate,Pr.qinv E.H.S.E MN.Mat coordinate matrix-action coordinate-action action-end) ;
+  evaluate (f : E.H.S.E) (x : M.M) (i : Fin n) :
+   Id R.R ((frame.form i).1 (f.1 x)) (RS.sum n (\ j -> R.mul (coordinate f i j) ((frame.form j).1 x))) =
+   trans (sym (ap (frame.form i).1 (Linear[f].reconstruct x))) (action-coordinate (coordinate f) x i) ;
+  product (f g : E.H.S.E) : Id MN.Mat (coordinate (E.mul f g)) (MN.mmul (coordinate f) (coordinate g)) =
+   MN.mat-eq _ _ (\ i j -> evaluate f (g.1 (frame.vector j)) i) ;
+  unit : Id MN.Mat (coordinate E.one) MN.mone = MN.mat-eq _ _ dual ;
+  additive (f g : E.H.S.E) : Id MN.Mat (coordinate (E.V.madd f g)) (MN.madd (coordinate f) (coordinate g)) =
+   MN.mat-eq _ _ (\ i j -> (frame.form i).2.1 (f.1 (frame.vector j)) (g.1 (frame.vector j))) ;
+  scalar (a : R.R) (f : E.H.S.E) : Id MN.Mat (coordinate (E.V.sm a f)) (MN.mscale a (coordinate f)) =
+   MN.mat-eq _ _ (\ i j -> (frame.form i).2.2 a (f.1 (frame.vector j))) ;
+  iso : AS.AlgIso E.algebra MN.algebra = (equivalence,additive,scalar,product,unit) ;
+  #fails {
+   -- Composition f after g has matrix coord(f) coord(g), in that order.
+   opposite-product (f g : E.H.S.E) :
+    Id MN.Mat (coordinate (E.mul f g)) (MN.mmul (coordinate g) (coordinate f)) = product f g ;
+  } ;
+ } ;
+} ;

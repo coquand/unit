@@ -1,0 +1,105 @@
+-- Construct the commutative R-algebra of any finite presentation.
+level l ; open Ring[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) (pres : Presentations[l].Over[R,setR].Presentation) {
+ module P = Presentations[l].Over[R,setR] ;
+ module C = Algebras[l].Over[R,setR] ;
+ module D = ExpressionCongruence[l].Over[R,setR,pres] ; open D ;
+ module Q = Quotient[l].Quot[Term,Relation,proposition,reflexive,symmetric,transitive] ;
+ Carrier : U l = Q.Q ;
+ include : Term -> Carrier = Q.inc ;
+ set : Pr.isSet Carrier = Q.set ;
+ path (d : Tree) (v : Valid d) : Id Carrier (include (ends d).1) (include (ends d).2) =
+  Q.relates _ _ (witness d v) ;
+ module Binary (op : Term -> Term -> Term)
+  (cong : (p p1 q q1 : Term) -> Relation p p1 -> Relation q q1 -> Relation (op p q) (op p1 q1)) {
+  module Right (p : Term) {
+   module Descent = Q.Descend[Carrier,set,\ q -> include (op p q),
+    \ q q1 h -> Q.relates _ _ (cong p p q q1 (reflexive p) h)] ;
+  } ;
+  left-respects (p p1 : Term) (h : Relation p p1) :
+   Id (Carrier -> Carrier) Right[p].Descent.map Right[p1].Descent.map =
+   F.funext Carrier (\ q -> Carrier) _ _
+    (Q.induction @l (\ q -> Id Carrier (Right[p].Descent.map q) (Right[p1].Descent.map q)) (\ q -> set _ _)
+     (\ q -> trans (Right[p].Descent.beta q)
+      (trans (Q.relates _ _ (cong p p1 q q h (reflexive q))) (sym (Right[p1].Descent.beta q))))) ;
+  module Left = Q.Descend[Carrier -> Carrier,F.isSet-Pi Carrier (\ q -> Carrier) (\ q -> set),
+   \ p -> Right[p].Descent.map,left-respects] ;
+  operation : Carrier -> Carrier -> Carrier = Left.map ;
+  beta (p q : Term) : Id Carrier (operation (include p) (include q)) (include (op p q)) =
+   trans (Pr.happly Carrier (\ q -> Carrier) _ _ (Left.beta p) (include q)) (Right[p].Descent.beta q) ;
+ } ;
+ module Addition = Binary[\ p q -> sumE p q,D.Add.respects] ;
+ module Multiplication = Binary[\ p q -> mulE p q,D.Multiply.respects] ;
+ addQ : Carrier -> Carrier -> Carrier = Addition.operation ;
+ mulQ : Carrier -> Carrier -> Carrier = Multiplication.operation ;
+ zeroQ : Carrier = include zeroE ;
+ oneQ : Carrier = include oneE ;
+ negQ (x : Carrier) : Carrier = mulQ (include (cst (R.neg R.o))) x ;
+ forall2 (B : Carrier -> Carrier -> U l) (prop : (x y : Carrier) -> Pr.isProp (B x y))
+  (b : (p q : Term) -> B (include p) (include q)) : (x y : Carrier) -> B x y =
+  Q.induction @l (\ x -> (y : Carrier) -> B x y) (\ x -> F.isProp-Pi Carrier (B x) (prop x))
+   (\ p -> Q.induction @l (B (include p)) (prop (include p)) (b p)) ;
+ forall3 (B : Carrier -> Carrier -> Carrier -> U l) (prop : (x y z : Carrier) -> Pr.isProp (B x y z))
+  (b : (p q r : Term) -> B (include p) (include q) (include r)) : (x y z : Carrier) -> B x y z =
+  forall2 (\ x y -> (z : Carrier) -> B x y z) (\ x y -> F.isProp-Pi Carrier (B x y) (prop x y))
+   (\ p q -> Q.induction @l (B (include p) (include q)) (prop (include p) (include q)) (b p q)) ;
+ data Form : U l = atomF (p : Term) | plusF (p q : Form) | timesF (p q : Form) ;
+ raw : Form -> Term = split {
+  atomF p -> p ; plusF p q | rp rq -> sumE rp rq ; timesF p q | rp rq -> mulE rp rq } ;
+ value : Form -> Carrier = split {
+  atomF p -> include p ; plusF p q | rp rq -> addQ rp rq ; timesF p q | rp rq -> mulQ rp rq } ;
+ beta-form : (e : Form) -> Id Carrier (value e) (include (raw e)) = split {
+  atomF p -> refl (include p) ;
+  plusF p q | rp rq -> trans (Presentations[l].cong2 Carrier addQ _ _ _ _ rp rq) (Addition.beta (raw p) (raw q)) ;
+  timesF p q | rp rq -> trans (Presentations[l].cong2 Carrier mulQ _ _ _ _ rp rq) (Multiplication.beta (raw p) (raw q)) } ;
+ lift (a b : Form) (h : Relation (raw a) (raw b)) : Id Carrier (value a) (value b) =
+  trans (beta-form a) (trans (Q.relates _ _ h) (sym (beta-form b))) ;
+ add-assoc : (x y z : Carrier) -> Id Carrier (addQ x (addQ y z)) (addQ (addQ x y) z) =
+  forall3 (\ x y z -> Id Carrier (addQ x (addQ y z)) (addQ (addQ x y) z)) (\ x y z -> set _ _)
+   (\ p q r -> lift (plusF (atomF p) (plusF (atomF q) (atomF r))) (plusF (plusF (atomF p) (atomF q)) (atomF r))
+    (witness (addAssoc p q r) tt)) ;
+ add-comm : (x y : Carrier) -> Id Carrier (addQ x y) (addQ y x) =
+  forall2 (\ x y -> Id Carrier (addQ x y) (addQ y x)) (\ x y -> set _ _)
+   (\ p q -> lift (plusF (atomF p) (atomF q)) (plusF (atomF q) (atomF p)) (witness (addComm p q) tt)) ;
+ add-zero : (x : Carrier) -> Id Carrier (addQ x zeroQ) x =
+  Q.induction @l (\ x -> Id Carrier (addQ x zeroQ) x) (\ x -> set _ _)
+   (\ p -> lift (plusF (atomF p) (atomF zeroE)) (atomF p) (witness (addZero p) tt)) ;
+ add-neg : (x : Carrier) -> Id Carrier (addQ x (negQ x)) zeroQ =
+  Q.induction @l (\ x -> Id Carrier (addQ x (negQ x)) zeroQ) (\ x -> set _ _)
+   (\ p -> lift (plusF (atomF p) (timesF (atomF (cst (R.neg R.o))) (atomF p))) (atomF zeroE) (witness (addNeg p) tt)) ;
+ mul-assoc : (x y z : Carrier) -> Id Carrier (mulQ x (mulQ y z)) (mulQ (mulQ x y) z) =
+  forall3 (\ x y z -> Id Carrier (mulQ x (mulQ y z)) (mulQ (mulQ x y) z)) (\ x y z -> set _ _)
+   (\ p q r -> lift (timesF (atomF p) (timesF (atomF q) (atomF r))) (timesF (timesF (atomF p) (atomF q)) (atomF r))
+    (witness (mulAssoc p q r) tt)) ;
+ mul-comm : (x y : Carrier) -> Id Carrier (mulQ x y) (mulQ y x) =
+  forall2 (\ x y -> Id Carrier (mulQ x y) (mulQ y x)) (\ x y -> set _ _)
+   (\ p q -> lift (timesF (atomF p) (atomF q)) (timesF (atomF q) (atomF p)) (witness (mulComm p q) tt)) ;
+ mul-one : (x : Carrier) -> Id Carrier (mulQ x oneQ) x =
+  Q.induction @l (\ x -> Id Carrier (mulQ x oneQ) x) (\ x -> set _ _)
+   (\ p -> lift (timesF (atomF p) (atomF oneE)) (atomF p) (witness (mulOne p) tt)) ;
+ distributive : (x y z : Carrier) -> Id Carrier (mulQ x (addQ y z)) (addQ (mulQ x y) (mulQ x z)) =
+  forall3 (\ x y z -> Id Carrier (mulQ x (addQ y z)) (addQ (mulQ x y) (mulQ x z))) (\ x y z -> set _ _)
+   (\ p q r -> lift (timesF (atomF p) (plusF (atomF q) (atomF r)))
+    (plusF (timesF (atomF p) (atomF q)) (timesF (atomF p) (atomF r))) (witness (distrib p q r) tt)) ;
+ ring : CRing = mkCRing Carrier zeroQ oneQ addQ mulQ negQ
+  add-assoc add-comm add-zero add-neg mul-assoc mul-comm mul-one distributive ;
+ constant (a : R.R) : Carrier = include (cst a) ;
+ constant-add (a b : R.R) : Id Carrier (constant (R.add a b)) (addQ (constant a) (constant b)) =
+  trans (sym (path (coeffAdd a b) tt)) (sym (Addition.beta (cst a) (cst b))) ;
+ constant-mul (a b : R.R) : Id Carrier (constant (R.mul a b)) (mulQ (constant a) (constant b)) =
+  trans (sym (path (coeffMul a b) tt)) (sym (Multiplication.beta (cst a) (cst b))) ;
+ inclusion : RingHom[l].Hom R ring = (constant,refl oneQ,constant-add,constant-mul) ;
+ algebra : C.Algebra = C.mkAlgebra ring set inclusion ;
+ generators (v : V) : Carrier = include (var v) ;
+ reify : (e : Term) -> Id Carrier (P.eval V algebra generators e) (include e) = split {
+  var v -> refl (include (var v)) ; cst r -> refl (constant r) ;
+  sumE p q | rp rq -> trans (Presentations[l].cong2 Carrier addQ _ _ _ _ rp rq) (Addition.beta p q) ;
+  mulE p q | rp rq -> trans (Presentations[l].cong2 Carrier mulQ _ _ _ _ rp rq) (Multiplication.beta p q) } ;
+ all-equations : (es : List Term) -> ((e : Term) -> Member e es -> Member e pres.2) -> P.Zeros V algebra generators es = split {
+  nil -> \ embed -> tt ;
+  cons p ps | ih -> \ embed ->
+   (trans (reify p) (path (equation p (embed p (inl (refl p)))) tt),ih (\ e m -> embed e (inr m))) } ;
+ solution : P.Solutions pres algebra = (generators,all-equations pres.2 (\ e m -> m)) ;
+} ;
