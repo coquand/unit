@@ -150,6 +150,11 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 
 - [`unit1.pdf`](doc/unit1.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
+- [`scott-domains-revised.pdf`](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf):
+  the latest Scott domains note: continuous function spaces, the EP–CUSL
+  equivalence, dependent products and sums, the continuous finitary-projector
+  functor, and adequacy via an independent logical relation. The projector
+  proof uses admissible fixed-point induction.
 - [`etale-gabber.pdf`](doc/etale-gabber.pdf): Gabber's theorem for étale
   stack gerbes, internally, reduced by Hilbert 90 to the
   [root-topology theorem](doc/gabber-h2.pdf); the
@@ -268,6 +273,10 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
   lattice, gluing, affineness, the doubled line and the projective line;
   [`functorial-schemes.pdf`](doc/functorial-schemes.pdf): the essential
   image of the functor of points.
+- [`doubled-line-not-separated.pdf`](doc/doubled-line-not-separated.pdf):
+  a constructive proof that the line with doubled origin over a ring with
+  `1 ≠ 0` is not separated, using locally ringed lattices: generation of
+  sections on the overlap would force `1/X` to be a polynomial.
 - [`etale-classical-global.pdf`](doc/etale-classical-global.pdf): the
   classical passage from primewise neighbourhoods to a finite cover, and
   its formal boundary (the segment of excluded middle and prime
