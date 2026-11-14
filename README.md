@@ -8,6 +8,11 @@ without copying the body. Besides modules there are record types, types of
 tuples with named fields. A record type is written like a module, but it is
 a type, and a module is not.
 
+**Scott domains and definitional inversion**
+
+The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) cover Scott domains, dependent products and sums, finitary projectors, and adequacy and definitional inversion via an independent logical relation.
+In Theorem 4.2, finitary projectors are represented by their compact fixed points; the [independent Unit session](https://github.com/coquand/domain-semantics/blob/main/UNIT/CUSLFpCheck.seg) follows this representation through [closed compact families](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLClosedFamilies.seg) to the continuous `Fp` functor.
+
 Recursion is only through the eliminators of data types. A function out of
 a data type is defined by cases on the constructors; in the case of a
 constructor with arguments of the type being defined, the values of the
