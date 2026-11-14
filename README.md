@@ -424,7 +424,7 @@ parameters `univ`, `images`, `surjections`); no axiom of synthetic
 algebraic geometry and no hypothesis on the base ring.
 
 - `zmt-general`: Zariski's main theorem in the form of
-  Alain–Coquand–Lombardi, in every dimension
+  Alonzo–Coquand–Lombardi, in every dimension
   (`FinalZMTGeneral.Theorem...result`): if E = R[x₁,…,xₙ] and E/IE is
   merely finite over R/I, there is merely s with s − 1 ∈ IE such that
   B = R[s, sx₁,…,sxₙ] is finite over R and the canonical map
