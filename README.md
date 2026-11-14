@@ -10,8 +10,8 @@ a type, and a module is not.
 
 **Scott domains and definitional inversion**
 
-The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) cover Scott domains, dependent products and sums, finitary projectors, and adequacy and definitional inversion via an independent logical relation.
-In Theorem 4.2, finitary projectors are represented by their compact fixed points; the [independent Unit session](https://github.com/coquand/domain-semantics/blob/main/UNIT/CUSLFpCheck.seg) follows this representation through [closed compact families](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLClosedFamilies.seg) to the continuous `Fp` functor.
+The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.
+The projector proof uses [admissible fixed-point induction](https://github.com/coquand/domain-semantics/blob/main/UNIT/IndependentKleeneProjector.seg); in Theorem 4.2, the [independent Unit session](https://github.com/coquand/domain-semantics/blob/main/UNIT/CUSLFpCheck.seg) follows the mathematical passage from finitary projectors to their [compact fixed-point families](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLClosedFamilies.seg).
 
 Recursion is only through the eliminators of data types. A function out of
 a data type is defined by cases on the constructors; in the case of a
