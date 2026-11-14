@@ -1,33 +1,26 @@
 # Unit
 
 **Unit** is a small proof checker for a dependent type theory with
-definitions. Its module system is based on the segments of Automath: a
-module is a list of declarations (units), its parameters are the
-declarations without a body, and an instance only binds the parameters,
-without copying the body. Besides modules there are record types, types of
-tuples with named fields. A record type is written like a module, but it is
-a type, and a module is not.
+definitions. Its module system is based on the segments of Automath.
 
-**Scott domains and definitional inversion**
+See [building and checking](#building-and-checking) to run the checker,
+the [developments](#developments) and [documents](#documents-doc) for the
+mathematics, and the [language overview](#language-overview) for modules,
+records and recursion.
+
+## Featured developments
+
+### Scott domains and definitional inversion
 
 The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.
 The projector proof uses [admissible fixed-point induction](https://github.com/coquand/domain-semantics/blob/main/UNIT/IndependentKleeneProjector.seg); in Theorem 4.2, the [independent Unit session](https://github.com/coquand/domain-semantics/blob/main/UNIT/CUSLFpCheck.seg) follows the mathematical passage from finitary projectors to their [compact fixed-point families](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLClosedFamilies.seg).
 
-**A synthetic proof of Gabber's theorem for the étale topology**
+### A synthetic proof of Gabber's theorem for the étale topology
 
 The [étale note](doc/etale-gabber.pdf), [root-topology proof](doc/gabber-h2.pdf), and [checked development](sag/etale-gabber) give an internal proof of Gabber's theorem for étale stack gerbes over affine spectra in synthetic algebraic geometry: the sheafifications are constructed, and [Hilbert 90 reduces the étale case to the root topology](sag/etale-gabber/EtaleStacks.seg).
 The [new gluing argument](doc/gabber-recollement.pdf) uses elementary weak cancellation and an explicit clutching correction, avoiding general effectiveness, Bass cancellation, and reduction to noetherian rings; the complete Unit check covers 425 modules.
 
-Recursion is only through the eliminators of data types. A function out of
-a data type is defined by cases on the constructors; in the case of a
-constructor with arguments of the type being defined, the values of the
-function on these arguments are available as extra variables:
-
-    plus (n : N) : N -> N = split { zero -> n ; suc m | r -> suc r } ;
-
-Here `r` stands for `plus n m`. A definition is not in scope in its own body,
-so this is the only form of recursion: primitive recursion at higher types,
-as in Hilbert's *On the infinite* (1925) and Gödel's system T.
+## Developments
 
 This repository contains the checker and fifteen developments written with it:
 
@@ -94,7 +87,9 @@ This repository contains the checker and fifteen developments written with it:
   paper's own form (`domain/ideal`). An Agda version with finite elements
   is `LAZY/` in [coquand/domain-semantics](https://github.com/coquand/domain-semantics).
 
-**Mathematical attribution: all mathematical results concerning the D
+### Mathematical attribution
+
+**All mathematical results concerning the D
 modality and the D_n modalities in this repository are due to Christian
 Sattler.** This includes the constructions and proofs, the localisation
 results, the finite approximations, their truncation properties, and the
@@ -632,7 +627,31 @@ for propositions are compatible with univalence.
   (height < ε₀), `attained`, `cofinal`, `least`. Function extensionality
   is the only parameter; `README.txt` maps the files to the Agda modules.
 
-## Conversion, and what checking opens
+## Language overview
+
+### Modules and records
+
+The module system is based on the segments of Automath: a module is a list
+of declarations (units), its parameters are the declarations without a
+body, and an instance only binds the parameters, without copying the body.
+Besides modules there are record types, types of tuples with named fields.
+A record type is written like a module, but it is a type, and a module is
+not.
+
+### Recursion
+
+Recursion is only through the eliminators of data types. A function out of
+a data type is defined by cases on the constructors; in the case of a
+constructor with arguments of the type being defined, the values of the
+function on these arguments are available as extra variables:
+
+    plus (n : N) : N -> N = split { zero -> n ; suc m | r -> suc r } ;
+
+Here `r` stands for `plus n m`. A definition is not in scope in its own body,
+so this is the only form of recursion: primitive recursion at higher types,
+as in Hilbert's *On the infinite* (1925) and Gödel's system T.
+
+### Conversion, and what checking opens
 
 Conversion is uniform. Two values are first compared by their names:
 strictly, or as the same definition at convertible arguments, without
