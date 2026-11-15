@@ -78,12 +78,13 @@ least-from (alpha : Nat -> Bool) (k m : Nat) (lt : NO.Lt m k) (h : Id Bool (alph
  inl f -> (f.1, f.2.2) ;
  inr b -> Pr.absurd ((n : Nat) * Min alpha n) (BR.true-false (trans (sym h) (b m lt))) } ;
 
-module Over (ax : SA.Assumptions) {
- module SD = StoneDuality[l,k].Over[ax] ;
-
- ---------------------------------------------------------------------
- -- Theorem 1.14: not WLPO
-
+-- Axiom 1 at 2[N] alone.  Continuity: every f : 2^N -> 2 is evaluation at
+-- some c in 2[N] (on Sp(2[N]) = 2^N), and c is the class of an element with
+-- a truth table on k generators, so f alpha depends only on the bits of
+-- alpha below k (FreeCountable.agree).  Theorem 1.14: if WLPO held, f alpha
+-- = 1 iff alpha is 0 everywhere would have such a k, but f(0) = 1 and
+-- f(delta_k) = 0 while 0 and delta_k agree below k.
+module Continuity (duality : SA.Duality) {
  zeros (n : Nat) : FN.Elem = FN.ezero ;
  module G0 = P.Generated[FN.free, zeros] ;
  C0 : P.Booleω = TP.presented-booleω zeros ;
@@ -92,37 +93,54 @@ module Over (ax : SA.Assumptions) {
  pt-value (alpha : Nat -> Bool) (x : FN.Elem) : Id Bool ((pt alpha).1 (G0.Q.include x)) (x.1 alpha) =
   P.Point[zeros, alpha, \ n -> refl false].value x ;
 
- module NotWLPO (w : WLPO) {
-  f (alpha : Nat -> Bool) : Bool = decide (AllZero alpha) (w alpha) ;
+ -- alpha and beta agree below k
+ Agree (k : Nat) (alpha beta : Nat -> Bool) : U l = (n : Nat) -> NO.Lt n k -> Id Bool (alpha n) (beta n) ;
+ -- f depends only on the bits below k
+ Modulus (f : (Nat -> Bool) -> Bool) (k : Nat) : U l =
+  (alpha beta : Nat -> Bool) -> Agree k alpha beta -> Id Bool (f alpha) (f beta) ;
+
+ module Ev (f : (Nat -> Bool) -> Bool) {
   g (s : P.Sp C0.1) : Bool = f (\ n -> s.1 (G0.Q.include (FN.gen n))) ;
-  c : G0.Q.Carrier = (ax.duality C0).sec g ;
+  c : G0.Q.Carrier = (duality C0).sec g ;
   at (alpha : Nat -> Bool) : Id Bool ((pt alpha).1 c) (f alpha) =
-   trans (Pr.happly (P.Sp C0.1) (\ s -> Bool) _ g ((ax.duality C0).sec-eq g) (pt alpha))
+   trans (Pr.happly (P.Sp C0.1) (\ s -> Bool) _ g ((duality C0).sec-eq g) (pt alpha))
     (ap f (F.funext Nat (\ n -> Bool) (\ n -> (pt alpha).1 (G0.Q.include (FN.gen n))) alpha
       (\ n -> pt-value alpha (FN.gen n)))) ;
+  -- on an element x of class c with a truth table on k generators
+  value (x : FN.Elem) (p : Id G0.Q.Carrier (G0.Q.include x) c) (alpha : Nat -> Bool) : Id Bool (f alpha) (x.1 alpha) =
+   trans (sym (at alpha)) (trans (ap (pt alpha).1 (sym p)) (pt-value alpha x)) ;
+  modulus (x : FN.Elem) (p : Id G0.Q.Carrier (G0.Q.include x) c) (r : FN.Rep x.1) : Modulus f r.1 =
+   \ alpha beta h -> calc Bool { f alpha
+    =< value x p alpha > x.1 alpha
+    =< FN.agree x r alpha beta (\ i -> trans (FN.res-index Bool r.1 alpha i)
+         (trans (h (FN.index r.1 i) (TP.index-lt r.1 i)) (sym (FN.res-index Bool r.1 beta i))))
+    > x.1 beta
+    =< sym (value x p beta) > f beta } ;
+ } ;
+ continuity (f : (Nat -> Bool) -> Bool) : T.Trunc[(k : Nat) * Modulus f k].carrier =
+  TC.rec ((x : FN.Elem) * Id G0.Q.Carrier (G0.Q.include x) Ev[f].c) @l
+   (T.Trunc[(k : Nat) * Modulus f k].carrier) T.Trunc[(k : Nat) * Modulus f k].proposition (\ u ->
+    TC.map (FN.Rep u.1.1) ((k : Nat) * Modulus f k) (\ r -> (r.1, Ev[f].modulus u.1 u.2 r)) u.1.2)
+   (G0.Q.representative Ev[f].c) ;
+
+ ---------------------------------------------------------------------
+ -- Theorem 1.14: not WLPO
+ module NotWLPO (w : WLPO) {
+  f (alpha : Nat -> Bool) : Bool = decide (AllZero alpha) (w alpha) ;
   f-zero : Id Bool (f TP.zeroes) true = decide-yes (AllZero TP.zeroes) (\ n -> refl false) (w TP.zeroes) ;
   f-delta (k : Nat) : Id Bool (f (NO.delta k)) false =
    decide-no (AllZero (NO.delta k)) (\ h -> BR.true-false (trans (sym (NO.delta-self k)) (h k))) (w (NO.delta k)) ;
-  -- on an element x of class c with a truth table on k generators
-  contradiction (x : FN.Elem) (p : Id G0.Q.Carrier (G0.Q.include x) c) (r : FN.Rep x.1) : Empty =
-   BR.true-false (calc Bool { true
-    =< sym f-zero > f TP.zeroes
-    =< sym (at TP.zeroes) > (pt TP.zeroes).1 c
-    =< ap (pt TP.zeroes).1 (sym p) > (pt TP.zeroes).1 (G0.Q.include x)
-    =< pt-value TP.zeroes x > x.1 TP.zeroes
-    =< FN.agree x r TP.zeroes (NO.delta r.1) (\ i -> trans (FN.res-index Bool r.1 TP.zeroes i)
-         (trans (sym (NO.delta-ne r.1 (FN.index r.1 i) (NO.lt-neq (FN.index r.1 i) r.1 (TP.index-lt r.1 i))))
-          (sym (FN.res-index Bool r.1 (NO.delta r.1) i))))
-    > x.1 (NO.delta r.1)
-    =< sym (pt-value (NO.delta r.1) x) > (pt (NO.delta r.1)).1 (G0.Q.include x)
-    =< ap (pt (NO.delta r.1)).1 p > (pt (NO.delta r.1)).1 c
-    =< at (NO.delta r.1) > f (NO.delta r.1)
-    =< f-delta r.1 > false }) ;
-  absurd : Empty =
-   TC.rec ((x : FN.Elem) * Id G0.Q.Carrier (G0.Q.include x) c) @l Empty Pr.isProp-Empty (\ u ->
-    TC.rec (FN.Rep u.1.1) @l Empty Pr.isProp-Empty (contradiction u.1 u.2) u.1.2) (G0.Q.representative c) ;
+  contradiction (m : (k : Nat) * Modulus f k) : Empty =
+   BR.true-false (trans (sym f-zero) (trans (m.2 TP.zeroes (NO.delta m.1)
+     (\ n lt -> sym (NO.delta-ne m.1 n (NO.lt-neq n m.1 lt)))) (f-delta m.1))) ;
+  absurd : Empty = TC.rec ((k : Nat) * Modulus f k) @l Empty Pr.isProp-Empty contradiction (continuity f) ;
  } ;
  not-wlpo (w : WLPO) : Empty = NotWLPO[w].absurd ;
+} ;
+
+module Over (ax : SA.Assumptions) {
+ module SD = StoneDuality[l,k].Over[ax] ;
+
 
  ---------------------------------------------------------------------
  -- Corollary 1.16 (MP) and Theorem 1.15
