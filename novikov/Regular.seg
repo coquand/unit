@@ -1,0 +1,253 @@
+-- Regular.seg: regular sequents (Novikov 1943, section 4) and their
+-- structural properties (section 5, Lemmas 1-3 and 7).
+--
+-- The truth values of the constants are fixed by val: x_n is true if
+-- val n is true, ~x_n if it is false (Novikov's x'_n, section 3).
+--
+-- Definition.  A sequent G is regular if it has a summand c = comp (G m) k,
+-- a product, such that
+--   c is 1 or a true constant    (an elementary regular formula), or
+--   c = Sp g, and for every j the sequent  g j , G  is regular
+--                                (g j is a factor of c, itself a sum, so
+--                                 its summands are merged into G).
+-- The summand c is Novikov's distinguished term.  Unlike Novikov we keep
+-- it in the premises (as Tait does); by weakening (below) the two
+-- definitions give the same regular sequents.
+--
+-- Reg is an inductive family indexed by sequents, with one constructor
+-- for each clause: ax (the distinguished term is true: 1 or a true
+-- constant) and pi (the distinguished term is a product Sp g, with the
+-- constituents).  Rule P c is what a distinguished term c asks: its truth
+-- if c is atomic, P g if c = Sp g.
+--
+-- Induction on regularity (Novikov: "from the constituents to the
+-- formula") is regInd: to prove C G for all regular G it suffices to
+-- prove C G from a focus whose premises are regular and satisfy C.
+--
+-- Inclusion.  Sub G H: every summand of G is a false atom (0 or a false constant)
+-- or a summand of H.  Then a
+-- regular G gives a regular H (weak: weakening, exchange, contraction,
+-- removal of false atoms (Novikov's Lemma 14), and the merging of a one-summand sum W u into a
+-- sum having u as a summand), by induction on the proof for G.
+
+level l ;
+open Base ; open Paths[l] ; open Formula[l] ;
+
+-- val : Nat -> Bool, the parameter of the development (All.seg)
+
+-- the truth of an atomic formula; a product is not atomic
+True : T -> U l = split {
+  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; Sp g -> Empty } ;
+
+data Reg : (G : Seq) -> U l =
+    ax (G : Seq) (m k : Nat) (t : True (comp (G m) k)) : Reg G
+  | pi (G : Seq) (m k : Nat) (g : Nat -> T) (e : Id T (comp (G m) k) (Sp g))
+       (ds : (j : Nat) -> Reg (cons (g j) G)) : Reg G ;
+
+-- what a distinguished term asks: its truth, or P of its factors
+Rule (P : (Nat -> T) -> U l) : T -> U l = split {
+  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; Sp g -> P g } ;
+
+trueRule (P : (Nat -> T) -> U l) : (t : T) -> True t -> Rule P t = split {
+  F0 -> \ v -> v ;
+  F1 -> \ v -> v ;
+  X n -> \ v -> v ;
+  NX n -> \ v -> v ;
+  Sp f -> \ v -> absurd v } ;
+
+-- the premises of a focus on a product Sp g of G
+Prem (G : Seq) (g : Nat -> T) : U l = (j : Nat) -> Reg (cons (g j) G) ;
+
+ruleMap (P Q : (Nat -> T) -> U l) (h : (g : Nat -> T) -> P g -> Q g) : (t : T) -> Rule P t -> Rule Q t = split {
+  F0 -> \ v -> v ;
+  F1 -> \ v -> v ;
+  X n -> \ v -> v ;
+  NX n -> \ v -> v ;
+  Sp g -> h g } ;
+
+-- the false atoms: 0 and the false constants, never the focus of a rule
+FalseAtom : T -> U l = split {
+  F0 -> Top ; F1 -> Empty ; X n -> Fl (val n) ; NX n -> Tr (val n) ; Sp g -> Empty } ;
+
+falseRule (P : (Nat -> T) -> U l) : (t : T) -> FalseAtom t -> Rule P t -> Empty = split {
+  F0 -> \ z v -> v ;
+  F1 -> \ z v -> z ;
+  X n -> \ z v -> trFl (val n) v z ;
+  NX n -> \ z v -> trFl (val n) z v ;
+  Sp g -> \ z v -> z } ;
+
+------------------------------------------------------------------------
+-- the rule, with regular premises, gives a regular sequent
+
+focusAt (G : Seq) (m k : Nat) : (t : T) -> Id T t (comp (G m) k) -> Rule (Prem G) t -> Reg G = split {
+  F0 -> \ e v -> absurd v ;
+  F1 -> \ e v -> ax G m k (substH True e tt) ;
+  X n -> \ e v -> ax G m k (substH True e v) ;
+  NX n -> \ e v -> ax G m k (substH True e v) ;
+  Sp g -> \ e v -> pi G m k g (symH e) v } ;
+
+focus (G : Seq) (m k : Nat) (v : Rule (Prem G) (comp (G m) k)) : Reg G =
+  focusAt G m k (comp (G m) k) (refl (comp (G m) k)) v ;
+
+------------------------------------------------------------------------
+-- induction on regularity
+
+PremC (C : Seq -> U l) (G : Seq) (g : Nat -> T) : U l =
+  (j : Nat) -> Reg (cons (g j) G) * C (cons (g j) G) ;
+
+Step (C : Seq -> U l) : U l =
+  (G : Seq) -> (m k : Nat) -> Rule (PremC C G) (comp (G m) k) -> C G ;
+
+regInd (C : Seq -> U l) (step : Step C) : (G : Seq) -> Reg G -> C G = split {
+  ax G m k t -> step G m k (trueRule (PremC C G) (comp (G m) k) t) ;
+  pi G m k g e ds | r -> step G m k (substH (Rule (PremC C G)) (symH e) (\ j -> (ds j, r j))) } ;
+
+-- forgetting the values of C
+forget (C : Seq -> U l) (G : Seq) (g : Nat -> T) (w : PremC C G g) : Prem G g = \ j -> (w j).1 ;
+
+------------------------------------------------------------------------
+-- inclusion of sequents
+
+Cov (H : Seq) (t : T) : U l = Or (FalseAtom t) ((n : Nat) * (i : Nat) * Id T (comp (H n) i) t) ;
+
+Sub (G H : Seq) : U l = (m k : Nat) -> Cov H (comp (G m) k) ;
+
+-- a summand at a place of H
+at (H : Seq) (n i : Nat) : Cov H (comp (H n) i) = inr (n, i, refl (comp (H n) i)) ;
+
+subRefl (G : Seq) : Sub G G = \ m k -> at G m k ;
+
+covTrans (H K : Seq) (s : Sub H K) (t : T) : Cov H t -> Cov K t = split {
+  inl z -> inl z ;
+  inr p -> substH (Cov K) p.2.2 (s p.1 p.2.1) } ;
+
+subTrans (G H K : Seq) (s1 : Sub G H) (s2 : Sub H K) : Sub G K =
+  \ m k -> covTrans H K s2 (comp (G m) k) (s1 m k) ;
+
+subTail (a : T) (G : Seq) : Sub G (cons a G) = \ m k -> at (cons a G) (suc m) k ;
+
+shiftCov (a : T) (H : Seq) (t : T) : Cov H t -> Cov (cons a H) t = split {
+  inl z -> inl z ;
+  inr p -> inr (suc p.1, p.2.1, p.2.2) } ;
+
+subCons (a : T) (G H : Seq) (s : Sub G H) : Sub (cons a G) (cons a H) = split {
+  zero -> \ k -> at (cons a H) zero k ;
+  suc m -> \ k -> shiftCov a H (comp (G m) k) (s m k) } ;
+
+swapTail (a b : T) (G : Seq) : (m : Nat) -> (k : Nat) -> Cov (cons b (cons a G)) (comp (cons b G m) k) = split {
+  zero -> \ k -> at (cons b (cons a G)) zero k ;
+  suc m -> \ k -> at (cons b (cons a G)) (suc (suc m)) k } ;
+
+subSwap (a b : T) (G : Seq) : Sub (cons a (cons b G)) (cons b (cons a G)) = split {
+  zero -> \ k -> at (cons b (cons a G)) (suc zero) k ;
+  suc m -> swapTail a b G m } ;
+
+subDup (a : T) (G : Seq) : Sub (cons a (cons a G)) (cons a G) = split {
+  zero -> \ k -> at (cons a G) zero k ;
+  suc m -> \ k -> at (cons a G) m k } ;
+
+subFalse (a : T) (G : Seq) (z : (k : Nat) -> FalseAtom (comp a k)) : Sub (cons a G) G = split {
+  zero -> \ k -> inl (z k) ;
+  suc m -> \ k -> at G m k } ;
+
+subF0 (G : Seq) : Sub (cons F0 G) G = subFalse F0 G (\ k -> tt) ;
+
+-- an inclusion given place by place
+sub1 (a : T) (G H : Seq) (ca : (k : Nat) -> Cov H (comp a k)) (s : Sub G H) : Sub (cons a G) H = split {
+  zero -> ca ;
+  suc m -> s m } ;
+
+subEmpty (H : Seq) : Sub empty H = \ m k -> inl tt ;
+
+-- consistency: the empty sequent is not regular (every summand is 0)
+notEmptyC (G : Seq) : U l = Sub G empty -> Empty ;
+
+notEmptyCov (G : Seq) (t : T) (v : Rule (PremC notEmptyC G) t) : Cov empty t -> Empty = split {
+  inl z -> falseRule (PremC notEmptyC G) t z v ;
+  inr p -> substH (Rule (PremC notEmptyC G)) (symH p.2.2) v } ;
+
+notEmpty (p : Reg empty) : Empty =
+  regInd notEmptyC (\ G m k v s -> notEmptyCov G (comp (G m) k) v (s m k)) empty p (subRefl empty) ;
+
+-- a formula pushed under the special first place X
+subPush (a X : T) (G B : Seq) (s : Sub G (cons X B)) : Sub (cons a G) (cons X (cons a B)) =
+  subTrans (cons a G) (cons a (cons X B)) (cons X (cons a B))
+    (subCons a G (cons X B) s) (subSwap a X B) ;
+
+------------------------------------------------------------------------
+-- weakening
+
+WeakC (G : Seq) : U l = (H : Seq) -> Sub G H -> Reg H ;
+
+-- a focus on a summand covered by H, with premises giving those of H
+covRule (H : Seq) (P : (Nat -> T) -> U l) (h : (g : Nat -> T) -> P g -> Prem H g)
+  (t : T) (v : Rule P t) : Cov H t -> Reg H = split {
+  inl z -> absurd (falseRule P t z v) ;
+  inr p -> focus H p.1 p.2.1 (substH (Rule (Prem H)) (symH p.2.2) (ruleMap P (Prem H) h t v)) } ;
+
+weakStep : Step WeakC = \ G m k v H s ->
+  covRule H (PremC WeakC G) (\ g w j -> (w j).2 (cons (g j) H) (subCons (g j) G H s))
+    (comp (G m) k) v (s m k) ;
+
+weak (G H : Seq) (s : Sub G H) (p : Reg G) : Reg H = regInd WeakC weakStep G p H s ;
+
+-- a 0 in first place can be removed
+str0 (G : Seq) (p : Reg (cons F0 G)) : Reg G = weak (cons F0 G) G (subF0 G) p ;
+
+wkTail (a : T) (G : Seq) (p : Reg G) : Reg (cons a G) = weak G (cons a G) (subTail a G) p ;
+
+------------------------------------------------------------------------
+-- replacing the formula in first place
+--
+-- Most lemmas below have the form: if  X , B  is regular then so is
+-- Y , B,  under an invariant Q on B preserved by adding formulas.  The
+-- proof is by induction on a proof of a sequent G included in  X , B,
+-- for all such B.  A focus on a summand of B is copied; a focus on a
+-- summand of X is the case proper to each lemma, the handler.
+
+RepC (X Y : T) (Q : Seq -> U l) (G : Seq) : U l =
+  (B : Seq) -> Q B -> Sub G (cons X B) -> Reg (cons Y B) ;
+
+QExt (Q : Seq -> U l) : U l = (a : T) -> (B : Seq) -> Q B -> Q (cons a B) ;
+
+Handler (X Y : T) (Q : Seq -> U l) : U l =
+  (G B : Seq) -> Q B -> Sub G (cons X B) -> (l : Nat) ->
+  Rule (PremC (RepC X Y Q) G) (comp X l) -> Reg (cons Y B) ;
+
+module Replace (X Y : T) (Q : Seq -> U l) (qe : QExt Q) (h : Handler X Y Q) {
+
+  C : Seq -> U l = RepC X Y Q ;
+
+  -- a focus on a summand of B, copied into  Y , B
+  copy (G B : Seq) (q : Q B) (s : Sub G (cons X B)) (g : Nat -> T) (w : PremC C G g)
+    : Prem (cons Y B) g = \ j ->
+    weak (cons Y (cons (g j) B)) (cons (g j) (cons Y B)) (subSwap Y (g j) B)
+      ((w j).2 (cons (g j) B) (qe (g j) B q) (subPush (g j) X G B s)) ;
+
+  place (G B : Seq) (q : Q B) (s : Sub G (cons X B)) (t : T) (v : Rule (PremC C G) t)
+    : (n : Nat) -> (i : Nat) -> Id T (comp (cons X B n) i) t -> Reg (cons Y B) = split {
+    zero -> \ i e -> h G B q s i (substH (Rule (PremC C G)) (symH e) v) ;
+    suc n -> \ i e -> focus (cons Y B) (suc n) i
+      (substH (Rule (Prem (cons Y B))) (symH e) (ruleMap (PremC C G) (Prem (cons Y B)) (copy G B q s) t v)) } ;
+
+  cover (G B : Seq) (q : Q B) (s : Sub G (cons X B)) (t : T) (v : Rule (PremC C G) t)
+    : Cov (cons X B) t -> Reg (cons Y B) = split {
+    inl z -> absurd (falseRule (PremC C G) t z v) ;
+    inr p -> place G B q s t v p.1 p.2.1 p.2.2 } ;
+
+  step : Step C = \ G m k v B q s -> cover G B q s (comp (G m) k) v (s m k) ;
+
+  replace (B : Seq) (q : Q B) (p : Reg (cons X B)) : Reg (cons Y B) =
+    regInd C step (cons X B) p B q (subRefl (cons X B)) ;
+} ;
+
+-- in a handler, the focus on X itself
+recX (X Y : T) (Q : Seq -> U l) (G B : Seq) (s : Sub G (cons X B)) (l : Nat)
+  (v : Rule (PremC (RepC X Y Q) G) (comp X l)) : Reg (cons X B) =
+  focus (cons X B) zero l
+    (ruleMap (PremC (RepC X Y Q) G) (Prem (cons X B))
+      (\ g w j -> weak (cons (g j) G) (cons (g j) (cons X B)) (subCons (g j) G (cons X B) s) (w j).1)
+      (comp X l) v) ;
+
+NoQ (B : Seq) : U l = Top ;
+noQ : QExt NoQ = \ a B q -> tt ;

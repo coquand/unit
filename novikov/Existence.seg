@@ -1,0 +1,204 @@
+-- Existence.seg: Novikov's application to existence proofs (1943,
+-- section 10): from a proof of  exists n F(n),  with F(n) decidable, one
+-- finds an n with F(n) true.  This is Markov's rule for the calculus.
+--
+-- Decidable propositions.  F(n) is a finitary formula over the constants
+-- (x_n, ~x_n, binary & and v); its truth is decided by computing the
+-- truth values of its constants.  In the infinitary calculus it is the
+-- product emb F(n), and
+--   Lemma A.  if F is true then  W (emb F) , G  is regular;
+--             if F is false then  neg (emb F) , G  is regular;
+-- by induction on F (truth is computed, so this is no cut).
+--
+-- Theorem (Novikov).  If the sum of the emb F(n) is regular, then F(n)
+-- is true for some n, computed from the regularity proof.
+-- Proof, as in Novikov.  Let x be a true constant and put y_n = x if F(n)
+-- is true, y_n = ~x if F(n) is false.  The implication
+--   sum_n F(n) -> sum_n y_n
+-- is regular: for each n either y_n is true, or ~F(n) is regular (Lemma
+-- A).  By the rule of inference, sum_n y_n is regular.  In a regularity
+-- proof of a sum of constants the last focus is on a true summand y_n
+-- (there is nothing else to focus on): then y_n = x and F(n) is true.
+
+level l ;
+open Base ; open Paths[l] ; open Formula[l] ; open Regular[l] ; open Identity[l] ; open Cut[l] ; open Calculus[l] ;
+
+------------------------------------------------------------------------
+-- the witness in a sum of constants
+
+-- the constants, with their truth
+Lit : T -> U l = split { F0 -> Empty ; F1 -> Empty ; X n -> Top ; NX n -> Top ; Sp f -> Empty } ;
+litRule (P : (Nat -> T) -> U l) : (t : T) -> Lit t -> Rule P t -> True t = split {
+  F0 -> \ c v -> v ;
+  F1 -> \ c v -> absurd c ;
+  X n -> \ c v -> v ;
+  NX n -> \ c v -> v ;
+  Sp f -> \ c v -> absurd c } ;
+
+module Witness (Y : Nat -> T) (lit : (n : Nat) -> Lit (Y n)) {
+
+  Wit : U l = (n : Nat) * True (Y n) ;
+
+  C (G : Seq) : U l = Sub G (cons (Sp Y) empty) -> Wit ;
+
+  place (G : Seq) (t : T) (v : Rule (PremC C G) t)
+    : (m : Nat) -> (i : Nat) -> Id T (comp (cons (Sp Y) empty m) i) t -> Wit = split {
+    zero -> \ i e -> (i, litRule (PremC C G) (Y i) (lit i) (substH (Rule (PremC C G)) (symH e) v)) ;
+    suc m -> \ i e -> absurd (substH (Rule (PremC C G)) (symH e) v) } ;
+
+  cover (G : Seq) (t : T) (v : Rule (PremC C G) t) : Cov (cons (Sp Y) empty) t -> Wit = split {
+    inl z -> absurd (falseRule (PremC C G) t z v) ;
+    inr p -> place G t v p.1 p.2.1 p.2.2 } ;
+
+  step : Step C = \ G m k v s -> cover G (comp (G m) k) v (s m k) ;
+
+  -- the witness is read off the last focus of the proof
+  witness (p : Reg (cons (Sp Y) empty)) : Wit =
+    regInd C step (cons (Sp Y) empty) p (subRefl (cons (Sp Y) empty)) ;
+} ;
+
+------------------------------------------------------------------------
+-- decidable propositions
+
+Holds : Fm -> U l = split {
+  cx n -> Tr (val n) ;
+  cnx n -> Fl (val n) ;
+  fand a b | ra rb -> ra * rb ;
+  for a b | ra rb -> Or ra rb } ;
+
+Fails : Fm -> U l = split {
+  cx n -> Fl (val n) ;
+  cnx n -> Tr (val n) ;
+  fand a b | ra rb -> Or ra rb ;
+  for a b | ra rb -> ra * rb } ;
+
+orB (A B A' B' : U l) (a : A) : Or B B' -> Or (A * B) (Or A' B') = split {
+  inl b -> inl (a, b) ;
+  inr b' -> inr (inr b') } ;
+
+decAnd (A B A' B' : U l) (y : Or B B') : Or A A' -> Or (A * B) (Or A' B') = split {
+  inl a -> orB A B A' B' a y ;
+  inr a' -> inr (inl a') } ;
+
+orB' (A B A' B' : U l) (a' : A') : Or B B' -> Or (Or A B) (A' * B') = split {
+  inl b -> inl (inr b) ;
+  inr b' -> inr (a', b') } ;
+
+decOr (A B A' B' : U l) (y : Or B B') : Or A A' -> Or (Or A B) (A' * B') = split {
+  inl a -> inl (inl a) ;
+  inr a' -> orB' A B A' B' a' y } ;
+
+swapB : (b : Bool) -> Or (Fl b) (Tr b) = split { true -> inr tt ; false -> inl tt } ;
+
+-- truth is decided by computing
+dec : (a : Fm) -> Or (Holds a) (Fails a) = split {
+  cx n -> decB (val n) ;
+  cnx n -> swapB (val n) ;
+  fand a b | ra rb -> decAnd (Holds a) (Holds b) (Fails a) (Fails b) rb ra ;
+  for a b | ra rb -> decOr (Holds a) (Holds b) (Fails a) (Fails b) rb ra } ;
+
+-- the formula F as a product
+emb : Fm -> T = split {
+  cx n -> X n ;
+  cnx n -> NX n ;
+  fand a b | ea eb -> Sp (pairF (W ea) (W eb)) ;
+  for a b | ea eb -> W (Sp (pairF ea eb)) } ;
+
+------------------------------------------------------------------------
+-- Lemma A
+
+TruthA (a : Fm) : U l =
+  ((G : Seq) -> Holds a -> Reg (cons (W (emb a)) G)) * ((G : Seq) -> Fails a -> Reg (cons (neg (emb a)) G)) ;
+
+andPrem (a b : Fm) (ra : TruthA a) (rb : TruthA b) (G : Seq) (h : Holds a * Holds b)
+  : (j : Nat) -> Reg (cons (pairF (W (emb a)) (W (emb b)) j) G) = split {
+  zero -> ra.1 G h.1 ;
+  suc j -> rb.1 G h.2 } ;
+
+andFails (a b : Fm) (ra : TruthA a) (rb : TruthA b) (G : Seq) : Or (Fails a) (Fails b) -> Reg (cons (neg (emb (fand a b))) G) = split {
+  inl f -> focus (cons (neg (emb (fand a b))) G) zero zero (\ j -> ra.2 (cons (neg (emb (fand a b))) G) f) ;
+  inr f -> focus (cons (neg (emb (fand a b))) G) zero (suc zero) (\ j -> rb.2 (cons (neg (emb (fand a b))) G) f) } ;
+
+orHolds (a b : Fm) (ra : TruthA a) (rb : TruthA b) (G : Seq) : Or (Holds a) (Holds b) -> Reg (cons (Sp (pairF (emb a) (emb b))) G) = split {
+  inl h -> weak (cons (W (emb a)) G) (cons (Sp (pairF (emb a) (emb b))) G)
+             (sub1 (W (emb a)) G (cons (Sp (pairF (emb a) (emb b))) G)
+               (\ k -> at (cons (Sp (pairF (emb a) (emb b))) G) zero zero) (subTail (Sp (pairF (emb a) (emb b))) G))
+             (ra.1 G h) ;
+  inr h -> weak (cons (W (emb b)) G) (cons (Sp (pairF (emb a) (emb b))) G)
+             (sub1 (W (emb b)) G (cons (Sp (pairF (emb a) (emb b))) G)
+               (\ k -> at (cons (Sp (pairF (emb a) (emb b))) G) zero (suc zero)) (subTail (Sp (pairF (emb a) (emb b))) G))
+             (rb.1 G h) } ;
+
+orPrem (a b : Fm) (ra : TruthA a) (rb : TruthA b) (G : Seq) (f : Fails a * Fails b)
+  : (j : Nat) -> Reg (cons (neg (pairF (emb a) (emb b) j)) G) = split {
+  zero -> ra.2 G f.1 ;
+  suc j -> rb.2 G f.2 } ;
+
+truth : (a : Fm) -> TruthA a = split {
+  cx n -> (\ G h -> focus (cons (W (X n)) G) zero zero h, \ G f -> focus (cons (NX n) G) zero zero f) ;
+  cnx n -> (\ G h -> focus (cons (W (NX n)) G) zero zero h, \ G f -> focus (cons (X n) G) zero zero f) ;
+  fand a b | ra rb ->
+    (\ G h -> focus (cons (W (emb (fand a b))) G) zero zero (andPrem a b ra rb (cons (W (emb (fand a b))) G) h),
+     \ G f -> andFails a b ra rb G f) ;
+  for a b | ra rb ->
+    (\ G h -> focus (cons (W (emb (for a b))) G) zero zero (\ j -> orHolds a b ra rb (cons (W (emb (for a b))) G) h),
+     \ G f -> focus (cons (neg (emb (for a b))) G) zero zero (orPrem a b ra rb (cons (neg (emb (for a b))) G) f)) } ;
+
+------------------------------------------------------------------------
+-- the theorem
+
+-- a true constant x, and its negation
+tOf : Or (Tr (val zero)) (Fl (val zero)) -> T = split { inl t -> X zero ; inr f -> NX zero } ;
+tTrue : (o : Or (Tr (val zero)) (Fl (val zero))) -> True (tOf o) = split { inl t -> t ; inr f -> f } ;
+tLit : (o : Or (Tr (val zero)) (Fl (val zero))) -> Lit (tOf o) * Lit (neg (tOf o)) = split {
+  inl t -> (tt, tt) ; inr f -> (tt, tt) } ;
+tNeg : (o : Or (Tr (val zero)) (Fl (val zero))) -> True (neg (tOf o)) -> Empty = split {
+  inl t -> \ u -> trFl (val zero) t u ;
+  inr f -> \ u -> trFl (val zero) u f } ;
+
+x : T = tOf (decB (val zero)) ;
+
+-- y = x if F is true, ~x if F is false
+yOf (a : Fm) : Or (Holds a) (Fails a) -> T = split { inl h -> x ; inr f -> neg x } ;
+
+yLit (a : Fm) : (o : Or (Holds a) (Fails a)) -> Lit (yOf a o) = split {
+  inl h -> (tLit (decB (val zero))).1 ;
+  inr f -> (tLit (decB (val zero))).2 } ;
+
+yHolds (a : Fm) : (o : Or (Holds a) (Fails a)) -> True (yOf a o) -> Holds a = split {
+  inl h -> \ u -> h ;
+  inr f -> \ u -> absurd (tNeg (decB (val zero)) u) } ;
+
+-- y true, or ~F regular
+yCase (a : Fm) : (o : Or (Holds a) (Fails a)) -> Or (True (yOf a o)) (Reg (cons (neg (emb a)) empty)) = split {
+  inl h -> inl (tTrue (decB (val zero))) ;
+  inr f -> inr ((truth a).2 empty f) } ;
+
+module Markov (F : Nat -> Fm) {
+
+  Fu (n : Nat) : T = emb (F n) ;
+  y (n : Nat) : T = yOf (F n) (dec (F n)) ;
+
+  H : Seq = cons (Sp y) empty ;
+  I : Seq = cons (W (neg (Sp Fu))) H ;
+
+  useCase (n : Nat) : Or (True (y n)) (Reg (cons (neg (Fu n)) empty)) -> Reg (cons (neg (Fu n)) I) = split {
+    inl t -> focus (cons (neg (Fu n)) I) (suc (suc zero)) n (trueRule (Prem (cons (neg (Fu n)) I)) (y n) t) ;
+    inr r -> weak (cons (neg (Fu n)) empty) (cons (neg (Fu n)) I) (subCons (neg (Fu n)) empty I (subEmpty I)) r } ;
+
+  -- the implication  sum F(n) -> sum y_n  is regular
+  implication : Reg I = focus I zero zero (\ n -> useCase n (yCase (F n) (dec (F n)))) ;
+
+  -- sum y_n is regular
+  sumY (p : Reg (cons (Sp Fu) empty)) : Reg H =
+    cut (Sp Fu) H (weak (cons (Sp Fu) empty) (cons (Sp Fu) H) (subCons (Sp Fu) empty H (subEmpty H)) p) implication ;
+
+  markov (p : Reg (cons (Sp Fu) empty)) : (n : Nat) * Holds (F n) =
+    (w.1, yHolds (F w.1) (dec (F w.1)) w.2)
+   where { w : Witness[y, \ n -> yLit (F n) (dec (F n))].Wit =
+             Witness[y, \ n -> yLit (F n) (dec (F n))].witness (sumY p) ; } ;
+
+  -- Markov's rule for the calculus
+  markovProof (p : Provable (cons (Sp Fu) empty)) : (n : Nat) * Holds (F n) =
+    markov (regular (cons (Sp Fu) empty) p) ;
+} ;

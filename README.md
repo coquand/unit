@@ -22,7 +22,7 @@ The [new gluing argument](doc/gabber-recollement.pdf) uses elementary weak cance
 
 ## Developments
 
-This repository contains the checker and fifteen developments written with it:
+This repository contains the checker and sixteen developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -86,6 +86,14 @@ This repository contains the checker and fifteen developments written with it:
   the infinite elements as filters of types, and the semantics in the
   paper's own form (`domain/ideal`). An Agda version with finite elements
   is `LAZY/` in [coquand/domain-semantics](https://github.com/coquand/domain-semantics).
+- Novikov's consistency proof (*On the consistency of certain logical
+  calculus*, 1943): admissibility of the rule of inference for regular
+  formulas of an infinitary propositional calculus with constants, by
+  induction on regularity proofs and without induction on the cut formula
+  (in the form of the appendix of Coquand, *A semantics of evidence for
+  classical arithmetic*); consistency, induction as a regular formula, and
+  Novikov's application to existence proofs (Markov's rule), with a witness
+  computed through the elimination of the cut (`novikov`).
 
 ### Mathematical attribution
 
@@ -148,6 +156,11 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 
 ## Documents (`doc/`)
 
+- [`novikov.pdf`](doc/novikov.pdf): Novikov's consistency proof, with
+  constants x_n: regular sequents, the rule of inference without
+  induction on the cut formula (after Mints's survey and Coquand's
+  appendix), comparison with Novikov's operators, induction, and the
+  existence theorem; as checked in `novikov/`.
 - [`unit1.pdf`](doc/unit1.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
 - [`scott-domains-revised.pdf`](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf):
@@ -694,6 +707,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
     ./segc sag/torsor all          # one of the sag/ developments (each under 10 s)
     ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
     ./segc sag/dialogue all        # DialogueTreesHeight (0.3 s)
+    ./segc novikov all             # Novikov's consistency proof (0.02 s)
 
 `segc` starts a checking server that loads the development once and keeps
 the results; `./segc core stop` stops it. Every declaration has a budget of
