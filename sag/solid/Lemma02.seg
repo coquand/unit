@@ -1,0 +1,74 @@
+-- A nonzero fibre sum has a nonzero summand. Its index lies over the
+-- given stage point, with a nonzero coefficient. Apply this to each
+-- later projection and use StageImage to obtain a point of the limit.
+-- Finite choice lifts all the supported basis vectors simultaneously.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ; open Logic[l] ;
+module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module A = Alg73[l] ; module FR = FiniteRing[l] ;
+module Over (K : FR.Coeff) {
+ module C = FR.Over[K] ; module V = FinSum[l].Vectors[C.scalars] ;
+ module RL = Ring[l].RL[K.ring] ;
+ Nonzero (a : K.ring.R) : U l = Not (Id K.ring.R a K.ring.z) ;
+ Witness (m : Nat) (u : V.Vec m) : U l = (i : Fin m) * Nonzero (u i) ;
+ lift-tail (m : Nat) (u : V.Vec (suc m)) (w : Witness m (\ i -> u (some i))) : Witness (suc m) u = (some w.1,w.2) ;
+ step (m : Nat) (u : V.Vec (suc m))
+  (tail : Nonzero (V.S.sumM m (\ i -> u (some i))) -> Witness m (\ i -> u (some i)))
+  (nz : Nonzero (V.S.sumM (suc m) u)) : Dec (Id K.ring.R (u none) K.ring.z) -> Witness (suc m) u = split {
+  no h -> (none,h) ;
+  yes z -> lift-tail m u (tail (\ e -> nz (transH (FreeCountable[l].cong2 K.ring.add z e) (K.ring.addZ K.ring.z)))) } ;
+ nonzero-term : (m : Nat) (u : V.Vec m) -> Nonzero (V.S.sumM m u) -> Witness m u = split {
+  zero -> \ u nz -> absurd (Witness zero u) (nz (refl K.ring.z)) ;
+  suc m | ih -> \ u nz -> step m u (ih (\ i -> u (some i))) nz (C.dec (u none) K.ring.z) } ;
+
+ module FibreSum (m n : Nat) (p : Fin m -> Fin n) (u : V.Vec m) (y : Fin n) {
+  module G = Measures[l].Stage[C.scalars].Along[m,n,p] ;
+  summand (i : Fin m) : K.ring.R = K.ring.mul (G.weight y i) (u i) ;
+  over (i : Fin m) (nz : Nonzero (summand i)) : Dec (Id (Fin n) (p i) y) -> Id (Fin n) (p i) y = split {
+   yes e -> e ;
+   no ne -> absurd (Id (Fin n) (p i) y) (nz (transH (apH (\ a -> K.ring.mul a (u i)) (V.basis-off n (p i) y ne))
+     (RL.zero-mul (u i)))) } ;
+  Live : U l = (i : Fin m) * Id (Fin n) (p i) y * Nonzero (u i) ;
+  live (w : Witness m summand) : Live = (w.1,over w.1 w.2 (FR.fin-dec n (p w.1) y),
+   \ z -> w.2 (transH (apH (K.ring.mul (G.weight y w.1)) z) (RL.mul-zero (G.weight y w.1)))) ;
+  find (nz : Nonzero (G.push u y)) : Live = live (nonzero-term m summand nz) ;
+ } ;
+} ;
+
+module Tower (ax : StoneAxioms[l,l].Assumptions) (K : FR.Coeff) (c : Nat -> Nat) (p : (n : Nat) -> Fin (c (suc n)) -> Fin (c n)) {
+ module D = Measures[l].Tower[K,c,p] ; module O = Over[K] ;
+ module Images = StageImage[l].Tower[ax,c,p] ;
+ module Proj = StageProjection[l].Tower[K,c,p] ;
+ module S = A.MA[D.C.scalars,D.M.limit-module] ;
+ module AtStage (n : Nat) (mu : D.M.L.lim) {
+  module J = Proj.From[n] ;
+  u : D.V.Vec (c n) = (D.M.projection n).1 mu ;
+  module AtIndex (y : D.P.E n) {
+   module I = Images.AtPoint[n,y] ;
+   module Live (d : Nat) {
+    module B = O.FibreSum[c (J.later d),c n,J.down d,mu.1 (J.later d),y] ;
+    find (nz : O.Nonzero (u y)) : B.Live = B.find (\ z -> nz (transH (symH (apH (\ v -> v y) (J.compatible mu d))) z)) ;
+    reaches (w : B.Live) : I.Reached d = (w.1,w.2.1) ;
+   } ;
+   lemma02 (nz : O.Nonzero (u y)) : I.InImage =
+    I.persistent (\ d -> T.Trunc[I.Reached d].inc (Live[d].reaches (Live[d].find nz))) ;
+  } ;
+  -- Zero coefficients need no lift, including when the whole limit is empty.
+  Choice (i : D.P.E n) : U l = Ring[l].Plus (Id K.ring.R (u i) K.ring.z) Images.AtPoint[n,i].Fibre ;
+  choose (i : D.P.E n) : Dec (Id K.ring.R (u i) K.ring.z) -> T.Trunc[Choice i].carrier = split {
+   yes z -> T.Trunc[Choice i].inc (inl z) ;
+   no nz -> TC.map Images.AtPoint[n,i].Fibre (Choice i) (\ w -> inr w) (AtIndex[i].lemma02 nz) } ;
+  Choices : U l = (i : D.P.E n) -> Choice i ;
+  choices : T.Trunc[Choices].carrier = fc (c n) Choice (\ i -> choose i (D.C.dec (u i) K.ring.z)) ;
+  module Basis = StageProjection[l].Over[D.C.scalars].Basis[c n] ;
+  lift (i : D.P.E n) : Choice i -> D.M.L.lim = split {
+   inl z -> D.M.zeroM ; inr w -> D.M.scaleM (u i) (D.dirac w.1) } ;
+  project-term (i : D.P.E n) : (v : Choice i) -> Id (D.V.Vec (c n)) ((D.M.projection n).1 (lift i v)) (Basis.term u i) = split {
+   inl z -> symH (transH (apH (\ a -> (D.B n).sm a (D.V.basis (c n) i)) z) (Basis.VS.sm-zl (D.V.basis (c n) i))) ;
+   inr w -> apH ((D.B n).sm (u i)) (transH (D.project-dirac n w.1) (apH (D.V.basis (c n)) w.2)) } ;
+  lifted (w : Choices) : D.M.L.lim = S.sumM (c n) (\ i -> lift i (w i)) ;
+  project-lifted (w : Choices) : Id (D.V.Vec (c n)) ((D.M.projection n).1 (lifted w)) u =
+   transH (FinSum[l].MapSum[D.C.scalars,D.M.limit-module,D.B n,D.M.projection n].map-sum (c n) (\ i -> lift i (w i)))
+    (transH (Basis.VS.sum-ext (c n) (\ i -> (D.M.projection n).1 (lift i (w i))) (Basis.term u) (\ i -> project-term i (w i))) (Basis.expansion u)) ;
+ } ;
+} ;

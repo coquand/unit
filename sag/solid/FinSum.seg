@@ -1,0 +1,67 @@
+-- Ordered sums use Fin 0 = Empty and Fin (n+1) = 1 + Fin n.
+-- A sum supported at one specified index equals its value there.
+-- Applying a linear map commutes with the same recursion on the sum.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ; open Logic[l] ;
+module A = Alg73[l] ;
+module FC = FiniteClosure[l] ;
+module FN = FreeCountable[l] ;
+module FB = FinBool[l] ;
+module NO = NatOrder[l] ;
+
+none-ne (n : Nat) (i : Fin n) (e : Id (Fin (suc n)) none (some i)) : Empty =
+ substH (FC.code (suc n) none) e tt ;
+some-inj (n : Nat) (i j : Fin n) (e : Id (Fin (suc n)) (some i) (some j)) : Id (Fin n) i j =
+ FB.index-inj n i j (NatArith[l].suc-inj (apH (FN.index (suc n)) e)) ;
+
+module Sums (R : A.CRing) (M : A.Mod[R]) {
+ module S = A.MA[R,M] ;
+ vanish : (n : Nat) (g : Fin n -> M.M) -> ((i : Fin n) -> Id M.M (g i) M.mz) -> Id M.M (S.sumM n g) M.mz = split {
+  zero -> \ g h -> refl M.mz ;
+  suc n | ih -> \ g h -> transH (FN.cong2 M.madd (h none) (ih (\ i -> g (some i)) (\ i -> h (some i)))) (M.maddZ M.mz) } ;
+ single : (n : Nat) (g : Fin n -> M.M) (i : Fin n) ->
+  ((j : Fin n) -> Not (Id (Fin n) j i) -> Id M.M (g j) M.mz) -> Id M.M (S.sumM n g) (g i) = split {
+  zero -> \ g i -> absurd (((j : Fin zero) -> Not (Id (Fin zero) j i) -> Id M.M (g j) M.mz) -> Id M.M M.mz (g i)) i ;
+  suc n | ih -> \ g -> split {
+   none -> \ h -> transH (apH (M.madd (g none)) (vanish n (\ j -> g (some j)) (\ j -> h (some j) (\ e -> none-ne n j (symH e))))) (M.maddZ (g none)) ;
+   some i -> \ h -> transH (FN.cong2 M.madd (h none (none-ne n i))
+    (ih (\ j -> g (some j)) i (\ j ne -> h (some j) (\ e -> ne (some-inj n j i e))))) (S.mzl (g (some i))) } } ;
+} ;
+
+module MapSum (R : A.CRing) (M N : A.Mod[R]) (f : RModule[l].Over[R].Maps[M,N].Hom) {
+ module H = RModule[l].Over[R].Maps[M,N] ;
+ module S = A.MA[R,M] ; module T = A.MA[R,N] ;
+ map-sum : (n : Nat) (g : Fin n -> M.M) -> Id N.M (f.1 (S.sumM n g)) (T.sumM n (\ i -> f.1 (g i))) = split {
+  zero -> \ g -> H.map-zero f ;
+  suc n | ih -> \ g -> transH (f.2.1 (g none) (S.sumM n (\ i -> g (some i))))
+   (apH (N.madd (f.1 (g none))) (ih (\ i -> g (some i)))) } ;
+} ;
+
+module Vectors (R : A.CRing) {
+ module Reg = A.Reg[R] ; module L = A.RA[R] ;
+ module S = A.MA[R,Reg.reg] ;
+ module Z = Sums[R,Reg.reg] ;
+ module RM = RModule[l].Over[R] ;
+ Vec (n : Nat) : U l = Fin n -> R.R ;
+ stage (n : Nat) : A.Mod[R] = RM.PiModule[Fin n,\ i -> Reg.reg].product ;
+ bit : Bool -> R.R = split { true -> R.o ; false -> R.z } ;
+ basis (n : Nat) (i j : Fin n) : R.R = bit (FB.eqFin n i j) ;
+ basis-at (n : Nat) (i : Fin n) : Id R.R (basis n i i) R.o = apH bit (NO.delta-self (FN.index n i)) ;
+ basis-off (n : Nat) (i j : Fin n) (ne : Not (Id (Fin n) i j)) : Id R.R (basis n i j) R.z =
+  apH bit (NO.delta-ne (FN.index n j) (FN.index n i) (\ q -> ne (FB.index-inj n i j q))) ;
+
+ opaque basis ;
+
+ dot (n : Nat) (h u : Vec n) : R.R = S.sumM n (\ i -> R.mul (h i) (u i)) ;
+ pair (n : Nat) (h : Vec n) : RM.Maps[stage n,Reg.reg].Hom =
+  (dot n h, (\ u v -> transH (S.sum-ext n (\ i -> R.mul (h i) (R.add (u i) (v i)))
+     (\ i -> R.add (R.mul (h i) (u i)) (R.mul (h i) (v i))) (\ i -> R.dist (h i) (u i) (v i)))
+     (symH (S.sum-add n (\ i -> R.mul (h i) (u i)) (\ i -> R.mul (h i) (v i))))),
+   \ a u -> transH (S.sum-ext n (\ i -> R.mul (h i) (R.mul a (u i)))
+     (\ i -> R.mul a (R.mul (h i) (u i))) (\ i -> L.mul-swap (h i) a (u i)))
+     (symH (S.sum-sm a n (\ i -> R.mul (h i) (u i))))) ;
+ dot-basis (n : Nat) (h : Vec n) (i : Fin n) : Id R.R (dot n h (basis n i)) (h i) =
+  transH (Z.single n (\ j -> R.mul (h j) (basis n i j)) i
+   (\ j ne -> transH (apH (R.mul (h j)) (basis-off n i j (\ q -> ne (symH q)))) (L.mul-zero (h j))))
+   (transH (apH (R.mul (h i)) (basis-at n i)) (R.mulO (h i))) ;
+} ;
