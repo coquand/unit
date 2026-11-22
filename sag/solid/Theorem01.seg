@@ -1,0 +1,86 @@
+-- Theorem 0.1 for a fixed finite-stage presentation. Factor a linear
+-- functional as psi after a projection. Lemma 0.2 lifts the support of
+-- the projected measure to Dirac masses. Their weighted sum has the
+-- same projection, so psi agrees on the image with its linearisation.
+-- This gives a zero kernel. For existence, pair a projected measure
+-- with the stage function representing the prescribed Dirac values.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ; module Bi = Bijection[l] ;
+module FN = FreeCountable[l] ;
+module Tower (ax : StoneAxioms[l,l].Assumptions) (K : FiniteRing[l].Coeff)
+ (c : Nat -> Nat) (p : (n : Nat) -> Fin (c (suc n)) -> Fin (c n)) {
+ module D = Measures[l].Tower[K,c,p] ; module Fac = Factor[l].Tower[K,c,p] ;
+ module Support = Lemma02[l].Tower[ax,K,c,p] ;
+ module R = D.Restriction[D.V.Reg.reg] ; module H = R.H ;
+ module RL = Ring[l].RL[K.ring] ;
+ module Linearisation (f : H.Hom) (w : Fac.Q.Through[f.1]) {
+  psi (i : D.P.E w.n) : K.ring.R = w.at (D.V.basis (c w.n) i) ;
+  linearised : D.RM.Maps[D.B w.n,D.V.Reg.reg].Hom = D.V.pair (c w.n) psi ;
+  dirac-value (x : D.P.X.lim) : Id K.ring.R (f.1 (D.dirac x)) (psi (D.P.X.proj w.n x)) =
+   transH (w.agrees (D.dirac x)) (apH w.at (D.project-dirac w.n x)) ;
+  module AtMeasure (mu : D.M.L.lim) {
+   module B = Support.AtStage[w.n,mu] ;
+   contribution (i : D.P.E w.n) : K.ring.R = K.ring.mul (psi i) (B.u i) ;
+   term-value (i : D.P.E w.n) : (v : B.Choice i) -> Id K.ring.R (f.1 (B.lift i v)) (contribution i) = split {
+    inl z -> transH (H.map-zero f) (symH (transH (apH (K.ring.mul (psi i)) z) (RL.mul-zero (psi i)))) ;
+    inr a -> transH (f.2.2 (B.u i) (D.dirac a.1))
+     (transH (apH (K.ring.mul (B.u i)) (transH (dirac-value a.1) (apH psi a.2))) (K.ring.mulC (B.u i) (psi i))) } ;
+   with-lifts (v : B.Choices) : Id K.ring.R (w.at B.u) (linearised.1 B.u) = calc K.ring.R {
+    w.at B.u =< symH (apH w.at (B.project-lifted v)) > w.at ((D.M.projection w.n).1 (B.lifted v))
+    =< symH (w.agrees (B.lifted v)) > f.1 (B.lifted v)
+    =< FinSum[l].MapSum[D.C.scalars,D.M.limit-module,D.V.Reg.reg,f].map-sum (c w.n) (\ i -> B.lift i (v i)) >
+        D.V.S.sumM (c w.n) (\ i -> f.1 (B.lift i (v i)))
+    =< D.V.S.sum-ext (c w.n) (\ i -> f.1 (B.lift i (v i))) contribution (\ i -> term-value i (v i)) > linearised.1 B.u } ;
+   on-image : Id K.ring.R (w.at B.u) (linearised.1 B.u) =
+    TC.rec B.Choices @l (Id K.ring.R (w.at B.u) (linearised.1 B.u)) (D.C.setR _ _) with-lifts B.choices ;
+   value : Id K.ring.R (f.1 mu) (linearised.1 B.u) = transH (w.agrees mu) on-image ;
+
+   module Vanishes (h : (x : D.P.X.lim) -> Id K.ring.R (R.restrict f x) K.ring.z) {
+    term-zero (i : D.P.E w.n) : B.Choice i -> Id K.ring.R (contribution i) K.ring.z = split {
+     inl z -> transH (apH (K.ring.mul (psi i)) z) (RL.mul-zero (psi i)) ;
+     inr a -> transH (apH (\ b -> K.ring.mul b (B.u i))
+       (transH (symH (apH psi a.2)) (transH (symH (dirac-value a.1)) (h a.1)))) (RL.zero-mul (B.u i)) } ;
+    zero-value : Id K.ring.R (f.1 mu) K.ring.z = transH value
+     (TC.rec B.Choices @l (Id K.ring.R (linearised.1 B.u) K.ring.z) (D.C.setR _ _)
+      (\ v -> D.V.Z.vanish (c w.n) contribution (\ i -> term-zero i (v i))) B.choices) ;
+   } ;
+  } ;
+ } ;
+
+ kernel (f : H.Hom) (h : (x : D.P.X.lim) -> Id K.ring.R (R.restrict f x) K.ring.z) (mu : D.M.L.lim) :
+  Id K.ring.R (f.1 mu) K.ring.z =
+  TC.rec Fac.Q.Through[f.1] @l (Id K.ring.R (f.1 mu) K.ring.z) (D.C.setR _ _)
+   (\ w -> Linearisation[f,w].AtMeasure[mu].Vanishes[h].zero-value) (Fac.measure-factor ax f.1) ;
+
+ -- Apply the kernel result to the pointwise difference of two linear maps.
+ module Difference (f g : H.Hom) {
+  diff (x : D.M.L.lim) : K.ring.R = D.V.S.sub (f.1 x) (g.1 x) ;
+  additive (x y : D.M.L.lim) : Id K.ring.R (diff (D.M.addM x y)) (K.ring.add (diff x) (diff y)) = calc K.ring.R {
+   diff (D.M.addM x y) =< FN.cong2 D.V.S.sub (f.2.1 x y) (g.2.1 x y) >
+      D.V.S.sub (K.ring.add (f.1 x) (f.1 y)) (K.ring.add (g.1 x) (g.1 y))
+   =< apH (K.ring.add (K.ring.add (f.1 x) (f.1 y))) (RL.neg-add (g.1 x) (g.1 y)) >
+      K.ring.add (K.ring.add (f.1 x) (f.1 y)) (K.ring.add (K.ring.neg (g.1 x)) (K.ring.neg (g.1 y)))
+   =< RL.swap (f.1 x) (f.1 y) (K.ring.neg (g.1 x)) (K.ring.neg (g.1 y)) > K.ring.add (diff x) (diff y) } ;
+  linear : H.Hom = (diff,additive,\ a x -> transH (FN.cong2 D.V.S.sub (f.2.2 a x) (g.2.2 a x))
+   (symH (D.V.S.sm-sub a (f.1 x) (g.1 x)))) ;
+ } ;
+ injective (f g : H.Hom) (e : Id (D.P.X.lim -> K.ring.R) (R.restrict f) (R.restrict g)) : Id H.Hom f g =
+  H.ext f g (\ mu -> D.V.S.sub-zero (f.1 mu) (g.1 mu) (kernel Difference[f,g].linear
+   (\ x -> transH (apH (\ b -> D.V.S.sub b (R.restrict g x))
+      (happly D.P.X.lim (\ x -> K.ring.R) _ _ e x)) (D.V.S.sub-self (R.restrict g x))) mu)) ;
+
+ module Extension (g : D.P.X.lim -> K.ring.R) (w : Fac.P.Through[g]) {
+  extend : H.Hom = D.RM.compose D.M.limit-module (D.B w.n) D.V.Reg.reg (D.V.pair (c w.n) w.at) (D.M.projection w.n) ;
+  on-dirac (x : D.P.X.lim) : Id K.ring.R (R.restrict extend x) (g x) =
+   transH (apH (D.V.dot (c w.n) w.at) (D.project-dirac w.n x))
+    (transH (D.V.dot-basis (c w.n) w.at (D.P.X.proj w.n x)) (symH (w.agrees x))) ;
+  extension : Bi.Fibre R.restrict g = (extend,F.funext D.P.X.lim (\ x -> K.ring.R) (R.restrict extend) g on-dirac) ;
+ } ;
+ surjective (g : D.P.X.lim -> K.ring.R) : T.Trunc[Bi.Fibre R.restrict g].carrier =
+  TC.map Fac.P.Through[g] (Bi.Fibre R.restrict g) (\ w -> Extension[g,w].extension) (Fac.point-factor ax g) ;
+
+ theorem01 : R.Solid = Bi.Bij[H.Hom,D.P.X.lim -> K.ring.R,
+  F.isSet-Pi D.P.X.lim (\ x -> K.ring.R) (\ x -> D.C.setR),R.restrict,injective,surjective].equiv ;
+} ;
