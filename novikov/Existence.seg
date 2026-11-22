@@ -21,19 +21,25 @@
 -- (there is nothing else to focus on): then y_n = x and F(n) is true.
 
 level l ;
-open Base ; open Paths[l] ; open Formula[l] ; open Regular[l] ; open Identity[l] ; open Cut[l] ; open Calculus[l] ;
+open Base ; open Paths[l] ; open Formula[l] ; open Regular[l] ; open Identity[l] ; open Cut[l] ; open Operators[l] ; open Calculus[l] ;
 
 ------------------------------------------------------------------------
 -- the witness in a sum of constants
 
 -- the constants, with their truth
-Lit : T -> U l = split { F0 -> Empty ; F1 -> Empty ; X n -> Top ; NX n -> Top ; Sp f -> Empty } ;
+Lit : T -> U l = split { F0 -> Empty ; F1 -> Empty ; X n -> Top ; NX n -> Top ; L n -> Empty ; NL n -> Empty ; Sp f -> Empty } ;
 litRule (P : (Nat -> T) -> U l) : (t : T) -> Lit t -> Rule P t -> True t = split {
   F0 -> \ c v -> v ;
   F1 -> \ c v -> absurd c ;
   X n -> \ c v -> v ;
   NX n -> \ c v -> v ;
+  L n -> \ c v -> absurd c ;
+  NL n -> \ c v -> absurd c ;
   Sp f -> \ c v -> absurd c } ;
+
+litLetter : (t : T) -> Lit t -> Letter t -> Empty = split {
+  F0 -> \ c z -> c ; F1 -> \ c z -> c ; X n -> \ c z -> z ; NX n -> \ c z -> z ;
+  L n -> \ c z -> c ; NL n -> \ c z -> c ; Sp f -> \ c z -> c } ;
 
 module Witness (Y : Nat -> T) (lit : (n : Nat) -> Lit (Y n)) {
 
@@ -52,21 +58,45 @@ module Witness (Y : Nat -> T) (lit : (n : Nat) -> Lit (Y n)) {
 
   step : Step C = \ G m k v s -> cover G (comp (G m) k) v (s m k) ;
 
+  -- there is no letter, so no axiom A v ~A
+  noLetterAt (t : T) (lt : Letter t) : (m : Nat) -> (i : Nat) -> Id T (comp (cons (Sp Y) empty m) i) t -> Empty = split {
+    zero -> \ i e -> litLetter (Y i) (lit i) (substH Letter (symH e) lt) ;
+    suc m -> \ i e -> substH Letter (symH e) lt } ;
+
+  noLetter (t : T) (lt : Letter t) : Cov (cons (Sp Y) empty) t -> Empty = split {
+    inl z -> letterFalse t lt z ;
+    inr p -> noLetterAt t lt p.1 p.2.1 p.2.2 } ;
+
+  stepL : StepL C = \ G m k m' k' lt e s -> absurd (noLetter (comp (G m) k) lt (s m k)) ;
+
   -- the witness is read off the last focus of the proof
   witness (p : Reg (cons (Sp Y) empty)) : Wit =
-    regInd C step (cons (Sp Y) empty) p (subRefl (cons (Sp Y) empty)) ;
+    regInd C step stepL (cons (Sp Y) empty) p (subRefl (cons (Sp Y) empty)) ;
 } ;
 
 ------------------------------------------------------------------------
 -- decidable propositions
 
+-- the formulas without letters are decided by the values of the constants
+Closed : Fm -> U l = split {
+  la n -> Empty ;
+  nla n -> Empty ;
+  cx n -> Top ;
+  cnx n -> Top ;
+  fand a b | ra rb -> ra * rb ;
+  for a b | ra rb -> ra * rb } ;
+
 Holds : Fm -> U l = split {
+  la n -> Empty ;
+  nla n -> Empty ;
   cx n -> Tr (val n) ;
   cnx n -> Fl (val n) ;
   fand a b | ra rb -> ra * rb ;
   for a b | ra rb -> Or ra rb } ;
 
 Fails : Fm -> U l = split {
+  la n -> Empty ;
+  nla n -> Empty ;
   cx n -> Fl (val n) ;
   cnx n -> Tr (val n) ;
   fand a b | ra rb -> Or ra rb ;
@@ -91,14 +121,18 @@ decOr (A B A' B' : U l) (y : Or B B') : Or A A' -> Or (Or A B) (A' * B') = split
 swapB : (b : Bool) -> Or (Fl b) (Tr b) = split { true -> inr tt ; false -> inl tt } ;
 
 -- truth is decided by computing
-dec : (a : Fm) -> Or (Holds a) (Fails a) = split {
-  cx n -> decB (val n) ;
-  cnx n -> swapB (val n) ;
-  fand a b | ra rb -> decAnd (Holds a) (Holds b) (Fails a) (Fails b) rb ra ;
-  for a b | ra rb -> decOr (Holds a) (Holds b) (Fails a) (Fails b) rb ra } ;
+dec : (a : Fm) -> Closed a -> Or (Holds a) (Fails a) = split {
+  la n -> \ c -> absurd c ;
+  nla n -> \ c -> absurd c ;
+  cx n -> \ c -> decB (val n) ;
+  cnx n -> \ c -> swapB (val n) ;
+  fand a b | ra rb -> \ c -> decAnd (Holds a) (Holds b) (Fails a) (Fails b) (rb c.2) (ra c.1) ;
+  for a b | ra rb -> \ c -> decOr (Holds a) (Holds b) (Fails a) (Fails b) (rb c.2) (ra c.1) } ;
 
 -- the formula F as a product
 emb : Fm -> T = split {
+  la n -> L n ;
+  nla n -> NL n ;
   cx n -> X n ;
   cnx n -> NX n ;
   fand a b | ea eb -> Sp (pairF (W ea) (W eb)) ;
@@ -135,6 +169,8 @@ orPrem (a b : Fm) (ra : TruthA a) (rb : TruthA b) (G : Seq) (f : Fails a * Fails
   suc j -> rb.2 G f.2 } ;
 
 truth : (a : Fm) -> TruthA a = split {
+  la n -> (\ G h -> absurd h, \ G f -> absurd f) ;
+  nla n -> (\ G h -> absurd h, \ G f -> absurd f) ;
   cx n -> (\ G h -> focus (cons (W (X n)) G) zero zero h, \ G f -> focus (cons (NX n) G) zero zero f) ;
   cnx n -> (\ G h -> focus (cons (W (NX n)) G) zero zero h, \ G f -> focus (cons (X n) G) zero zero f) ;
   fand a b | ra rb ->
@@ -174,10 +210,10 @@ yCase (a : Fm) : (o : Or (Holds a) (Fails a)) -> Or (True (yOf a o)) (Reg (cons 
   inl h -> inl (tTrue (decB (val zero))) ;
   inr f -> inr ((truth a).2 empty f) } ;
 
-module Markov (F : Nat -> Fm) {
+module Markov (cutR : CutRule) (F : Nat -> Fm) (cl : (n : Nat) -> Closed (F n)) {
 
   Fu (n : Nat) : T = emb (F n) ;
-  y (n : Nat) : T = yOf (F n) (dec (F n)) ;
+  y (n : Nat) : T = yOf (F n) (dec (F n) (cl n)) ;
 
   H : Seq = cons (Sp y) empty ;
   I : Seq = cons (W (neg (Sp Fu))) H ;
@@ -187,18 +223,18 @@ module Markov (F : Nat -> Fm) {
     inr r -> weak (cons (neg (Fu n)) empty) (cons (neg (Fu n)) I) (subCons (neg (Fu n)) empty I (subEmpty I)) r } ;
 
   -- the implication  sum F(n) -> sum y_n  is regular
-  implication : Reg I = focus I zero zero (\ n -> useCase n (yCase (F n) (dec (F n)))) ;
+  implication : Reg I = focus I zero zero (\ n -> useCase n (yCase (F n) (dec (F n) (cl n)))) ;
 
   -- sum y_n is regular
   sumY (p : Reg (cons (Sp Fu) empty)) : Reg H =
-    cut (Sp Fu) H (weak (cons (Sp Fu) empty) (cons (Sp Fu) H) (subCons (Sp Fu) empty H (subEmpty H)) p) implication ;
+    cutR (Sp Fu) H (weak (cons (Sp Fu) empty) (cons (Sp Fu) H) (subCons (Sp Fu) empty H (subEmpty H)) p) implication ;
 
   markov (p : Reg (cons (Sp Fu) empty)) : (n : Nat) * Holds (F n) =
-    (w.1, yHolds (F w.1) (dec (F w.1)) w.2)
-   where { w : Witness[y, \ n -> yLit (F n) (dec (F n))].Wit =
-             Witness[y, \ n -> yLit (F n) (dec (F n))].witness (sumY p) ; } ;
+    (w.1, yHolds (F w.1) (dec (F w.1) (cl w.1)) w.2)
+   where { w : Witness[y, \ n -> yLit (F n) (dec (F n) (cl n))].Wit =
+             Witness[y, \ n -> yLit (F n) (dec (F n) (cl n))].witness (sumY p) ; } ;
 
   -- Markov's rule for the calculus
   markovProof (p : Provable (cons (Sp Fu) empty)) : (n : Nat) * Holds (F n) =
-    markov (regular (cons (Sp Fu) empty) p) ;
+    markov (regularBy cutR (cons (Sp Fu) empty) p) ;
 } ;

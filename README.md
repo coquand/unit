@@ -87,13 +87,16 @@ This repository contains the checker and sixteen developments written with it:
   paper's own form (`domain/ideal`). An Agda version with finite elements
   is `LAZY/` in [coquand/domain-semantics](https://github.com/coquand/domain-semantics).
 - Novikov's consistency proof (*On the consistency of certain logical
-  calculus*, 1943): admissibility of the rule of inference for regular
-  formulas of an infinitary propositional calculus with constants, by
-  induction on regularity proofs and without induction on the cut formula
-  (in the form of the appendix of Coquand, *A semantics of evidence for
-  classical arithmetic*); consistency, induction as a regular formula, and
-  Novikov's application to existence proofs (Markov's rule), with a witness
-  computed through the elimination of the cut (`novikov`).
+  calculus*, 1943; announced in a note of 1939): admissibility of the rule
+  of inference for regular formulas of an infinitary propositional
+  calculus with letters and constants, by induction on regularity proofs
+  and without induction on the cut formula, both in Novikov's own form,
+  with his operators B_τ and A_τ, and in the variant of the appendix of
+  Coquand, *A semantics of evidence for classical arithmetic*; the atomic
+  cut; consistency; induction as a regular formula; Novikov's auxiliary
+  theorem (a regular sum of finitary formulas has a regular finite part)
+  and his application to existence proofs (Markov's rule), with witnesses
+  and bounds computed through the elimination of a cut (`novikov`).
 
 ### Mathematical attribution
 
@@ -157,10 +160,12 @@ The proofs are written first as informal arguments (`NOTE-1-2.txt`,
 ## Documents (`doc/`)
 
 - [`novikov.pdf`](doc/novikov.pdf): Novikov's consistency proof, with
-  constants x_n: regular sequents, the rule of inference without
-  induction on the cut formula (after Mints's survey and Coquand's
-  appendix), comparison with Novikov's operators, induction, and the
-  existence theorem; as checked in `novikov/`.
+  letters and constants: regular sequents, Novikov's proof of the rule of
+  inference with his operators, and the variant of Coquand's appendix,
+  neither using induction on the cut formula (as Mints stressed); the
+  auxiliary theorem of 1939/1943, Markov's rule, and a remark relating
+  Novikov's operators to the operation (A) and to bar induction; as
+  checked in `novikov/`.
 - [`unit1.pdf`](doc/unit1.pdf): Unit, its uniform treatment of definitions
   and what checking the developments below opens.
 - [`scott-domains-revised.pdf`](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf):

@@ -37,22 +37,26 @@ open Base ; open Paths[l] ; open Formula[l] ;
 
 -- the truth of an atomic formula; a product is not atomic
 True : T -> U l = split {
-  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; Sp g -> Empty } ;
+  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; L n -> Empty ; NL n -> Empty ; Sp g -> Empty } ;
 
 data Reg : (G : Seq) -> U l =
     ax (G : Seq) (m k : Nat) (t : True (comp (G m) k)) : Reg G
   | pi (G : Seq) (m k : Nat) (g : Nat -> T) (e : Id T (comp (G m) k) (Sp g))
-       (ds : (j : Nat) -> Reg (cons (g j) G)) : Reg G ;
+       (ds : (j : Nat) -> Reg (cons (g j) G)) : Reg G
+  | lax (G : Seq) (m k m' k' : Nat) (lt : Letter (comp (G m) k))
+        (e : Id T (comp (G m') k') (neg (comp (G m) k))) : Reg G ;
 
 -- what a distinguished term asks: its truth, or P of its factors
 Rule (P : (Nat -> T) -> U l) : T -> U l = split {
-  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; Sp g -> P g } ;
+  F0 -> Empty ; F1 -> Top ; X n -> Tr (val n) ; NX n -> Fl (val n) ; L n -> Empty ; NL n -> Empty ; Sp g -> P g } ;
 
 trueRule (P : (Nat -> T) -> U l) : (t : T) -> True t -> Rule P t = split {
   F0 -> \ v -> v ;
   F1 -> \ v -> v ;
   X n -> \ v -> v ;
   NX n -> \ v -> v ;
+  L n -> \ v -> v ;
+  NL n -> \ v -> v ;
   Sp f -> \ v -> absurd v } ;
 
 -- the premises of a focus on a product Sp g of G
@@ -63,18 +67,27 @@ ruleMap (P Q : (Nat -> T) -> U l) (h : (g : Nat -> T) -> P g -> Q g) : (t : T) -
   F1 -> \ v -> v ;
   X n -> \ v -> v ;
   NX n -> \ v -> v ;
+  L n -> \ v -> v ;
+  NL n -> \ v -> v ;
   Sp g -> h g } ;
 
 -- the false atoms: 0 and the false constants, never the focus of a rule
 FalseAtom : T -> U l = split {
-  F0 -> Top ; F1 -> Empty ; X n -> Fl (val n) ; NX n -> Tr (val n) ; Sp g -> Empty } ;
+  F0 -> Top ; F1 -> Empty ; X n -> Fl (val n) ; NX n -> Tr (val n) ; L n -> Empty ; NL n -> Empty ; Sp g -> Empty } ;
 
 falseRule (P : (Nat -> T) -> U l) : (t : T) -> FalseAtom t -> Rule P t -> Empty = split {
   F0 -> \ z v -> v ;
   F1 -> \ z v -> z ;
   X n -> \ z v -> trFl (val n) v z ;
   NX n -> \ z v -> trFl (val n) z v ;
+  L n -> \ z v -> z ;
+  NL n -> \ z v -> z ;
   Sp g -> \ z v -> z } ;
+
+-- a letter is not a false atom
+letterFalse : (t : T) -> Letter t -> FalseAtom t -> Empty = split {
+  F0 -> \ c z -> c ; F1 -> \ c z -> c ; X n -> \ c z -> c ; NX n -> \ c z -> c ;
+  L n -> \ c z -> z ; NL n -> \ c z -> z ; Sp g -> \ c z -> c } ;
 
 ------------------------------------------------------------------------
 -- the rule, with regular premises, gives a regular sequent
@@ -84,6 +97,8 @@ focusAt (G : Seq) (m k : Nat) : (t : T) -> Id T t (comp (G m) k) -> Rule (Prem G
   F1 -> \ e v -> ax G m k (substH True e tt) ;
   X n -> \ e v -> ax G m k (substH True e v) ;
   NX n -> \ e v -> ax G m k (substH True e v) ;
+  L n -> \ e v -> absurd v ;
+  NL n -> \ e v -> absurd v ;
   Sp g -> \ e v -> pi G m k g (symH e) v } ;
 
 focus (G : Seq) (m k : Nat) (v : Rule (Prem G) (comp (G m) k)) : Reg G =
@@ -98,9 +113,19 @@ PremC (C : Seq -> U l) (G : Seq) (g : Nat -> T) : U l =
 Step (C : Seq -> U l) : U l =
   (G : Seq) -> (m k : Nat) -> Rule (PremC C G) (comp (G m) k) -> C G ;
 
-regInd (C : Seq -> U l) (step : Step C) : (G : Seq) -> Reg G -> C G = split {
+-- the axiom A_n v ~A_n: a letter and its negation among the summands
+StepL (C : Seq -> U l) : U l =
+  (G : Seq) -> (m k m' k' : Nat) -> Letter (comp (G m) k) -> Id T (comp (G m') k') (neg (comp (G m) k)) -> C G ;
+
+regInd (C : Seq -> U l) (step : Step C) (stepL : StepL C) : (G : Seq) -> Reg G -> C G = split {
   ax G m k t -> step G m k (trueRule (PremC C G) (comp (G m) k) t) ;
-  pi G m k g e ds | r -> step G m k (substH (Rule (PremC C G)) (symH e) (\ j -> (ds j, r j))) } ;
+  pi G m k g e ds | r -> step G m k (substH (Rule (PremC C G)) (symH e) (\ j -> (ds j, r j))) ;
+  lax G m k m' k' lt e -> stepL G m k m' k' lt e } ;
+
+-- the axiom, from a letter a and its negation at two places of H
+laxAt (H : Seq) (n i n' i' : Nat) (a : T) (lt : Letter a)
+  (e1 : Id T (comp (H n) i) a) (e2 : Id T (comp (H n') i') (neg a)) : Reg H =
+  lax H n i n' i' (substH Letter (symH e1) lt) (transH e2 (apH neg (symH e1))) ;
 
 -- forgetting the values of C
 forget (C : Seq -> U l) (G : Seq) (g : Nat -> T) (w : PremC C G g) : Prem G g = \ j -> (w j).1 ;
@@ -166,8 +191,14 @@ notEmptyCov (G : Seq) (t : T) (v : Rule (PremC notEmptyC G) t) : Cov empty t -> 
   inl z -> falseRule (PremC notEmptyC G) t z v ;
   inr p -> substH (Rule (PremC notEmptyC G)) (symH p.2.2) v } ;
 
+-- a letter is not a summand of the empty sequent
+letterCovEmpty (t : T) (lt : Letter t) : Cov empty t -> Empty = split {
+  inl z -> letterFalse t lt z ;
+  inr p -> substH Letter (symH p.2.2) lt } ;
+
 notEmpty (p : Reg empty) : Empty =
-  regInd notEmptyC (\ G m k v s -> notEmptyCov G (comp (G m) k) v (s m k)) empty p (subRefl empty) ;
+  regInd notEmptyC (\ G m k v s -> notEmptyCov G (comp (G m) k) v (s m k))
+    (\ G m k m' k' lt e s -> letterCovEmpty (comp (G m) k) lt (s m k)) empty p (subRefl empty) ;
 
 -- a formula pushed under the special first place X
 subPush (a X : T) (G B : Seq) (s : Sub G (cons X B)) : Sub (cons a G) (cons X (cons a B)) =
@@ -189,7 +220,23 @@ weakStep : Step WeakC = \ G m k v H s ->
   covRule H (PremC WeakC G) (\ g w j -> (w j).2 (cons (g j) H) (subCons (g j) G H s))
     (comp (G m) k) v (s m k) ;
 
-weak (G H : Seq) (s : Sub G H) (p : Reg G) : Reg H = regInd WeakC weakStep G p H s ;
+-- the place of a letter covered by H
+Place (H : Seq) (t : T) : U l = (n : Nat) * (i : Nat) * Id T (comp (H n) i) t ;
+
+covLetter (H : Seq) (t : T) (lt : Letter t) : Cov H t -> Place H t = split {
+  inl z -> absurd (letterFalse t lt z) ;
+  inr p -> p } ;
+
+-- the axiom, from the places of a letter and of its negation
+laxPlaces (H : Seq) (a : T) (lt : Letter a) (pa : Place H a) (pb : Place H (neg a)) : Reg H =
+  laxAt H pa.1 pa.2.1 pb.1 pb.2.1 a lt pa.2.2 pb.2.2 ;
+
+weakStepL : StepL WeakC = \ G m k m' k' lt e H s ->
+  laxPlaces H (comp (G m) k) lt
+    (covLetter H (comp (G m) k) lt (s m k))
+    (covLetter H (neg (comp (G m) k)) (letterNeg (comp (G m) k) lt) (substH (Cov H) e (s m' k'))) ;
+
+weak (G H : Seq) (s : Sub G H) (p : Reg G) : Reg H = regInd WeakC weakStep weakStepL G p H s ;
 
 -- a 0 in first place can be removed
 str0 (G : Seq) (p : Reg (cons F0 G)) : Reg G = weak (cons F0 G) G (subF0 G) p ;
@@ -214,7 +261,28 @@ Handler (X Y : T) (Q : Seq -> U l) : U l =
   (G B : Seq) -> Q B -> Sub G (cons X B) -> (l : Nat) ->
   Rule (PremC (RepC X Y Q) G) (comp X l) -> Reg (cons Y B) ;
 
-module Replace (X Y : T) (Q : Seq -> U l) (qe : QExt Q) (h : Handler X Y Q) {
+-- where a letter of a sequent included in  X , B  is: in X, or in B
+Where (X : T) (B : Seq) (t : T) : U l = Or ((l : Nat) * Id T (comp X l) t) (Place B t) ;
+
+toWhere (X : T) (B : Seq) (t : T) : (n : Nat) -> (i : Nat) -> Id T (comp (cons X B n) i) t -> Where X B t = split {
+  zero -> \ i e -> inl (i, e) ;
+  suc n -> \ i e -> inr (n, i, e) } ;
+
+whereOf (X : T) (B : Seq) (t : T) (lt : Letter t) (c : Cov (cons X B) t) : Where X B t =
+  toWhere X B t (covLetter (cons X B) t lt c).1 (covLetter (cons X B) t lt c).2.1 (covLetter (cons X B) t lt c).2.2 ;
+
+-- the axiom A v ~A with A or ~A among the summands of X
+HandlerL (X Y : T) (Q : Seq -> U l) : U l =
+  (G B : Seq) -> Q B -> Sub G (cons X B) -> (a : T) -> Letter a -> (l : Nat) -> Id T (comp X l) a ->
+  Where X B (neg a) -> Reg (cons Y B) ;
+
+-- when no summand of X is a letter
+hlNone (X Y : T) (Q : Seq -> U l) (nl : (l : Nat) -> Letter (comp X l) -> Empty) : HandlerL X Y Q =
+  \ G B q s a lt l e w -> absurd (nl l (substH Letter (symH e) lt)) ;
+
+placeIn (Y : T) (B : Seq) (t : T) (p : Place B t) : Place (cons Y B) t = (suc p.1, p.2.1, p.2.2) ;
+
+module Replace (X Y : T) (Q : Seq -> U l) (qe : QExt Q) (h : Handler X Y Q) (hl : HandlerL X Y Q) {
 
   C : Seq -> U l = RepC X Y Q ;
 
@@ -237,9 +305,44 @@ module Replace (X Y : T) (Q : Seq -> U l) (qe : QExt Q) (h : Handler X Y Q) {
 
   step : Step C = \ G m k v B q s -> cover G B q s (comp (G m) k) v (s m k) ;
 
+  -- the letter a in B, its negation in X or in B
+  letterB (G B : Seq) (q : Q B) (s : Sub G (cons X B)) (a : T) (lt : Letter a) (pa : Place B a)
+    : Where X B (neg a) -> Reg (cons Y B) = split {
+    inl lb -> hl G B q s (neg a) (letterNeg a lt) lb.1 lb.2
+                (inr (substH (Place B) (symH (negNeg a lt)) pa)) ;
+    inr pb -> laxPlaces (cons Y B) a lt (placeIn Y B a pa) (placeIn Y B (neg a) pb) } ;
+
+  letterCase (G B : Seq) (q : Q B) (s : Sub G (cons X B)) (a : T) (lt : Letter a)
+    (wb : Where X B (neg a)) : Where X B a -> Reg (cons Y B) = split {
+    inl la -> hl G B q s a lt la.1 la.2 wb ;
+    inr pa -> letterB G B q s a lt pa wb } ;
+
+  stepL : StepL C = \ G m k m' k' lt e B q s ->
+    letterCase G B q s (comp (G m) k) lt
+      (whereOf X B (neg (comp (G m) k)) (letterNeg (comp (G m) k) lt) (substH (Cov (cons X B)) e (s m' k')))
+      (whereOf X B (comp (G m) k) lt (s m k)) ;
+
   replace (B : Seq) (q : Q B) (p : Reg (cons X B)) : Reg (cons Y B) =
-    regInd C step (cons X B) p B q (subRefl (cons X B)) ;
+    regInd C step stepL (cons X B) p B q (subRefl (cons X B)) ;
 } ;
+
+-- the place of the summands of  Y , a , B  in  a , V , Y , B
+subRot (Y a V : T) (B : Seq) : Sub (cons Y (cons a B)) (cons a (cons V (cons Y B))) =
+  sub1 Y (cons a B) (cons a (cons V (cons Y B)))
+    (\ k -> at (cons a (cons V (cons Y B))) (suc (suc zero)) k)
+    (sub1 a B (cons a (cons V (cons Y B)))
+      (\ k -> at (cons a (cons V (cons Y B))) zero k)
+      (\ m k -> at (cons a (cons V (cons Y B))) (suc (suc (suc m))) k)) ;
+
+-- in a handler, a focus on a summand t of X, moved to  W t , Y , B
+moveFocus (X Y : T) (Q : Seq -> U l) (qe : QExt Q) (G B : Seq) (q : Q B) (s : Sub G (cons X B))
+  (t : T) (v : Rule (PremC (RepC X Y Q) G) t) : Reg (cons (W t) (cons Y B)) =
+  focus (cons (W t) (cons Y B)) zero zero
+    (ruleMap (PremC (RepC X Y Q) G) (Prem (cons (W t) (cons Y B)))
+      (\ g w i -> weak (cons Y (cons (g i) B)) (cons (g i) (cons (W t) (cons Y B)))
+                    (subRot Y (g i) (W t) B)
+                    ((w i).2 (cons (g i) B) (qe (g i) B q) (subPush (g i) X G B s)))
+      t v) ;
 
 -- in a handler, the focus on X itself
 recX (X Y : T) (Q : Seq -> U l) (G B : Seq) (s : Sub G (cons X B)) (l : Nat)
