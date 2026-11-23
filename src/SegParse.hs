@@ -1252,12 +1252,28 @@ lockId rs e = case e of
     Just (SDef i) -> Right i
     Just (SOpen _ p Nothing) -> Right (p ++ "." ++ x)
     _ -> Left ("opaque/transparent: not a definition: " ++ x)
+  RDot a x | withArgs a ->
+    Left ("opaque/transparent: a lock belongs to a declaration, not to an instance: write "
+          ++ "it without the arguments (M.x for M[..].x): " ++ x)
   RDot a x -> do
-    (m, mi) <- resM rs a
+    mi <- lockMod a
     case lookup x (miMembers mi) of
       Just Nothing -> Right (miPath mi ++ "." ++ x)
-      _ -> Left ("opaque/transparent: no definition " ++ x ++ " in " ++ showM m)
+      _ -> Left ("opaque/transparent: no definition " ++ x ++ " in " ++ miPath mi)
   _ -> Left "opaque/transparent: expected a name"
+ where
+  -- the module of a lock: a declaration, reached without arguments
+  lockMod r = case r of
+    RDot b y -> do
+      mi <- lockMod b
+      case lookup y (miMembers mi) of
+        Just (Just mi') -> Right mi'
+        _ -> Left ("opaque/transparent: no submodule " ++ y ++ " in " ++ miPath mi)
+    _ -> fmap snd (resM rs r)
+  withArgs r = case r of
+    RInst _ _ -> True
+    RDot b _  -> withArgs b
+    _         -> False
 
 paramKind :: Unit -> Maybe PKind
 paramKind u = case u of
