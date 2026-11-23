@@ -1,0 +1,177 @@
+-- Small types are determined by their Yoneda restrictions.
+
+level a ;
+open Base ;
+open Prelude[a++] ;
+open Paths[a++] ;
+open Axioms[a++].FunExtLemmas[fe @(a++)] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+module PB = PosFull[a].PB ;
+module S = PB.CSmall ;
+module W0 = V[a] ;
+module W1 = V[a+] ;
+module P0 = PB.GPre[a].PS ;
+module P = PB.GPre[a+].PS ;
+module Y = PB.GYon[a] ;
+module Q = PB.CExtEq1 ;
+
+module Ext (G : P.PCtx) {
+  Codes : U a+ = (I : Ob) -> W1.Ix (G.ob I) -> W0.V ;
+  upCodes (o : Codes) : P.TOb G = \ I x -> S.smallC (o I x) ;
+  Action (o : Codes) : U a+ = P.TactTy G (upCodes o) ;
+  Laws (o : Codes) (h : Action o) : U a+ = P.IdLaw G (upCodes o) h * P.OLaw G (upCodes o) h ;
+  Pack : U a+ = (o : Codes) * (h : Action o) * Laws o h ;
+
+  pack (A : S.SPTy[G]) : Pack = (A.tob, A.tact, (A.tact-id, A.tact-o)) ;
+  unpack (p : Pack) : S.SPTy[G] = new S.SPTy[G, p.1, p.2.1, p.2.2.1, p.2.2.2] ;
+  eta : (A : S.SPTy[G]) -> Id (S.SPTy[G]) A (unpack (pack A)) =
+    split { SPTy o h hi ho -> refl (unpack (o, h, (hi, ho))) } ;
+
+  coe (o o' : Codes) (p : Id Codes o o') (I : Ob) (x : W1.Ix (G.ob I))
+    (u : W0.Ix (o I x)) : W0.Ix (o' I x) =
+    subst Codes (\ k -> W0.Ix (k I x)) o o' p u ;
+
+  coe-code (o o' : Codes) (p : Id Codes o o') (I : Ob) (x : W1.Ix (G.ob I))
+    (q : Id W0.V (o I x) (o' I x)) (u : W0.Ix (o I x))
+    : Id (W0.Ix (o' I x)) (coe o o' p I x u) (Q.sV (o I x) (o' I x) q u) =
+    transH (subst-ap Codes W0.V (\ k -> k I x) (\ v -> W0.Ix v) o o' p u)
+      (Q.sV-irr (o I x) (o' I x) (apH (\ k -> k I x) p) q u) ;
+  opaque coe-code ;
+
+  Square (o o' : Codes) (p : Id Codes o o') (h : Action o) (h' : Action o') : U a+ =
+    (J I : Ob) (f : Hom J I) (x : W1.Ix (G.ob I)) (y : W1.Ix (G.ob J))
+    (e : Id (W1.Ix (G.ob J)) (G.act J I f x) y) (u : W0.Ix (o I x))
+    -> Id (W0.Ix (o' J y)) (coe o o' p J y (h J I f x y e u)) (h' J I f x y e (coe o o' p I x u)) ;
+
+  pack-path (p q : Pack) (e : Id Codes p.1 q.1) (H : Square p.1 q.1 e p.2.1 q.2.1)
+    : Id Pack p q =
+    idJ Codes p.1
+      (\ o r -> (h : Action o) (l : Laws o h) -> Square p.1 o r p.2.1 h -> Id Pack p (o, h, l))
+      (\ h l H0 -> apH {((h0 : Action p.1) * Laws p.1 h0)} {Pack} (\ k -> (p.1, k))
+         (Prelude[a+].Sigma-eq (Action p.1) (Laws p.1) p.2.1 h p.2.2 l
+           (P.tact-funext G (upCodes p.1) p.2.1 h H0)
+           (Prelude[a+].isProp-Sigma (P.IdLaw G (upCodes p.1) h) (\ _ -> P.OLaw G (upCodes p.1) h)
+             (P.idLaw-prop G (upCodes p.1) h) (\ _ -> P.oLaw-prop G (upCodes p.1) h))))
+      q.1 e q.2.1 q.2.2 H ;
+  opaque pack-path ;
+
+  module Pointwise (A B : S.SPTy[G])
+    (Po : (I : Ob) (x : W1.Ix (G.ob I)) -> Id W0.V (A.tob I x) (B.tob I x)) {
+    p : Id Codes A.tob B.tob =
+      funext Ob (\ I -> W1.Ix (G.ob I) -> W0.V) A.tob B.tob
+        (\ I -> funext (W1.Ix (G.ob I)) (\ _ -> W0.V) (A.tob I) (B.tob I) (Po I)) ;
+
+    cast (I : Ob) (x : W1.Ix (G.ob I)) (u : W0.Ix (A.tob I x)) : W0.Ix (B.tob I x) =
+      Q.sV (A.tob I x) (B.tob I x) (Po I x) u ;
+
+    law (H : (J I : Ob) (f : Hom J I) (x : W1.Ix (G.ob I)) (y : W1.Ix (G.ob J))
+      (e : Id (W1.Ix (G.ob J)) (G.act J I f x) y) (u : W0.Ix (A.tob I x))
+        -> Id (W0.Ix (B.tob J y)) (cast J y (A.tact J I f x y e u)) (B.tact J I f x y e (cast I x u)))
+      : Id (S.SPTy[G]) A B =
+      transH (eta A)
+        (transH (apH unpack (pack-path (pack A) (pack B) p (\ J I f x y e u ->
+          transH (coe-code A.tob B.tob p J y (Po J y) (A.tact J I f x y e u))
+            (transH (H J I f x y e u)
+              (apH (B.tact J I f x y e) (symH (coe-code A.tob B.tob p I x (Po I x) u)))))))
+          (symH (eta B))) ;
+    opaque law ;
+  } ;
+} ;
+
+-- An action with its source moved along a path of context points.
+source (G : P.PCtx) (A : S.SPTy[G]) (J I : Ob) (f : Hom J I)
+  (x x' : W1.Ix (G.ob I)) (p : Id (W1.Ix (G.ob I)) x x') (y : W1.Ix (G.ob J))
+  (e : Id (W1.Ix (G.ob J)) (G.act J I f x) y) (e' : Id (W1.Ix (G.ob J)) (G.act J I f x') y)
+  (u : W0.Ix (A.tob I x))
+  : Id (W0.Ix (A.tob J y))
+      (A.tact J I f x' y e' (Q.sV (A.tob I x) (A.tob I x') (apH (A.tob I) p) u))
+      (A.tact J I f x y e u) =
+  idJ (W1.Ix (G.ob I)) x
+    (\ z r -> (ez : Id (W1.Ix (G.ob J)) (G.act J I f z) y) ->
+      Id (W0.Ix (A.tob J y)) (A.tact J I f z y ez (Q.sV (A.tob I x) (A.tob I z) (apH (A.tob I) r) u))
+        (A.tact J I f x y e u))
+    (\ ez -> S.tact-irr G A J I f x y ez e u) x' p e' ;
+opaque source ;
+
+module Local (G : P.PCtx) (A B : S.SPTy[G]) {
+  module L = FibLocal[a, a+].Small[G, A] ;
+  module R = FibLocal[a, a+].Small[G, B] ;
+  module At (Z : Ob) (z : W1.Ix (G.ob Z)) {
+    D : P0.PCtx = Y.yP Z ;
+    t : S.XSub[D, G] = L.At[Z, z].s ;
+    AL : P0.PTy[D] = L.At[Z, z].F.ElTy ;
+    BL : P0.PTy[D] = R.At[Z, z].F.ElTy ;
+
+    fibre (p : Id (P0.PTy[D]) AL BL) (I : Ob) (x : Hom I Z)
+      : Id W0.V (AL.tob I x) (BL.tob I x) =
+      apH (\ T -> T.tob I x) p ;
+
+    action (p : Id (P0.PTy[D]) AL BL) (J I : Ob) (f : Hom J I) (x : Hom I Z) (y : Hom J Z)
+      (e : Id (Hom J Z) (D.act J I f x) y) (u : W0.Ix (AL.tob I x))
+      : Id (W0.Ix (BL.tob J y))
+          (Q.sV (AL.tob J y) (BL.tob J y) (fibre p J y) (AL.tact J I f x y e u))
+          (BL.tact J I f x y e (Q.sV (AL.tob I x) (BL.tob I x) (fibre p I x) u)) =
+      idJ (P0.PTy[D]) AL
+        (\ T pT -> Id (W0.Ix (T.tob J y))
+          (Q.sV (AL.tob J y) (T.tob J y) (apH (\ U0 -> U0.tob J y) pT) (AL.tact J I f x y e u))
+          (T.tact J I f x y e (Q.sV (AL.tob I x) (T.tob I x) (apH (\ U0 -> U0.tob I x) pT) u)))
+        (refl (AL.tact J I f x y e u)) BL p ;
+    opaque action ;
+  } ;
+
+  module Read (H : (Z : Ob) (z : W1.Ix (G.ob Z)) -> Id (P0.PTy[Y.yP Z]) At[Z, z].AL At[Z, z].BL) {
+    Po (I : Ob) (x : W1.Ix (G.ob I)) : Id W0.V (A.tob I x) (B.tob I x) =
+      transH (apH (A.tob I) (symH (G.act-id I x)))
+        (transH (At[I, x].fibre (H I x) I (idH I)) (apH (B.tob I) (G.act-id I x))) ;
+
+    module E = Ext[G].Pointwise[A, B, Po] ;
+
+    module Act (J I : Ob) (f : Hom J I) (x : W1.Ix (G.ob I)) (u : W0.Ix (A.tob I x)) {
+      module T = At[I, x] ;
+      x0 : W1.Ix (G.ob I) = T.t.nt I (idH I) ;
+      y : W1.Ix (G.ob J) = G.act J I f x ;
+      p : Id (W1.Ix (G.ob I)) x0 x = G.act-id I x ;
+      ef : Id (Hom J I) (T.D.act J I f (idH I)) f = comp-idl J I f ;
+      e0 : Id (W1.Ix (G.ob J)) (G.act J I f x0) y =
+        S.xntEq T.D G T.t J I f (idH I) f ef ;
+
+      a0 : W0.Ix (A.tob I x0) = Q.sV (A.tob I x) (A.tob I x0) (apH (A.tob I) (symH p)) u ;
+      b0 : W0.Ix (B.tob I x0) = Q.sV (A.tob I x0) (B.tob I x0) (T.fibre (H I x) I (idH I)) a0 ;
+      b : W0.Ix (B.tob I x) = Q.sV (B.tob I x0) (B.tob I x) (apH (B.tob I) p) b0 ;
+
+      source-cast : Id (W0.Ix (B.tob I x)) b (E.cast I x u) =
+        transH (apH (Q.sV (B.tob I x0) (B.tob I x) (apH (B.tob I) p))
+          (Q.sV-comp (A.tob I x) (A.tob I x0) (B.tob I x0) (apH (A.tob I) (symH p)) (T.fibre (H I x) I (idH I)) u))
+          (Q.sV-two (A.tob I x) (B.tob I x0) (B.tob I x)
+            (transH (apH (A.tob I) (symH p)) (T.fibre (H I x) I (idH I))) (apH (B.tob I) p) (Po I x) u) ;
+
+      base : Id (W0.Ix (B.tob J y)) (E.cast J y (A.tact J I f x y (refl y) u))
+        (B.tact J I f x y (refl y) (E.cast I x u)) =
+        calc (W0.Ix (B.tob J y)) {
+          E.cast J y (A.tact J I f x y (refl y) u)
+          =< apH (E.cast J y) (symH (source G A J I f x x0 (symH p) y (refl y) e0 u)) >
+          E.cast J y (T.AL.tact J I f (idH I) f ef a0)
+          =< Q.sV-irr (A.tob J y) (B.tob J y) (Po J y) (T.fibre (H I x) J f) (T.AL.tact J I f (idH I) f ef a0) >
+          Q.sV (A.tob J y) (B.tob J y) (T.fibre (H I x) J f) (T.AL.tact J I f (idH I) f ef a0)
+          =< T.action (H I x) J I f (idH I) f ef a0 >
+          T.BL.tact J I f (idH I) f ef b0
+          =< symH (source G B J I f x0 x p y e0 (refl y) b0) >
+          B.tact J I f x y (refl y) b
+          =< apH (B.tact J I f x y (refl y)) source-cast >
+          B.tact J I f x y (refl y) (E.cast I x u) } ;
+      opaque base ;
+
+      law (y' : W1.Ix (G.ob J)) (e : Id (W1.Ix (G.ob J)) y y')
+        : Id (W0.Ix (B.tob J y')) (E.cast J y' (A.tact J I f x y' e u))
+            (B.tact J I f x y' e (E.cast I x u)) =
+        idJ (W1.Ix (G.ob J)) y (\ z r -> Id (W0.Ix (B.tob J z))
+          (E.cast J z (A.tact J I f x z r u)) (B.tact J I f x z r (E.cast I x u)))
+          base y' e ;
+    } ;
+
+    law : Id (S.SPTy[G]) A B =
+      E.law (\ J I f x y e u -> Act[J, I, f, x, u].law y e) ;
+    opaque law ;
+  } ;
+} ;

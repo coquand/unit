@@ -1,0 +1,93 @@
+-- Reindex small fibrant types along large substitutions. Restricting the
+-- result along a small-to-large map is restriction along the composite.
+
+level a ;
+open Base ;
+open Prelude[a++] ;
+open Paths[a++] ;
+open Cat[a] ;
+open SmallCat[a].Objs[obV] ; open SmallCat[a].Homs[obV, homV] ;
+module PB = PosFull[a].PB ;
+module P = PB.GPre[a+] ;
+module P0 = PB.GPre[a] ;
+open P.PS ;
+module S = PB.CSmall ;
+module W0 = V[a] ;
+module W1 = V[a+] ;
+module FC = FibCwF[a, a+].FC ;
+
+SmallFib (G : PCtx) : U a++ =
+  (A : S.SPTy[G]) * PB.CLine[a+].Lines[G, S.up G A].Fib ;
+
+large (G : PCtx) (A : SmallFib G) : FC.STy G = (S.up G A.1, A.2) ;
+
+subSmall (D G : PCtx) (A : S.SPTy[G]) (s : PSub[D, G]) : S.SPTy[D] =
+  new S.SPTy[D, \ I x -> A.tob I (s.nt I x),
+    \ J I f x y e u -> A.tact J I f (s.nt I x) (s.nt J y) (ntEq D G s J I f x y e) u,
+    \ I x e u -> A.tact-id I (s.nt I x) (ntEq D G s I I (idH I) x x e) u,
+    \ K J I f g x y z e1 e2 e3 u ->
+      A.tact-o K J I f g (s.nt I x) (s.nt J y) (s.nt K z)
+        (ntEq D G s J I f x y e1) (ntEq D G s K J g y z e2)
+        (ntEq D G s K I (compH K J I f g) x z e3) u] ;
+
+sub (D G : PCtx) (A : SmallFib G) (s : PSub[D, G]) : SmallFib D =
+  (subSmall D G A.1 s, (FC.subS D G (large G A) s).2) ;
+
+xcomp (E : P0.PS.PCtx) (D G : PCtx) (s : PSub[D, G]) (t : S.XSub[E, D]) : S.XSub[E, G] =
+  new S.XSub[E, G, \ I x -> s.nt I (t.nt I x),
+    \ J I f x -> transH (apH (s.nt J) (t.nt-nat J I f x)) (s.nt-nat J I f (t.nt I x))] ;
+
+module Mixed (E : P0.PS.PCtx) (D G : PCtx) (A : SmallFib G) (s : PSub[D, G]) (t : S.XSub[E, D]) {
+  module FX = PB.CFibExt[a].FX[E] ;
+  module L = PB.CSmall.SmallFib[D, subSmall D G A.1 s, E, t] ;
+  module R = PB.CSmall.SmallFib[G, A.1, E, xcomp E D G s t] ;
+
+  B : P0.PS.PTy[E] = L.ElTy ;
+  B' : P0.PS.PTy[E] = R.ElTy ;
+  A' : PTy[D] = S.up D (subSmall D G A.1 s) ;
+  module SE = PB.CFibSub[a+].FibSub[D, G, s, S.up G A.1].SE ;
+
+  local : PB.CLine[a].Lines[E, B].Fib = L.fib (sub D G A s).2 ;
+  Pack : FX.Pack B.tob = (B'.tact, (B'.tact-id, B'.tact-o)) ;
+
+  action : P0.PS.PtEq E B.tob B.tact Pack.1 =
+    \ J I f x y e u -> S.tact-irr G A.1 J I f (s.nt I (t.nt I x)) (s.nt J (t.nt J y))
+      (ntEq D G s J I f (t.nt I x) (t.nt J y) (S.xntEq E D t J I f x y e))
+      (S.xntEq E G (xcomp E D G s t) J I f x y e) u ;
+
+  nat : FX.NatTy B Pack =
+    \ J I f v -> apH (\ u -> L.TB.pr J (E.act J I f (L.TB.pr1 I v)) u)
+      (action J I f (L.TB.pr1 I v) (E.act J I f (L.TB.pr1 I v))
+        (refl (E.act J I f (L.TB.pr1 I v))) (L.TB.pr2 I v)) ;
+
+  module K1 = PB.CCartLaws2[a, a, a+].CC[E, B', E, B, D, A',
+    \ W x -> x, \ V W g x -> refl (E.act V W g x), \ W v -> v, \ W v -> refl (R.TB.pr1 W v),
+    nat, \ W v v' p q -> q, \ W x u -> u, \ W x u -> refl (L.TB.pr W x u),
+    t.nt, t.nt-nat, L.ta, \ W v -> refl (t.nt W (L.TB.pr1 W v)), L.tanat, L.tainj,
+    \ W x u -> u, \ W x u -> refl (L.TE.pr W (t.nt W x) u)] ;
+
+  module K2 = PB.CCartLaws2[a, a+, a+].CC[E, B', D, A', G, S.up G A.1,
+    K1.s, K1.s-nat, K1.ta, K1.tapt, K1.tanat, K1.tainj, K1.bk, K1.bkta,
+    s.nt, s.nt-nat, SE.mV, \ W v -> refl (s.nt W (SE.TS.pr1 W v)), SE.mV-nat, SE.mV-inj,
+    \ W x u -> u, \ W x u -> refl (SE.TC.pr W (s.nt W x) u)] ;
+
+  module Cong = PB.CCartLaws2[a, a+, a+].CG[E, B', G, S.up G A.1,
+    K2.s, K2.s-nat, K2.ta, K2.tapt, K2.tanat, K2.tainj, K2.bk, K2.bkta,
+    (xcomp E D G s t).nt, (xcomp E D G s t).nt-nat,
+    R.ta, \ W v -> refl (s.nt W (t.nt W (R.TB.pr1 W v))), R.tanat, R.tainj,
+    \ W x u -> u, \ W x u -> refl (R.TE.pr W (s.nt W (t.nt W x)) u),
+    \ W x -> refl (s.nt W (t.nt W x)), \ W v -> refl (R.ta W v)] ;
+
+  Small (T : P0.PS.PTy[E]) : U a+ = PB.CLine[a].Lines[E, T].Fib ;
+  Restricted : U a+ = (T : P0.PS.PTy[E]) * Small T ;
+
+  move : Id (Small B') (K1.C1.moveFib local) (R.fib A.2) =
+    transH (K1.compFib (sub D G A s).2)
+      (transH (K2.compFib A.2) (Cong.congFib A.2)) ;
+
+  law : Id Restricted (B, local) (B', R.fib A.2) =
+    transH (FX.fibExt B local Pack action nat)
+      (apH {Small B'} {Restricted} (\ c -> (B', c)) move) ;
+
+  opaque law ;
+} ;
