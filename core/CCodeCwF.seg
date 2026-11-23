@@ -1,0 +1,119 @@
+-- A presheaf of codes and a small family over it give an Ehrhard CwF.
+-- Substitution on types is composition of code maps.
+level k l ;
+constraint k <= l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+module W = V[l] ;
+module W' = V[l+] ;
+
+module Over (BC : SmallCat[k].SmallCat) {
+  open BC ;
+  open SmallCat[k].Objs[BC.obV] ;
+  open SmallCat[k].Homs[BC.obV, BC.homV] ;
+  module S = Presheaf[k, l].Psh[BC] ;
+  module L = Presheaf[k, l+].Psh[BC] ;
+  open S ;
+  import CCodeContextSet ;
+
+  record Family (U0 : L.PCtx) {
+    ob (I : Ob) (x : W'.Ix (U0.ob I)) : W.V ;
+    act (J I : Ob) (f : Hom J I) (x : W'.Ix (U0.ob I)) (y : W'.Ix (U0.ob J))
+      (e : Id (W'.Ix (U0.ob J)) (U0.act J I f x) y) (v : W.Ix (ob I x)) : W.Ix (ob J y) ;
+    act-id (I : Ob) (x : W'.Ix (U0.ob I)) (e : Id (W'.Ix (U0.ob I)) (U0.act I I (idC I) x) x)
+      (v : W.Ix (ob I x)) : Id (W.Ix (ob I x)) (act I I (idC I) x x e v) v ;
+    act-o (K J I : Ob) (f : Hom J I) (g : Hom K J)
+      (x : W'.Ix (U0.ob I)) (y : W'.Ix (U0.ob J)) (z : W'.Ix (U0.ob K))
+      (p : Id (W'.Ix (U0.ob J)) (U0.act J I f x) y)
+      (q : Id (W'.Ix (U0.ob K)) (U0.act K J g y) z)
+      (r : Id (W'.Ix (U0.ob K)) (U0.act K I (oC K J I f g) x) z) (v : W.Ix (ob I x))
+      : Id (W.Ix (ob K z)) (act K I (oC K J I f g) x z r v) (act K J g y z q (act J I f x y p v)) ;
+  } ;
+
+  -- Maps are allowed from a context one level below the code presheaf.
+  module Codes (U0 : L.PCtx) {
+    Points (G : PCtx) : U l+ = (I : Ob) -> W.Ix (G.ob I) -> W'.Ix (U0.ob I) ;
+    NatLaw (G : PCtx) (u : Points G) : U l+ =
+      (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I))
+      -> Id (W'.Ix (U0.ob J)) (u J (G.act J I f x)) (U0.act J I f (u I x)) ;
+
+    nat-prop (G : PCtx) (u : Points G) : isProp (NatLaw G u) =
+      isProp-Pi Ob (\ J -> (I : Ob) (f : Hom J I) (x : W.Ix (G.ob I))
+        -> Id (W'.Ix (U0.ob J)) (u J (G.act J I f x)) (U0.act J I f (u I x))) (\ J ->
+      isProp-Pi Ob (\ I -> (f : Hom J I) (x : W.Ix (G.ob I))
+        -> Id (W'.Ix (U0.ob J)) (u J (G.act J I f x)) (U0.act J I f (u I x))) (\ I ->
+      isProp-Pi (Hom J I) (\ f -> (x : W.Ix (G.ob I)) -> Id (W'.Ix (U0.ob J)) (u J (G.act J I f x)) (U0.act J I f (u I x))) (\ f ->
+      isProp-Pi (W.Ix (G.ob I)) (\ x -> Id (W'.Ix (U0.ob J)) (u J (G.act J I f x)) (U0.act J I f (u I x))) (\ x ->
+        W'.isSetIx (U0.ob J) (u J (G.act J I f x)) (U0.act J I f (u I x)))))) ;
+
+    Ty (G : PCtx) : U l+ = (u : Points G) * NatLaw G u ;
+
+    isSetTy (G : PCtx) : isSet (Ty G) =
+      isSet-Sigma (Points G) (NatLaw G)
+        (isSet-Pi Ob (\ I -> W.Ix (G.ob I) -> W'.Ix (U0.ob I)) (\ I ->
+          isSet-Pi (W.Ix (G.ob I)) (\ _ -> W'.Ix (U0.ob I)) (\ _ -> W'.isSetIx (U0.ob I))))
+        (\ u -> prop-to-set (NatLaw G u) (nat-prop G u)) ;
+
+    ty-ext (G : PCtx) (A A' : Ty G) (q : (I : Ob) (x : W.Ix (G.ob I)) -> Id (W'.Ix (U0.ob I)) (A.1 I x) (A'.1 I x))
+      : Id (Ty G) A A' =
+      Sigma-eq (Points G) (NatLaw G) A.1 A'.1 A.2 A'.2
+        (funext Ob (\ I -> W.Ix (G.ob I) -> W'.Ix (U0.ob I)) A.1 A'.1 (\ I ->
+          funext (W.Ix (G.ob I)) (\ _ -> W'.Ix (U0.ob I)) (A.1 I) (A'.1 I) (q I)))
+        (nat-prop G A'.1) ;
+
+    subT (D G : PCtx) (A : Ty G) (s : PSub[D, G]) : Ty D =
+      (\ I x -> A.1 I (s.nt I x),
+       \ J I f x -> transH (apH (A.1 J) (s.nt-nat J I f x)) (A.2 J I f (s.nt I x))) ;
+
+    subT-id (G : PCtx) (A : Ty G) : Id (Ty G) (subT G G A (idS G)) A =
+      ty-ext G (subT G G A (idS G)) A (\ I x -> refl (A.1 I x)) ;
+
+    subT-o (T D G : PCtx) (A : Ty G) (s : PSub[D, G]) (t : PSub[T, D])
+      : Id (Ty T) (subT T G A (oS T D G s t)) (subT T D (subT D G A s) t) =
+      ty-ext T _ _ (\ I x -> refl (A.1 I (s.nt I (t.nt I x)))) ;
+
+    opaque nat-prop ; opaque isSetTy ; opaque ty-ext ;
+  } ;
+
+  module Build (U0 : L.PCtx) (F : Family[U0]) {
+    module C = Codes[U0] ;
+    open C ;
+
+    eq (G : PCtx) (A : Ty G) (J I : Ob) (f : Hom J I) (x : W.Ix (G.ob I)) (y : W.Ix (G.ob J))
+      (e : Id (W.Ix (G.ob J)) (G.act J I f x) y) : Id (W'.Ix (U0.ob J)) (U0.act J I f (A.1 I x)) (A.1 J y) =
+      transH (symH (A.2 J I f x)) (apH (A.1 J) e) ;
+
+    decode (G : PCtx) (A : Ty G) : PTy[G] =
+      new PTy[G, \ I x -> F.ob I (A.1 I x),
+        \ J I f x y e b -> F.act J I f (A.1 I x) (A.1 J y) (eq G A J I f x y e) b,
+        \ I x e b -> F.act-id I (A.1 I x) (eq G A I I (idC I) x x e) b,
+        \ K J I f g x y z p q r b -> F.act-o K J I f g (A.1 I x) (A.1 J y) (A.1 K z)
+          (eq G A J I f x y p) (eq G A K J g y z q) (eq G A K I (oC K J I f g) x z r) b] ;
+
+    -- Substitution and decoding have the same fibre codes. Their
+    -- actions use two proofs of the same equality of codes.
+    action-sub (D G : PCtx) (A : Ty G) (s : PSub[D, G])
+      (J I : Ob) (f : Hom J I) (x : W.Ix (D.ob I)) (y : W.Ix (D.ob J))
+      (e : Id (W.Ix (D.ob J)) (D.act J I f x) y) (b : W.Ix (F.ob I (A.1 I (s.nt I x))))
+      : Id (W.Ix (F.ob J (A.1 J (s.nt J y))))
+        ((subTy D G (decode G A) s).tact J I f x y e b) ((decode D (subT D G A s)).tact J I f x y e b) =
+      apH (\ r -> F.act J I f (A.1 I (s.nt I x)) (A.1 J (s.nt J y)) r b)
+        (W'.isSetIx (U0.ob J) (U0.act J I f (A.1 I (s.nt I x))) (A.1 J (s.nt J y))
+          (eq G A J I f (s.nt I x) (s.nt J y) (ntEq D G s J I f x y e))
+          (eq D (subT D G A s) J I f x y e)) ;
+
+    decode-sub (D G : PCtx) (A : Ty G) (s : PSub[D, G])
+      : Id (PTy[D]) (subTy D G (decode G A) s) (decode D (subT D G A s)) =
+      S.ty-ext D (\ I x -> F.ob I (A.1 I (s.nt I x)))
+        (subTy D G (decode G A) s).tact (decode D (subT D G A s)).tact
+        (subTy D G (decode G A) s).tact-id (decode D (subT D G A s)).tact-id
+        (subTy D G (decode G A) s).tact-o (decode D (subT D G A s)).tact-o (action-sub D G A s) ;
+
+    opaque decode-sub ; opaque action-sub ;
+
+    import CCodeOperations ;
+    import CCodeLaws ;
+  } ;
+} ;

@@ -1,0 +1,113 @@
+-- Naturality of abstraction. Compare a type and its term together,
+-- then use that paths of underlying presheaf types are propositions.
+open CDCodePiTerms ;
+module PP = PresheafPi[a, a+].PPi[N.DB.BC] ;
+
+Terms (G : PCtx) (T : PTy[G]) : U a++ = PEl[G, T] ;
+Pack (G : PCtx) : U a++ = (T : PTy[G]) * Terms G T ;
+
+sub (D G : PCtx) (s : PSub[D, G]) (v : Pack G) : Pack D =
+  (subTy D G v.1 s, subEl D G v.1 v.2 s) ;
+
+sub-id (G : PCtx) (v : Pack G) : Id (Pack G) (sub G G (idS G) v) v =
+  Sigma-path (PTy[G]) (Terms G) (subTy G G v.1 (idS G)) v.1 (subEl G G v.1 v.2 (idS G)) v.2
+    (subTy-id G v.1) (subEl-id G v.1 v.2) ;
+
+Args (G : PCtx) : U a++ = (A : PTy[G]) * Pack (extP G A) ;
+
+lambda (G : PCtx) (v : Args G) : Pack G =
+  (PP.PiCode[G, v.1, v.2.1].PiP, PP.PiCode[G, v.1, v.2.1].lamEl v.2.2) ;
+
+domain (G : PCtx) (A A' : PTy[G]) (v : Pack (extP G A)) (p : Id (PTy[G]) A A')
+  : Id (Args G) (A, v) (A', sub (extP G A') (extP G A) CDPiReindex[a].Back[G, A, A', p].map v) =
+  idJ (PTy[G]) A
+    (\ T q -> Id (Args G) (A, v) (T, sub (extP G T) (extP G A) CDPiReindex[a].Back[G, A, T, q].map v))
+    (apH {Pack (extP G A)} {Args G} (\ z -> (A, z)) (symH (transH
+      (apH (\ s -> sub (extP G A) (extP G A) s v)
+        (sub-ext (extP G A) (extP G A) CDPiReindex[a].Back[G, A, A, refl A].map (idS (extP G A)) (\ I x -> refl x)))
+      (sub-id (extP G A) v)))) A' p ;
+
+named-pack (G : PCtx) (A : C.C.Ty G) (a0 : O.El G A) : Pack G = (C.decode G A, a0) ;
+
+-- The inverse map of the transported isomorphism is abstraction.
+module Abstract (G : PCtx) (A : C.C.Ty G) (B : C.C.Ty (O.ext G A)) (f : O.El (O.ext G A) B) {
+  module T = At[G, A, B] ;
+  lam : O.El G (Pi G A B) = T.iso.inv f ;
+  law : Id (Pack G) (named-pack G (Pi G A B) lam) (T.actual, T.P0.lamEl f) =
+    idJ (PTy[G]) T.actual
+      (\ X q -> Id (Pack G)
+        (X, (idJ (PTy[G]) T.actual (\ Y v -> Iso (T.Terms Y) T.Target) T.P0.PiP-iso X q).inv f)
+        (T.actual, T.P0.lamEl f))
+      (refl (T.actual, T.P0.lamEl f)) T.namedT (symH T.p) ;
+} ;
+
+module Reindexed (H G : PCtx) (A : C.C.Ty G) (B : C.C.Ty (O.ext G A)) (f : O.El (O.ext G A) B) (s : PSub[H, G]) {
+  module K0 = CDCodePiNat.Reindex[H, G, A, B, s] ;
+  module T = Abstract[G, A, B, f] ;
+  module N0 = PP.PiNat[H, G, K0.AG.1, K0.BG.1, s] ;
+
+  left : C.C.Ty H = C.C.subT H G (Pi G A B) s ;
+  right : C.C.Ty H = Pi H K0.A' K0.B' ;
+  left-term : O.El H left = O.subt H G (Pi G A B) T.lam s ;
+  f' : O.El K0.L1 K0.B' = O.subt K0.L1 K0.E B f K0.l1 ;
+  module T' = Abstract[H, K0.A', K0.B', f'] ;
+
+  -- Forgetting the code action after substitution gives the underlying
+  -- reindexed term, by equality of its values.
+  after-sub : Id (Pack H) (sub H G s (named-pack G (Pi G A B) T.lam)) (named-pack H left left-term) =
+    Sigma-path (PTy[H]) (Terms H) (subTy H G T.T.namedT s) (C.decode H left)
+      (subEl H G T.T.namedT T.lam s) left-term
+      (C.decode-sub H G (Pi G A B) s)
+      (el-subst H _ _ (C.decode-sub H G (Pi G A B) s)
+        (refl (\ I x -> T.T.namedT.tob I (s.nt I x))) (subEl H G T.T.namedT T.lam s) left-term
+        (\ I x -> refl (T.lam.eob I (s.nt I x)))) ;
+
+  f0 : PEl[K0.L0, K0.B0.1] = subEl K0.L0 K0.E K0.BG.1 f K0.l0 ;
+  raw-nat : Id (Pack H) (sub H G s (T.T.actual, T.T.P0.lamEl f)) (lambda H (K0.A0.1, (K0.B0.1, f0))) =
+    Sigma-path (PTy[H]) (Terms H) (subTy H G T.T.actual s) N0.PD.PiP
+      (subEl H G T.T.actual (T.T.P0.lamEl f) s) (N0.PD.lamEl f0) N0.PiP-nat (N0.PiP-iso-nat f) ;
+
+  back0 : PSub[K0.L1, K0.L0] =
+    new PSub[K0.L1, K0.L0, \ I x -> x, \ J I g x -> symH (D.CDCodeFibSub.Sub[H, G, A, s].nat J I g x)] ;
+
+  back-eq : Id (PSub[K0.L1, K0.L0]) K0.back back0 =
+    sub-ext K0.L1 K0.L0 K0.back back0 K0.points ;
+
+  args-back : Id (Args H) (K0.A0.1, (K0.B0.1, f0))
+      (K0.AH.1, sub K0.L1 K0.L0 back0 (K0.B0.1, f0)) =
+    transH (domain H K0.A0.1 K0.AH.1 (K0.B0.1, f0) (apH (\ z -> z.1) K0.q))
+      (apH (\ b -> (K0.AH.1, sub K0.L1 K0.L0 b (K0.B0.1, f0))) back-eq) ;
+
+  u : Pack K0.L1 = sub K0.L1 K0.L0 back0 (K0.B0.1, f0) ;
+  v : Pack K0.L1 = (K0.BH.1, f') ;
+  comp : PSub[K0.L1, K0.E] = oS K0.L1 K0.L0 K0.E K0.l0 back0 ;
+
+  type-path : Id (PTy[K0.L1]) u.1 v.1 =
+    transH (symH (subTy-o K0.L1 K0.L0 K0.E K0.BG.1 K0.l0 back0))
+      (transH (apH (subTy K0.L1 K0.E K0.BG.1)
+        (sub-ext K0.L1 K0.E comp K0.l1 (\ I x -> refl (K0.l1.nt I x))))
+        (C.decode-sub K0.L1 K0.E B K0.l1)) ;
+
+  args : Id (Args H) (K0.A0.1, (K0.B0.1, f0)) (K0.AH.1, v) =
+    transH args-back (apH {Pack K0.L1} {Args H} (\ w -> (K0.AH.1, w))
+      (Sigma-path (PTy[K0.L1]) (Terms K0.L1) u.1 v.1 u.2 v.2 type-path
+        (el-subst K0.L1 u.1 v.1 type-path (refl v.1.tob) u.2 v.2 (\ I x -> refl (f'.eob I x))))) ;
+
+  combined : Id (Pack H) (named-pack H left left-term) (named-pack H right T'.lam) =
+    transH (symH after-sub) (transH (apH (sub H G s) T.law)
+      (transH raw-nat (transH (apH (lambda H) args) (symH T'.law)))) ;
+
+  opaque combined ;
+
+
+  law : Id (O.El H right) (subst (C.C.Ty H) (\ X -> O.El H X) left right K0.law left-term) T'.lam =
+    transH (subst-ap (C.C.Ty H) (PTy[H]) (C.decode H) (Terms H) left right K0.law left-term)
+      (transH (apH (\ p -> subst (PTy[H]) (Terms H) (C.decode H left) (C.decode H right) p left-term)
+        (isSet-PTy H (C.decode H left) (C.decode H right) (apH (C.decode H) K0.law)
+          (sPath (PTy[H]) (Terms H) (named-pack H left left-term) (named-pack H right T'.lam) combined).1))
+        (sPath (PTy[H]) (Terms H) (named-pack H left left-term) (named-pack H right T'.lam) combined).2) ;
+} ;
+
+products : CwF.Formers[a++, K.cwf].PiStr = new CwF.Formers[a++, K.cwf].PiStr[
+  Pi, \ H G A B s -> CDCodePiNat.Reindex[H, G, A, B, s].law,
+  \ G A B -> At[G, A, B].iso, \ H G A B f s -> Reindexed[H, G, A, B, f, s].law] ;
