@@ -37,6 +37,27 @@ that the Bachmann–Howard collapse is a type-2 ptyx. For every dilator
 `D`, the order `ϑ(D)` is well-founded. With univalence, dilators and
 type-2 ptykes each form a set. [Monotonicity proof](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/DilMono.seg) · [Bachmann–Howard proof](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/ThetaFun2.seg) · [Mathematical account (PDF)](doc/ptykes-catemb.pdf)
 
+### Serre's equivalence: modules and quasi-coherent sheaves
+
+For a commutative ring `A`, the univalent category of `A`-modules is
+*equal* to the univalent category of quasi-coherent module sheaves on
+`Spec A` ([identification](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohEquivalence.seg)). The functor
+`M ↦ M~` is fully faithful, since `Γ(M~) = M`
+([proof](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreTildeFaithful.seg)). It is essentially surjective because
+`Γ(F)~ ≅ F` for every quasi-coherent `F` ([proof](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreTildeEssential.seg)).
+No choice is used: both categories are univalent, so a fully faithful,
+merely essentially surjective functor is already an equivalence.
+
+Structure then moves across the equality instead of being rebuilt on
+sheaves. `QCoh(Spec A)` is abelian ([transport](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohAbelian.seg)),
+and it is symmetric monoidal, with pentagon, triangle and hexagon
+([transport](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohMonoidal.seg)). Kernels and cokernels are
+obtained without sheafification. The transported tensor sends `M~` and `N~`
+to `(M ⊗ N)~` and has unit `A~` ([objects](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohObjects.seg)).
+The development assumes univalence and replacement, and checks with the
+checker on the `core-abstraction` branch (`segc sag/qcqs`, 529 modules).
+[Plan and status](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/PLAN-QCOH-UA.md)
+
 ### Scott domains and definitional inversion
 
 The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.
@@ -540,6 +561,10 @@ category theory comes last and is kept minimal (`sag/categories`,
   atlas), giving an equivalence of the univalent categories of qcqs
   schemes as locally ringed lattices and as functors, also relative to a
   base ring (`RelativeCategories.equivalence`); descent.
+- Serre's equivalence: modules over `A` and quasi-coherent sheaves on
+  `Spec A` form equal univalent categories; the abelian and symmetric
+  monoidal structures are transported to `QCoh(Spec A)` (on the
+  `core-abstraction` branch, `SerreQCohEquivalence`).
 
 See [`qcqs.pdf`](doc/qcqs.pdf), [`functorial-schemes.pdf`](doc/functorial-schemes.pdf)
 and `sag/qcqs/DESIGN.md`.
