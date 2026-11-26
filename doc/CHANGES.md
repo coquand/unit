@@ -1,5 +1,26 @@
 # `seg/defenv`: a simple checker for Unit, compared with `seg/src`
 
+> **No subtyping of records (10 November).** `R[F]` was a subtype of
+> `R[F']` when `F` fixes more fields (the `VSegT` case of `sub`, and the
+> same through `subSeg`). It is removed, to keep the system simple:
+> `R[F]` and `R[F']` are compared by conversion, and the passage from
+> `R[x := a]` to `R` repacks the fields with `new`. Only the typing of an
+> element against `R[F]` remains: a field fixed in the expected type is
+> compared with the element's value (`fixedByValue`, formerly `subSeg`).
+> No development used subtyping: all 171 `All.seg` check with 0 failed;
+> the tests `pass`, `up` (`fixedfields.seg`, `segtypes.seg`) are `#fails`.
+
+> **No anonymous records (2 November).** `sig { .. }` and `struct { .. }`
+> are removed from the language: a record is declared (`record R { .. }`),
+> and its elements are built by `new R[..]`. An anonymous record was compared
+> by name (its occurrence) but could be written anywhere, and its normal
+> form showed only its fields, so two different types printed the same.
+> The eight `sig` definitions of the corpus are records now, the old name
+> kept as a definition that fixes fields: `isEquiv A B f = IsEquiv[A, B, f]`,
+> `Iso A B = IsoData[A, B]`, `Cover u = CoverOf[u]`; the parameterless ones
+> (`AffineCover`, `PrincipalCover`, `Notion`) are records of the same name.
+> Every `struct` became `new R[..]` with the fixed values written out.
+
 > **Elements of a record compare with their module instance (2 November).**
 > Two elements built by `new` were compared by the record's declaration,
 > parameters and fields, but not by the module instance it comes from, so

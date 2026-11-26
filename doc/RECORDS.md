@@ -12,7 +12,7 @@ Step 1 of `seg/HANDOFF-records.md`. §§1–4 are implemented (§8, §11). Omitt
     module M (params) { body }
     record R (params) { body }
 
-The body of both is a list of units: declarations `x : A`, definitions `f : A = t`, levels and constraints. A module's body may also contain modules and records. A record's body contains only declarations, definitions and `open` of a module instance.
+The body of both is a list of units: declarations `x : A`, definitions `f : A = t`, levels and constraints. A module's body may also contain modules and records. A record's body contains only declarations, definitions and `open` of a module instance. Such an `open` only brings the instance's names into scope for the rest of the body: they are not derived members of the record (`r.y` is rejected when `y` comes from an `open`; write `y : A = M[…].y` instead). Test: `examples/recordrules.seg`.
 
 The two differ in what a declaration in the body means:
 
@@ -63,7 +63,7 @@ A type in which some fields have given values. Written `R[ps, x := e]` as now; o
   `p.value : N`, not `p.A`. The same holds for the types of derived members.
 - **Elimination.** The same `split { R x1 … xn -> b }`. A fixed field's pattern variable is bound to its fixed value, not to a fresh variable. The branch is checked as `b : C (new R[ps, …, e, …])`.
 - **Equality of types.** `R[ps][F] = R[ps'][F']` when `R[ps] = R[ps']`, the same fields are fixed, and their values are convertible.
-- **Subtyping.** `R[ps][F] ≤ R[ps][F']` when every field fixed in `F'` is fixed in `F` with a convertible value; in particular `R[ps][F] ≤ R[ps]`. It is subsumption, with no coercion: the element is the same value. The value of a fixed field may also be read off the element itself, as `subSeg` does now (`new Mon[a, N, …] : Mon[a, N]`).
+- **No subtyping** (removed 10 November). `R[ps][F]` and `R[ps][F']` are different types when `F ≠ F'`; an element of `R[ps][F]` is not an element of `R[ps]`, and the passage is `new R[ps, …, t.y, …]`, which repacks the fields. What remains is the typing of an element against `R[ps][F]`: a field fixed in the expected type and not in the inferred one is compared with the element's own value (`fixedByValue`; `new Mon[a, N, …] : Mon[a, N]`). Every field fixed in the inferred type must be fixed in the expected one. No development used subtyping.
 
 **Why elaboration, and not a rule of conversion.** The current rule binds a variable `c : R[x := e]` to itself with its fixed fields, so that `c.x` computes to `e`. This depends on `c` being a variable, so it is not stable under substitution. Measured:
 
@@ -107,14 +107,14 @@ A rough scan of `defenv/core` found fixed fields only in `new` and in module ins
 §§1–3 are implemented in `defenv/src`:
 
 - **Syntax.** `record R (params) { … }`; `UMod` and `Mod` carry the kind (`SModule`, or `SRecord` with the head parameters). `mkR` is generated for records only.
-- **Resolver.** Rejects a module as a type, `new` on a module, a member reached through a record (`R[ps].d`), `module X = R[..]`, `open R[..]`, and modules, opens, levels and constraints in a record body. A record can still be renamed (`module X = R`).
+- **Resolver.** Rejects a module as a type, `new` on a module, a member reached through a record (`R[ps].d`), `module X = R[..]`, `open R[..]`, and modules, records, levels and constraints in a record body (an `open` of a module instance is accepted, as a scope device only, §1). A record can still be renamed (`module X = R`).
 - **Checker.** `R[ps]` needs all head parameters. The eliminator binds the fields only. A wrong pattern says what the fields are.
 - **Derived members.** `t.d` is `R.d[ps] t`: the access to `d` in an environment that binds the head parameters, then the element `t` itself, then the fields as `t.x` (not part of the dynamic part). So it is compared by `d`, `ps` and `t`, never by `t`'s fields, and unfolds under the lock strategy, on `new` and on neutral elements alike. The filling pass writes `t.d` as the term `Mem` (record, head parameters, member, element); a variable of record type carries its record, so `c.d` computes the same value directly. Write-back gives `t.d` again. `new R[ps, v]` now has type `R[ps]` (head parameters, not only levels).
 - **Fixed fields.** Unchanged and provisional (`EDecl c (VVar c fixed)`, `subSeg`). They do not enter the new rules: record equality is by declaration and dynamic part, and the eliminator takes the head parameters from the type.
 
 Tests:
 
-- `examples/recordrules.seg` (52 declarations): formation, constructor β (fields and derived members), equality of constructions, the eliminator and its β, propositional η, definitional η rejected, nominal records, a record inside a module, derived members unfolding on variables and on neutral applications, a locked derived member not unfolding (also on `new`), `lockedEta` (locked, `b.get` and `(new Box[N, b.value]).get` differ), derived members written back for hidden arguments, and every module/record error.
+- `examples/recordrules.seg` (60 declarations): formation, constructor β (fields and derived members), equality of constructions, the eliminator and its β, propositional η, definitional η rejected, nominal records, a record inside a module, derived members unfolding on variables and on neutral applications, a locked derived member not unfolding (also on `new`), `lockedEta` (locked, `b.get` and `(new Box[N, b.value]).get` differ), derived members written back for hidden arguments, an `open` in a record body (scope only, not members), and every module/record error.
 - `examples/fixedfields.seg`: the current, provisional behaviour of §4. `viaApp` fails (the defect). `lost` is accepted today, because `pass M` unfolds to the variable `M`, which carries its fixed fields; under §4 it becomes `#fails`.
 - The other examples are updated (`module` to `record` where a segment is used as a type) and pass, except `byDeps` (by design).
 
@@ -159,7 +159,7 @@ Diffs and results are in `migration/` (see its README).
 - **Formation.** A field can be fixed only if every field its type mentions is fixed too; the error says which.
 - **Deferred:** omitting a fixed field in `new` checked against `R[ps][x := e]`. Nothing uses it, and explicit constructor arguments keep the implementation simpler (the resolver requires every argument of `new`).
 
-Tests: `examples/fixedfields.seg` (23 declarations): `Pack` (`p.value : N`, `p.A = N`), `viaVar` and `viaApp` (both hold now), the type of a derived member at a fixed type, `pass`/`lost` (`#fails`)/`kept`, elements and the fixed value, subtyping both ways, and formation. All examples pass except `byDeps` (by design).
+Tests: `examples/fixedfields.seg` (23 declarations): `Pack` (`p.value : N`, `p.A = N`), `viaVar` and `viaApp` (both hold now), the type of a derived member at a fixed type, elements and the fixed value, no subtyping in either direction (`up`, `down` are `#fails`; `forget` repacks), and formation. All examples pass except `byDeps` (by design).
 
 `core`: all 202 steps pass (`migration/runfrom-section4.txt`). The total time is 228 s against 221 s before §4 (+3%, the extra filling pass); the largest increase is 0.23 s (`CLocDUniv`), the slowest file is still `CPosEl3` (4.0 s).
 
@@ -205,7 +205,7 @@ This is a sketch of semantic soundness, not a syntactic preservation proof. It a
 
 **Stability under substitution.** Elaboration happens once, where the projection is checked, and leaves `e_x` in the term. The checked terms contain no rule that depends on a variable carrying fixed fields: substituting an element `u : R[ps][F]` for a variable gives the same `e_x`. This is what failed before, when only a *variable* computed its fixed fields (`viaApp`).
 
-**Elements and subtyping.** `new R[ps, v] : R[ps][F]` is checked by `v_x = e_x` for `x` in `F`, so constructed elements satisfy the reading. A neutral element has the refinement only through its type, which the reading takes as given. `R[ps][F] ≤ R[ps][F']` for `F'` contained in `F` (with convertible values) is inclusion of these subsets; subsumption changes no term.
+**Elements.** `new R[ps, v] : R[ps][F]` is checked by `v_x = e_x` for `x` in `F`, so constructed elements satisfy the reading. A neutral element has the refinement only through its type, which the reading takes as given. There is no subtyping between `R[ps][F]` and `R[ps][F']`.
 
 **Elimination.** The branch of `split { R x1 … xn -> b }` at `R[ps][F]` binds a fixed field to its value, and is checked at `new R[ps, …, e_x, …]`. On an element `new R[ps, v]` of `R[ps][F]`, `v_x = e_x`, so β gives a term of the expected type.
 
