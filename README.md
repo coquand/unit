@@ -24,6 +24,19 @@ See the [initiality theorem](russell-initiality/InitInitialObject.seg),
 To check the [complete proof](russell-initiality/InitCheckInitial.seg), run
 `seg InitCheckInitial.seg` from `russell-initiality/`.
 
+### Dilators and ptykes as categories of embeddings
+
+If a category of embeddings `C` has good finite objects, then its category
+of stable functors `Stab(C)` also has good finite objects and is again a
+category of embeddings. Starting with decidable linear orders and order
+embeddings, one can iterate this construction to obtain Girard’s hierarchy
+of pre-dilators and higher-type pre-ptykes. [Closure theorem](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/StabCEF.seg) · [Linear-order instance](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/LOCEF.seg)
+
+The development proves constructively that every dilator is monotone and
+that the Bachmann–Howard collapse is a type-2 ptyx. For every dilator
+`D`, the order `ϑ(D)` is well-founded. With univalence, dilators and
+type-2 ptykes each form a set. [Monotonicity proof](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/DilMono.seg) · [Bachmann–Howard proof](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/ThetaFun2.seg) · [Mathematical account (PDF)](doc/ptykes-catemb.pdf)
+
 ### Scott domains and definitional inversion
 
 The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.
