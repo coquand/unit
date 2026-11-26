@@ -1,0 +1,86 @@
+-- Choose numerator frames on a finite principal cover. They generate
+-- the original module by the partition of one of their chart powers.
+-- All these choices are finite and retained under truncation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module SM = SerreModule[l] ;
+module Bil = SerreBilinear[l] ; module NB = NatBound[l] ; module AF = AffineFinite[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) (M : SM.Over[A].Module) {
+ module S = SM.Over[A] ; module L = Bil.Over[A] ; module F = SerreLocalFrame[l].Over[A,setA] ;
+ module P = AffinePowers[l].Over[A] ; module RS = F.RS ; module Rad = F.Rad ;
+ module MS = SerreModuleSums[l].Over[A,M] ;
+ module Desc (d : F.Description[M]) {
+  n : Nat = d.size ;
+  fs (i : Fin n) : A.R = d.opens i ;
+  module At (i : Fin n) { module N = SerreFrameNumerators[l].At[A,setA,M,fs i] ; } ;
+  Frames : U l = (i : Fin n) -> At[i].N.Numerator ;
+  frames : Tr.Trunc[Frames].carrier = AF.choice n (\ i -> At[i].N.Numerator) (\ i -> At[i].N.Frame[d.frames i].numerator) ;
+  module Partition = SerreUnitIdealPowers[l].Over[A].Family[n,fs,d.covers] ;
+  module Generators (fr : Frames) {
+   g (i : Fin n) : M.M = (fr i).1 ;
+   module AtIndex (i : Fin n) { module G = At[i].N.Generated[fr i] ; } ;
+   module CF = SerreModuleClearFinite[l].Over[A] ;
+   module V = SerreModuleProducts[l].Over[A,Fin n,\ i -> F.R] ;
+   combine (v : V.Carrier) : M.M = MS.sum n (\ i -> M.sm (v i) (g i)) ;
+   q : L.Linear[V.product,M].H.Hom = new L.Linear[V.product,M].H.Hom[combine,
+    \ u v -> trans (MS.sum-cong n (\ i -> M.sm (A.add (u i) (v i)) (g i))
+     (\ i -> M.madd (M.sm (u i) (g i)) (M.sm (v i) (g i))) (\ i -> M.smE (u i) (v i) (g i)))
+     (MS.sum-add n (\ i -> M.sm (u i) (g i)) (\ i -> M.sm (v i) (g i))),
+    \ a v -> trans (MS.sum-cong n (\ i -> M.sm (A.mul a (v i)) (g i))
+     (\ i -> M.sm a (M.sm (v i) (g i))) (\ i -> sym (M.smA a (v i) (g i))))
+     (MS.sum-scale a n (\ i -> M.sm (v i) (g i)))] ;
+   module WithBound (ys zs : Fin n -> M.M) (fs0 : Fin n -> A.R) (ws : Fin n -> Nat)
+    (as0 : Fin n -> A.R)
+    (eq : (i : Fin n) -> Id M.M (M.sm (P.power (fs0 i) (ws i)) (ys i)) (M.sm (as0 i) (zs i))) {
+    bound : Nat = NB.bound n ws ;
+    excess (i : Fin n) : Nat = NB.excess (NB.bound-above n ws i) ;
+    coefficient (i : Fin n) : A.R = A.mul (P.power (fs0 i) (excess i)) (as0 i) ;
+    equation (i : Fin n) : Id M.M (M.sm (P.power (fs0 i) bound) (ys i)) (M.sm (coefficient i) (zs i)) =
+     trans (sym (CF.Action[M].raise (fs0 i) (ws i) bound (NB.bound-above n ws i) (ys i)))
+      (trans (ap (M.sm (P.power (fs0 i) (excess i))) (eq i)) (M.smA (P.power (fs0 i) (excess i)) (as0 i) (zs i))) ;
+   } ;
+   Fibre (x : M.M) : U l = (v : V.Carrier) * Id M.M (q.fn v) x ;
+   Witnesses (x : M.M) : U l = (i : Fin n) -> AtIndex[i].G.Witness x ;
+   module Span (x : M.M) (ws : Witnesses x) {
+    module Common = WithBound[\ i -> x,g,fs,\ i -> (ws i).1,\ i -> (ws i).2.1,\ i -> (ws i).2.2] ;
+    p : Nat = Common.bound ;
+    module Sum (c : Rad.InIdeal (n,Partition.powers p) A.o) {
+     weight (i : Fin n) : A.R = A.mul (Partition.powers p i) (c.1 i) ;
+     coefficient-at (i : Fin n) : A.R = A.mul (c.1 i) (Common.coefficient i) ;
+     basis (i : Fin n) : Id M.M (M.sm (coefficient-at i) (g i)) (M.sm (weight i) x) = calc M.M {
+      M.sm (coefficient-at i) (g i)
+       =< sym (M.smA (c.1 i) (Common.coefficient i) (g i)) > M.sm (c.1 i) (M.sm (Common.coefficient i) (g i))
+       =< ap (M.sm (c.1 i)) (sym (Common.equation i)) > M.sm (c.1 i) (M.sm (P.power (fs i) p) x)
+       =< ap (M.sm (c.1 i)) (ap (\ a -> M.sm a x) (sym (Partition.powers-at p i))) > M.sm (c.1 i) (M.sm (Partition.powers p i) x)
+       =< S.Laws[M].sm-swap (c.1 i) (Partition.powers p i) x > M.sm (Partition.powers p i) (M.sm (c.1 i) x)
+       =< M.smA (Partition.powers p i) (c.1 i) x > M.sm (weight i) x } ;
+     result : Fibre x = (coefficient-at,trans (MS.sum-cong n (\ i -> M.sm (coefficient-at i) (g i)) (\ i -> M.sm (weight i) x) basis) (MS.partition n weight c.2 x)) ;
+    } ;
+    onto : Tr.Trunc[Fibre x].carrier =
+     Tr.Trunc[Rad.InIdeal (n,Partition.powers p) A.o].induction @l
+      (\ c -> Tr.Trunc[Fibre x].carrier) (\ c -> Tr.Trunc[Fibre x].proposition)
+      (\ c -> Tr.Trunc[Fibre x].inc Sum[c].result) (Partition.coefficients p) ;
+   } ;
+   onto (x : M.M) : Tr.Trunc[Fibre x].carrier =
+    Tr.Trunc[Witnesses x].induction @l (\ ws -> Tr.Trunc[Fibre x].carrier) (\ ws -> Tr.Trunc[Fibre x].proposition)
+     (\ ws -> Span[x,ws].onto) (AF.choice n (\ i -> AtIndex[i].G.Witness x) (\ i -> AtIndex[i].G.AtVector[x].witness)) ;
+   record Row (i : Fin n) {
+    power : Nat ;
+    coefficient : Fin n -> A.R ;
+    equation (j : Fin n) : Id M.M (M.sm (P.power (fs i) power) (g j)) (M.sm (coefficient j) (g i)) ;
+   } ;
+   module RowAt (i : Fin n) {
+    RowInputs : U l = (j : Fin n) -> AtIndex[i].G.Witness (g j) ;
+    module Assemble (w : RowInputs) {
+     module Common = WithBound[g,\ j -> g i,\ j -> fs i,\ j -> (w j).1,\ j -> (w j).2.1,\ j -> (w j).2.2] ;
+     row-data : Row[i] = new Row[i,Common.bound,Common.coefficient,Common.equation] ;
+    } ;
+    row : Tr.Trunc[Row[i]].carrier =
+     Tr.Trunc[RowInputs].induction @l (\ w -> Tr.Trunc[Row[i]].carrier) (\ w -> Tr.Trunc[Row[i]].proposition)
+      (\ w -> Tr.Trunc[Row[i]].inc Assemble[w].row-data)
+      (AF.choice n (\ j -> AtIndex[i].G.Witness (g j)) (\ j -> AtIndex[i].G.AtVector[g j].witness)) ;
+   } ;
+   Rows : U l = (i : Fin n) -> Row[i] ;
+   rows : Tr.Trunc[Rows].carrier = AF.choice n (\ i -> Row[i]) (\ i -> RowAt[i].row) ;
+  } ;
+ } ;
+} ;

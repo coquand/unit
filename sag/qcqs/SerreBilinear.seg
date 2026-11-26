@@ -1,0 +1,96 @@
+-- Linear maps into a module form a module under pointwise operations.
+-- Bilinear maps are linear maps into this module, with evaluation.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module SM = SerreModule[l] ;
+module MM = SerreModuleMaps[l] ;
+module Over (A : CRing) {
+ module S = SM.Over[A] ;
+ module Hom (M N : S.Module) {
+  module H = MM.Between[A,A,RingHom[l].identity A,M,N] ;
+  Additive (f : M.M -> N.M) (x y : M.M) : U l = Id N.M (f (M.madd x y)) (N.madd (f x) (f y)) ;
+  Scalar (f : M.M -> N.M) (a : A.R) (x : M.M) : U l = Id N.M (f (M.sm a x)) (N.sm a (f x)) ;
+  Laws (f : M.M -> N.M) : U l = ((x y : M.M) -> Additive f x y) * ((a : A.R) (x : M.M) -> Scalar f a x) ;
+  laws-prop (f : M.M -> N.M) : Pr.isProp (Laws f) =
+   Pr.isProp-Sigma ((x y : M.M) -> Additive f x y) (\ h -> (a : A.R) (x : M.M) -> Scalar f a x)
+    (FE.isProp-Pi M.M (\ x -> (y : M.M) -> Additive f x y)
+     (\ x -> FE.isProp-Pi M.M (Additive f x) (\ y -> N.setM _ _)))
+    (\ h -> FE.isProp-Pi A.R (\ a -> (x : M.M) -> Scalar f a x)
+     (\ a -> FE.isProp-Pi M.M (Scalar f a) (\ x -> N.setM _ _))) ;
+  pack (f : H.Hom) : (u : M.M -> N.M) * Laws u = (f.fn,f.additive,f.scalar) ;
+  unpack (w : (u : M.M -> N.M) * Laws u) : H.Hom = new H.Hom[w.1,w.2.1,w.2.2] ;
+  eta : (f : H.Hom) -> Id H.Hom (unpack (pack f)) f = split { Hom fn additive scalar -> refl (new H.Hom[fn,additive,scalar]) } ;
+  ext (f g : H.Hom) (at : (x : M.M) -> Id N.M (f.fn x) (g.fn x)) : Id H.Hom f g =
+   trans (sym (eta f)) (trans (ap unpack
+    (Pr.Sigma-eq _ Laws f.fn g.fn (pack f).2 (pack g).2 (FE.funext M.M (\ x -> N.M) f.fn g.fn at) (laws-prop g.fn))) (eta g)) ;
+  set : Pr.isSet H.Hom = \ f -> Pr.Hedberg[H.Hom,f,\ g -> (x : M.M) -> Id N.M (f.fn x) (g.fn x),
+   \ g -> FE.isProp-Pi M.M (\ x -> Id N.M (f.fn x) (g.fn x)) (\ x -> N.setM _ _),\ x -> refl (f.fn x),ext f].hedberg ;
+  module L = S.Laws[N] ;
+  module Sum = SerreModuleSums[l].Over[A,N] ;
+  zero-map : H.Hom = new H.Hom[\ x -> N.mz,\ x y -> sym (N.maddZ N.mz),\ a x -> sym (L.sm-zero a)] ;
+  add-map (f g : H.Hom) : H.Hom = new H.Hom[
+   \ x -> N.madd (f.fn x) (g.fn x),
+   \ x y -> trans (cong2 N.M N.madd _ _ _ _ (f.additive x y) (g.additive x y))
+    (Sum.interchange (f.fn x) (f.fn y) (g.fn x) (g.fn y)),
+   \ a x -> trans (cong2 N.M N.madd _ _ _ _ (f.scalar a x) (g.scalar a x))
+    (sym (N.smD a (f.fn x) (g.fn x)))] ;
+  neg-add (x y : N.M) : Id N.M (N.mneg (N.madd x y)) (N.madd (N.mneg x) (N.mneg y)) =
+   sym (L.neg-unique (N.madd x y) (N.madd (N.mneg x) (N.mneg y))
+    (trans (Sum.interchange x y (N.mneg x) (N.mneg y))
+     (trans (cong2 N.M N.madd _ _ _ _ (N.maddN x) (N.maddN y)) (N.maddZ N.mz)))) ;
+  neg-map (f : H.Hom) : H.Hom = new H.Hom[
+   \ x -> N.mneg (f.fn x),
+   \ x y -> trans (ap N.mneg (f.additive x y)) (neg-add (f.fn x) (f.fn y)),
+   \ a x -> trans (ap N.mneg (f.scalar a x)) (sym (L.sm-neg a (f.fn x)))] ;
+  scale-map (a : A.R) (f : H.Hom) : H.Hom = new H.Hom[
+   \ x -> N.sm a (f.fn x),
+   \ x y -> trans (ap (N.sm a) (f.additive x y)) (N.smD a (f.fn x) (f.fn y)),
+   \ b x -> trans (ap (N.sm a) (f.scalar b x)) (L.sm-swap a b (f.fn x))] ;
+  space : S.Module = new S.Module[H.Hom,set,zero-map,add-map,neg-map,
+   \ f g h -> ext _ _ (\ x -> N.maddA (f.fn x) (g.fn x) (h.fn x)),
+   \ f g -> ext _ _ (\ x -> N.maddC (f.fn x) (g.fn x)),
+   \ f -> ext _ _ (\ x -> N.maddZ (f.fn x)),
+   \ f -> ext _ _ (\ x -> N.maddN (f.fn x)),
+   scale-map,
+   \ a b f -> ext _ _ (\ x -> N.smA a b (f.fn x)),
+   \ f -> ext _ _ (\ x -> N.smO (f.fn x)),
+   \ a f g -> ext _ _ (\ x -> N.smD a (f.fn x) (g.fn x)),
+   \ a b f -> ext _ _ (\ x -> N.smE a b (f.fn x))] ;
+ } ;
+ module Linear (M N : S.Module) { module H = MM.Between[A,A,RingHom[l].identity A,M,N] ; } ;
+ module Composite (M N P : S.Module) (f : Linear[M,N].H.Hom) (g : Linear[N,P].H.Hom) {
+  map : Linear[M,P].H.Hom = new Linear[M,P].H.Hom[
+   \ x -> g.fn (f.fn x),
+   \ x y -> trans (ap g.fn (f.additive x y)) (g.additive (f.fn x) (f.fn y)),
+   \ a x -> trans (ap g.fn (f.scalar a x)) (g.scalar a (f.fn x))] ;
+ } ;
+ identity (M : S.Module) : Linear[M,M].H.Hom =
+  new Linear[M,M].H.Hom[\ x -> x,\ x y -> refl (M.madd x y),\ a x -> refl (M.sm a x)] ;
+ module Maps (M N P : S.Module) {
+  module Right = Hom[N,P] ;
+  record Pairing {
+   value : M.M -> N.M -> P.M ;
+   add-left (x x' : M.M) (y : N.M) : Id P.M (value (M.madd x x') y) (P.madd (value x y) (value x' y)) ;
+   scale-left (a : A.R) (x : M.M) (y : N.M) : Id P.M (value (M.sm a x) y) (P.sm a (value x y)) ;
+   add-right (x : M.M) (y y' : N.M) : Id P.M (value x (N.madd y y')) (P.madd (value x y) (value x y')) ;
+   scale-right (a : A.R) (x : M.M) (y : N.M) : Id P.M (value x (N.sm a y)) (P.sm a (value x y)) ;
+  } ;
+  right (b : Pairing) (x : M.M) : Right.H.Hom =
+   new Right.H.Hom[b.value x,b.add-right x,\ a y -> b.scale-right a x y] ;
+  module Curried (b : Pairing) {
+   module L = Linear[M,Right.space] ;
+   map : L.H.Hom = new L.H.Hom[right b,
+    \ x y -> Right.ext _ _ (b.add-left x y),
+    \ a x -> Right.ext _ _ (b.scale-left a x)] ;
+  } ;
+  module Left = Linear[M,P] ;
+  left (b : Pairing) (y : N.M) : Left.H.Hom =
+   new Left.H.Hom[\ x -> b.value x y,\ x x' -> b.add-left x x' y,\ a x -> b.scale-left a x y] ;
+ } ;
+ module Swap (M N P : S.Module) (b : Maps[M,N,P].Pairing) {
+  pairing : Maps[N,M,P].Pairing = new Maps[N,M,P].Pairing[\ y x -> b.value x y,
+   \ y y' x -> b.add-right x y y',\ a y x -> b.scale-right a x y,
+   \ y x x' -> b.add-left x x' y,\ a y x -> b.scale-left a x y] ;
+ } ;
+} ;

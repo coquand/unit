@@ -1,0 +1,203 @@
+-- The tensor product makes Mod(A) a monoidal category
+-- (MonoidalCategory.Monoidal; the braiding is SerreTensorSymmetric), on
+-- the category Modules of SerreQCohEquivalence (pairs (M, tt); arrows are
+-- linear maps).
+--
+-- Data. M (x) N = SerreTensor (objects), f (x) g = SerreTensorMaps.Map
+-- (arrows), unit A (the regular module), associator
+-- SerreTensorAssociativity.At ((x (x) y) (x) z |-> x (x) (y (x) z)), left
+-- unitor SerreTensorMaps.Unit (a (x) x |-> a x), right unitor the swap
+-- x (x) a |-> a (x) x followed by the left unitor (x (x) a |-> a x).
+-- Each iso is the pair of mutually inverse linear maps given there.
+-- Laws. Every law is an equation of linear maps out of an iterated tensor
+-- product, so it suffices to compare them on pure tensors
+-- (SerreTensorUniversal.Equal; SerreTensorAssociativity.EqualLeft for
+-- (x (x) y) (x) z; Quad.Equal for ((w (x) x) (x) y) (x) z, by EqualLeft
+-- with the first factor an arbitrary element of W (x) X, then Equal on
+-- W (x) X along t |-> (t (x) y) (x) z).  On pure tensors each side
+-- computes by the beta laws of the structure maps:
+--  functoriality: (f' f (x) g' g)(x (x) y) = f'f x (x) g'g y;
+--  naturality of a: both sides send (x (x) y) (x) z to f x (x) (g y (x) h z);
+--  of l, r: both sides send a (x) x (x (x) a) to a f(x) (f linear);
+--  pentagon: both sides send ((w (x) x) (x) y) (x) z to w (x) (x (x) (y (x) z));
+--  triangle: x (x) a y = a (x (x) y) = a x (x) y (bilinearity).
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module SM = SerreModule[l] ;
+module TU = SerreTensorUniversal[l] ; module TA = SerreTensorAssociativity[l] ;
+module MCat = MonoidalCategory[l+] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module QE = SerreQCohEquivalence[l].Over[A,setA] ;
+ module MC = SerreModuleCategory[l].Over[A] ; module S = MC.S ; module L = MC.L ;
+ module TM = SerreTensorMaps[l].Over[A,setA] ; module As = TA.Over[A] ;
+ module Pm = QE.Modules ;
+ -- the data
+ tensor (M N : QE.Mod) : QE.Mod = (TU.Over[A,M.1,N.1].T.tensor,tt) ;
+ tmap (M M' N N' : QE.Mod) (f : MC.Hom M.1 M'.1) (g : MC.Hom N.1 N'.1) : MC.Hom (tensor M N).1 (tensor M' N').1 =
+  TM.Map[M.1,N.1,M'.1,N'.1,f,g].map ;
+ unit : QE.Mod = (TM.R,tt) ;
+ associator (M N P : QE.Mod) : Pm.precategory.Iso (tensor (tensor M N) P) (tensor M (tensor N P)) =
+  (As.At[M.1,N.1,P.1].To.lift,As.At[M.1,N.1,P.1].Back.lift,
+   L.Hom[As.At[M.1,N.1,P.1].Lhs,As.At[M.1,N.1,P.1].Lhs].ext _ _ As.At[M.1,N.1,P.1].left,
+   L.Hom[As.At[M.1,N.1,P.1].Rhs,As.At[M.1,N.1,P.1].Rhs].ext _ _ As.At[M.1,N.1,P.1].right) ;
+ left-unitor (M : QE.Mod) : Pm.precategory.Iso (tensor unit M) M =
+  (TM.Unit[M.1].E.lift,TM.Unit[M.1].back,
+   L.Hom[TM.Unit[M.1].T.tensor,TM.Unit[M.1].T.tensor].ext _ _ TM.Unit[M.1].left,
+   L.Hom[M.1,M.1].ext _ _ TM.Unit[M.1].right) ;
+ module RightUnit (M : QE.Mod) {
+  module SW = TM.Swap[M.1,TM.R] ; module U0 = TM.Unit[M.1] ;
+  map : MC.Hom SW.MN.T.tensor M.1 = MC.comp SW.MN.T.tensor U0.T.tensor M.1 U0.E.lift SW.To.lift ;
+  back : MC.Hom M.1 SW.MN.T.tensor = MC.comp M.1 U0.T.tensor SW.MN.T.tensor SW.Back.lift U0.back ;
+  left (z : SW.MN.T.tensor.M) : Id SW.MN.T.tensor.M (back.fn (map.fn z)) z =
+   trans (ap SW.Back.lift.fn (U0.left (SW.To.lift.fn z))) (SW.left z) ;
+  right (x : M.1.M) : Id M.1.M (map.fn (back.fn x)) x =
+   trans (ap U0.E.lift.fn (SW.right (U0.back.fn x))) (U0.right x) ;
+  iso : Pm.precategory.Iso (tensor M unit) M =
+   (map,back,L.Hom[SW.MN.T.tensor,SW.MN.T.tensor].ext _ _ left,L.Hom[M.1,M.1].ext _ _ right) ;
+  beta (x : M.1.M) (a : A.R) : Id M.1.M (map.fn (SW.MN.T.pure x a)) (M.1.sm a x) =
+   trans (ap U0.E.lift.fn (SW.To.beta x a)) (U0.E.beta a x) ;
+ } ;
+ right-unitor (M : QE.Mod) : Pm.precategory.Iso (tensor M unit) M = RightUnit[M].iso ;
+
+ -- maps out of ((w (x) x) (x) y) (x) z agree when they agree on pure tensors
+ module Quad (W X Y Z : S.Module) {
+  module WX = TU.Over[A,W,X] ; module At3 = As.At[WX.T.tensor,Y,Z] ;
+  module Equal (Q : S.Module) (f g : MC.Hom At3.Lhs Q)
+   (p : (w : W.M) (x : X.M) (y : Y.M) (z : Z.M) ->
+    Id Q.M (f.fn (At3.A0.T.pure (At3.MN.T.pure (WX.T.pure w x) y) z)) (g.fn (At3.A0.T.pure (At3.MN.T.pure (WX.T.pure w x) y) z))) {
+   module Inner (y : Y.M) (z : Z.M) {
+    lin : MC.Hom WX.T.tensor At3.Lhs = MC.comp WX.T.tensor At3.MN.T.tensor At3.Lhs
+     (At3.A0.T.Pair.left At3.A0.T.pairing z) (At3.MN.T.Pair.left At3.MN.T.pairing y) ;
+    module E = WX.Equal[Q,MC.comp WX.T.tensor At3.Lhs Q f lin,MC.comp WX.T.tensor At3.Lhs Q g lin,\ w x -> p w x y z] ;
+   } ;
+   module Outer = At3.EqualLeft[Q,f,g,\ t y z -> Inner[y,z].E.at t] ;
+   equal : Id (MC.Hom At3.Lhs Q) f g = Outer.equal ;
+  } ;
+ } ;
+
+ -- functoriality
+ module TmapIdn (M N : QE.Mod) {
+  module Mp = TM.Map[M.1,N.1,M.1,N.1,L.identity M.1,L.identity N.1] ;
+  law : Id (MC.Hom (tensor M N).1 (tensor M N).1) (tmap M M N N (L.identity M.1) (L.identity N.1)) (L.identity (tensor M N).1) =
+   Mp.Src.Equal[(tensor M N).1,Mp.map,L.identity (tensor M N).1,Mp.beta].equal ;
+ } ;
+ module TmapComp (M M' M'' N N' N'' : QE.Mod) (f' : MC.Hom M'.1 M''.1) (f : MC.Hom M.1 M'.1)
+  (g' : MC.Hom N'.1 N''.1) (g : MC.Hom N.1 N'.1) {
+  module First = TM.Map[M.1,N.1,M'.1,N'.1,f,g] ; module Second = TM.Map[M'.1,N'.1,M''.1,N''.1,f',g'] ;
+  module Both = TM.Map[M.1,N.1,M''.1,N''.1,MC.comp M.1 M'.1 M''.1 f' f,MC.comp N.1 N'.1 N''.1 g' g] ;
+  pure (x : M.1.M) (y : N.1.M) :
+   Id (tensor M'' N'').1.M (Both.map.fn (First.Src.T.pure x y)) (Second.map.fn (First.map.fn (First.Src.T.pure x y))) =
+   trans (Both.beta x y) (sym (trans (ap Second.map.fn (First.beta x y)) (Second.beta (f.fn x) (g.fn y)))) ;
+  law : Id (MC.Hom (tensor M N).1 (tensor M'' N'').1) Both.map
+   (MC.comp (tensor M N).1 (tensor M' N').1 (tensor M'' N'').1 Second.map First.map) =
+   First.Src.Equal[(tensor M'' N'').1,Both.map,MC.comp (tensor M N).1 (tensor M' N').1 (tensor M'' N'').1 Second.map First.map,pure].equal ;
+ } ;
+
+ -- naturality of the associator
+ module AssocNatural (M M' N N' P P' : QE.Mod) (f : MC.Hom M.1 M'.1) (g : MC.Hom N.1 N'.1) (h : MC.Hom P.1 P'.1) {
+  module S0 = As.At[M.1,N.1,P.1] ; module S1 = As.At[M'.1,N'.1,P'.1] ;
+  module Inner = TM.Map[M.1,N.1,M'.1,N'.1,f,g] ;
+  module Outer = TM.Map[(tensor M N).1,P.1,(tensor M' N').1,P'.1,Inner.map,h] ;
+  module Inner2 = TM.Map[N.1,P.1,N'.1,P'.1,g,h] ;
+  module Outer2 = TM.Map[M.1,(tensor N P).1,M'.1,(tensor N' P').1,f,Inner2.map] ;
+  first : MC.Hom S0.Lhs S1.Rhs = MC.comp S0.Lhs S1.Lhs S1.Rhs S1.To.lift Outer.map ;
+  second : MC.Hom S0.Lhs S1.Rhs = MC.comp S0.Lhs S0.Rhs S1.Rhs Outer2.map S0.To.lift ;
+  pure (x : M.1.M) (y : N.1.M) (z : P.1.M) :
+   Id S1.Rhs.M (first.fn (S0.A0.T.pure (S0.MN.T.pure x y) z)) (second.fn (S0.A0.T.pure (S0.MN.T.pure x y) z)) = calc S1.Rhs.M {
+   first.fn (S0.A0.T.pure (S0.MN.T.pure x y) z)
+    =< ap S1.To.lift.fn (Outer.beta (S0.MN.T.pure x y) z) >
+     S1.To.lift.fn (S1.A0.T.pure (Inner.map.fn (S0.MN.T.pure x y)) (h.fn z))
+    =< ap (\ u -> S1.To.lift.fn (S1.A0.T.pure u (h.fn z))) (Inner.beta x y) >
+     S1.To.lift.fn (S1.A0.T.pure (S1.MN.T.pure (f.fn x) (g.fn y)) (h.fn z))
+    =< S1.to-beta (f.fn x) (g.fn y) (h.fn z) > S1.A1.T.pure (f.fn x) (S1.NP.T.pure (g.fn y) (h.fn z))
+    =< sym (ap (S1.A1.T.pure (f.fn x)) (Inner2.beta y z)) > S1.A1.T.pure (f.fn x) (Inner2.map.fn (S0.NP.T.pure y z))
+    =< sym (Outer2.beta x (S0.NP.T.pure y z)) > Outer2.map.fn (S0.A1.T.pure x (S0.NP.T.pure y z))
+    =< sym (ap Outer2.map.fn (S0.to-beta x y z)) > second.fn (S0.A0.T.pure (S0.MN.T.pure x y) z) } ;
+  natural : Id (MC.Hom S0.Lhs S1.Rhs) first second = S0.EqualLeft[S1.Rhs,first,second,pure].equal ;
+ } ;
+
+ -- naturality of the unitors
+ module LeftNatural (M M' : QE.Mod) (f : MC.Hom M.1 M'.1) {
+  module U0 = TM.Unit[M.1] ; module U1 = TM.Unit[M'.1] ;
+  module Mp = TM.Map[TM.R,M.1,TM.R,M'.1,L.identity TM.R,f] ;
+  first : MC.Hom U0.T.tensor M'.1 = MC.comp U0.T.tensor U1.T.tensor M'.1 U1.E.lift Mp.map ;
+  second : MC.Hom U0.T.tensor M'.1 = MC.comp U0.T.tensor M.1 M'.1 f U0.E.lift ;
+  pure (a : A.R) (x : M.1.M) : Id M'.1.M (first.fn (U0.T.pure a x)) (second.fn (U0.T.pure a x)) = calc M'.1.M {
+   first.fn (U0.T.pure a x)
+    =< ap U1.E.lift.fn (Mp.beta a x) > U1.E.lift.fn (U1.T.pure a (f.fn x))
+    =< U1.E.beta a (f.fn x) > M'.1.sm a (f.fn x)
+    =< sym (f.scalar a x) > f.fn (M.1.sm a x)
+    =< sym (ap f.fn (U0.E.beta a x)) > second.fn (U0.T.pure a x) } ;
+  natural : Id (MC.Hom U0.T.tensor M'.1) first second = U0.RP.Equal[M'.1,first,second,pure].equal ;
+ } ;
+ module RightNatural (M M' : QE.Mod) (f : MC.Hom M.1 M'.1) {
+  module R0 = RightUnit[M] ; module R1 = RightUnit[M'] ;
+  module Mp = TM.Map[M.1,TM.R,M'.1,TM.R,f,L.identity TM.R] ;
+  first : MC.Hom R0.SW.MN.T.tensor M'.1 = MC.comp R0.SW.MN.T.tensor R1.SW.MN.T.tensor M'.1 R1.map Mp.map ;
+  second : MC.Hom R0.SW.MN.T.tensor M'.1 = MC.comp R0.SW.MN.T.tensor M.1 M'.1 f R0.map ;
+  pure (x : M.1.M) (a : A.R) : Id M'.1.M (first.fn (R0.SW.MN.T.pure x a)) (second.fn (R0.SW.MN.T.pure x a)) = calc M'.1.M {
+   first.fn (R0.SW.MN.T.pure x a)
+    =< ap R1.map.fn (Mp.beta x a) > R1.map.fn (R1.SW.MN.T.pure (f.fn x) a)
+    =< R1.beta (f.fn x) a > M'.1.sm a (f.fn x)
+    =< sym (f.scalar a x) > f.fn (M.1.sm a x)
+    =< sym (ap f.fn (R0.beta x a)) > second.fn (R0.SW.MN.T.pure x a) } ;
+  natural : Id (MC.Hom R0.SW.MN.T.tensor M'.1) first second = R0.SW.MN.Equal[M'.1,first,second,pure].equal ;
+ } ;
+
+ -- the pentagon
+ module Pentagon (W X Y Z : QE.Mod) {
+  module A1 = As.At[(tensor W X).1,Y.1,Z.1] ; module A2 = As.At[W.1,X.1,(tensor Y Z).1] ;
+  module B1 = As.At[W.1,X.1,Y.1] ; module B2 = As.At[W.1,(tensor X Y).1,Z.1] ; module B3 = As.At[X.1,Y.1,Z.1] ;
+  module M1 = TM.Map[(tensor (tensor W X) Y).1,Z.1,(tensor W (tensor X Y)).1,Z.1,B1.To.lift,L.identity Z.1] ;
+  module M3 = TM.Map[W.1,(tensor (tensor X Y) Z).1,W.1,(tensor X (tensor Y Z)).1,L.identity W.1,B3.To.lift] ;
+  first : MC.Hom A1.Lhs A2.Rhs = MC.comp A1.Lhs A1.Rhs A2.Rhs A2.To.lift A1.To.lift ;
+  second : MC.Hom A1.Lhs A2.Rhs =
+   MC.comp A1.Lhs B2.Rhs A2.Rhs M3.map (MC.comp A1.Lhs B2.Lhs B2.Rhs B2.To.lift M1.map) ;
+  pure (w : W.1.M) (x : X.1.M) (y : Y.1.M) (z : Z.1.M) :
+   Id A2.Rhs.M (first.fn (A1.A0.T.pure (A1.MN.T.pure (B1.MN.T.pure w x) y) z))
+    (second.fn (A1.A0.T.pure (A1.MN.T.pure (B1.MN.T.pure w x) y) z)) = calc A2.Rhs.M {
+   first.fn (A1.A0.T.pure (A1.MN.T.pure (B1.MN.T.pure w x) y) z)
+    =< ap A2.To.lift.fn (A1.to-beta (B1.MN.T.pure w x) y z) >
+     A2.To.lift.fn (A2.A0.T.pure (B1.MN.T.pure w x) (A1.NP.T.pure y z))
+    =< A2.to-beta w x (A1.NP.T.pure y z) > A2.A1.T.pure w (A2.NP.T.pure x (A1.NP.T.pure y z))
+    =< sym (ap (A2.A1.T.pure w) (B3.to-beta x y z)) >
+     A2.A1.T.pure w (B3.To.lift.fn (B3.A0.T.pure (B3.MN.T.pure x y) z))
+    =< sym (M3.beta w (B3.A0.T.pure (B3.MN.T.pure x y) z)) >
+     M3.map.fn (B2.A1.T.pure w (B3.A0.T.pure (B3.MN.T.pure x y) z))
+    =< sym (ap M3.map.fn (B2.to-beta w (B3.MN.T.pure x y) z)) >
+     M3.map.fn (B2.To.lift.fn (B2.A0.T.pure (B2.MN.T.pure w (B3.MN.T.pure x y)) z))
+    =< sym (ap (\ u -> M3.map.fn (B2.To.lift.fn (B2.A0.T.pure u z))) (B1.to-beta w x y)) >
+     M3.map.fn (B2.To.lift.fn (B2.A0.T.pure (B1.To.lift.fn (B1.A0.T.pure (B1.MN.T.pure w x) y)) z))
+    =< sym (ap (\ u -> M3.map.fn (B2.To.lift.fn u)) (M1.beta (B1.A0.T.pure (B1.MN.T.pure w x) y) z)) >
+     second.fn (A1.A0.T.pure (A1.MN.T.pure (B1.MN.T.pure w x) y) z) } ;
+  law : Id (MC.Hom A1.Lhs A2.Rhs) first second = Quad[W.1,X.1,Y.1,Z.1].Equal[A2.Rhs,first,second,pure].equal ;
+ } ;
+
+ -- the triangle
+ module Triangle (M N : QE.Mod) {
+  module S0 = As.At[M.1,TM.R,N.1] ; module U0 = TM.Unit[N.1] ; module R0 = RightUnit[M] ;
+  module M2 = TM.Map[M.1,(tensor unit N).1,M.1,N.1,L.identity M.1,U0.E.lift] ;
+  module Mr = TM.Map[(tensor M unit).1,N.1,M.1,N.1,R0.map,L.identity N.1] ;
+  first : MC.Hom S0.Lhs (tensor M N).1 = MC.comp S0.Lhs S0.Rhs (tensor M N).1 M2.map S0.To.lift ;
+  pure (x : M.1.M) (a : A.R) (y : N.1.M) :
+   Id (tensor M N).1.M (first.fn (S0.A0.T.pure (S0.MN.T.pure x a) y)) (Mr.map.fn (S0.A0.T.pure (S0.MN.T.pure x a) y)) =
+   calc (tensor M N).1.M {
+   first.fn (S0.A0.T.pure (S0.MN.T.pure x a) y)
+    =< ap M2.map.fn (S0.to-beta x a y) > M2.map.fn (S0.A1.T.pure x (S0.NP.T.pure a y))
+    =< M2.beta x (S0.NP.T.pure a y) > M2.Dst.T.pure x (U0.E.lift.fn (S0.NP.T.pure a y))
+    =< ap (M2.Dst.T.pure x) (U0.E.beta a y) > M2.Dst.T.pure x (N.1.sm a y)
+    =< M2.Dst.T.pairing.scale-right a x y > (tensor M N).1.sm a (M2.Dst.T.pure x y)
+    =< sym (M2.Dst.T.pairing.scale-left a x y) > M2.Dst.T.pure (M.1.sm a x) y
+    =< sym (ap (\ u -> M2.Dst.T.pure u y) (R0.beta x a)) > M2.Dst.T.pure (R0.map.fn (R0.SW.MN.T.pure x a)) y
+    =< sym (Mr.beta (R0.SW.MN.T.pure x a) y) > Mr.map.fn (S0.A0.T.pure (S0.MN.T.pure x a) y) } ;
+  law : Id (MC.Hom S0.Lhs (tensor M N).1) first Mr.map = S0.EqualLeft[(tensor M N).1,first,Mr.map,pure].equal ;
+ } ;
+
+ monoidal : MCat.Monoidal[Pm.category] = new MCat.Monoidal[Pm.category,tensor,tmap,
+  \ M N -> TmapIdn[M,N].law,
+  \ M M' M'' N N' N'' f' f g' g -> TmapComp[M,M',M'',N,N',N'',f',f,g',g].law,
+  unit,associator,
+  \ M M' N N' P P' f g h -> AssocNatural[M,M',N,N',P,P',f,g,h].natural,
+  left-unitor,\ M M' f -> LeftNatural[M,M',f].natural,
+  right-unitor,\ M M' f -> RightNatural[M,M',f].natural,
+  \ W X Y Z -> Pentagon[W,X,Y,Z].law,\ M N -> Triangle[M,N].law] ;
+} ;

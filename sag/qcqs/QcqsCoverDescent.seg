@@ -1,0 +1,203 @@
+-- Descend a compatible point by descending its affine-chart opens.
+-- Refine those opens by principal opens, apply the scalar equalizer in
+-- each chart, then glue the resulting points by Zariski descent.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module Tr = Truncation[l] ;
+module BigTr = Truncation[l+] ;
+module FE = Axioms[l].FunExtLemmas[fe @l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module T = AffineTests[l] ;
+module SF = TestFunctors[l] ;
+module CO = CompactOpens[l] ;
+module EQ = AffineCoverEqualiser[l] ;
+module CF = AffineCoverFamily[l] ;
+module DL = DistLattice[l] ;
+module ZF = ZariskiFunctor[l] ;
+module Q = FunctorialQcqs[l] ;
+module TS = TestSheaves[l] ;
+module Over (K : T.Test) (F : SF.SetFunctor) (family : CF.Family[K]) (sheaf : TS.IsSheaf F) {
+ module D = CF.Over[K,F,family] ;
+ module Context = CF.Context[K] ;
+ module BP = Context.BP ;
+ module Sep = TS.SheafProperties[F,sheaf] ;
+ module C = CO.Over[F] ;
+ module Charts (atlas : Q.Over[F].AffineCover) {
+  module In (i : Fin atlas.count) (context : BP.Algebra) {
+   A : T.Test = context.1 ;
+   module AffineChart = AffineChartDescent[l].Over[F,atlas.opens i,atlas.affine i,A,family.diagram context] ;
+   module R = AffineChart.R ;
+   image-member (x : F.obj A) : R.Member A x -> R.Member AffineChart.d.cover (AffineChart.D0.restrict x) =
+    \ m -> R.member (R.reindex A AffineChart.d.cover AffineChart.d.inclusion (x,m)) ;
+   reflect-member (x : F.obj A) (m : R.Member AffineChart.d.cover (AffineChart.D0.restrict x)) : R.Member A x =
+    (family.opens context).reflect-top (C.value (atlas.opens i) A x)
+     (trans (sym (C.N.natural (atlas.opens i) A AffineChart.d.cover AffineChart.d.inclusion x)) m) ;
+   separate (x y : F.obj A) (mx : R.Member A x)
+    (p : Id (F.obj AffineChart.d.cover) (AffineChart.D0.restrict x) (AffineChart.D0.restrict y)) : Id (F.obj A) x y =
+    ap (R.point {A}) (AffineChart.separate (x,mx) (y,reflect-member y
+     (Pr.subst (F.obj AffineChart.d.cover) (R.Member AffineChart.d.cover) _ _ p (image-member x mx))) p) ;
+  } ;
+  module Separate (context : BP.Algebra) (x y : F.obj context.1)
+   (e : Id (F.obj D.At[context].d.cover) (D.At[context].E.restrict x) (D.At[context].E.restrict y)) {
+   A : T.Test = context.1 ;
+   module Z = T.At[A].Z ;
+   values (i : Fin atlas.count) : Z.lattice.L = C.value (atlas.opens i) A x ;
+   module Refine (r : Z.Refinement atlas.count values) {
+    cover : TS.CoverData = (A,Z.count r,Z.piece r,trans (sym (Z.refines r)) (atlas.covers A x)) ;
+    module S = Sep.On[cover] ;
+    module Diagram = TS.OnCover[F,cover].D ;
+    module Piece (k : Fin (Z.count r)) {
+     i : Fin atlas.count = Z.tag r k ;
+     A' : T.Test = Diagram.basic k ;
+     h : RH.Hom A.ring A'.ring = Diagram.AB.inclusion (Z.piece r k) ;
+     next : BP.Algebra = Context.along context A' h ;
+     arrow : BP.Hom context next = Context.arrow context A' h ;
+     module BC = D.Change[context,next,arrow] ;
+     module M = CompactMembership[l].Over[F,atlas.opens i].Basic[A,x,Z.piece r k,Z.tag-below r k] ;
+     same : Id (F.obj A') (F.reindex A A' h x) (F.reindex A A' h y) =
+      In[i,next].separate (F.reindex A A' h x) (F.reindex A A' h y) M.member
+       (trans (sym (BC.square x)) (trans (ap BC.restrict e) (BC.square y))) ;
+    } ;
+    result : Id (F.obj A) x y = S.separated x y (\ k -> Piece[k].same) ;
+   } ;
+   result : Id (F.obj A) x y = Tr.Trunc[Z.Refinement atlas.count values].induction @l
+    (\ r -> Id (F.obj A) x y) (\ r -> F.set A x y) (\ r -> Refine[r].result) (Z.refined atlas.count values) ;
+  } ;
+  module Point (context : BP.Algebra) (y : F.obj D.At[context].d.cover) (matching : D.At[context].Matching y) {
+   A : T.Test = context.1 ;
+   d : EQ.Diagram[A] = D.At[context].d ;
+   B : T.Test = d.cover ;
+   module CoverDiagram = EQ.On[A,d] ;
+   module Z = CoverDiagram.ZA ;
+   module W = CoverDiagram.ZB ;
+   module M = ZF.OnMap[A,B,d.inclusion] ;
+   module J = DL.JoinMaps[Z.lattice,W.lattice,M.lattice-map] ;
+   module Open (i : Fin atlas.count) {
+    value : W.lattice.L = C.value (atlas.opens i) B y ;
+    compatible : Id CoverDiagram.ZC.lattice.L (CoverDiagram.left value) (CoverDiagram.right value) =
+     trans (sym (C.N.natural (atlas.opens i) B d.overlap d.left y))
+      (trans (ap (C.value (atlas.opens i) d.overlap) (D.At[context].compatible y matching))
+       (C.N.natural (atlas.opens i) B d.overlap d.right y)) ;
+    descended : (u : Z.lattice.L) * Id W.lattice.L (CoverDiagram.pull u) value = (family.opens context).descend value compatible ;
+   } ;
+   opens (i : Fin atlas.count) : Z.lattice.L = Open[i].descended.1 ;
+   covers : Id Z.lattice.L (Z.J.bigJ atlas.count opens) Z.lattice.top = (family.opens context).reflect-top _
+    (trans (J.preserves atlas.count opens)
+     (trans (ap (W.J.bigJ atlas.count) (FE.funext (Fin atlas.count) (\ i -> W.lattice.L) _ _
+      (\ i -> Open[i].descended.2))) (atlas.covers B y))) ;
+   module Refine (r : Z.Refinement atlas.count opens) {
+    n : Nat = Z.count r ;
+    a (k : Fin n) : A.ring.R = Z.piece r k ;
+    cover : TS.CoverData = (A,n,a,trans (sym (Z.refines r)) covers) ;
+    module S = TS.OnCover[F,cover] ;
+    module Piece (k : Fin n) {
+     i : Fin atlas.count = Z.tag r k ;
+     A' : T.Test = S.D.basic k ;
+     h : RH.Hom A.ring A'.ring = S.D.AB.inclusion (a k) ;
+     next : BP.Algebra = Context.along context A' h ;
+     arrow : BP.Hom context next = Context.arrow context A' h ;
+     module BC = D.Change[context,next,arrow] ;
+     module ChartPoint = In[i,next].AffineChart ;
+     module L = LocalisationTests[l].At[A,a k] ;
+     module ZBC = CF.Over[K,ZF.functor,family].Change[context,next,arrow] ;
+     module L' = ZF.OnMap[A',BC.dC.cover,BC.dC.inclusion] ;
+     member : ChartPoint.R.Member BC.dC.cover (BC.restrict y) = calc T.At[BC.dC.cover].Z.lattice.L {
+      C.value (atlas.opens i) BC.dC.cover (BC.restrict y)
+       =< C.N.natural (atlas.opens i) B BC.dC.cover BC.map y > ZBC.restrict Open[i].value
+       =< ap ZBC.restrict (sym Open[i].descended.2) > ZBC.restrict (CoverDiagram.pull (opens i))
+       =< ZBC.square (opens i) > ZF.functor.reindex A' BC.dC.cover BC.dC.inclusion (ZF.functor.reindex A A' h (opens i))
+       =< ap (ZF.functor.reindex A' BC.dC.cover BC.dC.inclusion) (L.forward (opens i) (Z.tag-below r k))
+       > ZF.functor.reindex A' BC.dC.cover BC.dC.inclusion T.At[A'].Z.lattice.top
+       =< DL.hmap-top L'.lattice-map > T.At[BC.dC.cover].Z.lattice.top } ;
+     lifted : ChartPoint.D1.Lifts (BC.restrict y,member) = ChartPoint.lift (BC.restrict y,member)
+      (D.At[next].compatible (BC.restrict y) (BC.matching y matching)) ;
+     point : F.obj A' = lifted.1.1 ;
+     agrees : Id (F.obj BC.dC.cover) (ChartPoint.D0.restrict point) (BC.restrict y) = ap (ChartPoint.R.point {BC.dC.cover}) lifted.2 ;
+    } ;
+    local : S.C.Values = \ k -> Piece[k].point ;
+    module Overlap (i j : Fin n) {
+     Aij : T.Test = S.D.double i j ;
+     h : RH.Hom A.ring Aij.ring = S.D.AB.inclusion (A.ring.mul (a i) (a j)) ;
+     overlap-context : BP.Algebra = Context.along context Aij h ;
+     dij : EQ.Diagram[Aij] = family.diagram overlap-context ;
+     module Restrict (k : Fin n) (q : RH.Hom Piece[k].A'.ring Aij.ring)
+      (base : Id (RH.Hom A.ring Aij.ring) (CF.Comp A Piece[k].A' Aij q Piece[k].h) h) {
+      module P = Piece[k].BC ;
+      arrow : BP.Hom Piece[k].next overlap-context = (q,\ b -> ap (\ f -> f.1 (context.2.1 b)) base) ;
+      module Qr = D.Change[Piece[k].next,overlap-context,arrow] ;
+      comp : RH.Hom B.ring dij.cover.ring = CF.Comp B P.dC.cover dij.cover Qr.map P.map ;
+      on-base : Id (RH.Hom A.ring dij.cover.ring) (CF.Comp A B dij.cover comp d.inclusion)
+       (CF.Comp A Aij dij.cover dij.inclusion h) =
+       RH.Properties[A.ring,dij.cover.ring,dij.cover.carrier-set].ext _ _ (\ b -> calc dij.cover.ring.R {
+        Qr.map.1 (P.map.1 (d.inclusion.1 b))
+         =< ap (\ f -> Qr.map.1 (f.1 b)) (family.square context Piece[k].next Piece[k].arrow)
+         > Qr.map.1 (P.dC.inclusion.1 (Piece[k].h.1 b))
+         =< ap (\ f -> f.1 (Piece[k].h.1 b)) (family.square Piece[k].next overlap-context arrow)
+         > dij.inclusion.1 (q.1 (Piece[k].h.1 b))
+         =< ap (\ f -> dij.inclusion.1 (f.1 b)) base > dij.inclusion.1 (h.1 b) }) ;
+      image : Id (F.obj dij.cover) (D.At[overlap-context].E.restrict (F.reindex Piece[k].A' Aij q (local k)))
+       (F.reindex B dij.cover comp y) =
+       trans (sym (Qr.square (local k)))
+        (trans (ap Qr.restrict Piece[k].agrees) (sym (F.composition B P.dC.cover dij.cover P.map Qr.map y))) ;
+     } ;
+     module Left = Restrict[i,S.D.left i j,S.D.left-base i j] ;
+     module Right = Restrict[j,S.D.right i j,S.D.right-base i j] ;
+     compatible : Id (F.obj Aij) (F.reindex (S.D.basic i) Aij (S.D.left i j) (local i))
+      (F.reindex (S.D.basic j) Aij (S.D.right i j) (local j)) =
+      Separate[overlap-context,F.reindex (S.D.basic i) Aij (S.D.left i j) (local i),
+       F.reindex (S.D.basic j) Aij (S.D.right i j) (local j),trans Left.image (trans (matching dij.cover Left.comp Right.comp
+       (trans Left.on-base (sym Right.on-base))) (sym Right.image))].result ;
+    } ;
+    glued : S.C.Amalgam local = (sheaf cover local (\ i j -> Overlap[i,j].compatible)).1 ;
+    module Check {
+     b (k : Fin n) : B.ring.R = map d.inclusion (a k) ;
+     map-join : Id W.lattice.L (CoverDiagram.pull (Z.J.bigJ n (\ k -> Z.D (a k)))) (W.J.bigJ n (\ k -> W.D (b k))) =
+      trans (J.preserves n (\ k -> Z.D (a k)))
+       (ap (W.J.bigJ n) (FE.funext (Fin n) (\ k -> W.lattice.L) _ _ (\ k -> M.on-D (a k)))) ;
+     coverB : TS.CoverData = (B,n,b,trans (sym map-join)
+      (trans (ap CoverDiagram.pull (TS.covers cover)) (DL.hmap-top M.lattice-map))) ;
+     module S' = TS.OnCover[F,coverB] ;
+     module At (k : Fin n) {
+      module P = Piece[k] ;
+      module L = LocalisationTests[l].BaseChange[A,B,d.inclusion,a k] ;
+      B' : T.Test = S'.D.basic k ;
+      beta : RH.Hom B.ring B'.ring = S'.D.AB.inclusion (b k) ;
+      cocone : (m : RH.Hom P.BC.dC.cover.ring B'.ring) *
+       Id (RH.Hom B.ring B'.ring) (CF.Comp B P.BC.dC.cover B' m P.BC.map) beta *
+       Id (RH.Hom P.A'.ring B'.ring) (CF.Comp P.A' P.BC.dC.cover B' m P.BC.dC.inclusion) L.map-local =
+       family.factor context P.next B' P.arrow beta L.map-local (sym L.square) ;
+      m : RH.Hom P.BC.dC.cover.ring B'.ring = cocone.1 ;
+      matches : Id (F.obj B') (F.reindex B B' beta (D.At[context].E.restrict glued.1)) (F.reindex B B' beta y) = calc (F.obj B') {
+       F.reindex B B' beta (D.At[context].E.restrict glued.1)
+        =< L.Functor[F].equation glued.1 > F.reindex P.A' B' L.map-local (S.C.restrictions glued.1 k)
+        =< ap (F.reindex P.A' B' L.map-local) (glued.2 k) > F.reindex P.A' B' L.map-local (local k)
+        =< ap (\ f -> F.reindex P.A' B' f (local k)) (sym cocone.2.2)
+        > F.reindex P.A' B' (CF.Comp P.A' P.BC.dC.cover B' m P.BC.dC.inclusion) (local k)
+        =< F.composition P.A' P.BC.dC.cover B' P.BC.dC.inclusion m (local k)
+        > F.reindex P.BC.dC.cover B' m (D.At[P.next].E.restrict (local k))
+        =< ap (F.reindex P.BC.dC.cover B' m) P.agrees > F.reindex P.BC.dC.cover B' m (P.BC.restrict y)
+        =< sym (F.composition B P.BC.dC.cover B' P.BC.map m y)
+        > F.reindex B B' (CF.Comp B P.BC.dC.cover B' m P.BC.map) y
+        =< ap (\ f -> F.reindex B B' f y) cocone.2.1 > F.reindex B B' beta y } ;
+     } ;
+     result : D.At[context].E.Lifts y = (glued.1,Sep.On[coverB].separated (D.At[context].E.restrict glued.1) y (\ k -> At[k].matches)) ;
+    } ;
+   } ;
+   lift-prop : Pr.isProp (D.At[context].E.Lifts y) = \ x x' -> D.At[context].E.lifts-ext y x x'
+    Separate[context,x.1,x'.1,trans x.2 (sym x'.2)].result ;
+   result : D.At[context].E.Lifts y = Tr.Trunc[Z.Refinement atlas.count opens].induction @l
+    (\ r -> D.At[context].E.Lifts y) (\ r -> lift-prop) (\ r -> Refine[r].Check.result) (Z.refined atlas.count opens) ;
+  } ;
+ } ;
+ module On (atlas : Q.Over[F].HasAtlas) (context : BP.Algebra) {
+  A : T.Test = context.1 ;
+  module E = D.At[context].E ;
+  descend (y : F.obj D.At[context].d.cover) (matching : D.At[context].Matching y) : Localisation[l].isContr (E.Lifts y) =
+   BigTr.Trunc[Q.Over[F].AffineCover].induction @l (\ t -> Localisation[l].isContr (E.Lifts y))
+    (\ t -> TS.contr-prop (E.Lifts y) (Pr.isSet-Sigma (F.obj A)
+     (\ x -> Id (F.obj D.At[context].d.cover) (E.restrict x) y) (F.set A)
+     (\ x -> Pr.prop-to-set _ (F.set D.At[context].d.cover (E.restrict x) y))))
+    (\ atlas' -> (Charts[atlas'].Point[context,y,matching].result,Charts[atlas'].Point[context,y,matching].lift-prop
+     Charts[atlas'].Point[context,y,matching].result)) atlas ;
+ } ;
+} ;

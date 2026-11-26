@@ -1,0 +1,103 @@
+-- The maximal minors of a rectangular matrix cut out its surjectivity
+-- locus. A right inverse writes det(I) in the ideal of the minors, by
+-- multilinearity. Conversely each minor times any vector is in the image,
+-- by the right adjugate; combine the solutions using a unit-ideal witness.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Tr = Truncation[l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module T = AffineTests[l] ;
+module L = MonicAlgebra ;
+module FunExt = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (A : T.Test) (m n : Nat) (columns : Fin m -> Fin n -> A.ring.R) {
+ R : U l = A.ring.R ;
+ module AS = FiniteIdeal[l].Sums[A.ring] ;
+ module Mat = L.Matrices[l].Over[A.ring] ;
+ module D = L.Determinant[l].Over[A.ring,A.carrier-set] ;
+ module E = L.ExteriorModel[l].Over[A.ring] ;
+ module EC = L.ExteriorCoordinates[l].Over[A.ring,A.carrier-set] ;
+ module DS = L.MnSums[l].Over[A.ring] ;
+ module En = L.Enumerate[l] ;
+ module Rad = Radical[l].Over[A.ring] ;
+ Vec : U l = Fin n -> R ;
+ Vector (k : Nat) : U l = Fin k -> R ;
+ subset : En.Enum (Fin n -> Fin m) = En.functions (Fin m) (En.fin m) n ;
+ count : Nat = subset.1 ;
+ subcolumns (c : Fin n -> Fin m) : D.Mat n = \ j -> columns (c j) ;
+ minor (i : Fin count) : R = E.det n (subcolumns (subset.2.1 i)) ;
+ module UnitIdeal = ZariskiUnitIdeal[l].Over[A].At[count,minor] ;
+ apply : Vector m -> Vec = Mat.apply m n columns ;
+ Preimage (w : Vec) : U l = (v : Vector m) * ((j : Fin n) -> Id R (apply v j) (w j)) ;
+ Onto : U l = (w : Vec) -> Tr.Trunc[Preimage w].carrier ;
+ locus : T.At[A].Z.lattice.L = UnitIdeal.cover ;
+ module Expansion {
+  I : L.RegularIdeal[l].IdealPred[A.ring] = new L.RegularIdeal[l].IdealPred[A.ring,Rad.InIdeal (count,minor),
+   Rad.ideal-zero (count,minor),Rad.ideal-add (count,minor),Rad.ideal-scale (count,minor)] ;
+  module MK = L.MinorKill[l].Over[A.ring,A.carrier-set].Image[m,n,columns,I] ;
+  gen (c : Fin n -> Fin m) : I.In (E.det n (subcolumns c)) =
+   Rad.ideal-eq (count,minor) (minor (En.pre (Fin n -> Fin m) subset c)) (E.det n (subcolumns c))
+    (ap (\ t -> E.det n (subcolumns t)) (En.pre-eq (Fin n -> Fin m) subset c))
+    (Rad.ideal-gen (count,minor) (En.pre (Fin n -> Fin m) subset c)) ;
+  coeff (c : Fin n -> Fin m) (j : L.ExteriorCoordinates[l].Index n) :
+   I.In (EC.coeff n (Mat.wedge n n (subcolumns c)) j) =
+   Rad.ideal-eq (count,minor) (A.ring.mul (EC.coeff n (D.DG.omega n) j) (E.det n (subcolumns c))) _
+    (trans (A.ring.mulC _ _) (sym (trans (ap (\ w -> EC.coeff n w j) (D.free n (subcolumns c)))
+     (EC.coeff-scale n (E.det n (subcolumns c)) (D.DG.omega n) j))))
+    (Rad.ideal-scale (count,minor) (EC.coeff n (D.DG.omega n) j) _ (gen c)) ;
+  last : (k : Nat) -> L.ExteriorCoordinates[l].Index k = split { zero -> tt ; suc k | ih -> inr ih } ;
+  top-coeff : (k : Nat) (w : E.Ext k) -> Id R (EC.coeff k w (last k)) (E.top k w) = split {
+   zero -> \ w -> refl w ; suc k | ih -> \ w -> ih w.2 } ;
+  full (f : (j : Fin n) -> Preimage (DS.delta n j)) : UnitIdeal.Witness =
+   Rad.ideal-eq (count,minor) (EC.coeff n (Mat.wedge n n (\ j -> apply (f j).1)) (last n)) A.ring.o
+    (trans (top-coeff n (Mat.wedge n n (\ j -> apply (f j).1)))
+     (trans (ap (E.det n) (FunExt.funext (Fin n) (\ j -> Vec) (\ j -> apply (f j).1) (D.idm n) (\ j ->
+      FunExt.funext (Fin n) (\ k -> R) (apply (f j).1) (DS.delta n j) (f j).2))) (D.det-id n)))
+    (MK.result n coeff (\ j -> (f j).1) (last n)) ;
+ } ;
+ from-onto (onto : Onto) : Id T.At[A].Z.lattice.L locus T.At[A].Z.lattice.top = UnitIdeal.to-top
+  (Tr.Trunc[(j : Fin n) -> Preimage (DS.delta n j)].induction @l (\ x -> UnitIdeal.UnitIdeal)
+   (\ x -> Tr.Trunc[UnitIdeal.Witness].proposition) (\ f -> Tr.Trunc[UnitIdeal.Witness].inc (Expansion.full f))
+   (AffineFinite[l].choice n (\ j -> Preimage (DS.delta n j)) (\ j -> onto (DS.delta n j)))) ;
+ module Solve (w : Vec) {
+  module Minor (i : Fin count) {
+   choice : Fin n -> Fin m = subset.2.1 i ;
+   square : D.Mat n = subcolumns choice ;
+   module Adj = L.RightAdjugate[l].Over[A.ring,A.carrier-set].At[n,square] ;
+   insertion : Mat.Mat n m = \ j -> DS.delta m (choice j) ;
+   apply-insertion (j : Fin n) (k : Fin n) : Id R (apply (insertion j) k) (square j k) =
+    DS.sum-delta m (choice j) (\ t -> columns t k) ;
+   solution : Vector m = Mat.apply n m insertion (D.act n Adj.right w) ;
+   solves (k : Fin n) : Id R (apply solution k) (A.ring.mul (minor i) (w k)) =
+    trans (Mat.apply-apply n m n insertion columns (D.act n Adj.right w) k)
+     (trans (AS.sum-cong n (\ j -> A.ring.mul (D.act n Adj.right w j) (apply (insertion j) k))
+      (\ j -> A.ring.mul (D.act n Adj.right w j) (square j k))
+      (\ j -> ap (A.ring.mul (D.act n Adj.right w j)) (apply-insertion j k))) (Adj.action w k)) ;
+  } ;
+  module Combine (c : UnitIdeal.Witness) {
+   vectors : Mat.Mat count m = \ i -> Minor[i].solution ;
+   solution : Vector m = Mat.apply count m vectors c.1 ;
+   solves (k : Fin n) : Id R (apply solution k) (w k) = calc R {
+    apply solution k =< Mat.apply-apply count m n vectors columns c.1 k > AS.sum count (\ i -> A.ring.mul (c.1 i) (apply (vectors i) k))
+     =< AS.sum-cong count _ _ (\ i -> ap (A.ring.mul (c.1 i)) (Minor[i].solves k)) > AS.sum count (\ i -> A.ring.mul (c.1 i) (A.ring.mul (minor i) (w k)))
+     =< AS.sum-cong count _ _ (\ i -> trans (A.ring.mulA (c.1 i) (minor i) (w k))
+      (trans (ap (\ u -> A.ring.mul u (w k)) (A.ring.mulC (c.1 i) (minor i))) (A.ring.mulC (A.ring.mul (minor i) (c.1 i)) (w k))))
+     > AS.sum count (\ i -> A.ring.mul (w k) (A.ring.mul (minor i) (c.1 i)))
+     =< AS.sum-scale (w k) count (\ i -> A.ring.mul (minor i) (c.1 i)) > A.ring.mul (w k) (AS.lin count minor c.1)
+     =< ap (A.ring.mul (w k)) c.2 > A.ring.mul (w k) A.ring.o =< A.ring.mulO (w k) > w k } ;
+  } ;
+  from-top (e : Id T.At[A].Z.lattice.L locus T.At[A].Z.lattice.top) : Tr.Trunc[Preimage w].carrier =
+   Tr.Trunc[UnitIdeal.Witness].induction @l (\ t -> Tr.Trunc[Preimage w].carrier) (\ t -> Tr.Trunc[Preimage w].proposition)
+    (\ c -> Tr.Trunc[Preimage w].inc (Combine[c].solution,Combine[c].solves)) (UnitIdeal.from-top e) ;
+ } ;
+ to-onto (e : Id T.At[A].Z.lattice.L locus T.At[A].Z.lattice.top) : Onto = \ w -> Solve[w].from-top e ;
+} ;
+module Change (A B : T.Test) (h : RH.Hom A.ring B.ring) (m n : Nat) (columns : Fin m -> Fin n -> A.ring.R) {
+ module P = Over[A,m,n,columns] ;
+ module Q = Over[B,m,n,\ j i -> map h (columns j i)] ;
+ module Z = T.At[B].Z ;
+ module FE = Axioms[l].FunExtLemmas[fe @l] ;
+ natural : Id Z.lattice.L (ZariskiFunctor[l].functor.reindex A B h P.locus) Q.locus =
+  trans (ZariskiUnitIdeal[l].Change[A,B,h].map-cover P.count P.minor)
+   (ap (Z.J.bigJ P.count) (FE.funext (Fin P.count) (\ i -> Z.lattice.L)
+    (\ i -> Z.D (map h (P.minor i))) (\ i -> Z.D (Q.minor i)) (\ i ->
+    ap Z.D (L.Naturality[l].Over[A.ring,B.ring,h].det-nat n (P.subcolumns (P.subset.2.1 i)))))) ;
+} ;

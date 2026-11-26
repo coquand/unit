@@ -1,0 +1,97 @@
+-- A ring square with a scalar equalizer gives descent for affine point
+-- functors. Compact-open descent and reflection of the whole open are
+-- the additional inputs for gluing the affine charts of a scheme.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module RH = RingHom[l] ; open RingMaps[l] ;
+module T = AffineTests[l] ;
+module SF = TestFunctors[l] ;
+module TE = TestEquivalences[l] ;
+module ZF = ZariskiFunctor[l] ;
+record Diagram (A : T.Test) {
+ cover : T.Test ;
+ overlap : T.Test ;
+ inclusion : RH.Hom A.ring cover.ring ;
+ left : RH.Hom cover.ring overlap.ring ;
+ right : RH.Hom cover.ring overlap.ring ;
+ commute : Id (RH.Hom A.ring overlap.ring)
+  (RH.compose A.ring cover.ring overlap.ring left inclusion)
+  (RH.compose A.ring cover.ring overlap.ring right inclusion) ;
+ injective (a b : A.ring.R) : Id cover.ring.R (map inclusion a) (map inclusion b) -> Id A.ring.R a b ;
+ scalar (b : cover.ring.R) : Id overlap.ring.R (map left b) (map right b) ->
+  (a : A.ring.R) * Id cover.ring.R (map inclusion a) b ;
+} ;
+module On (A : T.Test) (d : Diagram[A]) {
+ module ZA = T.At[A].Z ;
+ module ZB = T.At[d.cover].Z ;
+ module ZC = T.At[d.overlap].Z ;
+ pull : ZA.lattice.L -> ZB.lattice.L = ZF.functor.reindex A d.cover d.inclusion ;
+ left : ZB.lattice.L -> ZC.lattice.L = ZF.functor.reindex d.cover d.overlap d.left ;
+ right : ZB.lattice.L -> ZC.lattice.L = ZF.functor.reindex d.cover d.overlap d.right ;
+ record Opens {
+  reflect-top (u : ZA.lattice.L) : Id ZB.lattice.L (pull u) ZB.lattice.top -> Id ZA.lattice.L u ZA.lattice.top ;
+  descend (v : ZB.lattice.L) : Id ZC.lattice.L (left v) (right v) ->
+   (u : ZA.lattice.L) * Id ZB.lattice.L (pull u) v ;
+ } ;
+ module For (F : SF.SetFunctor) {
+  restrict : F.obj A -> F.obj d.cover = F.reindex A d.cover d.inclusion ;
+  Compatible (y : F.obj d.cover) : U l = Id (F.obj d.overlap)
+   (F.reindex d.cover d.overlap d.left y) (F.reindex d.cover d.overlap d.right y) ;
+  Lifts (y : F.obj d.cover) : U l = (x : F.obj A) * Id (F.obj d.cover) (restrict x) y ;
+  lifts-ext (y : F.obj d.cover) (x x' : Lifts y) (e : Id (F.obj A) x.1 x'.1) : Id (Lifts y) x x' =
+   Pr.Sigma-eq (F.obj A) (\ a -> Id (F.obj d.cover) (restrict a) y) x.1 x'.1 x.2 x'.2 e (F.set d.cover (restrict x'.1) y) ;
+  compatible (x : F.obj A) : Compatible (restrict x) =
+   trans (sym (F.composition A d.cover d.overlap d.inclusion d.left x))
+    (trans (ap (\ h -> F.reindex A d.overlap h x) d.commute)
+     (F.composition A d.cover d.overlap d.inclusion d.right x)) ;
+ } ;
+ module Representable (P : T.Test) {
+  module F = SF.Representable[P] ;
+  module E = For[F.functor] ;
+  at (B : T.Test) (h : F.obj B) : P.ring.R -> B.ring.R = map {P.ring} {B.ring} h ;
+  separate (x y : F.obj A) (e : Id (F.obj d.cover) (E.restrict x) (E.restrict y)) : Id (F.obj A) x y =
+   RH.Properties[P.ring,A.ring,A.carrier-set].ext x y (\ a -> d.injective (at A x a) (at A y a)
+    (ap (\ h -> at d.cover h a) e)) ;
+  module Point (y : F.obj d.cover) (e : E.Compatible y) {
+   value (a : P.ring.R) : (b : A.ring.R) * Id d.cover.ring.R (map d.inclusion b) (at d.cover y a) =
+    d.scalar (at d.cover y a) (ap (\ h -> at d.overlap h a) e) ;
+   lift (a : P.ring.R) : A.ring.R = (value a).1 ;
+   image (a : P.ring.R) : Id d.cover.ring.R (map d.inclusion (lift a)) (at d.cover y a) = (value a).2 ;
+   one : Id A.ring.R (lift P.ring.o) A.ring.o = d.injective (lift P.ring.o) A.ring.o
+    (trans (image P.ring.o) (trans (map-one {P.ring} {d.cover.ring} y) (sym (map-one d.inclusion)))) ;
+   add (a b : P.ring.R) : Id A.ring.R (lift (P.ring.add a b)) (A.ring.add (lift a) (lift b)) =
+    d.injective _ _ (trans (image (P.ring.add a b)) (trans (map-add {P.ring} {d.cover.ring} y a b)
+     (trans (cong2 d.cover.ring.R d.cover.ring.add _ _ _ _ (sym (image a)) (sym (image b)))
+      (sym (map-add d.inclusion (lift a) (lift b)))))) ;
+   mul (a b : P.ring.R) : Id A.ring.R (lift (P.ring.mul a b)) (A.ring.mul (lift a) (lift b)) =
+    d.injective _ _ (trans (image (P.ring.mul a b)) (trans (map-mul {P.ring} {d.cover.ring} y a b)
+     (trans (cong2 d.cover.ring.R d.cover.ring.mul _ _ _ _ (sym (image a)) (sym (image b)))
+      (sym (map-mul d.inclusion (lift a) (lift b)))))) ;
+   hom : F.obj A = (lift,one,add,mul) ;
+   amalgam : E.Lifts y = (hom,RH.Properties[P.ring,d.cover.ring,d.cover.carrier-set].ext (E.restrict hom) y image) ;
+  } ;
+ } ;
+ module Transfer (F G : SF.SetFunctor) (e : TE.NaturalEquivalence F G) {
+  module EF = For[F] ;
+  module EG = For[G] ;
+  module N = SF.Transform[F,G] ;
+  module I = TE.Inverse[F,G,e] ;
+  module Nback = SF.Transform[G,F] ;
+  module Matching (y : G.obj d.cover) (p : EG.Compatible y) {
+   value : F.obj d.cover = I.inverse-map d.cover y ;
+   compatible : EF.Compatible value =
+    trans (sym (Nback.natural I.inverse d.cover d.overlap d.left y))
+     (trans (ap (I.inverse-map d.overlap) p) (Nback.natural I.inverse d.cover d.overlap d.right y)) ;
+   lift (x : EF.Lifts value) : EG.Lifts y =
+    (N.at (TE.forward e) A x.1,
+     trans (sym (N.natural (TE.forward e) A d.cover d.inclusion x.1))
+      (trans (ap (N.at (TE.forward e) d.cover) x.2) (I.right-at d.cover y))) ;
+  } ;
+  separate (s : (x y : F.obj A) -> Id (F.obj d.cover) (EF.restrict x) (EF.restrict y) -> Id (F.obj A) x y)
+   (x y : G.obj A) (p : Id (G.obj d.cover) (EG.restrict x) (EG.restrict y)) : Id (G.obj A) x y =
+   trans (sym (I.right-at A x))
+    (trans (ap (N.at (TE.forward e) A) (s (I.inverse-map A x) (I.inverse-map A y)
+     (trans (sym (I.natural A d.cover d.inclusion x))
+      (trans (ap (I.inverse-map d.cover) p) (I.natural A d.cover d.inclusion y))))) (I.right-at A y)) ;
+ } ;
+} ;

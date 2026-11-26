@@ -1,0 +1,119 @@
+-- A tensor inverse supplies bilinear pairings with a finite sum equal
+-- to one. Every summand b(x_i,y_i) defines a principal open on which
+-- x_i is a basis: the pairing (x,y) |-> b(x_i,y)x factors through b.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module SM = SerreModule[l] ;
+module Bil = SerreBilinear[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module S = SM.Over[A] ; module L = Bil.Over[A] ;
+ module LF = SerreLocalFrame[l].Over[A,setA] ; module RS = LF.RS ;
+ R : S.Module = LF.R ;
+ module At (M N : S.Module) {
+  module TU = SerreTensorUniversal[l].Over[A,M,N] ; module T = TU.T ;
+  module H = L.Hom[T.tensor,R] ;
+  Witness : U l = (e : H.H.Hom) * Pr.isEquiv T.tensor.M A.R e.fn ;
+  module With (w : Witness) {
+   Pairing : U l = L.Maps[M,N,R].Pairing ;
+   module B = L.Maps[M,N,R] ;
+   b : Pairing = new B.Pairing[
+    \ x y -> w.1.fn (T.pure x y),
+    \ x x' y -> trans (ap w.1.fn (T.pairing.add-left x x' y)) (w.1.additive (T.pure x y) (T.pure x' y)),
+    \ a x y -> trans (ap w.1.fn (T.pairing.scale-left a x y)) (w.1.scalar a (T.pure x y)),
+    \ x y y' -> trans (ap w.1.fn (T.pairing.add-right x y y')) (w.1.additive (T.pure x y) (T.pure x y')),
+    \ a x y -> trans (ap w.1.fn (T.pairing.scale-right a x y)) (w.1.scalar a (T.pure x y))] ;
+   eta : T.tensor.M = w.2.sec A.o ;
+   eta-pairs : Id A.R (w.1.fn eta) A.o = w.2.sec-eq A.o ;
+   module Factor (P : S.Module) (p : L.Maps[M,N,P].Pairing) {
+    module F = TU.Into[P,p] ;
+    c : P.M = F.lift.fn eta ;
+    scalar (z : T.tensor.M) : Id T.tensor.M (T.tensor.sm (w.1.fn z) eta) z =
+     Iso[l].injective T.tensor.M A.R w.1.fn w.2 _ _
+      (trans (w.1.scalar (w.1.fn z) eta) (trans (ap (A.mul (w.1.fn z)) eta-pairs) (A.mulO (w.1.fn z)))) ;
+    factor (x : M.M) (y : N.M) : Id P.M (p.value x y) (P.sm (b.value x y) c) =
+     trans (sym (F.beta x y)) (trans (ap F.lift.fn (sym (scalar (T.pure x y)))) (F.lift.scalar (b.value x y) eta)) ;
+   } ;
+   module Span (x : M.M) (y : N.M) {
+    f : A.R = b.value x y ;
+    project : L.Maps[M,N,M].Pairing = new L.Maps[M,N,M].Pairing[
+     \ u v -> M.sm (b.value x v) u,
+     \ u u' v -> M.smD (b.value x v) u u',
+     \ a u v -> S.Laws[M].sm-swap (b.value x v) a u,
+     \ u v v' -> trans (ap (\ r -> M.sm r u) (b.add-right x v v')) (M.smE (b.value x v) (b.value x v') u),
+     \ a u v -> trans (ap (\ r -> M.sm r u) (b.scale-right a x v)) (sym (M.smA a (b.value x v) u))] ;
+    module P = Factor[M,project] ;
+    module F = LF.At[M,f] ;
+    module D = F.Functional[B.left b y] ;
+    module BasisMap = F.Coord[F.F.fraction x zero] ;
+    module Inv = SerreModuleBasicRestrictions[l].UnitAction[F.B,F.LS.localised,F.h f,F.RR.unit] ;
+    coord : F.LR.Linear[F.LS.localised,F.Rf].H.Hom = F.LR.Hom[F.LS.localised,F.Rf].scale-map F.RR.unit.1 D.linear ;
+    span (u : M.M) :
+     Id F.F.Carrier (F.LS.localised.sm (F.h f) (F.F.fraction u zero))
+      (F.LS.localised.sm (F.h (b.value u y)) (F.F.fraction P.c zero)) = calc F.F.Carrier {
+     F.LS.localised.sm (F.h f) (F.F.fraction u zero)
+      =< F.LS.ER.original-action f (F.F.fraction u zero) > F.N.localised.sm f (F.F.fraction u zero)
+      =< F.N.Action.scale-at f u zero > F.F.fraction (M.sm f u) zero
+      =< ap (\ z -> F.F.fraction z zero) (P.factor u y) > F.F.fraction (M.sm (b.value u y) P.c) zero
+      =< sym (F.N.Action.scale-at (b.value u y) P.c zero) > F.N.localised.sm (b.value u y) (F.F.fraction P.c zero)
+      =< sym (F.LS.ER.original-action (b.value u y) (F.F.fraction P.c zero)) >
+       F.LS.localised.sm (F.h (b.value u y)) (F.F.fraction P.c zero) } ;
+    same-frame : Id F.F.Carrier (F.F.fraction P.c zero) (F.F.fraction x zero) =
+     Iso[l].injective F.F.Carrier F.F.Carrier (F.LS.localised.sm (F.h f)) Inv.equiv _ _ (sym (span x)) ;
+    value-one : Id F.B.R (coord.fn (F.F.fraction x zero)) F.B.o =
+     trans (ap (F.B.mul F.RR.unit.1) (D.at-original x))
+      (trans (F.B.mulC F.RR.unit.1 (F.h f)) F.RR.unit.2) ;
+    reconstruct-original (u : M.M) :
+     Id F.F.Carrier (BasisMap.mul (coord.fn (F.F.fraction u zero))) (F.F.fraction u zero) = calc F.F.Carrier {
+      BasisMap.mul (coord.fn (F.F.fraction u zero))
+       =< ap BasisMap.mul (ap (F.B.mul F.RR.unit.1) (D.at-original u)) > BasisMap.mul (F.B.mul F.RR.unit.1 (F.h (b.value u y)))
+       =< sym (F.LS.localised.smA F.RR.unit.1 (F.h (b.value u y)) (F.F.fraction x zero)) >
+        F.LS.localised.sm F.RR.unit.1 (F.LS.localised.sm (F.h (b.value u y)) (F.F.fraction x zero))
+       =< ap (\ z -> F.LS.localised.sm F.RR.unit.1 (F.LS.localised.sm (F.h (b.value u y)) z)) (sym same-frame) >
+        F.LS.localised.sm F.RR.unit.1 (F.LS.localised.sm (F.h (b.value u y)) (F.F.fraction P.c zero))
+       =< ap (F.LS.localised.sm F.RR.unit.1) (sym (span u)) >
+        F.LS.localised.sm F.RR.unit.1 (F.LS.localised.sm (F.h f) (F.F.fraction u zero))
+       =< F.LS.localised.smA F.RR.unit.1 (F.h f) (F.F.fraction u zero) >
+        F.LS.localised.sm (F.B.mul F.RR.unit.1 (F.h f)) (F.F.fraction u zero)
+       =< ap (\ a -> F.LS.localised.sm a (F.F.fraction u zero)) (trans (F.B.mulC F.RR.unit.1 (F.h f)) F.RR.unit.2) >
+        F.LS.localised.sm F.B.o (F.F.fraction u zero)
+       =< F.LS.localised.smO (F.F.fraction u zero) > F.F.fraction u zero } ;
+    reconstruct : (u : F.F.Carrier) -> Id F.F.Carrier (BasisMap.mul (coord.fn u)) u =
+     F.from-numerators (F.LR.Composite[F.LS.localised,F.Rf,F.LS.localised,coord,BasisMap.linear].map)
+      (F.LR.identity F.LS.localised) reconstruct-original ;
+    read-back (a : F.B.R) : Id F.B.R (coord.fn (BasisMap.mul a)) a =
+     trans (coord.scalar a (F.F.fraction x zero)) (trans (ap (F.B.mul a) value-one) (F.B.mulO a)) ;
+    basis : BasisMap.Basis = Pr.qinv F.B.R F.F.Carrier BasisMap.mul coord.fn reconstruct read-back ;
+   } ;
+   record Presentation {
+    count : Nat ;
+    pairs : Fin count -> M.M * N.M ;
+    one : Id A.R (RS.sum count (\ i -> b.value (pairs i).1 (pairs i).2)) A.o ;
+   } ;
+   RecordAt (p : T.Term) : U l =
+    (n : Nat) * (v : Fin n -> M.M * N.M) *
+     Id A.R (RS.sum n (\ i -> b.value (v i).1 (v i).2)) (w.1.fn (T.Q.inc p)) ;
+   list-terms : (p : T.Term) -> RecordAt p = split {
+    nil -> (zero,\ i -> efq i,sym (H.H.map-zero w.1)) ;
+    cons xy p | ih -> (suc ih.1,snoc (Fin ih.1) (M.M * N.M) ih.2.1 xy,
+     trans (ap (A.add (b.value xy.1 xy.2)) ih.2.2)
+      (trans (sym (w.1.additive (T.pure xy.1 xy.2) (T.Q.inc p))) (ap w.1.fn (sym (T.cons-at xy p))))) } ;
+   presentation : Tr.Trunc[Presentation].carrier =
+    T.ind (\ z -> Id A.R (w.1.fn z) A.o -> Tr.Trunc[Presentation].carrier)
+     (\ z -> Axioms[l].FunExtLemmas[fe @l].isProp-Pi (Id A.R (w.1.fn z) A.o) (\ e -> Tr.Trunc[Presentation].carrier)
+      (\ e -> Tr.Trunc[Presentation].proposition))
+     (\ p e -> Tr.Trunc[Presentation].inc (new Presentation[(list-terms p).1,(list-terms p).2.1,trans (list-terms p).2.2 e]))
+     eta eta-pairs ;
+   module Local (p : Presentation) {
+    fs (i : Fin p.count) : A.R = b.value (p.pairs i).1 (p.pairs i).2 ;
+    coefficients : LF.Rad.InIdeal (p.count,fs) A.o =
+     ((\ i -> A.o),trans (RS.sum-cong p.count (\ i -> A.mul (fs i) A.o) fs (\ i -> A.mulO (fs i))) p.one) ;
+    description : LF.Description[M] =
+     new LF.Description[M,p.count,fs,LF.cover p.count fs coefficients,
+      \ i -> (Span[(p.pairs i).1,(p.pairs i).2].F.F.fraction (p.pairs i).1 zero,Span[(p.pairs i).1,(p.pairs i).2].basis)] ;
+   } ;
+   locally-free : LF.LocallyFree M =
+    Tr.Trunc[Presentation].induction @l (\ p -> LF.LocallyFree M)
+     (\ p -> Tr.Trunc[LF.Description[M]].proposition)
+     (\ p -> Tr.Trunc[LF.Description[M]].inc Local[p].description) presentation ;
+  } ;
+ } ;
+} ;

@@ -1,0 +1,134 @@
+-- Bilinear evaluation of a list respects every relation. Descent
+-- gives the linear lift, unique because every class is a sum of pure tensors.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module SM = SerreModule[l] ; module B = SerreBilinear[l] ;
+module Over (A : CRing) (M N : SM.Over[A].Module) {
+ module T = SerreTensor[l].Over[A,M,N] ;
+ module L = B.Over[A] ;
+ module Into (P : SM.Over[A].Module) (b : L.Maps[M,N,P].Pairing) {
+  module H = L.Hom[T.tensor,P] ;
+  module P0 = SM.Over[A].Laws[P] ;
+  eval : T.Term -> P.M = split { nil -> P.mz ; cons xy p | ih -> P.madd (b.value xy.1 xy.2) ih } ;
+  eval-single (x : M.M) (y : N.M) : Id P.M (eval (T.single x y)) (b.value x y) = P.maddZ (b.value x y) ;
+  eval-add : (p q : T.Term) -> Id P.M (eval (T.plus p q)) (P.madd (eval p) (eval q)) = split {
+   nil -> \ q -> sym (P0.zero-left (eval q)) ;
+   cons xy p | ih -> \ q -> trans (ap (P.madd (b.value xy.1 xy.2)) (ih q)) (P.maddA (b.value xy.1 xy.2) (eval p) (eval q)) } ;
+  eval-neg : (p : T.Term) -> Id P.M (eval (T.negative p)) (P.mneg (eval p)) = split {
+   nil -> sym P0.neg-zero ;
+   cons xy p | ih -> trans (cong2 P.M P.madd _ _ _ _
+    (L.Maps[M,N,P].Left.H.map-neg (L.Maps[M,N,P].left b xy.2) xy.1) ih)
+    (sym (H.neg-add (b.value xy.1 xy.2) (eval p))) } ;
+  eval-scale (a : A.R) : (p : T.Term) -> Id P.M (eval (T.scale a p)) (P.sm a (eval p)) = split {
+   nil -> sym (P0.sm-zero a) ;
+   cons xy p | ih -> trans (cong2 P.M P.madd _ _ _ _ (b.scale-left a xy.1 xy.2) ih)
+    (sym (P.smD a (b.value xy.1 xy.2) (eval p))) } ;
+  sound-rule : (r : T.Rule) -> Id P.M (eval (T.ends-rule r).1) (eval (T.ends-rule r).2) = split {
+   assocR p q r -> calc P.M {
+    eval (T.plus (T.plus p q) r)
+     =< eval-add (T.plus p q) r > P.madd (eval (T.plus p q)) (eval r)
+     =< ap (\ z -> P.madd z (eval r)) (eval-add p q) > P.madd (P.madd (eval p) (eval q)) (eval r)
+     =< sym (P.maddA (eval p) (eval q) (eval r)) > P.madd (eval p) (P.madd (eval q) (eval r))
+     =< ap (P.madd (eval p)) (sym (eval-add q r)) > P.madd (eval p) (eval (T.plus q r))
+     =< sym (eval-add p (T.plus q r)) > eval (T.plus p (T.plus q r)) } ;
+   commR p q -> calc P.M {
+    eval (T.plus p q)
+     =< eval-add p q > P.madd (eval p) (eval q)
+     =< P.maddC (eval p) (eval q) > P.madd (eval q) (eval p)
+     =< sym (eval-add q p) > eval (T.plus q p) } ;
+   zeroR p -> calc P.M {
+    eval (T.plus p nil)
+     =< eval-add p nil > P.madd (eval p) P.mz
+     =< P.maddZ (eval p) > eval p } ;
+   negativeR p -> calc P.M {
+    eval (T.plus p (T.negative p))
+     =< eval-add p (T.negative p) > P.madd (eval p) (eval (T.negative p))
+     =< ap (P.madd (eval p)) (eval-neg p) > P.madd (eval p) (P.mneg (eval p))
+     =< P.maddN (eval p) > P.mz } ;
+   scalar-assocR a d p -> calc P.M {
+    eval (T.scale a (T.scale d p))
+     =< eval-scale a (T.scale d p) > P.sm a (eval (T.scale d p))
+     =< ap (P.sm a) (eval-scale d p) > P.sm a (P.sm d (eval p))
+     =< P.smA a d (eval p) > P.sm (A.mul a d) (eval p)
+     =< sym (eval-scale (A.mul a d) p) > eval (T.scale (A.mul a d) p) } ;
+   scalar-unitR p -> calc P.M {
+    eval (T.scale A.o p)
+     =< eval-scale A.o p > P.sm A.o (eval p)
+     =< P.smO (eval p) > eval p } ;
+   scalar-distR a p q -> calc P.M {
+    eval (T.scale a (T.plus p q))
+     =< eval-scale a (T.plus p q) > P.sm a (eval (T.plus p q))
+     =< ap (P.sm a) (eval-add p q) > P.sm a (P.madd (eval p) (eval q))
+     =< P.smD a (eval p) (eval q) > P.madd (P.sm a (eval p)) (P.sm a (eval q))
+     =< cong2 P.M P.madd _ _ _ _ (sym (eval-scale a p)) (sym (eval-scale a q)) > P.madd (eval (T.scale a p)) (eval (T.scale a q))
+     =< sym (eval-add (T.scale a p) (T.scale a q)) > eval (T.plus (T.scale a p) (T.scale a q)) } ;
+   scalar-addR a d p -> calc P.M {
+    eval (T.scale (A.add a d) p)
+     =< eval-scale (A.add a d) p > P.sm (A.add a d) (eval p)
+     =< P.smE a d (eval p) > P.madd (P.sm a (eval p)) (P.sm d (eval p))
+     =< cong2 P.M P.madd _ _ _ _ (sym (eval-scale a p)) (sym (eval-scale d p)) > P.madd (eval (T.scale a p)) (eval (T.scale d p))
+     =< sym (eval-add (T.scale a p) (T.scale d p)) > eval (T.plus (T.scale a p) (T.scale d p)) } ;
+   left-addR x x' y -> calc P.M {
+    eval (T.single (M.madd x x') y)
+     =< eval-single (M.madd x x') y > b.value (M.madd x x') y
+     =< b.add-left x x' y > P.madd (b.value x y) (b.value x' y)
+     =< cong2 P.M P.madd _ _ _ _ (sym (eval-single x y)) (sym (eval-single x' y)) > P.madd (eval (T.single x y)) (eval (T.single x' y))
+     =< sym (eval-add (T.single x y) (T.single x' y)) > eval (T.plus (T.single x y) (T.single x' y)) } ;
+   left-scaleR a x y -> calc P.M {
+    eval (T.single (M.sm a x) y)
+     =< eval-single (M.sm a x) y > b.value (M.sm a x) y
+     =< b.scale-left a x y > P.sm a (b.value x y)
+     =< ap (P.sm a) (sym (eval-single x y)) > P.sm a (eval (T.single x y))
+     =< sym (eval-scale a (T.single x y)) > eval (T.scale a (T.single x y)) } ;
+   right-addR x y y' -> calc P.M {
+    eval (T.single x (N.madd y y'))
+     =< eval-single x (N.madd y y') > b.value x (N.madd y y')
+     =< b.add-right x y y' > P.madd (b.value x y) (b.value x y')
+     =< cong2 P.M P.madd _ _ _ _ (sym (eval-single x y)) (sym (eval-single x y')) > P.madd (eval (T.single x y)) (eval (T.single x y'))
+     =< sym (eval-add (T.single x y) (T.single x y')) > eval (T.plus (T.single x y) (T.single x y')) } ;
+   right-scaleR a x y -> calc P.M {
+    eval (T.single x (N.sm a y))
+     =< eval-single x (N.sm a y) > b.value x (N.sm a y)
+     =< b.scale-right a x y > P.sm a (b.value x y)
+     =< ap (P.sm a) (sym (eval-single x y)) > P.sm a (eval (T.single x y))
+     =< sym (eval-scale a (T.single x y)) > eval (T.scale a (T.single x y)) } } ;
+  sound : (d : T.Tree) -> T.Valid d -> Id P.M (eval (T.ends d).1) (eval (T.ends d).2) = split {
+   lawD r -> \ h -> sound-rule r ;
+   reflD p -> \ h -> refl (eval p) ;
+   symD d | ih -> \ h -> sym (ih h) ;
+   transD d e | idd ide -> \ h -> trans (idd h.1) (trans (ap eval h.2.2) (ide h.2.1)) ;
+   plusD d e | idd ide -> \ h -> trans (eval-add (T.ends d).1 (T.ends e).1)
+    (trans (cong2 P.M P.madd _ _ _ _ (idd h.1) (ide h.2)) (sym (eval-add (T.ends d).2 (T.ends e).2))) ;
+   negD d | ih -> \ h -> trans (eval-neg (T.ends d).1)
+    (trans (ap P.mneg (ih h)) (sym (eval-neg (T.ends d).2))) ;
+   scaleD a d | ih -> \ h -> trans (eval-scale a (T.ends d).1)
+    (trans (ap (P.sm a) (ih h)) (sym (eval-scale a (T.ends d).2))) } ;
+  respect (p q : T.Term) (h : T.Rel p q) : Id P.M (eval p) (eval q) =
+   Tr.Trunc[T.Witness p q].induction @l (\ w -> Id P.M (eval p) (eval q)) (\ w -> P.setM _ _)
+    (\ w -> trans (ap eval (sym w.2.2.1)) (trans (sound w.1 w.2.1) (ap eval w.2.2.2))) h ;
+  module D = T.Q.Descend[P.M,P.setM,eval,respect] ;
+  add-law : (x y : T.tensor.M) -> Id P.M (D.map (T.tensor.madd x y)) (P.madd (D.map x) (D.map y)) =
+   T.ind2 (\ x y -> Id P.M (D.map (T.tensor.madd x y)) (P.madd (D.map x) (D.map y))) (\ x y -> P.setM _ _)
+    (\ p q -> trans (ap D.map (T.add-at p q)) (trans (D.beta (T.plus p q)) (trans (eval-add p q)
+     (cong2 P.M P.madd _ _ _ _ (sym (D.beta p)) (sym (D.beta q)))))) ;
+  scale-law (a : A.R) : (x : T.tensor.M) -> Id P.M (D.map (T.tensor.sm a x)) (P.sm a (D.map x)) =
+   T.ind (\ x -> Id P.M (D.map (T.tensor.sm a x)) (P.sm a (D.map x))) (\ x -> P.setM _ _)
+    (\ p -> trans (ap D.map (T.scalar-at a p)) (trans (D.beta (T.scale a p))
+     (trans (eval-scale a p) (ap (P.sm a) (sym (D.beta p)))))) ;
+  lift : H.H.Hom = new H.H.Hom[D.map,add-law,scale-law] ;
+  beta (x : M.M) (y : N.M) : Id P.M (lift.fn (T.pure x y)) (b.value x y) =
+   trans (D.beta (T.single x y)) (eval-single x y) ;
+ } ;
+ module Equal (P : SM.Over[A].Module) (f g : L.Linear[T.tensor,P].H.Hom)
+  (pure-eq : (x : M.M) (y : N.M) -> Id P.M (f.fn (T.pure x y)) (g.fn (T.pure x y))) {
+  module H = L.Hom[T.tensor,P] ;
+  on-list : (p : T.Term) -> Id P.M (f.fn (T.Q.inc p)) (g.fn (T.Q.inc p)) = split {
+   nil -> trans (H.H.map-zero f) (sym (H.H.map-zero g)) ;
+   cons xy p | ih -> trans (ap f.fn (T.cons-at xy p)) (trans (f.additive (T.pure xy.1 xy.2) (T.Q.inc p))
+    (trans (cong2 P.M P.madd _ _ _ _ (pure-eq xy.1 xy.2) ih)
+     (trans (sym (g.additive (T.pure xy.1 xy.2) (T.Q.inc p))) (ap g.fn (sym (T.cons-at xy p))))) ) } ;
+  at : (z : T.tensor.M) -> Id P.M (f.fn z) (g.fn z) =
+   T.ind (\ z -> Id P.M (f.fn z) (g.fn z)) (\ z -> P.setM _ _) on-list ;
+  equal : Id H.H.Hom f g = H.ext f g at ;
+ } ;
+} ;

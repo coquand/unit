@@ -1,0 +1,94 @@
+-- Tensoring with a module is a functor on the module precategory. A
+-- tensor inverse gives a quasi-inverse with natural contraction
+-- isomorphisms. On a pure triple contraction is b(x,y) times z.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module SM = SerreModule[l] ;
+module TU = SerreTensorUniversal[l] ; module TA = SerreTensorAssociativity[l] ;
+module Fn = Functor[l+,l,l+,l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module MC = SerreModuleCategory[l].Over[A] ; module S = MC.S ; module L = MC.L ;
+ module TM = SerreTensorMaps[l].Over[A,setA] ;
+ C : Category[l+,l].Precategory = MC.modules ;
+ R : S.Module = TM.R ;
+ module Tensoring (M : S.Module) {
+  obj (X : S.Module) : S.Module = TU.Over[A,M,X].T.tensor ;
+  module Map (X Y : S.Module) (f : MC.Hom X Y) {
+   module T = TM.Map[M,X,M,Y,L.identity M,f] ;
+  } ;
+  map (X Y : S.Module) (f : MC.Hom X Y) : MC.Hom (obj X) (obj Y) = Map[X,Y,f].T.map ;
+  identity (X : S.Module) : Id (MC.Hom (obj X) (obj X)) (map X X (L.identity X)) (L.identity (obj X)) =
+   TU.Over[A,M,X].Equal[obj X,map X X (L.identity X),L.identity (obj X),Map[X,X,L.identity X].T.beta].equal ;
+  composition (X Y Z : S.Module) (g : MC.Hom Y Z) (f : MC.Hom X Y) :
+   Id (MC.Hom (obj X) (obj Z)) (map X Z (MC.comp X Y Z g f)) (MC.comp (obj X) (obj Y) (obj Z) (map Y Z g) (map X Y f)) =
+   TU.Over[A,M,X].Equal[obj Z,map X Z (MC.comp X Y Z g f),MC.comp (obj X) (obj Y) (obj Z) (map Y Z g) (map X Y f),
+    \ x y -> trans (Map[X,Z,MC.comp X Y Z g f].T.beta x y)
+     (sym (trans (ap (map Y Z g).fn (Map[X,Y,f].T.beta x y)) (Map[Y,Z,g].T.beta x (f.fn y))))].equal ;
+  functor : Fn.Functor[C,C] = new Fn.Functor[C,C,obj,map,identity,composition] ;
+ } ;
+ record QuasiInverse (F : Fn.Functor[C,C]) {
+  inverse : Fn.Functor[C,C] ;
+  counit (X : S.Module) : C.Iso (F.obj (inverse.obj X)) X ;
+  unit (X : S.Module) : C.Iso (inverse.obj (F.obj X)) X ;
+  counit-natural (X Y : S.Module) (f : MC.Hom X Y) :
+   Id (MC.Hom (F.obj (inverse.obj X)) Y)
+    (MC.comp (F.obj (inverse.obj X)) (F.obj (inverse.obj Y)) Y (counit Y).1 (F.map (inverse.obj X) (inverse.obj Y) (inverse.map X Y f)))
+    (MC.comp (F.obj (inverse.obj X)) X Y f (counit X).1) ;
+  unit-natural (X Y : S.Module) (f : MC.Hom X Y) :
+   Id (MC.Hom (inverse.obj (F.obj X)) Y)
+    (MC.comp (inverse.obj (F.obj X)) (inverse.obj (F.obj Y)) Y (unit Y).1 (inverse.map (F.obj X) (F.obj Y) (F.map X Y f)))
+    (MC.comp (inverse.obj (F.obj X)) X Y f (unit X).1) ;
+ } ;
+ IsEquivalence (F : Fn.Functor[C,C]) : U l+ = Truncation[l+].Trunc[QuasiInverse[F]].carrier ;
+ module TensorIso (X Y Z : S.Module) (e : C.Iso X Y) {
+  module To = TM.Map[X,Z,Y,Z,e.1,L.identity Z] ;
+  module Back = TM.Map[Y,Z,X,Z,e.2.1,L.identity Z] ;
+  left (u : To.Src.T.tensor.M) : Id To.Src.T.tensor.M (Back.map.fn (To.map.fn u)) u =
+   To.Src.Equal[To.Src.T.tensor,
+    MC.comp To.Src.T.tensor To.Dst.T.tensor To.Src.T.tensor Back.map To.map,L.identity To.Src.T.tensor,
+    \ x z -> trans (ap Back.map.fn (To.beta x z)) (trans (Back.beta (e.1.fn x) z)
+     (ap (\ v -> To.Src.T.pure v z) (ap (MC.evaluate X X x) e.2.2.1)))].at u ;
+  right (u : To.Dst.T.tensor.M) : Id To.Dst.T.tensor.M (To.map.fn (Back.map.fn u)) u =
+   To.Dst.Equal[To.Dst.T.tensor,
+    MC.comp To.Dst.T.tensor To.Src.T.tensor To.Dst.T.tensor To.map Back.map,L.identity To.Dst.T.tensor,
+    \ y z -> trans (ap To.map.fn (Back.beta y z)) (trans (To.beta (e.2.1.fn y) z)
+     (ap (\ v -> To.Dst.T.pure v z) (ap (MC.evaluate Y Y y) e.2.2.2)))].at u ;
+  equiv : Pr.isEquiv To.Src.T.tensor.M To.Dst.T.tensor.M To.map.fn =
+   Pr.qinv To.Src.T.tensor.M To.Dst.T.tensor.M To.map.fn Back.map.fn right left ;
+ } ;
+ module Contract (M N : S.Module) (e : C.Iso (TU.Over[A,M,N].T.tensor) R) {
+  module F = Tensoring[M] ; module G = Tensoring[N] ;
+  module At (X : S.Module) {
+   module Assoc = TA.Over[A].At[M,N,X] ;
+   module EI = TensorIso[Assoc.MN.T.tensor,R,X,e] ;
+   module U0 = TM.Unit[X] ;
+   on-left : MC.Hom Assoc.Lhs X = MC.comp Assoc.Lhs EI.To.Dst.T.tensor X U0.E.lift EI.To.map ;
+   left-equiv : Pr.isEquiv Assoc.Lhs.M X.M on-left.fn =
+    EquivalenceLemmas[l].compose Assoc.Lhs.M EI.To.Dst.T.tensor.M X.M U0.E.lift.fn EI.To.map.fn U0.equiv EI.equiv ;
+   map : MC.Hom Assoc.Rhs X = MC.comp Assoc.Rhs Assoc.Lhs X on-left Assoc.Back.lift ;
+   equiv : Pr.isEquiv Assoc.Rhs.M X.M map.fn =
+    EquivalenceLemmas[l].compose Assoc.Rhs.M Assoc.Lhs.M X.M on-left.fn Assoc.Back.lift.fn left-equiv Assoc.reverse-equiv ;
+   iso : C.Iso (F.obj (G.obj X)) X = MC.FromEquiv[Assoc.Rhs,X,map,equiv].iso ;
+   beta (x : M.M) (y : N.M) (z : X.M) :
+    Id X.M (map.fn (Assoc.A1.T.pure x (Assoc.NP.T.pure y z))) (X.sm (e.1.fn (Assoc.MN.T.pure x y)) z) =
+    trans (ap on-left.fn (Assoc.back-beta x y z))
+     (trans (ap U0.E.lift.fn (EI.To.beta (Assoc.MN.T.pure x y) z)) (U0.E.beta (e.1.fn (Assoc.MN.T.pure x y)) z)) ;
+  } ;
+  module Naturality (X Y : S.Module) (f : MC.Hom X Y) {
+   module XA = At[X] ; module YA = At[Y] ;
+   module Inner = G.Map[X,Y,f] ; module Outer = F.Map[G.obj X,G.obj Y,Inner.T.map] ;
+   first : MC.Hom XA.Assoc.Rhs Y = MC.comp XA.Assoc.Rhs YA.Assoc.Rhs Y YA.map Outer.T.map ;
+   second : MC.Hom XA.Assoc.Rhs Y = MC.comp XA.Assoc.Rhs X Y f XA.map ;
+   pure (x : M.M) (y : N.M) (z : X.M) :
+    Id Y.M (first.fn (XA.Assoc.A1.T.pure x (XA.Assoc.NP.T.pure y z))) (second.fn (XA.Assoc.A1.T.pure x (XA.Assoc.NP.T.pure y z))) = calc Y.M {
+    first.fn (XA.Assoc.A1.T.pure x (XA.Assoc.NP.T.pure y z))
+     =< ap YA.map.fn (Outer.T.beta x (XA.Assoc.NP.T.pure y z)) >
+      YA.map.fn (YA.Assoc.A1.T.pure x (Inner.T.map.fn (XA.Assoc.NP.T.pure y z)))
+     =< ap (\ u -> YA.map.fn (YA.Assoc.A1.T.pure x u)) (Inner.T.beta y z) >
+      YA.map.fn (YA.Assoc.A1.T.pure x (YA.Assoc.NP.T.pure y (f.fn z)))
+     =< YA.beta x y (f.fn z) > Y.sm (e.1.fn (XA.Assoc.MN.T.pure x y)) (f.fn z)
+     =< sym (f.scalar (e.1.fn (XA.Assoc.MN.T.pure x y)) z) > f.fn (X.sm (e.1.fn (XA.Assoc.MN.T.pure x y)) z)
+     =< ap f.fn (sym (XA.beta x y z)) > second.fn (XA.Assoc.A1.T.pure x (XA.Assoc.NP.T.pure y z)) } ;
+   natural : Id (MC.Hom XA.Assoc.Rhs Y) first second = XA.Assoc.EqualRight[Y,first,second,pure].equal ;
+  } ;
+ } ;
+} ;

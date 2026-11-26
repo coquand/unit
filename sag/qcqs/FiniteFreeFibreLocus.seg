@@ -1,0 +1,102 @@
+-- For D(u_1,...,u_m) in a finite free algebra B, the whole fibre is in
+-- that open exactly where the matrix with columns u_i e_j is surjective.
+-- The multiplication matrix and its maximal-minor open commute with
+-- change of the coefficient ring.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Tr = Truncation[l] ;
+module T = AffineTests[l] ;
+module ZF = ZariskiFunctor[l] ;
+module L = MonicAlgebra ;
+module Pair = L.FinPairs[l] ;
+module MF = MatrixSurjectivityOpen[l] ;
+module UI = ZariskiUnitIdeal[l] ;
+module Over (K : T.Test) (S : Algebras[l].Over[K.ring,K.carrier-set].Algebra)
+ (n : Nat) (basis : L.TraceBasis[l].Over[K.ring,K.carrier-set,S].Basis[n])
+ (chosen : Fin n) (unit-coordinate : Id K.ring.R (basis.coordinate S.ring.o chosen) K.ring.o) {
+ module C = FiniteFreeCoverChange[l].Over[K,S,n,basis,chosen,unit-coordinate] ;
+ module At (context : C.BP.Algebra) (m : Nat) (us : Fin m -> C.Cover.At[context].B.ring.R) {
+  module Ext = C.Cover.At[context] ;
+  A : T.Test = Ext.A ; B : T.Test = Ext.B ;
+  count : Nat = Pair.times m n ;
+  prod (i : Fin m) (j : Fin n) : B.ring.R = B.ring.mul (us i) (Ext.X.V.unit j) ;
+  cols (k : Fin count) : B.ring.R = prod (Pair.enum m n k).1 (Pair.enum m n k).2 ;
+  module M = MF.Over[A,count,n,cols] ;
+  module IB = UI.Over[B].At[m,us] ;
+  module RB = Radical[l].Over[B.ring] ;
+  module FB = FamilyLattice[l].Over[B.ring] ;
+  module AS = FiniteIdeal[l].Sums[A.ring] ;
+  module BS = FiniteIdeal[l].Sums[B.ring] ;
+  module Mat = M.Mat ;
+  module D = M.DS ;
+  module Image (v : M.Vector count) {
+   term (k : Fin count) : B.ring.R = B.ring.mul (Ext.inclusion.1 (v k)) (cols k) ;
+   image : B.ring.R = BS.sum count term ;
+   coordinate (j : Fin n) : Id A.ring.R (image j) (M.apply v j) =
+    trans (ap (\ w -> w j) (Ext.sum-coordinates count term))
+     (AS.sum-cong count (\ k -> term k j) (\ k -> A.ring.mul (v k) (cols k j))
+      (\ k -> ap (\ w -> w j) (Ext.X.scalar-action (v k) (cols k)))) ;
+   in-ideal : RB.InIdeal (m,us) image = FB.ideal-sum (m,us) count term (\ k ->
+    RB.ideal-scale (m,us) (Ext.inclusion.1 (v k)) (cols k)
+     (RB.ideal-eq (m,us) _ _ (B.ring.mulC (Ext.X.V.unit (Pair.enum m n k).2) (us (Pair.enum m n k).1))
+      (RB.ideal-scale (m,us) (Ext.X.V.unit (Pair.enum m n k).2) (us (Pair.enum m n k).1)
+       (RB.ideal-gen (m,us) (Pair.enum m n k).1)))) ;
+  } ;
+  from-onto (onto : M.Onto) : IB.UnitIdeal =
+   Tr.Trunc[M.Preimage B.ring.o].induction @l (\ t -> IB.UnitIdeal) (\ t -> Tr.Trunc[IB.Witness].proposition)
+    (\ t -> Tr.Trunc[IB.Witness].inc (RB.ideal-eq (m,us) Image[t.1].image B.ring.o
+     (Ext.X.V.ext Image[t.1].image B.ring.o (\ j -> trans (Image[t.1].coordinate j) (t.2 j))) Image[t.1].in-ideal))
+    (onto B.ring.o) ;
+  module Solve (c : IB.Witness) (w : B.ring.R) {
+   module Column (i : Fin m) {
+    target : B.ring.R = B.ring.mul (c.1 i) w ;
+    insertion : Mat.Mat n count = \ j -> D.delta count (Pair.preimage m n i j).1 ;
+    apply-column (j k : Fin n) : Id A.ring.R (M.apply (insertion j) k) (prod i j k) =
+     trans (D.sum-delta count (Pair.preimage m n i j).1 (\ t -> cols t k))
+      (ap (\ p -> prod p.1 p.2 k) (Pair.preimage m n i j).2) ;
+    solution : M.Vector count = Mat.apply n count insertion target ;
+    product (k : Fin n) : Id A.ring.R (M.apply solution k) (B.ring.mul (us i) target k) = calc A.ring.R {
+     M.apply solution k =< Mat.apply-apply n count n insertion cols target k
+      > AS.sum n (\ j -> A.ring.mul (target j) (M.apply (insertion j) k))
+      =< AS.sum-cong n _ _ (\ j -> ap (A.ring.mul (target j)) (apply-column j k))
+      > AS.sum n (\ j -> A.ring.mul (target j) (prod i j k))
+      =< sym (Ext.BA.At[n,Ext.base-basis].product-coordinate (us i) target k) > B.ring.mul (us i) target k } ;
+   } ;
+   vectors : Mat.Mat m count = \ i -> Column[i].solution ;
+   solution : M.Vector count = Mat.apply m count vectors (\ i -> A.ring.o) ;
+   sum-product : Id B.ring.R (BS.sum m (\ i -> B.ring.mul (us i) Column[i].target)) w =
+    trans (BS.sum-cong m _ _ (\ i -> trans (B.ring.mulA (us i) (c.1 i) w)
+     (B.ring.mulC (B.ring.mul (us i) (c.1 i)) w)))
+     (trans (BS.sum-scale w m (\ i -> B.ring.mul (us i) (c.1 i)))
+      (trans (ap (B.ring.mul w) c.2) (B.ring.mulO w))) ;
+   solves (k : Fin n) : Id A.ring.R (M.apply solution k) (w k) = calc A.ring.R {
+    M.apply solution k =< Mat.apply-apply m count n vectors cols (\ i -> A.ring.o) k
+     > AS.sum m (\ i -> A.ring.mul A.ring.o (M.apply (vectors i) k))
+     =< AS.sum-cong m _ _ (\ i -> trans (RL[A.ring].one-left (M.apply (vectors i) k)) (Column[i].product k))
+     > AS.sum m (\ i -> B.ring.mul (us i) Column[i].target k)
+     =< ap (\ v -> v k) (sym (Ext.sum-coordinates m (\ i -> B.ring.mul (us i) Column[i].target)))
+     > BS.sum m (\ i -> B.ring.mul (us i) Column[i].target) k
+     =< ap (\ v -> v k) sum-product > w k } ;
+  } ;
+  to-onto (whole : IB.UnitIdeal) : M.Onto = \ w ->
+   Tr.Trunc[IB.Witness].induction @l (\ t -> Tr.Trunc[M.Preimage w].carrier) (\ t -> Tr.Trunc[M.Preimage w].proposition)
+    (\ c -> Tr.Trunc[M.Preimage w].inc (Solve[c,w].solution,Solve[c,w].solves)) whole ;
+  independent : T.At[A].Z.lattice.L = M.locus ;
+  forward (e : Id T.At[A].Z.lattice.L independent T.At[A].Z.lattice.top) :
+   Id T.At[B].Z.lattice.L IB.cover T.At[B].Z.lattice.top = IB.to-top (from-onto (M.to-onto e)) ;
+  backward (e : Id T.At[B].Z.lattice.L IB.cover T.At[B].Z.lattice.top) :
+   Id T.At[A].Z.lattice.L independent T.At[A].Z.lattice.top = M.from-onto (to-onto (IB.from-top e)) ;
+ } ;
+ module Change (a d : C.BP.Algebra) (arrow : C.BP.Hom a d) (m : Nat) (us : Fin m -> C.Cover.At[a].B.ring.R) {
+  module H = C.Change[a,d,arrow] ;
+  module P = At[a,m,us] ;
+  module Q = At[d,m,\ i -> H.hom.1 (us i)] ;
+  column (k : Fin P.count) : Id Q.B.ring.R (H.hom.1 (P.cols k)) (Q.cols k) =
+   trans (H.hom.2.2.2 (us (Pair.enum m n k).1) (P.Ext.X.V.unit (Pair.enum m n k).2))
+    (ap (Q.B.ring.mul (H.hom.1 (us (Pair.enum m n k).1))) (H.on-unit (Pair.enum m n k).2)) ;
+  module FE = Axioms[l].FunExtLemmas[fe @l] ;
+  natural : Id T.At[Q.A].Z.lattice.L (ZF.functor.reindex P.A Q.A H.h P.independent) Q.independent =
+   trans MF.Change[P.A,Q.A,H.h,P.count,n,P.cols].natural
+    (ap (\ cols -> MF.Over[Q.A,P.count,n,cols].locus)
+     (FE.funext (Fin P.count) (\ k -> Q.B.ring.R) (\ k -> H.hom.1 (P.cols k)) Q.cols column)) ;
+ } ;
+} ;

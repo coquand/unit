@@ -1,0 +1,96 @@
+-- A bilinear pairing with the two rank-one exchange equations and
+-- a finite normalisation sum supplies both the tensor inverse and the
+-- dual-module isomorphism. The two exchange laws turn the normalisation
+-- into dual basis equations on the two modules.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module SM = SerreModule[l] ;
+module Bil = SerreBilinear[l] ; module TU = SerreTensorUniversal[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module S = SM.Over[A] ; module L = Bil.Over[A] ;
+ R : S.Module = S.regular setA ;
+ module At (M N : S.Module) (b : L.Maps[M,N,R].Pairing) {
+  module T = TU.Over[A,M,N] ;
+  module Ev = T.Into[R,b] ;
+  module B = L.Maps[M,N,R] ;
+  module D = L.Hom[M,R] ;
+  module C = L.Maps[N,M,R] ;
+  module Reverse = L.Swap[M,N,R,b] ;
+  dual-map : L.Linear[N,D.space].H.Hom = C.Curried[Reverse.pairing].map ;
+  ExchangeM : U l = (x z : M.M) (y : N.M) -> Id M.M (M.sm (b.value x y) z) (M.sm (b.value z y) x) ;
+  ExchangeN : U l = (x : M.M) (y z : N.M) -> Id N.M (N.sm (b.value x y) z) (N.sm (b.value x z) y) ;
+  module MS = SerreModuleSums[l].Over[A,M] ; module NS = SerreModuleSums[l].Over[A,N] ;
+  module RS = SerreModuleSums[l].Over[A,R] ; module TS = SerreModuleSums[l].Over[A,T.T.tensor] ;
+  module RingSums = FiniteIdeal[l].Sums[A] ;
+  ring-sum : (n : Nat) (v : Fin n -> A.R) -> Id A.R (RS.sum n v) (RingSums.sum n v) = split {
+   zero -> \ v -> RS.sum-empty v ;
+   suc n | ih -> \ v -> trans (RS.sum-step n v) (ap (A.add (v (inr tt))) (ih (\ i -> v (inl i)))) } ;
+  record Normalisation {
+   size : Nat ;
+   first : Fin size -> M.M ;
+   second : Fin size -> N.M ;
+   one : Id A.R (RingSums.sum size (\ i -> b.value (first i) (second i))) A.o ;
+  } ;
+  module With (p : Normalisation) (exchangeM : ExchangeM) (exchangeN : ExchangeN) {
+   n : Nat = p.size ;
+   a (i : Fin n) : A.R = b.value (p.first i) (p.second i) ;
+   reconstructM (x : M.M) : Id M.M (MS.sum n (\ i -> M.sm (b.value x (p.second i)) (p.first i))) x =
+    trans (MS.sum-cong n _ _ (\ i -> exchangeM x (p.first i) (p.second i))) (MS.partition n a p.one x) ;
+   reconstructN (y : N.M) : Id N.M (NS.sum n (\ i -> N.sm (b.value (p.first i) y) (p.second i))) y =
+    trans (NS.sum-cong n _ _ (\ i -> exchangeN (p.first i) y (p.second i))) (NS.partition n a p.one y) ;
+   coev : T.T.tensor.M = TS.sum n (\ i -> T.T.pure (p.first i) (p.second i)) ;
+   module EM = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,T.T.tensor,R,Ev.lift] ;
+   evaluation-coev : Id A.R (Ev.lift.fn coev) A.o =
+    trans (EM.sum-map n (\ i -> T.T.pure (p.first i) (p.second i)))
+     (trans (RS.sum-cong n _ _ (\ i -> Ev.beta (p.first i) (p.second i))) (trans (ring-sum n a) p.one)) ;
+   -- The inverse sends r to r times the coevaluation element.
+   unit-back : L.Linear[R,T.T.tensor].H.Hom = new L.Linear[R,T.T.tensor].H.Hom[
+    \ r -> T.T.tensor.sm r coev,
+    \ r s -> T.T.tensor.smE r s coev,
+    \ r s -> sym (T.T.tensor.smA r s coev)] ;
+   right (r : A.R) : Id A.R (Ev.lift.fn (unit-back.fn r)) r =
+    trans (Ev.lift.scalar r coev) (trans (ap (A.mul r) evaluation-coev) (A.mulO r)) ;
+   module Pure (x : M.M) (y : N.M) {
+    module TensorAtY = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,M,T.T.tensor,T.T.Pair.left T.T.pairing y] ;
+    each (i : Fin n) :
+     Id T.T.tensor.M (T.T.pure (M.sm (b.value x (p.second i)) (p.first i)) y)
+      (T.T.tensor.sm (b.value x y) (T.T.pure (p.first i) (p.second i))) = calc T.T.tensor.M {
+     T.T.pure (M.sm (b.value x (p.second i)) (p.first i)) y
+      =< T.T.pairing.scale-left (b.value x (p.second i)) (p.first i) y >
+       T.T.tensor.sm (b.value x (p.second i)) (T.T.pure (p.first i) y)
+      =< sym (T.T.pairing.scale-right (b.value x (p.second i)) (p.first i) y) >
+       T.T.pure (p.first i) (N.sm (b.value x (p.second i)) y)
+      =< ap (T.T.pure (p.first i)) (exchangeN x (p.second i) y) >
+       T.T.pure (p.first i) (N.sm (b.value x y) (p.second i))
+      =< T.T.pairing.scale-right (b.value x y) (p.first i) (p.second i) >
+       T.T.tensor.sm (b.value x y) (T.T.pure (p.first i) (p.second i)) } ;
+    collapse : Id T.T.tensor.M (T.T.pure x y) (T.T.tensor.sm (b.value x y) coev) =
+     trans (ap (\ z -> T.T.pure z y) (sym (reconstructM x)))
+      (trans (TensorAtY.sum-map n (\ i -> M.sm (b.value x (p.second i)) (p.first i)))
+       (trans (TS.sum-cong n _ _ each) (TS.sum-scale (b.value x y) n (\ i -> T.T.pure (p.first i) (p.second i))))) ;
+   } ;
+   left (z : T.T.tensor.M) : Id T.T.tensor.M (unit-back.fn (Ev.lift.fn z)) z =
+    T.Equal[T.T.tensor,L.Composite[T.T.tensor,R,T.T.tensor,Ev.lift,unit-back].map,L.identity T.T.tensor,
+     \ x y -> trans (ap unit-back.fn (Ev.beta x y)) (sym Pure[x,y].collapse)].at z ;
+   tensor-iso : Pr.isEquiv T.T.tensor.M A.R Ev.lift.fn =
+    Pr.qinv T.T.tensor.M A.R Ev.lift.fn unit-back.fn right left ;
+   dual-back (d : D.H.Hom) : N.M = NS.sum n (\ i -> N.sm (d.fn (p.first i)) (p.second i)) ;
+   module DualAt (d : D.H.Hom) (x : M.M) {
+    module ByX = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,N,R,B.right b x] ;
+    module ByD = SerreModuleSums[l].Map[A,A,RingHom[l].identity A,M,R,d] ;
+    term (i : Fin n) :
+     Id A.R (b.value x (N.sm (d.fn (p.first i)) (p.second i))) (d.fn (M.sm (b.value x (p.second i)) (p.first i))) =
+     trans (b.scale-right (d.fn (p.first i)) x (p.second i))
+      (trans (A.mulC (d.fn (p.first i)) (b.value x (p.second i))) (sym (d.scalar (b.value x (p.second i)) (p.first i)))) ;
+    equals : Id A.R (b.value x (dual-back d)) (d.fn x) =
+     trans (ByX.sum-map n (\ i -> N.sm (d.fn (p.first i)) (p.second i)))
+      (trans (RS.sum-cong n _ _ term)
+       (trans (sym (ByD.sum-map n (\ i -> M.sm (b.value x (p.second i)) (p.first i)))) (ap d.fn (reconstructM x)))) ;
+   } ;
+   dual-right (d : D.H.Hom) : Id D.H.Hom (dual-map.fn (dual-back d)) d =
+    D.ext _ _ (\ x -> DualAt[d,x].equals) ;
+   dual-left (y : N.M) : Id N.M (dual-back (dual-map.fn y)) y = reconstructN y ;
+   dual-iso : Pr.isEquiv N.M D.H.Hom dual-map.fn =
+    Pr.qinv N.M D.H.Hom dual-map.fn dual-back dual-right dual-left ;
+  } ;
+ } ;
+} ;

@@ -1,0 +1,64 @@
+-- Structure maps are obtained by bilinear extension. Their equations
+-- can be tested on pure tensors.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module SM = SerreModule[l] ; module Bil = SerreBilinear[l] ;
+module TU = SerreTensorUniversal[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module S = SM.Over[A] ; module L = Bil.Over[A] ;
+ R : S.Module = S.regular setA ;
+ module Post (M N P Q : S.Module) (b : L.Maps[M,N,P].Pairing) (f : L.Linear[P,Q].H.Hom) {
+  pairing : L.Maps[M,N,Q].Pairing = new L.Maps[M,N,Q].Pairing[
+   \ x y -> f.fn (b.value x y),
+   \ x x' y -> trans (ap f.fn (b.add-left x x' y)) (f.additive (b.value x y) (b.value x' y)),
+   \ a x y -> trans (ap f.fn (b.scale-left a x y)) (f.scalar a (b.value x y)),
+   \ x y y' -> trans (ap f.fn (b.add-right x y y')) (f.additive (b.value x y) (b.value x y')),
+   \ a x y -> trans (ap f.fn (b.scale-right a x y)) (f.scalar a (b.value x y))] ;
+ } ;
+ module Pre (M N P Q V : S.Module) (f : L.Linear[M,P].H.Hom) (g : L.Linear[N,Q].H.Hom)
+  (b : L.Maps[P,Q,V].Pairing) {
+  pairing : L.Maps[M,N,V].Pairing = new L.Maps[M,N,V].Pairing[
+   \ x y -> b.value (f.fn x) (g.fn y),
+   \ x x' y -> trans (ap (\ z -> b.value z (g.fn y)) (f.additive x x')) (b.add-left (f.fn x) (f.fn x') (g.fn y)),
+   \ a x y -> trans (ap (\ z -> b.value z (g.fn y)) (f.scalar a x)) (b.scale-left a (f.fn x) (g.fn y)),
+   \ x y y' -> trans (ap (b.value (f.fn x)) (g.additive y y')) (b.add-right (f.fn x) (g.fn y) (g.fn y')),
+   \ a x y -> trans (ap (b.value (f.fn x)) (g.scalar a y)) (b.scale-right a (f.fn x) (g.fn y))] ;
+ } ;
+ module Map (M N P Q : S.Module) (f : L.Linear[M,P].H.Hom) (g : L.Linear[N,Q].H.Hom) {
+  module Src = TU.Over[A,M,N] ; module Dst = TU.Over[A,P,Q] ;
+  module P0 = Pre[M,N,P,Q,Dst.T.tensor,f,g,Dst.T.pairing] ;
+  module E = Src.Into[Dst.T.tensor,P0.pairing] ;
+  map : L.Linear[Src.T.tensor,Dst.T.tensor].H.Hom = E.lift ;
+  beta (x : M.M) (y : N.M) : Id Dst.T.tensor.M (map.fn (Src.T.pure x y)) (Dst.T.pure (f.fn x) (g.fn y)) = E.beta x y ;
+ } ;
+ module Swap (M N : S.Module) {
+  module MN = TU.Over[A,M,N] ; module NM = TU.Over[A,N,M] ;
+  module To = MN.Into[NM.T.tensor,L.Swap[N,M,NM.T.tensor,NM.T.pairing].pairing] ;
+  module Back = NM.Into[MN.T.tensor,L.Swap[M,N,MN.T.tensor,MN.T.pairing].pairing] ;
+  right (z : NM.T.tensor.M) : Id NM.T.tensor.M (To.lift.fn (Back.lift.fn z)) z =
+   NM.Equal[NM.T.tensor,L.Composite[NM.T.tensor,MN.T.tensor,NM.T.tensor,Back.lift,To.lift].map,L.identity NM.T.tensor,
+    \ y x -> trans (ap To.lift.fn (Back.beta y x)) (To.beta x y)].at z ;
+  left (z : MN.T.tensor.M) : Id MN.T.tensor.M (Back.lift.fn (To.lift.fn z)) z =
+   MN.Equal[MN.T.tensor,L.Composite[MN.T.tensor,NM.T.tensor,MN.T.tensor,To.lift,Back.lift].map,L.identity MN.T.tensor,
+    \ x y -> trans (ap Back.lift.fn (To.beta x y)) (Back.beta y x)].at z ;
+  equiv : Pr.isEquiv MN.T.tensor.M NM.T.tensor.M To.lift.fn =
+   Pr.qinv MN.T.tensor.M NM.T.tensor.M To.lift.fn Back.lift.fn right left ;
+ } ;
+ module Action (P : S.Module) {
+  pairing : L.Maps[R,P,P].Pairing = new L.Maps[R,P,P].Pairing[P.sm,
+   \ a b x -> P.smE a b x,\ c a x -> sym (P.smA c a x),
+   \ a x y -> P.smD a x y,\ c a x -> S.Laws[P].sm-swap a c x] ;
+ } ;
+ module Unit (P : S.Module) {
+  module RP = TU.Over[A,R,P] ; module E = RP.Into[P,Action[P].pairing] ;
+  module T = RP.T ;
+  back : L.Linear[P,T.tensor].H.Hom = T.Pair.right T.pairing A.o ;
+  right (x : P.M) : Id P.M (E.lift.fn (back.fn x)) x = trans (E.beta A.o x) (P.smO x) ;
+  left (z : T.tensor.M) : Id T.tensor.M (back.fn (E.lift.fn z)) z =
+   RP.Equal[T.tensor,L.Composite[T.tensor,P,T.tensor,E.lift,back].map,L.identity T.tensor,
+    \ a x -> trans (ap back.fn (E.beta a x))
+     (trans (T.pairing.scale-right a A.o x)
+      (trans (sym (T.pairing.scale-left a A.o x)) (ap (\ b -> T.pure b x) (A.mulO a))))].at z ;
+  equiv : Pr.isEquiv T.tensor.M P.M E.lift.fn = Pr.qinv T.tensor.M P.M E.lift.fn back.fn right left ;
+ } ;
+} ;

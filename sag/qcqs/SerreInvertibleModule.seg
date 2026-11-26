@@ -1,0 +1,104 @@
+-- The algebraic clauses of Stacks 0B8I. A finite principal cover gives
+-- global functionals whose frame values generate the unit ideal. A
+-- partition of one normalises the evaluation pairing. In the reverse
+-- direction, the finite pure-tensor presentation of a tensor inverse
+-- gives local frames for both factors and the canonical dual isomorphism.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module SM = SerreModule[l] ;
+module Bil = SerreBilinear[l] ; module IA = SerreTensorInverse[l] ;
+module Tau = SerreTensorMaps[l] ; module RP = SerreRankOnePairing[l] ;
+module Over (A : CRing) (setA : Pr.isSet A.R) {
+ module S = SM.Over[A] ; module L = Bil.Over[A] ;
+ module LF = SerreLocalFrame[l].Over[A,setA] ; module IM = IA.Over[A,setA] ;
+ module TM = Tau.Over[A,setA] ; module R1 = RP.Over[A,setA] ;
+ R : S.Module = LF.R ;
+ module RS = LF.RS ;
+ TensorInverseData (M : S.Module) : U l+ = (N : S.Module) * IM.At[M,N].Witness ;
+ HasTensorInverse (M : S.Module) : U l+ = Truncation[l+].Trunc[TensorInverseData M].carrier ;
+ module Eval (M : S.Module) {
+  module D = L.Hom[M,R] ;
+  module B = L.Maps[M,D.space,R] ;
+  evaluation : B.Pairing = new B.Pairing[\ x d -> d.fn x,
+   \ x y d -> d.additive x y,\ a x d -> d.scalar a x,
+   \ x d e -> refl (A.add (d.fn x) (e.fn x)),\ a x d -> refl (A.mul a (d.fn x))] ;
+  module E = R1.At[M,D.space,evaluation] ;
+  EvalEquiv : U l = Pr.isEquiv E.T.T.tensor.M A.R E.Ev.lift.fn ;
+  prop : Pr.isProp EvalEquiv = IdentityTools[l].Equivalence[E.T.T.tensor.M,A.R,E.T.T.tensor.setM,setA,E.Ev.lift.fn].equal ;
+  module Local (desc : LF.Description[M]) {
+   module F = SerreFrameDual[l].Over[A,setA,M].Desc[desc] ;
+   module Ex = LF.OnCover[M,desc] ;
+   exchangeM : E.ExchangeM = \ x y d -> Ex.exchange d x y ;
+   exchangeN : E.ExchangeN = \ x d e -> D.ext _ _ (\ y -> calc A.R {
+    A.mul (d.fn x) (e.fn y)
+     =< sym (e.scalar (d.fn x) y) > e.fn (M.sm (d.fn x) y)
+     =< ap e.fn (Ex.exchange d x y) > e.fn (M.sm (d.fn y) x)
+     =< e.scalar (d.fn y) x > A.mul (d.fn y) (e.fn x)
+     =< A.mulC (d.fn y) (e.fn x) > A.mul (e.fn x) (d.fn y) }) ;
+   module Frames (fr : F.B.Frames) {
+    module D0 = F.Frames[fr] ;
+    size : Nat = desc.size ;
+    module DualRows (ds : (i : Fin size) -> D0.Functional[i]) {
+     frame (i : Fin size) : M.M = (fr i).1 ;
+     value (i : Fin size) : A.R = (ds i).linear.fn (frame i) ;
+     below (i : Fin size) : LF.O.Le (LF.Z.D (desc.opens i)) (LF.Z.D (value i)) =
+      Bridge[l].Over[A,desc.opens i].At[LF.AF.Loc (desc.opens i),LF.AF.set (desc.opens i),
+       LF.AF.inclusion (desc.opens i),LF.AF.elementary (desc.opens i),value i].invertible-le (ds i).unit ;
+     cover : LF.Cover size value =
+      LF.O.le-trans LF.Z.lattice.top (LF.Z.J.bigJ size (\ i -> LF.Z.D (desc.opens i)))
+       (LF.Z.J.bigJ size (\ i -> LF.Z.D (value i))) desc.covers
+       (LF.Z.J.least size (\ i -> LF.Z.D (desc.opens i)) (LF.Z.J.bigJ size (\ i -> LF.Z.D (value i)))
+        (\ i -> LF.O.le-trans (LF.Z.D (desc.opens i)) (LF.Z.D (value i)) (LF.Z.J.bigJ size (\ j -> LF.Z.D (value j)))
+         (below i) (LF.Z.J.below size (\ j -> LF.Z.D (value j)) i))) ;
+     module P = SerreUnitIdealPowers[l].Over[A].Family[size,value,cover] ;
+     module Weighted (coeffs : LF.Rad.InIdeal (size,P.powers (suc zero)) A.o) {
+      functional (i : Fin size) : D.H.Hom = D.scale-map (coeffs.1 i) (ds i).linear ;
+      term (i : Fin size) :
+       Id A.R (evaluation.value (frame i) (functional i)) (A.mul (P.powers (suc zero) i) (coeffs.1 i)) =
+       trans (A.mulC (coeffs.1 i) (value i))
+        (ap (\ z -> A.mul z (coeffs.1 i)) (sym (trans (P.powers-at (suc zero) i) (A.mulO (value i))))) ;
+      normalisation : E.Normalisation = new E.Normalisation[size,frame,functional,
+       trans (RS.sum-cong size (\ i -> evaluation.value (frame i) (functional i))
+        (\ i -> A.mul (P.powers (suc zero) i) (coeffs.1 i)) term) coeffs.2] ;
+     } ;
+     equiv : EvalEquiv =
+      Tr.Trunc[LF.Rad.InIdeal (size,P.powers (suc zero)) A.o].induction @l
+       (\ c -> EvalEquiv) (\ c -> prop) (\ c -> E.With[Weighted[c].normalisation,exchangeM,exchangeN].tensor-iso)
+       (P.coefficients (suc zero)) ;
+    } ;
+    equiv : EvalEquiv = Tr.Trunc[(i : Fin size) -> D0.Functional[i]].induction @l
+     (\ ds -> EvalEquiv) (\ ds -> prop) (\ ds -> DualRows[ds].equiv) D0.duals ;
+   } ;
+   equiv : EvalEquiv = Tr.Trunc[F.B.Frames].induction @l
+    (\ fr -> EvalEquiv) (\ fr -> prop) (\ fr -> Frames[fr].equiv) F.B.frames ;
+  } ;
+  equiv (local : LF.LocallyFree M) : EvalEquiv = Tr.Trunc[LF.Description[M]].induction @l
+   (\ d -> EvalEquiv) (\ d -> prop) (\ d -> Local[d].equiv) local ;
+  has-inverse (local : LF.LocallyFree M) : HasTensorInverse M =
+   Truncation[l+].Trunc[TensorInverseData M].inc (D.space,E.Ev.lift,equiv local) ;
+ } ;
+ module Given (M N : S.Module) (w : IM.At[M,N].Witness) {
+  module W = IM.At[M,N].With[w] ;
+  module Swap = TM.Swap[N,M] ;
+  inverse-op : IM.At[N,M].Witness =
+   (L.Composite[Swap.MN.T.tensor,Swap.NM.T.tensor,R,Swap.To.lift,w.1].map,
+    EquivalenceLemmas[l].compose Swap.MN.T.tensor.M Swap.NM.T.tensor.M A.R w.1.fn Swap.To.lift.fn w.2 Swap.equiv) ;
+  locally-free-M : LF.LocallyFree M = W.locally-free ;
+  locally-free-N : LF.LocallyFree N = IM.At[N,M].With[inverse-op].locally-free ;
+  module B = L.Maps[M,N,R] ;
+  module E = R1.At[M,N,W.b] ;
+  module D = E.D ;
+  exchangeM : E.ExchangeM = \ x y z -> LF.exchange M locally-free-M (B.left W.b z) x y ;
+  exchangeN : E.ExchangeN = \ x y z -> LF.exchange N locally-free-N (B.right W.b x) y z ;
+  DualEquiv : U l = Pr.isEquiv N.M D.H.Hom E.dual-map.fn ;
+  dual-prop : Pr.isProp DualEquiv = IdentityTools[l].Equivalence[N.M,D.H.Hom,N.setM,D.set,E.dual-map.fn].equal ;
+  module Normal (pres : W.Presentation) {
+   data0 : E.Normalisation = new E.Normalisation[pres.count,\ i -> (pres.pairs i).1,\ i -> (pres.pairs i).2,pres.one] ;
+  } ;
+  dual-equiv : DualEquiv = Tr.Trunc[W.Presentation].induction @l
+   (\ p -> DualEquiv) (\ p -> dual-prop) (\ p -> E.With[Normal[p].data0,exchangeM,exchangeN].dual-iso) W.presentation ;
+ } ;
+ from-inverse (M : S.Module) (has : HasTensorInverse M) : LF.LocallyFree M =
+  Truncation[l+].Trunc[TensorInverseData M].induction @l
+   (\ w -> LF.LocallyFree M) (\ w -> Tr.Trunc[LF.Description[M]].proposition)
+   (\ w -> Given[M,w.1,w.2].locally-free-M) has ;
+} ;
