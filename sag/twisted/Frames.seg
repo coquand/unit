@@ -1,0 +1,120 @@
+-- Frames of rank r.  A frame of a module P: vectors e_1 .. e_r in P and
+-- linear forms c_1 .. c_r in P* = Hom(P, R) (HOMMODULE) with
+--     sum_a c_a(m) e_a = m        for every m in P,
+-- so P is a retract of R^r; a basis with its dual basis is one (R itself:
+-- e_1 = 1, c_1 = id).
+--  (dual)  P* has the frame  e'_a = c_a,  c'_a = evaluation at e_a:
+--          (sum_a phi(e_a) c_a)(m) = sum_a c_a(m) phi(e_a)
+--                                  = phi(sum_a c_a(m) e_a) = phi(m).
+--  (qc)    If R is weakly quasi-coherent, so is P.  For a section s on
+--          D(g), each c_a(s) is d^k m_a with one k (EXPONENTREPS), so
+--          s = sum_a c_a(s) e_a = d^k (sum_a m_a e_a).  If m vanishes on
+--          D(g), so does each c_a(m); with g^k c_a(m) = 0 for one k,
+--          g^k m = sum_a (g^k c_a(m)) e_a = 0.
+-- Weak quasi-coherence is a proposition, so a frame merely suffices.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ; module NF = NatFin[l] ;
+module EB = ExponentBounds[l] ; module TC = TruncationCombinators[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R) {
+ module MD = Modules[l].Over[R,setR] ;
+ module RA = MD.RA ;
+ module RS = FiniteIdeal[l].Sums[R] ;
+ module HM = HomModule[l].Over[R,setR] ;
+ dual (P : MD.Module) : MD.Module = HM.At[P,MD.regular].carrier ;
+ -- a linear form commutes with finite sums
+ module Form (P : MD.Module) (phi : HM.At[P,MD.regular].S.E) {
+  module SP = ModuleFiniteSums[l].Over[R,setR,P] ;
+  zero : Id R.R (phi.1 P.mz) R.z = DescentSubmodules[l].Over[MD.ring].Lin[P,MD.regular,phi].map-z ;
+  sum (n : Nat) (v : Fin n -> P.M) : Id R.R (phi.1 (SP.sum n v)) (RS.sum n (\ i -> phi.1 (v i))) =
+   SP.map phi.1 zero phi.2.1 n v ;
+ } ;
+ -- evaluation of a sum of forms
+ evaluate (P : MD.Module) (m : P.M) (n : Nat) (phi : Fin n -> HM.At[P,MD.regular].S.E) :
+  Id R.R ((ModuleFiniteSums[l].Over[R,setR,dual P].sum n phi).1 m) (RS.sum n (\ i -> (phi i).1 m)) =
+  ModuleFiniteSums[l].Over[R,setR,dual P].map (\ f -> f.1 m) (refl R.z) (\ u v -> refl (R.add (u.1 m) (v.1 m))) n phi ;
+ record Frame (P : MD.Module) (r : Nat) {
+  vector : Fin r -> P.M ;
+  form : Fin r -> HM.At[P,MD.regular].S.E ;
+  law (m : P.M) : Id P.M (ModuleFiniteSums[l].Over[R,setR,P].sum r (\ a -> P.sm ((form a).1 m) (vector a))) m ;
+ } ;
+ module Of (P : MD.Module) (r : Nat) (fr : Frame[P,r]) {
+  module SP = ModuleFiniteSums[l].Over[R,setR,P] ;
+  module LP = ModuleSumLaws[l].Over[R,setR,P] ;
+  module MA = Alg73[l].MA[MD.ring,P] ;
+  e (a : Fin r) : P.M = fr.vector a ;
+  c (a : Fin r) : HM.At[P,MD.regular].S.E = fr.form a ;
+  coordinate (a : Fin r) (m : P.M) : R.R = (c a).1 m ;
+  -- (dual)
+  evaluation (a : Fin r) : HM.At[dual P,MD.regular].S.E =
+   (\ phi -> phi.1 (e a),\ u v -> refl (R.add (u.1 (e a)) (v.1 (e a))),\ s u -> refl (R.mul s (u.1 (e a)))) ;
+  dual-law (phi : HM.At[P,MD.regular].S.E) :
+   Id HM.At[P,MD.regular].S.E (ModuleFiniteSums[l].Over[R,setR,dual P].sum r (\ a -> (dual P).sm (phi.1 (e a)) (c a))) phi =
+   HM.At[P,MD.regular].ext _ phi (\ m ->
+    trans (evaluate P m r (\ a -> (dual P).sm (phi.1 (e a)) (c a)))
+     (trans (RS.sum-cong r _ (\ a -> phi.1 (P.sm (coordinate a m) (e a)))
+       (\ a -> trans (R.mulC (phi.1 (e a)) (coordinate a m)) (sym (phi.2.2 (coordinate a m) (e a)))))
+      (trans (sym (Form[P,phi].sum r (\ a -> P.sm (coordinate a m) (e a))))
+       (ap phi.1 (fr.law m))))) ;
+  dual-frame : Frame[dual P,r] = new Frame[dual P,r,c,evaluation,dual-law] ;
+  -- (qc)
+  module QC (w : MD.WeaklyQC MD.regular) (g : Top -> R.R) {
+   module E = ExponentReps[l].Over[R,setR].At[Top,\ t -> P,g] ;
+   module ER = ExponentReps[l].Over[R,setR].At[Top,\ t -> MD.regular,g] ;
+   coordinates (s : E.Local) (a : Fin r) : ER.Local = \ t d -> coordinate a (s t d) ;
+   module Represent (s : E.Local) (b : EB.Bound (EB.All r (\ a -> ER.Rep (coordinates s a)))) {
+    k : Nat = b.1 ;
+    numerator (a : Fin r) : Top -> R.R = (b.2 a).1 ;
+    m (t : Top) : P.M = SP.sum r (\ a -> P.sm (numerator a t) (e a)) ;
+    equation (t : Top) (d : E.Af.Dg g t) :
+     Id P.M (s t d) (P.sm (RA.pw d.1 (NF.toN k)) (m t)) =
+     trans (sym (fr.law (s t d)))
+      (trans (SP.congruent r _ (\ a -> P.sm (RA.pw d.1 (NF.toN k)) (P.sm (numerator a t) (e a)))
+        (\ a -> trans (ap (\ y -> P.sm y (e a)) ((b.2 a).2 t d))
+         (sym (P.smA (RA.pw d.1 (NF.toN k)) (numerator a t) (e a)))))
+       (sym (LP.scale-sum (RA.pw d.1 (NF.toN k)) r (\ a -> P.sm (numerator a t) (e a))))) ;
+    result : E.Af.Rep g s = (m,NF.toN k,equation) ;
+   } ;
+   represent (s : E.Local) : Tr.Trunc[E.Af.Rep g s].carrier =
+    TC.map (EB.Bound (EB.All r (\ a -> ER.Rep (coordinates s a)))) (E.Af.Rep g s)
+     (\ b -> Represent[s,b].result)
+     (EB.merely-common r (\ a -> ER.Rep (coordinates s a)) (\ a -> ER.rep-monotone (coordinates s a))
+      (\ a -> ER.represent w (coordinates s a))) ;
+   module Killed (m : E.Global) (v : (t : Top) -> E.Af.Dg g t -> Id P.M (m t) P.mz) {
+    values (a : Fin r) : ER.Global = \ t -> coordinate a (m t) ;
+    vanish (a : Fin r) (t : Top) (d : E.Af.Dg g t) : Id R.R (values a t) R.z =
+     trans (ap (coordinate a) (v t d)) (Form[P,c a].zero) ;
+    module Result (b : EB.Bound (EB.All r (\ a -> ER.Kill (values a)))) {
+     k : Nat = b.1 ;
+     equation (t : Top) : Id P.M (P.sm (RA.pw (g t) (NF.toN k)) (m t)) P.mz =
+      trans (ap (P.sm (RA.pw (g t) (NF.toN k))) (sym (fr.law (m t))))
+       (trans (LP.scale-sum (RA.pw (g t) (NF.toN k)) r (\ a -> P.sm (values a t) (e a)))
+        (LP.sum-zero r _ (\ a ->
+         trans (P.smA (RA.pw (g t) (NF.toN k)) (values a t) (e a))
+          (trans (ap (\ y -> P.sm y (e a)) (b.2 a t)) (MA.sm-zl (e a)))))) ;
+     result : E.Af.Kill g m = (NF.toN k,equation) ;
+    } ;
+    theorem : Tr.Trunc[E.Af.Kill g m].carrier =
+     TC.map (EB.Bound (EB.All r (\ a -> ER.Kill (values a)))) (E.Af.Kill g m)
+      (\ b -> Result[b].result)
+      (EB.merely-common r (\ a -> ER.Kill (values a)) (\ a -> ER.kill-monotone (values a))
+       (\ a -> ER.kill w (values a) (vanish a))) ;
+   } ;
+  } ;
+  weakly-qc (w : MD.WeaklyQC MD.regular) : MD.WeaklyQC P =
+   \ g -> (QC[w,g].represent,\ m v -> QC[w,g].Killed[m,v].theorem) ;
+ } ;
+ -- R has the frame (1, id) of rank 1: m 1 + 0 = m
+ regular : Frame[MD.regular,suc zero] = new Frame[MD.regular,suc zero,\ a -> R.o,
+  \ a -> (\ m -> m,\ x y -> refl (R.add x y),\ c x -> refl (R.mul c x)),
+  \ m -> trans (R.addZ (R.mul m R.o)) (R.mulO m)] ;
+ -- a frame merely is enough, for P and for P*
+ weakly-qc (P : MD.Module) (r : Nat) (fr : Tr.Trunc[Frame[P,r]].carrier) (w : MD.WeaklyQC MD.regular) :
+  MD.WeaklyQC P =
+  Tr.Trunc[Frame[P,r]].induction @l (\ f -> MD.WeaklyQC P)
+   (\ f -> LineAssociated[l].Over[R,setR].QCProp[P].theorem) (\ f -> Of[P,r,f].weakly-qc w) fr ;
+ dual-qc (P : MD.Module) (r : Nat) (fr : Tr.Trunc[Frame[P,r]].carrier) (w : MD.WeaklyQC MD.regular) :
+  MD.WeaklyQC (dual P) =
+  Tr.Trunc[Frame[P,r]].induction @l (\ f -> MD.WeaklyQC (dual P))
+   (\ f -> LineAssociated[l].Over[R,setR].QCProp[dual P].theorem)
+   (\ f -> Of[dual P,r,Of[P,r,f].dual-frame].weakly-qc w) fr ;
+} ;

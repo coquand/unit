@@ -1,0 +1,136 @@
+-- Global frame data give a projector.  X = Spec Alg (Alg f.p.), Mx a family
+-- of modules over X.  Frame data: global sections s_1 .. s_n of Mx and global
+-- linear forms d_1 .. d_n (d_k x a linear form on Mx x, FRAMES) with
+--     sum_k d_k(m) s_k(x) = m                 for every x and m in Mx x.
+-- By SQC, e_ij = d_i(s_j) is an element of Alg (back), and
+--  (contract)    sum_k d_i(s_k) d_k(m) = d_i(sum_k d_k(m) s_k) = d_i(m);
+--  (idempotent)  (e e)_ij = sum_k d_i(s_k) d_k(s_j) = d_i(s_j) = e_ij, by
+--                contract at m = s_j(x) and SQC (two elements of Alg agreeing
+--                at every point are equal, ext);
+-- so e is a projector (PROJECTORS) and the global sections are its image:
+--  encode s = (d_i(s))_i, fixed by e (contract at m = s(x));
+--  decode v = (x |-> sum_k v_k(x) s_k(x));
+--  decode (encode s) = s by the frame law, and encode (decode v) = e v = v;
+-- encode is additive and Alg-linear since each d_i is linear.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module C = Algebras[l].Over[R,setR] ;
+ module P = Presentations[l].Over[R,setR] ;
+ module MD = Modules[l].Over[R,setR] ;
+ module FR = Frames[l].Over[R,setR] ;
+ module RS = FiniteIdeal[l].Sums[R] ;
+ module At (Alg : C.Algebra) (fp : P.FP Alg) (Mx : C.Spec Alg -> MD.Module) {
+  X : U l = C.Spec Alg ;
+  module SA = FiniteIdeal[l].Sums[Alg.ring] ;
+  module PJ = Projectors[l].Over[Alg.ring,Alg.set] ;
+  module Sum (x : X) { module S = ModuleFiniteSums[l].Over[R,setR,Mx x] ; } ;
+  Sections : U l = (x : X) -> (Mx x).M ;
+  Forms : U l = (x : X) -> FR.HM.At[Mx x,MD.regular].S.E ;
+  record Data {
+   size : Nat ;
+   section : Fin size -> Sections ;
+   form : Fin size -> Forms ;
+   law (x : X) (m : (Mx x).M) :
+    Id (Mx x).M (ModuleFiniteSums[l].Over[R,setR,Mx x].sum size (\ k -> (Mx x).sm ((form k x).1 m) (section k x))) m ;
+  } ;
+  back (f : X -> R.R) : Alg.ring.R = (axioms.sqc Alg fp).sec f ;
+  back-beta (f : X -> R.R) (x : X) : Id R.R (x.1.1 (back f)) (f x) =
+   Pr.happly X (\ x -> R.R) _ _ ((axioms.sqc Alg fp).sec-eq f) x ;
+  ext (a b : Alg.ring.R) (h : (x : X) -> Id R.R (x.1.1 a) (x.1.1 b)) : Id Alg.ring.R a b =
+   Equivalences[l].injective Alg.ring.R (X -> R.R) (C.evaluation Alg) (axioms.sqc Alg fp) a b
+    (F.funext X (\ x -> R.R) _ _ h) ;
+  -- the image of p, its vectors, and the representation of the sections by it
+  Representation (p : PJ.Projector) : U l =
+   (q : Pr.Equiv Sections PJ.Image[p].Carrier) *
+   ((s t : Sections) (i : Fin p.size) ->
+    Id Alg.ring.R (PJ.Image[p].value (q.1 (\ x -> (Mx x).madd (s x) (t x))) i)
+     (Alg.ring.add (PJ.Image[p].value (q.1 s) i) (PJ.Image[p].value (q.1 t) i))) *
+   ((a : Alg.ring.R) (s : Sections) (i : Fin p.size) ->
+    Id Alg.ring.R (PJ.Image[p].value (q.1 (\ x -> (Mx x).sm (x.1.1 a) (s x))) i)
+     (Alg.ring.mul a (PJ.Image[p].value (q.1 s) i))) ;
+  module From (w : Data) {
+   n : Nat = w.size ;
+   s (k : Fin n) : Sections = w.section k ;
+   d (k : Fin n) : Forms = w.form k ;
+   module MN = MnAlgebra[l].Over[Alg.ring,Alg.set,n] ;
+   module V = Vectors[l].Over[Alg.ring,Alg.set,n] ;
+   contract (x : X) (i : Fin n) (m : (Mx x).M) :
+    Id R.R (RS.sum n (\ k -> R.mul ((d i x).1 (s k x)) ((d k x).1 m))) ((d i x).1 m) =
+    trans (RS.sum-cong n _ (\ k -> (d i x).1 ((Mx x).sm ((d k x).1 m) (s k x)))
+     (\ k -> trans (R.mulC ((d i x).1 (s k x)) ((d k x).1 m)) (sym ((d i x).2.2 ((d k x).1 m) (s k x)))))
+     (trans (sym (FR.Form[Mx x,d i x].sum n (\ k -> (Mx x).sm ((d k x).1 m) (s k x))))
+      (ap (d i x).1 (w.law x m))) ;
+   entry (i j : Fin n) : Alg.ring.R = back (\ x -> (d i x).1 (s j x)) ;
+   beta (i j : Fin n) (x : X) : Id R.R (x.1.1 (entry i j)) ((d i x).1 (s j x)) =
+    back-beta (\ x -> (d i x).1 (s j x)) x ;
+   -- x of a combination sum_k a_k v_k of elements of Alg
+   combination (x : X) (a v : Fin n -> Alg.ring.R) :
+    Id R.R (x.1.1 (SA.lin n a v)) (RS.sum n (\ k -> R.mul (x.1.1 (a k)) (x.1.1 (v k)))) =
+    StandardOpens[l].SumMap[Alg.ring,R,x.1].combination n a v ;
+   idempotent-at (i j : Fin n) : Id Alg.ring.R (MN.mmul entry entry i j) (entry i j) =
+    ext _ _ (\ x ->
+     trans (combination x (entry i) (\ k -> entry k j))
+      (trans (RS.sum-cong n _ (\ k -> R.mul ((d i x).1 (s k x)) ((d k x).1 (s j x)))
+        (\ k -> cong2 R.R R.mul _ _ _ _ (beta i k x) (beta k j x)))
+       (trans (contract x i (s j x)) (sym (beta i j x))))) ;
+   projector : PJ.Projector = new PJ.Projector[n,entry,
+    MN.mat-eq (MN.mmul entry entry) entry idempotent-at] ;
+   module I = PJ.Image[projector] ;
+   coordinates (t : Sections) (i : Fin n) : Alg.ring.R = back (\ x -> (d i x).1 (t x)) ;
+   coord-beta (t : Sections) (i : Fin n) (x : X) :
+    Id R.R (x.1.1 (coordinates t i)) ((d i x).1 (t x)) = back-beta (\ x -> (d i x).1 (t x)) x ;
+   fixed (t : Sections) : I.Member (coordinates t) =
+    V.vec-eq _ _ (\ i -> ext _ _ (\ x ->
+     trans (combination x (entry i) (coordinates t))
+      (trans (RS.sum-cong n _ (\ k -> R.mul ((d i x).1 (s k x)) ((d k x).1 (t x)))
+        (\ k -> cong2 R.R R.mul _ _ _ _ (beta i k x) (coord-beta t k x)))
+       (trans (contract x i (t x)) (sym (coord-beta t i x)))))) ;
+   encode (t : Sections) : I.Carrier = (coordinates t,fixed t) ;
+   decode (v : I.Carrier) (x : X) : (Mx x).M =
+    Sum[x].S.sum n (\ k -> (Mx x).sm (x.1.1 (I.value v k)) (s k x)) ;
+   decode-encode (t : Sections) : Id Sections (decode (encode t)) t =
+    F.funext X (\ x -> (Mx x).M) _ _ (\ x ->
+     trans (Sum[x].S.congruent n (\ k -> (Mx x).sm (x.1.1 (coordinates t k)) (s k x)) (\ k -> (Mx x).sm ((d k x).1 (t x)) (s k x))
+      (\ k -> ap (\ r -> (Mx x).sm r (s k x)) (coord-beta t k x)))
+      (w.law x (t x))) ;
+   -- a vector of the image is fixed by e, entrywise
+   member-at (v : I.Carrier) (i : Fin n) : Id Alg.ring.R (SA.lin n (entry i) (I.value v)) (I.value v i) =
+    V.entry (V.act projector.matrix (I.value v)) (I.value v) (I.member v) i ;
+   encode-decode-at (v : I.Carrier) (i : Fin n) : Id Alg.ring.R (coordinates (decode v) i) (I.value v i) =
+    ext (coordinates (decode v) i) (I.value v i) (\ x ->
+     trans (coord-beta (decode v) i x)
+      (trans (FR.Form[Mx x,d i x].sum n (\ k -> (Mx x).sm (x.1.1 (I.value v k)) (s k x)))
+       (trans (RS.sum-cong n (\ k -> (d i x).1 ((Mx x).sm (x.1.1 (I.value v k)) (s k x)))
+         (\ k -> R.mul (x.1.1 (entry i k)) (x.1.1 (I.value v k)))
+         (\ k -> trans ((d i x).2.2 (x.1.1 (I.value v k)) (s k x))
+          (trans (R.mulC (x.1.1 (I.value v k)) ((d i x).1 (s k x)))
+           (ap (\ r -> R.mul r (x.1.1 (I.value v k))) (sym (beta i k x))))))
+        (trans (sym (combination x (entry i) (I.value v)))
+         (ap x.1.1 (member-at v i)))))) ;
+   encode-decode (v : I.Carrier) : Id I.Carrier (encode (decode v)) v =
+    I.ext (encode (decode v)) v (V.vec-eq (coordinates (decode v)) (I.value v) (encode-decode-at v)) ;
+   equivalence : Pr.Equiv Sections I.Carrier =
+    (encode,Pr.qinv Sections I.Carrier encode decode encode-decode decode-encode) ;
+   coordinates-add (t u : Sections) (i : Fin n) :
+    Id Alg.ring.R (coordinates (\ x -> (Mx x).madd (t x) (u x)) i)
+     (Alg.ring.add (coordinates t i) (coordinates u i)) =
+    ext _ _ (\ x ->
+     trans (coord-beta (\ x -> (Mx x).madd (t x) (u x)) i x)
+      (trans ((d i x).2.1 (t x) (u x))
+       (trans (sym (cong2 R.R R.add _ _ _ _ (coord-beta t i x) (coord-beta u i x)))
+        (sym (x.1.2.2.1 (coordinates t i) (coordinates u i)))))) ;
+   coordinates-scale (a : Alg.ring.R) (t : Sections) (i : Fin n) :
+    Id Alg.ring.R (coordinates (\ x -> (Mx x).sm (x.1.1 a) (t x)) i)
+     (Alg.ring.mul a (coordinates t i)) =
+    ext _ _ (\ x ->
+     trans (coord-beta (\ x -> (Mx x).sm (x.1.1 a) (t x)) i x)
+      (trans ((d i x).2.2 (x.1.1 a) (t x))
+       (trans (ap (R.mul (x.1.1 a)) (sym (coord-beta t i x)))
+        (sym (x.1.2.2.2 a (coordinates t i)))))) ;
+   representation : Representation projector = (equivalence,coordinates-add,coordinates-scale) ;
+  } ;
+ } ;
+} ;

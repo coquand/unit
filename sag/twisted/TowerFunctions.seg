@@ -1,0 +1,132 @@
+-- Functions on the points of a tower, relatively to its base
+-- (GABBER-PROPER-DESIGN.md, section 1; review of night 14, (b)).
+-- rank nil = 1, rank (d :: s) = (d+1) rank s, the product of the stage
+-- degrees.  For a tower t of shape s over any type Y,
+--     expand : (Y -> R^(rank s)) -> (Points t -> R)
+-- is an equivalence, additive, and linear over the functions of Y:
+--     expand (a v) = (a . base) (expand v)          (a : Y -> R),
+-- so the functions on Points t are the free O(Y)-module O(Y)^(rank s).
+-- Affineness of Points t is a separate result.
+--  (stage)  For X = Root (d, c), evaluation in the power basis
+--           (Fin (d+1) -> R^k) -> (X -> R^k) is an R-linear equivalence:
+--           DESCENTEVALUATION.Free at the free module R^k, with
+--           Fin (len (lower)) moved to Fin (d+1) along coefficients-length.
+--  (tower)  By induction on the shape, over every base.  nil: R^1 = R.
+--           d :: s: with N = (y : Y) * Root (c y),
+--             Y -> R^((d+1) rank s)  =  Y -> Fin (d+1) -> R^(rank s)      (PAIRING)
+--                                    =  (y : Y) -> Root (c y) -> R^(rank s)  (stage at each y)
+--                                    =  N -> R^(rank s)                     (currying)
+--                                    =  Points t -> R                       (induction over N);
+--           a function a of Y acts at the stage over y by the scalar a y,
+--           then as a . pr1 on N, and base (d :: s) = pr1 . base s.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module EQ = Equivalences[l] ;
+module PA = Pairing[l] ;
+-- pointwise equivalences give an equivalence of dependent functions
+pi-equiv (Y : U l) (A B : Y -> U l) (e : (y : Y) -> Pr.Equiv (A y) (B y)) :
+ Pr.Equiv ((y : Y) -> A y) ((y : Y) -> B y) =
+ (\ u y -> (e y).1 (u y),Pr.qinv ((y : Y) -> A y) ((y : Y) -> B y) (\ u y -> (e y).1 (u y))
+  (\ w y -> (e y).2.sec (w y))
+  (\ w -> F.funext Y B _ w (\ y -> (e y).2.sec-eq (w y)))
+  (\ u -> F.funext Y A _ u (\ y -> Pr.sec-ret (A y) (B y) (e y).1 (e y).2 (u y)))) ;
+-- dependent currying
+uncurry (Y : U l) (X : Y -> U l) (Z : U l) : Pr.Equiv ((y : Y) -> X y -> Z) (((y : Y) * X y) -> Z) =
+ (\ u n -> u n.1 n.2,Pr.qinv ((y : Y) -> X y -> Z) (((y : Y) * X y) -> Z) (\ u n -> u n.1 n.2)
+  (\ w y x -> w (y,x)) (\ w -> refl w) (\ u -> refl u)) ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module ET = EtaleTopology[l].Over[R,setR] ;
+ module TW = Towers[l].Over[R,setR] ;
+ module DL = DescentLinear[l].Over[R,setR] ;
+ Vec (k : Nat) : U l = Fin k -> R.R ;
+ -- R^(m n) = (R^n)^m
+ pairing (m n : Nat) : Pr.Equiv (Vec (PA.times m n)) (Fin m -> Vec n) =
+  (\ v i j -> v (PA.pair n m i j),Pr.qinv (Vec (PA.times m n)) (Fin m -> Vec n) (\ v i j -> v (PA.pair n m i j))
+   (\ w x -> w (PA.unpair n m x).1 (PA.unpair n m x).2)
+   (\ w -> F.funext (Fin m) (\ i -> Vec n) _ w (\ i -> F.funext (Fin n) (\ j -> R.R) _ (w i) (\ j ->
+     ap (\ p -> w p.1 p.2) (PA.unpair-pair n m i j))))
+   (\ v -> F.funext (Fin (PA.times m n)) (\ x -> R.R) _ v (\ x -> ap v (PA.pair-unpair n m x)))) ;
+ -- (stage)
+ record StageLinear {
+  X : U l ; n : Nat ; k : Nat ;
+  map : (Fin n -> Vec k) -> X -> Vec k ;
+  equiv : Pr.isEquiv (Fin n -> Vec k) (X -> Vec k) map ;
+  add : (u v : Fin n -> Vec k) ->
+   Id (X -> Vec k) (map (\ t j -> R.add (u t j) (v t j))) (\ x j -> R.add (map u x j) (map v x j)) ;
+  scale : (a : R.R) (u : Fin n -> Vec k) ->
+   Id (X -> Vec k) (map (\ t j -> R.mul a (u t j))) (\ x j -> R.mul a (map u x j)) ;
+ } ;
+ module Stage (idx : ET.I) (k : Nat) {
+  module G = DescentEvaluation[l].Over[R,setR,axioms].Generator[idx] ;
+  module L = G.Linear[DL.Free k] ;
+  at-length : StageLinear[ET.Root idx,G.d,k] =
+   new StageLinear[ET.Root idx,G.d,k,map := G.evaluate (DL.Free k),equiv := G.Free[k].theorem,
+    add := L.add,scale := L.scale] ;
+  linear : StageLinear[ET.Root idx,suc idx.1,k] =
+   Pr.subst Nat (\ n -> StageLinear[ET.Root idx,n,k]) G.d (suc idx.1)
+    (ET.coefficients-length (suc idx.1) idx.2) at-length ;
+ } ;
+ -- (tower)
+ rank : Towers[l].Shape -> Nat = split {
+  nil -> suc zero ;
+  cons d s | r -> PA.times (suc d) r } ;
+ record Expansion {
+  s : Towers[l].Shape ; Y : U l ; t : TW.Tower s Y ;
+  map : (Y -> Vec (rank s)) -> TW.Points s Y t -> R.R ;
+  equiv : Pr.isEquiv (Y -> Vec (rank s)) (TW.Points s Y t -> R.R) map ;
+  add : (v w : Y -> Vec (rank s)) ->
+   Id (TW.Points s Y t -> R.R) (map (\ y j -> R.add (v y j) (w y j))) (\ z -> R.add (map v z) (map w z)) ;
+  scale : (a : Y -> R.R) (v : Y -> Vec (rank s)) ->
+   Id (TW.Points s Y t -> R.R) (map (\ y j -> R.mul (a y) (v y j))) (\ z -> R.mul (a (TW.base s Y t z)) (map v z)) ;
+ } ;
+ -- nil: R^1 = R
+ module Start (Y : U l) (t : Top) {
+  map (v : Y -> Vec (rank nil)) (y : Y) : R.R = v y (inr tt) ;
+  constant (v : Y -> Vec (rank nil)) (y : Y) : (j : Fin (rank nil)) -> Id R.R (v y (inr tt)) (v y j) = split {
+   inl e -> efq e ;
+   inr t -> ap (\ o -> v y (inr o)) (MnSums[l].top-eq tt t) } ;
+  expansion : Expansion[nil,Y,t] =
+   new Expansion[nil,Y,t,map := map,
+    equiv := Pr.qinv (Y -> Vec (rank nil)) (Y -> R.R) map (\ h y j -> h y) (\ h -> refl h)
+     (\ v -> F.funext Y (\ y -> Vec (rank nil)) _ v (\ y -> F.funext (Fin (rank nil)) (\ j -> R.R) _ (v y) (constant v y))),
+    add := \ v w -> refl (\ y -> R.add (v y (inr tt)) (w y (inr tt))),
+    scale := \ a v -> refl (\ y -> R.mul (a y) (v y (inr tt)))] ;
+ } ;
+ -- d :: s, from the expansion E over N
+ module Step (d : Nat) (s : Towers[l].Shape) (Y : U l) (c : Y -> Fin (suc d) -> R.R) (t : TW.Tower s (TW.Next d Y c))
+  (E : Expansion[s,TW.Next d Y c,t]) {
+  N : U l = TW.Next d Y c ;
+  k : Nat = rank s ;
+  stage (y : Y) : StageLinear[TW.Root d (c y),suc d,k] = Stage[(d,c y),k].linear ;
+  evaluating : Pr.Equiv (Y -> Fin (suc d) -> Vec k) ((y : Y) -> TW.Root d (c y) -> Vec k) =
+   pi-equiv Y (\ y -> Fin (suc d) -> Vec k) (\ y -> TW.Root d (c y) -> Vec k) (\ y -> ((stage y).map,(stage y).equiv)) ;
+  to-base : Pr.Equiv (Y -> Vec (rank (cons d s))) (N -> Vec k) =
+   EQ.compose (Y -> Vec (rank (cons d s))) (Y -> Fin (suc d) -> Vec k) (N -> Vec k)
+    (Functions[l].post Y (Vec (rank (cons d s))) (Fin (suc d) -> Vec k) (pairing (suc d) k))
+    (EQ.compose (Y -> Fin (suc d) -> Vec k) ((y : Y) -> TW.Root d (c y) -> Vec k) (N -> Vec k)
+     evaluating (uncurry Y (\ y -> TW.Root d (c y)) (Vec k))) ;
+  -- the coefficients over N of v
+  middle (v : Y -> Vec (rank (cons d s))) : N -> Vec k = to-base.1 v ;
+  middle-add (v w : Y -> Vec (rank (cons d s))) :
+   Id (N -> Vec k) (middle (\ y j -> R.add (v y j) (w y j))) (\ n j -> R.add (middle v n j) (middle w n j)) =
+   F.funext N (\ n -> Vec k) _ _ (\ n ->
+    Pr.happly (TW.Root d (c n.1)) (\ x -> Vec k) _ _
+     ((stage n.1).add (\ i j -> v n.1 (PA.pair k (suc d) i j)) (\ i j -> w n.1 (PA.pair k (suc d) i j))) n.2) ;
+  middle-scale (a : Y -> R.R) (v : Y -> Vec (rank (cons d s))) :
+   Id (N -> Vec k) (middle (\ y j -> R.mul (a y) (v y j))) (\ n j -> R.mul (a n.1) (middle v n j)) =
+   F.funext N (\ n -> Vec k) _ _ (\ n ->
+    Pr.happly (TW.Root d (c n.1)) (\ x -> Vec k) _ _
+     ((stage n.1).scale (a n.1) (\ i j -> v n.1 (PA.pair k (suc d) i j))) n.2) ;
+  composite : Pr.Equiv (Y -> Vec (rank (cons d s))) (TW.Points s N t -> R.R) =
+   EQ.compose (Y -> Vec (rank (cons d s))) (N -> Vec k) (TW.Points s N t -> R.R) to-base (E.map,E.equiv) ;
+  expansion : Expansion[cons d s,Y,(c,t)] =
+   new Expansion[cons d s,Y,(c,t),map := composite.1,equiv := composite.2,
+    add := \ v w -> trans (ap E.map (middle-add v w)) (E.add (middle v) (middle w)),
+    scale := \ a v -> trans (ap E.map (middle-scale a v)) (E.scale (\ n -> a n.1) (middle v))] ;
+ } ;
+ expansion : (s : Towers[l].Shape) (Y : U l) (t : TW.Tower s Y) -> Expansion[s,Y,t] = split {
+  nil -> \ Y t -> Start[Y,t].expansion ;
+  cons d s | r -> \ Y t -> Step[d,s,Y,t.1,t.2,r (TW.Next d Y t.1) t.2].expansion } ;
+} ;

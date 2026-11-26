@@ -1,0 +1,100 @@
+-- Restriction of scalars for global sections, without a projector-image
+-- conversion. Let (s_i,d_i) be global frame data for a family on X, and
+-- (b_j,lambda_j) an R-frame for the scalar functions X -> R.
+-- The sections b_j s_i and the coordinates
+--       v |-> lambda_j (x |-> d_i(x)(v(x)))
+-- form an R-frame for the section module. Indeed, summing first over j
+-- reconstructs the scalar function d_i(v); summing over i reconstructs v.
+-- Pairing flattens these two finite sums into one frame.
+-- AffineFrameData supplies (s_i,d_i) merely from fibre frames, and
+-- ProjectiveFree then supplies a basis merely. With positive-rank fibres
+-- and not-not inhabitation, SectionNonzero excludes rank zero.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ; module Tr = Truncation[l] ;
+module F = Axioms[l].FunExtLemmas[fe @l] ;
+module PA = Pairing[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module MD = Modules[l].Over[R,setR] ;
+ module FR = Frames[l].Over[R,setR] ;
+ module LF = LocalFree[l].Over[R,setR,axioms] ;
+ module PF = ProjectiveFree[l].Over[R,setR,axioms] ;
+ module RS = FiniteIdeal[l].Sums[R] ;
+ module At (A : Algebras[l].Over[R,setR].Algebra) (fp : Presentations[l].Over[R,setR].FP A)
+  (Mx : Algebras[l].Over[R,setR].Spec A -> MD.Module) {
+  module FP = FrameProjector[l].Over[R,setR,axioms].At[A,fp,Mx] ;
+  Sections : MD.Module = MD.pi FP.X Mx ;
+  Scalars : MD.Module = MD.pi FP.X (\ x -> MD.regular) ;
+  module Sums = ModuleFiniteSums[l].Over[R,setR,Sections] ;
+  module ScalarSums = ModuleFiniteSums[l].Over[R,setR,Scalars] ;
+  module Laws = ModuleSumLaws[l].Over[R,setR,Sections] ;
+  scalar-sum (x : FP.X) : (n : Nat) (v : Fin n -> Scalars.M) ->
+   Id R.R (ScalarSums.sum n v x) (RS.sum n (\ j -> v j x)) = split {
+   zero -> \ v -> refl R.z ;
+   suc n | ih -> \ v -> ap (R.add (v (inr tt) x)) (ih (\ j -> v (inl j))) } ;
+  module Given (w : FP.Data) (m : Nat) (functions : FR.Frame[Scalars,m]) {
+   coordinate (i : Fin w.size) : FR.HM.At[Sections,Scalars].S.E =
+    (\ v x -> (w.form i x).1 (v x),
+     \ v v' -> F.funext FP.X (\ x -> R.R) _ _ (\ x -> (w.form i x).2.1 (v x) (v' x)),
+     \ a v -> F.funext FP.X (\ x -> R.R) _ _ (\ x -> (w.form i x).2.2 a (v x))) ;
+   vector (p : Fin w.size * Fin m) : Sections.M = \ x -> (Mx x).sm (functions.vector p.2 x) (w.section p.1 x) ;
+   form (p : Fin w.size * Fin m) : FR.HM.At[Sections,MD.regular].S.E =
+    (\ v -> (functions.form p.2).1 ((coordinate p.1).1 v),
+     \ v v' -> trans (ap (functions.form p.2).1 ((coordinate p.1).2.1 v v'))
+      ((functions.form p.2).2.1 ((coordinate p.1).1 v) ((coordinate p.1).1 v')),
+     \ a v -> trans (ap (functions.form p.2).1 ((coordinate p.1).2.2 a v))
+      ((functions.form p.2).2.2 a ((coordinate p.1).1 v))) ;
+   count : Nat = PA.times w.size m ;
+   vectors (k : Fin count) : Sections.M = vector (PA.unpair m w.size k) ;
+   forms (k : Fin count) : FR.HM.At[Sections,MD.regular].S.E = form (PA.unpair m w.size k) ;
+   -- The inner sum is the original frame coordinate times its section.
+   module AtPoint (x : FP.X) {
+    module PointSums = ModuleFiniteSums[l].Over[R,setR,Mx x] ;
+    module PointLaws = ModuleSumLaws[l].Over[R,setR,Mx x] ;
+    module Evaluate = Laws.Map[Mx x,\ v -> v x,refl (Mx x).mz,\ v v' -> refl ((Mx x).madd (v x) (v' x))] ;
+    scalar-law (f : Scalars.M) :
+     Id R.R (RS.sum m (\ j -> R.mul ((functions.form j).1 f) (functions.vector j x))) (f x) =
+     trans (sym (scalar-sum x m (\ j -> Scalars.sm ((functions.form j).1 f) (functions.vector j))))
+      (Pr.happly FP.X (\ x -> R.R) _ f (functions.law f) x) ;
+    inner (v : Sections.M) (i : Fin w.size) :
+     Id (Mx x).M (PointSums.sum m (\ j -> (Mx x).sm ((form (i,j)).1 v) (vector (i,j) x)))
+      ((Mx x).sm ((w.form i x).1 (v x)) (w.section i x)) =
+     trans (PointSums.congruent m _ (\ j -> (Mx x).sm (R.mul ((functions.form j).1 ((coordinate i).1 v)) (functions.vector j x)) (w.section i x))
+       (\ j -> (Mx x).smA ((functions.form j).1 ((coordinate i).1 v)) (functions.vector j x) (w.section i x)))
+      (trans (PointSums.sum-scale (w.section i x) m (\ j -> R.mul ((functions.form j).1 ((coordinate i).1 v)) (functions.vector j x)))
+       (ap (\ a -> (Mx x).sm a (w.section i x)) (scalar-law ((coordinate i).1 v)))) ;
+    term (v : Sections.M) (i : Fin w.size) (j : Fin m) :
+     Id (Mx x).M ((Mx x).sm ((forms (PA.pair m w.size i j)).1 v) (vectors (PA.pair m w.size i j) x))
+      ((Mx x).sm ((form (i,j)).1 v) (vector (i,j) x)) =
+     ap (\ p -> (Mx x).sm ((form p).1 v) (vector p x)) (PA.unpair-pair m w.size i j) ;
+    law (v : Sections.M) : Id (Mx x).M (Sums.sum count (\ k -> Sections.sm ((forms k).1 v) (vectors k)) x) (v x) =
+     trans (Evaluate.sum count (\ k -> Sections.sm ((forms k).1 v) (vectors k)))
+      (trans (PointLaws.sum-pair m w.size (\ k -> (Mx x).sm ((forms k).1 v) (vectors k x)))
+       (trans (PointSums.congruent w.size _ _ (\ i ->
+         trans (PointSums.congruent m _ _ (term v i)) (inner v i))) (w.law x (v x)))) ;
+   } ;
+   frame : FR.Frame[Sections,count] = new FR.Frame[Sections,count,vectors,forms,
+    \ v -> F.funext FP.X (\ x -> (Mx x).M) _ v (\ x -> AtPoint[x].law v)] ;
+  } ;
+  module Framed (m : Nat) (functions : FR.Frame[Scalars,m]) (r : Nat)
+   (frames : (x : FP.X) -> Tr.Trunc[FR.Frame[Mx x,r]].carrier) {
+   frame-data : Tr.Trunc[FP.Data].carrier = AffineFrameData[l].Over[R,setR,axioms].At[A,fp,Mx,r,frames].theorem ;
+   theorem : PF.At[Sections].Free =
+    Tr.Trunc[FP.Data].induction @l (\ w -> PF.At[Sections].Free)
+     (\ w -> Tr.Trunc[(n : Nat) * LF.Basis[Sections,n]].proposition)
+     (\ w -> PF.At[Sections].theorem Given[w,m,functions].count Given[w,m,functions].frame) frame-data ;
+  } ;
+  module Positive (m : Nat) (functions : FR.Frame[Scalars,m]) (inh : Not (Not FP.X)) (r : Nat)
+   (bases : (x : FP.X) -> Tr.Trunc[LF.Basis[Mx x,suc r]].carrier) {
+   module Nonzero = SectionNonzero[l].Over[R,setR,axioms].OnAffine[A,fp,Mx].Positive[inh,r,bases] ;
+   Result : U l = Tr.Trunc[(n : Nat) * LF.Basis[Sections,suc n]].carrier ;
+   positive : (n : Nat) -> LF.Basis[Sections,n] -> Result = split {
+    zero -> \ b -> efq (Nonzero.no-zero-basis b) ;
+    suc n -> \ b -> Tr.Trunc[(n : Nat) * LF.Basis[Sections,suc n]].inc (n,b) } ;
+   theorem : Result =
+    Tr.Trunc[(n : Nat) * LF.Basis[Sections,n]].induction @l (\ b -> Result)
+     (\ b -> Tr.Trunc[(n : Nat) * LF.Basis[Sections,suc n]].proposition) (\ b -> positive b.1 b.2)
+     Framed[m,functions,suc r,Nonzero.frames].theorem ;
+  } ;
+ } ;
+} ;

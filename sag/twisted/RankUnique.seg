@@ -1,0 +1,99 @@
+-- Uniqueness of the rank of a finite free module over the local ring R
+-- (GABBER-PROPER-DESIGN.md, section 3: the rank of the push-forward).
+-- If M has bases of ranks m and n (LOCALFREE.Basis), then m = n.
+-- No determinants and no residue field:
+--  (product) The matrices P_ab = c_a(e'_b) (m x n) and Q_ba = c'_b(e_a)
+--            (n x m) satisfy P Q = 1_m: sum_b c_a(e'_b) c'_b(e_a')
+--            = c_a(sum_b c'_b(e_a') e'_b) = c_a(e_a') = delta.
+--  (wide)    P Q = 1_m with m = n + k, k > 0, is impossible: pad P with zero
+--            columns and Q with zero rows to m x m matrices P', Q'; then
+--            P' Q' = P Q = 1 (BLOCKS.sum-plus), so Q' P' = 1 (MATRIXLEFTINVERSE,
+--            K2, over the local ring), but a row of Q' is zero, so 1 = 0.
+--  (rank)    Compare m and n; both strict inequalities are excluded.
+level l ; open Ring[l] ; open Presentations[l] ;
+module Pr = Prelude[l] ;
+module CB = CoefficientBound[l] ;
+module Over (R : CRing) (setR : Pr.isSet R.R)
+ (axioms : SAGAxioms[l,l].Over[R,setR].Assumptions) {
+ module L = RL[R] ;
+ module S = FiniteIdeal[l].Sums[R] ;
+ module D = MnSums[l].Over[R] ;
+ module BS = Blocks[l].Sums[R] ;
+ module K = MatrixLeftInverse[l].Over[R,setR,axioms.loc] ;
+ module MD = Modules[l].Over[R,setR] ;
+ module LF = LocalFree[l].Over[R,setR,axioms] ;
+ -- P Q = 1_m
+ Product (m n : Nat) (P : Fin m -> Fin n -> R.R) (Q : Fin n -> Fin m -> R.R) : U l =
+  (i j : Fin m) -> Id R.R (S.sum n (\ b -> R.mul (P i b) (Q b j))) (D.delta m i j) ;
+ -- (wide)
+ module Wide (n k : Nat) (r0 : Fin k) (P : Fin (plus n k) -> Fin n -> R.R) (Q : Fin n -> Fin (plus n k) -> R.R)
+  (h : Product (plus n k) n P Q) {
+  module MN = MnAlgebra[l].Over[R,setR,plus n k] ;
+  side (x : Fin (plus n k)) : Plus (Fin n) (Fin k) = Blocks[l].side k n x ;
+  Pp (i : Fin (plus n k)) : Plus (Fin n) (Fin k) -> R.R = split { inl b -> P i b ; inr r -> R.z } ;
+  Qp (j : Fin (plus n k)) : Plus (Fin n) (Fin k) -> R.R = split { inl b -> Q b j ; inr r -> R.z } ;
+  P' : MN.Mat = \ i x -> Pp i (side x) ;
+  Q' : MN.Mat = \ x j -> Qp j (side x) ;
+  left (i j : Fin (plus n k)) : Id R.R (MN.mmul P' Q' i j) (D.delta (plus n k) i j) =
+   trans (BS.sum-plus k n (\ x -> R.mul (P' i x) (Q' x j)))
+    (trans (cong2 R.R R.add _ _ _ _
+      (S.sum-cong n _ (\ b -> R.mul (P i b) (Q b j)) (\ b ->
+       cong2 R.R R.mul _ _ _ _ (ap (Pp i) (Blocks[l].side-injl k n b)) (ap (Qp j) (Blocks[l].side-injl k n b))))
+      (trans (S.sum-cong k _ (\ r -> R.z) (\ r ->
+        trans (ap (\ s -> R.mul (Pp i s) (Q' (Blocks[l].injr k n r) j)) (Blocks[l].side-injr k n r))
+         (L.zero-mul (Q' (Blocks[l].injr k n r) j))))
+       (S.sum-zero k)))
+     (trans (R.addZ (S.sum n (\ b -> R.mul (P i b) (Q b j)))) (h i j))) ;
+  right : Id MN.Mat (MN.mmul Q' P') MN.mone = K.k2 (plus n k) P' Q' (MN.mat-eq (MN.mmul P' Q') MN.mone left) ;
+  t : Fin (plus n k) = Blocks[l].injr k n r0 ;
+  zero-row : Id R.R (MN.mmul Q' P' t t) R.z =
+   trans (S.sum-cong (plus n k) (\ x -> R.mul (Q' t x) (P' x t)) (\ x -> R.z) (\ x ->
+     trans (ap (\ s -> R.mul (Qp x s) (P' x t)) (Blocks[l].side-injr k n r0)) (L.zero-mul (P' x t))))
+    (S.sum-zero (plus n k)) ;
+  contradiction : Empty =
+   axioms.loc.1 (trans (sym (D.delta-diag (plus n k) t))
+    (trans (sym (Pr.happly (Fin (plus n k)) (\ j -> R.R) _ _ (Pr.happly (Fin (plus n k)) (\ i -> Fin (plus n k) -> R.R) _ _ right t) t))
+     zero-row)) ;
+ } ;
+ difference : (n m : Nat) -> CB.le (suc n) m -> (e : Nat) * Id Nat (plus n (suc e)) m = split {
+  zero -> split { zero -> \ h -> efq h ; suc m -> \ h -> (m,refl (suc m)) } ;
+  suc n | r -> split {
+   zero -> \ h -> efq h ;
+   suc m -> \ h -> ((r m h).1,ap (\ x -> suc x) (r m h).2) } } ;
+ Excluded (n m : Nat) : U l = (P : Fin m -> Fin n -> R.R) (Q : Fin n -> Fin m -> R.R) -> Product m n P Q -> Empty ;
+ wide (n m : Nat) (lt : CB.le (suc n) m) : Excluded n m =
+  Pr.subst Nat (Excluded n) (plus n (suc (difference n m lt).1)) m (difference n m lt).2
+   (\ P Q h -> Wide[n,suc (difference n m lt).1,inr tt,P,Q,h].contradiction) ;
+ Trichotomy (m n : Nat) : U l = Plus (Id Nat m n) (Plus (CB.le (suc n) m) (CB.le (suc m) n)) ;
+ step (m n : Nat) : Trichotomy m n -> Trichotomy (suc m) (suc n) = split {
+  inl p -> inl (ap (\ x -> suc x) p) ;
+  inr q -> inr q } ;
+ compare : (m n : Nat) -> Trichotomy m n = split {
+  zero -> split { zero -> inl (refl zero) ; suc n -> inr (inr tt) } ;
+  suc m | r -> split {
+   zero -> inr (inl tt) ;
+   suc n -> step m n (r n) } } ;
+ -- (rank)
+ module Equal (m n : Nat) (P : Fin m -> Fin n -> R.R) (Q : Fin n -> Fin m -> R.R)
+  (pq : Product m n P Q) (qp : Product n m Q P) {
+  strict : Plus (CB.le (suc n) m) (CB.le (suc m) n) -> Id Nat m n = split {
+   inl lt -> efq (wide n m lt P Q pq) ;
+   inr lt -> efq (wide m n lt Q P qp) } ;
+  cases : Trichotomy m n -> Id Nat m n = split {
+   inl p -> p ;
+   inr c -> strict c } ;
+  result : Id Nat m n = cases (compare m n) ;
+ } ;
+ -- (product), for two bases of one module
+ module Two (M : MD.Module) (m n : Nat) (B : LF.Basis[M,m]) (B' : LF.Basis[M,n]) {
+  P (a : Fin m) (b : Fin n) : R.R = (B.frame.form a).1 (B'.frame.vector b) ;
+  Q (b : Fin n) (a : Fin m) : R.R = (B'.frame.form b).1 (B.frame.vector a) ;
+  product : Product m n P Q = \ a a' ->
+   trans (S.sum-cong n _ (\ b -> (B.frame.form a).1 (M.sm (Q b a') (B'.frame.vector b))) (\ b ->
+     trans (R.mulC (P a b) (Q b a')) (sym ((B.frame.form a).2.2 (Q b a') (B'.frame.vector b)))))
+    (trans (sym (Frames[l].Over[R,setR].Form[M,B.frame.form a].sum n (\ b -> M.sm (Q b a') (B'.frame.vector b))))
+     (trans (ap (B.frame.form a).1 (B'.frame.law (B.frame.vector a'))) (B.dual a a'))) ;
+ } ;
+ rank (M : MD.Module) (m n : Nat) (B : LF.Basis[M,m]) (B' : LF.Basis[M,n]) : Id Nat m n =
+  Equal[m,n,Two[M,m,n,B,B'].P,Two[M,m,n,B,B'].Q,Two[M,m,n,B,B'].product,Two[M,n,m,B',B].product].result ;
+} ;
