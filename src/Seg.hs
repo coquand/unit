@@ -1430,10 +1430,7 @@ sub cx t' t = (if traceOn then traceSub t' t else id) $ convNames (cc cx) t' t |
  where
   outer a b = case (a, b) of
     (VU l, VU m) -> leq (cxTh cx) l m
-    -- an extension with more fields fixed is a subtype (Arend)
-    (VSegT m1 f1, VSegT m2 f2) ->
-      modId m1 == modId m2 && convs (cc cx) (modDyn m1) (modDyn m2)
-      && and [ maybe False (\v' -> conv (cc cx) v' v) (lookup x f1) | (x, v) <- f2 ]
+    -- no subtyping of records: R[F] and R[F'] are compared by conversion
     _ -> conv' (cc cx) a b
 
 check :: Cx -> Exp -> Val -> Res ()
@@ -1504,7 +1501,7 @@ checkW cx e t0 = case (e, t) of
 checkInfer :: Cx -> Exp -> Val -> Res ()
 checkInfer cx e t0 = do
     t' <- inferD cx e
-    if sub cx t' t0 || subSeg t' then ok
+    if sub cx t' t0 || fixedByValue t' then ok
       -- the original pair, with no constant unfolded
       else failWith ("type mismatch for  " ++ pretty e ++
                      "\n  expected : " ++ showV cx t0 ++
@@ -1512,11 +1509,15 @@ checkInfer cx e t0 = do
                      "\n  (no constant unfolded; they are not convertible)")
  where
   t = force cx t0
-  -- a fixed field of the expected segment type may be known from the
-  -- element itself rather than from its type: compare it with the value
-  subSeg t' = case (force cx t', t) of
+  -- the typing of an element against R[F] (RECORDS.md §4): a field fixed
+  -- in the expected type but not in the inferred one is compared with the
+  -- element's own value, as for new R[ps, v] : R[ps][x := e].  This is not
+  -- subtyping: every field fixed in the inferred type must be fixed in the
+  -- expected one, with a convertible value, so no fixed field is forgotten
+  fixedByValue t' = case (force cx t', t) of
     (VSegT m1 f1, VSegT m2 f2) ->
       modId m1 == modId m2 && convs (cc cx) (modDyn m1) (modDyn m2)
+      && all (\(x, _) -> any ((== x) . fst) f2) f1
       && and [ maybe (conv (cc cx) (vproj (ev cx e) x) v) (\v' -> conv (cc cx) v' v) (lookup x f1)
              | (x, v) <- f2 ]
     _ -> False
@@ -1639,7 +1640,7 @@ infer cx e = case e of
       SModule -> failWith ("new " ++ showM m ++ ": a module; declare it with `record`")
       SRecord _ -> ok
     -- the type is  R[ps] , the head parameters only: a fixed field is read
-    -- off the element's value where needed (subSeg), and a type that does
+    -- off the element's value where needed (fixedByValue), and a type that does
     -- not mention the fields can be a codomain (apH (\ c -> new M[.., c]))
     let r = instOf md
     Right (VSegT md [ (p, lookupDyn r p) | p <- paramNames (headUnits md) ])
