@@ -1,0 +1,472 @@
+-- TSection.seg: sterbac4 Theorem 28 (section of erasure): every T_Russell
+-- judgement G |-R J lifts to a T_Tarski judgement G' |-T J' with
+-- |G'| = G and |J'| = J, unique up to conversion.
+--   LCx[G]            a well-formed Tarski context over the Russell context G
+--   LTy, LTm, LEqTy, LEqTm   a Tarski lift of a judgement into a GIVEN context D
+--   AllJ J            for EVERY Tarski context D (CtxOk D) with |D| = G,
+--                     J lifts into D
+--   sec               by induction on the Russell derivation: LCx[ctx J] * AllJ J
+--   thm28             existence in the form (J' : Jf) * |J'| = J * Der J'
+--   cxer, un-ty, un-tm, un-eqty, un-eqtm   uniqueness up to conversion
+-- Quantifying over the target context D (instead of the prototype's
+-- ERT/LiftBack, which moves derivations between erasure-equal contexts)
+-- makes the binder cases direct; types of premises are aligned by
+-- Lemma 25.1 (ty-uniq), transitivity of term equality by Cor. 27 (er-inj).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ;
+open TSubLib[l] ; open TPresup[l] ; open RTyping[l] ; open RLevels[l] ; open ErR[l] ; open TUniq[l] ;
+
+------------------------------------------------------------------------
+-- small facts
+
+okw (G : Cx) (w : Der (jwf G)) : CtxOk G = ok-of (jwf G) w ;
+wfu (G : Cx) (hG : CtxOk G) (n : Nat) (nb : LeN n N) : Der (jty G (uu n)) =
+  ty-uu G n (wf-from-ok G hG) nb ;
+
+pt-l (G : Cx) (X Y : Tm) (d : Der (jeqty G X Y)) : Der (jty G X) = (presup-eqty G X Y d).1 ;
+pt-r (G : Cx) (X Y : Tm) (d : Der (jeqty G X Y)) : Der (jty G Y) = (presup-eqty G X Y d).2 ;
+pe-l (G : Cx) (x y T : Tm) (d : Der (jeqtm G x y T)) : Der (jtm G x T) = (presup-eqtm G x y T d).2.1 ;
+pe-r (G : Cx) (x y T : Tm) (d : Der (jeqtm G x y T)) : Der (jtm G y T) = (presup-eqtm G x y T d).2.2 ;
+
+cx-hd : Cx -> Cx = split { cnil -> cnil ; csnoc G A -> G } ;
+cx-tl : Cx -> Tm = split { cnil -> var zero ; csnoc G A -> A } ;
+is-nil : Cx -> U l = split { cnil -> Top ; csnoc G A -> Empty } ;
+
+eq-hd (G D : Cx) (A B : Tm) (e : Id Cx (csnoc G A) (csnoc D B)) : Id Cx G D = ap Cx Cx cx-hd (csnoc G A) (csnoc D B) e ;
+eq-tl (G D : Cx) (A B : Tm) (e : Id Cx (csnoc G A) (csnoc D B)) : Id Tm A B = ap Cx Tm cx-tl (csnoc G A) (csnoc D B) e ;
+cx-nc (G : Cx) (A : Tm) (e : Id Cx cnil (csnoc G A)) : Empty = subst Cx is-nil cnil (csnoc G A) e tt ;
+
+-- erasure equations
+ceq (D G : Cx) (X A : Tm) (eD : Id Cx (erC D) G) (eX : Id Tm (er X) A) : Id Cx (erC (csnoc D X)) (csnoc G A) =
+  cong2 Cx Tm Cx (\ x y -> csnoc x y) (erC D) G (er X) A eD eX ;
+ep2 (x y A B : Tm) (e1 : Id Tm x A) (e2 : Id Tm y B) : Id Tm (pi x y) (pi A B) =
+  cong2 Tm Tm Tm (\ u v -> pi u v) x A y B e1 e2 ;
+elam (x y z A B b : Tm) (e1 : Id Tm x A) (e2 : Id Tm y B) (e3 : Id Tm z b) : Id Tm (lam x y z) (lam A B b) =
+  cong3 Tm (\ u v w -> lam u v w) x A y B z b e1 e2 e3 ;
+eapp (x y z w A B c a : Tm) (e1 : Id Tm x A) (e2 : Id Tm y B) (e3 : Id Tm z c) (e4 : Id Tm w a) :
+    Id Tm (app x y z w) (app A B c a) =
+  cong4 Tm (\ u v p q -> app u v p q) x A y B z c w a e1 e2 e3 e4 ;
+esub (Y y B a : Tm) (e1 : Id Tm (er Y) B) (e2 : Id Tm (er y) a) : Id Tm (er (subst1 Y y)) (subst1 B a) =
+  trans Tm (er (subst1 Y y)) (subst1 (er Y) (er y)) (subst1 B a) (er-subst1 Y y)
+    (cong2 Tm Tm Tm (\ u v -> subst1 u v) (er Y) B (er y) a e1 e2) ;
+eeta (X Y g A B f : Tm) (e1 : Id Tm (er X) A) (e2 : Id Tm (er Y) B) (e3 : Id Tm (er g) f) :
+    Id Tm (er (lam X Y (app (wk X) (wkl Y) (wk g) (var zero)))) (lam A B (app (wk A) (wkl B) (wk f) (var zero))) =
+  trans Tm (er (lam X Y (app (wk X) (wkl Y) (wk g) (var zero))))
+    (lam (er X) (er Y) (app (wk (er X)) (wkl (er Y)) (wk (er g)) (var zero)))
+    (lam A B (app (wk A) (wkl B) (wk f) (var zero)))
+    (er-eta X Y g)
+    (cong3 Tm (\ u v w -> lam u v (app (wk u) (wkl v) (wk w) (var zero))) (er X) A (er Y) B (er g) f e1 e2 e3) ;
+ewk (X A : Tm) (e : Id Tm (er X) A) : Id Tm (er (wk X)) (wk A) =
+  trans Tm (er (wk X)) (wk (er X)) (wk A) (er-wk X) (ap Tm Tm (\ t -> wk t) (er X) A e) ;
+
+------------------------------------------------------------------------
+-- aligning types with the same erasure (Lemma 25.1)
+
+tu (G : Cx) (X Y S : Tm) (dX : Der (jty G X)) (dY : Der (jty G Y)) (eX : Id Tm (er X) S) (eY : Id Tm (er Y) S) :
+    Der (jeqty G X Y) =
+  ty-uniq G X Y dX dY (trans Tm (er X) S (er Y) eX (sym Tm (er Y) S eY)) ;
+
+co-tm (G : Cx) (a T T' S : Tm) (d : Der (jtm G a T)) (dT' : Der (jty G T')) (e : Id Tm (er T) S) (e' : Id Tm (er T') S) :
+    Der (jtm G a T') =
+  tm-conv G a T T' d (tu G T T' S (presup-tm G a T d) dT' e e') ;
+
+co-eqtm (G : Cx) (a b T T' S : Tm) (d : Der (jeqtm G a b T)) (dT' : Der (jty G T')) (e : Id Tm (er T) S) (e' : Id Tm (er T') S) :
+    Der (jeqtm G a b T') =
+  eqtm-conv G a b T T' d (tu G T T' S (presup-eqtm G a b T d).1 dT' e e') ;
+
+cu-tm (G : Cx) (a T : Tm) (n : Nat) (hG : CtxOk G) (d : Der (jtm G a T)) (e : Id Tm (er T) (uu n)) : Der (jtm G a (uu n)) =
+  co-tm G a T (uu n) (uu n) d (wfu G hG n nb) e (refl (uu n))
+ where { nb : LeN n N = r-universe-tm-bound (erC G) (er a) n
+    (rder-tm-ty (erC G) (er a) (er T) (uu n) e (er-der (jtm G a T) d)) ; } ;
+
+cu-eqtm (G : Cx) (a b T : Tm) (n : Nat) (hG : CtxOk G) (d : Der (jeqtm G a b T)) (e : Id Tm (er T) (uu n)) :
+    Der (jeqtm G a b (uu n)) =
+  co-eqtm G a b T (uu n) (uu n) d (wfu G hG n nb) e (refl (uu n))
+ where { nb : LeN n N = r-universe-eqtm-bound (erC G) (er a) (er b) n
+    (rder-eqtm-ty (erC G) (er a) (er b) (er T) (uu n) e (er-der (jeqtm G a b T) d)) ; } ;
+
+------------------------------------------------------------------------
+-- lifts
+
+record LCx { cx : Cx ; D : Cx ; eD : Id Cx (erC D) cx ; wD : Der (jwf D) } ;
+
+record LTy { cx : Cx ; A : Tm ; T : Tm ; eT : Id Tm (er T) A ; dT : Der (jty cx T) } ;
+
+record LTm { cx : Cx ; a : Tm ; A : Tm ; t : Tm ; T : Tm ;
+  et : Id Tm (er t) a ; eT : Id Tm (er T) A ; dt : Der (jtm cx t T) } ;
+
+record LEqTy { cx : Cx ; A : Tm ; B : Tm ; T : Tm ; S : Tm ;
+  eT : Id Tm (er T) A ; eS : Id Tm (er S) B ; d : Der (jeqty cx T S) } ;
+
+record LEqTm { cx : Cx ; a : Tm ; b : Tm ; A : Tm ; t : Tm ; s : Tm ; T : Tm ;
+  et : Id Tm (er t) a ; es : Id Tm (er s) b ; eT : Id Tm (er T) A ; d : Der (jeqtm cx t s T) } ;
+
+AllJ : Jf -> U l = split {
+  jwf G -> Top ;
+  jty G A -> (D : Cx) -> CtxOk D -> Id Cx (erC D) G -> LTy[D, A] ;
+  jtm G a A -> (D : Cx) -> CtxOk D -> Id Cx (erC D) G -> LTm[D, a, A] ;
+  jeqty G A B -> (D : Cx) -> CtxOk D -> Id Cx (erC D) G -> LEqTy[D, A, B] ;
+  jeqtm G a b A -> (D : Cx) -> CtxOk D -> Id Cx (erC D) G -> LEqTm[D, a, b, A] } ;
+
+SecJ (J : Jf) : U l = LCx[ctxOf J] * AllJ J ;
+
+lcx-snoc' (G : Cx) (A : Tm) (c : LCx[G]) (t : LTy[c.D, A]) : LCx[csnoc G A] =
+  new LCx[csnoc G A, D := csnoc c.D t.T, eD := ceq c.D G t.T A c.eD t.eT, wD := wf-snoc c.D t.T t.dT] ;
+
+lcx-snoc (G : Cx) (A : Tm) (c : LCx[G]) (r : AllJ (jty G A)) : LCx[csnoc G A] =
+  lcx-snoc' G A c (r c.D (okw c.D c.wD) c.eD) ;
+
+------------------------------------------------------------------------
+-- variables
+
+s-v0 (G : Cx) (A : Tm) : (D : Cx) -> CtxOk D -> Id Cx (erC D) (csnoc G A) -> LTm[D, var zero, wk A] = split {
+  cnil -> \ hD eD -> efq (cx-nc G A eD) ;
+  csnoc D0 X -> \ hD eD ->
+    new LTm[csnoc D0 X, var zero, wk A, t := var zero, T := wk X, et := refl (var zero),
+      eT := ewk X A (eq-tl (erC D0) G (er X) A eD), dt := tm-v0 D0 X hD.2] } ;
+
+s-vs' (n : Nat) (A : Tm) (D0 : Cx) (Y : Tm) (hD : CtxOk (csnoc D0 Y)) (t : LTm[D0, var n, A]) :
+    LTm[csnoc D0 Y, var (suc n), wk A] =
+  new LTm[csnoc D0 Y, var (suc n), wk A, t := wk t.t, T := wk t.T, et := ewk t.t (var n) t.et, eT := ewk t.T A t.eT,
+    dt := wk-tm D0 Y t.t t.T hD.2 t.dt] ;
+
+s-vsc (G : Cx) (B : Tm) (n : Nat) (A : Tm) (r : AllJ (jtm G (var n) A)) :
+    (D : Cx) -> CtxOk D -> Id Cx (erC D) (csnoc G B) -> LTm[D, var (suc n), wk A] = split {
+  cnil -> \ hD eD -> efq (cx-nc G B eD) ;
+  csnoc D0 Y -> \ hD eD -> s-vs' n A D0 Y hD (r D0 hD.1 (eq-hd (erC D0) G (er Y) B eD)) } ;
+
+------------------------------------------------------------------------
+-- types
+
+s-pi' (G : Cx) (A B : Tm) (D : Cx) (t1 : LTy[D, A]) (t2 : LTy[csnoc D t1.T, B]) : LTy[D, pi A B] =
+  new LTy[D, pi A B, T := pi t1.T t2.T, eT := ep2 (er t1.T) (er t2.T) A B t1.eT t2.eT, dT := ty-pi D t1.T t2.T t1.dT t2.dT] ;
+
+s-pi (G : Cx) (A B : Tm) (r1 : AllJ (jty G A)) (r2 : AllJ (jty (csnoc G A) B)) : AllJ (jty G (pi A B)) =
+  \ D hD eD -> s-pi' G A B D (r1 D hD eD)
+    (r2 (csnoc D (r1 D hD eD).T) (hD, (r1 D hD eD).dT) (ceq D G (r1 D hD eD).T A eD (r1 D hD eD).eT)) ;
+
+s-of' (n : Nat) (A : Tm) (D : Cx) (hD : CtxOk D) (t : LTm[D, A, uu n]) : LTy[D, A] =
+  new LTy[D, A, T := el n t.t, eT := t.et, dT := ty-el D n t.t (cu-tm D t.t t.T n hD t.dt t.eT)] ;
+
+------------------------------------------------------------------------
+-- terms
+
+s-lam' (G : Cx) (A B b : Tm) (D : Cx) (t1 : LTy[D, A]) (t2 : LTy[csnoc D t1.T, B]) (t3 : LTm[csnoc D t1.T, b, B]) :
+    LTm[D, lam A B b, pi A B] =
+  new LTm[D, lam A B b, pi A B, t := lam t1.T t2.T t3.t, T := pi t1.T t2.T,
+    et := elam (er t1.T) (er t2.T) (er t3.t) A B b t1.eT t2.eT t3.et,
+    eT := ep2 (er t1.T) (er t2.T) A B t1.eT t2.eT,
+    dt := tm-lam D t1.T t2.T t3.t t1.dT t2.dT (co-tm (csnoc D t1.T) t3.t t3.T t2.T B t3.dt t2.dT t3.eT t2.eT)] ;
+
+s-lam1 (G : Cx) (A B b : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (t1 : LTy[D, A])
+    (r2 : AllJ (jty (csnoc G A) B)) (r3 : AllJ (jtm (csnoc G A) b B)) : LTm[D, lam A B b, pi A B] =
+  s-lam' G A B b D t1 (r2 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT))
+    (r3 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT)) ;
+
+s-app' (G : Cx) (A B c a : Tm) (D : Cx) (t1 : LTy[D, A]) (t2 : LTy[csnoc D t1.T, B]) (t3 : LTm[D, c, pi A B])
+    (t4 : LTm[D, a, A]) : LTm[D, app A B c a, subst1 B a] =
+  new LTm[D, app A B c a, subst1 B a, t := app t1.T t2.T t3.t t4.t, T := subst1 t2.T t4.t,
+    et := eapp (er t1.T) (er t2.T) (er t3.t) (er t4.t) A B c a t1.eT t2.eT t3.et t4.et,
+    eT := esub t2.T t4.t B a t2.eT t4.et,
+    dt := tm-app D t1.T t2.T t3.t t4.t t1.dT t2.dT
+      (co-tm D t3.t t3.T (pi t1.T t2.T) (pi A B) t3.dt (ty-pi D t1.T t2.T t1.dT t2.dT) t3.eT
+         (ep2 (er t1.T) (er t2.T) A B t1.eT t2.eT))
+      (co-tm D t4.t t4.T t1.T A t4.dt t1.dT t4.eT t1.eT)] ;
+
+s-app1 (G : Cx) (A B c a : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (t1 : LTy[D, A])
+    (r2 : AllJ (jty (csnoc G A) B)) (r3 : AllJ (jtm G c (pi A B))) (r4 : AllJ (jtm G a A)) : LTm[D, app A B c a, subst1 B a] =
+  s-app' G A B c a D t1 (r2 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT)) (r3 D hD eD) (r4 D hD eD) ;
+
+s-pic' (n : Nat) (A B : Tm) (D : Cx) (hD : CtxOk D) (t1 : LTm[D, A, uu n]) (h1 : Der (jtm D t1.t (uu n)))
+    (t2 : LTm[csnoc D (el n t1.t), B, uu n]) : LTm[D, pi A B, uu n] =
+  new LTm[D, pi A B, uu n, t := pic n t1.t t2.t, T := uu n, et := ep2 (er t1.t) (er t2.t) A B t1.et t2.et,
+    eT := refl (uu n),
+    dt := tm-pic D n t1.t t2.t h1 (cu-tm (csnoc D (el n t1.t)) t2.t t2.T n (hD, ty-el D n t1.t h1) t2.dt t2.eT)] ;
+
+s-pic1 (G : Cx) (n : Nat) (A B : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (t1 : LTm[D, A, uu n])
+    (h1 : Der (jtm D t1.t (uu n))) (r2 : AllJ (jtm (csnoc G A) B (uu n))) : LTm[D, pi A B, uu n] =
+  s-pic' n A B D hD t1 h1 (r2 (csnoc D (el n t1.t)) (hD, ty-el D n t1.t h1) (ceq D G (el n t1.t) A eD t1.et)) ;
+
+s-cum' (m n : Nat) (A : Tm) (le : LeN (suc m) n) (nb : LeN n N) (D : Cx) (hD : CtxOk D) (t : LTm[D, A, uu m]) : LTm[D, A, uu n] =
+  new LTm[D, A, uu n, t := lf m n t.t, T := uu n, et := t.et, eT := refl (uu n),
+    dt := tm-lf D m n t.t (cu-tm D t.t t.T m hD t.dt t.eT) le nb] ;
+
+s-conv' (a A B : Tm) (D : Cx) (t : LTm[D, a, A]) (q : LEqTy[D, A, B]) : LTm[D, a, B] =
+  new LTm[D, a, B, t := t.t, T := q.S, et := t.et, eT := q.eS,
+    dt := tm-conv D t.t q.T q.S (co-tm D t.t t.T q.T A t.dt (pt-l D q.T q.S q.d) t.eT q.eT) q.d] ;
+
+------------------------------------------------------------------------
+-- type equality
+
+s-trefl' (A : Tm) (D : Cx) (t : LTy[D, A]) : LEqTy[D, A, A] =
+  new LEqTy[D, A, A, T := t.T, S := t.T, eT := t.eT, eS := t.eT, d := eqty-refl D t.T t.dT] ;
+
+s-tsym' (A B : Tm) (D : Cx) (q : LEqTy[D, A, B]) : LEqTy[D, B, A] =
+  new LEqTy[D, B, A, T := q.S, S := q.T, eT := q.eS, eS := q.eT, d := eqty-sym D q.T q.S q.d] ;
+
+s-ttrans' (A B C : Tm) (D : Cx) (q1 : LEqTy[D, A, B]) (q2 : LEqTy[D, B, C]) : LEqTy[D, A, C] =
+  new LEqTy[D, A, C, T := q1.T, S := q2.S, eT := q1.eT, eS := q2.eS,
+    d := eqty-trans D q1.T q1.S q2.S q1.d
+      (eqty-trans D q1.S q2.T q2.S (tu D q1.S q2.T B (pt-r D q1.T q1.S q1.d) (pt-l D q2.T q2.S q2.d) q1.eS q2.eT) q2.d)] ;
+
+s-tpi' (A A' B B' : Tm) (D : Cx) (q1 : LEqTy[D, A, A']) (q2 : LEqTy[csnoc D q1.T, B, B']) : LEqTy[D, pi A B, pi A' B'] =
+  new LEqTy[D, pi A B, pi A' B', T := pi q1.T q2.T, S := pi q1.S q2.S,
+    eT := ep2 (er q1.T) (er q2.T) A B q1.eT q2.eT, eS := ep2 (er q1.S) (er q2.S) A' B' q1.eS q2.eS,
+    d := eqty-pi D q1.T q1.S q2.T q2.S (pt-l D q1.T q1.S q1.d) q1.d q2.d] ;
+
+s-tpi1 (G : Cx) (A A' B B' : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (q1 : LEqTy[D, A, A'])
+    (r2 : AllJ (jeqty (csnoc G A) B B')) : LEqTy[D, pi A B, pi A' B'] =
+  s-tpi' A A' B B' D q1 (r2 (csnoc D q1.T) (hD, pt-l D q1.T q1.S q1.d) (ceq D G q1.T A eD q1.eT)) ;
+
+s-tof' (n : Nat) (A A' : Tm) (D : Cx) (hD : CtxOk D) (p : LEqTm[D, A, A', uu n]) : LEqTy[D, A, A'] =
+  new LEqTy[D, A, A', T := el n p.t, S := el n p.s, eT := p.et, eS := p.es,
+    d := eqty-el D n p.t p.s (cu-eqtm D p.t p.s p.T n hD p.d p.eT)] ;
+
+------------------------------------------------------------------------
+-- term equality
+
+s-erefl' (a A : Tm) (D : Cx) (t : LTm[D, a, A]) : LEqTm[D, a, a, A] =
+  new LEqTm[D, a, a, A, t := t.t, s := t.t, T := t.T, et := t.et, es := t.et, eT := t.eT, d := eqtm-refl D t.t t.T t.dt] ;
+
+s-esym' (a b A : Tm) (D : Cx) (p : LEqTm[D, a, b, A]) : LEqTm[D, b, a, A] =
+  new LEqTm[D, b, a, A, t := p.s, s := p.t, T := p.T, et := p.es, es := p.et, eT := p.eT,
+    d := eqtm-sym D p.t p.s p.T (presup-eqtm D p.t p.s p.T p.d).1 p.d] ;
+
+s-etrans2 (a b c A : Tm) (D : Cx) (p1 : LEqTm[D, a, b, A]) (p2 : LEqTm[D, b, c, A])
+    (k : Der (jeqty D p1.T p2.T) * Der (jeqtm D p1.s p2.t p1.T)) : LEqTm[D, a, c, A] =
+  new LEqTm[D, a, c, A, t := p1.t, s := p2.s, T := p1.T, et := p1.et, es := p2.es, eT := p1.eT,
+    d := eqtm-trans D p1.t p1.s p2.s p1.T p1.d
+      (eqtm-trans D p1.s p2.t p2.s p1.T k.2 (eqtm-conv D p2.t p2.s p2.T p1.T p2.d (eqty-sym D p1.T p2.T k.1)))] ;
+
+s-etrans' (a b c A : Tm) (D : Cx) (p1 : LEqTm[D, a, b, A]) (p2 : LEqTm[D, b, c, A]) : LEqTm[D, a, c, A] =
+  s-etrans2 a b c A D p1 p2
+    (er-inj D p1.s p2.t p1.T p2.T (pe-r D p1.t p1.s p1.T p1.d) (pe-l D p2.t p2.s p2.T p2.d)
+       (trans Tm (er p1.s) b (er p2.t) p1.es (sym Tm (er p2.t) b p2.et))
+       (trans Tm (er p1.T) A (er p2.T) p1.eT (sym Tm (er p2.T) A p2.eT))) ;
+
+s-econv' (a b A B : Tm) (D : Cx) (p : LEqTm[D, a, b, A]) (q : LEqTy[D, A, B]) : LEqTm[D, a, b, B] =
+  new LEqTm[D, a, b, B, t := p.t, s := p.s, T := q.S, et := p.et, es := p.es, eT := q.eS,
+    d := eqtm-conv D p.t p.s q.T q.S (co-eqtm D p.t p.s p.T q.T A p.d (pt-l D q.T q.S q.d) p.eT q.eT) q.d] ;
+
+s-ecum' (m n : Nat) (a b : Tm) (le : LeN (suc m) n) (nb : LeN n N) (D : Cx) (hD : CtxOk D) (p : LEqTm[D, a, b, uu m]) :
+    LEqTm[D, a, b, uu n] =
+  new LEqTm[D, a, b, uu n, t := lf m n p.t, s := lf m n p.s, T := uu n, et := p.et, es := p.es, eT := refl (uu n),
+    d := eqtm-lf D m n p.t p.s (cu-eqtm D p.t p.s p.T m hD p.d p.eT) le nb] ;
+
+s-epi' (n : Nat) (A A' B B' : Tm) (D : Cx) (hD : CtxOk D) (p1 : LEqTm[D, A, A', uu n])
+    (e1 : Der (jeqtm D p1.t p1.s (uu n))) (p2 : LEqTm[csnoc D (el n p1.t), B, B', uu n]) :
+    LEqTm[D, pi A B, pi A' B', uu n] =
+  new LEqTm[D, pi A B, pi A' B', uu n, t := pic n p1.t p2.t, s := pic n p1.s p2.s, T := uu n,
+    et := ep2 (er p1.t) (er p2.t) A B p1.et p2.et, es := ep2 (er p1.s) (er p2.s) A' B' p1.es p2.es, eT := refl (uu n),
+    d := eqtm-pic D n p1.t p1.s p2.t p2.s (pe-l D p1.t p1.s (uu n) e1) e1
+      (cu-eqtm (csnoc D (el n p1.t)) p2.t p2.s p2.T n (hD, ty-el D n p1.t (pe-l D p1.t p1.s (uu n) e1)) p2.d p2.eT)] ;
+
+s-epi1 (G : Cx) (n : Nat) (A A' B B' : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (p1 : LEqTm[D, A, A', uu n])
+    (e1 : Der (jeqtm D p1.t p1.s (uu n))) (r2 : AllJ (jeqtm (csnoc G A) B B' (uu n))) : LEqTm[D, pi A B, pi A' B', uu n] =
+  s-epi' n A A' B B' D hD p1 e1
+    (r2 (csnoc D (el n p1.t)) (hD, ty-el D n p1.t (pe-l D p1.t p1.s (uu n) e1)) (ceq D G (el n p1.t) A eD p1.et)) ;
+
+s-elam' (A A' B B' b b' : Tm) (D : Cx) (q1 : LEqTy[D, A, A']) (q2 : LEqTy[csnoc D q1.T, B, B'])
+    (p3 : LEqTm[csnoc D q1.T, b, b', B]) : LEqTm[D, lam A B b, lam A' B' b', pi A B] =
+  new LEqTm[D, lam A B b, lam A' B' b', pi A B, t := lam q1.T q2.T p3.t, s := lam q1.S q2.S p3.s, T := pi q1.T q2.T,
+    et := elam (er q1.T) (er q2.T) (er p3.t) A B b q1.eT q2.eT p3.et,
+    es := elam (er q1.S) (er q2.S) (er p3.s) A' B' b' q1.eS q2.eS p3.es,
+    eT := ep2 (er q1.T) (er q2.T) A B q1.eT q2.eT,
+    d := eqtm-lam D q1.T q1.S q2.T q2.S p3.t p3.s (pt-l D q1.T q1.S q1.d) q1.d q2.d
+      (co-eqtm (csnoc D q1.T) p3.t p3.s p3.T q2.T B p3.d (pt-l (csnoc D q1.T) q2.T q2.S q2.d) p3.eT q2.eT)] ;
+
+s-elam1 (G : Cx) (A A' B B' b b' : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (q1 : LEqTy[D, A, A'])
+    (r2 : AllJ (jeqty (csnoc G A) B B')) (r3 : AllJ (jeqtm (csnoc G A) b b' B)) : LEqTm[D, lam A B b, lam A' B' b', pi A B] =
+  s-elam' A A' B B' b b' D q1
+    (r2 (csnoc D q1.T) (hD, pt-l D q1.T q1.S q1.d) (ceq D G q1.T A eD q1.eT))
+    (r3 (csnoc D q1.T) (hD, pt-l D q1.T q1.S q1.d) (ceq D G q1.T A eD q1.eT)) ;
+
+s-eapp2 (A A' B B' c c' a a' : Tm) (D : Cx) (q1 : LEqTy[D, A, A']) (q2 : LEqTy[csnoc D q1.T, B, B'])
+    (p3 : LEqTm[D, c, c', pi A B]) (p4 : LEqTm[D, a, a', A])
+    (e3 : Der (jeqtm D p3.t p3.s (pi q1.T q2.T))) (e4 : Der (jeqtm D p4.t p4.s q1.T)) :
+    LEqTm[D, app A B c a, app A' B' c' a', subst1 B a] =
+  new LEqTm[D, app A B c a, app A' B' c' a', subst1 B a,
+    t := app q1.T q2.T p3.t p4.t, s := app q1.S q2.S p3.s p4.s, T := subst1 q2.T p4.t,
+    et := eapp (er q1.T) (er q2.T) (er p3.t) (er p4.t) A B c a q1.eT q2.eT p3.et p4.et,
+    es := eapp (er q1.S) (er q2.S) (er p3.s) (er p4.s) A' B' c' a' q1.eS q2.eS p3.es p4.es,
+    eT := esub q2.T p4.t B a q2.eT p4.et,
+    d := eqtm-app D q1.T q1.S q2.T q2.S p3.t p3.s p4.t p4.s (pt-l D q1.T q1.S q1.d) (pt-l (csnoc D q1.T) q2.T q2.S q2.d)
+      (pe-l D p4.t p4.s q1.T e4) q1.d q2.d e3 e4] ;
+
+s-eapp' (A A' B B' c c' a a' : Tm) (D : Cx) (q1 : LEqTy[D, A, A']) (q2 : LEqTy[csnoc D q1.T, B, B'])
+    (p3 : LEqTm[D, c, c', pi A B]) (p4 : LEqTm[D, a, a', A]) : LEqTm[D, app A B c a, app A' B' c' a', subst1 B a] =
+  s-eapp2 A A' B B' c c' a a' D q1 q2 p3 p4
+    (co-eqtm D p3.t p3.s p3.T (pi q1.T q2.T) (pi A B) p3.d
+       (ty-pi D q1.T q2.T (pt-l D q1.T q1.S q1.d) (pt-l (csnoc D q1.T) q2.T q2.S q2.d)) p3.eT
+       (ep2 (er q1.T) (er q2.T) A B q1.eT q2.eT))
+    (co-eqtm D p4.t p4.s p4.T q1.T A p4.d (pt-l D q1.T q1.S q1.d) p4.eT q1.eT) ;
+
+s-eapp1 (G : Cx) (A A' B B' c c' a a' : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (q1 : LEqTy[D, A, A'])
+    (r2 : AllJ (jeqty (csnoc G A) B B')) (r3 : AllJ (jeqtm G c c' (pi A B))) (r4 : AllJ (jeqtm G a a' A)) :
+    LEqTm[D, app A B c a, app A' B' c' a', subst1 B a] =
+  s-eapp' A A' B B' c c' a a' D q1 (r2 (csnoc D q1.T) (hD, pt-l D q1.T q1.S q1.d) (ceq D G q1.T A eD q1.eT))
+    (r3 D hD eD) (r4 D hD eD) ;
+
+s-beta' (A B b a : Tm) (D : Cx) (t1 : LTy[D, A]) (t2 : LTy[csnoc D t1.T, B]) (t3 : LTm[csnoc D t1.T, b, B])
+    (t4 : LTm[D, a, A]) : LEqTm[D, app A B (lam A B b) a, subst1 b a, subst1 B a] =
+  new LEqTm[D, app A B (lam A B b) a, subst1 b a, subst1 B a,
+    t := app t1.T t2.T (lam t1.T t2.T t3.t) t4.t, s := subst1 t3.t t4.t, T := subst1 t2.T t4.t,
+    et := eapp (er t1.T) (er t2.T) (lam (er t1.T) (er t2.T) (er t3.t)) (er t4.t) A B (lam A B b) a t1.eT t2.eT
+      (elam (er t1.T) (er t2.T) (er t3.t) A B b t1.eT t2.eT t3.et) t4.et,
+    es := esub t3.t t4.t b a t3.et t4.et,
+    eT := esub t2.T t4.t B a t2.eT t4.et,
+    d := eqtm-beta D t1.T t2.T t3.t t4.t t1.dT t2.dT
+      (co-tm (csnoc D t1.T) t3.t t3.T t2.T B t3.dt t2.dT t3.eT t2.eT)
+      (co-tm D t4.t t4.T t1.T A t4.dt t1.dT t4.eT t1.eT)] ;
+
+s-beta1 (G : Cx) (A B b a : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (t1 : LTy[D, A])
+    (r2 : AllJ (jty (csnoc G A) B)) (r3 : AllJ (jtm (csnoc G A) b B)) (r4 : AllJ (jtm G a A)) :
+    LEqTm[D, app A B (lam A B b) a, subst1 b a, subst1 B a] =
+  s-beta' A B b a D t1 (r2 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT))
+    (r3 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT)) (r4 D hD eD) ;
+
+s-eta' (A B f : Tm) (D : Cx) (t1 : LTy[D, A]) (t2 : LTy[csnoc D t1.T, B]) (t3 : LTm[D, f, pi A B]) :
+    LEqTm[D, f, lam A B (app (wk A) (wkl B) (wk f) (var zero)), pi A B] =
+  new LEqTm[D, f, lam A B (app (wk A) (wkl B) (wk f) (var zero)), pi A B,
+    t := t3.t, s := lam t1.T t2.T (app (wk t1.T) (wkl t2.T) (wk t3.t) (var zero)), T := pi t1.T t2.T,
+    et := t3.et, es := eeta t1.T t2.T t3.t A B f t1.eT t2.eT t3.et,
+    eT := ep2 (er t1.T) (er t2.T) A B t1.eT t2.eT,
+    d := eqtm-eta D t1.T t2.T t3.t t1.dT t2.dT
+      (co-tm D t3.t t3.T (pi t1.T t2.T) (pi A B) t3.dt (ty-pi D t1.T t2.T t1.dT t2.dT) t3.eT
+         (ep2 (er t1.T) (er t2.T) A B t1.eT t2.eT))] ;
+
+s-eta1 (G : Cx) (A B f : Tm) (D : Cx) (hD : CtxOk D) (eD : Id Cx (erC D) G) (t1 : LTy[D, A])
+    (r2 : AllJ (jty (csnoc G A) B)) (r3 : AllJ (jtm G f (pi A B))) :
+    LEqTm[D, f, lam A B (app (wk A) (wkl B) (wk f) (var zero)), pi A B] =
+  s-eta' A B f D t1 (r2 (csnoc D t1.T) (hD, t1.dT) (ceq D G t1.T A eD t1.eT)) (r3 D hD eD) ;
+
+------------------------------------------------------------------------
+-- Theorem 28, existence: induction on the Russell derivation
+
+sec : (J : Jf) -> RDer J -> SecJ J = split {
+  rwf-nil -> (new LCx[cnil, D := cnil, eD := refl cnil, wD := wf-nil], tt) ;
+  rwf-snoc G A h | r -> (lcx-snoc G A r.1 r.2, tt) ;
+  rtm-v0 G A h | r -> (lcx-snoc G A r.1 r.2, s-v0 G A) ;
+  rtm-vs G B n A h1 h2 | r1 r2 -> (lcx-snoc G B r2.1 r2.2, s-vsc G B n A r1.2) ;
+  rty-pi G A B h1 h2 | r1 r2 -> (r1.1, s-pi G A B r1.2 r2.2) ;
+  rty-uu G n h nb | r -> (r.1, \ D hD eD -> new LTy[D, uu n, T := uu n, eT := refl (uu n), dT := wfu D hD n nb]) ;
+  rty-of G n A h | r -> (r.1, \ D hD eD -> s-of' n A D hD (r.2 D hD eD)) ;
+  rtm-lam G A B b h1 h2 h3 | r1 r2 r3 -> (r1.1, \ D hD eD -> s-lam1 G A B b D hD eD (r1.2 D hD eD) r2.2 r3.2) ;
+  rtm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 ->
+    (r1.1, \ D hD eD -> s-app1 G A B c a D hD eD (r1.2 D hD eD) r2.2 r3.2 r4.2) ;
+  rtm-pi G n A B h1 h2 | r1 r2 ->
+    (r1.1, \ D hD eD -> s-pic1 G n A B D hD eD (r1.2 D hD eD)
+       (cu-tm D (r1.2 D hD eD).t (r1.2 D hD eD).T n hD (r1.2 D hD eD).dt (r1.2 D hD eD).eT) r2.2) ;
+  rtm-uu G m n h lt nb | r ->
+    (r.1, \ D hD eD -> new LTm[D, uu m, uu n, t := uc m n, T := uu n, et := refl (uu m), eT := refl (uu n),
+                                dt := tm-uc D m n (wf-from-ok D hD) lt nb]) ;
+  rtm-cum G m n A h le nb | r -> (r.1, \ D hD eD -> s-cum' m n A le nb D hD (r.2 D hD eD)) ;
+  rtm-conv G a A B h1 h2 | r1 r2 -> (r1.1, \ D hD eD -> s-conv' a A B D (r1.2 D hD eD) (r2.2 D hD eD)) ;
+  reqty-refl G A h | r -> (r.1, \ D hD eD -> s-trefl' A D (r.2 D hD eD)) ;
+  reqty-sym G A B h | r -> (r.1, \ D hD eD -> s-tsym' A B D (r.2 D hD eD)) ;
+  reqty-trans G A B C h1 h2 | r1 r2 -> (r1.1, \ D hD eD -> s-ttrans' A B C D (r1.2 D hD eD) (r2.2 D hD eD)) ;
+  reqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> (r0.1, \ D hD eD -> s-tpi1 G A A' B B' D hD eD (r1.2 D hD eD) r2.2) ;
+  reqty-of G n A A' h | r -> (r.1, \ D hD eD -> s-tof' n A A' D hD (r.2 D hD eD)) ;
+  reqtm-refl G a A h | r -> (r.1, \ D hD eD -> s-erefl' a A D (r.2 D hD eD)) ;
+  reqtm-sym G a b A hA h | rA r -> (r.1, \ D hD eD -> s-esym' a b A D (r.2 D hD eD)) ;
+  reqtm-trans G a b c A h1 h2 | r1 r2 -> (r1.1, \ D hD eD -> s-etrans' a b c A D (r1.2 D hD eD) (r2.2 D hD eD)) ;
+  reqtm-conv G a b A B h1 h2 | r1 r2 -> (r1.1, \ D hD eD -> s-econv' a b A B D (r1.2 D hD eD) (r2.2 D hD eD)) ;
+  reqtm-cum G m n a b h le nb | r -> (r.1, \ D hD eD -> s-ecum' m n a b le nb D hD (r.2 D hD eD)) ;
+  reqtm-pi G n A A' B B' h0 h1 h2 | r0 r1 r2 ->
+    (r1.1, \ D hD eD -> s-epi1 G n A A' B B' D hD eD (r1.2 D hD eD)
+       (cu-eqtm D (r1.2 D hD eD).t (r1.2 D hD eD).s (r1.2 D hD eD).T n hD (r1.2 D hD eD).d (r1.2 D hD eD).eT) r2.2) ;
+  reqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 ->
+    (r0.1, \ D hD eD -> s-elam1 G A A' B B' b b' D hD eD (r1.2 D hD eD) r2.2 r3.2) ;
+  reqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 ->
+    (r0.1, \ D hD eD -> s-eapp1 G A A' B B' c c' a a' D hD eD (r1.2 D hD eD) r2.2 r3.2 r4.2) ;
+  reqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 ->
+    (rA.1, \ D hD eD -> s-beta1 G A B b a D hD eD (rA.2 D hD eD) rB.2 r1.2 r2.2) ;
+  reqtm-eta G A B f hA hB h | rA rB r ->
+    (rA.1, \ D hD eD -> s-eta1 G A B f D hD eD (rA.2 D hD eD) rB.2 r.2) } ;
+
+------------------------------------------------------------------------
+-- Theorem 28, existence, stated with the erasure of judgements
+
+Sec28 (J : Jf) : U l = (J' : Jf) * (Id Jf (erJ J') J * Der J') ;
+
+th-wf (G : Cx) (c : LCx[G]) : Sec28 (jwf G) =
+  (jwf c.D, (ap Cx Jf (\ x -> jwf x) (erC c.D) G c.eD, c.wD)) ;
+th-ty (G : Cx) (A : Tm) (c : LCx[G]) (t : LTy[c.D, A]) : Sec28 (jty G A) =
+  (jty c.D t.T, (cong2 Cx Tm Jf (\ x y -> jty x y) (erC c.D) G (er t.T) A c.eD t.eT, t.dT)) ;
+th-tm (G : Cx) (a A : Tm) (c : LCx[G]) (t : LTm[c.D, a, A]) : Sec28 (jtm G a A) =
+  (jtm c.D t.t t.T,
+   (trans Jf (jtm (erC c.D) (er t.t) (er t.T)) (jtm G (er t.t) (er t.T)) (jtm G a A)
+      (ap Cx Jf (\ x -> jtm x (er t.t) (er t.T)) (erC c.D) G c.eD)
+      (cong2 Tm Tm Jf (\ x y -> jtm G x y) (er t.t) a (er t.T) A t.et t.eT), t.dt)) ;
+th-eqty (G : Cx) (A B : Tm) (c : LCx[G]) (q : LEqTy[c.D, A, B]) : Sec28 (jeqty G A B) =
+  (jeqty c.D q.T q.S,
+   (trans Jf (jeqty (erC c.D) (er q.T) (er q.S)) (jeqty G (er q.T) (er q.S)) (jeqty G A B)
+      (ap Cx Jf (\ x -> jeqty x (er q.T) (er q.S)) (erC c.D) G c.eD)
+      (cong2 Tm Tm Jf (\ x y -> jeqty G x y) (er q.T) A (er q.S) B q.eT q.eS), q.d)) ;
+th-eqtm (G : Cx) (a b A : Tm) (c : LCx[G]) (p : LEqTm[c.D, a, b, A]) : Sec28 (jeqtm G a b A) =
+  (jeqtm c.D p.t p.s p.T,
+   (trans Jf (jeqtm (erC c.D) (er p.t) (er p.s) (er p.T)) (jeqtm G (er p.t) (er p.s) (er p.T)) (jeqtm G a b A)
+      (ap Cx Jf (\ x -> jeqtm x (er p.t) (er p.s) (er p.T)) (erC c.D) G c.eD)
+      (trans Jf (jeqtm G (er p.t) (er p.s) (er p.T)) (jeqtm G a (er p.s) (er p.T)) (jeqtm G a b A)
+         (ap Tm Jf (\ x -> jeqtm G x (er p.s) (er p.T)) (er p.t) a p.et)
+         (cong2 Tm Tm Jf (\ x y -> jeqtm G a x y) (er p.s) b (er p.T) A p.es p.eT)), p.d)) ;
+
+th-of : (J : Jf) -> SecJ J -> Sec28 J = split {
+  jwf G -> \ s -> th-wf G s.1 ;
+  jty G A -> \ s -> th-ty G A s.1 (s.2 s.1.D (okw s.1.D s.1.wD) s.1.eD) ;
+  jtm G a A -> \ s -> th-tm G a A s.1 (s.2 s.1.D (okw s.1.D s.1.wD) s.1.eD) ;
+  jeqty G A B -> \ s -> th-eqty G A B s.1 (s.2 s.1.D (okw s.1.D s.1.wD) s.1.eD) ;
+  jeqtm G a b A -> \ s -> th-eqtm G a b A s.1 (s.2 s.1.D (okw s.1.D s.1.wD) s.1.eD) } ;
+
+thm28 (J : Jf) (h : RDer J) : Sec28 J = th-of J (sec J h) ;
+
+------------------------------------------------------------------------
+-- Theorem 28, uniqueness up to conversion
+
+cxer2 (G : Cx) (A : Tm) (D : Cx) (B : Tm) (hG : CtxOk (csnoc G A)) (hD : CtxOk (csnoc D B)) (c : CxEq G D)
+    (e : Id Tm (er A) (er B)) : CxEq (csnoc G A) (csnoc D B) =
+  (c, ty-uniq G A B hG.2 (cxconv-ty D G (cxeq-sym G D hD.1 c) hG.1 B hD.2) e) ;
+
+-- two well-formed contexts with the same erasure are convertible
+cxer : (G D : Cx) -> CtxOk G -> CtxOk D -> Id Cx (erC G) (erC D) -> CxEq G D = split {
+  cnil -> split {
+    cnil -> \ hG hD e -> tt ;
+    csnoc D B -> \ hG hD e -> efq (cx-nc (erC D) (er B) e) } ;
+  csnoc G A | r -> split {
+    cnil -> \ hG hD e -> efq (cx-nc (erC G) (er A) (sym Cx (csnoc (erC G) (er A)) cnil e)) ;
+    csnoc D B -> \ hG hD e ->
+      cxer2 G A D B hG hD (r D hG.1 hD.1 (eq-hd (erC G) (erC D) (er A) (er B) e)) (eq-tl (erC G) (erC D) (er A) (er B) e) } } ;
+
+-- move a judgement of G2 to G1 when |G1| = |G2|
+mv-ok (G1 G2 : Cx) (h1 : CtxOk G1) (h2 : CtxOk G2) (e : Id Cx (erC G1) (erC G2)) : CxEq G2 G1 =
+  cxer G2 G1 h2 h1 (sym Cx (erC G1) (erC G2) e) ;
+
+un-ty (G1 G2 : Cx) (A1 A2 : Tm) (d1 : Der (jty G1 A1)) (d2 : Der (jty G2 A2))
+    (eG : Id Cx (erC G1) (erC G2)) (eA : Id Tm (er A1) (er A2)) : CxEq G1 G2 * Der (jeqty G1 A1 A2) =
+  (cxer G1 G2 (ok-of (jty G1 A1) d1) (ok-of (jty G2 A2) d2) eG,
+   ty-uniq G1 A1 A2 d1
+     (cxconv-ty G2 G1 (mv-ok G1 G2 (ok-of (jty G1 A1) d1) (ok-of (jty G2 A2) d2) eG) (ok-of (jty G1 A1) d1) A2 d2) eA) ;
+
+un-tm (G1 G2 : Cx) (a1 A1 a2 A2 : Tm) (d1 : Der (jtm G1 a1 A1)) (d2 : Der (jtm G2 a2 A2))
+    (eG : Id Cx (erC G1) (erC G2)) (ea : Id Tm (er a1) (er a2)) (eA : Id Tm (er A1) (er A2)) :
+    CxEq G1 G2 * (Der (jeqty G1 A1 A2) * Der (jeqtm G1 a1 a2 A1)) =
+  (cxer G1 G2 (ok-of (jtm G1 a1 A1) d1) (ok-of (jtm G2 a2 A2) d2) eG,
+   er-inj G1 a1 a2 A1 A2 d1
+     (cxconv-tm G2 G1 (mv-ok G1 G2 (ok-of (jtm G1 a1 A1) d1) (ok-of (jtm G2 a2 A2) d2) eG) (ok-of (jtm G1 a1 A1) d1) a2 A2 d2)
+     ea eA) ;
+
+un-eqty (G1 G2 : Cx) (A1 B1 A2 B2 : Tm) (d1 : Der (jeqty G1 A1 B1)) (d2 : Der (jeqty G2 A2 B2))
+    (eG : Id Cx (erC G1) (erC G2)) (eA : Id Tm (er A1) (er A2)) (eB : Id Tm (er B1) (er B2)) :
+    CxEq G1 G2 * (Der (jeqty G1 A1 A2) * Der (jeqty G1 B1 B2)) =
+  ((un-ty G1 G2 A1 A2 (pt-l G1 A1 B1 d1) (pt-l G2 A2 B2 d2) eG eA).1,
+   ((un-ty G1 G2 A1 A2 (pt-l G1 A1 B1 d1) (pt-l G2 A2 B2 d2) eG eA).2,
+    (un-ty G1 G2 B1 B2 (pt-r G1 A1 B1 d1) (pt-r G2 A2 B2 d2) eG eB).2)) ;
+
+un-eqtm (G1 G2 : Cx) (a1 b1 A1 a2 b2 A2 : Tm) (d1 : Der (jeqtm G1 a1 b1 A1)) (d2 : Der (jeqtm G2 a2 b2 A2))
+    (eG : Id Cx (erC G1) (erC G2)) (ea : Id Tm (er a1) (er a2)) (eb : Id Tm (er b1) (er b2)) (eA : Id Tm (er A1) (er A2)) :
+    CxEq G1 G2 * (Der (jeqty G1 A1 A2) * (Der (jeqtm G1 a1 a2 A1) * Der (jeqtm G1 b1 b2 A1))) =
+  ((un-tm G1 G2 a1 A1 a2 A2 (pe-l G1 a1 b1 A1 d1) (pe-l G2 a2 b2 A2 d2) eG ea eA).1,
+   ((un-tm G1 G2 a1 A1 a2 A2 (pe-l G1 a1 b1 A1 d1) (pe-l G2 a2 b2 A2 d2) eG ea eA).2.1,
+    ((un-tm G1 G2 a1 A1 a2 A2 (pe-l G1 a1 b1 A1 d1) (pe-l G2 a2 b2 A2 d2) eG ea eA).2.2,
+     (un-tm G1 G2 b1 A1 b2 A2 (pe-r G1 a1 b1 A1 d1) (pe-r G2 a2 b2 A2 d2) eG eb eA).2.2))) ;

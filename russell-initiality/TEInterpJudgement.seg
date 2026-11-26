@@ -1,0 +1,118 @@
+-- Soundness in any supplied denotation of the context.
+open Base ; open Prelude[l] ; open Paths[l] ;
+open TEInterpBase ; open TEDenote ; open TEInterpIntro ; open B.GAT[l] ;
+
+CtxValue (G : GE) : U l = (g : Tel) * CtxDown G g ;
+CtxEquality (G D : GE) : U l = (g : Tel) * (CtxDown G g * CtxDown D g) ;
+
+TypeValue (g : Tel) (A : GE) : U l = (a : C.Ty (ctx g)) * TyDown A g a ;
+TypeEquality (g : Tel) (A B' : GE) : U l =
+  (a : C.Ty (ctx g)) * (TyDown A g a * TyDown B' g a) ;
+
+TermAt (g : Tel) (A : C.Ty (ctx g)) (a : GE) : U l =
+  (u : C.El (ctx g) A) * TmDown a g A u ;
+TermValue (g : Tel) (A a : GE) : U l =
+  (t : C.Ty (ctx g)) * (TyDown A g t * TermAt g t a) ;
+TermEquality (g : Tel) (A a b : GE) : U l =
+  (t : C.Ty (ctx g)) * (TyDown A g t * ((u : C.El (ctx g) t) * (TmDown a g t u * TmDown b g t u))) ;
+
+SubValue (d g : Tel) (s : GE) : U l = (u : C.Sub (ctx d) (ctx g)) * SubDown s d g u ;
+SubEquality (d g : Tel) (s t : GE) : U l =
+  (u : C.Sub (ctx d) (ctx g)) * (SubDown s d g u * SubDown t d g u) ;
+
+SoundJ : GJ -> U l = split {
+  gjwf G -> CtxValue G ;
+  gjty G A -> CtxValue G * ((g : Tel) -> CtxDown G g -> TypeValue g A) ;
+  gjtm G a A -> CtxValue G * ((g : Tel) -> CtxDown G g -> TermValue g A a) ;
+  gjsub D s G -> CtxValue D * (CtxValue G *
+    ((d g : Tel) -> CtxDown D d -> CtxDown G g -> SubValue d g s)) ;
+  gjeqcx G D -> CtxEquality G D ;
+  gjeqty G A B' -> CtxValue G * ((g : Tel) -> CtxDown G g -> TypeEquality g A B') ;
+  gjeqtm G a b A -> CtxValue G * ((g : Tel) -> CtxDown G g -> TermEquality g A a b) ;
+  gjeqsub D s t G -> CtxValue D * (CtxValue G *
+    ((d g : Tel) -> CtxDown D d -> CtxDown G g -> SubEquality d g s t)) } ;
+
+ctx-functional (G : GE) (g g' : Tel) (h : CtxDown G g) (k : CtxDown G g') : Id Tel g g' =
+  denotes-functional (meaning G).context g g' h k ;
+
+ty-functional (A : GE) (g : Tel) (u v : C.Ty (ctx g)) (h : TyDown A g u) (k : TyDown A g v) :
+    Id (C.Ty (ctx g)) u v =
+  denotes-functional ((meaning A).type-at g) u v h k ;
+
+tm-functional (a : GE) (g : Tel) (u v : Term g)
+    (h : Denotes ((meaning a).term-at g) u) (k : Denotes ((meaning a).term-at g) v) : Id (Term g) u v =
+  denotes-functional ((meaning a).term-at g) u v h k ;
+
+sub-functional (s : GE) (d : Tel) (u v : Subs d)
+    (h : Denotes ((meaning s).sub-at d) u) (k : Denotes ((meaning s).sub-at d) v) : Id (Subs d) u v =
+  denotes-functional ((meaning s).sub-at d) u v h k ;
+
+ctx-convert (G D : GE) (h : CtxEquality G D) (g : Tel) (k : CtxDown G g) : CtxDown D g =
+  denotes-eq (meaning D).context h.1 g h.2.2 (ctx-functional G h.1 g h.2.1 k) ;
+
+ctx-convert-back (G D : GE) (h : CtxEquality G D) (g : Tel) (k : CtxDown D g) : CtxDown G g =
+  ctx-convert D G (h.1,(h.2.2,h.2.1)) g k ;
+
+extension-value (G A : GE) (h : SoundJ (gjty G A)) : CtxValue (gext G A) =
+  (extend h.1.1 a.1, ext-down G A h.1.1 a.1 h.1.2 a.2)
+ where { a : TypeValue h.1.1 A = h.2 h.1.1 h.1.2 ; } ;
+
+cast-term (g : Tel) (A B' : C.Ty (ctx g)) (p : Id (C.Ty (ctx g)) A B') (u : C.El (ctx g) A) : C.El (ctx g) B' =
+  subst (C.Ty (ctx g)) (C.El (ctx g)) A B' p u ;
+
+tm-cast-down (a : GE) (g : Tel) (A B' : C.Ty (ctx g)) (p : Id (C.Ty (ctx g)) A B')
+    (u : C.El (ctx g) A) (h : TmDown a g A u) : TmDown a g B' (cast-term g A B' p u) =
+  idJ (C.Ty (ctx g)) A (\ t e -> TmDown a g t (cast-term g A t e u)) h B' p ;
+
+at-type (g : Tel) (A a : GE) (T : C.Ty (ctx g)) (hT : TyDown A g T) (w : TermValue g A a) : TermAt g T a =
+  (cast-term g w.1 T e w.2.2.1, tm-cast-down a g w.1 T e w.2.2.1 w.2.2.2)
+ where { e : Id (C.Ty (ctx g)) w.1 T = ty-functional A g w.1 T w.2.1 hT ; } ;
+
+equal-at-type (g : Tel) (A a b : GE) (T : C.Ty (ctx g)) (hT : TyDown A g T)
+    (w : TermEquality g A a b) : (v : C.El (ctx g) T) * (TmDown a g T v * TmDown b g T v) =
+  (cast-term g w.1 T e w.2.2.1,
+    (tm-cast-down a g w.1 T e w.2.2.1 w.2.2.2.1, tm-cast-down b g w.1 T e w.2.2.1 w.2.2.2.2))
+ where { e : Id (C.Ty (ctx g)) w.1 T = ty-functional A g w.1 T w.2.1 hT ; } ;
+
+ty-move (A : GE) (g : Tel) (u v : C.Ty (ctx g)) (p : Id (C.Ty (ctx g)) u v) (h : TyDown A g u) : TyDown A g v =
+  denotes-eq ((meaning A).type-at g) u v h p ;
+
+tm-move (a : GE) (g : Tel) (u v : Term g) (p : Id (Term g) u v)
+    (h : Denotes ((meaning a).term-at g) u) : Denotes ((meaning a).term-at g) v =
+  denotes-eq ((meaning a).term-at g) u v h p ;
+
+sub-move (s : GE) (d : Tel) (u v : Subs d) (p : Id (Subs d) u v)
+    (h : Denotes ((meaning s).sub-at d) u) : Denotes ((meaning s).sub-at d) v =
+  denotes-eq ((meaning s).sub-at d) u v h p ;
+
+term-path (g : Tel) (A B' : C.Ty (ctx g)) (u : C.El (ctx g) A) (v : C.El (ctx g) B')
+    (e : Id (C.Ty (ctx g)) A B') (p : Id (C.El (ctx g) B') (cast-term g A B' e u) v) :
+    Id (Term g) (A,u) (B',v) =
+  Sigma-path (C.Ty (ctx g)) (C.El (ctx g)) A B' u v e p ;
+
+sub-map-path (d g : Tel) (u v : C.Sub (ctx d) (ctx g)) (e : Id (C.Sub (ctx d) (ctx g)) u v) :
+    Id (Subs d) (g,u) (g,v) = apH (\ s -> (g,s)) e ;
+
+at-context (G : GE) (F : Tel -> U l) (w : CtxValue G) (u : F w.1) (g : Tel) (h : CtxDown G g) : F g =
+  subst Tel F w.1 g (ctx-functional G w.1 g w.2 h) u ;
+
+at-contexts (D G : GE) (F : Tel -> Tel -> U l) (wd : CtxValue D) (wg : CtxValue G) (u : F wd.1 wg.1)
+    (d g : Tel) (hd : CtxDown D d) (hg : CtxDown G g) : F d g =
+  at-context G (F d) wg (at-context D (\ v -> F v wg.1) wd u d hd) g hg ;
+
+extension-witness (G A : GE) (g : Tel) (hg : CtxDown G g) (a : C.Ty (ctx g)) (ha : TyDown A g a) :
+    CtxValue (gext G A) =
+  (extend g a,ext-down G A g a hg ha) ;
+
+same-type (g : Tel) (A B' : GE) (u v : C.Ty (ctx g)) (h : TyDown A g u) (k : TyDown B' g v) (e : Id (C.Ty (ctx g)) u v) :
+    TypeEquality g A B' =
+  (u,(h,ty-move B' g v u (symH e) k)) ;
+
+same-term (g : Tel) (A a b : GE) (u v : Term g) (hA : TyDown A g v.1)
+    (h : Denotes ((meaning a).term-at g) u) (k : Denotes ((meaning b).term-at g) v) (e : Id (Term g) u v) :
+    TermEquality g A a b =
+  (v.1,(hA,(v.2,(tm-move a g u v e h,k)))) ;
+
+same-sub (d g : Tel) (s t : GE) (u v : C.Sub (ctx d) (ctx g)) (h : SubDown s d g u) (k : SubDown t d g v)
+    (e : Id (C.Sub (ctx d) (ctx g)) u v) : SubEquality d g s t =
+  (u,(h,sub-move t d (g,v) (g,u) (sub-map-path d g v u (symH e)) k)) ;

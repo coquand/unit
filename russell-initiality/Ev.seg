@@ -1,0 +1,164 @@
+-- Ev.seg: the lifting from T_Tarski to Ehrhard-GAT, by evaluation in an
+-- environment of GAT terms (sterbac4 §4, the map ceil(-)).  Since GAT raw
+-- terms carry no context annotation, evaluation needs no context.
+--   ev t e       t with its variable i read as e i
+--   up e         the environment under a binder: q, (e i) p
+--   idv          q, q p, q p p, ...      ceil t = ev t idv
+--   ev-ext       pointwise equal environments, equal results (raw)
+--   ev-ren       ev (t[r]) e = ev t (e . r)                 (raw)
+--   er-ev        |ev t e| = t[|e|]  and Lemma 17: |ceil t| = t
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open GAT[l] ;
+
+up (e : Nat -> GE) : Nat -> GE = split {
+  zero -> gq ;
+  suc i -> gsb (e i) gp } ;
+
+ev : Tm -> (Nat -> GE) -> GE = split {
+  var i -> \ e -> e i ;
+  pi A B | rA rB -> \ e -> gpi (rA e) (rB (up e)) ;
+  lam A B b | rA rB rb -> \ e -> glam (rA e) (rB (up e)) (rb (up e)) ;
+  app A B c a | rA rB rc ra -> \ e -> gapp (rA e) (rB (up e)) (rc e) (ra e) ;
+  uu n -> \ e -> guu n ;
+  el n a | ra -> \ e -> gel n (ra e) ;
+  pic n a b | ra rb -> \ e -> gpic n (ra e) (rb (up e)) ;
+  uc m n -> \ e -> guc m n ;
+  lf m n a | ra -> \ e -> glf m n (ra e) } ;
+
+idv : Nat -> GE = split {
+  zero -> gq ;
+  suc k | r -> gsb r gp } ;
+
+ceil (t : Tm) : GE = ev t idv ;
+
+ceilC : Cx -> GE = split {
+  cnil -> gnil ;
+  csnoc G A | r -> gext r (ceil A) } ;
+
+------------------------------------------------------------------------
+-- pointwise equal environments
+
+GPt (r r' : Nat -> GE) : U l = (i : Nat) -> Id GE (r i) (r' i) ;
+
+up-ext (r r' : Nat -> GE) (e : GPt r r') : GPt (up r) (up r') = split {
+  zero -> refl gq ;
+  suc i -> ap GE GE (\ Z -> gsb Z gp) (r i) (r' i) (e i) } ;
+
+cg2 (f : GE -> GE -> GE) (a a' b b' : GE) (ea : Id GE a a') (eb : Id GE b b') : Id GE (f a b) (f a' b') =
+  trans GE (f a b) (f a' b) (f a' b') (ap GE GE (\ x -> f x b) a a' ea) (ap GE GE (\ y -> f a' y) b b' eb) ;
+cg3 (f : GE -> GE -> GE -> GE) (a a' b b' c c' : GE) (ea : Id GE a a') (eb : Id GE b b') (ec : Id GE c c') :
+    Id GE (f a b c) (f a' b' c') =
+  trans GE (f a b c) (f a' b' c) (f a' b' c') (cg2 (\ x y -> f x y c) a a' b b' ea eb) (ap GE GE (\ z -> f a' b' z) c c' ec) ;
+cg4 (f : GE -> GE -> GE -> GE -> GE) (a a' b b' c c' d d' : GE)
+    (ea : Id GE a a') (eb : Id GE b b') (ec : Id GE c c') (ed : Id GE d d') : Id GE (f a b c d) (f a' b' c' d') =
+  trans GE (f a b c d) (f a' b' c' d) (f a' b' c' d')
+    (cg3 (\ x y z -> f x y z d) a a' b b' c c' ea eb ec) (ap GE GE (\ w -> f a' b' c' w) d d' ed) ;
+
+ev-ext : (t : Tm) -> (r r' : Nat -> GE) -> GPt r r' -> Id GE (ev t r) (ev t r') = split {
+  var i -> \ r r' e -> e i ;
+  pi A B | rA rB -> \ r r' e -> cg2 (\ x y -> gpi x y) (ev A r) (ev A r') (ev B (up r)) (ev B (up r'))
+    (rA r r' e) (rB (up r) (up r') (up-ext r r' e)) ;
+  lam A B b | rA rB rb -> \ r r' e -> cg3 (\ x y z -> glam x y z) (ev A r) (ev A r') (ev B (up r)) (ev B (up r'))
+    (ev b (up r)) (ev b (up r')) (rA r r' e) (rB (up r) (up r') (up-ext r r' e)) (rb (up r) (up r') (up-ext r r' e)) ;
+  app A B c a | rA rB rc ra -> \ r r' e -> cg4 (\ x y z w -> gapp x y z w) (ev A r) (ev A r') (ev B (up r)) (ev B (up r'))
+    (ev c r) (ev c r') (ev a r) (ev a r') (rA r r' e) (rB (up r) (up r') (up-ext r r' e)) (rc r r' e) (ra r r' e) ;
+  uu n -> \ r r' e -> refl (guu n) ;
+  el n a | ra -> \ r r' e -> ap GE GE (\ x -> gel n x) (ev a r) (ev a r') (ra r r' e) ;
+  pic n a b | ra rb -> \ r r' e -> cg2 (\ x y -> gpic n x y) (ev a r) (ev a r') (ev b (up r)) (ev b (up r'))
+    (ra r r' e) (rb (up r) (up r') (up-ext r r' e)) ;
+  uc m n -> \ r r' e -> refl (guc m n) ;
+  lf m n a | ra -> \ r r' e -> ap GE GE (\ x -> glf m n x) (ev a r) (ev a r') (ra r r' e) } ;
+
+------------------------------------------------------------------------
+-- renaming (raw)
+
+up-ren (e : Nat -> GE) (r : Nat -> Nat) : GPt (\ i -> up e (Ren.lift r i)) (up (\ i -> e (r i))) = split {
+  zero -> refl gq ;
+  suc i -> refl (gsb (e (r i)) gp) } ;
+
+bd-ren (B : Tm) (e : Nat -> GE) (r : Nat -> Nat)
+    (ih : Id GE (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (\ i -> up e (Ren.lift r i)))) :
+    Id GE (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (up (\ i -> e (r i)))) =
+  trans GE (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (\ i -> up e (Ren.lift r i))) (ev B (up (\ i -> e (r i))))
+    ih (ev-ext B (\ i -> up e (Ren.lift r i)) (up (\ i -> e (r i))) (up-ren e r)) ;
+
+ev-ren : (t : Tm) -> (e : Nat -> GE) -> (r : Nat -> Nat) -> Id GE (ev (Ren.trav t r) e) (ev t (\ i -> e (r i))) = split {
+  var i -> \ e r -> refl (e (r i)) ;
+  pi A B | rA rB -> \ e r ->
+    cg2 (\ x y -> gpi x y) (ev (Ren.trav A r) e) (ev A (\ i -> e (r i)))
+      (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (up (\ i -> e (r i))))
+      (rA e r) (bd-ren B e r (rB (up e) (Ren.lift r))) ;
+  lam A B b | rA rB rb -> \ e r ->
+    cg3 (\ x y z -> glam x y z) (ev (Ren.trav A r) e) (ev A (\ i -> e (r i)))
+      (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (up (\ i -> e (r i))))
+      (ev (Ren.trav b (Ren.lift r)) (up e)) (ev b (up (\ i -> e (r i))))
+      (rA e r) (bd-ren B e r (rB (up e) (Ren.lift r))) (bd-ren b e r (rb (up e) (Ren.lift r))) ;
+  app A B c a | rA rB rc ra -> \ e r ->
+    cg4 (\ x y z w -> gapp x y z w) (ev (Ren.trav A r) e) (ev A (\ i -> e (r i)))
+      (ev (Ren.trav B (Ren.lift r)) (up e)) (ev B (up (\ i -> e (r i))))
+      (ev (Ren.trav c r) e) (ev c (\ i -> e (r i))) (ev (Ren.trav a r) e) (ev a (\ i -> e (r i)))
+      (rA e r) (bd-ren B e r (rB (up e) (Ren.lift r))) (rc e r) (ra e r) ;
+  uu n -> \ e r -> refl (guu n) ;
+  el n a | ra -> \ e r -> ap GE GE (\ x -> gel n x) (ev (Ren.trav a r) e) (ev a (\ i -> e (r i))) (ra e r) ;
+  pic n a b | ra rb -> \ e r ->
+    cg2 (\ x y -> gpic n x y) (ev (Ren.trav a r) e) (ev a (\ i -> e (r i)))
+      (ev (Ren.trav b (Ren.lift r)) (up e)) (ev b (up (\ i -> e (r i))))
+      (ra e r) (bd-ren b e r (rb (up e) (Ren.lift r))) ;
+  uc m n -> \ e r -> refl (guc m n) ;
+  lf m n a | ra -> \ e r -> ap GE GE (\ x -> glf m n x) (ev (Ren.trav a r) e) (ev a (\ i -> e (r i))) (ra e r) } ;
+
+-- weakening: ev (wk t) e = ev t (e . suc)
+ev-wk (t : Tm) (e : Nat -> GE) : Id GE (ev (wk t) e) (ev t (\ i -> e (suc i))) = ev-ren t e (\ i -> suc i) ;
+
+------------------------------------------------------------------------
+-- erasure of an evaluation; Lemma 17
+
+wkE : Nat -> Tm = \ i -> var (suc i) ;
+
+er-up (e : Nat -> GE) : SL.PtEq (\ i -> et (up e i)) (Sub.lift (\ i -> et (e i))) = split {
+  zero -> refl (var zero) ;
+  suc i -> sym Tm (wk (et (e i))) (Sub.trav (et (e i)) wkE) (ren-as-sub (et (e i)) (\ j -> suc j)) } ;
+
+er-bd (B : Tm) (e : Nat -> GE) (ih : Id Tm (et (ev B (up e))) (Sub.trav B (\ i -> et (up e i)))) :
+    Id Tm (et (ev B (up e))) (Sub.trav B (Sub.lift (\ i -> et (e i)))) =
+  trans Tm (et (ev B (up e))) (Sub.trav B (\ i -> et (up e i))) (Sub.trav B (Sub.lift (\ i -> et (e i))))
+    ih (SL.trav-ext B (\ i -> et (up e i)) (Sub.lift (\ i -> et (e i))) (er-up e)) ;
+
+er-ev : (t : Tm) -> (e : Nat -> GE) -> Id Tm (et (ev t e)) (Sub.trav t (\ i -> et (e i))) = split {
+  var i -> \ e -> refl (et (e i)) ;
+  pi A B | rA rB -> \ e ->
+    cong2 Tm Tm Tm (\ x y -> pi x y) (et (ev A e)) (Sub.trav A (\ i -> et (e i)))
+      (et (ev B (up e))) (Sub.trav B (Sub.lift (\ i -> et (e i)))) (rA e) (er-bd B e (rB (up e))) ;
+  lam A B b | rA rB rb -> \ e ->
+    cong3 Tm (\ x y z -> lam x y z) (et (ev A e)) (Sub.trav A (\ i -> et (e i)))
+      (et (ev B (up e))) (Sub.trav B (Sub.lift (\ i -> et (e i))))
+      (et (ev b (up e))) (Sub.trav b (Sub.lift (\ i -> et (e i))))
+      (rA e) (er-bd B e (rB (up e))) (er-bd b e (rb (up e))) ;
+  app A B c a | rA rB rc ra -> \ e ->
+    cong4 Tm (\ x y z w -> app x y z w) (et (ev A e)) (Sub.trav A (\ i -> et (e i)))
+      (et (ev B (up e))) (Sub.trav B (Sub.lift (\ i -> et (e i))))
+      (et (ev c e)) (Sub.trav c (\ i -> et (e i))) (et (ev a e)) (Sub.trav a (\ i -> et (e i)))
+      (rA e) (er-bd B e (rB (up e))) (rc e) (ra e) ;
+  uu n -> \ e -> refl (uu n) ;
+  el n a | ra -> \ e -> ap Tm Tm (\ x -> el n x) (et (ev a e)) (Sub.trav a (\ i -> et (e i))) (ra e) ;
+  pic n a b | ra rb -> \ e ->
+    cong2 Tm Tm Tm (\ x y -> pic n x y) (et (ev a e)) (Sub.trav a (\ i -> et (e i)))
+      (et (ev b (up e))) (Sub.trav b (Sub.lift (\ i -> et (e i)))) (ra e) (er-bd b e (rb (up e))) ;
+  uc m n -> \ e -> refl (uc m n) ;
+  lf m n a | ra -> \ e -> ap Tm Tm (\ x -> lf m n x) (et (ev a e)) (Sub.trav a (\ i -> et (e i))) (ra e) } ;
+
+er-idv : (i : Nat) -> Id Tm (et (idv i)) (var i) = split {
+  zero -> refl (var zero) ;
+  suc k | r -> ap Tm Tm (\ x -> Sub.trav x wkE) (et (idv k)) (var k) r } ;
+
+-- Lemma 17 (right inverse, strict)
+er-ceil (t : Tm) : Id Tm (et (ceil t)) t =
+  trans Tm (et (ceil t)) (Sub.trav t (\ i -> et (idv i))) t (er-ev t idv) (sub-id-pt t (\ i -> et (idv i)) er-idv) ;
+
+er-ceilC : (G : Cx) -> Id Cx (ec (ceilC G)) G = split {
+  cnil -> refl cnil ;
+  csnoc G A | r ->
+    trans Cx (csnoc (ec (ceilC G)) (et (ceil A))) (csnoc G (et (ceil A))) (csnoc G A)
+      (ap Cx Cx (\ X -> csnoc X (et (ceil A))) (ec (ceilC G)) G r)
+      (ap Tm Cx (\ Y -> csnoc G Y) (et (ceil A)) A (er-ceil A)) } ;

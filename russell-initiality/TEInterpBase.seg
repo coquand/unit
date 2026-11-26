@@ -1,0 +1,105 @@
+-- Semantic telescopes and partial values for the interpretation of T_E.
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open Lib[l] ;
+open EhrhardTEModel[l] ;
+C : EhrhardCwF.CwF[l] = M.cwf ;
+
+IsT-prop : (b : Bool) -> isProp (IsT b) = split {
+  true -> isTop ; false -> isProp-Empty } ;
+
+nat-set (n : Nat) : (m : Nat) -> isProp (Id Nat n m) =
+  Hedberg[Nat,n,\ m -> IsT (eqN n m),\ m -> IsT-prop (eqN n m),eqN-refl n,eqN-sound n].hedberg ;
+
+le-prop : (m n : Nat) -> isProp (LeN m n) = split {
+  zero -> \ n -> isTop ;
+  suc m | r -> split { zero -> isProp-Empty ; suc n -> r n } } ;
+
+record TelLayer {
+  carrier : U l ;
+  at : carrier -> C.Ctx ;
+  carrier-set : isSet carrier ;
+} ;
+
+layer : Nat -> TelLayer = split {
+  zero -> new TelLayer[carrier := Top, at := \ u -> C.nil, carrier-set := prop-to-set Top isTop] ;
+  suc k | r -> new TelLayer[
+    carrier := (g : r.carrier) * C.Ty (r.at g),
+    at := \ w -> C.ext (r.at w.1) w.2,
+    carrier-set := isSet-Sigma r.carrier (\ g -> C.Ty (r.at g)) r.carrier-set (\ g -> C.isSetTy (r.at g))] } ;
+
+Tel : U l = (k : Nat) * (layer k).carrier ;
+tel-set : isSet Tel = isSet-Sigma Nat (\ k -> (layer k).carrier) nat-set (\ k -> (layer k).carrier-set) ;
+
+ctx (G : Tel) : C.Ctx = (layer G.1).at G.2 ;
+empty-tel : Tel = (zero,tt) ;
+extend (G : Tel) (A : C.Ty (ctx G)) : Tel = (suc G.1,(G.2,A)) ;
+
+Term (G : Tel) : U l = (A : C.Ty (ctx G)) * C.El (ctx G) A ;
+Subs (D : Tel) : U l = (G : Tel) * C.Sub (ctx D) (ctx G) ;
+
+term-set (G : Tel) : isSet (Term G) =
+  isSet-Sigma (C.Ty (ctx G)) (C.El (ctx G)) (C.isSetTy (ctx G)) (C.isSetEl (ctx G)) ;
+
+subs-set (D : Tel) : isSet (Subs D) =
+  isSet-Sigma Tel (\ G -> C.Sub (ctx D) (ctx G)) tel-set (\ G -> C.isSetSub (ctx D) (ctx G)) ;
+
+record Partial (X : U l) {
+  dom : U l ;
+  dom-prop : isProp dom ;
+  result : dom -> X ;
+} ;
+
+return {X : U l} (x : X) : Partial[X] =
+  new Partial[X, dom := Top, dom-prop := isTop, result := \ h -> x] ;
+
+undefined (X : U l) : Partial[X] =
+  new Partial[X, dom := Empty, dom-prop := isProp-Empty, result := \ e -> efq e] ;
+
+bind {X Y : U l} (P : Partial[X]) (f : X -> Partial[Y]) : Partial[Y] =
+  new Partial[Y,
+    dom := (p : P.dom) * (f (P.result p)).dom,
+    dom-prop := isProp-Sigma P.dom (\ p -> (f (P.result p)).dom) P.dom-prop
+      (\ p -> (f (P.result p)).dom-prop),
+    result := \ w -> (f (P.result w.1)).result w.2] ;
+
+guard {X : U l} (P : U l) (pP : isProp P) (f : P -> X) : Partial[X] =
+  new Partial[X, dom := P, dom-prop := pP, result := f] ;
+
+Denotes {X : U l} (P : Partial[X]) (x : X) : U l = (p : P.dom) * Id X (P.result p) x ;
+
+denotes-functional {X : U l} (P : Partial[X]) (x y : X) (h : Denotes P x) (h' : Denotes P y) :
+    Id X x y =
+  transH (symH h.2) (transH (apH P.result (P.dom-prop h.1 h'.1)) h'.2) ;
+
+denotes-prop {X : U l} (P : Partial[X]) (sX : isSet X) (x : X) : isProp (Denotes P x) =
+  isProp-Sigma P.dom (\ p -> Id X (P.result p) x) P.dom-prop (\ p -> sX (P.result p) x) ;
+
+return-denotes {X : U l} (x : X) : Denotes (return x) x = (tt,refl x) ;
+
+bind-denotes {X Y : U l} (P : Partial[X]) (f : X -> Partial[Y])
+    (x : X) (y : Y) (h : Denotes P x) (k : Denotes (f x) y) : Denotes (bind P f) y =
+  idJ X (P.result h.1) (\ x' e -> Denotes (f x') y -> Denotes (bind P f) y)
+    (\ w -> ((h.1,w.1),w.2)) x h.2 k ;
+
+denotes-eq {X : U l} (P : Partial[X]) (x y : X) (h : Denotes P x) (e : Id X x y) : Denotes P y =
+  (h.1, transH h.2 e) ;
+
+check-term (G : Tel) (A : C.Ty (ctx G)) (u : Term G) : Partial[C.El (ctx G) A] =
+  guard (Id (C.Ty (ctx G)) u.1 A) (C.isSetTy (ctx G) u.1 A)
+    (\ e -> subst (C.Ty (ctx G)) (C.El (ctx G)) u.1 A e u.2) ;
+
+level-at (n : Nat) : Partial[LevelAt N] =
+  guard (LeN n N) (le-prop n N) (\ h -> (n,h)) ;
+
+record StrictPair {
+  from : LevelAt N ;
+  to : LevelAt N ;
+  strict : StrictAt N from to ;
+} ;
+
+strict-levels (m n : Nat) : Partial[StrictPair] =
+  bind (guard (LeN n N) (le-prop n N) (\ h -> h)) (\ nb ->
+    guard (LeN (suc m) n) (le-prop (suc m) n) (\ lt ->
+      new StrictPair[from := (m,leN-trans m n N (BoundedSyntax[N].TTyping[l].lt-le m n lt) nb),to := (n,nb),strict := lt])) ;

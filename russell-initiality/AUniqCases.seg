@@ -1,0 +1,157 @@
+-- U1 cases with arbitrary converted typings. The lift and action cases
+-- take comparison hypotheses for their immediate subexpressions.
+level l ;
+open Base ; open AGAT[l] ; open APresup[l] ; open ACtx[l] ; open AGen[l] ;
+
+TyCompare (A B : GA) : U l = (D E : GA) -> CE D E -> Ty D A -> Ty E B -> TE D A B ;
+TmCompare (a b : GA) : U l = (D E A B : GA) -> CE D E -> Tm' D a A -> Tm' E b B ->
+  TE D A B * ME D a b A ;
+SubCompare (s t : GA) : U l = (D E G H : GA) -> CE D E -> Sb D s G -> Sb E t H ->
+  CE G H * SE D s t G ;
+
+compare-origins (L R D E : GA) (l : CE L D) (r : CE R E) (e : CE D E) : CE L R =
+  a-cx-trans L D R l (a-cx-trans D E R e (a-cx-sym R E r)) ;
+
+compare-ends (L R D E : GA) (l : CE L D) (r : CE R E) (e : CE L R) : CE D E =
+  compare-origins D E L R (a-cx-sym L D l) (a-cx-sym R E r) e ;
+
+-- Projection and variable generation recover the exact anchors of the leaf.
+p-frame (D G X A : GA) (v : SubGen D (ap X A) G) : CE (aext X A) D * CE X G =
+  (Prelude[l].subst GA (\ Y -> CE Y D) v.1 (aext X A) v.2.2.1.1 v.2.2.2.1,
+   Prelude[l].subst GA (\ Y -> CE Y G) v.2.1 X v.2.2.1.2.1 v.2.2.2.2) ;
+
+p-compare (X A Y B : GA) : SubCompare (ap X A) (ap Y B) =
+  \ D E G H e hs ht -> p-compare-frames X A Y B D E G H e
+    (p-frame D G X A (gen-sub D (ap X A) G hs)) (p-frame E H Y B (gen-sub E (ap Y B) H ht))
+  where {
+    p-compare-frames (X A Y B D E G H : GA) (e : CE D E)
+        (s : CE (aext X A) D * CE X G) (t : CE (aext Y B) E * CE Y H) :
+        CE G H * SE D (ap X A) (ap Y B) G =
+      (compare-ends X Y G H s.2 t.2 anchors.1,
+       move-se (aext X A) D X G (ap X A) (ap Y B) s.1 s.2
+         (aq-p-cx X Y A B anchors.1 anchors.2))
+      where {
+        anchors : CE X Y * TE X A B =
+          cx-ext-inv X A Y B (compare-origins (aext X A) (aext Y B) D E s.1 t.1 e) ;
+      } ;
+  } ;
+
+q-frame (D X A T : GA) (v : TmGen D (aq X A) T) : CE (aext X A) D * TE D (asb A (ap X A)) T =
+  (Prelude[l].subst GA (\ Y -> CE Y D) v.1 (aext X A) v.2.2.1.1 v.2.2.2.1,
+   Prelude[l].subst GA (\ P -> TE D P T) v.2.1 (asb A (ap X A)) v.2.2.1.2.2 v.2.2.2.2) ;
+
+-- Align a term equation at the left advertised type and compare both types.
+term-compare-finish (D E a b P Q A B : GA) (e : CE D E) (left : TE D P A) (right : TE E Q B)
+    (types : TE D P Q) (terms : ME D a b P) : TE D A B * ME D a b A =
+  (ae-trans D A P B (ae-sym D P A left)
+    (ae-trans D P Q B types (move-te E D Q B (a-cx-sym D E e) right)),
+   am-eqconv D a b P A terms left) ;
+
+q-compare (X A Y B : GA) : TmCompare (aq X A) (aq Y B) =
+  \ D E T V e hq hr -> q-compare-frames X A Y B D E T V e
+    (q-frame D X A T (gen-tm D (aq X A) T hq)) (q-frame E Y B V (gen-tm E (aq Y B) V hr))
+  where {
+    q-compare-frames (X A Y B D E T V : GA) (e : CE D E)
+        (q : CE (aext X A) D * TE D (asb A (ap X A)) T)
+        (r : CE (aext Y B) E * TE E (asb B (ap Y B)) V) :
+        TE D T V * ME D (aq X A) (aq Y B) T =
+      term-compare-finish D E (aq X A) (aq Y B) (asb A (ap X A)) (asb B (ap Y B)) T V e q.2 r.2
+        (move-te (aext X A) D (asb A (ap X A)) (asb B (ap Y B)) q.1
+          (ae-sb (aext X A) X A B (ap X A) (ap Y B) (apresup (ajeqty X A B) anchors.2).2.1
+            anchors.2 pt.2.2.1 pt.2.2.2 pe))
+        (move-me (aext X A) D (aq X A) (aq Y B) (asb A (ap X A)) q.1
+          (am-q-cx X Y A B anchors.1 anchors.2))
+      where {
+        anchors : CE X Y * TE X A B =
+          cx-ext-inv X A Y B (compare-origins (aext X A) (aext Y B) D E q.1 r.1 e) ;
+        pe : SE (aext X A) (ap X A) (ap Y B) X = aq-p-cx X Y A B anchors.1 anchors.2 ;
+        pt : APJ (ajeqsub (aext X A) (ap X A) (ap Y B) X) =
+          apresup (ajeqsub (aext X A) (ap X A) (ap Y B) X) pe ;
+      } ;
+  } ;
+
+record LiftFrame {
+  D : GA ; G : GA ; A : GA ; s : GA ;
+  baseD : GA ; baseG : GA ; domain : CE (aext baseD (asb A s)) D ;
+  codomain : CE (aext baseG A) G ; baseSub : Sb baseD s baseG ; baseType : Ty baseG A
+} ;
+
+lift-frame (D G A s : GA) (v : SubGen D (alift A s) G) : LiftFrame[D,G,A,s] =
+  new LiftFrame[D,G,A,s, baseD := intro.1, baseG := intro.2.1,
+    domain := Prelude[l].subst GA (\ Z -> CE Z D) v.1 (aext intro.1 (asb A s)) intro.2.2.1 v.2.2.2.1,
+    codomain := Prelude[l].subst GA (\ Z -> CE Z G) v.2.1 (aext intro.2.1 A) intro.2.2.2.1 v.2.2.2.2,
+    baseSub := intro.2.2.2.2.1, baseType := intro.2.2.2.2.2]
+  where { intro : SubIntro v.1 v.2.1 (alift A s) = v.2.2.1 ; } ;
+
+lift-compare (A B s t : GA) (ca : TyCompare A B) (cs : SubCompare s t) : SubCompare (alift A s) (alift B t) =
+  \ D E G H e hs ht -> lift-compare-frames A B s t D E G H ca cs e
+    (lift-frame D G A s (gen-sub D (alift A s) G hs)) (lift-frame E H B t (gen-sub E (alift B t) H ht))
+  where {
+    lift-compare-frames (A B s t D E G H : GA) (ca : TyCompare A B) (cs : SubCompare s t) (e : CE D E)
+        (p : LiftFrame[D,G,A,s]) (q : LiftFrame[E,H,B,t]) : CE G H * SE D (alift A s) (alift B t) G =
+      (compare-ends (aext p.baseG A) (aext q.baseG B) G H p.codomain q.codomain
+        (ac-ext p.baseG q.baseG A B ss.1 aa),
+       move-se (aext p.baseD (asb A s)) D (aext p.baseG A) G (alift A s) (alift B t) p.domain p.codomain
+         (aq-lift p.baseD p.baseG A B s t p.baseType aa p.baseSub ss.2))
+      where {
+        dom : CE p.baseD q.baseD =
+          (cx-ext-inv p.baseD (asb A s) q.baseD (asb B t)
+            (compare-origins (aext p.baseD (asb A s)) (aext q.baseD (asb B t)) D E p.domain q.domain e)).1 ;
+        ss : CE p.baseG q.baseG * SE p.baseD s t p.baseG =
+          cs p.baseD q.baseD p.baseG q.baseG dom p.baseSub q.baseSub ;
+        aa : TE p.baseG A B = ca p.baseG q.baseG ss.1 p.baseType q.baseType ;
+      } ;
+  } ;
+
+ty-action-compare (A B s t : GA) (ca : TyCompare A B) (cs : SubCompare s t) : TyCompare (asb A s) (asb B t) =
+  \ D E e hs ht -> ty-action-compare-frames A B s t D E ca cs e
+    (gen-ty D (asb A s) hs) (gen-ty E (asb B t) ht)
+  where {
+    ty-action-compare-frames (A B s t D E : GA) (ca : TyCompare A B) (cs : SubCompare s t) (e : CE D E)
+        (p : TyGen D (asb A s)) (q : TyGen E (asb B t)) : TE D (asb A s) (asb B t) =
+      move-te p.1 D (asb A s) (asb B t) p.2.2
+        (ae-sb p.1 pi.1 A B s t pi.2.1 (ca pi.1 qi.1 ss.1 pi.2.1 qi.2.1) pi.2.2
+          (apresup (ajeqsub p.1 s t pi.1) ss.2).2.2.2 ss.2)
+      where {
+        pi : TyIntro p.1 (asb A s) = p.2.1 ;
+        qi : TyIntro q.1 (asb B t) = q.2.1 ;
+        ss : CE pi.1 qi.1 * SE p.1 s t pi.1 =
+          cs p.1 q.1 pi.1 qi.1 (compare-origins p.1 q.1 D E p.2.2 q.2.2 e) pi.2.2 qi.2.2 ;
+      } ;
+  } ;
+
+record TmActionFrame {
+  D : GA ; a : GA ; s : GA ; T : GA ;
+  origin : GA ; target : GA ; principal : GA ;
+  sourceType : Ty target principal ; sourceTerm : Tm' target a principal ;
+  sourceSub : Sb origin s target ; domain : CE origin D ; advertised : TE D (asb principal s) T
+} ;
+
+tm-action-frame (D a s T : GA) (v : TmGen D (asb a s) T) : TmActionFrame[D,a,s,T] =
+  new TmActionFrame[D,a,s,T, origin := v.1, target := intro.1, principal := intro.2.1,
+    sourceType := intro.2.2.1, sourceTerm := intro.2.2.2.1, sourceSub := intro.2.2.2.2.1,
+    domain := v.2.2.2.1,
+    advertised := Prelude[l].subst GA (\ P -> TE D P T) v.2.1 (asb intro.2.1 s) intro.2.2.2.2.2 v.2.2.2.2]
+  where { intro : TmIntro v.1 v.2.1 (asb a s) = v.2.2.1 ; } ;
+
+tm-action-compare (a b s t : GA) (ca : TmCompare a b) (cs : SubCompare s t) : TmCompare (asb a s) (asb b t) =
+  \ D E T V e ha hb -> tm-action-compare-frames a b s t D E T V ca cs e
+    (tm-action-frame D a s T (gen-tm D (asb a s) T ha)) (tm-action-frame E b t V (gen-tm E (asb b t) V hb))
+  where {
+    tm-action-compare-frames (a b s t D E T V : GA) (ca : TmCompare a b) (cs : SubCompare s t) (e : CE D E)
+        (p : TmActionFrame[D,a,s,T]) (q : TmActionFrame[E,b,t,V]) : TE D T V * ME D (asb a s) (asb b t) T =
+      term-compare-finish D E (asb a s) (asb b t) (asb p.principal s) (asb q.principal t) T V e
+        p.advertised q.advertised
+        (move-te p.origin D (asb p.principal s) (asb q.principal t) p.domain
+          (ae-sb p.origin p.target p.principal q.principal s t p.sourceType aa.1 p.sourceSub ht ss.2))
+        (move-me p.origin D (asb a s) (asb b t) (asb p.principal s) p.domain
+          (am-esb p.origin p.target a b p.principal s t p.sourceType p.sourceTerm aa.2 p.sourceSub ht ss.2))
+      where {
+        ss : CE p.target q.target * SE p.origin s t p.target =
+          cs p.origin q.origin p.target q.target (compare-origins p.origin q.origin D E p.domain q.domain e)
+            p.sourceSub q.sourceSub ;
+        ht : Sb p.origin t p.target = (apresup (ajeqsub p.origin s t p.target) ss.2).2.2.2 ;
+        aa : TE p.target p.principal q.principal * ME p.target a b p.principal =
+          ca p.target q.target p.principal q.principal ss.1 p.sourceTerm q.sourceTerm ;
+      } ;
+  } ;

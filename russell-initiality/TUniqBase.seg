@@ -1,0 +1,308 @@
+-- TUniqBase.seg: tools for the uniqueness lemma of T_Tarski (sterbac4
+-- Lemma 25, file TUniq.seg).
+--   sz, mLR, mRL      size of raw terms and the measure of the induction
+--   tag, p1..p3, q1   no-confusion and injectivity of raw constructors
+--   lft k n v         t^n_k v for k <= n: v when k = n, lf k n v when k < n
+--                     (the lifts of T_Tarski are strict); le-elim splits k <= n
+--   lft-tm, lft-cong, lft-el, lft-lft, lft-pic, lft-uc   its laws
+--   CLU, CL, TRes     the two outcomes of Lemma 25.3 (one common code v : U_k
+--                     instead of the paper's v0 = v1 : U_k, equivalent by lft-cong)
+--   res-sym, res-clu, clu-same, res-same   (res-same is Lemma 26)
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ;
+open TSubLib[l] ; open TPresup[l] ; open TInv[l] ;
+
+------------------------------------------------------------------------
+-- arithmetic for the measure
+
+le-suc-r : (x y : Nat) -> LeN x y -> LeN x (suc y) = split {
+  zero -> \ y h -> tt ;
+  suc x | r -> split { zero -> \ h -> efq h ; suc y -> \ h -> r y h } } ;
+
+add-le-l : (x y : Nat) -> LeN x (add x y) = split {
+  zero -> \ y -> tt ;
+  suc x | r -> \ y -> r y } ;
+
+add-le-r : (x y : Nat) -> LeN y (add x y) = split {
+  zero -> \ y -> leN-refl y ;
+  suc x | r -> \ y -> le-suc-r y (add x y) (r y) } ;
+
+add-mono : (a a' b b' : Nat) -> LeN a a' -> LeN b b' -> LeN (add a b) (add a' b') = split {
+  zero -> \ a' b b' h1 h2 -> leN-trans b b' (add a' b') h2 (add-le-r a' b') ;
+  suc a | r -> split {
+    zero -> \ b b' h1 h2 -> efq h1 ;
+    suc a' -> \ b b' h1 h2 -> r a' b b' h1 h2 } } ;
+
+add-suc-ge : (x y : Nat) -> LeN (suc (add x y)) (add x (suc y)) = split {
+  zero -> \ y -> leN-refl y ;
+  suc x | r -> \ y -> r y } ;
+
+add-suc-le : (x y : Nat) -> LeN (add x (suc y)) (suc (add x y)) = split {
+  zero -> \ y -> leN-refl y ;
+  suc x | r -> \ y -> r y } ;
+
+add-comm-le : (x y : Nat) -> LeN (add x y) (add y x) = split {
+  zero -> \ y -> add-le-l y zero ;
+  suc x | r -> \ y -> leN-trans (suc (add x y)) (suc (add y x)) (add y (suc x)) (r y) (add-suc-ge y x) } ;
+
+-- strict decrease on the left, or on the right
+mLR (x y x' y' N : Nat) (hx : LeN (suc x') x) (hy : LeN y' y) (h : LeN (add x y) (suc N)) : LeN (add x' y') N =
+  leN-trans (suc (add x' y')) (add x y) (suc N) (add-mono (suc x') x y' y hx hy) h ;
+
+mRL (x y x' y' N : Nat) (hx : LeN x' x) (hy : LeN (suc y') y) (h : LeN (add x y) (suc N)) : LeN (add x' y') N =
+  leN-trans (suc (add x' y')) (add x' (suc y')) (suc N) (add-suc-ge x' y')
+    (leN-trans (add x' (suc y')) (add x y) (suc N) (add-mono x' x (suc y') y hx hy) h) ;
+
+le-comm (x y M : Nat) (h : LeN (add x y) M) : LeN (add y x) M =
+  leN-trans (add y x) (add x y) M (add-comm-le y x) h ;
+
+-- three and four summands
+s3-1 (x y z : Nat) : LeN x (add x (add y z)) = add-le-l x (add y z) ;
+s3-2 (x y z : Nat) : LeN y (add x (add y z)) = leN-trans y (add y z) (add x (add y z)) (add-le-l y z) (add-le-r x (add y z)) ;
+s3-3 (x y z : Nat) : LeN z (add x (add y z)) = leN-trans z (add y z) (add x (add y z)) (add-le-r y z) (add-le-r x (add y z)) ;
+s4-1 (x y z w : Nat) : LeN x (add x (add y (add z w))) = add-le-l x (add y (add z w)) ;
+s4-2 (x y z w : Nat) : LeN y (add x (add y (add z w))) = s3-2 x y (add z w) ;
+s4-3 (x y z w : Nat) : LeN z (add x (add y (add z w))) =
+  leN-trans z (add y (add z w)) (add x (add y (add z w))) (s3-2 y z w) (add-le-r x (add y (add z w))) ;
+s4-4 (x y z w : Nat) : LeN w (add x (add y (add z w))) =
+  leN-trans w (add y (add z w)) (add x (add y (add z w))) (s3-3 y z w) (add-le-r x (add y (add z w))) ;
+
+------------------------------------------------------------------------
+-- size of raw terms
+
+sz : Tm -> Nat = split {
+  var i -> suc zero ;
+  pi A B | rA rB -> suc (add rA rB) ;
+  lam A B b | rA rB rb -> suc (add rA (add rB rb)) ;
+  app A B c a | rA rB rc ra -> suc (add rA (add rB (add rc ra))) ;
+  uu n -> suc zero ;
+  el n a | ra -> suc ra ;
+  pic n a b | ra rb -> suc (add ra rb) ;
+  uc m n -> suc zero ;
+  lf m n a | ra -> suc ra } ;
+
+sz-nz : (x y : Tm) -> LeN (add (sz x) (sz y)) zero -> Empty = split {
+  var i -> \ y h -> h ;
+  pi A B -> \ y h -> h ;
+  lam A B b -> \ y h -> h ;
+  app A B c a -> \ y h -> h ;
+  uu n -> \ y h -> h ;
+  el n a -> \ y h -> h ;
+  pic n a b -> \ y h -> h ;
+  uc m n -> \ y h -> h ;
+  lf m n a -> \ y h -> h } ;
+
+------------------------------------------------------------------------
+-- no-confusion and injectivity of raw constructors
+
+tag : Tm -> Nat = split {
+  var i -> zero ;
+  pi A B -> suc zero ;
+  lam A B b -> suc (suc zero) ;
+  app A B c a -> suc (suc (suc zero)) ;
+  uu n -> suc (suc (suc (suc zero))) ;
+  el n a -> suc (suc (suc (suc (suc zero)))) ;
+  pic n a b -> suc (suc (suc (suc (suc (suc zero))))) ;
+  uc m n -> suc (suc (suc (suc (suc (suc (suc zero)))))) ;
+  lf m n a -> suc (suc (suc (suc (suc (suc (suc (suc zero))))))) } ;
+
+noconf (x y : Tm) (e : Id Tm x y) (ne : IsF (eqN (tag x) (tag y))) : Empty =
+  eqN-ne (tag x) (tag y) ne (ap Tm Nat tag x y e) ;
+
+p1 : Tm -> Tm = split {
+  var i -> var i ; pi A B -> A ; lam A B b -> A ; app A B c a -> A ; uu n -> uu n ;
+  el n a -> a ; pic n a b -> a ; uc m n -> uu m ; lf m n a -> a } ;
+p2 : Tm -> Tm = split {
+  var i -> var i ; pi A B -> B ; lam A B b -> B ; app A B c a -> B ; uu n -> uu n ;
+  el n a -> a ; pic n a b -> b ; uc m n -> uu m ; lf m n a -> a } ;
+p3 : Tm -> Tm = split {
+  var i -> var i ; pi A B -> B ; lam A B b -> b ; app A B c a -> c ; uu n -> uu n ;
+  el n a -> a ; pic n a b -> b ; uc m n -> uu m ; lf m n a -> a } ;
+p4 : Tm -> Tm = split {
+  var i -> var i ; pi A B -> B ; lam A B b -> b ; app A B c a -> a ; uu n -> uu n ;
+  el n a -> a ; pic n a b -> b ; uc m n -> uu m ; lf m n a -> a } ;
+q1 : Tm -> Nat = split {
+  var i -> i ; pi A B -> zero ; lam A B b -> zero ; app A B c a -> zero ; uu n -> n ;
+  el n a -> n ; pic n a b -> n ; uc m n -> m ; lf m n a -> m } ;
+
+inj (f : Tm -> Tm) (x y : Tm) (e : Id Tm x y) : Id Tm (f x) (f y) = ap Tm Tm f x y e ;
+injN (x y : Tm) (e : Id Tm x y) : Id Nat (q1 x) (q1 y) = ap Tm Nat q1 x y e ;
+
+------------------------------------------------------------------------
+-- the order on levels
+
+lt-ne : (k n : Nat) -> LeN (suc k) n -> IsF (eqN k n) = split {
+  zero -> split { zero -> \ h -> efq h ; suc n -> \ h -> tt } ;
+  suc k | r -> split { zero -> \ h -> efq h ; suc n -> \ h -> r n h } } ;
+
+le-ne-lt : (k n : Nat) -> LeN k n -> IsF (eqN k n) -> LeN (suc k) n = split {
+  zero -> split { zero -> \ h f -> efq f ; suc n -> \ h f -> tt } ;
+  suc k | r -> split { zero -> \ h f -> efq h ; suc n -> \ h f -> r n h f } } ;
+
+lt-trans (a b c : Nat) (h1 : LeN (suc a) b) (h2 : LeN (suc b) c) : LeN (suc a) c =
+  leN-trans (suc a) b c h1 (lt-le b c h2) ;
+
+le-elim-c (k : Nat) (P : Nat -> U l) (pe : P k) (pl : (n : Nat) -> LeN (suc k) n -> P n) (n : Nat) (le : LeN k n) :
+    Plus (IsT (eqN k n)) (IsF (eqN k n)) -> P n = split {
+  inl t -> subst Nat P k n (eqN-sound k n t) pe ;
+  inr f -> pl n (le-ne-lt k n le f) } ;
+
+-- k <= n splits into k = n and k < n
+le-elim (k : Nat) (P : Nat -> U l) (pe : P k) (pl : (n : Nat) -> LeN (suc k) n -> P n) (n : Nat) (le : LeN k n) : P n =
+  le-elim-c k P pe pl n le (bool-dec (eqN k n)) ;
+
+------------------------------------------------------------------------
+-- t^n_k for k <= n
+
+lft (k n : Nat) (v : Tm) : Tm = ifB Tm (eqN k n) v (lf k n v) ;
+
+lft-eq (k : Nat) (v : Tm) : Id Tm (lft k k v) v = ifB-T Tm v (lf k k v) (eqN k k) (eqN-refl k) ;
+lft-lt (k n : Nat) (lt : LeN (suc k) n) (v : Tm) : Id Tm (lft k n v) (lf k n v) =
+  ifB-F Tm v (lf k n v) (eqN k n) (lt-ne k n lt) ;
+
+lft-eq' (k : Nat) (v : Tm) : Id Tm v (lft k k v) = sym Tm (lft k k v) v (lft-eq k v) ;
+lft-lt' (k n : Nat) (lt : LeN (suc k) n) (v : Tm) : Id Tm (lf k n v) (lft k n v) =
+  sym Tm (lft k n v) (lf k n v) (lft-lt k n lt v) ;
+
+wf-tm (G : Cx) (a A : Tm) (h : Der (jtm G a A)) : Der (jwf G) = wf-from-ok G (ok-of (jtm G a A) h) ;
+uu-ty (G : Cx) (a A : Tm) (n : Nat) (h : Der (jtm G a A)) (nb : LeN n N) : Der (jty G (uu n)) =
+  ty-uu G n (wf-tm G a A h) nb ;
+
+lft-tm (G : Cx) (k : Nat) (v : Tm) (hv : Der (jtm G v (uu k))) : (n : Nat) -> LeN k n -> LeN n N -> Der (jtm G (lft k n v) (uu n)) =
+  le-elim k (\ n -> LeN n N -> Der (jtm G (lft k n v) (uu n)))
+    (\ nb -> der-tm-tm G v (lft k k v) (uu k) (lft-eq' k v) hv)
+    (\ n lt nb -> der-tm-tm G (lf k n v) (lft k n v) (uu n) (lft-lt' k n lt v) (tm-lf G k n v hv lt nb)) ;
+
+lft-cong (G : Cx) (k : Nat) (v v' : Tm) (e : Der (jeqtm G v v' (uu k))) :
+    (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n v) (lft k n v') (uu n)) =
+  le-elim k (\ n -> LeN n N -> Der (jeqtm G (lft k n v) (lft k n v') (uu n)))
+    (\ nb -> der-eqtm-l G v (lft k k v) (lft k k v') (uu k) (lft-eq' k v)
+       (der-eqtm-r G v v' (lft k k v') (uu k) (lft-eq' k v') e))
+    (\ n lt nb -> der-eqtm-l G (lf k n v) (lft k n v) (lft k n v') (uu n) (lft-lt' k n lt v)
+       (der-eqtm-r G (lf k n v) (lf k n v') (lft k n v') (uu n) (lft-lt' k n lt v') (eqtm-lf G k n v v' e lt nb))) ;
+
+lft-el (G : Cx) (k : Nat) (v : Tm) (hv : Der (jtm G v (uu k))) :
+    (n : Nat) -> LeN k n -> LeN n N -> Der (jeqty G (el n (lft k n v)) (el k v)) =
+  le-elim k (\ n -> LeN n N -> Der (jeqty G (el n (lft k n v)) (el k v)))
+    (\ nb -> der-eqty-l G (el k v) (el k (lft k k v)) (el k v) (ap Tm Tm (\ x -> el k x) v (lft k k v) (lft-eq' k v))
+       (eqty-refl G (el k v) (ty-el G k v hv)))
+    (\ n lt nb -> der-eqty-l G (el n (lf k n v)) (el n (lft k n v)) (el k v)
+       (ap Tm Tm (\ x -> el n x) (lf k n v) (lft k n v) (lft-lt' k n lt v)) (eqty-el-lf G k n v hv lt nb)) ;
+
+lft-lft-lt (G : Cx) (j : Nat) (v : Tm) (hv : Der (jtm G v (uu j))) (k : Nat) (jk : LeN (suc j) k) :
+    (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n (lft j k v)) (lft j n v) (uu n)) =
+  le-elim k (\ n -> LeN n N -> Der (jeqtm G (lft k n (lft j k v)) (lft j n v) (uu n)))
+    (\ nb -> der-eqtm-l G (lft j k v) (lft k k (lft j k v)) (lft j k v) (uu k) (lft-eq' k (lft j k v))
+       (eqtm-refl G (lft j k v) (uu k) (lft-tm G j v hv k (lt-le j k jk) nb)))
+    (\ n kn nb -> der-eqtm-l G (lf k n (lf j k v)) (lft k n (lft j k v)) (lft j n v) (uu n)
+       (sym Tm (lft k n (lft j k v)) (lf k n (lf j k v))
+          (trans Tm (lft k n (lft j k v)) (lf k n (lft j k v)) (lf k n (lf j k v)) (lft-lt k n kn (lft j k v))
+             (ap Tm Tm (\ x -> lf k n x) (lft j k v) (lf j k v) (lft-lt j k jk v))))
+       (der-eqtm-r G (lf k n (lf j k v)) (lf j n v) (lft j n v) (uu n) (lft-lt' j n (lt-trans j k n jk kn) v)
+          (eqtm-lf-lf G j k n v hv jk kn nb))) ;
+
+-- t^n_k (t^k_j v) = t^n_j v
+lft-lft (G : Cx) (j : Nat) (v : Tm) (hv : Der (jtm G v (uu j))) :
+    (k : Nat) -> LeN j k -> (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n (lft j k v)) (lft j n v) (uu n)) =
+  le-elim j (\ k -> (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n (lft j k v)) (lft j n v) (uu n)))
+    (\ n le nb -> der-eqtm-l G (lft j n v) (lft j n (lft j j v)) (lft j n v) (uu n)
+       (ap Tm Tm (\ x -> lft j n x) v (lft j j v) (lft-eq' j v))
+       (eqtm-refl G (lft j n v) (uu n) (lft-tm G j v hv n le nb)))
+    (lft-lft-lt G j v hv) ;
+
+-- t^n_k (Pi_k(a, b)) = Pi_n(t^n_k a, t^n_k b)
+lft-pic (G : Cx) (k : Nat) (a b : Tm) (ha : Der (jtm G a (uu k))) (hb : Der (jtm (csnoc G (el k a)) b (uu k))) :
+    (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n (pic k a b)) (pic n (lft k n a) (lft k n b)) (uu n)) =
+  le-elim k (\ n -> LeN n N -> Der (jeqtm G (lft k n (pic k a b)) (pic n (lft k n a) (lft k n b)) (uu n)))
+    (\ nb -> der-eqtm-l G (pic k a b) (lft k k (pic k a b)) (pic k (lft k k a) (lft k k b)) (uu k) (lft-eq' k (pic k a b))
+       (der-eqtm-r G (pic k a b) (pic k a b) (pic k (lft k k a) (lft k k b)) (uu k)
+          (cong2 Tm Tm Tm (\ x y -> pic k x y) a (lft k k a) b (lft k k b) (lft-eq' k a) (lft-eq' k b))
+          (eqtm-refl G (pic k a b) (uu k) (tm-pic G k a b ha hb))))
+    (\ n lt nb -> der-eqtm-l G (lf k n (pic k a b)) (lft k n (pic k a b)) (pic n (lft k n a) (lft k n b)) (uu n)
+       (lft-lt' k n lt (pic k a b))
+       (der-eqtm-r G (lf k n (pic k a b)) (pic n (lf k n a) (lf k n b)) (pic n (lft k n a) (lft k n b)) (uu n)
+          (cong2 Tm Tm Tm (\ x y -> pic n x y) (lf k n a) (lft k n a) (lf k n b) (lft k n b) (lft-lt' k n lt a) (lft-lt' k n lt b))
+          (eqtm-lf-pic G k n a b ha hb lt nb))) ;
+
+-- t^n_k (U^k_m) = U^n_m
+lft-uc (G : Cx) (m k : Nat) (w : Der (jwf G)) (mk : LeN (suc m) k) :
+    (n : Nat) -> LeN k n -> LeN n N -> Der (jeqtm G (lft k n (uc m k)) (uc m n) (uu n)) =
+  le-elim k (\ n -> LeN n N -> Der (jeqtm G (lft k n (uc m k)) (uc m n) (uu n)))
+    (\ nb -> der-eqtm-l G (uc m k) (lft k k (uc m k)) (uc m k) (uu k) (lft-eq' k (uc m k)) (eqtm-refl G (uc m k) (uu k) (tm-uc G m k w mk nb)))
+    (\ n kn nb -> der-eqtm-l G (lf k n (uc m k)) (lft k n (uc m k)) (uc m n) (uu n) (lft-lt' k n kn (uc m k))
+       (eqtm-lf-uc G m k n w mk kn nb)) ;
+
+------------------------------------------------------------------------
+-- the outcomes of Lemma 25.3
+
+-- u0 : U_n0 and u1 : U_n1 are lifts of one code v : U_k
+record CLU {
+  cx : Cx ; u0 : Tm ; u1 : Tm ; n0 : Nat ; n1 : Nat ;
+  k : Nat ; v : Tm ;
+  le0 : LeN k n0 ; le1 : LeN k n1 ;
+  hv : Der (jtm cx v (uu k)) ;
+  e0 : Der (jeqtm cx u0 (lft k n0 v) (uu n0)) ;
+  e1 : Der (jeqtm cx u1 (lft k n1 v) (uu n1)) ;
+} ;
+
+record CL {
+  cx : Cx ; u0 : Tm ; u1 : Tm ; A0 : Tm ; A1 : Tm ;
+  n0 : Nat ; n1 : Nat ;
+  t0 : Der (jeqty cx A0 (uu n0)) ;
+  t1 : Der (jeqty cx A1 (uu n1)) ;
+  cu : CLU[cx, u0, u1, n0, n1] ;
+} ;
+
+TRes (G : Cx) (u0 u1 A0 A1 : Tm) : U l =
+  Plus (Der (jeqty G A0 A1) * Der (jeqtm G u0 u1 A0)) (CL[G, u0, u1, A0, A1]) ;
+
+clu-sym (G : Cx) (u0 u1 : Tm) (n0 n1 : Nat) (c : CLU[G, u0, u1, n0, n1]) : CLU[G, u1, u0, n1, n0] =
+  new CLU[G, u1, u0, n1, n0, k := c.k, v := c.v, le0 := c.le1, le1 := c.le0, hv := c.hv, e0 := c.e1, e1 := c.e0] ;
+
+res-sym (G : Cx) (u0 u1 A0 A1 : Tm) : TRes G u0 u1 A0 A1 -> TRes G u1 u0 A1 A0 = split {
+  inl p -> inl (eqty-sym G A0 A1 p.1,
+                eqtm-conv G u1 u0 A0 A1 (eqtm-sym G u0 u1 A0 (presup-eqty G A0 A1 p.1).1 p.2) p.1) ;
+  inr c -> inr (new CL[G, u1, u0, A1, A0, n0 := c.n1, n1 := c.n0, t0 := c.t1, t1 := c.t0,
+                       cu := clu-sym G u0 u1 c.n0 c.n1 c.cu]) } ;
+
+-- two convertible codes of U_n
+clu-eq (G : Cx) (u0 u1 : Tm) (n : Nat) (h0 : Der (jtm G u0 (uu n))) (e : Der (jeqtm G u0 u1 (uu n))) : CLU[G, u0, u1, n, n] =
+  new CLU[G, u0, u1, n, n, k := n, v := u0, le0 := leN-refl n, le1 := leN-refl n, hv := h0,
+    e0 := der-eqtm-r G u0 u0 (lft n n u0) (uu n) (lft-eq' n u0) (eqtm-refl G u0 (uu n) h0),
+    e1 := der-eqtm-r G u1 u0 (lft n n u0) (uu n) (lft-eq' n u0) (eqtm-sym G u0 u1 (uu n) (presup-tm G u0 (uu n) h0) e)] ;
+
+clu-n0 (G : Cx) (u0 u1 : Tm) (n0 n0' n1 : Nat) (e : Id Nat n0 n0') (c : CLU[G, u0, u1, n0, n1]) : CLU[G, u0, u1, n0', n1] =
+  subst Nat (\ j -> CLU[G, u0, u1, j, n1]) n0 n0' e c ;
+clu-n1 (G : Cx) (u0 u1 : Tm) (n0 n1 n1' : Nat) (e : Id Nat n1 n1') (c : CLU[G, u0, u1, n0, n1]) : CLU[G, u0, u1, n0, n1'] =
+  subst Nat (\ j -> CLU[G, u0, u1, n0, j]) n1 n1' e c ;
+
+-- the outcome for a code u0 : U_m, normalised on the left
+CLR (G : Cx) (u0 u1 : Tm) (m : Nat) (A1 : Tm) : U l = (n1 : Nat) * (Der (jeqty G A1 (uu n1)) * CLU[G, u0, u1, m, n1]) ;
+
+res-clr (G : Cx) (u0 u1 : Tm) (m : Nat) (A1 : Tm) (h0 : Der (jtm G u0 (uu m))) : TRes G u0 u1 (uu m) A1 -> CLR G u0 u1 m A1 = split {
+  inl p -> (m, (eqty-sym G (uu m) A1 p.1, clu-eq G u0 u1 m h0 p.2)) ;
+  inr c -> (c.n1, (c.t1, clu-n0 G u0 u1 c.n0 m c.n1 (sym Nat m c.n0 (uu-inj G m c.n0 c.t0)) c.cu)) } ;
+
+res-clu (G : Cx) (u0 u1 : Tm) (n0 n1 : Nat) (h0 : Der (jtm G u0 (uu n0))) (r : TRes G u0 u1 (uu n0) (uu n1)) :
+    CLU[G, u0, u1, n0, n1] =
+  clu-n1 G u0 u1 n0 (res-clr G u0 u1 n0 (uu n1) h0 r).1 n1
+    (uu-inj G (res-clr G u0 u1 n0 (uu n1) h0 r).1 n1
+       (eqty-sym G (uu n1) (uu (res-clr G u0 u1 n0 (uu n1) h0 r).1) (res-clr G u0 u1 n0 (uu n1) h0 r).2.1))
+    (res-clr G u0 u1 n0 (uu n1) h0 r).2.2 ;
+
+-- Lemma 26
+clu-same0 (G : Cx) (u0 u1 : Tm) (n : Nat) (c : CLU[G, u0, u1, n, n]) : Der (jeqtm G u0 u1 (uu n)) =
+  eqtm-trans G u0 (lft c.k n c.v) u1 (uu n) c.e0
+    (eqtm-sym G u1 (lft c.k n c.v) (uu n) (presup-eqtm G u1 (lft c.k n c.v) (uu n) c.e1).1 c.e1) ;
+
+clu-same (G : Cx) (u0 u1 A : Tm) (n0 n1 : Nat) (t0 : Der (jeqty G A (uu n0))) (t1 : Der (jeqty G A (uu n1)))
+    (c : CLU[G, u0, u1, n0, n1]) : Der (jeqtm G u0 u1 A) =
+  eqtm-conv G u0 u1 (uu n0) A
+    (clu-same0 G u0 u1 n0 (clu-n1 G u0 u1 n0 n1 n0
+       (sym Nat n0 n1 (uu-inj G n0 n1 (eqty-trans G (uu n0) A (uu n1) (eqty-sym G A (uu n0) t0) t1))) c))
+    (eqty-sym G A (uu n0) t0) ;
+
+res-same (G : Cx) (u0 u1 A : Tm) : TRes G u0 u1 A A -> Der (jeqtm G u0 u1 A) = split {
+  inl p -> p.2 ;
+  inr c -> clu-same G u0 u1 A c.n0 c.n1 c.t0 c.t1 c.cu } ;

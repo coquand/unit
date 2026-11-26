@@ -1,0 +1,115 @@
+-- Assemble the model from a finite hierarchy of iterative-set stages.
+level l ;
+open Base ;
+open Prelude[l+] ;
+open Paths[l+] ;
+open Axioms[l+].FunExtLemmas[fe @(l+)] ;
+open EhrhardTEModel[l+] ;
+open EhrhardV[l] ;
+open EhrhardVHierarchy[l] ;
+open IterativeSetPaths[l] ;
+module W = IterativeSets[l] ;
+
+ext-eq-point (G : W.V) (A B : TyV G) (e : Id (TyV G) A B) (x : W.Ix G) (a : W.Ix (A x)) :
+    Id (W.Ix (W.SigV G B)) (ext-eq-sub vCwF G A B e (x,a))
+      (x, move-index (A x) (B x) (happly (W.Ix G) (\ u -> W.V) A B e x) a) =
+  idJ (TyV G) A (\ B' e' ->
+    Id (W.Ix (W.SigV G B')) (ext-eq-sub vCwF G A B' e' (x,a))
+      (x, move-index (A x) (B' x) (happly (W.Ix G) (\ u -> W.V) A B' e' x) a))
+    (refl (x,a)) B e ;
+
+module Build (N : Nat) (H : VHierarchy[N]) {
+  IxN : U l+ = LevelAt N ;
+  Lt (m n : IxN) : U l+ = StrictAt N m n ;
+
+  Uv (n : IxN) (G : W.V) : TyV G = \ x -> (H.stage n).carrier ;
+  Code (n : IxN) (G : W.V) : U l = TmV G (Uv n G) ;
+  dec (n : IxN) (G : W.V) (a : Code n G) : TyV G = \ x -> (H.stage n).decode (a x) ;
+
+  vPic (n : IxN) (G : W.V) (a : Code n G) (b : Code n (W.SigV G (dec n G a))) : Code n G =
+    \ x -> (H.stage n).prod (a x) (\ y -> b (x,y)) ;
+  vUc (m n : IxN) (lt : Lt m n) (G : W.V) : Code n G =
+    \ x -> (H.link m n lt).uc ;
+  vLf (m n : IxN) (lt : Lt m n) (G : W.V) (a : Code m G) : Code n G =
+    \ x -> (H.link m n lt).lf (a x) ;
+
+  vEl-lf (m n : IxN) (lt : Lt m n) (G : W.V) (a : Code m G) :
+      Id (TyV G) (dec n G (vLf m n lt G a)) (dec m G a) =
+    funext (W.Ix G) (\ x -> W.V) (dec n G (vLf m n lt G a)) (dec m G a)
+      (\ x -> (H.link m n lt).decode-lf (a x)) ;
+
+  vEl-pic (n : IxN) (G : W.V) (a : Code n G) (b : Code n (W.SigV G (dec n G a))) :
+      Id (TyV G) (dec n G (vPic n G a b)) (vPi G (dec n G a) (dec n (W.SigV G (dec n G a)) b)) =
+    funext (W.Ix G) (\ x -> W.V)
+      (dec n G (vPic n G a b)) (vPi G (dec n G a) (dec n (W.SigV G (dec n G a)) b))
+      (\ x -> (H.stage n).decode-prod (a x) (\ y -> b (x,y))) ;
+
+  vEl-uc (m n : IxN) (lt : Lt m n) (G : W.V) :
+      Id (TyV G) (dec n G (vUc m n lt G)) (Uv m G) =
+    funext (W.Ix G) (\ x -> W.V) (dec n G (vUc m n lt G)) (Uv m G)
+      (\ x -> (H.link m n lt).decode-uc) ;
+
+  -- Reindex the codomain family along the decoded lift before lifting
+  -- its values. In the top universe, the two resulting product codes
+  -- agree by dependent-product congruence. Injectivity removes decoding.
+  module LiftProduct (m n : IxN) (lt : Lt m n) (G : W.V) (a : Code m G) (b : Code m (W.SigV G (dec m G a))) {
+    S : VStage = H.stage m ;
+    T : VStage = H.stage n ;
+    L : VLink[S,T] = H.link m n lt ;
+
+    A : TyV G = dec n G (vLf m n lt G a) ;
+    B : TyV G = dec m G a ;
+    e : Id (TyV G) A B = vEl-lf m n lt G a ;
+    s : W.Ix (W.SigV G A) -> W.Ix (W.SigV G B) = ext-eq-sub vCwF G A B e ;
+
+    fiber-path (x : W.Ix G) (y : W.Ix (A x)) :
+        Id W.V (T.decode (L.lf (b (s (x,y)))))
+          (S.decode (b (x, move-index (A x) (B x) (happly (W.Ix G) (\ u -> W.V) A B e x) y))) =
+      transH (L.decode-lf (b (s (x,y)))) (apH (\ w -> S.decode (b w)) (ext-eq-point G A B e x y)) ;
+
+    body : Code n (W.SigV G A) = \ w -> L.lf (b (s w)) ;
+    left : Code n G = vLf m n lt G (vPic m G a b) ;
+    right : Code n G = vPic n G (vLf m n lt G a) body ;
+
+    point (x : W.Ix G) : Id (W.Ix T.carrier) (left x) (right x) =
+      T.decode-inj (left x) (right x)
+        (transH (L.decode-lf (vPic m G a b x))
+          (transH (S.decode-prod (a x) (\ y -> b (x,y)))
+            (transH (symH (pi-cong (A x) (B x) (happly (W.Ix G) (\ u -> W.V) A B e x)
+                (\ y -> T.decode (body (x,y))) (\ y -> S.decode (b (x,y))) (fiber-path x)))
+              (symH (T.decode-prod (L.lf (a x)) (\ y -> body (x,y))))))) ;
+
+    equation : Id (Code n G) left right =
+      funext (W.Ix G) (\ x -> W.Ix T.carrier) left right point ;
+  } ;
+
+  vLf-uc (m n p : IxN) (mn : Lt m n) (np : Lt n p) (mp : Lt m p) (G : W.V) :
+      Id (Code p G) (vLf n p np G (vUc m n mn G)) (vUc m p mp G) =
+    funext (W.Ix G) (\ x -> W.Ix (H.stage p).carrier) (vLf n p np G (vUc m n mn G)) (vUc m p mp G)
+      (\ x -> (H.stage p).decode-inj ((H.link n p np).lf ((H.link m n mn).uc)) (H.link m p mp).uc
+        (transH ((H.link n p np).decode-lf ((H.link m n mn).uc))
+          (transH (H.link m n mn).decode-uc (symH (H.link m p mp).decode-uc)))) ;
+
+  vLf-lf (m n p : IxN) (mn : Lt m n) (np : Lt n p) (mp : Lt m p) (G : W.V) (a : Code m G) :
+      Id (Code p G) (vLf n p np G (vLf m n mn G a)) (vLf m p mp G a) =
+    funext (W.Ix G) (\ x -> W.Ix (H.stage p).carrier) (vLf n p np G (vLf m n mn G a)) (vLf m p mp G a)
+      (\ x -> (H.stage p).decode-inj ((H.link n p np).lf ((H.link m n mn).lf (a x))) ((H.link m p mp).lf (a x))
+        (transH ((H.link n p np).decode-lf ((H.link m n mn).lf (a x)))
+          (transH ((H.link m n mn).decode-lf (a x)) (symH ((H.link m p mp).decode-lf (a x)))))) ;
+
+  model : TEModel[N] = new TEModel[N,
+    cwf := vCwF, isSetCtx := W.isSetV, products := vProducts,
+    univ := Uv,
+    univ-nat := \ n D G s -> refl (Uv n D),
+    decode := dec,
+    decode-nat := \ n D G a s -> refl (\ x -> (H.stage n).decode (a (s x))),
+    pic := vPic, uc := vUc, lf := vLf,
+    el-lf := vEl-lf, el-pic := vEl-pic, el-uc := vEl-uc,
+    lf-pic := \ m n lt G a b -> LiftProduct[m,n,lt,G,a,b].equation,
+    lf-uc := vLf-uc, lf-lf := vLf-lf,
+    pic-nat := \ n D G s a b -> refl (\ x -> (H.stage n).prod (a (s x)) (\ y -> b (s x,y))),
+    uc-nat := \ m n lt D G s -> refl (vUc m n lt D),
+    lf-nat := \ m n lt D G s a -> refl (\ x -> (H.link m n lt).lf (a (s x)))] ;
+} ;
+
+vModel (N : Nat) (H : VHierarchy[N]) : TEModel[N] = Build[N,H].model ;

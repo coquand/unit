@@ -1,0 +1,142 @@
+-- TSound.seg: soundness of T_Tarski in the filter model (paper Thm 2.31 for
+-- T_Tarski, levelled domain).  The filter-level lemmas (LSoundF: HasTy,
+-- TyU, sound-pi, sound-lam, App, Beta, Eta, ...) are used unchanged; here:
+--   TFits G rho   the environment fits the context (Def. 2.30); environments
+--                 are infinite, so the empty context asks consistency
+--   tsound        one eliminator on TTyping.Der:
+--                 G |- A gives TyU [[A]],  G |- a : A gives [[a]] : [[A]],
+--                 equalities give FEq.
+-- The six Tarski equations hold by definition of tsem; eta is proved from
+-- the modules Beta and Eta of Sound.seg.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open LTypes[l] ; open LConsistency[l] ; open LTyping[l] ;
+open LFilter[l] ; open TSyntax[l] ; open TTyping[l] ; open TSem[l] ; open LSoundF[l] ;
+
+TFits : Cx -> TEnv -> U l = split {
+  cnil -> \ rho -> TCons rho ;
+  csnoc G A | r -> \ rho -> r (tlT rho) * (TyU (tsem A (tlT rho)) * HasTy (rho zero) (tsem A (tlT rho))) } ;
+
+tfits-ext (G : Cx) (A : Tm) (rho : TEnv) (x : Ty) (fi : TFits G rho) (hA : TyU (tsem A rho))
+    (hx : TyIn (tsem A rho) x) : TFits (csnoc G A) (extT rho (prin x)) =
+  (fi, (hA, prin-hasty (tsem A rho) x hx)) ;
+
+tfits-cons : (G : Cx) -> (rho : TEnv) -> TFits G rho -> TCons rho = split {
+  cnil -> \ rho fi -> fi ;
+  csnoc G A | r -> \ rho fi -> split {
+    zero -> hasty-cons (rho zero) (tsem A (tlT rho)) fi.2.2 ;
+    suc i -> r (tlT rho) fi.1 i } } ;
+
+------------------------------------------------------------------------
+-- eta: [[f]] = lamF [[A]] (x |-> app([[f]] p, x)) for f : Pi(A, B)
+
+module TEta (A B f : Tm) (rho : TEnv) (hA : TyU (tsem A rho)) (cR : TCons rho)
+    (hF : HasTy (tsem f rho) (piF (tsem A rho) (tfam B rho))) {
+  body : Tm = app (wk A) (wkl B) (wk f) (var zero) ;
+  F : Filt = tsem f rho ;
+  H : Ty -> Filt = tfam body rho ;
+
+  -- H x is app([[f]], x)
+  hx-eq (x : Ty) : FEq (H x) (appF F (prin x)) =
+    appF-eq (tsem (wk f) (extT rho (prin x))) F (prin x) (prin x) (twk-sem f rho (prin x)) (feq-refl (prin x)) ;
+
+  beta (x : Ty) (hx : TyIn (tsem A rho) x) : FEq (appF (lamF (tsem A rho) H) (prin x)) (H x) =
+    Beta[tsem A rho, H, tfam-anti body rho, prin x, H x, prin-hasty (tsem A rho) x hx,
+         \ x' le -> tfam-anti body rho x' x le, \ t m -> (x, (le-refl x, m))].eq ;
+
+  typed (x : Ty) (hx : TyIn (tsem A rho) x) : HasTy (H x) (tfam B rho x) =
+    hasty-eq (appF F (prin x)) (H x) (tfam B rho x) (tfam B rho x)
+      (feq-sym (H x) (appF F (prin x)) (hx-eq x)) (incl-refl (tfam B rho x))
+      (App[tsem A rho, tfam B rho, tfam-anti B rho, F, prin x, tfam B rho x, hA,
+           \ x' le -> tfam-anti B rho x' x le].sound hF (prin-hasty (tsem A rho) x hx)) ;
+
+  eq (hB : (x : Ty) -> TyIn (tsem A rho) x -> TyU (tfam B rho x)) : FEq F (lamF (tsem A rho) H) =
+    (Eta[tsem A rho, tfam B rho, F, lamF (tsem A rho) H, hF,
+         \ x hx -> incl-trans (appF F (prin x)) (H x) (appF (lamF (tsem A rho) H) (prin x))
+                     (hx-eq x).2 (beta x hx).2].incl,
+     Eta[tsem A rho, tfam B rho, lamF (tsem A rho) H, F,
+         sound-lam (tsem A rho) H (tfam B rho) hA typed hB
+           (tsem-cons (lam A B body) rho cR) (tsem-cons (lam A B B) rho cR),
+         \ x hx -> incl-trans (appF (lamF (tsem A rho) H) (prin x)) (H x) (appF F (prin x))
+                     (beta x hx).1 (hx-eq x).1].incl) ;
+} ;
+
+------------------------------------------------------------------------
+-- Theorem 2.31 for T_Tarski
+
+TSoundJ : Jf -> U l+ = split {
+  jwf G -> Top ;
+  jty G A -> (rho : TEnv) -> TFits G rho -> TyU (tsem A rho) ;
+  jtm G a A -> (rho : TEnv) -> TFits G rho -> HasTy (tsem a rho) (tsem A rho) ;
+  jeqty G A B -> (rho : TEnv) -> TFits G rho -> FEq (tsem A rho) (tsem B rho) ;
+  jeqtm G a b A -> (rho : TEnv) -> TFits G rho -> FEq (tsem a rho) (tsem b rho) } ;
+
+tsound : (J : Jf) -> Der J -> TSoundJ J = split {
+  wf-nil -> tt ;
+  wf-snoc G A h -> tt ;
+  tm-v0 G A h -> \ rho fi -> hasty-conv (rho zero) (tsem A (tlT rho)) (tsem (wk A) rho) fi.2.2 (twk-sem-tl A rho).2 ;
+  tm-vs G B n A h1 h2 | r1 r2 -> \ rho fi ->
+    hasty-conv (rho (suc n)) (tsem A (tlT rho)) (tsem (wk A) rho) (r1 (tlT rho) fi.1) (twk-sem-tl A rho).2 ;
+  ty-pi G A B h1 h2 | r1 r2 -> \ rho fi ->
+    sound-pi (tsem A rho) (tfam B rho) (r1 rho fi)
+      (\ x hx -> r2 (extT rho (prin x)) (tfits-ext G A rho x fi (r1 rho fi) hx))
+      (tsem-cons (pi A B) rho (tfits-cons G rho fi)) ;
+  ty-uu G n h nb -> \ rho fi -> univ-hasty n zero ;
+  ty-el G n a h | r -> \ rho fi -> hasty-lev (tsem a rho) n zero (r rho fi) ;
+  tm-lam G A B b h1 h2 h3 | r1 r2 r3 -> \ rho fi ->
+    sound-lam (tsem A rho) (tfam b rho) (tfam B rho) (r1 rho fi)
+      (\ x hx -> r3 (extT rho (prin x)) (tfits-ext G A rho x fi (r1 rho fi) hx))
+      (\ x hx -> r2 (extT rho (prin x)) (tfits-ext G A rho x fi (r1 rho fi) hx))
+      (tsem-cons (lam A B b) rho (tfits-cons G rho fi)) (tsem-cons (lam A B B) rho (tfits-cons G rho fi)) ;
+  tm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ rho fi ->
+    hasty-conv (appF (tsem c rho) (tsem a rho)) (tsem B (extT rho (tsem a rho))) (tsem (subst1 B a) rho)
+      (App[tsem A rho, tfam B rho, tfam-anti B rho, tsem c rho, tsem a rho, tsem B (extT rho (tsem a rho)),
+           r1 rho fi, \ x hx -> tsem-mono B (extT rho (prin x)) (extT rho (tsem a rho))
+                                   (extT-incl rho rho (prin x) (tsem a rho) (tincl-refl rho) (prin-sub x (tsem a rho) hx))].sound
+         (r3 rho fi) (r4 rho fi))
+      (tsubst1-sem B a rho).2 ;
+  tm-pic G n a b h1 h2 | r1 r2 -> \ rho fi ->
+    hasty-lev (piF (tsem a rho) (tfam b rho)) zero n
+      (sound-pi (tsem a rho) (tfam b rho) (hasty-lev (tsem a rho) n zero (r1 rho fi))
+        (\ x hx -> hasty-lev (tfam b rho x) n zero
+           (r2 (extT rho (prin x)) (tfits-ext G (el n a) rho x fi (hasty-lev (tsem a rho) n zero (r1 rho fi)) hx)))
+        (tsem-cons (pic n a b) rho (tfits-cons G rho fi))) ;
+  tm-uc G m n h lt nb -> \ rho fi -> univ-hasty m n ;
+  tm-lf G m n a h le nb | r -> \ rho fi -> hasty-lev (tsem a rho) m n (r rho fi) ;
+  tm-conv G a A B h1 h2 | r1 r2 -> \ rho fi -> hasty-conv (tsem a rho) (tsem A rho) (tsem B rho) (r1 rho fi) (r2 rho fi).1 ;
+  eqty-refl G A h -> \ rho fi -> feq-refl (tsem A rho) ;
+  eqty-sym G A B h | r -> \ rho fi -> feq-sym (tsem A rho) (tsem B rho) (r rho fi) ;
+  eqty-trans G A B C h1 h2 | r1 r2 -> \ rho fi -> feq-trans (tsem A rho) (tsem B rho) (tsem C rho) (r1 rho fi) (r2 rho fi) ;
+  eqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> \ rho fi ->
+    piF-eq (tsem A rho) (tsem A' rho) (tfam B rho) (tfam B' rho) (r1 rho fi)
+      (\ x hx -> r2 (extT rho (prin x)) (tfits-ext G A rho x fi (r0 rho fi) hx)) ;
+  eqty-el G n a a' h | r -> \ rho fi -> r rho fi ;
+  eqty-el-lf G m n a h le nb -> \ rho fi -> feq-refl (tsem a rho) ;
+  eqty-el-pic G n a b h1 h2 -> \ rho fi -> feq-refl (piF (tsem a rho) (tfam b rho)) ;
+  eqty-el-uc G m n h lt nb -> \ rho fi -> feq-refl (univF m) ;
+  eqtm-refl G a A h -> \ rho fi -> feq-refl (tsem a rho) ;
+  eqtm-sym G a b A hA h | rA r -> \ rho fi -> feq-sym (tsem a rho) (tsem b rho) (r rho fi) ;
+  eqtm-trans G a b c A h1 h2 | r1 r2 -> \ rho fi -> feq-trans (tsem a rho) (tsem b rho) (tsem c rho) (r1 rho fi) (r2 rho fi) ;
+  eqtm-conv G a b A B h1 h2 | r1 r2 -> \ rho fi -> r1 rho fi ;
+  eqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 -> \ rho fi ->
+    lamF-eq (tsem A rho) (tsem A' rho) (tfam b rho) (tfam b' rho) (r1 rho fi)
+      (\ x hx -> r3 (extT rho (prin x)) (tfits-ext G A rho x fi (r0 rho fi) hx)) ;
+  eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 -> \ rho fi ->
+    appF-eq (tsem c rho) (tsem c' rho) (tsem a rho) (tsem a' rho) (r3 rho fi) (r4 rho fi) ;
+  eqtm-pic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> \ rho fi ->
+    piF-eq (tsem a rho) (tsem a' rho) (tfam b rho) (tfam b' rho) (r1 rho fi)
+      (\ x hx -> r2 (extT rho (prin x)) (tfits-ext G (el n a) rho x fi (hasty-lev (tsem a rho) n zero (r0 rho fi)) hx)) ;
+  eqtm-lf G m n a a' h le nb | r -> \ rho fi -> r rho fi ;
+  eqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 -> \ rho fi ->
+    feq-trans (appF (lamF (tsem A rho) (tfam b rho)) (tsem a rho)) (tsem b (extT rho (tsem a rho))) (tsem (subst1 b a) rho)
+      (Beta[tsem A rho, tfam b rho, tfam-anti b rho, tsem a rho, tsem b (extT rho (tsem a rho)), r2 rho fi,
+            \ x hx -> tsem-mono b (extT rho (prin x)) (extT rho (tsem a rho))
+                         (extT-incl rho rho (prin x) (tsem a rho) (tincl-refl rho) (prin-sub x (tsem a rho) hx)),
+            tcont-last b rho (tsem a rho)].eq)
+      (feq-sym (tsem (subst1 b a) rho) (tsem b (extT rho (tsem a rho))) (tsubst1-sem b a rho)) ;
+  eqtm-eta G A B f hA hB h | rA rB r -> \ rho fi ->
+    TEta[A, B, f, rho, rA rho fi, tfits-cons G rho fi, r rho fi].eq
+      (\ x hx -> rB (extT rho (prin x)) (tfits-ext G A rho x fi (rA rho fi) hx)) ;
+  eqtm-lf-pic G n p a b h1 h2 le nb -> \ rho fi -> feq-refl (piF (tsem a rho) (tfam b rho)) ;
+  eqtm-lf-uc G m n p h lt le nb -> \ rho fi -> feq-refl (univF m) ;
+  eqtm-lf-lf G m n p a h le1 le2 nb -> \ rho fi -> feq-refl (tsem a rho) } ;

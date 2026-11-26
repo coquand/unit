@@ -1,0 +1,265 @@
+-- TUniqComb.seg: the cases of the uniqueness lemma (sterbac4 Lemma 25),
+-- each from the results of the induction hypothesis (TUniq.seg dispatches).
+--   lf-left            T(t^n_m a, u1) from T(a, u1)
+--   uc-uc              T(U^n_m, U^n'_m)
+--   pic-case           T(Pi_n(a, b), Pi_n'(a', b')): common code
+--                      Pi_K(t^K_ka va, t^K_kb vb), K = max ka kb
+--   var-case, lam-case, app-case
+--   e-el, e-uc, e-lf, e-pi    the cases of Lemma 25.2
+--   q-uu, q-pi                the cases of Lemma 25.1
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ;
+open TSubLib[l] ; open TPresup[l] ; open TInv[l] ; open TGen[l] ; open TUniqBase[l] ;
+
+------------------------------------------------------------------------
+-- lifts on the left
+
+clu-lf (G : Cx) (m n : Nat) (a u1 : Tm) (n1 : Nat) (lt : LeN (suc m) n) (nb : LeN n N) (c : CLU[G, a, u1, m, n1]) : CLU[G, lf m n a, u1, n, n1] =
+  new CLU[G, lf m n a, u1, n, n1, k := c.k, v := c.v, le0 := leN-trans c.k m n c.le0 (lt-le m n lt), le1 := c.le1, hv := c.hv,
+    e0 := eqtm-trans G (lf m n a) (lf m n (lft c.k m c.v)) (lft c.k n c.v) (uu n)
+            (eqtm-lf G m n a (lft c.k m c.v) c.e0 lt nb)
+            (der-eqtm-l G (lft m n (lft c.k m c.v)) (lf m n (lft c.k m c.v)) (lft c.k n c.v) (uu n) (lft-lt m n lt (lft c.k m c.v))
+               (lft-lft G c.k c.v c.hv m c.le0 n (lt-le m n lt) nb)),
+    e1 := c.e1] ;
+
+lf-left' (G : Cx) (m n : Nat) (a u1 A0 A1 : Tm) (lt : LeN (suc m) n) (t : Der (jeqty G (uu n) A0)) (cr : CLR G a u1 m A1) :
+    TRes G (lf m n a) u1 A0 A1 =
+  inr (new CL[G, lf m n a, u1, A0, A1, n0 := n, n1 := cr.1, t0 := eqty-sym G (uu n) A0 t, t1 := cr.2.1,
+              cu := clu-lf G m n a u1 cr.1 lt (t-universe-bound G n (presup-eqty G (uu n) A0 t).1) cr.2.2]) ;
+
+lf-left (G : Cx) (m n : Nat) (a u1 A0 A1 : Tm) (g : GenTm G (lf m n a) A0) (r : TRes G a u1 (uu m) A1) :
+    TRes G (lf m n a) u1 A0 A1 =
+  lf-left' G m n a u1 A0 A1 g.2.1 g.2.2 (res-clr G a u1 m A1 g.1 r) ;
+
+------------------------------------------------------------------------
+-- codes of universes
+
+uc-lift (G : Cx) (m n : Nat) (w : Der (jwf G)) (lt : LeN (suc m) n) (hU : Der (jty G (uu n))) : Der (jeqtm G (uc m n) (lft (suc m) n (uc m (suc m))) (uu n)) =
+  eqtm-sym G (lft (suc m) n (uc m (suc m))) (uc m n) (uu n) hU
+    (lft-uc G m (suc m) w (leN-refl (suc m)) n lt (t-universe-bound G n hU)) ;
+
+uc-uc0 (G : Cx) (m n n' : Nat) (A0 A1 : Tm) (g0 : GenTm G (uc m n) A0) (g1 : GenTm G (uc m n') A1) :
+    TRes G (uc m n) (uc m n') A0 A1 =
+  inr (new CL[G, uc m n, uc m n', A0, A1, n0 := n, n1 := n', t0 := eqty-sym G (uu n) A0 g0.2.2, t1 := eqty-sym G (uu n') A1 g1.2.2,
+    cu := new CLU[G, uc m n, uc m n', n, n', k := suc m, v := uc m (suc m), le0 := g0.2.1, le1 := g1.2.1,
+            hv := tm-uc G m (suc m) g0.1 (leN-refl (suc m)) (leN-trans (suc m) n N g0.2.1 (t-universe-bound G n hU0)),
+            e0 := uc-lift G m n g0.1 g0.2.1 hU0, e1 := uc-lift G m n' g0.1 g1.2.1 hU1]])
+ where {
+  hU0 : Der (jty G (uu n)) = (presup-eqty G (uu n) A0 g0.2.2).1 ;
+  hU1 : Der (jty G (uu n')) = (presup-eqty G (uu n') A1 g1.2.2).1 ;
+} ;
+
+uc-uc (G : Cx) (m n m' n' : Nat) (A0 A1 : Tm) (e : Id Nat m m') (g0 : GenTm G (uc m n) A0) (g1 : GenTm G (uc m' n') A1) :
+    TRes G (uc m n) (uc m' n') A0 A1 =
+  subst Nat (\ x -> GenTm G (uc x n') A1 -> TRes G (uc m n) (uc x n') A0 A1) m m' e (uc-uc0 G m n n' A0 A1 g0) g1 ;
+
+------------------------------------------------------------------------
+-- codes of products
+
+-- congruence of Pi_n, the second premise in any context G.C with T_n x = C
+picc (G : Cx) (n : Nat) (x x' y y' C : Tm) (hx : Der (jtm G x (uu n))) (e : Der (jeqtm G x x' (uu n)))
+    (eC : Der (jeqty G (el n x) C)) (ey : Der (jeqtm (csnoc G C) y y' (uu n))) : Der (jeqtm G (pic n x y) (pic n x' y') (uu n)) =
+  eqtm-pic G n x x' y y' hx e
+    (cxconv-eqtm (csnoc G C) (csnoc G (el n x)) (cxeq-refl G (ok-of (jtm G x (uu n)) hx), eqty-sym G (el n x) C eC)
+       (ok-of (jtm G x (uu n)) hx, ty-el G n x hx) y y' (uu n) ey) ;
+
+-- T_n a = T_k v from a = t^n_k v
+el-lft (G : Cx) (n k : Nat) (a v : Tm) (hv : Der (jtm G v (uu k))) (le : LeN k n) (ea : Der (jeqtm G a (lft k n v) (uu n))) :
+    Der (jeqty G (el n a) (el k v)) =
+  eqty-trans G (el n a) (el n (lft k n v)) (el k v) (eqty-el G n a (lft k n v) ea) (lft-el G k v hv n le (t-universe-eqtm-bound G a (lft k n v) n ea)) ;
+
+-- the second component moved to the context G.T_k v
+pic-bC (G : Cx) (n k : Nat) (a b v : Tm) (ha : Der (jtm G a (uu n))) (hv : Der (jtm G v (uu k))) (le : LeN k n)
+    (ea : Der (jeqtm G a (lft k n v) (uu n))) (hb : Der (jtm (csnoc G (el n a)) b (uu n))) : Der (jtm (csnoc G (el k v)) b (uu n)) =
+  cx1-tm G (ok-of (jtm G a (uu n)) ha) (el n a) (el k v) (ty-el G k v hv) (el-lft G n k a v hv le ea) b (uu n) hb ;
+
+picV (ka kb : Nat) (va vb : Tm) : Tm = pic (max ka kb) (lft ka (max ka kb) va) (lft kb (max ka kb) vb) ;
+
+pic-level-bound (G : Cx) (ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb))) :
+    LeN (max ka kb) N =
+  leN-max-lub ka kb N (t-universe-tm-bound G va ka hva) (t-universe-tm-bound (csnoc G (el ka va)) vb kb hvb) ;
+
+pv-A (G : Cx) (ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb))) :
+    Der (jtm G (lft ka (max ka kb) va) (uu (max ka kb))) =
+  lft-tm G ka va hva (max ka kb) (leN-max-l ka kb) (pic-level-bound G ka kb va vb hva hvb) ;
+
+pv-B (G : Cx) (ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb))) :
+    Der (jtm (csnoc G (el (max ka kb) (lft ka (max ka kb) va))) (lft kb (max ka kb) vb) (uu (max ka kb))) =
+  cx1-tm G (ok-of (jtm G va (uu ka)) hva) (el ka va) (el (max ka kb) (lft ka (max ka kb) va))
+    (ty-el G (max ka kb) (lft ka (max ka kb) va) (pv-A G ka kb va vb hva hvb))
+    (eqty-sym G (el (max ka kb) (lft ka (max ka kb) va)) (el ka va) (lft-el G ka va hva (max ka kb) (leN-max-l ka kb) kbnd))
+    (lft kb (max ka kb) vb) (uu (max ka kb)) (lft-tm (csnoc G (el ka va)) kb vb hvb (max ka kb) (leN-max-r ka kb) kbnd)
+ where { kbnd : LeN (max ka kb) N = pic-level-bound G ka kb va vb hva hvb ; } ;
+
+picV-tm (G : Cx) (ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb))) :
+    Der (jtm G (picV ka kb va vb) (uu (max ka kb))) =
+  tm-pic G (max ka kb) (lft ka (max ka kb) va) (lft kb (max ka kb) vb) (pv-A G ka kb va vb hva hvb) (pv-B G ka kb va vb hva hvb) ;
+
+-- Pi_n(t^n_ka va, t^n_kb vb) = Pi_n(t^n_K t^K_ka va, t^n_K t^K_kb vb)
+pc-s2 (G : Cx) (n ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb)))
+    (lea : LeN ka n) (lub : LeN (max ka kb) n) (nb : LeN n N) :
+    Der (jeqtm G (pic n (lft ka n va) (lft kb n vb))
+                 (pic n (lft (max ka kb) n (lft ka (max ka kb) va)) (lft (max ka kb) n (lft kb (max ka kb) vb))) (uu n)) =
+  picc G n (lft ka n va) (lft (max ka kb) n (lft ka (max ka kb) va)) (lft kb n vb) (lft (max ka kb) n (lft kb (max ka kb) vb))
+    (el ka va) (lft-tm G ka va hva n lea nb)
+    (eqtm-sym G (lft (max ka kb) n (lft ka (max ka kb) va)) (lft ka n va) (uu n) (uu-ty G va (uu ka) n hva nb)
+       (lft-lft G ka va hva (max ka kb) (leN-max-l ka kb) n lub nb))
+    (lft-el G ka va hva n lea nb)
+    (eqtm-sym (csnoc G (el ka va)) (lft (max ka kb) n (lft kb (max ka kb) vb)) (lft kb n vb) (uu n) (uu-ty (csnoc G (el ka va)) vb (uu kb) n hvb nb)
+       (lft-lft (csnoc G (el ka va)) kb vb hvb (max ka kb) (leN-max-r ka kb) n lub nb)) ;
+
+pc-s3 (G : Cx) (n ka kb : Nat) (va vb : Tm) (hva : Der (jtm G va (uu ka))) (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb)))
+    (lub : LeN (max ka kb) n) (nb : LeN n N) :
+    Der (jeqtm G (pic n (lft (max ka kb) n (lft ka (max ka kb) va)) (lft (max ka kb) n (lft kb (max ka kb) vb)))
+                 (lft (max ka kb) n (picV ka kb va vb)) (uu n)) =
+  eqtm-sym G (lft (max ka kb) n (picV ka kb va vb))
+    (pic n (lft (max ka kb) n (lft ka (max ka kb) va)) (lft (max ka kb) n (lft kb (max ka kb) vb))) (uu n)
+    (uu-ty G va (uu ka) n hva nb)
+    (lft-pic G (max ka kb) (lft ka (max ka kb) va) (lft kb (max ka kb) vb) (pv-A G ka kb va vb hva hvb) (pv-B G ka kb va vb hva hvb) n lub nb) ;
+
+pic-comb (G : Cx) (n ka kb : Nat) (a b va vb : Tm) (ha : Der (jtm G a (uu n))) (hva : Der (jtm G va (uu ka)))
+    (hvb : Der (jtm (csnoc G (el ka va)) vb (uu kb))) (lea : LeN ka n) (leb : LeN kb n)
+    (ea : Der (jeqtm G a (lft ka n va) (uu n))) (eb : Der (jeqtm (csnoc G (el ka va)) b (lft kb n vb) (uu n))) :
+    Der (jeqtm G (pic n a b) (lft (max ka kb) n (picV ka kb va vb)) (uu n)) =
+  eqtm-trans G (pic n a b) (pic n (lft ka n va) (lft kb n vb)) (lft (max ka kb) n (picV ka kb va vb)) (uu n)
+    (picc G n a (lft ka n va) b (lft kb n vb) (el ka va) ha ea (el-lft G n ka a va hva lea ea) eb)
+    (eqtm-trans G (pic n (lft ka n va) (lft kb n vb))
+       (pic n (lft (max ka kb) n (lft ka (max ka kb) va)) (lft (max ka kb) n (lft kb (max ka kb) vb)))
+       (lft (max ka kb) n (picV ka kb va vb)) (uu n)
+       (pc-s2 G n ka kb va vb hva hvb lea (leN-max-lub ka kb n lea leb) nb)
+       (pc-s3 G n ka kb va vb hva hvb (leN-max-lub ka kb n lea leb) nb))
+ where { nb : LeN n N = t-universe-tm-bound G a n ha ; } ;
+
+pic-clu (G : Cx) (n n' : Nat) (a b a' b' : Tm) (ha : Der (jtm G a (uu n))) (ha' : Der (jtm G a' (uu n')))
+    (ra : CLU[G, a, a', n, n']) (rb : CLU[csnoc G (el ra.k ra.v), b, b', n, n']) : CLU[G, pic n a b, pic n' a' b', n, n'] =
+  new CLU[G, pic n a b, pic n' a' b', n, n', k := max ra.k rb.k, v := picV ra.k rb.k ra.v rb.v,
+    le0 := leN-max-lub ra.k rb.k n ra.le0 rb.le0, le1 := leN-max-lub ra.k rb.k n' ra.le1 rb.le1,
+    hv := picV-tm G ra.k rb.k ra.v rb.v ra.hv rb.hv,
+    e0 := pic-comb G n ra.k rb.k a b ra.v rb.v ha ra.hv rb.hv ra.le0 rb.le0 ra.e0 rb.e0,
+    e1 := pic-comb G n' ra.k rb.k a' b' ra.v rb.v ha' ra.hv rb.hv ra.le1 rb.le1 ra.e1 rb.e1] ;
+
+pic-case3 (G : Cx) (n n' : Nat) (a b a' b' A0 A1 : Tm) (g0 : GenTm G (pic n a b) A0) (g1 : GenTm G (pic n' a' b') A1)
+    (ra : CLU[G, a, a', n, n']) (rb : CLU[csnoc G (el ra.k ra.v), b, b', n, n']) : TRes G (pic n a b) (pic n' a' b') A0 A1 =
+  inr (new CL[G, pic n a b, pic n' a' b', A0, A1, n0 := n, n1 := n', t0 := eqty-sym G (uu n) A0 g0.2.2, t1 := eqty-sym G (uu n') A1 g1.2.2,
+              cu := pic-clu G n n' a b a' b' g0.1 g1.1 ra rb]) ;
+
+-- fb: the induction hypothesis for (b, b'), in any context
+pic-case2 (G : Cx) (n n' : Nat) (a b a' b' A0 A1 : Tm) (g0 : GenTm G (pic n a b) A0) (g1 : GenTm G (pic n' a' b') A1)
+    (fb : (D : Cx) -> Der (jtm D b (uu n)) -> Der (jtm D b' (uu n')) -> TRes D b b' (uu n) (uu n'))
+    (ra : CLU[G, a, a', n, n']) : TRes G (pic n a b) (pic n' a' b') A0 A1 =
+  pic-case3 G n n' a b a' b' A0 A1 g0 g1 ra
+    (res-clu (csnoc G (el ra.k ra.v)) b b' n n' (pic-bC G n ra.k a b ra.v g0.1 ra.hv ra.le0 ra.e0 g0.2.1)
+       (fb (csnoc G (el ra.k ra.v)) (pic-bC G n ra.k a b ra.v g0.1 ra.hv ra.le0 ra.e0 g0.2.1)
+          (pic-bC G n' ra.k a' b' ra.v g1.1 ra.hv ra.le1 ra.e1 g1.2.1))) ;
+
+pic-case (G : Cx) (n n' : Nat) (a b a' b' A0 A1 : Tm) (g0 : GenTm G (pic n a b) A0) (g1 : GenTm G (pic n' a' b') A1)
+    (resa : TRes G a a' (uu n) (uu n'))
+    (fb : (D : Cx) -> Der (jtm D b (uu n)) -> Der (jtm D b' (uu n')) -> TRes D b b' (uu n) (uu n')) :
+    TRes G (pic n a b) (pic n' a' b') A0 A1 =
+  pic-case2 G n n' a b a' b' A0 A1 g0 g1 fb (res-clu G a a' n n' g0.1 resa) ;
+
+------------------------------------------------------------------------
+-- variables, abstractions, applications
+
+var-case (G : Cx) (i j : Nat) (A0 A1 : Tm) (e : Id Nat i j) (g0 : GenTm G (var i) A0) (g1 : GenTm G (var j) A1) :
+    TRes G (var i) (var j) A0 A1 =
+  subst Nat (\ x -> GenTm G (var x) A1 -> TRes G (var i) (var x) A0 A1) i j e
+    (\ g -> inl (eqty-trans G A0 (tlook G i) A1 (eqty-sym G (tlook G i) A0 g0.1) g.1,
+                 eqtm-conv G (var i) (var i) (tlook G i) A0 (eqtm-refl G (var i) (tlook G i) g0.2) g0.1)) g1 ;
+
+lam-case2 (G : Cx) (A B b A' B' b' A0 A1 : Tm) (g0 : GenTm G (lam A B b) A0) (g1 : GenTm G (lam A' B' b') A1)
+    (eA : Der (jeqty G A A')) (fb : Der (jtm (csnoc G A) b B) -> Der (jtm (csnoc G A) b' B) -> TRes (csnoc G A) b b' B B)
+    (eB : Der (jeqty (csnoc G A) B B')) : TRes G (lam A B b) (lam A' B' b') A0 A1 =
+  inl (eqty-trans G A0 (pi A B) A1 (eqty-sym G (pi A B) A0 g0.2.2.2)
+         (eqty-trans G (pi A B) (pi A' B') A1 (eqty-pi G A A' B B' g0.1 eA eB) g1.2.2.2),
+       eqtm-conv G (lam A B b) (lam A' B' b') (pi A B) A0
+         (eqtm-lam G A A' B B' b b' g0.1 eA eB
+            (res-same (csnoc G A) b b' B (fb g0.2.2.1
+               (tm-conv (csnoc G A) b' B' B
+                  (cx1-tm G (ok-of (jty G A) g0.1) A' A g0.1 (eqty-sym G A A' eA) b' B' g1.2.2.1)
+                  (eqty-sym (csnoc G A) B B' eB)))))
+         g0.2.2.2) ;
+
+lam-case (G : Cx) (A B b A' B' b' A0 A1 : Tm) (g0 : GenTm G (lam A B b) A0) (g1 : GenTm G (lam A' B' b') A1)
+    (eA : Der (jeqty G A A')) (fB : Der (jty (csnoc G A) B) -> Der (jty (csnoc G A) B') -> Der (jeqty (csnoc G A) B B'))
+    (fb : Der (jtm (csnoc G A) b B) -> Der (jtm (csnoc G A) b' B) -> TRes (csnoc G A) b b' B B) :
+    TRes G (lam A B b) (lam A' B' b') A0 A1 =
+  lam-case2 G A B b A' B' b' A0 A1 g0 g1 eA fb
+    (fB g0.2.1 (cx1-ty G (ok-of (jty G A) g0.1) A' A g0.1 (eqty-sym G A A' eA) B' g1.2.1)) ;
+
+app-case3 (G : Cx) (A B c a A' B' c' a' A0 A1 : Tm) (g0 : GenTm G (app A B c a) A0) (g1 : GenTm G (app A' B' c' a') A1)
+    (eA : Der (jeqty G A A')) (eB : Der (jeqty (csnoc G A) B B')) (ec : Der (jeqtm G c c' (pi A B))) (ea : Der (jeqtm G a a' A)) :
+    TRes G (app A B c a) (app A' B' c' a') A0 A1 =
+  inl (eqty-trans G A0 (subst1 B a) A1 (eqty-sym G (subst1 B a) A0 g0.2.2.2.2)
+         (eqty-trans G (subst1 B a) (subst1 B' a') A1
+            (eqty-sym G (subst1 B' a') (subst1 B a)
+               (app-ty-eq G (ok-of (jty G A) g0.1) A B B' a a' g0.2.1 g0.2.2.2.1
+                  (tm-conv G a' A' A g1.2.2.2.1 (eqty-sym G A A' eA)) eB ea))
+            g1.2.2.2.2),
+       eqtm-conv G (app A B c a) (app A' B' c' a') (subst1 B a) A0
+         (eqtm-app G A A' B B' c c' a a' g0.1 g0.2.1 g0.2.2.2.1 eA eB ec ea) g0.2.2.2.2) ;
+
+app-case2 (G : Cx) (A B c a A' B' c' a' A0 A1 : Tm) (g0 : GenTm G (app A B c a) A0) (g1 : GenTm G (app A' B' c' a') A1)
+    (eA : Der (jeqty G A A'))
+    (fc : Der (jtm G c (pi A B)) -> Der (jtm G c' (pi A B)) -> TRes G c c' (pi A B) (pi A B))
+    (fa : Der (jtm G a A) -> Der (jtm G a' A) -> TRes G a a' A A)
+    (eB : Der (jeqty (csnoc G A) B B')) : TRes G (app A B c a) (app A' B' c' a') A0 A1 =
+  app-case3 G A B c a A' B' c' a' A0 A1 g0 g1 eA eB
+    (res-same G c c' (pi A B) (fc g0.2.2.1
+       (tm-conv G c' (pi A' B') (pi A B) g1.2.2.1 (eqty-sym G (pi A B) (pi A' B') (eqty-pi G A A' B B' g0.1 eA eB)))))
+    (res-same G a a' A (fa g0.2.2.2.1 (tm-conv G a' A' A g1.2.2.2.1 (eqty-sym G A A' eA)))) ;
+
+app-case (G : Cx) (A B c a A' B' c' a' A0 A1 : Tm) (g0 : GenTm G (app A B c a) A0) (g1 : GenTm G (app A' B' c' a') A1)
+    (eA : Der (jeqty G A A')) (fB : Der (jty (csnoc G A) B) -> Der (jty (csnoc G A) B') -> Der (jeqty (csnoc G A) B B'))
+    (fc : Der (jtm G c (pi A B)) -> Der (jtm G c' (pi A B)) -> TRes G c c' (pi A B) (pi A B))
+    (fa : Der (jtm G a A) -> Der (jtm G a' A) -> TRes G a a' A A) :
+    TRes G (app A B c a) (app A' B' c' a') A0 A1 =
+  app-case2 G A B c a A' B' c' a' A0 A1 g0 g1 eA fc fa
+    (fB g0.2.1 (cx1-ty G (ok-of (jty G A) g0.1) A' A g0.1 (eqty-sym G A A' eA) B' g1.2.1)) ;
+
+------------------------------------------------------------------------
+-- Lemma 25.2: G |- B = T_n a
+
+clu-el (G : Cx) (n0 n : Nat) (b a : Tm) (c : CLU[G, b, a, n0, n]) : Der (jeqty G (el n0 b) (el n a)) =
+  eqty-trans G (el n0 b) (el c.k c.v) (el n a) (el-lft G n0 c.k b c.v c.hv c.le0 c.e0)
+    (eqty-sym G (el n a) (el c.k c.v) (el-lft G n c.k a c.v c.hv c.le1 c.e1)) ;
+
+e-el (G : Cx) (n0 n : Nat) (b a : Tm) (hb : Der (jtm G b (uu n0))) (r : TRes G b a (uu n0) (uu n)) :
+    Der (jeqty G (el n0 b) (el n a)) =
+  clu-el G n0 n b a (res-clu G b a n0 n hb r) ;
+
+e-uc (G : Cx) (j m n' n : Nat) (g : GenTm G (uc m n') (uu n)) (e : Id Nat j m) : Der (jeqty G (uu j) (el n (uc m n'))) =
+  subst Nat (\ x -> Der (jeqty G (uu x) (el n (uc m n')))) m j (sym Nat j m e)
+    (subst Nat (\ x -> Der (jeqty G (uu m) (el x (uc m n')))) n' n (uu-inj G n' n g.2.2)
+       (eqty-sym G (el n' (uc m n')) (uu m) (eqty-el-uc G m n' g.1 g.2.1 (t-universe-bound G n' (presup-eqty G (uu n') (uu n) g.2.2).1)))) ;
+
+e-lf (G : Cx) (B : Tm) (m n' n : Nat) (a : Tm) (g : GenTm G (lf m n' a) (uu n)) (r : Der (jeqty G B (el m a))) :
+    Der (jeqty G B (el n (lf m n' a))) =
+  subst Nat (\ x -> Der (jeqty G B (el x (lf m n' a)))) n' n (uu-inj G n' n g.2.2)
+    (eqty-trans G B (el m a) (el n' (lf m n' a)) r (eqty-sym G (el n' (lf m n' a)) (el m a) (eqty-el-lf G m n' a g.1 g.2.1 (t-universe-bound G n' (presup-eqty G (uu n') (uu n) g.2.2).1)))) ;
+
+e-pi2 (G : Cx) (B1 B2 : Tm) (n' n : Nat) (a1 a2 : Tm) (hB : GenTy G (pi B1 B2)) (g : GenTm G (pic n' a1 a2) (uu n))
+    (r1 : Der (jeqty G B1 (el n' a1))) (r2 : Der (jeqty (csnoc G B1) B2 (el n' a2))) : Der (jeqty G (pi B1 B2) (el n (pic n' a1 a2))) =
+  subst Nat (\ x -> Der (jeqty G (pi B1 B2) (el x (pic n' a1 a2)))) n' n (uu-inj G n' n g.2.2)
+    (eqty-trans G (pi B1 B2) (pi (el n' a1) (el n' a2)) (el n' (pic n' a1 a2))
+       (eqty-pi G B1 (el n' a1) B2 (el n' a2) hB.1 r1 r2)
+       (eqty-sym G (el n' (pic n' a1 a2)) (pi (el n' a1) (el n' a2)) (eqty-el-pic G n' a1 a2 g.1 g.2.1))) ;
+
+e-pi (G : Cx) (B1 B2 : Tm) (n' n : Nat) (a1 a2 : Tm) (hB : GenTy G (pi B1 B2)) (g : GenTm G (pic n' a1 a2) (uu n))
+    (r1 : Der (jeqty G B1 (el n' a1)))
+    (f2 : Der (jty (csnoc G B1) B2) -> Der (jtm (csnoc G B1) a2 (uu n')) -> Der (jeqty (csnoc G B1) B2 (el n' a2))) :
+    Der (jeqty G (pi B1 B2) (el n (pic n' a1 a2))) =
+  e-pi2 G B1 B2 n' n a1 a2 hB g r1
+    (f2 hB.2 (cx1-tm G (ok-of (jty G B1) hB.1) (el n' a1) B1 hB.1 (eqty-sym G B1 (el n' a1) r1) a2 (uu n') g.2.1)) ;
+
+------------------------------------------------------------------------
+-- Lemma 25.1: G |- A = B
+
+q-uu (G : Cx) (m m' : Nat) (hU : Der (jty G (uu m))) (e : Id Nat m m') : Der (jeqty G (uu m) (uu m')) =
+  subst Nat (\ x -> Der (jeqty G (uu m) (uu x))) m m' e (eqty-refl G (uu m) hU) ;
+
+q-pi (G : Cx) (A B A' B' : Tm) (h : GenTy G (pi A B)) (h' : GenTy G (pi A' B')) (eA : Der (jeqty G A A'))
+    (fB : Der (jty (csnoc G A) B) -> Der (jty (csnoc G A) B') -> Der (jeqty (csnoc G A) B B')) :
+    Der (jeqty G (pi A B) (pi A' B')) =
+  eqty-pi G A A' B B' h.1 eA (fB h.2 (cx1-ty G (ok-of (jty G A) h.1) A' A h.1 (eqty-sym G A A' eA) B' h'.2)) ;

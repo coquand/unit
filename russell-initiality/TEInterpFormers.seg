@@ -1,0 +1,109 @@
+-- Denotation of products, abstractions, applications, and universe codes.
+open Base ; open Prelude[l] ; open Paths[l] ; open Lib[l] ;
+open EhrhardTEModel[l] ;
+open TEInterpBase ; open TEDenote ; open TEInterpIntro ; open B.GAT[l] ;
+
+pi-at (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) : C.Ty (ctx g) =
+  M.products.Pi (ctx g) a b ;
+
+pi-down (A B' : GE) (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a)))
+    (ha : TyDown A g a) (hb : TyDown B' (extend g a) b) : TyDown (gpi A B') g (pi-at g a b) =
+  bind-denotes ((meaning A).type-at g)
+    (\ t -> bind ((meaning B').type-at (extend g t)) (\ u -> return (pi-at g t u)))
+    a (pi-at g a b) ha
+    (map-down ((meaning B').type-at (extend g a)) (pi-at g a) b hb) ;
+
+lam-at (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (t : C.El (ctx (extend g a)) b) :
+    C.El (ctx g) (pi-at g a b) = M.products.abstract (ctx g) a b t ;
+
+lam-down (A B' t : GE) (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (v : C.El (ctx (extend g a)) b)
+    (ha : TyDown A g a) (hb : TyDown B' (extend g a) b) (ht : TmDown t (extend g a) b v) :
+    TmDown (glam A B' t) g (pi-at g a b) (lam-at g a b v) =
+  bind-denotes ((meaning A).type-at g)
+    (\ x -> bind ((meaning B').type-at (extend g x)) (\ y ->
+      bind (term-check (meaning t) (extend g x) y) (\ z -> return (pi-at g x y,lam-at g x y z))))
+    a (pi-at g a b,lam-at g a b v) ha
+    (bind-denotes ((meaning B').type-at (extend g a))
+      (\ y -> bind (term-check (meaning t) (extend g a) y) (\ z -> return (pi-at g a y,lam-at g a y z)))
+      b (pi-at g a b,lam-at g a b v) hb
+      (map-down (term-check (meaning t) (extend g a) b) (\ z -> (pi-at g a b,lam-at g a b z)) v
+        (check-down t (extend g a) b v ht))) ;
+
+app-type (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (v : C.El (ctx g) a) : C.Ty (ctx g) =
+  C.subT (ctx g) (ctx (extend g a)) b (C.sec (ctx g) a v) ;
+
+app-at (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a)))
+    (f : C.El (ctx g) (pi-at g a b)) (v : C.El (ctx g) a) : Term g =
+  (app-type g a b v,M.products.apply (ctx g) a b f v) ;
+
+module App (A B' f t : GE) (g : Tel) {
+  finish (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (fn : C.El (ctx g) (pi-at g a b)) : Partial[Term g] =
+    bind (term-check (meaning t) g a) (\ v -> return (app-at g a b fn v)) ;
+
+  with-domain (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) : Partial[Term g] =
+    bind (term-check (meaning f) g (pi-at g a b)) (finish a b) ;
+
+  with-codomain (a : C.Ty (ctx g)) : Partial[Term g] =
+    bind ((meaning B').type-at (extend g a)) (with-domain a) ;
+
+  down (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (fn : C.El (ctx g) (pi-at g a b)) (v : C.El (ctx g) a)
+      (ha : TyDown A g a) (hb : TyDown B' (extend g a) b)
+      (hf : TmDown f g (pi-at g a b) fn) (ht : TmDown t g a v) :
+      Denotes ((meaning (gapp A B' f t)).term-at g) (app-at g a b fn v) =
+    bind-denotes ((meaning A).type-at g) with-codomain a (app-at g a b fn v) ha
+      (bind-denotes ((meaning B').type-at (extend g a)) (with-domain a) b (app-at g a b fn v) hb
+        (bind-denotes (term-check (meaning f) g (pi-at g a b)) (finish a b) fn (app-at g a b fn v)
+          (check-down f g (pi-at g a b) fn hf)
+          (map-down (term-check (meaning t) g a) (app-at g a b fn) v (check-down t g a v ht)))) ;
+} ;
+
+app-down (A B' f t : GE) (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a)))
+    (fn : C.El (ctx g) (pi-at g a b)) (v : C.El (ctx g) a)
+    (ha : TyDown A g a) (hb : TyDown B' (extend g a) b) (hf : TmDown f g (pi-at g a b) fn) (ht : TmDown t g a v) :
+    Denotes ((meaning (gapp A B' f t)).term-at g) (app-at g a b fn v) =
+  App[A,B',f,t,g].down a b fn v ha hb hf ht ;
+
+universe-at (k : LevelAt N) (g : Tel) : C.Ty (ctx g) = M.univ k (ctx g) ;
+Code (k : LevelAt N) (g : Tel) : U l = C.El (ctx g) (universe-at k g) ;
+decode-at (k : LevelAt N) (g : Tel) (u : Code k g) : C.Ty (ctx g) = M.decode k (ctx g) u ;
+code-tel (k : LevelAt N) (g : Tel) (u : Code k g) : Tel = extend g (decode-at k g u) ;
+
+pair-levels (m n : Nat) (mb : LeN m N) (nb : LeN n N) (lt : LeN (suc m) n) : StrictPair =
+  new StrictPair[from := (m,mb),to := (n,nb),strict := lt] ;
+
+strict-down (m n : Nat) (mb : LeN m N) (nb : LeN n N) (lt : LeN (suc m) n) :
+    Denotes (strict-levels m n) (pair-levels m n mb nb lt) =
+  ((nb,lt),apH (\ h -> pair-levels m n h nb lt)
+    (le-prop m N (leN-trans m n N (B.TTyping[l].lt-le m n lt) nb) mb)) ;
+
+uc-down (m n : Nat) (mb : LeN m N) (nb : LeN n N) (lt : LeN (suc m) n) (g : Tel) :
+    TmDown (guc m n) g (universe-at (n,nb) g) (M.uc (m,mb) (n,nb) lt (ctx g)) =
+  map-down (strict-levels m n) (\ k -> (universe-at k.to g,M.uc k.from k.to k.strict (ctx g)))
+    (pair-levels m n mb nb lt) (strict-down m n mb nb lt) ;
+
+lf-down (m n : Nat) (mb : LeN m N) (nb : LeN n N) (lt : LeN (suc m) n) (t : GE) (g : Tel) (u : Code (m,mb) g)
+    (h : TmDown t g (universe-at (m,mb) g) u) :
+    TmDown (glf m n t) g (universe-at (n,nb) g) (M.lf (m,mb) (n,nb) lt (ctx g) u) =
+  bind-denotes (strict-levels m n)
+    (\ k -> bind (term-check (meaning t) g (universe-at k.from g))
+      (\ v -> return (universe-at k.to g,M.lf k.from k.to k.strict (ctx g) v)))
+    (pair-levels m n mb nb lt) (universe-at (n,nb) g,M.lf (m,mb) (n,nb) lt (ctx g) u) (strict-down m n mb nb lt)
+    (map-down (term-check (meaning t) g (universe-at (m,mb) g))
+      (\ v -> (universe-at (n,nb) g,M.lf (m,mb) (n,nb) lt (ctx g) v)) u (check-down t g (universe-at (m,mb) g) u h)) ;
+
+pic-down (n : Nat) (nb : LeN n N) (a b : GE) (g : Tel) (u : Code (n,nb) g) (v : Code (n,nb) (code-tel (n,nb) g u))
+    (ha : TmDown a g (universe-at (n,nb) g) u)
+    (hb : TmDown b (code-tel (n,nb) g u) (universe-at (n,nb) (code-tel (n,nb) g u)) v) :
+    TmDown (gpic n a b) g (universe-at (n,nb) g) (M.pic (n,nb) (ctx g) u v) =
+  bind-denotes (level-at n)
+    (\ k -> bind (term-check (meaning a) g (universe-at k g)) (\ x ->
+      bind (term-check (meaning b) (code-tel k g x) (universe-at k (code-tel k g x))) (\ y ->
+        return (universe-at k g,M.pic k (ctx g) x y)))) (n,nb)
+    (universe-at (n,nb) g,M.pic (n,nb) (ctx g) u v) (level-down n nb)
+    (bind-denotes (term-check (meaning a) g (universe-at (n,nb) g)) (\ x ->
+      bind (term-check (meaning b) (code-tel (n,nb) g x) (universe-at (n,nb) (code-tel (n,nb) g x)))
+        (\ y -> return (universe-at (n,nb) g,M.pic (n,nb) (ctx g) x y)))
+      u (universe-at (n,nb) g,M.pic (n,nb) (ctx g) u v) (check-down a g (universe-at (n,nb) g) u ha)
+      (map-down (term-check (meaning b) (code-tel (n,nb) g u) (universe-at (n,nb) (code-tel (n,nb) g u)))
+        (\ y -> (universe-at (n,nb) g,M.pic (n,nb) (ctx g) u y)) v
+        (check-down b (code-tel (n,nb) g u) (universe-at (n,nb) (code-tel (n,nb) g u)) v hb))) ;

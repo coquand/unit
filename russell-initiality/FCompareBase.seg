@@ -1,0 +1,77 @@
+-- Comparison at introduction frames and at converted judgements.
+level l ;
+open Base ; open Lib[l] ; open FGAT[l] ; open FTyping[l] ; open FPresup[l] ;
+open FCtx[l] ; open FGen[l] ; open FSubTransport[l] ;
+
+TyCompare (A B : FA) : U l = (D E : FA) -> CE D E -> Ty D A -> Ty E B -> TE D A B ;
+TmCompare (a b : FA) : U l = (D E A B : FA) -> CE D E -> Tm' D a A -> Tm' E b B -> TE D A B * ME D a b A ;
+SubCompare (s t : FA) : U l = (D E G H : FA) -> CE D E -> Sb D s G -> Sb E t H -> CE G H * SE D s t G ;
+CxCompare (D E : FA) : U l = W D -> W E -> CE D E ;
+Compare (a b : FA) : U l = TyCompare a b * (TmCompare a b * (SubCompare a b * CxCompare a b)) ;
+
+TyFrameCompare (A B : FA) : U l =
+  CE (ty-context A) (ty-context B) -> TyIntro A -> TyIntro B -> TE (ty-context A) A B ;
+TmFrameCompare (a b : FA) : U l =
+  CE (tm-context a) (tm-context b) -> TmIntro a -> TmIntro b ->
+  TE (tm-context a) (tm-type a) (tm-type b) * ME (tm-context a) a b (tm-type a) ;
+SubFrameCompare (s t : FA) : U l =
+  CE (sub-source s) (sub-source t) -> SubIntro s -> SubIntro t ->
+  CE (sub-target s) (sub-target t) * SE (sub-source s) s t (sub-target s) ;
+
+origin-eq {L R D E : FA} (p : CE L D) (q : CE R E) (e : CE D E) : CE L R =
+  f-cx-trans L D R p (f-cx-trans D E R e (f-cx-sym R E q)) ;
+
+ends-eq {L R D E : FA} (p : CE L D) (q : CE R E) (e : CE L R) : CE D E =
+  origin-eq (f-cx-sym L D p) (f-cx-sym R E q) e ;
+
+ty-frames (A B : FA) (f : TyFrameCompare A B) : TyCompare A B =
+  \ D E e h k -> compare D E e (gen-ty D A h) (gen-ty E B k)
+ where {
+  compare (D E : FA) (e : CE D E) (p : TyGen D A) (q : TyGen E B) : TE D A B =
+    move-te (ty-context A) D A B p.2 (f (origin-eq p.2 q.2 e) p.1 q.1) ;
+ } ;
+
+term-finish (D E a b P Q A B : FA) (e : CE D E) (left : TE D P A) (right : TE E Q B)
+    (types : TE D P Q) (terms : ME D a b P) : TE D A B * ME D a b A =
+  (ty-trans (ty-sym left) (ty-trans types (move-te E D Q B (f-cx-sym D E e) right)),
+   fm-eqconv D a b P A terms left) ;
+
+tm-frames (a b : FA) (f : TmFrameCompare a b) : TmCompare a b =
+  \ D E A B e h k -> compare D E A B e (gen-tm D a A h) (gen-tm E b B k)
+ where {
+  compare (D E A B : FA) (e : CE D E) (p : TmGen D a A) (q : TmGen E b B) : TE D A B * ME D a b A =
+    term-finish D E a b (tm-type a) (tm-type b) A B e p.2.2 q.2.2
+      (move-te (tm-context a) D (tm-type a) (tm-type b) p.2.1 answer.1)
+      (move-me (tm-context a) D a b (tm-type a) p.2.1 answer.2)
+   where {
+    answer : TE (tm-context a) (tm-type a) (tm-type b) * ME (tm-context a) a b (tm-type a) =
+      f (origin-eq p.2.1 q.2.1 e) p.1 q.1 ;
+   } ;
+ } ;
+
+sub-frames (s t : FA) (f : SubFrameCompare s t) : SubCompare s t =
+  \ D E G H e h k -> compare D E G H e (gen-sub D s G h) (gen-sub E t H k)
+ where {
+  compare (D E G H : FA) (e : CE D E) (p : SubGen D s G) (q : SubGen E t H) : CE G H * SE D s t G =
+    (ends-eq p.2.2 q.2.2 answer.1,move-se (sub-source s) D (sub-target s) G s t p.2.1 p.2.2 answer.2)
+   where {
+    answer : CE (sub-target s) (sub-target t) * SE (sub-source s) s t (sub-target s) =
+      f (origin-eq p.2.1 q.2.1 e) p.1 q.1 ;
+   } ;
+ } ;
+
+me-trans {G a b c A : FA} (p : ME G a b A) (q : ME G b c A) : ME G a c A =
+  fm-trans G a b c A p q ;
+me-sym {G a b A : FA} (p : ME G a b A) : ME G b a A =
+  fm-sym G a b A (fpresup (fjeqtm G a b A) p).2.1 p ;
+me-conv {G a b A B : FA} (p : ME G a b A) (e : TE G A B) : ME G a b B =
+  fm-eqconv G a b A B p e ;
+
+extension-compare (G A H B : FA) (cg : CxCompare G H) (ca : TyCompare A B) :
+    CxCompare (fext G A) (fext H B) =
+  \ p q -> compare (wf-ext-inv G A p) (wf-ext-inv H B q)
+ where {
+  compare (hA : Ty G A) (hB : Ty H B) : CE (fext G A) (fext H B) =
+    ext-eq frame (ca G H frame hA hB)
+   where { frame : CE G H = cg (fpresup (fjty G A) hA) (fpresup (fjty H B) hB) ; } ;
+ } ;

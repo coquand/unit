@@ -1,0 +1,209 @@
+-- TLean.seg: the lean T_Tarski, i.e. the rules of sterbac4 Appendix A.2
+-- without the admissible premises that TTyping.Der carries, and the two
+-- translations (sterbac4, use of Lemmas 22-24):
+--   to-lean : Der J -> DerL J    forgets the extra premises
+--   to-der  : DerL J -> Der J    recovers them by TPresup.presup, the context
+--                                 (TSubst.ok-of) and Pi-inversion of types
+-- Dropped premises: tm-app G |- A ; eqty-pi, eqtm-lam, eqtm-app G |- A ;
+-- eqtm-app G.A |- B, G |- a : A ; eqtm-pic G |- a : U_n ; eqtm-sym G |- A ;
+-- eqtm-beta, eqtm-eta G |- A, G.A |- B.
+-- Remaining difference with A.2: symmetry and transitivity are separate
+-- (premise-free) rules; A.2 has the euclidean rule A = B, A = C => B = C.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ; open TSubCong[l] ;
+open TSubLib[l] ; open TPresup[l] ;
+
+data DerL : (J : Jf) -> U l =
+    lwf-nil : DerL (jwf cnil)
+  | lwf-snoc (G : Cx) (A : Tm) (h : DerL (jty G A)) : DerL (jwf (csnoc G A))
+  | ltm-v0 (G : Cx) (A : Tm) (h : DerL (jty G A)) : DerL (jtm (csnoc G A) (var zero) (wk A))
+  | ltm-vs (G : Cx) (B : Tm) (n : Nat) (A : Tm) (h1 : DerL (jtm G (var n) A)) (h2 : DerL (jty G B)) :
+      DerL (jtm (csnoc G B) (var (suc n)) (wk A))
+  | lty-pi (G : Cx) (A B : Tm) (h1 : DerL (jty G A)) (h2 : DerL (jty (csnoc G A) B)) : DerL (jty G (pi A B))
+  | lty-uu (G : Cx) (n : Nat) (h : DerL (jwf G)) (nb : LeN n N) : DerL (jty G (uu n))
+  | lty-el (G : Cx) (n : Nat) (a : Tm) (h : DerL (jtm G a (uu n))) : DerL (jty G (el n a))
+  | ltm-lam (G : Cx) (A B b : Tm) (h1 : DerL (jty G A)) (h2 : DerL (jty (csnoc G A) B))
+      (h3 : DerL (jtm (csnoc G A) b B)) : DerL (jtm G (lam A B b) (pi A B))
+  | ltm-app (G : Cx) (A B c a : Tm) (h2 : DerL (jty (csnoc G A) B))
+      (h3 : DerL (jtm G c (pi A B))) (h4 : DerL (jtm G a A)) : DerL (jtm G (app A B c a) (subst1 B a))
+  | ltm-pic (G : Cx) (n : Nat) (a b : Tm) (h1 : DerL (jtm G a (uu n))) (h2 : DerL (jtm (csnoc G (el n a)) b (uu n))) :
+      DerL (jtm G (pic n a b) (uu n))
+  | ltm-uc (G : Cx) (m n : Nat) (h : DerL (jwf G)) (lt : LeN (suc m) n) (nb : LeN n N) : DerL (jtm G (uc m n) (uu n))
+  | ltm-lf (G : Cx) (m n : Nat) (a : Tm) (h : DerL (jtm G a (uu m))) (le : LeN (suc m) n) (nb : LeN n N) : DerL (jtm G (lf m n a) (uu n))
+  | ltm-conv (G : Cx) (a A B : Tm) (h1 : DerL (jtm G a A)) (h2 : DerL (jeqty G A B)) : DerL (jtm G a B)
+  | leqty-refl (G : Cx) (A : Tm) (h : DerL (jty G A)) : DerL (jeqty G A A)
+  | leqty-sym (G : Cx) (A B : Tm) (h : DerL (jeqty G A B)) : DerL (jeqty G B A)
+  | leqty-trans (G : Cx) (A B C : Tm) (h1 : DerL (jeqty G A B)) (h2 : DerL (jeqty G B C)) : DerL (jeqty G A C)
+  | leqty-pi (G : Cx) (A A' B B' : Tm) (h1 : DerL (jeqty G A A')) (h2 : DerL (jeqty (csnoc G A) B B')) :
+      DerL (jeqty G (pi A B) (pi A' B'))
+  | leqty-el (G : Cx) (n : Nat) (a a' : Tm) (h : DerL (jeqtm G a a' (uu n))) : DerL (jeqty G (el n a) (el n a'))
+  | leqty-el-lf (G : Cx) (m n : Nat) (a : Tm) (h : DerL (jtm G a (uu m))) (le : LeN (suc m) n) (nb : LeN n N) :
+      DerL (jeqty G (el n (lf m n a)) (el m a))
+  | leqty-el-pic (G : Cx) (n : Nat) (a b : Tm) (h1 : DerL (jtm G a (uu n))) (h2 : DerL (jtm (csnoc G (el n a)) b (uu n))) :
+      DerL (jeqty G (el n (pic n a b)) (pi (el n a) (el n b)))
+  | leqty-el-uc (G : Cx) (m n : Nat) (h : DerL (jwf G)) (lt : LeN (suc m) n) (nb : LeN n N) : DerL (jeqty G (el n (uc m n)) (uu m))
+  | leqtm-refl (G : Cx) (a A : Tm) (h : DerL (jtm G a A)) : DerL (jeqtm G a a A)
+  | leqtm-sym (G : Cx) (a b A : Tm) (h : DerL (jeqtm G a b A)) : DerL (jeqtm G b a A)
+  | leqtm-trans (G : Cx) (a b c A : Tm) (h1 : DerL (jeqtm G a b A)) (h2 : DerL (jeqtm G b c A)) : DerL (jeqtm G a c A)
+  | leqtm-conv (G : Cx) (a b A B : Tm) (h1 : DerL (jeqtm G a b A)) (h2 : DerL (jeqty G A B)) : DerL (jeqtm G a b B)
+  | leqtm-lam (G : Cx) (A A' B B' b b' : Tm) (h1 : DerL (jeqty G A A')) (h2 : DerL (jeqty (csnoc G A) B B'))
+      (h3 : DerL (jeqtm (csnoc G A) b b' B)) : DerL (jeqtm G (lam A B b) (lam A' B' b') (pi A B))
+  | leqtm-app (G : Cx) (A A' B B' c c' a a' : Tm) (h1 : DerL (jeqty G A A')) (h2 : DerL (jeqty (csnoc G A) B B'))
+      (h3 : DerL (jeqtm G c c' (pi A B))) (h4 : DerL (jeqtm G a a' A)) :
+      DerL (jeqtm G (app A B c a) (app A' B' c' a') (subst1 B a))
+  | leqtm-pic (G : Cx) (n : Nat) (a a' b b' : Tm) (h1 : DerL (jeqtm G a a' (uu n)))
+      (h2 : DerL (jeqtm (csnoc G (el n a)) b b' (uu n))) : DerL (jeqtm G (pic n a b) (pic n a' b') (uu n))
+  | leqtm-lf (G : Cx) (m n : Nat) (a a' : Tm) (h : DerL (jeqtm G a a' (uu m))) (le : LeN (suc m) n) (nb : LeN n N) :
+      DerL (jeqtm G (lf m n a) (lf m n a') (uu n))
+  | leqtm-beta (G : Cx) (A B b a : Tm) (h1 : DerL (jtm (csnoc G A) b B)) (h2 : DerL (jtm G a A)) :
+      DerL (jeqtm G (app A B (lam A B b) a) (subst1 b a) (subst1 B a))
+  | leqtm-eta (G : Cx) (A B f : Tm) (h : DerL (jtm G f (pi A B))) :
+      DerL (jeqtm G f (lam A B (app (wk A) (wkl B) (wk f) (var zero))) (pi A B))
+  | leqtm-lf-pic (G : Cx) (n p : Nat) (a b : Tm) (h1 : DerL (jtm G a (uu n))) (h2 : DerL (jtm (csnoc G (el n a)) b (uu n)))
+      (le : LeN (suc n) p) (nb : LeN p N) : DerL (jeqtm G (lf n p (pic n a b)) (pic p (lf n p a) (lf n p b)) (uu p))
+  | leqtm-lf-uc (G : Cx) (m n p : Nat) (h : DerL (jwf G)) (lt : LeN (suc m) n) (le : LeN (suc n) p) (nb : LeN p N) :
+      DerL (jeqtm G (lf n p (uc m n)) (uc m p) (uu p))
+  | leqtm-lf-lf (G : Cx) (m n p : Nat) (a : Tm) (h : DerL (jtm G a (uu m))) (le1 : LeN (suc m) n) (le2 : LeN (suc n) p) (nb : LeN p N) :
+      DerL (jeqtm G (lf n p (lf m n a)) (lf m p a) (uu p)) ;
+
+------------------------------------------------------------------------
+-- Pi-inversion of type derivations (types are formed by ty-pi, ty-uu,
+-- ty-el only: no conversion rule for types)
+
+PiInv (G : Cx) : Tm -> U l = split {
+  var i -> Top ;
+  pi A B -> Der (jty G A) * Der (jty (csnoc G A) B) ;
+  lam A B b -> Top ;
+  app A B c a -> Top ;
+  uu n -> Top ;
+  el n a -> Top ;
+  pic n a b -> Top ;
+  uc m n -> Top ;
+  lf m n a -> Top } ;
+
+InvPi : Jf -> U l = split {
+  jwf G -> Top ; jty G T -> PiInv G T ; jtm G a A -> Top ; jeqty G A B -> Top ; jeqtm G a b A -> Top } ;
+
+inv-pi : (J : Jf) -> Der J -> InvPi J = split {
+  wf-nil -> tt ;
+  wf-snoc G A h -> tt ;
+  tm-v0 G A h -> tt ;
+  tm-vs G B n A h1 h2 -> tt ;
+  ty-pi G A B h1 h2 -> (h1, h2) ;
+  ty-uu G n h nb -> tt ;
+  ty-el G n a h -> tt ;
+  tm-lam G A B b h1 h2 h3 -> tt ;
+  tm-app G A B c a h1 h2 h3 h4 -> tt ;
+  tm-pic G n a b h1 h2 -> tt ;
+  tm-uc G m n h lt nb -> tt ;
+  tm-lf G m n a h le nb -> tt ;
+  tm-conv G a A B h1 h2 -> tt ;
+  eqty-refl G A h -> tt ;
+  eqty-sym G A B h -> tt ;
+  eqty-trans G A B C h1 h2 -> tt ;
+  eqty-pi G A A' B B' h0 h1 h2 -> tt ;
+  eqty-el G n a a' h -> tt ;
+  eqty-el-lf G m n a h le nb -> tt ;
+  eqty-el-pic G n a b h1 h2 -> tt ;
+  eqty-el-uc G m n h lt nb -> tt ;
+  eqtm-refl G a A h -> tt ;
+  eqtm-sym G a b A hA h -> tt ;
+  eqtm-trans G a b c A h1 h2 -> tt ;
+  eqtm-conv G a b A B h1 h2 -> tt ;
+  eqtm-lam G A A' B B' b b' h0 h1 h2 h3 -> tt ;
+  eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 -> tt ;
+  eqtm-pic G n a a' b b' h0 h1 h2 -> tt ;
+  eqtm-lf G m n a a' h le nb -> tt ;
+  eqtm-beta G A B b a hA hB h1 h2 -> tt ;
+  eqtm-eta G A B f hA hB h -> tt ;
+  eqtm-lf-pic G n p a b h1 h2 le nb -> tt ;
+  eqtm-lf-uc G m n p h lt le nb -> tt ;
+  eqtm-lf-lf G m n p a h le1 le2 nb -> tt } ;
+
+ty-pi-inv (G : Cx) (A B : Tm) (h : Der (jty G (pi A B))) : Der (jty G A) * Der (jty (csnoc G A) B) =
+  inv-pi (jty G (pi A B)) h ;
+
+------------------------------------------------------------------------
+-- forgetting the extra premises
+
+to-lean : (J : Jf) -> Der J -> DerL J = split {
+  wf-nil -> lwf-nil ;
+  wf-snoc G A h | r -> lwf-snoc G A r ;
+  tm-v0 G A h | r -> ltm-v0 G A r ;
+  tm-vs G B n A h1 h2 | r1 r2 -> ltm-vs G B n A r1 r2 ;
+  ty-pi G A B h1 h2 | r1 r2 -> lty-pi G A B r1 r2 ;
+  ty-uu G n h nb | r -> lty-uu G n r nb ;
+  ty-el G n a h | r -> lty-el G n a r ;
+  tm-lam G A B b h1 h2 h3 | r1 r2 r3 -> ltm-lam G A B b r1 r2 r3 ;
+  tm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 -> ltm-app G A B c a r2 r3 r4 ;
+  tm-pic G n a b h1 h2 | r1 r2 -> ltm-pic G n a b r1 r2 ;
+  tm-uc G m n h lt nb | r -> ltm-uc G m n r lt nb ;
+  tm-lf G m n a h le nb | r -> ltm-lf G m n a r le nb ;
+  tm-conv G a A B h1 h2 | r1 r2 -> ltm-conv G a A B r1 r2 ;
+  eqty-refl G A h | r -> leqty-refl G A r ;
+  eqty-sym G A B h | r -> leqty-sym G A B r ;
+  eqty-trans G A B C h1 h2 | r1 r2 -> leqty-trans G A B C r1 r2 ;
+  eqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> leqty-pi G A A' B B' r1 r2 ;
+  eqty-el G n a a' h | r -> leqty-el G n a a' r ;
+  eqty-el-lf G m n a h le nb | r -> leqty-el-lf G m n a r le nb ;
+  eqty-el-pic G n a b h1 h2 | r1 r2 -> leqty-el-pic G n a b r1 r2 ;
+  eqty-el-uc G m n h lt nb | r -> leqty-el-uc G m n r lt nb ;
+  eqtm-refl G a A h | r -> leqtm-refl G a A r ;
+  eqtm-sym G a b A hA h | rA r -> leqtm-sym G a b A r ;
+  eqtm-trans G a b c A h1 h2 | r1 r2 -> leqtm-trans G a b c A r1 r2 ;
+  eqtm-conv G a b A B h1 h2 | r1 r2 -> leqtm-conv G a b A B r1 r2 ;
+  eqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 -> leqtm-lam G A A' B B' b b' r1 r2 r3 ;
+  eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 ->
+    leqtm-app G A A' B B' c c' a a' r1 r2 r3 r4 ;
+  eqtm-pic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> leqtm-pic G n a a' b b' r1 r2 ;
+  eqtm-lf G m n a a' h le nb | r -> leqtm-lf G m n a a' r le nb ;
+  eqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 -> leqtm-beta G A B b a r1 r2 ;
+  eqtm-eta G A B f hA hB h | rA rB r -> leqtm-eta G A B f r ;
+  eqtm-lf-pic G n p a b h1 h2 le nb | r1 r2 -> leqtm-lf-pic G n p a b r1 r2 le nb ;
+  eqtm-lf-uc G m n p h lt le nb | r -> leqtm-lf-uc G m n p r lt le nb ;
+  eqtm-lf-lf G m n p a h le1 le2 nb | r -> leqtm-lf-lf G m n p a r le1 le2 nb } ;
+
+------------------------------------------------------------------------
+-- recovering them
+
+to-der : (J : Jf) -> DerL J -> Der J = split {
+  lwf-nil -> wf-nil ;
+  lwf-snoc G A h | r -> wf-snoc G A r ;
+  ltm-v0 G A h | r -> tm-v0 G A r ;
+  ltm-vs G B n A h1 h2 | r1 r2 -> tm-vs G B n A r1 r2 ;
+  lty-pi G A B h1 h2 | r1 r2 -> ty-pi G A B r1 r2 ;
+  lty-uu G n h nb | r -> ty-uu G n r nb ;
+  lty-el G n a h | r -> ty-el G n a r ;
+  ltm-lam G A B b h1 h2 h3 | r1 r2 r3 -> tm-lam G A B b r1 r2 r3 ;
+  ltm-app G A B c a h2 h3 h4 | r2 r3 r4 -> tm-app G A B c a (ok-of (jty (csnoc G A) B) r2).2 r2 r3 r4 ;
+  ltm-pic G n a b h1 h2 | r1 r2 -> tm-pic G n a b r1 r2 ;
+  ltm-uc G m n h lt nb | r -> tm-uc G m n r lt nb ;
+  ltm-lf G m n a h le nb | r -> tm-lf G m n a r le nb ;
+  ltm-conv G a A B h1 h2 | r1 r2 -> tm-conv G a A B r1 r2 ;
+  leqty-refl G A h | r -> eqty-refl G A r ;
+  leqty-sym G A B h | r -> eqty-sym G A B r ;
+  leqty-trans G A B C h1 h2 | r1 r2 -> eqty-trans G A B C r1 r2 ;
+  leqty-pi G A A' B B' h1 h2 | r1 r2 -> eqty-pi G A A' B B' (presup-eqty G A A' r1).1 r1 r2 ;
+  leqty-el G n a a' h | r -> eqty-el G n a a' r ;
+  leqty-el-lf G m n a h le nb | r -> eqty-el-lf G m n a r le nb ;
+  leqty-el-pic G n a b h1 h2 | r1 r2 -> eqty-el-pic G n a b r1 r2 ;
+  leqty-el-uc G m n h lt nb | r -> eqty-el-uc G m n r lt nb ;
+  leqtm-refl G a A h | r -> eqtm-refl G a A r ;
+  leqtm-sym G a b A h | r -> eqtm-sym G a b A (presup-eqtm G a b A r).1 r ;
+  leqtm-trans G a b c A h1 h2 | r1 r2 -> eqtm-trans G a b c A r1 r2 ;
+  leqtm-conv G a b A B h1 h2 | r1 r2 -> eqtm-conv G a b A B r1 r2 ;
+  leqtm-lam G A A' B B' b b' h1 h2 h3 | r1 r2 r3 ->
+    eqtm-lam G A A' B B' b b' (presup-eqty G A A' r1).1 r1 r2 r3 ;
+  leqtm-app G A A' B B' c c' a a' h1 h2 h3 h4 | r1 r2 r3 r4 ->
+    eqtm-app G A A' B B' c c' a a' (presup-eqty G A A' r1).1 (presup-eqty (csnoc G A) B B' r2).1
+      (presup-eqtm G a a' A r4).2.1 r1 r2 r3 r4 ;
+  leqtm-pic G n a a' b b' h1 h2 | r1 r2 -> eqtm-pic G n a a' b b' (presup-eqtm G a a' (uu n) r1).2.1 r1 r2 ;
+  leqtm-lf G m n a a' h le nb | r -> eqtm-lf G m n a a' r le nb ;
+  leqtm-beta G A B b a h1 h2 | r1 r2 ->
+    eqtm-beta G A B b a (ok-of (jtm (csnoc G A) b B) r1).2 (presup-tm (csnoc G A) b B r1) r1 r2 ;
+  leqtm-eta G A B f h | r ->
+    eqtm-eta G A B f (ty-pi-inv G A B (presup-tm G f (pi A B) r)).1 (ty-pi-inv G A B (presup-tm G f (pi A B) r)).2 r ;
+  leqtm-lf-pic G n p a b h1 h2 le nb | r1 r2 -> eqtm-lf-pic G n p a b r1 r2 le nb ;
+  leqtm-lf-uc G m n p h lt le nb | r -> eqtm-lf-uc G m n p r lt le nb ;
+  leqtm-lf-lf G m n p a h le1 le2 nb | r -> eqtm-lf-lf G m n p a r le1 le2 nb } ;

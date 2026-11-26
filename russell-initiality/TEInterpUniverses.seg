@@ -1,0 +1,159 @@
+-- Universe formation, codes, and decoding in the soundness induction.
+open Base ; open Prelude[l] ; open Paths[l] ; open Lib[l] ; open EhrhardTEModel[l] ;
+open TEInterpBase ; open TEDenote ; open TEInterpIntro ; open TEInterpFormers ;
+open TEInterpJudgement ; open B.GAT[l] ;
+
+level-bound (n : Nat) (g : Tel) (A : C.Ty (ctx g)) (h : TyDown (guu n) g A) : LeN n N = h.1.1 ;
+
+lower-bound (m n : Nat) (lt : LeN (suc m) n) (nb : LeN n N) : LeN m N =
+  leN-trans m n N (B.TTyping[l].lt-le m n lt) nb ;
+
+CodeValue (n : Nat) (nb : LeN n N) (g : Tel) (a : GE) : U l =
+  TermAt g (universe-at (n,nb) g) a ;
+
+code-value (n : Nat) (nb : LeN n N) (g : Tel) (a : GE) (r : TermValue g (guu n) a) : CodeValue n nb g a =
+  at-type g (guu n) a (universe-at (n,nb) g) (univ-down n nb g) r ;
+
+CodeEquality (n : Nat) (nb : LeN n N) (g : Tel) (a b : GE) : U l =
+  (u : Code (n,nb) g) * (TmDown a g (universe-at (n,nb) g) u * TmDown b g (universe-at (n,nb) g) u) ;
+
+code-equality (n : Nat) (nb : LeN n N) (g : Tel) (a b : GE) (r : TermEquality g (guu n) a b) : CodeEquality n nb g a b =
+  equal-at-type g (guu n) a b (universe-at (n,nb) g) (univ-down n nb g) r ;
+
+record CodeProduct (n : Nat) (g : Tel) (a b : GE) {
+  nb : LeN n N ;
+  left : CodeValue n nb g a ;
+  right : CodeValue n nb (code-tel (n,nb) g left.1) b ;
+  prod : Code (n,nb) g = M.pic (n,nb) (ctx g) left.1 right.1 ;
+  prod-down : TmDown (gpic n a b) g (universe-at (n,nb) g) prod = pic-down n nb a b g left.1 right.1 left.2 right.2 ;
+} ;
+
+code-product (G : GE) (n : Nat) (a b : GE) (r : SoundJ (gjtm G a (guu n)))
+    (p : SoundJ (gjtm (gext G (gel n a)) b (guu n))) (g : Tel) (hg : CtxDown G g) : CodeProduct[n,g,a,b] =
+  new CodeProduct[n,g,a,b,nb := nb,left := v,right := w]
+ where {
+  aq : TermValue g (guu n) a = r.2 g hg ;
+  nb : LeN n N = level-bound n g aq.1 aq.2.1 ;
+  v : CodeValue n nb g a = code-value n nb g a aq ;
+  x : Tel = code-tel (n,nb) g v.1 ;
+  w : CodeValue n nb x b = code-value n nb x b
+    (p.2 x (ext-down G (gel n a) g (decode-at (n,nb) g v.1) hg (decode-down n nb a g v.1 v.2))) ;
+ } ;
+
+case-gt-uu (G : GE) (n : Nat) (nb : LeN n N) (r : SoundJ (gjwf G)) : SoundJ (gjty G (guu n)) =
+  (r,\ g hg -> (universe-at (n,nb) g,univ-down n nb g)) ;
+
+case-gt-el (G : GE) (n : Nat) (a : GE) (r : SoundJ (gjtm G a (guu n))) : SoundJ (gjty G (gel n a)) =
+  (r.1,\ g hg -> build g (r.2 g hg))
+ where {
+  build (g : Tel) (t : TermValue g (guu n) a) : TypeValue g (gel n a) =
+    (decode-at (n,nb) g u.1,decode-down n nb a g u.1 u.2)
+   where {
+    nb : LeN n N = level-bound n g t.1 t.2.1 ;
+    u : CodeValue n nb g a = code-value n nb g a t ;
+   } ;
+ } ;
+
+case-ge-el (G : GE) (n : Nat) (a a' : GE) (r : SoundJ (gjeqtm G a a' (guu n))) :
+    SoundJ (gjeqty G (gel n a) (gel n a')) =
+  (r.1,\ g hg -> build g (r.2 g hg))
+ where {
+  build (g : Tel) (t : TermEquality g (guu n) a a') : TypeEquality g (gel n a) (gel n a') =
+    (decode-at (n,nb) g u.1,(decode-down n nb a g u.1 u.2.1,decode-down n nb a' g u.1 u.2.2))
+   where {
+    nb : LeN n N = level-bound n g t.1 t.2.1 ;
+    u : CodeEquality n nb g a a' = code-equality n nb g a a' t ;
+   } ;
+ } ;
+
+case-gm-pic (G : GE) (n : Nat) (a b : GE) (r : SoundJ (gjtm G a (guu n)))
+    (p : SoundJ (gjtm (gext G (gel n a)) b (guu n))) : SoundJ (gjtm G (gpic n a b) (guu n)) =
+  (r.1,\ g hg -> build g (code-product G n a b r p g hg))
+ where {
+  build (g : Tel) (v : CodeProduct[n,g,a,b]) : TermValue g (guu n) (gpic n a b) =
+    (universe-at (n,v.nb) g,(univ-down n v.nb g,(v.prod,v.prod-down))) ;
+ } ;
+
+case-gm-uc (G : GE) (m n : Nat) (lt : LeN (suc m) n) (nb : LeN n N) (r : SoundJ (gjwf G)) :
+    SoundJ (gjtm G (guc m n) (guu n)) =
+  (r,\ g hg -> (universe-at (n,nb) g,(univ-down n nb g,(M.uc (m,mb) (n,nb) lt (ctx g),uc-down m n mb nb lt g))))
+ where { mb : LeN m N = lower-bound m n lt nb ; } ;
+
+case-gm-lf (G : GE) (m n : Nat) (a : GE) (lt : LeN (suc m) n) (nb : LeN n N) (r : SoundJ (gjtm G a (guu m))) :
+    SoundJ (gjtm G (glf m n a) (guu n)) =
+  (r.1,\ g hg -> build g (code-value m mb g a (r.2 g hg)))
+ where {
+  mb : LeN m N = lower-bound m n lt nb ;
+  build (g : Tel) (u : CodeValue m mb g a) : TermValue g (guu n) (glf m n a) =
+    (universe-at (n,nb) g,(univ-down n nb g,(M.lf (m,mb) (n,nb) lt (ctx g) u.1,lf-down m n mb nb lt a g u.1 u.2))) ;
+ } ;
+
+case-ge-el-uc (G : GE) (m n : Nat) (lt : LeN (suc m) n) (nb : LeN n N) (r : SoundJ (gjwf G)) :
+    SoundJ (gjeqty G (gel n (guc m n)) (guu m)) =
+  (r,\ g hg -> build g)
+ where {
+  mb : LeN m N = lower-bound m n lt nb ;
+  build (g : Tel) : TypeEquality g (gel n (guc m n)) (guu m) =
+    same-type g (gel n (guc m n)) (guu m) (decode-at (n,nb) g u) (universe-at (m,mb) g)
+      (decode-down n nb (guc m n) g u (uc-down m n mb nb lt g)) (univ-down m mb g) (M.el-uc (m,mb) (n,nb) lt (ctx g))
+   where { u : Code (n,nb) g = M.uc (m,mb) (n,nb) lt (ctx g) ; } ;
+ } ;
+
+case-ge-el-lf (G : GE) (m n : Nat) (a : GE) (lt : LeN (suc m) n) (nb : LeN n N) (r : SoundJ (gjtm G a (guu m))) :
+    SoundJ (gjeqty G (gel n (glf m n a)) (gel m a)) =
+  (r.1,\ g hg -> build g (code-value m mb g a (r.2 g hg)))
+ where {
+  mb : LeN m N = lower-bound m n lt nb ;
+  build (g : Tel) (u : CodeValue m mb g a) : TypeEquality g (gel n (glf m n a)) (gel m a) =
+    same-type g (gel n (glf m n a)) (gel m a) (decode-at (n,nb) g v) (decode-at (m,mb) g u.1)
+      (decode-down n nb (glf m n a) g v (lf-down m n mb nb lt a g u.1 u.2))
+      (decode-down m mb a g u.1 u.2) (M.el-lf (m,mb) (n,nb) lt (ctx g) u.1)
+   where { v : Code (n,nb) g = M.lf (m,mb) (n,nb) lt (ctx g) u.1 ; } ;
+ } ;
+
+case-ge-el-pic (G : GE) (n : Nat) (a b : GE) (r : SoundJ (gjtm G a (guu n)))
+    (p : SoundJ (gjtm (gext G (gel n a)) b (guu n))) : SoundJ (gjeqty G (gel n (gpic n a b)) (gpi (gel n a) (gel n b))) =
+  (r.1,\ g hg -> build g (code-product G n a b r p g hg))
+ where {
+  build (g : Tel) (v : CodeProduct[n,g,a,b]) : TypeEquality g (gel n (gpic n a b)) (gpi (gel n a) (gel n b)) =
+    same-type g (gel n (gpic n a b)) (gpi (gel n a) (gel n b)) (decode-at (n,v.nb) g v.prod) (pi-at g A B')
+      (decode-down n v.nb (gpic n a b) g v.prod v.prod-down)
+      (pi-down (gel n a) (gel n b) g A B' (decode-down n v.nb a g v.left.1 v.left.2)
+        (decode-down n v.nb b x v.right.1 v.right.2)) (M.el-pic (n,v.nb) (ctx g) v.left.1 v.right.1)
+   where {
+    x : Tel = code-tel (n,v.nb) g v.left.1 ;
+    A : C.Ty (ctx g) = decode-at (n,v.nb) g v.left.1 ;
+    B' : C.Ty (ctx x) = decode-at (n,v.nb) x v.right.1 ;
+   } ;
+ } ;
+
+case-gm-elf (G : GE) (m n : Nat) (a a' : GE) (lt : LeN (suc m) n) (nb : LeN n N)
+    (r : SoundJ (gjeqtm G a a' (guu m))) : SoundJ (gjeqtm G (glf m n a) (glf m n a') (guu n)) =
+  (r.1,\ g hg -> build g (code-equality m mb g a a' (r.2 g hg)))
+ where {
+  mb : LeN m N = lower-bound m n lt nb ;
+  build (g : Tel) (u : CodeEquality m mb g a a') : TermEquality g (guu n) (glf m n a) (glf m n a') =
+    (universe-at (n,nb) g,(univ-down n nb g,(M.lf (m,mb) (n,nb) lt (ctx g) u.1,
+      (lf-down m n mb nb lt a g u.1 u.2.1,lf-down m n mb nb lt a' g u.1 u.2.2)))) ;
+ } ;
+
+case-gm-epic (G : GE) (n : Nat) (a a' b b' : GE) (w : SoundJ (gjtm G a (guu n)))
+    (r : SoundJ (gjeqtm G a a' (guu n))) (p : SoundJ (gjeqtm (gext G (gel n a)) b b' (guu n))) :
+    SoundJ (gjeqtm G (gpic n a b) (gpic n a' b') (guu n)) =
+  (r.1,\ g hg -> build g hg (r.2 g hg))
+ where {
+  build (g : Tel) (hg : CtxDown G g) (ar : TermEquality g (guu n) a a') : TermEquality g (guu n) (gpic n a b) (gpic n a' b') =
+    (universe-at (n,nb) g,(univ-down n nb g,(M.pic (n,nb) (ctx g) u.1 v.1,
+      (pic-down n nb a b g u.1 v.1 u.2.1 v.2.1,pic-down n nb a' b' g u.1 v.1 u.2.2 v.2.2))))
+   where {
+    nb : LeN n N = level-bound n g ar.1 ar.2.1 ;
+    u : CodeEquality n nb g a a' = code-equality n nb g a a' ar ;
+    x : Tel = code-tel (n,nb) g u.1 ;
+    v : CodeEquality n nb x b b' = code-equality n nb x b b'
+      (p.2 x (ext-down G (gel n a) g (decode-at (n,nb) g u.1) hg (decode-down n nb a g u.1 u.2.1))) ;
+   } ;
+ } ;
+
+code-pair-path (k : LevelAt N) (g : Tel) (u v : Code k g) (e : Id (Code k g) u v) :
+    Id (Term g) (universe-at k g,u) (universe-at k g,v) =
+  ap (Code k g) (Term g) (\ a -> (universe-at k g,a)) u v e ;

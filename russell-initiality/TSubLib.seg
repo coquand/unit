@@ -1,0 +1,125 @@
+-- TSubLib.seg: typed substitutions of T_Tarski, the operations needed to
+-- erase Ehrhard-GAT derivations (Theorem 16).
+--   comp-ok          s, t typed  gives  t . s  typed
+--   subeq-pt         pointwise equal raw maps are convertible
+--   subeq-refl/sym/trans/comp
+--   cxconv-ok        CxEq G D  gives  id : D -> G ; cxconv-*  context conversion ; cxeq-sym
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ; open TSubCong[l] ;
+
+SOk (D G : Cx) (s : Nat -> Tm) : U l = SubD.SubOk D G s ;
+
+cmp (s t : Nat -> Tm) : Nat -> Tm = \ i -> Sub.trav (s i) t ;
+
+comp-ok (T D : Cx) (t : Nat -> Tm) (ot : SOk T D t) (wT : Der (jwf T)) :
+    (G : Cx) -> (s : Nat -> Tm) -> SOk D G s -> SOk T G (cmp s t) = split {
+  cnil -> \ s os -> tt ;
+  csnoc G A | r -> \ s os ->
+    (r (\ i -> s (suc i)) os.1,
+     der-tm-ty T (Sub.trav (s zero) t) (Sub.trav (Sub.trav A (\ i -> s (suc i))) t) (Sub.trav A (\ i -> Sub.trav (s (suc i)) t))
+       (sub-sub A (\ i -> s (suc i)) t)
+       (SubD.trav-der (jtm D (s zero) (Sub.trav A (\ i -> s (suc i)))) os.2 T t ot wT)) } ;
+
+sok-pt (D : Cx) : (G : Cx) -> (s t : Nat -> Tm) -> SOk D G s -> SL.PtEq s t -> SOk D G t = split {
+  cnil -> \ s t os e -> tt ;
+  csnoc G A | r -> \ s t os e ->
+    (r (\ i -> s (suc i)) (\ i -> t (suc i)) os.1 (\ i -> e (suc i)),
+     der-tm-tm D (s zero) (t zero) (Sub.trav A (\ i -> t (suc i))) (e zero)
+       (der-tm-ty D (s zero) (Sub.trav A (\ i -> s (suc i))) (Sub.trav A (\ i -> t (suc i)))
+          (SL.trav-ext A (\ i -> s (suc i)) (\ i -> t (suc i)) (\ i -> e (suc i))) os.2)) } ;
+
+subeq-pt (D : Cx) : (G : Cx) -> (s t : Nat -> Tm) -> SOk D G s -> SL.PtEq s t -> SubEq D G s t = split {
+  cnil -> \ s t os e -> tt ;
+  csnoc G A | r -> \ s t os e ->
+    (r (\ i -> s (suc i)) (\ i -> t (suc i)) os.1 (\ i -> e (suc i)),
+     der-eqtm-r D (s zero) (s zero) (t zero) (Sub.trav A (\ i -> s (suc i))) (e zero)
+       (eqtm-refl D (s zero) (Sub.trav A (\ i -> s (suc i))) os.2)) } ;
+
+subeq-refl (D G : Cx) (s : Nat -> Tm) (os : SOk D G s) : SubEq D G s s =
+  subeq-pt D G s s os (\ i -> refl (s i)) ;
+
+subeq-sym (D : Cx) (wD : Der (jwf D)) : (G : Cx) -> CtxOk G -> (s t : Nat -> Tm) -> SOk D G s -> SOk D G t ->
+    SubEq D G s t -> SubEq D G t s = split {
+  cnil -> \ hG s t os ot e -> tt ;
+  csnoc G A | r -> \ hG s t os ot e ->
+    (r hG.1 (\ i -> s (suc i)) (\ i -> t (suc i)) os.1 ot.1 e.1,
+     eqtm-conv D (t zero) (s zero) (Sub.trav A (\ i -> s (suc i))) (Sub.trav A (\ i -> t (suc i)))
+       (eqtm-sym D (s zero) (t zero) (Sub.trav A (\ i -> s (suc i)))
+          (SubD.trav-der (jty G A) hG.2 D (\ i -> s (suc i)) os.1 wD) e.2)
+       (sub-cong (jty G A) hG.2 D (\ i -> s (suc i)) (\ i -> t (suc i)) os.1 ot.1 e.1 wD)) } ;
+
+subeq-trans (D : Cx) (wD : Der (jwf D)) : (G : Cx) -> CtxOk G -> (s t u : Nat -> Tm) -> SOk D G s -> SOk D G t ->
+    SubEq D G s t -> SubEq D G t u -> SubEq D G s u = split {
+  cnil -> \ hG s t u os ot e1 e2 -> tt ;
+  csnoc G A | r -> \ hG s t u os ot e1 e2 ->
+    (r hG.1 (\ i -> s (suc i)) (\ i -> t (suc i)) (\ i -> u (suc i)) os.1 ot.1 e1.1 e2.1,
+     eqtm-trans D (s zero) (t zero) (u zero) (Sub.trav A (\ i -> s (suc i))) e1.2
+       (eqtm-conv D (t zero) (u zero) (Sub.trav A (\ i -> t (suc i))) (Sub.trav A (\ i -> s (suc i))) e2.2
+          (eqty-sym D (Sub.trav A (\ i -> s (suc i))) (Sub.trav A (\ i -> t (suc i)))
+             (sub-cong (jty G A) hG.2 D (\ i -> s (suc i)) (\ i -> t (suc i)) os.1 ot.1 e1.1 wD)))) } ;
+
+-- composition of convertible substitutions
+subeq-comp (T D : Cx) (wT : Der (jwf T)) (wD : Der (jwf D)) (d d' : Nat -> Tm) (od : SOk T D d) (od' : SOk T D d')
+    (ed : SubEq T D d d') : (G : Cx) -> CtxOk G -> (s s' : Nat -> Tm) -> SOk D G s -> SOk D G s' -> SubEq D G s s' ->
+    SubEq T G (cmp s d) (cmp s' d') = split {
+  cnil -> \ hG s s' os os' e -> tt ;
+  csnoc G A | r -> \ hG s s' os os' e ->
+    (r hG.1 (\ i -> s (suc i)) (\ i -> s' (suc i)) os.1 os'.1 e.1,
+     der-eqtm-ty T (Sub.trav (s zero) d) (Sub.trav (s' zero) d') (Sub.trav (Sub.trav A (\ i -> s (suc i))) d)
+       (Sub.trav A (\ i -> Sub.trav (s (suc i)) d)) (sub-sub A (\ i -> s (suc i)) d)
+       (eqtm-trans T (Sub.trav (s zero) d) (Sub.trav (s' zero) d) (Sub.trav (s' zero) d') (Sub.trav (Sub.trav A (\ i -> s (suc i))) d)
+          (SubD.trav-der (jeqtm D (s zero) (s' zero) (Sub.trav A (\ i -> s (suc i)))) e.2 T d od wT)
+          (eqtm-conv T (Sub.trav (s' zero) d) (Sub.trav (s' zero) d') (Sub.trav (Sub.trav A (\ i -> s' (suc i))) d)
+             (Sub.trav (Sub.trav A (\ i -> s (suc i))) d)
+             (sub-cong (jtm D (s' zero) (Sub.trav A (\ i -> s' (suc i)))) os'.2 T d d' od od' ed wT)
+             (SubD.trav-der (jeqty D (Sub.trav A (\ i -> s' (suc i))) (Sub.trav A (\ i -> s (suc i))))
+                (eqty-sym D (Sub.trav A (\ i -> s (suc i))) (Sub.trav A (\ i -> s' (suc i)))
+                   (sub-cong (jty G A) hG.2 D (\ i -> s (suc i)) (\ i -> s' (suc i)) os.1 os'.1 e.1 wD))
+                T d od wT)))) } ;
+
+------------------------------------------------------------------------
+-- context conversion
+
+cxconv-ok : (G D : Cx) -> CxEq G D -> CtxOk D -> SOk D G idS = split {
+  cnil -> split { cnil -> \ e hD -> tt ; csnoc D B -> \ e hD -> efq e } ;
+  csnoc G A | r -> split {
+    cnil -> \ e hD -> efq e ;
+    csnoc D B -> \ e hD ->
+      (SubD.subok-wk D B hD.2 G idS (r D e.1 hD.1),
+       tm-conv (csnoc D B) (var zero) (wk B) (Sub.trav A (\ i -> var (suc i))) (tm-v0 D B hD.2)
+         (der-eqty-r (csnoc D B) (wk B) (wk A) (Sub.trav A (\ i -> var (suc i))) (ren-as-sub A (\ i -> suc i))
+            (wk-eqty D B B A hD.2
+               (eqty-sym D A B
+                  (der-eqty-l D (Sub.trav A idS) A B (sub-id A)
+                     (der-eqty-r D (Sub.trav A idS) (Sub.trav B idS) B (sub-id B)
+                        (SubD.trav-der (jeqty G A B) e.2 D idS (r D e.1 hD.1) (wf-from-ok D hD.1)))))))) } } ;
+
+cxconv-ty (G D : Cx) (e : CxEq G D) (hD : CtxOk D) (A : Tm) (h : Der (jty G A)) : Der (jty D A) =
+  der-ty D (Sub.trav A idS) A (sub-id A) (SubD.trav-der (jty G A) h D idS (cxconv-ok G D e hD) (wf-from-ok D hD)) ;
+
+cxconv-tm (G D : Cx) (e : CxEq G D) (hD : CtxOk D) (a A : Tm) (h : Der (jtm G a A)) : Der (jtm D a A) =
+  der-tm-tm D (Sub.trav a idS) a A (sub-id a)
+    (der-tm-ty D (Sub.trav a idS) (Sub.trav A idS) A (sub-id A)
+       (SubD.trav-der (jtm G a A) h D idS (cxconv-ok G D e hD) (wf-from-ok D hD))) ;
+
+cxconv-eqty (G D : Cx) (e : CxEq G D) (hD : CtxOk D) (A B : Tm) (h : Der (jeqty G A B)) : Der (jeqty D A B) =
+  der-eqty-l D (Sub.trav A idS) A B (sub-id A)
+    (der-eqty-r D (Sub.trav A idS) (Sub.trav B idS) B (sub-id B)
+       (SubD.trav-der (jeqty G A B) h D idS (cxconv-ok G D e hD) (wf-from-ok D hD))) ;
+
+cxconv-eqtm (G D : Cx) (e : CxEq G D) (hD : CtxOk D) (a b A : Tm) (h : Der (jeqtm G a b A)) : Der (jeqtm D a b A) =
+  der-eqtm-l D (Sub.trav a idS) a b A (sub-id a)
+    (der-eqtm-r D (Sub.trav a idS) (Sub.trav b idS) b A (sub-id b)
+       (der-eqtm-ty D (Sub.trav a idS) (Sub.trav b idS) (Sub.trav A idS) A (sub-id A)
+          (SubD.trav-der (jeqtm G a b A) h D idS (cxconv-ok G D e hD) (wf-from-ok D hD)))) ;
+
+cxeq-refl : (G : Cx) -> CtxOk G -> CxEq G G = split {
+  cnil -> \ h -> tt ;
+  csnoc G A | r -> \ h -> (r h.1, eqty-refl G A h.2) } ;
+
+cxeq-sym : (G D : Cx) -> CtxOk D -> CxEq G D -> CxEq D G = split {
+  cnil -> split { cnil -> \ hD e -> tt ; csnoc D B -> \ hD e -> efq e } ;
+  csnoc G A | r -> split {
+    cnil -> \ hD e -> efq e ;
+    csnoc D B -> \ hD e -> (r D hD.1 e.1, eqty-sym D A B (cxconv-eqty G D e.1 hD.1 A B e.2)) } } ;

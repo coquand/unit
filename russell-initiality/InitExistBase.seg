@@ -1,0 +1,192 @@
+-- InitExistBase.seg (PLAN-INIT, Part E): the soundness values of
+-- TEInterpSound as propositions, read off MERE derivations (Pf J of
+-- InitSorts), and the transport / total-space lemmas for denotations.
+-- Segment of InitCheckE.InitE.Exist (l, M): free names l, N, M.
+--
+--   cval G w            the telescope of a well-formed context
+--   tval G A h g hg     the type of A over a telescope g denoting G
+--   mval G a A h g hg T hT   the term of a at a type T denoting A
+--   sval D s G h d g hd hg   the substitution of s between d and g
+--   cx-conv, ty-conv, tm-conv, sub-conv   equality judgements move a
+--                       denotation from one side to the other
+--   ty-fn, tm-fn, sub-fn    functionality in a fixed fibre
+--   ty-down-mv, tm-down-mv, code-down-mv   a denotation over g1 moves to
+--                       g2 along a path of telescopes and ANY path of
+--                       contexts ctx g1 = ctx g2 (Ctx of M is a set)
+--   sub-tot, tm-tot     two denotations of one raw expression over equal
+--                       telescopes are equal in the total spaces of M
+open Base ; open Prelude[l] ; open Paths[l] ;
+module B = BoundedSyntax[N] ;
+open B.GAT[l] ;
+open InitQuot[l] ;
+open InitSorts[l] ;
+module S = TEInterp.Interpret[l,N,M] ;
+open S.TEInterpBase ;
+open S.TEDenote ;
+module J = S.TEInterpJudgement ;
+
+------------------------------------------------------------------------
+-- a path in a Sigma type over a set, with equal first components,
+-- gives a path of second components (as InitHomBase.fib)
+
+fibre (A : U l) (sA : isSet A) (F : A -> U l) (x : A) (b b' : F x)
+    (f : Id ((z : A) * F z) (x, b) (x, b')) : Id (F x) b b' =
+  trans (F x) b (subst A F x x (ap ((z : A) * F z) A (\ w -> w.1) (x, b) (x, b') f) b) b'
+    (ap (Id A x x) (F x) (\ e -> subst A F x x e b)
+        (refl x) (ap ((z : A) * F z) A (\ w -> w.1) (x, b) (x, b') f)
+        (sym (Id A x x) (ap ((z : A) * F z) A (\ w -> w.1) (x, b) (x, b') f) (refl x)
+             (loop-refl A sA x (ap ((z : A) * F z) A (\ w -> w.1) (x, b) (x, b') f))))
+    (Sigma-snd A F x x b b' f) ;
+
+------------------------------------------------------------------------
+-- functionality in a fibre
+
+ty-fn (A : GE) (g : Tel) (u v : C.Ty (ctx g)) (h : TyDown A g u) (k : TyDown A g v) :
+  Id (C.Ty (ctx g)) u v = J.ty-functional A g u v h k ;
+
+tm-fn (a : GE) (g : Tel) (T : C.Ty (ctx g)) (u v : C.El (ctx g) T)
+    (h : TmDown a g T u) (k : TmDown a g T v) : Id (C.El (ctx g) T) u v =
+  fibre (C.Ty (ctx g)) (C.isSetTy (ctx g)) (C.El (ctx g)) T u v (J.tm-functional a g (T, u) (T, v) h k) ;
+
+sub-fn (s : GE) (d g : Tel) (u v : C.Sub (ctx d) (ctx g))
+    (h : SubDown s d g u) (k : SubDown s d g v) : Id (C.Sub (ctx d) (ctx g)) u v =
+  fibre Tel tel-set (\ g1 -> C.Sub (ctx d) (ctx g1)) g u v (J.sub-functional s d (g, u) (g, v) h k) ;
+
+------------------------------------------------------------------------
+-- the soundness values are propositions
+
+ctxval-prop (G : GE) : isProp (J.CtxValue G) = \ u v ->
+  Sigma-eq Tel (CtxDown G) u.1 v.1 u.2 v.2 (J.ctx-functional G u.1 v.1 u.2 v.2)
+    (denotes-prop (meaning G).context tel-set v.1) ;
+
+tyval-prop (g : Tel) (A : GE) : isProp (J.TypeValue g A) = \ u v ->
+  Sigma-eq (C.Ty (ctx g)) (TyDown A g) u.1 v.1 u.2 v.2 (ty-fn A g u.1 v.1 u.2 v.2)
+    (denotes-prop ((meaning A).type-at g) (C.isSetTy (ctx g)) v.1) ;
+
+termat-prop (g : Tel) (T : C.Ty (ctx g)) (a : GE) : isProp (J.TermAt g T a) = \ u v ->
+  Sigma-eq (C.El (ctx g) T) (TmDown a g T) u.1 v.1 u.2 v.2 (tm-fn a g T u.1 v.1 u.2 v.2)
+    (denotes-prop ((meaning a).term-at g) (term-set g) (T, v.1)) ;
+
+subval-prop (d g : Tel) (s : GE) : isProp (J.SubValue d g s) = \ u v ->
+  Sigma-eq (C.Sub (ctx d) (ctx g)) (SubDown s d g) u.1 v.1 u.2 v.2 (sub-fn s d g u.1 v.1 u.2 v.2)
+    (denotes-prop ((meaning s).sub-at d) (subs-set d) (g, v.1)) ;
+
+------------------------------------------------------------------------
+-- values from mere derivations
+
+sound (J0 : GJ) (k : GDer J0) : J.SoundJ J0 = S.TEInterpSound.sound J0 k ;
+
+cval (G : GE) (w : Pf (gjwf G)) : J.CtxValue G =
+  sq-rec (GDer (gjwf G)) (J.CtxValue G) (ctxval-prop G) (\ k -> sound (gjwf G) k) w ;
+
+tval (G A : GE) (h : Pf (gjty G A)) (g : Tel) (hg : CtxDown G g) : J.TypeValue g A =
+  sq-rec (GDer (gjty G A)) (J.TypeValue g A) (tyval-prop g A) (\ k -> (sound (gjty G A) k).2 g hg) h ;
+
+mval (G a A : GE) (h : Pf (gjtm G a A)) (g : Tel) (hg : CtxDown G g) (T : C.Ty (ctx g)) (hT : TyDown A g T) :
+  J.TermAt g T a =
+  sq-rec (GDer (gjtm G a A)) (J.TermAt g T a) (termat-prop g T a)
+    (\ k -> J.at-type g A a T hT ((sound (gjtm G a A) k).2 g hg)) h ;
+
+sval (D s G : GE) (h : Pf (gjsub D s G)) (d g : Tel) (hd : CtxDown D d) (hg : CtxDown G g) : J.SubValue d g s =
+  sq-rec (GDer (gjsub D s G)) (J.SubValue d g s) (subval-prop d g s) (\ k -> (sound (gjsub D s G) k).2.2 d g hd hg) h ;
+
+------------------------------------------------------------------------
+-- equality judgements move denotations
+
+cx-conv (G D : GE) (e : Pf (gjeqcx G D)) (g : Tel) (k : CtxDown G g) : CtxDown D g =
+  sq-rec (GDer (gjeqcx G D)) (CtxDown D g) (denotes-prop (meaning D).context tel-set g)
+    (\ q -> J.ctx-convert G D (sound (gjeqcx G D) q) g k) e ;
+
+ty-conv (G A A' : GE) (e : Pf (gjeqty G A A')) (g : Tel) (hg : CtxDown G g) (T : C.Ty (ctx g))
+    (h : TyDown A g T) : TyDown A' g T =
+  sq-rec (GDer (gjeqty G A A')) (TyDown A' g T) (denotes-prop ((meaning A').type-at g) (C.isSetTy (ctx g)) T)
+    (\ q -> J.ty-move A' g ((sound (gjeqty G A A') q).2 g hg).1 T
+      (ty-fn A g ((sound (gjeqty G A A') q).2 g hg).1 T ((sound (gjeqty G A A') q).2 g hg).2.1 h)
+      ((sound (gjeqty G A A') q).2 g hg).2.2) e ;
+
+tm-conv (G a b A : GE) (e : Pf (gjeqtm G a b A)) (g : Tel) (hg : CtxDown G g) (T : C.Ty (ctx g))
+    (hT : TyDown A g T) (u : C.El (ctx g) T) (h : TmDown a g T u) : TmDown b g T u =
+  sq-rec (GDer (gjeqtm G a b A)) (TmDown b g T u) (denotes-prop ((meaning b).term-at g) (term-set g) (T, u))
+    (\ q -> J.tm-move b g (T, (J.equal-at-type g A a b T hT ((sound (gjeqtm G a b A) q).2 g hg)).1) (T, u)
+      (J.tm-functional a g (T, (J.equal-at-type g A a b T hT ((sound (gjeqtm G a b A) q).2 g hg)).1) (T, u)
+        (J.equal-at-type g A a b T hT ((sound (gjeqtm G a b A) q).2 g hg)).2.1 h)
+      (J.equal-at-type g A a b T hT ((sound (gjeqtm G a b A) q).2 g hg)).2.2) e ;
+
+sub-conv (D s t G : GE) (e : Pf (gjeqsub D s t G)) (d g : Tel) (hd : CtxDown D d) (hg : CtxDown G g)
+    (u : C.Sub (ctx d) (ctx g)) (h : SubDown s d g u) : SubDown t d g u =
+  sq-rec (GDer (gjeqsub D s t G)) (SubDown t d g u) (denotes-prop ((meaning t).sub-at d) (subs-set d) (g, u))
+    (\ q -> J.sub-move t d (g, ((sound (gjeqsub D s t G) q).2.2 d g hd hg).1) (g, u)
+      (J.sub-functional s d (g, ((sound (gjeqsub D s t G) q).2.2 d g hd hg).1) (g, u)
+        ((sound (gjeqsub D s t G) q).2.2 d g hd hg).2.1 h)
+      ((sound (gjeqsub D s t G) q).2.2 d g hd hg).2.2) e ;
+
+------------------------------------------------------------------------
+-- moving denotations along paths of telescopes; the context path P is
+-- arbitrary (it is a loop, hence refl, once the telescopes agree)
+
+-- the moves of InitHomBase (same bodies, so definitionally the same)
+mvTy0 (X Y : C.Ctx) (e : Id C.Ctx X Y) (A : C.Ty X) : C.Ty Y = subst C.Ctx C.Ty X Y e A ;
+mvEl0 (X Y : C.Ctx) (e : Id C.Ctx X Y) (A : C.Ty X) (a : C.El X A) : C.El Y (mvTy0 X Y e A) =
+  idJ C.Ctx X (\ Z e1 -> C.El Z (mvTy0 X Z e1 A)) a Y e ;
+CodeF0 (n : EhrhardTEModel[l].LevelAt N) (X : C.Ctx) : U l = C.El X (M.univ n X) ;
+mvCode0 (n : EhrhardTEModel[l].LevelAt N) (X Y : C.Ctx) (e : Id C.Ctx X Y) (a : CodeF0 n X) : CodeF0 n Y =
+  subst C.Ctx (CodeF0 n) X Y e a ;
+
+ty-down-mv (A : GE) (g1 g2 : Tel) (e : Id Tel g1 g2) (P : Id C.Ctx (ctx g1) (ctx g2))
+    (b : C.Ty (ctx g1)) (h : TyDown A g1 b) : TyDown A g2 (mvTy0 (ctx g1) (ctx g2) P b) =
+  idJ Tel g1 (\ g e1 -> (P1 : Id C.Ctx (ctx g1) (ctx g)) -> TyDown A g (mvTy0 (ctx g1) (ctx g) P1 b))
+    (\ P1 -> J.ty-move A g1 b (mvTy0 (ctx g1) (ctx g1) P1 b)
+      (ap (Id C.Ctx (ctx g1) (ctx g1)) (C.Ty (ctx g1)) (\ q -> mvTy0 (ctx g1) (ctx g1) q b) (refl (ctx g1)) P1
+        (sym (Id C.Ctx (ctx g1) (ctx g1)) P1 (refl (ctx g1)) (loop-refl C.Ctx M.isSetCtx (ctx g1) P1)))
+      h)
+    g2 e P ;
+
+tm-down-mv (a : GE) (g1 g2 : Tel) (e : Id Tel g1 g2) (P : Id C.Ctx (ctx g1) (ctx g2))
+    (B0 : C.Ty (ctx g1)) (t : C.El (ctx g1) B0) (h : TmDown a g1 B0 t) :
+    TmDown a g2 (mvTy0 (ctx g1) (ctx g2) P B0) (mvEl0 (ctx g1) (ctx g2) P B0 t) =
+  idJ Tel g1 (\ g e1 -> (P1 : Id C.Ctx (ctx g1) (ctx g)) ->
+      TmDown a g (mvTy0 (ctx g1) (ctx g) P1 B0) (mvEl0 (ctx g1) (ctx g) P1 B0 t))
+    (\ P1 -> J.tm-move a g1 (B0, t) (mvTy0 (ctx g1) (ctx g1) P1 B0, mvEl0 (ctx g1) (ctx g1) P1 B0 t)
+      (ap (Id C.Ctx (ctx g1) (ctx g1)) (Term g1)
+        (\ q -> (mvTy0 (ctx g1) (ctx g1) q B0, mvEl0 (ctx g1) (ctx g1) q B0 t)) (refl (ctx g1)) P1
+        (sym (Id C.Ctx (ctx g1) (ctx g1)) P1 (refl (ctx g1)) (loop-refl C.Ctx M.isSetCtx (ctx g1) P1)))
+      h)
+    g2 e P ;
+
+code-down-mv (n : EhrhardTEModel[l].LevelAt N) (a : GE) (g1 g2 : Tel) (e : Id Tel g1 g2)
+    (P : Id C.Ctx (ctx g1) (ctx g2)) (t : CodeF0 n (ctx g1)) (h : TmDown a g1 (M.univ n (ctx g1)) t) :
+    TmDown a g2 (M.univ n (ctx g2)) (mvCode0 n (ctx g1) (ctx g2) P t) =
+  idJ Tel g1 (\ g e1 -> (P1 : Id C.Ctx (ctx g1) (ctx g)) ->
+      TmDown a g (M.univ n (ctx g)) (mvCode0 n (ctx g1) (ctx g) P1 t))
+    (\ P1 -> J.tm-move a g1 (M.univ n (ctx g1), t) (M.univ n (ctx g1), mvCode0 n (ctx g1) (ctx g1) P1 t)
+      (ap (Id C.Ctx (ctx g1) (ctx g1)) (Term g1)
+        (\ q -> (M.univ n (ctx g1), mvCode0 n (ctx g1) (ctx g1) q t)) (refl (ctx g1)) P1
+        (sym (Id C.Ctx (ctx g1) (ctx g1)) P1 (refl (ctx g1)) (loop-refl C.Ctx M.isSetCtx (ctx g1) P1)))
+      h)
+    g2 e P ;
+
+------------------------------------------------------------------------
+-- total spaces of M (as InitHomBase: TmT', SubT')
+
+TmT0 : U l = (X : C.Ctx) * ((A : C.Ty X) * C.El X A) ;
+SubT0 : U l = (X : C.Ctx) * ((Y : C.Ctx) * C.Sub X Y) ;
+
+sub-tot (s : GE) (d1 d2 : Tel) (e : Id Tel d1 d2) (g1 g2 : Tel)
+    (u1 : C.Sub (ctx d1) (ctx g1)) (u2 : C.Sub (ctx d2) (ctx g2))
+    (h1 : SubDown s d1 g1 u1) (h2 : SubDown s d2 g2 u2) :
+    Id SubT0 (ctx d1, (ctx g1, u1)) (ctx d2, (ctx g2, u2)) =
+  idJ Tel d1 (\ d e1 -> (g : Tel) (u : C.Sub (ctx d) (ctx g)) -> SubDown s d g u ->
+      Id SubT0 (ctx d1, (ctx g1, u1)) (ctx d, (ctx g, u)))
+    (\ g u k -> ap (Subs d1) SubT0 (\ w -> (ctx d1, (ctx w.1, w.2))) (g1, u1) (g, u)
+      (J.sub-functional s d1 (g1, u1) (g, u) h1 k))
+    d2 e g2 u2 h2 ;
+
+tm-tot (a : GE) (g1 g2 : Tel) (e : Id Tel g1 g2)
+    (A1 : C.Ty (ctx g1)) (t1 : C.El (ctx g1) A1) (A2 : C.Ty (ctx g2)) (t2 : C.El (ctx g2) A2)
+    (h1 : TmDown a g1 A1 t1) (h2 : TmDown a g2 A2 t2) :
+    Id TmT0 (ctx g1, (A1, t1)) (ctx g2, (A2, t2)) =
+  idJ Tel g1 (\ g e1 -> (A : C.Ty (ctx g)) (t : C.El (ctx g) A) -> TmDown a g A t ->
+      Id TmT0 (ctx g1, (A1, t1)) (ctx g, (A, t)))
+    (\ A t k -> ap (Term g1) TmT0 (\ w -> (ctx g1, w)) (A1, t1) (A, t)
+      (J.tm-functional a g1 (A1, t1) (A, t) h1 k))
+    g2 e A2 t2 h2 ;

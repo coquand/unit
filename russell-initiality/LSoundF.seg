@@ -1,0 +1,357 @@
+-- LSoundF.seg: the filter-level part of Sound.seg (semantic typing of
+-- filters, Lemmas 3.8, 3.9, the rules pi, lam, app, beta, eta) over the
+-- levelled domain.  TyU A = HasTy A (univF 0); hasty-lev moves between
+-- levels (membership ignores the level).
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open LTypes[l] ; open LConsistency[l] ; open LTyping[l] ;
+open LFilter[l] ;
+
+
+------------------------------------------------------------------------
+-- semantic typing of filters
+
+record EnlR { A : Filt ; B : Filt ; t : Ty ;
+  v : Ty ; below : Le v t ; inA : A.mem v ; c : Ty ; inB : B.mem c ; tp : Tp (el v c) ; } ;
+Enl (A B : Filt) (t : Ty) : U l = EnlR[A, B, t] ;
+
+HasTy (A B : Filt) : U l = (t : Ty) -> A.mem t -> Enl A B t ;
+
+enl-conv (A B B' : Filt) (i : Incl B B') (t : Ty) (e : Enl A B t) : Enl A B' t =
+  new EnlR[A, B', t, v := e.v, below := e.below, inA := e.inA, c := e.c, inB := i e.c e.inB, tp := e.tp] ;
+
+hasty-conv (A B B' : Filt) (h : HasTy A B) (i : Incl B B') : HasTy A B' = \ t m -> enl-conv A B B' i t (h t m) ;
+
+-- both filters moved along equivalences
+hasty-eq (A A' B B' : Filt) (eA : FEq A A') (iB : Incl B B') (h : HasTy A B) : HasTy A' B' =
+  \ t m -> enl-move t (h t (eA.2 t m))
+  where {
+    enl-move (t : Ty) (e : Enl A B t) : Enl A' B' t =
+      new EnlR[A', B', t, v := e.v, below := e.below, inA := eA.1 e.v e.inA, c := e.c, inB := iB e.c e.inB, tp := e.tp] ; } ;
+
+consf-incl (X Y : Filt) (i : Incl Y X) (c : ConsF X) : ConsF Y = \ t m -> c t (i t m) ;
+
+-- an om-like element is typed by om
+enl-om (A B : Filt) (t : Ty) (m : A.mem t) (e : Le om t) : Enl A B t =
+  new EnlR[A, B, t, v := t, below := le-refl t, inA := m, c := om, inB := B.fom, tp := t-bot t om e tp-omU] ;
+
+-- the elements of a typed filter are consistent (Lemma 2.4, 1.3)
+enl-cons (A B : Filt) (t : Ty) (e : Enl A B t) : Cons t = cons-down e.v t e.below (tp-cons e.v e.c e.tp) ;
+hasty-cons (A B : Filt) (h : HasTy A B) : ConsF A = \ t m -> enl-cons A B t (h t m) ;
+
+-- U : U
+univ-hasty (m n : Nat) : HasTy (univF m) (univF n) =
+  \ t le -> new EnlR[univF m, univF n, t, v := univ m, below := le, inA := le-refl (univ m), c := univ n,
+                    inB := le-refl (univ n), tp := tp-UUn m n] ;
+
+-- a typed compact element: its principal filter is typed
+prin-hasty (A : Filt) (x : Ty) (h : TyIn A x) : HasTy (prin x) A =
+  \ t le -> new EnlR[prin x, A, t, v := x, below := le, inA := le-refl x, c := h.a, inB := h.ina, tp := h.tp] ;
+
+------------------------------------------------------------------------
+-- Lemma 3.8: types
+
+tp-univ-by (v c : Ty) (n : Nat) (lu : Le (univ n) c) : Shape v c -> Tp (el v U0) = split {
+  sh-bot e h -> t-bot v U0 e tp-UU ;
+  sh-univ m k e1 e2 -> t-univ v U0 m zero e1 (eqv-refl U0) ;
+  sh-pi A phi k e1 e2 h1 h2 cp -> t-pi v U0 A phi zero e1 (eqv-refl U0) h1 h2 cp ;
+  sh-lam A phi f e1 e2 h1 h2 cf -> efq (univ-not-pi n A phi (le-trans (univ n) c (pi A phi) lu e2.1)) } ;
+
+tp-univ (v c : Ty) (n : Nat) (h : Tp (el v c)) (lu : Le (univ n) c) : Tp (el v U0) = tp-univ-by v c n lu (shape v c h) ;
+
+-- membership in a universe ignores the level
+hasty-lev (A : Filt) (m n : Nat) (h : HasTy A (univF m)) : HasTy A (univF n) =
+  \ t mt -> new EnlR[A, univF n, t, v := (h t mt).v, below := (h t mt).below, inA := (h t mt).inA, c := univ n,
+                   inB := le-refl (univ n),
+                   tp := tp-lev (h t mt).v zero n (tp-univ (h t mt).v (h t mt).c m (h t mt).tp (h t mt).inB)] ;
+
+TyU (A : Filt) : U l = HasTy A (univF zero) ;
+
+record TyElR { A : Filt ; t : Ty ; a : Ty ; below : Le a t ; inA : A.mem a ; tp : Tp (el a U0) ; } ;
+TyEl (A : Filt) (t : Ty) : U l = TyElR[A, t] ;
+
+ty-enl (A : Filt) (h : TyU A) (t : Ty) (m : A.mem t) : TyEl A t =
+  new TyElR[A, t, a := e.v, below := e.below, inA := e.inA, tp := tp-univ e.v e.c zero e.tp e.inB]
+  where { e : Enl A (univF zero) t = h t m ; } ;
+
+------------------------------------------------------------------------
+-- Lemma 3.9: a common domain for the keys of the entries
+
+-- x is of type every type a' : U below a
+UpT (a x : Ty) : U l = (a' : Ty) -> Le a' a -> Tp (el a' U0) -> Tp (el x a') ;
+
+upt-down (a b x : Ty) (le : Le b a) (u : UpT a x) : UpT b x = \ a' l h -> u a' (le-trans a' b a l le) h ;
+
+UpR (a : Ty) (A : Filt) (G : Ty -> Filt) (x v : Ty) : U l = UpT a x * EntR A G x v ;
+
+upr-down (a b : Ty) (A : Filt) (G : Ty -> Filt) (le : Le b a) (x v : Ty) (r : UpR a A G x v) : UpR b A G x v =
+  (upt-down a b x le r.1, r.2) ;
+
+record DomCR { A : Filt ; G : Ty -> Filt ; f : Ty ; a : Ty ; ina : A.mem a ; ents : EntS (UpR a A G) f ; } ;
+DomC (A : Filt) (G : Ty -> Filt) (f : Ty) : U l = DomCR[A, G, f] ;
+
+dom-collect (A : Filt) (G : Ty -> Filt) : (f : Ty) -> EntS (EntR A G) f -> DomC A G f = split {
+  es-om -> new DomCR[A, G, om, a := om, ina := A.fom, ents := es-om] ;
+  es-arr x v h -> new DomCR[A, G, arr x v, a := h.1.a, ina := h.1.ina,
+                           ents := es-arr x v (\ a' le h' -> tp-up x h.1.a a' h.1.tp le h', h)] ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> new DomCR[A, G, meet f1 f2,
+    a := meet r1.a r2.a, ina := A.fmeet r1.a r2.a r1.ina r2.ina,
+    ents := es-meet f1 f2
+      (ents-map (UpR r1.a A G) (UpR (meet r1.a r2.a) A G) (upr-down r1.a (meet r1.a r2.a) A G (le-meet-l r1.a r2.a)) f1 r1.ents)
+      (ents-map (UpR r2.a A G) (UpR (meet r1.a r2.a) A G) (upr-down r2.a (meet r1.a r2.a) A G (le-meet-r r1.a r2.a)) f2 r2.ents)] } ;
+
+-- (om -> U) <= x -> U
+om-univ-at (x : Ty) : Le (arr om U0) (arr x U0) = le-arr om x U0 U0 (le-om x) (le-refl U0) ;
+
+------------------------------------------------------------------------
+-- the rule Pi
+
+-- the family: each value replaced by a type below it
+record PiCR { A : Filt ; G : Ty -> Filt ; a : Ty ; b : Ty ;
+  b' : Ty ; below : Le b' b ; ents : EntS (EntR A G) b' ; tpe : Tp (ent b' a (arr om U0)) ; } ;
+PiC (A : Filt) (G : Ty -> Filt) (a b : Ty) : U l = PiCR[A, G, a, b] ;
+
+pi-entry (A : Filt) (G : Ty -> Filt) (a a0 : Ty) (ha : Tp (el a U0)) (le : Le a a0) (x v : Ty)
+    (r : UpR a0 A G x v) (y : TyEl (G x) v) : PiC A G a (arr x v) =
+  new PiCR[A, G, a, arr x v, b' := arr x y.a, below := le-arr x x y.a v (le-refl x) y.below, ents := es-arr x y.a (r.2.1, y.inA),
+           tpe := en-arr x y.a U0 a (arr om U0) (r.1 a le ha) (om-univ-at x) y.tp] ;
+
+pi-collect (A : Filt) (G : Ty -> Filt) (hG : (x : Ty) -> TyIn A x -> TyU (G x)) (a a0 : Ty)
+    (ha : Tp (el a U0)) (le : Le a a0) : (b : Ty) -> EntS (UpR a0 A G) b -> PiC A G a b = split {
+  es-om -> new PiCR[A, G, a, om, b' := om, below := le-refl om, ents := es-om, tpe := en-om a (arr om U0)] ;
+  es-arr x v r -> pi-entry A G a a0 ha le x v r (ty-enl (G x) (hG x r.2.1) v r.2.2) ;
+  es-meet b1 b2 h1 h2 | r1 r2 -> new PiCR[A, G, a, meet b1 b2,
+    b' := meet r1.b' r2.b', below := le-meet-mono r1.b' b1 r2.b' b2 r1.below r2.below,
+    ents := es-meet r1.b' r2.b' r1.ents r2.ents, tpe := en-meet r1.b' r2.b' a (arr om U0) r1.tpe r2.tpe] } ;
+
+sound-pi-in (A : Filt) (G : Ty -> Filt) (hA : TyU A) (hG : (x : Ty) -> TyIn A x -> TyU (G x))
+    (cP : ConsF (piF A G)) (t : Ty) (w : PiW A G t) : Enl (piF A G) (univF zero) t =
+  new EnlR[piF A G, (univF zero), t,
+    v := pi s.a pc.b',
+    below := le-trans (pi s.a pc.b') (pi w.a w.b) t
+              (le-pi s.a w.a pc.b' w.b (le-split-l s.a w.a d.a s.below) pc.below) w.le,
+    inA := inr inP, c := U0, inB := le-refl U0,
+    tp := t-pi (pi s.a pc.b') U0 s.a pc.b' zero (eqv-refl (pi s.a pc.b')) (eqv-refl U0) s.tp pc.tpe
+           (cons-psel (pi s.a pc.b') s.a pc.b' (cP (pi s.a pc.b') (inr inP)) (ps-here s.a pc.b')).2]
+  where {
+    d : DomC A G w.b = dom-collect A G w.b w.ents ;
+    s : TyEl A (meet w.a d.a) = ty-enl A hA (meet w.a d.a) (A.fmeet w.a d.a w.ina d.ina) ;
+    pc : PiC A G s.a w.b = pi-collect A G hG s.a d.a s.tp (le-split-r s.a w.a d.a s.below) w.b d.ents ;
+    inP : PiW A G (pi s.a pc.b') =
+      new PiWR[A, G, pi s.a pc.b', a := s.a, b := pc.b', le := le-refl (pi s.a pc.b'), ina := s.inA, ents := pc.ents] ; } ;
+
+sound-pi (A : Filt) (G : Ty -> Filt) (hA : TyU A) (hG : (x : Ty) -> TyIn A x -> TyU (G x))
+    (cP : ConsF (piF A G)) : HasTy (piF A G) (univF zero) = \ t -> split {
+  inl e -> enl-om (piF A G) (univF zero) t (inl e) e ;
+  inr w -> sound-pi-in A G hA hG cP t w } ;
+
+------------------------------------------------------------------------
+-- the rule lam
+
+-- each value replaced by a typed element below it, and its type
+record LamCR { A : Filt ; G : Ty -> Filt ; H : Ty -> Filt ; a : Ty ; f : Ty ;
+  f' : Ty ; phi : Ty ; below : Le f' f ; ents : EntS (EntR A G) f' ; fents : EntS (EntR A H) phi ;
+  tpe : Tp (ent f' a phi) ; tpf : Tp (ent phi a (arr om U0)) ; } ;
+LamC (A : Filt) (G H : Ty -> Filt) (a f : Ty) : U l = LamCR[A, G, H, a, f] ;
+
+lam-entry (A : Filt) (G H : Ty -> Filt) (hH : (x : Ty) -> TyIn A x -> TyU (H x)) (a a0 : Ty)
+    (ha : Tp (el a U0)) (le : Le a a0) (x v : Ty) (r : UpR a0 A G x v) (e : Enl (G x) (H x) v) :
+    LamC A G H a (arr x v) =
+  new LamCR[A, G, H, a, arr x v, f' := arr x e.v, phi := arr x y.a, below := le-arr x x e.v v (le-refl x) e.below,
+           ents := es-arr x e.v (r.2.1, e.inA), fents := es-arr x y.a (r.2.1, y.inA),
+           tpe := en-arr x e.v y.a a (arr x y.a) (r.1 a le ha) (le-refl (arr x y.a)) (tp-up e.v e.c y.a e.tp y.below y.tp),
+           tpf := en-arr x y.a U0 a (arr om U0) (r.1 a le ha) (om-univ-at x) y.tp]
+  where { y : TyEl (H x) e.c = ty-enl (H x) (hH x r.2.1) e.c e.inB ; } ;
+
+lam-collect (A : Filt) (G H : Ty -> Filt) (hG : (x : Ty) -> TyIn A x -> HasTy (G x) (H x))
+    (hH : (x : Ty) -> TyIn A x -> TyU (H x)) (a a0 : Ty) (ha : Tp (el a U0)) (le : Le a a0) :
+    (f : Ty) -> EntS (UpR a0 A G) f -> LamC A G H a f = split {
+  es-om -> new LamCR[A, G, H, a, om, f' := om, phi := om, below := le-refl om, ents := es-om, fents := es-om,
+                    tpe := en-om a om, tpf := en-om a (arr om U0)] ;
+  es-arr x v r -> lam-entry A G H hH a a0 ha le x v r (hG x r.2.1 v r.2.2) ;
+  es-meet f1 f2 h1 h2 | r1 r2 -> new LamCR[A, G, H, a, meet f1 f2,
+    f' := meet r1.f' r2.f', phi := meet r1.phi r2.phi, below := le-meet-mono r1.f' f1 r2.f' f2 r1.below r2.below,
+    ents := es-meet r1.f' r2.f' r1.ents r2.ents, fents := es-meet r1.phi r2.phi r1.fents r2.fents,
+    tpe := en-meet r1.f' r2.f' a (meet r1.phi r2.phi)
+            (tp-up-ent r1.f' a r1.phi a (meet r1.phi r2.phi) r1.tpe (le-refl a) (le-meet-l r1.phi r2.phi) ha)
+            (tp-up-ent r2.f' a r2.phi a (meet r1.phi r2.phi) r2.tpe (le-refl a) (le-meet-r r1.phi r2.phi) ha),
+    tpf := en-meet r1.phi r2.phi a (arr om U0) r1.tpf r2.tpf] } ;
+
+sound-lam-in (A : Filt) (G H : Ty -> Filt) (hA : TyU A) (hG : (x : Ty) -> TyIn A x -> HasTy (G x) (H x))
+    (hH : (x : Ty) -> TyIn A x -> TyU (H x)) (cG : ConsF (lamF A G)) (cH : ConsF (lamF A H))
+    (t : Ty) (w : LamW A G t) : Enl (lamF A G) (piF A H) t =
+  new EnlR[lamF A G, piF A H, t,
+    v := lc.f', below := le-trans lc.f' w.f t lc.below w.le, inA := inL,
+    c := pi s.a lc.phi,
+    inB := inr (new PiWR[A, H, pi s.a lc.phi, a := s.a, b := lc.phi, le := le-refl (pi s.a lc.phi), ina := s.inA, ents := lc.fents]),
+    tp := t-lam lc.f' (pi s.a lc.phi) s.a lc.phi lc.f' (eqv-refl lc.f') (eqv-refl (pi s.a lc.phi))
+           (t-pi (pi s.a lc.phi) U0 s.a lc.phi zero (eqv-refl (pi s.a lc.phi)) (eqv-refl U0) s.tp lc.tpf (cH lc.phi inH))
+           lc.tpe (cG lc.f' inL)]
+  where {
+    d : DomC A G w.f = dom-collect A G w.f w.ents ;
+    s : TyEl A d.a = ty-enl A hA d.a d.ina ;
+    lc : LamC A G H s.a w.f = lam-collect A G H hG hH s.a d.a s.tp s.below w.f d.ents ;
+    inL : LamW A G lc.f' = new LamWR[A, G, lc.f', f := lc.f', le := le-refl lc.f', ents := lc.ents] ;
+    inH : LamW A H lc.phi = new LamWR[A, H, lc.phi, f := lc.phi, le := le-refl lc.phi, ents := lc.fents] ; } ;
+
+sound-lam (A : Filt) (G H : Ty -> Filt) (hA : TyU A) (hG : (x : Ty) -> TyIn A x -> HasTy (G x) (H x))
+    (hH : (x : Ty) -> TyIn A x -> TyU (H x)) (cG : ConsF (lamF A G)) (cH : ConsF (lamF A H)) :
+    HasTy (lamF A G) (piF A H) = \ t w -> sound-lam-in A G H hA hG hH cG cH t w ;
+
+------------------------------------------------------------------------
+-- the rule app
+
+-- an element of pi A G is not below U
+pi-univ-clash (A : Filt) (G : Ty -> Filt) (c : Ty) (n : Nat) (le : Le c (univ n)) : (piF A G).mem c -> Empty = split {
+  inl e -> om-not-univ n (le-trans om c (univ n) e le) ;
+  inr p -> pi-not-univ p.a p.b n (le-trans (pi p.a p.b) c (univ n) p.le le) } ;
+
+-- an element of pi A G below Pi(A1, phi1)
+record PiInR { A : Filt ; G : Ty -> Filt ; A1 : Ty ; phi1 : Ty ;
+  b : Ty ; inA1 : A.mem A1 ; leb : Le b phi1 ; ents : EntS (EntR A G) b ; } ;
+PiIn (A : Filt) (G : Ty -> Filt) (A1 phi1 : Ty) : U l = PiInR[A, G, A1, phi1] ;
+
+piin-mk (A : Filt) (G : Ty -> Filt) (A1 phi1 c : Ty) (p : PiW A G c) (j : Le p.a A1 * Le p.b phi1) : PiIn A G A1 phi1 =
+  new PiInR[A, G, A1, phi1, b := p.b, inA1 := A.fup p.a A1 j.1 p.ina, leb := j.2, ents := p.ents] ;
+
+pi-in-pi (A : Filt) (G : Ty -> Filt) (c A1 phi1 : Ty) (le : Le c (pi A1 phi1)) : (piF A G).mem c -> PiIn A G A1 phi1 = split {
+  inl e -> absurd (PiIn A G A1 phi1) (om-not-pi A1 phi1 (le-trans om c (pi A1 phi1) e le)) ;
+  inr p -> piin-mk A G A1 phi1 c p (pi-inj p.a p.b A1 phi1 (le-trans (pi p.a p.b) c (pi A1 phi1) p.le le)) } ;
+
+-- Pi(A1, phi1) : U and A2 <= A1, A2 : U give Pi(A2, phi1) : U
+pi-shrink (A1 phi1 A2 : Ty) (h : Tp (el (pi A1 phi1) U0)) (le : Le A2 A1) (h2 : Tp (el A2 U0)) :
+    Tp (el (pi A2 phi1) U0) =
+  t-pi (pi A2 phi1) U0 A2 b.2.1 zero
+    (le-pi A2 A2 phi1 b.2.1 (le-refl A2) parts.2.1, le-pi A2 A2 b.2.1 phi1 (le-refl A2) parts.2.2)
+    (eqv-refl U0) h2
+    (tp-up-ent b.2.1 b.1 (arr om U0) A2 (arr om U0) b.2.2.2.2.2.2.1 (le-trans A2 A1 b.1 le parts.1.1)
+       (le-refl (arr om U0)) h2)
+    b.2.2.2.2.2.2.2
+  where {
+    b : PiBelow (pi A1 phi1) A1 phi1 = below-pi (pi A1 phi1) A1 phi1 h (le-refl (pi A1 phi1)) ;
+    parts : Eqv A1 b.1 * Eqv phi1 b.2.1 = pi-parts A1 phi1 b ; } ;
+
+-- g om-like and g <= x -> t give t om-like
+app-om-like (g x t : Ty) (e : Le om g) (le : Le g (arr x t)) : Le om t =
+  le-trans om i.2.1 t (app-bot g i.1 i.2.1 e i.2.2.1) i.2.2.2.2
+  where { i : InvArr g x t = inv-arr g x t le ; } ;
+
+module App (A : Filt) (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x'))
+    (F X T : Filt) (hA : TyU A) (iT : (x : Ty) -> X.mem x -> Incl (G x) T) {
+
+  -- the function is a lambda: Lemma 2.8 at the typed argument
+  main (t : Ty) (w : AppW F X t) (eg : Enl F (piF A G) w.g) (ex : Enl X A w.x) (A1 phi1 : Ty)
+      (hg : Tp (el eg.v (pi A1 phi1))) (hpi : Tp (el (pi A1 phi1) U0)) (pin : PiIn A G A1 phi1) :
+      Enl (appF F X) T t =
+    new EnlR[appF F X, T, t,
+      v := as.w, below := le-trans as.w ia.2.1 t as.lew ia.2.2.2.2,
+      inA := new AppWR[F, X, as.w, g := eg.v, x := ex.v, ing := eg.inA, inx := ex.inA, le := as.lef],
+      c := as.y, inB := iT ex.v ex.inA as.y yin, tp := as.tpw]
+    where {
+      a2 : TyEl A (meet A1 ex.c) = ty-enl A hA (meet A1 ex.c) (A.fmeet A1 ex.c pin.inA1 ex.inB) ;
+      l21 : Le a2.a A1 = le-split-l a2.a A1 ex.c a2.below ;
+      hx : Tp (el ex.v a2.a) = tp-up ex.v ex.c a2.a ex.tp (le-split-r a2.a A1 ex.c a2.below) a2.tp ;
+      hg2 : Tp (el eg.v (pi a2.a phi1)) =
+        tp-up eg.v (pi A1 phi1) (pi a2.a phi1) hg (le-pi a2.a A1 phi1 phi1 l21 (le-refl phi1))
+          (pi-shrink A1 phi1 a2.a hpi l21 a2.tp) ;
+      lgx : Le eg.v (arr ex.v t) =
+        le-trans eg.v (arr w.x t) (arr ex.v t) (le-trans eg.v w.g (arr w.x t) eg.below w.le)
+          (le-arr w.x ex.v t t ex.below (le-refl t)) ;
+      ia : InvArr eg.v ex.v t = inv-arr eg.v ex.v t lgx ;
+      as : AppT eg.v phi1 ex.v ia.2.1 = app-sel eg.v a2.a phi1 ex.v ia.1 ia.2.1 hg2 ia.2.2.1 hx ia.2.2.2.1 ;
+      ib : InvArr pin.b ex.v as.y = inv-arr pin.b ex.v as.y (le-trans pin.b phi1 (arr ex.v as.y) pin.leb as.ley) ;
+      yin : (G ex.v).mem as.y =
+        (G ex.v).fup ib.2.1 as.y ib.2.2.2.2
+          (Entries[G, anti, EntR A G, \ x v r -> r.2].sel pin.b ib.1 ib.2.1 ib.2.2.1 pin.ents ex.v ib.2.2.2.1) ; } ;
+
+  -- generation for the typed element below the function
+  by-shape (t : Ty) (w : AppW F X t) (eg : Enl F (piF A G) w.g) (ex : Enl X A w.x) :
+      Shape eg.v eg.c -> Enl (appF F X) T t = split {
+    sh-bot e h -> enl-om (appF F X) T t w (app-om-like eg.v w.x t e (le-trans eg.v w.g (arr w.x t) eg.below w.le)) ;
+    sh-univ m n e1 e2 -> absurd (Enl (appF F X) T t) (pi-univ-clash A G eg.c n e2.1 eg.inB) ;
+    sh-pi A1 phi1 n e1 e2 h1 h2 cp -> absurd (Enl (appF F X) T t) (pi-univ-clash A G eg.c n e2.1 eg.inB) ;
+    sh-lam A1 phi1 f0 e1 e2 h1 h2 cf ->
+      main t w eg ex A1 phi1 (tp-conv eg.v eg.c eg.v (pi A1 phi1) eg.tp (eqv-refl eg.v) e2) h1
+        (pi-in-pi A G eg.c A1 phi1 e2.1 eg.inB) } ;
+
+  sound (hF : HasTy F (piF A G)) (hX : HasTy X A) : HasTy (appF F X) T =
+    \ t w -> by-shape t w (hF w.g w.ing) (hX w.x w.inx) (shape (hF w.g w.ing).v (hF w.g w.ing).c (hF w.g w.ing).tp) ;
+} ;
+
+------------------------------------------------------------------------
+-- beta: app(lam(A, G), X) == T, the value of the body at X
+
+module Beta (A : Filt) (G : Ty -> Filt) (anti : (x x' : Ty) -> Le x' x -> Incl (G x) (G x'))
+    (X T : Filt) (hX : HasTy X A) (iT : (x : Ty) -> X.mem x -> Incl (G x) T)
+    (last : (t : Ty) -> T.mem t -> (x : Ty) * (X.mem x * (G x).mem t)) {
+
+  -- the selection of the lambda below x -> t (Lemma 3.1)
+  to-in (t : Ty) (w : AppW (lamF A G) X t) (lw : LamW A G w.g) : T.mem t =
+    iT w.x w.inx t ((G w.x).fup ia.2.1 t ia.2.2.2.2
+      (Entries[G, anti, EntR A G, \ x v r -> r.2].sel lw.f ia.1 ia.2.1 ia.2.2.1 lw.ents w.x ia.2.2.2.1))
+    where { ia : InvArr lw.f w.x t = inv-arr lw.f w.x t (le-trans lw.f w.g (arr w.x t) lw.le w.le) ; } ;
+
+  to : Incl (appF (lamF A G) X) T = \ t w -> to-in t w w.ing ;
+
+  -- the single entry x' -> t at a typed x' below the argument x
+  from-at (t x : Ty) (ht : (G x).mem t) (ex : Enl X A x) : (appF (lamF A G) X).mem t =
+    new AppWR[lamF A G, X, t,
+      g := arr ex.v t, x := ex.v,
+      ing := new LamWR[A, G, arr ex.v t, f := arr ex.v t, le := le-refl (arr ex.v t),
+                     ents := es-arr ex.v t (new TyInR[A, ex.v, a := ex.c, ina := ex.inB, tp := ex.tp], anti x ex.v ex.below t ht)],
+      inx := ex.inA, le := le-refl (arr ex.v t)] ;
+
+  from : Incl T (appF (lamF A G) X) =
+    \ t m -> from-at t (last t m).1 (last t m).2.2 (hX (last t m).1 (last t m).2.1) ;
+
+  eq : FEq (appF (lamF A G) X) T = (to, from) ;
+} ;
+
+------------------------------------------------------------------------
+-- eta: F c= F' when F : pi(A, G) and app(F, prin x) c= app(F', prin x)
+-- for x : A
+
+TyKey (A x v : Ty) : U l = Tp (el x A) ;
+EntsQ (f A phi : Ty) : U l = EntS (TyKey A) f ;
+
+ent-ents-by : (J : Form) -> Tp J -> ByForm ElTop EntsQ J = split {
+  t-bot u a e h -> tt ;
+  t-univ u a m n e1 e2 -> tt ;
+  t-pi u a A phi n e1 e2 h1 h2 c -> tt ;
+  t-lam u a A phi f e1 e2 h1 h2 c -> tt ;
+  en-om A phi -> es-om ;
+  en-arr x v y A phi h1 le h2 -> es-arr x v h1 ;
+  en-meet f1 f2 A phi h1 h2 | r1 r2 -> es-meet f1 f2 r1 r2 } ;
+
+-- the keys of typed entries are typed
+ent-ents (f A phi : Ty) (h : Tp (ent f A phi)) : EntS (TyKey A) f = ent-ents-by (ent f A phi) h ;
+
+module Eta (A : Filt) (G : Ty -> Filt) (F F' : Filt) (hF : HasTy F (piF A G))
+    (step : (x : Ty) -> TyIn A x -> Incl (appF F (prin x)) (appF F' (prin x))) {
+
+  -- an entry x -> v of f0 in F
+  entry (f0 A1 : Ty) (inA1 : A.mem A1) (hf0 : F.mem f0) (x v : Ty) (hx : Tp (el x A1)) (le : Le f0 (arr x v)) :
+      F'.mem (arr x v) =
+    F'.fup s.g (arr x v) (le-trans s.g (arr s.x v) (arr x v) s.le (le-arr s.x x v v s.inx (le-refl v))) s.ing
+    where {
+      s : AppW F' (prin x) v =
+        step x (new TyInR[A, x, a := A1, ina := inA1, tp := hx]) v
+          (new AppWR[F, prin x, v, g := f0, x := x, ing := hf0, inx := le-refl x, le := le]) ; } ;
+
+  -- the typed element is a lambda f0: by Lemma 3.3 on its entries
+  lam-in (t : Ty) (e : Enl F (piF A G) t) (A1 phi1 f0 : Ty) (e1 : Eqv e.v f0) (h2 : Tp (ent f0 A1 phi1))
+      (pin : PiIn A G A1 phi1) : F'.mem f0 =
+    ents-in F' (TyKey A1) f0 (entry f0 A1 pin.inA1 (F.fup e.v f0 e1.1 e.inA)) f0 (ent-ents f0 A1 phi1 h2) (le-refl f0) ;
+
+  by-shape (t : Ty) (e : Enl F (piF A G) t) : Shape e.v e.c -> F'.mem e.v = split {
+    sh-bot ez h -> om-in F' e.v ez ;
+    sh-univ m n e1 e2 -> absurd (F'.mem e.v) (pi-univ-clash A G e.c n e2.1 e.inB) ;
+    sh-pi A1 phi1 n e1 e2 h1 h2 cp -> absurd (F'.mem e.v) (pi-univ-clash A G e.c n e2.1 e.inB) ;
+    sh-lam A1 phi1 f0 e1 e2 h1 h2 cf ->
+      F'.fup f0 e.v e1.2 (lam-in t e A1 phi1 f0 e1 h2 (pi-in-pi A G e.c A1 phi1 e2.1 e.inB)) } ;
+
+  incl : Incl F F' =
+    \ t m -> F'.fup (hF t m).v t (hF t m).below (by-shape t (hF t m) (shape (hF t m).v (hF t m).c (hF t m).tp)) ;
+} ;
+
+-- the application of a weakened term to the new variable

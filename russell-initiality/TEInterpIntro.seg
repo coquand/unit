@@ -1,0 +1,96 @@
+-- Introduce denotations from interpretations of immediate subexpressions.
+open Base ; open Prelude[l] ; open Paths[l] ; open Lib[l] ;
+open EhrhardTEModel[l] ;
+open TEInterpBase ; open TEDenote ; open B.GAT[l] ;
+
+map-down {X Y : U l} (P : Partial[X]) (f : X -> Y) (x : X) (h : Denotes P x) :
+    Denotes (bind P (\ z -> return (f z))) (f x) =
+  bind-denotes P (\ z -> return (f z)) x (f x) h (return-denotes (f x)) ;
+
+empty-down : CtxDown gnil empty-tel = return-denotes empty-tel ;
+
+ext-down (G A : GE) (g : Tel) (a : C.Ty (ctx g))
+    (hg : CtxDown G g) (ha : TyDown A g a) : CtxDown (gext G A) (extend g a) =
+  bind-denotes (meaning G).context
+    (\ d -> bind ((meaning A).type-at d) (\ x -> return (extend d x)))
+    g (extend g a) hg (map-down ((meaning A).type-at g) (extend g) a ha) ;
+
+level-down (n : Nat) (nb : LeN n N) : Denotes (level-at n) (n,nb) = (nb,refl (n,nb)) ;
+
+univ-down (n : Nat) (nb : LeN n N) (g : Tel) : TyDown (guu n) g (M.univ (n,nb) (ctx g)) =
+  map-down (level-at n) (\ k -> M.univ k (ctx g)) (n,nb) (level-down n nb) ;
+
+check-down (a : GE) (g : Tel) (A : C.Ty (ctx g)) (t : C.El (ctx g) A) (h : TmDown a g A t) :
+    Denotes (term-check (meaning a) g A) t =
+  bind-denotes ((meaning a).term-at g) (check-term g A) (A,t) t h (refl A,refl t) ;
+
+decode-down (n : Nat) (nb : LeN n N) (a : GE) (g : Tel) (t : C.El (ctx g) (M.univ (n,nb) (ctx g)))
+    (ha : TmDown a g (M.univ (n,nb) (ctx g)) t) : TyDown (gel n a) g (M.decode (n,nb) (ctx g) t) =
+  bind-denotes (level-at n) (\ k -> bind (term-check (meaning a) g (M.univ k (ctx g)))
+    (\ v -> return (M.decode k (ctx g) v))) (n,nb) (M.decode (n,nb) (ctx g) t) (level-down n nb)
+    (map-down (term-check (meaning a) g (M.univ (n,nb) (ctx g))) (M.decode (n,nb) (ctx g)) t
+      (check-down a g (M.univ (n,nb) (ctx g)) t ha)) ;
+
+id-down (g : Tel) : SubDown gid g g (C.id (ctx g)) = return-denotes (g,C.id (ctx g)) ;
+eps-down (g : Tel) : SubDown geps g empty-tel (C.eps (ctx g)) = return-denotes (empty-tel,C.eps (ctx g)) ;
+p-down (g : Tel) (a : C.Ty (ctx g)) : SubDown gp (extend g a) g (C.p (ctx g) a) =
+  return-denotes (g,C.p (ctx g) a) ;
+
+q-type (g : Tel) (a : C.Ty (ctx g)) : C.Ty (ctx (extend g a)) =
+  C.subT (ctx (extend g a)) (ctx g) a (C.p (ctx g) a) ;
+
+q-down (g : Tel) (a : C.Ty (ctx g)) : TmDown gq (extend g a) (q-type g a) (C.q (ctx g) a) =
+  return-denotes (q-type g a,C.q (ctx g) a) ;
+
+comp-down (s t : GE) (e d g : Tel) (f : C.Sub (ctx d) (ctx g)) (k : C.Sub (ctx e) (ctx d))
+    (hs : SubDown s d g f) (ht : SubDown t e d k) :
+    SubDown (gcomp s t) e g (C.o (ctx e) (ctx d) (ctx g) f k) =
+  bind-denotes ((meaning t).sub-at e) (\ v -> bind ((meaning s).sub-at v.1)
+    (\ u -> return (u.1,C.o (ctx e) (ctx v.1) (ctx u.1) u.2 v.2)))
+    (d,k) (g,C.o (ctx e) (ctx d) (ctx g) f k) ht
+    (map-down ((meaning s).sub-at d) (\ u -> (u.1,C.o (ctx e) (ctx d) (ctx u.1) u.2 k)) (g,f) hs) ;
+
+sec-down (A a : GE) (g : Tel) (T : C.Ty (ctx g)) (u : C.El (ctx g) T)
+    (hA : TyDown A g T) (ha : TmDown a g T u) : SubDown (gsec A a) g (extend g T) (C.sec (ctx g) T u) =
+  bind-denotes ((meaning A).type-at g) (\ B -> bind (term-check (meaning a) g B)
+    (\ v -> return (extend g B,C.sec (ctx g) B v)))
+    T (extend g T,C.sec (ctx g) T u) hA
+    (map-down (term-check (meaning a) g T) (\ v -> (extend g T,C.sec (ctx g) T v)) u (check-down a g T u ha)) ;
+
+lift-down (A s : GE) (d g : Tel) (T : C.Ty (ctx g)) (f : C.Sub (ctx d) (ctx g))
+    (ha : TyDown A g T) (hs : SubDown s d g f) :
+    SubDown (glift A s) (extend d (C.subT (ctx d) (ctx g) T f)) (extend g T) (C.lift (ctx d) (ctx g) T f) =
+  bind-denotes ((meaning s).sub-at d)
+    (\ u -> bind ((meaning A).type-at u.1) (\ a -> lift-by d u.1 a u.2 (C.subT (ctx d) (ctx g) T f)))
+    (g,f) (extend g T,C.lift (ctx d) (ctx g) T f) hs
+    (bind-denotes ((meaning A).type-at g) (\ a -> lift-by d g a f (C.subT (ctx d) (ctx g) T f))
+      T (extend g T,C.lift (ctx d) (ctx g) T f) ha
+      (refl (C.subT (ctx d) (ctx g) T f),refl (extend g T,C.lift (ctx d) (ctx g) T f))) ;
+
+ty-sub-down (A s : GE) (d g : Tel) (T : C.Ty (ctx g)) (f : C.Sub (ctx d) (ctx g))
+    (ha : TyDown A g T) (hs : SubDown s d g f) :
+    TyDown (gsb A s) d (C.subT (ctx d) (ctx g) T f) =
+  bind-denotes ((meaning s).sub-at d) (\ u -> bind ((meaning A).type-at u.1)
+    (\ a -> return (C.subT (ctx d) (ctx u.1) a u.2))) (g,f) (C.subT (ctx d) (ctx g) T f) hs
+    (map-down ((meaning A).type-at g) (\ a -> C.subT (ctx d) (ctx g) a f) T ha) ;
+
+tm-sub-down (a s : GE) (d g : Tel) (T : C.Ty (ctx g)) (v : C.El (ctx g) T) (f : C.Sub (ctx d) (ctx g))
+    (ha : TmDown a g T v) (hs : SubDown s d g f) :
+    TmDown (gsb a s) d (C.subT (ctx d) (ctx g) T f) (C.subt (ctx d) (ctx g) T v f) =
+  bind-denotes ((meaning s).sub-at d) (\ w -> bind ((meaning a).term-at w.1) (\ t ->
+    return (C.subT (ctx d) (ctx w.1) t.1 w.2,C.subt (ctx d) (ctx w.1) t.1 t.2 w.2)))
+    (g,f) (C.subT (ctx d) (ctx g) T f,C.subt (ctx d) (ctx g) T v f) hs
+    (map-down ((meaning a).term-at g) (\ t -> (C.subT (ctx d) (ctx g) t.1 f,C.subt (ctx d) (ctx g) t.1 t.2 f)) (T,v) ha) ;
+
+cast-lift (d g : Tel) (A : C.Ty (ctx g)) (s : C.Sub (ctx d) (ctx g)) (T : C.Ty (ctx d))
+    (p : Id (C.Ty (ctx d)) (C.subT (ctx d) (ctx g) A s) T) : C.Sub (ctx (extend d T)) (ctx (extend g A)) =
+  subst (C.Ty (ctx d)) (\ B' -> C.Sub (C.ext (ctx d) B') (C.ext (ctx g) A))
+    (C.subT (ctx d) (ctx g) A s) T p (C.lift (ctx d) (ctx g) A s) ;
+
+lift-down-as (A s : GE) (d g : Tel) (a : C.Ty (ctx g)) (f : C.Sub (ctx d) (ctx g))
+    (ha : TyDown A g a) (hs : SubDown s d g f) (T : C.Ty (ctx d))
+    (e : Id (C.Ty (ctx d)) (C.subT (ctx d) (ctx g) a f) T) :
+    SubDown (glift A s) (extend d T) (extend g a) (cast-lift d g a f T e) =
+  idJ (C.Ty (ctx d)) (C.subT (ctx d) (ctx g) a f)
+    (\ T' e' -> SubDown (glift A s) (extend d T') (extend g a) (cast-lift d g a f T' e'))
+    (lift-down A s d g a f ha hs) T e ;

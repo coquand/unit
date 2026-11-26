@@ -1,0 +1,335 @@
+-- TSem.seg: the filter semantics of T_Tarski (unscoped), the semantics of
+-- Sem.seg (paper Fig. 4) in the levelled domain (LTypes .. LFilter):
+--   [[U_n]] = univF n,  [[U^n_m]] = univF m,  [[T_n a]] = [[t^n_m a]] = [[a]],
+--   [[Pi_n(a,b)]] = [[Pi(a,b)]] = piF,  lam and app ignore the annotations.
+-- Environments are Nat -> Filt.  Lemmas as in Sem.seg: tsem-mono, tsem-eq,
+-- tsem-cons (3.5), tcont (3.6), tcont-last, the traversal over a kit (3.7):
+-- twk-sem, tsubst1-sem.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open LTypes[l] ; open LConsistency[l] ; open LTyping[l] ;
+open LFilter[l] ; open TSyntax[l] ;
+
+------------------------------------------------------------------------
+-- environments
+
+TEnv : U l+ = Nat -> Filt ;
+
+extT (rho : TEnv) (X : Filt) : TEnv = split {
+  zero -> X ;
+  suc i -> rho i } ;
+
+tlT (rho : TEnv) : TEnv = \ i -> rho (suc i) ;
+
+TIncl (rho rho' : TEnv) : U l = (i : Nat) -> Incl (rho i) (rho' i) ;
+TEq (rho rho' : TEnv) : U l = (i : Nat) -> FEq (rho i) (rho' i) ;
+
+tincl-refl (rho : TEnv) : TIncl rho rho = \ i -> incl-refl (rho i) ;
+
+extT-incl (rho rho' : TEnv) (X X' : Filt) (h : TIncl rho rho') (k : Incl X X') : TIncl (extT rho X) (extT rho' X') = split {
+  zero -> k ;
+  suc i -> h i } ;
+
+eta-tenv (rho : TEnv) : TEq rho (extT (tlT rho) (rho zero)) = split {
+  zero -> feq-refl (rho zero) ;
+  suc i -> feq-refl (rho (suc i)) } ;
+
+------------------------------------------------------------------------
+-- the semantics
+
+tsem : Tm -> TEnv -> Filt = split {
+  var i -> \ rho -> rho i ;
+  pi A B | rA rB -> \ rho -> piF (rA rho) (\ x -> rB (extT rho (prin x))) ;
+  lam A B b | rA rB rb -> \ rho -> lamF (rA rho) (\ x -> rb (extT rho (prin x))) ;
+  app A B c a | rA rB rc ra -> \ rho -> appF (rc rho) (ra rho) ;
+  uu n -> \ rho -> univF n ;
+  el n a | ra -> \ rho -> ra rho ;
+  pic n a b | ra rb -> \ rho -> piF (ra rho) (\ x -> rb (extT rho (prin x))) ;
+  uc m n -> \ rho -> univF m ;
+  lf m n a | ra -> \ rho -> ra rho } ;
+
+tfam (B : Tm) (rho : TEnv) (x : Ty) : Filt = tsem B (extT rho (prin x)) ;
+
+------------------------------------------------------------------------
+-- Lemma 3.4
+
+tsem-mono : (M : Tm) -> (rho rho' : TEnv) -> TIncl rho rho' -> Incl (tsem M rho) (tsem M rho') = split {
+  var i -> \ rho rho' h -> h i ;
+  pi A B | rA rB -> \ rho rho' h ->
+    piF-mono (tsem A rho) (tsem A rho') (tfam B rho) (tfam B rho') (rA rho rho' h)
+      (\ x hx -> rB (extT rho (prin x)) (extT rho' (prin x)) (extT-incl rho rho' (prin x) (prin x) h (incl-refl (prin x)))) ;
+  lam A B b | rA rB rb -> \ rho rho' h ->
+    lamF-mono (tsem A rho) (tsem A rho') (tfam b rho) (tfam b rho') (rA rho rho' h)
+      (\ x hx -> rb (extT rho (prin x)) (extT rho' (prin x)) (extT-incl rho rho' (prin x) (prin x) h (incl-refl (prin x)))) ;
+  app A B c a | rA rB rc ra -> \ rho rho' h ->
+    appF-mono (tsem c rho) (tsem c rho') (tsem a rho) (tsem a rho') (rc rho rho' h) (ra rho rho' h) ;
+  uu n -> \ rho rho' h -> incl-refl (univF n) ;
+  el n a | ra -> \ rho rho' h -> ra rho rho' h ;
+  pic n a b | ra rb -> \ rho rho' h ->
+    piF-mono (tsem a rho) (tsem a rho') (tfam b rho) (tfam b rho') (ra rho rho' h)
+      (\ x hx -> rb (extT rho (prin x)) (extT rho' (prin x)) (extT-incl rho rho' (prin x) (prin x) h (incl-refl (prin x)))) ;
+  uc m n -> \ rho rho' h -> incl-refl (univF m) ;
+  lf m n a | ra -> \ rho rho' h -> ra rho rho' h } ;
+
+tsem-eq (M : Tm) (rho rho' : TEnv) (e : TEq rho rho') : FEq (tsem M rho) (tsem M rho') =
+  (tsem-mono M rho rho' (\ i -> (e i).1), tsem-mono M rho' rho (\ i -> (e i).2)) ;
+
+tfam-anti (B : Tm) (rho : TEnv) (x x' : Ty) (le : Le x' x) : Incl (tfam B rho x) (tfam B rho x') =
+  tsem-mono B (extT rho (prin x)) (extT rho (prin x'))
+    (extT-incl rho rho (prin x) (prin x') (tincl-refl rho) (prin-anti x' x le)) ;
+
+------------------------------------------------------------------------
+-- Lemma 3.5
+
+TCons (rho : TEnv) : U l = (i : Nat) -> ConsF (rho i) ;
+
+tcons-ext (rho : TEnv) (X : Filt) (c : TCons rho) (cX : ConsF X) : TCons (extT rho X) = split {
+  zero -> cX ;
+  suc i -> c i } ;
+
+tsem-cons : (M : Tm) -> (rho : TEnv) -> TCons rho -> ConsF (tsem M rho) = split {
+  var i -> \ rho c -> c i ;
+  pi A B | rA rB -> \ rho c ->
+    OpCons[tsem A rho, tfam B rho, tfam-anti B rho,
+           \ x cx -> rB (extT rho (prin x)) (tcons-ext rho (prin x) c (prin-cons x cx))].pic (rA rho c) ;
+  lam A B b | rA rB rb -> \ rho c ->
+    OpCons[tsem A rho, tfam b rho, tfam-anti b rho,
+           \ x cx -> rb (extT rho (prin x)) (tcons-ext rho (prin x) c (prin-cons x cx))].lamc ;
+  app A B c0 a | rA rB rc ra -> \ rho c -> appF-cons (tsem c0 rho) (tsem a rho) (rc rho c) (ra rho c) ;
+  uu n -> \ rho c t h -> cons-down (univ n) t h (cons-univ n) ;
+  el n a | ra -> \ rho c -> ra rho c ;
+  pic n a b | ra rb -> \ rho c ->
+    OpCons[tsem a rho, tfam b rho, tfam-anti b rho,
+           \ x cx -> rb (extT rho (prin x)) (tcons-ext rho (prin x) c (prin-cons x cx))].pic (ra rho c) ;
+  uc m n -> \ rho c t h -> cons-down (univ m) t h (cons-univ m) ;
+  lf m n a | ra -> \ rho c -> ra rho c } ;
+
+------------------------------------------------------------------------
+-- Lemma 3.6: continuity
+
+record TApxR { rho : TEnv ; k : Nat -> Ty ; ink : (i : Nat) -> (rho i).mem (k i) ; } ;
+TApx (rho : TEnv) : U l = TApxR[rho] ;
+
+tpenv (k : Nat -> Ty) : TEnv = \ i -> prin (k i) ;
+
+TLeK (k k' : Nat -> Ty) : U l = (i : Nat) -> Le (k' i) (k i) ;
+
+tpenv-incl (k k' : Nat -> Ty) (h : TLeK k k') : TIncl (tpenv k) (tpenv k') = \ i -> prin-anti (k' i) (k i) (h i) ;
+
+tapx-top (rho : TEnv) : TApx rho = new TApxR[rho, k := \ i -> om, ink := \ i -> (rho i).fom] ;
+
+tapx-meet (rho : TEnv) (a b : TApx rho) : TApx rho =
+  new TApxR[rho, k := \ i -> meet (a.k i) (b.k i), ink := \ i -> (rho i).fmeet (a.k i) (b.k i) (a.ink i) (b.ink i)] ;
+
+tapx-meet-l (rho : TEnv) (a b : TApx rho) : TLeK a.k (tapx-meet rho a b).k = \ i -> le-meet-l (a.k i) (b.k i) ;
+tapx-meet-r (rho : TEnv) (a b : TApx rho) : TLeK b.k (tapx-meet rho a b).k = \ i -> le-meet-r (a.k i) (b.k i) ;
+
+-- the point approximation: t at i, om elsewhere
+tpt : Nat -> Ty -> Nat -> Ty = split {
+  zero -> \ t -> split { zero -> t ; suc j -> om } ;
+  suc i | r -> \ t -> split { zero -> om ; suc j -> r t j } } ;
+
+tpt-in : (i : Nat) -> (rho : TEnv) -> (t : Ty) -> (rho i).mem t -> (j : Nat) -> (rho j).mem (tpt i t j) = split {
+  zero -> \ rho t h -> split { zero -> h ; suc j -> (rho (suc j)).fom } ;
+  suc i | r -> \ rho t h -> split { zero -> (rho zero).fom ; suc j -> r (tlT rho) t h j } } ;
+
+tpt-self : (i : Nat) -> (t : Ty) -> Le (tpt i t i) t = split {
+  zero -> \ t -> le-refl t ;
+  suc i | r -> \ t -> r t } ;
+
+TApxIn (M : Tm) (rho : TEnv) (t : Ty) : U l = (a : TApx rho) * (tsem M (tpenv a.k)).mem t ;
+
+module TCollect (rho : TEnv) (Q : (Nat -> Ty) -> Ty -> Ty -> U l)
+    (qmono : (k k' : Nat -> Ty) -> TLeK k k' -> (x v : Ty) -> Q k x v -> Q k' x v) {
+  AQ (x v : Ty) : U l = (a : TApx rho) * Q a.k x v ;
+  collect : (f : Ty) -> EntS AQ f -> (a : TApx rho) * EntS (Q a.k) f = split {
+    es-om -> (tapx-top rho, es-om) ;
+    es-arr x v h -> (h.1, es-arr x v h.2) ;
+    es-meet f1 f2 h1 h2 | r1 r2 ->
+      (tapx-meet rho r1.1 r2.1,
+       es-meet f1 f2
+         (ents-map (Q r1.1.k) (Q (tapx-meet rho r1.1 r2.1).k)
+            (qmono r1.1.k (tapx-meet rho r1.1 r2.1).k (tapx-meet-l rho r1.1 r2.1)) f1 r1.2)
+         (ents-map (Q r2.1.k) (Q (tapx-meet rho r1.1 r2.1).k)
+            (qmono r2.1.k (tapx-meet rho r1.1 r2.1).k (tapx-meet-r rho r1.1 r2.1)) f2 r2.2)) } ;
+} ;
+
+TBindQ (A B : Tm) (k : Nat -> Ty) (x v : Ty) : U l = EntR (tsem A (tpenv k)) (tfam B (tpenv k)) x v ;
+
+tbindq-mono (A B : Tm) (k k' : Nat -> Ty) (h : TLeK k k') (x v : Ty) (q : TBindQ A B k x v) : TBindQ A B k' x v =
+  entr-mono (tsem A (tpenv k)) (tsem A (tpenv k')) (tfam B (tpenv k)) (tfam B (tpenv k'))
+    (tsem-mono A (tpenv k) (tpenv k') (tpenv-incl k k' h))
+    (\ y hy -> tsem-mono B (extT (tpenv k) (prin y)) (extT (tpenv k') (prin y))
+                 (extT-incl (tpenv k) (tpenv k') (prin y) (prin y) (tpenv-incl k k' h) (incl-refl (prin y))))
+    x v q ;
+
+tapx-tail (rho : TEnv) (X : Filt) (a : TApx (extT rho X)) : TApx rho =
+  new TApxR[rho, k := \ i -> a.k (suc i), ink := \ i -> a.ink (suc i)] ;
+
+tbody-incl (rho : TEnv) (x : Ty) (a : TApx (extT rho (prin x))) :
+    TIncl (tpenv a.k) (extT (tpenv (tapx-tail rho (prin x) a).k) (prin x)) = split {
+  zero -> prin-anti x (a.k zero) (a.ink zero) ;
+  suc i -> incl-refl (prin (a.k (suc i))) } ;
+
+tbind-entry (A B : Tm) (rho : TEnv)
+    (rA : (t : Ty) -> (tsem A rho).mem t -> TApxIn A rho t)
+    (rB : (rho' : TEnv) -> (t : Ty) -> (tsem B rho').mem t -> TApxIn B rho' t)
+    (x v : Ty) (e : EntR (tsem A rho) (tfam B rho) x v) :
+    (a : TApx rho) * TBindQ A B a.k x v =
+  (tapx-meet rho p.1 q,
+   (tyin-mono (tsem A (tpenv p.1.k)) (tsem A (tpenv (tapx-meet rho p.1 q).k))
+      (tsem-mono A (tpenv p.1.k) (tpenv (tapx-meet rho p.1 q).k)
+         (tpenv-incl p.1.k (tapx-meet rho p.1 q).k (tapx-meet-l rho p.1 q)))
+      x (new TyInR[tsem A (tpenv p.1.k), x, a := e.1.a, ina := p.2, tp := e.1.tp]),
+    tsem-mono B (tpenv w.1.k) (extT (tpenv (tapx-meet rho p.1 q).k) (prin x))
+      (\ i -> incl-trans (tpenv w.1.k i) (extT (tpenv q.k) (prin x) i)
+                (extT (tpenv (tapx-meet rho p.1 q).k) (prin x) i)
+                (tbody-incl rho x w.1 i)
+                (extT-incl (tpenv q.k) (tpenv (tapx-meet rho p.1 q).k) (prin x) (prin x)
+                   (tpenv-incl q.k (tapx-meet rho p.1 q).k (tapx-meet-r rho p.1 q)) (incl-refl (prin x)) i))
+      v w.2))
+  where {
+    p : TApxIn A rho e.1.a = rA e.1.a e.1.ina ;
+    w : TApxIn B (extT rho (prin x)) v = rB (extT rho (prin x)) v e.2 ;
+    q : TApx rho = tapx-tail rho (prin x) w.1 ; } ;
+
+tbind-ents (A B : Tm) (rho : TEnv)
+    (rA : (t : Ty) -> (tsem A rho).mem t -> TApxIn A rho t)
+    (rB : (rho' : TEnv) -> (t : Ty) -> (tsem B rho').mem t -> TApxIn B rho' t)
+    (f : Ty) (e : EntS (EntR (tsem A rho) (tfam B rho)) f) : (a : TApx rho) * EntS (TBindQ A B a.k) f =
+  TCollect[rho, TBindQ A B, tbindq-mono A B].collect f
+    (ents-map (EntR (tsem A rho) (tfam B rho)) (TCollect[rho, TBindQ A B, tbindq-mono A B].AQ)
+       (tbind-entry A B rho rA rB) f e) ;
+
+-- a Pi-like node (pi A B, or pic n a b): the domain and the entries
+tcont-pi (A B : Tm) (rho : TEnv)
+    (rA : (t : Ty) -> (tsem A rho).mem t -> TApxIn A rho t)
+    (rB : (rho' : TEnv) -> (t : Ty) -> (tsem B rho').mem t -> TApxIn B rho' t)
+    (t : Ty) (w : PiW (tsem A rho) (tfam B rho) t) : (a : TApx rho) * (piF (tsem A (tpenv a.k)) (tfam B (tpenv a.k))).mem t =
+  (tapx-meet rho p.1 q.1,
+   inr (new PiWR[tsem A (tpenv (tapx-meet rho p.1 q.1).k), tfam B (tpenv (tapx-meet rho p.1 q.1).k), t,
+     a := w.a, b := w.b, le := w.le,
+     ina := tsem-mono A (tpenv p.1.k) (tpenv (tapx-meet rho p.1 q.1).k)
+             (tpenv-incl p.1.k (tapx-meet rho p.1 q.1).k (tapx-meet-l rho p.1 q.1)) w.a p.2,
+     ents := ents-map (TBindQ A B q.1.k) (TBindQ A B (tapx-meet rho p.1 q.1).k)
+              (tbindq-mono A B q.1.k (tapx-meet rho p.1 q.1).k (tapx-meet-r rho p.1 q.1)) w.b q.2]))
+  where {
+    p : TApxIn A rho w.a = rA w.a w.ina ;
+    q : (a : TApx rho) * EntS (TBindQ A B a.k) w.b = tbind-ents A B rho rA rB w.b w.ents ; } ;
+
+tcont-pi-by (A B : Tm) (rho : TEnv)
+    (rA : (t : Ty) -> (tsem A rho).mem t -> TApxIn A rho t)
+    (rB : (rho' : TEnv) -> (t : Ty) -> (tsem B rho').mem t -> TApxIn B rho' t)
+    (t : Ty) : (piF (tsem A rho) (tfam B rho)).mem t -> (a : TApx rho) * (piF (tsem A (tpenv a.k)) (tfam B (tpenv a.k))).mem t = split {
+  inl e -> (tapx-top rho, inl e) ;
+  inr w -> tcont-pi A B rho rA rB t w } ;
+
+tcont-lam (A M : Tm) (rho : TEnv)
+    (rA : (t : Ty) -> (tsem A rho).mem t -> TApxIn A rho t)
+    (rM : (rho' : TEnv) -> (t : Ty) -> (tsem M rho').mem t -> TApxIn M rho' t)
+    (t : Ty) (w : LamW (tsem A rho) (tfam M rho) t) : (a : TApx rho) * (lamF (tsem A (tpenv a.k)) (tfam M (tpenv a.k))).mem t =
+  (q.1, new LamWR[tsem A (tpenv q.1.k), tfam M (tpenv q.1.k), t, f := w.f, le := w.le, ents := q.2])
+  where { q : (a : TApx rho) * EntS (TBindQ A M a.k) w.f = tbind-ents A M rho rA rM w.f w.ents ; } ;
+
+tcont-app (M N : Tm) (rho : TEnv)
+    (rM : (t : Ty) -> (tsem M rho).mem t -> TApxIn M rho t)
+    (rN : (t : Ty) -> (tsem N rho).mem t -> TApxIn N rho t)
+    (t : Ty) (w : AppW (tsem M rho) (tsem N rho) t) : (a : TApx rho) * (appF (tsem M (tpenv a.k)) (tsem N (tpenv a.k))).mem t =
+  (tapx-meet rho p.1 q.1,
+   new AppWR[tsem M (tpenv (tapx-meet rho p.1 q.1).k), tsem N (tpenv (tapx-meet rho p.1 q.1).k), t,
+     g := w.g, x := w.x,
+     ing := tsem-mono M (tpenv p.1.k) (tpenv (tapx-meet rho p.1 q.1).k)
+             (tpenv-incl p.1.k (tapx-meet rho p.1 q.1).k (tapx-meet-l rho p.1 q.1)) w.g p.2,
+     inx := tsem-mono N (tpenv q.1.k) (tpenv (tapx-meet rho p.1 q.1).k)
+             (tpenv-incl q.1.k (tapx-meet rho p.1 q.1).k (tapx-meet-r rho p.1 q.1)) w.x q.2,
+     le := w.le])
+  where {
+    p : TApxIn M rho w.g = rM w.g w.ing ;
+    q : TApxIn N rho w.x = rN w.x w.inx ; } ;
+
+tcont : (M : Tm) -> (rho : TEnv) -> (t : Ty) -> (tsem M rho).mem t -> TApxIn M rho t = split {
+  var i -> \ rho t h -> (new TApxR[rho, k := tpt i t, ink := tpt-in i rho t h], tpt-self i t) ;
+  pi A B | rA rB -> \ rho -> tcont-pi-by A B rho (rA rho) rB ;
+  lam A B b | rA rB rb -> \ rho -> tcont-lam A b rho (rA rho) rb ;
+  app A B c a | rA rB rc ra -> \ rho -> tcont-app c a rho (rc rho) (ra rho) ;
+  uu n -> \ rho t h -> (tapx-top rho, h) ;
+  el n a | ra -> \ rho -> ra rho ;
+  pic n a b | ra rb -> \ rho -> tcont-pi-by a b rho (ra rho) rb ;
+  uc m n -> \ rho t h -> (tapx-top rho, h) ;
+  lf m n a | ra -> \ rho -> ra rho } ;
+
+TLastIn (M : Tm) (rho : TEnv) (X : Filt) (t : Ty) : U l = (x : Ty) * (X.mem x * (tfam M rho x).mem t) ;
+
+tlast-incl (rho : TEnv) (X : Filt) (a : TApx (extT rho X)) : TIncl (tpenv a.k) (extT rho (prin (a.k zero))) = split {
+  zero -> incl-refl (prin (a.k zero)) ;
+  suc i -> prin-sub (a.k (suc i)) (rho i) (a.ink (suc i)) } ;
+
+tcont-last (M : Tm) (rho : TEnv) (X : Filt) (t : Ty) (h : (tsem M (extT rho X)).mem t) : TLastIn M rho X t =
+  (c.1.k zero, (c.1.ink zero, tsem-mono M (tpenv c.1.k) (extT rho (prin (c.1.k zero))) (tlast-incl rho X c.1) t c.2))
+  where { c : TApxIn M (extT rho X) t = tcont M (extT rho X) t h ; } ;
+
+------------------------------------------------------------------------
+-- Lemma 3.7: the traversal over a kit
+
+module TSemTrav (K : Kit)
+    (law-z : (rho : TEnv) -> (X : Filt) -> FEq (tsem (K.vr K.vz) (extT rho X)) X)
+    (law-w : (v : K.V) -> (rho : TEnv) -> (X : Filt) -> FEq (tsem (K.vr (K.wkv v)) (extT rho X)) (tsem (K.vr v) rho)) {
+  module T = Trav[K] ;
+
+  senv (s : Nat -> K.V) (rho : TEnv) : TEnv = \ i -> tsem (K.vr (s i)) rho ;
+
+  senv-lift (s : Nat -> K.V) (rho : TEnv) (X : Filt) : TEq (senv (T.lift s) (extT rho X)) (extT (senv s rho) X) = split {
+    zero -> law-z rho X ;
+    suc i -> law-w (s i) rho X } ;
+
+  bind (B : Tm) (s : Nat -> K.V) (rho : TEnv)
+      (rB : (s' : Nat -> K.V) -> (rho' : TEnv) -> FEq (tsem (T.trav B s') rho') (tsem B (senv s' rho')))
+      (x : Ty) : FEq (tfam (T.trav B (T.lift s)) rho x) (tfam B (senv s rho) x) =
+    feq-trans (tfam (T.trav B (T.lift s)) rho x) (tsem B (senv (T.lift s) (extT rho (prin x)))) (tfam B (senv s rho) x)
+      (rB (T.lift s) (extT rho (prin x)))
+      (tsem-eq B (senv (T.lift s) (extT rho (prin x))) (extT (senv s rho) (prin x)) (senv-lift s rho (prin x))) ;
+
+  trav-sem : (M : Tm) -> (s : Nat -> K.V) -> (rho : TEnv) -> FEq (tsem (T.trav M s) rho) (tsem M (senv s rho)) = split {
+    var i -> \ s rho -> feq-refl (tsem (K.vr (s i)) rho) ;
+    pi A B | rA rB -> \ s rho ->
+      piF-eq (tsem (T.trav A s) rho) (tsem A (senv s rho)) (tfam (T.trav B (T.lift s)) rho) (tfam B (senv s rho))
+        (rA s rho) (\ x hx -> bind B s rho rB x) ;
+    lam A B b | rA rB rb -> \ s rho ->
+      lamF-eq (tsem (T.trav A s) rho) (tsem A (senv s rho)) (tfam (T.trav b (T.lift s)) rho) (tfam b (senv s rho))
+        (rA s rho) (\ x hx -> bind b s rho rb x) ;
+    app A B c a | rA rB rc ra -> \ s rho ->
+      appF-eq (tsem (T.trav c s) rho) (tsem c (senv s rho)) (tsem (T.trav a s) rho) (tsem a (senv s rho)) (rc s rho) (ra s rho) ;
+    uu n -> \ s rho -> feq-refl (univF n) ;
+    el n a | ra -> \ s rho -> ra s rho ;
+    pic n a b | ra rb -> \ s rho ->
+      piF-eq (tsem (T.trav a s) rho) (tsem a (senv s rho)) (tfam (T.trav b (T.lift s)) rho) (tfam b (senv s rho))
+        (ra s rho) (\ x hx -> bind b s rho rb x) ;
+    uc m n -> \ s rho -> feq-refl (univF m) ;
+    lf m n a | ra -> \ s rho -> ra s rho } ;
+} ;
+
+module TRS = TSemTrav[renK, \ rho X -> feq-refl X, \ i rho X -> feq-refl (rho i)] ;
+
+twk-sem (M : Tm) (rho : TEnv) (X : Filt) : FEq (tsem (wk M) (extT rho X)) (tsem M rho) =
+  TRS.trav-sem M (\ i -> suc i) (extT rho X) ;
+
+twk-sem-tl (M : Tm) (rho : TEnv) : FEq (tsem (wk M) rho) (tsem M (tlT rho)) =
+  feq-trans (tsem (wk M) rho) (tsem (wk M) (extT (tlT rho) (rho zero))) (tsem M (tlT rho))
+    (tsem-eq (wk M) rho (extT (tlT rho) (rho zero)) (eta-tenv rho))
+    (twk-sem M (tlT rho) (rho zero)) ;
+
+module TSS = TSemTrav[subK, \ rho X -> feq-refl X, \ M rho X -> twk-sem M rho X] ;
+
+tsub1-env (N : Tm) (rho : TEnv) : TEq (TSS.senv (sub1 N) rho) (extT rho (tsem N rho)) = split {
+  zero -> feq-refl (tsem N rho) ;
+  suc i -> feq-refl (rho i) } ;
+
+-- paper Lemma 2.29
+tsubst1-sem (M N : Tm) (rho : TEnv) : FEq (tsem (subst1 M N) rho) (tsem M (extT rho (tsem N rho))) =
+  feq-trans (tsem (subst1 M N) rho) (tsem M (TSS.senv (sub1 N) rho)) (tsem M (extT rho (tsem N rho)))
+    (TSS.trav-sem M (sub1 N) rho)
+    (tsem-eq M (TSS.senv (sub1 N) rho) (extT rho (tsem N rho)) (tsub1-env N rho)) ;
+
+-- a general substitution
+tsub-sem (M : Tm) (s : Nat -> Tm) (rho : TEnv) : FEq (tsem (Sub.trav M s) rho) (tsem M (\ i -> tsem (s i) rho)) =
+  TSS.trav-sem M s rho ;

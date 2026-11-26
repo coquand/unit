@@ -1,0 +1,170 @@
+-- L18Base.seg: the statements of Lemma 18 (sterbac4 §4) for the lifting by
+-- evaluation, and the lemmas on environments.
+--   EnvOk D G e      e i typed in the GAT context D, for the types of G
+--   EnvEq D G e1 e2  pointwise convertible (at the types read with e1)
+--   Rel D G e1 e2    both typed and convertible
+--   PT/NT/ET         a type of G: typed, natural (ev A e) s = ev A (e s),
+--                    extensional (related environments, equal values)
+--   PM/NM/EM         the same for a term
+--   CtxI G           PT, NT, ET for every type of G
+--   env-sub, enveq-sub/comp/id/subeq/sym/trans, env-up, rel-up
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open GAT[l] ; open Ev[l] ;
+
+esb (e : Nat -> GE) (s : GE) : Nat -> GE = \ i -> gsb (e i) s ;
+
+EnvOk (D : GE) : Cx -> (Nat -> GE) -> U l = split {
+  cnil -> \ e -> Top ;
+  csnoc G A | r -> \ e -> r (\ i -> e (suc i)) * GDer (gjtm D (e zero) (ev A (\ i -> e (suc i)))) } ;
+
+EnvEq (D : GE) : Cx -> (Nat -> GE) -> (Nat -> GE) -> U l = split {
+  cnil -> \ e1 e2 -> Top ;
+  csnoc G A | r -> \ e1 e2 -> r (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) *
+                               GDer (gjeqtm D (e1 zero) (e2 zero) (ev A (\ i -> e1 (suc i)))) } ;
+
+Rel (D : GE) (G : Cx) (e1 e2 : Nat -> GE) : U l = EnvOk D G e1 * (EnvOk D G e2 * EnvEq D G e1 e2) ;
+
+PT (G : Cx) (A : Tm) : U l = (D : GE) -> (e : Nat -> GE) -> GDer (gjwf D) -> EnvOk D G e -> GDer (gjty D (ev A e)) ;
+NT (G : Cx) (A : Tm) : U l = (D : GE) -> (e : Nat -> GE) -> (T s : GE) -> GDer (gjwf D) -> GDer (gjwf T) ->
+  EnvOk D G e -> GDer (gjsub T s D) -> GDer (gjeqty T (gsb (ev A e) s) (ev A (esb e s))) ;
+ET (G : Cx) (A : Tm) : U l = (D : GE) -> (e1 e2 : Nat -> GE) -> GDer (gjwf D) -> Rel D G e1 e2 ->
+  GDer (gjeqty D (ev A e1) (ev A e2)) ;
+
+PM (G : Cx) (a A : Tm) : U l = (D : GE) -> (e : Nat -> GE) -> GDer (gjwf D) -> EnvOk D G e ->
+  GDer (gjtm D (ev a e) (ev A e)) ;
+NM (G : Cx) (a A : Tm) : U l = (D : GE) -> (e : Nat -> GE) -> (T s : GE) -> GDer (gjwf D) -> GDer (gjwf T) ->
+  EnvOk D G e -> GDer (gjsub T s D) -> GDer (gjeqtm T (gsb (ev a e) s) (ev a (esb e s)) (ev A (esb e s))) ;
+EM (G : Cx) (a A : Tm) : U l = (D : GE) -> (e1 e2 : Nat -> GE) -> GDer (gjwf D) -> Rel D G e1 e2 ->
+  GDer (gjeqtm D (ev a e1) (ev a e2) (ev A e1)) ;
+
+QT (G : Cx) (A B : Tm) : U l = (D : GE) -> (e1 e2 : Nat -> GE) -> GDer (gjwf D) -> Rel D G e1 e2 ->
+  GDer (gjeqty D (ev A e1) (ev B e2)) ;
+QM (G : Cx) (a b A : Tm) : U l = (D : GE) -> (e1 e2 : Nat -> GE) -> GDer (gjwf D) -> Rel D G e1 e2 ->
+  GDer (gjeqtm D (ev a e1) (ev b e2) (ev A e1)) ;
+
+CtxI : Cx -> U l = split {
+  cnil -> Top ;
+  csnoc G A | r -> r * (PT G A * (NT G A * ET G A)) } ;
+
+------------------------------------------------------------------------
+-- environments under a substitution
+
+env-sub (D T s : GE) (wD : GDer (gjwf D)) (wT : GDer (gjwf T)) (hs : GDer (gjsub T s D)) :
+    (G : Cx) -> CtxI G -> (e : Nat -> GE) -> EnvOk D G e -> EnvOk T G (esb e s) = split {
+  cnil -> \ c e o -> tt ;
+  csnoc G A | r -> \ c e o ->
+    (r c.1 (\ i -> e (suc i)) o.1,
+     gm-conv T (gsb (e zero) s) (gsb (ev A (\ i -> e (suc i))) s) (ev A (esb (\ i -> e (suc i)) s))
+       (gm-sb T D (e zero) (ev A (\ i -> e (suc i))) s (c.2.1 D (\ i -> e (suc i)) wD o.1) o.2 hs)
+       (c.2.2.1 D (\ i -> e (suc i)) T s wD wT o.1 hs)) } ;
+
+enveq-refl (D : GE) : (G : Cx) -> (e : Nat -> GE) -> EnvOk D G e -> EnvEq D G e e = split {
+  cnil -> \ e o -> tt ;
+  csnoc G A | r -> \ e o -> (r (\ i -> e (suc i)) o.1, gm-refl D (e zero) (ev A (\ i -> e (suc i))) o.2) } ;
+
+rel-refl (D : GE) (G : Cx) (e : Nat -> GE) (o : EnvOk D G e) : Rel D G e e = (o, (o, enveq-refl D G e o)) ;
+
+enveq-sub (D T s : GE) (wD : GDer (gjwf D)) (wT : GDer (gjwf T)) (hs : GDer (gjsub T s D)) :
+    (G : Cx) -> CtxI G -> (e1 e2 : Nat -> GE) -> EnvOk D G e1 -> EnvEq D G e1 e2 ->
+    EnvEq T G (esb e1 s) (esb e2 s) = split {
+  cnil -> \ c e1 e2 o q -> tt ;
+  csnoc G A | r -> \ c e1 e2 o q ->
+    (r c.1 (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) o.1 q.1,
+     gm-eqconv T (gsb (e1 zero) s) (gsb (e2 zero) s) (gsb (ev A (\ i -> e1 (suc i))) s) (ev A (esb (\ i -> e1 (suc i)) s))
+       (gm-esb T D (e1 zero) (e2 zero) (ev A (\ i -> e1 (suc i))) s s (c.2.1 D (\ i -> e1 (suc i)) wD o.1) o.2 q.2
+          hs hs (gq-refl T s D hs))
+       (c.2.2.1 D (\ i -> e1 (suc i)) T s wD wT o.1 hs)) } ;
+
+enveq-sym (D : GE) (wD : GDer (gjwf D)) : (G : Cx) -> CtxI G -> (e1 e2 : Nat -> GE) -> EnvOk D G e1 -> EnvOk D G e2 ->
+    EnvEq D G e1 e2 -> EnvEq D G e2 e1 = split {
+  cnil -> \ c e1 e2 o1 o2 q -> tt ;
+  csnoc G A | r -> \ c e1 e2 o1 o2 q ->
+    (r c.1 (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) o1.1 o2.1 q.1,
+     gm-eqconv D (e2 zero) (e1 zero) (ev A (\ i -> e1 (suc i))) (ev A (\ i -> e2 (suc i)))
+       (gm-sym D (e1 zero) (e2 zero) (ev A (\ i -> e1 (suc i))) (c.2.1 D (\ i -> e1 (suc i)) wD o1.1) q.2)
+       (c.2.2.2 D (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) wD (o1.1, (o2.1, q.1)))) } ;
+
+enveq-trans (D : GE) (wD : GDer (gjwf D)) : (G : Cx) -> CtxI G -> (e1 e2 e3 : Nat -> GE) -> EnvOk D G e1 -> EnvOk D G e2 ->
+    EnvEq D G e1 e2 -> EnvEq D G e2 e3 -> EnvEq D G e1 e3 = split {
+  cnil -> \ c e1 e2 e3 o1 o2 q1 q2 -> tt ;
+  csnoc G A | r -> \ c e1 e2 e3 o1 o2 q1 q2 ->
+    (r c.1 (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) (\ i -> e3 (suc i)) o1.1 o2.1 q1.1 q2.1,
+     gm-trans D (e1 zero) (e2 zero) (e3 zero) (ev A (\ i -> e1 (suc i))) q1.2
+       (gm-eqconv D (e2 zero) (e3 zero) (ev A (\ i -> e2 (suc i))) (ev A (\ i -> e1 (suc i))) q2.2
+          (ge-sym D (ev A (\ i -> e1 (suc i))) (ev A (\ i -> e2 (suc i)))
+             (c.2.2.2 D (\ i -> e1 (suc i)) (\ i -> e2 (suc i)) wD (o1.1, (o2.1, q1.1)))))) } ;
+
+rel-sym (D : GE) (wD : GDer (gjwf D)) (G : Cx) (c : CtxI G) (e1 e2 : Nat -> GE) (r : Rel D G e1 e2) : Rel D G e2 e1 =
+  (r.2.1, (r.1, enveq-sym D wD G c e1 e2 r.1 r.2.1 r.2.2)) ;
+
+-- (e s) d = e (s d)
+enveq-comp (D T Q s d : GE) (wD : GDer (gjwf D)) (wT : GDer (gjwf T)) (wQ : GDer (gjwf Q))
+    (hs : GDer (gjsub T s D)) (hd : GDer (gjsub Q d T)) :
+    (G : Cx) -> CtxI G -> (e : Nat -> GE) -> EnvOk D G e -> EnvEq Q G (esb (esb e s) d) (esb e (gcomp s d)) = split {
+  cnil -> \ c e o -> tt ;
+  csnoc G A | r -> \ c e o ->
+    (r c.1 (\ i -> e (suc i)) o.1,
+     gm-eqconv Q (gsb (gsb (e zero) s) d) (gsb (e zero) (gcomp s d)) (gsb (ev A (\ i -> e (suc i))) (gcomp s d))
+       (ev A (esb (esb (\ i -> e (suc i)) s) d))
+       (gm-sb-comp Q T D (e zero) (ev A (\ i -> e (suc i))) s d o.2 hs hd)
+       (ge-trans Q (gsb (ev A (\ i -> e (suc i))) (gcomp s d)) (ev A (esb (\ i -> e (suc i)) (gcomp s d)))
+          (ev A (esb (esb (\ i -> e (suc i)) s) d))
+          (c.2.2.1 D (\ i -> e (suc i)) Q (gcomp s d) wD wQ o.1 (gs-comp Q T D s d hs hd))
+          (ge-sym Q (ev A (esb (esb (\ i -> e (suc i)) s) d)) (ev A (esb (\ i -> e (suc i)) (gcomp s d)))
+             (c.2.2.2 Q (esb (esb (\ i -> e (suc i)) s) d) (esb (\ i -> e (suc i)) (gcomp s d)) wQ
+                (env-sub T Q d wT wQ hd G c.1 (esb (\ i -> e (suc i)) s) (env-sub D T s wD wT hs G c.1 (\ i -> e (suc i)) o.1),
+                 (env-sub D Q (gcomp s d) wD wQ (gs-comp Q T D s d hs hd) G c.1 (\ i -> e (suc i)) o.1,
+                  r c.1 (\ i -> e (suc i)) o.1)))))) } ;
+
+-- e id = e
+enveq-id (D : GE) (wD : GDer (gjwf D)) : (G : Cx) -> CtxI G -> (e : Nat -> GE) -> EnvOk D G e -> EnvEq D G (esb e gid) e = split {
+  cnil -> \ c e o -> tt ;
+  csnoc G A | r -> \ c e o ->
+    (r c.1 (\ i -> e (suc i)) o.1,
+     gm-eqconv D (gsb (e zero) gid) (e zero) (ev A (\ i -> e (suc i))) (ev A (esb (\ i -> e (suc i)) gid))
+       (gm-sb-id D (e zero) (ev A (\ i -> e (suc i))) o.2)
+       (ge-sym D (ev A (esb (\ i -> e (suc i)) gid)) (ev A (\ i -> e (suc i)))
+          (c.2.2.2 D (esb (\ i -> e (suc i)) gid) (\ i -> e (suc i)) wD
+             (env-sub D D gid wD wD (gs-id D wD) G c.1 (\ i -> e (suc i)) o.1, (o.1, r c.1 (\ i -> e (suc i)) o.1))))) } ;
+
+-- convertible substitutions
+enveq-subeq (D T s s' : GE) (wD : GDer (gjwf D)) (wT : GDer (gjwf T)) (hs : GDer (gjsub T s D)) (hs' : GDer (gjsub T s' D))
+    (hss : GDer (gjeqsub T s s' D)) :
+    (G : Cx) -> CtxI G -> (e : Nat -> GE) -> EnvOk D G e -> EnvEq T G (esb e s) (esb e s') = split {
+  cnil -> \ c e o -> tt ;
+  csnoc G A | r -> \ c e o ->
+    (r c.1 (\ i -> e (suc i)) o.1,
+     gm-eqconv T (gsb (e zero) s) (gsb (e zero) s') (gsb (ev A (\ i -> e (suc i))) s) (ev A (esb (\ i -> e (suc i)) s))
+       (gm-esb T D (e zero) (e zero) (ev A (\ i -> e (suc i))) s s' (c.2.1 D (\ i -> e (suc i)) wD o.1) o.2
+          (gm-refl D (e zero) (ev A (\ i -> e (suc i))) o.2) hs hs' hss)
+       (c.2.2.1 D (\ i -> e (suc i)) T s wD wT o.1 hs)) } ;
+
+------------------------------------------------------------------------
+-- under a binder
+
+CI (G : Cx) (A : Tm) : U l = CtxI (csnoc G A) ;
+
+env-up' (D X : GE) (e : Nat -> GE) (wD : GDer (gjwf D)) (hX : GDer (gjty D X)) (G : Cx) (A : Tm) (c : CI G A)
+    (o : EnvOk D G e) (eX : GDer (gjeqty D X (ev A e))) : EnvOk (gext D X) (csnoc G A) (up e) =
+  (env-sub D (gext D X) gp wD (g-ext D X hX) (gs-p D X hX) G c.1 e o,
+   gm-conv (gext D X) gq (gsb X gp) (ev A (esb e gp)) (gm-q D X hX)
+     (ge-trans (gext D X) (gsb X gp) (gsb (ev A e) gp) (ev A (esb e gp))
+        (ge-sb (gext D X) D X (ev A e) gp gp hX eX (gs-p D X hX) (gs-p D X hX) (gq-refl (gext D X) gp D (gs-p D X hX)))
+        (c.2.2.1 D e (gext D X) gp wD (g-ext D X hX) o (gs-p D X hX)))) ;
+
+env-up (D : GE) (e : Nat -> GE) (wD : GDer (gjwf D)) (G : Cx) (A : Tm) (c : CI G A) (o : EnvOk D G e) :
+    EnvOk (gext D (ev A e)) (csnoc G A) (up e) =
+  env-up' D (ev A e) e wD (c.2.1 D e wD o) G A c o (ge-refl D (ev A e) (c.2.1 D e wD o)) ;
+
+rel-up' (D X : GE) (wD : GDer (gjwf D)) (hX : GDer (gjty D X)) (G : Cx) (A : Tm) (c : CI G A) (e1 e2 : Nat -> GE)
+    (r : Rel D G e1 e2) (eX : GDer (gjeqty D X (ev A e1))) : Rel (gext D X) (csnoc G A) (up e1) (up e2) =
+  (env-up' D X e1 wD hX G A c r.1 eX,
+   (env-up' D X e2 wD hX G A c r.2.1
+      (ge-trans D X (ev A e1) (ev A e2) eX (c.2.2.2 D e1 e2 wD r)),
+    (enveq-sub D (gext D X) gp wD (g-ext D X hX) (gs-p D X hX) G c.1 e1 e2 r.1 r.2.2,
+     gm-refl (gext D X) gq (ev A (esb e1 gp)) (env-up' D X e1 wD hX G A c r.1 eX).2))) ;
+
+rel-up (D : GE) (wD : GDer (gjwf D)) (G : Cx) (A : Tm) (c : CI G A) (e1 e2 : Nat -> GE) (r : Rel D G e1 e2) :
+    Rel (gext D (ev A e1)) (csnoc G A) (up e1) (up e2) =
+  rel-up' D (ev A e1) wD (c.2.1 D e1 wD r.1) G A c e1 e2 r (ge-refl D (ev A e1) (c.2.1 D e1 wD r.1)) ;

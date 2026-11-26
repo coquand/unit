@@ -1,0 +1,342 @@
+-- GAT.seg: the Ehrhard-style generalised algebraic theory, as an extrinsic
+-- deductive system over ONE unscoped raw syntax (sterbac4 Appendix A.1,
+-- with Ehrhard's generators: substitutions id, o, (), p, lift_A(s),
+-- sec_A(a) instead of pairing (s, a)).  No raw term carries a context
+-- annotation (U_n, U^n_m, id, (), p, q): the context is that of the judgement.
+-- Context conversion: gt-cx, gm-cx, ge-cx, gm-ecx and gs-cx (both ends of a
+-- substitution; needed for the presuppositions, GPresup.seg).
+--   GE        raw contexts, types, terms and substitutions
+--   erase     |-|_T : GE -> Tm, Nat -> Tm, Cx (Definition 11)
+--   GJ, GDer  the judgements and rules
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ;
+
+data GE =
+  -- contexts
+    gnil
+  | gext (G A : GE)
+  -- types
+  | gpi (A B : GE)
+  | guu (n : Nat)
+  | gel (n : Nat) (a : GE)
+  | gsb (t s : GE)
+  -- terms
+  | glam (A B b : GE)
+  | gapp (A B c a : GE)
+  | gpic (n : Nat) (a b : GE)
+  | guc (m n : Nat)
+  | glf (m n : Nat) (a : GE)
+  | gq
+  -- substitutions
+  | gid
+  | gcomp (s d : GE)
+  | geps
+  | gp
+  | glift (A s : GE)
+  | gsec (A a : GE) ;
+
+------------------------------------------------------------------------
+-- erasure (Definition 11): substitutions become meta-level maps
+
+ER : U l = Tm * ((Nat -> Tm) * Cx) ;
+mkT (t : Tm) : ER = (t, (idS, cnil)) ;
+mkS (s : Nat -> Tm) : ER = (var zero, (s, cnil)) ;
+mkC (c : Cx) : ER = (var zero, (idS, c)) ;
+
+erase : GE -> ER = split {
+  gnil -> mkC cnil ;
+  gext G A | rG rA -> mkC (csnoc rG.2.2 rA.1) ;
+  gpi A B | rA rB -> mkT (pi rA.1 rB.1) ;
+  guu n -> mkT (uu n) ;
+  gel n a | ra -> mkT (el n ra.1) ;
+  gsb t s | rt rs -> mkT (Sub.trav rt.1 rs.2.1) ;
+  glam A B b | rA rB rb -> mkT (lam rA.1 rB.1 rb.1) ;
+  gapp A B c a | rA rB rc ra -> mkT (app rA.1 rB.1 rc.1 ra.1) ;
+  gpic n a b | ra rb -> mkT (pic n ra.1 rb.1) ;
+  guc m n -> mkT (uc m n) ;
+  glf m n a | ra -> mkT (lf m n ra.1) ;
+  gq -> mkT (var zero) ;
+  gid -> mkS idS ;
+  gcomp s d | rs rd -> mkS (\ i -> Sub.trav (rs.2.1 i) rd.2.1) ;
+  geps -> mkS idS ;
+  gp -> mkS (\ i -> var (suc i)) ;
+  glift A s | rA rs -> mkS (Sub.lift rs.2.1) ;
+  gsec A a | rA ra -> mkS (sub1 ra.1) } ;
+
+et (t : GE) : Tm = (erase t).1 ;
+es (s : GE) : Nat -> Tm = (erase s).2.1 ;
+ec (G : GE) : Cx = (erase G).2.2 ;
+
+------------------------------------------------------------------------
+-- judgements
+
+data GJ =
+    gjwf (G : GE)
+  | gjty (G A : GE)
+  | gjtm (G a A : GE)
+  | gjsub (D s G : GE)
+  | gjeqcx (G D : GE)
+  | gjeqty (G A B : GE)
+  | gjeqtm (G a b A : GE)
+  | gjeqsub (D s t G : GE) ;
+
+data GDer : (J : GJ) -> U l =
+  -- contexts and their equality
+    g-nil : GDer (gjwf gnil)
+  | g-ext (G A : GE) (h : GDer (gjty G A)) : GDer (gjwf (gext G A))
+  | gc-nil : GDer (gjeqcx gnil gnil)
+  | gc-refl (G : GE) (h : GDer (gjwf G)) : GDer (gjeqcx G G)
+  | gc-ext (G D A B : GE) (h1 : GDer (gjeqcx G D)) (h2 : GDer (gjeqty G A B)) : GDer (gjeqcx (gext G A) (gext D B))
+  -- substitutions
+  | gs-id (G : GE) (h : GDer (gjwf G)) : GDer (gjsub G gid G)
+  | gs-comp (T D G s d : GE) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjsub T d D)) : GDer (gjsub T (gcomp s d) G)
+  | gs-eps (G : GE) (h : GDer (gjwf G)) : GDer (gjsub G geps gnil)
+  | gs-p (G A : GE) (h : GDer (gjty G A)) : GDer (gjsub (gext G A) gp G)
+  | gs-lift (D G A s : GE) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjty G A)) :
+      GDer (gjsub (gext D (gsb A s)) (glift A s) (gext G A))
+  | gs-sec (G A a : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjtm G a A)) : GDer (gjsub G (gsec A a) (gext G A))
+  | gs-cx (D D' G G' s : GE) (h0 : GDer (gjwf D')) (h0' : GDer (gjwf G')) (h1 : GDer (gjeqcx D D'))
+      (h2 : GDer (gjeqcx G G')) (h : GDer (gjsub D s G)) : GDer (gjsub D' s G')
+  -- types
+  | gt-pi (G A B : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) : GDer (gjty G (gpi A B))
+  | gt-uu (G : GE) (n : Nat) (h : GDer (gjwf G)) (nb : LeN n N) : GDer (gjty G (guu n))
+  | gt-el (G : GE) (n : Nat) (a : GE) (h : GDer (gjtm G a (guu n))) : GDer (gjty G (gel n a))
+  | gt-sb (D G A s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjsub D s G)) : GDer (gjty D (gsb A s))
+  | gt-cx (G D A : GE) (h0 : GDer (gjwf D)) (h1 : GDer (gjeqcx G D)) (h2 : GDer (gjty G A)) : GDer (gjty D A)
+  -- terms
+  | gm-lam (G A B b : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) (h3 : GDer (gjtm (gext G A) b B)) :
+      GDer (gjtm G (glam A B b) (gpi A B))
+  | gm-app (G A B c a : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) (h3 : GDer (gjtm G c (gpi A B)))
+      (h4 : GDer (gjtm G a A)) : GDer (gjtm G (gapp A B c a) (gsb B (gsec A a)))
+  | gm-pic (G : GE) (n : Nat) (a b : GE) (h1 : GDer (gjtm G a (guu n)))
+      (h2 : GDer (gjtm (gext G (gel n a)) b (guu n))) : GDer (gjtm G (gpic n a b) (guu n))
+  | gm-uc (G : GE) (m n : Nat) (h : GDer (gjwf G)) (lt : LeN (suc m) n) (nb : LeN n N) : GDer (gjtm G (guc m n) (guu n))
+  | gm-lf (G : GE) (m n : Nat) (a : GE) (h : GDer (gjtm G a (guu m))) (le : LeN (suc m) n) (nb : LeN n N) :
+      GDer (gjtm G (glf m n a) (guu n))
+  | gm-q (G A : GE) (h : GDer (gjty G A)) : GDer (gjtm (gext G A) gq (gsb A gp))
+  | gm-sb (D G a A s : GE) (hA : GDer (gjty G A)) (h1 : GDer (gjtm G a A)) (h2 : GDer (gjsub D s G)) : GDer (gjtm D (gsb a s) (gsb A s))
+  | gm-conv (G a A B : GE) (h1 : GDer (gjtm G a A)) (h2 : GDer (gjeqty G A B)) : GDer (gjtm G a B)
+  | gm-cx (G D a A : GE) (h0 : GDer (gjwf D)) (h1 : GDer (gjeqcx G D)) (h2 : GDer (gjtm G a A)) : GDer (gjtm D a A)
+  -- type equality
+  | ge-refl (G A : GE) (h : GDer (gjty G A)) : GDer (gjeqty G A A)
+  | ge-sym (G A B : GE) (h : GDer (gjeqty G A B)) : GDer (gjeqty G B A)
+  | ge-trans (G A B C : GE) (h1 : GDer (gjeqty G A B)) (h2 : GDer (gjeqty G B C)) : GDer (gjeqty G A C)
+  | ge-pi (G A A' B B' : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjeqty G A A')) (h2 : GDer (gjeqty (gext G A) B B')) :
+      GDer (gjeqty G (gpi A B) (gpi A' B'))
+  | ge-el (G : GE) (n : Nat) (a a' : GE) (h : GDer (gjeqtm G a a' (guu n))) : GDer (gjeqty G (gel n a) (gel n a'))
+  | ge-sb (D G A A' s s' : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjeqty G A A')) (h2 : GDer (gjsub D s G))
+      (h3 : GDer (gjsub D s' G)) (h4 : GDer (gjeqsub D s s' G)) : GDer (gjeqty D (gsb A s) (gsb A' s'))
+  | ge-el-lf (G : GE) (m n : Nat) (a : GE) (h : GDer (gjtm G a (guu m))) (le : LeN (suc m) n) (nb : LeN n N) :
+      GDer (gjeqty G (gel n (glf m n a)) (gel m a))
+  | ge-el-pic (G : GE) (n : Nat) (a b : GE) (h1 : GDer (gjtm G a (guu n)))
+      (h2 : GDer (gjtm (gext G (gel n a)) b (guu n))) :
+      GDer (gjeqty G (gel n (gpic n a b)) (gpi (gel n a) (gel n b)))
+  | ge-el-uc (G : GE) (m n : Nat) (h : GDer (gjwf G)) (lt : LeN (suc m) n) (nb : LeN n N) : GDer (gjeqty G (gel n (guc m n)) (guu m))
+  | ge-sb-id (G A : GE) (h : GDer (gjty G A)) : GDer (gjeqty G (gsb A gid) A)
+  | ge-sb-comp (T D G A s d : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjsub T d D)) :
+      GDer (gjeqty T (gsb (gsb A s) d) (gsb A (gcomp s d)))
+  | ge-pi-sb (D G A B s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) (h3 : GDer (gjsub D s G)) :
+      GDer (gjeqty D (gsb (gpi A B) s) (gpi (gsb A s) (gsb B (glift A s))))
+  | ge-uu-sb (D G : GE) (n : Nat) (s : GE) (h : GDer (gjsub D s G)) (nb : LeN n N) : GDer (gjeqty D (gsb (guu n) s) (guu n))
+  | ge-el-sb (D G : GE) (n : Nat) (a s : GE) (h1 : GDer (gjtm G a (guu n))) (h2 : GDer (gjsub D s G)) :
+      GDer (gjeqty D (gsb (gel n a) s) (gel n (gsb a s)))
+  | ge-cx (G D A B : GE) (h0 : GDer (gjwf D)) (h1 : GDer (gjeqcx G D)) (h2 : GDer (gjeqty G A B)) : GDer (gjeqty D A B)
+  -- term equality
+  | gm-refl (G a A : GE) (h : GDer (gjtm G a A)) : GDer (gjeqtm G a a A)
+  | gm-sym (G a b A : GE) (hA : GDer (gjty G A)) (h : GDer (gjeqtm G a b A)) : GDer (gjeqtm G b a A)
+  | gm-trans (G a b c A : GE) (h1 : GDer (gjeqtm G a b A)) (h2 : GDer (gjeqtm G b c A)) : GDer (gjeqtm G a c A)
+  | gm-eqconv (G a b A B : GE) (h1 : GDer (gjeqtm G a b A)) (h2 : GDer (gjeqty G A B)) : GDer (gjeqtm G a b B)
+  | gm-elam (G A A' B B' b b' : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjeqty G A A'))
+      (h2 : GDer (gjeqty (gext G A) B B')) (h3 : GDer (gjeqtm (gext G A) b b' B)) :
+      GDer (gjeqtm G (glam A B b) (glam A' B' b') (gpi A B))
+  | gm-eapp (G A A' B B' c c' a a' : GE) (h0 : GDer (gjty G A)) (hB : GDer (gjty (gext G A) B)) (ha : GDer (gjtm G a A))
+      (h1 : GDer (gjeqty G A A')) (h2 : GDer (gjeqty (gext G A) B B'))
+      (h3 : GDer (gjeqtm G c c' (gpi A B))) (h4 : GDer (gjeqtm G a a' A)) :
+      GDer (gjeqtm G (gapp A B c a) (gapp A' B' c' a') (gsb B (gsec A a)))
+  | gm-epic (G : GE) (n : Nat) (a a' b b' : GE) (h0 : GDer (gjtm G a (guu n))) (h1 : GDer (gjeqtm G a a' (guu n)))
+      (h2 : GDer (gjeqtm (gext G (gel n a)) b b' (guu n))) :
+      GDer (gjeqtm G (gpic n a b) (gpic n a' b') (guu n))
+  | gm-elf (G : GE) (m n : Nat) (a a' : GE) (h : GDer (gjeqtm G a a' (guu m))) (le : LeN (suc m) n) (nb : LeN n N) :
+      GDer (gjeqtm G (glf m n a) (glf m n a') (guu n))
+  | gm-esb (D G a a' A s s' : GE) (hA : GDer (gjty G A)) (h0 : GDer (gjtm G a A)) (h1 : GDer (gjeqtm G a a' A)) (h2 : GDer (gjsub D s G))
+      (h3 : GDer (gjsub D s' G)) (h4 : GDer (gjeqsub D s s' G)) : GDer (gjeqtm D (gsb a s) (gsb a' s') (gsb A s))
+  | gm-beta (G A B b a : GE) (hA : GDer (gjty G A)) (hB : GDer (gjty (gext G A) B)) (h1 : GDer (gjtm (gext G A) b B))
+      (h2 : GDer (gjtm G a A)) : GDer (gjeqtm G (gapp A B (glam A B b) a) (gsb b (gsec A a)) (gsb B (gsec A a)))
+  | gm-eta (G A B f : GE) (hA : GDer (gjty G A)) (hB : GDer (gjty (gext G A) B)) (h : GDer (gjtm G f (gpi A B))) :
+      GDer (gjeqtm G f (glam A B (gapp (gsb A gp) (gsb B (glift A gp)) (gsb f gp) gq)) (gpi A B))
+  | gm-lf-pic (G : GE) (n p : Nat) (a b : GE) (h1 : GDer (gjtm G a (guu n)))
+      (h2 : GDer (gjtm (gext G (gel n a)) b (guu n))) (le : LeN (suc n) p) (nb : LeN p N) :
+      GDer (gjeqtm G (glf n p (gpic n a b)) (gpic p (glf n p a) (glf n p b)) (guu p))
+  | gm-lf-uc (G : GE) (m n p : Nat) (h : GDer (gjwf G)) (lt : LeN (suc m) n) (le : LeN (suc n) p) (nb : LeN p N) :
+      GDer (gjeqtm G (glf n p (guc m n)) (guc m p) (guu p))
+  | gm-lf-lf (G : GE) (m n p : Nat) (a : GE) (h : GDer (gjtm G a (guu m))) (le1 : LeN (suc m) n) (le2 : LeN (suc n) p) (nb : LeN p N) :
+      GDer (gjeqtm G (glf n p (glf m n a)) (glf m p a) (guu p))
+  | gm-sb-id (G a A : GE) (h : GDer (gjtm G a A)) : GDer (gjeqtm G (gsb a gid) a A)
+  | gm-sb-comp (T D G a A s d : GE) (h0 : GDer (gjtm G a A)) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjsub T d D)) :
+      GDer (gjeqtm T (gsb (gsb a s) d) (gsb a (gcomp s d)) (gsb A (gcomp s d)))
+  | gm-lam-sb (D G A B b s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) (h3 : GDer (gjtm (gext G A) b B))
+      (h4 : GDer (gjsub D s G)) :
+      GDer (gjeqtm D (gsb (glam A B b) s) (glam (gsb A s) (gsb B (glift A s)) (gsb b (glift A s)))
+                   (gpi (gsb A s) (gsb B (glift A s))))
+  | gm-app-sb (D G A B c a s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjty (gext G A) B)) (h3 : GDer (gjtm G c (gpi A B)))
+      (h4 : GDer (gjtm G a A)) (h5 : GDer (gjsub D s G)) :
+      GDer (gjeqtm D (gsb (gapp A B c a) s) (gapp (gsb A s) (gsb B (glift A s)) (gsb c s) (gsb a s))
+                   (gsb (gsb B (glift A s)) (gsec (gsb A s) (gsb a s))))
+  | gm-pic-sb (D G : GE) (n : Nat) (a b s : GE) (h1 : GDer (gjtm G a (guu n)))
+      (h2 : GDer (gjtm (gext G (gel n a)) b (guu n))) (h3 : GDer (gjsub D s G)) :
+      GDer (gjeqtm D (gsb (gpic n a b) s) (gpic n (gsb a s) (gsb b (glift (gel n a) s))) (guu n))
+  | gm-uc-sb (D G : GE) (m n : Nat) (s : GE) (h : GDer (gjsub D s G)) (lt : LeN (suc m) n) (nb : LeN n N) :
+      GDer (gjeqtm D (gsb (guc m n) s) (guc m n) (guu n))
+  | gm-lf-sb (D G : GE) (m n : Nat) (a s : GE) (h1 : GDer (gjtm G a (guu m))) (h2 : GDer (gjsub D s G)) (le : LeN (suc m) n) (nb : LeN n N) :
+      GDer (gjeqtm D (gsb (glf m n a) s) (glf m n (gsb a s)) (guu n))
+  | gm-q-lift (D G A s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjsub D s G)) :
+      GDer (gjeqtm (gext D (gsb A s)) (gsb gq (glift A s)) gq (gsb (gsb A s) gp))
+  | gm-q-sec (G A a : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjtm G a A)) : GDer (gjeqtm G (gsb gq (gsec A a)) a A)
+  | gm-ecx (G D a b A : GE) (h0 : GDer (gjwf D)) (h1 : GDer (gjeqcx G D)) (h2 : GDer (gjeqtm G a b A)) :
+      GDer (gjeqtm D a b A)
+  -- substitution equality
+  | gq-refl (D s G : GE) (h : GDer (gjsub D s G)) : GDer (gjeqsub D s s G)
+  | gq-sym (D s t G : GE) (h : GDer (gjeqsub D s t G)) : GDer (gjeqsub D t s G)
+  | gq-trans (D s t u G : GE) (h1 : GDer (gjeqsub D s t G)) (h2 : GDer (gjeqsub D t u G)) : GDer (gjeqsub D s u G)
+  | gq-comp (T D G s s' d d' : GE) (h1 : GDer (gjeqsub D s s' G)) (h2 : GDer (gjeqsub T d d' D)) :
+      GDer (gjeqsub T (gcomp s d) (gcomp s' d') G)
+  | gq-lift (D G A A' s s' : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjeqty G A A')) (h2 : GDer (gjsub D s G))
+      (h3 : GDer (gjeqsub D s s' G)) : GDer (gjeqsub (gext D (gsb A s)) (glift A s) (glift A' s') (gext G A))
+  | gq-sec (G A A' a a' : GE) (hA : GDer (gjty G A)) (ha : GDer (gjtm G a A)) (ha' : GDer (gjtm G a' A))
+      (h1 : GDer (gjeqty G A A')) (h2 : GDer (gjeqtm G a a' A)) :
+      GDer (gjeqsub G (gsec A a) (gsec A' a') (gext G A))
+  | gq-idl (D G s : GE) (h : GDer (gjsub D s G)) : GDer (gjeqsub D (gcomp gid s) s G)
+  | gq-idr (D G s : GE) (h : GDer (gjsub D s G)) : GDer (gjeqsub D (gcomp s gid) s G)
+  | gq-assoc (Q T D G s d e : GE) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjsub T d D)) (h3 : GDer (gjsub Q e T)) :
+      GDer (gjeqsub Q (gcomp (gcomp s d) e) (gcomp s (gcomp d e)) G)
+  | gq-eps (G s : GE) (h : GDer (gjsub G s gnil)) : GDer (gjeqsub G s geps gnil)
+  | gq-lift-id (G A : GE) (h : GDer (gjty G A)) :
+      GDer (gjeqsub (gext G (gsb A gid)) (glift A gid) gid (gext G A))
+  | gq-lift-comp (T D G A s d : GE) (h0 : GDer (gjty G A)) (h1 : GDer (gjsub D s G)) (h2 : GDer (gjsub T d D)) :
+      GDer (gjeqsub (gext T (gsb A (gcomp s d))) (glift A (gcomp s d)) (gcomp (glift A s) (glift (gsb A s) d)) (gext G A))
+  | gq-p-lift (D G A s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjsub D s G)) :
+      GDer (gjeqsub (gext D (gsb A s)) (gcomp gp (glift A s)) (gcomp s gp) G)
+  | gq-p-sec (G A a : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjtm G a A)) :
+      GDer (gjeqsub G (gcomp gp (gsec A a)) gid G)
+  | gq-sec-comp (D G A a s : GE) (h1 : GDer (gjty G A)) (h2 : GDer (gjtm G a A)) (h3 : GDer (gjsub D s G)) :
+      GDer (gjeqsub D (gcomp (gsec A a) s) (gcomp (glift A s) (gsec (gsb A s) (gsb a s))) (gext G A))
+  | gq-lift-p-sec-q (G A : GE) (h : GDer (gjty G A)) :
+      GDer (gjeqsub (gext G A) (gcomp (glift A gp) (gsec (gsb A gp) gq)) gid (gext G A)) ;
+
+-- Recover the level bound from a derivation of a bare universe.
+g-universe-level : GE -> U l = split {
+  gnil -> Top ;
+  gext G A -> Top ;
+  gpi A B -> Top ;
+  guu n -> LeN n N ;
+  gel n a -> Top ;
+  gsb t s -> Top ;
+  glam A B b -> Top ;
+  gapp A B c a -> Top ;
+  gpic n a b -> Top ;
+  guc m n -> Top ;
+  glf m n a -> Top ;
+  gq -> Top ;
+  gid -> Top ;
+  gcomp s d -> Top ;
+  geps -> Top ;
+  gp -> Top ;
+  glift A s -> Top ;
+  gsec A a -> Top } ;
+
+g-universe-bound-at : GJ -> U l = split {
+  gjwf G -> Top ;
+  gjty G A -> g-universe-level A ;
+  gjtm G a A -> Top ;
+  gjsub D s G -> Top ;
+  gjeqcx G D -> Top ;
+  gjeqty G A B -> Top ;
+  gjeqtm G a b A -> Top ;
+  gjeqsub D s t G -> Top } ;
+
+g-universe-bound-J : (J : GJ) -> GDer J -> g-universe-bound-at J = split {
+  g-nil -> tt ;
+  g-ext G A h -> tt ;
+  gc-nil -> tt ;
+  gc-refl G h -> tt ;
+  gc-ext G D A B h1 h2 -> tt ;
+  gs-id G h -> tt ;
+  gs-comp T D G s d h1 h2 -> tt ;
+  gs-eps G h -> tt ;
+  gs-p G A h -> tt ;
+  gs-lift D G A s h1 h2 -> tt ;
+  gs-sec G A a h1 h2 -> tt ;
+  gs-cx D D' G G' s h0 h0' h1 h2 h -> tt ;
+  gt-pi G A B h1 h2 -> tt ;
+  gt-uu G n h nb -> nb ;
+  gt-el G n a h -> tt ;
+  gt-sb D G A s h1 h2 -> tt ;
+  gt-cx G D A h0 h1 h2 | r0 r1 r2 -> r2 ;
+  gm-lam G A B b h1 h2 h3 -> tt ;
+  gm-app G A B c a h1 h2 h3 h4 -> tt ;
+  gm-pic G n a b h1 h2 -> tt ;
+  gm-uc G m n h lt nb -> tt ;
+  gm-lf G m n a h le nb -> tt ;
+  gm-q G A h -> tt ;
+  gm-sb D G a A s hA h1 h2 -> tt ;
+  gm-conv G a A B h1 h2 -> tt ;
+  gm-cx G D a A h0 h1 h2 -> tt ;
+  ge-refl G A h -> tt ;
+  ge-sym G A B h -> tt ;
+  ge-trans G A B C h1 h2 -> tt ;
+  ge-pi G A A' B B' h0 h1 h2 -> tt ;
+  ge-el G n a a' h -> tt ;
+  ge-sb D G A A' s s' h0 h1 h2 h3 h4 -> tt ;
+  ge-el-lf G m n a h le nb -> tt ;
+  ge-el-pic G n a b h1 h2 -> tt ;
+  ge-el-uc G m n h lt nb -> tt ;
+  ge-sb-id G A h -> tt ;
+  ge-sb-comp T D G A s d h0 h1 h2 -> tt ;
+  ge-pi-sb D G A B s h1 h2 h3 -> tt ;
+  ge-uu-sb D G n s h nb -> tt ;
+  ge-el-sb D G n a s h1 h2 -> tt ;
+  ge-cx G D A B h0 h1 h2 -> tt ;
+  gm-refl G a A h -> tt ;
+  gm-sym G a b A hA h -> tt ;
+  gm-trans G a b c A h1 h2 -> tt ;
+  gm-eqconv G a b A B h1 h2 -> tt ;
+  gm-elam G A A' B B' b b' h0 h1 h2 h3 -> tt ;
+  gm-eapp G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 -> tt ;
+  gm-epic G n a a' b b' h0 h1 h2 -> tt ;
+  gm-elf G m n a a' h le nb -> tt ;
+  gm-esb D G a a' A s s' hA h0 h1 h2 h3 h4 -> tt ;
+  gm-beta G A B b a hA hB h1 h2 -> tt ;
+  gm-eta G A B f hA hB h -> tt ;
+  gm-lf-pic G n p a b h1 h2 le nb -> tt ;
+  gm-lf-uc G m n p h lt le nb -> tt ;
+  gm-lf-lf G m n p a h le1 le2 nb -> tt ;
+  gm-sb-id G a A h -> tt ;
+  gm-sb-comp T D G a A s d h0 h1 h2 -> tt ;
+  gm-lam-sb D G A B b s h1 h2 h3 h4 -> tt ;
+  gm-app-sb D G A B c a s h1 h2 h3 h4 h5 -> tt ;
+  gm-pic-sb D G n a b s h1 h2 h3 -> tt ;
+  gm-uc-sb D G m n s h lt nb -> tt ;
+  gm-lf-sb D G m n a s h1 h2 le nb -> tt ;
+  gm-q-lift D G A s h1 h2 -> tt ;
+  gm-q-sec G A a h1 h2 -> tt ;
+  gm-ecx G D a b A h0 h1 h2 -> tt ;
+  gq-refl D s G h -> tt ;
+  gq-sym D s t G h -> tt ;
+  gq-trans D s t u G h1 h2 -> tt ;
+  gq-comp T D G s s' d d' h1 h2 -> tt ;
+  gq-lift D G A A' s s' h0 h1 h2 h3 -> tt ;
+  gq-sec G A A' a a' hA ha ha' h1 h2 -> tt ;
+  gq-idl D G s h -> tt ;
+  gq-idr D G s h -> tt ;
+  gq-assoc Q T D G s d e h1 h2 h3 -> tt ;
+  gq-eps G s h -> tt ;
+  gq-lift-id G A h -> tt ;
+  gq-lift-comp T D G A s d h0 h1 h2 -> tt ;
+  gq-p-lift D G A s h1 h2 -> tt ;
+  gq-p-sec G A a h1 h2 -> tt ;
+  gq-sec-comp D G A a s h1 h2 h3 -> tt ;
+  gq-lift-p-sec-q G A h -> tt } ;
+
+g-universe-bound (G : GE) (n : Nat) (h : GDer (gjty G (guu n))) : LeN n N =
+  g-universe-bound-J (gjty G (guu n)) h ;

@@ -1,0 +1,369 @@
+-- TSyntax.seg: raw terms of T_Tarski (sterbac4, Appendix A.2), unscoped
+-- de Bruijn indices as in the paper (a substitution is a map Nat -> Tm).
+--   Tm          var, pi, lam, app (annotated), uu n (U_n), el n a (T_n a),
+--               pic n a b (Pi_n), uc m n (code of U_m in U_n),
+--               lf m n a (t^n_m a: lift from U_m to U_n)
+--   Kit, Trav   one traversal over a kit; renaming and substitution
+--   E0..E4      trav-ext, trav-ren, ren-sub, sub-sub, sub-id
+--   D1..D3      sub1-wk, sub-subst1, ren-subst1
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ;
+
+data Tm =
+    var (i : Nat)
+  | pi (A : Tm) (B : Tm)
+  | lam (A : Tm) (B : Tm) (b : Tm)
+  | app (A : Tm) (B : Tm) (c : Tm) (a : Tm)
+  | uu (n : Nat)
+  | el (n : Nat) (a : Tm)
+  | pic (n : Nat) (a : Tm) (b : Tm)
+  | uc (m n : Nat)
+  | lf (m n : Nat) (a : Tm) ;
+
+------------------------------------------------------------------------
+-- congruences of the constructors
+
+cong2 (A B C : U l) (f : A -> B -> C) (a a' : A) (b b' : B) (ea : Id A a a') (eb : Id B b b') :
+    Id C (f a b) (f a' b') =
+  trans C (f a b) (f a' b) (f a' b') (ap A C (\ x -> f x b) a a' ea) (ap B C (\ y -> f a' y) b b' eb) ;
+
+cong3 (A : U l) (f : A -> A -> A -> A) (a a' b b' c c' : A) (ea : Id A a a') (eb : Id A b b') (ec : Id A c c') :
+    Id A (f a b c) (f a' b' c') =
+  trans A (f a b c) (f a' b' c) (f a' b' c')
+    (cong2 A A A (\ x y -> f x y c) a a' b b' ea eb) (ap A A (\ z -> f a' b' z) c c' ec) ;
+
+cong4 (A : U l) (f : A -> A -> A -> A -> A) (a a' b b' c c' d d' : A)
+    (ea : Id A a a') (eb : Id A b b') (ec : Id A c c') (ed : Id A d d') :
+    Id A (f a b c d) (f a' b' c' d') =
+  trans A (f a b c d) (f a' b' c' d) (f a' b' c' d')
+    (cong3 A (\ x y z -> f x y z d) a a' b b' c c' ea eb ec) (ap A A (\ w -> f a' b' c' w) d d' ed) ;
+
+------------------------------------------------------------------------
+-- one traversal over a kit
+
+record Kit {
+  V : U l ;
+  vr (v : V) : Tm ;
+  vz : V ;
+  wkv (v : V) : V ;
+} ;
+
+module Trav (K : Kit) {
+  lift (s : Nat -> K.V) : Nat -> K.V = split {
+    zero -> K.vz ;
+    suc i -> K.wkv (s i) } ;
+
+  trav : Tm -> (Nat -> K.V) -> Tm = split {
+    var i -> \ s -> K.vr (s i) ;
+    pi A B | rA rB -> \ s -> pi (rA s) (rB (lift s)) ;
+    lam A B b | rA rB rb -> \ s -> lam (rA s) (rB (lift s)) (rb (lift s)) ;
+    app A B c a | rA rB rc ra -> \ s -> app (rA s) (rB (lift s)) (rc s) (ra s) ;
+    uu n -> \ s -> uu n ;
+    el n a | ra -> \ s -> el n (ra s) ;
+    pic n a b | ra rb -> \ s -> pic n (ra s) (rb (lift s)) ;
+    uc m n -> \ s -> uc m n ;
+    lf m n a | ra -> \ s -> lf m n (ra s) } ;
+} ;
+
+renK : Kit = new Kit[Nat, \ i -> var i, zero, \ i -> suc i] ;
+module Ren = Trav[renK] ;
+ren (t : Tm) (r : Nat -> Nat) : Tm = Ren.trav t r ;
+wk (t : Tm) : Tm = Ren.trav t (\ i -> suc i) ;
+
+subK : Kit = new Kit[Tm, \ t -> t, var zero, \ t -> wk t] ;
+module Sub = Trav[subK] ;
+sub (t : Tm) (s : Nat -> Tm) : Tm = Sub.trav t s ;
+
+-- [a]: the variable 0 to a, the others shifted down
+sub1 (a : Tm) : Nat -> Tm = split {
+  zero -> a ;
+  suc i -> var i } ;
+subst1 (B a : Tm) : Tm = Sub.trav B (sub1 a) ;
+
+-- the weakening under one binder (B p+ in the paper)
+wkl (B : Tm) : Tm = Ren.trav B (Ren.lift (\ i -> suc i)) ;
+
+------------------------------------------------------------------------
+-- E0, E1 for any kit
+
+module TravLaws (K : Kit) {
+  module T = Trav[K] ;
+
+  PtEq (s s' : Nat -> K.V) : U l = (i : Nat) -> Id K.V (s i) (s' i) ;
+
+  lift-ext (s s' : Nat -> K.V) (e : PtEq s s') : PtEq (T.lift s) (T.lift s') = split {
+    zero -> refl K.vz ;
+    suc i -> ap K.V K.V (\ v -> K.wkv v) (s i) (s' i) (e i) } ;
+
+  -- E0
+  trav-ext : (M : Tm) -> (s s' : Nat -> K.V) -> PtEq s s' -> Id Tm (T.trav M s) (T.trav M s') = split {
+    var i -> \ s s' e -> ap K.V Tm (\ v -> K.vr v) (s i) (s' i) (e i) ;
+    pi A B | rA rB -> \ s s' e ->
+      cong2 Tm Tm Tm (\ x y -> pi x y) (T.trav A s) (T.trav A s') (T.trav B (T.lift s)) (T.trav B (T.lift s'))
+        (rA s s' e) (rB (T.lift s) (T.lift s') (lift-ext s s' e)) ;
+    lam A B b | rA rB rb -> \ s s' e ->
+      cong3 Tm (\ x y z -> lam x y z) (T.trav A s) (T.trav A s') (T.trav B (T.lift s)) (T.trav B (T.lift s'))
+        (T.trav b (T.lift s)) (T.trav b (T.lift s'))
+        (rA s s' e) (rB (T.lift s) (T.lift s') (lift-ext s s' e)) (rb (T.lift s) (T.lift s') (lift-ext s s' e)) ;
+    app A B c a | rA rB rc ra -> \ s s' e ->
+      cong4 Tm (\ x y z w -> app x y z w) (T.trav A s) (T.trav A s') (T.trav B (T.lift s)) (T.trav B (T.lift s'))
+        (T.trav c s) (T.trav c s') (T.trav a s) (T.trav a s')
+        (rA s s' e) (rB (T.lift s) (T.lift s') (lift-ext s s' e)) (rc s s' e) (ra s s' e) ;
+    uu n -> \ s s' e -> refl (uu n) ;
+    el n a | ra -> \ s s' e -> ap Tm Tm (\ x -> el n x) (T.trav a s) (T.trav a s') (ra s s' e) ;
+    pic n a b | ra rb -> \ s s' e ->
+      cong2 Tm Tm Tm (\ x y -> pic n x y) (T.trav a s) (T.trav a s') (T.trav b (T.lift s)) (T.trav b (T.lift s'))
+        (ra s s' e) (rb (T.lift s) (T.lift s') (lift-ext s s' e)) ;
+    uc m n -> \ s s' e -> refl (uc m n) ;
+    lf m n a | ra -> \ s s' e -> ap Tm Tm (\ x -> lf m n x) (T.trav a s) (T.trav a s') (ra s s' e) } ;
+
+  bind-step (B L : Tm) (s s' : Nat -> K.V) (h : Id Tm L (T.trav B s)) (e : PtEq s s') : Id Tm L (T.trav B s') =
+    trans Tm L (T.trav B s) (T.trav B s') h (trav-ext B s s' e) ;
+
+  -- E1: a traversal after a renaming
+  lift-ren (r : Nat -> Nat) (s : Nat -> K.V) :
+      PtEq (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i))) = split {
+    zero -> refl K.vz ;
+    suc i -> refl (K.wkv (s (r i))) } ;
+
+  trav-ren : (M : Tm) -> (r : Nat -> Nat) -> (s : Nat -> K.V) ->
+      Id Tm (T.trav (Ren.trav M r) s) (T.trav M (\ i -> s (r i))) = split {
+    var i -> \ r s -> refl (K.vr (s (r i))) ;
+    pi A B | rA rB -> \ r s ->
+      cong2 Tm Tm Tm (\ x y -> pi x y) (T.trav (Ren.trav A r) s) (T.trav A (\ i -> s (r i)))
+        (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (T.trav B (T.lift (\ i -> s (r i))))
+        (rA r s)
+        (bind-step B (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i)))
+           (rB (Ren.lift r) (T.lift s)) (lift-ren r s)) ;
+    lam A B b | rA rB rb -> \ r s ->
+      cong3 Tm (\ x y z -> lam x y z) (T.trav (Ren.trav A r) s) (T.trav A (\ i -> s (r i)))
+        (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (T.trav B (T.lift (\ i -> s (r i))))
+        (T.trav (Ren.trav b (Ren.lift r)) (T.lift s)) (T.trav b (T.lift (\ i -> s (r i))))
+        (rA r s)
+        (bind-step B (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i)))
+           (rB (Ren.lift r) (T.lift s)) (lift-ren r s))
+        (bind-step b (T.trav (Ren.trav b (Ren.lift r)) (T.lift s)) (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i)))
+           (rb (Ren.lift r) (T.lift s)) (lift-ren r s)) ;
+    app A B c a | rA rB rc ra -> \ r s ->
+      cong4 Tm (\ x y z w -> app x y z w) (T.trav (Ren.trav A r) s) (T.trav A (\ i -> s (r i)))
+        (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (T.trav B (T.lift (\ i -> s (r i))))
+        (T.trav (Ren.trav c r) s) (T.trav c (\ i -> s (r i)))
+        (T.trav (Ren.trav a r) s) (T.trav a (\ i -> s (r i)))
+        (rA r s)
+        (bind-step B (T.trav (Ren.trav B (Ren.lift r)) (T.lift s)) (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i)))
+           (rB (Ren.lift r) (T.lift s)) (lift-ren r s))
+        (rc r s) (ra r s) ;
+    uu n -> \ r s -> refl (uu n) ;
+    el n a | ra -> \ r s -> ap Tm Tm (\ x -> el n x) (T.trav (Ren.trav a r) s) (T.trav a (\ i -> s (r i))) (ra r s) ;
+    pic n a b | ra rb -> \ r s ->
+      cong2 Tm Tm Tm (\ x y -> pic n x y) (T.trav (Ren.trav a r) s) (T.trav a (\ i -> s (r i)))
+        (T.trav (Ren.trav b (Ren.lift r)) (T.lift s)) (T.trav b (T.lift (\ i -> s (r i))))
+        (ra r s)
+        (bind-step b (T.trav (Ren.trav b (Ren.lift r)) (T.lift s)) (\ i -> T.lift s (Ren.lift r i)) (T.lift (\ i -> s (r i)))
+           (rb (Ren.lift r) (T.lift s)) (lift-ren r s)) ;
+    uc m n -> \ r s -> refl (uc m n) ;
+    lf m n a | ra -> \ r s -> ap Tm Tm (\ x -> lf m n x) (T.trav (Ren.trav a r) s) (T.trav a (\ i -> s (r i))) (ra r s) } ;
+} ;
+
+module RL = TravLaws[renK] ;
+module SL = TravLaws[subK] ;
+
+------------------------------------------------------------------------
+-- E2: a renaming after a substitution
+
+wk-ren (r : Nat -> Nat) (N : Tm) :
+    Id Tm (Ren.trav (wk N) (Ren.lift r)) (wk (Ren.trav N r)) =
+  trans Tm (Ren.trav (wk N) (Ren.lift r)) (Ren.trav N (\ i -> suc (r i))) (wk (Ren.trav N r))
+    (RL.trav-ren N (\ i -> suc i) (Ren.lift r))
+    (sym Tm (wk (Ren.trav N r)) (Ren.trav N (\ i -> suc (r i))) (RL.trav-ren N r (\ i -> suc i))) ;
+
+ren-sub-lift (s : Nat -> Tm) (r : Nat -> Nat) :
+    SL.PtEq (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r)) = split {
+  zero -> refl (var zero) ;
+  suc i -> wk-ren r (s i) } ;
+
+ren-sub : (M : Tm) -> (s : Nat -> Tm) -> (r : Nat -> Nat) ->
+    Id Tm (Ren.trav (Sub.trav M s) r) (Sub.trav M (\ i -> Ren.trav (s i) r)) = split {
+  var i -> \ s r -> refl (Ren.trav (s i) r) ;
+  pi A B | rA rB -> \ s r ->
+    cong2 Tm Tm Tm (\ x y -> pi x y) (Ren.trav (Sub.trav A s) r) (Sub.trav A (\ i -> Ren.trav (s i) r))
+      (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r)) (Sub.trav B (Sub.lift (\ i -> Ren.trav (s i) r)))
+      (rA s r)
+      (SL.bind-step B (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r))
+         (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r))
+         (rB (Sub.lift s) (Ren.lift r)) (ren-sub-lift s r)) ;
+  lam A B b | rA rB rb -> \ s r ->
+    cong3 Tm (\ x y z -> lam x y z) (Ren.trav (Sub.trav A s) r) (Sub.trav A (\ i -> Ren.trav (s i) r))
+      (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r)) (Sub.trav B (Sub.lift (\ i -> Ren.trav (s i) r)))
+      (Ren.trav (Sub.trav b (Sub.lift s)) (Ren.lift r)) (Sub.trav b (Sub.lift (\ i -> Ren.trav (s i) r)))
+      (rA s r)
+      (SL.bind-step B (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r))
+         (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r))
+         (rB (Sub.lift s) (Ren.lift r)) (ren-sub-lift s r))
+      (SL.bind-step b (Ren.trav (Sub.trav b (Sub.lift s)) (Ren.lift r))
+         (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r))
+         (rb (Sub.lift s) (Ren.lift r)) (ren-sub-lift s r)) ;
+  app A B c a | rA rB rc ra -> \ s r ->
+    cong4 Tm (\ x y z w -> app x y z w) (Ren.trav (Sub.trav A s) r) (Sub.trav A (\ i -> Ren.trav (s i) r))
+      (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r)) (Sub.trav B (Sub.lift (\ i -> Ren.trav (s i) r)))
+      (Ren.trav (Sub.trav c s) r) (Sub.trav c (\ i -> Ren.trav (s i) r))
+      (Ren.trav (Sub.trav a s) r) (Sub.trav a (\ i -> Ren.trav (s i) r))
+      (rA s r)
+      (SL.bind-step B (Ren.trav (Sub.trav B (Sub.lift s)) (Ren.lift r))
+         (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r))
+         (rB (Sub.lift s) (Ren.lift r)) (ren-sub-lift s r))
+      (rc s r) (ra s r) ;
+  uu n -> \ s r -> refl (uu n) ;
+  el n a | ra -> \ s r -> ap Tm Tm (\ x -> el n x) (Ren.trav (Sub.trav a s) r) (Sub.trav a (\ i -> Ren.trav (s i) r)) (ra s r) ;
+  pic n a b | ra rb -> \ s r ->
+    cong2 Tm Tm Tm (\ x y -> pic n x y) (Ren.trav (Sub.trav a s) r) (Sub.trav a (\ i -> Ren.trav (s i) r))
+      (Ren.trav (Sub.trav b (Sub.lift s)) (Ren.lift r)) (Sub.trav b (Sub.lift (\ i -> Ren.trav (s i) r)))
+      (ra s r)
+      (SL.bind-step b (Ren.trav (Sub.trav b (Sub.lift s)) (Ren.lift r))
+         (\ i -> Ren.trav (Sub.lift s i) (Ren.lift r)) (Sub.lift (\ i -> Ren.trav (s i) r))
+         (rb (Sub.lift s) (Ren.lift r)) (ren-sub-lift s r)) ;
+  uc m n -> \ s r -> refl (uc m n) ;
+  lf m n a | ra -> \ s r -> ap Tm Tm (\ x -> lf m n x) (Ren.trav (Sub.trav a s) r) (Sub.trav a (\ i -> Ren.trav (s i) r)) (ra s r) } ;
+
+------------------------------------------------------------------------
+-- E3: a substitution after a substitution
+
+wk-sub (s : Nat -> Tm) (N : Tm) :
+    Id Tm (Sub.trav (wk N) (Sub.lift s)) (wk (Sub.trav N s)) =
+  trans Tm (Sub.trav (wk N) (Sub.lift s)) (Sub.trav N (\ i -> wk (s i))) (wk (Sub.trav N s))
+    (SL.trav-ren N (\ i -> suc i) (Sub.lift s))
+    (sym Tm (wk (Sub.trav N s)) (Sub.trav N (\ i -> wk (s i))) (ren-sub N s (\ i -> suc i))) ;
+
+sub-sub-lift (s1 s2 : Nat -> Tm) :
+    SL.PtEq (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2)) = split {
+  zero -> refl (var zero) ;
+  suc i -> wk-sub s2 (s1 i) } ;
+
+sub-sub : (M : Tm) -> (s1 s2 : Nat -> Tm) ->
+    Id Tm (Sub.trav (Sub.trav M s1) s2) (Sub.trav M (\ i -> Sub.trav (s1 i) s2)) = split {
+  var i -> \ s1 s2 -> refl (Sub.trav (s1 i) s2) ;
+  pi A B | rA rB -> \ s1 s2 ->
+    cong2 Tm Tm Tm (\ x y -> pi x y) (Sub.trav (Sub.trav A s1) s2) (Sub.trav A (\ i -> Sub.trav (s1 i) s2))
+      (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2)) (Sub.trav B (Sub.lift (\ i -> Sub.trav (s1 i) s2)))
+      (rA s1 s2)
+      (SL.bind-step B (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2))
+         (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2))
+         (rB (Sub.lift s1) (Sub.lift s2)) (sub-sub-lift s1 s2)) ;
+  lam A B b | rA rB rb -> \ s1 s2 ->
+    cong3 Tm (\ x y z -> lam x y z) (Sub.trav (Sub.trav A s1) s2) (Sub.trav A (\ i -> Sub.trav (s1 i) s2))
+      (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2)) (Sub.trav B (Sub.lift (\ i -> Sub.trav (s1 i) s2)))
+      (Sub.trav (Sub.trav b (Sub.lift s1)) (Sub.lift s2)) (Sub.trav b (Sub.lift (\ i -> Sub.trav (s1 i) s2)))
+      (rA s1 s2)
+      (SL.bind-step B (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2))
+         (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2))
+         (rB (Sub.lift s1) (Sub.lift s2)) (sub-sub-lift s1 s2))
+      (SL.bind-step b (Sub.trav (Sub.trav b (Sub.lift s1)) (Sub.lift s2))
+         (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2))
+         (rb (Sub.lift s1) (Sub.lift s2)) (sub-sub-lift s1 s2)) ;
+  app A B c a | rA rB rc ra -> \ s1 s2 ->
+    cong4 Tm (\ x y z w -> app x y z w) (Sub.trav (Sub.trav A s1) s2) (Sub.trav A (\ i -> Sub.trav (s1 i) s2))
+      (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2)) (Sub.trav B (Sub.lift (\ i -> Sub.trav (s1 i) s2)))
+      (Sub.trav (Sub.trav c s1) s2) (Sub.trav c (\ i -> Sub.trav (s1 i) s2))
+      (Sub.trav (Sub.trav a s1) s2) (Sub.trav a (\ i -> Sub.trav (s1 i) s2))
+      (rA s1 s2)
+      (SL.bind-step B (Sub.trav (Sub.trav B (Sub.lift s1)) (Sub.lift s2))
+         (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2))
+         (rB (Sub.lift s1) (Sub.lift s2)) (sub-sub-lift s1 s2))
+      (rc s1 s2) (ra s1 s2) ;
+  uu n -> \ s1 s2 -> refl (uu n) ;
+  el n a | ra -> \ s1 s2 -> ap Tm Tm (\ x -> el n x) (Sub.trav (Sub.trav a s1) s2) (Sub.trav a (\ i -> Sub.trav (s1 i) s2)) (ra s1 s2) ;
+  pic n a b | ra rb -> \ s1 s2 ->
+    cong2 Tm Tm Tm (\ x y -> pic n x y) (Sub.trav (Sub.trav a s1) s2) (Sub.trav a (\ i -> Sub.trav (s1 i) s2))
+      (Sub.trav (Sub.trav b (Sub.lift s1)) (Sub.lift s2)) (Sub.trav b (Sub.lift (\ i -> Sub.trav (s1 i) s2)))
+      (ra s1 s2)
+      (SL.bind-step b (Sub.trav (Sub.trav b (Sub.lift s1)) (Sub.lift s2))
+         (\ i -> Sub.trav (Sub.lift s1 i) (Sub.lift s2)) (Sub.lift (\ i -> Sub.trav (s1 i) s2))
+         (rb (Sub.lift s1) (Sub.lift s2)) (sub-sub-lift s1 s2)) ;
+  uc m n -> \ s1 s2 -> refl (uc m n) ;
+  lf m n a | ra -> \ s1 s2 -> ap Tm Tm (\ x -> lf m n x) (Sub.trav (Sub.trav a s1) s2) (Sub.trav a (\ i -> Sub.trav (s1 i) s2)) (ra s1 s2) } ;
+
+------------------------------------------------------------------------
+-- E4: the identity substitution
+
+idS : Nat -> Tm = \ i -> var i ;
+
+lift-idS : SL.PtEq (Sub.lift idS) idS = split {
+  zero -> refl (var zero) ;
+  suc i -> refl (var (suc i)) } ;
+
+sub-id : (M : Tm) -> Id Tm (Sub.trav M idS) M = split {
+  var i -> refl (var i) ;
+  pi A B | rA rB ->
+    cong2 Tm Tm Tm (\ x y -> pi x y) (Sub.trav A idS) A (Sub.trav B (Sub.lift idS)) B rA
+      (trans Tm (Sub.trav B (Sub.lift idS)) (Sub.trav B idS) B (SL.trav-ext B (Sub.lift idS) idS lift-idS) rB) ;
+  lam A B b | rA rB rb ->
+    cong3 Tm (\ x y z -> lam x y z) (Sub.trav A idS) A (Sub.trav B (Sub.lift idS)) B (Sub.trav b (Sub.lift idS)) b rA
+      (trans Tm (Sub.trav B (Sub.lift idS)) (Sub.trav B idS) B (SL.trav-ext B (Sub.lift idS) idS lift-idS) rB)
+      (trans Tm (Sub.trav b (Sub.lift idS)) (Sub.trav b idS) b (SL.trav-ext b (Sub.lift idS) idS lift-idS) rb) ;
+  app A B c a | rA rB rc ra ->
+    cong4 Tm (\ x y z w -> app x y z w) (Sub.trav A idS) A (Sub.trav B (Sub.lift idS)) B (Sub.trav c idS) c (Sub.trav a idS) a rA
+      (trans Tm (Sub.trav B (Sub.lift idS)) (Sub.trav B idS) B (SL.trav-ext B (Sub.lift idS) idS lift-idS) rB) rc ra ;
+  uu n -> refl (uu n) ;
+  el n a | ra -> ap Tm Tm (\ x -> el n x) (Sub.trav a idS) a ra ;
+  pic n a b | ra rb ->
+    cong2 Tm Tm Tm (\ x y -> pic n x y) (Sub.trav a idS) a (Sub.trav b (Sub.lift idS)) b ra
+      (trans Tm (Sub.trav b (Sub.lift idS)) (Sub.trav b idS) b (SL.trav-ext b (Sub.lift idS) idS lift-idS) rb) ;
+  uc m n -> refl (uc m n) ;
+  lf m n a | ra -> ap Tm Tm (\ x -> lf m n x) (Sub.trav a idS) a ra } ;
+
+sub-id-pt (M : Tm) (s : Nat -> Tm) (e : SL.PtEq s idS) : Id Tm (Sub.trav M s) M =
+  trans Tm (Sub.trav M s) (Sub.trav M idS) M (SL.trav-ext M s idS e) (sub-id M) ;
+
+-- a renaming as a substitution
+ren-as-sub (M : Tm) (r : Nat -> Nat) : Id Tm (Ren.trav M r) (Sub.trav M (\ i -> var (r i))) =
+  trans Tm (Ren.trav M r) (Sub.trav (Ren.trav M r) idS) (Sub.trav M (\ i -> var (r i)))
+    (sym Tm (Sub.trav (Ren.trav M r) idS) (Ren.trav M r) (sub-id (Ren.trav M r)))
+    (SL.trav-ren M r idS) ;
+
+------------------------------------------------------------------------
+-- consequences
+
+-- D1: (wk e)[a] = e
+sub1-wk (e a : Tm) : Id Tm (subst1 (wk e) a) e =
+  trans Tm (subst1 (wk e) a) (Sub.trav e idS) e (SL.trav-ren e (\ i -> suc i) (sub1 a)) (sub-id e) ;
+
+-- D2: (B[a])[s] = (B[lift s])[a[s]]
+sub-subst1-pt (s : Nat -> Tm) (a : Tm) :
+    SL.PtEq (\ i -> Sub.trav (sub1 a i) s) (\ i -> Sub.trav (Sub.lift s i) (sub1 (Sub.trav a s))) = split {
+  zero -> refl (Sub.trav a s) ;
+  suc i -> sym Tm (subst1 (wk (s i)) (Sub.trav a s)) (s i) (sub1-wk (s i) (Sub.trav a s)) } ;
+
+sub-subst1 (s : Nat -> Tm) (B a : Tm) :
+    Id Tm (Sub.trav (subst1 B a) s) (subst1 (Sub.trav B (Sub.lift s)) (Sub.trav a s)) =
+  trans Tm (Sub.trav (subst1 B a) s)
+    (Sub.trav B (\ i -> Sub.trav (Sub.lift s i) (sub1 (Sub.trav a s))))
+    (subst1 (Sub.trav B (Sub.lift s)) (Sub.trav a s))
+    (SL.bind-step B (Sub.trav (subst1 B a) s) (\ i -> Sub.trav (sub1 a i) s)
+       (\ i -> Sub.trav (Sub.lift s i) (sub1 (Sub.trav a s)))
+       (sub-sub B (sub1 a) s) (sub-subst1-pt s a))
+    (sym Tm (subst1 (Sub.trav B (Sub.lift s)) (Sub.trav a s))
+       (Sub.trav B (\ i -> Sub.trav (Sub.lift s i) (sub1 (Sub.trav a s))))
+       (sub-sub B (Sub.lift s) (sub1 (Sub.trav a s)))) ;
+
+-- D3: (B[a])[r] = (B[lift r])[a[r]]
+ren-subst1-pt (r : Nat -> Nat) (a : Tm) :
+    SL.PtEq (\ i -> Ren.trav (sub1 a i) r) (\ i -> sub1 (Ren.trav a r) (Ren.lift r i)) = split {
+  zero -> refl (Ren.trav a r) ;
+  suc i -> refl (var (r i)) } ;
+
+ren-subst1 (r : Nat -> Nat) (B a : Tm) :
+    Id Tm (Ren.trav (subst1 B a) r) (subst1 (Ren.trav B (Ren.lift r)) (Ren.trav a r)) =
+  trans Tm (Ren.trav (subst1 B a) r)
+    (Sub.trav B (\ i -> sub1 (Ren.trav a r) (Ren.lift r i)))
+    (subst1 (Ren.trav B (Ren.lift r)) (Ren.trav a r))
+    (SL.bind-step B (Ren.trav (subst1 B a) r) (\ i -> Ren.trav (sub1 a i) r)
+       (\ i -> sub1 (Ren.trav a r) (Ren.lift r i))
+       (ren-sub B (sub1 a) r) (ren-subst1-pt r a))
+    (sym Tm (subst1 (Ren.trav B (Ren.lift r)) (Ren.trav a r))
+       (Sub.trav B (\ i -> sub1 (Ren.trav a r) (Ren.lift r i)))
+       (SL.trav-ren B (Ren.lift r) (sub1 (Ren.trav a r)))) ;
+
+-- renaming after renaming
+ren-ren (M : Tm) (r1 r2 : Nat -> Nat) : Id Tm (Ren.trav (Ren.trav M r1) r2) (Ren.trav M (\ i -> r2 (r1 i))) =
+  RL.trav-ren M r1 r2 ;

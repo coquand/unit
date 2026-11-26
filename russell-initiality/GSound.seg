@@ -1,0 +1,282 @@
+-- GSound.seg: sterbac4, Theorem 16 for Ehrhard-GAT: the erasure |-|_T
+-- sends every GAT derivation to a T_Tarski derivation.
+--   SM D s G     |D|, |G| well formed and |s| typed from |D| to |G|
+--   QM D s t G   both typed and pointwise convertible
+--   sound        one eliminator for GDer
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open TSubst[l] ;
+open TSubCong[l] ; open TSubLib[l] ; open GAT[l] ;
+
+SM (D s G : GE) : U l = CtxOk (ec D) * (CtxOk (ec G) * SOk (ec D) (ec G) (es s)) ;
+QM (D s t G : GE) : U l = SM D s G * (SOk (ec D) (ec G) (es t) * SubEq (ec D) (ec G) (es s) (es t)) ;
+
+SoundJ : GJ -> U l = split {
+  gjwf G -> CtxOk (ec G) ;
+  gjty G A -> Der (jty (ec G) (et A)) ;
+  gjtm G a A -> Der (jtm (ec G) (et a) (et A)) ;
+  gjsub D s G -> SM D s G ;
+  gjeqcx G D -> CxEq (ec G) (ec D) ;
+  gjeqty G A B -> Der (jeqty (ec G) (et A) (et B)) ;
+  gjeqtm G a b A -> Der (jeqtm (ec G) (et a) (et b) (et A)) ;
+  gjeqsub D s t G -> QM D s t G } ;
+
+wfc (G : GE) (h : CtxOk (ec G)) : Der (jwf (ec G)) = wf-from-ok (ec G) h ;
+
+tyS (D s G A : GE) (h : Der (jty (ec G) (et A))) (hs : SM D s G) : Der (jty (ec D) (Sub.trav (et A) (es s))) =
+  SubD.trav-der (jty (ec G) (et A)) h (ec D) (es s) hs.2.2 (wfc D hs.1) ;
+tmS (D s G a A : GE) (h : Der (jtm (ec G) (et a) (et A))) (hs : SM D s G) :
+    Der (jtm (ec D) (Sub.trav (et a) (es s)) (Sub.trav (et A) (es s))) =
+  SubD.trav-der (jtm (ec G) (et a) (et A)) h (ec D) (es s) hs.2.2 (wfc D hs.1) ;
+
+wkS : Nat -> Tm = \ i -> var (suc i) ;
+
+-- the typing of q
+q-ok (G A : GE) (h : Der (jty (ec G) (et A))) : Der (jtm (csnoc (ec G) (et A)) (var zero) (Sub.trav (et A) wkS)) =
+  der-tm-ty (csnoc (ec G) (et A)) (var zero) (wk (et A)) (Sub.trav (et A) wkS) (ren-as-sub (et A) (\ i -> suc i))
+    (tm-v0 (ec G) (et A) h) ;
+
+p-ok (G A : GE) (h : Der (jty (ec G) (et A))) : SOk (csnoc (ec G) (et A)) (ec G) wkS =
+  SubD.subok-wk (ec G) (et A) h (ec G) idS (sid-ok (ec G) (ok-of (jty (ec G) (et A)) h)) ;
+
+wkl-pt : SL.PtEq (\ i -> var (Ren.lift (\ j -> suc j) i)) (Sub.lift wkS) = split {
+  zero -> refl (var zero) ;
+  suc i -> refl (var (suc (suc i))) } ;
+
+eta-er (A B f : Tm) :
+    Id Tm (lam A B (app (wk A) (wkl B) (wk f) (var zero)))
+          (lam A B (app (Sub.trav A wkS) (Sub.trav B (Sub.lift wkS)) (Sub.trav f wkS) (var zero))) =
+  ap Tm Tm (\ X -> lam A B X) (app (wk A) (wkl B) (wk f) (var zero))
+    (app (Sub.trav A wkS) (Sub.trav B (Sub.lift wkS)) (Sub.trav f wkS) (var zero))
+    (cong4 Tm (\ x y z w -> app x y z w) (wk A) (Sub.trav A wkS) (wkl B) (Sub.trav B (Sub.lift wkS))
+       (wk f) (Sub.trav f wkS) (var zero) (var zero)
+       (ren-as-sub A (\ i -> suc i))
+       (trans Tm (wkl B) (Sub.trav B (\ i -> var (Ren.lift (\ j -> suc j) i))) (Sub.trav B (Sub.lift wkS))
+          (ren-as-sub B (Ren.lift (\ j -> suc j)))
+          (SL.trav-ext B (\ i -> var (Ren.lift (\ j -> suc j) i)) (Sub.lift wkS) wkl-pt))
+       (ren-as-sub f (\ i -> suc i)) (refl (var zero))) ;
+
+lift-comp-pt (s d : Nat -> Tm) : SL.PtEq (Sub.lift (cmp s d)) (cmp (Sub.lift s) (Sub.lift d)) = split {
+  zero -> refl (var zero) ;
+  suc i -> sym Tm (Sub.trav (wk (s i)) (Sub.lift d)) (wk (Sub.trav (s i) d)) (wk-sub d (s i)) } ;
+
+lpsq-pt : SL.PtEq (cmp (Sub.lift wkS) (sub1 (var zero))) idS = split {
+  zero -> refl (var zero) ;
+  suc i -> refl (var (suc i)) } ;
+
+sound : (J : GJ) -> GDer J -> SoundJ J = split {
+  g-nil -> tt ;
+  g-ext G A h | r -> (ok-of (jty (ec G) (et A)) r, r) ;
+  gc-nil -> tt ;
+  gc-refl G h | r -> cxeq-refl (ec G) r ;
+  gc-ext G D A B h1 h2 | r1 r2 -> (r1, r2) ;
+  gs-id G h | r -> (r, (r, sid-ok (ec G) r)) ;
+  gs-comp T D G s d h1 h2 | r1 r2 ->
+    (r2.1, (r1.2.1, comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2)) ;
+  gs-eps G h | r -> (r, (tt, tt)) ;
+  gs-p G A h | r -> ((ok-of (jty (ec G) (et A)) r, r), (ok-of (jty (ec G) (et A)) r, p-ok G A r)) ;
+  gs-lift D G A s h1 h2 | r1 r2 ->
+    ((r1.1, tyS D s G A r2 r1), ((r1.2.1, r2), SubD.subok-lift (ec D) (ec G) (es s) (et A) r1.2.2 (tyS D s G A r2 r1))) ;
+  gs-sec G A a h1 h2 | r1 r2 ->
+    (ok-of (jtm (ec G) (et a) (et A)) r2, ((ok-of (jtm (ec G) (et a) (et A)) r2, r1),
+      sub1-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) r2) (et A) (et a) r2)) ;
+  gs-cx D D' G G' s h0 h0' h1 h2 h | r0 r0' r1 r2 r ->
+    (r0, (r0', sok-pt (ec D') (ec G') (cmp (cmp idS (es s)) idS) (es s)
+       (comp-ok (ec D') (ec D) idS (cxconv-ok (ec D) (ec D') r1 r0) (wfc D' r0) (ec G') (cmp idS (es s))
+          (comp-ok (ec D) (ec G) (es s) r.2.2 (wfc D r.1) (ec G') idS
+             (cxconv-ok (ec G') (ec G) (cxeq-sym (ec G) (ec G') r0' r2) r.2.1)))
+       (\ i -> sub-id (es s i)))) ;
+  gt-pi G A B h1 h2 | r1 r2 -> ty-pi (ec G) (et A) (et B) r1 r2 ;
+  gt-uu G n h nb | r -> ty-uu (ec G) n (wfc G r) nb ;
+  gt-el G n a h | r -> ty-el (ec G) n (et a) r ;
+  gt-sb D G A s h1 h2 | r1 r2 -> tyS D s G A r1 r2 ;
+  gt-cx G D A h0 h1 h2 | r0 r1 r2 -> cxconv-ty (ec G) (ec D) r1 r0 (et A) r2 ;
+  gm-lam G A B b h1 h2 h3 | r1 r2 r3 -> tm-lam (ec G) (et A) (et B) (et b) r1 r2 r3 ;
+  gm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 -> tm-app (ec G) (et A) (et B) (et c) (et a) r1 r2 r3 r4 ;
+  gm-pic G n a b h1 h2 | r1 r2 -> tm-pic (ec G) n (et a) (et b) r1 r2 ;
+  gm-uc G m n h lt nb | r -> tm-uc (ec G) m n (wfc G r) lt nb ;
+  gm-lf G m n a h le nb | r -> tm-lf (ec G) m n (et a) r le nb ;
+  gm-q G A h | r -> q-ok G A r ;
+  gm-sb D G a A s hA h1 h2 | rA r1 r2 -> tmS D s G a A r1 r2 ;
+  gm-conv G a A B h1 h2 | r1 r2 -> tm-conv (ec G) (et a) (et A) (et B) r1 r2 ;
+  gm-cx G D a A h0 h1 h2 | r0 r1 r2 -> cxconv-tm (ec G) (ec D) r1 r0 (et a) (et A) r2 ;
+  ge-refl G A h | r -> eqty-refl (ec G) (et A) r ;
+  ge-sym G A B h | r -> eqty-sym (ec G) (et A) (et B) r ;
+  ge-trans G A B C h1 h2 | r1 r2 -> eqty-trans (ec G) (et A) (et B) (et C) r1 r2 ;
+  ge-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> eqty-pi (ec G) (et A) (et A') (et B) (et B') r0 r1 r2 ;
+  ge-el G n a a' h | r -> eqty-el (ec G) n (et a) (et a') r ;
+  ge-sb D G A A' s s' h0 h1 h2 h3 h4 | r0 r1 r2 r3 r4 ->
+    eqty-trans (ec D) (Sub.trav (et A) (es s)) (Sub.trav (et A) (es s')) (Sub.trav (et A') (es s'))
+      (sub-cong (jty (ec G) (et A)) r0 (ec D) (es s) (es s') r2.2.2 r3.2.2 r4.2.2 (wfc D r2.1))
+      (SubD.trav-der (jeqty (ec G) (et A) (et A')) r1 (ec D) (es s') r3.2.2 (wfc D r2.1)) ;
+  ge-el-lf G m n a h le nb | r -> eqty-el-lf (ec G) m n (et a) r le nb ;
+  ge-el-pic G n a b h1 h2 | r1 r2 -> eqty-el-pic (ec G) n (et a) (et b) r1 r2 ;
+  ge-el-uc G m n h lt nb | r -> eqty-el-uc (ec G) m n (wfc G r) lt nb ;
+  ge-sb-id G A h | r ->
+    der-eqty-l (ec G) (et A) (Sub.trav (et A) idS) (et A) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A)))
+      (eqty-refl (ec G) (et A) r) ;
+  ge-sb-comp T D G A s d h0 h1 h2 | r0 r1 r2 ->
+    der-eqty-r (ec T) (Sub.trav (Sub.trav (et A) (es s)) (es d)) (Sub.trav (Sub.trav (et A) (es s)) (es d))
+      (Sub.trav (et A) (cmp (es s) (es d))) (sub-sub (et A) (es s) (es d))
+      (eqty-refl (ec T) (Sub.trav (Sub.trav (et A) (es s)) (es d)) (tyS T d D (gsb A s) (tyS D s G A r0 r1) r2)) ;
+  ge-pi-sb D G A B s h1 h2 h3 | r1 r2 r3 ->
+    eqty-refl (ec D) (Sub.trav (pi (et A) (et B)) (es s)) (tyS D s G (gpi A B) (ty-pi (ec G) (et A) (et B) r1 r2) r3) ;
+  ge-uu-sb D G n s h nb | r -> eqty-refl (ec D) (uu n) (ty-uu (ec D) n (wfc D r.1) nb) ;
+  ge-el-sb D G n a s h1 h2 | r1 r2 ->
+    eqty-refl (ec D) (el n (Sub.trav (et a) (es s))) (ty-el (ec D) n (Sub.trav (et a) (es s)) (tmS D s G a (guu n) r1 r2)) ;
+  ge-cx G D A B h0 h1 h2 | r0 r1 r2 -> cxconv-eqty (ec G) (ec D) r1 r0 (et A) (et B) r2 ;
+  gm-refl G a A h | r -> eqtm-refl (ec G) (et a) (et A) r ;
+  gm-sym G a b A hA h | rA r -> eqtm-sym (ec G) (et a) (et b) (et A) rA r ;
+  gm-trans G a b c A h1 h2 | r1 r2 -> eqtm-trans (ec G) (et a) (et b) (et c) (et A) r1 r2 ;
+  gm-eqconv G a b A B h1 h2 | r1 r2 -> eqtm-conv (ec G) (et a) (et b) (et A) (et B) r1 r2 ;
+  gm-elam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 ->
+    eqtm-lam (ec G) (et A) (et A') (et B) (et B') (et b) (et b') r0 r1 r2 r3 ;
+  gm-eapp G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 ->
+    eqtm-app (ec G) (et A) (et A') (et B) (et B') (et c) (et c') (et a) (et a') r0 rB ra r1 r2 r3 r4 ;
+  gm-epic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> eqtm-pic (ec G) n (et a) (et a') (et b) (et b') r0 r1 r2 ;
+  gm-elf G m n a a' h le nb | r -> eqtm-lf (ec G) m n (et a) (et a') r le nb ;
+  gm-esb D G a a' A s s' hA h0 h1 h2 h3 h4 | rA r0 r1 r2 r3 r4 ->
+    eqtm-trans (ec D) (Sub.trav (et a) (es s)) (Sub.trav (et a) (es s')) (Sub.trav (et a') (es s')) (Sub.trav (et A) (es s))
+      (sub-cong (jtm (ec G) (et a) (et A)) r0 (ec D) (es s) (es s') r2.2.2 r3.2.2 r4.2.2 (wfc D r2.1))
+      (eqtm-conv (ec D) (Sub.trav (et a) (es s')) (Sub.trav (et a') (es s')) (Sub.trav (et A) (es s')) (Sub.trav (et A) (es s))
+         (SubD.trav-der (jeqtm (ec G) (et a) (et a') (et A)) r1 (ec D) (es s') r3.2.2 (wfc D r2.1))
+         (eqty-sym (ec D) (Sub.trav (et A) (es s)) (Sub.trav (et A) (es s'))
+            (sub-cong (jty (ec G) (et A)) rA (ec D) (es s) (es s') r2.2.2 r3.2.2 r4.2.2 (wfc D r2.1)))) ;
+  gm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 -> eqtm-beta (ec G) (et A) (et B) (et b) (et a) rA rB r1 r2 ;
+  gm-eta G A B f hA hB h | rA rB r ->
+    der-eqtm-r (ec G) (et f) (lam (et A) (et B) (app (wk (et A)) (wkl (et B)) (wk (et f)) (var zero)))
+      (lam (et A) (et B) (app (Sub.trav (et A) wkS) (Sub.trav (et B) (Sub.lift wkS)) (Sub.trav (et f) wkS) (var zero)))
+      (pi (et A) (et B)) (eta-er (et A) (et B) (et f))
+      (eqtm-eta (ec G) (et A) (et B) (et f) rA rB r) ;
+  gm-lf-pic G n p a b h1 h2 le nb | r1 r2 -> eqtm-lf-pic (ec G) n p (et a) (et b) r1 r2 le nb ;
+  gm-lf-uc G m n p h lt le nb | r -> eqtm-lf-uc (ec G) m n p (wfc G r) lt le nb ;
+  gm-lf-lf G m n p a h le1 le2 nb | r -> eqtm-lf-lf (ec G) m n p (et a) r le1 le2 nb ;
+  gm-sb-id G a A h | r ->
+    der-eqtm-l (ec G) (et a) (Sub.trav (et a) idS) (et a) (et A) (sym Tm (Sub.trav (et a) idS) (et a) (sub-id (et a)))
+      (eqtm-refl (ec G) (et a) (et A) r) ;
+  gm-sb-comp T D G a A s d h0 h1 h2 | r0 r1 r2 ->
+    der-eqtm-ty (ec T) (Sub.trav (Sub.trav (et a) (es s)) (es d)) (Sub.trav (et a) (cmp (es s) (es d)))
+      (Sub.trav (Sub.trav (et A) (es s)) (es d)) (Sub.trav (et A) (cmp (es s) (es d))) (sub-sub (et A) (es s) (es d))
+      (der-eqtm-r (ec T) (Sub.trav (Sub.trav (et a) (es s)) (es d)) (Sub.trav (Sub.trav (et a) (es s)) (es d))
+         (Sub.trav (et a) (cmp (es s) (es d))) (Sub.trav (Sub.trav (et A) (es s)) (es d)) (sub-sub (et a) (es s) (es d))
+         (eqtm-refl (ec T) (Sub.trav (Sub.trav (et a) (es s)) (es d)) (Sub.trav (Sub.trav (et A) (es s)) (es d))
+            (tmS T d D (gsb a s) (gsb A s) (tmS D s G a A r0 r1) r2))) ;
+  gm-lam-sb D G A B b s h1 h2 h3 h4 | r1 r2 r3 r4 ->
+    eqtm-refl (ec D) (Sub.trav (lam (et A) (et B) (et b)) (es s)) (Sub.trav (pi (et A) (et B)) (es s))
+      (tmS D s G (glam A B b) (gpi A B) (tm-lam (ec G) (et A) (et B) (et b) r1 r2 r3) r4) ;
+  gm-app-sb D G A B c a s h1 h2 h3 h4 h5 | r1 r2 r3 r4 r5 ->
+    der-eqtm-ty (ec D) (Sub.trav (app (et A) (et B) (et c) (et a)) (es s)) (Sub.trav (app (et A) (et B) (et c) (et a)) (es s))
+      (Sub.trav (subst1 (et B) (et a)) (es s)) (subst1 (Sub.trav (et B) (Sub.lift (es s))) (Sub.trav (et a) (es s)))
+      (sub-subst1 (es s) (et B) (et a))
+      (eqtm-refl (ec D) (Sub.trav (app (et A) (et B) (et c) (et a)) (es s)) (Sub.trav (subst1 (et B) (et a)) (es s))
+         (tmS D s G (gapp A B c a) (gsb B (gsec A a)) (tm-app (ec G) (et A) (et B) (et c) (et a) r1 r2 r3 r4) r5)) ;
+  gm-pic-sb D G n a b s h1 h2 h3 | r1 r2 r3 ->
+    eqtm-refl (ec D) (Sub.trav (pic n (et a) (et b)) (es s)) (uu n)
+      (tmS D s G (gpic n a b) (guu n) (tm-pic (ec G) n (et a) (et b) r1 r2) r3) ;
+  gm-uc-sb D G m n s h lt nb | r -> eqtm-refl (ec D) (uc m n) (uu n) (tm-uc (ec D) m n (wfc D r.1) lt nb) ;
+  gm-lf-sb D G m n a s h1 h2 le nb | r1 r2 ->
+    eqtm-refl (ec D) (lf m n (Sub.trav (et a) (es s))) (uu n)
+      (tm-lf (ec D) m n (Sub.trav (et a) (es s)) (tmS D s G a (guu m) r1 r2) le nb) ;
+  gm-q-lift D G A s h1 h2 | r1 r2 ->
+    eqtm-refl (csnoc (ec D) (Sub.trav (et A) (es s))) (var zero) (Sub.trav (Sub.trav (et A) (es s)) wkS)
+      (q-ok D (gsb A s) (tyS D s G A r1 r2)) ;
+  gm-q-sec G A a h1 h2 | r1 r2 -> eqtm-refl (ec G) (et a) (et A) r2 ;
+  gm-ecx G D a b A h0 h1 h2 | r0 r1 r2 -> cxconv-eqtm (ec G) (ec D) r1 r0 (et a) (et b) (et A) r2 ;
+  gq-refl D s G h | r -> (r, (r.2.2, subeq-refl (ec D) (ec G) (es s) r.2.2)) ;
+  gq-sym D s t G h | r ->
+    ((r.1.1, (r.1.2.1, r.2.1)),
+     (r.1.2.2, subeq-sym (ec D) (wfc D r.1.1) (ec G) r.1.2.1 (es s) (es t) r.1.2.2 r.2.1 r.2.2)) ;
+  gq-trans D s t u G h1 h2 | r1 r2 ->
+    (r1.1, (r2.2.1, subeq-trans (ec D) (wfc D r1.1.1) (ec G) r1.1.2.1 (es s) (es t) (es u) r1.1.2.2 r1.2.1 r1.2.2 r2.2.2)) ;
+  gq-comp T D G s s' d d' h1 h2 | r1 r2 ->
+    ((r2.1.1, (r1.1.2.1, comp-ok (ec T) (ec D) (es d) r2.1.2.2 (wfc T r2.1.1) (ec G) (es s) r1.1.2.2)),
+     (comp-ok (ec T) (ec D) (es d') r2.2.1 (wfc T r2.1.1) (ec G) (es s') r1.2.1,
+      subeq-comp (ec T) (ec D) (wfc T r2.1.1) (wfc D r1.1.1) (es d) (es d') r2.1.2.2 r2.2.1 r2.2.2
+        (ec G) r1.1.2.1 (es s) (es s') r1.1.2.2 r1.2.1 r1.2.2)) ;
+  gq-lift D G A A' s s' h0 h1 h2 h3 | r0 r1 r2 r3 ->
+    (((r2.1, tyS D s G A r0 r2), ((r2.2.1, r0), SubD.subok-lift (ec D) (ec G) (es s) (et A) r2.2.2 (tyS D s G A r0 r2))),
+     (subok-lift' (ec D) (ec G) (es s') (et A) (Sub.trav (et A) (es s)) r3.2.1 (tyS D s G A r0 r2)
+        (sub-cong (jty (ec G) (et A)) r0 (ec D) (es s) (es s') r2.2.2 r3.2.1 r3.2.2 (wfc D r2.1)),
+      subeq-lift (ec D) (ec G) (es s) (es s') (et A) r3.2.2 (tyS D s G A r0 r2))) ;
+  gq-sec G A A' a a' hA ha ha' h1 h2 | rA ra ra' r1 r2 ->
+    ((ok-of (jtm (ec G) (et a) (et A)) ra, ((ok-of (jtm (ec G) (et a) (et A)) ra, rA),
+       sub1-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) ra) (et A) (et a) ra)),
+     (sub1-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) ra) (et A) (et a') ra',
+      (subeq-refl (ec G) (ec G) idS (sid-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) ra)),
+       der-eqtm-ty (ec G) (et a) (et a') (et A) (Sub.trav (et A) idS) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A))) r2))) ;
+  gq-idl D G s h | r -> (r, (r.2.2, subeq-refl (ec D) (ec G) (es s) r.2.2)) ;
+  gq-idr D G s h | r ->
+    ((r.1, (r.2.1, sok-pt (ec D) (ec G) (es s) (cmp (es s) idS) r.2.2 (\ i -> sym Tm (Sub.trav (es s i) idS) (es s i) (sub-id (es s i))))),
+     (r.2.2, subeq-pt (ec D) (ec G) (cmp (es s) idS) (es s)
+               (sok-pt (ec D) (ec G) (es s) (cmp (es s) idS) r.2.2 (\ i -> sym Tm (Sub.trav (es s i) idS) (es s i) (sub-id (es s i))))
+               (\ i -> sub-id (es s i)))) ;
+  gq-assoc Q T D G s d e h1 h2 h3 | r1 r2 r3 ->
+    ((r3.1, (r1.2.1, comp-ok (ec Q) (ec T) (es e) r3.2.2 (wfc Q r3.1) (ec G) (cmp (es s) (es d))
+                       (comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))),
+     (comp-ok (ec Q) (ec D) (cmp (es d) (es e)) (comp-ok (ec Q) (ec T) (es e) r3.2.2 (wfc Q r3.1) (ec D) (es d) r2.2.2)
+        (wfc Q r3.1) (ec G) (es s) r1.2.2,
+      subeq-pt (ec Q) (ec G) (cmp (cmp (es s) (es d)) (es e)) (cmp (es s) (cmp (es d) (es e)))
+        (comp-ok (ec Q) (ec T) (es e) r3.2.2 (wfc Q r3.1) (ec G) (cmp (es s) (es d))
+           (comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))
+        (\ i -> sub-sub (es s i) (es d) (es e)))) ;
+  gq-eps G s h | r -> ((r.1, (tt, tt)), (tt, tt)) ;
+  gq-lift-id G A h | r ->
+    (((ok-of (jty (ec G) (et A)) r, der-ty (ec G) (et A) (Sub.trav (et A) idS) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A))) r),
+      ((ok-of (jty (ec G) (et A)) r, r),
+       SubD.subok-lift (ec G) (ec G) idS (et A) (sid-ok (ec G) (ok-of (jty (ec G) (et A)) r))
+         (der-ty (ec G) (et A) (Sub.trav (et A) idS) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A))) r))),
+     (sok-pt (csnoc (ec G) (Sub.trav (et A) idS)) (csnoc (ec G) (et A)) (Sub.lift idS) idS
+        (SubD.subok-lift (ec G) (ec G) idS (et A) (sid-ok (ec G) (ok-of (jty (ec G) (et A)) r))
+           (der-ty (ec G) (et A) (Sub.trav (et A) idS) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A))) r))
+        lift-idS,
+      subeq-pt (csnoc (ec G) (Sub.trav (et A) idS)) (csnoc (ec G) (et A)) (Sub.lift idS) idS
+        (SubD.subok-lift (ec G) (ec G) idS (et A) (sid-ok (ec G) (ok-of (jty (ec G) (et A)) r))
+           (der-ty (ec G) (et A) (Sub.trav (et A) idS) (sym Tm (Sub.trav (et A) idS) (et A) (sub-id (et A))) r))
+        lift-idS)) ;
+  gq-lift-comp T D G A s d h0 h1 h2 | r0 r1 r2 ->
+    (((r2.1, tyS T (gcomp s d) G A r0 (r2.1, (r1.2.1, comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))),
+      ((r1.2.1, r0),
+       SubD.subok-lift (ec T) (ec G) (cmp (es s) (es d)) (et A) (comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2)
+         (tyS T (gcomp s d) G A r0 (r2.1, (r1.2.1, comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))))),
+     (sok-pt (csnoc (ec T) (Sub.trav (et A) (cmp (es s) (es d)))) (csnoc (ec G) (et A))
+        (Sub.lift (cmp (es s) (es d))) (cmp (Sub.lift (es s)) (Sub.lift (es d)))
+        (SubD.subok-lift (ec T) (ec G) (cmp (es s) (es d)) (et A) (comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2)
+           (tyS T (gcomp s d) G A r0 (r2.1, (r1.2.1, comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))))
+        (lift-comp-pt (es s) (es d)),
+      subeq-pt (csnoc (ec T) (Sub.trav (et A) (cmp (es s) (es d)))) (csnoc (ec G) (et A))
+        (Sub.lift (cmp (es s) (es d))) (cmp (Sub.lift (es s)) (Sub.lift (es d)))
+        (SubD.subok-lift (ec T) (ec G) (cmp (es s) (es d)) (et A) (comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2)
+           (tyS T (gcomp s d) G A r0 (r2.1, (r1.2.1, comp-ok (ec T) (ec D) (es d) r2.2.2 (wfc T r2.1) (ec G) (es s) r1.2.2))))
+        (lift-comp-pt (es s) (es d)))) ;
+  gq-p-lift D G A s h1 h2 | r1 r2 ->
+    (((r2.1, tyS D s G A r1 r2), (r2.2.1, SubD.subok-wk (ec D) (Sub.trav (et A) (es s)) (tyS D s G A r1 r2) (ec G) (es s) r2.2.2)),
+     (sok-pt (csnoc (ec D) (Sub.trav (et A) (es s))) (ec G) (\ i -> wk (es s i)) (cmp (es s) wkS)
+        (SubD.subok-wk (ec D) (Sub.trav (et A) (es s)) (tyS D s G A r1 r2) (ec G) (es s) r2.2.2)
+        (\ i -> ren-as-sub (es s i) (\ j -> suc j)),
+      subeq-pt (csnoc (ec D) (Sub.trav (et A) (es s))) (ec G) (\ i -> wk (es s i)) (cmp (es s) wkS)
+        (SubD.subok-wk (ec D) (Sub.trav (et A) (es s)) (tyS D s G A r1 r2) (ec G) (es s) r2.2.2)
+        (\ i -> ren-as-sub (es s i) (\ j -> suc j)))) ;
+  gq-p-sec G A a h1 h2 | r1 r2 ->
+    ((ok-of (jtm (ec G) (et a) (et A)) r2, (ok-of (jtm (ec G) (et a) (et A)) r2, sid-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) r2))),
+     (sid-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) r2),
+      subeq-refl (ec G) (ec G) idS (sid-ok (ec G) (ok-of (jtm (ec G) (et a) (et A)) r2)))) ;
+  gq-sec-comp D G A a s h1 h2 h3 | r1 r2 r3 ->
+    ((r3.1, ((r3.2.1, r1), comp-ok (ec D) (ec G) (es s) r3.2.2 (wfc D r3.1) (csnoc (ec G) (et A)) (sub1 (et a))
+                             (sub1-ok (ec G) r3.2.1 (et A) (et a) r2))),
+     (sok-pt (ec D) (csnoc (ec G) (et A)) (cmp (sub1 (et a)) (es s)) (cmp (Sub.lift (es s)) (sub1 (Sub.trav (et a) (es s))))
+        (comp-ok (ec D) (ec G) (es s) r3.2.2 (wfc D r3.1) (csnoc (ec G) (et A)) (sub1 (et a)) (sub1-ok (ec G) r3.2.1 (et A) (et a) r2))
+        (sub-subst1-pt (es s) (et a)),
+      subeq-pt (ec D) (csnoc (ec G) (et A)) (cmp (sub1 (et a)) (es s)) (cmp (Sub.lift (es s)) (sub1 (Sub.trav (et a) (es s))))
+        (comp-ok (ec D) (ec G) (es s) r3.2.2 (wfc D r3.1) (csnoc (ec G) (et A)) (sub1 (et a)) (sub1-ok (ec G) r3.2.1 (et A) (et a) r2))
+        (sub-subst1-pt (es s) (et a)))) ;
+  gq-lift-p-sec-q G A h | r ->
+    (((ok-of (jty (ec G) (et A)) r, r), ((ok-of (jty (ec G) (et A)) r, r),
+       sok-pt (csnoc (ec G) (et A)) (csnoc (ec G) (et A)) idS (cmp (Sub.lift wkS) (sub1 (var zero)))
+         (sid-ok (csnoc (ec G) (et A)) (ok-of (jty (ec G) (et A)) r, r))
+         (\ i -> sym Tm (cmp (Sub.lift wkS) (sub1 (var zero)) i) (idS i) (lpsq-pt i)))),
+     (sid-ok (csnoc (ec G) (et A)) (ok-of (jty (ec G) (et A)) r, r),
+      subeq-pt (csnoc (ec G) (et A)) (csnoc (ec G) (et A)) (cmp (Sub.lift wkS) (sub1 (var zero))) idS
+        (sok-pt (csnoc (ec G) (et A)) (csnoc (ec G) (et A)) idS (cmp (Sub.lift wkS) (sub1 (var zero)))
+           (sid-ok (csnoc (ec G) (et A)) (ok-of (jty (ec G) (et A)) r, r))
+           (\ i -> sym Tm (cmp (Sub.lift wkS) (sub1 (var zero)) i) (idS i) (lpsq-pt i)))
+        lpsq-pt)) } ;

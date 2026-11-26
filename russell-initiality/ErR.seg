@@ -1,0 +1,156 @@
+-- ErR.seg: the erasure |-|_R from T_Tarski to T_Russell (sterbac4 §5) and
+-- Lemma 21 (correctness of erasure).
+--   er : Tm -> Tm   T_n a, t^n_m a |-> |a|;  Pi_n(a, b) |-> Pi(|a|, |b|);
+--                   U^n_m |-> U_m
+--   er-ren, er-sub  erasure commutes with renaming and substitution
+--   er-der          Lemma 21: G |-T J gives |G| |-R |J|
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open RTyping[l] ;
+
+er : Tm -> Tm = split {
+  var i -> var i ;
+  pi A B | rA rB -> pi rA rB ;
+  lam A B b | rA rB rb -> lam rA rB rb ;
+  app A B c a | rA rB rc ra -> app rA rB rc ra ;
+  uu n -> uu n ;
+  el n a | ra -> ra ;
+  pic n a b | ra rb -> pi ra rb ;
+  uc m n -> uu m ;
+  lf m n a | ra -> ra } ;
+
+erC : Cx -> Cx = split {
+  cnil -> cnil ;
+  csnoc G A | r -> csnoc r (er A) } ;
+
+erJ : Jf -> Jf = split {
+  jwf G -> jwf (erC G) ;
+  jty G A -> jty (erC G) (er A) ;
+  jtm G a A -> jtm (erC G) (er a) (er A) ;
+  jeqty G A B -> jeqty (erC G) (er A) (er B) ;
+  jeqtm G a b A -> jeqtm (erC G) (er a) (er b) (er A) } ;
+
+------------------------------------------------------------------------
+-- erasure commutes with renaming and substitution
+
+er-ren : (t : Tm) -> (r : Nat -> Nat) -> Id Tm (er (Ren.trav t r)) (Ren.trav (er t) r) = split {
+  var i -> \ r -> refl (var (r i)) ;
+  pi A B | rA rB -> \ r -> cong2 Tm Tm Tm (\ x y -> pi x y) (er (Ren.trav A r)) (Ren.trav (er A) r)
+    (er (Ren.trav B (Ren.lift r))) (Ren.trav (er B) (Ren.lift r)) (rA r) (rB (Ren.lift r)) ;
+  lam A B b | rA rB rb -> \ r -> cong3 Tm (\ x y z -> lam x y z) (er (Ren.trav A r)) (Ren.trav (er A) r)
+    (er (Ren.trav B (Ren.lift r))) (Ren.trav (er B) (Ren.lift r)) (er (Ren.trav b (Ren.lift r))) (Ren.trav (er b) (Ren.lift r))
+    (rA r) (rB (Ren.lift r)) (rb (Ren.lift r)) ;
+  app A B c a | rA rB rc ra -> \ r -> cong4 Tm (\ x y z w -> app x y z w) (er (Ren.trav A r)) (Ren.trav (er A) r)
+    (er (Ren.trav B (Ren.lift r))) (Ren.trav (er B) (Ren.lift r)) (er (Ren.trav c r)) (Ren.trav (er c) r)
+    (er (Ren.trav a r)) (Ren.trav (er a) r) (rA r) (rB (Ren.lift r)) (rc r) (ra r) ;
+  uu n -> \ r -> refl (uu n) ;
+  el n a | ra -> \ r -> ra r ;
+  pic n a b | ra rb -> \ r -> cong2 Tm Tm Tm (\ x y -> pi x y) (er (Ren.trav a r)) (Ren.trav (er a) r)
+    (er (Ren.trav b (Ren.lift r))) (Ren.trav (er b) (Ren.lift r)) (ra r) (rb (Ren.lift r)) ;
+  uc m n -> \ r -> refl (uu m) ;
+  lf m n a | ra -> \ r -> ra r } ;
+
+er-wk (t : Tm) : Id Tm (er (wk t)) (wk (er t)) = er-ren t (\ i -> suc i) ;
+er-wkl (t : Tm) : Id Tm (er (wkl t)) (wkl (er t)) = er-ren t (Ren.lift (\ i -> suc i)) ;
+
+er-lift (s : Nat -> Tm) : SL.PtEq (\ i -> er (Sub.lift s i)) (Sub.lift (\ i -> er (s i))) = split {
+  zero -> refl (var zero) ;
+  suc i -> er-wk (s i) } ;
+
+er-bd (B : Tm) (s : Nat -> Tm) (ih : Id Tm (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (\ i -> er (Sub.lift s i)))) :
+    Id Tm (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (Sub.lift (\ i -> er (s i)))) =
+  trans Tm (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (\ i -> er (Sub.lift s i))) (Sub.trav (er B) (Sub.lift (\ i -> er (s i))))
+    ih (SL.trav-ext (er B) (\ i -> er (Sub.lift s i)) (Sub.lift (\ i -> er (s i))) (er-lift s)) ;
+
+er-sub : (t : Tm) -> (s : Nat -> Tm) -> Id Tm (er (Sub.trav t s)) (Sub.trav (er t) (\ i -> er (s i))) = split {
+  var i -> \ s -> refl (er (s i)) ;
+  pi A B | rA rB -> \ s -> cong2 Tm Tm Tm (\ x y -> pi x y) (er (Sub.trav A s)) (Sub.trav (er A) (\ i -> er (s i)))
+    (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (Sub.lift (\ i -> er (s i)))) (rA s) (er-bd B s (rB (Sub.lift s))) ;
+  lam A B b | rA rB rb -> \ s -> cong3 Tm (\ x y z -> lam x y z) (er (Sub.trav A s)) (Sub.trav (er A) (\ i -> er (s i)))
+    (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (Sub.lift (\ i -> er (s i))))
+    (er (Sub.trav b (Sub.lift s))) (Sub.trav (er b) (Sub.lift (\ i -> er (s i))))
+    (rA s) (er-bd B s (rB (Sub.lift s))) (er-bd b s (rb (Sub.lift s))) ;
+  app A B c a | rA rB rc ra -> \ s -> cong4 Tm (\ x y z w -> app x y z w) (er (Sub.trav A s)) (Sub.trav (er A) (\ i -> er (s i)))
+    (er (Sub.trav B (Sub.lift s))) (Sub.trav (er B) (Sub.lift (\ i -> er (s i))))
+    (er (Sub.trav c s)) (Sub.trav (er c) (\ i -> er (s i))) (er (Sub.trav a s)) (Sub.trav (er a) (\ i -> er (s i)))
+    (rA s) (er-bd B s (rB (Sub.lift s))) (rc s) (ra s) ;
+  uu n -> \ s -> refl (uu n) ;
+  el n a | ra -> \ s -> ra s ;
+  pic n a b | ra rb -> \ s -> cong2 Tm Tm Tm (\ x y -> pi x y) (er (Sub.trav a s)) (Sub.trav (er a) (\ i -> er (s i)))
+    (er (Sub.trav b (Sub.lift s))) (Sub.trav (er b) (Sub.lift (\ i -> er (s i)))) (ra s) (er-bd b s (rb (Sub.lift s))) ;
+  uc m n -> \ s -> refl (uu m) ;
+  lf m n a | ra -> \ s -> ra s } ;
+
+er-sub1-pt (a : Tm) : SL.PtEq (\ i -> er (sub1 a i)) (sub1 (er a)) = split {
+  zero -> refl (er a) ;
+  suc i -> refl (var i) } ;
+
+er-subst1 (B a : Tm) : Id Tm (er (subst1 B a)) (subst1 (er B) (er a)) =
+  trans Tm (er (subst1 B a)) (Sub.trav (er B) (\ i -> er (sub1 a i))) (subst1 (er B) (er a))
+    (er-sub B (sub1 a)) (SL.trav-ext (er B) (\ i -> er (sub1 a i)) (sub1 (er a)) (er-sub1-pt a)) ;
+
+er-eta (A B f : Tm) :
+    Id Tm (er (lam A B (app (wk A) (wkl B) (wk f) (var zero)))) (lam (er A) (er B) (app (wk (er A)) (wkl (er B)) (wk (er f)) (var zero))) =
+  ap Tm Tm (\ X -> lam (er A) (er B) X) (app (er (wk A)) (er (wkl B)) (er (wk f)) (var zero))
+    (app (wk (er A)) (wkl (er B)) (wk (er f)) (var zero))
+    (cong4 Tm (\ x y z w -> app x y z w) (er (wk A)) (wk (er A)) (er (wkl B)) (wkl (er B)) (er (wk f)) (wk (er f))
+       (var zero) (var zero) (er-wk A) (er-wkl B) (er-wk f) (refl (var zero))) ;
+
+------------------------------------------------------------------------
+-- Lemma 21
+
+-- a Russell code at U_n is a type, and stays a code at U_p >= U_n
+er-ty-of (G : Cx) (n : Nat) (a : Tm) (h : RDer (jtm G a (uu n))) : RDer (jty G a) = rty-of G n a h ;
+
+er-der : (J : Jf) -> Der J -> RDer (erJ J) = split {
+  wf-nil -> rwf-nil ;
+  wf-snoc G A h | r -> rwf-snoc (erC G) (er A) r ;
+  tm-v0 G A h | r -> rder-tm-ty (csnoc (erC G) (er A)) (var zero) (wk (er A)) (er (wk A))
+    (sym Tm (er (wk A)) (wk (er A)) (er-wk A)) (rtm-v0 (erC G) (er A) r) ;
+  tm-vs G B n A h1 h2 | r1 r2 -> rder-tm-ty (csnoc (erC G) (er B)) (var (suc n)) (wk (er A)) (er (wk A))
+    (sym Tm (er (wk A)) (wk (er A)) (er-wk A)) (rtm-vs (erC G) (er B) n (er A) r1 r2) ;
+  ty-pi G A B h1 h2 | r1 r2 -> rty-pi (erC G) (er A) (er B) r1 r2 ;
+  ty-uu G n h nb | r -> rty-uu (erC G) n r nb ;
+  ty-el G n a h | r -> rty-of (erC G) n (er a) r ;
+  tm-lam G A B b h1 h2 h3 | r1 r2 r3 -> rtm-lam (erC G) (er A) (er B) (er b) r1 r2 r3 ;
+  tm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 ->
+    rder-tm-ty (erC G) (app (er A) (er B) (er c) (er a)) (subst1 (er B) (er a)) (er (subst1 B a))
+      (sym Tm (er (subst1 B a)) (subst1 (er B) (er a)) (er-subst1 B a)) (rtm-app (erC G) (er A) (er B) (er c) (er a) r1 r2 r3 r4) ;
+  tm-pic G n a b h1 h2 | r1 r2 -> rtm-pi (erC G) n (er a) (er b) r1 r2 ;
+  tm-uc G m n h lt nb | r -> rtm-uu (erC G) m n r lt nb ;
+  tm-lf G m n a h le nb | r -> rtm-cum (erC G) m n (er a) r le nb ;
+  tm-conv G a A B h1 h2 | r1 r2 -> rtm-conv (erC G) (er a) (er A) (er B) r1 r2 ;
+  eqty-refl G A h | r -> reqty-refl (erC G) (er A) r ;
+  eqty-sym G A B h | r -> reqty-sym (erC G) (er A) (er B) r ;
+  eqty-trans G A B C h1 h2 | r1 r2 -> reqty-trans (erC G) (er A) (er B) (er C) r1 r2 ;
+  eqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> reqty-pi (erC G) (er A) (er A') (er B) (er B') r0 r1 r2 ;
+  eqty-el G n a a' h | r -> reqty-of (erC G) n (er a) (er a') r ;
+  eqty-el-lf G m n a h le nb | r -> reqty-refl (erC G) (er a) (rty-of (erC G) m (er a) r) ;
+  eqty-el-pic G n a b h1 h2 | r1 r2 -> reqty-refl (erC G) (pi (er a) (er b)) (rty-of (erC G) n (pi (er a) (er b)) (rtm-pi (erC G) n (er a) (er b) r1 r2)) ;
+  eqty-el-uc G m n h lt nb | r -> reqty-refl (erC G) (uu m) (rty-uu (erC G) m r (leN-trans m n N (lt-le m n lt) nb)) ;
+  eqtm-refl G a A h | r -> reqtm-refl (erC G) (er a) (er A) r ;
+  eqtm-sym G a b A hA h | rA r -> reqtm-sym (erC G) (er a) (er b) (er A) rA r ;
+  eqtm-trans G a b c A h1 h2 | r1 r2 -> reqtm-trans (erC G) (er a) (er b) (er c) (er A) r1 r2 ;
+  eqtm-conv G a b A B h1 h2 | r1 r2 -> reqtm-conv (erC G) (er a) (er b) (er A) (er B) r1 r2 ;
+  eqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 -> reqtm-lam (erC G) (er A) (er A') (er B) (er B') (er b) (er b') r0 r1 r2 r3 ;
+  eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 ->
+    rder-eqtm-ty (erC G) (app (er A) (er B) (er c) (er a)) (app (er A') (er B') (er c') (er a')) (subst1 (er B) (er a)) (er (subst1 B a))
+      (sym Tm (er (subst1 B a)) (subst1 (er B) (er a)) (er-subst1 B a))
+      (reqtm-app (erC G) (er A) (er A') (er B) (er B') (er c) (er c') (er a) (er a') r0 rB ra r1 r2 r3 r4) ;
+  eqtm-pic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> reqtm-pi (erC G) n (er a) (er a') (er b) (er b') r0 r1 r2 ;
+  eqtm-lf G m n a a' h le nb | r -> reqtm-cum (erC G) m n (er a) (er a') r le nb ;
+  eqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 ->
+    rder-eqtm-ty (erC G) (app (er A) (er B) (lam (er A) (er B) (er b)) (er a)) (er (subst1 b a)) (subst1 (er B) (er a)) (er (subst1 B a))
+      (sym Tm (er (subst1 B a)) (subst1 (er B) (er a)) (er-subst1 B a))
+      (rder-eqtm-r (erC G) (app (er A) (er B) (lam (er A) (er B) (er b)) (er a)) (subst1 (er b) (er a)) (er (subst1 b a)) (subst1 (er B) (er a))
+         (sym Tm (er (subst1 b a)) (subst1 (er b) (er a)) (er-subst1 b a))
+         (reqtm-beta (erC G) (er A) (er B) (er b) (er a) rA rB r1 r2)) ;
+  eqtm-eta G A B f hA hB h | rA rB r ->
+    rder-eqtm-r (erC G) (er f) (lam (er A) (er B) (app (wk (er A)) (wkl (er B)) (wk (er f)) (var zero)))
+      (er (lam A B (app (wk A) (wkl B) (wk f) (var zero)))) (pi (er A) (er B))
+      (sym Tm (er (lam A B (app (wk A) (wkl B) (wk f) (var zero)))) (lam (er A) (er B) (app (wk (er A)) (wkl (er B)) (wk (er f)) (var zero))) (er-eta A B f))
+      (reqtm-eta (erC G) (er A) (er B) (er f) rA rB r) ;
+  eqtm-lf-pic G n p a b h1 h2 le nb | r1 r2 ->
+    reqtm-refl (erC G) (pi (er a) (er b)) (uu p) (rtm-cum (erC G) n p (pi (er a) (er b)) (rtm-pi (erC G) n (er a) (er b) r1 r2) le nb) ;
+  eqtm-lf-uc G m n p h lt le nb | r -> reqtm-refl (erC G) (uu m) (uu p) (rtm-uu (erC G) m p r (leN-trans (suc m) n p lt (lt-le n p le)) nb) ;
+  eqtm-lf-lf G m n p a h le1 le2 nb | r -> reqtm-refl (erC G) (er a) (uu p) (rtm-cum (erC G) m p (er a) r (leN-trans (suc m) n p le1 (lt-le n p le2)) nb) } ;

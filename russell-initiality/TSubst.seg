@@ -1,0 +1,323 @@
+-- TSubst.seg: the substitution lemma for T_Tarski (sterbac4, Lemma 15,
+-- first part), by ONE typed traversal over a kit.
+--   TravDer K ...   typed values VOk D v T, typed maps SubOk D G s (by
+--                   recursion on G, as the paper's var rules), trav-der
+--   wf-of           every derivation gives wf of its context
+--   RenD            renamings: VOk D i T = D |- var i : T, by the var rules
+--   id-ok, wk-ok    the identity and the weakening, typed
+--   SubD            substitutions: VOk D t T = D |- t : T, using RenD
+--   subst1-ty ..    the substitution B[a]
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ;
+
+module TravDer (K : Kit)
+  (VOk : Cx -> K.V -> Tm -> U l)
+  (vr-ok : (D : Cx) (v : K.V) (T : Tm) -> VOk D v T -> Der (jtm D (K.vr v) T))
+  (vz-ok : (D : Cx) (A : Tm) -> Der (jty D A) -> VOk (csnoc D A) K.vz (wk A))
+  (wkv-ok : (D : Cx) (v : K.V) (T B : Tm) -> VOk D v T -> Der (jty D B) -> VOk (csnoc D B) (K.wkv v) (wk T))
+  (wk-trav : (A : Tm) (s : Nat -> K.V) -> Id Tm (wk (Trav[K].trav A s)) (Trav[K].trav A (\ i -> K.wkv (s i))))
+  (trav-subst1 : (B a : Tm) (s : Nat -> K.V) ->
+     Id Tm (Trav[K].trav (subst1 B a) s) (subst1 (Trav[K].trav B (Trav[K].lift s)) (Trav[K].trav a s)))
+  (wkl-trav : (B : Tm) (s : Nat -> K.V) ->
+     Id Tm (Trav[K].trav (wkl B) (Trav[K].lift (Trav[K].lift s))) (wkl (Trav[K].trav B (Trav[K].lift s))))
+  (vr-vz : Id Tm (K.vr K.vz) (var zero)) {
+  module T = Trav[K] ;
+  module TL = TravLaws[K] ;
+
+  vok-ty (D : Cx) (v : K.V) (A A' : Tm) (e : Id Tm A A') (h : VOk D v A) : VOk D v A' =
+    subst Tm (\ X -> VOk D v X) A A' e h ;
+
+  SubOk (D : Cx) : Cx -> (Nat -> K.V) -> U l = split {
+    cnil -> \ s -> Top ;
+    csnoc G A | r -> \ s -> r (\ i -> s (suc i)) * VOk D (s zero) (T.trav A (\ i -> s (suc i))) } ;
+
+  subok-wk (D : Cx) (B : Tm) (hB : Der (jty D B)) : (G : Cx) -> (s : Nat -> K.V) -> SubOk D G s ->
+      SubOk (csnoc D B) G (\ i -> K.wkv (s i)) = split {
+    cnil -> \ s so -> tt ;
+    csnoc G A | r -> \ s so ->
+      (r (\ i -> s (suc i)) so.1,
+       vok-ty (csnoc D B) (K.wkv (s zero)) (wk (T.trav A (\ i -> s (suc i)))) (T.trav A (\ i -> K.wkv (s (suc i))))
+         (wk-trav A (\ i -> s (suc i))) (wkv-ok D (s zero) (T.trav A (\ i -> s (suc i))) B so.2 hB)) } ;
+
+  subok-lift (D G : Cx) (s : Nat -> K.V) (A : Tm) (so : SubOk D G s) (hA : Der (jty D (T.trav A s))) :
+      SubOk (csnoc D (T.trav A s)) (csnoc G A) (T.lift s) =
+    (subok-wk D (T.trav A s) hA G s so,
+     vok-ty (csnoc D (T.trav A s)) K.vz (wk (T.trav A s)) (T.trav A (\ i -> K.wkv (s i))) (wk-trav A s)
+       (vz-ok D (T.trav A s) hA)) ;
+
+  -- (wk A) under a lift
+  wk-lift (A : Tm) (s : Nat -> K.V) : Id Tm (T.trav (wk A) (T.lift s)) (wk (T.trav A s)) =
+    trans Tm (T.trav (wk A) (T.lift s)) (T.trav A (\ i -> K.wkv (s i))) (wk (T.trav A s))
+      (TL.trav-ren A (\ i -> suc i) (T.lift s)) (sym Tm (wk (T.trav A s)) (T.trav A (\ i -> K.wkv (s i))) (wk-trav A s)) ;
+
+  eta-body (A B f : Tm) (s : Nat -> K.V) :
+      Id Tm (T.trav (lam A B (app (wk A) (wkl B) (wk f) (var zero))) s)
+            (lam (T.trav A s) (T.trav B (T.lift s)) (app (wk (T.trav A s)) (wkl (T.trav B (T.lift s))) (wk (T.trav f s)) (var zero))) =
+    ap Tm Tm (\ X -> lam (T.trav A s) (T.trav B (T.lift s)) X)
+      (app (T.trav (wk A) (T.lift s)) (T.trav (wkl B) (T.lift (T.lift s))) (T.trav (wk f) (T.lift s)) (K.vr K.vz))
+      (app (wk (T.trav A s)) (wkl (T.trav B (T.lift s))) (wk (T.trav f s)) (var zero))
+      (cong4 Tm (\ x y z w -> app x y z w)
+         (T.trav (wk A) (T.lift s)) (wk (T.trav A s)) (T.trav (wkl B) (T.lift (T.lift s))) (wkl (T.trav B (T.lift s)))
+         (T.trav (wk f) (T.lift s)) (wk (T.trav f s)) (K.vr K.vz) (var zero)
+         (wk-lift A s) (wkl-trav B s) (wk-lift f s) vr-vz) ;
+
+  TravJ : Jf -> U l = split {
+    jwf G -> Top ;
+    jty G A -> (D : Cx) -> (s : Nat -> K.V) -> SubOk D G s -> Der (jwf D) -> Der (jty D (T.trav A s)) ;
+    jtm G a A -> (D : Cx) -> (s : Nat -> K.V) -> SubOk D G s -> Der (jwf D) ->
+      Der (jtm D (T.trav a s) (T.trav A s)) ;
+    jeqty G A B -> (D : Cx) -> (s : Nat -> K.V) -> SubOk D G s -> Der (jwf D) ->
+      Der (jeqty D (T.trav A s) (T.trav B s)) ;
+    jeqtm G a b A -> (D : Cx) -> (s : Nat -> K.V) -> SubOk D G s -> Der (jwf D) ->
+      Der (jeqtm D (T.trav a s) (T.trav b s) (T.trav A s)) } ;
+
+  trav-der : (J : Jf) -> Der J -> TravJ J = split {
+    wf-nil -> tt ;
+    wf-snoc G A h -> tt ;
+    tm-v0 G A h -> \ D s so wD ->
+      der-tm-ty D (K.vr (s zero)) (T.trav A (\ i -> s (suc i))) (T.trav (wk A) s)
+        (sym Tm (T.trav (wk A) s) (T.trav A (\ i -> s (suc i))) (TL.trav-ren A (\ i -> suc i) s))
+        (vr-ok D (s zero) (T.trav A (\ i -> s (suc i))) so.2) ;
+    tm-vs G B n A h1 h2 | r1 r2 -> \ D s so wD ->
+      der-tm-ty D (K.vr (s (suc n))) (T.trav A (\ i -> s (suc i))) (T.trav (wk A) s)
+        (sym Tm (T.trav (wk A) s) (T.trav A (\ i -> s (suc i))) (TL.trav-ren A (\ i -> suc i) s))
+        (r1 D (\ i -> s (suc i)) so.1 wD) ;
+    ty-pi G A B h1 h2 | r1 r2 -> \ D s so wD ->
+      ty-pi D (T.trav A s) (T.trav B (T.lift s)) (r1 D s so wD)
+        (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r1 D s so wD)) (wf-snoc D (T.trav A s) (r1 D s so wD))) ;
+    ty-uu G n h nb -> \ D s so wD -> ty-uu D n wD nb ;
+    ty-el G n a h | r -> \ D s so wD -> ty-el D n (T.trav a s) (r D s so wD) ;
+    tm-lam G A B b h1 h2 h3 | r1 r2 r3 -> \ D s so wD ->
+      tm-lam D (T.trav A s) (T.trav B (T.lift s)) (T.trav b (T.lift s)) (r1 D s so wD)
+        (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r1 D s so wD)) (wf-snoc D (T.trav A s) (r1 D s so wD)))
+        (r3 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r1 D s so wD)) (wf-snoc D (T.trav A s) (r1 D s so wD))) ;
+    tm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 -> \ D s so wD ->
+      der-tm-ty D (app (T.trav A s) (T.trav B (T.lift s)) (T.trav c s) (T.trav a s))
+        (subst1 (T.trav B (T.lift s)) (T.trav a s)) (T.trav (subst1 B a) s)
+        (sym Tm (T.trav (subst1 B a) s) (subst1 (T.trav B (T.lift s)) (T.trav a s)) (trav-subst1 B a s))
+        (tm-app D (T.trav A s) (T.trav B (T.lift s)) (T.trav c s) (T.trav a s) (r1 D s so wD)
+           (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r1 D s so wD)) (wf-snoc D (T.trav A s) (r1 D s so wD)))
+           (r3 D s so wD) (r4 D s so wD)) ;
+    tm-pic G n a b h1 h2 | r1 r2 -> \ D s so wD ->
+      tm-pic D n (T.trav a s) (T.trav b (T.lift s)) (r1 D s so wD)
+        (r2 (csnoc D (el n (T.trav a s))) (T.lift s) (subok-lift D G s (el n a) so (ty-el D n (T.trav a s) (r1 D s so wD)))
+           (wf-snoc D (el n (T.trav a s)) (ty-el D n (T.trav a s) (r1 D s so wD)))) ;
+    tm-uc G m n h lt nb -> \ D s so wD -> tm-uc D m n wD lt nb ;
+    tm-lf G m n a h le nb | r -> \ D s so wD -> tm-lf D m n (T.trav a s) (r D s so wD) le nb ;
+    tm-conv G a A B h1 h2 | r1 r2 -> \ D s so wD ->
+      tm-conv D (T.trav a s) (T.trav A s) (T.trav B s) (r1 D s so wD) (r2 D s so wD) ;
+    eqty-refl G A h | r -> \ D s so wD -> eqty-refl D (T.trav A s) (r D s so wD) ;
+    eqty-sym G A B h | r -> \ D s so wD -> eqty-sym D (T.trav A s) (T.trav B s) (r D s so wD) ;
+    eqty-trans G A B C h1 h2 | r1 r2 -> \ D s so wD ->
+      eqty-trans D (T.trav A s) (T.trav B s) (T.trav C s) (r1 D s so wD) (r2 D s so wD) ;
+    eqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> \ D s so wD ->
+      eqty-pi D (T.trav A s) (T.trav A' s) (T.trav B (T.lift s)) (T.trav B' (T.lift s)) (r0 D s so wD) (r1 D s so wD)
+        (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r0 D s so wD)) (wf-snoc D (T.trav A s) (r0 D s so wD))) ;
+    eqty-el G n a a' h | r -> \ D s so wD -> eqty-el D n (T.trav a s) (T.trav a' s) (r D s so wD) ;
+    eqty-el-lf G m n a h le nb | r -> \ D s so wD -> eqty-el-lf D m n (T.trav a s) (r D s so wD) le nb ;
+    eqty-el-pic G n a b h1 h2 | r1 r2 -> \ D s so wD ->
+      eqty-el-pic D n (T.trav a s) (T.trav b (T.lift s)) (r1 D s so wD)
+        (r2 (csnoc D (el n (T.trav a s))) (T.lift s) (subok-lift D G s (el n a) so (ty-el D n (T.trav a s) (r1 D s so wD)))
+           (wf-snoc D (el n (T.trav a s)) (ty-el D n (T.trav a s) (r1 D s so wD)))) ;
+    eqty-el-uc G m n h lt nb -> \ D s so wD -> eqty-el-uc D m n wD lt nb ;
+    eqtm-refl G a A h | r -> \ D s so wD -> eqtm-refl D (T.trav a s) (T.trav A s) (r D s so wD) ;
+    eqtm-sym G a b A hA h | rA r -> \ D s so wD -> eqtm-sym D (T.trav a s) (T.trav b s) (T.trav A s) (rA D s so wD) (r D s so wD) ;
+    eqtm-trans G a b c A h1 h2 | r1 r2 -> \ D s so wD ->
+      eqtm-trans D (T.trav a s) (T.trav b s) (T.trav c s) (T.trav A s) (r1 D s so wD) (r2 D s so wD) ;
+    eqtm-conv G a b A B h1 h2 | r1 r2 -> \ D s so wD ->
+      eqtm-conv D (T.trav a s) (T.trav b s) (T.trav A s) (T.trav B s) (r1 D s so wD) (r2 D s so wD) ;
+    eqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 -> \ D s so wD ->
+      eqtm-lam D (T.trav A s) (T.trav A' s) (T.trav B (T.lift s)) (T.trav B' (T.lift s)) (T.trav b (T.lift s)) (T.trav b' (T.lift s))
+        (r0 D s so wD) (r1 D s so wD)
+        (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r0 D s so wD)) (wf-snoc D (T.trav A s) (r0 D s so wD)))
+        (r3 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r0 D s so wD)) (wf-snoc D (T.trav A s) (r0 D s so wD))) ;
+    eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 -> \ D s so wD ->
+      der-eqtm-ty D (app (T.trav A s) (T.trav B (T.lift s)) (T.trav c s) (T.trav a s))
+        (app (T.trav A' s) (T.trav B' (T.lift s)) (T.trav c' s) (T.trav a' s))
+        (subst1 (T.trav B (T.lift s)) (T.trav a s)) (T.trav (subst1 B a) s)
+        (sym Tm (T.trav (subst1 B a) s) (subst1 (T.trav B (T.lift s)) (T.trav a s)) (trav-subst1 B a s))
+        (eqtm-app D (T.trav A s) (T.trav A' s) (T.trav B (T.lift s)) (T.trav B' (T.lift s)) (T.trav c s) (T.trav c' s)
+           (T.trav a s) (T.trav a' s) (r0 D s so wD)
+           (rB (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r0 D s so wD)) (wf-snoc D (T.trav A s) (r0 D s so wD)))
+           (ra D s so wD) (r1 D s so wD)
+           (r2 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (r0 D s so wD)) (wf-snoc D (T.trav A s) (r0 D s so wD)))
+           (r3 D s so wD) (r4 D s so wD)) ;
+    eqtm-pic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> \ D s so wD ->
+      eqtm-pic D n (T.trav a s) (T.trav a' s) (T.trav b (T.lift s)) (T.trav b' (T.lift s)) (r0 D s so wD) (r1 D s so wD)
+        (r2 (csnoc D (el n (T.trav a s))) (T.lift s) (subok-lift D G s (el n a) so (ty-el D n (T.trav a s) (r0 D s so wD)))
+           (wf-snoc D (el n (T.trav a s)) (ty-el D n (T.trav a s) (r0 D s so wD)))) ;
+    eqtm-lf G m n a a' h le nb | r -> \ D s so wD -> eqtm-lf D m n (T.trav a s) (T.trav a' s) (r D s so wD) le nb ;
+    eqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 -> \ D s so wD ->
+      der-eqtm-ty D (app (T.trav A s) (T.trav B (T.lift s)) (lam (T.trav A s) (T.trav B (T.lift s)) (T.trav b (T.lift s))) (T.trav a s))
+        (T.trav (subst1 b a) s) (subst1 (T.trav B (T.lift s)) (T.trav a s)) (T.trav (subst1 B a) s)
+        (sym Tm (T.trav (subst1 B a) s) (subst1 (T.trav B (T.lift s)) (T.trav a s)) (trav-subst1 B a s))
+        (der-eqtm-r D (app (T.trav A s) (T.trav B (T.lift s)) (lam (T.trav A s) (T.trav B (T.lift s)) (T.trav b (T.lift s))) (T.trav a s))
+           (subst1 (T.trav b (T.lift s)) (T.trav a s)) (T.trav (subst1 b a) s) (subst1 (T.trav B (T.lift s)) (T.trav a s))
+           (sym Tm (T.trav (subst1 b a) s) (subst1 (T.trav b (T.lift s)) (T.trav a s)) (trav-subst1 b a s))
+           (eqtm-beta D (T.trav A s) (T.trav B (T.lift s)) (T.trav b (T.lift s)) (T.trav a s) (rA D s so wD)
+              (rB (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (rA D s so wD)) (wf-snoc D (T.trav A s) (rA D s so wD)))
+              (r1 (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (rA D s so wD)) (wf-snoc D (T.trav A s) (rA D s so wD)))
+              (r2 D s so wD))) ;
+    eqtm-eta G A B f hA hB h | rA rB r -> \ D s so wD ->
+      der-eqtm-r D (T.trav f s)
+        (lam (T.trav A s) (T.trav B (T.lift s)) (app (wk (T.trav A s)) (wkl (T.trav B (T.lift s))) (wk (T.trav f s)) (var zero)))
+        (T.trav (lam A B (app (wk A) (wkl B) (wk f) (var zero))) s) (pi (T.trav A s) (T.trav B (T.lift s)))
+        (sym Tm (T.trav (lam A B (app (wk A) (wkl B) (wk f) (var zero))) s)
+           (lam (T.trav A s) (T.trav B (T.lift s)) (app (wk (T.trav A s)) (wkl (T.trav B (T.lift s))) (wk (T.trav f s)) (var zero)))
+           (eta-body A B f s))
+        (eqtm-eta D (T.trav A s) (T.trav B (T.lift s)) (T.trav f s) (rA D s so wD)
+           (rB (csnoc D (T.trav A s)) (T.lift s) (subok-lift D G s A so (rA D s so wD)) (wf-snoc D (T.trav A s) (rA D s so wD)))
+           (r D s so wD)) ;
+    eqtm-lf-pic G n p a b h1 h2 le nb | r1 r2 -> \ D s so wD ->
+      eqtm-lf-pic D n p (T.trav a s) (T.trav b (T.lift s)) (r1 D s so wD)
+        (r2 (csnoc D (el n (T.trav a s))) (T.lift s) (subok-lift D G s (el n a) so (ty-el D n (T.trav a s) (r1 D s so wD)))
+           (wf-snoc D (el n (T.trav a s)) (ty-el D n (T.trav a s) (r1 D s so wD)))) le nb ;
+    eqtm-lf-uc G m n p h lt le nb -> \ D s so wD -> eqtm-lf-uc D m n p wD lt le nb ;
+    eqtm-lf-lf G m n p a h le1 le2 nb | r -> \ D s so wD -> eqtm-lf-lf D m n p (T.trav a s) (r D s so wD) le1 le2 nb } ;
+} ;
+
+------------------------------------------------------------------------
+-- every derivation gives the types of its context
+
+ctxOf : Jf -> Cx = split {
+  jwf G -> G ; jty G A -> G ; jtm G a A -> G ; jeqty G A B -> G ; jeqtm G a b A -> G } ;
+
+CtxOk : Cx -> U l = split {
+  cnil -> Top ;
+  csnoc G A | r -> r * Der (jty G A) } ;
+
+wf-from-ok : (G : Cx) -> CtxOk G -> Der (jwf G) = split {
+  cnil -> \ h -> wf-nil ;
+  csnoc G A | r -> \ h -> wf-snoc G A h.2 } ;
+
+ok-of : (J : Jf) -> Der J -> CtxOk (ctxOf J) = split {
+  wf-nil -> tt ;
+  wf-snoc G A h | r -> (r, h) ;
+  tm-v0 G A h | r -> (r, h) ;
+  tm-vs G B n A h1 h2 | r1 r2 -> (r2, h2) ;
+  ty-pi G A B h1 h2 | r1 r2 -> r1 ;
+  ty-uu G n h nb | r -> r ;
+  ty-el G n a h | r -> r ;
+  tm-lam G A B b h1 h2 h3 | r1 r2 r3 -> r1 ;
+  tm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 -> r1 ;
+  tm-pic G n a b h1 h2 | r1 r2 -> r1 ;
+  tm-uc G m n h lt nb | r -> r ;
+  tm-lf G m n a h le nb | r -> r ;
+  tm-conv G a A B h1 h2 | r1 r2 -> r1 ;
+  eqty-refl G A h | r -> r ;
+  eqty-sym G A B h | r -> r ;
+  eqty-trans G A B C h1 h2 | r1 r2 -> r1 ;
+  eqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> r0 ;
+  eqty-el G n a a' h | r -> r ;
+  eqty-el-lf G m n a h le nb | r -> r ;
+  eqty-el-pic G n a b h1 h2 | r1 r2 -> r1 ;
+  eqty-el-uc G m n h lt nb | r -> r ;
+  eqtm-refl G a A h | r -> r ;
+  eqtm-sym G a b A hA h | rA r -> rA ;
+  eqtm-trans G a b c A h1 h2 | r1 r2 -> r1 ;
+  eqtm-conv G a b A B h1 h2 | r1 r2 -> r1 ;
+  eqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 -> r0 ;
+  eqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 -> r0 ;
+  eqtm-pic G n a a' b b' h0 h1 h2 | r0 r1 r2 -> r0 ;
+  eqtm-lf G m n a a' h le nb | r -> r ;
+  eqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 -> rA ;
+  eqtm-eta G A B f hA hB h | rA rB r -> rA ;
+  eqtm-lf-pic G n p a b h1 h2 le nb | r1 r2 -> r1 ;
+  eqtm-lf-uc G m n p h lt le nb | r -> r ;
+  eqtm-lf-lf G m n p a h le1 le2 nb | r -> r } ;
+
+------------------------------------------------------------------------
+-- renamings
+
+ren-wk-trav (A : Tm) (s : Nat -> Nat) : Id Tm (wk (Ren.trav A s)) (Ren.trav A (\ i -> suc (s i))) =
+  ren-ren A s (\ i -> suc i) ;
+
+ren-wkl-pt (s : Nat -> Nat) :
+    RL.PtEq (\ i -> Ren.lift (Ren.lift s) (Ren.lift (\ j -> suc j) i)) (\ i -> Ren.lift (\ j -> suc j) (Ren.lift s i)) = split {
+  zero -> refl zero ;
+  suc i -> refl (suc (suc (s i))) } ;
+
+ren-wkl-trav (B : Tm) (s : Nat -> Nat) :
+    Id Tm (Ren.trav (wkl B) (Ren.lift (Ren.lift s))) (wkl (Ren.trav B (Ren.lift s))) =
+  trans Tm (Ren.trav (wkl B) (Ren.lift (Ren.lift s)))
+    (Ren.trav B (\ i -> Ren.lift (Ren.lift s) (Ren.lift (\ j -> suc j) i))) (wkl (Ren.trav B (Ren.lift s)))
+    (ren-ren B (Ren.lift (\ j -> suc j)) (Ren.lift (Ren.lift s)))
+    (trans Tm (Ren.trav B (\ i -> Ren.lift (Ren.lift s) (Ren.lift (\ j -> suc j) i)))
+       (Ren.trav B (\ i -> Ren.lift (\ j -> suc j) (Ren.lift s i))) (wkl (Ren.trav B (Ren.lift s)))
+       (RL.trav-ext B (\ i -> Ren.lift (Ren.lift s) (Ren.lift (\ j -> suc j) i)) (\ i -> Ren.lift (\ j -> suc j) (Ren.lift s i))
+          (ren-wkl-pt s))
+       (sym Tm (wkl (Ren.trav B (Ren.lift s))) (Ren.trav B (\ i -> Ren.lift (\ j -> suc j) (Ren.lift s i)))
+          (ren-ren B (Ren.lift s) (Ren.lift (\ j -> suc j))))) ;
+
+RVOk (D : Cx) (i : Nat) (T : Tm) : U l = Der (jtm D (var i) T) ;
+
+module RenD = TravDer[renK, RVOk, \ D i T h -> h, \ D A h -> tm-v0 D A h, \ D i T B h hB -> tm-vs D B i T h hB,
+                      ren-wk-trav, \ B a s -> ren-subst1 s B a, ren-wkl-trav, refl (var zero)] ;
+
+id-ok : (G : Cx) -> CtxOk G -> RenD.SubOk G G (\ i -> i) = split {
+  cnil -> \ h -> tt ;
+  csnoc G A | r -> \ h -> (RenD.subok-wk G A h.2 G (\ i -> i) (r h.1), tm-v0 G A h.2) } ;
+
+wk-ok (G : Cx) (h : CtxOk G) (B : Tm) (hB : Der (jty G B)) : RenD.SubOk (csnoc G B) G (\ i -> suc i) =
+  RenD.subok-wk G B hB G (\ i -> i) (id-ok G h) ;
+
+wk-ty (G : Cx) (B A : Tm) (hB : Der (jty G B)) (h : Der (jty G A)) : Der (jty (csnoc G B) (wk A)) =
+  RenD.trav-der (jty G A) h (csnoc G B) (\ i -> suc i) (wk-ok G (ok-of (jty G A) h) B hB) (wf-snoc G B hB) ;
+wk-tm (G : Cx) (B t T : Tm) (hB : Der (jty G B)) (h : Der (jtm G t T)) : Der (jtm (csnoc G B) (wk t) (wk T)) =
+  RenD.trav-der (jtm G t T) h (csnoc G B) (\ i -> suc i) (wk-ok G (ok-of (jtm G t T) h) B hB) (wf-snoc G B hB) ;
+wk-eqty (G : Cx) (B X Y : Tm) (hB : Der (jty G B)) (h : Der (jeqty G X Y)) : Der (jeqty (csnoc G B) (wk X) (wk Y)) =
+  RenD.trav-der (jeqty G X Y) h (csnoc G B) (\ i -> suc i) (wk-ok G (ok-of (jeqty G X Y) h) B hB) (wf-snoc G B hB) ;
+wk-eqtm (G : Cx) (B x y T : Tm) (hB : Der (jty G B)) (h : Der (jeqtm G x y T)) :
+    Der (jeqtm (csnoc G B) (wk x) (wk y) (wk T)) =
+  RenD.trav-der (jeqtm G x y T) h (csnoc G B) (\ i -> suc i) (wk-ok G (ok-of (jeqtm G x y T) h) B hB) (wf-snoc G B hB) ;
+
+------------------------------------------------------------------------
+-- substitutions
+
+sub-wk-trav (A : Tm) (s : Nat -> Tm) : Id Tm (wk (Sub.trav A s)) (Sub.trav A (\ i -> wk (s i))) =
+  ren-sub A s (\ i -> suc i) ;
+
+wkwk (t : Tm) : Id Tm (wk (wk t)) (Ren.trav (wk t) (Ren.lift (\ j -> suc j))) =
+  trans Tm (wk (wk t)) (Ren.trav t (\ i -> suc (suc i))) (Ren.trav (wk t) (Ren.lift (\ j -> suc j)))
+    (ren-ren t (\ i -> suc i) (\ i -> suc i))
+    (sym Tm (Ren.trav (wk t) (Ren.lift (\ j -> suc j))) (Ren.trav t (\ i -> suc (suc i)))
+       (ren-ren t (\ i -> suc i) (Ren.lift (\ j -> suc j)))) ;
+
+sub-wkl-pt (s : Nat -> Tm) :
+    SL.PtEq (\ i -> Sub.lift (Sub.lift s) (Ren.lift (\ j -> suc j) i)) (\ i -> Ren.trav (Sub.lift s i) (Ren.lift (\ j -> suc j))) = split {
+  zero -> refl (var zero) ;
+  suc i -> wkwk (s i) } ;
+
+sub-wkl-trav (B : Tm) (s : Nat -> Tm) :
+    Id Tm (Sub.trav (wkl B) (Sub.lift (Sub.lift s))) (wkl (Sub.trav B (Sub.lift s))) =
+  trans Tm (Sub.trav (wkl B) (Sub.lift (Sub.lift s)))
+    (Sub.trav B (\ i -> Ren.trav (Sub.lift s i) (Ren.lift (\ j -> suc j)))) (wkl (Sub.trav B (Sub.lift s)))
+    (SL.bind-step B (Sub.trav (wkl B) (Sub.lift (Sub.lift s))) (\ i -> Sub.lift (Sub.lift s) (Ren.lift (\ j -> suc j) i))
+       (\ i -> Ren.trav (Sub.lift s i) (Ren.lift (\ j -> suc j)))
+       (SL.trav-ren B (Ren.lift (\ j -> suc j)) (Sub.lift (Sub.lift s))) (sub-wkl-pt s))
+    (sym Tm (wkl (Sub.trav B (Sub.lift s))) (Sub.trav B (\ i -> Ren.trav (Sub.lift s i) (Ren.lift (\ j -> suc j))))
+       (ren-sub B (Sub.lift s) (Ren.lift (\ j -> suc j)))) ;
+
+SVOk (D : Cx) (t T : Tm) : U l = Der (jtm D t T) ;
+
+module SubD = TravDer[subK, SVOk, \ D t T h -> h, \ D A h -> tm-v0 D A h, \ D t T B h hB -> wk-tm D B t T hB h,
+                      sub-wk-trav, \ B a s -> sub-subst1 s B a, sub-wkl-trav, refl (var zero)] ;
+
+sid-ok : (G : Cx) -> CtxOk G -> SubD.SubOk G G idS = split {
+  cnil -> \ h -> tt ;
+  csnoc G A | r -> \ h ->
+    (SubD.subok-wk G A h.2 G idS (r h.1),
+     der-tm-ty (csnoc G A) (var zero) (wk A) (Sub.trav A (\ i -> var (suc i))) (ren-as-sub A (\ i -> suc i))
+       (tm-v0 G A h.2)) } ;
+
+sub1-ok (G : Cx) (h : CtxOk G) (A a : Tm) (ha : Der (jtm G a A)) : SubD.SubOk G (csnoc G A) (sub1 a) =
+  (sid-ok G h, der-tm-ty G a A (Sub.trav A idS) (sym Tm (Sub.trav A idS) A (sub-id A)) ha) ;
+
+subst1-ty (G : Cx) (A a B : Tm) (ha : Der (jtm G a A)) (h : Der (jty (csnoc G A) B)) : Der (jty G (subst1 B a)) =
+  SubD.trav-der (jty (csnoc G A) B) h G (sub1 a) (sub1-ok G (ok-of (jtm G a A) ha) A a ha)
+    (wf-from-ok G (ok-of (jtm G a A) ha)) ;
+subst1-tm (G : Cx) (A a b B : Tm) (ha : Der (jtm G a A)) (h : Der (jtm (csnoc G A) b B)) :
+    Der (jtm G (subst1 b a) (subst1 B a)) =
+  SubD.trav-der (jtm (csnoc G A) b B) h G (sub1 a) (sub1-ok G (ok-of (jtm G a A) ha) A a ha)
+    (wf-from-ok G (ok-of (jtm G a A) ha)) ;

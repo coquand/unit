@@ -1,0 +1,169 @@
+-- TRed.seg: head reduction of T_Tarski (unscoped), the analogue of
+-- Reduction.seg.  One head step is a function thstep, so deterministic:
+--   app A B (lam A' B' b) a  ->  b[a]                (annotations ignored)
+--   T_n (Pi_m(a, b))          ->  Pi(T_n a, T_n b)
+--   T_n (U^k_m)               ->  U_m
+--   T_n (t^k_m a)             ->  T_m a
+--   app A B c a -> app A B c' a,  T_n a -> T_n a'   when c -> c', a -> a'
+-- (levels of the codes are not checked: on well-typed terms they agree).
+--   TRed1, TReds, treds-det, normal forms pi and U_n, pi-inj, uu-inj.
+
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ;
+
+data TO = tnone | tsome (M : Tm) ;
+
+tomap (f : Tm -> Tm) : TO -> TO = split {
+  tnone -> tnone ;
+  tsome x -> tsome (f x) } ;
+
+IsTSome : TO -> U l = split { tnone -> Empty ; tsome x -> Top } ;
+
+tnone-not-tsome (y : Tm) (e : Id TO tnone (tsome y)) : Empty =
+  subst TO IsTSome (tsome y) tnone (sym TO tnone (tsome y) e) tt ;
+
+toget (d : Tm) : TO -> Tm = split { tnone -> d ; tsome x -> x } ;
+
+tsome-inj (x y : Tm) (e : Id TO (tsome x) (tsome y)) : Id Tm x y = ap TO Tm (toget x) (tsome x) (tsome y) e ;
+
+------------------------------------------------------------------------
+-- one head step
+
+-- app A B c a, given the step of c
+thapp (A B a : Tm) : Tm -> TO -> TO = split {
+  var i -> \ r -> tomap (\ X -> app A B X a) r ;
+  pi A1 B1 -> \ r -> tomap (\ X -> app A B X a) r ;
+  lam A1 B1 b -> \ r -> tsome (subst1 b a) ;
+  app A1 B1 c1 a1 -> \ r -> tomap (\ X -> app A B X a) r ;
+  uu m -> \ r -> tomap (\ X -> app A B X a) r ;
+  el m a1 -> \ r -> tomap (\ X -> app A B X a) r ;
+  pic m a1 b1 -> \ r -> tomap (\ X -> app A B X a) r ;
+  uc m k -> \ r -> tomap (\ X -> app A B X a) r ;
+  lf m k a1 -> \ r -> tomap (\ X -> app A B X a) r } ;
+
+-- T_n a, given the step of a
+thel (n : Nat) : Tm -> TO -> TO = split {
+  var i -> \ r -> tomap (\ X -> el n X) r ;
+  pi A1 B1 -> \ r -> tomap (\ X -> el n X) r ;
+  lam A1 B1 b -> \ r -> tomap (\ X -> el n X) r ;
+  app A1 B1 c1 a1 -> \ r -> tomap (\ X -> el n X) r ;
+  uu m -> \ r -> tomap (\ X -> el n X) r ;
+  el m a1 -> \ r -> tomap (\ X -> el n X) r ;
+  pic m a1 b1 -> \ r -> tsome (pi (el n a1) (el n b1)) ;
+  uc m k -> \ r -> tsome (uu k) ;
+  lf m k a1 -> \ r -> tsome (el k a1) } ;
+
+thstep : Tm -> TO = split {
+  var i -> tnone ;
+  pi A B -> tnone ;
+  lam A B b -> tnone ;
+  app A B c a | rA rB rc ra -> thapp A B a c rc ;
+  uu n -> tnone ;
+  el n a | ra -> thel n a ra ;
+  pic n a b -> tnone ;
+  uc m n -> tnone ;
+  lf m n a -> tnone } ;
+
+TRed1 (M M' : Tm) : U l = Id TO (thstep M) (tsome M') ;
+TNormal (M : Tm) : U l = Id TO (thstep M) tnone ;
+
+tred1-det (M M1 M2 : Tm) (h1 : TRed1 M M1) (h2 : TRed1 M M2) : Id Tm M1 M2 =
+  tsome-inj M1 M2 (trans TO (tsome M1) (thstep M) (tsome M2) (sym TO (thstep M) (tsome M1) h1) h2) ;
+
+tnormal-red1 (M M1 : Tm) (nM : TNormal M) (h : TRed1 M M1) : Empty =
+  tnone-not-tsome M1 (trans TO tnone (thstep M) (tsome M1) (sym TO (thstep M) tnone nM) h) ;
+
+tred1-beta (A B A' B' b a : Tm) : TRed1 (app A B (lam A' B' b) a) (subst1 b a) = refl (tsome (subst1 b a)) ;
+tred1-el-pic (n m : Nat) (a b : Tm) : TRed1 (el n (pic m a b)) (pi (el n a) (el n b)) = refl (tsome (pi (el n a) (el n b))) ;
+tred1-el-uc (n m k : Nat) : TRed1 (el n (uc m k)) (uu k) = refl (tsome (uu k)) ;
+tred1-el-lf (n m k : Nat) (a : Tm) : TRed1 (el n (lf m k a)) (el k a) = refl (tsome (el k a)) ;
+
+tnormal-pi (A B : Tm) : TNormal (pi A B) = refl tnone ;
+tnormal-uu (n : Nat) : TNormal (uu n) = refl tnone ;
+
+------------------------------------------------------------------------
+-- the closure
+
+data TReds : (M M' : Tm) -> U l =
+    trrefl (M : Tm) : TReds M M
+  | trstep (M M1 M2 : Tm) (h : TRed1 M M1) (r : TReds M1 M2) : TReds M M2 ;
+
+treds-trans : (M M1 : Tm) -> TReds M M1 -> (M2 : Tm) -> TReds M1 M2 -> TReds M M2 = split {
+  trrefl M -> \ M2 r -> r ;
+  trstep M M1 M2 h r | ih -> \ M3 r' -> trstep M M1 M3 h (ih M3 r') } ;
+
+treds-one (M M1 : Tm) (h : TRed1 M M1) : TReds M M1 = trstep M M1 M1 h (trrefl M1) ;
+
+treds-from-normal : (M X : Tm) -> TReds M X -> TNormal M -> Id Tm M X = split {
+  trrefl M -> \ nM -> refl M ;
+  trstep M M1 M2 h r -> \ nM -> efq (tnormal-red1 M M1 nM h) } ;
+
+treds-step-inv : (M X : Tm) -> TReds M X -> (M1 : Tm) -> TRed1 M M1 -> TNormal X -> TReds M1 X = split {
+  trrefl M -> \ M1 h nX -> efq (tnormal-red1 M M1 nX h) ;
+  trstep M M1' X h' r -> \ M1 h nX -> subst Tm (\ Z -> TReds Z X) M1' M1 (tred1-det M M1' M1 h' h) r } ;
+
+treds-det : (T X1 : Tm) -> TReds T X1 -> (X2 : Tm) -> TReds T X2 -> TNormal X1 -> TNormal X2 -> Id Tm X1 X2 = split {
+  trrefl T -> \ X2 r2 n1 n2 -> treds-from-normal T X2 r2 n1 ;
+  trstep T M1 X1 h r | ih -> \ X2 r2 n1 n2 -> ih X2 (treds-step-inv T X2 r2 M1 h n2) n1 n2 } ;
+
+------------------------------------------------------------------------
+-- injectivity of the normal forms
+
+pi-dom : Tm -> Tm = split {
+  var i -> var i ; pi A B -> A ; lam A B b -> var zero ; app A B c a -> var zero ; uu n -> var zero ;
+  el n a -> var zero ; pic n a b -> var zero ; uc m n -> var zero ; lf m n a -> var zero } ;
+pi-cod : Tm -> Tm = split {
+  var i -> var i ; pi A B -> B ; lam A B b -> var zero ; app A B c a -> var zero ; uu n -> var zero ;
+  el n a -> var zero ; pic n a b -> var zero ; uc m n -> var zero ; lf m n a -> var zero } ;
+uu-lev : Tm -> Nat = split {
+  var i -> zero ; pi A B -> zero ; lam A B b -> zero ; app A B c a -> zero ; uu n -> n ;
+  el n a -> zero ; pic n a b -> zero ; uc m n -> zero ; lf m n a -> zero } ;
+
+-- U_n is not a Pi
+IsPi : Tm -> U l = split {
+  var i -> Empty ; pi A B -> Top ; lam A B b -> Empty ; app A B c a -> Empty ; uu n -> Empty ;
+  el n a -> Empty ; pic n a b -> Empty ; uc m n -> Empty ; lf m n a -> Empty } ;
+
+uu-not-pi (n : Nat) (A B : Tm) (e : Id Tm (uu n) (pi A B)) : Empty = subst Tm IsPi (pi A B) (uu n) (sym Tm (uu n) (pi A B) e) tt ;
+
+treds-pi (T A A' B B' : Tm) (r : TReds T (pi A B)) (r' : TReds T (pi A' B')) : Id Tm (pi A B) (pi A' B') =
+  treds-det T (pi A B) r (pi A' B') r' (tnormal-pi A B) (tnormal-pi A' B') ;
+
+treds-uu (T : Tm) (m n : Nat) (r : TReds T (uu m)) (r' : TReds T (uu n)) : Id Nat m n =
+  ap Tm Nat uu-lev (uu m) (uu n) (treds-det T (uu m) r (uu n) r' (tnormal-uu m) (tnormal-uu n)) ;
+
+treds-uu-pi (T A B : Tm) (n : Nat) (r : TReds T (uu n)) (r' : TReds T (pi A B)) : Empty =
+  uu-not-pi n A B (treds-det T (uu n) r (pi A B) r' (tnormal-uu n) (tnormal-pi A B)) ;
+
+------------------------------------------------------------------------
+-- congruences: function position, T_n
+
+tred1-app (A B a : Tm) : (c c1 : Tm) -> TRed1 c c1 -> TRed1 (app A B c a) (app A B c1 a) = split {
+  var i -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  pi A1 B1 -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  lam A1 B1 b -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  app A1 B1 c2 a2 -> \ c1 h -> ap TO TO (tomap (\ X -> app A B X a)) (thstep (app A1 B1 c2 a2)) (tsome c1) h ;
+  uu m -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  el m a1 -> \ c1 h -> ap TO TO (tomap (\ X -> app A B X a)) (thstep (el m a1)) (tsome c1) h ;
+  pic m a1 b1 -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  uc m k -> \ c1 h -> efq (tnone-not-tsome c1 h) ;
+  lf m k a1 -> \ c1 h -> efq (tnone-not-tsome c1 h) } ;
+
+treds-app (A B a : Tm) : (c c' : Tm) -> TReds c c' -> TReds (app A B c a) (app A B c' a) = split {
+  trrefl c -> trrefl (app A B c a) ;
+  trstep c c1 c2 h r | ih -> trstep (app A B c a) (app A B c1 a) (app A B c2 a) (tred1-app A B a c c1 h) ih } ;
+
+tred1-el (n : Nat) : (a a1 : Tm) -> TRed1 a a1 -> TRed1 (el n a) (el n a1) = split {
+  var i -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  pi A1 B1 -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  lam A1 B1 b -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  app A1 B1 c2 a2 -> \ a1 h -> ap TO TO (tomap (\ X -> el n X)) (thstep (app A1 B1 c2 a2)) (tsome a1) h ;
+  uu m -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  el m a2 -> \ a1 h -> ap TO TO (tomap (\ X -> el n X)) (thstep (el m a2)) (tsome a1) h ;
+  pic m a2 b2 -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  uc m k -> \ a1 h -> efq (tnone-not-tsome a1 h) ;
+  lf m k a2 -> \ a1 h -> efq (tnone-not-tsome a1 h) } ;
+
+treds-el (n : Nat) : (a a' : Tm) -> TReds a a' -> TReds (el n a) (el n a') = split {
+  trrefl a -> trrefl (el n a) ;
+  trstep a a1 a2 h r | ih -> trstep (el n a) (el n a1) (el n a2) (tred1-el n a a1 h) ih } ;

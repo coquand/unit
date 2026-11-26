@@ -1,0 +1,137 @@
+-- InitExistMaps.seg (PLAN-INIT, Part E): the interpretation descends to
+-- the quotient sorts of the term model.  Each map is unique choice
+-- (InitQuot.Choice) on the representatives of its argument:
+--   tel c        : Tel                                  (a telescope of M)
+--   hty c T      : C.Ty (ctx (tel c))
+--   htm c T t    : C.El (ctx (tel c)) (hty c T)
+--   hsub d c s   : C.Sub (ctx (tel d)) (ctx (tel c))
+-- Types, terms and substitutions are interpreted at the FIXED telescopes
+-- tel c of their context classes, so no transport is needed: every raw
+-- representative context of c denotes tel c (tel-down).  Weak constancy
+-- is soundness of the equality judgements (cx-conv, ty-conv, tm-conv,
+-- sub-conv) plus functionality.  The *-down lemmas say that the value
+-- is denoted by the raw expression of ANY representative.
+-- Segment of InitCheckE.InitE.Exist (l, M).
+open Base ; open Prelude[l] ; open Paths[l] ;
+module B = BoundedSyntax[N] ;
+open B.GAT[l] ;
+open InitQuot[l] ;
+open InitSorts[l] ;
+module S = TEInterp.Interpret[l,N,M] ;
+open S.TEInterpBase ;
+open S.TEDenote ;
+module J = S.TEInterpJudgement ;
+open InitExistBase ;
+
+------------------------------------------------------------------------
+-- contexts
+
+module HCtx (c : Ctx) {
+  W : U l = RepCtx c ;
+  f (r : W) : Tel = (cval r.1 r.2.1).1 ;
+  const (r r' : W) : Id Tel (f r) (f r') =
+    J.ctx-functional r'.1 (f r) (f r')
+      (cx-conv r.1 r'.1 (same-rc c r r') (f r) (cval r.1 r.2.1).2) (cval r'.1 r'.2.1).2 ;
+  module Ch = Choice[W, Tel, tel-set, f, const] ;
+  value : Tel = Ch.elim (rep-ctx c) ;
+  beta (r : W) : Id Tel value (f r) = Ch.beta (rep-ctx c) r ;
+} ;
+
+tel (c : Ctx) : Tel = HCtx[c].value ;
+
+tel-down (c : Ctx) (G : GE) (w : Pf (gjwf G)) (pc : Id Ctx (cls G w) c) : CtxDown G (tel c) =
+  denotes-eq (meaning G).context (HCtx[c].f (G, (w, pc))) (tel c) (cval G w).2
+    (sym Tel (tel c) (HCtx[c].f (G, (w, pc))) (HCtx[c].beta (G, (w, pc)))) ;
+
+------------------------------------------------------------------------
+-- types
+
+module HTy (c : Ctx) (T : Ty c) {
+  W : U l = RepTy c T ;
+  hg (r : W) : CtxDown (rtG c T r) (tel c) = tel-down c (rtG c T r) (rtW c T r) (rtP c T r) ;
+  val (r : W) : J.TypeValue (tel c) (rtA c T r) = tval (rtG c T r) (rtA c T r) (rtH c T r) (tel c) (hg r) ;
+  f (r : W) : C.Ty (ctx (tel c)) = (val r).1 ;
+  const (r r' : W) : Id (C.Ty (ctx (tel c))) (f r) (f r') =
+    ty-fn (rtA c T r') (tel c) (f r) (f r')
+      (ty-conv (rtG c T r) (rtA c T r) (rtA c T r') (same-rt c T r r') (tel c) (hg r) (f r) (val r).2)
+      (val r').2 ;
+  module Ch = Choice[W, C.Ty (ctx (tel c)), C.isSetTy (ctx (tel c)), f, const] ;
+  value : C.Ty (ctx (tel c)) = Ch.elim (rep-ty c T) ;
+  beta (r : W) : Id (C.Ty (ctx (tel c))) value (f r) = Ch.beta (rep-ty c T) r ;
+} ;
+
+hty (c : Ctx) (T : Ty c) : C.Ty (ctx (tel c)) = HTy[c,T].value ;
+
+hty-down-r (c : Ctx) (T : Ty c) (r : RepTy c T) : TyDown (rtA c T r) (tel c) (hty c T) =
+  J.ty-move (rtA c T r) (tel c) (HTy[c,T].f r) (hty c T)
+    (sym (C.Ty (ctx (tel c))) (hty c T) (HTy[c,T].f r) (HTy[c,T].beta r)) (HTy[c,T].val r).2 ;
+
+hty-down (c : Ctx) (T : Ty c) (G A : GE) (h : Pf (gjty G A)) (w : Pf (gjwf G)) (pc : Id Ctx (cls G w) c)
+    (e : Id (Ty c) (clsTy c G A h w pc) T) : TyDown A (tel c) (hty c T) =
+  hty-down-r c T (mkRepTy c T G A h w pc e) ;
+
+------------------------------------------------------------------------
+-- terms
+
+module HTm (c : Ctx) (T : Ty c) (t : El c T) {
+  W : U l = RepEl c T t ;
+  hg (r : W) : CtxDown (reG c T t r) (tel c) = tel-down c (reG c T t r) (reW c T t r) (reP c T t r) ;
+  hT (r : W) : TyDown (reA c T t r) (tel c) (hty c T) = hty-down-r c T (re-ty c T t r) ;
+  val (r : W) : J.TermAt (tel c) (hty c T) (rea c T t r) =
+    mval (reG c T t r) (rea c T t r) (reA c T t r) (reH c T t r) (tel c) (hg r) (hty c T) (hT r) ;
+  f (r : W) : C.El (ctx (tel c)) (hty c T) = (val r).1 ;
+  const (r r' : W) : Id (C.El (ctx (tel c)) (hty c T)) (f r) (f r') =
+    tm-fn (rea c T t r') (tel c) (hty c T) (f r) (f r')
+      (tm-conv (reG c T t r) (rea c T t r) (rea c T t r') (reA c T t r) (same-re c T t r r') (tel c) (hg r)
+        (hty c T) (hT r) (f r) (val r).2)
+      (val r').2 ;
+  module Ch = Choice[W, C.El (ctx (tel c)) (hty c T), C.isSetEl (ctx (tel c)) (hty c T), f, const] ;
+  value : C.El (ctx (tel c)) (hty c T) = Ch.elim (rep-el c T t) ;
+  beta (r : W) : Id (C.El (ctx (tel c)) (hty c T)) value (f r) = Ch.beta (rep-el c T t) r ;
+} ;
+
+htm (c : Ctx) (T : Ty c) (t : El c T) : C.El (ctx (tel c)) (hty c T) = HTm[c,T,t].value ;
+
+htm-down-r (c : Ctx) (T : Ty c) (t : El c T) (r : RepEl c T t) : TmDown (rea c T t r) (tel c) (hty c T) (htm c T t) =
+  J.tm-move (rea c T t r) (tel c) (hty c T, HTm[c,T,t].f r) (hty c T, htm c T t)
+    (ap (C.El (ctx (tel c)) (hty c T)) (Term (tel c)) (\ u -> (hty c T, u)) (HTm[c,T,t].f r) (htm c T t)
+      (sym (C.El (ctx (tel c)) (hty c T)) (htm c T t) (HTm[c,T,t].f r) (HTm[c,T,t].beta r)))
+    (HTm[c,T,t].val r).2 ;
+
+htm-down (c : Ctx) (T : Ty c) (t : El c T) (G A a : GE) (h : Pf (gjtm G a A)) (hA : Pf (gjty G A)) (w : Pf (gjwf G))
+    (pc : Id Ctx (cls G w) c) (pT : Id (Ty c) (clsTy c G A hA w pc) T)
+    (e : Id (El c T) (clsEl c T G A a h hA w pc pT) t) : TmDown a (tel c) (hty c T) (htm c T t) =
+  htm-down-r c T t (mkRepEl c T t G A a h hA w pc pT e) ;
+
+------------------------------------------------------------------------
+-- substitutions
+
+module HSub (d c : Ctx) (s : Sub d c) {
+  W : U l = RepSub d c s ;
+  hd (r : W) : CtxDown (rsD d c s r) (tel d) = tel-down d (rsD d c s r) (rsWD d c s r) (rsPD d c s r) ;
+  hg (r : W) : CtxDown (rsG d c s r) (tel c) = tel-down c (rsG d c s r) (rsWG d c s r) (rsPG d c s r) ;
+  val (r : W) : J.SubValue (tel d) (tel c) (rss d c s r) =
+    sval (rsD d c s r) (rss d c s r) (rsG d c s r) (rsH d c s r) (tel d) (tel c) (hd r) (hg r) ;
+  f (r : W) : C.Sub (ctx (tel d)) (ctx (tel c)) = (val r).1 ;
+  const (r r' : W) : Id (C.Sub (ctx (tel d)) (ctx (tel c))) (f r) (f r') =
+    sub-fn (rss d c s r') (tel d) (tel c) (f r) (f r')
+      (sub-conv (rsD d c s r) (rss d c s r) (rss d c s r') (rsG d c s r) (same-rs d c s r r') (tel d) (tel c)
+        (hd r) (hg r) (f r) (val r).2)
+      (val r').2 ;
+  module Ch = Choice[W, C.Sub (ctx (tel d)) (ctx (tel c)), C.isSetSub (ctx (tel d)) (ctx (tel c)), f, const] ;
+  value : C.Sub (ctx (tel d)) (ctx (tel c)) = Ch.elim (rep-sub d c s) ;
+  beta (r : W) : Id (C.Sub (ctx (tel d)) (ctx (tel c))) value (f r) = Ch.beta (rep-sub d c s) r ;
+} ;
+
+hsub (d c : Ctx) (s : Sub d c) : C.Sub (ctx (tel d)) (ctx (tel c)) = HSub[d,c,s].value ;
+
+hsub-down-r (d c : Ctx) (s : Sub d c) (r : RepSub d c s) : SubDown (rss d c s r) (tel d) (tel c) (hsub d c s) =
+  J.sub-move (rss d c s r) (tel d) (tel c, HSub[d,c,s].f r) (tel c, hsub d c s)
+    (J.sub-map-path (tel d) (tel c) (HSub[d,c,s].f r) (hsub d c s)
+      (sym (C.Sub (ctx (tel d)) (ctx (tel c))) (hsub d c s) (HSub[d,c,s].f r) (HSub[d,c,s].beta r)))
+    (HSub[d,c,s].val r).2 ;
+
+hsub-down (d c : Ctx) (s : Sub d c) (D s0 G : GE) (h : Pf (gjsub D s0 G)) (wD : Pf (gjwf D)) (wG : Pf (gjwf G))
+    (pd : Id Ctx (cls D wD) d) (pc : Id Ctx (cls G wG) c)
+    (e : Id (Sub d c) (clsSub d c D s0 G h wD wG pd pc) s) : SubDown s0 (tel d) (tel c) (hsub d c s) =
+  hsub-down-r d c s (mkRepSub d c s D s0 G h wD wG pd pc e) ;

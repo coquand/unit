@@ -1,0 +1,111 @@
+-- Universe bounds for Russell judgements. The type of an application can
+-- expose a universe by substitution, so track all levels of its raw terms.
+level l ;
+open Base ; open Prelude[l] ; open Lib[l] ; open TSyntax[l] ; open TTyping[l] ; open RTyping[l] ;
+
+Levels : Tm -> U l = split {
+  var i -> Top ;
+  pi A B | rA rB -> rA * rB ;
+  lam A B b | rA rB rb -> rA * (rB * rb) ;
+  app A B c a | rA rB rc ra -> rA * (rB * (rc * ra)) ;
+  uu n -> LeN n N ;
+  el n a | ra -> LeN n N * ra ;
+  pic n a b | ra rb -> LeN n N * (ra * rb) ;
+  uc m n -> LeN m N * LeN n N ;
+  lf m n a | ra -> LeN m N * (LeN n N * ra) } ;
+
+module LevelTrav (K : Kit) (Good : K.V -> U l)
+  (vr-good : (v : K.V) -> Good v -> Levels (K.vr v))
+  (vz-good : Good K.vz) (wkv-good : (v : K.V) -> Good v -> Good (K.wkv v)) {
+  module T = Trav[K] ;
+
+  lift-good (s : Nat -> K.V) (h : (i : Nat) -> Good (s i)) : (i : Nat) -> Good (T.lift s i) = split {
+    zero -> vz-good ; suc i -> wkv-good (s i) (h i) } ;
+
+  trav-good : (t : Tm) -> (s : Nat -> K.V) -> ((i : Nat) -> Good (s i)) -> Levels t -> Levels (T.trav t s) = split {
+    var i -> \ s h p -> vr-good (s i) (h i) ;
+    pi A B | rA rB -> \ s h p -> (rA s h p.1, rB (T.lift s) (lift-good s h) p.2) ;
+    lam A B b | rA rB rb -> \ s h p ->
+      (rA s h p.1, (rB (T.lift s) (lift-good s h) p.2.1, rb (T.lift s) (lift-good s h) p.2.2)) ;
+    app A B c a | rA rB rc ra -> \ s h p ->
+      (rA s h p.1, (rB (T.lift s) (lift-good s h) p.2.1, (rc s h p.2.2.1, ra s h p.2.2.2))) ;
+    uu n -> \ s h p -> p ;
+    el n a | ra -> \ s h p -> (p.1, ra s h p.2) ;
+    pic n a b | ra rb -> \ s h p -> (p.1, (ra s h p.2.1, rb (T.lift s) (lift-good s h) p.2.2)) ;
+    uc m n -> \ s h p -> p ;
+    lf m n a | ra -> \ s h p -> (p.1, (p.2.1, ra s h p.2.2)) } ;
+} ;
+
+module RenLevels = LevelTrav[renK, \ i -> Top, \ i h -> h, tt, \ i h -> h] ;
+
+ren-levels (t : Tm) (s : Nat -> Nat) (h : Levels t) : Levels (ren t s) =
+  RenLevels.trav-good t s (\ i -> tt) h ;
+
+wk-levels (t : Tm) (h : Levels t) : Levels (wk t) = ren-levels t (\ i -> suc i) h ;
+
+module SubLevels = LevelTrav[subK, Levels, \ t h -> h, tt, wk-levels] ;
+
+sub1-levels (a : Tm) (ha : Levels a) : (i : Nat) -> Levels (sub1 a i) = split {
+  zero -> ha ; suc i -> tt } ;
+
+subst1-levels (B a : Tm) (hB : Levels B) (ha : Levels a) : Levels (subst1 B a) =
+  SubLevels.trav-good B (sub1 a) (sub1-levels a ha) hB ;
+
+CxLevels : Cx -> U l = split {
+  cnil -> Top ; csnoc G A | r -> r * Levels A } ;
+
+JLevels : Jf -> U l = split {
+  jwf G -> CxLevels G ;
+  jty G A -> CxLevels G * Levels A ;
+  jtm G a A -> CxLevels G * (Levels a * Levels A) ;
+  jeqty G A B -> CxLevels G * (Levels A * Levels B) ;
+  jeqtm G a b A -> CxLevels G * (Levels a * (Levels b * Levels A)) } ;
+
+r-levels : (J : Jf) -> RDer J -> JLevels J = split {
+  rwf-nil -> tt ;
+  rwf-snoc G A h | r -> r ;
+  rtm-v0 G A h | r -> (r, (tt, wk-levels A r.2)) ;
+  rtm-vs G B n A h1 h2 | r1 r2 -> (r2, (tt, wk-levels A r1.2.2)) ;
+  rty-pi G A B h1 h2 | r1 r2 -> (r1.1, (r1.2, r2.2)) ;
+  rty-uu G n h nb | r -> (r, nb) ;
+  rty-of G n A h | r -> (r.1, r.2.1) ;
+  rtm-lam G A B b h1 h2 h3 | r1 r2 r3 ->
+    (r1.1, ((r1.2, (r2.2, r3.2.1)), (r1.2, r2.2))) ;
+  rtm-app G A B c a h1 h2 h3 h4 | r1 r2 r3 r4 ->
+    (r1.1, ((r1.2, (r2.2, (r3.2.1, r4.2.1))), subst1-levels B a r2.2 r4.2.1)) ;
+  rtm-pi G n A B h1 h2 | r1 r2 -> (r1.1, ((r1.2.1, r2.2.1), r1.2.2)) ;
+  rtm-uu G m n h lt nb | r -> (r, (leN-trans m n N (lt-le m n lt) nb, nb)) ;
+  rtm-cum G m n A h le nb | r -> (r.1, (r.2.1, nb)) ;
+  rtm-conv G a A B h1 h2 | r1 r2 -> (r1.1, (r1.2.1, r2.2.2)) ;
+  reqty-refl G A h | r -> (r.1, (r.2, r.2)) ;
+  reqty-sym G A B h | r -> (r.1, (r.2.2, r.2.1)) ;
+  reqty-trans G A B C h1 h2 | r1 r2 -> (r1.1, (r1.2.1, r2.2.2)) ;
+  reqty-pi G A A' B B' h0 h1 h2 | r0 r1 r2 -> (r1.1, ((r1.2.1, r2.2.1), (r1.2.2, r2.2.2))) ;
+  reqty-of G n A A' h | r -> (r.1, (r.2.1, r.2.2.1)) ;
+  reqtm-refl G a A h | r -> (r.1, (r.2.1, (r.2.1, r.2.2))) ;
+  reqtm-sym G a b A hA h | rA r -> (r.1, (r.2.2.1, (r.2.1, r.2.2.2))) ;
+  reqtm-trans G a b c A h1 h2 | r1 r2 -> (r1.1, (r1.2.1, (r2.2.2.1, r1.2.2.2))) ;
+  reqtm-conv G a b A B h1 h2 | r1 r2 -> (r1.1, (r1.2.1, (r1.2.2.1, r2.2.2))) ;
+  reqtm-cum G m n a b h le nb | r -> (r.1, (r.2.1, (r.2.2.1, nb))) ;
+  reqtm-pi G n A A' B B' h0 h1 h2 | r0 r1 r2 ->
+    (r1.1, ((r1.2.1, r2.2.1), ((r1.2.2.1, r2.2.2.1), r1.2.2.2))) ;
+  reqtm-lam G A A' B B' b b' h0 h1 h2 h3 | r0 r1 r2 r3 ->
+    (r1.1, ((r1.2.1, (r2.2.1, r3.2.1)), ((r1.2.2, (r2.2.2, r3.2.2.1)), (r1.2.1, r2.2.1)))) ;
+  reqtm-app G A A' B B' c c' a a' h0 hB ha h1 h2 h3 h4 | r0 rB ra r1 r2 r3 r4 ->
+    (r1.1, ((r1.2.1, (r2.2.1, (r3.2.1, r4.2.1))), ((r1.2.2, (r2.2.2, (r3.2.2.1, r4.2.2.1))),
+      subst1-levels B a r2.2.1 r4.2.1))) ;
+  reqtm-beta G A B b a hA hB h1 h2 | rA rB r1 r2 ->
+    (rA.1, ((rA.2, (rB.2, ((rA.2, (rB.2, r1.2.1)), r2.2.1))),
+      (subst1-levels b a r1.2.1 r2.2.1, subst1-levels B a rB.2 r2.2.1))) ;
+  reqtm-eta G A B f hA hB h | rA rB r ->
+    (r.1, (r.2.1, ((rA.2, (rB.2, (wk-levels A rA.2, (ren-levels B (Ren.lift (\ i -> suc i)) rB.2,
+      (wk-levels f r.2.1, tt))))), (rA.2, rB.2)))) } ;
+
+r-universe-bound (G : Cx) (n : Nat) (h : RDer (jty G (uu n))) : LeN n N =
+  (r-levels (jty G (uu n)) h).2 ;
+
+r-universe-tm-bound (G : Cx) (a : Tm) (n : Nat) (h : RDer (jtm G a (uu n))) : LeN n N =
+  (r-levels (jtm G a (uu n)) h).2.2 ;
+
+r-universe-eqtm-bound (G : Cx) (a b : Tm) (n : Nat) (h : RDer (jeqtm G a b (uu n))) : LeN n N =
+  (r-levels (jeqtm G a b (uu n)) h).2.2.2 ;

@@ -1,0 +1,82 @@
+-- Derived semantic equations for dependent applications and the Ehrhard
+-- eta expansion. Paths of typed pairs carry the type conversions.
+open Base ; open Prelude[l] ; open Paths[l] ;
+open TEInterpBase ; open TEInterpFormers ; open TEInterpJudgement ;
+
+reindex-term (d g : Tel) (s : C.Sub (ctx d) (ctx g)) (t : Term g) : Term d =
+  (C.subT (ctx d) (ctx g) t.1 s,C.subt (ctx d) (ctx g) t.1 t.2 s) ;
+
+reindex-id (g : Tel) (t : Term g) : Id (Term g) (reindex-term g g (C.id (ctx g)) t) t =
+  term-path g (C.subT (ctx g) (ctx g) t.1 (C.id (ctx g))) t.1
+    (C.subt (ctx g) (ctx g) t.1 t.2 (C.id (ctx g))) t.2 (C.subT-id (ctx g) t.1) (C.subt-id (ctx g) t.1 t.2) ;
+
+reindex-comp (q d g : Tel) (s : C.Sub (ctx d) (ctx g)) (t : C.Sub (ctx q) (ctx d)) (u : Term g) :
+    Id (Term q) (reindex-term q g (C.o (ctx q) (ctx d) (ctx g) s t) u)
+      (reindex-term q d t (reindex-term d g s u)) =
+  term-path q lhs.1 rhs.1 lhs.2 rhs.2 (C.subT-o (ctx q) (ctx d) (ctx g) u.1 s t) (C.subt-o (ctx q) (ctx d) (ctx g) u.1 u.2 s t)
+ where {
+  lhs : Term q = reindex-term q g (C.o (ctx q) (ctx d) (ctx g) s t) u ;
+  rhs : Term q = reindex-term q d t (reindex-term d g s u) ;
+ } ;
+
+module PiSubstitution (d g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a)))
+    (s : C.Sub (ctx d) (ctx g)) {
+  x : Tel = extend g a ;
+  as : C.Ty (ctx d) = C.subT (ctx d) (ctx g) a s ;
+  y : Tel = extend d as ;
+  L : C.Sub (ctx y) (ctx x) = C.lift (ctx d) (ctx g) a s ;
+  bs : C.Ty (ctx y) = C.subT (ctx y) (ctx x) b L ;
+  P : C.Ty (ctx g) = pi-at g a b ;
+  Q : C.Ty (ctx d) = pi-at d as bs ;
+  Ps : C.Ty (ctx d) = C.subT (ctx d) (ctx g) P s ;
+  pn : Id (C.Ty (ctx d)) Ps Q = M.products.Pi-nat (ctx d) (ctx g) a b s ;
+
+  subst-fun (f : C.El (ctx g) P) : C.El (ctx d) Q =
+    cast-term d Ps Q pn (C.subt (ctx d) (ctx g) P f s) ;
+
+  abstract-nat (u : C.El (ctx x) b) :
+      Id (Term d) (reindex-term d g s (P,lam-at g a b u))
+        (Q,lam-at d as bs (C.subt (ctx y) (ctx x) b u L)) =
+    term-path d Ps Q (C.subt (ctx d) (ctx g) P (lam-at g a b u) s)
+      (lam-at d as bs (C.subt (ctx y) (ctx x) b u L)) pn (M.products.Pi-iso-nat (ctx d) (ctx g) a b u s) ;
+
+  uncurry (f : C.El (ctx g) P) : C.El (ctx x) b = (M.products.Pi-iso (ctx g) a b).fun f ;
+  uncurry-sub (v : C.El (ctx d) Q) : C.El (ctx y) bs = (M.products.Pi-iso (ctx d) as bs).fun v ;
+
+  uncurry-nat (f : C.El (ctx g) P) :
+      Id (C.El (ctx y) bs) (uncurry-sub (subst-fun f)) (C.subt (ctx y) (ctx x) b (uncurry f) L) =
+    transH (apH uncurry-sub e) ((M.products.Pi-iso (ctx d) as bs).fun-inv (C.subt (ctx y) (ctx x) b (uncurry f) L))
+   where {
+    e : Id (C.El (ctx d) Q) (subst-fun f) (lam-at d as bs (C.subt (ctx y) (ctx x) b (uncurry f) L)) =
+      transH (apH subst-fun (symH ((M.products.Pi-iso (ctx g) a b).inv-fun f)))
+        (M.products.Pi-iso-nat (ctx d) (ctx g) a b (uncurry f) s) ;
+   } ;
+
+  application-nat (f : C.El (ctx g) P) (v : C.El (ctx g) a) :
+      Id (Term d) (reindex-term d g s (app-at g a b f v))
+        (app-at d as bs (subst-fun f) (C.subt (ctx d) (ctx g) a v s)) =
+    transH (symH (reindex-comp d g x S s (b,uncurry f)))
+      (transH (apH (\ k -> reindex-term d x k (b,uncurry f)) (C.sec-o (ctx d) (ctx g) a v s))
+        (transH (reindex-comp d y x L V (b,uncurry f))
+          (apH (\ t -> reindex-term d y V (bs,t)) (symH (uncurry-nat f)))))
+   where {
+    S : C.Sub (ctx g) (ctx x) = C.sec (ctx g) a v ;
+    V : C.Sub (ctx d) (ctx y) = C.sec (ctx d) as (C.subt (ctx d) (ctx g) a v s) ;
+   } ;
+} ;
+
+module PiEta (g : Tel) (a : C.Ty (ctx g)) (b : C.Ty (ctx (extend g a))) (f : C.El (ctx g) (pi-at g a b)) {
+  x : Tel = extend g a ;
+  p : C.Sub (ctx x) (ctx g) = C.p (ctx g) a ;
+  module S = PiSubstitution[x,g,a,b,p] ;
+  z : Tel = S.y ;
+  q : C.El (ctx x) S.as = C.q (ctx g) a ;
+  E : C.Sub (ctx x) (ctx z) = C.sec (ctx x) S.as q ;
+  body : Term x = app-at x S.as S.bs (S.subst-fun f) q ;
+
+  body-path : Id (Term x) body (b,S.uncurry f) =
+    transH (apH (\ t -> reindex-term x z E (S.bs,t)) (S.uncurry-nat f))
+      (transH (symH (reindex-comp x z x S.L E (b,S.uncurry f)))
+        (transH (apH (\ k -> reindex-term x x k (b,S.uncurry f)) (C.lift-p-sec-q (ctx g) a))
+          (reindex-id x (b,S.uncurry f)))) ;
+} ;

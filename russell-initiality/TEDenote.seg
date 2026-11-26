@@ -1,0 +1,120 @@
+-- The four partial interpretations of raw Ehrhard syntax.
+open Base ;
+open Prelude[l] ;
+open Lib[l] ;
+open TEInterpBase ;
+module B = BoundedSyntax[N] ;
+open B.GAT[l] ;
+
+record RawMeaning {
+  context : Partial[Tel] ;
+  type-at (G : Tel) : Partial[C.Ty (ctx G)] ;
+  term-at (G : Tel) : Partial[Term G] ;
+  sub-at (D : Tel) : Partial[Subs D] ;
+} ;
+
+context-only (d : Partial[Tel]) : RawMeaning =
+  new RawMeaning[context := d, type-at := \ G -> undefined (C.Ty (ctx G)),
+    term-at := \ G -> undefined (Term G), sub-at := \ D -> undefined (Subs D)] ;
+
+type-only (d : (G : Tel) -> Partial[C.Ty (ctx G)]) : RawMeaning =
+  new RawMeaning[context := undefined Tel, type-at := d,
+    term-at := \ G -> undefined (Term G), sub-at := \ D -> undefined (Subs D)] ;
+
+term-only (d : (G : Tel) -> Partial[Term G]) : RawMeaning =
+  new RawMeaning[context := undefined Tel, type-at := \ G -> undefined (C.Ty (ctx G)),
+    term-at := d, sub-at := \ D -> undefined (Subs D)] ;
+
+sub-only (d : (D : Tel) -> Partial[Subs D]) : RawMeaning =
+  new RawMeaning[context := undefined Tel, type-at := \ G -> undefined (C.Ty (ctx G)),
+    term-at := \ G -> undefined (Term G), sub-at := d] ;
+
+type-by (A s : RawMeaning) (D : Tel) : Partial[C.Ty (ctx D)] =
+  bind (s.sub-at D) (\ w -> bind (A.type-at w.1) (\ a ->
+    return (C.subT (ctx D) (ctx w.1) a w.2))) ;
+
+term-by (a s : RawMeaning) (D : Tel) : Partial[Term D] =
+  bind (s.sub-at D) (\ w -> bind (a.term-at w.1) (\ t ->
+    return (C.subT (ctx D) (ctx w.1) t.1 w.2,C.subt (ctx D) (ctx w.1) t.1 t.2 w.2))) ;
+
+term-check (a : RawMeaning) (G : Tel) (A : C.Ty (ctx G)) : Partial[C.El (ctx G) A] =
+  bind (a.term-at G) (\ q -> check-term G A q) ;
+
+eval-pi (A B : RawMeaning) (G : Tel) : Partial[C.Ty (ctx G)] =
+  bind (A.type-at G) (\ a -> bind (B.type-at (extend G a)) (\ b ->
+    return (M.products.Pi (ctx G) a b))) ;
+
+eval-lam (A B b : RawMeaning) (G : Tel) : Partial[Term G] =
+  bind (A.type-at G) (\ a -> bind (B.type-at (extend G a)) (\ c ->
+    bind (term-check b (extend G a) c) (\ t ->
+      return (M.products.Pi (ctx G) a c,M.products.abstract (ctx G) a c t)))) ;
+
+eval-app (A B f a : RawMeaning) (G : Tel) : Partial[Term G] =
+  bind (A.type-at G) (\ u -> bind (B.type-at (extend G u)) (\ v ->
+    bind (term-check f G (M.products.Pi (ctx G) u v)) (\ fn ->
+      bind (term-check a G u) (\ x ->
+        return (C.subT (ctx G) (ctx (extend G u)) v (C.sec (ctx G) u x),
+          M.products.apply (ctx G) u v fn x))))) ;
+
+eval-pic (n : Nat) (a b : RawMeaning) (G : Tel) : Partial[Term G] =
+  bind (level-at n) (\ k -> bind (term-check a G (M.univ k (ctx G))) (\ u ->
+    bind (term-check b (extend G (M.decode k (ctx G) u))
+      (M.univ k (ctx (extend G (M.decode k (ctx G) u))))) (\ v ->
+      return (M.univ k (ctx G),M.pic k (ctx G) u v)))) ;
+
+eval-p : (k : Nat) -> (w : (layer k).carrier) -> Partial[Subs (k,w)] = split {
+  zero -> \ w -> undefined (Subs (zero,w)) ;
+  suc k -> \ w -> return ((k,w.1),C.p (ctx (k,w.1)) w.2) } ;
+
+eval-q : (k : Nat) -> (w : (layer k).carrier) -> Partial[Term (k,w)] = split {
+  zero -> \ w -> undefined (Term (zero,w)) ;
+  suc k -> \ w ->
+    return (C.subT (ctx (suc k,w)) (ctx (k,w.1)) w.2 (C.p (ctx (k,w.1)) w.2),
+      C.q (ctx (k,w.1)) w.2) } ;
+
+lift-by (D G : Tel) (A : C.Ty (ctx G)) (s : C.Sub (ctx D) (ctx G)) (B : C.Ty (ctx D)) :
+    Partial[Subs (extend D B)] =
+  guard (Id (C.Ty (ctx D)) (C.subT (ctx D) (ctx G) A s) B)
+    (C.isSetTy (ctx D) (C.subT (ctx D) (ctx G) A s) B) (\ e ->
+      (extend G A,subst (C.Ty (ctx D)) (\ T -> C.Sub (C.ext (ctx D) T) (ctx (extend G A)))
+        (C.subT (ctx D) (ctx G) A s) B e (C.lift (ctx D) (ctx G) A s))) ;
+
+eval-lift (A s : RawMeaning) : (k : Nat) -> (w : (layer k).carrier) -> Partial[Subs (k,w)] = split {
+  zero -> \ w -> undefined (Subs (zero,w)) ;
+  suc k -> \ w -> bind (s.sub-at (k,w.1)) (\ u ->
+    bind (A.type-at u.1) (\ a -> lift-by (k,w.1) u.1 a u.2 w.2)) } ;
+
+meaning : GE -> RawMeaning = split {
+  gnil -> context-only (return empty-tel) ;
+  gext G A | g a -> context-only (bind g.context (\ D ->
+    bind (a.type-at D) (\ B -> return (extend D B)))) ;
+  gpi A B | a b -> type-only (eval-pi a b) ;
+  guu n -> type-only (\ G -> bind (level-at n) (\ k -> return (M.univ k (ctx G)))) ;
+  gel n a | u -> type-only (\ G -> bind (level-at n) (\ k ->
+    bind (term-check u G (M.univ k (ctx G))) (\ v -> return (M.decode k (ctx G) v)))) ;
+  gsb t s | a d -> new RawMeaning[context := undefined Tel,
+    type-at := type-by a d, term-at := term-by a d, sub-at := \ D -> undefined (Subs D)] ;
+  glam A B b | a c t -> term-only (eval-lam a c t) ;
+  gapp A B f a | u v g x -> term-only (eval-app u v g x) ;
+  gpic n a b | u v -> term-only (eval-pic n u v) ;
+  guc m n -> term-only (\ G -> bind (strict-levels m n) (\ k ->
+    return (M.univ k.to (ctx G),M.uc k.from k.to k.strict (ctx G)))) ;
+  glf m n a | t -> term-only (\ G -> bind (strict-levels m n) (\ k ->
+    bind (term-check t G (M.univ k.from (ctx G))) (\ u ->
+      return (M.univ k.to (ctx G),M.lf k.from k.to k.strict (ctx G) u)))) ;
+  gq -> term-only (\ G -> eval-q G.1 G.2) ;
+  gid -> sub-only (\ G -> return (G,C.id (ctx G))) ;
+  gcomp s d | a b -> sub-only (\ D -> bind (b.sub-at D) (\ v ->
+    bind (a.sub-at v.1) (\ u -> return (u.1,C.o (ctx D) (ctx v.1) (ctx u.1) u.2 v.2)))) ;
+  geps -> sub-only (\ G -> return (empty-tel,C.eps (ctx G))) ;
+  gp -> sub-only (\ G -> eval-p G.1 G.2) ;
+  glift A s | a d -> sub-only (\ G -> eval-lift a d G.1 G.2) ;
+  gsec A a | b t -> sub-only (\ G -> bind (b.type-at G) (\ B ->
+    bind (term-check t G B) (\ v -> return (extend G B,C.sec (ctx G) B v)))) } ;
+
+CtxDown (G : GE) (g : Tel) : U l = Denotes (meaning G).context g ;
+TyDown (A : GE) (g : Tel) (a : C.Ty (ctx g)) : U l = Denotes ((meaning A).type-at g) a ;
+TmDown (a : GE) (g : Tel) (A : C.Ty (ctx g)) (t : C.El (ctx g) A) : U l =
+  Denotes ((meaning a).term-at g) (A,t) ;
+SubDown (s : GE) (d g : Tel) (f : C.Sub (ctx d) (ctx g)) : U l =
+  Denotes ((meaning s).sub-at d) (g,f) ;

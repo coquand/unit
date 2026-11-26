@@ -1,0 +1,273 @@
+-- InitHomSig: morphisms M -> M' as a Sigma type (PLAN-INIT, Part C).
+-- Segment of InitHomS.MorphismS (l, N, M, M', fe).
+--
+-- The record Hom of InitHomLaws has no eta rule in the checker, so two
+-- morphisms with the same fields cannot be proved equal.  HomS is the
+-- same data as a nested Sigma type (which has eta):
+--   HomS = (d : Data) * Laws d,
+--   Data = four maps (ctx, sub, ty, tm),  Laws d = the 18 laws of Hom.
+-- fromS : HomS -> Hom and toS : Hom -> HomS; toS (fromS h) = h by refl,
+-- and every field of fromS (toS H) is the field of H by refl.
+-- The law families below are the field types of Hom, verbatim, with the
+-- derived members (ext', mv-ty, mv-el, code, dec-ext, mv-code) as
+-- functions of the data.
+open Base ;
+open Prelude[l] ;
+open Paths[l] ;
+open EhrhardCwF ;
+open EhrhardTEModel[l] ;
+module Mo = InitHom.Morphism[l,N,M,M'] ;
+open Mo.InitHomBase ;
+open Mo.InitHomLaws ;
+module FE = Axioms[l].FunExtLemmas[fe] ;
+
+------------------------------------------------------------------------
+-- the data: four maps
+
+CtxM : U l = C.Ctx -> C'.Ctx ;
+SubM (ctx : CtxM) : U l = (D G : C.Ctx) (s : C.Sub D G) -> C'.Sub (ctx D) (ctx G) ;
+TyM (ctx : CtxM) : U l = (G : C.Ctx) (A : C.Ty G) -> C'.Ty (ctx G) ;
+TmM (ctx : CtxM) (ty : TyM ctx) : U l =
+  (G : C.Ctx) (A : C.Ty G) (a : C.El G A) -> C'.El (ctx G) (ty G A) ;
+
+Data : U l = (ctx : CtxM) * (sub : SubM ctx) * (ty : TyM ctx) * TmM ctx ty ;
+
+------------------------------------------------------------------------
+-- the derived members, as functions of the data
+
+extS (ctx : CtxM) (ty : TyM ctx) (G : C.Ctx) (A : C.Ty G) : C'.Ctx = C'.ext (ctx G) (ty G A) ;
+
+CtxExt (ctx : CtxM) (ty : TyM ctx) : U l =
+  (G : C.Ctx) (A : C.Ty G) -> Id C'.Ctx (ctx (C.ext G A)) (C'.ext (ctx G) (ty G A)) ;
+-- (pointwise form CtxExtAt below; the two are convertible)
+
+mvTyS (ctx : CtxM) (ty : TyM ctx) (ce : CtxExt ctx ty)
+    (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) : C'.Ty (extS ctx ty G A) =
+  mvTy (ctx (C.ext G A)) (extS ctx ty G A) (ce G A) (ty (C.ext G A) B) ;
+
+mvElS (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) (b : C.El (C.ext G A) B)
+  : C'.El (extS ctx ty G A) (mvTyS ctx ty ce G A B) =
+  mvEl (ctx (C.ext G A)) (extS ctx ty G A) (ce G A) (ty (C.ext G A) B) (tm (C.ext G A) B b) ;
+
+TyUniv (ctx : CtxM) (ty : TyM ctx) : U l =
+  (n : LevelAt N) (G : C.Ctx) -> Id (C'.Ty (ctx G)) (ty G (M.univ n G)) (M'.univ n (ctx G)) ;
+
+codeS (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty)
+    (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G)) : CodeF' n (ctx G) =
+  subst (C'.Ty (ctx G)) (C'.El (ctx G)) (ty G (M.univ n G)) (M'.univ n (ctx G)) (tu n G)
+    (tm G (M.univ n G) a) ;
+
+TyDecode (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty) : U l =
+  (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G))
+  -> Id (C'.Ty (ctx G)) (ty G (M.decode n G a)) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a)) ;
+
+decExtS (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu)
+    (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G))
+  : Id C'.Ctx (ctx (C.ext G (M.decode n G a))) (C'.ext (ctx G) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a))) =
+  trans C'.Ctx (ctx (C.ext G (M.decode n G a))) (extS ctx ty G (M.decode n G a))
+    (C'.ext (ctx G) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a)))
+    (ce G (M.decode n G a))
+    (ap (C'.Ty (ctx G)) C'.Ctx (\ T -> C'.ext (ctx G) T)
+        (ty G (M.decode n G a)) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a)) (td n G a)) ;
+
+mvCodeS (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu)
+    (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G))
+    (b : C.El (C.ext G (M.decode n G a)) (M.univ n (C.ext G (M.decode n G a))))
+  : CodeF' n (C'.ext (ctx G) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a))) =
+  mvCode n (ctx (C.ext G (M.decode n G a))) (C'.ext (ctx G) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a)))
+    (decExtS ctx ty tm ce tu td n G a) (codeS ctx ty tm tu n (C.ext G (M.decode n G a)) b) ;
+
+------------------------------------------------------------------------
+-- the law families (field types of Hom), pointwise ...At and quantified
+
+LctxNil (ctx : CtxM) : U l = Id C'.Ctx (ctx C.nil) C'.nil ;
+
+CtxExtAt (ctx : CtxM) (ty : TyM ctx) (G : C.Ctx) (A : C.Ty G) : U l =
+  Id C'.Ctx (ctx (C.ext G A)) (C'.ext (ctx G) (ty G A)) ;
+
+LsubIdAt (ctx : CtxM) (sub : SubM ctx) (G : C.Ctx) : U l =
+  Id (C'.Sub (ctx G) (ctx G)) (sub G G (C.id G)) (C'.id (ctx G)) ;
+LsubId (ctx : CtxM) (sub : SubM ctx) : U l = (G : C.Ctx) -> LsubIdAt ctx sub G ;
+
+LsubOAt (ctx : CtxM) (sub : SubM ctx) (T D G : C.Ctx) (s : C.Sub D G) (s' : C.Sub T D) : U l =
+  Id (C'.Sub (ctx T) (ctx G)) (sub T G (C.o T D G s s'))
+     (C'.o (ctx T) (ctx D) (ctx G) (sub D G s) (sub T D s')) ;
+LsubO (ctx : CtxM) (sub : SubM ctx) : U l =
+  (T D G : C.Ctx) (s : C.Sub D G) (s' : C.Sub T D) -> LsubOAt ctx sub T D G s s' ;
+
+LsubEpsAt (ctx : CtxM) (sub : SubM ctx) (G : C.Ctx) : U l =
+  Id SubT' (ctx G, (ctx C.nil, sub G C.nil (C.eps G))) (ctx G, (C'.nil, C'.eps (ctx G))) ;
+LsubEps (ctx : CtxM) (sub : SubM ctx) : U l = (G : C.Ctx) -> LsubEpsAt ctx sub G ;
+
+LsubPAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (G : C.Ctx) (A : C.Ty G) : U l =
+  Id SubT' (ctx (C.ext G A), (ctx G, sub (C.ext G A) G (C.p G A)))
+           (extS ctx ty G A, (ctx G, C'.p (ctx G) (ty G A))) ;
+LsubP (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) : U l =
+  (G : C.Ctx) (A : C.Ty G) -> LsubPAt ctx sub ty G A ;
+
+LsubLiftAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (D G : C.Ctx) (A : C.Ty G) (s : C.Sub D G) : U l =
+  Id SubT' (ctx (C.ext D (C.subT D G A s)),
+            (ctx (C.ext G A), sub (C.ext D (C.subT D G A s)) (C.ext G A) (C.lift D G A s)))
+           (C'.ext (ctx D) (C'.subT (ctx D) (ctx G) (ty G A) (sub D G s)),
+            (extS ctx ty G A, C'.lift (ctx D) (ctx G) (ty G A) (sub D G s))) ;
+LsubLift (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) : U l =
+  (D G : C.Ctx) (A : C.Ty G) (s : C.Sub D G) -> LsubLiftAt ctx sub ty D G A s ;
+
+LsubSecAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (G : C.Ctx) (A : C.Ty G) (a : C.El G A) : U l =
+  Id SubT' (ctx G, (ctx (C.ext G A), sub G (C.ext G A) (C.sec G A a)))
+           (ctx G, (extS ctx ty G A, C'.sec (ctx G) (ty G A) (tm G A a))) ;
+LsubSec (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) : U l =
+  (G : C.Ctx) (A : C.Ty G) (a : C.El G A) -> LsubSecAt ctx sub ty tm G A a ;
+
+LtySubTAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (D G : C.Ctx) (A : C.Ty G) (s : C.Sub D G) : U l =
+  Id (C'.Ty (ctx D)) (ty D (C.subT D G A s)) (C'.subT (ctx D) (ctx G) (ty G A) (sub D G s)) ;
+LtySubT (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) : U l =
+  (D G : C.Ctx) (A : C.Ty G) (s : C.Sub D G) -> LtySubTAt ctx sub ty D G A s ;
+
+LtyPiAt (ctx : CtxM) (ty : TyM ctx) (ce : CtxExt ctx ty) (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) : U l =
+  Id (C'.Ty (ctx G)) (ty G (P.Pi G A B)) (P'.Pi (ctx G) (ty G A) (mvTyS ctx ty ce G A B)) ;
+LtyPi (ctx : CtxM) (ty : TyM ctx) (ce : CtxExt ctx ty) : U l =
+  (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) -> LtyPiAt ctx ty ce G A B ;
+
+TyUnivAt (ctx : CtxM) (ty : TyM ctx) (n : LevelAt N) (G : C.Ctx) : U l =
+  Id (C'.Ty (ctx G)) (ty G (M.univ n G)) (M'.univ n (ctx G)) ;
+
+TyDecodeAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty)
+    (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G)) : U l =
+  Id (C'.Ty (ctx G)) (ty G (M.decode n G a)) (M'.decode n (ctx G) (codeS ctx ty tm tu n G a)) ;
+
+LtmSubtAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty)
+    (D G : C.Ctx) (A : C.Ty G) (a : C.El G A) (s : C.Sub D G) : U l =
+  Id (Term' (ctx D)) (ty D (C.subT D G A s), tm D (C.subT D G A s) (C.subt D G A a s))
+     (C'.subT (ctx D) (ctx G) (ty G A) (sub D G s), C'.subt (ctx D) (ctx G) (ty G A) (tm G A a) (sub D G s)) ;
+LtmSubt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) : U l =
+  (D G : C.Ctx) (A : C.Ty G) (a : C.El G A) (s : C.Sub D G) -> LtmSubtAt ctx sub ty tm D G A a s ;
+
+LtmQAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (G : C.Ctx) (A : C.Ty G) : U l =
+  Id TmT' (ctx (C.ext G A), (ty (C.ext G A) (C.subT (C.ext G A) G A (C.p G A)),
+                             tm (C.ext G A) (C.subT (C.ext G A) G A (C.p G A)) (C.q G A)))
+          (extS ctx ty G A, (C'.subT (extS ctx ty G A) (ctx G) (ty G A) (C'.p (ctx G) (ty G A)),
+                             C'.q (ctx G) (ty G A))) ;
+LtmQ (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) : U l =
+  (G : C.Ctx) (A : C.Ty G) -> LtmQAt ctx ty tm G A ;
+
+LtmLamAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) (b : C.El (C.ext G A) B) : U l =
+  Id (Term' (ctx G)) (ty G (P.Pi G A B), tm G (P.Pi G A B) ((P.Pi-iso G A B).inv b))
+     (P'.Pi (ctx G) (ty G A) (mvTyS ctx ty ce G A B),
+      (P'.Pi-iso (ctx G) (ty G A) (mvTyS ctx ty ce G A B)).inv (mvElS ctx ty tm ce G A B b)) ;
+LtmLam (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  (G : C.Ctx) (A : C.Ty G) (B : C.Ty (C.ext G A)) (b : C.El (C.ext G A) B) -> LtmLamAt ctx ty tm ce G A B b ;
+
+LtmPicAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu)
+    (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G))
+    (b : C.El (C.ext G (M.decode n G a)) (M.univ n (C.ext G (M.decode n G a)))) : U l =
+  Id (CodeF' n (ctx G)) (codeS ctx ty tm tu n G (M.pic n G a b))
+     (M'.pic n (ctx G) (codeS ctx ty tm tu n G a) (mvCodeS ctx ty tm ce tu td n G a b)) ;
+LtmPic (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  (n : LevelAt N) (G : C.Ctx) (a : C.El G (M.univ n G))
+  (b : C.El (C.ext G (M.decode n G a)) (M.univ n (C.ext G (M.decode n G a))))
+  -> LtmPicAt ctx ty tm ce tu td n G a b ;
+
+LtmUcAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty)
+    (m n : LevelAt N) (lt : StrictAt N m n) (G : C.Ctx) : U l =
+  Id (CodeF' n (ctx G)) (codeS ctx ty tm tu n G (M.uc m n lt G)) (M'.uc m n lt (ctx G)) ;
+LtmUc (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty) : U l =
+  (m n : LevelAt N) (lt : StrictAt N m n) (G : C.Ctx) -> LtmUcAt ctx ty tm tu m n lt G ;
+
+LtmLfAt (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty)
+    (m n : LevelAt N) (lt : StrictAt N m n) (G : C.Ctx) (a : C.El G (M.univ m G)) : U l =
+  Id (CodeF' n (ctx G)) (codeS ctx ty tm tu n G (M.lf m n lt G a))
+     (M'.lf m n lt (ctx G) (codeS ctx ty tm tu m G a)) ;
+LtmLf (ctx : CtxM) (ty : TyM ctx) (tm : TmM ctx ty) (tu : TyUniv ctx ty) : U l =
+  (m n : LevelAt N) (lt : StrictAt N m n) (G : C.Ctx) (a : C.El G (M.univ m G)) -> LtmLfAt ctx ty tm tu m n lt G a ;
+
+------------------------------------------------------------------------
+-- the laws of a datum, in the order of the fields of Hom, as named tails
+
+T18 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l = LtmLf ctx ty tm tu ;
+T17 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  LtmUc ctx ty tm tu * T18 ctx sub ty tm ce tu td ;
+T16 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  LtmPic ctx ty tm ce tu td * T17 ctx sub ty tm ce tu td ;
+T15 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  LtmLam ctx ty tm ce * T16 ctx sub ty tm ce tu td ;
+T14 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  LtmQ ctx ty tm * T15 ctx sub ty tm ce tu td ;
+T13 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) (td : TyDecode ctx ty tm tu) : U l =
+  LtmSubt ctx sub ty tm * T14 ctx sub ty tm ce tu td ;
+T12 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty)
+    (tu : TyUniv ctx ty) : U l =
+  (td : TyDecode ctx ty tm tu) * T13 ctx sub ty tm ce tu td ;
+T11 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  (tu : TyUniv ctx ty) * T12 ctx sub ty tm ce tu ;
+T10 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LtyPi ctx ty ce * T11 ctx sub ty tm ce ;
+T9 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LtySubT ctx sub ty * T10 ctx sub ty tm ce ;
+T8 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubSec ctx sub ty tm * T9 ctx sub ty tm ce ;
+T7 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubLift ctx sub ty * T8 ctx sub ty tm ce ;
+T6 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubP ctx sub ty * T7 ctx sub ty tm ce ;
+T5 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubEps ctx sub * T6 ctx sub ty tm ce ;
+T4 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubO ctx sub * T5 ctx sub ty tm ce ;
+T3 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) (ce : CtxExt ctx ty) : U l =
+  LsubId ctx sub * T4 ctx sub ty tm ce ;
+T2 (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) : U l =
+  (ce : CtxExt ctx ty) * T3 ctx sub ty tm ce ;
+
+LawsAt (ctx : CtxM) (sub : SubM ctx) (ty : TyM ctx) (tm : TmM ctx ty) : U l =
+  LctxNil ctx * T2 ctx sub ty tm ;
+
+Laws (d : Data) : U l = LawsAt d.1 d.2.1 d.2.2.1 d.2.2.2 ;
+
+HomS : U l = (d : Data) * Laws d ;
+
+------------------------------------------------------------------------
+-- the two conversions
+
+fromS (h : HomS) : Hom = new Hom[
+  ctx := h.1.1, sub := h.1.2.1, ty := h.1.2.2.1, tm := h.1.2.2.2,
+  ctx-nil   := h.2.1,
+  ctx-ext   := h.2.2.1,
+  sub-id    := h.2.2.2.1,
+  sub-o     := h.2.2.2.2.1,
+  sub-eps   := h.2.2.2.2.2.1,
+  sub-p     := h.2.2.2.2.2.2.1,
+  sub-lift  := h.2.2.2.2.2.2.2.1,
+  sub-sec   := h.2.2.2.2.2.2.2.2.1,
+  ty-subT   := h.2.2.2.2.2.2.2.2.2.1,
+  ty-Pi     := h.2.2.2.2.2.2.2.2.2.2.1,
+  ty-univ   := h.2.2.2.2.2.2.2.2.2.2.2.1,
+  ty-decode := h.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-subt   := h.2.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-q      := h.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-lam    := h.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-pic    := h.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-uc     := h.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1,
+  tm-lf     := h.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2] ;
+
+toS (H : Hom) : HomS =
+  ((H.ctx, (H.sub, (H.ty, H.tm))),
+   (H.ctx-nil, (H.ctx-ext, (H.sub-id, (H.sub-o, (H.sub-eps, (H.sub-p, (H.sub-lift, (H.sub-sec,
+   (H.ty-subT, (H.ty-Pi, (H.ty-univ, (H.ty-decode,
+   (H.tm-subt, (H.tm-q, (H.tm-lam, (H.tm-pic, (H.tm-uc, H.tm-lf)))))))))))))))))) ;
+
+-- round trips
+to-from (h : HomS) : Id HomS (toS (fromS h)) h = refl h ;
+from-to-ctx (H : Hom) : Id (C.Ctx -> C'.Ctx) (fromS (toS H)).ctx H.ctx = refl H.ctx ;

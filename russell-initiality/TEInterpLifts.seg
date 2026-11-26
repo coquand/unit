@@ -1,0 +1,95 @@
+-- Coherence of code lifts and the binder conversion in the Pi-code rule.
+open Base ; open Prelude[l] ; open Paths[l] ; open Lib[l] ; open EhrhardTEModel[l] ;
+open TEInterpBase ; open TEDenote ; open TEInterpIntro ; open TEInterpFormers ;
+open TEInterpJudgement ; open TEInterpUniverses ; open B.GAT[l] ;
+
+code-sub-id (k : LevelAt N) (g : Tel) (u : Code k g) :
+    Id (Code k g) (M.code-sub k (ctx g) (ctx g) u (C.id (ctx g))) u =
+  transH (ap (Id (C.Ty (ctx g)) Ui T) (Code k g) (\ e -> cast-term g Ui T e ui) un id-T
+    (C.isSetTy (ctx g) Ui T un id-T)) (C.subt-id (ctx g) T u)
+ where {
+  T : C.Ty (ctx g) = universe-at k g ;
+  i : C.Sub (ctx g) (ctx g) = C.id (ctx g) ;
+  Ui : C.Ty (ctx g) = C.subT (ctx g) (ctx g) T i ;
+  ui : C.El (ctx g) Ui = C.subt (ctx g) (ctx g) T u i ;
+  un : Id (C.Ty (ctx g)) Ui T = M.univ-nat k (ctx g) (ctx g) i ;
+  id-T : Id (C.Ty (ctx g)) Ui T = C.subT-id (ctx g) T ;
+ } ;
+
+code-move-binder (k : LevelAt N) (b : GE) (g : Tel) (A B' : C.Ty (ctx g)) (e : Id (C.Ty (ctx g)) A B')
+    (v : Code k (extend g B')) (hb : TmDown b (extend g B') (universe-at k (extend g B')) v) :
+    TmDown b (extend g A) (universe-at k (extend g A))
+      (M.code-sub k (ctx (extend g A)) (ctx (extend g B')) v (ext-eq-sub C (ctx g) A B' e)) =
+  idJ (C.Ty (ctx g)) A (\ T p -> (u : Code k (extend g T)) -> TmDown b (extend g T) (universe-at k (extend g T)) u ->
+    TmDown b x (universe-at k x) (M.code-sub k (ctx x) (ctx (extend g T)) u (ext-eq-sub C (ctx g) A T p)))
+    (\ u h -> tm-move b x (universe-at k x,u) (universe-at k x,M.code-sub k (ctx x) (ctx x) u (C.id (ctx x)))
+      (symH (code-pair-path k x (M.code-sub k (ctx x) (ctx x) u (C.id (ctx x))) u (code-sub-id k x u))) h)
+    B' e v hb
+ where { x : Tel = extend g A ; } ;
+
+module LiftProductCode (m n : Nat) (a b : GE) (g : Tel) (v : CodeProduct[m,g,a,b])
+    (lt : LeN (suc m) n) (nb : LeN n N) {
+  i : LevelAt N = (m,v.nb) ;
+  j : LevelAt N = (n,nb) ;
+  u : Code i g = v.left.1 ;
+  u-up : Code j g = M.lf i j lt (ctx g) u ;
+  x : Tel = code-tel i g u ;
+  y : Tel = code-tel j g u-up ;
+  e : Id (C.Ty (ctx g)) (decode-at j g u-up) (decode-at i g u) = M.el-lf i j lt (ctx g) u ;
+  w : Code i y = M.code-sub i (ctx y) (ctx x) v.right.1 (M.lift-binder i j lt (ctx g) u) ;
+  hw : TmDown b y (universe-at i y) w =
+    code-move-binder i b g (decode-at j g u-up) (decode-at i g u) e v.right.1 v.right.2 ;
+  lifted-prod : Code j g = M.lf i j lt (ctx g) v.prod ;
+  prod-lifted : Code j g = M.pic j (ctx g) u-up (M.lf i j lt (ctx y) w) ;
+
+  equation : TermEquality g (guu n) (glf m n (gpic m a b)) (gpic n (glf m n a) (glf m n b)) =
+    same-term g (guu n) (glf m n (gpic m a b)) (gpic n (glf m n a) (glf m n b))
+      (universe-at j g,lifted-prod) (universe-at j g,prod-lifted) (univ-down n nb g)
+      (lf-down m n v.nb nb lt (gpic m a b) g v.prod v.prod-down)
+      (pic-down n nb (glf m n a) (glf m n b) g u-up (M.lf i j lt (ctx y) w)
+        (lf-down m n v.nb nb lt a g u v.left.2) (lf-down m n v.nb nb lt b y w hw))
+      (code-pair-path j g lifted-prod prod-lifted (M.lf-pic i j lt (ctx g) u v.right.1)) ;
+} ;
+
+case-gm-lf-pic (G : GE) (n p : Nat) (a b : GE) (lt : LeN (suc n) p) (pb : LeN p N)
+    (r : SoundJ (gjtm G a (guu n))) (s : SoundJ (gjtm (gext G (gel n a)) b (guu n))) :
+    SoundJ (gjeqtm G (glf n p (gpic n a b)) (gpic p (glf n p a) (glf n p b)) (guu p)) =
+  (r.1,\ g hg -> LiftProductCode[n,p,a,b,g,code-product G n a b r s g hg,lt,pb].equation) ;
+
+case-gm-lf-uc (G : GE) (m n p : Nat) (mn : LeN (suc m) n) (np : LeN (suc n) p) (pb : LeN p N)
+    (r : SoundJ (gjwf G)) : SoundJ (gjeqtm G (glf n p (guc m n)) (guc m p) (guu p)) =
+  (r,\ g hg -> build g)
+ where {
+  nb : LeN n N = lower-bound n p np pb ;
+  mb : LeN m N = lower-bound m n mn nb ;
+  mp : LeN (suc m) p = leN-trans (suc m) n p mn (B.TTyping[l].lt-le n p np) ;
+  build (g : Tel) : TermEquality g (guu p) (glf n p (guc m n)) (guc m p) =
+    same-term g (guu p) (glf n p (guc m n)) (guc m p) (universe-at (p,pb) g,left) (universe-at (p,pb) g,right)
+      (univ-down p pb g) (lf-down n p nb pb np (guc m n) g u (uc-down m n mb nb mn g))
+      (uc-down m p mb pb mp g)
+      (code-pair-path (p,pb) g left right (M.lf-uc (m,mb) (n,nb) (p,pb) mn np mp (ctx g)))
+   where {
+    u : Code (n,nb) g = M.uc (m,mb) (n,nb) mn (ctx g) ;
+    left : Code (p,pb) g = M.lf (n,nb) (p,pb) np (ctx g) u ;
+    right : Code (p,pb) g = M.uc (m,mb) (p,pb) mp (ctx g) ;
+   } ;
+ } ;
+
+case-gm-lf-lf (G : GE) (m n p : Nat) (a : GE) (mn : LeN (suc m) n) (np : LeN (suc n) p) (pb : LeN p N)
+    (r : SoundJ (gjtm G a (guu m))) : SoundJ (gjeqtm G (glf n p (glf m n a)) (glf m p a) (guu p)) =
+  (r.1,\ g hg -> build g (code-value m mb g a (r.2 g hg)))
+ where {
+  nb : LeN n N = lower-bound n p np pb ;
+  mb : LeN m N = lower-bound m n mn nb ;
+  mp : LeN (suc m) p = leN-trans (suc m) n p mn (B.TTyping[l].lt-le n p np) ;
+  build (g : Tel) (u : CodeValue m mb g a) : TermEquality g (guu p) (glf n p (glf m n a)) (glf m p a) =
+    same-term g (guu p) (glf n p (glf m n a)) (glf m p a) (universe-at (p,pb) g,left) (universe-at (p,pb) g,right)
+      (univ-down p pb g) (lf-down n p nb pb np (glf m n a) g v (lf-down m n mb nb mn a g u.1 u.2))
+      (lf-down m p mb pb mp a g u.1 u.2)
+      (code-pair-path (p,pb) g left right (M.lf-lf (m,mb) (n,nb) (p,pb) mn np mp (ctx g) u.1))
+   where {
+    v : Code (n,nb) g = M.lf (m,mb) (n,nb) mn (ctx g) u.1 ;
+    left : Code (p,pb) g = M.lf (n,nb) (p,pb) np (ctx g) v ;
+    right : Code (p,pb) g = M.lf (m,mb) (p,pb) mp (ctx g) u.1 ;
+   } ;
+ } ;

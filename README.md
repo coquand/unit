@@ -10,6 +10,20 @@ records and recursion.
 
 ## Featured developments
 
+### Initiality for Russell type theory
+
+At each fixed universe bound `N`, the term model of Ehrhard’s explicit-substitution
+calculus is initial. For every Ehrhard model at that bound, the type of morphisms
+from the term model to it is contractible. Russell judgements modulo conversion
+correspond to elements of this initial model, so the unique morphism gives their
+interpretation. The proof assumes univalence and replacement.
+
+See the [initiality theorem](russell-initiality/InitInitialObject.seg),
+[correspondence with Russell syntax](russell-initiality/RGAT.seg), and
+[mathematical account](https://github.com/coquand/domain-semantics/blob/69af74c03a563ebbb9d437967ab498b996584cb9/UNIT/gat-ehrhard.pdf).
+To check the [complete proof](russell-initiality/InitCheckInitial.seg), run
+`seg InitCheckInitial.seg` from `russell-initiality/`.
+
 ### Scott domains and definitional inversion
 
 The [revised note](https://github.com/coquand/domain-semantics/blob/main/UNIT/scott-domains-revised.pdf) and [checked development](https://github.com/coquand/domain-semantics/tree/main/UNIT) establish the [equivalence of Scott domains with embedding–projection pairs and conditional upper semilattices (CUSLs)](https://github.com/coquand/domain-semantics/blob/main/UNIT/ScottCUSLEquivalence.seg), dependent products and sums, the continuous `Fp` functor, and adequacy and definitional inversion via an independent logical relation.

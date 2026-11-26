@@ -1,0 +1,216 @@
+-- Russell semantics via double erasure from the Ehrhard GAT.
+module Interpret (l : Level) (N : Base.Nat) (M : EhrhardTEModel[l].TEModel[N]) {
+  open Base ; open Prelude[l] ; open Paths[l] ;
+  module B = BoundedSyntax[N] ;
+  open B.TSyntax[l] ; open B.TTyping[l] ; open B.RTyping[l] ;
+  open B.GAT[l] ; open B.GPresup[l] ; open B.RGAT[l] ;
+  module S = TEInterp.Interpret[l,N,M] ;
+  open S.TEInterpBase ; open S.TEDenote ; open S.TEInterpJudgement ;
+
+  Lift : Jf -> U l = split {
+    jwf G -> GWf G ;
+    jty G A -> GTy G A ;
+    jtm G a A -> GTm G a A ;
+    jeqty G A A' -> GEqTy G A A' ;
+    jeqtm G a b A -> GEqTm G a b A } ;
+
+  lift-R : (J : Jf) -> RDer J -> Lift J = split {
+    jwf G -> r2g-wf G ;
+    jty G A -> r2g-ty G A ;
+    jtm G a A -> r2g-tm G a A ;
+    jeqty G A A' -> r2g-eqty G A A' ;
+    jeqtm G a b A -> r2g-eqtm G a b A } ;
+
+  TypeOver : U l = (g : Tel) * C.Ty (ctx g) ;
+  TermOver : U l = (g : Tel) * Term g ;
+
+  -- An equation has the common value of its two sides.
+  Value : Jf -> U l = split {
+    jwf G -> Tel ;
+    jty G A -> TypeOver ;
+    jtm G a A -> TermOver ;
+    jeqty G A A' -> TypeOver ;
+    jeqtm G a b A -> TermOver } ;
+
+  Realizes : (J : Jf) -> Lift J -> Value J -> U l = split {
+    jwf G -> \ L g -> CtxDown L.1 g ;
+    jty G A -> \ L v -> CtxDown L.1 v.1 * TyDown L.2.1 v.1 v.2 ;
+    jtm G a A -> \ L v -> CtxDown L.1 v.1 *
+      (TyDown L.2.2.1 v.1 v.2.1 * TmDown L.2.1 v.1 v.2.1 v.2.2) ;
+    jeqty G A A' -> \ L v -> CtxDown L.1 v.1 *
+      (TyDown L.2.1 v.1 v.2 * TyDown L.2.2.1 v.1 v.2) ;
+    jeqtm G a b A -> \ L v -> CtxDown L.1 v.1 *
+      (TyDown L.2.2.2.1 v.1 v.2.1 *
+        (TmDown L.2.1 v.1 v.2.1 v.2.2 * TmDown L.2.2.1 v.1 v.2.1 v.2.2)) } ;
+
+  interpret-lift : (J : Jf) -> (L : Lift J) -> (v : Value J) * Realizes J L v = split {
+    jwf G -> \ L -> S.TEInterpSound.sound (gjwf L.1) L.2.1 ;
+    jty G A -> \ L -> type-value L.1 L.2.1 (S.TEInterpSound.sound (gjty L.1 L.2.1) L.2.2.1) ;
+    jtm G a A -> \ L -> term-value L.1 L.2.1 L.2.2.1
+      (S.TEInterpSound.sound (gjtm L.1 L.2.1 L.2.2.1) L.2.2.2.1) ;
+    jeqty G A A' -> \ L -> type-equality L.1 L.2.1 L.2.2.1
+      (S.TEInterpSound.sound (gjeqty L.1 L.2.1 L.2.2.1) L.2.2.2.1) ;
+    jeqtm G a b A -> \ L -> term-equality L.1 L.2.1 L.2.2.1 L.2.2.2.1
+      (S.TEInterpSound.sound (gjeqtm L.1 L.2.1 L.2.2.1 L.2.2.2.1) L.2.2.2.2.1) }
+   where {
+    type-value (X Y : GE) (s : SoundJ (gjty X Y)) :
+        (v : TypeOver) * (CtxDown X v.1 * TyDown Y v.1 v.2) =
+      ((s.1.1,w.1),(s.1.2,w.2))
+     where { w : TypeValue s.1.1 Y = s.2 s.1.1 s.1.2 ; } ;
+    term-value (X t Y : GE) (s : SoundJ (gjtm X t Y)) :
+        (v : TermOver) * (CtxDown X v.1 * (TyDown Y v.1 v.2.1 * TmDown t v.1 v.2.1 v.2.2)) =
+      ((s.1.1,(w.1,w.2.2.1)),(s.1.2,(w.2.1,w.2.2.2)))
+     where { w : TermValue s.1.1 Y t = s.2 s.1.1 s.1.2 ; } ;
+    type-equality (X Y Z : GE) (s : SoundJ (gjeqty X Y Z)) :
+        (v : TypeOver) * (CtxDown X v.1 * (TyDown Y v.1 v.2 * TyDown Z v.1 v.2)) =
+      ((s.1.1,w.1),(s.1.2,w.2))
+     where { w : TypeEquality s.1.1 Y Z = s.2 s.1.1 s.1.2 ; } ;
+    term-equality (X t u Y : GE) (s : SoundJ (gjeqtm X t u Y)) :
+        (v : TermOver) * (CtxDown X v.1 * (TyDown Y v.1 v.2.1 *
+          (TmDown t v.1 v.2.1 v.2.2 * TmDown u v.1 v.2.1 v.2.2))) =
+      ((s.1.1,(w.1,w.2.2.1)),(s.1.2,(w.2.1,w.2.2.2)))
+     where { w : TermEquality s.1.1 Y t u = s.2 s.1.1 s.1.2 ; } ;
+   } ;
+
+  semantics (J : Jf) (h : RDer J) : (L : Lift J) * ((v : Value J) * Realizes J L v) =
+    (lift-R J h,interpret-lift J (lift-R J h)) ;
+
+  value (J : Jf) (h : RDer J) : Value J = (semantics J h).2.1 ;
+
+  -- Context equality identifies the telescopes. Compare the values in that fibre.
+  same-over (X X' : GE) (e : CtxEquality X X') (F : Tel -> U l)
+      (P Q : (g : Tel) -> F g -> U l) (v w : (g : Tel) * F g)
+      (hv : CtxDown X v.1) (hw : CtxDown X' w.1) (p : P v.1 v.2) (q : Q w.1 w.2)
+      (same : (g : Tel) -> CtxDown X g -> (x y : F g) -> P g x -> Q g y -> Id (F g) x y) :
+      Id ((g : Tel) * F g) v w =
+    idJ Tel v.1 (\ g _ -> (y : F g) -> Q g y -> Id ((d : Tel) * F d) v (g,y))
+      (\ y q' -> apH (\ x -> (v.1,x)) (same v.1 hv v.2 y p q')) w.1
+      (ctx-functional X' v.1 w.1 (ctx-convert X X' e v.1 hv) hw) w.2 q ;
+
+  same-context (G : Cx) (L L' : GWf G) : GDer (gjeqcx L.1 L'.1) =
+    gu-cx1 L.1 L'.1 L.2.1 L'.2.1 (transH L.2.2 (symH L'.2.2)) ;
+
+  types-independent (G : Cx) (A : Tm) (L L' : GTy G A) (v w : TypeOver)
+      (p : Realizes (jty G A) L v) (q : Realizes (jty G A) L' w) : Id TypeOver v w =
+    same-over L.1 L'.1 ctx-eq (\ g -> C.Ty (ctx g)) (TyDown L.2.1) (TyDown L'.2.1)
+      v w p.1 q.1 p.2 q.2 compare
+   where {
+    h : GDer (gjty L.1 L.2.1) = L.2.2.1 ;
+    h' : GDer (gjty L'.1 L'.2.1) = L'.2.2.1 ;
+    wf : GDer (gjwf L.1) = gpresup (gjty L.1 L.2.1) h ;
+    wf' : GDer (gjwf L'.1) = gpresup (gjty L'.1 L'.2.1) h' ;
+    e : GDer (gjeqcx L.1 L'.1) =
+      same-context G (L.1,(wf,L.2.2.2.1)) (L'.1,(wf',L'.2.2.2.1)) ;
+    ctx-eq : CtxEquality L.1 L'.1 = S.TEInterpSound.sound (gjeqcx L.1 L'.1) e ;
+    h-aligned : GDer (gjty L.1 L'.2.1) = gt-cx L'.1 L.1 L'.2.1 wf (cx-sym L.1 L'.1 e) h' ;
+    e-ty : GDer (gjeqty L.1 L.2.1 L'.2.1) =
+      gu-ty L.1 L.2.1 L'.2.1 h h-aligned (transH L.2.2.2.2 (symH L'.2.2.2.2)) ;
+    compare (g : Tel) (hg : CtxDown L.1 g) (x y : C.Ty (ctx g))
+        (hx : TyDown L.2.1 g x) (hy : TyDown L'.2.1 g y) : Id (C.Ty (ctx g)) x y =
+      transH (ty-functional L.2.1 g x c.1 hx c.2.1) (ty-functional L'.2.1 g c.1 y c.2.2 hy)
+     where { c : TypeEquality g L.2.1 L'.2.1 = (S.TEInterpSound.sound (gjeqty L.1 L.2.1 L'.2.1) e-ty).2 g hg ; } ;
+   } ;
+
+  term-down (a : GE) (g : Tel) (t : Term g) : U l = TmDown a g t.1 t.2 ;
+
+  terms-independent (G : Cx) (a A : Tm) (L L' : GTm G a A) (v w : TermOver)
+      (p : Realizes (jtm G a A) L v) (q : Realizes (jtm G a A) L' w) : Id TermOver v w =
+    same-over L.1 L'.1 ctx-eq Term (term-down L.2.1) (term-down L'.2.1)
+      v w p.1 q.1 p.2.2 q.2.2 compare
+   where {
+    h : GDer (gjtm L.1 L.2.1 L.2.2.1) = L.2.2.2.1 ;
+    h' : GDer (gjtm L'.1 L'.2.1 L'.2.2.1) = L'.2.2.2.1 ;
+    wf : GDer (gjwf L.1) = (gpresup (gjtm L.1 L.2.1 L.2.2.1) h).1 ;
+    wf' : GDer (gjwf L'.1) = (gpresup (gjtm L'.1 L'.2.1 L'.2.2.1) h').1 ;
+    e : GDer (gjeqcx L.1 L'.1) =
+      same-context G (L.1,(wf,L.2.2.2.2.1)) (L'.1,(wf',L'.2.2.2.2.1)) ;
+    ctx-eq : CtxEquality L.1 L'.1 = S.TEInterpSound.sound (gjeqcx L.1 L'.1) e ;
+    h-aligned : GDer (gjtm L.1 L'.2.1 L'.2.2.1) =
+      gm-cx L'.1 L.1 L'.2.1 L'.2.2.1 wf (cx-sym L.1 L'.1 e) h' ;
+    e-tm : GDer (gjeqtm L.1 L.2.1 L'.2.1 L.2.2.1) =
+      (gu-tm L.1 L.2.1 L.2.2.1 L'.2.1 L'.2.2.1 h h-aligned
+        (transH L.2.2.2.2.2.1 (symH L'.2.2.2.2.2.1))
+        (transH L.2.2.2.2.2.2 (symH L'.2.2.2.2.2.2))).2 ;
+    compare (g : Tel) (hg : CtxDown L.1 g) (x y : Term g)
+        (hx : term-down L.2.1 g x) (hy : term-down L'.2.1 g y) : Id (Term g) x y =
+      transH (tm-functional L.2.1 g x common hx c.2.2.2.1)
+        (tm-functional L'.2.1 g common y c.2.2.2.2 hy)
+     where {
+      c : TermEquality g L.2.2.1 L.2.1 L'.2.1 = (S.TEInterpSound.sound (gjeqtm L.1 L.2.1 L'.2.1 L.2.2.1) e-tm).2 g hg ;
+      common : Term g = (c.1,c.2.2.1) ;
+     } ;
+   } ;
+
+  contexts-independent (G : Cx) (L L' : GWf G) (v w : Tel)
+      (p : Realizes (jwf G) L v) (q : Realizes (jwf G) L' w) : Id Tel v w =
+    ctx-functional L'.1 v w (ctx-convert L.1 L'.1 e v p) q
+   where {
+    e : CtxEquality L.1 L'.1 = S.TEInterpSound.sound (gjeqcx L.1 L'.1) (same-context G L L') ;
+   } ;
+
+  -- The common meaning of an equation also realizes a lift of each side.
+  type-sides (G : Cx) (A A' : Tm) (L : GEqTy G A A') (v : TypeOver)
+      (p : Realizes (jeqty G A A') L v) :
+      ((X : GTy G A) * Realizes (jty G A) X v) * ((Y : GTy G A') * Realizes (jty G A') Y v) =
+    ((left,(p.1,p.2.1)),(right,(p.1,p.2.2)))
+   where {
+    pres : GPJ (gjeqty L.1 L.2.1 L.2.2.1) = gpresup (gjeqty L.1 L.2.1 L.2.2.1) L.2.2.2.1 ;
+    left : GTy G A = (L.1,(L.2.1,(pres.2.1,(L.2.2.2.2.1,L.2.2.2.2.2.1)))) ;
+    right : GTy G A' = (L.1,(L.2.2.1,(pres.2.2,(L.2.2.2.2.1,L.2.2.2.2.2.2)))) ;
+   } ;
+
+  term-sides (G : Cx) (a b A : Tm) (L : GEqTm G a b A) (v : TermOver)
+      (p : Realizes (jeqtm G a b A) L v) :
+      ((X : GTm G a A) * Realizes (jtm G a A) X v) * ((Y : GTm G b A) * Realizes (jtm G b A) Y v) =
+    ((left,(p.1,(p.2.1,p.2.2.1))),(right,(p.1,(p.2.1,p.2.2.2))))
+   where {
+    pres : GPJ (gjeqtm L.1 L.2.1 L.2.2.1 L.2.2.2.1) =
+      gpresup (gjeqtm L.1 L.2.1 L.2.2.1 L.2.2.2.1) L.2.2.2.2.1 ;
+    left : GTm G a A = (L.1,(L.2.1,(L.2.2.2.1,
+      (pres.2.2.1,(L.2.2.2.2.2.1,(L.2.2.2.2.2.2.1,L.2.2.2.2.2.2.2.2)))))) ;
+    right : GTm G b A = (L.1,(L.2.2.1,(L.2.2.2.1,
+      (pres.2.2.2,(L.2.2.2.2.2.1,(L.2.2.2.2.2.2.2.1,L.2.2.2.2.2.2.2.2)))))) ;
+   } ;
+
+  independent : (J : Jf) -> (L L' : Lift J) -> (v w : Value J) ->
+      Realizes J L v -> Realizes J L' w -> Id (Value J) v w = split {
+    jwf G -> contexts-independent G ;
+    jty G A -> types-independent G A ;
+    jtm G a A -> terms-independent G a A ;
+    jeqty G A A' -> \ L L' v w p q ->
+      compare-types G A v w (type-sides G A A' L v p).1 (type-sides G A A' L' w q).1 ;
+    jeqtm G a b A -> \ L L' v w p q ->
+      compare-terms G a A v w (term-sides G a b A L v p).1 (term-sides G a b A L' w q).1 }
+   where {
+    compare-types (G : Cx) (A : Tm) (v w : TypeOver)
+        (p : (L : GTy G A) * Realizes (jty G A) L v) (q : (L : GTy G A) * Realizes (jty G A) L w) :
+        Id TypeOver v w = types-independent G A p.1 q.1 v w p.2 q.2 ;
+    compare-terms (G : Cx) (a A : Tm) (v w : TermOver)
+        (p : (L : GTm G a A) * Realizes (jtm G a A) L v) (q : (L : GTm G a A) * Realizes (jtm G a A) L w) :
+        Id TermOver v w = terms-independent G a A p.1 q.1 v w p.2 q.2 ;
+   } ;
+
+  equal-types (G : Cx) (A A' : Tm) (h : RDer (jty G A)) (h' : RDer (jty G A'))
+      (e : RDer (jeqty G A A')) : Id TypeOver (value (jty G A) h) (value (jty G A') h') =
+    transH (types-independent G A v.1 sides.1.1 v.2.1 eq.2.1 v.2.2 sides.1.2)
+      (types-independent G A' sides.2.1 w.1 eq.2.1 w.2.1 sides.2.2 w.2.2)
+   where {
+    v : (L : GTy G A) * ((t : TypeOver) * Realizes (jty G A) L t) = semantics (jty G A) h ;
+    w : (L : GTy G A') * ((t : TypeOver) * Realizes (jty G A') L t) = semantics (jty G A') h' ;
+    eq : (L : GEqTy G A A') * ((t : TypeOver) * Realizes (jeqty G A A') L t) = semantics (jeqty G A A') e ;
+    sides : ((X : GTy G A) * Realizes (jty G A) X eq.2.1) * ((Y : GTy G A') * Realizes (jty G A') Y eq.2.1) =
+      type-sides G A A' eq.1 eq.2.1 eq.2.2 ;
+   } ;
+
+  equal-terms (G : Cx) (a b A : Tm) (h : RDer (jtm G a A)) (h' : RDer (jtm G b A))
+      (e : RDer (jeqtm G a b A)) : Id TermOver (value (jtm G a A) h) (value (jtm G b A) h') =
+    transH (terms-independent G a A v.1 sides.1.1 v.2.1 eq.2.1 v.2.2 sides.1.2)
+      (terms-independent G b A sides.2.1 w.1 eq.2.1 w.2.1 sides.2.2 w.2.2)
+   where {
+    v : (L : GTm G a A) * ((t : TermOver) * Realizes (jtm G a A) L t) = semantics (jtm G a A) h ;
+    w : (L : GTm G b A) * ((t : TermOver) * Realizes (jtm G b A) L t) = semantics (jtm G b A) h' ;
+    eq : (L : GEqTm G a b A) * ((t : TermOver) * Realizes (jeqtm G a b A) L t) = semantics (jeqtm G a b A) e ;
+    sides : ((X : GTm G a A) * Realizes (jtm G a A) X eq.2.1) * ((Y : GTm G b A) * Realizes (jtm G b A) Y eq.2.1) =
+      term-sides G a b A eq.1 eq.2.1 eq.2.2 ;
+   } ;
+} ;
