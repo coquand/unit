@@ -219,3 +219,66 @@ for equivalences: each piece of the composite is one J or split lemma, so this w
   hom action of structure-equality (FibreCategorySIPFixed eqind on hom families with
   funext/ua) and of Reindex on homs; not attempted. So the cokernel statement is about the
   moved arrow p_* u at the moved objects p_* M, p_* N, not literally about u~ : M~ -> N~.
+
+2026-11-26 [H] additive (Ab-enriched) structure + transport DONE. Three files (slot H in
+All.seg), check: `ok CategoryPreadditive 43 decl 0.07 s`, `ok SerreModulePreadditive 15 decl
+0.13 s`, `ok SerreQCohPreadditive 13 decl 0.01 s`; `segc sag/qcqs changed`: 532 modules,
+0 failed. No postulates, no new parameters.
+- `CategoryPreadditive[k]` (C : Category[k,k].Category): `record Preadditive[C]` {zero x y,
+  add x y f g, neg x y f, add-assoc, add-comm, add-zero, add-neg, comp-add-left
+  ((g + g') f = g f + g' f), comp-add-right (g (f + f') = g f + g f')}; `Lemmas[C,S]`:
+  `cancel` (h + h = h -> h = 0), `comp-zero-left`, `comp-zero-right`,
+  `zero-agrees z x y : CA.On[C.pre].Zeros[z].zero x y = S.zero x y` (z any zero object);
+  `record Biproduct[C,S,x,y]` {object, in1, in2, out1, out2, out1-in1, out2-in2, out2-in1,
+  out1-in2, sum (i1 p1 + i2 p2 = 1)}; `record Additive[C]` {preadditive, zero-object,
+  biproducts}; `transport`, `transport-additive` (subst). Propositionality of the laws
+  not stated as a lemma (only remarked: hom sets are sets).
+- `SerreModulePreadditive[l].Over[A,setA]`: `preadditive : CP.Preadditive[QE.Modules.category]`
+  (SerreBilinear.Hom zero-map/add-map/neg-map, laws by ext pointwise), `Bi[x,y].biproduct`
+  (SerreModuleAbelian.Pairs: first-in, second-in, Pa.first, Pa.second; sum by Pairs.decompose),
+  `additive : CP.Additive[QE.Modules.category]` (zero object SerreModuleAbelian.zero).
+- `SerreQCohPreadditive[l].Over[A,setA]`: `qcoh-preadditive`, `qcoh-additive` (transport along
+  QE.equality), `qcoh-abelian-full : IsAbelian QCoh.category * Preadditive[QCoh.category]`,
+  `qcoh-zero-agrees x y` (zero arrow of qcoh-abelian.zero = qcoh-preadditive.zero x y).
+- NOT done: arrow-level description of the transported addition (f~ + g~ = (f + g)~), same
+  missing hom action of `equality` as in [G].
+
+2026-11-26 [I] arrows of transport DONE. Three files (slot I in All.seg), check:
+`ok FibreCategorySIPArrows 84 decl 0.13 s`, `ok FibreCategoryTransportArrows 65 decl
+0.11 s`, `ok SerreQCohArrows 28 decl 0.33 s`; `segc sag/qcqs changed`: 535 modules,
+0 failed. No postulates, no new parameters. Route: direct computation through the SAME
+path `FibreCategorySIPTheorem.On[C,D,e].equality` (as G for objects), NOT an equivalence
+induction principle: each piece is one J/split lemma, and the two eqind's are handled by
+a predicate "Good" (the path moves f to e f) proved at the base case and carried through
+the J part and the subst part of eqind (no ua-beta needed). The induction principle with
+computation rule would need contractibility of (D, e) incl. the unit isos: not attempted.
+- `FibreCategorySIPArrows[l]`: `Arr X = (x y : X.ob) * X.hom x y`, `arr-along`, `arr-trans`,
+  `arr-eta`, `arr-eta-sym`, `hom-along` (subst in the hom family over Structure[O]),
+  `hom-trans`, `arr-const`, `hom-raw-eta-sym`, `hom-ops`; `FixedArrows[O,s]` (`Good`,
+  `base-good`, `J-good`, `subst-good`, `equal-good`: Fixed.equal moves f to e f);
+  `ReindexArrows[A]` (`Good`, `base-arr`, `J-good`, `subst-good`, `equality-good`:
+  Reindex.equality sends (x,y,g) to (e x,e y,g)); `arrC` (subst of Arr over categories),
+  `arrC-trans`, `arrC-eta(-sym)`, `Sigma[..].sigma-arr`, `PrePath[..].arrows`;
+  THEOREM `On[C,D,e].arrows x y f : Id (Arr D.pre) (arrC C D T.equality (x,(y,f)))
+  (F x,(F y,e.forward.map x y f))` (`image x y f` = the right side).
+- `FibreCategoryTransportArrows[k]`: `Ops[D]` (`Cok[H].projection a` = (target, coker
+  object, projection) as an Arr; `Mon[S].tmap a b`, `associator`, `left-unitor`,
+  `right-unitor` as Arr's); `Along[C,D,p]`: `arrow` (arrC p (x,y,f) = (ob x, ob y, hom f)),
+  `Coker[H].projection`, `M[S].tmap/associator/left-unitor/right-unitor` (moved structure
+  at moved arrows/objects = moved value; J, refl); `Equivalent[C,D,e]`: `arrows`
+  ((ob x, ob y, hom f) = (F x, F y, F f)), `Coker[H].projection` (cokernel projection of
+  F f = F of the projection, in Arr D), `Coker[H].object` (cokernel object of F f, at
+  F x, F y, = F (coker f)), `M[S].tmap` (F f (x) F g = F (f (x) g) in Arr D),
+  `M[S].associator` (at (F x,F y,F z) = F a), `M[S].left-unitor`, `M[S].right-unitor`.
+- `SerreQCohArrows[l].Over[A,setA]` (about the EXISTING qcoh-cokernels, qcoh-monoidal):
+  `transport M N u : arrC .. QE.equality (M,(N,u)) = (M~, N~, u~)` (u~ = QE.on-arrows M N u);
+  `arrows M N u : (EQ.A.ob M, EQ.A.ob N, QO.moved M N u) = (M~, N~, u~)` (G's moved arrow is u~);
+  (a) `Coker[M,N,u].object : (QA.qcoh-cokernels.2 (on-objects M) (on-objects N) (on-arrows M N u)).1
+  = on-objects (coker u)`, `Coker[M,N,u].projection` : (N~, coker of u~, its projection) =
+  (N~, (coker u)~, (coker projection)~) in Arr;
+  (b) `tmap M N u M' N' v` : qcoh-monoidal tmap of u~, v~ = (u (x) v)~ (in Arr, ends
+  M~ (x) M'~ -> (M (x) M')~ etc.); `associator M N P` : qcoh-monoidal associator at
+  (M~,N~,P~) = a~; `left-unitor M`, `right-unitor M` : = l~, r~ (in Arr).
+- NOT done: a reusable equivalence-induction principle for univalent categories; the
+  braiding of qcoh-symmetric (same pattern as the associator, not written); "strict
+  monoidal" is stated only as these Arr-paths, not packaged as a monoidal-functor record.
