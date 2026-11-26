@@ -41,22 +41,27 @@ type-2 ptykes each form a set. [Monotonicity proof](https://github.com/coquand/d
 
 For a commutative ring `A`, the univalent category of `A`-modules is
 *equal* to the univalent category of quasi-coherent module sheaves on
-`Spec A` ([identification](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohEquivalence.seg)). The functor
+`Spec A` ([identification](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohEquivalence.seg)). The functor
 `M ↦ M~` is fully faithful, since `Γ(M~) = M`
-([proof](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreTildeFaithful.seg)). It is essentially surjective because
-`Γ(F)~ ≅ F` for every quasi-coherent `F` ([proof](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreTildeEssential.seg)).
+([proof](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreTildeFaithful.seg)). It is essentially surjective because
+`Γ(F)~ ≅ F` for every quasi-coherent `F` ([proof](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreTildeEssential.seg)).
 No choice is used: both categories are univalent, so a fully faithful,
 merely essentially surjective functor is already an equivalence.
 
 Structure then moves across the equality instead of being rebuilt on
-sheaves. `QCoh(Spec A)` is abelian ([transport](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohAbelian.seg)),
+sheaves. `QCoh(Spec A)` is abelian ([transport](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohAbelian.seg)),
+additive, with the abelian groups of maps and bilinear composition
+([transport](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohPreadditive.seg)),
 and it is symmetric monoidal, with pentagon, triangle and hexagon
-([transport](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohMonoidal.seg)). Kernels and cokernels are
+([transport](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohMonoidal.seg)). Kernels and cokernels are
 obtained without sheafification. The transported tensor sends `M~` and `N~`
-to `(M ⊗ N)~` and has unit `A~` ([objects](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/SerreQCohObjects.seg)).
+to `(M ⊗ N)~` and has unit `A~` ([objects](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohObjects.seg)).
+Transport sends a map `u` to `u~`, so the cokernel of `u~` is `(coker u)~`,
+and the tensor of maps, the associator and the unitors are the images of
+those of modules ([arrows](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/SerreQCohArrows.seg)).
 The development assumes univalence and replacement, and checks with the
-checker on the `core-abstraction` branch (`segc sag/qcqs`, 529 modules).
-[Plan and status](https://github.com/coquand/unit/blob/2a124182/sag/qcqs/PLAN-QCOH-UA.md)
+checker on the `core-abstraction` branch (`segc sag/qcqs`, 535 modules).
+[Plan and status](https://github.com/coquand/unit/blob/0b2e95a8/sag/qcqs/PLAN-QCOH-UA.md)
 
 ### Scott domains and definitional inversion
 
