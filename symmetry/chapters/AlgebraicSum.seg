@@ -1,0 +1,73 @@
+-- Section 8.6. Ordinary group coproducts in the base segment.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Sum (G H : Group[l].Grp) {
+  module R = GroupRelations[l].Over[G,H] ; open R ;
+  A : U l = Q.Q ;
+  inc : Term -> A = Q.inc ;
+  module At (x : Term) {
+    module M = Q.Descend[A,Q.set,\ y -> inc (product x y),\ a b h -> Q.relates _ _ (mult x x a b (rr x) h)] ;
+  } ;
+  respects (x y : Term) (h : Rel x y) : Id (A -> A) At[x].M.map At[y].M.map =
+    FL.funext A (\ a -> A) _ _ (Q.induction @l (\ a -> Id A (At[x].M.map a) (At[y].M.map a)) (\ a -> Q.set _ _)
+      (\ z -> transH (At[x].M.beta z) (transH (Q.relates _ _ (mult x y z z h (rr z))) (symH (At[y].M.beta z))))) ;
+  module M = Q.Descend[A -> A,FL.isSet-Pi A (\ a -> A) (\ a -> Q.set),\ x -> At[x].M.map,respects] ;
+  mul : A -> A -> A = M.map ;
+  mb (x y : Term) : Id A (mul (inc x) (inc y)) (inc (product x y)) =
+    transH (happly A (\ a -> A) _ _ (M.beta x) (inc y)) (At[x].M.beta y) ;
+  module I = Q.Descend[A,Q.set,\ x -> inc (inverse x),\ a b h -> Q.relates _ _ (neg a b h)] ;
+  at-mul (x y z : Term) : Id A (mul (mul (inc x) (inc y)) (inc z)) (mul (inc x) (mul (inc y) (inc z))) =
+    transH (apH (\ a -> mul a (inc z)) (mb x y)) (transH (mb (product x y) z)
+      (transH (law (assoc x y z)) (transH (symH (mb x (product y z))) (apH (mul (inc x)) (symH (mb y z)))))) ;
+  all2 (P : A -> A -> U l) (p : (a b : A) -> isProp (P a b))
+    (b : (x y : Term) -> P (inc x) (inc y)) : (a c : A) -> P a c =
+    Q.induction @l (\ a -> (c : A) -> P a c) (\ a -> FL.isProp-Pi A (P a) (p a))
+      (\ x -> Q.induction @l (P (inc x)) (p (inc x)) (b x)) ;
+  associative (a b c : A) : Id A (mul (mul a b) c) (mul a (mul b c)) =
+    all2 (\ x y -> Id A (mul (mul x y) c) (mul x (mul y c))) (\ x y -> Q.set _ _)
+      (\ x y -> Q.induction @l (\ z -> Id A (mul (mul (inc x) (inc y)) z) (mul (inc x) (mul (inc y) z)))
+        (\ z -> Q.set _ _) (at-mul x y) c) a b ;
+  extend-law (f g : A -> A) (rep : (x : Term) -> Id A (f (inc x)) (g (inc x))) : (a : A) -> Id A (f a) (g a) =
+    Q.induction @l (\ a -> Id A (f a) (g a)) (\ a -> Q.set _ _) rep ;
+  group : Group[l].Grp = new Group[l].Grp[A,Q.set,inc one,mul,I.map,associative,
+    extend-law (mul (inc one)) (\ a -> a) (\ x -> transH (mb one x) (law (unit-l x))),
+    extend-law (\ a -> mul a (inc one)) (\ a -> a) (\ x -> transH (mb x one) (law (unit-r x))),
+    extend-law (\ a -> mul (I.map a) a) (\ a -> inc one) (\ x ->
+      transH (apH (\ z -> mul z (inc x)) (I.beta x)) (transH (mb (inverse x) x) (law (inv-l x)))),
+    extend-law (\ a -> mul a (I.map a)) (\ a -> inc one) (\ x ->
+      transH (apH (mul (inc x)) (I.beta x)) (transH (mb x (inverse x)) (law (inv-r x))))] ;
+  left-in : QGrp[l].GHom G group = (\ x -> inc (left x),\ x y -> transH (law (from-left x y)) (symH (mb (left x) (left y)))) ;
+  right-in : QGrp[l].GHom H group = (\ x -> inc (right x),\ x y -> transH (law (from-right x y)) (symH (mb (right x) (right y)))) ;
+  module Into (K : Group[l].Grp) {
+    Hom (J : Group[l].Grp) : U l = QGrp[l].GHom J K ;
+    pair : U l = Hom G * Hom H ;
+    restrict (h : Hom group) : pair =
+      ((\ x -> h.1 (left-in.1 x),\ x y -> transH (apH h.1 (left-in.2 x y)) (h.2 _ _)),
+       (\ x -> h.1 (right-in.1 x),\ x y -> transH (apH h.1 (right-in.2 x y)) (h.2 _ _))) ;
+    module Extend (v : pair) {
+      module D = Interpretation[K,v.1,v.2] ;
+      f : A -> K.G = D.Map.map ;
+      computation (x : Term) : Id K.G (f (inc x)) (D.value x) = D.Map.beta x ;
+      hom : Hom group = (f,all2 (\ a b -> Id K.G (f (mul a b)) (K.mul (f a) (f b))) (\ a b -> K.setG _ _)
+        (\ x y -> transH (apH f (mb x y)) (transH (computation (product x y))
+          (transH (apH (\ z -> K.mul z (D.value y)) (symH (computation x)))
+            (apH (K.mul (f (inc x))) (symH (computation y))))))) ;
+    } ;
+    hom-path (J : Group[l].Grp) (f g : Hom J) : ((x : J.G) -> Id K.G (f.1 x) (g.1 x)) -> Id (Hom J) f g =
+      GroupIdentity[l].hom-path J K f g ;
+    beta (v : pair) : Id pair (restrict Extend[v].hom) v =
+      trans pair _ (v.1,(restrict Extend[v].hom).2) _ (ap (Hom G) pair (\ a -> (a,(restrict Extend[v].hom).2)) _ _ (hom-path G _ v.1 (\ x -> Extend[v].computation (left x))))
+        (ap (Hom H) pair (\ b -> (v.1,b)) _ _ (hom-path H _ v.2 (\ y -> Extend[v].computation (right y)))) ;
+    module Unique (h : Hom group) {
+      module E = Extend[restrict h] ; module Laws = QGrp[l].GHomL[group,K,h] ;
+      agree : (x : Term) -> Id K.G (E.D.value x) (h.1 (inc x)) = split {
+        left x -> refl (h.1 (inc (left x))) ; right y -> refl (h.1 (inc (right y))) ; one -> symH Laws.hom-e ;
+        product x y | a b -> transH (apH (\ z -> K.mul z (E.D.value y)) a)
+          (transH (apH (K.mul (h.1 (inc x))) b) (transH (symH (h.2 (inc x) (inc y))) (apH h.1 (mb x y)))) ;
+        inverse x | a -> transH (apH K.inv a) (transH (symH (Laws.hom-inv (inc x))) (apH h.1 (I.beta x))) } ;
+      eta : Id (Hom group) E.hom h = hom-path group E.hom h
+        (Q.induction @l (\ q -> Id K.G (E.f q) (h.1 q)) (\ q -> K.setG _ _) (\ x -> transH (E.computation x) (agree x))) ;
+    } ;
+    universal : Equiv (Hom group) pair = (restrict,qinv _ _ restrict (\ v -> Extend[v].hom) beta (\ h -> Unique[h].eta)) ;
+  } ;
+} ;

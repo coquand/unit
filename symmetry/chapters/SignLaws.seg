@@ -1,0 +1,70 @@
+-- The multiplicative law for signs, and parity of a transposition factorization.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ;
+module Z = Z2[l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module C = SignComputation[l] ; module Big = Prelude[l+] ; module BP = Paths[l+] ;
+module Laws (X : U l) (sz : TwoElementSets[l].size X) {
+  module V = C.Bit[X,sz] ;
+  zero-at (x : X) : Id Bool (V.value (idEquiv X)) false = transH (V.at (idEquiv X) x) (V.D.same x x (refl x)) ;
+  inhabit : T.Trunc[X].carrier = TC.map (Equiv TwoElementSets[l].standard X) X (\ e -> e.1 none) sz ;
+  unit : Id Bool (V.value (idEquiv X)) false = TC.rec X @l _ (Z.bool-set _ _) zero-at inhabit ;
+  composite (e f g : Equiv X X) (h : (x : X) -> Id X (g.1 x) (f.1 (e.1 x))) : Id Bool (V.value g) (Z.xor (V.value e) (V.value f)) =
+    TC.rec X @l _ (Z.bool-set _ _) (\ x -> transH (V.at g x) (transH (apH (V.D.diff x) (h x))
+      (transH (V.D.triangle x (e.1 x) (f.1 (e.1 x))) (transH (apH (\ z -> Z.xor z (V.D.diff (e.1 x) (f.1 (e.1 x)))) (symH (V.at e x)))
+        (apH (Z.xor (V.value e)) (symH (V.at f (e.1 x)))))))) inhabit ;
+  module Odd (e : Equiv X X) (odd : Id Bool (V.value e) true) {
+    free (x : X) (p : Id X (e.1 x) x) : Empty = TruthValues[l].separate (transH (symH odd) (transH (V.at e x) (V.D.same x _ (symH p)))) ;
+    other (x : X) : Id X (V.A.other x) (e.1 x) = V.A.only x (e.1 x) (free x) ;
+  } ;
+} ;
+module Degree (n : Nat) {
+  module M = TranspositionSign[l].At[n] ; module K = M.K ; module E = K.S.At[K.A] ;
+  W : U l = K.S.O.orientation K.A ; module L = Laws[W,K.D.At[K.A].size] ;
+  module Move = C.Move[K.V,K.S.O.orientation,K.A] ;
+  loops : U l+ = Id K.V K.A K.A ;
+  unit : Id Bool (E.sign (refl K.A)) false = L.unit ;
+  comp (t : K.V) (p : Id K.V K.A t) (z : K.V) (q : Id K.V t z) (w : W) : Id (K.S.O.orientation z)
+    ((Move.equiv z (BP.transH p q)).1 w) ((C.Move[K.V,K.S.O.orientation,t].equiv z q).1 ((Move.equiv t p).1 w)) =
+    idJ K.V t (\ v r -> Id (K.S.O.orientation v) ((Move.equiv v (BP.transH p r)).1 w)
+      ((C.Move[K.V,K.S.O.orientation,t].equiv v r).1 ((Move.equiv t p).1 w))) (refl ((Move.equiv t p).1 w)) z q ;
+  multiply (p q : loops) : Id Bool (E.sign (BP.transH p q)) (Z.xor (E.sign p) (E.sign q)) =
+    L.composite (Move.equiv K.A p) (Move.equiv K.A q) (Move.equiv K.A (BP.transH p q)) (comp K.A p K.A q) ;
+  mark : U l = (d : M.pair) * (a : M.P.carrier d) * (b : M.P.carrier d) * (Id M.X a.1 b.1 -> Empty) ;
+  transposition (s : mark) : loops = M.Marked[s.1,s.2.1,s.2.2.1,s.2.2.2].E.loop ;
+  odd (s : mark) : Id Bool (E.sign (transposition s)) true = M.Marked[s.1,s.2.1,s.2.2.1,s.2.2.2].sign ;
+  list : U l = Ring[l].List mark ;
+  length : list -> Nat = split { nil -> zero ; cons s t | r -> suc r } ;
+  product : list -> loops = split { nil -> refl K.A ; cons s t | r -> BP.transH (transposition s) r } ;
+  parity : (t : list) -> Id Bool (E.sign (product t)) (Z.rhoN (length t)) = split {
+    nil -> unit ; cons s t | r -> transH (multiply (transposition s) (product t))
+      (transH (apH (\ b -> Z.xor b (E.sign (product t))) (odd s)) (apH not r)) } ;
+  independent (s t : list) (h : Id loops (product s) (product t)) : Id Bool (Z.rhoN (length s)) (Z.rhoN (length t)) =
+    transH (symH (parity s)) (transH (BP.apH E.sign h) (parity t)) ;
+  module Standard {
+    X : U l = K.X ;
+    -- The finite witness for the first two labels is transported only along
+    -- the proposition witnessing finiteness of the same underlying set.
+    module S = K.D.S ;
+    move : Id (FiniteSets[l].Finite X) S.finite (K.D.fin K.A) = FiniteSets[l].Universe.finite-prop X _ _ ;
+    pair : M.pair = (S.first-two,transH (symH (apH (\ t -> SignOrderings[l].Subsets[X,t].number S.first-two) move)) S.pair.2) ;
+    data-point : mark = (pair,(none,refl true),(some none,refl true),\ p -> Cardinality[l].Option[FinChoice[l].Fin (suc n)].apart none (symH p)) ;
+    generator : loops = transposition data-point ;
+    sign : Id Bool (E.sign generator) true = odd data-point ;
+  } ;
+  module Signed {
+    module H = HLevels[l+] ; module V = SignOrderings[l].Component[K.D.S.N] ;
+    conn : Connected[l+].isConn ChapterFour[l].two K.V = Deloop[l+].equiv-conn ChapterFour[l].two _ _
+      (Bijection[l+].inverse _ _ V.presentation) (UniverseChange[l,l+].connected ChapterFour[l].two _ V.G.group.connected) ;
+    module Family = ConnectedActions[l+].Family[K.V,K.A,conn,\ v -> K.S.O.orientation v] ;
+    module Flip = L.Odd[Move.equiv K.A Standard.generator,Standard.sign] ;
+    moves (t : K.V) (p : Id K.V K.A t) (w : W) : Id (K.S.O.orientation t)
+      (Big.subst K.V (\ v -> K.S.O.orientation v) K.A t p w) ((Move.equiv t p).1 w) =
+      idJ K.V K.A (\ z q -> Id (K.S.O.orientation z) (Big.subst K.V (\ v -> K.S.O.orientation v) K.A z q w) ((Move.equiv z q).1 w)) (refl w) t p ;
+    choose (x y : W) : Dec (Id W x y) -> Family.hits x y = split {
+      yes p -> (refl K.A,p) ; no k -> (Standard.generator,transH (moves K.A Standard.generator x)
+        (transH (symH (Flip.other x)) (L.V.A.only x y (\ q -> k (symH q))))) } ;
+    point (z : M.pair) : M.P.carrier z = K.least z ;
+    base : Family.total = (K.A,K.Par.Q.inc point) ;
+    connected : Connected[l+].isConn ChapterFour[l].two Family.total = Family.to-connected
+      (Truncation[l+].Trunc[W].inc base.2,\ x y -> Truncation[l+].Trunc[Family.hits x y].inc (choose x y (L.V.A.D.discrete x y))) ;
+  } ;
+} ;

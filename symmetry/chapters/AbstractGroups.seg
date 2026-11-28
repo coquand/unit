@@ -1,0 +1,543 @@
+-- Sections 7.2 and 7.3. Monoids, the book's type of abstract groups,
+-- isomorphisms, and abstract homomorphisms. Abstract groups are the
+-- records Group[l].Grp, which carry both unit laws and both inverse laws.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module Gp = Group[l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ; module HL = HLevels[l] ;
+module Big = Prelude[l+] ;
+
+-- Definition 7.2.1.
+record Monoid {
+  S : U l ;
+  setS : isSet S ;
+  e : S ;
+  mul : S -> S -> S ;
+  unitr (g : S) : Id S (mul g e) g ;
+  unitl (g : S) : Id S (mul e g) g ;
+  assoc (a b c : S) : Id S (mul a (mul b c)) (mul (mul a b) c) ;
+} ;
+
+-- Example 7.2.2. Lists under concatenation.
+module ListMonoid (X : U l) (sX : isSet X) {
+  module L = ListTabulation[l].Lists[X] ;
+  set : isSet L.list = HL.trunc-set L.list (L.truncated zero (HL.set-trunc X sX)) ;
+  right-unit : (xs : L.list) -> Id L.list (L.append xs nil) xs = split {
+    nil -> refl nil ; cons x xs | r -> apH (\ w -> cons x w) r } ;
+  lists : Monoid = new Monoid[L.list,set,nil,L.append,right-unit,\ xs -> refl xs,L.associative] ;
+} ;
+
+-- The underlying monoid of an abstract group.
+underlying-monoid (J : Gp.Grp) : Monoid =
+  new Monoid[J.G,J.setG,J.e,J.mul,J.unitr,J.unitl,\ a b c -> symH (J.assoc a b c)] ;
+
+-- The propositions named before Definition 7.2.3.
+UnitLaws (S : U l) (e : S) (m : S -> S -> S) : U l = (g : S) -> Id S (m g e) g * Id S (m e g) g ;
+AssocLaw (S : U l) (m : S -> S -> S) : U l = (a b c : S) -> Id S (m a (m b c)) (m (m a b) c) ;
+MonoidLaws (S : U l) (e : S) (m : S -> S -> S) : U l = isSet S * UnitLaws S e m * AssocLaw S m ;
+InverseLaw (S : U l) (e : S) (m : S -> S -> S) (i : S -> S) : U l = (g : S) -> Id S (m g (i g)) e ;
+GroupLaws (S : U l) (e : S) (m : S -> S -> S) (i : S -> S) : U l = MonoidLaws S e m * InverseLaw S e m i ;
+
+module LawProps (S : U l) (e : S) (m : S -> S -> S) (i : S -> S) {
+  module On (s : isSet S) {
+    unit-prop : isProp (UnitLaws S e m) = FL.isProp-Pi S (\ g -> Id S (m g e) g * Id S (m e g) g)
+      (\ g -> isProp-Sigma (Id S (m g e) g) (\ p -> Id S (m e g) g) (s _ _) (\ p -> s _ _)) ;
+    assoc-prop : isProp (AssocLaw S m) = FL.isProp-Pi S (\ a -> (b c : S) -> Id S (m a (m b c)) (m (m a b) c))
+      (\ a -> FL.isProp-Pi S (\ b -> (c : S) -> Id S (m a (m b c)) (m (m a b) c))
+        (\ b -> FL.isProp-Pi S (\ c -> Id S (m a (m b c)) (m (m a b) c)) (\ c -> s _ _))) ;
+    inverse-prop : isProp (InverseLaw S e m i) = FL.isProp-Pi S (\ g -> Id S (m g (i g)) e) (\ g -> s _ _) ;
+  } ;
+  monoid-laws : isProp (MonoidLaws S e m) = isProp-Sigma (isSet S) (\ s -> UnitLaws S e m * AssocLaw S m)
+    (Torsor[l].isProp-isSet S) (\ s -> isProp-Sigma (UnitLaws S e m) (\ u -> AssocLaw S m) On[s].unit-prop (\ u -> On[s].assoc-prop)) ;
+  group-laws : isProp (GroupLaws S e m i) = isProp-Sigma (MonoidLaws S e m) (\ w -> InverseLaw S e m i)
+    monoid-laws (\ w -> On[w.1].inverse-prop) ;
+} ;
+
+-- Definition 7.2.3.
+BookGroup : U l+ = (S : U l) * (e : S) * (m : S -> S -> S) * (i : S -> S) * GroupLaws S e m i ;
+
+-- Lemma 7.2.5. With mere right inverses, each fibre of left multiplication
+-- over the unit is contractible, so there is a unique inverse operation.
+module Inverses (S : U l) (s : isSet S) (e : S) (m : S -> S -> S)
+  (ru : (g : S) -> Id S (m g e) g) (lu : (g : S) -> Id S (m e g) g)
+  (asc : (a b c : S) -> Id S (m a (m b c)) (m (m a b) c))
+  (minv : (g : S) -> Tr.Trunc[(h : S) * Id S e (m g h)].carrier) {
+  Fibre (g : S) : U l = (h : S) * Id S e (m g h) ;
+  left-of-right (g h : S) (r : Id S e (m g h)) : Id S (m h g) e =
+    TC.rec (Fibre h) @l (Id S (m h g) e) (s _ _) (\ w ->
+      transH (apH (m h) (symH (calc S {
+        w.1 =< symH (lu w.1) > m e w.1
+          =< apH (\ z -> m z w.1) r > m (m g h) w.1
+          =< symH (asc g h w.1) > m g (m h w.1)
+          =< apH (m g) (symH w.2) > m g e
+          =< ru g > g }))) (symH w.2)) (minv h) ;
+  contractible (g : S) : FunExtUA[l].isContr (Fibre g) =
+    TC.rec (Fibre g) @l (FunExtUA[l].isContr (Fibre g)) (HL.trunc-prop zero (Fibre g)) (\ w ->
+      (w,\ v -> Sigma-eq S (\ h -> Id S e (m g h)) w.1 v.1 w.2 v.2 (calc S {
+        w.1 =< symH (ru w.1) > m w.1 e
+          =< apH (m w.1) v.2 > m w.1 (m g v.1)
+          =< asc w.1 g v.1 > m (m w.1 g) v.1
+          =< apH (\ z -> m z v.1) (left-of-right g w.1 w.2) > m e v.1
+          =< lu v.1 > v.1 }) (s _ _))) (minv g) ;
+  Operation : U l = (i : S -> S) * ((g : S) -> Id S e (m g (i g))) ;
+  unique : FunExtUA[l].isContr Operation = HL.retract-contr Operation ((g : S) -> Fibre g)
+    (\ w g -> (w.1 g,w.2 g)) (\ f -> (\ g -> (f g).1,\ g -> (f g).2)) (\ w -> refl w)
+    (HL.weak-funext S Fibre contractible) ;
+} ;
+
+-- Facts about inverses, including Exercise 7.2.12.
+module Facts (J : Gp.Grp) {
+  open J ;
+  module GL = Gp.GrpL[J] ;
+  inv-unique (g h : G) (r : Id G (mul g h) e) : Id G h (inv g) = calc G {
+    h =< symH (GL.cancl g h) > mul (inv g) (mul g h)
+      =< apH (mul (inv g)) r > mul (inv g) e
+      =< unitr (inv g) > inv g } ;
+  -- Exercise 7.2.12.
+  left-inverse (g : G) : Id G e (mul (inv g) g) = symH (invl g) ;
+  inv-inv (g : G) : Id G g (inv (inv g)) = inv-unique (inv g) g (invl g) ;
+  inv-e : Id G e (inv e) = inv-unique e e (unitr e) ;
+  inv-mul (a b : G) : Id G (inv (mul a b)) (mul (inv b) (inv a)) = symH (inv-unique (mul a b) (mul (inv b) (inv a)) (calc G {
+    mul (mul a b) (mul (inv b) (inv a)) =< symH (assoc (mul a b) (inv b) (inv a)) > mul (mul (mul a b) (inv b)) (inv a)
+      =< apH (\ z -> mul z (inv a)) (GL.cancr' b a) > mul a (inv a)
+      =< invr a > e })) ;
+  cancel-l (a b c : G) (r : Id G (mul a b) (mul a c)) : Id G b c =
+    transH (symH (GL.cancl a b)) (transH (apH (mul (inv a)) r) (GL.cancl a c)) ;
+  cancel-r (a b c : G) (r : Id G (mul b a) (mul c a)) : Id G b c =
+    transH (symH (GL.cancr' a b)) (transH (apH (\ z -> mul z (inv a)) r) (GL.cancr' a c)) ;
+  inv-equiv : Equiv G G = (inv,qinv G G inv inv (\ g -> symH (inv-inv g)) (\ g -> symH (inv-inv g))) ;
+} ;
+
+-- Definition 7.2.3 compared with the records: the book uses only the right
+-- inverse law, and the left one follows by Lemma 7.2.5.
+module FromBook (B : BookGroup) {
+  S : U l = B.1 ; e : S = B.2.1 ; m : S -> S -> S = B.2.2.1 ; i : S -> S = B.2.2.2.1 ;
+  laws : GroupLaws S e m i = B.2.2.2.2 ;
+  module I = Inverses[S,laws.1.1,e,m,\ g -> (laws.1.2.1 g).1,\ g -> (laws.1.2.1 g).2,laws.1.2.2,
+    \ g -> Tr.Trunc[(h : S) * Id S e (m g h)].inc (i g,symH (laws.2 g))] ;
+  grp : Gp.Grp = new Gp.Grp[S,laws.1.1,e,m,i,\ x y z -> symH (laws.1.2.2 x y z),\ g -> (laws.1.2.1 g).2,
+    \ g -> (laws.1.2.1 g).1,\ g -> I.left-of-right g (i g) (symH (laws.2 g)),laws.2] ;
+} ;
+to-book (J : Gp.Grp) : BookGroup = (J.G,J.e,J.mul,J.inv,(J.setG,\ g -> (J.unitr g,J.unitl g),
+  \ a b c -> symH (J.assoc a b c)),J.invr) ;
+from-book (B : BookGroup) : Gp.Grp = FromBook[B].grp ;
+book-equiv : Big.Equiv Gp.Grp BookGroup = (to-book,Big.qinv Gp.Grp BookGroup to-book from-book
+  (\ B -> Big.ap (GroupLaws B.1 B.2.1 B.2.2.1 B.2.2.2.1) BookGroup (\ w -> (B.1,B.2.1,B.2.2.1,B.2.2.2.1,w)) _ _
+    (LawProps[B.1,B.2.1,B.2.2.1,B.2.2.2.1].group-laws _ _))
+  (\ J -> GroupIdentity[l].abstract-path (from-book (to-book J)) J (idEquiv J.G) (\ x y -> refl (J.mul x y)))) ;
+
+-- Remark 7.2.7. Isomorphisms of abstract groups, and the identification
+-- obtained from one.
+Preserves (J K : Gp.Grp) (f : J.G -> K.G) : U l = (x y : J.G) -> Id K.G (f (J.mul x y)) (K.mul (f x) (f y)) ;
+preserves-prop (J K : Gp.Grp) (f : J.G -> K.G) : isProp (Preserves J K f) =
+  FL.isProp-Pi J.G (\ x -> (y : J.G) -> Id K.G (f (J.mul x y)) (K.mul (f x) (f y)))
+    (\ x -> FL.isProp-Pi J.G (\ y -> Id K.G (f (J.mul x y)) (K.mul (f x) (f y))) (\ y -> K.setG _ _)) ;
+Iso (J K : Gp.Grp) : U l = (f : Equiv J.G K.G) * Preserves J K f.1 ;
+id-iso (J : Gp.Grp) : Iso J J = (idEquiv J.G,\ x y -> refl (J.mul x y)) ;
+iso-path (J K : Gp.Grp) (f : Iso J K) : Id Gp.Grp J K = GroupIdentity[l].abstract-path J K f.1 f.2 ;
+idtoiso (J K : Gp.Grp) (p : Id Gp.Grp J K) : Iso J K = Big.subst Gp.Grp (\ K' -> Iso J K') J K p (id-iso J) ;
+iso-set (J K : Gp.Grp) : isSet (Iso J K) = isSet-Sigma (Equiv J.G K.G) (\ f -> Preserves J K f.1)
+  (isSet-Sigma (J.G -> K.G) (isEquiv J.G K.G) (FL.isSet-Pi J.G (\ x -> K.G) (\ x -> K.setG))
+    (\ f -> prop-to-set (isEquiv J.G K.G f) (EquivProp[l].isEquiv-prop J.G K.G f)))
+  (\ f -> prop-to-set (Preserves J K f.1) (preserves-prop J K f.1)) ;
+
+-- The type of equivalences out of a type is contractible.
+equivalences-contr (A : U l) : FunExtUA[l+].isContr ((B : U l) * Equiv A B) =
+  HLevels[l+].retract-contr ((B : U l) * Equiv A B) ((B : U l) * Id (U l) A B)
+    (\ w -> (w.1,Axioms[l].UnivalenceLemmas[univ @l].ua A w.1 w.2))
+    (\ w -> (w.1,Axioms[l].idtoeqv A w.1 w.2))
+    (\ w -> Big.ap (Equiv A w.1) ((B : U l) * Equiv A B) (\ d -> (w.1,d)) _ _ ((univ @l A w.1).sec-eq w.2))
+    ((A,refl A),\ w -> idJ (U l) A (\ B p -> Id ((B : U l) * Id (U l) A B) (A,refl A) (B,p)) (refl (A,refl A)) w.1 w.2) ;
+
+-- Exercise 7.2.8. Identifications of abstract groups are isomorphisms. The
+-- total space of isomorphisms out of J is a retract of a type built from
+-- the contractible type of equivalences out of J.G.
+module Identity (J : Gp.Grp) {
+  module GI = GroupIdentity[l] ;
+  A : U l = J.G ;
+  Law (B : U l) (d : Equiv A B) (t : GI.structure B) : U l =
+    (x y : A) -> Id B (d.1 (J.mul x y)) (t.1.2.1 (d.1 x) (d.1 y)) ;
+  EqBase : U l+ = (B : U l) * Equiv A B ;
+  IsoFibre (w : EqBase) : U l = (t : GI.structure w.1) * Law w.1 w.2 t ;
+  IsoTotal : U l+ = (w : EqBase) * IsoFibre w ;
+  Isos : U l+ = (K : Gp.Grp) * Iso J K ;
+  out (k : Isos) : IsoTotal = ((k.1.G,k.2.1),GI.unpack k.1,k.2.2) ;
+  back (w : IsoTotal) : Isos = (GI.pack w.1.1 w.2.1,w.1.2,w.2.2) ;
+  round : (K : Gp.Grp) (f : Iso J K) -> Id Isos (back (out (K,f))) (K,f) = split {
+    Grp G s e m i a u v p q -> \ f -> refl (new Gp.Grp[G,s,e,m,i,a,u,v,p,q],f) } ;
+  base-contr : FunExtUA[l+].isContr EqBase = equivalences-contr A ;
+  law-prop (t : GI.structure A) : isProp (Law A (idEquiv A) t) =
+    FL.isProp-Pi A (\ x -> (y : A) -> Id A (J.mul x y) (t.1.2.1 x y))
+      (\ x -> FL.isProp-Pi A (\ y -> Id A (J.mul x y) (t.1.2.1 x y)) (\ y -> J.setG _ _)) ;
+  fibre-contr : FunExtUA[l].isContr (IsoFibre (A,idEquiv A)) =
+    ((GI.unpack J,\ x y -> refl (J.mul x y)),\ w ->
+      Sigma-eq (GI.structure A) (Law A (idEquiv A)) (GI.unpack J) w.1 (\ x y -> refl (J.mul x y)) w.2
+        (Sigma-eq (GI.ops A) (\ o -> GI.On[A,o].laws) _ _ _ _ GI.Compare[A,GI.unpack J].Equal[w.1,w.2].op-path
+          (GI.On[A,w.1.1].prop))
+        (law-prop w.1)) ;
+  total-contr : FunExtUA[l+].isContr IsoTotal = HLevels[l+].trunc-Sigma-contr zero EqBase (\ w -> IsoFibre w) base-contr
+    (Big.subst EqBase (\ w -> FunExtUA[l+].isContr (IsoFibre w)) (A,idEquiv A) base-contr.1 (base-contr.2 (A,idEquiv A)) fibre-contr) ;
+  isos-contr : FunExtUA[l+].isContr Isos = HLevels[l+].retract-contr Isos IsoTotal out back (\ k -> round k.1 k.2) total-contr ;
+  module F = FundThm[l+].FT[Gp.Grp,J,\ K -> Iso J K,id-iso J,isos-contr] ;
+  equivalence (K : Gp.Grp) : Big.Equiv (Id Gp.Grp J K) (Iso J K) = (idtoiso J K,F.equiv K) ;
+} ;
+
+-- Exercise 7.2.13 for groups: the type of abstract groups is a groupoid.
+groups-groupoid : HLevels[l+].isTrunc (suc (suc (suc zero))) Gp.Grp = \ J K ->
+  HLevels[l+].equiv-trunc (suc (suc zero)) (Id Gp.Grp J K) (Iso J K) (Identity[J].equivalence K)
+    (HLevels[l+].set-trunc (Iso J K) (iso-set J K)) ;
+
+-- Exercise 7.2.9. The opposite group, and the inverse as an isomorphism.
+op (J : Gp.Grp) : Gp.Grp = new Gp.Grp[J.G,J.setG,J.e,\ a b -> J.mul b a,J.inv,
+  \ x y z -> symH (J.assoc z y x),J.unitr,J.unitl,J.invr,J.invl] ;
+op-iso (J : Gp.Grp) : Iso J (op J) = (Facts[J].inv-equiv,Facts[J].inv-mul) ;
+op-path (J : Gp.Grp) : Id Gp.Grp J (op J) = iso-path J (op J) (op-iso J) ;
+
+-- Exercise 7.2.10. Conjugation preserves the structure and is an equivalence.
+module Conjugation (J : Gp.Grp) {
+  open J ; module GL = Gp.GrpL[J] ; module FJ = Facts[J] ;
+  conj (g s : G) : G = mul (mul g s) (inv g) ;
+  preserves (g : G) : Preserves J J (conj g) = \ s t -> symH (calc G {
+    mul (conj g s) (conj g t) =< assoc (mul g s) (inv g) (conj g t) > mul (mul g s) (mul (inv g) (conj g t))
+      =< apH (mul (mul g s)) (symH (assoc (inv g) (mul g t) (inv g))) > mul (mul g s) (mul (mul (inv g) (mul g t)) (inv g))
+      =< apH (\ z -> mul (mul g s) (mul z (inv g))) (GL.cancl g t) > mul (mul g s) (mul t (inv g))
+      =< symH (assoc (mul g s) t (inv g)) > mul (mul (mul g s) t) (inv g)
+      =< apH (\ z -> mul z (inv g)) (assoc g s t) > conj g (mul s t) }) ;
+  comp (a b y : G) : Id G (conj a (conj b y)) (conj (mul a b) y) = symH (calc G {
+    conj (mul a b) y =< apH (mul (mul (mul a b) y)) (FJ.inv-mul a b) > mul (mul (mul a b) y) (mul (inv b) (inv a))
+      =< symH (assoc (mul (mul a b) y) (inv b) (inv a)) > mul (mul (mul (mul a b) y) (inv b)) (inv a)
+      =< apH (\ z -> mul (mul z (inv b)) (inv a)) (assoc a b y) > mul (mul (mul a (mul b y)) (inv b)) (inv a)
+      =< apH (\ z -> mul z (inv a)) (assoc a (mul b y) (inv b)) > conj a (conj b y) }) ;
+  unit (y : G) : Id G (conj e y) y = calc G {
+    conj e y =< apH (mul (mul e y)) (symH FJ.inv-e) > mul (mul e y) e
+      =< unitr (mul e y) > mul e y =< unitl y > y } ;
+  back (g y : G) : Id G (conj (inv g) (conj g y)) y = transH (comp (inv g) g y) (transH (apH (\ z -> conj z y) (invl g)) (unit y)) ;
+  forth (g y : G) : Id G (conj g (conj (inv g) y)) y = transH (comp g (inv g) y) (transH (apH (\ z -> conj z y) (invr g)) (unit y)) ;
+  iso (g : G) : Iso J J = ((conj g,qinv G G (conj g) (conj (inv g)) (forth g) (back g)),preserves g) ;
+  path (g : G) : Id Gp.Grp J J = iso-path J J (iso g) ;
+} ;
+
+-- Exercise 7.2.13 for monoids. Isomorphisms of monoids preserve the unit
+-- and the multiplication, and identifications of monoids are isomorphisms.
+module MonoidStructure (A : U l) {
+  mops : U l = A * (A -> A -> A) ;
+  module On (o : mops) {
+    e : A = o.1 ; m : A -> A -> A = o.2 ;
+    laws : U l = isSet A * ((g : A) -> Id A (m g e) g) * ((g : A) -> Id A (m e g) g) *
+      ((a b c : A) -> Id A (m a (m b c)) (m (m a b) c)) ;
+    module LP = LawProps[A,e,m,\ x -> x] ;
+    prop : isProp laws = isProp-Sigma (isSet A) (\ s -> ((g : A) -> Id A (m g e) g) * ((g : A) -> Id A (m e g) g) *
+        ((a b c : A) -> Id A (m a (m b c)) (m (m a b) c))) (Torsor[l].isProp-isSet A) (\ s ->
+      isProp-Sigma ((g : A) -> Id A (m g e) g) (\ u -> ((g : A) -> Id A (m e g) g) * ((a b c : A) -> Id A (m a (m b c)) (m (m a b) c)))
+        (FL.isProp-Pi A (\ g -> Id A (m g e) g) (\ g -> s _ _)) (\ u ->
+      isProp-Sigma ((g : A) -> Id A (m e g) g) (\ v -> (a b c : A) -> Id A (m a (m b c)) (m (m a b) c))
+        (FL.isProp-Pi A (\ g -> Id A (m e g) g) (\ g -> s _ _)) (\ v -> LP.On[s].assoc-prop))) ;
+  } ;
+  structure : U l = (o : mops) * On[o].laws ;
+} ;
+mpack (A : U l) (t : MonoidStructure[A].structure) : Monoid =
+  new Monoid[A,t.2.1,t.1.1,t.1.2,t.2.2.1,t.2.2.2.1,t.2.2.2.2] ;
+munpack (M : Monoid) : MonoidStructure[M.S].structure = ((M.e,M.mul),M.setS,M.unitr,M.unitl,M.assoc) ;
+MPreserves (M N : Monoid) (f : M.S -> N.S) : U l =
+  Id N.S (f M.e) N.e * ((x y : M.S) -> Id N.S (f (M.mul x y)) (N.mul (f x) (f y))) ;
+MIso (M N : Monoid) : U l = (f : Equiv M.S N.S) * MPreserves M N f.1 ;
+id-miso (M : Monoid) : MIso M M = (idEquiv M.S,refl M.e,\ x y -> refl (M.mul x y)) ;
+miso-set (M N : Monoid) : isSet (MIso M N) = isSet-Sigma (Equiv M.S N.S) (\ f -> MPreserves M N f.1)
+  (isSet-Sigma (M.S -> N.S) (isEquiv M.S N.S) (FL.isSet-Pi M.S (\ x -> N.S) (\ x -> N.setS))
+    (\ f -> prop-to-set (isEquiv M.S N.S f) (EquivProp[l].isEquiv-prop M.S N.S f)))
+  (\ f -> prop-to-set (MPreserves M N f.1) (isProp-Sigma (Id N.S (f.1 M.e) N.e)
+    (\ u -> (x y : M.S) -> Id N.S (f.1 (M.mul x y)) (N.mul (f.1 x) (f.1 y))) (N.setS _ _) (\ u ->
+    FL.isProp-Pi M.S (\ x -> (y : M.S) -> Id N.S (f.1 (M.mul x y)) (N.mul (f.1 x) (f.1 y)))
+      (\ x -> FL.isProp-Pi M.S (\ y -> Id N.S (f.1 (M.mul x y)) (N.mul (f.1 x) (f.1 y))) (\ y -> N.setS _ _))))) ;
+module MonoidIdentity (M : Monoid) {
+  A : U l = M.S ;
+  Law (B : U l) (d : Equiv A B) (t : MonoidStructure[B].structure) : U l =
+    Id B (d.1 M.e) t.1.1 * ((x y : A) -> Id B (d.1 (M.mul x y)) (t.1.2 (d.1 x) (d.1 y))) ;
+  MBase : U l+ = (B : U l) * Equiv A B ;
+  MFibre (w : MBase) : U l = (t : MonoidStructure[w.1].structure) * Law w.1 w.2 t ;
+  MTotal : U l+ = (w : MBase) * MFibre w ;
+  MIsos : U l+ = (N : Monoid) * MIso M N ;
+  out (k : MIsos) : MTotal = ((k.1.S,k.2.1),munpack k.1,k.2.2) ;
+  back (w : MTotal) : MIsos = (mpack w.1.1 w.2.1,w.1.2,w.2.2) ;
+  round : (N : Monoid) (f : MIso M N) -> Id MIsos (back (out (N,f))) (N,f) = split {
+    Monoid S s e m u v a -> \ f -> refl (new Monoid[S,s,e,m,u,v,a],f) } ;
+  base-contr : FunExtUA[l+].isContr MBase = equivalences-contr A ;
+  law-prop (t : MonoidStructure[A].structure) : isProp (Law A (idEquiv A) t) = isProp-Sigma (Id A M.e t.1.1)
+    (\ u -> (x y : A) -> Id A (M.mul x y) (t.1.2 x y)) (M.setS _ _) (\ u ->
+    FL.isProp-Pi A (\ x -> (y : A) -> Id A (M.mul x y) (t.1.2 x y))
+      (\ x -> FL.isProp-Pi A (\ y -> Id A (M.mul x y) (t.1.2 x y)) (\ y -> M.setS _ _))) ;
+  mops-path (t : MonoidStructure[A].structure) (w : Law A (idEquiv A) t) : Id MonoidStructure[A].mops (M.e,M.mul) t.1 =
+    GroupIdentity[l].pairs A (A -> A -> A) M.e t.1.1 M.mul t.1.2 w.1
+      (FL.funext A (\ x -> A -> A) M.mul t.1.2 (\ x -> FL.funext A (\ y -> A) (M.mul x) (t.1.2 x) (w.2 x))) ;
+  fibre-contr : FunExtUA[l].isContr (MFibre (A,idEquiv A)) =
+    ((munpack M,refl M.e,\ x y -> refl (M.mul x y)),\ w ->
+      Sigma-eq MonoidStructure[A].structure (Law A (idEquiv A)) (munpack M) w.1 (refl M.e,\ x y -> refl (M.mul x y)) w.2
+        (Sigma-eq MonoidStructure[A].mops (\ o -> MonoidStructure[A].On[o].laws) _ _ _ _ (mops-path w.1 w.2) (MonoidStructure[A].On[w.1.1].prop))
+        (law-prop w.1)) ;
+  total-contr : FunExtUA[l+].isContr MTotal = HLevels[l+].trunc-Sigma-contr zero MBase (\ w -> MFibre w) base-contr
+    (Big.subst MBase (\ w -> FunExtUA[l+].isContr (MFibre w)) (A,idEquiv A) base-contr.1 (base-contr.2 (A,idEquiv A)) fibre-contr) ;
+  isos-contr : FunExtUA[l+].isContr MIsos = HLevels[l+].retract-contr MIsos MTotal out back (\ k -> round k.1 k.2) total-contr ;
+  module F = FundThm[l+].FT[Monoid,M,\ N -> MIso M N,id-miso M,isos-contr] ;
+  equivalence (N : Monoid) : Big.Equiv (Id Monoid M N) (MIso M N) = (\ p -> F.tr N p,F.equiv N) ;
+} ;
+monoids-groupoid : HLevels[l+].isTrunc (suc (suc (suc zero))) Monoid = \ M N ->
+  HLevels[l+].equiv-trunc (suc (suc zero)) (Id Monoid M N) (MIso M N) (MonoidIdentity[M].equivalence N)
+    (HLevels[l+].set-trunc (MIso M N) (miso-set M N)) ;
+
+-- Helpers for the two leaner definitions.
+both-prop (P Q : U l) (p : isProp P) (q : isProp Q) : isProp (P * Q) = isProp-Sigma P (\ x -> Q) p (\ x -> q) ;
+pi2-prop (S : U l) (s : isSet S) (f g : S -> S -> S) : isProp ((a b : S) -> Id S (f a b) (g a b)) =
+  FL.isProp-Pi S (\ a -> (b : S) -> Id S (f a b) (g a b)) (\ a -> FL.isProp-Pi S (\ b -> Id S (f a b) (g a b)) (\ b -> s _ _)) ;
+pi3-prop (S : U l) (s : isSet S) (f g : S -> S -> S -> S) : isProp ((a b c : S) -> Id S (f a b c) (g a b c)) =
+  FL.isProp-Pi S (\ a -> (b c : S) -> Id S (f a b c) (g a b c)) (\ a -> pi2-prop S s (f a) (g a)) ;
+pi1-prop (S : U l) (s : isSet S) (f g : S -> S) : isProp ((a : S) -> Id S (f a) (g a)) =
+  FL.isProp-Pi S (\ a -> Id S (f a) (g a)) (\ a -> s _ _) ;
+op-funext (S : U l) (f g : S -> S -> S) (h : (a b : S) -> Id S (f a b) (g a b)) : Id (S -> S -> S) f g =
+  FL.funext S (\ a -> S -> S) f g (\ a -> FL.funext S (\ b -> S) (f a) (g a) (h a)) ;
+
+-- Exercise 7.2.14. Sheargroups, with a bar = a * e.
+ShearLaws (S : U l) (e : S) (o : S -> S -> S) : U l = isSet S * ((a : S) -> Id S (o e a) a) *
+  ((a : S) -> Id S (o a a) e) * ((a b c : S) -> Id S (o c (o b a)) (o (o (o c (o b e)) e) a)) ;
+shear-laws-prop (S : U l) (e : S) (o : S -> S -> S) : isProp (ShearLaws S e o) =
+  isProp-Sigma (isSet S) (\ s -> ((a : S) -> Id S (o e a) a) * ((a : S) -> Id S (o a a) e) *
+      ((a b c : S) -> Id S (o c (o b a)) (o (o (o c (o b e)) e) a))) (Torsor[l].isProp-isSet S) (\ s ->
+    both-prop ((a : S) -> Id S (o e a) a) (((a : S) -> Id S (o a a) e) * ((a b c : S) -> Id S (o c (o b a)) (o (o (o c (o b e)) e) a)))
+      (pi1-prop S s (o e) (\ a -> a)) (both-prop ((a : S) -> Id S (o a a) e) ((a b c : S) -> Id S (o c (o b a)) (o (o (o c (o b e)) e) a))
+        (pi1-prop S s (\ a -> o a a) (\ a -> e)) (pi3-prop S s (\ a b c -> o c (o b a)) (\ a b c -> o (o (o c (o b e)) e) a)))) ;
+Shear : U l+ = (S : U l) * (e : S) * (o : S -> S -> S) * ShearLaws S e o ;
+shear-path (S : U l) (e : S) (o o' : S -> S -> S) (h : (a b : S) -> Id S (o a b) (o' a b))
+  (w : ShearLaws S e o) (w' : ShearLaws S e o') : Id Shear (S,e,o,w) (S,e,o',w') =
+  Big.ap ((f : S -> S -> S) * ShearLaws S e f) Shear (\ v -> (S,e,v.1,v.2)) (o,w) (o',w')
+    (Sigma-eq (S -> S -> S) (ShearLaws S e) o o' w w' (op-funext S o o' h) (shear-laws-prop S e o')) ;
+module FromShear (X : Shear) {
+  S : U l = X.1 ; e : S = X.2.1 ; o : S -> S -> S = X.2.2.1 ;
+  set : isSet S = X.2.2.2.1 ; left : (a : S) -> Id S (o e a) a = X.2.2.2.2.1 ;
+  self : (a : S) -> Id S (o a a) e = X.2.2.2.2.2.1 ;
+  shear : (a b c : S) -> Id S (o c (o b a)) (o (o (o c (o b e)) e) a) = X.2.2.2.2.2.2 ;
+  bar (a : S) : S = o a e ;
+  bar-e : Id S (bar e) e = left e ;
+  bar-bar (a : S) : Id S (bar (bar a)) a = calc S {
+    bar (bar a) =< apH (o (bar a)) (symH (self a)) > o (bar a) (o a a)
+      =< shear a a (bar a) > o (bar (o (bar a) (bar a))) a
+      =< apH (\ z -> o (bar z) a) (self (bar a)) > o (bar e) a
+      =< apH (\ z -> o z a) bar-e > o e a
+      =< left a > a } ;
+  mul (a b : S) : S = o (bar b) a ;
+  assoc (a b c : S) : Id S (mul (mul a b) c) (mul a (mul b c)) = calc S {
+    o (bar c) (o (bar b) a) =< shear a (bar b) (bar c) > o (bar (o (bar c) (bar (bar b)))) a
+      =< apH (\ z -> o (bar (o (bar c) z)) a) (bar-bar b) > o (bar (o (bar c) b)) a } ;
+  grp : Gp.Grp = new Gp.Grp[S,set,e,mul,bar,assoc,
+    bar-bar,
+    \ a -> transH (apH (\ z -> o z a) bar-e) (left a),
+    \ a -> self (bar a),
+    \ a -> transH (apH (\ z -> o z a) (bar-bar a)) (self a)] ;
+} ;
+module ToShear (J : Gp.Grp) {
+  open J ; module FJ = Facts[J] ;
+  star (a b : G) : G = mul b (inv a) ;
+  bar-eq (a : G) : Id G (star a e) (inv a) = unitl (inv a) ;
+  laws : ShearLaws G e star = (setG,\ a -> transH (apH (mul a) (symH FJ.inv-e)) (unitr a),invr,\ a b c -> symH (calc G {
+    mul a (inv (mul e (inv (mul (mul e (inv b)) (inv c)))))
+      =< apH (\ z -> mul a (inv z)) (unitl (inv (mul (mul e (inv b)) (inv c)))) > mul a (inv (inv (mul (mul e (inv b)) (inv c))))
+      =< apH (mul a) (symH (FJ.inv-inv (mul (mul e (inv b)) (inv c)))) > mul a (mul (mul e (inv b)) (inv c))
+      =< apH (\ z -> mul a (mul z (inv c))) (unitl (inv b)) > mul a (mul (inv b) (inv c))
+      =< symH (assoc a (inv b) (inv c)) > mul (mul a (inv b)) (inv c) })) ;
+  shear : Shear = (G,e,star,laws) ;
+} ;
+shear-equiv : Big.Equiv Gp.Grp Shear = (\ J -> ToShear[J].shear,Big.qinv Gp.Grp Shear (\ J -> ToShear[J].shear)
+  (\ X -> FromShear[X].grp)
+  (\ X -> Big.sym Shear X _ (shear-path X.1 X.2.1 X.2.2.1 _ (\ a b -> symH (apH (\ z -> X.2.2.1 z b) (FromShear[X].bar-bar a)))
+     X.2.2.2 (ToShear[FromShear[X].grp].laws)))
+  (\ J -> GroupIdentity[l].abstract-path (FromShear[ToShear[J].shear].grp) J (idEquiv J.G) (\ a b ->
+     apH (J.mul a) (transH (apH J.inv (J.unitl (J.inv b))) (symH (Facts[J].inv-inv b)))))) ;
+
+-- Exercise 7.2.15. Furstenberg groups. The unit is the constant value of
+-- a o a, which exists because the set is merely inhabited.
+FurstLaws (S : U l) (o : S -> S -> S) : U l = isSet S * Tr.Trunc[S].carrier *
+  ((a b c : S) -> Id S (o (o a c) (o b c)) (o a b)) * ((a c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier) ;
+furst-laws-prop (S : U l) (o : S -> S -> S) : isProp (FurstLaws S o) =
+  isProp-Sigma (isSet S) (\ s -> Tr.Trunc[S].carrier * ((a b c : S) -> Id S (o (o a c) (o b c)) (o a b)) *
+      ((a c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier)) (Torsor[l].isProp-isSet S) (\ s ->
+    both-prop Tr.Trunc[S].carrier (((a b c : S) -> Id S (o (o a c) (o b c)) (o a b)) *
+      ((a c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier)) Tr.Trunc[S].proposition
+      (both-prop ((a b c : S) -> Id S (o (o a c) (o b c)) (o a b)) ((a c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier)
+        (pi3-prop S s (\ a b c -> o (o a c) (o b c)) (\ a b c -> o a b))
+        (FL.isProp-Pi S (\ a -> (c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier) (\ a ->
+          FL.isProp-Pi S (\ c -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier) (\ c -> Tr.Trunc[(b : S) * Id S (o a b) c].proposition))))) ;
+Furstenberg : U l+ = (S : U l) * (o : S -> S -> S) * FurstLaws S o ;
+furst-path (S : U l) (o o' : S -> S -> S) (h : (a b : S) -> Id S (o a b) (o' a b))
+  (w : FurstLaws S o) (w' : FurstLaws S o') : Id Furstenberg (S,o,w) (S,o',w') =
+  Big.ap ((f : S -> S -> S) * FurstLaws S f) Furstenberg (\ v -> (S,v.1,v.2)) (o,w) (o',w')
+    (Sigma-eq (S -> S -> S) (FurstLaws S) o o' w w' (op-funext S o o' h) (furst-laws-prop S o')) ;
+module FromFurst (X : Furstenberg) {
+  S : U l = X.1 ; o : S -> S -> S = X.2.1 ; set : isSet S = X.2.2.1 ;
+  ne : Tr.Trunc[S].carrier = X.2.2.2.1 ;
+  shift : (a b c : S) -> Id S (o (o a c) (o b c)) (o a b) = X.2.2.2.2.1 ;
+  solve : (a c : S) -> Tr.Trunc[(b : S) * Id S (o a b) c].carrier = X.2.2.2.2.2 ;
+  Point : U l = (x : S) * ((a : S) -> Id S (o a a) x) ;
+  point-prop : isProp Point = \ u v -> Sigma-eq S (\ x -> (a : S) -> Id S (o a a) x) u.1 v.1 u.2 v.2
+    (transH (symH (u.2 v.1)) (v.2 v.1)) (pi1-prop S set (\ a -> o a a) (\ a -> v.1)) ;
+  const (a x : S) : Id S (o x x) (o a a) = TC.rec ((b : S) * Id S (o a b) x) @l (Id S (o x x) (o a a)) (set _ _)
+    (\ w -> transH (apH (\ z -> o z z) (symH w.2)) (shift a a w.1)) (solve a x) ;
+  point : Point = TC.rec S @l Point point-prop (\ s0 -> (o s0 s0,\ a -> const s0 a)) ne ;
+  e : S = point.1 ;
+  ee (x : S) : Id S (o x x) e = point.2 x ;
+  right-e (y : S) : Id S (o y e) y = TC.rec ((b : S) * Id S (o y b) y) @l (Id S (o y e) y) (set _ _) (\ w -> calc S {
+    o y e =< apH (\ z -> o z e) (symH w.2) > o (o y w.1) e
+      =< apH (o (o y w.1)) (symH (ee w.1)) > o (o y w.1) (o w.1 w.1)
+      =< shift y w.1 w.1 > o y w.1
+      =< w.2 > y }) (solve y y) ;
+  twice (b : S) : Id S (o e (o e b)) b = transH (apH (\ z -> o z (o e b)) (symH (ee b))) (transH (shift b e b) (right-e b)) ;
+  swap (x y : S) : Id S (o e (o x y)) (o y x) = transH (apH (\ z -> o z (o x y)) (symH (ee y))) (shift y x y) ;
+  mul (a b : S) : S = o a (o e b) ;
+  inv (b : S) : S = o e b ;
+  assoc (a b c : S) : Id S (mul (mul a b) c) (mul a (mul b c)) = transH (calc S {
+    o (o a (o e b)) (o e c)
+      =< apH (o (o a (o e b))) (symH (transH (shift (o e c) e b) (right-e (o e c)))) > o (o a (o e b)) (o (o (o e c) b) (o e b))
+      =< shift a (o (o e c) b) (o e b) > o a (o (o e c) b) }) (symH (apH (o a) (swap b (o e c)))) ;
+  grp : Gp.Grp = new Gp.Grp[S,set,e,mul,inv,assoc,twice,
+    \ a -> transH (apH (o a) (ee e)) (right-e a),
+    \ a -> ee (o e a),
+    \ a -> transH (apH (o a) (twice a)) (ee a)] ;
+} ;
+module ToFurst (J : Gp.Grp) {
+  open J ; module FJ = Facts[J] ; module GL = Gp.GrpL[J] ;
+  circ (a b : G) : G = mul a (inv b) ;
+  inv-circ (b c : G) : Id G (inv (circ b c)) (circ c b) =
+    transH (FJ.inv-mul b (inv c)) (apH (\ z -> mul z (inv b)) (symH (FJ.inv-inv c))) ;
+  laws : FurstLaws G circ = (setG,Tr.Trunc[G].inc e,
+    \ a b c -> transH (apH (mul (circ a c)) (inv-circ b c)) (transH (assoc a (inv c) (circ c b)) (apH (mul a) (GL.cancl c (inv b)))),
+    \ a c -> Tr.Trunc[(b : G) * Id G (circ a b) c].inc (mul (inv c) a,
+      transH (apH (mul a) (transH (FJ.inv-mul (inv c) a) (apH (mul (inv a)) (symH (FJ.inv-inv c))))) (GL.cancl' a c))) ;
+  furst : Furstenberg = (G,circ,laws) ;
+} ;
+furst-equiv : Big.Equiv Gp.Grp Furstenberg = (\ J -> ToFurst[J].furst,Big.qinv Gp.Grp Furstenberg (\ J -> ToFurst[J].furst)
+  (\ X -> FromFurst[X].grp)
+  (\ X -> furst-path X.1 _ X.2.1 (\ a b -> apH (X.2.1 a) (FromFurst[X].twice b)) (ToFurst[FromFurst[X].grp].laws) X.2.2)
+  (\ J -> GroupIdentity[l].abstract-path (FromFurst[ToFurst[J].furst].grp) J (idEquiv J.G) (\ a b ->
+     apH (J.mul a) (transH (apH (\ z -> J.inv (J.mul z (J.inv b)))
+         (transH (symH (FromFurst[ToFurst[J].furst].ee J.e)) (J.invr J.e)))
+       (transH (apH J.inv (J.unitl (J.inv b))) (symH (Facts[J].inv-inv b))))))) ;
+
+-- Section 7.3. Abstract homomorphisms are QGrp[l].GHom.
+module CG = ChapterFour[l] ;
+Hom (J K : Gp.Grp) : U l = QGrp[l].GHom J K ;
+hom-path (J K : Gp.Grp) (f g : Hom J K) (h : (x : J.G) -> Id K.G (f.1 x) (g.1 x)) : Id (Hom J K) f g =
+  GroupIdentity[l].hom-path J K f g h ;
+
+-- Exercise 7.3.1. Preserving multiplication gives the unit and inverses.
+hom-unit (J K : Gp.Grp) (f : Hom J K) : Id K.G (f.1 J.e) K.e = QGrp[l].GHomL[J,K,f].hom-e ;
+hom-inv (J K : Gp.Grp) (f : Hom J K) (x : J.G) : Id K.G (f.1 (J.inv x)) (K.inv (f.1 x)) = QGrp[l].GHomL[J,K,f].hom-inv x ;
+
+-- Definition 7.3.2. Homomorphisms form a set, and abstr acts on concrete
+-- homomorphisms through their loop maps.
+hom-set (J K : Gp.Grp) : isSet (Hom J K) = isSet-Sigma (J.G -> K.G) (Preserves J K)
+  (FL.isSet-Pi J.G (\ x -> K.G) (\ x -> K.setG)) (\ f -> prop-to-set (Preserves J K f) (preserves-prop J K f)) ;
+abstr (G H : CG.ConcreteGroup) (F : CG.Hom G H) : Hom CG.Symmetries[G].abstract CG.Symmetries[H].abstract =
+  ChapterSeven[l].OrdinaryMaps[G,H].comparison.1 F ;
+
+-- Remark 7.3.3. Monoid homomorphisms must also preserve the unit: the
+-- constant map from the trivial monoid to (Bool, and) at false preserves
+-- multiplication but not the unit true.
+MHom (M N : Monoid) : U l = (f : M.S -> N.S) * MPreserves M N f ;
+top-set : isSet Top = prop-to-set Top isTop ;
+trivial-monoid : Monoid = new Monoid[Top,top-set,tt,\ x y -> tt,isTop tt,isTop tt,\ a b c -> refl tt] ;
+and-unitr : (b : Bool) -> Id Bool (and b true) b = split { true -> refl true ; false -> refl false } ;
+and-assoc : (a b c : Bool) -> Id Bool (and a (and b c)) (and (and a b) c) = split {
+  true -> \ b c -> refl (and b c) ; false -> \ b c -> refl false } ;
+and-monoid : Monoid = new Monoid[Bool,Z2[l].bool-set,true,and,and-unitr,\ b -> refl b,and-assoc] ;
+bool-code : Bool -> U l = split { true -> Top ; false -> Empty } ;
+false-true (p : Id Bool false true) : Empty = subst Bool bool-code true false (symH p) tt ;
+mult-not-unit : (h : Top -> Bool) * ((x y : Top) -> Id Bool (h tt) (and (h x) (h y))) * (Id Bool (h tt) true -> Empty) =
+  (\ x -> false,\ x y -> refl false,false-true) ;
+
+-- Exercise 7.3.4. Composition and identities, functoriality of abstr, and
+-- the monoids of endomorphisms.
+hom-id (J : Gp.Grp) : Hom J J = (\ x -> x,\ x y -> refl (J.mul x y)) ;
+hom-comp (J K L : Gp.Grp) (g : Hom K L) (f : Hom J K) : Hom J L =
+  (\ x -> g.1 (f.1 x),\ x y -> transH (apH g.1 (f.2 x y)) (g.2 (f.1 x) (f.1 y))) ;
+abstr-id (G : CG.ConcreteGroup) : Id (Hom CG.Symmetries[G].abstract CG.Symmetries[G].abstract)
+  (abstr G G (LoopCalc[l].ptid G.space G.point)) (hom-id CG.Symmetries[G].abstract) =
+  hom-path _ _ _ _ (\ q -> transH (DeloopMaps[l].Maps[G.space,G.point,G.space,G.point].loop-ap (LoopCalc[l].ptid G.space G.point) q)
+    (transH (trans-refl-l G.space G.point G.point _) (Fibres[l].ap-id G.space G.point G.point q))) ;
+abstr-comp (G0 G1 G2 : CG.ConcreteGroup) (f0 : CG.Hom G0 G1) (f1 : CG.Hom G1 G2) :
+  Id (Hom CG.Symmetries[G0].abstract CG.Symmetries[G2].abstract) (abstr G0 G2 (CG.compose G0 G1 G2 f1 f0))
+    (hom-comp _ _ _ (abstr G1 G2 f1) (abstr G0 G1 f0)) =
+  hom-path _ _ _ _ (\ q -> apH (\ k -> k.1 q)
+    (LoopCalc[l].loop-comp G0.space G0.point G1.space G1.point G2.space G2.point f0 f1)) ;
+endo-monoid (J : Gp.Grp) : Monoid = new Monoid[Hom J J,hom-set J J,hom-id J,hom-comp J J J,
+  \ f -> hom-path J J _ f (\ x -> refl (f.1 x)),\ f -> hom-path J J _ f (\ x -> refl (f.1 x)),
+  \ f g h -> hom-path J J _ _ (\ x -> refl (f.1 (g.1 (h.1 x))))] ;
+module ConcreteEndo (G : CG.ConcreteGroup) {
+  A : Gp.Grp = CG.Symmetries[G].abstract ;
+  E : Equiv (CG.Hom G G) (Hom A A) = ChapterSeven[l].OrdinaryMaps[G,G].comparison ;
+  set : isSet (CG.Hom G G) = HL.trunc-set (CG.Hom G G) (HL.equiv-trunc (suc (suc zero)) (CG.Hom G G) (Hom A A) E
+    (HL.set-trunc (Hom A A) (hom-set A A))) ;
+  inj (f g : CG.Hom G G) (h : Id (Hom A A) (abstr G G f) (abstr G G g)) : Id (CG.Hom G G) f g =
+    Equivalences[l].injective (CG.Hom G G) (Hom A A) E.1 E.2 f g h ;
+  id : CG.Hom G G = LoopCalc[l].ptid G.space G.point ;
+  comp (f g : CG.Hom G G) : CG.Hom G G = CG.compose G G G f g ;
+  monoid : Monoid = new Monoid[CG.Hom G G,set,id,comp,
+    \ f -> inj _ f (transH (abstr-comp G G G id f) (transH (apH (hom-comp A A A (abstr G G f)) (abstr-id G))
+      (hom-path A A _ _ (\ x -> refl ((abstr G G f).1 x))))),
+    \ f -> inj _ f (transH (abstr-comp G G G f id) (transH (apH (\ k -> hom-comp A A A k (abstr G G f)) (abstr-id G))
+      (hom-path A A _ _ (\ x -> refl ((abstr G G f).1 x))))),
+    \ f g h -> inj _ _ (transH (abstr-comp G G G (comp g h) f) (transH (apH (hom-comp A A A (abstr G G f)) (abstr-comp G G G h g))
+      (transH (hom-path A A _ _ (\ x -> refl ((abstr G G f).1 ((abstr G G g).1 ((abstr G G h).1 x)))))
+        (transH (apH (\ k -> hom-comp A A A k (abstr G G h)) (symH (abstr-comp G G G g f))) (symH (abstr-comp G G G h (comp f g)))))))] ;
+} ;
+
+-- Example 7.3.5. Conjugation is a homomorphism. Identifications made from
+-- isomorphisms by inverting idtoiso transport homomorphisms by composition.
+conj-hom (J : Gp.Grp) (g : J.G) : Hom J J = (Conjugation[J].conj g,Conjugation[J].preserves g) ;
+iso-ua (J K : Gp.Grp) (f : Iso J K) : Id Gp.Grp J K = Identity[J].F.un K f ;
+iso-ua-beta (J K : Gp.Grp) (f : Iso J K) : Id (Iso J K) (idtoiso J K (iso-ua J K f)) f = Identity[J].F.tr-un K f ;
+iso-hom (J K : Gp.Grp) (f : Iso J K) : Hom J K = (f.1.1,f.2) ;
+post-transport (H J K : Gp.Grp) (p : Id Gp.Grp J K) (f : Hom H J) :
+  Id (Hom H K) (Big.subst Gp.Grp (\ X -> Hom H X) J K p f) (hom-comp H J K (iso-hom J K (idtoiso J K p)) f) =
+  idJ Gp.Grp J (\ X q -> Id (Hom H X) (Big.subst Gp.Grp (\ Y -> Hom H Y) J X q f) (hom-comp H J X (iso-hom J X (idtoiso J X q)) f))
+    (hom-path H J _ _ (\ x -> refl (f.1 x))) K p ;
+pre-transport (J K H : Gp.Grp) (p : Id Gp.Grp J K) (f : Hom J H) :
+  Id (Hom K H) (Big.subst Gp.Grp (\ X -> Hom X H) J K p f) (hom-comp K J H f (iso-hom K J (idtoiso K J (Big.sym Gp.Grp J K p)))) =
+  idJ Gp.Grp J (\ X q -> Id (Hom X H) (Big.subst Gp.Grp (\ Y -> Hom Y H) J X q f) (hom-comp X J H f (iso-hom X J (idtoiso X J (Big.sym Gp.Grp J X q)))))
+    (hom-path J H _ _ (\ x -> refl (f.1 x))) K p ;
+sym-back (J K : Gp.Grp) (p : Id Gp.Grp J K) (x : J.G) :
+  Id J.G ((idtoiso K J (Big.sym Gp.Grp J K p)).1.1 ((idtoiso J K p).1.1 x)) x =
+  idJ Gp.Grp J (\ X q -> Id J.G ((idtoiso X J (Big.sym Gp.Grp J X q)).1.1 ((idtoiso J X q).1.1 x)) x) (refl x) K p ;
+module ConjugationPath (J : Gp.Grp) (g : J.G) {
+  module C = Conjugation[J] ;
+  path : Id Gp.Grp J J = iso-ua J J (C.iso g) ;
+  map (x : J.G) : Id J.G ((idtoiso J J path).1.1 x) (C.conj g x) = apH (\ k -> k.1.1 x) (iso-ua-beta J J (C.iso g)) ;
+  post (H : Gp.Grp) (f : Hom H J) : Id (Hom H J) (Big.subst Gp.Grp (\ X -> Hom H X) J J path f) (hom-comp H J J (conj-hom J g) f) =
+    transH (post-transport H J J path f) (hom-path H J _ _ (\ x -> map (f.1 x))) ;
+  inverse-map (y : J.G) : Id J.G ((idtoiso J J (Big.sym Gp.Grp J J path)).1.1 y) (C.conj (J.inv g) y) =
+    transH (apH (idtoiso J J (Big.sym Gp.Grp J J path)).1.1 (transH (symH (C.forth g y)) (symH (map (C.conj (J.inv g) y)))))
+      (sym-back J J path (C.conj (J.inv g) y)) ;
+  pre (H : Gp.Grp) (f : Hom J H) : Id (Hom J H) (Big.subst Gp.Grp (\ X -> Hom X H) J J path f) (hom-comp J J H f (conj-hom J (J.inv g))) =
+    transH (pre-transport J J H path f) (hom-path J H _ _ (\ x -> apH f.1 (inverse-map x))) ;
+} ;
+
+-- Exercise 7.3.6. The pointwise product of homomorphisms into J is always a
+-- homomorphism exactly when J is abelian.
+abelian (J : Gp.Grp) : U l = (x y : J.G) -> Id J.G (J.mul x y) (J.mul y x) ;
+pointwise (H J : Gp.Grp) (f g : H.G -> J.G) (t : H.G) : J.G = J.mul (f t) (g t) ;
+module Interchange (J : Gp.Grp) {
+  open J ;
+  swap (a b c d : G) (k : Id G (mul b c) (mul c b)) : Id G (mul (mul a b) (mul c d)) (mul (mul a c) (mul b d)) = calc G {
+    mul (mul a b) (mul c d) =< assoc a b (mul c d) > mul a (mul b (mul c d))
+      =< apH (mul a) (symH (assoc b c d)) > mul a (mul (mul b c) d)
+      =< apH (\ z -> mul a (mul z d)) k > mul a (mul (mul c b) d)
+      =< apH (mul a) (assoc c b d) > mul a (mul c (mul b d))
+      =< symH (assoc a c (mul b d)) > mul (mul a c) (mul b d) } ;
+  commute (h : (s t : G) -> Id G (mul (mul s t) (mul s t)) (mul (mul s s) (mul t t))) : abelian J =
+    \ a b -> symH (Facts[J].cancel-r b (mul b a) (mul a b) (Facts[J].cancel-l a (mul (mul b a) b) (mul (mul a b) b) (calc G {
+      mul a (mul (mul b a) b) =< apH (mul a) (assoc b a b) > mul a (mul b (mul a b))
+        =< symH (assoc a b (mul a b)) > mul (mul a b) (mul a b)
+        =< h a b > mul (mul a a) (mul b b)
+        =< assoc a a (mul b b) > mul a (mul a (mul b b))
+        =< apH (mul a) (symH (assoc a b b)) > mul a (mul (mul a b) b) }))) ;
+} ;
+pointwise-hom (J : Gp.Grp) (a : abelian J) (H : Gp.Grp) (f g : Hom H J) : Preserves H J (pointwise H J f.1 g.1) =
+  \ s t -> transH (transH (apH (\ z -> J.mul z (g.1 (H.mul s t))) (f.2 s t)) (apH (J.mul (J.mul (f.1 s) (f.1 t))) (g.2 s t)))
+    (Interchange[J].swap (f.1 s) (f.1 t) (g.1 s) (g.1 t) (a (f.1 t) (g.1 s))) ;
+pointwise-abelian (J : Gp.Grp) (h : (H : Gp.Grp) (f g : Hom H J) -> Preserves H J (pointwise H J f.1 g.1)) : abelian J =
+  Interchange[J].commute (\ s t -> h J (hom-id J) (hom-id J) s t) ;

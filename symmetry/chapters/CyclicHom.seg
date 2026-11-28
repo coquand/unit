@@ -1,0 +1,80 @@
+-- A group whose left translation by s is the standard m-cycle.
+-- Evaluation at s classifies homomorphisms by solutions of h^m = 1.
+level u l ; constraint u <= l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[u] ;
+module F = FiniteCycles[u] ;
+module Powers (G : Group[l].Grp) (s : G.G) {
+  power : Nat -> G.G = split { zero -> G.e ; suc k | r -> G.mul s r } ;
+} ;
+rank : (n : Nat) -> Fin n -> Nat = split { zero -> split {} ; suc n | r -> split { none -> zero ; some x -> suc (r x) } } ;
+prefix-rank : (n : Nat) (i : Fin n) -> Id Nat (rank (suc n) (F.prefix n i)) (rank n i) = split {
+  zero -> split {} ; suc n | r -> split { none -> refl zero ; some i -> apH (\ k -> suc k) (r i) } } ;
+last-rank : (n : Nat) -> Id Nat (rank (suc n) (F.last n)) n =
+  split { zero -> refl zero ; suc n | r -> apH (\ k -> suc k) r } ;
+module Cyclic (n : Nat) (J : Group[l].Grp) (s : J.G) (label : Equiv J.G (Fin (suc n)))
+  (start : Id (Fin (suc n)) (label.1 J.e) none)
+  (advance : (x : J.G) -> Id (Fin (suc n)) (label.1 (J.mul s x)) ((F.rotation n).1 (label.1 x))) {
+  module S = F.Standard[n] ; module JP = Powers[J,s] ;
+  m : Nat = suc n ;
+  numbered : (k : Nat) -> Id S.A (label.1 (JP.power k)) (S.iterate k none) = split {
+    zero -> start ; suc k | r -> transH (advance (JP.power k)) (apH S.step r) } ;
+  faithful (x y : J.G) : Id S.A (label.1 x) (label.1 y) -> Id J.G x y = Equivalences[l].injective _ _ label.1 label.2 x y ;
+  lap : Id J.G (JP.power m) J.e = faithful _ _ (transH (numbered m) (transH S.lap (symH start))) ;
+  generates (x : J.G) : (k : Nat) * Id J.G (JP.power k) x =
+    ((S.reaches (label.1 x)).1,faithful _ x (transH (numbered (S.reaches (label.1 x)).1) (S.reaches (label.1 x)).2)) ;
+  module Induct (P : J.G -> U l) (z : P J.e) (step : (x : J.G) -> P x -> P (J.mul s x)) {
+    iterate : (k : Nat) -> P (JP.power k) = split { zero -> z ; suc k | r -> step (JP.power k) r } ;
+    all (x : J.G) : P x = subst J.G P _ x (generates x).2 (iterate (generates x).1) ;
+  } ;
+  module Into (K : Group[l].Grp) {
+    Hom : U l = QGrp[l].GHom J K ;
+    torsion : U l = (a : K.G) * Id K.G (Powers[K,a].power m) K.e ;
+    module Eval (h : Hom) {
+      module H = QGrp[l].GHomL[J,K,h] ; module KP = Powers[K,h.1 s] ;
+      powers : (k : Nat) -> Id K.G (h.1 (JP.power k)) (KP.power k) = split {
+        zero -> H.hom-e ; suc k | r -> transH (h.2 s (JP.power k)) (apH (K.mul (h.1 s)) r) } ;
+      value : torsion = (h.1 s,transH (symH (powers m)) (transH (apH h.1 lap) H.hom-e)) ;
+    } ;
+    module Extend (v : torsion) {
+      module KP = Powers[K,v.1] ;
+      val (i : S.A) : K.G = KP.power (rank m i) ;
+      f (x : J.G) : K.G = val (label.1 x) ;
+      unit : Id K.G (f J.e) K.e = apH val start ;
+      cycle (i : S.A) : U l = Id K.G (val (S.step i)) (K.mul v.1 (val i)) ;
+      at-last : cycle (F.last n) = transH (apH val (F.wrap n))
+        (transH (symH v.2) (apH (K.mul v.1) (apH KP.power (symH (last-rank n))))) ;
+      at-prefix (i : Fin n) : cycle (F.prefix n i) = transH (apH val (F.advance n i))
+        (apH (K.mul v.1) (apH KP.power (symH (prefix-rank n i)))) ;
+      previous (j : S.A) : S.A = (F.rotation n).2.sec j ;
+      at-previous (i j : S.A) (p : Id S.A (S.step i) j) (h : cycle i) : cycle (previous j) =
+        subst S.A cycle i (previous j) (transH (symH (Prelude[u].sec-ret S.A S.A S.step (F.rotation n).2 i)) (apH previous p)) h ;
+      cover : (j : S.A) -> cycle (previous j) = split {
+        none -> at-previous (F.last n) none (F.wrap n) at-last ;
+        some i -> at-previous (F.prefix n i) (some i) (F.advance n i) (at-prefix i) } ;
+      next (i : S.A) : cycle i = subst S.A cycle _ _ (Prelude[u].sec-ret S.A S.A S.step (F.rotation n).2 i) (cover (S.step i)) ;
+      step (x : J.G) : Id K.G (f (J.mul s x)) (K.mul v.1 (f x)) = transH (apH val (advance x)) (next (label.1 x)) ;
+      generator : Id K.G (f s) v.1 = transH (apH f (symH (J.unitr s)))
+        (transH (step J.e) (transH (apH (K.mul v.1) unit) (K.unitr v.1))) ;
+      module Product (y : J.G) {
+        Law (x : J.G) : U l = Id K.G (f (J.mul x y)) (K.mul (f x) (f y)) ;
+        base : Law J.e = transH (apH f (J.unitl y)) (transH (symH (K.unitl (f y))) (apH (\ z -> K.mul z (f y)) (symH unit))) ;
+        advance-law (x : J.G) (h : Law x) : Law (J.mul s x) = transH (apH f (J.assoc s x y))
+          (transH (step (J.mul x y)) (transH (apH (K.mul v.1) h)
+            (transH (symH (K.assoc v.1 (f x) (f y))) (apH (\ z -> K.mul z (f y)) (symH (step x)))))) ;
+        all : (x : J.G) -> Law x = Induct[Law,base,advance-law].all ;
+      } ;
+      hom : Hom = (f,\ x y -> Product[y].all x) ;
+      beta : Id torsion Eval[hom].value v = Sigma-eq K.G (\ a -> Id K.G (Powers[K,a].power m) K.e)
+        _ _ _ _ generator (K.setG _ _) ;
+    } ;
+    module Unique (h : Hom) {
+      module X = Extend[Eval[h].value] ;
+      Eq (x : J.G) : U l = Id K.G (X.f x) (h.1 x) ;
+      base : Eq J.e = transH X.unit (symH Eval[h].H.hom-e) ;
+      step (x : J.G) (p : Eq x) : Eq (J.mul s x) = transH (X.step x)
+        (transH (apH (K.mul (h.1 s)) p) (symH (h.2 s x))) ;
+      eta : Id Hom X.hom h = GroupIdentity[l].hom-path J K X.hom h Induct[Eq,base,step].all ;
+    } ;
+    universal : Equiv Hom torsion = (\ h -> Eval[h].value,qinv _ _ (\ h -> Eval[h].value)
+      (\ v -> Extend[v].hom) (\ v -> Extend[v].beta) (\ h -> Unique[h].eta)) ;
+  } ;
+} ;

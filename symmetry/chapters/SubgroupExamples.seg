@@ -1,0 +1,359 @@
+-- Examples and exercises of Section 5.3.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ; open Logic[l] ;
+module Big = Prelude[l+] ; module CG = ChapterFour[l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module HL = HLevels[l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ; module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
+-- Maps of options.
+module Options (B C : U l) {
+  map (f : B -> C) : Opt B -> Opt C = split { none -> none ; some b -> some (f b) } ;
+  un (d : B) : Opt B -> B = split { none -> d ; some b -> b } ;
+  is-some : Opt B -> U l = split { none -> Empty ; some b -> Top } ;
+  some-none (b : B) (p : Id (Opt B) (some b) none) : Empty = subst (Opt B) is-some (some b) none p tt ;
+  get : (o : Opt B) -> Not (Id (Opt B) o none) -> B = split { none -> \ h -> absurd B (h (refl none)) ; some b -> \ h -> b } ;
+  get-eq : (o : Opt B) (h : Not (Id (Opt B) o none)) -> Id (Opt B) (some (get o h)) o =
+    split { none -> \ h -> absurd _ (h (refl none)) ; some b -> \ h -> refl (some b) } ;
+  some-inj (b b' : B) (p : Id (Opt B) (some b) (some b')) : Id B b b' = apH (un b) p ;
+} ;
+map-id (B : U l) : (o : Opt B) -> Id (Opt B) (Options[B,B].map (\ b -> b) o) o = split { none -> refl none ; some b -> refl (some b) } ;
+-- Exercise 5.3.9: a type with decidable equality is the type of pairs of a
+-- type B and an identification of A with B + 1.
+module Complement (A : U l) (dec : (x y : A) -> Dec (Id A x y)) {
+  Pairs : U l+ = (B : U l) * Equiv A (Opt B) ;
+  Cpl (a : A) : U l = (x : A) * Not (Id A x a) ;
+  cpl-path (a : A) (u v : Cpl a) (r : Id A u.1 v.1) : Id (Cpl a) u v =
+    Sigma-eq A (\ x -> Not (Id A x a)) _ _ _ _ r (not-prop (Id A v.1 a)) ;
+  classify (a x : A) : Dec (Id A x a) -> Opt (Cpl a) = split { yes p -> none ; no n -> some (x,n) } ;
+  to (a x : A) : Opt (Cpl a) = classify a x (dec x a) ;
+  from (a : A) : Opt (Cpl a) -> A = split { none -> a ; some u -> u.1 } ;
+  from-to (a x : A) : (d : Dec (Id A x a)) -> Id A (from a (classify a x d)) x =
+    split { yes p -> sym A x a p ; no n -> refl x } ;
+  at-none (a : A) : (d : Dec (Id A a a)) -> Id (Opt (Cpl a)) (classify a a d) none =
+    split { yes p -> refl none ; no n -> absurd _ (n (refl a)) } ;
+  at-some (a : A) (u : Cpl a) : (d : Dec (Id A u.1 a)) -> Id (Opt (Cpl a)) (classify a u.1 d) (some u) =
+    split { yes p -> absurd _ (u.2 p) ; no n -> apH (\ v -> some v) (cpl-path a (u.1,n) u (refl u.1)) } ;
+  to-from (a : A) : (o : Opt (Cpl a)) -> Id (Opt (Cpl a)) (to a (from a o)) o =
+    split { none -> at-none a (dec a a) ; some u -> at-some a u (dec u.1 a) } ;
+  cplE (a : A) : Equiv A (Opt (Cpl a)) = (to a,qinv _ _ (to a) (from a) (to-from a) (\ x -> from-to a x (dec x a))) ;
+  forth (a : A) : Pairs = (Cpl a,cplE a) ;
+  back (w : Pairs) : A = w.2.2.sec none ;
+  -- Pairs are identified by an equivalence compatible with the identifications.
+  module Ident (B1 : U l) (e1 : Equiv A (Opt B1)) {
+    motive (B2 : U l) (phi : Equiv B1 B2) : U l+ = (e2 : Equiv A (Opt B2)) ->
+      ((x : A) -> Id (Opt B2) (Options[B1,B2].map phi.1 (e1.1 x)) (e2.1 x)) -> Id Pairs (B1,e1) (B2,e2) ;
+    base : motive B1 (idEquiv B1) = \ e2 h -> Big.ap (Equiv A (Opt B1)) Pairs (\ e -> (B1,e)) e1 e2
+      (Sigma-eq (A -> Opt B1) (isEquiv A (Opt B1)) _ _ _ _
+        (FL.funext A (\ x -> Opt B1) _ _ (\ x -> transH (symH (map-id B1 (e1.1 x))) (h x))) (EquivProp[l].isEquiv-prop _ _ e2.1)) ;
+    path (B2 : U l) (phi : Equiv B1 B2) : motive B2 phi = UA.eqind B1 (\ B3 p3 -> motive B3 p3) base B2 phi ;
+  } ;
+  module Back (B : U l) (e : Equiv A (Opt B)) {
+    module O = Options[B,B] ;
+    a : A = e.2.sec none ;
+    not-none (x : A) (n : Not (Id A x a)) (p : Id (Opt B) (e.1 x) none) : Empty =
+      n (transH (symH (sec-ret A (Opt B) e.1 e.2 x)) (apH e.2.sec p)) ;
+    phi (u : Cpl a) : B = O.get (e.1 u.1) (not-none u.1 u.2) ;
+    psi-ne (b : B) (p : Id A (e.2.sec (some b)) a) : Empty =
+      O.some-none b (transH (symH (e.2.sec-eq (some b))) (transH (apH e.1 p) (e.2.sec-eq none))) ;
+    psi (b : B) : Cpl a = (e.2.sec (some b),psi-ne b) ;
+    get-at (o : Opt B) (h : Not (Id (Opt B) o none)) (b : B) (p : Id (Opt B) o (some b)) : Id B (O.get o h) b =
+      transH (apH (O.un b) (O.get-eq o h)) (apH (O.un b) p) ;
+    phi-psi (b : B) : Id B (phi (psi b)) b = get-at _ (not-none (psi b).1 (psi b).2) b (e.2.sec-eq (some b)) ;
+    psi-phi (u : Cpl a) : Id (Cpl a) (psi (phi u)) u = cpl-path a _ u
+      (transH (apH e.2.sec (O.get-eq (e.1 u.1) (not-none u.1 u.2))) (sec-ret A (Opt B) e.1 e.2 u.1)) ;
+    equiv : Equiv (Cpl a) B = (phi,qinv _ _ phi psi phi-psi psi-phi) ;
+    compat (x : A) : (d : Dec (Id A x a)) -> Id (Opt B) (Options[Cpl a,B].map phi (classify a x d)) (e.1 x) = split {
+      yes p -> symH (transH (apH e.1 p) (e.2.sec-eq none)) ;
+      no n -> O.get-eq (e.1 x) (not-none x n) } ;
+    path : Id Pairs (forth a) (B,e) = Ident[Cpl a,cplE a].path B equiv e (\ x -> compat x (dec x a)) ;
+  } ;
+  equivalence : Big.Equiv A Pairs = (forth,Big.qinv _ _ forth back (\ w -> Back[w.1,w.2].path) (\ a -> refl a)) ;
+} ;
+-- Exercise 5.3.8: n-element sets are pointed (n+1)-element sets.
+module PointedFinite (n : Nat) {
+  module C = Cardinality[l] ; module FC = FiniteComponents[l] ; module E = Equivalences[l] ;
+  Small : U l+ = FC.part n ;
+  Pointed : U l+ = (X : FC.part (suc n)) * X.1 ;
+  plus (S : Small) : Pointed = ((Opt S.1,TC.map (Equiv (Fin n) S.1) (Equiv (Fin (suc n)) (Opt S.1))
+    (\ e -> FiniteCycles[l].option-equiv (Fin n) S.1 e) S.2),none) ;
+  delete-equiv (X : U l) (x : X) (e : Equiv (Fin (suc n)) X) : Equiv (Fin n) (C.delete X x) =
+    E.compose _ _ _ C.Puncture[n,e.2.sec x].equiv
+      (subst X (\ y -> Equiv (C.delete (Fin (suc n)) (e.2.sec x)) (C.delete X y)) _ x (e.2.sec-eq x) (C.move _ _ e (e.2.sec x))) ;
+  minus (w : Pointed) : Small = (C.delete w.1.1 w.2,TC.map (Equiv (Fin (suc n)) w.1.1) (Equiv (Fin n) (C.delete w.1.1 w.2))
+    (delete-equiv w.1.1 w.2) w.1.2) ;
+  minus-plus (S : Small) : Id Small (minus (plus S)) S = Big.Sigma-eq (U l) (\ X -> C.Count[X].size n) _ _ _ _
+    (UA.ua _ _ (Bijection[l].inverse _ _ C.Option[S.1].equiv)) T.Trunc[Equiv (Fin n) S.1].proposition ;
+  -- Pointed sets are identified along a pointed equivalence.
+  moved (Y : U l) (tY : C.Count[Y].size (suc n)) (y : Y) (X : U l) (e : Equiv Y X) :
+    (tX : C.Count[X].size (suc n)) -> Id Pointed ((Y,tY),y) ((X,tX),e.1 y) =
+    UA.eqind Y (\ X1 e1 -> (tX : C.Count[X1].size (suc n)) -> Id Pointed ((Y,tY),y) ((X1,tX),e1.1 y))
+      (\ tX -> Big.ap (C.Count[Y].size (suc n)) Pointed (\ t -> ((Y,t),y)) tY tX (T.Trunc[Equiv (Fin (suc n)) Y].proposition tY tX)) X e ;
+  plus-minus (w : Pointed) : Id Pointed (plus (minus w)) w =
+    moved _ (plus (minus w)).1.2 none w.1.1 (Bijection[l].inverse _ _
+      (Complement[w.1.1,FiniteDecisions[l].On[w.1.1,FC.forget w.1.1 (suc n) w.1.2].discrete].cplE w.2)) w.1.2 ;
+  equivalence : Big.Equiv Small Pointed = (plus,Big.qinv _ _ plus minus plus-minus minus-plus) ;
+} ;
+-- Example 5.3.7: the standard Sigma_(n+1)-set pointed at any k is a subgroup
+-- whose underlying group is Sigma_n.
+module FixOne (n : Nat) {
+  module BP = Paths[l+] ;
+  module S1 = SignOrderings[l].Component[suc n] ; module S0 = SignOrderings[l].Component[n] ; module P = PointedFinite[n] ;
+  G1 : CG.ConcreteGroup = S1.G.group ; G0 : CG.ConcreteGroup = S0.G.group ;
+  standard : ChapterFive[l,l].Actions[G1].GSet = \ v -> (S1.G.C.extension v,S1.G.sets v) ;
+  Tot : U l = (v : S1.G.C.base) * S1.G.C.extension v ;
+  Phi : Big.Equiv Tot P.Pointed = ChapterTwo[l+].change-base S1.G.C.base (FiniteComponents[l].part (suc n)) S1.presentation (\ Y -> Y.1) ;
+  Psi : Big.Equiv Tot S0.G.C.base = Equivalences[l+].compose _ _ _ Phi
+    (Equivalences[l+].compose _ _ _ (Bijection[l+].inverse _ _ P.equivalence) (Bijection[l+].inverse _ _ S0.presentation)) ;
+  equiv : Equiv Tot S0.G.C.base = Truncations[l].lower _ _ Psi ;
+  connected : Connected[l].isConn CG.two Tot = Deloop[l].equiv-conn CG.two _ _ equiv G0.connected ;
+  transitive : GSets[l].Over[G1].Transitive[standard].transitive = GSets[l].Over[G1].Transitive[standard].from-connected connected ;
+  sig-move (A : U l+) (F : A -> U l) (a b : A) (p : Id A a b) (x : F a) : Id ((c : A) * F c) (a,x) (b,Big.subst A (\ c -> F c) a b p x) =
+    idJ A a (\ b1 p1 -> Id ((c : A) * F c) (a,x) (b1,Big.subst A (\ c -> F c) a b1 p1 x)) (refl (a,x)) b p ;
+  module At (k : S1.G.C.extension S1.G.pt) {
+    sub : Subgroups[l].Over[G1].Sub = (standard,k,transitive.2) ;
+    group : CG.ConcreteGroup = Subgroups[l].Over[G1].underlying sub ;
+    k' : Fin (suc n) = Big.subst (FiniteComponents[l].part (suc n)) (\ Y -> Y.1) _ _ S1.pointing k ;
+    module Z = FiniteCycles[l].Centralizer[n] ;
+    c1 : Id P.Pointed (Phi.1 (S1.G.pt,k)) (S1.base,k') = sig-move _ (\ Y -> Y.1) _ _ S1.pointing k ;
+    c2 : Id P.Pointed (S1.base,k') (S1.base,none) = BP.symH (BP.transH
+      (P.moved (Fin (suc n)) S1.base.2 none (Fin (suc n)) (Z.shift k').1 S1.base.2)
+      (BP.apH (\ y -> (S1.base,y)) (Z.beta k'))) ;
+    c3 : Id P.Pointed (S1.base,none) (P.plus S0.base) = BP.apH (\ t -> ((Fin (suc n),t),none))
+      (T.Trunc[Equiv (Fin (suc n)) (Fin (suc n))].proposition S1.base.2 (P.plus S0.base).1.2) ;
+    d : Id P.Small (P.minus (Phi.1 (S1.G.pt,k))) S0.base = BP.transH (BP.apH P.minus (BP.transH c1 (BP.transH c2 c3))) (P.minus-plus S0.base) ;
+    pointing : Id S0.G.C.base (equiv.1 (S1.G.pt,k)) S0.G.pt = BP.transH (BP.apH S0.presentation.2.sec d)
+      (BP.transH (BP.apH S0.presentation.2.sec (BP.symH S0.pointing)) (Big.sec-ret _ _ S0.presentation.1 S0.presentation.2 S0.G.pt)) ;
+    identification : Id CG.ConcreteGroup group G0 = GroupIdentity[l].concrete-path group G0 ((equiv.1,pointing),equiv.2) ;
+  } ;
+} ;
+-- Paths of types are determined by their images under _ + Y.
+module SumPaths (Y : U l) {
+  module FA = FiniteArithmetic[l] ;
+  F (A : U l) : U l = FA.Sum A Y ;
+  unleft (A : U l) (d : A) : FA.Sum A Y -> A = split { left x -> x ; right y -> d } ;
+  coe-left (Z W : U l) (r : Id (U l) Z W) (z : Z) :
+    Id (FA.Sum W Y) (coe (F Z) (F W) (Big.ap (U l) (U l) F Z W r) (left z)) (left (coe Z W r z)) =
+    idJ (U l) Z (\ W1 r1 -> Id (FA.Sum W1 Y) (coe (F Z) (F W1) (Big.ap (U l) (U l) F Z W1 r1) (left z)) (left (coe Z W1 r1 z)))
+      (refl (left z)) W r ;
+  coe-idtoeqv (Z W : U l) (r : Id (U l) Z W) (z : Z) : Id W ((Axioms[l].idtoeqv Z W r).1 z) (coe Z W r z) =
+    idJ (U l) Z (\ W1 r1 -> Id W1 ((Axioms[l].idtoeqv Z W1 r1).1 z) (coe Z W1 r1 z)) (refl z) W r ;
+  inj (Z W : U l) (r r' : Id (U l) Z W) (h : Id (Id (U l) (F Z) (F W)) (Big.ap (U l) (U l) F Z W r) (Big.ap (U l) (U l) F Z W r')) :
+    Id (Id (U l) Z W) r r' =
+    Equivalences[l+].injective _ _ (Axioms[l].idtoeqv Z W) (univ @l Z W) r r'
+      (Big.Sigma-eq (Z -> W) (\ f -> isEquiv Z W f) _ _ _ _
+        (FL.funext Z (\ z -> W) _ _ (\ z -> transH (coe-idtoeqv Z W r z)
+          (transH (apH (unleft W (coe Z W r z)) (transH (symH (coe-left Z W r z))
+            (transH (Big.ap (Id (U l) (F Z) (F W)) (F W) (\ q -> coe (F Z) (F W) q (left z)) _ _ h) (coe-left Z W r' z))))
+            (symH (coe-idtoeqv Z W r' z)))))
+        (EquivProp[l].isEquiv-prop _ _ _)) ;
+} ;
+-- Example 5.3.14: A |-> A + Y is a monomorphism Sigma_X -> Sigma_(X+Y); for Y = 1
+-- this is i_n.
+module SumMono (X Y : U l) (s : isSet X) (t : isSet Y) {
+  module BP = Paths[l+] ; module LC = LoopConj[l] ;
+  module Ex = ConcreteExamples[l].ExtendSets[X,Y,s,t].Sum ; module A = Ex.A ; module K = Ex.K ;
+  module ST = SubgroupTheory[l].Over[K.group] ; module SP = SumPaths[Y] ;
+  f : A.group.space -> K.group.space = Ex.hom.1 ;
+  pt : A.group.space = A.pt ; X0 : U l = A.C.extension pt ;
+  J (z : A.group.space) : U l = K.C.extension (f z) ;
+  Kf (z : A.group.space) : U l = SP.F (A.C.extension z) ;
+  H (z : A.group.space) : Id (U l) (J z) (Kf z) = (Ex.lift z).2 ;
+  loops : U l = Id A.group.space pt pt ;
+  ap-f (p p' : loops) (h : Id ST.UG (ST.loop-map A.group Ex.hom p) (ST.loop-map A.group Ex.hom p')) :
+    Id (Id K.group.space (f pt) (f pt)) (apH f p) (apH f p') =
+    transH (symH (LC.conj-back K.group.space (f pt) K.pt Ex.hom.2 (apH f p)))
+      (transH (apH (LC.conj K.group.space K.pt (f pt) (sym K.group.space (f pt) K.pt Ex.hom.2))
+        (transH (symH (DeloopMaps[l].Maps[A.group.space,pt,K.group.space,K.pt].loop-ap Ex.hom p))
+          (transH h (DeloopMaps[l].Maps[A.group.space,pt,K.group.space,K.pt].loop-ap Ex.hom p'))))
+        (LC.conj-back K.group.space (f pt) K.pt Ex.hom.2 (apH f p'))) ;
+  ap-J (p : loops) : Id (Id (U l) (J pt) (J pt)) (Big.ap K.group.space (U l) K.C.extension (f pt) (f pt) (apH f p))
+    (Big.ap A.group.space (U l) J pt pt p) = LoopCalc[l+].ap-ap A.group.space K.group.space (U l) f K.C.extension pt pt p ;
+  ap-K (p : loops) : Id (Id (U l) (Kf pt) (Kf pt)) (Big.ap (U l) (U l) SP.F X0 X0 (Big.ap A.group.space (U l) A.C.extension pt pt p))
+    (Big.ap A.group.space (U l) Kf pt pt p) = LoopCalc[l+].ap-ap A.group.space (U l) (U l) A.C.extension SP.F pt pt p ;
+  nat (p : loops) : Id (Id (U l) (Kf pt) (Kf pt)) (Big.ap A.group.space (U l) Kf pt pt p)
+    (Big.trans (U l) (Kf pt) (J pt) (Kf pt) (Big.sym (U l) (J pt) (Kf pt) (H pt)) (Big.trans (U l) (J pt) (J pt) (Kf pt) (Big.ap A.group.space (U l) J pt pt p) (H pt))) =
+    LoopConj[l+].ap-homotopy A.group.space (U l) J Kf H pt pt p ;
+  conj-H (r : Id (U l) (J pt) (J pt)) : Id (U l) (Kf pt) (Kf pt) =
+    Big.trans (U l) (Kf pt) (J pt) (Kf pt) (Big.sym (U l) (J pt) (Kf pt) (H pt)) (Big.trans (U l) (J pt) (J pt) (Kf pt) r (H pt)) ;
+  on-J (p q : loops) (h : Id ST.UG (ST.loop-map A.group Ex.hom p) (ST.loop-map A.group Ex.hom q)) :
+    Id (Id (U l) (J pt) (J pt)) (Big.ap A.group.space (U l) J pt pt p) (Big.ap A.group.space (U l) J pt pt q) =
+    BP.transH (BP.symH (ap-J p)) (BP.transH (BP.apH (Big.ap K.group.space (U l) K.C.extension (f pt) (f pt)) (ap-f p q h)) (ap-J q)) ;
+  on-F (p q : loops) (h : Id ST.UG (ST.loop-map A.group Ex.hom p) (ST.loop-map A.group Ex.hom q)) :
+    Id (Id (U l) (Kf pt) (Kf pt)) (Big.ap (U l) (U l) SP.F X0 X0 (Big.ap A.group.space (U l) A.C.extension pt pt p))
+      (Big.ap (U l) (U l) SP.F X0 X0 (Big.ap A.group.space (U l) A.C.extension pt pt q)) =
+    BP.transH (ap-K p) (BP.transH (nat p) (BP.transH (BP.apH conj-H (on-J p q h)) (BP.transH (BP.symH (nat q)) (BP.symH (ap-K q))))) ;
+  injective (p q : loops) (h : Id ST.UG (ST.loop-map A.group Ex.hom p) (ST.loop-map A.group Ex.hom q)) : Id loops p q =
+    Equivalences[l+].injective _ _ A.C.Identity[pt,pt].code A.C.Identity[pt,pt].embedding p q (SP.inj X0 X0 _ _ (on-F p q h)) ;
+  mono : ST.isMono A.group Ex.hom = SubgroupTheory[l].injective-fibres _ _ ST.UG-set _ injective ;
+} ;
+-- Example 5.3.25: the first inclusion G -> G x K corresponds to the subgroup
+-- (P_sh o proj2, refl) of G x K.
+module ProductSubgroup (G K : CG.ConcreteGroup) {
+  module P = ConcreteExamples[l].Binary[G,K] ; module ST = SubgroupTheory[l].Over[P.group] ; module SM = SubgroupMono[l].Over[P.group] ;
+  module GS = GSets[l].Over[P.group] ; module GI = GroupIdentity[l] ;
+  k0 : K.space = K.point ;
+  X : ChapterFive[l,l].Actions[P.group].GSet = \ z -> (Id K.space k0 z.2,HL.trunc-set _ (K.groupoid k0 z.2)) ;
+  Tot : U l = GS.total X ;
+  to (x : G.space) : Tot = ((x,k0),refl k0) ;
+  from (w : Tot) : G.space = w.1.1 ;
+  to-from (w : Tot) : Id Tot (to (from w)) w =
+    idJ K.space k0 (\ b q -> Id Tot ((w.1.1,k0),refl k0) ((w.1.1,b),q)) (refl ((w.1.1,k0),refl k0)) w.1.2 w.2 ;
+  equiv : Equiv G.space Tot = (to,qinv _ _ to from to-from (\ x -> refl x)) ;
+  connected : Connected[l].isConn CG.two Tot =
+    Deloop[l].equiv-conn CG.two _ _ (Bijection[l].inverse _ _ equiv) G.connected ;
+  transitive : GS.Transitive[X].transitive = GS.Transitive[X].from-connected connected ;
+  sub : ST.S.Sub = (X,refl k0,transitive.2) ;
+  U0 : CG.ConcreteGroup = ST.S.underlying sub ;
+  first : Id ST.Mono (G,P.include-first,ActionExercises[l].FirstInclusion[G,K].mono) (ST.to-mono sub) =
+    Big.trans ST.Mono _ _ _
+      (SM.mono-path G P.include-first ActionExercises[l].FirstInclusion[G,K].mono Tot (to G.point) ((to,refl (to G.point)),equiv.2)
+        (GI.parts U0) (ST.S.inclusion sub) (ST.Monic[sub].mono) (refl P.include-first))
+      (SM.rebuilt U0 (ST.S.inclusion sub) (ST.Monic[sub].mono)) ;
+} ;
+-- Example 5.3.5: the Z-set R_m (base |-> m, loop |-> rotation), m = n+1.
+-- A loop p fixes 0 exactly when p = loop^(m j) for some (unique) integer j.
+module Rotations (n : Nat) {
+  module C3 = ChapterThree[l] ; module K = C3.K ; module CB = CircleBundles[l] ; module Z = Integers[l] ;
+  module II = IntegerIteration[l] ; module D = CycleDivision[l].Degree[n] ; module BP = Paths[l+] ;
+  b : C3.Circle = C3.base ; Loops : U l = Id C3.Circle b b ;
+  A0 : CB.Set = (Fin (suc n),FiniteCycles[l].fin-set (suc n)) ;
+  rot : Equiv (Fin (suc n)) (Fin (suc n)) = FiniteCycles[l].rotation n ;
+  Datum : U l+ = (X : CB.Set) * CB.Aut X ;
+  R : C3.Circle -> CB.Set = CB.monodromy.2.sec (A0,rot) ;
+  fib (z : C3.Circle) : U l = (R z).1 ;
+  tp (p : Loops) (x : fib b) : fib b = subst C3.Circle fib b b p x ;
+  aut-of (z : C3.Circle) (q : Id C3.Circle b z) : Equiv (fib b) (fib z) =
+    Axioms[l].idtoeqv (fib b) (fib z) (Big.ap CB.Set (U l) (\ X -> X.1) _ _ (Big.ap C3.Circle CB.Set R b z q)) ;
+  a : Equiv (fib b) (fib b) = aut-of b C3.loop ;
+  e : Id Datum (R b,a) (A0,rot) = CB.monodromy.2.sec-eq (A0,rot) ;
+  tp-aut (z : C3.Circle) (q : Id C3.Circle b z) (x : fib b) : Id (fib z) (subst C3.Circle fib b z q x) ((aut-of z q).1 x) =
+    idJ C3.Circle b (\ z1 q1 -> Id (fib z1) (subst C3.Circle fib b z1 q1 x) ((aut-of z1 q1).1 x)) (refl x) z q ;
+  subst-trans (q : Loops) (z : C3.Circle) (r : Id C3.Circle b z) (x : fib b) :
+    Id (fib z) (subst C3.Circle fib b z (trans C3.Circle b b z q r) x) (subst C3.Circle fib b z r (tp q x)) =
+    idJ C3.Circle b (\ z1 r1 -> Id (fib z1) (subst C3.Circle fib b z1 (trans C3.Circle b b z1 q r1) x) (subst C3.Circle fib b z1 r1 (tp q x)))
+      (refl (tp q x)) z r ;
+  band-loop : Id Z.Int (K.band b C3.loop) (pos (suc zero)) =
+    transH (CircleProperty[l].Circle[C3.Circle].band-g (refl b)) (apH Z.sucZ (K.band-unit b)) ;
+  unband-zero : Id Loops (K.unband b Z.zeroZ) (refl b) = K.band-inj b _ _ (transH (K.band-unband b Z.zeroZ) (symH (K.band-unit b))) ;
+  unband-suc (k : Z.Int) : Id Loops (K.unband b (Z.sucZ k)) (trans C3.Circle b b b (K.unband b k) C3.loop) =
+    K.band-inj b _ _ (transH (K.band-unband b (Z.sucZ k)) (symH (transH (K.band-hom b (K.unband b k) C3.loop)
+      (transH (apH (\ c -> Z.add c (K.band b C3.loop)) (K.band-unband b k)) (apH (Z.add k) band-loop))))) ;
+  module O = II.Orbit[fib b,a] ; module Rot = II.Orbit[Fin (suc n),rot] ;
+  tp-power (x : fib b) (k : Z.Int) : Id (fib b) (tp (K.unband b k) x) (O.power k x) =
+    O.Unique[x,\ j -> tp (K.unband b j) x,apH (\ q -> tp q x) unband-zero,
+      \ j -> transH (apH (\ q -> tp q x) (unband-suc j)) (transH (subst-trans (K.unband b j) b C3.loop x) (tp-aut b C3.loop (tp (K.unband b j) x)))].at k ;
+  tp-band (p : Loops) (x : fib b) : Id (fib b) (tp p x) (O.power (K.band b p) x) =
+    transH (apH (\ q -> tp q x) (symH (K.unband-band b p))) (tp-power x (K.band b p)) ;
+  -- Conjugating orbits along a path of data.
+  coe-of (D1 D2 : Datum) (r : Id Datum D1 D2) : Equiv D1.1.1 D2.1.1 =
+    Axioms[l].idtoeqv D1.1.1 D2.1.1 (Big.ap Datum (U l) (\ w -> w.1.1) D1 D2 r) ;
+  conj (D1 D2 : Datum) (r : Id Datum D1 D2) (k : Z.Int) (x : D1.1.1) :
+    Id D2.1.1 ((coe-of D1 D2 r).1 (II.Orbit[D1.1.1,D1.2].power k x)) (II.Orbit[D2.1.1,D2.2].power k ((coe-of D1 D2 r).1 x)) =
+    idJ Datum D1 (\ D3 r3 -> Id D3.1.1 ((coe-of D1 D3 r3).1 (II.Orbit[D1.1.1,D1.2].power k x)) (II.Orbit[D3.1.1,D3.2].power k ((coe-of D1 D3 r3).1 x)))
+      (refl (II.Orbit[D1.1.1,D1.2].power k x)) D2 r ;
+  c : Equiv (fib b) (Fin (suc n)) = coe-of (R b,a) (A0,rot) e ;
+  zero : fib b = c.2.sec none ;
+  moved (p : Loops) (x : fib b) : Id (Fin (suc n)) (c.1 (tp p x)) (Rot.power (K.band b p) (c.1 x)) =
+    transH (apH c.1 (tp-band p x)) (conj (R b,a) (A0,rot) e (K.band b p) x) ;
+  at-zero (p : Loops) : Id (Fin (suc n)) (c.1 (tp p zero)) (D.residue (K.band b p)) =
+    transH (moved p zero) (apH (Rot.power (K.band b p)) (c.2.sec-eq none)) ;
+  multiple-loop (j : Z.Int) : Loops = K.unband b (D.multiple j) ;
+  forth (p : Loops) (h : Id (fib b) (tp p zero) zero) : (j : Z.Int) * Id Loops p (multiple-loop j) =
+    (D.quotient (K.band b p),transH (symH (K.unband-band b p)) (apH (K.unband b)
+      (symH (D.exact (K.band b p) (transH (symH (at-zero p)) (transH (apH c.1 h) (c.2.sec-eq none))))))) ;
+  back (p : Loops) (w : (j : Z.Int) * Id Loops p (multiple-loop j)) : Id (fib b) (tp p zero) zero =
+    Equivalences[l].injective _ _ c.1 c.2 _ _ (transH (at-zero p)
+      (transH (apH D.residue (transH (apH (K.band b) w.2) (K.band-unband b (D.multiple w.1)))) (transH (D.divisible w.1) (symH (c.2.sec-eq none))))) ;
+} ;
+-- Exercise 5.3.30: R_m is transitive, and the Lagrange construction with an
+-- explicit choice map identifies UZ with m x UH_m.
+module RotationLagrange (n : Nat) {
+  module Rm = Rotations[n] ; module C3 = Rm.C3 ; module K = Rm.K ; module Z = Integers[l] ;
+  G : CG.ConcreteGroup = CG.integer-group ; module ST = SubgroupTheory[l].Over[G] ;
+  b : C3.Circle = Rm.b ;
+  X : ChapterFive[l,l].Actions[G].GSet = Rm.R ;
+  find (y : Fin (suc n)) : (k : Z.Int) * Id (Fin (suc n)) (Rm.Rot.power k none) y =
+    FiniteCycles[l].interval n (\ y1 -> (k : Z.Int) * Id (Fin (suc n)) (Rm.Rot.power k none) y1) (Z.zeroZ,refl none)
+      (\ i w -> (Z.sucZ w.1,transH (Rm.Rot.step w.1 none) (transH (apH Rm.rot.1 w.2) (FiniteCycles[l].advance n i)))) y ;
+  choice (x : Rm.fib b) : (g : Rm.Loops) * Id (Rm.fib b) (Rm.tp g x) Rm.zero =
+    (K.unband b (Z.neg (find (Rm.c.1 x)).1),Equivalences[l].injective _ _ Rm.c.1 Rm.c.2 _ _
+      (transH (Rm.moved (K.unband b (Z.neg (find (Rm.c.1 x)).1)) x)
+        (transH (apH (\ k -> Rm.Rot.power k (Rm.c.1 x)) (K.band-unband b (Z.neg (find (Rm.c.1 x)).1)))
+          (transH (apH (Rm.Rot.power (Z.neg (find (Rm.c.1 x)).1)) (symH (find (Rm.c.1 x)).2))
+            (transH (Rm.Rot.undo (find (Rm.c.1 x)).1 none) (symH (Rm.c.2.sec-eq none))))))) ;
+  back-sym (z : C3.Circle) (q : Id C3.Circle b z) (y : Rm.fib b) :
+    Id (Rm.fib b) (subst C3.Circle Rm.fib z b (sym C3.Circle b z q) (subst C3.Circle Rm.fib b z q y)) y =
+    idJ C3.Circle b (\ z1 q1 -> Id (Rm.fib b) (subst C3.Circle Rm.fib z1 b (sym C3.Circle b z1 q1) (subst C3.Circle Rm.fib b z1 q1 y)) y)
+      (refl y) z q ;
+  hits (x y : Rm.fib b) : (p : Rm.Loops) * Id (Rm.fib b) (Rm.tp p x) y =
+    (trans C3.Circle b b b (choice x).1 (sym C3.Circle b b (choice y).1),
+      transH (Rm.subst-trans (choice x).1 b (sym C3.Circle b b (choice y).1) x)
+        (transH (apH (subst C3.Circle Rm.fib b b (sym C3.Circle b b (choice y).1)) (transH (choice x).2 (symH (choice y).2)))
+          (back-sym b (choice y).1 y))) ;
+  transitive : Subgroups[l].Over[G].Action[X].C.transitive = \ x y -> T.Trunc[(p : Rm.Loops) * Id (Rm.fib b) (Rm.tp p x) y].inc (hits x y) ;
+  sub : Subgroups[l].Over[G].Sub = (X,Rm.zero,transitive) ;
+  module L = ST.Lagrange[sub] ;
+  lagrange : Equiv (Id C3.Circle b b) (Rm.fib b * L.A.loops) = L.construction choice ;
+  equivalence : Equiv (Id C3.Circle b b) (Fin (suc n) * L.A.loops) =
+    Equivalences[l].compose _ _ _ lagrange (Equivalences[l].product (Rm.fib b) (Fin (suc n)) L.A.loops Rm.c) ;
+} ;
+-- Transport along a loop power on the circle is the power of transport along the generator.
+module CirclePowers (F : ChapterThree[l].Circle -> U l) {
+  module C3 = ChapterThree[l] ; module K = C3.K ; module Z = Integers[l] ;
+  b : C3.Circle = C3.base ;
+  there (z : C3.Circle) (q : Id C3.Circle b z) (y : F b) : Id (F b) (subst C3.Circle F z b (sym C3.Circle b z q) (subst C3.Circle F b z q y)) y =
+    idJ C3.Circle b (\ z1 q1 -> Id (F b) (subst C3.Circle F z1 b (sym C3.Circle b z1 q1) (subst C3.Circle F b z1 q1 y)) y) (refl y) z q ;
+  back (z : C3.Circle) (q : Id C3.Circle b z) : (y : F z) -> Id (F z) (subst C3.Circle F b z q (subst C3.Circle F z b (sym C3.Circle b z q) y)) y =
+    idJ C3.Circle b (\ z1 q1 -> (y : F z1) -> Id (F z1) (subst C3.Circle F b z1 q1 (subst C3.Circle F z1 b (sym C3.Circle b z1 q1) y)) y) (\ y -> refl y) z q ;
+  a : Equiv (F b) (F b) = (subst C3.Circle F b b C3.loop,qinv _ _ (subst C3.Circle F b b C3.loop)
+    (subst C3.Circle F b b (sym C3.Circle b b C3.loop)) (back b C3.loop) (there b C3.loop)) ;
+  subst-trans (q : Id C3.Circle b b) (z : C3.Circle) (r : Id C3.Circle b z) (x : F b) :
+    Id (F z) (subst C3.Circle F b z (trans C3.Circle b b z q r) x) (subst C3.Circle F b z r (subst C3.Circle F b b q x)) =
+    idJ C3.Circle b (\ z1 r1 -> Id (F z1) (subst C3.Circle F b z1 (trans C3.Circle b b z1 q r1) x) (subst C3.Circle F b z1 r1 (subst C3.Circle F b b q x)))
+      (refl (subst C3.Circle F b b q x)) z r ;
+  module O = IntegerIteration[l].Orbit[F b,a] ;
+  power (x : F b) (k : Z.Int) : Id (F b) (subst C3.Circle F b b (K.unband b k) x) (O.power k x) =
+    O.Unique[x,\ j -> subst C3.Circle F b b (K.unband b j) x,apH (\ q -> subst C3.Circle F b b q x) Rotations[zero].unband-zero,
+      \ j -> transH (apH (\ q -> subst C3.Circle F b b q x) (Rotations[zero].unband-suc j)) (subst-trans (K.unband b j) b C3.loop x)].at k ;
+} ;
+-- A G-set classified by a homomorphism into Sigma_k: transport is the
+-- permutation of the image loop, up to a fixed identification with Fin k.
+module ThroughSymmetric (k : Nat) (G : CG.ConcreteGroup) (phi : CG.Hom G SignOrderings[l].Component[k].G.group) {
+  module S = SignOrderings[l].Component[k] ; module SC = S.G.C ; module LC = LoopConj[l] ;
+  s0 : SC.base = S.G.pt ; pt : G.space = G.point ;
+  ext (v : SC.base) : U l = SC.extension v ;
+  X : ChapterFive[l,l].Actions[G].GSet = \ z -> (ext (phi.1 z),S.G.sets (phi.1 z)) ;
+  ie (c d : SC.base) (p : Id SC.base c d) : Equiv (ext c) (ext d) = Axioms[l].idtoeqv (ext c) (ext d) (Big.ap SC.base (U l) ext c d p) ;
+  ie-subst (c d : SC.base) (p : Id SC.base c d) (y : ext c) : Id (ext d) ((ie c d p).1 y) (subst SC.base ext c d p y) =
+    idJ SC.base c (\ d1 p1 -> Id (ext d1) ((ie c d1 p1).1 y) (subst SC.base ext c d1 p1 y)) (refl y) d p ;
+  conj-subst (c d : SC.base) (p : Id SC.base c d) (r : Id SC.base c c) (x : ext c) :
+    Id (ext d) (subst SC.base ext c d p (subst SC.base ext c c r x)) (subst SC.base ext d d (LC.conj SC.base c d p r) (subst SC.base ext c d p x)) =
+    idJ SC.base c (\ d1 p1 -> Id (ext d1) (subst SC.base ext c d1 p1 (subst SC.base ext c c r x))
+      (subst SC.base ext d1 d1 (LC.conj SC.base c d1 p1 r) (subst SC.base ext c d1 p1 x)))
+      (apH (\ r1 -> subst SC.base ext c c r1 x) (symH (trans-refl-l SC.base c c r))) d p ;
+  tri : Id (U l) (ext s0) (Fin k) = SC.triangle tt ;
+  itri : Equiv (ext s0) (Fin k) = Axioms[l].idtoeqv _ _ tri ;
+  perm-move (Y : U l) (t : Id (U l) (ext s0) Y) (E : S.G.change (ext s0)) (r : Id SC.base s0 s0) (y : ext s0) :
+    Id Y (((Big.subst (U l) (\ Y1 -> S.G.change Y1) (ext s0) Y t E).1 r).1 ((Axioms[l].idtoeqv _ _ t).1 y)) ((Axioms[l].idtoeqv _ _ t).1 ((E.1 r).1 y)) =
+    idJ (U l) (ext s0) (\ Y1 t1 -> Id Y1 (((Big.subst (U l) (\ Y2 -> S.G.change Y2) (ext s0) Y1 t1 E).1 r).1 ((Axioms[l].idtoeqv _ _ t1).1 y))
+      ((Axioms[l].idtoeqv _ _ t1).1 ((E.1 r).1 y))) (refl ((E.1 r).1 y)) Y t ;
+  alpha : Equiv (ext (phi.1 pt)) (Fin k) = Equivalences[l].compose _ _ _ (ie _ _ phi.2) itri ;
+  loop-map (q : Id G.space pt pt) : Id SC.base s0 s0 = (DeloopMaps[l].Maps[G.space,pt,SC.base,s0].loop phi).1 q ;
+  y0 (x : ext (phi.1 pt)) : ext s0 = subst SC.base ext (phi.1 pt) s0 phi.2 x ;
+  act (q : Id G.space pt pt) (x : ext (phi.1 pt)) : ext (phi.1 pt) = subst G.space (\ z -> ext (phi.1 z)) pt pt q x ;
+  step1 (q : Id G.space pt pt) (x : ext (phi.1 pt)) : Id (ext s0) ((ie (phi.1 pt) s0 phi.2).1 (act q x)) (y0 (act q x)) =
+    ie-subst (phi.1 pt) s0 phi.2 (act q x) ;
+  step2 (q : Id G.space pt pt) (x : ext (phi.1 pt)) : Id (ext s0) (y0 (act q x))
+    (subst SC.base ext (phi.1 pt) s0 phi.2 (subst SC.base ext (phi.1 pt) (phi.1 pt) (apH phi.1 q) x)) =
+    apH (subst SC.base ext (phi.1 pt) s0 phi.2) (subst-ap G.space SC.base phi.1 ext pt pt q x) ;
+  step3 (q : Id G.space pt pt) (x : ext (phi.1 pt)) :
+    Id (ext s0) (subst SC.base ext (phi.1 pt) s0 phi.2 (subst SC.base ext (phi.1 pt) (phi.1 pt) (apH phi.1 q) x))
+      (subst SC.base ext s0 s0 (loop-map q) (y0 x)) =
+    transH (conj-subst (phi.1 pt) s0 phi.2 (apH phi.1 q) x)
+      (apH (\ r -> subst SC.base ext s0 s0 r (y0 x)) (symH (DeloopMaps[l].Maps[G.space,pt,SC.base,s0].loop-ap phi q))) ;
+  step4 (q : Id G.space pt pt) (x : ext (phi.1 pt)) :
+    Id (Fin k) (itri.1 (subst SC.base ext s0 s0 (loop-map q) (y0 x))) ((S.G.permutations.1 (loop-map q)).1 (itri.1 (y0 x))) =
+    transH (apH itri.1 (symH (ie-subst s0 s0 (loop-map q) (y0 x)))) (symH (perm-move (Fin k) tri S.G.At[s0,s0].paths (loop-map q) (y0 x))) ;
+  alpha-y0 (x : ext (phi.1 pt)) : Id (Fin k) (alpha.1 x) (itri.1 (y0 x)) = apH itri.1 (ie-subst (phi.1 pt) s0 phi.2 x) ;
+  acts (q : Id G.space pt pt) (x : ext (phi.1 pt)) :
+    Id (Fin k) (alpha.1 (act q x)) ((S.G.permutations.1 (loop-map q)).1 (alpha.1 x)) =
+    transH (apH itri.1 (transH (step1 q x) (transH (step2 q x) (step3 q x))))
+      (transH (step4 q x) (apH (S.G.permutations.1 (loop-map q)).1 (symH (alpha-y0 x)))) ;
+} ;

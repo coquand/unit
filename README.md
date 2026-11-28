@@ -73,9 +73,13 @@ The projector proof uses [admissible fixed-point induction](https://github.com/c
 The [étale note](doc/etale-gabber.pdf), [root-topology proof](doc/gabber-h2.pdf), and [checked development](sag/etale-gabber) give an internal proof of Gabber's theorem for étale stack gerbes over affine spectra in synthetic algebraic geometry: the sheafifications are constructed, and [Hilbert 90 reduces the étale case to the root topology](sag/etale-gabber/EtaleStacks.seg).
 The [new gluing argument](doc/gabber-recollement.pdf) uses elementary weak cancellation and an explicit clutching correction, avoiding general effectiveness, Bass cancellation, and reduction to noetherian rings; the complete Unit check covers 425 modules.
 
+### The book *Symmetry*
+
+[`symmetry/`](symmetry) formalises chapters 1–8 of [*Symmetry*](https://github.com/UniMath/SymmetryBook) (Bezem, Buchholtz, Cagne, Dundas, Grayson), following the book's [Rocq formalisation](https://github.com/UniMath/SymmetryBook/tree/cdc1dc873dda4ddc0373ca8696be7a299a1ca4cf/Formalization) as a blueprint. It covers univalent foundations and the circle, concrete groups as pointed connected groupoids, actions, Burnside's lemma and the orbit–stabilizer theorem, Cayley's theorem, Lagrange's theorem, categories with the Rezk completion, the equivalence between concrete and abstract groups with their homomorphisms and actions, heaps, and semidirect and wreath products. [Per-chapter indexes](symmetry/README.md) map the book's numbered items to declarations and list what is still open. The development assumes univalence and replacement. The three entry points have 11714, 2215 and 1270 declarations, including the imported libraries, and check in about 4 s, 0.5 s and 0.2 s on an Apple M4 Pro: `cd symmetry && python3 check.py --universe-tests`.
+
 ## Developments
 
-This repository contains the checker and sixteen developments written with it:
+This repository contains the checker and seventeen developments written with it:
 
 - a formalisation of a model of univalent type theory over a base category
   with an interval, with finite posets and simplicial sets as instances
@@ -150,6 +154,9 @@ This repository contains the checker and sixteen developments written with it:
   theorem (a regular sum of finitary formulas has a regular finite part)
   and his application to existence proofs (Markov's rule), with witnesses
   and bounds computed through the elimination of a cut (`novikov`).
+- chapters 1–8 of the book *Symmetry* (Bezem, Buchholtz, Cagne, Dundas,
+  Grayson): concrete groups, actions, abstract groups and heaps, with an
+  index of the book's numbered items (`symmetry/`).
 
 ### Mathematical attribution
 
@@ -770,6 +777,7 @@ The checker is written in Haskell (GHC; the packages `base`, `containers` and
     ./segc sag/chatelet all        # Chatelet, descent, and finite projectivity
     ./segc sag/dialogue all        # DialogueTreesHeight (0.3 s)
     ./segc novikov all             # Novikov's consistency proof (0.02 s)
+    (cd symmetry && python3 check.py --universe-tests)   # the Symmetry book (about 5 s)
 
 `segc` starts a checking server that loads the development once and keeps
 the results; `./segc core stop` stops it. Every declaration has a budget of

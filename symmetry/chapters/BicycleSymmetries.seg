@@ -1,0 +1,203 @@
+-- Section 4.6. Equivariant bijections of transitive two-generator sets.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module T = Truncation[l] ;
+module TC = TruncationCombinators[l] ; module Z = Integers[l] ; module I = IntegerIteration[l] ;
+letter : U l = FiniteArithmetic[l].Sum Z.Int Z.Int ; word : U l = Ring[l].List letter ;
+module Action (X : U l) (a b : Equiv X X) {
+  step : letter -> X -> X = split { left k -> I.Orbit[X,a].power k ; right k -> I.Orbit[X,b].power k } ;
+  run : word -> X -> X = split { nil -> \ x -> x ; cons k w | r -> \ x -> step k (r x) } ;
+  route (x y : X) : U l = (w : word) * Id X (run w x) y ;
+} ;
+record Bicycle {
+  X : U l ; set : isSet X ; a : Equiv X X ; b : Equiv X X ; inhabited : T.Trunc[X].carrier ;
+  connected (x y : X) : T.Trunc[Action[X,a,b].route x y].carrier ;
+} ;
+module Maps (G H : Bicycle) {
+  module A = Action[G.X,G.a,G.b] ; module B = Action[H.X,H.a,H.b] ;
+  law (f : G.X -> H.X) (s : Equiv G.X G.X) (t : Equiv H.X H.X) : U l = (x : G.X) -> Id H.X (f (s.1 x)) (t.1 (f x)) ;
+  laws (f : G.X -> H.X) : U l = law f G.a H.a * law f G.b H.b ;
+  prop (f : G.X -> H.X) : isProp (laws f) = isProp-Sigma (law f G.a H.a) (\ h -> law f G.b H.b)
+    (FL.isProp-Pi G.X (\ x -> Id H.X (f (G.a.1 x)) (H.a.1 (f x))) (\ x -> H.set _ _))
+    (\ h -> FL.isProp-Pi G.X (\ x -> Id H.X (f (G.b.1 x)) (H.b.1 (f x))) (\ x -> H.set _ _)) ;
+  iso : U l = (e : Equiv G.X H.X) * laws e.1 ;
+  eq (f g : iso) (h : (x : G.X) -> Id H.X (f.1.1 x) (g.1.1 x)) : Id iso f g = Sigma-eq (Equiv G.X H.X) (\ e -> laws e.1) _ _ _ _
+    (ChapterTwo[l].equiv-ext G.X H.X f.1 g.1 h) (prop g.1.1) ;
+  letters (f : iso) : (k : letter) (x : G.X) -> Id H.X (f.1.1 (A.step k x)) (B.step k (f.1.1 x)) = split {
+    left k -> \ x -> I.Map[G.X,H.X,G.a,H.a,f.1.1,f.2.1].at x k ;
+    right k -> \ x -> I.Map[G.X,H.X,G.b,H.b,f.1.1,f.2.2].at x k } ;
+  commute (f : iso) : (w : word) (x : G.X) -> Id H.X (f.1.1 (A.run w x)) (B.run w (f.1.1 x)) = split {
+    nil -> \ x -> refl (f.1.1 x) ; cons k w | r -> \ x -> transH (letters f k (A.run w x)) (apH (B.step k) (r x)) } ;
+  eval (x : G.X) (f : iso) : H.X = f.1.1 x ;
+  injective (x : G.X) (f g : iso) (p : Id H.X (eval x f) (eval x g)) : Id iso f g = eq f g
+    (\ y -> TC.rec (A.route x y) @l _ (H.set _ _) (\ z -> transH (symH (apH f.1.1 z.2))
+      (transH (commute f z.1 x) (transH (apH (B.run z.1) p) (transH (symH (commute g z.1 x)) (apH g.1.1 z.2))))) (G.connected x y)) ;
+  fibre-prop (x : G.X) : (y : H.X) -> isProp ((f : iso) * Id H.X (eval x f) y) =
+    FibreLevels[l].Of[iso,H.X,eval x].SetTarget[H.set].from (injective x) ;
+} ;
+module Normality (G : Bicycle) {
+  module M = Maps[G,G] ;
+  normality : U l = (x : G.X) -> isEquiv M.iso G.X (M.eval x) ;
+  composite (e d : M.iso) : M.iso = (Equivalences[l].compose _ _ _ e.1 d.1,
+    (\ x -> transH (apH d.1.1 (e.2.1 x)) (d.2.1 (e.1.1 x))),\ x -> transH (apH d.1.1 (e.2.2 x)) (d.2.2 (e.1.1 x))) ;
+  inv-law (e : M.iso) (a : Equiv G.X G.X) (h : M.law e.1.1 a a) (y : G.X) :
+    Id G.X (e.1.2.sec (a.1 y)) (a.1 (e.1.2.sec y)) = Equivalences[l].injective _ _ e.1.1 e.1.2 _ _
+    (transH (e.1.2.sec-eq (a.1 y)) (symH (transH (h (e.1.2.sec y)) (apH a.1 (e.1.2.sec-eq y))))) ;
+  inverse (e : M.iso) : M.iso = (Bijection[l].inverse _ _ e.1,inv-law e G.a e.2.1,inv-law e G.b e.2.2) ;
+  module At (x : G.X) (h : isEquiv M.iso G.X (M.eval x)) {
+    transport (y z : G.X) : M.iso = composite (inverse (h.sec y)) (h.sec z) ;
+    beta (y z : G.X) : Id G.X (M.eval y (transport y z)) z = transH (apH (h.sec z).1.1
+      (transH (apH (h.sec y).1.2.sec (symH (h.sec-eq y))) (sec-ret _ _ (h.sec y).1.1 (h.sec y).1.2 x))) (h.sec-eq z) ;
+    all (y : G.X) : isEquiv M.iso G.X (M.eval y) = qinv _ _ (M.eval y) (transport y) (beta y)
+      (\ f -> M.injective y _ f (beta y (M.eval y f))) ;
+  } ;
+  box (h : normality) (x y : G.X) : M.iso = (h x).sec y ;
+  sends (h : normality) (x y : G.X) : Id G.X (M.eval x (box h x y)) y = (h x).sec-eq y ;
+  unit (h : normality) (x : G.X) : Id M.iso (box h x x) (idEquiv G.X,(\ t -> refl (G.a.1 t)),\ t -> refl (G.b.1 t)) =
+    M.injective x _ _ (sends h x x) ;
+  compose-box (h : normality) (x y z : G.X) : Id M.iso (composite (box h x y) (box h y z)) (box h x z) =
+    M.injective x _ _ (transH (apH (box h y z).1.1 (sends h x y)) (transH (sends h y z) (symH (sends h x z)))) ;
+} ;
+
+module Stabilizers (G : Bicycle) {
+  module A = Action[G.X,G.a,G.b] ; module N = Normality[G] ; module M = Maps[G,G] ;
+  fixes (x : G.X) (w : word) : U l = Id G.X (A.run w x) x ;
+  same : U l = (x y : G.X) (w : word) -> fixes x w -> fixes y w ;
+  agree (h : N.normality) (x y : G.X) (u v : word) (p : Id G.X (A.run u x) (A.run v x)) :
+    Id G.X (A.run u y) (A.run v y) =
+    transH (symH (apH (A.run u) (N.sends h x y))) (transH (symH (M.commute (N.box h x y) u x))
+      (transH (apH (N.box h x y).1.1 p) (transH (M.commute (N.box h x y) v x) (apH (A.run v) (N.sends h x y))))) ;
+  necessary (h : N.normality) (x y : G.X) (w : word) : fixes x w -> fixes y w = agree h x y w nil ;
+  word-eq (h : N.normality) (x : G.X) (u v : word) (p : Id G.X (A.run u x) (A.run v x)) :
+    Id (G.X -> G.X) (A.run u) (A.run v) = FL.funext G.X (\ y -> G.X) _ _ (\ y -> agree h x y u v p) ;
+  evaluate (x : G.X) (u v : word) : Id (G.X -> G.X) (A.run u) (A.run v) -> Id G.X (A.run u x) (A.run v x) =
+    ap (G.X -> G.X) G.X (\ f -> f x) _ _ ;
+  opposite : letter -> letter = split { left k -> left (Z.neg k) ; right k -> right (Z.neg k) } ;
+  undo : (k : letter) (x : G.X) -> Id G.X (A.step (opposite k) (A.step k x)) x = split {
+    left k -> I.Orbit[G.X,G.a].undo k ; right k -> I.Orbit[G.X,G.b].undo k } ;
+  cancel : (k : letter) (x y : G.X) -> Id G.X (A.step k x) (A.step k y) -> Id G.X x y = split {
+    left k -> I.Orbit[G.X,G.a].cancel k ; right k -> I.Orbit[G.X,G.b].cancel k } ;
+  subtract : word -> word -> word = split { nil -> \ v -> v ; cons k u | r -> \ v -> r (cons (opposite k) v) } ;
+  forward : (u v : word) (x : G.X) -> Id G.X (A.run v x) (A.run u x) -> fixes x (subtract u v) = split {
+    nil -> \ v x p -> p ; cons k u | r -> \ v x p -> r (cons (opposite k) v) x
+      (transH (apH (A.step (opposite k)) p) (undo k (A.run u x))) } ;
+  backward : (u v : word) (x : G.X) -> fixes x (subtract u v) -> Id G.X (A.run v x) (A.run u x) = split {
+    nil -> \ v x p -> p ; cons k u | r -> \ v x p -> cancel (opposite k) _ _
+      (transH (r (cons (opposite k) v) x p) (symH (undo k (A.run u x)))) } ;
+  module Independent (h : same) {
+    module Shift (x y : G.X) {
+      module To (z : G.X) {
+        image (v : A.route x z) : G.X = A.run v.1 y ;
+        constant (v u : A.route x z) : Id G.X (image v) (image u) = backward u.1 v.1 y
+          (h x y (subtract u.1 v.1) (forward u.1 v.1 x (transH v.2 (symH u.2)))) ;
+        module K = ConstantMap[l].Constant[A.route x z,G.X,G.set,image,constant] ;
+      } ;
+      move (z : G.X) : G.X = To[z].K.value (G.connected x z) ;
+      beta (z : G.X) (v : A.route x z) : Id G.X (move z) (A.run v.1 y) = To[z].K.value-at (G.connected x z) v ;
+      law (k : letter) (z : G.X) : Id G.X (move (A.step k z)) (A.step k (move z)) =
+        TC.rec (A.route x z) @l _ (G.set _ _) (\ v -> transH
+          (beta (A.step k z) (cons k v.1,apH (A.step k) v.2)) (symH (apH (A.step k) (beta z v)))) (G.connected x z) ;
+    } ;
+    inverse (x y z : G.X) : Id G.X (Shift[y,x].move (Shift[x,y].move z)) z =
+      TC.rec (A.route x z) @l _ (G.set _ _) (\ v -> transH (apH Shift[y,x].move (Shift[x,y].beta z v))
+        (transH (Shift[y,x].beta (A.run v.1 y) (v.1,refl (A.run v.1 y))) v.2)) (G.connected x z) ;
+    one : Z.Int = pos (suc zero) ;
+    iso (x y : G.X) : M.iso = ((Shift[x,y].move,qinv _ _ Shift[x,y].move Shift[y,x].move (inverse y x) (inverse x y)),
+      Shift[x,y].law (left one),Shift[x,y].law (right one)) ;
+    sends (x y : G.X) : Id G.X (M.eval x (iso x y)) y = Shift[x,y].beta x (nil,refl x) ;
+    sufficient (x : G.X) : isEquiv M.iso G.X (M.eval x) = qinv _ _ (M.eval x) (iso x) (sends x)
+      (\ f -> M.injective x _ _ (sends x (M.eval x f))) ;
+  } ;
+  module Commuting (c : (x : G.X) -> Id G.X (G.a.1 (G.b.1 x)) (G.b.1 (G.a.1 x))) {
+    a : M.iso = (G.a,(\ x -> refl (G.a.1 (G.a.1 x))),c) ;
+    b : M.iso = (G.b,(\ x -> symH (c x)),\ x -> refl (G.b.1 (G.b.1 x))) ;
+    along (w : word) (x : G.X) (h : fixes x w) (f : M.iso) : fixes (f.1.1 x) w =
+      transH (symH (M.commute f w x)) (apH f.1.1 h) ;
+    module Power (e : M.iso) {
+      pos-fix : (n : Nat) (w : word) (x : G.X) -> fixes x w -> fixes (I.Orbit[G.X,e.1].N.power n x) w = split {
+        zero -> \ w x p -> p ; suc n | r -> \ w x p -> along w _ (r w x p) e } ;
+      neg-fix : (n : Nat) (w : word) (x : G.X) -> fixes x w -> fixes (I.Orbit[G.X,e.1].Back.power n x) w = split {
+        zero -> \ w x p -> p ; suc n | r -> \ w x p -> along w _ (r w x p) (N.inverse e) } ;
+      preserve : (k : Z.Int) (w : word) (x : G.X) -> fixes x w -> fixes (I.Orbit[G.X,e.1].power k x) w = split {
+        pos n -> pos-fix n ; negsuc n -> neg-fix (suc n) } ;
+    } ;
+    step : (k : letter) (w : word) (x : G.X) -> fixes x w -> fixes (A.step k x) w = split {
+      left k -> Power[a].preserve k ; right k -> Power[b].preserve k } ;
+    words : (v w : word) (x : G.X) -> fixes x w -> fixes (A.run v x) w = split {
+      nil -> \ w x p -> p ; cons k v | r -> \ w x p -> step k w _ (r w x p) } ;
+    independent (x y : G.X) (w : word) (p : fixes x w) : fixes y w = TC.rec (A.route x y) @l _ (G.set _ _)
+      (\ v -> subst G.X (\ z -> fixes z w) _ _ v.2 (words v.1 w x p)) (G.connected x y) ;
+    normality : N.normality = Independent[independent].sufficient ;
+  } ;
+} ;
+
+module B = Prelude[l+] ; module BP = Paths[l+] ; module H = HLevels[l] ;
+generators (Y : U l) : U l = Equiv Y Y * Equiv Y Y ;
+module Data (Y : U l) (s : generators Y) {
+  reach : U l = (x y : Y) -> T.Trunc[Action[Y,s.1,s.2].route x y].carrier ;
+  properties : U l = isSet Y * T.Trunc[Y].carrier * reach ;
+  prop : isProp properties = isProp-Sigma (isSet Y) (\ v -> T.Trunc[Y].carrier * reach) (Torsor[l].isProp-isSet Y)
+    (\ v -> isProp-Sigma T.Trunc[Y].carrier (\ z -> reach) T.Trunc[Y].proposition (\ z -> FL.isProp-Pi Y
+      (\ x -> (y : Y) -> T.Trunc[Action[Y,s.1,s.2].route x y].carrier) (\ x -> FL.isProp-Pi Y (\ y -> T.Trunc[Action[Y,s.1,s.2].route x y].carrier) (\ y -> T.Trunc[Action[Y,s.1,s.2].route x y].proposition)))) ;
+  build (t : properties) : Bicycle = new Bicycle[Y,t.1,s.1,s.2,t.2.1,t.2.2] ;
+} ;
+module Identity (G : Bicycle) {
+  gs : generators G.X = (G.a,G.b) ; t0 : Data[G.X,gs].properties = (G.set,G.inhabited,G.connected) ;
+  id : Maps[G,G].iso = (idEquiv G.X,(\ x -> refl (G.a.1 x)),\ x -> refl (G.b.1 x)) ;
+  total : U l+ = (K : Bicycle) * Maps[G,K].iso ;
+  center : total = (G,id) ;
+  module At (Y : U l) (e : Equiv G.X Y) (s : generators Y) {
+    laws : U l = ((x : G.X) -> Id Y (e.1 (G.a.1 x)) (s.1.1 (e.1 x))) * ((x : G.X) -> Id Y (e.1 (G.b.1 x)) (s.2.1 (e.1 x))) ;
+    item (t : Data[Y,s].properties) (h : laws) : total = (Data[Y,s].build t,e,h) ;
+  } ;
+  self (J : Bicycle) : (K : Bicycle) * Maps[J,K].iso = (J,idEquiv J.X,(\ x -> refl (J.a.1 x)),\ x -> refl (J.b.1 x)) ;
+  start : (J : Bicycle) -> Id ((K : Bicycle) * Maps[J,K].iso)
+    (J,(idEquiv J.X,(\ x -> refl (J.a.1 x)),\ x -> refl (J.b.1 x))) (Data[J.X,(J.a,J.b)].build (J.set,J.inhabited,J.connected),
+      (idEquiv J.X,(\ x -> refl (J.a.1 x)),\ x -> refl (J.b.1 x))) =
+    split { Bicycle X s a b i c -> refl (self (new Bicycle[X,s,a,b,i,c])) } ;
+  same (t : Data[G.X,gs].properties) (h : At[G.X,idEquiv G.X,gs].laws) : Id total center (At[G.X,idEquiv G.X,gs].item t h) =
+    BP.transH (start G) (BP.transH (BP.apH (\ z -> At[G.X,idEquiv G.X,gs].item z id.2) (Data[G.X,gs].prop t0 t))
+      (BP.apH (At[G.X,idEquiv G.X,gs].item t) (Maps[G,G].prop (\ x -> x) id.2 h))) ;
+  motive (Y : U l) (e : Equiv G.X Y) : U l+ = (s : generators Y) (t : Data[Y,s].properties) (h : At[Y,e,s].laws) -> Id total center (At[Y,e,s].item t h) ;
+  eq (a b : Equiv G.X G.X) (h : (x : G.X) -> Id G.X (a.1 x) (b.1 x)) : Id (Equiv G.X G.X) a b =
+    ChapterTwo[l].equiv-ext G.X G.X a b h ;
+  move (s : generators G.X) (p : Id (generators G.X) gs s) : (t : Data[G.X,s].properties) (h : At[G.X,idEquiv G.X,s].laws) -> Id total center (At[G.X,idEquiv G.X,s].item t h) =
+    idJ (generators G.X) gs (\ d q -> (t : Data[G.X,d].properties) (h : At[G.X,idEquiv G.X,d].laws) -> Id total center (At[G.X,idEquiv G.X,d].item t h)) same s p ;
+  base : motive G.X (idEquiv G.X) = \ s t h -> move s (GroupIdentity[l].pairs _ _ _ _ _ _ (eq G.a s.1 h.1) (eq G.b s.2 h.2)) t h ;
+  general (Y : U l) (e : Equiv G.X Y) : motive Y e = Axioms[l].UnivalenceLemmas[univ @l].eqind G.X motive base Y e ;
+  contract : (K : Bicycle) (f : Maps[G,K].iso) -> Id total center (K,f) = split {
+    Bicycle X s a b i c -> \ f -> general X f.1 (a,b) (s,i,c) f.2 } ;
+  module System = FundThm[l+].FT[Bicycle,G,\ K -> Maps[G,K].iso,id,(center,\ w -> contract w.1 w.2)] ;
+  equivalence (K : Bicycle) : B.Equiv (Id Bicycle G K) (Maps[G,K].iso) = (System.tr K,System.equiv K) ;
+  small (K : Bicycle) : Replacement[l,l+].Small (Id Bicycle G K) = (Maps[G,K].iso,Bijection[l+].inverse _ _ (equivalence K)) ;
+  set (K : Bicycle) : isSet (Maps[G,K].iso) = Torsor[l].isSet-sub (Equiv G.X K.X) (\ e -> Maps[G,K].laws e.1)
+    (CircleBundles[l].equivalences-are-set (G.X,G.set) (K.X,K.set)) (\ e -> Maps[G,K].prop e.1) ;
+} ;
+local : Replacement[l,l+].LocallySmall Bicycle = \ G K -> Identity[G].small K ;
+module Component (G : Bicycle) {
+  module L = LocalSmallness[l,l+].Component[Bicycle,local,G] ;
+  code (x y : L.carrier) : Equiv (Id L.carrier x y) (Maps[L.image.inclusion x,L.image.inclusion y].iso) =
+    Truncations[l].lower _ _ (Equivalences[l+].compose _ _ _ (B.ap L.carrier Bicycle L.image.inclusion x y,L.image.embedding x y)
+      (Identity[L.image.inclusion x].equivalence (L.image.inclusion y))) ;
+  reaches (x : L.carrier) : T.Trunc[Id L.carrier L.point x].carrier = L.path-from-point x ;
+  group : ChapterFour[l].ConcreteGroup = new ChapterFour[l].ConcreteGroup[L.carrier,L.point,
+    ChapterFour[l].Reachable[L.carrier,L.point,reaches].connected,\ x y -> H.equiv-trunc ChapterFour[l].two _ _ (code x y)
+      (H.set-trunc _ (Identity[L.image.inclusion x].set (L.image.inclusion y)))] ;
+  symmetries : Equiv (Id L.carrier L.point L.point) (Maps[G,G].iso) = B.subst Bicycle
+    (\ K -> Equiv (Id L.carrier L.point L.point) (Maps[K,K].iso)) _ G L.path-at-point (code L.point L.point) ;
+} ;
+
+module StabilizerEquality (G : Bicycle) {
+  module S = Stabilizers[G] ; module N = Normality[G] ; module Q = Quotient[l] ;
+  subset (x : G.X) (w : word) : Q.Prop = (S.fixes x w,G.set _ _) ;
+  equal : U l+ = (x y : G.X) -> Id (word -> Q.Prop) (subset x) (subset y) ;
+  module P (x : G.X) { module R = Q.PropFamilies[word,subset x] ; } ;
+  to (h : N.normality) (x y : G.X) : Id (word -> Q.Prop) (subset x) (subset y) =
+    P[x].R.decode (subset y) (\ w -> (S.necessary h x y w,S.necessary h y x w)) ;
+  same (h : equal) (x y : G.X) (w : word) : S.fixes x w -> S.fixes y w = (P[x].R.encode (subset y) (h x y) w).1 ;
+  from (h : equal) : N.normality = S.Independent[same h].sufficient ;
+  module BF = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+  equiv : Prelude[l+].Equiv N.normality equal = Bijection[l+].prop-equiv _ _
+    (FL.isProp-Pi G.X (\ x -> isEquiv N.M.iso G.X (N.M.eval x)) (\ x -> EquivProp[l].isEquiv-prop N.M.iso G.X (N.M.eval x)))
+    (BF.isProp-Pi G.X (\ x -> (y : G.X) -> Id (word -> Q.Prop) (subset x) (subset y)) (\ x ->
+      BF.isProp-Pi G.X (\ y -> Id (word -> Q.Prop) (subset x) (subset y)) (\ y -> P[x].R.path-prop (subset y)))) to from ;
+} ;

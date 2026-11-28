@@ -1,0 +1,58 @@
+-- A cycle in list notation sends its pivot to the first entry, each entry
+-- to the next, and the last entry back to the pivot.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ;
+module E = Equivalences[l] ; module SO = SignOrderings[l] ; module T = Truncation[l] ; module Z = Z2[l] ;
+module At (n : Nat) {
+  module L = EvenPermutations[l].Labeled[n] ; module S = L.S ; module M = S.M ; module P = M.P ;
+  X : U l = M.X ; module Two = TwoElementSets[l] ;
+  module Pair (a b : X) (ne : Id X a b -> Empty) {
+    rest (x : X) : Dec (Id X x b) -> Bool = split { yes p -> true ; no k -> false } ;
+    choose (x : X) : Dec (Id X x a) -> Bool = split { yes p -> true ; no k -> rest x (M.discrete x b) } ;
+    pred (x : X) : Bool = choose x (M.discrete x a) ;
+    left-law : (d : Dec (Id X a a)) -> Id Bool true (choose a d) = split { yes h -> refl true ; no k -> absurd _ (k (refl a)) } ;
+    right-tail : (d : Dec (Id X b b)) -> Id Bool true (rest b d) = split { yes p -> refl true ; no k -> absurd _ (k (refl b)) } ;
+    right-law : (d : Dec (Id X b a)) -> Id Bool true (choose b d) = split { yes h -> refl true ; no k -> right-tail (M.discrete b b) } ;
+    u : P.subset pred = (a,left-law (M.discrete a a)) ; v : P.subset pred = (b,right-law (M.discrete b a)) ;
+    send : Two.standard -> P.subset pred = split { none -> u ; some i -> v } ;
+    pick (x : X) : Dec (Id X x a) -> Two.standard = split { yes p -> none ; no k -> some none } ;
+    back (s : P.subset pred) : Two.standard = pick s.1 (M.discrete s.1 a) ;
+    tail (x : X) : (d : Dec (Id X x b)) -> Id Bool true (rest x d) -> Id X b x = split {
+      yes h -> \ p -> symH h ; no k -> \ p -> absurd _ (TruthValues[l].separate p) } ;
+    read (x : X) : (d : Dec (Id X x a)) -> Id Bool true (choose x d) -> Id X (send (pick x d)).1 x = split {
+      yes h -> \ p -> symH h ; no k -> tail x (M.discrete x b) } ;
+    beta (s : P.subset pred) : Id (P.subset pred) (send (back s)) s = Sigma-eq X (P.member pred) _ _ _ _ (read s.1 (M.discrete s.1 a) s.2)
+      (TruthValues[l].truth (pred s.1)).2 ;
+    at-u : (d : Dec (Id X a a)) -> Id Two.standard (pick a d) none = split { yes h -> refl none ; no k -> absurd _ (k (refl a)) } ;
+    at-v : (d : Dec (Id X b a)) -> Id Two.standard (pick b d) (some none) = split { yes h -> absurd _ (ne (symH h)) ; no k -> refl (some none) } ;
+    eta : (i : Two.standard) -> Id Two.standard (back (send i)) i = split { none -> at-u (M.discrete a a) ;
+      some i -> transH (at-v (M.discrete b a)) (ap (FinChoice[l].Fin Two.one) Two.standard (\ j -> some j) none i (Two.one-contr.2 i)) } ;
+    label : Equiv Two.standard (P.subset pred) = (send,qinv _ _ send back beta eta) ;
+    pair : M.pair = (pred,Cardinality[l].Count[P.subset pred].computes (P.bounded pred) Two.two label) ;
+    module Swap = M.Marked[pair,u,v,ne] ;
+    odd : Id Bool (L.sign Swap.transpose) true = Swap.sign ;
+  } ;
+  module Tour (a : X) {
+    entry : U l = (b : X) * (Id X a b -> Empty) ; list : U l = Ring[l].List entry ;
+    length : list -> Nat = split { nil -> zero ; cons b s | r -> suc r } ;
+    fresh : list -> X -> U l = split { nil -> \ x -> Top ; cons b s | r -> \ x -> (Id X x b.1 -> Empty) * r x } ;
+    simple : list -> U l = split { nil -> Top ; cons b s | r -> fresh s b.1 * r } ;
+    module Edge (b : entry) { module Q = Pair[a,b.1,b.2] ; } ;
+    perm : list -> L.aut = split { nil -> idEquiv X ; cons b s | r -> E.compose X X X Edge[b].Q.Swap.transpose r } ;
+    outside : (s : list) (x : X) -> (Id X x a -> Empty) -> fresh s x -> Id X ((perm s).1 x) x = split {
+      nil -> \ x ne h -> refl x ; cons b s | r -> \ x k h -> transH (apH (perm s).1 (Edge[b].Q.Swap.Rules[x].away k h.1 (M.discrete x a))) (r x k h.2) } ;
+    first (b : entry) (s : list) (h : fresh s b.1) : Id X ( (E.compose X X X Edge[b].Q.Swap.transpose (perm s)).1 a) b.1 =
+      transH (apH (perm s).1 Edge[b].Q.Swap.at-u) (outside s b.1 (\ p -> b.2 (symH p)) h) ;
+    next (b : entry) (s : list) : Id X ((E.compose X X X Edge[b].Q.Swap.transpose (perm s)).1 b.1) ((perm s).1 a) =
+      apH (perm s).1 Edge[b].Q.Swap.at-v ;
+    untouched (b : entry) (s : list) (x : X) (k : Id X x a -> Empty) (h : Id X x b.1 -> Empty) :
+      Id X ((E.compose X X X Edge[b].Q.Swap.transpose (perm s)).1 x) ((perm s).1 x) = apH (perm s).1 (Edge[b].Q.Swap.Rules[x].away k h (M.discrete x a)) ;
+    zero-sign : Id Bool (L.sign (idEquiv X)) false = transH (Paths[l+].apH S.E.sign (Prelude[l+].sec-ret _ _ L.code.1 L.code.2 (refl L.K.A))) S.unit ;
+    sign : (s : list) -> Id Bool (L.sign (perm s)) (Z.rhoN (length s)) = split {
+      nil -> zero-sign ; cons b s | r -> transH (L.multiply Edge[b].Q.Swap.transpose (perm s))
+        (transH (apH (\ v -> Z.xor v (L.sign (perm s))) Edge[b].Q.odd) (apH not r)) } ;
+    represents (e : L.aut) (m : Nat) : U l = (s : list) * simple s * Id Nat (suc (length s)) (suc m) * ((x : X) -> Id X (e.1 x) ((perm s).1 x)) ;
+    cycle-sign (e : L.aut) (m : Nat) : T.Trunc[represents e m].carrier -> Id Bool (L.sign e) (Z.rhoN m) =
+      TruncationCombinators[l].rec (represents e m) @l _ (Z.bool-set _ _) (\ s -> transH (apH L.sign (PermutationCount[l].ext X X e (perm s.1) s.2.2.2))
+        (transH (sign s.1) (apH Z.rhoN (NatArith[l].suc-inj s.2.2.1)))) ;
+  } ;
+} ;

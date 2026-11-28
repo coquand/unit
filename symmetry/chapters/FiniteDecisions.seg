@@ -1,0 +1,59 @@
+-- Decidable equality and bounded quantifiers on finite sets (§2.24).
+level l ; open Base ; open Prelude[l] ; open FinChoice[l] ; open Logic[l] ;
+module F = FiniteSets[l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+transfer (A B : U l) (f : A -> B) (g : B -> A) : Dec A -> Dec B = split {
+  yes a -> yes (f a) ; no k -> no (\ b -> k (g b)) } ;
+Discrete (X : U l) : U l = (x y : X) -> Dec (Id X x y) ;
+module Option (X : U l) (s : isSet X) (d : Discrete X) {
+  module O = FiniteCycles[l].OptionPaths[X,s] ;
+  decide : (i j : Opt X) -> Dec (O.code i j) = split {
+    none -> split { none -> yes tt ; some y -> no (\ v -> v) } ;
+    some x -> split { none -> no (\ v -> v) ; some y -> d x y } } ;
+  discrete : Discrete (Opt X) = \ i j -> transfer _ _ (O.path i j)
+    (\ p -> subst (Opt X) (O.code i) i j p (O.base i)) (decide i j) ;
+} ;
+standard : (n : Nat) -> Discrete (Fin n) = split {
+  zero -> split {} ; suc n | r -> Option[Fin n,FiniteCycles[l].fin-set n,r].discrete } ;
+module On (X : U l) (f : F.Finite X) {
+  module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
+  module H = HLevels[l] ;
+  two : Nat = suc (suc zero) ;
+  set : isSet X = H.trunc-set X (TC.rec ((n : Nat) * Equiv (Fin n) X) @l _ (H.trunc-prop two X)
+    (\ w -> UA.eqind (Fin w.1) (\ Y e -> H.isTrunc two Y) (H.set-trunc _ (FiniteCycles[l].fin-set w.1)) X w.2) f) ;
+  discrete : Discrete X = TC.rec ((n : Nat) * Equiv (Fin n) X) @l _
+    (FL.isProp-Pi X (\ x -> (y : X) -> Dec (Id X x y)) (\ x ->
+      FL.isProp-Pi X (\ y -> Dec (Id X x y)) (\ y -> dec-prop _ (set x y))))
+    (\ w -> UA.eqind (Fin w.1) (\ Y e -> Discrete Y) (standard w.1) X w.2) f ;
+} ;
+module Step (n : Nat) (P : Fin (suc n) -> U l) {
+  tail : U l = (i : Fin n) * P (some i) ;
+  total : U l = (i : Fin (suc n)) * P i ;
+  miss (h : P none -> Empty) (k : tail -> Empty) : (i : Fin (suc n)) -> P i -> Empty = split {
+    none -> h ; some i -> \ v -> k (i,v) } ;
+  search : Dec (P none) -> Dec tail -> Dec total = split {
+    yes x -> \ d -> yes (none,x) ;
+    no h -> split { yes t -> yes (some t.1,t.2) ; no k -> no (\ z -> miss h k z.1 z.2) } } ;
+  all : Dec (P none) -> Dec ((i : Fin n) -> P (some i)) -> Dec ((i : Fin (suc n)) -> P i) = split {
+    no h -> \ d -> no (\ f -> h (f none)) ;
+    yes x -> split { yes g -> yes (combine n P x g) ; no k -> no (\ f -> k (\ i -> f (some i))) } } ;
+} ;
+search : (n : Nat) (P : Fin n -> U l) -> ((i : Fin n) -> Dec (P i)) -> Dec ((i : Fin n) * P i) = split {
+  zero -> \ P d -> no (\ v -> v.1) ;
+  suc n | r -> \ P d -> Step[n,P].search (d none) (r (\ i -> P (some i)) (\ i -> d (some i))) } ;
+all : (n : Nat) (P : Fin n -> U l) -> ((i : Fin n) -> Dec (P i)) -> Dec ((i : Fin n) -> P i) = split {
+  zero -> \ P d -> yes (fin-zero P) ;
+  suc n | r -> \ P d -> Step[n,P].all (d none) (r (\ i -> P (some i)) (\ i -> d (some i))) } ;
+mere (X : U l) : Dec X -> Dec T.Trunc[X].carrier = split {
+  yes x -> yes (T.Trunc[X].inc x) ; no h -> no (TC.rec X @l Empty isProp-Empty h) } ;
+module Bounded (X : U l) (f : F.Finite X) (P : X -> U l) (d : (x : X) -> Dec (P x)) {
+  total : U l = (x : X) * P x ;
+  exists : Dec T.Trunc[total].carrier = TC.rec ((n : Nat) * Equiv (Fin n) X) @l _
+    (dec-prop _ T.Trunc[total].proposition) (\ w -> mere total
+      (transfer _ _ (ChapterTwo[l].change-base (Fin w.1) X w.2 P).1 (ChapterTwo[l].change-base (Fin w.1) X w.2 P).2.sec
+        (search w.1 (\ i -> P (w.2.1 i)) (\ i -> d (w.2.1 i))))) f ;
+  forall (p : (x : X) -> isProp (P x)) : Dec ((x : X) -> P x) = TC.rec ((n : Nat) * Equiv (Fin n) X) @l _
+    (dec-prop _ (FL.isProp-Pi X P p)) (\ w -> transfer _ _
+      (\ g x -> subst X P _ x (w.2.2.sec-eq x) (g (w.2.2.sec x))) (\ h i -> h (w.2.1 i))
+      (all w.1 (\ i -> P (w.2.1 i)) (\ i -> d (w.2.1 i)))) f ;
+} ;

@@ -1,0 +1,121 @@
+-- Lemma 4.5.10. Prefer the first marked element, then the second, in
+-- every pair. The transposition reverses this ordering only on their pair.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ;
+module C = SignComputation[l] ; module Two = TwoElementSets[l] ; module TV = TruthValues[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module Z = Z2[l] ;
+not-true : (b : Bool) -> (Id Bool true b -> Empty) -> Id Bool b false = split {
+  false -> \ k -> refl false ; true -> \ k -> absurd _ (k (refl true)) } ;
+module Compare (b c : Bool) (to : Id Bool true b -> Id Bool true c) (from : Id Bool true c -> Id Bool true b) {
+  decide : Dec (Id Bool true b) -> Id Bool b c = split { yes h -> transH (symH h) (to h) ; no k -> transH (not-true b k) (symH (not-true c (\ p -> k (from p)))) } ;
+  equal : Id Bool b c = decide (TV.decide b) ;
+} ;
+module At (n : Nat) {
+  module K = C.Crossings[n] ; module P = K.P ; module D = K.D ; module F = K.S.O ;
+  X : U l = K.X ; pair : U l = K.pairs K.A ;
+  discrete : FiniteDecisions[l].Discrete X = FiniteDecisions[l].standard D.S.N ;
+  mem (s : pair) (x : X) : U l = P.member s.1 x ;
+  proj (s : pair) (x y : P.carrier s) : Id (P.carrier s) x y -> Id X x.1 y.1 = ap (P.carrier s) X (\ u -> u.1) x y ;
+  eq (s : pair) (x y : P.carrier s) (p : Id X x.1 y.1) : Id (P.carrier s) x y =
+    Sigma-eq X (P.member s.1) _ _ _ _ p (TV.truth (s.1 y.1)).2 ;
+  pred-eq (s t : pair) (h : (x : X) -> Id Bool (s.1 x) (t.1 x)) : Id pair s t =
+    Sigma-eq P.predicates P.has-two _ _ _ _ (FL.funext X (\ x -> Bool) _ _ h) (NatArith[l].nat-set _ _) ;
+  module Marked (d : pair) (a b : P.carrier d) (ne : Id X a.1 b.1 -> Empty) {
+    u : X = a.1 ; v : X = b.1 ;
+    module Swap (x : X) {
+      second : Dec (Id X x v) -> X = split { yes p -> u ; no k -> x } ;
+      choose : Dec (Id X x u) -> X = split { yes p -> v ; no k -> second (discrete x v) } ;
+    } ;
+    tau (x : X) : X = Swap[x].choose (discrete x u) ;
+    module Rules (x : X) {
+      first (p : Id X x u) : (s : Dec (Id X x u)) -> Id X (Swap[x].choose s) v = split {
+        yes q -> refl v ; no k -> absurd _ (k p) } ;
+      second (p : Id X x v) : (s : Dec (Id X x v)) -> Id X (Swap[x].second s) u = split {
+        yes q -> refl u ; no k -> absurd _ (k p) } ;
+      at-v (p : Id X x v) : (s : Dec (Id X x u)) -> Id X (Swap[x].choose s) u = split {
+        yes q -> absurd _ (ne (transH (symH q) p)) ; no k -> second p (discrete x v) } ;
+      rest (m : Id X x v -> Empty) : (s : Dec (Id X x v)) -> Id X (Swap[x].second s) x = split {
+        yes q -> absurd _ (m q) ; no k -> refl x } ;
+      away (k : Id X x u -> Empty) (m : Id X x v -> Empty) : (s : Dec (Id X x u)) -> Id X (Swap[x].choose s) x = split {
+        yes q -> absurd _ (k q) ; no h -> rest m (discrete x v) } ;
+    } ;
+    at-u : Id X (tau u) v = Rules[u].first (refl u) (discrete u u) ;
+    at-v : Id X (tau v) u = Rules[v].at-v (refl v) (discrete v u) ;
+    module Cases (x : X) (A : U l) (left : Id X x u -> A) (right : Id X x v -> A)
+      (other : (Id X x u -> Empty) -> (Id X x v -> Empty) -> A) {
+      second (k : Id X x u -> Empty) : Dec (Id X x v) -> A = split { yes p -> right p ; no m -> other k m } ;
+      first : Dec (Id X x u) -> A = split { yes p -> left p ; no k -> second k (discrete x v) } ;
+      result : A = first (discrete x u) ;
+    } ;
+    invol (x : X) : Id X (tau (tau x)) x = Cases[x,Id X (tau (tau x)) x,
+      \ p -> transH (apH tau (Rules[x].first p (discrete x u))) (transH at-v (symH p)),
+      \ p -> transH (apH tau (Rules[x].at-v p (discrete x u))) (transH at-u (symH p)),
+      \ k m -> transH (apH tau (Rules[x].away k m (discrete x u))) (Rules[x].away k m (discrete x u))].result ;
+    transpose : Equiv X X = (tau,qinv X X tau tau invol invol) ; module E = K.Permutation[transpose] ;
+    -- Inverse image on pairs is precomposition with the permutation.
+    natural (t : K.V) (p : Id K.V K.A t) (s : K.pairs t) (x : X) :
+      Id Bool (((K.pull t p).1 s).1 x) (s.1 ((K.image t p).1 x)) =
+      idJ K.V K.A (\ w r -> (z : K.pairs w) (y : X) -> Id Bool (((K.pull w r).1 z).1 y) (z.1 ((K.image w r).1 y))) (\ z y -> refl (z.1 y)) t p s x ;
+    pull (s : pair) : pair = (K.pull K.A E.loop).1 s ;
+    law (s : pair) (x : X) : Id Bool ((pull s).1 x) (s.1 (tau x)) = transH (natural K.A E.loop s x) (apH s.1 (E.applies x)) ;
+    pu (s : pair) : Id Bool ((pull s).1 u) (s.1 v) = transH (law s u) (apH s.1 at-u) ;
+    pv (s : pair) : Id Bool ((pull s).1 v) (s.1 u) = transH (law s v) (apH s.1 at-v) ;
+    module Order (s : pair) {
+      second : Dec (mem s v) -> P.carrier s = split { yes h -> (v,h) ; no k -> K.least s } ;
+      first : Dec (mem s u) -> P.carrier s = split { yes h -> (u,h) ; no k -> second (TV.decide (s.1 v)) } ;
+      at-first (h : mem s u) : (t : Dec (mem s u)) -> Id X (first t).1 u = split { yes q -> refl u ; no k -> absurd _ (k h) } ;
+      at-second (h : mem s v) : (t : Dec (mem s v)) -> Id X (second t).1 v = split { yes q -> refl v ; no k -> absurd _ (k h) } ;
+      next (k : mem s u -> Empty) (h : mem s v) : (t : Dec (mem s u)) -> Id X (first t).1 v = split {
+        yes q -> absurd _ (k q) ; no m -> at-second h (TV.decide (s.1 v)) } ;
+    } ;
+    order (s : pair) : P.carrier s = Order[s].first (TV.decide (s.1 u)) ;
+    module O = F.From[K.A,order] ; g : K.Par.sections = O.section K.A E.loop ;
+    moved (t : K.V) (p : Id K.V K.A t) (s : K.pairs t) : Id t.1 ((O.section t p s).1) ((K.image t p).1 ((order ((K.pull t p).1 s)).1)) =
+      idJ K.V K.A (\ w r -> (z : K.pairs w) -> Id w.1 ((O.section w r z).1) ((K.image w r).1 ((order ((K.pull w r).1 z)).1))) (\ z -> refl (order z).1) t p s ;
+    act (s : pair) : Id X (g s).1 (tau (order (pull s)).1) = transH (moved K.A E.loop s) (E.applies (order (pull s)).1) ;
+    module AtPair (s : pair) {
+      au : mem s u -> Id X (order s).1 u = \ h -> Order[s].at-first h (TV.decide (s.1 u)) ;
+      bv (k : mem s u -> Empty) (h : mem s v) : Id X (order s).1 v = Order[s].next k h (TV.decide (s.1 u)) ;
+      moved-v (h : mem s v) : Id X (g s).1 v = transH (act s)
+        (transH (apH tau (Order[pull s].at-first (transH h (symH (pu s))) (TV.decide ((pull s).1 u)))) at-u) ;
+      moved-u (k : mem s v -> Empty) (h : mem s u) : Id X (g s).1 u = transH (act s)
+        (transH (apH tau (Order[pull s].next (\ z -> k (transH z (pu s))) (transH h (symH (pv s))) (TV.decide ((pull s).1 u)))) at-v) ;
+      module V = ParityQuotient[l].Distance[P.carrier s,P.size s] ;
+      diff : Bool = K.Par.differences order g s ;
+      agree (h : Id X (order s).1 (g s).1) : Id Bool diff false = V.same (order s) (g s) (eq s _ _ h) ;
+      both (h : mem s u) (k : mem s v) : Id Bool diff true = V.apart (order s) (g s) (\ q ->
+        ne (transH (symH (au h)) (transH (proj s _ _ q) (moved-v k)))) ;
+      first (h : mem s u) (k : mem s v -> Empty) : Id Bool diff false = agree (transH (au h) (symH (moved-u k h))) ;
+      second (k : mem s u -> Empty) (h : mem s v) : Id Bool diff false = agree (transH (bv k h) (symH (moved-v h))) ;
+      module Neither (h : mem s u -> Empty) (k : mem s v -> Empty) {
+        uv : Id Bool (s.1 u) (s.1 v) = transH (not-true (s.1 u) h) (symH (not-true (s.1 v) k)) ;
+        invariant (x : X) : Id Bool (s.1 (tau x)) (s.1 x) = Cases[x,Id Bool (s.1 (tau x)) (s.1 x),
+          \ p -> transH (apH s.1 (Rules[x].first p (discrete x u))) (transH (symH uv) (symH (apH s.1 p))),
+          \ p -> transH (apH s.1 (Rules[x].at-v p (discrete x u))) (transH uv (symH (apH s.1 p))),
+          \ m r -> apH s.1 (Rules[x].away m r (discrete x u))].result ;
+        preserved : Id pair (pull s) s = pred-eq _ _ (\ x -> transH (law s x) (invariant x)) ;
+        fixed (w : P.carrier s) : Id X (tau w.1) w.1 = Rules[w.1].away (\ p -> h (transH w.2 (apH s.1 p)))
+          (\ p -> k (transH w.2 (apH s.1 p))) (discrete w.1 u) ;
+        agrees : Id Bool diff false = agree (symH (transH (act s)
+          (transH (apH tau (ap pair X (\ z -> (order z).1) _ _ preserved)) (fixed (order s))))) ;
+      } ;
+      module Inside (z : pair) (hu : mem z u) (hv : mem z v) {
+        module L = Two.At[P.carrier z,P.size z] ;
+        locate (x : X) (w : mem z x) (k : Id X x u -> Empty) : Id X x v =
+          proj z (x,w) (v,hv) (transH (symH (L.only (u,hu) (x,w) (\ p -> k (proj z _ _ p))))
+            (L.only (u,hu) (v,hv) (\ p -> ne (symH (proj z _ _ p))))) ;
+        transfer (t : pair) (ut : mem t u) (vt : mem t v) (x : X) (w : mem z x) : mem t x =
+          Cases[x,mem t x,\ q -> transH ut (symH (apH t.1 q)),\ q -> transH vt (symH (apH t.1 q)),
+            \ k m -> absurd _ (m (locate x w k))].result ;
+      } ;
+      unique (h : mem s u) (k : mem s v) : Id pair d s = pred-eq d s (\ x -> Compare[d.1 x,s.1 x,
+        Inside[d,a.2,b.2].transfer s h k x,Inside[s,h,k].transfer d a.2 b.2 x].equal) ;
+      impossible (p : Id Bool diff true) (q : Id Bool diff false) : Id pair d s = absurd _ (TV.separate (transH (symH p) q)) ;
+      classify (p : Id Bool diff true) : Dec (mem s u) -> Dec (mem s v) -> Id pair d s = split {
+        yes h -> split { yes k -> unique h k ; no k -> impossible p (first h k) } ;
+        no h -> split { yes k -> impossible p (second h k) ; no k -> impossible p Neither[h,k].agrees } } ;
+    } ;
+    module Count = FiniteParity[l].Singleton[pair,P.finite-pairs,K.Par.differences order g,d,AtPair[d].both a.2 b.2,
+      \ s h -> AtPair[s].classify h (TV.decide (s.1 u)) (TV.decide (s.1 v))] ;
+    sign : Id Bool (K.S.At[K.A].sign E.loop) true = transH (K.S.At[K.A].computes E.loop order) Count.odd ;
+  } ;
+} ;

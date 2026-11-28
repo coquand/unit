@@ -1,0 +1,84 @@
+-- Section 6.2. Posets from arithmetic, logic, and subtypes.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module Q = Quotient[l] ; module B = Prelude[l+] ; module N = NatArith[l] ; module Z = Integers[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module NatOrder = CategoryPreorders[l,l].Make[Nat,N.Le,N.le-prop,N.le-refl,N.le-trans] ;
+nat-poset : NatOrder.pre.univalent = NatOrder.Order.univalent N.nat-set LeastNumber[l].antisym ;
+module Subsets (A : U l) {
+  module S = FamilyClassifier[l].Subsets[A] ;
+  module O = CategoryPreorders[l+,l].Make[S.sub,S.le,S.prop,S.reflexive,S.transitive] ;
+  poset : O.pre.univalent = O.Order.univalent (\ f g -> Q.PropFamilies[A,f].path-prop g) S.antisymmetric ;
+} ;
+module PropOrder = CategoryPreorders[l+,l].Make[Q.Prop,(\ p q -> p.1 -> q.1),(\ p q -> FL.isProp-Pi p.1 (\ x -> q.1) (\ x -> q.2)),
+  (\ p x -> x),(\ p q r f g x -> g (f x))] ;
+prop-set : B.isSet Q.Prop = HLevels[l+].trunc-set Q.Prop (HLevels[l+].retract-trunc (suc (suc zero)) Q.Prop (Top -> Q.Prop) (\ p t -> p) (\ s -> s tt) (\ p -> refl p)
+  (HLevels[l+].set-trunc _ (\ f g -> Q.PropFamilies[Top,f].path-prop g))) ;
+prop-poset : PropOrder.pre.univalent = PropOrder.Order.univalent prop-set Q.prop-path ;
+module BoolTrue = CategoryPreorders[l,l].Make[Bool,(\ x y -> Top),(\ x y -> isTop),(\ x -> tt),(\ x y z p q -> tt)] ;
+truth : Bool -> U l = split { true -> Top ; false -> Empty } ;
+bool-counterexample (u : BoolTrue.pre.univalent) : Empty = subst Bool truth true false
+  (BoolTrue.Order.antisymmetric u true false tt tt) tt ;
+-- x ≤ y is witnessed by a nonnegative difference. Left cancellation makes that witness unique.
+module Integer {
+  magnitude : Z.Int -> Nat = split { pos n -> n ; negsuc n -> zero } ;
+  cancel (x a b : Z.Int) (p : Id Z.Int (Z.add x a) (Z.add x b)) : Id Z.Int a b =
+    Equivalences[l].injective Z.Int Z.Int (Z.add x) (qinv _ _ (Z.add x) (Z.add (Z.neg x))
+      (\ z -> transH (symH (Z.assoc x (Z.neg x) z)) (transH (apH (\ v -> Z.add v z) (Z.invr x)) (Z.zero-l z)))
+      (\ z -> transH (symH (Z.assoc (Z.neg x) x z)) (transH (apH (\ v -> Z.add v z) (transH (Z.comm (Z.neg x) x) (Z.invr x))) (Z.zero-l z)))) a b p ;
+  add-pos (n : Nat) : (m : Nat) -> Id Z.Int (Z.add (pos n) (pos m)) (pos (N.plus m n)) =
+    split { zero -> refl (pos n) ; suc m | r -> apH Z.sucZ r } ;
+  le (x y : Z.Int) : U l = (n : Nat) * Id Z.Int (Z.add x (pos n)) y ;
+  thin (x y : Z.Int) : isProp (le x y) = \ u v -> Sigma-eq Nat (\ n -> Id Z.Int (Z.add x (pos n)) y) _ _ _ _
+    (apH magnitude (cancel x (pos u.1) (pos v.1) (transH u.2 (symH v.2)))) (Z.int-set _ _) ;
+  transitive (x y z : Z.Int) (u : le x y) (v : le y z) : le x z = (N.plus v.1 u.1,
+    transH (apH (Z.add x) (symH (add-pos u.1 v.1))) (transH (symH (Z.assoc x (pos u.1) (pos v.1))) (transH (apH (\ t -> Z.add t (pos v.1)) u.2) v.2))) ;
+  module O = CategoryPreorders[l,l].Make[Z.Int,le,thin,(\ x -> (zero,refl x)),transitive] ;
+  antisym (x y : Z.Int) (u : le x y) (v : le y x) : Id Z.Int x y =
+    transH (apH (\ n -> Z.add x (pos n)) (symH (LeastNumber[l].antisym u.1 zero
+      (v.1,apH magnitude (cancel x (pos (N.plus v.1 u.1)) Z.zeroZ (transitive x y x u v).2)) (LeastNumber[l].bottom u.1)))) u.2 ;
+  poset : O.pre.univalent = O.Order.univalent Z.int-set antisym ;
+} ;
+-- The order of a cycle is its class in the set truncation of all cycles.
+module Orders {
+  module C = CycleRootFibres[l] ; module P = CycleFibres[l] ; module H = HLevels[l+] ; module BH = Paths[l+] ;
+  module T = ChapterTwo[l+].Truncate[suc zero,C.Cycle] ;
+  order : U l+ = T.carrier ; set : B.isSet order = H.trunc-set _ (T.op.trunc C.Cycle) ;
+  module S = FamilyClassifier[l].Subsets[Z.Int] ;
+  family-set : B.isSet S.sub = \ f g -> Q.PropFamilies[Z.Int,f].path-prop g ;
+  per (x : C.Cycle) : S.sub = \ n -> (P.fixes x.1 n,P.fixes-prop x.1 n) ;
+  module El = T.Into[\ t -> S.sub,\ t -> H.set-trunc _ family-set].E ;
+  period : order -> S.sub = El.ext per ;
+  beta (x : C.Cycle) : Id S.sub (period (T.unit x)) (per x) = El.ext-beta per x ;
+  divides (x y : order) : U l = S.le (period y) (period x) ;
+  module O = CategoryPreorders[l+,l].Make[order,divides,(\ x y -> S.prop (period y) (period x)),
+    (\ x -> S.reflexive (period x)),(\ x y z f g -> S.transitive (period z) (period y) (period x) g f)] ;
+  test (x y : order) : U l+ = Id S.sub (period x) (period y) -> Id order x y ;
+  module BL = Axioms[l+].FunExtLemmas[fe @l+] ;
+  test-prop (x y : order) : B.isProp (test x y) = BL.isProp-Pi (Id S.sub (period x) (period y)) (\ p -> Id order x y) (\ p -> set x y) ;
+  module Representatives (x y : C.Cycle) (eq : Id S.sub (per x) (per y)) {
+    inc : Q.PropFamilies[Z.Int,per x].Logical (per y) = Q.PropFamilies[Z.Int,per x].encode (per y) eq ;
+    module Compare = P.Classify[x.1,y.1,x.2,y.2,(\ n -> (inc n).1),(\ n -> (inc n).2)] ;
+    path : Id order (T.unit x) (T.unit y) = TruncationCombinators[l+].rec (Id CycleComponents[l].Perm x.1 y.1) @(l+) _
+      (set (T.unit x) (T.unit y)) (\ q -> BH.apH T.unit (B.Sigma-eq CycleComponents[l].Perm (\ v -> C.ConnectedPermutation[v].cycle) _ _ _ _ q C.ConnectedPermutation[y.1].prop)) Compare.merely ;
+  } ;
+  module Row (x : C.Cycle) {
+    module E = T.Into[(\ y -> test (T.unit x) y),(\ y -> H.prop-trunc (suc zero) _ (test-prop _ y))].E ;
+    all : (y : order) -> test (T.unit x) y = E.ext (\ y q -> Representatives[x,y,BH.transH (BH.symH (beta x)) (BH.transH q (beta y))].path) ;
+  } ;
+  module Both = T.Into[(\ x -> (y : order) -> test x y),(\ x -> H.prop-trunc (suc zero) _ (BL.isProp-Pi order (test x) (test-prop x)))].E ;
+  detect : (x y : order) -> test x y = Both.ext (\ x -> Row[x].all) ;
+  poset : O.pre.univalent = O.Order.univalent set (\ x y f g -> detect x y (S.antisymmetric (period x) (period y) g f)) ;
+} ;
+module Quantifiers (A B0 : U l) (f : A -> B0) {
+  module S = Subsets[A].S ; module T = Subsets[B0].S ; module Tr = Truncation[l] ;
+  pull (q : T.sub) : S.sub = \ a -> q (f a) ;
+  witness (p : S.sub) (b : B0) : U l = (a : A) * Id B0 (f a) b * (p a).1 ;
+  exists (p : S.sub) : T.sub = \ b -> (Tr.Trunc[witness p b].carrier,Tr.Trunc[witness p b].proposition) ;
+  forall (p : S.sub) : T.sub = \ b -> ((a : A) -> Id B0 b (f a) -> (p a).1,FL.isProp-Pi A (\ a -> Id B0 b (f a) -> (p a).1)
+    (\ a -> FL.isProp-Pi (Id B0 b (f a)) (\ k -> (p a).1) (\ k -> (p a).2))) ;
+  left (p : S.sub) (q : T.sub) : (T.le (exists p) q -> S.le p (pull q)) * (S.le p (pull q) -> T.le (exists p) q) =
+    ((\ s a t -> s (f a) (Tr.Trunc[witness p (f a)].inc (a,refl (f a),t))),
+     \ s b -> TruncationCombinators[l].rec (witness p b) @l (q b).1 (q b).2 (\ v -> subst B0 (\ y -> (q y).1) _ b v.2.1 (s v.1 v.2.2))) ;
+  right (q : T.sub) (p : S.sub) : (S.le (pull q) p -> T.le q (forall p)) * (T.le q (forall p) -> S.le (pull q) p) =
+    ((\ s b u a e -> s a (subst B0 (\ y -> (q y).1) b (f a) e u)),\ s a u -> s (f a) u a (refl (f a))) ;
+} ;

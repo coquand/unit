@@ -1,0 +1,143 @@
+-- Section 7.7. Exercise 7.7.4: the symmetries r ↦ p q^-1 r of UH form a
+-- group, isomorphic to the symmetries of the end shape. Using r ↦ r q^-1 p
+-- instead gives the start shape. Exercise 7.7.5, second half: for abelian
+-- heaps the endpoint groups are identified without choosing a path.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module CG = ChapterFour[l] ; module Gp = Group[l] ; module AG = AbstractGroups[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module GL = Groupoid[l] ;
+
+-- The symmetries of a set U of the form t(p,q,_), when a group B acts on U
+-- so that each t(p,q,_) is the action of an element, and each action is
+-- some t(p,q,_) once U has an element.
+module Shifts (V : U l) (sU : isSet V) (B : Gp.Grp) (act : B.G -> V -> V)
+  (act-mul : (a b : B.G) (r : V) -> Id V (act (B.mul a b) r) (act a (act b r)))
+  (act-e : (r : V) -> Id V (act B.e r) r)
+  (cancel : (r : V) (a b : B.G) -> Id V (act a r) (act b r) -> Id B.G a b)
+  (inhabited : Tr.Trunc[V].carrier) (t : V -> V -> V -> V)
+  (realize : (p q : V) -> (a : B.G) * ((r : V) -> Id V (t p q r) (act a r)))
+  (witness : (a : B.G) (r0 : V) -> (pq : V * V) * ((r : V) -> Id V (t pq.1 pq.2 r) (act a r))) {
+  Fn : U l = V -> V ;
+  fn-set : isSet Fn = FL.isSet-Pi V (\ r -> V) (\ r -> sU) ;
+  fn-path (s s' : Fn) (h : (r : V) -> Id V (s r) (s' r)) : Id Fn s s' = FL.funext V (\ r -> V) s s' h ;
+  Shape (s : Fn) : U l = (pq : V * V) * Id Fn s (t pq.1 pq.2) ;
+  Mere (s : Fn) : U l = Tr.Trunc[Shape s].carrier ;
+  Sym : U l = (s : Fn) * Mere s ;
+  sym-set : isSet Sym = isSet-Sigma Fn Mere fn-set (\ s -> prop-to-set (Mere s) Tr.Trunc[Shape s].proposition) ;
+  sym-path (x y : Sym) (h : (r : V) -> Id V (x.1 r) (y.1 r)) : Id Sym x y =
+    Sigma-eq Fn Mere x.1 y.1 x.2 y.2 (fn-path x.1 y.1 h) Tr.Trunc[Shape y.1].proposition ;
+  -- each symmetry is the action of a unique element
+  Code (s : Fn) : U l = (a : B.G) * Id Fn s (act a) ;
+  code-set (s : Fn) : isSet (Code s) = isSet-Sigma B.G (\ a -> Id Fn s (act a)) B.setG
+    (\ a -> prop-to-set (Id Fn s (act a)) (fn-set s (act a))) ;
+  code-prop (s : Fn) : isProp (Code s) = \ u v -> TC.rec V @l (Id (Code s) u v) (code-set s u v)
+    (\ r0 -> Sigma-eq B.G (\ a -> Id Fn s (act a)) u.1 v.1 u.2 v.2
+      (cancel r0 u.1 v.1 (transH (symH (happly V (\ r -> V) s (act u.1) u.2 r0)) (happly V (\ r -> V) s (act v.1) v.2 r0)))
+      (fn-set s (act v.1))) inhabited ;
+  code (x : Sym) : Code x.1 = TC.rec (Shape x.1) @l (Code x.1) (code-prop x.1) (\ w ->
+    ((realize w.1.1 w.1.2).1,transH w.2 (fn-path _ _ (realize w.1.1 w.1.2).2))) x.2 ;
+  to (x : Sym) : B.G = (code x).1 ;
+  at (x : Sym) (r : V) : Id V (x.1 r) (act (to x) r) = happly V (\ r1 -> V) x.1 (act (to x)) (code x).2 r ;
+  mk (a : B.G) : Sym = (act a,TC.map V (Shape (act a)) (\ r0 -> ((witness a r0).1,
+    symH (fn-path _ _ (witness a r0).2))) inhabited) ;
+  to-mk (a : B.G) : Id B.G (to (mk a)) a = apH (\ c -> c.1) (code-prop (act a) (code (mk a)) (a,refl (act a))) ;
+  mk-to (x : Sym) : Id Sym (mk (to x)) x = sym-path _ _ (\ r -> symH (at x r)) ;
+  -- composition of symmetries
+  comp (x y : Sym) : Sym = (\ r -> x.1 (y.1 r),Prelude[l].subst Fn Mere (act (B.mul (to x) (to y))) (\ r -> x.1 (y.1 r))
+    (fn-path _ _ (\ r -> transH (act-mul (to x) (to y) r)
+      (transH (apH (act (to x)) (symH (at y r))) (symH (at x (y.1 r)))))) (mk (B.mul (to x) (to y))).2) ;
+  inv (x : Sym) : Sym = mk (B.inv (to x)) ;
+  cancel-act (a : B.G) (r : V) : Id V (act (B.inv a) (act a r)) (act B.e r) =
+    transH (symH (act-mul (B.inv a) a r)) (apH (\ k -> act k r) (B.invl a)) ;
+  cancel-act' (a : B.G) (r : V) : Id V (act a (act (B.inv a) r)) (act B.e r) =
+    transH (symH (act-mul a (B.inv a) r)) (apH (\ k -> act k r) (B.invr a)) ;
+  grp : Gp.Grp = new Gp.Grp[Sym,sym-set,mk B.e,comp,inv,
+    \ x y z -> sym-path _ _ (\ r -> refl (x.1 (y.1 (z.1 r)))),
+    \ x -> sym-path _ _ (\ r -> act-e (x.1 r)),
+    \ x -> sym-path _ _ (\ r -> apH x.1 (act-e r)),
+    \ x -> sym-path _ _ (\ r -> transH (apH (act (B.inv (to x))) (at x r)) (cancel-act (to x) r)),
+    \ x -> sym-path _ _ (\ r -> transH (at x (act (B.inv (to x)) r)) (cancel-act' (to x) r))] ;
+  -- the isomorphism with B
+  to-comp (x y : Sym) : Id B.G (to (comp x y)) (B.mul (to x) (to y)) =
+    apH (\ c -> c.1) (code-prop (comp x y).1 (code (comp x y)) (B.mul (to x) (to y),fn-path _ _ (\ r ->
+      symH (transH (act-mul (to x) (to y) r) (transH (apH (act (to x)) (symH (at y r))) (symH (at x (y.1 r)))))))) ;
+  iso : AG.Iso grp B = ((to,qinv Sym B.G to mk to-mk mk-to),to-comp) ;
+} ;
+
+-- Composition of isomorphisms of abstract groups.
+iso-comp (J K L : Gp.Grp) (f : AG.Iso J K) (g : AG.Iso K L) : AG.Iso J L =
+  (Equivalences[l].compose J.G K.G L.G f.1 g.1,\ x y -> transH (apH g.1.1 (f.2 x y)) (g.2 (f.1.1 x) (f.1.1 y))) ;
+
+module HeapShifts (H : Heaps[l].Heap) {
+  G : CG.ConcreteGroup = H.1 ; X : U l = G.space ; x : X = G.point ; z : X = H.2 ;
+  UH : U l = Heaps[l].underlying H ;
+  inhabited : Tr.Trunc[UH].carrier = (G.connected.2 x z).1 ;
+  lcancel (r0 : Id X x z) (a : Id X z z) : Id (Id X z z) (trans X z x z (sym X x z r0) (trans X x z z r0 a)) a =
+    transH (symH (GL.tassoc X z x z (sym X x z r0) r0 z a))
+      (transH (apH (\ k -> trans X z z z k a) (trans-sym-l X x z r0)) (trans-refl-l X z z a)) ;
+  -- r ↦ p q^-1 r is r ↦ r (q^-1 p): the end shape acts on the right
+  End : Gp.Grp = CG.Symmetries[Heaps[l].move G z].abstract ;
+  right (a : Id X z z) (r : UH) : UH = trans X x z z r a ;
+  module R = Shifts[UH,Heaps[l].set H,End,right,
+    \ a b r -> symH (GL.tassoc X x z z r b z a),\ r -> refl r,
+    \ r0 a b h -> transH (symH (lcancel r0 a)) (transH (apH (trans X z x z (sym X x z r0)) h) (lcancel r0 b)),
+    inhabited,Heaps[l].Ends[H].ternary,
+    \ p q -> (trans X z x z (sym X x z q) p,\ r -> GL.tassoc X x z x r (sym X x z q) z p),
+    \ a r0 -> ((trans X x z z r0 a,r0),\ r -> transH (GL.tassoc X x z x r (sym X x z r0) z (trans X x z z r0 a))
+      (apH (trans X x z z r) (lcancel r0 a)))] ;
+  end-group : Gp.Grp = R.grp ;
+  end-iso : AG.Iso R.grp End = R.iso ;
+  -- r ↦ r q^-1 p is r ↦ (p q^-1) r: the start shape acts on the left,
+  -- which is a left action of its opposite group
+  Start : Gp.Grp = CG.Symmetries[G].abstract ;
+  left-ternary (p q r : UH) : UH = trans X x x z (trans X x z x p (sym X x z q)) r ;
+  left (a : Id X x x) (r : UH) : UH = trans X x x z a r ;
+  module L = Shifts[UH,Heaps[l].set H,AG.op Start,left,
+    \ a b r -> GL.tassoc X x x x a b z r,\ r -> trans-refl-l X x z r,
+    \ r0 a b h -> transH (symH (GL.cancel-r X x x z a r0)) (transH (apH (\ k -> trans X x z x k (sym X x z r0)) h) (GL.cancel-r X x x z b r0)),
+    inhabited,left-ternary,
+    \ p q -> (trans X x z x p (sym X x z q),\ r -> refl (left-ternary p q r)),
+    \ a r0 -> ((trans X x x z a r0,r0),\ r -> apH (\ k -> trans X x x z k r) (GL.cancel-r X x x z a r0))] ;
+  start-group : Gp.Grp = L.grp ;
+  start-iso : AG.Iso L.grp Start = iso-comp L.grp (AG.op Start) Start L.iso
+    ((AG.Facts[AG.op Start].inv-equiv),\ a b -> AG.Facts[Start].inv-mul b a) ;
+} ;
+
+-- Exercise 7.7.5, second half. A heap is abelian when its group is. Then
+-- conjugation by p : x = z does not depend on p, so the endpoint groups are
+-- identified without choosing p.
+AbelianHeap : U l+ = (H : Heaps[l].Heap) * BasicGroups[l].abelian H.1 ;
+module AbelianEnds (H : Heaps[l].Heap) (ab : BasicGroups[l].abelian H.1) {
+  module E = HeapShifts[H] ;
+  X : U l = E.X ; x : X = E.x ; z : X = E.z ;
+  A : Gp.Grp = E.Start ; B : Gp.Grp = E.End ;
+  c (p : Id X x z) (u : Id X x x) : Id X z z = LoopConj[l].conj X x z p u ;
+  iso-at (p : Id X x z) : AG.Iso A B = ((c p,qinv (Id X x x) (Id X z z) (c p) (LoopConj[l].conj X z x (sym X x z p))
+      (LoopConj[l].conj-sym-back X x z p) (LoopConj[l].conj-back X x z p)),
+    \ u v -> LoopConj[l].conj-mult X x z p v u) ;
+  -- conjugating by a loop of an abelian group does nothing
+  trivial (k u : Id X x x) : Id (Id X x x) (LoopConj[l].conj X x x k u) u =
+    transH (apH (trans X x x x (sym X x x k)) (ab k u))
+      (transH (symH (GL.tassoc X x x x (sym X x x k) k x u))
+        (transH (apH (\ m -> trans X x x x m u) (trans-sym-l X x x k)) (trans-refl-l X x x u))) ;
+  independent (p q : Id X x z) (u : Id X x x) : Id (Id X z z) (c p u) (c q u) = calc (Id X z z) {
+    c p u =< apH (\ m -> c m u) (symH (GL.cancel-r' X x x z p q)) > c (trans X x x z (trans X x z x p (sym X x z q)) q) u
+      =< LoopConj[l].conj-trans X x x (trans X x z x p (sym X x z q)) u z q > c q (LoopConj[l].conj X x x (trans X x z x p (sym X x z q)) u)
+      =< apH (c q) (trivial (trans X x z x p (sym X x z q)) u) > c q u } ;
+  iso-path (p q : Id X x z) : Id (AG.Iso A B) (iso-at p) (iso-at q) =
+    Sigma-eq (Equiv A.G B.G) (\ f -> AG.Preserves A B f.1) _ _ _ _
+      (AbstractActions[l].equiv-path A.G B.G _ _ (independent p q)) (AG.preserves-prop A B (c q)) ;
+  Canonical : U l = (f : AG.Iso A B) * ((p : Id X x z) -> Id (AG.Iso A B) f (iso-at p)) ;
+  canonical-set : isSet Canonical = isSet-Sigma (AG.Iso A B) (\ f -> (p : Id X x z) -> Id (AG.Iso A B) f (iso-at p))
+    (AG.iso-set A B) (\ f -> prop-to-set _ (FL.isProp-Pi (Id X x z) (\ p -> Id (AG.Iso A B) f (iso-at p)) (\ p -> AG.iso-set A B _ _))) ;
+  canonical-prop : isProp Canonical = \ u v -> TC.rec (Id X x z) @l (Id Canonical u v) (canonical-set u v) (\ p ->
+    Sigma-eq (AG.Iso A B) (\ f -> (p1 : Id X x z) -> Id (AG.Iso A B) f (iso-at p1)) u.1 v.1 u.2 v.2
+      (transH (u.2 p) (symH (v.2 p)))
+      (FL.isProp-Pi (Id X x z) (\ p1 -> Id (AG.Iso A B) v.1 (iso-at p1)) (\ p1 -> AG.iso-set A B _ _))) E.inhabited ;
+  canonical : Canonical = TC.rec (Id X x z) @l Canonical canonical-prop (\ p -> (iso-at p,\ q -> iso-path p q)) E.inhabited ;
+  iso : AG.Iso A B = canonical.1 ;
+  -- hence a pure identification of the two concrete endpoint groups
+  ends : Id CG.ConcreteGroup H.1 (Heaps[l].swap H).1 =
+    Equivalences[l+].injective CG.ConcreteGroup Gp.Grp GroupIdentity[l].equivalence.1 GroupIdentity[l].equivalence.2
+      H.1 (Heaps[l].swap H).1 (AG.iso-path A B iso) ;
+} ;

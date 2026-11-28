@@ -1,0 +1,66 @@
+-- Sections 6.6–6.7. Representables in the category of set-valued presheaves.
+level o h ; open Base ; open Paths[o \/ h+] ;
+module K = Category[o,h] ; module S = CategoryOfSets[h] ;
+module FL = Axioms[h].FunExtLemmas[fe @h] ;
+module F = Functor[o,h,h+,h] ; module FC = FunctorCat[o,h,h+,h,o \/ h+] ;
+module P = Prelude[o \/ h] ;
+module On (C : K.Precategory) {
+  opp : K.Precategory = new K.Precategory[C.ob,\ x y -> C.hom y x,\ x y -> C.hom-set y x,C.idn,
+    \ x y z g f -> C.comp z y x f g,\ x y f -> C.unit-r y x f,\ x y f -> C.unit-l y x f,
+    \ w x y z f g k -> symH (C.assoc z y x w k g f)] ;
+  module PS = FunctorUnivalence[o,h,h+,h,o \/ h+].Univalence[opp,S.category] ;
+  module PC = FC.FunCat[opp,S.pre] ;
+  presheaf : U (o \/ h+) = F.Functor[opp,S.pre] ;
+  hom (V W : presheaf) : U (o \/ h) =
+    (t : (x : C.ob) -> (V.obj x).1 -> (W.obj x).1) *
+    ((x y : C.ob) (g : C.hom y x) -> Id ((V.obj x).1 -> (W.obj y).1)
+      (\ z -> W.map x y g (t x z)) (\ z -> t y (V.map x y g z))) ;
+  -- Natural transformations quantify over the objects and arrows of C.
+  -- The higher universe of all small sets is needed only for presheaf objects.
+  module SmallHom = Category[o \/ h+,o \/ h] ;
+  pre : SmallHom.Precategory = new SmallHom.Precategory[presheaf,hom,PC.pre.hom-set,PC.pre.idn,PC.pre.comp,
+    PC.pre.unit-l,PC.pre.unit-r,PC.pre.assoc] ;
+  category : SmallHom.Category = new SmallHom.Category[pre,PS.category.univalent] ;
+  rep (a : C.ob) : presheaf = new F.Functor[opp,S.pre,\ x -> (C.hom x a,C.hom-set x a),
+    \ x y g f -> C.comp y x a f g,
+    \ x -> FL.funext (C.hom x a) (\ f -> C.hom x a) _ _ (C.unit-r x a),
+    \ x y z g f -> FL.funext (C.hom x a) (\ t -> C.hom z a) _ _ (\ t -> C.assoc z y x a g f t)] ;
+  module Lemma (a : C.ob) (V : presheaf) {
+    module N = FC.NatTrans[opp,S.pre,rep a,V] ;
+    eval (t : N.Nat) : (V.obj a).1 = t.1 a (C.idn a) ;
+    row (v : (V.obj a).1) (x : C.ob) (f : C.hom x a) : (V.obj x).1 = V.map a x f v ;
+    represent (v : (V.obj a).1) : N.Nat = (row v,\ x y g ->
+      FL.funext (C.hom x a) (\ t -> (V.obj y).1) _ _ (\ t -> symH (apH (\ k -> k v) (V.map-comp a x y g t)))) ;
+    beta (v : (V.obj a).1) : Id (V.obj a).1 (eval (represent v)) v = apH (\ k -> k v) (V.map-idn a) ;
+    eta (t : N.Nat) : Id N.Nat (represent (eval t)) t =
+      N.nat-eq _ _ (\ x -> FL.funext (C.hom x a) (\ f -> (V.obj x).1) _ _ (\ f ->
+        transH (apH (\ k -> k (C.idn a)) (t.2 a x f)) (apH (t.1 x) (C.unit-l x a f)))) ;
+    yoneda : P.Equiv (hom (rep a) V) (V.obj a).1 = (eval,P.qinv (hom (rep a) V) (V.obj a).1 eval represent beta eta) ;
+  } ;
+  action (a b : C.ob) (f : C.hom a b) : hom (rep a) (rep b) = Lemma[a,rep b].represent f ;
+  embedding : Functor[o,h,o \/ h+,o \/ h].Functor[C,pre] =
+    new Functor[o,h,o \/ h+,o \/ h].Functor[C,pre,rep,action,
+      \ a -> FC.NatTrans[opp,S.pre,rep a,rep a].nat-eq _ _ (\ x -> FL.funext (C.hom x a) (\ t -> C.hom x a) _ _ (C.unit-l x a)),
+      \ a b c g f -> FC.NatTrans[opp,S.pre,rep a,rep c].nat-eq _ _ (\ x -> FL.funext (C.hom x a) (\ t -> C.hom x c) _ _
+        (\ t -> symH (C.assoc x a b c t f g)))] ;
+  fully-faithful : Functor[o,h,o \/ h+,o \/ h].FullyFaithful C pre embedding =
+    \ a b -> P.qinv (C.hom a b) (hom (rep a) (rep b)) (action a b) Lemma[a,rep b].eval Lemma[a,rep b].eta Lemma[a,rep b].beta ;
+} ;
+module Naturality (C : K.Precategory) {
+  module Y = On[C] ;
+  in-presheaf (a : C.ob) (V W : Y.presheaf) (s : Y.hom V W) (t : Y.hom (Y.rep a) V) :
+    Id (W.obj a).1 (Y.Lemma[a,W].eval (Y.pre.comp (Y.rep a) V W s t)) (s.1 a (Y.Lemma[a,V].eval t)) =
+    refl (s.1 a (t.1 a (C.idn a))) ;
+  in-object (a b : C.ob) (g : C.hom a b) (V : Y.presheaf) (t : Y.hom (Y.rep b) V) :
+    Id (V.obj a).1 (Y.Lemma[a,V].eval (Y.pre.comp (Y.rep a) (Y.rep b) V t (Y.action a b g))) (V.map b a g (Y.Lemma[b,V].eval t)) =
+    transH (apH (t.1 a) (transH (C.unit-r a b g) (symH (C.unit-l a b g))))
+      (symH (apH (\ k -> k (C.idn b)) (t.2 b a g))) ;
+} ;
+module Representable (C : K.Category) {
+  module Y = On[C.pre] ;
+  module R = FullyFaithful[o,h,o \/ h+,o \/ h,o \/ h+].FullyFaithful[C,Y.category,Y.embedding,Y.fully-faithful] ;
+  represents (V : Y.presheaf) : U (o \/ h) = (x : C.pre.ob) * Y.pre.Iso (Y.rep x) V ;
+  property (V : Y.presheaf) : P.isProp (represents V) = R.S-prop V ;
+  object-embedding (V : Y.presheaf) : Prelude[o \/ h+].isProp ((x : C.pre.ob) * Id Y.presheaf (Y.rep x) V) =
+    R.Fib-prop V ;
+} ;

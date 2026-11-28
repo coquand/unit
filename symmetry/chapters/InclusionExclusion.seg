@@ -1,0 +1,69 @@
+-- Exercise 8.4.3(2), with decidable membership for the numerical statement.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ;
+module F = FiniteSets[l] ; module Ar = FiniteArithmetic[l] ; open Ar ;
+module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module At (P Q : U l) (pP : isProp P) (pQ : isProp Q) {
+  either : U l = Sum P Q ; union : U l = T.Trunc[either].carrier ; both : U l = P * Q ;
+  union-prop : isProp union = T.Trunc[either].proposition ;
+  both-prop : isProp both = isProp-Sigma P (\ x -> Q) pP (\ x -> pQ) ;
+  result : U l = Sum union both ;
+  module In (p : P) {
+    point : union = T.Trunc[either].inc (left p) ;
+    forward : either -> result = split { left x -> left point ; right y -> right (p,y) } ;
+    backward : result -> either = split { left t -> left p ; right v -> right v.2 } ;
+    beta : (v : result) -> Id result (forward (backward v)) v = split {
+      left t -> ap union result (\ z -> left z) _ _ (union-prop point t) ;
+      right v -> ap both result (\ z -> right z) _ _ (both-prop (p,v.2) v) } ;
+    eta : (v : either) -> Id either (backward (forward v)) v = split {
+      left x -> ap P either (\ z -> left z) _ _ (pP p x) ; right y -> refl (right y) } ;
+    equiv : Equiv either result = (forward,qinv _ _ forward backward beta eta) ;
+  } ;
+  module Out (h : P -> Empty) {
+    get : either -> Q = split { left p -> absurd Q (h p) ; right q -> q } ;
+    value : union -> Q = TC.rec either @l Q pQ get ;
+    forward (w : either) : result = left (T.Trunc[either].inc w) ;
+    backward : result -> either = split { left t -> right (value t) ; right v -> absurd either (h v.1) } ;
+    beta : (v : result) -> Id result (forward (backward v)) v = split {
+      left t -> ap union result (\ z -> left z) _ _ (union-prop (T.Trunc[either].inc (right (value t))) t) ; right v -> absurd (Id result (forward (backward (right v))) (right v)) (h v.1) } ;
+    eta : (v : either) -> Id either (backward (forward v)) v = split {
+      left p -> absurd (Id either (backward (forward (left p))) (left p)) (h p) ;
+      right q -> ap Q either (\ z -> right z) _ _ (pQ (value (T.Trunc[either].inc (right q))) q) } ;
+    equiv : Equiv either result = (forward,qinv _ _ forward backward beta eta) ;
+  } ;
+  rearrange : Dec P -> Equiv either result = split { yes p -> In[p].equiv ; no h -> Out[h].equiv } ;
+  or-dec : Dec P -> Dec Q -> Dec union = split {
+    yes p -> \ d -> yes In[p].point ; no h -> split { yes q -> yes (T.Trunc[either].inc (right q)) ; no k -> no (\ t -> k (Out[h].value t)) } } ;
+  and-dec : Dec P -> Dec Q -> Dec both = split {
+    yes p -> split { yes q -> yes (p,q) ; no k -> no (\ v -> k v.2) } ; no h -> \ d -> no (\ v -> h v.1) } ;
+} ;
+module Distribute (S : U l) (P Q : S -> U l) {
+  a : U l = (s : S) * P s ; b : U l = (s : S) * Q s ;
+  source : U l = Sum a b ; target : U l = (s : S) * Sum (P s) (Q s) ;
+  forward : source -> target = split { left x -> (x.1,left x.2) ; right y -> (y.1,right y.2) } ;
+  pack (s : S) : Sum (P s) (Q s) -> source = split { left p -> left (s,p) ; right q -> right (s,q) } ;
+  beta (s : S) : (v : Sum (P s) (Q s)) -> Id target (forward (pack s v)) (s,v) =
+    split { left p -> refl (s,left p) ; right q -> refl (s,right q) } ;
+  eta : (v : source) -> Id source (pack (forward v).1 (forward v).2) v =
+    split { left x -> refl (left x) ; right y -> refl (right y) } ;
+  equiv : Equiv source target = (forward,qinv _ _ forward (\ w -> pack w.1 w.2) (\ w -> beta w.1 w.2) eta) ;
+} ;
+module Subsets (S : U l) (P Q : S -> U l) (pP : (s : S) -> isProp (P s)) (pQ : (s : S) -> isProp (Q s)) {
+  module AtS (s : S) { module V = At[P s,Q s,pP s,pQ s] ; } ;
+  module Left = Distribute[S,P,Q] ; module Right = Distribute[S,\ s -> AtS[s].V.union,\ s -> AtS[s].V.both] ;
+  partition (p : (s : S) -> Dec (P s)) : Equiv Left.source Right.source = Equivalences[l].compose _ _ _ Left.equiv
+    (Equivalences[l].compose _ _ _ (Fibres[l].sigma-equiv S (\ s -> AtS[s].V.either) (\ s -> AtS[s].V.result)
+       (\ s -> AtS[s].V.rearrange (p s))) (Bijection[l].inverse _ _ Right.equiv)) ;
+  module Count (f : F.Finite S) (p : (s : S) -> Dec (P s)) (q : (s : S) -> Dec (Q s)) {
+    af : F.Finite Left.a = sigma S f P (\ s -> FiniteSubsets[l].Proposition[P s,pP s].finite (p s)) ;
+    bf : F.Finite Left.b = sigma S f Q (\ s -> FiniteSubsets[l].Proposition[Q s,pQ s].finite (q s)) ;
+    uf : F.Finite Right.a = sigma S f (\ s -> AtS[s].V.union) (\ s ->
+      FiniteSubsets[l].Proposition[AtS[s].V.union,AtS[s].V.union-prop].finite (AtS[s].V.or-dec (p s) (q s))) ;
+    inf : F.Finite Right.b = sigma S f (\ s -> AtS[s].V.both) (\ s ->
+      FiniteSubsets[l].Proposition[AtS[s].V.both,AtS[s].V.both-prop].finite (AtS[s].V.and-dec (p s) (q s))) ;
+    card (A : U l) : F.Finite A -> Nat = Cardinality[l].Count[A].cardinal ;
+    formula : Id Nat (N.plus (card Left.a af) (card Left.b bf)) (N.plus (card Right.a uf) (card Right.b inf)) =
+      transH (symH (SumOf[Left.a,Left.b].cardinal af bf)) (transH
+        (Change[Left.source,Right.source,partition p].same (SumOf[Left.a,Left.b].finite af bf) (SumOf[Right.a,Right.b].finite uf inf))
+        (SumOf[Right.a,Right.b].cardinal uf inf)) ;
+  } ;
+} ;

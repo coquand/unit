@@ -1,0 +1,87 @@
+-- Finite sums and finite dependent sums, with the cardinal of a binary sum.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module F = FiniteSets[l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module E = Equivalences[l] ; module N = NatArith[l] ;
+data Sum (A B : U l) : U l = left (x : A) | right (y : B) ;
+module Change (A B : U l) (e : Equiv A B) {
+  finite : F.Finite A -> F.Finite B = TC.map ((n : Nat) * Equiv (Fin n) A) ((n : Nat) * Equiv (Fin n) B)
+    (\ w -> (w.1,E.compose _ _ _ w.2 e)) ;
+  same (f : F.Finite A) (g : F.Finite B) : Id Nat (Cardinality[l].Count[A].cardinal f) (Cardinality[l].Count[B].cardinal g) =
+    TC.rec ((n : Nat) * Equiv (Fin n) A) @l _ (N.nat-set _ _) (\ w ->
+      transH (Cardinality[l].Count[A].computes f w.1 w.2) (symH (Cardinality[l].Count[B].computes g w.1 (E.compose _ _ _ w.2 e)))) f ;
+} ;
+module EmptySum (B : U l) {
+  drop : Sum Empty B -> B = split { left x -> absurd B x ; right y -> y } ;
+  eta : (v : Sum Empty B) -> Id (Sum Empty B) (right (drop v)) v = split {
+    left x -> absurd (Id (Sum Empty B) (right (drop (left x))) (left x)) x ; right y -> refl (right y) } ;
+  equiv : Equiv B (Sum Empty B) = (\ b -> right b,qinv _ _ (\ b -> right b) drop eta (\ b -> refl b)) ;
+} ;
+module Extend (A B : U l) {
+  inject : Sum A B -> Sum (Opt A) B = split { left a -> left (some a) ; right b -> right b } ;
+  forward : Opt (Sum A B) -> Sum (Opt A) B = split { none -> left none ; some x -> inject x } ;
+  on-left : Opt A -> Opt (Sum A B) = split { none -> none ; some a -> some (left a) } ;
+  backward : Sum (Opt A) B -> Opt (Sum A B) = split { left t -> on-left t ; right b -> some (right b) } ;
+  left-law : (t : Opt A) -> Id (Sum (Opt A) B) (forward (on-left t)) (left t) = split {
+    none -> refl (left none) ; some a -> refl (left (some a)) } ;
+  beta : (w : Sum (Opt A) B) -> Id (Sum (Opt A) B) (forward (backward w)) w = split {
+    left a -> left-law a ; right b -> refl (right b) } ;
+  lift-law : (t : Sum A B) -> Id (Opt (Sum A B)) (backward (inject t)) (some t) = split {
+    left a -> refl (some (left a)) ; right b -> refl (some (right b)) } ;
+  eta : (w : Opt (Sum A B)) -> Id (Opt (Sum A B)) (backward (forward w)) w = split {
+    none -> refl none ; some t -> lift-law t } ;
+  equiv : Equiv (Opt (Sum A B)) (Sum (Opt A) B) = (forward,qinv _ _ forward backward beta eta) ;
+} ;
+sum-fin : (n m : Nat) -> Equiv (Fin (N.plus n m)) (Sum (Fin n) (Fin m)) = split {
+  zero -> \ m -> EmptySum[Fin m].equiv ; suc n | r -> \ m -> E.compose _ _ _
+    (FiniteCycles[l].option-equiv _ _ (r m)) Extend[Fin n,Fin m].equiv } ;
+module SumOf (A B : U l) {
+  module Labels (n m : Nat) (e : Equiv (Fin n) A) (d : Equiv (Fin m) B) {
+    reindex : Equiv (Sum (Fin n) (Fin m)) (Sum A B) =
+      Axioms[l].UnivalenceLemmas[univ @l].eqind (Fin n) (\ X b -> Equiv (Sum (Fin n) (Fin m)) (Sum X B))
+        (Axioms[l].UnivalenceLemmas[univ @l].eqind (Fin m) (\ Y c -> Equiv (Sum (Fin n) (Fin m)) (Sum (Fin n) Y))
+          (idEquiv (Sum (Fin n) (Fin m))) B d) A e ;
+    enumeration : Equiv (Fin (N.plus n m)) (Sum A B) = E.compose _ _ _ (sum-fin n m) reindex ;
+  } ;
+  finite : F.Finite A -> F.Finite B -> F.Finite (Sum A B) =
+    TC.map2 ((n : Nat) * Equiv (Fin n) A) ((m : Nat) * Equiv (Fin m) B) ((k : Nat) * Equiv (Fin k) (Sum A B))
+      (\ x y -> (N.plus x.1 y.1,Labels[x.1,y.1,x.2,y.2].enumeration)) ;
+  cardinal (a : F.Finite A) (b : F.Finite B) : Id Nat (Cardinality[l].Count[Sum A B].cardinal (finite a b))
+    (N.plus (Cardinality[l].Count[A].cardinal a) (Cardinality[l].Count[B].cardinal b)) =
+    TC.rec ((n : Nat) * Equiv (Fin n) A) @l _ (N.nat-set _ _) (\ x ->
+      TC.rec ((m : Nat) * Equiv (Fin m) B) @l _ (N.nat-set _ _) (\ y ->
+        transH (Cardinality[l].Count[Sum A B].computes (finite a b) _ Labels[x.1,y.1,x.2,y.2].enumeration)
+          (transH (apH (\ k -> N.plus k y.1) (symH (Cardinality[l].Count[A].computes a x.1 x.2)))
+            (apH (N.plus (Cardinality[l].Count[A].cardinal a)) (symH (Cardinality[l].Count[B].computes b y.1 y.2))))) b) a ;
+} ;
+module Family (A : U l) (P : A -> U l) {
+  total : U l = (a : A) * P a ;
+  finite-prop : isProp (F.Finite total) = T.Trunc[(n : Nat) * Equiv (Fin n) total].proposition ;
+} ;
+module Successor (n : Nat) (P : Fin (suc n) -> U l) {
+  tail : U l = (i : Fin n) * P (some i) ;
+  total : U l = (i : Fin (suc n)) * P i ;
+  either : U l = Sum (P none) tail ;
+  pack : either -> total = split { left x -> (none,x) ; right y -> (some y.1,y.2) } ;
+  unpack : (i : Fin (suc n)) -> P i -> either = split { none -> \ x -> left x ; some i -> \ x -> right (i,x) } ;
+  beta : (i : Fin (suc n)) (x : P i) -> Id total (pack (unpack i x)) (i,x) = split {
+    none -> \ x -> refl (none,x) ; some i -> \ x -> refl (some i,x) } ;
+  eta : (v : either) -> Id either (unpack (pack v).1 (pack v).2) v = split {
+    left x -> refl (left x) ; right y -> refl (right y) } ;
+  equiv : Equiv either total = (pack,qinv _ _ pack (\ v -> unpack v.1 v.2) (\ v -> beta v.1 v.2) eta) ;
+} ;
+module EmptyFamily (P : Fin zero -> U l) {
+  total : U l = (i : Fin zero) * P i ;
+  equiv : Equiv (Fin zero) total = (absurd total,qinv _ _ (absurd total) (\ z -> z.1)
+    (\ z -> absurd (Id total (absurd total z.1) z) z.1)
+    (\ i -> absurd (Id (Fin zero) (absurd total i).1 i) i)) ;
+} ;
+empty-family (P : Empty -> U l) : F.Finite ((e : Empty) * P e) =
+  T.Trunc[(n : Nat) * Equiv (Fin n) ((e : Empty) * P e)].inc (zero,EmptyFamily[P].equiv) ;
+finite-family : (n : Nat) (P : Fin n -> U l) -> ((i : Fin n) -> F.Finite (P i)) -> F.Finite ((i : Fin n) * P i) = split {
+  zero -> \ P h -> empty-family P ;
+  suc n | r -> \ P h -> Change[Successor[n,P].either,Successor[n,P].total,Successor[n,P].equiv].finite
+    (SumOf[P none,Successor[n,P].tail].finite (h none) (r (\ i -> P (some i)) (\ i -> h (some i)))) } ;
+sigma (A : U l) (a : F.Finite A) (P : A -> U l) (p : (x : A) -> F.Finite (P x)) : F.Finite ((x : A) * P x) =
+  TC.rec ((n : Nat) * Equiv (Fin n) A) @l _ Family[A,P].finite-prop (\ w ->
+    Change[(i : Fin w.1) * P (w.2.1 i),Family[A,P].total,ChapterTwo[l].change-base (Fin w.1) A w.2 P].finite
+      (finite-family w.1 (\ i -> P (w.2.1 i)) (\ i -> p (w.2.1 i)))) a ;

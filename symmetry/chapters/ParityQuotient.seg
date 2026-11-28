@@ -1,0 +1,97 @@
+-- The parity relation of 4.5.1-2, without enumerating the finite index type.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ;
+module F = FiniteSets[l] ; module Two = TwoElementSets[l] ; module Z = Z2[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+flag (P : U l) : Dec P -> Bool = split { yes p -> false ; no n -> true } ;
+hit (P : U l) (p : P) : (d : Dec P) -> Id Bool (flag P d) false = split { yes x -> refl false ; no n -> absurd _ (n p) } ;
+miss (P : U l) (n : P -> Empty) : (d : Dec P) -> Id Bool (flag P d) true = split { yes x -> absurd _ (n x) ; no k -> refl true } ;
+module Distance (X : U l) (sz : Two.size X) {
+  module D = Two.At[X,sz] ;
+  diff (x y : X) : Bool = flag (Id X x y) (D.D.discrete x y) ;
+  same (x y : X) (p : Id X x y) : Id Bool (diff x y) false = hit _ p (D.D.discrete x y) ;
+  apart (x y : X) (n : Id X x y -> Empty) : Id Bool (diff x y) true = miss _ n (D.D.discrete x y) ;
+  module Triple (x y z : X) {
+    goal : U l = Id Bool (diff x z) (Z.xor (diff x y) (diff y z)) ;
+    first (p : Id X x y) : goal = transH (apH (\ w -> diff w z) p)
+      (symH (apH (\ b -> Z.xor b (diff y z)) (same x y p))) ;
+    last (q : Id X y z) : goal = transH (apH (diff x) (symH q))
+      (transH (symH (Z.xor-unitr (diff x y))) (apH (Z.xor (diff x y)) (symH (same y z q)))) ;
+    neither (p : Id X x y -> Empty) (q : Id X y z -> Empty) : goal =
+      transH (same x z (transH (symH (D.only y x p)) (D.only y z (\ h -> q (symH h)))))
+        (symH (transH (apH (\ b -> Z.xor b (diff y z)) (apart x y p)) (apH not (apart y z q)))) ;
+    cases : Dec (Id X x y) -> Dec (Id X y z) -> goal = split { yes p -> \ d -> first p ;
+      no p -> split { yes q -> last q ; no q -> neither p q } } ;
+  } ;
+  triangle (x y z : X) : Triple[x,y,z].goal = Triple[x,y,z].cases (D.D.discrete x y) (D.D.discrete y z) ;
+} ;
+module Family (E : U l) (finite : F.Finite E) (P : E -> U l) (p : (i : E) -> Two.size (P i)) {
+  module Index = FiniteParity[l].On[E,finite] ;
+  sections : U l = (i : E) -> P i ;
+  differences (f g : sections) (i : E) : Bool = Distance[P i,p i].diff (f i) (g i) ;
+  distance (f g : sections) : Bool = Index.parity (differences f g) ;
+  triangle (f g h : sections) : Id Bool (distance f h) (Z.xor (distance f g) (distance g h)) =
+    transH (apH Index.parity (FL.funext E (\ i -> Bool) (differences f h) (\ i -> Z.xor (differences f g i) (differences g h i)) (\ i -> Distance[P i,p i].triangle (f i) (g i) (h i))))
+      (Index.sum (differences f g) (differences g h)) ;
+  rel (f g : sections) : U l = Id Bool (distance f g) false ;
+  reflexive (f : sections) : rel f f = transH (apH Index.parity (FL.funext E (\ i -> Bool) (differences f f) (\ i -> false)
+    (\ i -> Distance[P i,p i].same (f i) (f i) (refl (f i))))) Index.zero-law ;
+  symmetric (f g : sections) (h : rel f g) : rel g f = symH (transH (symH (reflexive f))
+    (transH (triangle f g f) (apH (\ z -> Z.xor z (distance g f)) h))) ;
+  transitive (f g h : sections) (u : rel f g) (v : rel g h) : rel f h =
+    transH (triangle f g h) (transH (apH (\ b -> Z.xor b (distance g h)) u) v) ;
+  module Q = Quotient[l].Quot[sections,rel,\ f g -> Z.bool-set _ false,reflexive,symmetric,transitive] ;
+  module Based (f : sections) {
+    respects (g h : sections) (q : rel g h) : Id Bool (distance f g) (distance f h) =
+      symH (transH (triangle f g h) (transH (apH (Z.xor (distance f g)) q) (Z.xor-unitr (distance f g)))) ;
+    module D = Q.Descend[Bool,Z.bool-set,distance f,respects] ;
+    cancel : (x y : Bool) -> Id Bool x (Z.xor x y) -> Id Bool y false = split {
+      false -> \ y h -> symH h ; true -> split { false -> \ h -> refl false ; true -> \ h -> absurd _ (TruthValues[l].separate h) } } ;
+    reflect (g h : sections) (q : Id Bool (distance f g) (distance f h)) : rel g h =
+      cancel (distance f g) (distance g h) (transH q (triangle f g h)) ;
+    family (a b : Q.Q) : U l = Id Bool (D.map a) (D.map b) -> Id Q.Q a b ;
+    prop (a b : Q.Q) : isProp (family a b) = FL.isProp-Pi (Id Bool (D.map a) (D.map b)) (\ q -> Id Q.Q a b) (\ q -> Q.set a b) ;
+    inj (a b : Q.Q) : family a b = Q.induction @l (\ u -> family u b) (\ u -> prop u b)
+      (\ g -> Q.induction @l (family (Q.inc g)) (prop (Q.inc g)) (\ h q -> Q.relates g h
+        (reflect g h (transH (symH (D.beta g)) (transH q (D.beta h)))) ) b) a ;
+    module Enumerated (n : Nat) (e : Equiv (FinChoice[l].Fin (suc n)) E) {
+      module FC = FinChoice[l] ; j : E = e.1 none ;
+      dec (i : E) : Dec (Id E i j) = FiniteDecisions[l].On[E,finite].discrete i j ;
+      module Change (i : E) {
+        module A = Two.At[P i,p i] ; module V = Distance[P i,p i] ;
+        value : Dec (Id E i j) -> P i = split { yes q -> A.other (f i) ; no k -> f i } ;
+        here (q : Id E i j) : (d : Dec (Id E i j)) -> Id Bool (V.diff (f i) (value d)) true = split {
+          yes h -> V.apart _ _ (\ w -> A.apart (f i) (symH w)) ; no k -> absurd _ (k q) } ;
+        away (ne : Id E i j -> Empty) : (d : Dec (Id E i j)) -> Id Bool (V.diff (f i) (value d)) false = split {
+          yes h -> absurd _ (ne h) ; no k -> V.same _ _ (refl (f i)) } ;
+      } ;
+      changed (i : E) : P i = Change[i].value (dec i) ;
+      distinct (i : FC.Fin n) (q : Id E (e.1 (some i)) j) : Empty = Cardinality[l].Option[FC.Fin n].apart i
+        (Equivalences[l].injective _ _ e.1 e.2 (some i) none q) ;
+      tail (i : FC.Fin n) : Bool = differences f changed (e.1 (some i)) ;
+      tail-zero : Id Bool (FiniteParity[l].fold n tail) false = transH (apH (FiniteParity[l].fold n)
+        (FL.funext (FC.Fin n) (\ i -> Bool) tail (\ i -> false) (\ i -> Change[e.1 (some i)].away (distinct i) (dec (e.1 (some i)))))) (FiniteParity[l].zeros n) ;
+      odd : Id Bool (distance f changed) true = transH (Index.at (differences f changed) (suc n,e))
+        (transH (apH (\ b -> Z.xor b (FiniteParity[l].fold n tail)) (Change[j].here (refl j) (dec j))) (apH not tail-zero)) ;
+      pick : Bool -> Q.Q = split { false -> Q.inc f ; true -> Q.inc changed } ;
+      beta : (b : Bool) -> Id Bool (D.map (pick b)) b = split { false -> transH (D.beta f) (reflexive f) ;
+        true -> transH (D.beta changed) odd } ;
+      equiv : Equiv Q.Q Bool = (D.map,qinv _ _ D.map pick beta (\ q -> inj _ q (beta (D.map q)))) ;
+    } ;
+    choose-frame : (n : Nat) -> Equiv (FinChoice[l].Fin n) E -> E -> isEquiv Q.Q Bool D.map = split {
+      zero -> \ e i -> absurd _ (e.2.sec i) ; suc n -> \ e i -> Enumerated[n,e].equiv.2 } ;
+    frame (i : E) : Equiv Q.Q Bool = (D.map,TC.rec Index.labels @l _ (EquivProp[l].isEquiv-prop Q.Q Bool D.map)
+      (\ w -> choose-frame w.1 w.2 i) finite) ;
+  } ;
+  sections-exist : T.Trunc[sections].carrier = F.choice E finite P (\ i -> TC.map (Equiv Two.standard (P i)) (P i)
+    (\ e -> e.1 none) (p i)) ;
+  quotient-size : (n : Nat) -> Equiv (FinChoice[l].Fin n) E -> E -> Two.size Q.Q = split {
+    zero -> \ e i -> absurd _ (e.2.sec i) ; suc n -> \ e i -> TC.map sections (Equiv Two.standard Q.Q)
+      (\ f -> Equivalences[l].compose _ _ _ Two.Booleans.labels (Bijection[l].inverse _ _ Based[f].Enumerated[n,e].equiv)) sections-exist } ;
+  two (inh : T.Trunc[E].carrier) : Two.size Q.Q = TC.rec Index.labels @l _ T.Trunc[Equiv Two.standard Q.Q].proposition
+    (\ w -> TC.rec E @l _ T.Trunc[Equiv Two.standard Q.Q].proposition (quotient-size w.1 w.2) inh) finite ;
+  module EmptyIndex (empty : E -> Empty) {
+    center : sections = \ i -> absurd (P i) (empty i) ;
+    contractible : FunExtUA[l].isContr Q.Q = (Q.inc center,Q.induction @l (\ q -> Id Q.Q (Q.inc center) q)
+      (Q.set (Q.inc center)) (\ g -> apH Q.inc (FL.funext E P center g (\ i -> absurd _ (empty i))))) ;
+  } ;
+} ;

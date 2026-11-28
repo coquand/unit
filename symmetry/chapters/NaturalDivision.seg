@@ -1,0 +1,48 @@
+-- Section 2.23. Euclidean division by m = n+1 with quotient in Nat
+-- and remainder in Fin m. Division and reconstruction are inverse.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module N = NatArith[l] ; module F = FiniteCycles[l] ; module K = CyclicHom[l,l] ;
+module By (n : Nat) {
+  m : Nat = suc n ; module R = CycleRoots[l].Root[n,Nat,\ k -> suc k] ;
+  rank (i : Fin m) : Nat = K.rank m i ;
+  multiple : Nat -> Nat = split { zero -> zero ; suc q | r -> N.plus m r } ;
+  decode (w : R.copies) : Nat = N.plus (rank w.1) (multiple w.2) ;
+  encode : Nat -> R.copies = split { zero -> (none,zero) ; suc k | r -> R.root r } ;
+  at-prefix (i : Fin n) (q : Nat) : Id Nat (decode (R.root (F.prefix n i,q))) (suc (decode (F.prefix n i,q))) =
+    transH (apH decode (R.idle i q)) (apH (\ k -> suc (N.plus k (multiple q))) (symH (K.prefix-rank n i))) ;
+  at-last (q : Nat) : Id Nat (decode (R.root (F.last n,q))) (suc (decode (F.last n,q))) =
+    transH (apH decode (R.tick q)) (apH (\ k -> suc (N.plus k (multiple q))) (symH (K.last-rank n))) ;
+  law (i : Fin m) : U l = (q : Nat) -> Id Nat (decode (R.root (i,q))) (suc (decode (i,q))) ;
+  prev (j : Fin m) : Fin m = (F.rotation n).2.sec j ;
+  along (i j : Fin m) (p : Id (Fin m) ((F.rotation n).1 i) j) (h : law i) : law (prev j) =
+    subst (Fin m) law i _ (transH (symH (sec-ret _ _ (F.rotation n).1 (F.rotation n).2 i)) (apH prev p)) h ;
+  cases : (j : Fin m) -> law (prev j) = split { none -> along (F.last n) none (F.wrap n) at-last ;
+    some i -> along (F.prefix n i) (some i) (F.advance n i) (at-prefix i) } ;
+  next (i : Fin m) : law i = subst (Fin m) law _ i (sec-ret _ _ (F.rotation n).1 (F.rotation n).2 i) (cases ((F.rotation n).1 i)) ;
+  rebuild : (k : Nat) -> Id Nat (decode (encode k)) k = split {
+    zero -> refl zero ; suc k | r -> transH (next (encode k).1 (encode k).2) (apH (\ t -> suc t) r) } ;
+  add : (a b : Nat) -> Id R.copies (encode (N.plus a b)) (R.I.power a (encode b)) = split {
+    zero -> \ b -> refl (encode b) ; suc a | r -> \ b -> apH R.root (r b) } ;
+  blocks : (q : Nat) -> Id R.copies (encode (multiple q)) (none,q) = split {
+    zero -> refl (none,zero) ; suc q | r -> transH (add m (multiple q)) (transH (apH (R.I.power m) r) (R.first q)) } ;
+  recover (q : Nat) : (i : Fin m) -> Id R.copies (encode (decode (i,q))) (i,q) =
+    F.interval n (\ i -> Id R.copies (encode (decode (i,q))) (i,q)) (blocks q) (\ i h ->
+      transH (apH (\ k -> R.root (encode (N.plus k (multiple q)))) (symH (K.prefix-rank n i))) (transH (apH R.root h) (R.idle i q))) ;
+  division : Equiv Nat R.copies = (encode,qinv _ _ encode decode (\ w -> recover w.2 w.1) rebuild) ;
+  unique (a b : R.copies) (p : Id Nat (decode a) (decode b)) : Id R.copies a b =
+    transH (symH (recover a.2 a.1)) (transH (apH encode p) (recover b.2 b.1)) ;
+} ;
+module Euclidean (n : Nat) {
+  module D = By[n] ; module B = BoundedNaturals[l] ;
+  rank-law : (m : Nat) (i : Fin m) -> Id Nat (K.rank m i) (B.number m i).1 = split {
+    zero -> \ i -> absurd _ i ; suc m | r -> split { none -> refl zero ; some i -> apH (\ t -> suc t) (r i) } } ;
+  pairs : U l = (r : B.bounded D.m) * Nat ;
+  change : Equiv D.R.copies pairs = ChapterTwo[l].change-base (Fin D.m) (B.bounded D.m) (B.equivalence D.m) (\ r -> Nat) ;
+  division : Equiv Nat pairs = Equivalences[l].compose _ _ _ D.division change ;
+  rebuild (p : pairs) : Nat = N.plus (D.multiple p.2) p.1.1 ;
+  computes (k : Nat) : Id Nat (rebuild (division.1 k)) k = transH (N.plus-comm (D.multiple (D.encode k).2) _)
+    (transH (apH (\ t -> N.plus t (D.multiple (D.encode k).2)) (symH (rank-law D.m (D.encode k).1))) (D.rebuild k)) ;
+  unique (p : pairs) : Id pairs (division.1 (rebuild p)) p =
+    transH (apH (\ q -> division.1 (rebuild q)) (symH (division.2.sec-eq p)))
+      (transH (apH division.1 (computes (division.2.sec p))) (division.2.sec-eq p)) ;
+} ;

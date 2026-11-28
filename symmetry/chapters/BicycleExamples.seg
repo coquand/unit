@@ -1,0 +1,104 @@
+-- Pointed routes and the standard bicycles of Section 4.6.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module B = BicycleSymmetries[l] ; module Z = Integers[l] ; module I = IntegerIteration[l] ;
+module T = Truncation[l] ;
+module Routes (X : U l) (a b : Equiv X X) {
+  module A = B.Action[X,a,b] ;
+  zero (x : X) : A.route x x = (nil,refl x) ;
+  join : B.word -> B.word -> B.word = split { nil -> \ v -> v ; cons k u | r -> \ v -> cons k (r v) } ;
+  compose : (u v : B.word) (x : X) -> Id X (A.run (join u v) x) (A.run u (A.run v x)) = split {
+    nil -> \ v x -> refl (A.run v x) ; cons k u | r -> \ v x -> apH (A.step k) (r v x) } ;
+  then-route (x y z : X) (r : A.route x y) (s : A.route y z) : A.route x z =
+    (join s.1 r.1,transH (compose s.1 r.1 x) (transH (apH (A.run s.1) r.2) s.2)) ;
+  minus : B.letter -> B.letter = split { left k -> left (Z.neg k) ; right k -> right (Z.neg k) } ;
+  undo : (k : B.letter) (x : X) -> Id X (A.step (minus k) (A.step k x)) x = split {
+    left k -> I.Orbit[X,a].undo k ; right k -> I.Orbit[X,b].undo k } ;
+  back : (u : B.word) (x : X) -> A.route (A.run u x) x = split { nil -> zero ; cons k u | r -> \ x ->
+    then-route (A.step k (A.run u x)) (A.run u x) x (cons (minus k) nil,undo k (A.run u x)) (r x) } ;
+  reverse (x y : X) (r : A.route x y) : A.route y x = subst X (\ z -> A.route z x) _ y r.2 (back r.1 x) ;
+  module Based (o : X) (paths : (y : X) -> A.route o y) {
+    route (x y : X) : A.route x y = then-route x o y (reverse o x (paths x)) (paths y) ;
+    bicycle (s : isSet X) : B.Bicycle = new B.Bicycle[X,s,a,b,T.Trunc[X].inc o,\ x y -> T.Trunc[A.route x y].inc (route x y)] ;
+  } ;
+} ;
+
+module Dihedral {
+  X : U l = Bool * Z.Int ;
+  x (n : Z.Int) : X = (false,n) ; y (n : Z.Int) : X = (true,n) ;
+  origin : X = x Z.zeroZ ;
+  set : isSet X = isSet-Sigma Bool (\ s -> Z.Int) Z2[l].bool-set (\ s -> Z.int-set) ;
+  forward : Equiv Z.Int Z.Int = InfiniteCycle[l].shift ;
+  backward : Equiv Z.Int Z.Int = Bijection[l].inverse _ _ forward ;
+  side : Bool -> Equiv Z.Int Z.Int = split { false -> forward ; true -> backward } ;
+  vertical (f : Bool -> Equiv Z.Int Z.Int) : Equiv X X = Fibres[l].sigma-equiv Bool (\ s -> Z.Int) (\ s -> Z.Int) f ;
+  a : Equiv X X = vertical side ;
+  flip (v : X) : X = (not v.1,v.2) ;
+  twice (v : X) : Id X (flip (flip v)) v = ap Bool X (\ s -> (s,v.2)) _ _ (Z2[l].not-not v.1) ;
+  b : Equiv X X = (flip,qinv X X flip flip twice twice) ;
+  module R = Routes[X,a,b] ;
+  axis (n : Z.Int) : Id X (R.A.run (cons (left n) nil) origin) (x n) =
+    symH (I.Orbit[X,a].Unique[origin,x,refl origin,\ j -> refl (x (Z.sucZ j))].at n) ;
+  switch : B.letter = right (pos (suc zero)) ;
+  on-side : (s : Bool) (n : Z.Int) -> R.A.route origin (s,n) = split {
+    false -> \ n -> (cons (left n) nil,axis n) ;
+    true -> \ n -> (cons switch (cons (left n) nil),apH flip (axis n)) } ;
+  bicycle : B.Bicycle = R.Based[origin,\ v -> on-side v.1 v.2].bicycle set ;
+  group : ChapterFour[l].ConcreteGroup = B.Component[bicycle].group ;
+  neg-pos : (n : Nat) -> Id Z.Int (Z.neg (Z.neg (pos n))) (pos n) = split {
+    zero -> refl Z.zeroZ ; suc n -> refl (pos (suc n)) } ;
+  involution : (n : Z.Int) -> Id Z.Int (Z.neg (Z.neg n)) n = split { pos n -> neg-pos n ; negsuc n -> refl (negsuc n) } ;
+  negation : Equiv Z.Int Z.Int = (Z.neg,qinv _ _ Z.neg Z.neg involution involution) ;
+  neg-suc-pos : (n : Nat) -> Id Z.Int (Z.neg (Z.sucZ (pos n))) (Z.predZ (Z.neg (pos n))) = split {
+    zero -> refl (negsuc zero) ; suc n -> refl (negsuc (suc n)) } ;
+  neg-suc-neg : (n : Nat) -> Id Z.Int (Z.neg (Z.sucZ (negsuc n))) (Z.predZ (Z.neg (negsuc n))) = split {
+    zero -> refl Z.zeroZ ; suc n -> refl (pos (suc n)) } ;
+  neg-suc : (n : Z.Int) -> Id Z.Int (Z.neg (Z.sucZ n)) (Z.predZ (Z.neg n)) = split { pos n -> neg-suc-pos n ; negsuc n -> neg-suc-neg n } ;
+  neg-pred (n : Z.Int) : Id Z.Int (Z.neg (Z.predZ n)) (Z.sucZ (Z.neg n)) =
+    transH (symH (Z.suc-pred (Z.neg (Z.predZ n)))) (apH Z.sucZ (transH (symH (neg-suc (Z.predZ n))) (apH Z.neg (Z.suc-pred n)))) ;
+  module M = B.Maps[bicycle,bicycle] ; module N = B.Normality[bicycle] ;
+  translate (k : Z.Int) : Equiv X X = vertical (\ s -> (InfiniteCycle[l].translation k).1) ;
+  add-step (k : Z.Int) : (s : Bool) (m : Z.Int) -> Id X ((translate k).1 (a.1 (s,m))) (a.1 ((translate k).1 (s,m))) = split {
+    false -> \ m -> apH x (Z.add-sucR k m) ; true -> \ m -> apH y (Z.add-predR k m) } ;
+  translation (k : Z.Int) : M.iso = (translate k,(\ v -> add-step k v.1 v.2),\ v -> refl (flip ((translate k).1 v))) ;
+  reflection : Equiv X X = Equivalences[l].compose _ _ _ (vertical (\ s -> negation)) b ;
+  reverse-step : (s : Bool) (m : Z.Int) -> Id X (reflection.1 (a.1 (s,m))) (a.1 (reflection.1 (s,m))) = split {
+    false -> \ m -> apH y (neg-suc m) ; true -> \ m -> apH x (neg-pred m) } ;
+  mirror : M.iso = (reflection,(\ v -> reverse-step v.1 v.2),\ v -> refl (flip (reflection.1 v))) ;
+  send : Bool -> Z.Int -> M.iso = split { false -> translation ; true -> \ k -> N.composite mirror (translation k) } ;
+  sends : (s : Bool) (k : Z.Int) -> Id X (M.eval origin (send s k)) (s,k) = split { false -> \ k -> refl (x k) ; true -> \ k -> refl (y k) } ;
+  at-origin : isEquiv M.iso X (M.eval origin) = qinv _ _ (M.eval origin) (\ v -> send v.1 v.2) (\ v -> sends v.1 v.2)
+    (\ f -> M.injective origin _ f (sends (M.eval origin f).1 (M.eval origin f).2)) ;
+  normality : N.normality = N.At[origin,at-origin].all ;
+  noncommuting (c : (v : X) -> Id X (a.1 (b.1 v)) (b.1 (a.1 v))) : Empty =
+    subst Z.Int (Z.code (negsuc zero)) _ _ (ap X Z.Int (\ v -> v.2) _ _ (c origin)) (Z.code-refl (negsuc zero)) ;
+  -- The downward translation and half-turn of the frieze.
+  down : Equiv X X = vertical (\ s -> backward) ;
+  axis-change : Bool -> Equiv Z.Int Z.Int = split { false -> negation ; true -> idEquiv Z.Int } ;
+  change : Equiv X X = vertical axis-change ;
+  compatible-a : (s : Bool) (m : Z.Int) -> Id X (change.1 (a.1 (s,m))) (down.1 (change.1 (s,m))) = split {
+    false -> \ m -> apH x (neg-suc m) ; true -> \ m -> refl (y (Z.predZ m)) } ;
+  compatible-b : (s : Bool) (m : Z.Int) -> Id X (change.1 (b.1 (s,m))) (reflection.1 (change.1 (s,m))) = split {
+    false -> \ m -> apH y (symH (involution m)) ; true -> \ m -> refl (x (Z.neg m)) } ;
+  module Geo = Routes[X,down,reflection] ;
+  letters : (k : B.letter) (v : X) -> Id X (change.1 (R.A.step k v)) (Geo.A.step k (change.1 v)) = split {
+    left k -> \ v -> I.Map[X,X,a,down,change.1,\ z -> compatible-a z.1 z.2].at v k ;
+    right k -> \ v -> I.Map[X,X,b,reflection,change.1,\ z -> compatible-b z.1 z.2].at v k } ;
+  words : (w : B.word) (v : X) -> Id X (change.1 (R.A.run w v)) (Geo.A.run w (change.1 v)) = split {
+    nil -> \ v -> refl (change.1 v) ; cons k w | r -> \ v -> transH (letters k (R.A.run w v)) (apH (Geo.A.step k) (r v)) } ;
+  path (v : X) : Geo.A.route origin v = ( (on-side (change.2.sec v).1 (change.2.sec v).2).1,
+    transH (symH (words (on-side (change.2.sec v).1 (change.2.sec v).2).1 origin))
+      (transH (apH change.1 (on-side (change.2.sec v).1 (change.2.sec v).2).2) (change.2.sec-eq v))) ;
+  frieze : B.Bicycle = Geo.Based[origin,path].bicycle set ;
+  identification : Id B.Bicycle bicycle frieze = (B.Identity[bicycle].equivalence frieze).2.sec
+    (change,(\ z -> compatible-a z.1 z.2),\ z -> compatible-b z.1 z.2) ;
+} ;
+
+module WordSymmetries (G : B.Bicycle) (h : B.Normality[G].normality) (o : G.X) {
+  module N = B.Normality[G] ; module M = B.Maps[G,G] ; module R = Routes[G.X,G.a,G.b] ;
+  endpoint (u : B.word) : G.X = R.A.run u o ;
+  symm (u : B.word) : M.iso = N.box h o (endpoint u) ;
+  reverses (u v : B.word) : Id M.iso (N.composite (symm v) (symm u)) (symm (R.join v u)) =
+    M.injective o _ _ (transH (apH (symm u).1.1 (N.sends h o (endpoint v)))
+      (transH (M.commute (symm u) v o) (transH (apH (R.A.run v) (N.sends h o (endpoint u)))
+        (transH (symH (R.compose v u o)) (symH (N.sends h o (endpoint (R.join v u)))))))) ;
+} ;

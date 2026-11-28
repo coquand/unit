@@ -1,0 +1,160 @@
+-- Section 4.5. The sign torsor of a finite set is the parity quotient of
+-- local orderings on its two-element subsets, represented by Boolean predicates.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open Logic[l] ; open FinChoice[l] ;
+module Two = TwoElementSets[l] ; module F = FiniteSets[l] ; module FA = FiniteArithmetic[l] ;
+module D = FiniteDecisions[l] ; module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module C = Cardinality[l] ; module UA = Axioms[l].UnivalenceLemmas[univ @l] ;
+module Pred = TruthValues[l] ; bool-finite : F.Finite Bool = F.enumerated Bool Two.two Two.Booleans.labels ;
+module Bits (n : Nat) {
+  cons (w : Bool * (Fin n -> Bool)) : Fin (suc n) -> Bool = combine n (\ i -> Bool) w.1 w.2 ;
+  tail (f : Fin (suc n) -> Bool) : Bool * (Fin n -> Bool) = (f none,\ i -> f (some i)) ;
+  eta (f : Fin (suc n) -> Bool) : (i : Fin (suc n)) -> Id Bool (cons (tail f) i) (f i) = split {
+    none -> refl (f none) ; some i -> refl (f (some i)) } ;
+  equivalence : Equiv (Bool * (Fin n -> Bool)) (Fin (suc n) -> Bool) = (cons,qinv _ _ cons tail
+    (\ f -> FL.funext (Fin (suc n)) (\ i -> Bool) _ f (eta f)) (\ w -> refl w)) ;
+} ;
+bits-finite : (n : Nat) -> F.Finite (Fin n -> Bool) = split {
+  zero -> FiniteSubsets[l].Proposition[Fin zero -> Bool,FL.isProp-Pi Empty (\ x -> Bool) (\ x -> absurd _ x)].finite (yes (absurd Bool)) ;
+  suc n | r -> FA.Change[Bool * (Fin n -> Bool),Fin (suc n) -> Bool,Bits[n].equivalence].finite
+    (FA.sigma Bool bool-finite (\ b -> Fin n -> Bool) (\ b -> r)) } ;
+module Subsets (X : U l) (fin : F.Finite X) {
+  predicates : U l = X -> Bool ;
+  finite : F.Finite predicates = TC.rec ((n : Nat) * Equiv (Fin n) X) @l _ (F.Universe.finite-prop predicates)
+    (\ w -> UA.eqind (Fin w.1) (\ Y e -> F.Finite (Y -> Bool)) (bits-finite w.1) X w.2) fin ;
+  member (f : predicates) (x : X) : U l = (Pred.truth (f x)).1 ;
+  subset (f : predicates) : U l = (x : X) * member f x ;
+  bounded (f : predicates) : F.Finite (subset f) = FA.sigma X fin (member f)
+    (\ x -> FiniteSubsets[l].Proposition[member f x,(Pred.truth (f x)).2].finite (Pred.decide (f x))) ;
+  number (f : predicates) : Nat = C.Count[subset f].cardinal (bounded f) ;
+  has-two (f : predicates) : U l = Id Nat (number f) Two.two ;
+  pairs : U l = (f : predicates) * has-two f ;
+  finite-pairs : F.Finite pairs = FA.sigma predicates finite has-two
+    (\ f -> FiniteSubsets[l].Proposition[has-two f,NatArith[l].nat-set _ _].finite (Integers[l].nat-dec (number f) Two.two)) ;
+  carrier (z : pairs) : U l = subset z.1 ;
+  size (z : pairs) : Two.size (carrier z) = subst Nat C.Count[carrier z].size (number z.1) Two.two z.2
+    (C.Count[carrier z].count (bounded z.1)).2 ;
+  module Par = ParityQuotient[l].Family[pairs,finite-pairs,carrier,size] ;
+  orientation : U l = Par.Q.Q ;
+} ;
+module Standard (n : Nat) {
+  N : Nat = suc (suc n) ; X : U l = Fin N ;
+  finite : F.Finite X = FiniteCounting[l].standard N ; module S = Subsets[X,finite] ;
+  tail : Fin (suc n) -> Bool = split { none -> true ; some i -> false } ;
+  first-two : X -> Bool = split { none -> true ; some i -> tail i } ;
+  include-tail : Fin Two.one -> S.subset first-two = split { none -> (some none,refl true) ; some i -> absurd _ i } ;
+  include : Two.standard -> S.subset first-two = split { none -> (none,refl true) ; some i -> include-tail i } ;
+  strip-tail : (j : Fin (suc n)) -> S.member first-two (some j) -> Two.standard = split {
+    none -> \ h -> some none ; some i -> \ h -> absurd _ (Pred.separate h) } ;
+  strip : (i : X) -> S.member first-two i -> Two.standard = split { none -> \ h -> none ; some j -> strip-tail j } ;
+  beta-tail : (j : Fin (suc n)) (h : S.member first-two (some j)) -> Id X (include (strip-tail j h)).1 (some j) =
+    split { none -> \ h -> refl (some none) ; some i -> \ h -> absurd _ (Pred.separate h) } ;
+  beta : (i : X) (h : S.member first-two i) -> Id X (include (strip i h)).1 i = split { none -> \ h -> refl none ; some j -> beta-tail j } ;
+  eta-tail : (i : Fin Two.one) -> Id Two.standard (strip (include-tail i).1 (include-tail i).2) (some i) = split {
+    none -> refl (some none) ; some i -> absurd _ i } ;
+  eta : (i : Two.standard) -> Id Two.standard (strip (include i).1 (include i).2) i = split { none -> refl none ; some i -> eta-tail i } ;
+  enumeration : Equiv Two.standard (S.subset first-two) = (include,qinv _ _ include (\ z -> strip z.1 z.2)
+    (\ z -> Sigma-eq X (S.member first-two) _ _ _ _ (beta z.1 z.2) (Pred.truth (first-two z.1)).2) eta) ;
+  pair : S.pairs = (first-two,C.Count[S.subset first-two].computes (S.bounded first-two) Two.two enumeration) ;
+  choose (z : S.pairs) : Dec (S.carrier z) -> S.carrier z = split { yes x -> x ; no k -> absurd _ (TC.rec (Equiv Two.standard (S.carrier z))
+    @l Empty isProp-Empty (\ e -> k (e.1 none)) (S.size z)) } ;
+  order (z : S.pairs) : S.carrier z = choose z (D.search N (S.member z.1) (\ i -> Pred.decide (z.1 i))) ;
+} ;
+module Component (n : Nat) {
+  module B = Prelude[l+] ; module BP = Paths[l+] ;
+  X : U l = Fin n ; module G = ChapterFour[l].Symmetric[X,FiniteCycles[l].fin-set n] ;
+  large : U l+ = FiniteComponents[l].part n ;
+  base : large = (X,T.Trunc[Equiv X X].inc (idEquiv X)) ;
+  module L = LocalSmallness[l,l+].Component[U l,Completion[l].universe-small,X] ;
+  codes (Y : U l) : U l = C.Count[Y].size n ;
+  to (Y : U l) : L.reaches Y -> codes Y = TruncationCombinators[l+].rec (Id (U l) X Y) @l (codes Y)
+    T.Trunc[Equiv X Y].proposition (\ p -> T.Trunc[Equiv X Y].inc (Axioms[l].idtoeqv X Y p)) ;
+  from (Y : U l) : codes Y -> L.reaches Y = TC.rec (Equiv X Y) @(l+) (L.reaches Y) Truncation[l+].Trunc[Id (U l) X Y].proposition (\ e -> Truncation[l+].Trunc[Id (U l) X Y].inc (UA.ua X Y e)) ;
+  family (Y : U l) : B.Equiv (L.reaches Y) (codes Y) = Bijection[l+].prop-equiv _ _ Truncation[l+].Trunc[Id (U l) X Y].proposition
+    T.Trunc[Equiv X Y].proposition (to Y) (from Y) ;
+  presentation : B.Equiv G.group.space large = Equivalences[l+].compose _ _ _ L.presentation
+    (Fibres[l+].sigma-equiv (U l) (\ Y -> L.reaches Y) (\ Y -> codes Y) family) ;
+  pointing : Id large (presentation.1 G.pt) base = B.Sigma-eq (U l) (\ Y -> codes Y) _ _ _ _ (G.C.triangle tt) T.Trunc[Equiv X X].proposition ;
+} ;
+module Degree (n : Nat) {
+  module S = Standard[n] ; module Dom = Component[S.N] ; module Cod = Component[Two.two] ;
+  module B = Prelude[l+] ; module BP = Paths[l+] ;
+  fin (v : Dom.large) : F.Finite v.1 = FiniteComponents[l].forget v.1 S.N v.2 ;
+  module At (v : Dom.large) { module O = Subsets[v.1,fin v] ;
+    positive : T.Trunc[O.pairs].carrier = TC.rec (Equiv S.X v.1) @l _ T.Trunc[O.pairs].proposition
+      (\ e -> UA.eqind S.X (\ Y d -> (h : F.Finite Y) -> T.Trunc[Subsets[Y,h].pairs].carrier)
+        (\ h -> subst (F.Finite S.X) (\ t -> T.Trunc[Subsets[S.X,t].pairs].carrier) S.finite h
+          (F.Universe.finite-prop S.X S.finite h) (T.Trunc[S.S.pairs].inc S.pair)) v.1 e (fin v)) v.2 ;
+    size : Two.size O.orientation = O.Par.two positive ;
+  } ;
+  classify (v : Dom.large) : Cod.large = (At[v].O.orientation,At[v].size) ;
+  based : Equiv S.S.orientation Two.standard = Equivalences[l].compose _ _ _ (S.S.Par.Based[S.order].frame S.pair)
+    (Bijection[l].inverse _ _ Two.Booleans.labels) ;
+  move-fin : Id (U l) At[Dom.base].O.orientation S.S.orientation = B.ap (F.Finite S.X) (U l) (\ t -> Subsets[S.X,t].orientation) _ _
+    (F.Universe.finite-prop S.X (fin Dom.base) S.finite) ;
+  base-law : Id Cod.large (classify Dom.base) Cod.base = B.Sigma-eq (U l) (\ Y -> Cod.codes Y) _ _ _ _
+    (BP.transH move-fin (UA.ua _ _ based)) T.Trunc[Equiv Two.standard Two.standard].proposition ;
+  map (x : Dom.G.group.space) : Cod.G.group.space = Cod.presentation.2.sec (classify (Dom.presentation.1 x)) ;
+  point : Id Cod.G.group.space (map Dom.G.pt) Cod.G.pt = BP.transH (BP.apH Cod.presentation.2.sec
+    (BP.transH (BP.apH classify Dom.pointing) (BP.transH base-law (BP.symH Cod.pointing)))) (B.sec-ret _ _ Cod.presentation.1 Cod.presentation.2 Cod.G.pt) ;
+  sign : ChapterFour[l].Hom Dom.G.group Cod.G.group = (map,point) ;
+  even (s : ChapterFour[l].Symmetries[Dom.G.group].carrier) : U l =
+    Id (ChapterFour[l].Symmetries[Cod.G.group].carrier) ((ChapterSeven[l].Homomorphisms[Dom.G.group,Cod.G.group].D.loop sign).1 s) (refl Cod.G.pt) ;
+} ;
+
+module Product (E : U l) (finite : F.Finite E) {
+  module Cod = Component[Two.two] ; module G = F.Products[E,finite,\ i -> Cod.G.group] ;
+  module B = Prelude[l+] ; module BP = Paths[l+] ; module BF = Axioms[l+].FunExtLemmas[fe @(l+)] ;
+  families : U l+ = E -> Cod.large ; standard : families = \ i -> Cod.base ;
+  module At (v : families) { module P = ParityQuotient[l].Family[E,finite,\ i -> (v i).1,\ i -> (v i).2] ; } ;
+  module Nonempty (inh : T.Trunc[E].carrier) {
+    classify (v : families) : Cod.large = (At[v].P.Q.Q,At[v].P.two inh) ;
+    section : At[standard].P.sections = \ i -> none ;
+    module O = At[standard].P.Based[section] ;
+    frame : Equiv At[standard].P.Q.Q Bool = (O.D.map,TC.rec E @l _ (EquivProp[l].isEquiv-prop _ _ O.D.map)
+      (\ i -> (O.frame i).2) inh) ;
+    at-base : Id Cod.large (classify standard) Cod.base = B.Sigma-eq (U l) (\ Y -> Cod.codes Y) _ _ _ _
+      (UA.ua _ _ (Equivalences[l].compose _ _ _ frame (Bijection[l].inverse _ _ Two.Booleans.labels))) T.Trunc[Equiv Two.standard Two.standard].proposition ;
+    unpack (v : G.space) : families = \ i -> Cod.presentation.1 (v i) ;
+    law : Id families (unpack G.point) standard = BF.funext E (\ i -> Cod.large) _ _ (\ i -> Cod.pointing) ;
+    map (v : G.space) : Cod.G.group.space = Cod.presentation.2.sec (classify (unpack v)) ;
+    point : Id Cod.G.group.space (map G.point) Cod.G.pt = BP.transH (BP.apH Cod.presentation.2.sec
+      (BP.transH (BP.apH classify law) (BP.transH at-base (BP.symH Cod.pointing)))) (B.sec-ret _ _ Cod.presentation.1 Cod.presentation.2 Cod.G.pt) ;
+    hom : ChapterFour[l].Hom G.group Cod.G.group = (map,point) ;
+  } ;
+  module Search = D.Bounded[E,finite,\ i -> Top,\ i -> yes tt] ;
+  choose : Dec T.Trunc[Search.total].carrier -> ChapterFour[l].Hom G.group Cod.G.group = split {
+    yes h -> Nonempty[TC.map Search.total E (\ z -> z.1) h].hom ; no k -> (\ v -> Cod.G.pt,refl Cod.G.pt) } ;
+  product : ChapterFour[l].Hom G.group Cod.G.group = choose Search.exists ;
+} ;
+
+module Alternating (n : Nat) {
+  module S = Degree[n] ; module G = S.Dom.G ; module K = S.Cod.G ; module CG = ChapterFour[l] ;
+  module H = HLevels[l] ; module L = ChapterSeven[l].Homomorphisms[G.group,K.group].Underlying[S.sign] ;
+  a : K.group.space = S.map G.pt ;
+  fibre : U l = Whitehead[l].fib G.group.space K.group.space S.map a ;
+  base : fibre = (G.pt,refl a) ;
+  gpd : H.isTrunc CG.three fibre = H.trunc-Sigma CG.three G.group.space (\ x -> Id K.group.space (S.map x) a)
+    G.group.groupoid (\ x -> H.trunc-suc CG.two _ (K.group.groupoid (S.map x) a)) ;
+  module Kernel = CG.Automorphisms[fibre,gpd,base] ;
+  group : CG.ConcreteGroup = Kernel.group ;
+  inclusion : CG.Hom group G.group = (\ z -> z.1.1,refl G.pt) ;
+  module Conj = LoopConj[l] ;
+  module Raw (p : CG.Symmetries[G.group].carrier) {
+    trivial : U l = Id (Id K.group.space a a) (L.raw p) (refl a) ;
+    to (h : trivial) : S.even p = transH (ChapterSeven[l].Homomorphisms[G.group,K.group].D.loop-ap S.sign p) (transH (apH L.c h) (Conj.conj-refl K.group.space a K.pt S.point)) ;
+    from (h : S.even p) : trivial = transH (symH (Conj.conj-back K.group.space a K.pt S.point (L.raw p)))
+      (transH (apH (Conj.conj K.group.space K.pt a (symH S.point)) (transH (symH (ChapterSeven[l].Homomorphisms[G.group,K.group].D.loop-ap S.sign p)) h))
+        (Conj.conj-refl K.group.space K.pt a (symH S.point))) ;
+    equivalence : Equiv trivial (S.even p) = Bijection[l].prop-equiv _ _
+      (H.trunc-set _ (K.group.groupoid a a) _ _) (CG.Symmetries[K.group].abstract.setG _ _) to from ;
+  } ;
+  symmetries : Equiv (CG.Symmetries[group].carrier) ((p : CG.Symmetries[G.group].carrier) * S.even p) =
+    Equivalences[l].compose _ _ _ Kernel.symmetries (Equivalences[l].compose _ _ _
+      (Bijection[l].inverse _ _ (ConnectedMaps[l].fib-ap G.group.space K.group.space S.map G.pt G.pt (refl a)))
+      (Fibres[l].sigma-equiv _ (\ p -> Raw[p].trivial) S.even (\ p -> Raw[p].equivalence))) ;
+} ;
+trivial : ChapterFour[l].ConcreteGroup = new ChapterFour[l].ConcreteGroup[Top,tt,
+  ChapterFour[l].Reachable[Top,tt,\ x -> T.Trunc[Id Top tt x].inc (isTop tt x)].connected,
+  HLevels[l].prop-trunc ChapterFour[l].two Top isTop] ;
+small-degrees : (n : Nat) -> ChapterFour[l].ConcreteGroup = split { zero -> trivial ; suc n -> Alternating[n].group } ;
+alternating : (n : Nat) -> ChapterFour[l].ConcreteGroup = split { zero -> trivial ; suc n -> small-degrees n } ;

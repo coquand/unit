@@ -1,0 +1,58 @@
+-- A small generated congruence for the presentation of G * H.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module Over (G H : Group[l].Grp) {
+  data Term : U l = left (x : G.G) | right (x : H.G) | one | product (x y : Term) | inverse (x : Term) ;
+  data Law : U l = from-left (x y : G.G) | from-right (x y : H.G) | assoc (x y z : Term)
+    | unit-l (x : Term) | unit-r (x : Term) | inv-l (x : Term) | inv-r (x : Term) ;
+  equation : Law -> Term * Term = split {
+    from-left x y -> (left (G.mul x y),product (left x) (left y)) ;
+    from-right x y -> (right (H.mul x y),product (right x) (right y)) ;
+    assoc x y z -> (product (product x y) z,product x (product y z)) ;
+    unit-l x -> (product one x,x) ; unit-r x -> (product x one,x) ;
+    inv-l x -> (product (inverse x) x,one) ; inv-r x -> (product x (inverse x),one) } ;
+  data Tree : U l = ax (law : Law) | identical (x : Term) | reverse (p : Tree) | chain (p q : Tree)
+    | times (p q : Tree) | invert (p : Tree) ;
+  ends : Tree -> Term * Term = split {
+    ax law -> equation law ; identical x -> (x,x) ; reverse p | u -> (u.2,u.1) ;
+    chain p q | u v -> (u.1,v.2) ; times p q | u v -> (product u.1 v.1,product u.2 v.2) ;
+    invert p | u -> (inverse u.1,inverse u.2) } ;
+  Valid : Tree -> U l = split {
+    ax law -> Top ; identical x -> Top ; reverse p | u -> u ;
+    chain p q | u v -> u * Id Term (ends p).2 (ends q).1 * v ;
+    times p q | u v -> u * v ; invert p | u -> u } ;
+  Proof (x y : Term) : U l = (t : Tree) * Valid t * Id Term x (ends t).1 * Id Term (ends t).2 y ;
+  module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+  Rel (x y : Term) : U l = T.Trunc[Proof x y].carrier ;
+  prop (x y : Term) : isProp (Rel x y) = T.Trunc[Proof x y].proposition ;
+  witness (t : Tree) (v : Valid t) : Rel (ends t).1 (ends t).2 =
+    T.Trunc[Proof (ends t).1 (ends t).2].inc (t,v,refl (ends t).1,refl (ends t).2) ;
+  rr (x : Term) : Rel x x = witness (identical x) tt ;
+  rs (x y : Term) : Rel x y -> Rel y x = TC.map (Proof x y) (Proof y x)
+    (\ p -> (reverse p.1,p.2.1,symH p.2.2.2,symH p.2.2.1)) ;
+  rt (x y z : Term) : Rel x y -> Rel y z -> Rel x z = TC.map2 (Proof x y) (Proof y z) (Proof x z)
+    (\ p q -> (chain p.1 q.1,(p.2.1,transH p.2.2.2 q.2.2.1,q.2.1),p.2.2.1,q.2.2.2)) ;
+  pairpath (a b c d : Term) (p : Id Term a b) (q : Id Term c d) : Id Term (product a c) (product b d) =
+    trans Term _ (product b c) _ (ap Term Term (\ v -> product v c) a b p) (ap Term Term (\ v -> product b v) c d q) ;
+  mult (a b c d : Term) : Rel a b -> Rel c d -> Rel (product a c) (product b d) = TC.map2 (Proof a b) (Proof c d) (Proof (product a c) (product b d))
+    (\ p q -> (times p.1 q.1,(p.2.1,q.2.1),pairpath _ _ _ _ p.2.2.1 q.2.2.1,pairpath _ _ _ _ p.2.2.2 q.2.2.2)) ;
+  neg (a b : Term) : Rel a b -> Rel (inverse a) (inverse b) = TC.map (Proof a b) (Proof (inverse a) (inverse b))
+    (\ p -> (invert p.1,p.2.1,apH (\ v -> inverse v) p.2.2.1,apH (\ v -> inverse v) p.2.2.2)) ;
+  module Q = Quotient[l].Quot[Term,Rel,prop,rr,rs,rt] ;
+  law (r : Law) : Id Q.Q (Q.inc (equation r).1) (Q.inc (equation r).2) = Q.relates _ _ (witness (ax r) tt) ;
+  module Interpretation (K : Group[l].Grp) (f : QGrp[l].GHom G K) (g : QGrp[l].GHom H K) {
+    value : Term -> K.G = split { left x -> f.1 x ; right x -> g.1 x ; one -> K.e ;
+      product x y | a b -> K.mul a b ; inverse x | a -> K.inv a } ;
+    models : (r : Law) -> Id K.G (value (equation r).1) (value (equation r).2) = split {
+      from-left x y -> f.2 x y ; from-right x y -> g.2 x y ; assoc x y z -> K.assoc (value x) (value y) (value z) ;
+      unit-l x -> K.unitl (value x) ; unit-r x -> K.unitr (value x) ; inv-l x -> K.invl (value x) ; inv-r x -> K.invr (value x) } ;
+    sound : (t : Tree) -> Valid t -> Id K.G (value (ends t).1) (value (ends t).2) = split {
+      ax r -> \ v -> models r ; identical x -> \ v -> refl (value x) ; reverse p | a -> \ v -> symH (a v) ;
+      chain p q | a b -> \ v -> transH (a v.1) (transH (apH value v.2.1) (b v.2.2)) ;
+      times p q | a b -> \ v -> transH (apH (\ z -> K.mul z (value (ends q).1)) (a v.1))
+        (apH (K.mul (value (ends p).2)) (b v.2)) ;
+      invert p | a -> \ v -> apH K.inv (a v) } ;
+    respects (x y : Term) : Rel x y -> Id K.G (value x) (value y) = TC.rec (Proof x y) @l _ (K.setG _ _)
+      (\ p -> transH (apH value p.2.2.1) (transH (sound p.1 p.2.1) (apH value p.2.2.2))) ;
+    module Map = Q.Descend[K.G,K.setG,value,respects] ;
+  } ;
+} ;

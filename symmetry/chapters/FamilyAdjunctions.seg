@@ -1,0 +1,95 @@
+-- Section 6.5. Dependent sum and dependent product are adjoints to reindexing.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module W = WildCategory[l+,l] ; module F = WildFunctors[l+,l,l+,l] ;
+module Adj = Adjunctions[l+,l,l+,l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module Families (A : U l) {
+  family : U l+ = A -> U l ;
+  hom (X Y : family) : U l = (a : A) -> X a -> Y a ;
+  category : W.Wild = new W.Wild[family,hom,\ X a x -> x,\ X Y Z g f a x -> g a (f a x),
+    \ X Y f -> refl f,\ X Y f -> refl f,\ V X Y Z f g k -> refl (\ a x -> k a (g a (f a x)))] ;
+} ;
+module Along (A B : U l) (f : A -> B) {
+  module S = Families[A] ; module T = Families[B] ;
+  pull (Y : T.family) (a : A) : U l = Y (f a) ;
+  reindex : F.Map[T.category,S.category] = new F.Map[T.category,S.category,pull,\ Y Z k a -> k (f a),
+    \ Y -> refl (\ a y -> y),\ X Y Z g k -> refl (\ a x -> g (f a) (k (f a) x))] ;
+  sum (X : S.family) (b : B) : U l = (a : A) * Id B (f a) b * X a ;
+  sum-map (X Z : S.family) (g : S.hom X Z) (b : B) (w : sum X b) : sum Z b = (w.1,w.2.1,g w.1 w.2.2) ;
+  sigma : F.Map[S.category,T.category] = new F.Map[S.category,T.category,sum,sum-map,
+    \ X -> refl (\ b w -> w),\ X Y Z g k -> refl (\ b w -> (w.1,w.2.1,g w.1 (k w.1 w.2.2)))] ;
+  prod (X : S.family) (b : B) : U l = (a : A) -> Id B (f a) b -> X a ;
+  prod-map (X Z : S.family) (g : S.hom X Z) (b : B) (s : prod X b) : prod Z b = \ a p -> g a (s a p) ;
+  pi : F.Map[S.category,T.category] = new F.Map[S.category,T.category,prod,prod-map,
+    \ X -> refl (\ b s -> s),\ X Y Z g k -> refl (\ b s a p -> g a (k a (s a p)))] ;
+  module Sum (X : S.family) (Y : T.family) {
+    to (k : T.hom (sum X) Y) : S.hom X (pull Y) = \ a x -> k (f a) (a,refl (f a),x) ;
+    from (g : S.hom X (pull Y)) : T.hom (sum X) Y = \ b w -> subst B Y (f w.1) b w.2.1 (g w.1 w.2.2) ;
+    at (k : T.hom (sum X) Y) (a : A) (x : X a) (b : B) (p : Id B (f a) b) :
+      Id (Y b) (from (to k) b (a,p,x)) (k b (a,p,x)) =
+      idJ B (f a) (\ z q -> Id (Y z) (from (to k) z (a,q,x)) (k z (a,q,x))) (refl (k (f a) (a,refl (f a),x))) b p ;
+    equiv : Equiv (T.hom (sum X) Y) (S.hom X (pull Y)) = (to,qinv _ _ to from (\ g -> refl g)
+      (\ k -> FL.funext B (\ b -> sum X b -> Y b) _ k (\ b -> FL.funext (sum X b) (\ w -> Y b) _ (k b)
+        (\ w -> at k w.1 w.2.2 b w.2.1)))) ;
+  } ;
+  module L = Adj.Wild[S.category,T.category,sigma,reindex] ;
+  sum-adjunction : L.Adjunction = new L.Adjunction[\ X Y -> Sum[X,Y].equiv,
+    \ X Z Y u v -> refl (\ a x -> v (f a) (a,refl (f a),u a x)),
+    \ X Y Z v u -> refl (\ a x -> u (f a) (v (f a) (a,refl (f a),x)))] ;
+  module Product (Y : T.family) (X : S.family) {
+    move (a : A) (b : B) (p : Id B (f a) b) : Y b -> Y (f a) =
+      idJ B (f a) (\ z q -> Y z -> Y (f a)) (\ y -> y) b p ;
+    to (k : S.hom (pull Y) X) : T.hom Y (prod X) = \ b y a p -> k a (move a b p y) ;
+    from (s : T.hom Y (prod X)) : S.hom (pull Y) X = \ a y -> s (f a) y a (refl (f a)) ;
+    ext (s t : T.hom Y (prod X)) (q : (b : B) (y : Y b) (a : A) (p : Id B (f a) b) -> Id (X a) (s b y a p) (t b y a p)) :
+      Id (T.hom Y (prod X)) s t = FL.funext B (\ b -> Y b -> prod X b) s t
+        (\ b -> FL.funext (Y b) (\ y -> prod X b) _ _ (\ y -> FL.funext A (\ a -> Id B (f a) b -> X a) _ _
+          (\ a -> FL.funext (Id B (f a) b) (\ p -> X a) _ _ (q b y a)))) ;
+    at (s : T.hom Y (prod X)) (a : A) (b : B) (p : Id B (f a) b) : (y : Y b) -> Id (X a) (to (from s) b y a p) (s b y a p) =
+      idJ B (f a) (\ z q -> (y : Y z) -> Id (X a) (to (from s) z y a q) (s z y a q))
+        (\ y -> refl (s (f a) y a (refl (f a)))) b p ;
+    equiv : Equiv (S.hom (pull Y) X) (T.hom Y (prod X)) = (to,qinv _ _ to from
+      (\ s -> ext _ s (\ b y a p -> at s a b p y)) (\ k -> refl k)) ;
+  } ;
+  module R = Adj.Wild[T.category,S.category,reindex,pi] ;
+  move-nat (Y Z : T.family) (u : T.hom Y Z) (a : A) (b : B) (p : Id B (f a) b) :
+    (z : Y b) -> Id (Z (f a)) (u (f a) (Product[Y,\ i -> Z (f i)].move a b p z))
+      (Product[Z,\ i -> Z (f i)].move a b p (u b z)) =
+    idJ B (f a) (\ c q -> (z : Y c) -> Id (Z (f a)) (u (f a) (Product[Y,\ i -> Z (f i)].move a c q z))
+      (Product[Z,\ i -> Z (f i)].move a c q (u c z))) (\ z -> refl (u (f a) z)) b p ;
+  product-adjunction : R.Adjunction = new R.Adjunction[\ Y X -> Product[Y,X].equiv,
+    \ Z Y X u v -> Product[Y,X].ext _ _ (\ b y a p -> apH (v a) (move-nat Y Z u a b p y)),
+    \ Y X Z v u -> refl (\ b y a p -> u a (v a (Product[Y,X].move a b p y)))] ;
+} ;
+module Univalence (A : U l) (X Y : A -> U l) {
+  module T = CategoryOfTypes[l] ; module D = Families[A] ;
+  module Big = Prelude[l+] ; module BL = Axioms[l+].FunExtLemmas[fe @l+] ;
+  pointwise : U l = (a : A) -> T.types.iso (X a) (Y a) ;
+  iso : U l = D.category.iso X Y ;
+  component (i : iso) (a : A) : T.types.iso (X a) (Y a) =
+    (i.1 a,(i.2.1.1 a,apH (\ f -> f a) i.2.1.2),i.2.2.1 a,apH (\ f -> f a) i.2.2.2) ;
+  assemble (s : pointwise) : iso = ((\ a -> (s a).1),
+    ((\ a -> (s a).2.1.1),FL.funext A (\ a -> Y a -> Y a) _ _ (\ a -> (s a).2.1.2)),
+    (\ a -> (s a).2.2.1),FL.funext A (\ a -> X a -> X a) _ _ (\ a -> (s a).2.2.2)) ;
+  family-iso (i : iso) : Id iso (assemble (component i)) i = Sigma-eq (D.hom X Y)
+    (\ f -> WildIsos[l+,l].At[D.category,X,Y,f].data-inv) _ _ _ _ (refl i.1) WildIsos[l+,l].At[D.category,X,Y,i.1].prop ;
+  point-iso (s : pointwise) : Id pointwise (component (assemble s)) s = FL.funext A (\ a -> T.types.iso (X a) (Y a)) _ s
+    (\ a -> Sigma-eq (X a -> Y a) (\ f -> WildIsos[l+,l].At[T.types,X a,Y a,f].data-inv)
+      _ _ _ _ (refl (s a).1) WildIsos[l+,l].At[T.types,X a,Y a,(s a).1].prop) ;
+  paths : U l+ = (a : A) -> Id (U l) (X a) (Y a) ;
+  to (p : paths) (a : A) : T.types.iso (X a) (Y a) = T.types.idtoiso (X a) (Y a) (p a) ;
+  from (s : pointwise) (a : A) : Id (U l) (X a) (Y a) = (T.univalent (X a) (Y a)).sec (s a) ;
+  fiberwise : Big.isEquiv paths pointwise to = Big.qinv _ _ to from
+    (\ s -> FL.funext A (\ a -> T.types.iso (X a) (Y a)) _ s (\ a -> (T.univalent (X a) (Y a)).sec-eq (s a)))
+    (\ p -> BL.funext A (\ a -> Id (U l) (X a) (Y a)) _ p
+      (\ a -> Big.sec-ret _ _ _ (T.univalent (X a) (Y a)) (p a))) ;
+  convert (p : Id D.family X Y) : iso = assemble (to (Big.happly A (\ a -> U l) X Y p)) ;
+  equivalence : Big.isEquiv (Id D.family X Y) iso convert = EquivalenceLemmas[l+].compose _ _ _ assemble _
+    (Big.qinv _ _ assemble component family-iso point-iso)
+    (EquivalenceLemmas[l+].compose _ _ _ to (Big.happly A (\ a -> U l) X Y) fiberwise (fe @l+ A (\ a -> U l) X Y)) ;
+} ;
+family-compute (A : U l) (X Y : A -> U l) (p : Id (A -> U l) X Y) :
+  Id (Families[A].category.iso X Y) (Univalence[A,X,Y].convert p) (Families[A].category.idtoiso X Y p) =
+  idJ (A -> U l) X (\ Z r -> Id (Families[A].category.iso X Z) (Univalence[A,X,Z].convert r) (Families[A].category.idtoiso X Z r))
+    (Univalence[A,X,X].family-iso (Families[A].category.ident X)) Y p ;
+families-univalent (A : U l) : Families[A].category.univalent = \ X Y -> EquivalenceLemmas[l+].homotopy _ _ _ _
+  (family-compute A X Y) Univalence[A,X,Y].equivalence ;

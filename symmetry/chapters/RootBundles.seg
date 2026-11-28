@@ -1,0 +1,99 @@
+-- Section 3.8. A formal root is a cyclic grading; recover its source
+-- on grade zero by taking the first return after a full turn.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module CC = CycleComponents[l] ; module F = FiniteCycles[l] ; module CR = CycleRoots[l] ;
+module E = Equivalences[l] ; module Big = Prelude[l+] ; module BP = Paths[l+] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module Rank = CyclicHom[l,l] ;
+module Degree (n : Nat) {
+  m : Nat = suc n ; module S = F.Standard[n] ;
+  phase (v : CC.Perm) : U l = (f : v.1.1 -> S.A) * ((x : v.1.1) -> Id S.A (f (v.2.1 x)) (S.step (f x))) ;
+  laws (v : CC.Perm) (f : v.1.1 -> S.A) : isProp ((x : v.1.1) -> Id S.A (f (v.2.1 x)) (S.step (f x))) =
+    FL.isProp-Pi v.1.1 (\ x -> Id S.A (f (v.2.1 x)) (S.step (f x))) (\ x -> F.fin-set m _ _) ;
+  graded : U l+ = (v : CC.Perm) * phase v ;
+  stretch (u : CC.Perm) : graded = (CR.rho n u,(\ z -> z.1),\ z -> refl (S.step z.1)) ;
+  module Slice (v : CC.Perm) (c : phase v) {
+    X : U l = v.1.1 ; t : X -> X = v.2.1 ; module I = F.Iteration[X,t] ;
+    fibre (i : S.A) : U l = (x : X) * Id S.A (c.1 x) i ;
+    V : U l = fibre none ;
+    prop (x : X) (i : S.A) : isProp (Id S.A (c.1 x) i) = F.fin-set m _ i ;
+    ext (i : S.A) (a b : fibre i) (p : Id X a.1 b.1) : Id (fibre i) a b =
+      Sigma-eq X (\ x -> Id S.A (c.1 x) i) _ _ _ _ p (prop b.1 i) ;
+    power-equiv : (k : Nat) -> isEquiv X X (I.power k) = split {
+      zero -> (idEquiv X).2 ; suc k | r -> (E.compose X X X (I.power k,r) v.2).2 } ;
+    grades : (k : Nat) (x : X) -> Id S.A (c.1 (I.power k x)) (S.iterate k (c.1 x)) = split {
+      zero -> \ x -> refl (c.1 x) ; suc k | r -> \ x -> transH (c.2 (I.power k x)) (apH S.step (r x)) } ;
+    module Move (k : Nat) (i j : S.A) (p : Id S.A (S.iterate k i) j) {
+      eq : isEquiv X X (I.power k) = power-equiv k ;
+      forward (w : fibre i) : fibre j = (I.power k w.1,transH (grades k w.1) (transH (apH (S.iterate k) w.2) p)) ;
+      backward (w : fibre j) : fibre i = (eq.sec w.1,E.injective _ _ (S.iterate k) (F.Centralizer[n].equiv-power k) _ _
+        (transH (symH (grades k (eq.sec w.1))) (transH (apH c.1 (eq.sec-eq w.1)) (transH w.2 (symH p))))) ;
+      equiv : Equiv (fibre i) (fibre j) = (forward,qinv _ _ forward backward
+        (\ w -> ext j _ w (eq.sec-eq w.1)) (\ w -> ext i _ w (sec-ret X X (I.power k) eq w.1))) ;
+    } ;
+    module Return = Move[m,none,none,S.lap] ;
+    perm : CC.Perm = ((V,isSet-Sigma X (\ x -> Id S.A (c.1 x) none) v.1.2 (\ x -> prop-to-set _ (prop x none))),Return.equiv) ;
+    rank (i : S.A) : Nat = Rank.rank m i ;
+    position : (i : S.A) -> Id S.A (S.iterate (rank i) none) i = F.interval n
+      (\ i -> Id S.A (S.iterate (rank i) none) i) (refl none) (\ i h -> transH
+        (apH S.step (transH (apH (\ k -> S.iterate k none) (symH (Rank.prefix-rank n i))) h)) (F.advance n i)) ;
+    column (i : S.A) : Equiv V (fibre i) = Move[rank i,none,i,position i].equiv ;
+    assemble (w : (i : S.A) * fibre i) : X = w.2.1 ;
+    unpack (x : X) : (i : S.A) * fibre i = (c.1 x,x,refl (c.1 x)) ;
+    packed (x : X) (i : S.A) (h : Id S.A (c.1 x) i) : Id ((j : S.A) * fibre j) (unpack x) (i,x,h) =
+      idJ S.A (c.1 x) (\ j p -> Id ((a : S.A) * fibre a) (unpack x) (j,x,p)) (refl (unpack x)) i h ;
+    underlying : Equiv (S.A * V) X = E.compose _ _ _ (Fibres[l].sigma-equiv S.A (\ i -> V) fibre column)
+      (assemble,qinv _ _ assemble unpack (\ x -> refl x) (\ w -> packed w.2.1 w.1 w.2.2)) ;
+    module R = CR.Root[n,V,Return.forward] ;
+    comm (i : S.A) : U l = (w : V) -> Id X (underlying.1 (R.root (i,w))) (t (underlying.1 (i,w))) ;
+    idle (i : Fin n) (w : V) : Id X (underlying.1 (R.root (F.prefix n i,w))) (t (underlying.1 (F.prefix n i,w))) =
+      transH (apH underlying.1 (R.idle i w)) (apH t (apH (\ k -> I.power k w.1) (symH (Rank.prefix-rank n i)))) ;
+    tick (w : V) : Id X (underlying.1 (R.root (F.last n,w))) (t (underlying.1 (F.last n,w))) =
+      transH (apH underlying.1 (R.tick w)) (apH t (apH (\ k -> I.power k w.1) (symH (Rank.last-rank n)))) ;
+    previous (i : S.A) : S.A = (F.rotation n).2.sec i ;
+    previous-law (i j : S.A) (p : Id S.A (S.step i) j) (h : comm i) : comm (previous j) =
+      subst S.A comm i (previous j) (transH (symH (sec-ret S.A S.A S.step (F.rotation n).2 i)) (apH previous p)) h ;
+    cases : (j : S.A) -> comm (previous j) = split {
+      none -> previous-law (F.last n) none (F.wrap n) tick ;
+      some i -> previous-law (F.prefix n i) (some i) (F.advance n i) (idle i) } ;
+    equivariant (z : S.A * V) : Id X (underlying.1 (R.root z)) (t (underlying.1 z)) =
+      subst S.A comm _ z.1 (sec-ret S.A S.A S.step (F.rotation n).2 z.1) (cases (S.step z.1)) z.2 ;
+    iso : CC.From[CR.rho n perm].Iso v = (underlying,equivariant) ;
+    preserves (z : S.A * V) : Id S.A (c.1 (underlying.1 z)) z.1 = ((column z.1).1 z.2).2 ;
+  } ;
+  module Equality (u : CC.Perm) (a : phase u) {
+    module I = CC.From[u].IdSystem ;
+    coherent (v : CC.Perm) (e : CC.From[u].Iso v) (b : phase v) : U l =
+      (x : u.1.1) -> Id S.A (b.1 (e.1.1 x)) (a.1 x) ;
+    along (v : CC.Perm) (p : Id CC.Perm u v) : (b : phase v) -> coherent v (I.tr v p) b -> Id graded (u,a) (v,b) =
+      idJ CC.Perm u (\ w q -> (b : phase w) -> coherent w (I.tr w q) b -> Id graded (u,a) (w,b))
+        (\ b h -> Big.ap (phase u) graded (\ z -> (u,z)) a b (Sigma-eq (u.1.1 -> S.A)
+          (\ f -> (x : u.1.1) -> Id S.A (f (u.2.1 x)) (S.step (f x))) _ _ _ _
+          (symH (FL.funext u.1.1 (\ x -> S.A) b.1 a.1 h)) (laws u b.1))) v p ;
+    path (v : CC.Perm) (e : CC.From[u].Iso v) (b : phase v) (h : coherent v e b) : Id graded (u,a) (v,b) =
+      along v (I.un v e) b (Big.subst (CC.From[u].Iso v) (\ d -> coherent v d b)
+        e (I.tr v (I.un v e)) (BP.symH (I.tr-un v e)) h) ;
+  } ;
+  cut (w : graded) : CC.Perm = Slice[w.1,w.2].perm ;
+  restore (w : graded) : Id graded (stretch (cut w)) w =
+    Equality[(stretch (cut w)).1,(stretch (cut w)).2].path w.1 Slice[w.1,w.2].iso w.2 Slice[w.1,w.2].preserves ;
+  module Original (v : CC.Perm) {
+    module R = CR.Root[n,v.1.1,v.2.1] ; module Z = Slice[(stretch v).1,(stretch v).2] ;
+    forget (z : Z.V) : v.1.1 = z.1.2 ;
+    include (x : v.1.1) : Z.V = ((none,x),refl none) ;
+    eta (z : Z.V) : Id Z.V (include (forget z)) z = Z.ext none _ z (ap S.A R.copies (\ i -> (i,z.1.2)) _ _ (symH z.2)) ;
+    iso : CC.From[cut (stretch v)].Iso v = ((forget,qinv _ _ forget include (\ x -> refl x) eta),
+      \ z -> ap R.copies v.1.1 (\ w -> w.2) _ _ (R.At[z.1.2].lap z.1.1)) ;
+    path : Id CC.Perm (cut (stretch v)) v = CC.From[cut (stretch v)].IdSystem.un v iso ;
+  } ;
+  classification : Big.Equiv CC.Perm graded = (stretch,Big.qinv _ _ stretch cut restore (\ v -> Original[v].path)) ;
+  module Over (v : CC.Perm) {
+    roots : U l+ = (u : CC.Perm) * Id CC.Perm (CR.rho n u) v ;
+    project (w : graded) : CC.Perm = w.1 ;
+    decorated : U l+ = (w : graded) * Id CC.Perm (project w) v ;
+    insert (r : roots) : decorated = (stretch r.1,r.2) ;
+    over : Big.Equiv roots decorated = (insert,CircleProperty[l+].fib-up CC.Perm graded classification CC.Perm project v) ;
+    -- The type of phase assignments belongs to the original universe.
+    grading : Big.Equiv roots (phase v) = Equivalences[l+].compose _ _ _ over
+      ChapterTwo[l+].Projection[CC.Perm,\ w -> phase w,v].equivalence ;
+  } ;
+} ;

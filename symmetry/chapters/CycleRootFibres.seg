@@ -1,0 +1,65 @@
+-- Restrict the formal root to inhabited transitive permutations, as in the book.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module CC = CycleComponents[l] ; module II = IntegerIteration[l] ; module Z = Integers[l] ;
+module T = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module FL = Axioms[l].FunExtLemmas[fe @l] ; module Big = Prelude[l+] ;
+module ConnectedPermutation (v : CC.Perm) {
+  X : U l = v.1.1 ; module A = II.Orbit[X,v.2] ;
+  walk (x y : X) : U l = (k : Z.Int) * Id X (A.power k x) y ;
+  path (x y : X) : U l = T.Trunc[walk x y].carrier ;
+  transitive : U l = (x y : X) -> path x y ;
+  cycle : U l = T.Trunc[X].carrier * transitive ;
+  prop : isProp cycle = isProp-Sigma T.Trunc[X].carrier (\ h -> transitive) T.Trunc[X].proposition (\ h ->
+    FL.isProp-Pi X (\ x -> (y : X) -> path x y) (\ x -> FL.isProp-Pi X (path x) (\ y -> T.Trunc[walk x y].proposition))) ;
+  join (x y z : X) (a : walk x y) (b : walk y z) : walk x z = (Z.add a.1 b.1,
+    transH (A.Add[a.1,x].compose b.1) (transH (apH (A.power b.1) a.2) b.2)) ;
+  reverse (x y : X) (a : walk x y) : walk y x = (Z.neg a.1,transH (apH (A.power (Z.neg a.1)) (symH a.2)) (A.undo a.1 x)) ;
+} ;
+Cycle : U l+ = (v : CC.Perm) * ConnectedPermutation[v].cycle ;
+module Sub = ChapterTwo[l+].Subtype[CC.Perm,\ v -> ConnectedPermutation[v].cycle,\ v -> ConnectedPermutation[v].prop] ;
+module Degree (n : Nat) {
+  module D = CycleDivision[l].Degree[n] ; module S = D.S ;
+  rho (v : CC.Perm) : CC.Perm = CycleRoots[l].rho n v ;
+  module Lift (v : CC.Perm) {
+    module C = ConnectedPermutation[v] ; module H = ConnectedPermutation[rho v] ;
+    module R = CycleRoots[l].Root[n,C.X,v.2.1] ; module V = CycleQuotient[l].At[n,rho v] ;
+    embed (x : C.X) : H.X = (none,x) ;
+    module Full = II.Map[C.X,H.X,v.2,(H.A.N.power D.m,H.A.nat-equiv D.m),embed,\ x -> symH (R.first x)] ;
+    block (k : Z.Int) (x : C.X) : Id H.X (H.A.power (D.multiple k) (embed x)) (embed (C.A.power k x)) =
+      transH (V.AtPoint[embed x].blocks k) (symH (Full.at x k)) ;
+    along (x : C.X) : (i : S.A) -> H.walk (embed x) (i,x) =
+      FiniteCycles[l].interval n (\ i -> H.walk (embed x) (i,x)) (Z.zeroZ,refl (embed x))
+        (\ i w -> (Z.sucZ w.1,transH (H.A.step w.1 (embed x)) (transH (apH R.root w.2) (R.idle i x)))) ;
+    between (a b : H.X) (w : C.walk a.2 b.2) : H.walk a b =
+      H.join a (embed a.2) b (H.reverse (embed a.2) a (along a.2 a.1)) (H.join (embed a.2) (embed b.2) b
+        (D.multiple w.1,transH (block w.1 a.2) (apH embed w.2)) (along b.2 b.1)) ;
+    up (c : C.cycle) : H.cycle = (TC.map C.X H.X embed c.1,\ a b -> TC.map (C.walk a.2 b.2) (H.walk a b) (between a b) (c.2 a.2 b.2)) ;
+    module Project = II.Map[H.X,S.A,(rho v).2,FiniteCycles[l].rotation n,\ w -> w.1,\ w -> refl (S.step w.1)] ;
+    back (x y : C.X) (w : H.walk (embed x) (embed y)) : C.walk x y = (D.quotient w.1,ap H.X C.X (\ a -> a.2) _ _
+      (transH (symH (block (D.quotient w.1) x)) (transH (apH (\ k -> H.A.power k (embed x)) (D.exact w.1
+        (transH (symH (Project.at (embed x) w.1)) (ap H.X S.A (\ a -> a.1) _ _ w.2)))) w.2))) ;
+    down (c : H.cycle) : C.cycle = (TC.map H.X C.X (\ a -> a.2) c.1,\ x y -> TC.map (H.walk (embed x) (embed y))
+      (C.walk x y) (back x y) (c.2 (embed x) (embed y))) ;
+  } ;
+  root (a : Cycle) : Cycle = (rho a.1,Lift[a.1].up a.2) ;
+  module Over (b : Cycle) {
+    fibre : U l+ = (a : Cycle) * Id Cycle (root a) b ;
+    labelled : U l+ = (a : Cycle) * Id CC.Perm (rho a.1) b.1 ;
+    raw : U l+ = (v : CC.Perm) * Id CC.Perm (rho v) b.1 ;
+    paths : Big.Equiv fibre labelled = Fibres[l+].sigma-equiv Cycle (\ a -> Id Cycle (root a) b)
+      (\ a -> Id CC.Perm (rho a.1) b.1) (\ a -> Sub.At[root a].paths b) ;
+    drop (w : labelled) : raw = (w.1.1,w.2) ;
+    restore (w : raw) : labelled = ((w.1,Lift[w.1].down (Big.subst CC.Perm (\ v -> ConnectedPermutation[v].cycle)
+      b.1 (rho w.1) (Big.sym _ _ _ w.2) b.2)),w.2) ;
+    eta (w : labelled) : Id labelled (restore (drop w)) w = Big.ap (ConnectedPermutation[w.1.1].cycle) labelled
+      (\ h -> ((w.1.1,h),w.2)) _ _ (ConnectedPermutation[w.1.1].prop _ w.1.2) ;
+    underlying : Big.Equiv fibre raw = Equivalences[l+].compose _ _ _ paths
+      (drop,Big.qinv _ _ drop restore (\ w -> refl w) eta) ;
+    module Count = RootClassification[l].At[n,b.1].Cycle[b.2.1,b.2.2] ;
+    module Q = CycleQuotient[l].At[n,b.1] ;
+    small : U l = Q.subgroup-inclusion * Q.Q.Q ;
+    graded-classification : Big.Equiv fibre Count.target = Equivalences[l+].compose _ _ _ underlying Count.roots ;
+    classification : Big.Equiv fibre small = Equivalences[l+].compose _ _ _ graded-classification
+      (UniverseChange[l+,l].raise-equiv Count.target small (Equivalences[l].product Q.condition Q.subgroup-inclusion Q.Q.Q Q.period-condition)) ;
+  } ;
+} ;

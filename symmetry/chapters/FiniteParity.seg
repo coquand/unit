@@ -1,0 +1,51 @@
+-- Section 4.5. Parity of a Boolean family on a merely finite set.
+-- Define it by the cardinal of the true fibre, then compute using any enumeration.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module Z = Z2[l] ; module F = FiniteSets[l] ; module N = NatArith[l] ; module C = FiniteCounting[l] ;
+bit : Bool -> Nat = split { true -> suc zero ; false -> zero } ;
+flip : (b c : Bool) -> Id Bool (not (Z.xor b c)) (Z.xor (not b) c) = split {
+    false -> \ c -> refl (not c) ; true -> Z.not-not } ;
+rho-plus : (a b : Nat) -> Id Bool (Z.rhoN (N.plus a b)) (Z.xor (Z.rhoN a) (Z.rhoN b)) = split {
+  zero -> \ b -> refl (Z.rhoN b) ; suc a | r -> \ b -> transH (apH not (r b)) (flip (Z.rhoN a) (Z.rhoN b)) } ;
+rho-bit : (b : Bool) -> Id Bool (Z.rhoN (bit b)) b = split { false -> refl false ; true -> refl true } ;
+fold : (n : Nat) -> (Fin n -> Bool) -> Bool = split { zero -> \ f -> false ;
+  suc n | r -> \ f -> Z.xor (f none) (r (\ i -> f (some i))) } ;
+compute : (n : Nat) (f : Fin n -> Bool) -> Id Bool (Z.rhoN (C.sum n (\ i -> bit (f i)))) (fold n f) = split {
+  zero -> \ f -> refl false ; suc n | r -> \ f -> transH (rho-plus (bit (f none)) (C.sum n (\ i -> bit (f (some i)))))
+    (transH (apH (\ z -> Z.xor z (Z.rhoN (C.sum n (\ i -> bit (f (some i)))))) (rho-bit (f none)))
+      (apH (Z.xor (f none)) (r (\ i -> f (some i))))) } ;
+shuffle (a b c d : Bool) : Id Bool (Z.xor (Z.xor a b) (Z.xor c d)) (Z.xor (Z.xor a c) (Z.xor b d)) =
+  transH (Z.xor-assoc a b (Z.xor c d)) (transH (apH (Z.xor a) (transH (symH (Z.xor-assoc b c d))
+    (transH (apH (\ z -> Z.xor z d) (Z.xor-comm b c)) (Z.xor-assoc c b d)))) (symH (Z.xor-assoc a c (Z.xor b d)))) ;
+add : (n : Nat) (f g : Fin n -> Bool) -> Id Bool (fold n (\ i -> Z.xor (f i) (g i))) (Z.xor (fold n f) (fold n g)) = split {
+  zero -> \ f g -> refl false ; suc n | r -> \ f g -> transH (apH (Z.xor (Z.xor (f none) (g none)))
+    (r (\ i -> f (some i)) (\ i -> g (some i)))) (shuffle (f none) (g none) (fold n (\ i -> f (some i))) (fold n (\ i -> g (some i)))) } ;
+zeros : (n : Nat) -> Id Bool (fold n (\ i -> false)) false = split { zero -> refl false ; suc n | r -> r } ;
+module On (E : U l) (fin : F.Finite E) {
+  parity (f : E -> Bool) : Bool = Z.rhoN C.Indexed[E,fin,\ x -> bit (f x)].value ;
+  labels : U l = (n : Nat) * Equiv (Fin n) E ;
+  at (f : E -> Bool) (w : labels) : Id Bool (parity f) (fold w.1 (\ i -> f (w.2.1 i))) =
+    transH (apH Z.rhoN (C.Indexed[E,fin,\ x -> bit (f x)].computes w.1 w.2)) (compute w.1 (\ i -> f (w.2.1 i))) ;
+  zero-law : Id Bool (parity (\ x -> false)) false = TruncationCombinators[l].rec labels @l _ (Z.bool-set _ _)
+    (\ w -> transH (at (\ x -> false) w) (zeros w.1)) fin ;
+  sum (f g : E -> Bool) : Id Bool (parity (\ x -> Z.xor (f x) (g x))) (Z.xor (parity f) (parity g)) =
+    TruncationCombinators[l].rec labels @l _ (Z.bool-set _ _) (\ w -> transH (at (\ x -> Z.xor (f x) (g x)) w)
+      (transH (add w.1 (\ i -> f (w.2.1 i)) (\ i -> g (w.2.1 i)))
+        (transH (apH (\ z -> Z.xor z (fold w.1 (\ i -> g (w.2.1 i)))) (symH (at f w)))
+          (apH (Z.xor (parity f)) (symH (at g w)))))) fin ;
+} ;
+
+-- A Boolean family supported at exactly one point has odd parity.
+module Singleton (E : U l) (fin : F.Finite E) (f : E -> Bool) (o : E)
+  (on : Id Bool (f o) true) (only : (x : E) -> Id Bool (f x) true -> Id E o x) {
+  module I = C.Indexed[E,fin,\ x -> bit (f x)] ;
+  at-true : (b : Bool) -> Id Bool b true -> Fin (bit b) = split {
+    false -> \ p -> absurd _ (TruthValues[l].separate (symH p)) ; true -> \ p -> none } ;
+  detected : (b : Bool) -> Fin (bit b) -> Id Bool b true = split {
+    false -> absurd _ ; true -> \ x -> refl true } ;
+  prop : (b : Bool) -> isProp (Fin (bit b)) = split { false -> isProp-Empty ; true -> HLevels[l].contr-prop _ TwoElementSets[l].one-contr } ;
+  center : I.total = (o,at-true (f o) on) ;
+  path (w : I.total) : Id I.total center w = Sigma-eq E (\ x -> Fin (bit (f x))) _ _ _ _ (only w.1 (detected (f w.1) w.2)) (prop (f w.1)) ;
+  label : Equiv (Fin (suc zero)) I.total = FiniteSubsets[l].Proposition[I.total,HLevels[l].contr-prop I.total (center,path)].singleton center ;
+  odd : Id Bool (On[E,fin].parity f) true = apH Z.rhoN (Cardinality[l].Count[I.total].computes I.bounded (suc zero) label) ;
+} ;

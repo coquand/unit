@@ -1,0 +1,329 @@
+-- Section 7.4. Abstract G-sets, maps of them, restriction φ^* and
+-- coinduction φ_* along an abstract homomorphism, and φ^* ⊣ φ_*.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ;
+module Gp = Group[l] ; module AG = AbstractGroups[l] ; module FL = Axioms[l].FunExtLemmas[fe @l] ;
+module TrB = Truncation[l+] ;
+
+SetU : U l+ = (X : U l) * isSet X ;
+equiv-path (X Y : U l) (f g : Equiv X Y) (h : (x : X) -> Id Y (f.1 x) (g.1 x)) : Id (Equiv X Y) f g =
+  Sigma-eq (X -> Y) (isEquiv X Y) f.1 g.1 f.2 g.2 (FL.funext X (\ x -> Y) f.1 g.1 h) (EquivProp[l].isEquiv-prop X Y g.1) ;
+
+-- The abstract permutation group of a set: equivalences under f ∘ g. (The
+-- book uses abs(Σ_X), whose elements are identifications; by univalence
+-- these are the equivalences.)
+module Perm (X : SetU) {
+  A : U l = Equiv X.1 X.1 ;
+  set : isSet A = isSet-Sigma (X.1 -> X.1) (isEquiv X.1 X.1) (FL.isSet-Pi X.1 (\ x -> X.1) (\ x -> X.2))
+    (\ f -> prop-to-set (isEquiv X.1 X.1 f) (EquivProp[l].isEquiv-prop X.1 X.1 f)) ;
+  comp (f g : A) : A = Equivalences[l].compose X.1 X.1 X.1 g f ;
+  inv (f : A) : A = (f.2.sec,qinv X.1 X.1 f.2.sec f.1 (sec-ret X.1 X.1 f.1 f.2) f.2.sec-eq) ;
+  grp : Gp.Grp = new Gp.Grp[A,set,idEquiv X.1,comp,inv,
+    \ f g h -> equiv-path X.1 X.1 _ _ (\ x -> refl (f.1 (g.1 (h.1 x)))),
+    \ f -> equiv-path X.1 X.1 _ _ (\ x -> refl (f.1 x)),
+    \ f -> equiv-path X.1 X.1 _ _ (\ x -> refl (f.1 x)),
+    \ f -> equiv-path X.1 X.1 _ _ (sec-ret X.1 X.1 f.1 f.2),
+    \ f -> equiv-path X.1 X.1 _ _ f.2.sec-eq] ;
+} ;
+
+-- Definition 7.4.1. A G-set is a set with a homomorphism into its
+-- permutation group.
+GSet (J : Gp.Grp) : U l+ = (X : SetU) * AG.Hom J Perm[X].grp ;
+act (J : Gp.Grp) (A : GSet J) (s : J.G) (x : A.1.1) : A.1.1 = (A.2.1 s).1 x ;
+act-mul (J : Gp.Grp) (A : GSet J) (s t : J.G) (x : A.1.1) : Id A.1.1 (act J A (J.mul s t) x) (act J A s (act J A t x)) =
+  apH (\ f -> f.1 x) (A.2.2 s t) ;
+act-e (J : Gp.Grp) (A : GSet J) (x : A.1.1) : Id A.1.1 (act J A J.e x) x =
+  apH (\ f -> f.1 x) (AG.hom-unit J Perm[A.1].grp A.2) ;
+
+-- A G-set from an action satisfying the two action laws.
+module MakeGSet (J : Gp.Grp) (X : SetU) (a : J.G -> X.1 -> X.1)
+  (am : (s t : J.G) (x : X.1) -> Id X.1 (a (J.mul s t) x) (a s (a t x))) (ae : (x : X.1) -> Id X.1 (a J.e x) x) {
+  back (s : J.G) (x : X.1) : Id X.1 (a (J.inv s) (a s x)) x =
+    transH (symH (am (J.inv s) s x)) (transH (apH (\ g -> a g x) (J.invl s)) (ae x)) ;
+  forth (s : J.G) (x : X.1) : Id X.1 (a s (a (J.inv s) x)) x =
+    transH (symH (am s (J.inv s) x)) (transH (apH (\ g -> a g x) (J.invr s)) (ae x)) ;
+  perm (s : J.G) : Equiv X.1 X.1 = (a s,qinv X.1 X.1 (a s) (a (J.inv s)) (forth s) (back s)) ;
+  gset : GSet J = (X,perm,\ s t -> equiv-path X.1 X.1 _ _ (am s t)) ;
+} ;
+
+-- The principal G-set and the type of G-torsors.
+principal (J : Gp.Grp) : GSet J = MakeGSet[J,(J.G,J.setG),J.mul,J.assoc,J.unitl].gset ;
+AbsTorsor (J : Gp.Grp) : U l+ = (X : GSet J) * TrB.Trunc[Id (GSet J) (principal J) X].carrier ;
+principal-torsor (J : Gp.Grp) : AbsTorsor J = (principal J,TrB.Trunc[Id (GSet J) (principal J) (principal J)].inc (refl (principal J))) ;
+
+-- Definition 7.4.13. Maps of G-sets.
+Equivariant (J : Gp.Grp) (A B : GSet J) (f : A.1.1 -> B.1.1) : U l =
+  (s : J.G) -> Id (A.1.1 -> B.1.1) (\ x -> f (act J A s x)) (\ x -> act J B s (f x)) ;
+GHom (J : Gp.Grp) (A B : GSet J) : U l = (f : A.1.1 -> B.1.1) * Equivariant J A B f ;
+equivariant-prop (J : Gp.Grp) (A B : GSet J) (f : A.1.1 -> B.1.1) : isProp (Equivariant J A B f) =
+  FL.isProp-Pi J.G (\ s -> Id (A.1.1 -> B.1.1) (\ x -> f (act J A s x)) (\ x -> act J B s (f x)))
+    (\ s -> FL.isSet-Pi A.1.1 (\ x -> B.1.1) (\ x -> B.1.2) _ _) ;
+ghom-path (J : Gp.Grp) (A B : GSet J) (f g : GHom J A B) (h : (x : A.1.1) -> Id B.1.1 (f.1 x) (g.1 x)) :
+  Id (GHom J A B) f g = Sigma-eq (A.1.1 -> B.1.1) (Equivariant J A B) f.1 g.1 f.2 g.2
+    (FL.funext A.1.1 (\ x -> B.1.1) f.1 g.1 h) (equivariant-prop J A B g.1) ;
+equivariant (J : Gp.Grp) (A B : GSet J) (f : A.1.1 -> B.1.1) (h : (s : J.G) (x : A.1.1) -> Id B.1.1 (f (act J A s x)) (act J B s (f x))) :
+  Equivariant J A B f = \ s -> FL.funext A.1.1 (\ x -> B.1.1) _ _ (h s) ;
+
+at (J : Gp.Grp) (A B : GSet J) (f : A.1.1 -> B.1.1) (w : Equivariant J A B f) (s : J.G) (x : A.1.1) :
+  Id B.1.1 (f (act J A s x)) (act J B s (f x)) = happly A.1.1 (\ z -> B.1.1) _ _ (w s) x ;
+
+-- Definition 7.4.10. Restriction along φ.
+pull (J K : Gp.Grp) (phi : AG.Hom J K) (Y : GSet K) : GSet J = (Y.1,AG.hom-comp J K Perm[Y.1].grp Y.2 phi) ;
+
+-- Definition 7.4.15. Coinduction along φ: maps b : T -> X with
+-- b(t φ(s^-1)) = s · b(t), on which h acts by b ↦ b(h^-1 _).
+module Push (J K : Gp.Grp) (phi : AG.Hom J K) (X : GSet J) {
+  T : U l = K.G ; Xs : U l = X.1.1 ;
+  ax (s : J.G) (x : Xs) : Xs = act J X s x ;
+  Cond (b : T -> Xs) : U l = (s : J.G) -> Id (T -> Xs) (\ t -> b (K.mul t (phi.1 (J.inv s)))) (\ t -> ax s (b t)) ;
+  cond-prop (b : T -> Xs) : isProp (Cond b) = FL.isProp-Pi J.G
+    (\ s -> Id (T -> Xs) (\ t -> b (K.mul t (phi.1 (J.inv s)))) (\ t -> ax s (b t)))
+    (\ s -> FL.isSet-Pi T (\ t -> Xs) (\ t -> X.1.2) _ _) ;
+  C : U l = (b : T -> Xs) * Cond b ;
+  cset : isSet C = isSet-Sigma (T -> Xs) Cond (FL.isSet-Pi T (\ t -> Xs) (\ t -> X.1.2))
+    (\ b -> prop-to-set (Cond b) (cond-prop b)) ;
+  c-path (b c : C) (h : (t : T) -> Id Xs (b.1 t) (c.1 t)) : Id C b c =
+    Sigma-eq (T -> Xs) Cond b.1 c.1 b.2 c.2 (FL.funext T (\ t -> Xs) b.1 c.1 h) (cond-prop c.1) ;
+  shift (h : T) (k : T -> Xs) : T -> Xs = \ t -> k (K.mul (K.inv h) t) ;
+  move (h : T) (b : C) : C = (\ t -> b.1 (K.mul (K.inv h) t),\ s ->
+    transH (FL.funext T (\ t -> Xs) _ _ (\ t -> apH b.1 (symH (K.assoc (K.inv h) t (phi.1 (J.inv s))))))
+      (apH (shift h) (b.2 s))) ;
+  move-mul (h h' : T) (b : C) : Id C (move (K.mul h h') b) (move h (move h' b)) =
+    c-path _ _ (\ t -> apH b.1 (transH (apH (\ z -> K.mul z t) (AG.Facts[K].inv-mul h h'))
+      (K.assoc (K.inv h') (K.inv h) t))) ;
+  move-e (b : C) : Id C (move K.e b) b =
+    c-path _ _ (\ t -> apH b.1 (transH (apH (\ z -> K.mul z t) (symH AG.Facts[K].inv-e)) (K.unitl t))) ;
+  gset : GSet K = MakeGSet[K,(C,cset),move,move-mul,move-e].gset ;
+} ;
+push (J K : Gp.Grp) (phi : AG.Hom J K) (X : GSet J) : GSet K = Push[J,K,phi,X].gset ;
+
+-- Exercise 7.4.16. Maps φ^* Y -> X correspond to maps Y -> φ_* X.
+module Coinduction (J K : Gp.Grp) (phi : AG.Hom J K) (Y : GSet K) (X : GSet J) {
+  module P = Push[J,K,phi,X] ;
+  module FK = AG.Facts[K] ;
+  Ys : U l = Y.1.1 ;
+  ay (h : K.G) (y : Ys) : Ys = act K Y h y ;
+  L : U l = GHom J (pull J K phi Y) X ;
+  R : U l = GHom K Y (push J K phi X) ;
+  -- (t φ(s^-1))^-1 = φ(s) t^-1
+  flip (s : J.G) (t : K.G) : Id K.G (K.inv (K.mul t (phi.1 (J.inv s)))) (K.mul (phi.1 s) (K.inv t)) =
+    transH (FK.inv-mul t (phi.1 (J.inv s))) (apH (\ z -> K.mul z (K.inv t))
+      (transH (apH K.inv (AG.hom-inv J K phi s)) (symH (FK.inv-inv (phi.1 s))))) ;
+  module Forth (f : L) {
+    value (y : Ys) : P.C = (\ t -> f.1 (ay (K.inv t) y),\ s -> FL.funext K.G (\ t -> X.1.1) _ _ (\ t -> calc X.1.1 {
+      f.1 (ay (K.inv (K.mul t (phi.1 (J.inv s)))) y)
+        =< apH (\ z -> f.1 (ay z y)) (flip s t) > f.1 (ay (K.mul (phi.1 s) (K.inv t)) y)
+        =< apH f.1 (act-mul K Y (phi.1 s) (K.inv t) y) > f.1 (ay (phi.1 s) (ay (K.inv t) y))
+        =< at J (pull J K phi Y) X f.1 f.2 s (ay (K.inv t) y) > P.ax s (f.1 (ay (K.inv t) y)) })) ;
+    map : R = (value,equivariant K Y (push J K phi X) value (\ h y -> P.c-path _ _ (\ t ->
+      apH f.1 (transH (symH (act-mul K Y (K.inv t) h y)) (apH (\ z -> ay z y) (symH (calc K.G {
+        K.inv (K.mul (K.inv h) t) =< FK.inv-mul (K.inv h) t > K.mul (K.inv t) (K.inv (K.inv h))
+          =< apH (K.mul (K.inv t)) (symH (FK.inv-inv h)) > K.mul (K.inv t) h }))))))) ;
+  } ;
+  module Back (g : R) {
+    value (y : Ys) : X.1.1 = (g.1 y).1 K.e ;
+    map : L = (value,equivariant J (pull J K phi Y) X value (\ s y -> calc X.1.1 {
+      (g.1 (ay (phi.1 s) y)).1 K.e
+        =< ap P.C X.1.1 (\ c -> c.1 K.e) _ _ (at K Y (push J K phi X) g.1 g.2 (phi.1 s) y) > (g.1 y).1 (K.mul (K.inv (phi.1 s)) K.e)
+        =< apH (g.1 y).1 (calc K.G {
+             K.mul (K.inv (phi.1 s)) K.e =< K.unitr (K.inv (phi.1 s)) > K.inv (phi.1 s)
+               =< symH (AG.hom-inv J K phi s) > phi.1 (J.inv s)
+               =< symH (K.unitl (phi.1 (J.inv s))) > K.mul K.e (phi.1 (J.inv s)) }) > (g.1 y).1 (K.mul K.e (phi.1 (J.inv s)))
+        =< happly K.G (\ z -> X.1.1) _ _ ((g.1 y).2 s) K.e > P.ax s ((g.1 y).1 K.e) })) ;
+  } ;
+  back-forth (f : L) : Id L Back[Forth[f].map].map f = ghom-path J (pull J K phi Y) X _ f (\ y ->
+    apH f.1 (transH (apH (\ z -> ay z y) (symH FK.inv-e)) (act-e K Y y))) ;
+  forth-back (g : R) : Id R Forth[Back[g].map].map g = ghom-path K Y (push J K phi X) _ g (\ y -> P.c-path _ _ (\ t ->
+    transH (ap P.C X.1.1 (\ c -> c.1 K.e) _ _ (at K Y (push J K phi X) g.1 g.2 (K.inv t) y))
+      (apH (g.1 y).1 (transH (K.unitr (K.inv (K.inv t))) (symH (FK.inv-inv t)))))) ;
+  equivalence : Equiv L R = (\ f -> Forth[f].map,qinv L R (\ f -> Forth[f].map) (\ g -> Back[g].map) forth-back back-forth) ;
+} ;
+
+-- Definition 7.4.11 and Exercise 7.4.12. Induction along φ: the quotient
+-- of T × X by (t,x) ~ (u,y) when merely t φ(g) = u and x = g · y, with h
+-- acting by (t,x) ↦ (h t,x).
+module Tr = Truncation[l] ; module TC = TruncationCombinators[l] ;
+module Induce (J K : Gp.Grp) (phi : AG.Hom J K) (X : GSet J) {
+  T : U l = K.G ; Xs : U l = X.1.1 ;
+  ax (s : J.G) (x : Xs) : Xs = act J X s x ;
+  undo (g : J.G) (x : Xs) : Id Xs (ax (J.inv g) (ax g x)) x =
+    transH (symH (act-mul J X (J.inv g) g x)) (transH (apH (\ k -> ax k x) (J.invl g)) (act-e J X x)) ;
+  A : U l = T * Xs ;
+  W (a b : A) : U l = (g : J.G) * Id T (K.mul a.1 (phi.1 g)) b.1 * Id Xs a.2 (ax g b.2) ;
+  rel (a b : A) : U l = Tr.Trunc[W a b].carrier ;
+  prop (a b : A) : isProp (rel a b) = Tr.Trunc[W a b].proposition ;
+  -- (1) ~ is an equivalence relation
+  rr (a : A) : rel a a = Tr.Trunc[W a a].inc (J.e,
+    transH (apH (K.mul a.1) (AG.hom-unit J K phi)) (K.unitr a.1),symH (act-e J X a.2)) ;
+  phi-cancel (g : J.G) : Id T (K.mul (phi.1 g) (phi.1 (J.inv g))) K.e =
+    transH (symH (phi.2 g (J.inv g))) (transH (apH phi.1 (J.invr g)) (AG.hom-unit J K phi)) ;
+  rs (a b : A) : rel a b -> rel b a = TC.map (W a b) (W b a) (\ w -> (J.inv w.1,
+    transH (apH (\ z -> K.mul z (phi.1 (J.inv w.1))) (symH w.2.1))
+      (transH (K.assoc a.1 (phi.1 w.1) (phi.1 (J.inv w.1))) (transH (apH (K.mul a.1) (phi-cancel w.1)) (K.unitr a.1))),
+    symH (transH (apH (ax (J.inv w.1)) w.2.2) (undo w.1 b.2)))) ;
+  rt (a b c : A) : rel a b -> rel b c -> rel a c = TC.map2 (W a b) (W b c) (W a c) (\ w v -> (J.mul w.1 v.1,
+    transH (apH (K.mul a.1) (phi.2 w.1 v.1)) (transH (symH (K.assoc a.1 (phi.1 w.1) (phi.1 v.1)))
+      (transH (apH (\ z -> K.mul z (phi.1 v.1)) w.2.1) v.2.1)),
+    transH w.2.2 (transH (apH (ax w.1) v.2.2) (symH (act-mul J X w.1 v.1 c.2))))) ;
+  module Q = Quotient[l].Quot[A,rel,prop,rr,rs,rt] ;
+  cls (t : T) (x : Xs) : Q.Q = Q.inc (t,x) ;
+  -- (2) (t,x) ↦ (h t,x) respects ~
+  respects (h : T) (a b : A) (r : rel a b) : rel (K.mul h a.1,a.2) (K.mul h b.1,b.2) =
+    TC.map (W a b) (W (K.mul h a.1,a.2) (K.mul h b.1,b.2)) (\ w -> (w.1,
+      transH (K.assoc h a.1 (phi.1 w.1)) (apH (K.mul h) w.2.1),w.2.2)) r ;
+  module M (h : T) {
+    module D = Q.Descend[Q.Q,Q.set,\ a -> cls (K.mul h a.1) a.2,\ a b r -> Q.relates _ _ (respects h a b r)] ;
+  } ;
+  move (h : T) (q : Q.Q) : Q.Q = M[h].D.map q ;
+  move-cls (h t : T) (x : Xs) : Id Q.Q (move h (cls t x)) (cls (K.mul h t) x) = M[h].D.beta (t,x) ;
+  -- (3) it induces a homomorphism into the permutations
+  move-mul (h h' : T) (q : Q.Q) : Id Q.Q (move (K.mul h h') q) (move h (move h' q)) =
+    Q.induction @l (\ r -> Id Q.Q (move (K.mul h h') r) (move h (move h' r))) (\ r -> Q.set _ _) (\ a -> calc Q.Q {
+      move (K.mul h h') (cls a.1 a.2) =< move-cls (K.mul h h') a.1 a.2 > cls (K.mul (K.mul h h') a.1) a.2
+        =< apH (\ t -> cls t a.2) (K.assoc h h' a.1) > cls (K.mul h (K.mul h' a.1)) a.2
+        =< symH (move-cls h (K.mul h' a.1) a.2) > move h (cls (K.mul h' a.1) a.2)
+        =< apH (move h) (symH (move-cls h' a.1 a.2)) > move h (move h' (cls a.1 a.2)) }) q ;
+  move-e (q : Q.Q) : Id Q.Q (move K.e q) q =
+    Q.induction @l (\ r -> Id Q.Q (move K.e r) r) (\ r -> Q.set _ _)
+      (\ a -> transH (move-cls K.e a.1 a.2) (apH (\ t -> cls t a.2) (K.unitl a.1))) q ;
+  gset : GSet K = MakeGSet[K,(Q.Q,Q.set),move,move-mul,move-e].gset ;
+} ;
+induce (J K : Gp.Grp) (phi : AG.Hom J K) (X : GSet J) : GSet K = Induce[J,K,phi,X].gset ;
+
+-- Exercise 7.4.14. Maps φ_! X -> Y correspond to maps X -> φ^* Y.
+module Induction (J K : Gp.Grp) (phi : AG.Hom J K) (X : GSet J) (Y : GSet K) {
+  module I = Induce[J,K,phi,X] ;
+  Ys : U l = Y.1.1 ;
+  ay (h : K.G) (y : Ys) : Ys = act K Y h y ;
+  L : U l = GHom K (induce J K phi X) Y ;
+  R : U l = GHom J X (pull J K phi Y) ;
+  module Forth (F : L) {
+    value (x : I.Xs) : Ys = F.1 (I.cls K.e x) ;
+    map : R = (value,equivariant J X (pull J K phi Y) value (\ s x -> calc Ys {
+      F.1 (I.cls K.e (I.ax s x))
+        =< apH F.1 (I.Q.relates (K.e,I.ax s x) (phi.1 s,x)
+             (Tr.Trunc[I.W (K.e,I.ax s x) (phi.1 s,x)].inc (s,K.unitl (phi.1 s),refl (I.ax s x)))) > F.1 (I.cls (phi.1 s) x)
+        =< apH (\ t -> F.1 (I.cls t x)) (symH (K.unitr (phi.1 s))) > F.1 (I.cls (K.mul (phi.1 s) K.e) x)
+        =< apH F.1 (symH (I.move-cls (phi.1 s) K.e x)) > F.1 (I.move (phi.1 s) (I.cls K.e x))
+        =< at K (induce J K phi X) Y F.1 F.2 (phi.1 s) (I.cls K.e x) > ay (phi.1 s) (value x) })) ;
+  } ;
+  module Back (f : R) {
+    pre (a : I.A) : Ys = ay a.1 (f.1 a.2) ;
+    respects (a b : I.A) (r : I.rel a b) : Id Ys (pre a) (pre b) = TC.rec (I.W a b) @l (Id Ys (pre a) (pre b)) (Y.1.2 _ _)
+      (\ w -> calc Ys {
+        ay a.1 (f.1 a.2) =< apH (\ x -> ay a.1 (f.1 x)) w.2.2 > ay a.1 (f.1 (I.ax w.1 b.2))
+          =< apH (ay a.1) (at J X (pull J K phi Y) f.1 f.2 w.1 b.2) > ay a.1 (ay (phi.1 w.1) (f.1 b.2))
+          =< symH (act-mul K Y a.1 (phi.1 w.1) (f.1 b.2)) > ay (K.mul a.1 (phi.1 w.1)) (f.1 b.2)
+          =< apH (\ t -> ay t (f.1 b.2)) w.2.1 > ay b.1 (f.1 b.2) }) r ;
+    module D = I.Q.Descend[Ys,Y.1.2,pre,respects] ;
+    map : L = (D.map,equivariant K (induce J K phi X) Y D.map (\ h q ->
+      I.Q.induction @l (\ r -> Id Ys (D.map (I.move h r)) (ay h (D.map r))) (\ r -> Y.1.2 _ _) (\ a -> calc Ys {
+        D.map (I.move h (I.cls a.1 a.2)) =< apH D.map (I.move-cls h a.1 a.2) > D.map (I.cls (K.mul h a.1) a.2)
+          =< D.beta (K.mul h a.1,a.2) > ay (K.mul h a.1) (f.1 a.2)
+          =< act-mul K Y h a.1 (f.1 a.2) > ay h (ay a.1 (f.1 a.2))
+          =< apH (ay h) (symH (D.beta a)) > ay h (D.map (I.cls a.1 a.2)) }) q)) ;
+  } ;
+  back-forth (F : L) : Id L Back[Forth[F].map].map F = ghom-path K (induce J K phi X) Y _ F (\ q ->
+    I.Q.induction @l (\ r -> Id Ys (Back[Forth[F].map].D.map r) (F.1 r)) (\ r -> Y.1.2 _ _) (\ a -> calc Ys {
+      Back[Forth[F].map].D.map (I.cls a.1 a.2) =< Back[Forth[F].map].D.beta a > ay a.1 (F.1 (I.cls K.e a.2))
+        =< symH (at K (induce J K phi X) Y F.1 F.2 a.1 (I.cls K.e a.2)) > F.1 (I.move a.1 (I.cls K.e a.2))
+        =< apH F.1 (I.move-cls a.1 K.e a.2) > F.1 (I.cls (K.mul a.1 K.e) a.2)
+        =< apH (\ t -> F.1 (I.cls t a.2)) (K.unitr a.1) > F.1 (I.cls a.1 a.2) }) q) ;
+  forth-back (f : R) : Id R Forth[Back[f].map].map f = ghom-path J X (pull J K phi Y) _ f (\ x ->
+    transH (Back[f].D.beta (K.e,x)) (act-e K Y (f.1 x))) ;
+  equivalence : Equiv L R = (\ F -> Forth[F].map,qinv L R (\ F -> Forth[F].map) (\ f -> Back[f].map) forth-back back-forth) ;
+} ;
+
+-- An equivariant equivalence of underlying sets identifies two G-sets.
+module GSetPath (J : Gp.Grp) (X : SetU) (al : AG.Hom J Perm[X].grp) {
+  Intertwines (B : U l) (d : Equiv X.1 B) (sB : isSet B) (be : AG.Hom J Perm[(B,sB)].grp) : U l =
+    (s : J.G) (x : X.1) -> Id B (d.1 ((al.1 s).1 x)) ((be.1 s).1 (d.1 x)) ;
+  Motive (B : U l) (d : Equiv X.1 B) : U l+ = (sB : isSet B) (be : AG.Hom J Perm[(B,sB)].grp) ->
+    Intertwines B d sB be -> Id (GSet J) (X,al) ((B,sB),be) ;
+  same (be : AG.Hom J Perm[X].grp) (h : Intertwines X.1 (idEquiv X.1) X.2 be) : Id (GSet J) (X,al) (X,be) =
+    Prelude[l+].ap (AG.Hom J Perm[X].grp) (GSet J) (\ w -> (X,w)) al be
+      (AG.hom-path J Perm[X].grp al be (\ s -> equiv-path X.1 X.1 _ _ (h s))) ;
+  base : Motive X.1 (idEquiv X.1) = \ sB -> idJ (isSet X.1) X.2
+    (\ s' r -> (be : AG.Hom J Perm[(X.1,s')].grp) -> Intertwines X.1 (idEquiv X.1) s' be -> Id (GSet J) (X,al) ((X.1,s'),be))
+    same sB (Torsor[l].isProp-isSet X.1 X.2 sB) ;
+  path (B : U l) (d : Equiv X.1 B) : Motive B d = Axioms[l].UnivalenceLemmas[univ @l].eqind X.1 Motive base B d ;
+} ;
+
+-- Exercise 7.4.2. Left multiplication and right multiplication by the
+-- inverse are identified G-sets, via the inverse map.
+right-principal (J : Gp.Grp) : GSet J = MakeGSet[J,(J.G,J.setG),\ g s -> J.mul s (J.inv g),
+  \ g h s -> transH (apH (J.mul s) (AG.Facts[J].inv-mul g h)) (symH (J.assoc s (J.inv h) (J.inv g))),
+  \ s -> transH (apH (J.mul s) (symH AG.Facts[J].inv-e)) (J.unitr s)].gset ;
+left-right (J : Gp.Grp) : Id (GSet J) (principal J) (right-principal J) =
+  GSetPath[J,(J.G,J.setG),(principal J).2].path J.G AG.Facts[J].inv-equiv J.setG (right-principal J).2
+    (\ s x -> AG.Facts[J].inv-mul s x) ;
+
+-- Identity principle for G-sets: identifications are isomorphisms, that
+-- is, equivalences of underlying sets intertwining the actions. As for
+-- groups, the isomorphisms out of X form a retract of a type built from
+-- the contractible type of equivalences out of the underlying set.
+GIso (J : Gp.Grp) (X Y : GSet J) : U l = (d : Equiv X.1.1 Y.1.1) *
+  ((s : J.G) (x : X.1.1) -> Id Y.1.1 (d.1 (act J X s x)) (act J Y s (d.1 x))) ;
+id-giso (J : Gp.Grp) (X : GSet J) : GIso J X X = (idEquiv X.1.1,\ s x -> refl (act J X s x)) ;
+idtogiso (J : Gp.Grp) (X Y : GSet J) (p : Id (GSet J) X Y) : GIso J X Y =
+  Prelude[l+].subst (GSet J) (\ Z -> GIso J X Z) X Y p (id-giso J X) ;
+module GSetIdentity (J : Gp.Grp) (X : GSet J) {
+  A : U l = X.1.1 ;
+  al (s : J.G) (x : A) : A = act J X s x ;
+  Inter (B : U l) (d : Equiv A B) (sB : isSet B) (be : AG.Hom J Perm[(B,sB)].grp) : U l =
+    (s : J.G) (x : A) -> Id B (d.1 (al s x)) ((be.1 s).1 (d.1 x)) ;
+  GBase : U l+ = (B : U l) * Equiv A B ;
+  GFibre (w : GBase) : U l = (sB : isSet w.1) * (be : AG.Hom J Perm[(w.1,sB)].grp) * Inter w.1 w.2 sB be ;
+  GTotal : U l+ = (w : GBase) * GFibre w ;
+  Isos : U l+ = (Y : GSet J) * GIso J X Y ;
+  out (k : Isos) : GTotal = ((k.1.1.1,k.2.1),k.1.1.2,k.1.2,k.2.2) ;
+  back (w : GTotal) : Isos = (((w.1.1,w.2.1),w.2.2.1),w.1.2,w.2.2.2) ;
+  -- the fibre over the identity
+  inter-prop (sB : isSet A) (be : AG.Hom J Perm[(A,sB)].grp) : isProp (Inter A (idEquiv A) sB be) =
+    FL.isProp-Pi J.G (\ s -> (x : A) -> Id A (al s x) ((be.1 s).1 x))
+      (\ s -> FL.isProp-Pi A (\ x -> Id A (al s x) ((be.1 s).1 x)) (\ x -> sB _ _)) ;
+  Rest (sB : isSet A) : U l = (be : AG.Hom J Perm[(A,sB)].grp) * Inter A (idEquiv A) sB be ;
+  rest-contr : FunExtUA[l].isContr (Rest X.1.2) = ((X.2,\ s x -> refl (al s x)),\ w ->
+    Sigma-eq (AG.Hom J Perm[X.1].grp) (\ be -> Inter A (idEquiv A) X.1.2 be) X.2 w.1 (\ s x -> refl (al s x)) w.2
+      (AG.hom-path J Perm[X.1].grp X.2 w.1 (\ s -> equiv-path A A _ _ (w.2 s))) (inter-prop X.1.2 w.1)) ;
+  set-contr : FunExtUA[l].isContr (isSet A) = (X.1.2,Torsor[l].isProp-isSet A X.1.2) ;
+  fibre-contr : FunExtUA[l].isContr (GFibre (A,idEquiv A)) =
+    HLevels[l].trunc-Sigma-contr zero (isSet A) (\ sB -> Rest sB) set-contr rest-contr ;
+  base-contr : FunExtUA[l+].isContr GBase = AG.equivalences-contr A ;
+  total-contr : FunExtUA[l+].isContr GTotal = HLevels[l+].trunc-Sigma-contr zero GBase (\ w -> GFibre w) base-contr
+    (Prelude[l+].subst GBase (\ w -> FunExtUA[l+].isContr (GFibre w)) (A,idEquiv A) base-contr.1 (base-contr.2 (A,idEquiv A)) fibre-contr) ;
+  isos-contr : FunExtUA[l+].isContr Isos = HLevels[l+].retract-contr Isos GTotal out back (\ k -> refl k) total-contr ;
+  module F = FundThm[l+].FT[GSet J,X,\ Y -> GIso J X Y,id-giso J X,isos-contr] ;
+  equivalence (Y : GSet J) : Prelude[l+].Equiv (Id (GSet J) X Y) (GIso J X Y) = (idtogiso J X Y,F.equiv Y) ;
+  path (Y : GSet J) (f : GIso J X Y) : Id (GSet J) X Y = F.un Y f ;
+} ;
+
+-- Exercise 7.5.2 (1). (t,x) ↦ t φ(x) identifies φ_! ℙ_G with ℙ_H.
+module InducedPrincipal (J K : Gp.Grp) (phi : AG.Hom J K) {
+  module I = Induce[J,K,phi,principal J] ;
+  pre (a : I.A) : K.G = K.mul a.1 (phi.1 a.2) ;
+  respects (a b : I.A) (r : I.rel a b) : Id K.G (pre a) (pre b) = TC.rec (I.W a b) @l (Id K.G (pre a) (pre b)) (K.setG _ _)
+    (\ w -> calc K.G {
+      K.mul a.1 (phi.1 a.2) =< apH (\ x -> K.mul a.1 (phi.1 x)) w.2.2 > K.mul a.1 (phi.1 (J.mul w.1 b.2))
+        =< apH (K.mul a.1) (phi.2 w.1 b.2) > K.mul a.1 (K.mul (phi.1 w.1) (phi.1 b.2))
+        =< symH (K.assoc a.1 (phi.1 w.1) (phi.1 b.2)) > K.mul (K.mul a.1 (phi.1 w.1)) (phi.1 b.2)
+        =< apH (\ t -> K.mul t (phi.1 b.2)) w.2.1 > K.mul b.1 (phi.1 b.2) }) r ;
+  module D = I.Q.Descend[K.G,K.setG,pre,respects] ;
+  to (q : I.Q.Q) : K.G = D.map q ;
+  from (t : K.G) : I.Q.Q = I.cls t J.e ;
+  to-from (t : K.G) : Id K.G (to (from t)) t =
+    transH (D.beta (t,J.e)) (transH (apH (K.mul t) (AG.hom-unit J K phi)) (K.unitr t)) ;
+  from-to (q : I.Q.Q) : Id I.Q.Q (from (to q)) q =
+    I.Q.induction @l (\ r -> Id I.Q.Q (from (to r)) r) (\ r -> I.Q.set _ _) (\ a ->
+      transH (apH from (D.beta a)) (I.Q.relates (pre a,J.e) a
+        (I.rs a (pre a,J.e) (Tr.Trunc[I.W a (pre a,J.e)].inc (a.2,refl (pre a),symH (J.unitr a.2)))))) q ;
+  equiv : Equiv I.Q.Q K.G = (to,qinv I.Q.Q K.G to from to-from from-to) ;
+  to-move (h : K.G) (q : I.Q.Q) : Id K.G (to (I.move h q)) (K.mul h (to q)) =
+    I.Q.induction @l (\ r -> Id K.G (to (I.move h r)) (K.mul h (to r))) (\ r -> K.setG _ _) (\ a -> calc K.G {
+      to (I.move h (I.cls a.1 a.2)) =< apH to (I.move-cls h a.1 a.2) > to (I.cls (K.mul h a.1) a.2)
+        =< D.beta (K.mul h a.1,a.2) > K.mul (K.mul h a.1) (phi.1 a.2)
+        =< K.assoc h a.1 (phi.1 a.2) > K.mul h (pre a)
+        =< apH (K.mul h) (symH (D.beta a)) > K.mul h (to (I.cls a.1 a.2)) }) q ;
+  iso : GIso K (induce J K phi (principal J)) (principal K) = (equiv,to-move) ;
+  path : Id (GSet K) (induce J K phi (principal J)) (principal K) =
+    GSetIdentity[K,induce J K phi (principal J)].path (principal K) iso ;
+} ;

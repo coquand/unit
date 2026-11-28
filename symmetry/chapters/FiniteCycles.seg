@@ -1,0 +1,111 @@
+-- Section 3.6. A standard positive finite cycle, with a constructive
+-- iteration witness for every position. Fin uses none for the first index.
+level l ;
+open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+option-map (A B : U l) (f : A -> B) : Opt A -> Opt B = split {
+  none -> none ; some x -> some (f x) } ;
+option-inverse (A B : U l) (f : A -> B) (g : B -> A) (fg : (b : B) -> Id B (f (g b)) b) :
+  (x : Opt B) -> Id (Opt B) (option-map A B f (option-map B A g x)) x =
+  split { none -> refl none ; some b -> ap B (Opt B) (\ y -> some y) _ _ (fg b) } ;
+option-equiv (A B : U l) (e : Equiv A B) : Equiv (Opt A) (Opt B) =
+  (option-map A B e.1,qinv _ _ (option-map A B e.1) (option-map B A e.2.sec)
+    (option-inverse A B e.1 e.2.sec e.2.sec-eq)
+    (option-inverse B A e.2.sec e.1 (sec-ret A B e.1 e.2))) ;
+module Exchange (A : U l) {
+  promote : Opt A -> Opt (Opt A) = split { none -> none ; some x -> some (some x) } ;
+  flip : Opt (Opt A) -> Opt (Opt A) = split { none -> some none ; some i -> promote i } ;
+  twice-some : (i : Opt A) -> Id (Opt (Opt A)) (flip (flip (some i))) (some i) =
+    split { none -> refl (some none) ; some x -> refl (some (some x)) } ;
+  twice : (i : Opt (Opt A)) -> Id (Opt (Opt A)) (flip (flip i)) i =
+    split { none -> refl none ; some i -> twice-some i } ;
+  equiv : Equiv (Opt (Opt A)) (Opt (Opt A)) = (flip,qinv _ _ flip flip twice twice) ;
+} ;
+rotation : (n : Nat) -> Equiv (Fin (suc n)) (Fin (suc n)) = split {
+  zero -> idEquiv (Fin (suc zero)) ;
+  suc n | r -> Equivalences[l].compose _ _ _ (option-equiv _ _ r) Exchange[Fin n].equiv } ;
+prefix : (n : Nat) -> Fin n -> Fin (suc n) = split {
+  zero -> split {} ; suc n | r -> option-map _ _ r } ;
+last : (n : Nat) -> Fin (suc n) = split { zero -> none ; suc n | r -> some r } ;
+advance : (n : Nat) (i : Fin n) -> Id (Fin (suc n)) ((rotation n).1 (prefix n i)) (some i) = split {
+  zero -> split {} ;
+  suc n | r -> split { none -> refl (some none) ;
+    some i -> apH Exchange[Fin n].promote (r i) } } ;
+wrap : (n : Nat) -> Id (Fin (suc n)) ((rotation n).1 (last n)) none = split {
+  zero -> refl none ; suc n | r -> apH Exchange[Fin n].promote r } ;
+
+interval : (n : Nat) (P : Fin (suc n) -> U l) -> P none ->
+  ((i : Fin n) -> P (prefix n i) -> P (some i)) -> (x : Fin (suc n)) -> P x = split {
+  zero -> \ P b step -> combine zero P b (fin-zero (\ i -> P (some i))) ;
+  suc n | r -> \ P b step -> combine (suc n) P b
+    (r (\ x -> P (some x)) (step none b) (\ i -> step (some i))) } ;
+
+module Iteration (X : U l) (f : X -> X) {
+  power : Nat -> X -> X = split { zero -> \ x -> x ; suc k | r -> \ x -> f (r x) } ;
+  commute : (k : Nat) (x : X) -> Id X (power k (f x)) (f (power k x)) =
+    split { zero -> \ x -> refl (f x) ; suc k | r -> \ x -> apH f (r x) } ;
+  traverse : (n : Nat) (v : Fin (suc n) -> X) ->
+    ((i : Fin n) -> Id X (f (v (prefix n i))) (v (some i))) ->
+    Id X (power n (v none)) (v (last n)) = split {
+      zero -> \ v h -> refl (v none) ;
+      suc n | r -> \ v h -> transH (symH (commute n (v none)))
+        (transH (apH (power n) (h none)) (r (\ i -> v (some i)) (\ i -> h (some i)))) } ;
+} ;
+
+module Standard (n : Nat) {
+  A : U l = Fin (suc n) ;
+  step : A -> A = (rotation n).1 ;
+  module I = Iteration[A,step] ;
+  iterate : Nat -> A -> A = I.power ;
+  lap : Id A (iterate (suc n) none) none =
+    transH (apH step (I.traverse n (\ x -> x) (advance n))) (wrap n) ;
+  visit (x : A) : U l = (k : Nat) * Id A (iterate k none) x ;
+  next (i : Fin n) (v : visit (prefix n i)) : visit (some i) =
+    (suc v.1,transH (apH step v.2) (advance n i)) ;
+  reaches : (x : A) -> visit x = interval n visit (zero,refl none) next ;
+  period (x : A) : Id A (iterate (suc n) x) x = interval n
+    (\ a -> Id A (iterate (suc n) a) a) lap
+    (\ i h -> subst A (\ a -> Id A (iterate (suc n) a) a) (step (prefix n i)) (some i) (advance n i)
+      (transH (I.commute (suc n) (prefix n i)) (apH step h))) x ;
+} ;
+
+module OptionPaths (X : U l) (s : isSet X) {
+  code : Opt X -> Opt X -> U l = split {
+    none -> split { none -> Top ; some y -> Empty } ;
+    some x -> split { none -> Empty ; some y -> Id X x y } } ;
+  prop : (x y : Opt X) -> isProp (code x y) = split {
+    none -> split { none -> isTop ; some y -> isProp-Empty } ;
+    some x -> split { none -> isProp-Empty ; some y -> s x y } } ;
+  base : (x : Opt X) -> code x x = split { none -> tt ; some x -> refl x } ;
+  path : (x y : Opt X) -> code x y -> Id (Opt X) x y = split {
+    none -> split { none -> \ t -> refl none ; some y -> split {} } ;
+    some x -> split { none -> split {} ; some y -> ap X (Opt X) (\ z -> some z) x y } } ;
+  set : isSet (Opt X) = \ x -> Hedberg[Opt X,x,code x,prop x,base x,path x].hedberg ;
+} ;
+fin-set : (n : Nat) -> isSet (Fin n) = split {
+  zero -> prop-to-set Empty isProp-Empty ; suc n | r -> OptionPaths[Fin n,r].set } ;
+
+-- An automorphism commuting with the standard cycle is determined by
+-- the image of its first position. Every possible image is attained.
+module Centralizer (n : Nat) {
+  open Standard[n] ;
+  module FL = Axioms[l].FunExtLemmas[fe @l] ;
+  commutes (f : A -> A) : U l = (x : A) -> Id A (f (step x)) (step (f x)) ;
+  aut : U l = (f : Equiv A A) * commutes f.1 ;
+  eval (f : aut) : A = f.1.1 none ;
+  commuting-prop (f : A -> A) : isProp (commutes f) =
+    FL.isProp-Pi A (\ x -> Id A (f (step x)) (step (f x))) (\ x -> fin-set (suc n) _ _) ;
+  equiv-power : (k : Nat) -> isEquiv A A (iterate k) = split {
+    zero -> (idEquiv A).2 ;
+    suc k | h -> (Equivalences[l].compose A A A (iterate k,h) (rotation n)).2 } ;
+  shift (x : A) : aut = ((iterate (reaches x).1,equiv-power (reaches x).1),I.commute (reaches x).1) ;
+  beta (x : A) : Id A (eval (shift x)) x = (reaches x).2 ;
+  agree (f g : aut) (start : Id A (eval f) (eval g)) : (x : A) -> Id A (f.1.1 x) (g.1.1 x) =
+    interval n (\ x -> Id A (f.1.1 x) (g.1.1 x)) start (\ i h ->
+      subst A (\ x -> Id A (f.1.1 x) (g.1.1 x)) (step (prefix n i)) (some i) (advance n i)
+        (transH (f.2 (prefix n i)) (transH (apH step h) (symH (g.2 (prefix n i)))))) ;
+  ext (f g : aut) (start : Id A (eval f) (eval g)) : Id aut f g =
+    Sigma-eq (Equiv A A) (\ e -> commutes e.1) _ _ _ _
+      (ChapterTwo[l].equiv-ext A A f.1 g.1 (agree f g start))
+      (commuting-prop g.1.1) ;
+  symmetries : Equiv aut A = (eval,qinv aut A eval shift beta (\ f -> ext (shift (eval f)) f (beta (eval f)))) ;
+} ;

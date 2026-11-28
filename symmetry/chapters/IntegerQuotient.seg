@@ -1,0 +1,80 @@
+-- Section 2.22. Differences of natural numbers modulo cross addition.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; module N = NatArith[l] ; module Z = Integers[l] ;
+pair : U l = Nat * Nat ;
+rel (u v : pair) : U l = Id Nat (N.plus u.1 v.2) (N.plus v.1 u.2) ;
+combine (a b c d : Nat) : Id Nat (N.plus (N.plus a b) (N.plus c d)) (N.plus (N.plus a d) (N.plus c b)) =
+  transH (N.plus-assoc a b (N.plus c d)) (transH (apH (N.plus a) (transH (N.plus-comm b (N.plus c d))
+    (transH (N.plus-assoc c d b) (transH (apH (N.plus c) (N.plus-comm d b))
+      (transH (symH (N.plus-assoc c b d)) (N.plus-comm (N.plus c b) d)))))) (symH (N.plus-assoc a d (N.plus c b)))) ;
+transitive (u v w : pair) (p : rel u v) (q : rel v w) : rel u w =
+  N.plus-cancel-r (N.plus v.1 v.2) _ _ (transH (combine u.1 w.2 v.1 v.2)
+    (transH (apH (\ a -> N.plus a (N.plus v.1 w.2)) p) (transH (apH (N.plus (N.plus v.1 u.2)) q)
+      (transH (N.plus-comm (N.plus v.1 u.2) (N.plus w.1 v.2)) (combine w.1 v.2 v.1 u.2))))) ;
+module Q = Quotient[l].Quot[pair,rel,\ u v -> N.nat-set _ _,\ u -> refl (N.plus u.1 u.2),\ u v p -> symH p,transitive] ;
+represent : Z.Int -> pair = split { pos a -> (a,zero) ; negsuc b -> (zero,suc b) } ;
+from-debt : Nat -> Z.Int = split { zero -> pos zero ; suc b -> negsuc b } ;
+diff : Nat -> Nat -> Z.Int = split {
+  zero -> from-debt ; suc a | r -> split { zero -> pos (suc a) ; suc b -> r b } } ;
+canonical (w : pair) : Z.Int = diff w.1 w.2 ;
+zero-debt : (b : Nat) -> rel (zero,b) (represent (from-debt b)) = split { zero -> refl zero ; suc b -> refl (suc b) } ;
+cancel-pair (a b : Nat) : rel (suc a,suc b) (a,b) = symH (N.plus-suc a b) ;
+sound : (a b : Nat) -> rel (a,b) (represent (diff a b)) = split {
+  zero -> zero-debt ; suc a | r -> split { zero -> refl (N.plus (suc a) zero) ; suc b -> transitive (suc a,suc b) (a,b) _ (cancel-pair a b) (r b) } } ;
+impossible (a b : Nat) (p : Id Nat (N.plus a (suc b)) zero) : Empty =
+  Integers[l].not-code _ _ (transH (symH (N.plus-suc a b)) p) ;
+separate : (x y : Z.Int) -> rel (represent x) (represent y) -> Id Z.Int x y = split {
+  pos a -> split {
+    pos b -> \ p -> ap Nat Z.Int (\ k -> pos k) a b (transH (symH (N.plus-zero a)) (transH p (N.plus-zero b))) ;
+    negsuc b -> \ p -> absurd _ (impossible a b p) } ;
+  negsuc a -> split {
+    pos b -> \ p -> absurd _ (impossible b a (symH p)) ;
+    negsuc b -> \ p -> ap Nat Z.Int (\ k -> negsuc k) a b (N.suc-inj (symH p)) } } ;
+respect (u v : pair) (p : rel u v) : Id Z.Int (canonical u) (canonical v) = separate _ _
+  (transitive (represent (canonical u)) u (represent (canonical v)) (symH (sound u.1 u.2)) (transitive u v (represent (canonical v)) p (sound v.1 v.2))) ;
+module D = Q.Descend[Z.Int,Z.int-set,canonical,respect] ;
+normalized : (x : Z.Int) -> Id Z.Int (canonical (represent x)) x = split {
+  pos a -> separate _ (pos a) (symH (sound a zero)) ; negsuc b -> refl (negsuc b) } ;
+encode (x : Z.Int) : Q.Q = Q.inc (represent x) ;
+beta (x : Z.Int) : Id Z.Int (D.map (encode x)) x = transH (D.beta (represent x)) (normalized x) ;
+eta : (q : Q.Q) -> Id Q.Q (encode (D.map q)) q = Q.induction @l (\ q -> Id Q.Q (encode (D.map q)) q)
+  (\ q -> Q.set _ q) (\ u -> transH (apH encode (D.beta u)) (Q.relates (represent (canonical u)) u (symH (sound u.1 u.2)))) ;
+equivalence : Equiv Q.Q Z.Int = (D.map,qinv _ _ D.map encode beta eta) ;
+-- For the book's subtype, debt zero permits any wealth. With positive
+-- debt, wealth must vanish. This is the disjoint case split of its predicate.
+normal-pair : Nat -> Nat -> U l = \ w -> split { zero -> Top ; suc d -> Id Nat w zero } ;
+normal-prop (w : Nat) : (d : Nat) -> isProp (normal-pair w d) = split { zero -> isTop ; suc d -> N.nat-set w zero } ;
+predicate (z : pair) : U l = normal-pair z.1 z.2 ;
+forms : U l = (z : pair) * predicate z ;
+proof : (x : Z.Int) -> predicate (represent x) = split { pos w -> tt ; negsuc d -> refl zero } ;
+form (x : Z.Int) : forms = (represent x,proof x) ;
+at-zero (w : Nat) : Id pair (represent (diff w zero)) (w,zero) = apH represent (normalized (pos w)) ;
+at-normal (w : Nat) : (d : Nat) -> normal-pair w d -> Id pair (represent (diff w d)) (w,d) =
+  split { zero -> \ h -> at-zero w ; suc d -> \ h -> idJR Nat zero
+    (\ k q -> Id pair (represent (diff k (suc d))) (k,suc d)) (refl (zero,suc d)) w h } ;
+read (s : forms) : Z.Int = canonical s.1 ;
+normalizes (s : forms) : Id forms (form (read s)) s = Sigma-eq pair predicate _ _ _ _
+  (at-normal s.1.1 s.1.2 s.2) (normal-prop s.1.1 s.1.2) ;
+standard : Equiv Z.Int forms = (form,qinv _ _ form read normalizes normalized) ;
+quotient-forms : Equiv Q.Q forms = Equivalences[l].compose _ _ _ equivalence standard ;
+representative (s : forms) : Id forms (quotient-forms.1 (Q.inc s.1)) s =
+  transH (apH form (D.beta s.1)) (normalizes s) ;
+
+-- Logical equivalence with the displayed disjunction in Exercise 2.22.15.
+module BookNormal {
+  module T = Truncation[l] ; open FiniteArithmetic[l] ;
+  cases (w d : Nat) : U l = Sum (Id Nat d zero) (Id Nat w zero * (Id Nat d zero -> Empty)) ;
+  stated (w d : Nat) : U l = T.Trunc[cases w d].carrier ;
+  to (w : Nat) : (d : Nat) -> normal-pair w d -> stated w d = split {
+    zero -> \ h -> T.Trunc[cases w zero].inc (left (refl zero)) ;
+    suc d -> \ h -> T.Trunc[cases w (suc d)].inc (right (h,Z.not-code (suc d) zero)) } ;
+  positive (w d : Nat) : cases w (suc d) -> Id Nat w zero = split {
+    left p -> absurd _ (Z.not-code (suc d) zero p) ; right h -> h.1 } ;
+  from (w : Nat) : (d : Nat) -> stated w d -> normal-pair w d = split {
+    zero -> \ h -> tt ; suc d -> TruncationCombinators[l].rec (cases w (suc d)) @l _ (N.nat-set w zero) (positive w d) } ;
+  subset : U l = (z : pair) * stated z.1 z.2 ;
+  identify : Equiv forms subset = Fibres[l].sigma-equiv pair predicate (\ z -> stated z.1 z.2)
+    (\ z -> Bijection[l].prop-equiv _ _ (normal-prop z.1 z.2) T.Trunc[cases z.1 z.2].proposition (to z.1 z.2) (from z.1 z.2)) ;
+  quotient : Equiv Q.Q subset = Equivalences[l].compose _ _ _ quotient-forms identify ;
+  computation (w : subset) : Id subset (quotient.1 (Q.inc w.1)) w = Sigma-eq pair (\ z -> stated z.1 z.2) _ _ _ _
+    (ap forms pair (\ v -> v.1) _ _ (representative (w.1,from w.1.1 w.1.2 w.2))) T.Trunc[cases w.1.1 w.1.2].proposition ;
+} ;

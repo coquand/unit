@@ -1,0 +1,55 @@
+-- Section 2.24. Arithmetic sums indexed by an unlabelled finite set.
+level l ; open Base ; open Prelude[l] ; open Paths[l] ; open FinChoice[l] ;
+module F = FiniteSets[l] ; module A = FiniteArithmetic[l] ;
+module C = Cardinality[l] ; module N = NatArith[l] ; module E = Equivalences[l] ;
+module TC = TruncationCombinators[l] ; module T = Truncation[l] ;
+
+sum : (n : Nat) -> (Fin n -> Nat) -> Nat = split {
+  zero -> \ f -> zero ;
+  suc n | r -> \ f -> N.plus (f none) (r (\ i -> f (some i))) } ;
+times : Nat -> Nat -> Nat = split { zero -> \ m -> zero ; suc n | r -> \ m -> N.plus m (r m) } ;
+constant : (n m : Nat) -> Id Nat (sum n (\ i -> m)) (times n m) = split {
+  zero -> \ m -> refl zero ; suc n | r -> \ m -> apH (N.plus m) (r m) } ;
+
+-- For explicit fibre labels, enumerate the total space in blocks.
+enumerate : (n : Nat) (f : Fin n -> Nat) (P : Fin n -> U l) ->
+  ((i : Fin n) -> Equiv (Fin (f i)) (P i)) -> Equiv (Fin (sum n f)) ((i : Fin n) * P i) = split {
+  zero -> \ f P e -> A.EmptyFamily[P].equiv ;
+  suc n | r -> \ f P e -> E.compose _ _ _
+    A.SumOf[P none,A.Successor[n,P].tail].Labels[f none,sum n (\ i -> f (some i)),e none,
+      r (\ i -> f (some i)) (\ i -> P (some i)) (\ i -> e (some i))].enumeration A.Successor[n,P].equiv } ;
+
+standard (n : Nat) : F.Finite (Fin n) = F.enumerated (Fin n) n (idEquiv (Fin n)) ;
+module Indexed (X : U l) (finite : F.Finite X) (f : X -> Nat) {
+  total : U l = (x : X) * Fin (f x) ;
+  bounded : F.Finite total = A.sigma X finite (\ x -> Fin (f x)) (\ x -> standard (f x)) ;
+  value : Nat = C.Count[total].cardinal bounded ;
+  computes (n : Nat) (e : Equiv (Fin n) X) : Id Nat value (sum n (\ i -> f (e.1 i))) =
+    C.Count[total].computes bounded _ (E.compose _ _ _
+      (enumerate n (\ i -> f (e.1 i)) (\ i -> Fin (f (e.1 i))) (\ i -> idEquiv (Fin (f (e.1 i)))))
+      (ChapterTwo[l].change-base (Fin n) X e (\ x -> Fin (f x)))) ;
+} ;
+module Weighted (X : U l) (finite : F.Finite X) (P : X -> U l) (p : (x : X) -> F.Finite (P x)) {
+  total : U l = (x : X) * P x ;
+  bounded : F.Finite total = A.sigma X finite P p ;
+  weight (x : X) : Nat = C.Count[P x].cardinal (p x) ;
+  module I = Indexed[X,finite,weight] ;
+  labels (x : X) : T.Trunc[Equiv (Fin (weight x)) (P x)].carrier = (C.Count[P x].count (p x)).2 ;
+  formula : Id Nat (C.Count[total].cardinal bounded) I.value =
+    TC.rec ((x : X) -> Equiv (Fin (weight x)) (P x)) @l _ (N.nat-set _ _) (\ e ->
+      symH (A.Change[I.total,total,Fibres[l].sigma-equiv X (\ x -> Fin (weight x)) P e].same I.bounded bounded))
+      (F.choice X finite (\ x -> Equiv (Fin (weight x)) (P x)) labels) ;
+} ;
+module Uniform (X Y : U l) (a : F.Finite X) (b : F.Finite Y) (P : X -> U l) (e : (x : X) -> Equiv (P x) Y) {
+  m : Nat = C.Count[Y].cardinal b ;
+  module I = Indexed[X,a,\ x -> m] ;
+  labels (d : Equiv (Fin m) Y) (x : X) : Equiv (Fin m) (P x) = E.compose _ _ _ d (Bijection[l].inverse _ _ (e x)) ;
+  total : U l = (x : X) * P x ;
+  bounded : F.Finite total = A.sigma X a P (\ x -> A.Change[Y,P x,Bijection[l].inverse _ _ (e x)].finite b) ;
+  formula : Id Nat (C.Count[total].cardinal bounded) (times (C.Count[X].cardinal a) m) =
+    TC.rec (Equiv (Fin m) Y) @l _ (N.nat-set _ _) (\ d ->
+      transH (symH (A.Change[I.total,total,Fibres[l].sigma-equiv X (\ x -> Fin m) P (labels d)].same I.bounded bounded))
+        (TC.rec ((n : Nat) * Equiv (Fin n) X) @l _ (N.nat-set _ _) (\ w ->
+          transH (I.computes w.1 w.2) (transH (constant w.1 m)
+            (apH (\ k -> times k m) (symH (C.Count[X].computes a w.1 w.2))))) a)) (C.Count[Y].count b).2 ;
+} ;

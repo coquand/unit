@@ -1,0 +1,62 @@
+-- Section 6.6. Construct a right adjoint from chosen representations.
+level a b c d ; open Base ; open Paths[a \/ b \/ c \/ d] ;
+module H = Prelude[b \/ d] ;
+module Build (C : WildCategory[a,b].Wild) (D : WildCategory[c,d].Wild)
+  (F : WildFunctors[a,b,c,d].Map[C,D]) (obj : D.ob -> C.ob)
+  (alpha : (x : C.ob) (y : D.ob) -> H.Equiv (D.hom (F.obj x) y) (C.hom x (obj y)))
+  (pre : (x w : C.ob) (y : D.ob) (u : C.hom w x) (v : D.hom (F.obj x) y) ->
+    Id (C.hom w (obj y)) ((alpha w y).1 (D.comp _ _ _ v (F.map w x u))) (C.comp _ _ _ ((alpha x y).1 v) u)) {
+  counit (y : D.ob) : D.hom (F.obj (obj y)) y = (alpha (obj y) y).2.sec (C.idn (obj y)) ;
+  beta (y : D.ob) : Id (C.hom (obj y) (obj y)) ((alpha (obj y) y).1 (counit y)) (C.idn (obj y)) =
+    (alpha (obj y) y).2.sec-eq (C.idn (obj y)) ;
+  map (y z : D.ob) (k : D.hom y z) : C.hom (obj y) (obj z) = (alpha (obj y) z).1 (D.comp _ _ _ k (counit y)) ;
+  module At (x : C.ob) (y : D.ob) (f : D.hom (F.obj x) y) {
+    g : C.hom x (obj y) = (alpha x y).1 f ;
+    m : D.hom (F.obj x) y = D.comp _ _ _ (counit y) (F.map x (obj y) g) ;
+    agrees : Id (C.hom x (obj y)) ((alpha x y).1 m) g = transH (pre (obj y) x y g (counit y))
+      (transH (apH (\ k -> C.comp x (obj y) (obj y) k g) (beta y)) (C.unit-l _ _ g)) ;
+    recover : Id (D.hom (F.obj x) y) m f = transH (symH (H.sec-ret _ _ _ (alpha x y).2 m))
+      (transH (apH (alpha x y).2.sec agrees) (H.sec-ret _ _ _ (alpha x y).2 f)) ;
+  } ;
+  post (x : C.ob) (y z : D.ob) (f : D.hom (F.obj x) y) (k : D.hom y z) :
+    Id (C.hom x (obj z)) ((alpha x z).1 (D.comp _ _ _ k f)) (C.comp _ _ _ (map y z k) ((alpha x y).1 f)) =
+    transH (apH (\ t -> (alpha x z).1 (D.comp (F.obj x) y z k t)) (symH At[x,y,f].recover))
+      (transH (apH (alpha x z).1 (D.assoc _ _ _ _ (F.map x (obj y) ((alpha x y).1 f)) (counit y) k))
+        (pre (obj y) x z ((alpha x y).1 f) (D.comp _ _ _ k (counit y)))) ;
+  identity (y : D.ob) : Id (C.hom (obj y) (obj y)) (map y y (D.idn y)) (C.idn (obj y)) =
+    transH (apH (alpha (obj y) y).1 (D.unit-l _ _ (counit y))) (beta y) ;
+  composition (x y z : D.ob) (k : D.hom y z) (f : D.hom x y) :
+    Id (C.hom (obj x) (obj z)) (map x z (D.comp _ _ _ k f)) (C.comp _ _ _ (map y z k) (map x y f)) =
+    transH (apH (alpha (obj x) z).1 (symH (D.assoc _ _ _ _ (counit x) f k)))
+      (post (obj x) y z (D.comp _ _ _ f (counit x)) k) ;
+  module G = WildFunctors[c,d,a,b] ;
+  right : G.Map[D,C] = new G.Map[D,C,obj,map,identity,composition] ;
+  module M = Adjunctions[a,b,c,d].Wild[C,D,F,right] ;
+  adjunction : M.Adjunction = new M.Adjunction[alpha,pre,post] ;
+  -- The fibre over the given object action and hom equivalences.
+  module Unique (sets : (x y : C.ob) -> Prelude[b].isSet (C.hom x y)) {
+    module R = G.Ext[D,C,sets].At[obj] ;
+    module P = Prelude[a \/ b \/ c \/ d] ; module FL = Axioms[a \/ b \/ c \/ d].FunExtLemmas[fe @(a \/ b \/ c \/ d)] ;
+    module Laws (m : R.arrows) {
+      row (x : C.ob) (y z : D.ob) (v : D.hom (F.obj x) y) (k : D.hom y z) : U b =
+        Id (C.hom x (obj z)) ((alpha x z).1 (D.comp _ _ _ k v)) (C.comp _ _ _ (m y z k) ((alpha x y).1 v)) ;
+      natural : U (a \/ b \/ c \/ d) = (x : C.ob) (y z : D.ob) (v : D.hom (F.obj x) y) (k : D.hom y z) -> row x y z v k ;
+      nat-prop : P.isProp natural = FL.isProp-Pi C.ob (\ x -> (y z : D.ob) (v : D.hom (F.obj x) y) (k : D.hom y z) -> row x y z v k)
+        (\ x -> FL.isProp-Pi D.ob (\ y -> (z : D.ob) (v : D.hom (F.obj x) y) (k : D.hom y z) -> row x y z v k)
+        (\ y -> FL.isProp-Pi D.ob (\ z -> (v : D.hom (F.obj x) y) (k : D.hom y z) -> row x y z v k)
+        (\ z -> FL.isProp-Pi (D.hom (F.obj x) y) (\ v -> (k : D.hom y z) -> row x y z v k)
+        (\ v -> FL.isProp-Pi (D.hom y z) (\ k -> row x y z v k) (\ k -> sets _ _ _ _))))) ;
+      all : U (a \/ b \/ c \/ d) = R.On[m].laws * natural ;
+      prop : P.isProp all = P.isProp-Sigma R.On[m].laws (\ t -> natural) R.On[m].prop (\ t -> nat-prop) ;
+    } ;
+    choices : U (a \/ b \/ c \/ d) = (m : R.arrows) * Laws[m].all ;
+    center : choices = (map,(identity,composition),post) ;
+    agrees (t : choices) (y z : D.ob) (k : D.hom y z) : Id (C.hom (obj y) (obj z)) (map y z k) (t.1 y z k) =
+      transH (t.2.2 (obj y) y z (counit y) k) (transH (apH (C.comp _ _ _ (t.1 y z k)) (beta y)) (C.unit-r _ _ (t.1 y z k))) ;
+    contract (t : choices) : Id choices center t = P.Sigma-eq R.arrows (\ m -> Laws[m].all) _ _ _ _
+      (FL.funext D.ob (\ y -> (z : D.ob) -> D.hom y z -> C.hom (obj y) (obj z)) _ _
+        (\ y -> FL.funext D.ob (\ z -> D.hom y z -> C.hom (obj y) (obj z)) _ _
+        (\ z -> FL.funext (D.hom y z) (\ k -> C.hom (obj y) (obj z)) _ _ (agrees t y z)))) Laws[t.1].prop ;
+    compatible-adjoints : FunExtUA[a \/ b \/ c \/ d].isContr choices = (center,contract) ;
+  } ;
+} ;
