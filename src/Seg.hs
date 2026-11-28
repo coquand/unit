@@ -2888,13 +2888,15 @@ fillSpine cx e mexp = do
                 x' = Lam z body'
             (s, pre, rt) <- pass1 known (capp f (ev cx x')) as (i + 1) sols1
             Right (s, (i, Just (Left x')) : pre, rt)
-      Left _ -> case fillC cx x dom of
-        Right x' | not (hasPlaceholder dom) -> do
-          (s, pre, rt) <- pass1 known (capp f (ev cx x')) as (i + 1) sols
-          Right (s, (i, Just (Left x')) : pre, rt)
-        _ -> do
-          (s, pre, rt) <- pass1 known (capp f (VConst ("?p" ++ show i) [])) as (i + 1) sols
-          Right (s, (i, Just (Left Hole)) : pre, rt)
+      -- A successful fill is reusable only with a known domain. Test that
+      -- first: a speculative fill here can recursively elaborate a whole
+      -- argument that this round must postpone anyway.
+      Left _ | not (hasPlaceholder dom), Right x' <- fillC cx x dom -> do
+        (s, pre, rt) <- pass1 known (capp f (ev cx x')) as (i + 1) sols
+        Right (s, (i, Just (Left x')) : pre, rt)
+      Left _ -> do
+        (s, pre, rt) <- pass1 known (capp f (VConst ("?p" ++ show i) [])) as (i + 1) sols
+        Right (s, (i, Just (Left Hole)) : pre, rt)
     (_, t') | isPH (headV t') ->
       -- the type is not known yet: stop here, a later round continues
       Right (sols, [ (j, Just (Left Hole)) | (j, _) <- zip [i ..] (a : as) ], th)
